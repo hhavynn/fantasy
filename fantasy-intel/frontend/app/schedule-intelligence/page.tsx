@@ -94,15 +94,15 @@ function Body({ d, detail, position, phase }: { d: ScheduleIntelligence; detail?
       <p className="faint" style={{ margin: 0 }}>
         Weeks {w.weeks[0] ?? "—"}–{w.weeks[w.weeks.length - 1] ?? "—"}
         {w.regular_season_through !== null && <> · regular season through week {w.regular_season_through} · fantasy playoffs {w.playoff_weeks.length ? `weeks ${w.playoff_weeks.join(", ")}` : "unknown"} (from league settings)</>}
-        {" "}· first actionable week {w.first_actionable_week ?? "none"} · NFL data synced {when(d.freshness.nfl_sync_finished_at)}
-        {d.freshness.defense_weeks_loaded.length > 0 && <> · defensive games loaded through week {Math.max(...d.freshness.defense_weeks_loaded)}</>}
+        {" "}· first actionable week {w.first_actionable_week ?? "none"}
       </p>
+      <Freshness d={d} />
       {!w.remaining_weeks && <Callout>No remaining fantasy scoring periods: every week through the final period has kicked off. Past weeks are shown for information only.</Callout>}
       {w.uncertain && w.warning && <Callout>{w.warning}</Callout>}
       {!d.schedule.available && <Callout>No NFL schedule is loaded, so no opponents can be assigned. Run the NFL sync.</Callout>}
-      {d.schedule.available && !d.schedule.nfl_data_fetched_at && <Callout>The NFL data fetch time is unknown (no successful NFL sync recorded), so no game can be verified as final: defensive evidence is unavailable. {d.schedule.completion_rule}</Callout>}
-      {d.schedule.unverified_team_games_with_score > 0 && <p className="faint" style={{ margin: 0 }}>
-        {d.schedule.unverified_team_games_with_score / 2} game(s) show a score that cannot yet be verified as final (fetched too soon after kickoff); their defensive rows are excluded until a later NFL sync.</p>}
+      {d.schedule.available && d.schedule.warnings.map((x) => (
+        UNKNOWN_INPUT.has(x.code) ? <Callout key={x.code}>{x.message}</Callout>
+          : <p key={x.code} className="faint" style={{ margin: 0 }}>{x.message}</p>))}
 
       <form action="/schedule-intelligence" className="panel">
         <div className="row-flex">
@@ -137,6 +137,11 @@ function Body({ d, detail, position, phase }: { d: ScheduleIntelligence; detail?
         <h2>What this is (and is not)</h2>
         <ul className="reasons">{d.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
         <details>
+          <summary>How games are presumed complete (and what that cannot rule out)</summary>
+          <p>{d.schedule.completion_rule}</p>
+          <ul className="reasons">{d.schedule.completion_limits.map((n, i) => <li key={i}>{n}</li>)}</ul>
+        </details>
+        <details>
           <summary>Metric definitions</summary>
           <ul className="reasons">
             {Object.entries(d.metrics).map(([k, m]) => (
@@ -146,6 +151,26 @@ function Body({ d, detail, position, phase }: { d: ScheduleIntelligence; detail?
         </details>
       </section>
     </>
+  );
+}
+
+// Warnings that mean no defensive evidence can be shown at all.
+const UNKNOWN_INPUT = new Set(["schedule_refresh_unknown", "defense_refresh_unknown"]);
+
+// When each input was last refreshed by a successful sync for this season. A sync that refreshed
+// only other NFL tables is listed separately and is not evidence that these inputs are current.
+function Freshness({ d }: { d: ScheduleIntelligence }) {
+  const f = d.freshness;
+  const latest = f.latest_nfl_sync;
+  const skipped = latest ? [!latest.refreshed_nfl_schedules && "schedule", !latest.refreshed_nfl_defense_week && "defensive aggregates"].filter(Boolean) : [];
+  return (
+    <p className="faint" style={{ margin: 0 }}>
+      NFL schedule refreshed {f.nfl_schedules ? when(f.nfl_schedules.refreshed_at) : <b>never (unknown)</b>}
+      {" "}· defensive aggregates refreshed {f.nfl_defense_week ? when(f.nfl_defense_week.refreshed_at) : <b>never (unknown)</b>}
+      {f.defense_weeks_loaded.length > 0 && <> (weeks {Math.min(...f.defense_weeks_loaded)}–{Math.max(...f.defense_weeks_loaded)} loaded)</>}
+      {latest && skipped.length > 0 && <> · latest {f.season} NFL sync {when(latest.refreshed_at)} did not refresh the {skipped.join(" or ")}</>}
+      {d.schedule.completion_reference_time && <> · games presumed complete if kicked off ≥ 8 h before {when(d.schedule.completion_reference_time)}</>}
+    </p>
   );
 }
 
@@ -263,9 +288,9 @@ function Detail({ p }: { p: SiPlayer }) {
                   </div>
                 )) : <span className="faint">—</span>}</td>
                 <td className="faint">{w.evidence ? <>{w.evidence.games} games{w.evidence.through_week !== null ? `, through wk ${w.evidence.through_week}` : ""}
-                  {w.evidence.excluded_unverified_weeks.length > 0 && (
-                    <div title={Object.entries(w.evidence.excluded_unverified_reasons).map(([wk, why]) => `wk ${wk}: ${why}`).join("\n")}>
-                      excluded (not verified final): wk {w.evidence.excluded_unverified_weeks.join(", ")}</div>)}</> : "—"}</td>
+                  {w.evidence.excluded_weeks.length > 0 && (
+                    <div title={Object.entries(w.evidence.excluded_reasons).map(([wk, why]) => `wk ${wk}: ${why.reason}`).join("\n")}>
+                      excluded (not presumed complete): wk {w.evidence.excluded_weeks.join(", ")}</div>)}</> : "—"}</td>
               </tr>
             ))}
           </tbody>

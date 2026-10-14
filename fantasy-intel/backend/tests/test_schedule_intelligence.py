@@ -10,8 +10,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.analytics.schedule_intelligence import (BAND, FAVORABLE_RANK, METRICS, MIN_DEF_GAMES, MIN_RANKED_DEFENSES,
-                                                 NotFound, band, build_schedule_intelligence, defense_samples, nfl_fetch_time,
-                                                 load_schedule, metric_value, rank_permissive)
+                                                 NotFound, band, build_schedule_intelligence, defense_samples, game_completion,
+                                                 load_schedule, metric_value, nfl_fetch_time, nfl_fetch_times,
+                                                 rank_permissive)
 from app.db.connection import connect, fetch_dicts
 
 import synthetic_nfl as nfl
@@ -156,7 +157,7 @@ def test_no_future_week_leakage_and_in_progress_games_excluded(tmp_path):
                 continue
             ev = w["evidence"]
             assert all(x < w["week"] for x in ev["weeks_sampled"])          # never week W or later
-            assert all(x < w["week"] for x in ev["excluded_unverified_weeks"])
+            assert all(x < w["week"] for x in ev["excluded_weeks"])
     qb = player(res, 102)
     cur = week(qb, WEEK)["evidence"]                                       # week-8 evidence: weeks 1-7 only
     assert cur["weeks_sampled"] == list(range(1, WEEK)) and metric(week(qb, WEEK), "pass_epa_per_play")["value"] < 1
@@ -166,14 +167,14 @@ def test_no_future_week_leakage_and_in_progress_games_excluded(tmp_path):
     if opp_w8[0] in final_homes:                                           # completed week-8 game is used
         assert WEEK in nxt["evidence"]["weeks_sampled"]
     else:                                                                  # in-progress game is excluded
-        assert nxt["evidence"]["excluded_unverified_weeks"] == [WEEK] and WEEK not in nxt["evidence"]["weeks_sampled"]
+        assert nxt["evidence"]["excluded_weeks"] == [WEEK] and WEEK not in nxt["evidence"]["weeks_sampled"]
     # Across the league: exactly the final week-8 games count, the in-progress ones are listed as excluded.
-    sched = load_schedule(con, SEASON, nfl_fetch_time(con, SEASON))
+    sched = load_schedule(con, SEASON, nfl_fetch_times(con, SEASON))
     rows = fetch_dicts(con, "SELECT * FROM nfl_defense_week WHERE season = ?", [SEASON])
-    s = defense_samples(rows, sched["completed"], WEEK + 1)
+    s = defense_samples(rows, sched["presumed_complete"], WEEK + 1)
     finals = {t for h, a in nfl.schedule(18)[WEEK] if h in final_homes for t in (h, a)}
     assert {d for d, x in s.items() if WEEK in x["weeks"]} == finals
-    assert {d for d, x in s.items() if x["excluded_unverified"] == [WEEK]} == set(nfl.TEAMS) - finals
+    assert {d for d, x in s.items() if x["excluded_weeks"] == [WEEK]} == set(nfl.TEAMS) - finals
     con.close()
 
 
@@ -184,18 +185,23 @@ def test_in_progress_game_with_a_positive_score_is_not_treated_as_final(tmp_path
     live_home, live_away = sched[WEEK][8]
     _, con = setup(tmp_path, partial={WEEK: finals}, live={WEEK: {live_home}},
                    overrides={(WEEK, d): {"pass_epa_sum": 999.0} for d in (live_home, live_away)})
-    s = load_schedule(con, SEASON, datetime(2026, 10, 12, 21, 0, tzinfo=timezone.utc))
-    assert (live_home, WEEK) not in s["completed"] and "may be a live score" in s["unverified"][(live_home, WEEK)]
+    s = load_schedule(con, SEASON, nfl_fetch_times(con, SEASON))
+    assert (live_home, WEEK) not in s["presumed_complete"]
+    assert s["excluded"][(live_home, WEEK)]["code"] == "fetched_too_early"
+    assert "may be from a game in progress" in s["excluded"][(live_home, WEEK)]["reason"]
     rows = fetch_dicts(con, "SELECT * FROM nfl_defense_week WHERE season = ?", [SEASON])
-    samples = defense_samples(rows, s["completed"], WEEK + 1, s["unverified"])
+    samples = defense_samples(rows, s["presumed_complete"], WEEK + 1, s["excluded"])
     for team in (live_home, live_away):                              # its rows never enter week W+1 rates
-        assert WEEK not in samples[team]["weeks"] and samples[team]["excluded_unverified"] == [WEEK]
-        assert "live score" in samples[team]["excluded_reasons"][WEEK]
+        assert WEEK not in samples[team]["weeks"] and samples[team]["excluded_weeks"] == [WEEK]
+        assert samples[team]["excluded_reasons"][WEEK]["code"] == "fetched_too_early"
         v, _ = metric_value(samples[team], "pass_epa_per_play")
         assert abs(v) < 1                                             # the 999 EPA of the live game is absent
     res = build_schedule_intelligence(con, now=NOW)
-    assert res["schedule"]["unverified_team_games_with_score"] == 2 and res["schedule"]["nfl_data_fetched_at"]
-    assert "8 hours after kickoff" in res["schedule"]["completion_rule"]
+    assert res["schedule"]["games_by_completion"]["fetched_too_early"] == 1
+    assert "8 hours after the scheduled kickoff" in res["schedule"]["completion_rule"]
+    assert "not an official final-game status" in res["schedule"]["completion_rule"]
+    too_early = next(x for x in res["schedule"]["warnings"] if x["code"] == "fetched_too_early")
+    assert too_early["message"].startswith("1 scored game(s) were fetched less than 8 h after kickoff")
     con.close()
 
 
@@ -203,30 +209,41 @@ def test_completed_zero_score_games_count_and_timing_rules(tmp_path):
     sched = nfl.schedule(18, _bye_pair())
     (h1, a1), (h2, a2) = sched[3][0], sched[3][1]
     _, con = setup(tmp_path, scores={(3, h1): (24, 0), (3, h2): (0, 0)})
-    s = load_schedule(con, SEASON, datetime(2026, 10, 12, 21, 0, tzinfo=timezone.utc))
-    for t in (h1, a1, h2, a2):                                       # a shutout and a 0-0 are real finals
-        assert (t, 3) in s["completed"]
+    s = load_schedule(con, SEASON, nfl_fetch_times(con, SEASON))
+    for t in (h1, a1, h2, a2):                                       # a shutout and a 0-0 are presumed finals
+        assert (t, 3) in s["presumed_complete"]
     rows = fetch_dicts(con, "SELECT * FROM nfl_defense_week WHERE season = ?", [SEASON])
-    samples = defense_samples(rows, s["completed"], WEEK + 1, s["unverified"])
+    samples = defense_samples(rows, s["presumed_complete"], WEEK + 1, s["excluded"])
     assert all(3 in samples[t]["weeks"] for t in (h1, a1, h2, a2))   # their week-3 rows enter later weeks
     ko = datetime(2026, 10, 11, 17, 0, tzinfo=timezone.utc)
-    from app.analytics.schedule_intelligence import game_completion
-    assert game_completion(24, 17, ko, ko + timedelta(hours=9, minutes=1)) == (True, None)
-    assert game_completion(24, 17, ko, ko + timedelta(hours=8, minutes=59))[0] is False   # within the margins
-    assert game_completion(None, None, ko, ko + timedelta(days=2))[0] is False
-    assert "kickoff time is unknown" in game_completion(24, 17, None, ko)[1]
-    assert "fetch time is unknown" in game_completion(24, 17, ko, None)[1]
+    both = lambda t: {"schedules": t, "defense": t}                  # noqa: E731
+    assert game_completion(24, 17, ko, both(ko + timedelta(hours=9, minutes=1))) == (True, None, None)
+    assert game_completion(24, 17, ko, both(ko + timedelta(hours=8, minutes=59)))[:2] == (False, "fetched_too_early")
+    assert game_completion(24, 17, ko, {"schedules": ko + timedelta(days=2),     # the earlier input decides
+                                        "defense": ko + timedelta(hours=8, minutes=59)})[1] == "fetched_too_early"
+    assert "before the scheduled kickoff" in game_completion(24, 17, ko, both(ko - timedelta(hours=1)))[2]
+    assert game_completion(None, None, ko, both(ko + timedelta(days=2)))[:2] == (False, "no_score")
+    assert game_completion(None, 3, ko, both(ko + timedelta(days=2)))[1] == "no_score"
+    assert game_completion(24, 17, None, both(ko))[1] == "kickoff_unknown"
+    assert "kickoff time is unknown" in game_completion(24, 17, None, both(ko))[2]
+    code, why = game_completion(24, 17, ko, {"schedules": ko + timedelta(days=2), "defense": None})[1:]
+    assert code == "fetch_time_unknown" and "nfl_defense_week" in why and "nfl_schedules" not in why
     con.close()
 
 
 def test_unknown_fetch_time_excludes_everything_with_a_reason(tmp_path):
     _, con = setup(tmp_path, fetched=False)
     res = build_schedule_intelligence(con, now=NOW)
-    assert res["schedule"]["completed_team_games"] == 0 and res["schedule"]["nfl_data_fetched_at"] is None
+    sch = res["schedule"]
+    assert "presumed_complete" not in sch["games_by_completion"] and sch["completion_reference_time"] is None
+    assert sch["schedules_fetched_at"] is None and sch["defense_rows_fetched_at"] is None
+    assert res["freshness"]["nfl_schedules"] is None and res["freshness"]["nfl_defense_week"] is None
+    assert res["freshness"]["latest_nfl_sync"] is None
+    assert {x["code"] for x in sch["warnings"]} >= {"schedule_refresh_unknown", "defense_refresh_unknown"}
     row = week(player(res, 102), WEEK + 1)
     ev = row["evidence"]
-    assert ev["games"] == 0 and row["label"] == "insufficient" and ev["excluded_unverified_weeks"]
-    assert all("fetch time is unknown" in why or "no score" in why for why in ev["excluded_unverified_reasons"].values())
+    assert ev["games"] == 0 and row["label"] == "insufficient" and ev["excluded_weeks"]
+    assert {why["code"] for why in ev["excluded_reasons"].values()} <= {"fetch_time_unknown", "no_score"}
     con.close()
 
 
@@ -243,25 +260,124 @@ def test_fetch_time_comes_from_syncs_that_wrote_each_input_for_the_season(tmp_pa
     nfl.record_fetch(con, "2026-10-13 12:00:00", tables=("nfl_schedules",))          # PBP failed
     nfl.record_fetch(con, "2026-10-14 12:00:00", season=SEASON - 1)                  # another season
     nfl.record_fetch(con, "2026-10-14 13:00:00", status="error")                     # failed run
-    from app.analytics.schedule_intelligence import nfl_fetch_times
     t = nfl_fetch_times(con, SEASON)
     assert t["schedules"] == datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
     assert t["defense"] == datetime(2026, 10, 12, 21, 0, tzinfo=timezone.utc)
     assert nfl_fetch_time(con, SEASON) == t["defense"]                   # the earlier one decides
-    s = load_schedule(con, SEASON, nfl_fetch_time(con, SEASON))
-    assert (live_home, WEEK) not in s["completed"] and "live score" in s["unverified"][(live_home, WEEK)]
+    s = load_schedule(con, SEASON, t)
+    assert (live_home, WEEK) not in s["presumed_complete"]
+    assert s["excluded"][(live_home, WEEK)]["code"] == "fetched_too_early"
     res = build_schedule_intelligence(con, now=NOW)
     assert res["schedule"]["defense_rows_fetched_at"].startswith("2026-10-12T21:00")
     assert res["schedule"]["schedules_fetched_at"].startswith("2026-10-13T12:00")
-    # Freshness shown to the user is this season's latest successful NFL sync, not the newer 2025 run.
-    assert res["freshness"]["nfl_sync_finished_at"].startswith("2026-10-13T12:00")
+    # Freshness shown to the user is per input and this season's, not the newer 2025 run.
+    fr = res["freshness"]
+    assert fr["nfl_schedules"]["fetched_at"].startswith("2026-10-13T12:00")
+    assert fr["nfl_defense_week"]["fetched_at"].startswith("2026-10-12T21:00")
+    assert fr["latest_nfl_sync"]["fetched_at"].startswith("2026-10-13T12:00")
+    assert fr["latest_nfl_sync"]["refreshed_nfl_schedules"] and not fr["latest_nfl_sync"]["refreshed_nfl_defense_week"]
     nxt = [w for p in res["players"] for w in p["weeks"]
            if w["status"] == "scheduled" and w["week"] == WEEK + 1 and w["opponent"] in (live_home, live_away)]
     for w in nxt:
-        assert WEEK not in w["evidence"]["weeks_sampled"] and WEEK in w["evidence"]["excluded_unverified_weeks"]
-    # Once a later sync rewrites the defensive rows after the game, it counts.
+        assert WEEK not in w["evidence"]["weeks_sampled"] and WEEK in w["evidence"]["excluded_weeks"]
+    # Once a later sync rewrites the defensive rows after the game, it is presumed complete.
     nfl.record_fetch(con, "2026-10-13 18:00:00")
-    assert (live_home, WEEK) in load_schedule(con, SEASON, nfl_fetch_time(con, SEASON))["completed"]
+    assert (live_home, WEEK) in load_schedule(con, SEASON, nfl_fetch_times(con, SEASON))["presumed_complete"]
+    con.close()
+
+
+def test_suspended_scored_game_is_presumed_complete_a_documented_limitation(tmp_path):
+    # Like Bills-Bengals (2 January 2023, suspended in the first quarter, later canceled): a week-7 game
+    # shows a partial 3-7 score and partial defensive rows, and the fetch is weeks after kickoff. No stored
+    # field marks it suspended, so the heuristic presumes it complete and its partial rows are counted.
+    # This test pins that limitation (it is disclosed, not fixed).
+    sched = nfl.schedule(18, _bye_pair())
+    h, a = sched[7][0]
+    partial = {"pass_plays": 8, "pass_epa_sum": 4.0, "rush_plays": 3, "rush_epa_sum": 0.3}
+    _, con = setup(tmp_path, scores={(7, h): (3, 7)}, overrides={(7, h): partial, (7, a): partial})
+    s = load_schedule(con, SEASON, nfl_fetch_times(con, SEASON))
+    assert (h, 7) in s["presumed_complete"] and (a, 7) in s["presumed_complete"]
+    rows = fetch_dicts(con, "SELECT * FROM nfl_defense_week WHERE season = ?", [SEASON])
+    samples = defense_samples(rows, s["presumed_complete"], WEEK, s["excluded"])
+    assert samples[h]["games"] == 7 and samples[h]["pass_plays"] == 6 * 40 + 8      # partial game counted
+    res = build_schedule_intelligence(con, now=NOW)
+    limits = " ".join(res["schedule"]["completion_limits"])
+    assert "suspended" in limits and "Bills-Bengals" in limits and "presumed complete once 8 hours pass" in limits
+    assert "not an official final-game status" in res["schedule"]["completion_rule"]
+    # Once the schedule drops the canceled game, its rows are excluded again, with the reason and a warning.
+    con.execute("DELETE FROM nfl_schedules WHERE season = ? AND week = 7 AND home_team = ?", [SEASON, h])
+    s = load_schedule(con, SEASON, nfl_fetch_times(con, SEASON))
+    samples = defense_samples(rows, s["presumed_complete"], WEEK, s["excluded"])
+    assert samples[h]["games"] == 6 and samples[h]["excluded_weeks"] == [7]
+    assert samples[h]["excluded_reasons"][7]["code"] == "not_in_schedule"
+    res = build_schedule_intelligence(con, now=NOW)
+    w = next(x for x in res["schedule"]["warnings"] if x["code"] == "not_in_schedule")
+    assert w["message"].startswith("2 defensive team-week row(s) have no matching game in the stored NFL schedule")
+    con.close()
+
+
+def test_input_refresh_times_are_independent_season_scoped_and_ignore_unrelated_syncs(tmp_path):
+    _, con = setup(tmp_path, fetched=False)
+    nfl.record_fetch(con, "2026-10-12 21:00:00")                                          # both inputs
+    nfl.record_fetch(con, "2026-10-13 09:00:00", tables=("nfl_defense_week",))            # schedule download failed
+    nfl.record_fetch(con, "2026-10-13 12:00:00", tables=("nfl_injuries", "nfl_weekly_stats"))   # unrelated tables
+    nfl.record_fetch(con, "2026-10-14 12:00:00", season=SEASON - 1)                       # another season
+    res = build_schedule_intelligence(con, now=NOW)
+    fr, sch = res["freshness"], res["schedule"]
+    assert fr["season"] == SEASON
+    assert fr["nfl_schedules"]["fetched_at"].startswith("2026-10-12T21:00")
+    assert fr["nfl_defense_week"]["fetched_at"].startswith("2026-10-13T09:00")
+    assert fr["nfl_defense_week"]["refreshed_at"].startswith("2026-10-13T09:00")
+    latest = fr["latest_nfl_sync"]                                  # shown, but not evidence for either input
+    assert latest["fetched_at"].startswith("2026-10-13T12:00")
+    assert not latest["refreshed_nfl_schedules"] and not latest["refreshed_nfl_defense_week"]
+    assert sch["schedules_fetched_at"].startswith("2026-10-12T21:00")
+    assert sch["defense_rows_fetched_at"].startswith("2026-10-13T09:00")
+    assert sch["completion_reference_time"].startswith("2026-10-12T20:00")     # earlier fetch less the 1 h margin
+    msgs = {x["code"]: x["message"] for x in sch["warnings"]}
+    assert set(msgs) >= {"inputs_refreshed_separately", "latest_sync_refreshed_neither"}
+    assert "schedule_refresh_unknown" not in msgs and "defense_refresh_unknown" not in msgs
+    assert msgs["inputs_refreshed_separately"].startswith(
+        "The inputs were last refreshed by different syncs: the defensive play-by-play aggregates (nfl_defense_week) "
+        "by the sync started 2026-10-13T09:00:00+00:00, the NFL schedule (nfl_schedules) only by an earlier one "
+        "started 2026-10-12T21:00:00+00:00")
+    assert msgs["latest_sync_refreshed_neither"] == (
+        f"The latest successful {SEASON} NFL sync (started 2026-10-13T12:00:00+00:00) refreshed neither the NFL "
+        "schedule nor the defensive aggregates; it is not treated as evidence that either is current.")
+    # Only the defensive aggregates ever refreshed: the schedule's freshness is unknown, nothing is presumed.
+    con.execute("DELETE FROM sync_runs")
+    nfl.record_fetch(con, "2026-10-13 09:00:00", tables=("nfl_defense_week",))
+    res = build_schedule_intelligence(con, now=NOW)
+    msgs = {x["code"]: x["message"] for x in res["schedule"]["warnings"]}
+    assert msgs["schedule_refresh_unknown"] == (
+        f"No successful {SEASON} NFL sync is recorded as having refreshed the NFL schedule (nfl_schedules), so its "
+        "freshness is unknown: no game can be presumed complete and no defensive evidence is shown.")
+    assert "defense_refresh_unknown" not in msgs and res["freshness"]["nfl_schedules"] is None
+    assert "presumed_complete" not in res["schedule"]["games_by_completion"]
+    ev = week(player(res, 102), WEEK + 1)["evidence"]
+    assert ev["games"] == 0
+    why = next(x for x in ev["excluded_reasons"].values() if x["code"] == "fetch_time_unknown")
+    assert "nfl_schedules" in why["reason"] and "nfl_defense_week" not in why["reason"]
+    con.close()
+
+
+def test_unknown_kickoff_is_excluded_with_its_own_reason_and_warning(tmp_path):
+    sched = nfl.schedule(18, _bye_pair())
+    h, a = sched[7][0]
+    _, con = setup(tmp_path)
+    con.execute("UPDATE nfl_schedules SET gametime = NULL, gameday = NULL WHERE season = ? AND week = 7 AND home_team = ?",
+                [SEASON, h])
+    res = build_schedule_intelligence(con, now=NOW)
+    sch = res["schedule"]
+    assert sch["games_by_completion"]["kickoff_unknown"] == 1
+    msgs = {x["code"]: x["message"] for x in sch["warnings"]}
+    assert msgs["kickoff_unknown"] == ("1 scored game(s) have no known kickoff time, so they cannot be presumed "
+                                       "complete; their defensive rows are excluded.")
+    assert "fetched_too_early" not in msgs and "inputs_refreshed_separately" not in msgs
+    s = load_schedule(con, SEASON, nfl_fetch_times(con, SEASON))
+    assert s["excluded"][(a, 7)]["code"] == "kickoff_unknown"
+    rows = fetch_dicts(con, "SELECT * FROM nfl_defense_week WHERE season = ?", [SEASON])
+    assert 7 not in defense_samples(rows, s["presumed_complete"], WEEK, s["excluded"])[a]["weeks"]
     con.close()
 
 
@@ -298,7 +414,7 @@ def test_missing_epa_zero_attempts_and_zero_observed_values(tmp_path):
     missing_pass = {(3, "KC"): {"pass_plays": None, "pass_epa_sum": None}}
     _, con = setup(tmp_path, overrides={**zero_rush, **no_success, **missing_pass})
     rows = fetch_dicts(con, "SELECT * FROM nfl_defense_week WHERE season = ?", [SEASON])
-    s = defense_samples(rows, load_schedule(con, SEASON, nfl_fetch_time(con, SEASON))["completed"], WEEK)
+    s = defense_samples(rows, load_schedule(con, SEASON, nfl_fetch_times(con, SEASON))["presumed_complete"], WEEK)
     v, why = metric_value(s["DET"], "rush_epa_per_play")
     assert v is None and "no eligible rush plays" in why                  # zero attempts: unknown, not 0
     v, why = metric_value(s["SF"], "rush_success_rate")

@@ -94,7 +94,7 @@ fantasy-intel/
 | `/waivers`         | Available players ranked by local waiver score, with role trend, roster fit, league competition (LOW/MED/HIGH + likely competitors), recommendation, suggested drop. Filter by position / recommendation |
 | `/trades`          | Manual trade evaluator (1–2 players per side): both teams' optimal starting lineups rebuilt every remaining week before/after the trade on ESPN's projections; ROS / regular-season / playoff deltas, weekly table, starter changes, mandatory drop / open roster spot, hypothetical FA replacement, player context. No trade grade, no acceptance probability |
 | `/trades/discover` | Trade opportunity discovery: exact lineup impact for both teams across every 1-for-1 / 2-for-1 / 1-for-2 trade with every manager, sortable by projected gains, with categories, manager context and a link into the manual evaluator. No acceptance estimate |
-| `/schedule-intelligence` | Schedule intelligence: each remaining week's opponent (bye, home/away, regular season vs fantasy playoffs from league settings) and what that defense allowed in games completed before the week (EPA per eligible pass play / designed rush, rush success, position target shares) with samples, ranks and insufficient-data reasons. Descriptive only |
+| `/schedule-intelligence` | Schedule intelligence: each remaining week's opponent (bye, home/away, regular season vs fantasy playoffs from league settings) and what that defense allowed in games presumed complete before the week (EPA per eligible pass play / designed rush, rush success, position target shares) with samples, ranks and insufficient-data reasons. Descriptive only |
 | `/managers`        | One card per manager: record, roster construction, waiver aggression, positional add interest, streaming, trades, confidence |
 | `/managers/[id]`   | The evidence: every metric with numerator/denominator, league mean, z-score, sample size, rule; weekly roster composition; full transaction history; failed claims |
 | `/data`            | ID-mapping summary, unmatched players, name-matched (medium confidence) players, sync history |
@@ -338,7 +338,8 @@ estimate; read-only. Details: [`docs/v2_trade_discovery.md`](docs/v2_trade_disco
 
 `GET /api/schedule-intelligence` (and `/schedule-intelligence`) shows, for each QB/RB/WR/TE of a fantasy team (yours
 by default) and each remaining scoring period, the opponent and that defense's observed allowances in games
-completed **before** the week (no lookahead; games without a final score excluded), with numerators,
+presumed complete **before** the week (no lookahead; a conservative timing heuristic, not an official final
+status, so a suspended game with a partial score can still count; see the doc), with numerators,
 denominators, games sampled, ranks and explicit missing reasons. Computed on request from `nfl_defense_week` and
 `nfl_schedules`; read-only; no effect on projections, scores, waivers, scouting or trades.
 Details and the source-data audit: [`docs/v2_schedule_intelligence.md`](docs/v2_schedule_intelligence.md).
