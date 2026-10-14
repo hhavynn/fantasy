@@ -40,8 +40,9 @@ carry a 1/1 projection for week w. Zero projections per week (rostered): 40, 40,
 - Fixed (this branch): the free-agent pool request already returned each FA's current-week
   projection, but it wasn't stored (only rostered players' were). It's now stored: 419
   previously dropped FA projections in the week-6 payload.
-- Not yet ingested (recommended minimum change for V2): one `kona_player_info` request per
-  remaining week (current..final fantasy period; optionally 18), ONTEAM + FREEAGENT/WAIVERS,
-  stored in `espn_player_weekly_points.projected_points` with ESPN provenance. Optionally keep
-  the 1/0 ROS total in a separate field rather than deriving it.
+- Ingested since (V2 baseline): one `kona_player_info` request per remaining fantasy week
+  (current..final fantasy period, never week 18 for a league ending at 17), ONTEAM + FREEAGENT +
+  WAIVERS in a single request, stored in `espn_player_weekly_points.projected_points`. The ROS
+  total is derived from those weekly rows, not from the 1/0 season split. See
+  [`espn_ros_projections.md`](espn_ros_projections.md).
 - These are **ESPN projections**, not our model. They don't affect scores, waivers or trades.

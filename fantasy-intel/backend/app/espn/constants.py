@@ -58,4 +58,11 @@ TRANSACTION_TYPES = [
 
 RECEPTION_STAT_ID = 53
 
+# Forward ESPN projections: one kona_player_info request per remaining fantasy week.
+PROJECTION_STATUSES = ("ONTEAM", "FREEAGENT", "WAIVERS")
+PROJECTION_LIMIT = 3000      # real league universe is ~1,050 players; a full page means "maybe truncated"
+# A week's response replaces that week's stored projections only if it looks complete: not
+# truncated, and it contains at least this share of the currently rostered players.
+PROJECTION_MIN_ROSTERED_SHARE = 0.95
+
 FANTASY_POSITIONS = ["QB", "RB", "WR", "TE", "K", "D/ST"]

@@ -15,6 +15,7 @@ from .constants import (
     ACTIVITY_MAP,
     DEFAULT_POSITION_MAP,
     NON_STARTER_SLOTS,
+    PROJECTION_MIN_ROSTERED_SHARE,
     RECEPTION_STAT_ID,
     SLOT_MAP,
     nflverse_team,
@@ -304,6 +305,55 @@ def parse_player_cards(raw: dict, *, season: int, synced_at: datetime) -> list[d
             elif s.get("statSourceId") == 1:
                 row["projected_points"] = s.get("appliedTotal")
     return list(out.values())
+
+
+def parse_projection_week(raw: dict, *, season: int, scoring_period: int, synced_at: datetime,
+                          rostered_ids: Iterable[int], limit: int,
+                          min_rostered_share: float = PROJECTION_MIN_ROSTERED_SHARE) -> dict:
+    """ESPN's projection for exactly one scoring period from a kona_player_info response.
+
+    Returns {"rows", "coverage", "complete"}. A row exists only for a player whose payload has a
+    projection entry (statSourceId 1 / split 1) for this period: 0 is a measured projection, a
+    missing entry produces no row (unknown), a null appliedTotal stays None. Entries for other
+    periods are ignored so a week's request can only ever write that week.
+
+    `complete` decides whether the response may *replace* the stored projections for the week:
+    not truncated (fewer players than `limit`) and containing at least `min_rostered_share` of the
+    currently rostered players. The expected universe is the current rosters plus every
+    free-agent / waiver player ESPN returned."""
+    returned: dict[int, str | None] = {}
+    rows: dict[int, dict] = {}
+    for wrap in raw.get("players", []) or []:
+        player = wrap.get("player") or {}
+        pid = player.get("id") or wrap.get("id")
+        if pid is None:
+            continue
+        returned[pid] = wrap.get("status")
+        for s in player.get("stats") or []:
+            if (s.get("seasonId") == season and s.get("scoringPeriodId") == scoring_period
+                    and s.get("statSourceId") == 1 and s.get("statSplitTypeId") == 1):
+                rows[pid] = {"season": season, "espn_player_id": pid, "scoring_period": scoring_period,
+                             "projected_points": s.get("appliedTotal"), "synced_at": synced_at}
+    rostered = set(rostered_ids)
+    available = {pid for pid, status in returned.items() if pid not in rostered and status != "ONTEAM"}
+    valued = {pid: r["projected_points"] for pid, r in rows.items() if r["projected_points"] is not None}
+
+    def block(ids: set[int]) -> dict:
+        return {"expected": len(ids), "returned": len(ids & returned.keys()), "projected": len(ids & valued.keys()),
+                "zero": sum(1 for pid in ids if valued.get(pid) == 0), "missing": len(ids - valued.keys())}
+
+    truncated = len(returned) >= limit
+    rostered_cov = block(rostered)
+    if rostered:
+        complete = not truncated and rostered_cov["returned"] >= min_rostered_share * len(rostered)
+    else:
+        complete = not truncated and bool(returned)
+    coverage = {
+        "week": scoring_period, "rows_returned": len(returned), "projection_rows": len(rows),
+        "truncated": truncated, "complete": complete,
+        "universe": block(rostered | returned.keys()), "rostered": rostered_cov, "available": block(available),
+    }
+    return {"rows": list(rows.values()), "coverage": coverage, "complete": complete}
 
 
 def merge_player_rows(*sources: Iterable[dict]) -> list[dict]:

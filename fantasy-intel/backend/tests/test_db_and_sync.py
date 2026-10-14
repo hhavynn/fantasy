@@ -135,7 +135,8 @@ def test_free_agent_current_week_projection_is_retained(con):
         {"seasonId": SEASON, "scoringPeriodId": 0, "statSourceId": 1, "statSplitTypeId": 0, "appliedTotal": 140.0},
         {"seasonId": SEASON, "scoringPeriodId": 0, "statSourceId": 1, "statSplitTypeId": 2, "appliedTotal": 150.0},
     ]
-    client = FakeEspnClient()
+    # forward projection fetch fails for every week: the pool's own projection must still be kept
+    client = FakeEspnClient(projections={w: RuntimeError("down") for w in range(1, 18)})
     client.player_pool = lambda period, limit=500: pool
     client.player_cards = lambda ids, m: {"players": []}
     write_all(con, fetch_all(client), swid=MY_SWID, my_team_id=None)

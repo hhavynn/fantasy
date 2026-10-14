@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 
 from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics.availability import availability, injury_order_sql, latest_injuries
 from ..analytics.context import ftn_semantics
+from ..analytics.projections import BASELINE_NOTE, league_window, player_forward
 from ..db.connection import schema_version, table_exists
 from .deps import db, one, rows
 
@@ -214,8 +216,10 @@ def player_detail(espn_player_id: int):
             if p["pro_team"] else None
         opp_def = one(con, "SELECT * FROM defense_context WHERE season=? AND defteam=?",
                       [season, team_ctx["next_opponent"]]) if team_ctx and team_ctx.get("next_opponent") else None
+        forward = player_forward(con, season, espn_player_id, p["pro_team"])
         return {
             "player": p, "score": score, "weekly": weekly, "league_points": league_pts, "injuries": injuries,
+            "forward_projection": forward,
             "depth_chart": depth[0] if depth else None, "ownership": ownership, "waiver": waiver,
             "context": context, "team_context": team_ctx, "opponent_defense": opp_def, "route_data": route_data,
             "unavailable_metrics": {
@@ -225,6 +229,20 @@ def player_detail(espn_player_id: int):
             },
             "ftn_read_semantics": ftn_semantics(),
         }
+
+
+@router.get("/players/{espn_player_id}/forward")
+def player_forward_view(espn_player_id: int):
+    """ESPN's projection for every remaining fantasy week (unmodified) + the ROS summary."""
+    with db() as con:
+        lg = _league(con)
+        p = one(con, "SELECT pro_team FROM fantasy_players WHERE espn_player_id = ?", [espn_player_id])
+        if not p:
+            raise HTTPException(404, "Unknown ESPN player id")
+        out = player_forward(con, lg["season"], espn_player_id, p["pro_team"])
+        if out is None:
+            raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
+        return out
 
 
 ROUTE_FIELDS = ["routes", "route_participation", "tprr", "yprr", "pass_snaps", "pass_block_snaps",
@@ -377,7 +395,56 @@ def data_quality():
         external = _external_quality(con)
         return {"mapping_summary": by_method, "unmatched": unmatched, "medium_confidence": medium,
                 "conflicts": conflicts, "sync_runs": runs, "sync": _sync_status(con),
-                "validation_issues": issues, "schema_version": schema_version(con), "external": external}
+                "validation_issues": issues, "schema_version": schema_version(con), "external": external,
+                "espn_projections": _projection_quality(con)}
+
+
+def _projection_quality(con) -> dict | None:
+    """ESPN future projections: what the latest sync fetched (per week, from its stats) and what
+    is stored now (failed weeks keep older values, so the two can differ)."""
+    lg = one(con, "SELECT league_id, season, current_week FROM leagues ORDER BY synced_at DESC LIMIT 1")
+    if not lg:
+        return None
+    season = lg["season"]
+    run = one(con, """SELECT run_id, finished_at, json_extract(stats, '$.projections') AS fetch,
+                             json_extract(stats, '$.ros_projections') AS ros
+                      FROM sync_runs WHERE source = 'espn' AND status = 'ok'
+                        AND json_extract(stats, '$.projections') IS NOT NULL
+                      ORDER BY started_at DESC LIMIT 1""")
+    if run:
+        run["fetch"] = json.loads(run["fetch"]) if isinstance(run["fetch"], str) else run["fetch"]
+        run["ros"] = json.loads(run["ros"]) if isinstance(run["ros"], str) else run["ros"]
+    window = league_window(con, season)
+    stored, incomplete, summary = [], [], None
+    if window:
+        stored = rows(con, """
+            WITH r AS (SELECT DISTINCT espn_player_id FROM lineup_snapshots
+                       WHERE league_id = ? AND season = ? AND scoring_period = ?)
+            SELECT w.week, count(p.espn_player_id) FILTER (WHERE p.projected_points IS NOT NULL) AS projected,
+                   count(*) FILTER (WHERE p.projected_points = 0) AS zero,
+                   count(r.espn_player_id) FILTER (WHERE p.projected_points IS NOT NULL) AS rostered_projected,
+                   (SELECT count(*) FROM r) AS rostered,
+                   max(p.synced_at) FILTER (WHERE p.projected_points IS NOT NULL) AS latest_synced_at
+            FROM range(?, ? + 1) w(week)
+            LEFT JOIN espn_player_weekly_points p ON p.season = ? AND p.scoring_period = w.week
+            LEFT JOIN r ON r.espn_player_id = p.espn_player_id
+            GROUP BY 1 ORDER BY 1""", [lg["league_id"], season, window.current, window.current, window.final, season])
+        summary = one(con, """SELECT count(*) AS players, count(ros_projected_points) AS full_coverage,
+                                     count(*) - count(ros_projected_points) AS incomplete, max(computed_at) AS computed_at
+                              FROM player_ros_projections WHERE season = ?""", [season])
+        incomplete = rows(con, """
+            SELECT r.espn_player_id, fp.full_name, fp.position, fp.pro_team, fp.availability_status,
+                   r.ros_weeks_expected, r.ros_weeks_available, r.missing_weeks
+            FROM player_ros_projections r LEFT JOIN fantasy_players fp USING (espn_player_id)
+            WHERE r.season = ? AND r.ros_projected_points IS NULL
+            ORDER BY (fp.availability_status = 'ONTEAM') DESC NULLS LAST, fp.percent_owned DESC NULLS LAST LIMIT 60""",
+                          [season])
+    history = one(con, """SELECT count(*) AS rows, count(DISTINCT snapshot_date) AS days, max(snapshot_date) AS latest
+                          FROM espn_projection_history WHERE season = ?""", [season])
+    return {"window": {"current": window.current, "final": window.final, "last_regular": window.last_regular}
+            if window else None,
+            "latest_fetch": run, "stored": stored, "ros_summary": summary, "ros_incomplete": incomplete,
+            "history": history, "note": BASELINE_NOTE}
 
 
 def _external_quality(con) -> dict:

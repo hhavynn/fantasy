@@ -128,6 +128,51 @@ CREATE TABLE IF NOT EXISTS espn_player_weekly_points (
     synced_at        TIMESTAMP,
     PRIMARY KEY (season, espn_player_id, scoring_period)
 );
+-- projected_points holds ESPN's projection for that week (statSourceId 1), including future
+-- weeks current..final fantasy period. It is ESPN's number, not ours. Future projections never
+-- touch actual_points; see docs/espn_ros_projections.md for the replacement semantics.
+
+-- One ESPN projection snapshot per day per player-week (latest sync of the day wins), kept
+-- for future calibration / backtesting only. Not used by any score or recommendation.
+-- A row exists only when ESPN returned a projection entry (0 = projected zero).
+CREATE TABLE IF NOT EXISTS espn_projection_history (
+    snapshot_date    DATE,
+    season           INTEGER,
+    espn_player_id   BIGINT,
+    scoring_period   INTEGER,
+    projected_points DOUBLE,
+    synced_at        TIMESTAMP,
+    PRIMARY KEY (snapshot_date, season, espn_player_id, scoring_period)
+);
+
+-- Rest-of-season ESPN projection summary (derived from espn_player_weekly_points, leagues and
+-- nfl_schedules). Totals are NULL unless every expected week has an ESPN projection; a projected
+-- 0 counts as available. Byes come from the NFL schedule, never from a 0 projection.
+CREATE TABLE IF NOT EXISTS player_ros_projections (
+    season                          INTEGER,
+    espn_player_id                  BIGINT,
+    as_of_week                      INTEGER,     -- league current_week
+    final_week                      INTEGER,     -- league final_scoring_period
+    last_regular_season_week        INTEGER,     -- NULL if it can't be derived from league settings
+    current_week_projection         DOUBLE,
+    ros_projected_points            DOUBLE,
+    ros_weeks_expected              INTEGER,
+    ros_weeks_available             INTEGER,
+    ros_coverage                    DOUBLE,
+    regular_season_projected_points DOUBLE,
+    regular_season_weeks_expected   INTEGER,
+    regular_season_weeks_available  INTEGER,
+    playoff_projected_points        DOUBLE,
+    playoff_weeks_expected          INTEGER,
+    playoff_weeks_available         INTEGER,
+    bye_weeks_remaining             INTEGER,     -- NULL if the schedule/team is unknown for any remaining week
+    bye_weeks                       JSON,
+    missing_weeks                   JSON,        -- remaining weeks with no ESPN projection
+    projection_source               VARCHAR,     -- 'ESPN'
+    projection_synced_at            TIMESTAMP,   -- newest synced_at among the weekly rows used
+    computed_at                     TIMESTAMP,
+    PRIMARY KEY (season, espn_player_id)
+);
 
 -- Weekly roster/lineup snapshot per team. The current period is overwritten on
 -- each sync; completed periods become the historical record.

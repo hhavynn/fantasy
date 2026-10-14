@@ -155,9 +155,48 @@ def draft_payload() -> dict:
          "keeper": False}]}}
 
 
+FREE_AGENTS = {209: "FREEAGENT", 309: "WAIVERS", 405: "FREEAGENT", 105: "FREEAGENT"}
+
+
+def projection_value(pid: int, period: int) -> float:
+    """Deterministic synthetic ESPN projection."""
+    return round(5.0 + abs(pid) % 7 + period / 10, 2)
+
+
+def projection_payload(period: int, *, values: dict | None = None, missing=(), exclude=(),
+                       extra_periods: bool = False) -> dict:
+    """kona_player_info for one period: every rostered player (ONTEAM) + the free agents.
+    `values` overrides a player's projection (0 allowed), `missing` players are returned without a
+    projection entry, `exclude` players are not returned at all. `extra_periods` adds entries for
+    other periods / season splits that must be ignored."""
+    values = values or {}
+    out = []
+    on_team = {pid: tid for tid, entries in ROSTERS.items() for pid, _ in entries}
+    for pid in list(on_team) + list(FREE_AGENTS):
+        if pid in exclude:
+            continue
+        player = player_obj(pid)
+        stats = []
+        if pid not in missing:
+            stats.append({"seasonId": SEASON, "scoringPeriodId": period, "statSourceId": 1, "statSplitTypeId": 1,
+                          "appliedTotal": values.get(pid, projection_value(pid, period))})
+        if extra_periods:
+            stats += [{"seasonId": SEASON, "scoringPeriodId": period + 1, "statSourceId": 1, "statSplitTypeId": 1,
+                       "appliedTotal": 99.0},
+                      {"seasonId": SEASON, "scoringPeriodId": 0, "statSourceId": 1, "statSplitTypeId": 0,
+                       "appliedTotal": 500.0}]
+        player["stats"] = stats
+        out.append({"id": pid, "onTeamId": on_team.get(pid, 0), "status": "ONTEAM" if pid in on_team else FREE_AGENTS[pid],
+                    "player": player})
+    return {"players": out}
+
+
 class FakeEspnClient:
-    def __init__(self, transactions_override: dict | None = None):
+    def __init__(self, transactions_override: dict | None = None, projections=None):
         self.transactions_override = transactions_override or {}
+        # week -> payload | Exception (raised, like a network failure); default: projection_payload(week)
+        self.projections = projections or {}
+        self.projection_requests: list[int] = []
 
     def league(self):
         return league_payload()
@@ -173,6 +212,13 @@ class FakeEspnClient:
 
     def player_pool(self, period, limit=500):
         return pool_payload()
+
+    def player_projections(self, period, limit=3000):
+        self.projection_requests.append(period)
+        got = self.projections.get(period)
+        if isinstance(got, Exception):
+            raise got
+        return got if got is not None else projection_payload(period)
 
     def pro_players(self):
         return pro_players_payload()

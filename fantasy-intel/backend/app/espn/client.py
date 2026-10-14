@@ -12,7 +12,7 @@ from typing import Any
 
 from espn_api.requests.espn_requests import EspnFantasyRequests
 
-from .constants import TRANSACTION_TYPES
+from .constants import PROJECTION_LIMIT, PROJECTION_STATUSES, TRANSACTION_TYPES
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +59,23 @@ class EspnClient:
         """Free agents + players on waivers, highest-owned first."""
         filters = {"players": {
             "filterStatus": {"value": ["FREEAGENT", "WAIVERS"]},
+            "limit": limit,
+            "sortPercOwned": {"sortPriority": 1, "sortAsc": False},
+        }}
+        return self.req.league_get(
+            params={"view": "kona_player_info", "scoringPeriodId": scoring_period},
+            headers=self._filter(filters),
+        )
+
+    def player_projections(self, scoring_period: int, limit: int = PROJECTION_LIMIT) -> dict:
+        """The league's whole player universe (rostered + free agents + waivers) for one scoring
+        period, in one request. Each player's `stats` carries ESPN's projection for that period
+        (statSourceId 1, statSplitTypeId 1), including future weeks. `filterStatus` is ESPN's
+        supported status filter; a combined ONTEAM + FREEAGENT + WAIVERS request returns exactly
+        the union of the separate requests (verified against the real league, 2026 week 6).
+        A response with `limit` players may be truncated; the caller treats it as incomplete."""
+        filters = {"players": {
+            "filterStatus": {"value": list(PROJECTION_STATUSES)},
             "limit": limit,
             "sortPercOwned": {"sortPriority": 1, "sortAsc": False},
         }}

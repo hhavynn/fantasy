@@ -27,8 +27,25 @@ type External = {
   selection: Record<string, { provider: string | null; status: string; providers: string[]; message: string }> | null;
   duplicate_noops?: number; rejected?: number;
 };
+type BlockCov = { expected: number; returned: number; projected: number; zero: number; missing: number };
+type WeekCov = { week: number; rows_returned: number; projection_rows: number; truncated: boolean; complete: boolean;
+  universe: BlockCov; rostered: BlockCov; available: BlockCov };
+type Projections = {
+  window: { current: number; final: number; last_regular: number | null } | null;
+  latest_fetch: { run_id: string; finished_at: string | null;
+    fetch: { weeks_requested: number[]; weeks_replaced: number[]; weeks_partial: number[]; weeks_failed: number[];
+      failures: Record<string, string>; coverage: WeekCov[]; projection_rows: number; history_rows: number;
+      current_week: number; final_scoring_period: number | null; source: string };
+    ros: { players?: number; full_coverage?: number; incomplete?: number; rostered_incomplete?: number; skipped?: string } | null } | null;
+  stored: { week: number; projected: number; zero: number; rostered_projected: number; rostered: number; latest_synced_at: string | null }[];
+  ros_summary: { players: number; full_coverage: number; incomplete: number; computed_at: string | null } | null;
+  ros_incomplete: { espn_player_id: number; full_name: string | null; position: string | null; pro_team: string | null;
+    availability_status: string | null; ros_weeks_expected: number; ros_weeks_available: number; missing_weeks: number[] }[];
+  history: { rows: number; days: number; latest: string | null } | null;
+  note: string;
+};
 type DQ = {
-  validation_issues: Issue[]; schema_version: number | null; external: External;
+  validation_issues: Issue[]; schema_version: number | null; external: External; espn_projections: Projections | null;
   mapping_summary: { match_method: string; match_confidence: string; n: number }[];
   unmatched: MapRow[]; medium_confidence: MapRow[]; conflicts: MapRow[];
   sync_runs: { run_id: string; source: string; started_at: string; finished_at: string | null; status: string; message: string | null }[];
@@ -87,6 +104,7 @@ export default async function DataQualityPage() {
         )}
         <p className="faint" style={{ marginTop: 8 }}>Errors (logical corruption) abort the analytics run; warnings are statistically odd but kept.</p>
       </section>
+      {d.espn_projections && <ProjectionSection p={d.espn_projections} />}
       <ExternalSection x={d.external} />
       <MapTable title="Unmatched players (rostered first, then by ownership)" rows={d.unmatched} />
       <MapTable title="Name-matched players (medium confidence: verify)" rows={d.medium_confidence} />
@@ -213,6 +231,100 @@ function ExternalSection({ x }: { x: External }) {
               Resolve with <code>uv run python ../scripts/map_external_player.py --provider P --source-player-key KEY --gsis-id ID</code>.
             </p>
           </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+
+function ProjectionSection({ p }: { p: Projections }) {
+  const f = p.latest_fetch?.fetch;
+  const failed = f?.weeks_failed ?? [];
+  const partial = f?.weeks_partial ?? [];
+  const stored = new Map(p.stored.map((s) => [s.week, s]));
+  return (
+    <section className="panel">
+      <h2>ESPN future projections</h2>
+      {!f ? (
+        <p className="faint">No ESPN sync has fetched forward projections yet. Run <code>uv run python ../scripts/sync_espn.py</code>.</p>
+      ) : (
+        <div className="stack">
+          <div className="row-flex faint">
+            <span>Latest sync: <b>{when(p.latest_fetch?.finished_at)}</b></span>
+            <span>· weeks requested {f.weeks_requested.length ? `${f.weeks_requested[0]}–${f.weeks_requested[f.weeks_requested.length - 1]}` : "none"}
+              {" "}(league current {f.current_week}, final {f.final_scoring_period ?? "?"}
+              {p.window?.last_regular ? `, regular season ends wk ${p.window.last_regular}` : ""})</span>
+            <span>· {f.projection_rows} projection rows · history {p.history?.rows ?? 0} rows over {p.history?.days ?? 0} day(s)</span>
+          </div>
+          {failed.length > 0 && (
+            <div className="callout">
+              <b>Failed week requests: {failed.join(", ")}.</b> Previously stored projections for these weeks were kept
+              (stale is safer than treating a network failure as missing).
+              <ul className="reasons">{Object.entries(f.failures).map(([w, m]) => <li key={w}>{m}</li>)}</ul>
+            </div>
+          )}
+          {partial.length > 0 && (
+            <div className="callout">Weeks {partial.join(", ")} looked incomplete (truncated or missing rostered players):
+              observed values were merged without clearing older ones.</div>
+          )}
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Week</th><th>Fetch</th><th className="num">Rows returned</th><th className="num">Universe</th>
+                <th className="num">Projected</th><th className="num">Zero</th><th className="num">Missing</th>
+                <th className="num">Rostered</th><th className="num">Available</th><th className="num">Stored now</th></tr></thead>
+              <tbody>
+                {f.weeks_requested.map((w) => {
+                  const c = f.coverage.find((x) => x.week === w);
+                  const s = stored.get(w);
+                  const status = failed.includes(w) ? "FAILED" : partial.includes(w) ? "PARTIAL" : "OK";
+                  return (
+                    <tr key={w}>
+                      <td>{w}{p.window?.last_regular && w > p.window.last_regular ? <span className="faint"> (playoffs)</span> : ""}</td>
+                      <td><Badge value={status} tone={status === "OK" ? "good" : status === "FAILED" ? "bad" : "warn"} /></td>
+                      <td className="num">{c ? c.rows_returned : "—"}</td>
+                      <td className="num">{c ? c.universe.expected : "—"}</td>
+                      <td className="num">{c ? c.universe.projected : "—"}</td>
+                      <td className="num">{c ? c.universe.zero : "—"}</td>
+                      <td className="num">{c ? c.universe.missing : "—"}</td>
+                      <td className="num" title="rostered players with a projection / rostered">{c ? `${c.rostered.projected}/${c.rostered.expected}` : "—"}</td>
+                      <td className="num" title="free agents / waivers with a projection / returned">{c ? `${c.available.projected}/${c.available.returned}` : "—"}</td>
+                      <td className="num" title="projections stored for this week now (rostered with projection / rostered)">
+                        {s ? <>{s.projected} <span className="faint">({s.rostered_projected}/{s.rostered})</span></> : "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="faint">
+            Zero = ESPN projected 0 (a bye, injury or role call: byes are labeled from the NFL schedule, not from zeros).
+            Missing = no ESPN projection: unknown, never treated as 0.
+          </p>
+          {p.ros_summary && (
+            <div>
+              <h3>Rest-of-season totals · {p.ros_summary.full_coverage}/{p.ros_summary.players} players with full coverage</h3>
+              {p.ros_incomplete.length === 0 ? <p className="faint">Every player has a projection for every remaining week.</p> : (
+                <details>
+                  <summary>{p.ros_summary.incomplete} players with incomplete coverage (ROS total withheld; rostered first)</summary>
+                  <table>
+                    <thead><tr><th>Player</th><th>Team</th><th>Status</th><th className="num">Weeks</th><th>Missing</th></tr></thead>
+                    <tbody>
+                      {p.ros_incomplete.map((r) => (
+                        <tr key={r.espn_player_id}>
+                          <td><PlayerLink id={r.espn_player_id} name={r.full_name ?? String(r.espn_player_id)} /> <Pos value={r.position} /></td>
+                          <td>{r.pro_team ?? "FA"}</td><td className="faint">{r.availability_status ?? ""}</td>
+                          <td className="num">{r.ros_weeks_available}/{r.ros_weeks_expected}</td>
+                          <td className="mono faint">{r.missing_weeks.join(", ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
+            </div>
+          )}
+          <p className="faint">{p.note} Source: ESPN. Not used in any score or recommendation.</p>
         </div>
       )}
     </section>

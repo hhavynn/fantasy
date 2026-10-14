@@ -134,3 +134,24 @@ export const BASIS_LABEL: Record<string, string> = {
   espn_points: "ESPN league points only",
   unavailable: "no usage data",
 };
+
+// ESPN forward projection baseline (ESPN's numbers, unmodified; not our projection).
+export type ForwardWeek = {
+  week: number; phase: "regular" | "playoff" | null; opponent: string | null; is_home: boolean | null;
+  on_bye: boolean | null; espn_projected_points: number | null; projection_available: boolean;
+};
+
+export type RosSummary = {
+  as_of_week: number; final_week: number; last_regular_season_week: number | null;
+  current_week_projection: number | null;
+  ros_projected_points: number | null; ros_weeks_expected: number; ros_weeks_available: number; ros_coverage: number | null;
+  regular_season_projected_points: number | null; regular_season_weeks_expected: number | null;
+  regular_season_weeks_available: number | null;
+  playoff_projected_points: number | null; playoff_weeks_expected: number | null; playoff_weeks_available: number | null;
+  bye_weeks_remaining: number | null; bye_weeks: number[]; missing_weeks: number[]; projection_source: string;
+};
+
+export type ForwardProjection = {
+  source: string; note: string; summary: RosSummary; projection_synced_at: string | null;
+  weeks: ForwardWeek[]; schedule_available: boolean;
+};
