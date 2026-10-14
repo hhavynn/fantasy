@@ -1,0 +1,50 @@
+# Operating System
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment & credentials
+.env
+.env*.local
+.env.production
+.env.development
+!.env.example
+
+# Python
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Databases & local data
+*.duckdb
+*.duckdb.wal
+data/*.duckdb
+data/*.duckdb.wal
+data/raw/
+data/logs/
+
+# IDE & editors
+.idea/
+.vscode/
+*.swp
+*.swo

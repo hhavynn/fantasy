@@ -1,0 +1,13 @@
+.env
+data/*.duckdb
+data/*.duckdb.wal
+data/raw/
+data/logs/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+node_modules/
+.next/
+frontend/next-env.d.ts
+.DS_Store

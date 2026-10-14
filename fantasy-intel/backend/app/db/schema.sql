@@ -1,0 +1,417 @@
+-- fantasy-intel DuckDB schema.
+-- Conventions:
+--   * Source IDs are preserved verbatim (espn_player_id, team_id, gsis_id, ...).
+--   * NULL means "unknown / not available"; 0 means a measured zero.
+--   * Every sync is idempotent: rows are replaced by primary key, and
+--     per-period snapshots are replaced wholesale for the periods re-synced.
+--
+-- Raw nflverse tables (nfl_weekly_stats, nfl_snap_counts, nfl_injuries,
+-- nfl_schedules, nfl_depth_charts, nfl_rosters_weekly, nfl_ff_opportunity,
+-- nfl_ff_playerids) are created by the NFL sync directly from the nflverse
+-- column sets so that no source field is lost; they are partitioned by season.
+
+CREATE TABLE IF NOT EXISTS sync_runs (
+    run_id       VARCHAR PRIMARY KEY,
+    source       VARCHAR NOT NULL,          -- espn | nfl | analytics
+    started_at   TIMESTAMP NOT NULL,
+    finished_at  TIMESTAMP,
+    status       VARCHAR NOT NULL,          -- running | ok | error
+    message      VARCHAR,
+    stats        JSON
+);
+
+-- ---------------------------------------------------------------- ESPN ----
+
+CREATE TABLE IF NOT EXISTS leagues (
+    league_id              BIGINT,
+    season                 INTEGER,
+    name                   VARCHAR,
+    size                   INTEGER,
+    scoring_type           VARCHAR,
+    reception_points       DOUBLE,           -- 1.0 = full PPR, NULL if not found
+    is_faab                BOOLEAN,
+    faab_budget            INTEGER,
+    current_week           INTEGER,          -- current scoring period
+    current_matchup_period INTEGER,
+    final_scoring_period   INTEGER,
+    reg_season_matchups    INTEGER,
+    playoff_teams          INTEGER,
+    trade_deadline         TIMESTAMP,
+    waiver_process_days    JSON,
+    roster_slots           JSON,             -- {"QB":1,"RB":2,...,"BE":7,"IR":1}
+    scoring_items          JSON,
+    settings_raw           JSON,
+    synced_at              TIMESTAMP,
+    PRIMARY KEY (league_id, season)
+);
+
+CREATE TABLE IF NOT EXISTS league_members (
+    league_id     BIGINT,
+    season        INTEGER,
+    member_id     VARCHAR,
+    display_name  VARCHAR,
+    first_name    VARCHAR,
+    last_name     VARCHAR,
+    PRIMARY KEY (league_id, season, member_id)
+);
+
+CREATE TABLE IF NOT EXISTS fantasy_teams (
+    league_id             BIGINT,
+    season                INTEGER,
+    team_id               INTEGER,
+    abbrev                VARCHAR,
+    name                  VARCHAR,
+    owner_ids             JSON,
+    owner_names           VARCHAR,
+    division_id           INTEGER,
+    wins                  INTEGER,
+    losses                INTEGER,
+    ties                  INTEGER,
+    points_for            DOUBLE,
+    points_against        DOUBLE,
+    playoff_seed          INTEGER,
+    waiver_rank           INTEGER,
+    faab_spent            DOUBLE,
+    acquisitions          INTEGER,           -- ESPN transactionCounter
+    drops                 INTEGER,
+    trades                INTEGER,
+    move_to_ir            INTEGER,
+    matchup_acquisitions  JSON,              -- {"1": 2, "2": 0, ...} adds per matchup period
+    is_mine               BOOLEAN,
+    synced_at             TIMESTAMP,
+    PRIMARY KEY (league_id, season, team_id)
+);
+
+-- ESPN player universe (all active pro players + league availability state).
+CREATE TABLE IF NOT EXISTS fantasy_players (
+    espn_player_id       BIGINT PRIMARY KEY,
+    full_name            VARCHAR,
+    position             VARCHAR,            -- QB RB WR TE K D/ST ...
+    default_position_id  INTEGER,
+    pro_team_id          INTEGER,
+    pro_team             VARCHAR,            -- nflverse abbreviation (WAS, LA, ...)
+    eligible_slots       JSON,
+    injury_status        VARCHAR,            -- ESPN status, NULL if not reported
+    injured              BOOLEAN,
+    availability_status  VARCHAR,            -- FREEAGENT | WAIVERS | ONTEAM | NULL (unknown)
+    on_team_id           INTEGER,
+    percent_owned        DOUBLE,
+    percent_started      DOUBLE,
+    percent_change       DOUBLE,
+    season_points        DOUBLE,
+    season_avg_points    DOUBLE,
+    detail_synced_at     TIMESTAMP,          -- when ownership/injury/availability were last refreshed
+    synced_at            TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS player_ownership_history (
+    snapshot_date    DATE,
+    espn_player_id   BIGINT,
+    percent_owned    DOUBLE,
+    percent_started  DOUBLE,
+    percent_change   DOUBLE,
+    PRIMARY KEY (snapshot_date, espn_player_id)
+);
+
+-- League-scoring fantasy points per player per week (ESPN appliedTotal).
+CREATE TABLE IF NOT EXISTS espn_player_weekly_points (
+    season           INTEGER,
+    espn_player_id   BIGINT,
+    scoring_period   INTEGER,
+    actual_points    DOUBLE,
+    projected_points DOUBLE,
+    synced_at        TIMESTAMP,
+    PRIMARY KEY (season, espn_player_id, scoring_period)
+);
+
+-- Weekly roster/lineup snapshot per team. The current period is overwritten on
+-- each sync; completed periods become the historical record.
+CREATE TABLE IF NOT EXISTS lineup_snapshots (
+    league_id         BIGINT,
+    season            INTEGER,
+    scoring_period    INTEGER,
+    team_id           INTEGER,
+    espn_player_id    BIGINT,
+    lineup_slot_id    INTEGER,
+    lineup_slot       VARCHAR,
+    is_starter        BOOLEAN,
+    acquisition_type  VARCHAR,
+    acquisition_date  TIMESTAMP,
+    injury_status     VARCHAR,
+    points            DOUBLE,
+    projected_points  DOUBLE,
+    synced_at         TIMESTAMP,
+    PRIMARY KEY (league_id, season, scoring_period, team_id, espn_player_id)
+);
+
+CREATE TABLE IF NOT EXISTS matchups (
+    league_id        BIGINT,
+    season           INTEGER,
+    matchup_id       INTEGER,
+    matchup_period   INTEGER,
+    home_team_id     INTEGER,
+    away_team_id     INTEGER,
+    home_points      DOUBLE,
+    away_points      DOUBLE,
+    winner           VARCHAR,
+    playoff_tier     VARCHAR,
+    PRIMARY KEY (league_id, season, matchup_id)
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+    league_id               BIGINT,
+    season                  INTEGER,
+    transaction_id          VARCHAR PRIMARY KEY,
+    type                    VARCHAR,          -- FREEAGENT | WAIVER | TRADE_ACCEPT | ROSTER | ...
+    status                  VARCHAR,          -- EXECUTED | CANCELED | FAILED_* | PENDING
+    team_id                 INTEGER,
+    scoring_period          INTEGER,
+    proposed_date           TIMESTAMP,
+    process_date            TIMESTAMP,
+    bid_amount              DOUBLE,
+    execution_type          VARCHAR,
+    related_transaction_id  VARCHAR,
+    member_id               VARCHAR,
+    is_pending              BOOLEAN,
+    raw                     JSON,
+    synced_at               TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS transaction_items (
+    transaction_id       VARCHAR,
+    item_index           INTEGER,
+    item_type            VARCHAR,             -- ADD | DROP | TRADE | LINEUP | DRAFT
+    espn_player_id       BIGINT,
+    from_team_id         INTEGER,
+    to_team_id           INTEGER,
+    from_lineup_slot_id  INTEGER,
+    to_lineup_slot_id    INTEGER,
+    PRIMARY KEY (transaction_id, item_index)
+);
+
+-- League activity feed (communication board). Used to recover trade legs that
+-- mTransactions2 omits for other teams.
+CREATE TABLE IF NOT EXISTS activity_messages (
+    league_id        BIGINT,
+    season           INTEGER,
+    message_id       VARCHAR PRIMARY KEY,
+    topic_id         VARCHAR,
+    message_type_id  INTEGER,
+    action           VARCHAR,                 -- FA ADDED | WAIVER ADDED | DROPPED | TRADED
+    topic_date       TIMESTAMP,
+    team_id          INTEGER,
+    from_team_id     INTEGER,
+    to_team_id       INTEGER,
+    espn_player_id   BIGINT,
+    bid_amount       DOUBLE,
+    raw              JSON
+);
+
+CREATE TABLE IF NOT EXISTS draft_picks (
+    league_id       BIGINT,
+    season          INTEGER,
+    overall_pick    INTEGER,
+    round           INTEGER,
+    round_pick      INTEGER,
+    team_id         INTEGER,
+    espn_player_id  BIGINT,
+    bid_amount      DOUBLE,
+    keeper          BOOLEAN,
+    PRIMARY KEY (league_id, season, overall_pick)
+);
+
+-- ----------------------------------------------------------------- NFL ----
+
+CREATE TABLE IF NOT EXISTS nfl_players (
+    gsis_id              VARCHAR PRIMARY KEY,
+    display_name         VARCHAR,
+    first_name           VARCHAR,
+    last_name            VARCHAR,
+    position             VARCHAR,
+    position_group       VARCHAR,
+    latest_team          VARCHAR,
+    status               VARCHAR,
+    espn_id              BIGINT,
+    pfr_id               VARCHAR,
+    sleeper_id           VARCHAR,
+    birth_date           DATE,
+    rookie_season        INTEGER,
+    years_of_experience  INTEGER,
+    draft_year           INTEGER,
+    draft_round          INTEGER,
+    draft_pick           INTEGER
+);
+
+-- Red-zone / goal-line usage derived from play-by-play.
+CREATE TABLE IF NOT EXISTS nfl_redzone_usage (
+    season            INTEGER,
+    week              INTEGER,
+    player_id         VARCHAR,    -- gsis
+    team              VARCHAR,
+    rz_targets        INTEGER,    -- targets with yardline_100 <= 20
+    rz_carries        INTEGER,    -- carries with yardline_100 <= 20
+    inside10_targets  INTEGER,
+    inside10_carries  INTEGER,
+    gl_carries        INTEGER,    -- carries with yardline_100 <= 5
+    PRIMARY KEY (season, week, player_id)
+);
+
+CREATE TABLE IF NOT EXISTS nfl_team_week (
+    season              INTEGER,
+    week                INTEGER,
+    team                VARCHAR,
+    team_carries        INTEGER,   -- designed runs + scrambles, excl. kneels and 2pt
+    team_targets        INTEGER,
+    team_rz_carries     INTEGER,
+    team_rz_targets     INTEGER,
+    team_offense_snaps  INTEGER,
+    PRIMARY KEY (season, week, team)
+);
+
+-- ------------------------------------------------------------ Mapping ----
+
+CREATE TABLE IF NOT EXISTS player_id_map (
+    espn_player_id    BIGINT PRIMARY KEY,
+    gsis_id           VARCHAR,          -- NULL when unmatched / team defense
+    match_method      VARCHAR,          -- espn_id:nfl_players | espn_id:ff_playerids | espn_id:rosters_weekly | name_position_team | team_defense | unmatched
+    match_confidence  VARCHAR,          -- high | medium | n/a | none
+    espn_name         VARCHAR,
+    espn_position     VARCHAR,
+    espn_team         VARCHAR,
+    nfl_name          VARCHAR,
+    nfl_position      VARCHAR,
+    nfl_team          VARCHAR,
+    notes             VARCHAR,
+    mapped_at         TIMESTAMP
+);
+
+-- ---------------------------------------------------------- Analytics ----
+
+CREATE TABLE IF NOT EXISTS player_week_usage (
+    season              INTEGER,
+    week                INTEGER,
+    gsis_id             VARCHAR,
+    team                VARCHAR,
+    opponent            VARCHAR,
+    position            VARCHAR,
+    offense_snaps       INTEGER,
+    offense_pct         DOUBLE,      -- 0..1, NULL if no snap record
+    team_offense_snaps  INTEGER,
+    targets             INTEGER,
+    receptions          INTEGER,
+    receiving_yards     DOUBLE,
+    receiving_tds       INTEGER,
+    air_yards           DOUBLE,
+    target_share        DOUBLE,
+    air_yards_share     DOUBLE,
+    wopr                DOUBLE,
+    adot                DOUBLE,      -- air yards / target, NULL if 0 targets
+    carries             INTEGER,
+    rushing_yards       DOUBLE,
+    rushing_tds         INTEGER,
+    team_carries        INTEGER,
+    rush_share          DOUBLE,
+    yards_per_carry     DOUBLE,      -- NULL if 0 carries
+    rz_targets          INTEGER,
+    rz_carries          INTEGER,
+    gl_carries          INTEGER,
+    opportunities       INTEGER,     -- targets + carries
+    fantasy_points_ppr  DOUBLE,      -- nflverse PPR
+    league_points       DOUBLE,      -- ESPN league scoring, NULL if unavailable
+    xfp                 DOUBLE,      -- nflverse ff_opportunity expected PPR points
+    stats_source        VARCHAR,     -- stats+snaps | stats_only | snaps_only
+    PRIMARY KEY (season, week, gsis_id)
+);
+
+CREATE TABLE IF NOT EXISTS player_scores (
+    season               INTEGER,
+    gsis_id              VARCHAR,
+    espn_player_id       BIGINT,
+    position             VARCHAR,
+    as_of_week           INTEGER,
+    games                INTEGER,
+    opportunity_score    DOUBLE,     -- 0-10 position percentile of recent xFP/game
+    production_score     DOUBLE,     -- 0-10 position percentile of recent PPR/game
+    usage_trend_score    DOUBLE,     -- -1..+1 composite of usage deltas
+    trend_label          VARCHAR,    -- UP | DOWN | FLAT | INSUFFICIENT
+    fp_per_game          DOUBLE,
+    xfp_per_game         DOUBLE,
+    fp_minus_xfp         DOUBLE,
+    value_gap_label      VARCHAR,    -- PRODUCTION_EXCEEDS_USAGE | USAGE_EXCEEDS_PRODUCTION | ALIGNED | INSUFFICIENT
+    classification       VARCHAR,    -- BUY | HOLD | SELL | MONITOR
+    value_score          DOUBLE,     -- 0-10 blended rest-of-season value proxy
+    components           JSON,
+    reasons              JSON,
+    computed_at          TIMESTAMP,
+    PRIMARY KEY (season, gsis_id)
+);
+
+CREATE TABLE IF NOT EXISTS manager_metrics (
+    league_id    BIGINT,
+    season       INTEGER,
+    team_id      INTEGER,
+    metric       VARCHAR,
+    value        DOUBLE,
+    numerator    DOUBLE,
+    denominator  DOUBLE,
+    sample_size  INTEGER,
+    unit         VARCHAR,
+    description  VARCHAR,
+    computed_at  TIMESTAMP,
+    PRIMARY KEY (league_id, season, team_id, metric)
+);
+
+CREATE TABLE IF NOT EXISTS manager_classifications (
+    league_id    BIGINT,
+    season       INTEGER,
+    team_id      INTEGER,
+    dimension    VARCHAR,
+    label        VARCHAR,     -- HIGH | MEDIUM | LOW | INSUFFICIENT
+    metric       VARCHAR,
+    value        DOUBLE,
+    league_mean  DOUBLE,
+    league_std   DOUBLE,
+    z_score      DOUBLE,
+    sample_size  INTEGER,
+    min_sample   INTEGER,
+    confidence   VARCHAR,     -- LOW | MEDIUM | HIGH
+    rule         VARCHAR,
+    computed_at  TIMESTAMP,
+    PRIMARY KEY (league_id, season, team_id, dimension)
+);
+
+CREATE TABLE IF NOT EXISTS team_position_needs (
+    league_id          BIGINT,
+    season             INTEGER,
+    team_id            INTEGER,
+    position           VARCHAR,
+    starters_required  DOUBLE,
+    rostered           INTEGER,
+    healthy            INTEGER,
+    unavailable        INTEGER,
+    starter_value      DOUBLE,      -- avg value_score of the projected starters
+    need_score         DOUBLE,      -- 0..1
+    details            JSON,
+    computed_at        TIMESTAMP,
+    PRIMARY KEY (league_id, season, team_id, position)
+);
+
+CREATE TABLE IF NOT EXISTS waiver_recommendations (
+    league_id              BIGINT,
+    season                 INTEGER,
+    espn_player_id         BIGINT,
+    position               VARCHAR,
+    availability_status    VARCHAR,
+    opportunity_score      DOUBLE,
+    roster_fit_score       DOUBLE,
+    league_interest        VARCHAR,   -- LOW | MEDIUM | HIGH
+    interest_score         DOUBLE,
+    waiver_score           DOUBLE,
+    recommendation         VARCHAR,   -- CLAIM | WAIT | IGNORE
+    suggested_drop_id      BIGINT,
+    components             JSON,
+    reasons                JSON,
+    competitors            JSON,
+    computed_at            TIMESTAMP,
+    PRIMARY KEY (league_id, season, espn_player_id)
+);
