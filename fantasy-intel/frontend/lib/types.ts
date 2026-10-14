@@ -356,7 +356,7 @@ export type SiMetric = {
 
 export type SiEvidence = {
   defteam: string; games_before_week: number; through_week: number | null; games: number; weeks_sampled: number[];
-  excluded_unverified_weeks: number[]; metrics: SiMetric[]; primary_metric: string; label: SiLabel;
+  excluded_unverified_weeks: number[]; excluded_unverified_reasons: Record<string, string>; metrics: SiMetric[]; primary_metric: string; label: SiLabel;
   label_text: string; sentence: string;
 };
 
@@ -386,7 +386,8 @@ export type ScheduleIntelligence = {
   window: { espn_current_week: number; first_actionable_week: number | null; weeks: number[]; remaining_weeks: boolean;
     uncertain: boolean | null; warning: string | null; reason: string | null; regular_season_through: number | null;
     playoff_weeks: number[]; matchup_periods: Record<string, number | null> };
-  schedule: { available: boolean; has_scores: boolean; weeks_covered: number[]; completed_team_games: number };
+  schedule: { available: boolean; has_scores: boolean; weeks_covered: number[]; completed_team_games: number;
+    unverified_team_games_with_score: number; nfl_data_fetched_at: string | null; completion_rule: string };
   freshness: { nfl_sync_finished_at: string | null; defense_weeks_loaded: number[]; source: string };
   players: SiPlayer[];
   metrics: Record<string, { label: string; numerator: string; denominator: string; unit: string; definition: string; positions: string[] }>;

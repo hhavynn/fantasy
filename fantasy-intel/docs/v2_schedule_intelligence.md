@@ -36,10 +36,25 @@ in `player_context` keeps using it unchanged.
 ## No lookahead and completed games only
 
 For a matchup in week W, the opponent's sample is its `nfl_defense_week` rows of the same season with week < W
-whose game is **verified complete**: the team's REG game that week has both final scores in `nfl_schedules` (a 0-0
-score is not accepted). Rows without a verified final score (a game in progress at sync time, or a game the
-schedule cannot confirm) are excluded and listed per matchup (`excluded_unverified_weeks`). Other seasons never
-enter. Every defense is ranked under the same cutoff, so ranks for week W use only pre-W games league-wide.
+whose game is **verified complete**. Every defense is ranked under the same cutoff, so ranks for week W use only
+pre-W games league-wide. Other seasons never enter.
+
+**What counts as complete.** The nflverse schedule dictionary defines `home_score` / `away_score` / `result` only as
+"NA for games which haven't yet been played"; it does not say whether a score can be a live, in-progress score, so a
+score alone is not treated as proof of a final (a 10-7 could be mid-game). A game is complete only when:
+
+1. both scores are present (a shutout or a 0-0 is a real final once the timing rule holds), and
+2. its scheduled kickoff (`gameday` + `gametime`, US Eastern, converted to UTC) is known, and
+3. the NFL data was fetched at least **8 hours after kickoff**. The fetch time is the latest successful NFL sync's
+   recorded start (`sync_runs`), which is logged right after the nflverse downloads finish, minus a 1-hour margin
+   for the download. No NFL game, including overtime and weather delays, lasts 8 hours, so a score fetched that late
+   can only be the final one.
+
+Schedules and play-by-play aggregates come from the same sync, so the rule judges the stored defensive rows as of
+the moment they were fetched. Everything else is unverified and excluded, with its reason listed per matchup
+(`excluded_unverified_reasons`): no score yet; score present but fetched too soon after kickoff (possibly live);
+kickoff or fetch time unknown; game not in the schedule. A game is picked up after the next NFL sync once the rule
+holds. The response reports the fetch time, the rule, and how many scored games are still unverified.
 
 ## Metrics by position
 
@@ -114,5 +129,6 @@ for 234 players; the payload for a 10-player roster is ~140 KB.
   opponent adjustment, shrinkage or recency weighting (Phase B research, `docs/research/v2_schedule_intelligence.md`).
 * Receiver positions are latest-season positions, not week-specific; "other" and "unidentified" receivers cannot be
   separated.
-* A sync during a game stores partial rows; they are excluded until the schedule shows the final score.
+* A sync during a game stores partial rows; they are excluded until a sync at least 8 hours after kickoff.
+* With no successful NFL sync recorded (unknown fetch time) no game can be verified, so no defensive evidence is shown.
 * Explosive-run rate is not shown because its stored numerator and denominator use different filters.

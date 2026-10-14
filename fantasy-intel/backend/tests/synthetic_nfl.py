@@ -9,6 +9,8 @@ TEAMS = ["KC", "BUF", "DET", "PHI", "SF", "SEA", "TB", "WAS", "ARI", "ATL", "BAL
          "PIT", "TEN"]
 PAST_DAY = "2026-09-{:02d}"          # completed weeks (dates in the past)
 FUTURE_DAY = "2099-10-{:02d}"        # not yet kicked off whatever the real clock says
+FETCHED_AT = "2026-10-12 21:00:00"   # NFL sync start (naive UTC, as stored in sync_runs)
+LIVE_DAY, LIVE_TIME = "2026-10-12", "16:25"   # kicked off 20:25 UTC: 35 minutes before the fetch
 
 
 def rounds(teams: list[str], n: int) -> list[list[tuple[str, str]]]:
@@ -53,29 +55,41 @@ def defense_row(season: int, week: int, defteam: str, opponent: str, **over) -> 
     return row
 
 
+def record_fetch(con, fetched_at: str = FETCHED_AT) -> None:
+    """The successful NFL sync whose data is in the tables (its start is the fetch time)."""
+    con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status) VALUES (?, 'nfl', ?, ?, 'ok')",
+                [f"nfl-{fetched_at}", fetched_at, fetched_at])
+
+
 def write(con, season: int, sched: dict[int, list[tuple[str, str]]], final_weeks: set[int],
           partial: dict[int, set[str]] | None = None, defense: bool = True, overrides: dict | None = None,
-          prior_season: bool = True) -> None:
+          prior_season: bool = True, live: dict[int, set[str]] | None = None,
+          scores: dict[tuple[int, str], tuple] | None = None) -> None:
     """nfl_schedules + nfl_defense_week. Weeks in `final_weeks` are complete (past date, scores). In
     `partial` weeks, games whose home team is listed are final (past date) and the others have kicked
     off in the past without a final score (play-by-play rows exist: an in-progress game). Other weeks
-    are future, unscored and have no defensive rows. `overrides[(week, defteam)]` patches a row."""
-    partial, overrides = partial or {}, overrides or {}
+    are future, unscored and have no defensive rows. In `live` weeks, games whose home team is listed
+    kicked off 35 minutes before the fetch and already show a positive score (10-7): an in-progress
+    game with a live score. `scores[(week, home)]` overrides a final score (e.g. 24-0 or 0-0).
+    `overrides[(week, defteam)]` patches a row."""
+    partial, overrides, live, scores = partial or {}, overrides or {}, live or {}, scores or {}
     con.execute("""CREATE TABLE IF NOT EXISTS nfl_schedules (season INT, week INT, game_type VARCHAR, game_id VARCHAR,
                    gameday VARCHAR, gametime VARCHAR, home_team VARCHAR, away_team VARCHAR,
                    home_score INT, away_score INT)""")
     for w, pairs in sched.items():
         for h, a in pairs:
             gid = f"{season}_{w:02d}_{a}_{h}"
-            if w in final_weeks or (w in partial and h in partial[w]):
-                vals = (PAST_DAY.format(min(w, 28)), "13:00", 24, 17)
+            if w in live and h in live[w]:
+                vals = (LIVE_DAY, LIVE_TIME, 10, 7)                                # live score, not final
+            elif w in final_weeks or (w in partial and h in partial[w]):
+                vals = (PAST_DAY.format(min(w, 28)), "13:00", *scores.get((w, h), (24, 17)))
             elif w in partial:
                 vals = (PAST_DAY.format(min(w, 28)), "16:25", None, None)       # kicked off, no final score
             else:
                 vals = (FUTURE_DAY.format(min(w, 28)), "13:00", None, None)
             con.execute("INSERT INTO nfl_schedules VALUES (?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?)",
                         [season, w, gid, vals[0], vals[1], h, a, vals[2], vals[3]])
-            played = w in final_weeks or w in partial
+            played = w in final_weeks or w in partial or w in live
             if defense and played:
                 for d, o in ((h, a), (a, h)):
                     r = defense_row(season, w, d, o, **overrides.get((w, d), {}))

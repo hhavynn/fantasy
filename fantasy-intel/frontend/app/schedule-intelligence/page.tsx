@@ -100,6 +100,9 @@ function Body({ d, detail, position, phase }: { d: ScheduleIntelligence; detail?
       {!w.remaining_weeks && <Callout>No remaining fantasy scoring periods: every week through the final period has kicked off. Past weeks are shown for information only.</Callout>}
       {w.uncertain && w.warning && <Callout>{w.warning}</Callout>}
       {!d.schedule.available && <Callout>No NFL schedule is loaded, so no opponents can be assigned. Run the NFL sync.</Callout>}
+      {d.schedule.available && !d.schedule.nfl_data_fetched_at && <Callout>The NFL data fetch time is unknown (no successful NFL sync recorded), so no game can be verified as final: defensive evidence is unavailable. {d.schedule.completion_rule}</Callout>}
+      {d.schedule.unverified_team_games_with_score > 0 && <p className="faint" style={{ margin: 0 }}>
+        {d.schedule.unverified_team_games_with_score / 2} game(s) show a score that cannot yet be verified as final (fetched too soon after kickoff); their defensive rows are excluded until a later NFL sync.</p>}
 
       <form action="/schedule-intelligence" className="panel">
         <div className="row-flex">
@@ -260,7 +263,9 @@ function Detail({ p }: { p: SiPlayer }) {
                   </div>
                 )) : <span className="faint">—</span>}</td>
                 <td className="faint">{w.evidence ? <>{w.evidence.games} games{w.evidence.through_week !== null ? `, through wk ${w.evidence.through_week}` : ""}
-                  {w.evidence.excluded_unverified_weeks.length > 0 && <div>excluded (no final score): wk {w.evidence.excluded_unverified_weeks.join(", ")}</div>}</> : "—"}</td>
+                  {w.evidence.excluded_unverified_weeks.length > 0 && (
+                    <div title={Object.entries(w.evidence.excluded_unverified_reasons).map(([wk, why]) => `wk ${wk}: ${why}`).join("\n")}>
+                      excluded (not verified final): wk {w.evidence.excluded_unverified_weeks.join(", ")}</div>)}</> : "—"}</td>
               </tr>
             ))}
           </tbody>

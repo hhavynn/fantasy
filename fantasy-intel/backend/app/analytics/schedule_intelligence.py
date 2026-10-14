@@ -12,9 +12,10 @@ offenses, game scripts and luck it has faced.
 
 Rules:
   * No lookahead: a matchup in week W uses only the opponent's games in weeks < W.
-  * Completed games only: a defensive week counts only when nfl_schedules shows that game with a
-    final score. Play-by-play rows from a game in progress (no final score) or from a game the
-    schedule cannot confirm are excluded and counted.
+  * Completed games only: a defensive week counts only when its game is verified complete (both
+    scores present and the NFL data fetched >= 8 h after kickoff; see game_completion). Rows of a
+    game in progress, possibly live scores, or games the schedule cannot confirm are excluded and
+    listed with the reason.
   * Missing is never zero: a metric with no eligible denominator is NULL with a reason; a real 0 is 0.
   * Ranks are among defenses with at least MIN_DEF_GAMES completed games under the same cutoff;
     rank 1 = the most permissive (highest value allowed to offenses).
@@ -24,7 +25,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import IR_SLOT
@@ -92,6 +93,10 @@ POSITION_METRICS = {pos: [m for m, d in METRICS.items() if pos in d["positions"]
 SUM_COLUMNS = ("pass_plays", "pass_epa_sum", "rush_plays", "rush_epa_sum", "rush_success", "targets",
                "rb_targets", "wr_targets", "te_targets")
 
+COMPLETION_RULE = ("A defensive week counts only when its game is verified complete: both scores in the NFL schedule and "
+                   "the NFL data fetched at least 8 hours after kickoff (nflverse does not document whether a score can "
+                   "be live). Unverified games are excluded and listed with the reason.")
+
 LABELS = {
     "permissive": "Observed more permissive",
     "middle": "Middle of the league",
@@ -126,10 +131,51 @@ def _json(v):
 
 # ------------------------------------------------------------------ schedule --
 
-def load_schedule(con, season: int) -> dict:
-    """REG games of the season: (team, week) -> game info, the weeks covered, and the set of
-    (team, week) whose game is verified complete (both final scores present; 0-0 not accepted)."""
-    out = {"games": {}, "covered": set(), "completed": set(), "available": False, "has_scores": False}
+# nflverse documents scores only as "NA for games which haven't yet been played"; it does not say
+# whether a score can be a live, in-progress score. So a score alone is never proof of a final.
+# A game counts as complete when both scores are present AND the NFL data was fetched at least
+# FINAL_AFTER_KICKOFF after the scheduled kickoff: no NFL game (overtime, weather delays included)
+# lasts that long, so such a score can only be the final one. The fetch time is the latest
+# successful NFL sync's recorded start, which is logged right after the nflverse downloads, less
+# FETCH_MARGIN for the download itself. Anything else is unverified and excluded, with its reason.
+FINAL_AFTER_KICKOFF = timedelta(hours=8)
+FETCH_MARGIN = timedelta(hours=1)
+
+
+def nfl_fetch_time(con) -> datetime | None:
+    """When the stored nflverse data (schedules and play-by-play aggregates) was fetched: the latest
+    successful NFL sync run's start (naive UTC in the database). None when no run is recorded."""
+    if not table_exists(con, "sync_runs"):
+        return None
+    run = fetch_dicts(con, "SELECT started_at FROM sync_runs WHERE source = 'nfl' AND status = 'ok' "
+                           "ORDER BY started_at DESC LIMIT 1")
+    if not run or run[0]["started_at"] is None:
+        return None
+    t = run[0]["started_at"]
+    return t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t.astimezone(timezone.utc)
+
+
+def game_completion(h, a, kickoff: datetime | None, fetched_at: datetime | None) -> tuple[bool, str | None]:
+    """(complete, reason when not). A 0-0 or a shutout counts once the timing rule holds."""
+    if h is None or a is None:
+        return False, "no score in the NFL schedule (not played or not yet published)"
+    if kickoff is None:
+        return False, "score present but the kickoff time is unknown, so it may be a live score"
+    if fetched_at is None:
+        return False, "score present but the NFL data fetch time is unknown, so it may be a live score"
+    lag = fetched_at - FETCH_MARGIN - kickoff
+    if lag < FINAL_AFTER_KICKOFF:
+        hours = max(lag.total_seconds() / 3600, 0)
+        return False, (f"score fetched about {hours:.1f} h after kickoff (< {FINAL_AFTER_KICKOFF.seconds // 3600} h), "
+                       "so it may be a live score")
+    return True, None
+
+
+def load_schedule(con, season: int, fetched_at: datetime | None = None) -> dict:
+    """REG games of the season: (team, week) -> game info, the weeks covered, the set of (team, week)
+    whose game is verified complete (game_completion), and the reason for every unverified game."""
+    out = {"games": {}, "covered": set(), "completed": set(), "unverified": {}, "available": False,
+           "has_scores": False, "fetched_at": fetched_at.isoformat() if fetched_at else None}
     if not table_exists(con, "nfl_schedules"):
         return out
     cols = set(table_columns(con, "nfl_schedules"))
@@ -141,30 +187,37 @@ def load_schedule(con, season: int) -> dict:
                               "ORDER BY week, home_team", [season]):
         w = g["week"]
         out["covered"].add(w)
-        h, a = g.get("home_score"), g.get("away_score")
-        final = h is not None and a is not None and not (h == 0 and a == 0)
         ko = kickoff_utc(g.get("gameday"), g.get("gametime"))
+        final, why = game_completion(g.get("home_score"), g.get("away_score"), ko, fetched_at)
         for team, opp, home in ((g["home_team"], g["away_team"], True), (g["away_team"], g["home_team"], False)):
             out["games"][(team, w)] = {"opponent": opp, "home": home, "game_id": g.get("game_id"),
                                        "kickoff": ko.isoformat() if ko else None, "final": final}
             if final:
                 out["completed"].add((team, w))
+            else:
+                out["unverified"][(team, w)] = why
     return out
 
 
 # --------------------------------------------------------- defense samples --
 
-def defense_samples(rows: list[dict], completed: set, before_week: int) -> dict[str, dict]:
+def defense_samples(rows: list[dict], completed: set, before_week: int,
+                    reasons: dict | None = None) -> dict[str, dict]:
     """Per defense: sums over its games in weeks < before_week whose game is verified complete.
-    Games excluded for being unverified (no final score) are counted, never silently used."""
+    Rows of unverified games (no score, possibly live score, unknown timing, not in the schedule) are
+    excluded and listed with their reason, never silently used."""
+    reasons = reasons or {}
     out: dict[str, dict] = {}
     for r in rows:
         if r["week"] >= before_week:
             continue
         d = out.setdefault(r["defteam"], {"games": 0, "weeks": [], "excluded_unverified": [],
-                                          **{c: 0 for c in SUM_COLUMNS}, "missing": defaultdict(int)})
+                                          "excluded_reasons": {}, **{c: 0 for c in SUM_COLUMNS},
+                                          "missing": defaultdict(int)})
         if (r["defteam"], r["week"]) not in completed:
             d["excluded_unverified"].append(r["week"])
+            d["excluded_reasons"][r["week"]] = reasons.get((r["defteam"], r["week"]),
+                                                           "game not found in the NFL schedule")
             continue
         d["games"] += 1
         d["weeks"].append(r["week"])
@@ -215,14 +268,14 @@ def band(rank: int | None, pool: int) -> str:
 class DefenseCutoffs:
     """Defensive summaries and ranks per cutoff (games before week W), computed once per cutoff."""
 
-    def __init__(self, rows: list[dict], completed: set):
-        self.rows, self.completed = rows, completed
+    def __init__(self, rows: list[dict], completed: set, reasons: dict | None = None):
+        self.rows, self.completed, self.reasons = rows, completed, reasons or {}
         self._cache: dict[int, dict] = {}
 
     def at(self, before_week: int) -> dict:
         if before_week in self._cache:
             return self._cache[before_week]
-        samples = defense_samples(self.rows, self.completed, before_week)
+        samples = defense_samples(self.rows, self.completed, before_week, self.reasons)
         metrics: dict[str, dict] = {d: {} for d in samples}
         ranks: dict[str, dict] = {}
         for m in METRICS:
@@ -245,7 +298,8 @@ class DefenseCutoffs:
         s = cut["samples"].get(defteam)
         base = {"defteam": defteam, "games_before_week": before_week, "through_week": cut["through_week"],
                 "games": s["games"] if s else 0, "weeks_sampled": s["weeks"] if s else [],
-                "excluded_unverified_weeks": s["excluded_unverified"] if s else []}
+                "excluded_unverified_weeks": s["excluded_unverified"] if s else [],
+                "excluded_unverified_reasons": {str(w): why for w, why in s["excluded_reasons"].items()} if s else {}}
         metrics = []
         for m in POSITION_METRICS[position]:
             d = METRICS[m]
@@ -457,10 +511,10 @@ def build_schedule_intelligence(con, team_id: int | None = None, position: str =
     weeks = [w for w in range(first, final + 1)
              if phase == "all" or _phase(w, lg["last_regular_season_week"]) == phase]
 
-    sched = load_schedule(con, season)
+    sched = load_schedule(con, season, nfl_fetch_time(con))
     defense_rows = fetch_dicts(con, "SELECT * FROM nfl_defense_week WHERE season = ? ORDER BY week, defteam",
                                [season]) if table_exists(con, "nfl_defense_week") else []
-    defs = DefenseCutoffs(defense_rows, sched["completed"])
+    defs = DefenseCutoffs(defense_rows, sched["completed"], sched["unverified"])
 
     if player_id is not None:
         players = fetch_dicts(con, "SELECT espn_player_id, full_name AS name, position, pro_team, injury_status, "
@@ -490,7 +544,11 @@ def build_schedule_intelligence(con, team_id: int | None = None, position: str =
                                      if _phase(w, lg["last_regular_season_week"]) == "playoffs"],
                    "matchup_periods": {str(w): lg["matchup_period_of"].get(w) for w in range(first, final + 1)}},
         "schedule": {"available": sched["available"], "has_scores": sched["has_scores"],
-                     "weeks_covered": sorted(sched["covered"]), "completed_team_games": len(sched["completed"])},
+                     "weeks_covered": sorted(sched["covered"]), "completed_team_games": len(sched["completed"]),
+                     "unverified_team_games_with_score": sum(1 for why in sched["unverified"].values()
+                                                             if why and not why.startswith("no score")),
+                     "nfl_data_fetched_at": sched["fetched_at"],
+                     "completion_rule": COMPLETION_RULE},
         "freshness": _freshness(con, season, defense_rows),
         "players": out_players,
         "metrics": {m: {k: d[k] for k in ("label", "numerator", "denominator", "unit", "definition", "positions")}
@@ -498,8 +556,7 @@ def build_schedule_intelligence(con, team_id: int | None = None, position: str =
         "primary_metric": PRIMARY_METRIC,
         "labels": LABELS, "label_rule": LABEL_RULE,
         "notes": [TEAM_SNAPSHOT_NOTE, OBSERVATION_NOTE,
-                  "No lookahead: each week uses only the opponent's games completed before that week; games without a "
-                  "final score in the NFL schedule are excluded and listed.",
+                  "No lookahead: each week uses only the opponent's games completed before that week. " + COMPLETION_RULE,
                   "Receiver positions for target shares come from each receiver's latest nflverse roster position this "
                   "season (FB counted as RB); targets to other or unidentified positions count only in total targets "
                   "(see position coverage).",
