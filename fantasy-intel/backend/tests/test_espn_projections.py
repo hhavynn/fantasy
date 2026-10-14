@@ -96,10 +96,16 @@ def test_rostered_and_free_agent_projections_persisted_for_future_weeks(con):
         assert proj(con, pid, 10) == (None, projection_value(pid, 10)), pid
     cov = {c["week"]: c for c in stats["projections"]["coverage"]}
     assert sorted(cov) == WEEKS
-    assert cov[10]["rostered"] == {"expected": len(ROSTERED), "returned": len(ROSTERED), "projected": len(ROSTERED),
-                                   "zero": 0, "missing": 0}
-    assert cov[10]["available"]["returned"] == len(FAS) and cov[10]["available"]["projected"] == len(FAS)
-    assert stats["projections"]["weeks_replaced"] == WEEKS and stats["projections"]["weeks_failed"] == []
+    n = len(ROSTERED) + len(FAS)
+    assert (cov[10]["espn_total"], cov[10]["returned"], cov[10]["returned_with_projection"]) == (n, n, n)
+    assert cov[10]["complete"] and cov[10]["reason"] is None
+    assert cov[10]["rostered"] == {"returned": len(ROSTERED), "with_projection": len(ROSTERED), "without_projection": 0,
+                                   "zero": 0, "rostered": len(ROSTERED), "expected": len(ROSTERED),
+                                   "expected_returned": len(ROSTERED), "expected_with_projection": len(ROSTERED),
+                                   "omitted": 0}
+    assert cov[10]["available"] == {"returned": len(FAS), "with_projection": len(FAS), "without_projection": 0, "zero": 0}
+    assert "expected" not in cov[10]["available"]          # no free-agent universe is manufactured
+    assert stats["projections"]["weeks_complete"] == WEEKS and stats["projections"]["weeks_failed"] == []
 
 
 def test_zero_projection_stays_zero_and_missing_stays_null(con):
@@ -109,14 +115,16 @@ def test_zero_projection_stays_zero_and_missing_stays_null(con):
     assert proj(con, 202, 5) is None               # returned without a projection: no row = unknown
     assert proj(con, 203, 5) is None               # not returned at all: unknown
     cov = next(c for c in stats["projections"]["coverage"] if c["week"] == 5)
-    assert cov["rostered"]["zero"] == 1 and cov["rostered"]["missing"] == 2
-    assert cov["rostered"]["returned"] == len(ROSTERED) - 1
-    assert cov["universe"]["missing"] == 2 and cov["universe"]["zero"] == 1
+    assert cov["zero"] == 1 and cov["returned_without_projection"] == 1
+    assert cov["rostered"]["zero"] == 1 and cov["rostered"]["without_projection"] == 1
+    assert cov["rostered"]["omitted"] == 1 and cov["rostered"]["expected_with_projection"] == len(ROSTERED) - 2
+    assert not cov["complete"] and "expected rostered" in cov["reason"]   # 203 has an NFL team but was omitted
 
 
 def test_other_periods_and_season_splits_in_a_week_payload_are_ignored():
     out = parse.parse_projection_week(projection_payload(7, extra_periods=True), season=SEASON, scoring_period=7,
-                                      synced_at=datetime(2026, 1, 1), rostered_ids=ROSTERED, limit=3000)
+                                      synced_at=datetime(2026, 1, 1), rostered_ids=ROSTERED,
+                                      expected_rostered_ids=ROSTERED, limit=3000)
     assert {r["scoring_period"] for r in out["rows"]} == {7}
     assert all(r["projected_points"] != 99.0 and r["projected_points"] != 500.0 for r in out["rows"])
 
@@ -155,8 +163,10 @@ def test_current_week_roster_and_pool_merge_with_projection_query(con):
 def test_stale_future_projection_cleared_after_successful_complete_week_refresh(con):
     sync(con)
     assert proj(con, 209, 10) is not None and proj(con, 201, 10)[1] is not None
-    sync(con, FakeEspnClient(projections={10: projection_payload(10, exclude=(209,), missing=(201,))}))
-    assert proj(con, 209, 10) is None          # ESPN no longer returns him: no stale value
+    # ESPN's own player count says the universe is now one smaller, and the response matches it
+    stats = sync(con, FakeEspnClient(projections={10: projection_payload(10, exclude=(209,), missing=(201,))}))
+    assert 10 in stats["projections"]["weeks_complete"]
+    assert proj(con, 209, 10) is None          # proven-complete universe no longer has him: no stale value
     assert proj(con, 201, 10) is None          # returned without a projection: unknown, not the old number
     assert proj(con, 209, 11) == (None, projection_value(209, 11))   # other weeks unaffected
 
@@ -177,25 +187,122 @@ def test_one_failed_week_does_not_destroy_other_weeks(con):
                                                   11: projection_payload(11, values={201: 1.25})}))
     assert {pid: proj(con, pid, 10) for pid in ROSTERED | FAS} == w10
     assert proj(con, 201, 11) == (None, 1.25)
-    assert 11 in stats["projections"]["weeks_replaced"] and 10 not in stats["projections"]["weeks_replaced"]
+    assert 11 in stats["projections"]["weeks_complete"] and 10 not in stats["projections"]["weeks_complete"]
 
 
-def test_incomplete_response_is_merged_without_clearing(con):
+def history(con, pid, week):
+    return con.execute("SELECT projected_points FROM espn_projection_history WHERE espn_player_id = ? "
+                       "AND scoring_period = ? AND snapshot_date = ?", [pid, week, date.today()]).fetchall()
+
+
+def test_few_free_agents_with_all_rostered_preserves_omitted_fas(con):
+    """ESPN's count covers the whole universe but only the rostered players and one FA came back:
+    the response is not proven complete, so omitted FAs keep their projection."""
     sync(con)
-    # a response missing every rostered player is not trusted to define the week's universe
-    partial = projection_payload(10, exclude=tuple(ROSTERED), values={209: 2.0})
-    stats = sync(con, FakeEspnClient(projections={10: partial}))
-    assert proj(con, 201, 10) == (None, projection_value(201, 10))   # kept
-    assert proj(con, 209, 10) == (None, 2.0)                          # observed value merged
-    assert stats["projections"]["weeks_partial"] == [10]
-    assert any("week 10 looked incomplete" in w for w in stats["warnings"])
+    short = projection_payload(10, exclude=(309, 405, 105), values={209: 2.0}, total="universe")
+    stats = sync(con, FakeEspnClient(projections={10: short}))
+    for pid in (309, 405, 105):
+        assert proj(con, pid, 10) == (None, projection_value(pid, 10)), pid      # preserved, not erased
+    assert proj(con, 209, 10) == (None, 2.0)                                     # returned value applied
+    assert proj(con, 201, 10) == (None, projection_value(201, 10))
+    assert stats["projections"]["weeks_unverified"] == [10]
+    cov = next(c for c in stats["projections"]["coverage"] if c["week"] == 10)
+    assert (cov["espn_total"], cov["returned"], cov["complete"]) == (len(ROSTERED) + len(FAS), len(ROSTERED) + 1, False)
+    assert cov["reason"] == f"returned {len(ROSTERED) + 1} of ESPN's {len(ROSTERED) + len(FAS)} matching players"
+    assert any("week 10: universe not verified" in w and "omitted players keep" in w for w in stats["warnings"])
+
+
+def test_few_free_agents_does_not_delete_omitted_fa_history(con):
+    sync(con)
+    assert history(con, 309, 10) == [(projection_value(309, 10),)]
+    sync(con, FakeEspnClient(projections={10: projection_payload(10, exclude=(309,), total="universe")}))
+    assert history(con, 309, 10) == [(projection_value(309, 10),)]              # today's snapshot kept
+
+
+def test_missing_count_header_never_clears_omitted_players(con):
+    sync(con)
+    stats = sync(con, FakeEspnClient(projections={10: projection_payload(10, exclude=(309, 202), total=None)}))
+    assert proj(con, 309, 10) == (None, projection_value(309, 10))
+    assert proj(con, 202, 10) == (None, projection_value(202, 10))
+    cov = next(c for c in stats["projections"]["coverage"] if c["week"] == 10)
+    assert cov["espn_total"] is None and "header missing" in cov["reason"]
+
+
+def test_returned_player_without_projection_becomes_null_even_when_unverified(con):
+    sync(con)
+    short = projection_payload(10, exclude=(405,), missing=(201, 209), total="universe")
+    stats = sync(con, FakeEspnClient(projections={10: short}))
+    assert stats["projections"]["weeks_unverified"] == [10]
+    assert proj(con, 201, 10) is None          # rostered, returned, projection removed -> unknown
+    assert proj(con, 209, 10) is None          # FA explicitly returned without a projection -> unknown
+    assert history(con, 209, 10) == []         # today's snapshot follows the returned state
+    assert proj(con, 405, 10) == (None, projection_value(405, 10))               # omitted -> kept
+    assert history(con, 405, 10) == [(projection_value(405, 10),)]
+
+
+def test_zero_projection_kept_as_measured_zero_in_unverified_response(con):
+    sync(con)
+    sync(con, FakeEspnClient(projections={10: projection_payload(10, exclude=(405,), values={209: 0.0},
+                                                                 total="universe")}))
+    assert proj(con, 209, 10) == (None, 0.0) and history(con, 209, 10) == [(0.0,)]
+
+
+def test_truncated_response_preserves_omitted_players(con, monkeypatch):
+    sync(con)
+    page = projection_payload(10, exclude=(105,), values={209: 3.0}, total="universe")
+    monkeypatch.setattr(sync_mod, "PROJECTION_LIMIT", len(page["players"]))      # response filled the page
+    stats = sync(con, FakeEspnClient(projections={10: page}))
+    cov = next(c for c in stats["projections"]["coverage"] if c["week"] == 10)
+    assert cov["truncated"] and not cov["complete"]
+    assert proj(con, 105, 10) == (None, projection_value(105, 10))
+    assert proj(con, 209, 10) == (None, 3.0)
+
+
+def _teamless(client, pid):
+    """Make a rostered player a released NFL free agent (proTeamId 0) in every ESPN payload."""
+    def fix(payload):
+        for t in payload.get("teams", []):
+            for e in t["roster"]["entries"]:
+                if e["playerId"] == pid:
+                    e["playerPoolEntry"]["player"]["proTeamId"] = 0
+        return payload
+    base_roster, base_league, base_pro = client.roster_for_period, client.league, client.pro_players
+    client.roster_for_period = lambda period: fix(base_roster(period))
+    client.league = lambda: fix(base_league())
+    client.pro_players = lambda: [{**p, "proTeamId": 0} if p["id"] == pid else p for p in base_pro()]
+    return client
+
+
+def test_teamless_rostered_player_is_not_expected_so_real_shaped_response_is_complete(con):
+    # Los Subies shape: every rostered player returned, one rostered player has no NFL team and no
+    # projection, ESPN's count matches the response -> complete.
+    client = _teamless(FakeEspnClient(projections={w: projection_payload(w, missing=(207,)) for w in WEEKS}), 207)
+    stats = sync(con, client)
+    assert stats["projections"]["weeks_complete"] == WEEKS and stats["projections"]["weeks_unverified"] == []
+    cov = next(c for c in stats["projections"]["coverage"] if c["week"] == 10)
+    assert cov["rostered"]["expected"] == len(ROSTERED) - 1 and cov["rostered"]["rostered"] == len(ROSTERED)
+    assert cov["rostered"]["expected_with_projection"] == len(ROSTERED) - 1
+    # teamless player omitted entirely: still complete (absence is legitimate)
+    client = _teamless(FakeEspnClient(projections={10: projection_payload(10, exclude=(207,))}), 207)
+    assert 10 in sync(con, client)["projections"]["weeks_complete"]
+    # a rostered player WITH an NFL team omitted: not proven complete
+    stats = sync(con, FakeEspnClient(projections={10: projection_payload(10, exclude=(208,))}))
+    assert 10 in stats["projections"]["weeks_unverified"]
+    assert proj(con, 208, 10) == (None, projection_value(208, 10))
+
+
+def test_projection_eligible_excludes_only_known_teamless_players():
+    from app.espn.sync import projection_eligible
+    players = [{"espn_player_id": 1, "pro_team_id": 12}, {"espn_player_id": 2, "pro_team_id": 0},
+               {"espn_player_id": 3, "pro_team_id": None}]
+    assert projection_eligible({1, 2, 3, 4}, players) == {1, 4}   # 4: unknown player stays expected
 
 
 def test_truncated_response_is_not_complete():
     payload = projection_payload(10)
     n = len(payload["players"])
     out = parse.parse_projection_week(payload, season=SEASON, scoring_period=10, synced_at=datetime(2026, 1, 1),
-                                      rostered_ids=ROSTERED, limit=n)
+                                      rostered_ids=ROSTERED, expected_rostered_ids=ROSTERED, limit=n)
     assert out["coverage"]["truncated"] and not out["complete"]
 
 

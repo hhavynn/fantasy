@@ -10,9 +10,11 @@ import json
 import logging
 from typing import Any
 
+import requests
 from espn_api.requests.espn_requests import EspnFantasyRequests
 
-from .constants import PROJECTION_LIMIT, PROJECTION_STATUSES, TRANSACTION_TYPES
+from .constants import (PLAYER_COUNT_HEADER, PROJECTION_LIMIT, PROJECTION_STATUSES, RESPONSE_META_KEY,
+                        TRANSACTION_TYPES)
 
 log = logging.getLogger(__name__)
 
@@ -73,16 +75,34 @@ class EspnClient:
         (statSourceId 1, statSplitTypeId 1), including future weeks. `filterStatus` is ESPN's
         supported status filter; a combined ONTEAM + FREEAGENT + WAIVERS request returns exactly
         the union of the separate requests (verified against the real league, 2026 week 6).
-        A response with `limit` players may be truncated; the caller treats it as incomplete."""
+
+        ESPN reports the total number of players matching the filter (independent of `limit` /
+        `offset`) in the X-Fantasy-Filter-Player-Count response header. espn_api's league_get
+        drops headers, so this request is made directly; the count is attached to the payload
+        under RESPONSE_META_KEY and decides whether the response is provably complete."""
         filters = {"players": {
             "filterStatus": {"value": list(PROJECTION_STATUSES)},
             "limit": limit,
             "sortPercOwned": {"sortPriority": 1, "sortAsc": False},
         }}
-        return self.req.league_get(
-            params={"view": "kona_player_info", "scoringPeriodId": scoring_period},
-            headers=self._filter(filters),
-        )
+        params = {"view": "kona_player_info", "scoringPeriodId": scoring_period}
+        headers = self._filter(filters)
+        r = self._get(params, headers)
+        if r.status_code != 200:
+            # espn_api raises for auth / missing league / other errors, and on a 401 may switch to
+            # its alternate endpoint; retry once there so the count header is still captured.
+            self.req.checkRequestStatus(r.status_code, params=params, headers=headers)
+            r = self._get(params, headers)
+            if r.status_code != 200:
+                raise RuntimeError(f"ESPN returned HTTP {r.status_code}")
+        data = r.json()
+        data = data[0] if isinstance(data, list) else data
+        data[RESPONSE_META_KEY] = {"filter_player_count": _int_or_none(r.headers.get(PLAYER_COUNT_HEADER))}
+        return data
+
+    def _get(self, params: dict, headers: dict) -> requests.Response:
+        return requests.get(self.req.LEAGUE_ENDPOINT, params=params, headers=headers, cookies=self.req.cookies,
+                            timeout=60)
 
     def pro_players(self) -> Any:
         return self.req.get_pro_players()
@@ -92,3 +112,10 @@ class EspnClient:
 
     def draft(self) -> dict:
         return self.req.get_league_draft()
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

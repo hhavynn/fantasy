@@ -25,6 +25,13 @@ ESPN `player.stats[]` entries are keyed by `seasonId`, `scoringPeriodId`,
 | `kona_player_info` with `scoringPeriodId = w` (filterStatus + limit + sort; `filterIds` alone returns HTTP 400) | **week w**, for any w = 6..18 |
 | `mRoster` with `scoringPeriodId = w` | weeks w-1 and w |
 
+## Universe size metadata
+
+The JSON body has no count field (`players`, `positionAgainstOpponent`). The response header
+`X-Fantasy-Filter-Player-Count` is ESPN's total for the status filter, independent of `limit` /
+`offset`: 1052 for ONTEAM + FREEAGENT + WAIVERS, 190 for ONTEAM, 862 for FREEAGENT + WAIVERS
+(week 9, also with `limit` 50 and `offset` 1000). Used to prove a week's response is complete.
+
 ## Coverage of `kona_player_info?scoringPeriodId=w` (w = 6..18)
 
 Every week 6-18: 189/190 rostered players and 149/150 of the top-owned free agents

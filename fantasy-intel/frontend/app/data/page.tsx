@@ -27,13 +27,18 @@ type External = {
   selection: Record<string, { provider: string | null; status: string; providers: string[]; message: string }> | null;
   duplicate_noops?: number; rejected?: number;
 };
-type BlockCov = { expected: number; returned: number; projected: number; zero: number; missing: number };
-type WeekCov = { week: number; rows_returned: number; projection_rows: number; truncated: boolean; complete: boolean;
-  universe: BlockCov; rostered: BlockCov; available: BlockCov };
+type ReturnedCov = { returned: number; with_projection: number; without_projection: number; zero: number };
+type WeekCov = {
+  week: number; espn_total: number | null; returned: number; returned_with_projection: number;
+  returned_without_projection: number; zero: number; truncated: boolean; complete: boolean; reason: string | null;
+  rostered: ReturnedCov & { rostered: number; expected: number; expected_returned: number;
+    expected_with_projection: number; omitted: number };
+  available: ReturnedCov;
+};
 type Projections = {
   window: { current: number; final: number; last_regular: number | null } | null;
   latest_fetch: { run_id: string; finished_at: string | null;
-    fetch: { weeks_requested: number[]; weeks_replaced: number[]; weeks_partial: number[]; weeks_failed: number[];
+    fetch: { weeks_requested: number[]; weeks_complete: number[]; weeks_unverified: number[]; weeks_failed: number[];
       failures: Record<string, string>; coverage: WeekCov[]; projection_rows: number; history_rows: number;
       current_week: number; final_scoring_period: number | null; source: string };
     ros: { players?: number; full_coverage?: number; incomplete?: number; rostered_incomplete?: number; skipped?: string } | null } | null;
@@ -241,7 +246,7 @@ function ExternalSection({ x }: { x: External }) {
 function ProjectionSection({ p }: { p: Projections }) {
   const f = p.latest_fetch?.fetch;
   const failed = f?.weeks_failed ?? [];
-  const partial = f?.weeks_partial ?? [];
+  const unverified = f?.weeks_unverified ?? [];
   const stored = new Map(p.stored.map((s) => [s.week, s]));
   return (
     <section className="panel">
@@ -264,33 +269,42 @@ function ProjectionSection({ p }: { p: Projections }) {
               <ul className="reasons">{Object.entries(f.failures).map(([w, m]) => <li key={w}>{m}</li>)}</ul>
             </div>
           )}
-          {partial.length > 0 && (
-            <div className="callout">Weeks {partial.join(", ")} looked incomplete (truncated or missing rostered players):
-              observed values were merged without clearing older ones.</div>
+          {unverified.length > 0 && (
+            <div className="callout">
+              <b>Weeks {unverified.join(", ")}: universe not verified.</b> Only players ESPN explicitly returned were
+              updated; omitted players keep their previous projection (absence alone isn&apos;t evidence).
+              <ul className="reasons">{f.coverage.filter((c) => !c.complete).map((c) => <li key={c.week}>wk {c.week}: {c.reason}</li>)}</ul>
+            </div>
           )}
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Week</th><th>Fetch</th><th className="num">Rows returned</th><th className="num">Universe</th>
-                <th className="num">Projected</th><th className="num">Zero</th><th className="num">Missing</th>
-                <th className="num">Rostered</th><th className="num">Available</th><th className="num">Stored now</th></tr></thead>
+              <thead><tr><th>Week</th><th>Fetch</th>
+                <th className="num" title="X-Fantasy-Filter-Player-Count: ESPN's total of ONTEAM + FREEAGENT + WAIVERS players">ESPN total</th>
+                <th className="num">Returned</th><th className="num">With proj</th><th className="num">No proj</th>
+                <th className="num">Zero</th>
+                <th className="num" title="rostered players with an NFL team that have a projection / rostered players with an NFL team">Rostered</th>
+                <th className="num" title="returned free agents / waivers with a projection / returned (no expected FA count exists beyond ESPN's total)">FA / waivers</th>
+                <th className="num" title="projections stored for this week now (rostered with projection / rostered)">Stored now</th></tr></thead>
               <tbody>
                 {f.weeks_requested.map((w) => {
                   const c = f.coverage.find((x) => x.week === w);
                   const s = stored.get(w);
-                  const status = failed.includes(w) ? "FAILED" : partial.includes(w) ? "PARTIAL" : "OK";
+                  const status = failed.includes(w) ? "FAILED" : unverified.includes(w) ? "UNVERIFIED" : "COMPLETE";
                   return (
                     <tr key={w}>
                       <td>{w}{p.window?.last_regular && w > p.window.last_regular ? <span className="faint"> (playoffs)</span> : ""}</td>
-                      <td><Badge value={status} tone={status === "OK" ? "good" : status === "FAILED" ? "bad" : "warn"} /></td>
-                      <td className="num">{c ? c.rows_returned : "—"}</td>
-                      <td className="num">{c ? c.universe.expected : "—"}</td>
-                      <td className="num">{c ? c.universe.projected : "—"}</td>
-                      <td className="num">{c ? c.universe.zero : "—"}</td>
-                      <td className="num">{c ? c.universe.missing : "—"}</td>
-                      <td className="num" title="rostered players with a projection / rostered">{c ? `${c.rostered.projected}/${c.rostered.expected}` : "—"}</td>
-                      <td className="num" title="free agents / waivers with a projection / returned">{c ? `${c.available.projected}/${c.available.returned}` : "—"}</td>
-                      <td className="num" title="projections stored for this week now (rostered with projection / rostered)">
-                        {s ? <>{s.projected} <span className="faint">({s.rostered_projected}/{s.rostered})</span></> : "—"}</td>
+                      <td><Badge value={status} tone={status === "COMPLETE" ? "good" : status === "FAILED" ? "bad" : "warn"}
+                        title={c?.reason ?? undefined} /></td>
+                      <td className="num">{c ? (c.espn_total ?? <span className="missing" title="Header missing">—</span>) : "—"}</td>
+                      <td className="num">{c ? c.returned : "—"}</td>
+                      <td className="num">{c ? c.returned_with_projection : "—"}</td>
+                      <td className="num">{c ? c.returned_without_projection : "—"}</td>
+                      <td className="num">{c ? c.zero : "—"}</td>
+                      <td className="num">{c ? <>{c.rostered.expected_with_projection}/{c.rostered.expected}
+                        {c.rostered.rostered !== c.rostered.expected && <span className="faint" title="rostered players without a current NFL team are not expected">
+                          {" "}(+{c.rostered.rostered - c.rostered.expected} no NFL team)</span>}</> : "—"}</td>
+                      <td className="num">{c ? `${c.available.with_projection}/${c.available.returned}` : "—"}</td>
+                      <td className="num">{s ? <>{s.projected} <span className="faint">({s.rostered_projected}/{s.rostered})</span></> : "—"}</td>
                     </tr>
                   );
                 })}
@@ -298,8 +312,10 @@ function ProjectionSection({ p }: { p: Projections }) {
             </table>
           </div>
           <p className="faint">
-            Zero = ESPN projected 0 (a bye, injury or role call: byes are labeled from the NFL schedule, not from zeros).
-            Missing = no ESPN projection: unknown, never treated as 0.
+            Complete = the response matched ESPN&apos;s own player count, wasn&apos;t truncated and included every rostered
+            player with an NFL team; only then can players ESPN omitted lose a stored projection. Zero = ESPN projected 0
+            (a bye, injury or role call: byes are labeled from the NFL schedule, not from zeros). No proj = ESPN returned
+            the player without a projection: unknown, never treated as 0.
           </p>
           {p.ros_summary && (
             <div>

@@ -304,7 +304,8 @@ league's final scoring period) and builds a rest-of-season summary with a regula
 split from league settings, coverage and NFL-schedule byes. These are **ESPN's numbers, shown unmodified**:
 they are the forward fantasy-point baseline, not our model, and they do not feed any score, signal or
 waiver recommendation. Missing projections stay unknown (never 0), and a failed week keeps its previous
-values. Details: [`docs/espn_ros_projections.md`](docs/espn_ros_projections.md).
+values. A player ESPN omits only loses a stored projection when the response provably holds ESPN's whole
+universe (it matches ESPN's own player count). Details: [`docs/espn_ros_projections.md`](docs/espn_ros_projections.md).
 
 ## Upgrading an existing database (schema v5)
 

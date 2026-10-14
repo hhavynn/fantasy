@@ -41,17 +41,40 @@ Los Subies (week 6, final period 17): 12 requests per sync.
 `0` = ESPN projected zero (a measured value). No row or NULL = no ESPN projection (unknown). A
 missing value is never converted to 0.
 
+## Completeness (is the week's universe known?)
+
+ESPN reports the total number of players matching the status filter in the
+**`X-Fantasy-Filter-Player-Count`** response header. It is independent of `limit` / `offset`
+(verified 2026-10 on the real league: 1,052 combined = 190 ONTEAM + 862 FREEAGENT/WAIVERS, and the
+same values with `limit` 50 or `offset` 1000). The JSON body carries no count (`players`,
+`positionAgainstOpponent` only). `espn_api` drops response headers, so the client makes this one
+request directly and attaches the count to the payload (`_response_meta.filter_player_count`).
+
+A week's response is **complete** only when all of these hold:
+
+1. ESPN's player count is present,
+2. the number of distinct players returned equals it exactly,
+3. it is below the request `limit` (a full page could hide more),
+4. every **independently expected rostered player** was returned: everyone on a fantasy roster
+   except players our own player data shows without a current NFL team (`proTeamId` missing or
+   0, e.g. a released player). A rostered player we have no data on stays expected.
+
+No free-agent count is ever invented: the FA/waiver universe is known only through ESPN's total.
+There is no percentage threshold.
+
 ## Replacement semantics (stale data)
 
-Each requested week is handled independently:
+Rule: when completeness isn't established, prefer a possibly-stale value with a warning over a
+false deletion.
 
-| outcome for week N | `projected_points` for week N | today's history for week N |
-|---|---|---|
-| **complete**: request succeeded, response not truncated (`< limit` players), and it contains at least 95% of the currently rostered players | cleared first, then rewritten from this sync (roster + FA pool + the projection response). A player ESPN no longer returns, or returns without a projection, ends with no projection. Rows left with neither an actual nor a projection are deleted. | replaced |
-| **partial**: succeeded but truncated or missing rostered players | observed projections merged in; older values for players not returned are kept; sync warning | observed rows upserted |
-| **failed**: network/HTTP error | untouched: previous values kept (stale is safer than turning an API failure into "missing"); sync warning | untouched |
+| outcome for week N | reconciled players | `projected_points` | today's history |
+|---|---|---|---|
+| **complete** | every player, for week N | cleared, then rewritten from this sync (roster + FA pool + projection response). A player ESPN no longer returns ends with no projection. | replaced for week N |
+| **unverified** (count missing or mismatched, truncated, or an expected rostered player missing) | only players ESPN **explicitly returned** | returned with a projection: new value (0 stays 0). Returned **without** a projection: cleared (unknown). **Omitted entirely**: previous value kept. Warning with the reason. | rows of returned players replaced; omitted players' rows kept |
+| **failed** (network/HTTP error) | none | untouched: previous values kept. Warning. | untouched |
 
-One failed week never affects the other weeks. Past weeks (`< current_week`) are never in the
+Rows left in scope with neither an actual nor a projection are deleted (unknown, not zero). One
+failed or unverified week never affects other weeks. Past weeks (`< current_week`) are never in the
 fetch window, so their stored projections and actuals stay as they were. Current-week values from
 rosters and the FA pool are written in the same pass, so they merge with the projection response
 (and a pool-only player keeps its pool projection).
@@ -60,14 +83,16 @@ rosters and the FA pool are written in the same pass, so they merge with the pro
 
 Per week, the sync stats (`sync_runs.stats.projections.coverage`, shown on `/data`) record:
 
-- `universe`: current rostered players ∪ every player ESPN returned (expected), returned,
-  projected (non-null), zero, missing (expected − projected)
-- the same split for `rostered` and `available` (free agents/waivers returned)
-- `rows_returned`, `truncated`, `complete`, plus `weeks_replaced` / `weeks_partial` / `weeks_failed`
-  and each failure message
+- `espn_total`: ESPN's player count (the only expected universe size; `null` if absent)
+- `returned`, `returned_with_projection`, `returned_without_projection`, `zero`
+- `truncated`, `complete`, `reason` (why a week is unverified)
+- `rostered`: `rostered` (all roster entries), `expected` (rostered with an NFL team),
+  `expected_returned`, `expected_with_projection`, `omitted`, plus returned / with / without / zero
+- `available`: returned free agents/waivers with / without projection and zeros. No "expected" count.
 
-`/data` also shows what is stored *now* per week, which differs from the latest fetch only when a
-week failed.
+The run also records `weeks_complete`, `weeks_unverified`, `weeks_failed` and each failure message.
+`/data` also shows what is stored *now* per week, which differs from the latest fetch when a week
+failed or was unverified.
 
 ## ROS summary (`player_ros_projections`)
 

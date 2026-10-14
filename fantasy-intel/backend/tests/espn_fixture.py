@@ -163,12 +163,18 @@ def projection_value(pid: int, period: int) -> float:
     return round(5.0 + abs(pid) % 7 + period / 10, 2)
 
 
+UNIVERSE_SIZE = sum(len(v) for v in ROSTERS.values()) + len(FREE_AGENTS)
+
+
 def projection_payload(period: int, *, values: dict | None = None, missing=(), exclude=(),
-                       extra_periods: bool = False) -> dict:
+                       extra_periods: bool = False, total: int | None | str = "returned") -> dict:
     """kona_player_info for one period: every rostered player (ONTEAM) + the free agents.
     `values` overrides a player's projection (0 allowed), `missing` players are returned without a
     projection entry, `exclude` players are not returned at all. `extra_periods` adds entries for
-    other periods / season splits that must be ignored."""
+    other periods / season splits that must be ignored. `total` is ESPN's
+    X-Fantasy-Filter-Player-Count as the client attaches it: "returned" = the number of players in
+    the payload (a consistent response), "universe" = the full fixture universe (so excluded players
+    make the response short), an int = that value, None = header absent."""
     values = values or {}
     out = []
     on_team = {pid: tid for tid, entries in ROSTERS.items() for pid, _ in entries}
@@ -188,7 +194,8 @@ def projection_payload(period: int, *, values: dict | None = None, missing=(), e
         player["stats"] = stats
         out.append({"id": pid, "onTeamId": on_team.get(pid, 0), "status": "ONTEAM" if pid in on_team else FREE_AGENTS[pid],
                     "player": player})
-    return {"players": out}
+    count = len(out) if total == "returned" else UNIVERSE_SIZE if total == "universe" else total
+    return {"players": out, "_response_meta": {"filter_player_count": count}}
 
 
 class FakeEspnClient:
