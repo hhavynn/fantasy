@@ -22,7 +22,7 @@ Search (details and proofs in docs/v2_trade_discovery.md):
   Forced drops only remove players, so these bound either side after the trade. A candidate is
   dropped only when its bound proves the anchor cannot gain (rest-of-season and playoff bounds
   both <= 0) or proves it cannot match the requested category. A negative projection voids the
-  bounds, and then nothing is screened out.
+  bounds: then nothing is screened out and no bound ends the search.
 
   Stage B, exact canonical deltas, best-first. Survivors are evaluated in descending order of the
   upper bound of the requested sort key; the search stops when the K-th best exact value is above
@@ -367,7 +367,7 @@ class TradeSearch:
         found, redundant, examined, cap_hit, last_bound = [], 0, 0, False, None
         for i, c in enumerate(pool):
             ub = _bound(c, sort)
-            if len(found) >= limit:
+            if len(found) >= limit and not self.T.negative:      # invalid bounds never end the search
                 kv = _sort_value(found[limit - 1], sort)
                 if kv is not None and ub < kv - EPS:
                     last_bound = ub

@@ -322,11 +322,18 @@ def test_mixed_flex_types_and_position_limits_use_the_exact_rules():
         assert [d["espn_player_id"] for d in m["resolution"]["forced_drops"]] == mine["forced_drops"]
 
 
-def test_negative_projection_disables_screening():
+def test_negative_projection_disables_screening_and_early_stopping():
     st = two_teams(extra_b=[(209, "WR", -1.0)])
     ts = TradeSearch(st, 1)
     assert ts.T.negative and ts.screened_out == 0
-    assert ts.top("my_gain")["search"]["bounds_valid"] is False
+    for sort in SORTS:
+        out = ts.top(sort, limit=3, include_redundant=True)
+        s = out["search"]
+        assert s["bounds_valid"] is False and s["exhaustive"] is True
+        assert s["fully_evaluated"] == s["matching_filters"] and s["not_evaluated"] == 0   # bounds never end it
+        assert [r["key"] for r in out["results"]] == [r["key"] for r in all_rows(ts, sort)[:3]]
+    capped = TradeSearch(st, 1, max_exact=4).top("my_gain")["search"]
+    assert capped["exhaustive"] is False and capped["not_evaluated_reason"] == "evaluation cap reached"
 
 
 def test_simpler_equivalents_are_hidden_but_counted():

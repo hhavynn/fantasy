@@ -74,7 +74,8 @@ playoff bounds for both teams.
 A candidate is skipped only when its bounds prove the anchor cannot gain (rest-of-season bound <= 0 and
 playoff bound <= 0), or prove it cannot match a requested category (e.g. `MUTUAL_PROJECTED_IMPROVEMENT` needs
 both sides' bounds > 0). If any projection in the window is negative the bounds are not guaranteed, so
-`bounds_valid` is false and nothing is screened out. The tests verify the proof on every candidate of a
+`bounds_valid` is false, nothing is screened out and the best-first search never stops on a bound (every
+candidate is evaluated up to the cap). The tests verify the proof on every candidate of a
 synthetic league: every skipped candidate has no rest-of-season or playoff gain, and every bound is >= the
 exact delta.
 
