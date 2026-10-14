@@ -253,6 +253,8 @@ def test_fetch_time_comes_from_syncs_that_wrote_each_input_for_the_season(tmp_pa
     res = build_schedule_intelligence(con, now=NOW)
     assert res["schedule"]["defense_rows_fetched_at"].startswith("2026-10-12T21:00")
     assert res["schedule"]["schedules_fetched_at"].startswith("2026-10-13T12:00")
+    # Freshness shown to the user is this season's latest successful NFL sync, not the newer 2025 run.
+    assert res["freshness"]["nfl_sync_finished_at"].startswith("2026-10-13T12:00")
     nxt = [w for p in res["players"] for w in p["weeks"]
            if w["status"] == "scheduled" and w["week"] == WEEK + 1 and w["opponent"] in (live_home, live_away)]
     for w in nxt:

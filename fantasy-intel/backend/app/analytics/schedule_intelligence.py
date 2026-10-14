@@ -399,9 +399,16 @@ def _phase(week: int, last_regular: int | None) -> str | None:
 
 
 def _freshness(con, season: int, defense_rows: list[dict]) -> dict:
-    run = fetch_dicts(con, "SELECT finished_at FROM sync_runs WHERE source = 'nfl' AND status = 'ok' "
-                           "ORDER BY started_at DESC LIMIT 1") if table_exists(con, "sync_runs") else []
-    return {"nfl_sync_finished_at": run[0]["finished_at"].isoformat() if run and run[0]["finished_at"] else None,
+    """The latest successful NFL sync for this season (a newer sync of another season says nothing
+    about the data shown here)."""
+    finished = None
+    if table_exists(con, "sync_runs"):
+        for run in fetch_dicts(con, "SELECT finished_at, stats FROM sync_runs WHERE source = 'nfl' AND status = 'ok' "
+                                    "AND started_at IS NOT NULL ORDER BY started_at DESC"):
+            if _json(run["stats"]).get("season") == season:
+                finished = _utc(run["finished_at"])
+                break
+    return {"nfl_sync_finished_at": finished.isoformat() if finished else None,
             "defense_weeks_loaded": sorted({r["week"] for r in defense_rows}),
             "source": "nflverse play-by-play aggregated per defense and week (nfl_defense_week) + nflverse schedules"}
 
