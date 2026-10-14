@@ -45,13 +45,15 @@ score alone is not treated as proof of a final (a 10-7 could be mid-game). A gam
 
 1. both scores are present (a shutout or a 0-0 is a real final once the timing rule holds), and
 2. its scheduled kickoff (`gameday` + `gametime`, US Eastern, converted to UTC) is known, and
-3. the NFL data was fetched at least **8 hours after kickoff**. The fetch time is the latest successful NFL sync's
-   recorded start (`sync_runs`), which is logged right after the nflverse downloads finish, minus a 1-hour margin
-   for the download. No NFL game, including overtime and weather delays, lasts 8 hours, so a score fetched that late
-   can only be the final one.
+3. both inputs were fetched at least **8 hours after kickoff**: the schedule and the defensive play-by-play
+   aggregates. Each fetch time is the recorded start (`sync_runs.started_at`, logged right after the nflverse
+   downloads finish, minus a 1-hour margin for the download) of the latest successful NFL sync **for the league's
+   season** whose stats show it wrote that table (`nfl_schedules`, `nfl_defense_week`). A sync can succeed with the
+   play-by-play download failed, leaving older defensive rows in place; those rows keep their own, earlier fetch
+   time. The earlier of the two times decides. No NFL game, including overtime and weather delays, lasts 8 hours,
+   so a score and rows fetched that late can only describe the finished game.
 
-Schedules and play-by-play aggregates come from the same sync, so the rule judges the stored defensive rows as of
-the moment they were fetched. Everything else is unverified and excluded, with its reason listed per matchup
+The rule therefore judges the stored defensive rows as of the moment they were actually fetched. Everything else is unverified and excluded, with its reason listed per matchup
 (`excluded_unverified_reasons`): no score yet; score present but fetched too soon after kickoff (possibly live);
 kickoff or fetch time unknown; game not in the schedule. A game is picked up after the next NFL sync once the rule
 holds. The response reports the fetch time, the rule, and how many scored games are still unverified.

@@ -168,7 +168,7 @@ def test_no_future_week_leakage_and_in_progress_games_excluded(tmp_path):
     else:                                                                  # in-progress game is excluded
         assert nxt["evidence"]["excluded_unverified_weeks"] == [WEEK] and WEEK not in nxt["evidence"]["weeks_sampled"]
     # Across the league: exactly the final week-8 games count, the in-progress ones are listed as excluded.
-    sched = load_schedule(con, SEASON, nfl_fetch_time(con))
+    sched = load_schedule(con, SEASON, nfl_fetch_time(con, SEASON))
     rows = fetch_dicts(con, "SELECT * FROM nfl_defense_week WHERE season = ?", [SEASON])
     s = defense_samples(rows, sched["completed"], WEEK + 1)
     finals = {t for h, a in nfl.schedule(18)[WEEK] if h in final_homes for t in (h, a)}
@@ -230,6 +230,39 @@ def test_unknown_fetch_time_excludes_everything_with_a_reason(tmp_path):
     con.close()
 
 
+def test_fetch_time_comes_from_syncs_that_wrote_each_input_for_the_season(tmp_path):
+    # Week 8's last game kicked off 20:25 UTC on 2026-10-12. An in-game sync (21:00) wrote both tables; a
+    # later sync (next day) refreshed the final schedule but its play-by-play download failed, so the
+    # stored defensive rows are still the in-game ones. They must not be accepted as final.
+    sched = nfl.schedule(18, _bye_pair())
+    finals = {h for h, _ in sched[WEEK][:8]}
+    live_home, live_away = sched[WEEK][8]
+    _, con = setup(tmp_path, partial={WEEK: finals}, live={WEEK: {live_home}}, fetched=False,
+                   overrides={(WEEK, d): {"pass_epa_sum": 999.0} for d in (live_home, live_away)})
+    nfl.record_fetch(con, "2026-10-12 21:00:00")                                     # in-game: both tables
+    nfl.record_fetch(con, "2026-10-13 12:00:00", tables=("nfl_schedules",))          # PBP failed
+    nfl.record_fetch(con, "2026-10-14 12:00:00", season=SEASON - 1)                  # another season
+    nfl.record_fetch(con, "2026-10-14 13:00:00", status="error")                     # failed run
+    from app.analytics.schedule_intelligence import nfl_fetch_times
+    t = nfl_fetch_times(con, SEASON)
+    assert t["schedules"] == datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+    assert t["defense"] == datetime(2026, 10, 12, 21, 0, tzinfo=timezone.utc)
+    assert nfl_fetch_time(con, SEASON) == t["defense"]                   # the earlier one decides
+    s = load_schedule(con, SEASON, nfl_fetch_time(con, SEASON))
+    assert (live_home, WEEK) not in s["completed"] and "live score" in s["unverified"][(live_home, WEEK)]
+    res = build_schedule_intelligence(con, now=NOW)
+    assert res["schedule"]["defense_rows_fetched_at"].startswith("2026-10-12T21:00")
+    assert res["schedule"]["schedules_fetched_at"].startswith("2026-10-13T12:00")
+    nxt = [w for p in res["players"] for w in p["weeks"]
+           if w["status"] == "scheduled" and w["week"] == WEEK + 1 and w["opponent"] in (live_home, live_away)]
+    for w in nxt:
+        assert WEEK not in w["evidence"]["weeks_sampled"] and WEEK in w["evidence"]["excluded_unverified_weeks"]
+    # Once a later sync rewrites the defensive rows after the game, it counts.
+    nfl.record_fetch(con, "2026-10-13 18:00:00")
+    assert (live_home, WEEK) in load_schedule(con, SEASON, nfl_fetch_time(con, SEASON))["completed"]
+    con.close()
+
+
 def test_pass_play_label_definitions_and_denominators(tmp_path):
     _, con = setup(tmp_path)
     res = build_schedule_intelligence(con, now=NOW)
@@ -263,7 +296,7 @@ def test_missing_epa_zero_attempts_and_zero_observed_values(tmp_path):
     missing_pass = {(3, "KC"): {"pass_plays": None, "pass_epa_sum": None}}
     _, con = setup(tmp_path, overrides={**zero_rush, **no_success, **missing_pass})
     rows = fetch_dicts(con, "SELECT * FROM nfl_defense_week WHERE season = ?", [SEASON])
-    s = defense_samples(rows, load_schedule(con, SEASON, nfl_fetch_time(con))["completed"], WEEK)
+    s = defense_samples(rows, load_schedule(con, SEASON, nfl_fetch_time(con, SEASON))["completed"], WEEK)
     v, why = metric_value(s["DET"], "rush_epa_per_play")
     assert v is None and "no eligible rush plays" in why                  # zero attempts: unknown, not 0
     v, why = metric_value(s["SF"], "rush_success_rate")

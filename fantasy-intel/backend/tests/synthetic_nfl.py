@@ -3,6 +3,8 @@ tests. Values are invented test inputs (not real NFL outcomes) chosen so ranks a
 
 from __future__ import annotations
 
+import json
+
 # 32 nflverse-style codes; the ESPN fixture's teams (KC BUF DET PHI SF SEA TB WAS) are included.
 TEAMS = ["KC", "BUF", "DET", "PHI", "SF", "SEA", "TB", "WAS", "ARI", "ATL", "BAL", "CAR", "CHI", "CIN", "CLE",
          "DAL", "DEN", "GB", "HOU", "IND", "JAX", "LA", "LAC", "LV", "MIA", "MIN", "NE", "NO", "NYG", "NYJ",
@@ -55,10 +57,14 @@ def defense_row(season: int, week: int, defteam: str, opponent: str, **over) -> 
     return row
 
 
-def record_fetch(con, fetched_at: str = FETCHED_AT) -> None:
-    """The successful NFL sync whose data is in the tables (its start is the fetch time)."""
-    con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status) VALUES (?, 'nfl', ?, ?, 'ok')",
-                [f"nfl-{fetched_at}", fetched_at, fetched_at])
+def record_fetch(con, fetched_at: str = FETCHED_AT, season: int = 2026, tables=("nfl_schedules", "nfl_defense_week"),
+                 status: str = "ok") -> None:
+    """An NFL sync run as app/nfl/sync.py records it: its start is the fetch time and its stats list the
+    season and the tables it wrote (a table whose download failed is absent)."""
+    stats = {"season": season, "warnings": [], **{t: 1 for t in tables}}
+    con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status, stats) "
+                "VALUES (?, 'nfl', ?, ?, ?, ?)", [f"nfl-{fetched_at}-{season}-{len(tables)}", fetched_at, fetched_at,
+                                                   status, json.dumps(stats)])
 
 
 def write(con, season: int, sched: dict[int, list[tuple[str, str]]], final_weeks: set[int],

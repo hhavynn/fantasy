@@ -93,9 +93,10 @@ POSITION_METRICS = {pos: [m for m, d in METRICS.items() if pos in d["positions"]
 SUM_COLUMNS = ("pass_plays", "pass_epa_sum", "rush_plays", "rush_epa_sum", "rush_success", "targets",
                "rb_targets", "wr_targets", "te_targets")
 
-COMPLETION_RULE = ("A defensive week counts only when its game is verified complete: both scores in the NFL schedule and "
-                   "the NFL data fetched at least 8 hours after kickoff (nflverse does not document whether a score can "
-                   "be live). Unverified games are excluded and listed with the reason.")
+COMPLETION_RULE = ("A defensive week counts only when its game is verified complete: both scores in the NFL schedule, and "
+                   "both the schedule and the defensive play-by-play aggregates fetched (by successful NFL syncs for this "
+                   "season that wrote them) at least 8 hours after kickoff; nflverse does not document whether a score can "
+                   "be live. Unverified games are excluded and listed with the reason.")
 
 LABELS = {
     "permissive": "Observed more permissive",
@@ -135,24 +136,47 @@ def _json(v):
 # whether a score can be a live, in-progress score. So a score alone is never proof of a final.
 # A game counts as complete when both scores are present AND the NFL data was fetched at least
 # FINAL_AFTER_KICKOFF after the scheduled kickoff: no NFL game (overtime, weather delays included)
-# lasts that long, so such a score can only be the final one. The fetch time is the latest
-# successful NFL sync's recorded start, which is logged right after the nflverse downloads, less
-# FETCH_MARGIN for the download itself. Anything else is unverified and excluded, with its reason.
+# lasts that long, so such a score can only be the final one. The fetch time is the earlier of the
+# latest successful NFL syncs (for the league's season) that wrote the schedule and that wrote the
+# defensive aggregates, each recorded right after the nflverse downloads, less FETCH_MARGIN for the
+# download itself. Anything else is unverified and excluded, with its reason.
 FINAL_AFTER_KICKOFF = timedelta(hours=8)
 FETCH_MARGIN = timedelta(hours=1)
 
 
-def nfl_fetch_time(con) -> datetime | None:
-    """When the stored nflverse data (schedules and play-by-play aggregates) was fetched: the latest
-    successful NFL sync run's start (naive UTC in the database). None when no run is recorded."""
-    if not table_exists(con, "sync_runs"):
+def _utc(t: datetime | None) -> datetime | None:
+    if t is None:
         return None
-    run = fetch_dicts(con, "SELECT started_at FROM sync_runs WHERE source = 'nfl' AND status = 'ok' "
-                           "ORDER BY started_at DESC LIMIT 1")
-    if not run or run[0]["started_at"] is None:
-        return None
-    t = run[0]["started_at"]
     return t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t.astimezone(timezone.utc)
+
+
+def nfl_fetch_times(con, season: int) -> dict:
+    """When the stored inputs were fetched: for the league's season, the latest successful NFL sync
+    run that actually wrote nfl_schedules and, separately, the latest one that wrote nfl_defense_week
+    (a run can succeed with the play-by-play download failed, leaving older defensive rows in place;
+    sync stats only list the tables a run wrote). Run starts are naive UTC in the database."""
+    out = {"schedules": None, "defense": None}
+    if not table_exists(con, "sync_runs"):
+        return out
+    for run in fetch_dicts(con, "SELECT started_at, stats FROM sync_runs WHERE source = 'nfl' AND status = 'ok' "
+                                "AND started_at IS NOT NULL ORDER BY started_at DESC"):
+        stats = _json(run["stats"])
+        if stats.get("season") != season:
+            continue
+        if out["schedules"] is None and "nfl_schedules" in stats:
+            out["schedules"] = _utc(run["started_at"])
+        if out["defense"] is None and "nfl_defense_week" in stats:
+            out["defense"] = _utc(run["started_at"])
+        if out["schedules"] and out["defense"]:
+            break
+    return out
+
+
+def nfl_fetch_time(con, season: int) -> datetime | None:
+    """The fetch time the completion rule uses: the earlier of the schedule and the defensive-rows
+    fetches (both must postdate the game), or None when either is unknown."""
+    t = nfl_fetch_times(con, season)
+    return min(t["schedules"], t["defense"]) if t["schedules"] and t["defense"] else None
 
 
 def game_completion(h, a, kickoff: datetime | None, fetched_at: datetime | None) -> tuple[bool, str | None]:
@@ -511,7 +535,8 @@ def build_schedule_intelligence(con, team_id: int | None = None, position: str =
     weeks = [w for w in range(first, final + 1)
              if phase == "all" or _phase(w, lg["last_regular_season_week"]) == phase]
 
-    sched = load_schedule(con, season, nfl_fetch_time(con))
+    fetches = nfl_fetch_times(con, season)
+    sched = load_schedule(con, season, nfl_fetch_time(con, season))
     defense_rows = fetch_dicts(con, "SELECT * FROM nfl_defense_week WHERE season = ? ORDER BY week, defteam",
                                [season]) if table_exists(con, "nfl_defense_week") else []
     defs = DefenseCutoffs(defense_rows, sched["completed"], sched["unverified"])
@@ -548,6 +573,8 @@ def build_schedule_intelligence(con, team_id: int | None = None, position: str =
                      "unverified_team_games_with_score": sum(1 for why in sched["unverified"].values()
                                                              if why and not why.startswith("no score")),
                      "nfl_data_fetched_at": sched["fetched_at"],
+                     "schedules_fetched_at": fetches["schedules"].isoformat() if fetches["schedules"] else None,
+                     "defense_rows_fetched_at": fetches["defense"].isoformat() if fetches["defense"] else None,
                      "completion_rule": COMPLETION_RULE},
         "freshness": _freshness(con, season, defense_rows),
         "players": out_players,
