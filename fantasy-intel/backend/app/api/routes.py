@@ -527,8 +527,10 @@ def team_lineup_projection(team_id: int):
         roster, window = state.rosters[team_id], state.window()
         team = project_team(roster, state.slots, window, state.projections)
         names = player_names(con, [p.espn_player_id for p in roster])
-        marginal = [{"name": p.name, "position": p.position, "pro_team": p.pro_team, "on_ir": p.on_ir,
-                     **roster_marginal_value(roster, p.espn_player_id, state.slots, window, state.projections, team)}
+        open_spots = max(0, state.active_capacity - sum(1 for p in roster if not p.on_ir))
+        marginal = [{"name": p.name, "position": p.position, "pro_team": p.pro_team,
+                     **roster_marginal_value(roster, p.espn_player_id, state.slots, window, state.projections, team,
+                                             open_spots)}
                     for p in roster]
         marginal.sort(key=lambda m: -(m["known_marginal_lineup_points"] or 0))
         return {"league": lg, "team_id": team_id, "team_name": state.team_names.get(team_id),
@@ -584,6 +586,7 @@ def trades_evaluate(body: TradeRequest):
                 for w in side["lineups"][key]:
                     ids |= {a["player_id"] for a in w["assignment"] if a["player_id"]}
                     ids |= {b["player_id"] for b in w["bench"]}
+                    ids |= {x["player_id"] for x in w["ir"]}
         names = player_names(con, ids)
         for side in (res["team_a"], res["team_b"]):
             for key in ("before", "after"):

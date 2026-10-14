@@ -178,6 +178,7 @@ export type LineupSlot = { slot: string; player_id: number | null; name?: string
 export type LineupWeek = { week: number; phase: string | null; projection_complete: boolean;
   known_lineup_points: number; projected_lineup_points: number | null; assignment: LineupSlot[];
   bench: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
+  ir: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
   missing_projection_ids: number[]; teamless_unprojected_ids: number[] };
 
 export type TeamLineupSummary = {
@@ -197,6 +198,19 @@ export type FaPick = {
   lineup_points_added?: number | null; known_lineup_points_added?: number; weeks_started?: number[];
 };
 
+// Hypothetical free activation of a current-IR player; deliberately optimistic, never canonical.
+export type IrActivation = {
+  label: string; espn_player_id: number; weekly_projection: Record<string, number | null>;
+  projected_weeks: number[]; unprojected_weeks: number[]; weeks_would_start: number[];
+  lineup_points_upside: number | null; known_lineup_points_upside: number;
+  regular_season_upside: number | null; playoff_upside: number | null; projection_complete: boolean;
+  open_active_roster_spots: number | null; open_active_roster_spot: boolean | null; roster_move_note: string | null;
+};
+export type IrActivationPlayer = {
+  espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
+  injury_status: string | null; traded_away: boolean; before_trade: IrActivation; after_trade: IrActivation | null;
+};
+
 export type TradeSide = {
   team_id: number; team_name: string | null; sends: number[]; receives: number[];
   before: TeamLineupSummary; after: TeamLineupSummary; deltas: TradeDeltas;
@@ -211,6 +225,7 @@ export type TradeSide = {
   incoming_usage: { espn_player_id: number; name: string | null; position: string | null; weeks_started: number[]; slots: Record<string, number> }[];
   fit_notes: string[];
   hypothetical_fa_fill: FaPick | null;
+  ir_activation_sensitivity: { label: string; players: IrActivationPlayer[] };
   incomplete: { missing_weeks: number[]; missing_players: number[] };
 };
 
@@ -218,7 +233,9 @@ export type TradePlayer = {
   espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
   injury_status: string | null; on_ir: boolean; from_team_id: number; to_team_id: number;
   marginal_value_on_current_team: { roster_marginal_lineup_points: number | null; regular_season_marginal_lineup_points: number | null;
-    playoff_marginal_lineup_points: number | null; known_marginal_lineup_points: number; weeks_started: number[]; weeks_expected: number };
+    playoff_marginal_lineup_points: number | null; known_marginal_lineup_points: number; weeks_started: number[]; weeks_expected: number;
+    on_ir: boolean; ir_activation_sensitivity?: IrActivation };
+  ir_activation_sensitivity: IrActivationPlayer | null;
   replacement_context: { replacement: FaPick["player"]; replacement_position: string | null; eligible_positions: string[];
     lineup_points_lost_without_player: number | null; lineup_points_recovered: number | null;
     residual_loss_vs_original: number | null; known_residual_loss_vs_original: number | null; note: string };
@@ -237,6 +254,7 @@ export type TradeResult = {
     combined_ros_delta: number | null; min_side_ros_delta: number | null; regular_season_label: string;
     playoff_label: string; note: string };
   players: TradePlayer[];
+  ir_warning: string | null;
   manager_context: Record<string, { needs: { position: string; need_score: number }[];
     classifications: Record<string, { label: string; confidence: string }> }>;
   names: Record<string, { name: string | null; position: string | null; pro_team: string | null }>;

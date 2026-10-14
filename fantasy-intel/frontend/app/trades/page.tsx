@@ -3,7 +3,7 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, Callout, ErrorBox, Pos, TrendArrow } from "@/components/ui";
 import { api } from "@/lib/api";
 import { label, num, signed } from "@/lib/format";
-import type { LineupWeek, TradeOptions, TradeResult, TradeSide } from "@/lib/types";
+import type { IrActivation, LineupWeek, TradeOptions, TradeResult, TradeSide } from "@/lib/types";
 
 // Manual Trade Evaluator. Projected points: ESPN (unmodified). Trade impact: our exact weekly
 // optimal-lineup simulation for both teams. No trade grade, no acceptance probability.
@@ -31,6 +31,8 @@ function tone(code: string) {
 }
 
 const why = "Incomplete: a rostered player with an NFL team has no ESPN projection that week";
+const IR_WARNING = "Current IR players are excluded from canonical starting-lineup totals until activated. "
+  + "ESPN future projections are shown separately as activation upside.";
 
 export default async function TradesPage({ searchParams }: PageProps<"/trades">) {
   const sp = await searchParams;
@@ -46,6 +48,7 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
   // Keep only selections that belong to the currently chosen teams (a team change resets them).
   const aSends = ids(sp.a).filter((id) => teamA?.roster.some((p) => p.espn_player_id === id));
   const bSends = ids(sp.b).filter((id) => teamB?.roster.some((p) => p.espn_player_id === id));
+  const hasIr = [teamA, teamB].some((t) => t?.roster.some((p) => p.on_ir));
   const ready = !!teamA && !!teamB && ta !== tb && aSends.length >= 1 && bSends.length >= 1;
   const tooMany = aSends.length > 2 || bSends.length > 2;
   const evaluated = ready && !tooMany
@@ -111,6 +114,7 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
         </div>
       </form>
 
+      {hasIr && !(evaluated?.ok) && <Callout>{IR_WARNING}</Callout>}
       {ta === tb && <Callout>Choose two different teams.</Callout>}
       {tooMany && <Callout>Each side can send at most 2 players (1-for-1, 2-for-1, 1-for-2, 2-for-2).</Callout>}
       {evaluated && !evaluated.ok && <ErrorBox error={evaluated.error} />}
@@ -142,6 +146,7 @@ function Result({ r }: { r: TradeResult }) {
           Combined lineup delta {signed(r.result.combined_ros_delta)} · smaller-side delta {signed(r.result.min_side_ros_delta)}. {r.result.note}
         </p>
         {r.evaluation.start_week_overridden && <p className="faint">Start week overridden: weeks {r.evaluation.weeks.join(", ")}.</p>}
+        {r.ir_warning && <Callout>{r.ir_warning}</Callout>}
       </section>
 
       <section className="panel">
@@ -220,7 +225,8 @@ function Result({ r }: { r: TradeResult }) {
                     <td className="num">{num(i?.ros_projected_points, 1, "Incomplete ESPN coverage")}</td>
                     <td className="num">{num(i?.playoff_projected_points, 1, "Incomplete ESPN coverage")}</td>
                     <td className="num" title={`starts ${mv.weeks_started.length} of ${mv.weeks_expected} weeks`}>
-                      {num(mv.roster_marginal_lineup_points, 1, why)} <span className="faint">({mv.weeks_started.length}/{mv.weeks_expected} starts)</span></td>
+                      {num(mv.roster_marginal_lineup_points, 1, why)} <span className="faint">({mv.weeks_started.length}/{mv.weeks_expected} starts)</span>
+                      {mv.ir_activation_sensitivity && <div className="faint">IR · if activated {signed(mv.ir_activation_sensitivity.lineup_points_upside)}</div>}</td>
                     <td><Badge value={i?.opportunity_tier} /></td>
                     <td><TrendArrow label={i?.role_trend} /> <span className="faint">{label(i?.role_trend)}</span></td>
                     <td><Badge value={i?.production_sustainability} /></td>
@@ -235,6 +241,8 @@ function Result({ r }: { r: TradeResult }) {
         </div>
       </section>
 
+      <IrSensitivity r={r} />
+
       <section className="panel">
         <h2>Hypothetical FA replacement (not in the trade delta)</h2>
         <p className="faint">If the player simply disappeared and his team added the best currently available player who can fill one of his slots. Waiver availability is not guaranteed.</p>
@@ -246,7 +254,7 @@ function Result({ r }: { r: TradeResult }) {
               return (
                 <tr key={p.espn_player_id}>
                   <td>{p.name} <Pos value={p.position} /></td>
-                  <td>{c.replacement ? <><PlayerLink id={c.replacement.espn_player_id} name={c.replacement.name} /> <Pos value={c.replacement.position} /></> : <span className="faint">none projected</span>}</td>
+                  <td>{c.replacement ? <><PlayerLink id={c.replacement.espn_player_id} name={c.replacement.name} /> <Pos value={c.replacement.position} /></> : <span className="faint">{p.on_ir ? "current IR: nothing to replace" : "none projected"}</span>}</td>
                   <td className="num">{num(c.lineup_points_lost_without_player, 1, why)}</td>
                   <td className="num">{num(c.lineup_points_recovered, 1, why)}</td>
                   <td className="num">{num(c.residual_loss_vs_original, 1, why)}</td>
@@ -286,6 +294,51 @@ function Result({ r }: { r: TradeResult }) {
         </section>
       </div>
     </>
+  );
+}
+
+function upside(s: IrActivation) {
+  return s.lineup_points_upside === null
+    ? <span title={why}>incomplete ({signed(s.known_lineup_points_upside)} known)</span>
+    : signed(s.lineup_points_upside);
+}
+
+function IrSensitivity({ r }: { r: TradeResult }) {
+  const rows = [r.team_a, r.team_b].flatMap((s) => s.ir_activation_sensitivity.players.map((p) => ({ s, p })));
+  if (rows.length === 0) return null;
+  return (
+    <section className="panel">
+      <h2>IR activation sensitivity (not in the trade delta)</h2>
+      <p className="faint">
+        Players currently in an IR slot start no canonical lineup. This shows what each would add to his team&apos;s optimal
+        lineups if activated for free. It is deliberately optimistic: any roster move an activation needs is not chosen.
+      </p>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Team</th><th>Player</th><th>ESPN projected weeks</th><th>Would start</th>
+            <th className="num">Upside before trade</th><th className="num">Upside after trade</th><th>Open active spot</th></tr></thead>
+          <tbody>
+            {rows.map(({ s, p }) => {
+              const b = p.before_trade;
+              return (
+                <tr key={`${s.team_id}-${p.espn_player_id}`}>
+                  <td>{s.team_name}</td>
+                  <td><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /> <Badge value="IR" tone="bad" />
+                    {p.traded_away && <span className="faint"> traded away</span>}</td>
+                  <td className="faint wrap" title={Object.entries(b.weekly_projection).map(([w, v]) => `wk ${w}: ${v === null ? "no projection" : v.toFixed(1)}`).join("\n")}>
+                    {b.projected_weeks.length ? b.projected_weeks.join(", ") : "none"}
+                    {b.unprojected_weeks.length > 0 && ` · no projection: ${b.unprojected_weeks.join(", ")}`}</td>
+                  <td className="faint wrap">{b.weeks_would_start.length ? b.weeks_would_start.join(", ") : "none"}</td>
+                  <td className="num">{upside(b)}</td>
+                  <td className="num">{p.after_trade ? upside(p.after_trade) : <span className="faint">—</span>}</td>
+                  <td className="wrap">{b.open_active_roster_spot ? "yes" : <span className="faint">no. {b.roster_move_note}</span>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

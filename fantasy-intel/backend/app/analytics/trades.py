@@ -19,8 +19,8 @@ from dataclasses import dataclass, field, replace
 from itertools import combinations
 
 from .team_lineups import (PROJECTION_SOURCE, Projections, RosterPlayer, Window, best_fa_addition, compare,
-                           known_total, project_team, public_weeks, r, replacement_context, roster_marginal_value,
-                           starters)
+                           ir_activation_sensitivity, known_total, project_team, public_weeks, r, replacement_context,
+                           roster_marginal_value, starters)
 
 SUPPORTED_SHAPES = {(1, 1), (2, 1), (1, 2), (2, 2)}
 MAX_FORCED_DROPS = 3
@@ -31,8 +31,9 @@ ASSUMPTIONS = [
     "Each team's current roster is assumed to be its roster for every remaining week (no future waiver moves).",
     "Only starters count; bench points are never value.",
     "A projected 0 (bye, injury) is a real value; a missing projection is unknown and is never treated as 0.",
-    "Incoming players occupy active roster spots; they are never assumed to go to IR.",
-    "Players currently in an IR slot keep their ESPN projection (0 while out) and are assumed activatable when ESPN projects them; the active spot an activation would need is not modelled.",
+    "Incoming players occupy active roster spots; they are never assumed to go to IR (a traded IR player arrives as an active-roster asset, subject to capacity and forced drops).",
+    "Players currently in an IR slot stay rostered but inactive: they never enter the canonical starting lineup and their projection never affects completeness until a future sync shows ESPN moved them off IR.",
+    "IR activation sensitivity (what an IR player would add if activated for free) is shown separately, is deliberately optimistic, and is never in the canonical delta.",
     "Regular season and playoffs are reported separately and never weighted against each other.",
 ]
 LIMITATIONS = [
@@ -43,6 +44,8 @@ LIMITATIONS = [
     "ESPN undroppable-list restrictions are not modeled.",
     "Manager acceptance is not predicted.",
 ]
+IR_WARNING = ("Current IR players are excluded from canonical starting-lineup totals until activated. "
+              "ESPN future projections are shown separately as activation upside.")
 
 
 class TradeError(ValueError):
@@ -226,6 +229,21 @@ def _side(state: LeagueState, window: Window, team_id: int, sends: list[int], re
         fill = best_fa_addition(after, state.free_agents, state.slots, window, state.projections)
         fill["note"] = "best hypothetical FA fill for the opened roster spot; not included in the canonical delta"
 
+    after_ids = {p.espn_player_id: p for p in after}
+    ir_players = []
+    for p in before:
+        if not p.on_ir:
+            continue
+        stays = p.espn_player_id in after_ids and after_ids[p.espn_player_id].on_ir
+        ir_players.append({
+            "espn_player_id": p.espn_player_id, "name": p.name, "position": p.position, "pro_team": p.pro_team,
+            "injury_status": p.injury_status, "traded_away": p.espn_player_id in set(sends),
+            "before_trade": ir_activation_sensitivity(before, p.espn_player_id, state.slots, window,
+                                                      state.projections, open_before, bt),
+            "after_trade": ir_activation_sensitivity(after, p.espn_player_id, state.slots, window,
+                                                     state.projections, open_after, at) if stays else None,
+        })
+
     first = res["forced_drops"][0] if res["forced_drops"] else None
     return {
         "team_id": team_id, "team_name": state.team_names.get(team_id),
@@ -249,6 +267,10 @@ def _side(state: LeagueState, window: Window, team_id: int, sends: list[int], re
         "incoming_usage": incoming_usage, "outgoing_usage": outgoing_usage, "displaced": displaced,
         "fit_notes": notes,
         "hypothetical_fa_fill": fill,
+        "ir_activation_sensitivity": {
+            "label": "IR activation sensitivity (hypothetical free activation; not in the canonical delta)",
+            "players": ir_players,
+        },
         "incomplete": {"missing_weeks": sorted(set(bt["summary"]["missing_weeks"]) | set(at["summary"]["missing_weeks"])),
                        "missing_players": sorted(set(bt["summary"]["missing_players"]) | set(at["summary"]["missing_players"]))},
         "_before_team": bt,
@@ -310,6 +332,7 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
     for team, sends, side in ((team_a, a_sends, side_a), (team_b, b_sends, side_b)):
         roster = state.rosters[team]
         base = side.pop("_before_team")
+        sens = {x["espn_player_id"]: x for x in side["ir_activation_sensitivity"]["players"]}
         for pid in sends:
             p = names[pid]
             players.append({
@@ -317,8 +340,10 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
                 "injury_status": p.injury_status, "on_ir": p.on_ir, "from_team_id": team,
                 "to_team_id": team_b if team == team_a else team_a,
                 "weekly_projection": {w: state.projections.get(pid, {}).get(w) for w in window.weeks},
-                "marginal_value_on_current_team": roster_marginal_value(roster, pid, state.slots, window,
-                                                                        state.projections, base),
+                "marginal_value_on_current_team": roster_marginal_value(
+                    roster, pid, state.slots, window, state.projections, base,
+                    side["roster"]["open_active_roster_spots_before"]),
+                "ir_activation_sensitivity": sens.get(pid),
                 "replacement_context": replacement_context(roster, pid, state.free_agents, state.slots, window,
                                                            state.projections, base),
             })
@@ -352,6 +377,8 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
                    "note": "Labels and deltas come straight from the exact lineup simulation on ESPN's baseline; "
                            "combined/min-side are descriptive ranking fields, not a score or acceptance probability."},
         "players": players,
+        "ir_warning": IR_WARNING if any(side["ir_activation_sensitivity"]["players"] for side in (side_a, side_b))
+        else None,
         "projection_source": PROJECTION_SOURCE,
         "trade_impact_source": "exact optimal-lineup simulation",
         "assumptions": ASSUMPTIONS,

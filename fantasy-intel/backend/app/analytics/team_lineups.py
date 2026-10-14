@@ -12,17 +12,23 @@ Pure functions (no database). See docs/v2_trade_evaluator.md.
     None (`known_lineup_points` is still reported, labelled as known-only). A teamless player
     (no NFL team) legitimately has no projection and does not poison the week.
   * Bench points are never value: only starters count toward a lineup total.
+  * A player currently in an IR slot (on_ir) stays rostered but is inactive: he never enters the
+    canonical lineup and his projection (missing or not) never affects completeness, until a future
+    sync shows ESPN moved him off IR. His ESPN projection is kept and reported; what he would add if
+    activated for free is a separate, deliberately optimistic `ir_activation_sensitivity`.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible
 
 PROJECTION_SOURCE = "ESPN"
 FA_STATUSES = ("FREEAGENT", "WAIVERS")
 NDIGITS = 2
+ACTIVATION_DROP_NOTE = ("Activation would require a roster move/drop that is not modeled in this "
+                        "sensitivity scenario.")
 
 Projections = dict[int, dict[int, float]]     # espn_player_id -> week -> ESPN projected points (absent = unknown)
 
@@ -75,11 +81,14 @@ def projection(proj: Projections, pid: int, week: int) -> float | None:
 
 def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj: Projections,
                  phase: str | None = None) -> dict:
-    """Optimal lineup for one week from ESPN projections. Only players with a projection can start."""
-    known, missing, teamless = [], [], []
+    """Optimal lineup for one week from ESPN projections. Only players with a projection can start;
+    current-IR players never start and are listed (with their projection) under `ir`."""
+    known, missing, teamless, ir = [], [], [], []
     for p in players:
         v = projection(proj, p.espn_player_id, week)
-        if v is not None:
+        if p.on_ir:
+            ir.append({"player_id": p.espn_player_id, "position": p.position, "points": v})
+        elif v is not None:
             known.append({"espn_player_id": p.espn_player_id, "position": p.position, "value": v})
         elif not lineup_relevant(p.position, slots):
             continue
@@ -104,6 +113,7 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
                    for k in sorted(known, key=lambda k: (-k["value"], k["espn_player_id"]))
                    if k["espn_player_id"] not in starters]
                   + [{"player_id": pid, "position": None, "points": None} for pid in sorted(missing + teamless)]),
+        "ir": sorted(ir, key=lambda x: x["player_id"]),
         "missing_projection_ids": sorted(missing),
         "teamless_unprojected_ids": sorted(teamless),
         "_total": total,             # unrounded known total, for exact comparisons
@@ -200,15 +210,19 @@ def without(players: list[RosterPlayer], ids) -> list[RosterPlayer]:
 
 
 def roster_marginal_value(players: list[RosterPlayer], pid: int, slots: list[str], window: Window,
-                          proj: Projections, base: dict | None = None) -> dict:
+                          proj: Projections, base: dict | None = None,
+                          open_active_roster_spots: int | None = None) -> dict:
     """Projected starting points this player creates for THIS team: optimal lineup with him minus
-    optimal lineup without him, week by week. Bench weeks contribute exactly 0."""
+    optimal lineup without him, week by week. Bench weeks contribute exactly 0, and so does a
+    current-IR player (he cannot occupy a lineup now); his upside is `ir_activation_sensitivity`."""
     base = base or project_team(players, slots, window, proj)
+    me = next(p for p in players if p.espn_player_id == pid)
     rest = project_team(without(players, [pid]), slots, window, proj)
     c = compare(rest, base, window)
     started = [w["week"] for w in base["weeks"] if pid in starters(w)]
-    return {
+    out = {
         "espn_player_id": pid,
+        "on_ir": me.on_ir,
         "roster_marginal_lineup_points": c["ros_delta"],
         "regular_season_marginal_lineup_points": c["regular_season_delta"],
         "playoff_marginal_lineup_points": c["playoff_delta"],
@@ -217,6 +231,46 @@ def roster_marginal_value(players: list[RosterPlayer], pid: int, slots: list[str
         "projection_complete": c["projection_complete"],
         "weeks": [{"week": w["week"], "phase": w["phase"], "marginal": w["delta"], "known_marginal": w["known_delta"],
                    "started": w["week"] in started} for w in c["weeks"]],
+    }
+    if me.on_ir:
+        out["ir_activation_sensitivity"] = ir_activation_sensitivity(players, pid, slots, window, proj,
+                                                                     open_active_roster_spots, base)
+    return out
+
+
+# --------------------------------------------------------------- IR activation sensitivity --
+
+def activate(players: list[RosterPlayer], pid: int) -> list[RosterPlayer]:
+    return [replace(p, on_ir=False) if p.espn_player_id == pid else p for p in players]
+
+
+def ir_activation_sensitivity(players: list[RosterPlayer], pid: int, slots: list[str], window: Window,
+                              proj: Projections, open_active_roster_spots: int | None,
+                              base: dict | None = None) -> dict:
+    """What a current-IR player would add to THIS team's optimal lineups if he were activated for
+    free: same roster with him active, minus the canonical roster. Deliberately optimistic (the
+    roster move an activation may need is not chosen) and never part of a canonical value."""
+    base = base or project_team(players, slots, window, proj)
+    act = project_team(activate(players, pid), slots, window, proj)
+    c = compare(base, act, window)
+    started = [w["week"] for w in act["weeks"] if pid in starters(w)]
+    weekly = {w: projection(proj, pid, w) for w in window.weeks}
+    has_open = None if open_active_roster_spots is None else open_active_roster_spots > 0
+    return {
+        "label": "IR activation sensitivity (hypothetical free activation; not canonical)",
+        "espn_player_id": pid,
+        "weekly_projection": weekly,
+        "projected_weeks": [w for w, v in weekly.items() if v is not None and v > 0],
+        "unprojected_weeks": [w for w, v in weekly.items() if v is None],
+        "weeks_would_start": started,
+        "lineup_points_upside": c["ros_delta"], "known_lineup_points_upside": c["known_ros_delta"],
+        "regular_season_upside": c["regular_season_delta"], "playoff_upside": c["playoff_delta"],
+        "projection_complete": c["projection_complete"],
+        "open_active_roster_spots": open_active_roster_spots,
+        "open_active_roster_spot": has_open,
+        "roster_move_note": None if has_open else ACTIVATION_DROP_NOTE,
+        "weeks": [{"week": w["week"], "phase": w["phase"], "upside": w["delta"], "known_upside": w["known_delta"],
+                   "would_start": w["week"] in started} for w in c["weeks"]],
     }
 
 
@@ -328,6 +382,15 @@ def replacement_context(players: list[RosterPlayer], pid: int, free_agents: list
     rest = project_team(rest_players, slots, window, proj)
     me = next(p for p in players if p.espn_player_id == pid)
     eligible_positions = replacement_positions(me.position, slots)
+    if me.on_ir:
+        return {"label": "hypothetical FA replacement", "espn_player_id": pid,
+                "lineup_points_lost_without_player": compare(rest, base, window)["ros_delta"],
+                "eligible_positions": sorted(eligible_positions), "replacement": None, "replacement_position": None,
+                "lineup_points_recovered": None, "known_lineup_points_recovered": None,
+                "residual_loss_vs_original": None, "known_residual_loss_vs_original": None,
+                "candidates": 0, "excluded_unprojected": 0, "projection_complete": True,
+                "note": "Current IR player: he starts no canonical lineup and frees no active roster spot, "
+                        "so there is nothing to replace."}
     fa = best_fa_addition(rest_players, free_agents, slots, window, proj, eligible_positions)
     out = {"label": "hypothetical FA replacement", "espn_player_id": pid,
            "lineup_points_lost_without_player": compare(rest, base, window)["ros_delta"],

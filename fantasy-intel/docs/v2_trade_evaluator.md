@@ -142,7 +142,9 @@ depends on that team's roster, the league's slots and every week's projections.
 ## Roster capacity and forced drops
 
 Active capacity = starting slots + bench slots from the league's `roster_slots` (IR excluded). Incoming players
-always take active spots; they are never assumed to go to IR. ESPN `rosterSettings.positionLimits` (per
+always take active spots; they are never assumed to go to IR. That includes a player traded out of an IR slot: the
+receiving side treats him as an active-roster asset (no assumed IR eligibility or open IR slot), so he counts
+against capacity and can trigger a forced drop. ESPN `rosterSettings.positionLimits` (per
 position maximums) are also enforced when present. Limits a team already exceeded before the trade are not
 blamed on the trade.
 
@@ -171,8 +173,25 @@ a real hole such as no rostered D/ST), separately and never in the delta.
 No separate bye or injury penalty exists. ESPN's weekly projection already expresses expected output: a bye is
 a projected 0 that week; an injured player's projection is ESPN's. Injury status, player context, production
 sustainability and role trend are shown as warnings/context, never multiplied in (no "QUESTIONABLE = 70%",
-no "IR return probability = 40%"). Players in an IR slot keep their ESPN projection and are assumed
-activatable when ESPN projects them; the active spot an activation would need is not modelled.
+no "IR return probability = 40%").
+
+## Current IR players
+
+The current roster is held constant going forward, so a player in an ESPN IR slot (`on_ir`) stays rostered but
+**inactive** until a future sync shows ESPN moved him off IR:
+
+* he never enters a canonical optimal lineup, even when ESPN projects him for future weeks;
+* he uses no active roster spot;
+* his projection, present or missing, never makes a team-week incomplete;
+* his canonical `roster_marginal_lineup_points` is 0, and there is nothing to replace in `replacement_context`.
+
+His ESPN projection is not deleted or zeroed: each week lists it under `ir`. What he could add is reported
+separately as `ir_activation_sensitivity`: the same roster with him activated for free, minus the canonical
+roster (projected weeks, weeks he would start, lineup-point upside by ROS / regular season / playoffs, and
+whether the active roster has an open spot). With no open spot the result says "Activation would require a
+roster move/drop that is not modeled in this sensitivity scenario." No activation drop is chosen, so the
+sensitivity is deliberately optimistic, and it is never part of a trade delta. A trade shows it per side, before
+and (if he stays) after the trade; `/trades` warns whenever a current IR player is involved.
 
 ## Result semantics
 
@@ -200,6 +219,6 @@ probability is computed.
 * ESPN undroppable-list restrictions may not be modeled (they are not).
 * Manager acceptance is not predicted yet.
 * Each team's current roster is assumed to be its roster for every remaining week.
-* IR-slot players are assumed activatable when ESPN projects them; the roster spot an activation needs is not
-  modelled.
+* Current IR players stay inactive until ESPN moves them off IR; their return is only an optimistic, separate
+  sensitivity (the activation roster move is not modelled).
 * Nothing searches for trades automatically yet; this is the auditable primitive a future finder will use.
