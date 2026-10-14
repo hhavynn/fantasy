@@ -94,7 +94,7 @@ def _position_counts(players: list[RosterPlayer]) -> Counter:
     return Counter(p.position for p in players)
 
 
-def _legal(players: list[RosterPlayer], state: LeagueState, before: list[RosterPlayer]) -> bool:
+def legal_roster(players: list[RosterPlayer], state: LeagueState, before: list[RosterPlayer]) -> bool:
     """Active roster within capacity and every position within ESPN's limit. A limit the team
     already exceeded before the trade is not blamed on the trade."""
     if _active(players) > max(state.active_capacity, _active(before)):
@@ -109,7 +109,7 @@ def resolve_roster(state: LeagueState, window: Window, before: list[RosterPlayer
     that maximises the remaining projected starting-lineup total (least costly in actual lineup
     terms, not the lowest value or raw projection). Incoming players are never the default drop;
     if dropping one would be strictly cheaper, the trade is flagged as bringing a redundant asset."""
-    if _legal(after, state, before):
+    if legal_roster(after, state, before):
         return {"forced_drops": [], "lineup_cost": 0.0, "redundant_incoming_asset": None, "basis": None}
     full = project_team(after, state.slots, window, state.projections)
     full_total = known_total(full)
@@ -118,7 +118,7 @@ def resolve_roster(state: LeagueState, window: Window, before: list[RosterPlayer
         best: dict[bool, tuple] = {}
         for combo in combinations(pool, k):
             rest = [p for p in after if p not in combo]
-            if not _legal(rest, state, before):
+            if not legal_roster(rest, state, before):
                 continue
             team = project_team(rest, state.slots, window, state.projections)
             has_incoming = any(p.espn_player_id in incoming for p in combo)
@@ -185,8 +185,12 @@ def _fmt_usage(name: str, pos: str | None, u: dict, n: int) -> str:
     return f"{who} starts {len(u['weeks_started'])} of {n} weeks ({slots})"
 
 
-def _side(state: LeagueState, window: Window, team_id: int, sends: list[int], receives: list[RosterPlayer],
-          names: dict[int, RosterPlayer]) -> dict:
+def side_lineups(state: LeagueState, window: Window, team_id: int, sends: list[int], receives: list[RosterPlayer],
+                 before_team: dict | None = None) -> dict:
+    """One side of a trade, canonical numbers only: roster after the trade (incoming players active,
+    forced drops resolved), optimal lineups before/after every week and their comparison. The trade
+    evaluator and trade discovery both use this, so their deltas are the same computation.
+    `before_team` (project_team of the current roster) may be passed in to avoid recomputing it."""
     roster = state.rosters[team_id]
     incoming = {p.espn_player_id for p in receives}
     before = list(roster)
@@ -194,9 +198,19 @@ def _side(state: LeagueState, window: Window, team_id: int, sends: list[int], re
     res = resolve_roster(state, window, before, pre, incoming)
     dropped = {d["espn_player_id"] for d in res["forced_drops"]}
     after = [p for p in pre if p.espn_player_id not in dropped]
-    bt = project_team(before, state.slots, window, state.projections)
+    bt = before_team or project_team(before, state.slots, window, state.projections)
     at = project_team(after, state.slots, window, state.projections)
-    cmp = compare(bt, at, window)
+    return {"before": before, "after": after, "resolution": res, "before_team": bt, "after_team": at,
+            "compare": compare(bt, at, window)}
+
+
+def _side(state: LeagueState, window: Window, team_id: int, sends: list[int], receives: list[RosterPlayer],
+          names: dict[int, RosterPlayer]) -> dict:
+    core = side_lineups(state, window, team_id, sends, receives)
+    incoming = {p.espn_player_id for p in receives}
+    before, after, res = core["before"], core["after"], core["resolution"]
+    dropped = {d["espn_player_id"] for d in res["forced_drops"]}
+    bt, at, cmp = core["before_team"], core["after_team"], core["compare"]
     n = len(window.weeks)
 
     weekly = []
