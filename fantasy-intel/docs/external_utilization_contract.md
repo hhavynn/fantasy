@@ -41,18 +41,26 @@ is a measured zero.
 
 ### Minimum required
 
+**Each file contains exactly one provider, one dataset and one season.** A file
+that mixes any of them is rejected. Split multi-season exports into one file per season.
+
 | field | rule |
 |---|---|
-| `season` | integer (e.g. 2026) |
+| `season` | integer (e.g. 2026); **one distinct season per file** |
 | `week` | integer 1..22 |
-| `provider` | column **or** `--provider` |
-| `dataset` | column **or** `--dataset` (one provider and one dataset per file) |
+| `provider` | column **or** `--provider`; one per file |
+| `dataset` | column **or** `--dataset`; one per file |
 | identity | at least one of: `provider_player_id`; `gsis_id`; **or** `player_name` + `team` + `position` |
 
 ### Optional identity / provenance
 
 `provider_player_id`, `gsis_id`, `player_name`, `team`, `position`,
-`source_updated_at` (ISO-8601; a timestamp without a UTC offset is treated as UTC).
+`source_updated_at` (ISO-8601). All persisted timestamps are **UTC-naive**: a value
+with an explicit offset or a trailing `Z` is converted to UTC and the offset dropped;
+a value without an offset is taken as already UTC. This never depends on the
+machine's timezone. Example: `2026-10-07T09:00:00-04:00` is stored as `2026-10-07 13:00:00`,
+the same as `2026-10-07T13:00:00Z`, `…+00:00`, `2026-10-07T18:30:00+05:30` and the
+naive `2026-10-07T13:00:00`.
 
 ### Optional metrics (all nullable)
 
@@ -144,7 +152,8 @@ negative routes / pass snaps / pass-block snaps / TPRR; `pass_block_snaps >
 pass_snaps`; any rate outside 0..1; invalid season or week; non-numeric metric;
 unparseable `source_updated_at`; missing provider, dataset or identity; duplicate
 `(provider, dataset, season, week, source_player_key)` inside one file; more than
-one provider or dataset in one file; empty file.
+one provider or dataset in one file (`mixed_provider_or_dataset`); more than one
+season in one file (`mixed_seasons`); empty file.
 
 **Warnings** (import proceeds): missing gsis match; ambiguous identity; ignored
 canonical/unknown columns; ratio supplied with zero routes; routes > pass snaps;
@@ -164,7 +173,9 @@ ambiguous totals. Everything is shown on `/data`.
 - **Corrected file** (different bytes): rows upsert by key. Superseded values go
   to `external_player_week_usage_revisions` (previous values, old and new
   `import_id`). Every import stays in `external_usage_imports`.
-- A rejected file changes nothing but its own import and issue records.
+- A rejected file (including a mixed-season file) writes only its own `rejected`
+  import record and its issues. It writes no normalized rows, and the CLI doesn't
+  run analytics for it (exit code 1).
 
 ## 8. Provider-defined semantics and provider selection
 
@@ -222,6 +233,7 @@ uv run python ../scripts/import_external_usage.py ../data/imports/external/sampl
   --provider test_provider --dataset weekly_routes
 ```
 
-Prints the import summary and issues, then recomputes analytics so routes appear
-in `player_week_usage` and on the player page. Exit code 1 if the file was
-rejected. `--no-analytics` skips the recompute.
+Prints the import summary and issues. For an imported file it then recomputes
+analytics for that file's season, so routes appear in `player_week_usage` and on the
+player page. A rejected file exits with code 1 and triggers no analytics.
+`--no-analytics` skips the recompute.

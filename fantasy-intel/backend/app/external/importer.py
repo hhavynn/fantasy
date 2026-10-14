@@ -3,6 +3,7 @@
 Behaviour (see docs/external_utilization_contract.md):
   * exact duplicate file (same sha256 + provider + dataset already imported)
     -> recorded as a `duplicate_noop` import; nothing else changes
+  * one provider, one dataset and one season per file (else `rejected`)
   * any hard validation error -> the whole file is `rejected` (no partial imports);
     the import row and every issue are recorded for inspection
   * otherwise rows are upserted by (provider, dataset, season, week, source_player_key);
@@ -82,6 +83,9 @@ def import_external_usage(con, path: Path, provider: str | None = None, dataset:
     if len(providers) > 1 or len(datasets) > 1:
         parsed.issues.append(RowIssue("error", "mixed_provider_or_dataset",
                                       f"one file must contain one provider and one dataset (got {providers}, {datasets})"))
+    if len(seasons) > 1:
+        parsed.issues.append(RowIssue("error", "mixed_seasons",
+                                      f"one file must contain exactly one season (got {seasons}); split it per season"))
     if not rows and not parsed.errors:
         parsed.issues.append(RowIssue("error", "empty_file", "no data rows"))
     prov = providers[0] if providers else provider

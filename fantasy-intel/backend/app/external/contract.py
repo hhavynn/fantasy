@@ -10,7 +10,7 @@ import hashlib
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 # --------------------------------------------------------------- columns --
@@ -126,11 +126,18 @@ def _parse_number(v: Any, kind: str) -> float | int | None:
 
 
 def _parse_ts(v: Any) -> datetime | None:
+    """ISO-8601 -> UTC-naive datetime (the app's persisted timestamp convention).
+    With an explicit offset or trailing Z: converted to UTC, then tzinfo dropped.
+    Without an offset: interpreted as already UTC. Never depends on the machine's timezone."""
     if _is_null(v):
         return None
-    s = str(v).strip().replace("Z", "+00:00")
+    s = str(v).strip()
+    if s[-1:] in ("Z", "z"):
+        s = s[:-1] + "+00:00"
     dt = datetime.fromisoformat(s)
-    return dt.replace(tzinfo=None) if dt.tzinfo is None else dt.astimezone(tz=None).replace(tzinfo=None)
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def _text(v: Any) -> str | None:

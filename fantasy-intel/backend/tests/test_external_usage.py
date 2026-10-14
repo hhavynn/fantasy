@@ -381,3 +381,97 @@ def test_parse_rows_never_drops_rows_silently():
     parsed = parse_rows(list(rows[0].keys()), [{k: str(v) for k, v in r.items()} for r in rows],
                         provider="x", dataset="y")
     assert len(parsed.rows) == 5 and not parsed.errors
+
+
+# ------------------------------------------------------------ timestamps (UTC-naive) --
+
+from datetime import datetime  # noqa: E402
+
+from app.external.contract import _parse_ts  # noqa: E402
+
+SAME_INSTANT = ["2026-10-07T13:00:00Z", "2026-10-07T13:00:00+00:00", "2026-10-07T09:00:00-04:00",
+                "2026-10-07T18:30:00+05:30", "2026-10-07T13:00:00"]
+
+
+@pytest.fixture
+def machine_tz():
+    import os
+    import time
+    original = os.environ.get("TZ")
+
+    def set_tz(name):
+        os.environ["TZ"] = name
+        time.tzset()
+    yield set_tz
+    if original is None:
+        os.environ.pop("TZ", None)
+    else:
+        os.environ["TZ"] = original
+    time.tzset()
+
+
+@pytest.mark.parametrize("value", SAME_INSTANT)
+@pytest.mark.parametrize("tz", ["UTC", "America/Los_Angeles", "Asia/Kolkata", "Australia/Sydney"])
+def test_timestamps_normalize_to_utc_naive_regardless_of_machine_tz(machine_tz, tz, value):
+    machine_tz(tz)
+    got = _parse_ts(value)
+    assert got == datetime(2026, 10, 7, 13, 0, 0) and got.tzinfo is None
+
+
+def test_offset_example_and_equivalent_instants():
+    assert _parse_ts("2026-10-07T09:00:00-04:00") == datetime(2026, 10, 7, 13, 0)
+    assert len({_parse_ts(v) for v in SAME_INSTANT}) == 1
+    assert _parse_ts("2026-10-07T13:00:00") == datetime(2026, 10, 7, 13, 0)   # naive = already UTC
+    assert _parse_ts("") is None and _parse_ts("NA") is None
+
+
+def test_offset_timestamp_is_persisted_as_utc(nfl, tmp_path, machine_tz):
+    machine_tz("America/New_York")
+    rec = imp(nfl, tmp_path, [base_row(gsis_id="G1", source_updated_at="2026-10-07T09:00:00-04:00")])
+    r = ext_rows(nfl)[(1, "Alpha Receiver")]
+    assert r["source_updated_at"] == datetime(2026, 10, 7, 13, 0)
+    imp_row = fetch_dicts(nfl, "SELECT source_updated_at FROM external_usage_imports WHERE import_id = ?",
+                          [rec["import_id"]])[0]
+    assert imp_row["source_updated_at"] == datetime(2026, 10, 7, 13, 0)
+
+
+# ------------------------------------------------------------- one season per file --
+
+def test_mixed_season_file_is_rejected_with_history_and_no_rows(nfl, tmp_path):
+    rec = imp(nfl, tmp_path, [base_row(gsis_id="G1", season=2026), base_row(gsis_id="G3", player_name="Charlie Tight",
+                                                                            season=2025)])
+    assert rec["status"] == "rejected" and rec["season"] is None
+    imports = fetch_dicts(nfl, "SELECT * FROM external_usage_imports")
+    assert len(imports) == 1 and imports[0]["status"] == "rejected"
+    issues = fetch_dicts(nfl, "SELECT * FROM external_usage_issues WHERE import_id = ?", [rec["import_id"]])
+    assert [i["check_name"] for i in issues if i["severity"] == "error"] == ["mixed_seasons"]
+    assert "2025" in issues[0]["detail"] and "2026" in issues[0]["detail"]
+    assert nfl.execute("SELECT count(*) FROM external_player_week_usage").fetchone()[0] == 0
+
+
+def test_single_season_file_records_its_season(nfl, tmp_path):
+    rec = imp(nfl, tmp_path, [base_row(gsis_id="G1"), base_row(gsis_id="G1", week=2)])
+    assert rec["status"] == "imported" and rec["season"] == SEASON
+
+
+def test_cli_rejects_mixed_seasons_without_running_analytics(tmp_path):
+    import os
+    import sys
+    db = tmp_path / "cli.duckdb"
+    path = write_csv(tmp_path, "mixed.csv", [base_row(gsis_id="G1", season=2026),
+                                             base_row(gsis_id="G1", season=2025, week=2)])
+    script = Path(__file__).resolve().parents[2] / "scripts" / "import_external_usage.py"
+    env = {**os.environ, "FANTASY_DB_PATH": str(db)}
+    res = subprocess.run([sys.executable, str(script), str(path), "--provider", "p", "--dataset", "d"],
+                         capture_output=True, text=True, env=env, cwd=Path(__file__).resolve().parents[1])
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert '"status": "rejected"' in res.stdout and "mixed_seasons" in res.stdout
+    from app.db.connection import connect
+    con = connect(db, read_only=True)
+    try:
+        assert con.execute("SELECT count(*) FROM external_usage_imports WHERE status = 'rejected'").fetchone()[0] == 1
+        assert con.execute("SELECT count(*) FROM external_usage_issues WHERE check_name = 'mixed_seasons'").fetchone()[0] == 1
+        assert con.execute("SELECT count(*) FROM external_player_week_usage").fetchone()[0] == 0
+        assert con.execute("SELECT count(*) FROM sync_runs WHERE source = 'analytics'").fetchone()[0] == 0
+    finally:
+        con.close()

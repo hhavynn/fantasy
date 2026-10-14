@@ -30,8 +30,7 @@ def main() -> int:
     if not args.csv.exists():
         print(f"file not found: {args.csv}", file=sys.stderr)
         return 2
-    settings = get_settings()
-    with open_db(settings.db_path) as con:
+    with open_db(get_settings().db_path) as con:
         rec = import_external_usage(con, args.csv, provider=args.provider, dataset=args.dataset)
         print(json.dumps({k: rec[k] for k in ("import_id", "status", "provider", "dataset", "season", "weeks",
                                                "row_count", "matched_rows", "unmatched_rows", "ambiguous_rows",
@@ -40,11 +39,11 @@ def main() -> int:
                                      WHERE import_id = ? ORDER BY severity, row_number LIMIT 40""", [rec["import_id"]]):
             print(f"  {i['severity'].upper():7} row {i['row_number'] or '-':>4} {i['check_name']}: {i['detail']}"
                   + (f" [{i['player_name']}]" if i["player_name"] else ""))
+        # Analytics only for a successfully imported file; an imported file always has exactly one season.
         if rec["status"] == "imported" and not args.no_analytics:
-            for season in sorted({rec["season"]} if rec["season"] else {settings.nfl_season}):
-                stats = run_analytics(con, season)
-                print("analytics:", json.dumps(stats.get("usage", {}).get("external_provider"), default=str),
-                      "rows_with_routes:", stats.get("usage", {}).get("rows_with_routes"))
+            stats = run_analytics(con, rec["season"])
+            print("analytics:", json.dumps(stats.get("usage", {}).get("external_provider"), default=str),
+                  "rows_with_routes:", stats.get("usage", {}).get("rows_with_routes"))
     return 1 if rec["status"] == "rejected" else 0
 
 
