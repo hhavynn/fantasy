@@ -343,3 +343,53 @@ export type Discovery = {
   categories: Record<string, string>; sorts: string[]; shapes: string[];
   note: string; assumptions: string[]; limitations: string[];
 };
+
+// ------------------------------------------------------- schedule intelligence --
+
+export type SiLabel = "permissive" | "middle" | "tougher" | "insufficient" | "unavailable" | "bye";
+
+export type SiMetric = {
+  metric: string; label: string; value: number | null; numerator: number | null; denominator: number | null;
+  rank: number | null; ranked_defenses: number; band: SiLabel; missing_reason: string | null;
+  position_coverage?: number | null;
+};
+
+export type SiEvidence = {
+  defteam: string; games_before_week: number; through_week: number | null; games: number; weeks_sampled: number[];
+  excluded_unverified_weeks: number[]; metrics: SiMetric[]; primary_metric: string; label: SiLabel;
+  label_text: string; sentence: string;
+};
+
+export type SiWeek = {
+  week: number; phase: "regular" | "playoffs" | null; matchup_period: number | null; actionable: boolean;
+  window_note?: string; status: "scheduled" | "bye" | "schedule_missing" | "team_unknown";
+  opponent?: string | null; home?: boolean; kickoff?: string | null; game_final?: boolean;
+  label: SiLabel; label_text: string; reason?: string; evidence?: SiEvidence;
+};
+
+export type SiWindow = { weeks: number[]; counts: Record<SiLabel, number>; opponents: (string | null)[] };
+
+export type SiPlayer = {
+  espn_player_id: number; name: string | null; position: string; pro_team: string | null;
+  injury_status: string | null; on_ir: boolean;
+  identity: { gsis_id: string | null; match_confidence: string; nflverse_latest_team: string | null; nflverse_latest_week: number | null };
+  notes: string[]; weeks: SiWeek[];
+  summary: { next: SiWindow; regular: SiWindow; playoffs: SiWindow; all: SiWindow };
+};
+
+export type ScheduleIntelligence = {
+  league: { league_id: number; season: number; name: string; current_week: number; final_scoring_period: number;
+    last_regular_season_week: number | null };
+  team: { team_id: number; name: string; abbrev: string; is_mine: boolean } | null;
+  teams: { team_id: number; name: string; abbrev: string; is_mine: boolean }[];
+  query: { team_id: number | null; position: string; phase: string; player_id: number | null };
+  window: { espn_current_week: number; first_actionable_week: number | null; weeks: number[]; remaining_weeks: boolean;
+    uncertain: boolean | null; warning: string | null; reason: string | null; regular_season_through: number | null;
+    playoff_weeks: number[]; matchup_periods: Record<string, number | null> };
+  schedule: { available: boolean; has_scores: boolean; weeks_covered: number[]; completed_team_games: number };
+  freshness: { nfl_sync_finished_at: string | null; defense_weeks_loaded: number[]; source: string };
+  players: SiPlayer[];
+  metrics: Record<string, { label: string; numerator: string; denominator: string; unit: string; definition: string; positions: string[] }>;
+  primary_metric: Record<string, string>;
+  labels: Record<SiLabel, string>; label_rule: string; notes: string[];
+};
