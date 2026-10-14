@@ -164,6 +164,11 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
         } for r in pool + roster_players if r.get("percent_owned") is not None],
             ["snapshot_date", "espn_player_id"])
 
+        # The free-agent pool payload (requested for the current scoring period) already carries each
+        # free agent's single-period stats, including ESPN's projection for that period. Same
+        # players[].player.stats shape as player cards, so the same parser applies.
+        if p.pool:
+            points_rows += parse.parse_player_cards(p.pool, season=season, synced_at=now)
         for card in p.cards:
             points_rows += parse.parse_player_cards(card, season=season, synced_at=now)
         # Cards are fetched last and cover every week; prefer them over roster stats
