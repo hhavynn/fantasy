@@ -18,9 +18,9 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from itertools import combinations
 
-from .team_lineups import (PROJECTION_SOURCE, Projections, RosterPlayer, Window, best_fa_addition, compare,
-                           ir_activation_sensitivity, known_total, project_team, public_weeks, r, replacement_context,
-                           roster_marginal_value, starters)
+from .team_lineups import (IR_HOLD_NOTE, PROJECTION_SOURCE, Projections, RosterPlayer, Window, best_fa_addition,
+                           compare, ir_activation_sensitivity, known_total, project_team, public_weeks, r,
+                           replacement_context, roster_marginal_value, starters)
 
 SUPPORTED_SHAPES = {(1, 1), (2, 1), (1, 2), (2, 2)}
 MAX_FORCED_DROPS = 3
@@ -33,7 +33,9 @@ ASSUMPTIONS = [
     "A projected 0 (bye, injury) is a real value; a missing projection is unknown and is never treated as 0.",
     "Incoming players occupy active roster spots; they are never assumed to go to IR (a traded IR player arrives as an active-roster asset, subject to capacity and forced drops).",
     "Players currently in an IR slot stay rostered but inactive: they never enter the canonical starting lineup and their projection never affects completeness until a future sync shows ESPN moved them off IR.",
+    IR_HOLD_NOTE,
     "IR activation sensitivity (what an IR player would add if activated for free) is shown separately, is deliberately optimistic, and is never in the canonical delta.",
+    "Evaluation window: a trade proposed now starts at the first scoring period none of whose NFL games has kicked off; weeks already under way are never credited (no partial-week simulation).",
     "Regular season and playoffs are reported separately and never weighted against each other.",
 ]
 LIMITATIONS = [
@@ -52,6 +54,10 @@ class TradeError(ValueError):
     pass
 
 
+class NoRemainingWeeksError(TradeError):
+    """Every fantasy scoring period through the final one has kicked off: nothing left to change."""
+
+
 @dataclass
 class LeagueState:
     """Everything the evaluator needs, loaded once (see trade_data.load_league_state)."""
@@ -59,7 +65,7 @@ class LeagueState:
     slots: list[str]                               # starting slots (lineup.lineup_slots)
     final_week: int
     last_regular: int | None
-    start_week: int                                # default evaluation start (trade_data.evaluation_start_week)
+    start_week: int | None                         # earliest actionable week (trade_data.evaluation_start_week); None = none remain
     rosters: dict[int, list[RosterPlayer]]
     free_agents: list[RosterPlayer]
     projections: Projections
@@ -73,6 +79,8 @@ class LeagueState:
 
     def window(self, start_week: int | None = None) -> Window:
         start = self.start_week if start_week is None else start_week
+        if start is None:
+            return Window((), self.last_regular)      # no remaining weeks: never manufacture one
         return Window(tuple(range(start, self.final_week + 1)), self.last_regular)
 
 
@@ -269,6 +277,7 @@ def _side(state: LeagueState, window: Window, team_id: int, sends: list[int], re
         "hypothetical_fa_fill": fill,
         "ir_activation_sensitivity": {
             "label": "IR activation sensitivity (hypothetical free activation; not in the canonical delta)",
+            "assumption": IR_HOLD_NOTE,
             "players": ir_players,
         },
         "incomplete": {"missing_weeks": sorted(set(bt["summary"]["missing_weeks"]) | set(at["summary"]["missing_weeks"])),
@@ -294,6 +303,10 @@ def result_label(a: float | None, b: float | None) -> str:
 
 # ------------------------------------------------------------------------ evaluator --
 
+def weeks_label(a: int, b: int) -> str:
+    return f"week {a}" if a == b else f"weeks {a}-{b}"
+
+
 def validate(state: LeagueState, team_a: int, team_b: int, a_sends: list[int], b_sends: list[int]) -> None:
     if team_a == team_b:
         raise TradeError("teams must be different")
@@ -316,12 +329,31 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
                    start_week: int | None = None) -> dict:
     """Hypothetical before/after evaluation for both teams. Never mutates `state`."""
     a_sends, b_sends = [int(x) for x in a_sends], [int(x) for x in b_sends]
+    reason = state.start_week_reason or {}
+    if state.start_week is None:
+        raise NoRemainingWeeksError(
+            "No remaining fantasy scoring periods: every week through the final scoring period "
+            f"({state.final_week}) has kicked off, so a trade made now cannot change any lineup "
+            f"({reason.get('reason') or 'no actionable week'}).")
     validate(state, team_a, team_b, a_sends, b_sends)
     if start_week is not None and not (1 <= start_week <= state.final_week):
         raise TradeError(f"start_week must be between 1 and {state.final_week}")
+    if start_week is not None and start_week < state.start_week:
+        raise TradeError(
+            f"start_week {start_week} is before the earliest actionable week {state.start_week}: "
+            f"{weeks_label(start_week, state.start_week - 1)} already kicked off, and gains there are not achievable "
+            "by a trade made now (partial-week simulation is not supported)")
     if start_week is not None and state.first_projection_week and start_week < state.first_projection_week:
         raise TradeError(f"start_week must be >= {state.first_projection_week} (earliest loaded projection week)")
     window = state.window(start_week)
+    uncertain = bool(reason.get("uncertain")) and window.start == state.start_week
+    if start_week is None:
+        why = reason
+    elif start_week == state.start_week:
+        why = {"reason": f"explicit start_week override ({start_week}) equal to the earliest actionable week"}
+    else:
+        why = {"reason": f"explicit start_week override ({start_week}): actionable "
+                         f"{weeks_label(state.start_week, start_week - 1)} excluded"}
     names = {p.espn_player_id: p for t in (team_a, team_b) for p in state.rosters[t]}
     a_out = [names[pid] for pid in a_sends]
     b_out = [names[pid] for pid in b_sends]
@@ -363,8 +395,9 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
         "evaluation": {"start_week": window.start, "final_week": window.final,
                        "last_regular_season_week": window.last_regular, "weeks": list(window.weeks),
                        "start_week_overridden": start_week is not None,
-                       "start_week_reason": state.start_week_reason if start_week is None
-                       else {"reason": f"explicit start_week override ({start_week})"}},
+                       "earliest_actionable_week": state.start_week, "remaining_weeks": True,
+                       "uncertain": uncertain, "warning": reason.get("warning") if uncertain else None,
+                       "start_week_reason": why},
         "trade": {"shape": f"{len(a_sends)}-for-{len(b_sends)}", "team_a_id": team_a, "team_b_id": team_b,
                   "team_a_sends": a_sends, "team_b_sends": b_sends},
         "team_a": side_a, "team_b": side_b,
@@ -379,6 +412,7 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
         "players": players,
         "ir_warning": IR_WARNING if any(side["ir_activation_sensitivity"]["players"] for side in (side_a, side_b))
         else None,
+        "ir_assumption": IR_HOLD_NOTE,
         "projection_source": PROJECTION_SOURCE,
         "trade_impact_source": "exact optimal-lineup simulation",
         "assumptions": ASSUMPTIONS,

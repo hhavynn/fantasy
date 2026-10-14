@@ -14,7 +14,7 @@ from ..analytics.projections import BASELINE_NOTE, league_window, player_forward
 from ..analytics.team_lineups import project_team, public_weeks, replacement_market, roster_marginal_value
 from ..analytics.trade_data import (load_league_state, manager_context, named_weeks, player_intelligence,
                                     player_names)
-from ..analytics.trades import TradeError, evaluate_trade
+from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade
 from ..db.connection import schema_version, table_exists
 from .deps import db, one, rows
 
@@ -493,9 +493,10 @@ def _state(con):
 
 
 def _window_info(state) -> dict:
-    w = state.window()
-    return {"start_week": w.start, "final_week": w.final, "last_regular_season_week": w.last_regular,
-            "weeks": list(w.weeks), "start_week_reason": state.start_week_reason}
+    w, reason = state.window(), state.start_week_reason or {}
+    return {"start_week": w.start, "final_week": state.final_week, "last_regular_season_week": w.last_regular,
+            "weeks": list(w.weeks), "remaining_weeks": bool(w.weeks), "uncertain": bool(reason.get("uncertain")),
+            "warning": reason.get("warning"), "start_week_reason": reason}
 
 
 @router.get("/lineup-projections")
@@ -510,9 +511,12 @@ def lineup_projections():
                              WHERE r.league_id = ? AND r.season = ?
                              ORDER BY r.ros_known_starting_points DESC NULLS LAST""", [lg["league_id"], lg["season"]]) \
             if table_exists(con, "team_ros_lineup_projections") else []
+        window = state.window()
         return {"league": lg, "evaluation": _window_info(state), "teams": teams,
-                "replacement_market": replacement_market(state.free_agents, state.slots, state.window(),
-                                                         state.projections),
+                "teams_note": None if window.weeks else
+                "No remaining fantasy scoring periods: these are the stored rows from the last actionable window.",
+                "replacement_market": replacement_market(state.free_agents, state.slots, window, state.projections)
+                if window.weeks else None,
                 "projection_source": "ESPN", "note": BASELINE_NOTE}
 
 
@@ -525,6 +529,9 @@ def team_lineup_projection(team_id: int):
         if team_id not in state.rosters:
             raise HTTPException(404, "Unknown team")
         roster, window = state.rosters[team_id], state.window()
+        if not window.weeks:
+            return {"league": lg, "team_id": team_id, "team_name": state.team_names.get(team_id),
+                    "evaluation": _window_info(state), "summary": None, "weeks": [], "marginal_values": []}
         team = project_team(roster, state.slots, window, state.projections)
         names = player_names(con, [p.espn_player_id for p in roster])
         open_spots = max(0, state.active_capacity - sum(1 for p in roster if not p.on_ir))
@@ -578,6 +585,8 @@ def trades_evaluate(body: TradeRequest):
         try:
             res = evaluate_trade(state, body.team_a_id, body.team_b_id, body.team_a_sends, body.team_b_sends,
                                  body.start_week)
+        except NoRemainingWeeksError as err:
+            raise HTTPException(409, str(err))
         except TradeError as err:
             raise HTTPException(422, str(err))
         ids = set(body.team_a_sends) | set(body.team_b_sends)

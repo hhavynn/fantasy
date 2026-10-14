@@ -168,9 +168,12 @@ export type TradeOptions = {
 };
 
 export type TradeWindow = {
-  start_week: number; final_week: number; last_regular_season_week: number | null; weeks: number[];
-  start_week_overridden?: boolean;
-  start_week_reason: { reason?: string; evaluation_start_week?: number; espn_current_week?: number };
+  // start_week is null when no fantasy scoring period remains (every week has kicked off).
+  start_week: number | null; final_week: number; last_regular_season_week: number | null; weeks: number[];
+  remaining_weeks?: boolean; uncertain?: boolean; warning?: string | null;
+  start_week_overridden?: boolean; earliest_actionable_week?: number | null;
+  start_week_reason: { reason?: string; evaluation_start_week?: number | null; espn_current_week?: number;
+    current_week_status?: string; uncertain?: boolean; warning?: string | null };
 };
 
 export type LineupSlot = { slot: string; player_id: number | null; name?: string | null; position: string | null;
@@ -200,7 +203,7 @@ export type FaPick = {
 
 // Hypothetical free activation of a current-IR player; deliberately optimistic, never canonical.
 export type IrActivation = {
-  label: string; espn_player_id: number; weekly_projection: Record<string, number | null>;
+  label: string; assumption?: string; espn_player_id: number; weekly_projection: Record<string, number | null>;
   projected_weeks: number[]; unprojected_weeks: number[]; weeks_would_start: number[];
   lineup_points_upside: number | null; known_lineup_points_upside: number;
   regular_season_upside: number | null; playoff_upside: number | null; projection_complete: boolean;
@@ -255,6 +258,7 @@ export type TradeResult = {
     playoff_label: string; note: string };
   players: TradePlayer[];
   ir_warning: string | null;
+  ir_assumption?: string;
   manager_context: Record<string, { needs: { position: string; need_score: number }[];
     classifications: Record<string, { label: string; confidence: string }> }>;
   names: Record<string, { name: string | null; position: string | null; pro_team: string | null }>;

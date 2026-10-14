@@ -5,13 +5,15 @@ tables; writes only team_week_lineup_projections and team_ros_lineup_projections
 from __future__ import annotations
 
 import json
+import zoneinfo
+from datetime import date, datetime, time, timedelta, timezone
 
 from ..db.connection import fetch_dicts, replace_where, table_columns, table_exists, utcnow
 from ..espn.constants import DEFAULT_POSITION_MAP, FANTASY_POSITIONS, IR_SLOT
 from .lineup import lineup_slots
 from .projections import league_window
 from .team_lineups import FA_STATUSES, RosterPlayer, project_team, public_weeks
-from .trades import LeagueState
+from .trades import LeagueState, weeks_label
 
 
 def _json(v):
@@ -19,40 +21,167 @@ def _json(v):
 
 
 # ------------------------------------------------------------------ evaluation window --
+#
+# ESPN NFL scoring periods are NFL weeks: scoringPeriodId N is NFL REG week N (a two-week fantasy
+# playoff matchup spans two scoring periods, but each scoring period is still one NFL week). The
+# engine already relies on this for byes (projections.load_schedule); kickoffs are read the same way.
 
-def evaluation_start_week(con, season: int, current: int, final: int) -> dict:
-    """First fantasy week a trade made now can still change. ESPN's current_week can point at a
-    scoring period whose games are all over (a trade after Monday night must not get credit for
-    that week), so: if every REG game of current_week has a final score in nfl_schedules, start at
-    current_week + 1; otherwise (any game unplayed, or completion unknowable) start at current_week.
-    Completion is taken only from game scores, never from player stats existing (Thursday/Sunday
-    partial weeks must not skip the week). Clamped to final_scoring_period."""
-    out = {"espn_current_week": current, "final_scoring_period": final,
-           "rule": "current_week + 1 only if every REG game of current_week has a final score; else current_week"}
-    if not table_exists(con, "nfl_schedules"):
-        return {**out, "evaluation_start_week": min(current, final), "current_week_completed": None,
-                "reason": "nfl_schedules unavailable: completion cannot be established; using ESPN current_week"}
-    cols = set(table_columns(con, "nfl_schedules"))
-    if not {"home_score", "away_score"} <= cols:
-        return {**out, "evaluation_start_week": min(current, final), "current_week_completed": None,
-                "reason": "nfl_schedules has no score columns: completion cannot be established; using ESPN current_week"}
-    games = fetch_dicts(con, """SELECT home_score, away_score FROM nfl_schedules
-                                WHERE season = ? AND game_type = 'REG' AND week = ?""", [season, current])
+EASTERN = "America/New_York"
+WINDOW_RULE = ("first scoring period from ESPN current_week whose NFL REG games have not kicked off; a week "
+               "counts as kicked off once any game's scheduled kickoff (nfl_schedules gameday + gametime, "
+               "US Eastern) is at or before now, or any game has a final score")
+
+
+def _eastern_to_utc(day: date, hhmm: time) -> datetime:
+    """nflverse `gametime` is US Eastern wall-clock time. Uses the IANA zone when the platform has it,
+    else the US DST rule in force since 2007 (2nd Sunday of March to 1st Sunday of November, 02:00)."""
+    local = datetime.combine(day, hhmm)
+    try:
+        return local.replace(tzinfo=zoneinfo.ZoneInfo(EASTERN)).astimezone(timezone.utc)
+    except zoneinfo.ZoneInfoNotFoundError:   # no tz database (e.g. Windows without tzdata)
+        def nth_sunday(month: int, n: int) -> date:
+            first = date(day.year, month, 1)
+            return first + timedelta(days=(6 - first.weekday()) % 7 + 7 * (n - 1))
+        dst = datetime.combine(nth_sunday(3, 2), time(2)) <= local < datetime.combine(nth_sunday(11, 1), time(2))
+        return (local + timedelta(hours=4 if dst else 5)).replace(tzinfo=timezone.utc)
+
+
+def kickoff_utc(gameday, gametime) -> datetime | None:
+    """Scheduled kickoff as an aware UTC datetime, or None when the schedule row lacks a usable
+    date or time (never guessed)."""
+    try:
+        if isinstance(gameday, datetime):
+            day = gameday.date()
+        elif isinstance(gameday, date):
+            day = gameday
+        elif isinstance(gameday, str) and gameday.strip():
+            day = date.fromisoformat(gameday.strip()[:10])
+        else:
+            return None
+        if isinstance(gametime, time):
+            hhmm = gametime
+        elif isinstance(gametime, str) and gametime.strip():
+            h, m = gametime.strip().split(":")[:2]
+            hhmm = time(int(h), int(m))
+        else:
+            return None
+    except (ValueError, TypeError):
+        return None
+    return _eastern_to_utc(day, hhmm)
+
+
+def _aware_utc(now: datetime | None) -> datetime:
+    if now is None:
+        return datetime.now(timezone.utc)
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+    return now.astimezone(timezone.utc)
+
+
+def _iso(dt: datetime | None) -> str | None:
+    return dt.isoformat() if dt else None
+
+
+def week_kickoff_status(con, season: int, week: int, now: datetime, cols: set[str]) -> dict:
+    """Has NFL REG week `week` kicked off as of `now`?
+
+    status: "completed" (every game has a final score), "in_progress" (at least one game kicked off
+    or final), "not_started" (every game has a scheduled kickoff and all are after now), "unknown"
+    (no games, or some kickoffs missing and none known to have started). Only positive evidence
+    counts: a missing score never means "not played", and a 0-0 score is not treated as final."""
+    has_scores = {"home_score", "away_score"} <= cols
+    has_kickoff = {"gameday", "gametime"} <= cols
+    sel = ", ".join([c for c in ("game_id", "home_team", "away_team") if c in cols]
+                    + (["home_score", "away_score"] if has_scores else [])
+                    + (["gameday", "gametime"] if has_kickoff else [])) or "week"
+    games = fetch_dicts(con, f"SELECT {sel} FROM nfl_schedules WHERE season = ? AND game_type = 'REG' AND week = ?",
+                        [season, week])
+    out = {"week": week, "games": len(games), "score_columns": has_scores, "kickoff_columns": has_kickoff}
     if not games:
-        return {**out, "evaluation_start_week": min(current, final), "current_week_completed": None,
-                "current_week_games": 0,
-                "reason": f"no REG games for week {current} in nfl_schedules: completion unknown; using ESPN current_week"}
-    done = sum(1 for g in games if g["home_score"] is not None and g["away_score"] is not None)
-    out.update(current_week_games=len(games), current_week_games_final=done)
-    if done < len(games):
-        return {**out, "evaluation_start_week": min(current, final), "current_week_completed": False,
-                "reason": f"{done} of {len(games)} REG games in week {current} have final scores; week {current} "
-                          "can still change, so it is included"}
-    start = min(current + 1, final)
-    reason = f"all {len(games)} REG games in week {current} have final scores; evaluation starts at week {start}"
-    if current >= final:
-        reason = f"all games of the final scoring period ({final}) are final; clamped to week {final}"
-    return {**out, "evaluation_start_week": start, "current_week_completed": True, "reason": reason}
+        return {**out, "status": "unknown", "detail": f"no REG games for week {week} in nfl_schedules"}
+    kicks, final, started, no_kick = [], 0, 0, 0
+    for g in games:
+        k = kickoff_utc(g.get("gameday"), g.get("gametime")) if has_kickoff else None
+        h, a = (g.get("home_score"), g.get("away_score")) if has_scores else (None, None)
+        is_final = h is not None and a is not None and not (h == 0 and a == 0)
+        final += is_final
+        if k is None:
+            no_kick += 1
+        else:
+            kicks.append(k)
+        started += is_final or (k is not None and k <= now)
+    out.update(games_final=final, games_kicked_off=started, games_missing_kickoff=no_kick,
+               first_kickoff=_iso(min(kicks) if kicks else None), last_kickoff=_iso(max(kicks) if kicks else None))
+    if final == len(games):
+        return {**out, "status": "completed", "detail": f"all {len(games)} REG games of week {week} are final"}
+    if started:
+        return {**out, "status": "in_progress",
+                "detail": f"{started} of {len(games)} REG games of week {week} have kicked off "
+                          f"({final} final); lineups for those games are already set"}
+    if no_kick == 0:
+        return {**out, "status": "not_started",
+                "detail": f"no REG game of week {week} has kicked off (first kickoff {out['first_kickoff']})"}
+    why = "nfl_schedules has no gameday/gametime columns" if not has_kickoff else \
+        f"{no_kick} of {len(games)} REG games of week {week} have no usable kickoff time"
+    return {**out, "status": "unknown", "detail": f"{why}; no game is known to have kicked off"}
+
+
+def evaluation_start_week(con, season: int, current: int, final: int, now: datetime | None = None) -> dict:
+    """First fantasy scoring period a trade proposed now can still change, or None when none remain.
+
+    Walks from ESPN current_week to final_scoring_period and starts at the first week whose NFL games
+    have not kicked off: once any game of a week has kicked off, some of that week's lineups are
+    locked, and this engine does not simulate partial weeks, so a new hypothetical trade starts the
+    following week. Kickoffs come from the NFL schedule (timezone-aware), never from whether player
+    stats or scores exist. If kickoff evidence is insufficient the week is kept but flagged
+    `uncertain` with a warning (its gains may not be fully achievable). Past the final period:
+    `evaluation_start_week` None, `remaining_weeks` False; no week is manufactured."""
+    now = _aware_utc(now)
+    out = {"espn_current_week": current, "final_scoring_period": final, "rule": WINDOW_RULE,
+           "evaluated_at": now.isoformat(), "uncertain": False, "warning": None, "weeks_checked": []}
+
+    def done(start, reason, **kw):
+        res = {**out, **kw, "evaluation_start_week": start, "remaining_weeks": start is not None, "reason": reason}
+        if start is None:
+            res["warning"] = ("No remaining fantasy scoring periods: every week through the final scoring period "
+                              f"({final}) has kicked off. Trades cannot change any remaining lineup.")
+        return res
+
+    if current > final:
+        return done(None, f"ESPN current_week {current} is past the final scoring period {final}",
+                    current_week_status="after_final", current_week_kicked_off=True, current_week_completed=True)
+    if not table_exists(con, "nfl_schedules"):
+        return done(current, f"nfl_schedules unavailable: kickoff status of week {current} cannot be established; "
+                             f"using ESPN current_week {current}", current_week_status="unknown",
+                    current_week_kicked_off=None, current_week_completed=None, uncertain=True,
+                    warning=_uncertain_warning(current))
+    cols = set(table_columns(con, "nfl_schedules"))
+    for week in range(current, final + 1):
+        st = week_kickoff_status(con, season, week, now, cols)
+        out["weeks_checked"].append(st)
+        if week == current:
+            out.update(current_week_status=st["status"], current_week_games=st["games"],
+                       current_week_games_final=st.get("games_final"),
+                       current_week_kicked_off={"completed": True, "in_progress": True,
+                                                "not_started": False}.get(st["status"]),
+                       current_week_completed={"completed": True, "in_progress": False,
+                                               "not_started": False}.get(st["status"]))
+        started = weeks_label(current, week - 1)
+        if st["status"] == "not_started":
+            skipped = f"; {started} already kicked off" if week > current else ""
+            return done(week, f"{st['detail']}: evaluation starts at week {week}{skipped}")
+        if st["status"] == "unknown":
+            prefix = f"{started} already kicked off; " if week > current else ""
+            return done(week, f"{prefix}{st['detail']}: kickoff status unknown, week {week} included but uncertain",
+                        uncertain=True, warning=_uncertain_warning(week))
+    return done(None, f"every scoring period from week {current} through the final scoring period ({final}) "
+                      "has kicked off; no remaining weeks")
+
+
+def _uncertain_warning(week: int) -> str:
+    return (f"Kickoff status for week {week} could not be established from the NFL schedule. Week {week} is "
+            f"included, but some of its games may already have started, so part of its projected gain may not be "
+            f"achievable. Re-evaluate with start week {week + 1} to exclude it.")
 
 
 # ------------------------------------------------------------------------ league state --
@@ -68,7 +197,8 @@ def _position_limits(settings: dict) -> dict[str, int]:
     return out
 
 
-def load_league_state(con, season: int | None = None) -> LeagueState | None:
+def load_league_state(con, season: int | None = None, now: datetime | None = None) -> LeagueState | None:
+    """`now` (timezone-aware; default the current UTC time) decides which weeks have kicked off."""
     lg = fetch_dicts(con, "SELECT * FROM leagues" + (" WHERE season = ?" if season else "") +
                      " ORDER BY synced_at DESC LIMIT 1", [season] if season else [])
     if not lg:
@@ -80,7 +210,8 @@ def load_league_state(con, season: int | None = None) -> LeagueState | None:
         return None
     roster_slots = _json(lg["roster_slots"]) or {}
     settings = _json(lg["settings_raw"]) or {}
-    start = evaluation_start_week(con, season, window.current, window.final)
+    # ESPN's raw current_week (league_window clamps it to the final period; past it, the season is over).
+    start = evaluation_start_week(con, season, int(lg["current_week"]), window.final, now)
     rosters: dict[int, list[RosterPlayer]] = {}
     for row in fetch_dicts(con, """
         SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, fp.full_name, fp.position, fp.pro_team,
@@ -193,6 +324,9 @@ def build_team_lineup_projections(con, season: int) -> dict:
     state = load_league_state(con, season)
     if state is None:
         return {"skipped": "league current/final week unknown"}
+    if state.start_week is None:
+        # Nothing left to project. Leave the previously stored rows as they are (no manufactured week).
+        return {"skipped": "no remaining fantasy scoring periods", "start_week_reason": state.start_week_reason.get("reason")}
     window = state.window()
     now = utcnow()
     names = player_names(con, [p.espn_player_id for ps in state.rosters.values() for p in ps])

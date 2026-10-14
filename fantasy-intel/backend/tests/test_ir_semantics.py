@@ -8,8 +8,9 @@ FLEX RB 9 (id 104); team B has 9 players."""
 
 from dataclasses import replace
 
-from app.analytics.team_lineups import (ACTIVATION_DROP_NOTE, RosterPlayer, Window, ir_activation_sensitivity,
-                                        project_team, replacement_context, roster_marginal_value, starters)
+from app.analytics.team_lineups import (ACTIVATION_DROP_NOTE, IR_HOLD_NOTE, RosterPlayer, Window,
+                                        ir_activation_sensitivity, project_team, replacement_context,
+                                        roster_marginal_value, starters)
 from app.analytics.trades import IR_WARNING, evaluate_trade
 from test_trades import SLOTS, WEEKS, flat, league, team_a, team_b
 
@@ -130,3 +131,19 @@ def test_player_becomes_canonically_usable_once_source_roster_has_on_ir_false():
     assert all(w["ir"] == [] for w in team["weeks"])
     mv = roster_marginal_value(activated, 110, SLOTS, W, proj, team)
     assert mv["roster_marginal_lineup_points"] == 42.0 and "ir_activation_sensitivity" not in mv
+
+
+def test_ir_hold_assumption_is_explicit_and_sensitivity_follows_a_later_window():
+    players, proj = a_with_ir()
+    st = replace(league(a=players, proj_over={110: RETURNING}), start_week=11)   # week 10 already kicked off
+    plain = evaluate_trade(replace(league(), start_week=11), 1, 2, [105], [204])
+    res = evaluate_trade(st, 1, 2, [105], [204])
+    assert res["evaluation"]["weeks"] == [11, 12]
+    assert IR_HOLD_NOTE in res["assumptions"] and res["ir_assumption"] == IR_HOLD_NOTE
+    block = res["team_a"]["ir_activation_sensitivity"]
+    assert block["assumption"] == IR_HOLD_NOTE
+    s = block["players"][0]["before_trade"]
+    assert s["assumption"] == IR_HOLD_NOTE and list(s["weekly_projection"]) == [11, 12]
+    assert s["lineup_points_upside"] == 42.0                             # no return date or probability injected
+    for side in ("team_a", "team_b"):                                    # canonical delta still excludes him
+        assert res[side]["deltas"] == plain[side]["deltas"]

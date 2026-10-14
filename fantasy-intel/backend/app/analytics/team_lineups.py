@@ -240,6 +240,10 @@ def roster_marginal_value(players: list[RosterPlayer], pid: int, slots: list[str
 
 # --------------------------------------------------------------- IR activation sensitivity --
 
+IR_HOLD_NOTE = ("Current IR status is held constant for this hypothetical evaluation. This does not predict when a "
+                "player will return. Activation upside is shown separately and may require a roster move.")
+
+
 def activate(players: list[RosterPlayer], pid: int) -> list[RosterPlayer]:
     return [replace(p, on_ir=False) if p.espn_player_id == pid else p for p in players]
 
@@ -258,6 +262,7 @@ def ir_activation_sensitivity(players: list[RosterPlayer], pid: int, slots: list
     has_open = None if open_active_roster_spots is None else open_active_roster_spots > 0
     return {
         "label": "IR activation sensitivity (hypothetical free activation; not canonical)",
+        "assumption": IR_HOLD_NOTE,
         "espn_player_id": pid,
         "weekly_projection": weekly,
         "projected_weeks": [w for w, v in weekly.items() if v is not None and v > 0],

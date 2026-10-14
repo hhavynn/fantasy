@@ -56,22 +56,57 @@ is in `team_ros_lineup_projections`. Both tables are derived and rebuilt by anal
 
 ## Evaluation start week
 
-ESPN's `current_week` can point at a scoring period whose games are already over. A trade made after Monday
-night of week 6 must not get credit for changing week 6. `trade_data.evaluation_start_week()`:
+A trade proposed now can only change lineups for games that have not started. Once any game of a scoring week
+has kicked off, some of that week's lineups are locked, and this engine does not simulate partial weeks (no live
+lineup-lock simulation), so the conservative rule is to start at the following week.
+`trade_data.evaluation_start_week(con, season, current_week, final_scoring_period, now)`:
 
 ```
-if every REG game of ESPN current_week has a final score (home_score and away_score) in nfl_schedules:
-    evaluation_start_week = current_week + 1
-else:
-    evaluation_start_week = current_week
-clamped to final_scoring_period
+for week in ESPN current_week .. final_scoring_period:
+    status = kickoff status of that week's NFL REG games as of `now`
+    completed / in_progress  -> already kicked off: skip to the next week
+    not_started              -> evaluation_start_week = week
+    unknown                  -> evaluation_start_week = week, flagged uncertain (with a warning)
+no week left                 -> evaluation_start_week = None, remaining_weeks = False
 ```
 
-Completion comes only from game scores, never from player stats existing, so a week with Thursday played and
-Sunday pending is not skipped. If completion cannot be established (no schedule table, no score columns, no
-REG games for the week) it defaults to `current_week` and says why. The reason is returned with every
-evaluation. The pure evaluator and the API accept an explicit `start_week` override (from ESPN `current_week`
-through the final period).
+* **Kickoff evidence comes from the NFL schedule**: `nfl_schedules.gameday` + `gametime` (nflverse publishes
+  `gametime` as US Eastern wall-clock time). Kickoffs are converted to aware UTC datetimes (the
+  `America/New_York` tz database, or the US DST rule when the platform has no tz database) and compared with an
+  aware `now` (default the current UTC time; a naive `now` is refused).
+* A week has **kicked off** when any game's scheduled kickoff is at or before `now`, or any game has a final score
+  (both scores present). A week is **completed** when every game has a final score.
+* Only positive evidence counts. A missing score never means "not played" (a past kickoff without a recorded
+  score still counts as kicked off), and a 0-0 score is ignored as evidence (it is treated as neither final nor
+  started). Player stats existing is never used.
+* **Insufficient evidence** (no schedule table, no kickoff columns, no REG games for the week, or some games
+  without a usable kickoff time while none is known to have started): the week is kept, but the result says
+  `uncertain: true` with a warning that some games may already have started and the week's gain may not be
+  fully achievable, and suggests re-evaluating from the next week.
+* A stale ESPN `current_week` is handled: weeks after it that have also kicked off are skipped too.
+* **Season over**: if ESPN `current_week` is past `final_scoring_period`, or every week through it has kicked
+  off, there is no remaining week. Nothing is manufactured: `evaluate_trade` raises `NoRemainingWeeksError`
+  (the API answers `409` with that message), `/api/trades/options` reports `remaining_weeks: false` and
+  `start_week: null`, `/api/teams/{id}/lineup-projection` returns no summary/weeks, `/api/lineup-projections`
+  returns no replacement market, and the analytics step leaves the previously stored
+  `team_*_lineup_projections` rows untouched (nothing is deleted or recomputed; raw ESPN projections and actual
+  scores are never written by this engine).
+
+The full reasoning (status per week checked, kickoff times, games final / kicked off / without a kickoff
+time) is returned with every evaluation as `start_week_reason`.
+
+**Explicit start-week override** (`start_week` on the pure evaluator and the API): must be within
+`first loaded projection week .. final_scoring_period` and never earlier than the earliest actionable week; a
+week that has already kicked off is rejected (`422`) rather than presented as an achievable gain. A later
+override is allowed and labelled with the actionable weeks it excludes. Uncertainty is reported only when the
+evaluated window still includes the uncertain week.
+
+**Scoring periods vs NFL weeks.** ESPN NFL leagues number scoring periods by NFL week (`scoringPeriodId` N is
+NFL regular-season week N, and ESPN's league `current_week` is a scoring period). A fantasy playoff matchup
+that spans two weeks covers two scoring periods, but each scoring period is still a single NFL week, so a
+scoring period's kickoffs are exactly that NFL week's REG games. The engine already relies on the same mapping
+for byes (`projections.load_schedule`). Final scoring periods past week 18 do not exist for NFL leagues; if one
+appeared it would have no REG games and be reported as uncertain, not assumed playable.
 
 ## Regular season and playoffs stay separate
 
@@ -192,6 +227,13 @@ whether the active roster has an open spot). With no open spot the result says "
 roster move/drop that is not modeled in this sensitivity scenario." No activation drop is chosen, so the
 sensitivity is deliberately optimistic, and it is never part of a trade delta. A trade shows it per side, before
 and (if he stays) after the trade; `/trades` warns whenever a current IR player is involved.
+
+Every evaluation states the assumption explicitly (`assumptions`, `ir_assumption`, and `assumption` on each
+sensitivity block): "Current IR status is held constant for this hypothetical evaluation. This does not predict
+when a player will return. Activation upside is shown separately and may require a roster move." No injury
+return dates or probabilities are injected, and canonical trade values never include a free activation. The
+sensitivity covers the same evaluation window as the trade (after the window moves past a started week, so
+does the sensitivity).
 
 ## Result semantics
 

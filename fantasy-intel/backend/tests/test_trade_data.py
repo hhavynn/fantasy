@@ -3,16 +3,20 @@ derived team lineup tables, the v6 migration, score isolation and the read-only 
 
 import copy
 import json
-from datetime import datetime
+from dataclasses import replace
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.analytics import pipeline
 from app.analytics.pipeline import run_analytics
 from app.analytics.team_lineups import replacement_market
-from app.analytics.trade_data import build_team_lineup_projections, evaluation_start_week, load_league_state
-from app.analytics.trades import evaluate_trade
+from app.analytics.trade_data import (build_team_lineup_projections, evaluation_start_week, kickoff_utc,
+                                      load_league_state)
+from app.analytics.team_lineups import IR_HOLD_NOTE
+from app.analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade
 from app.db.connection import SCHEMA_VERSION, connect, fetch_dicts, init_db, open_db, table_exists, upsert_rows
 from app.espn.sync import run_espn_sync
 
@@ -44,40 +48,157 @@ def synced(db_path, client=None, analytics=True):
 
 
 # ----------------------------------------------------------------- evaluation start week --
+# Week 6 of the synthetic schedule: Thu 2026-10-15 20:15 ET, Sun 10-18 13:00 and 16:25 ET, Mon 10-19 20:15 ET
+# (EDT = UTC-4, so Thursday kickoff is 2026-10-16 00:15 UTC). Week 7 starts Thu 2026-10-22.
+
+WEEK6 = [("2026-10-15", "20:15"), ("2026-10-18", "13:00"), ("2026-10-18", "16:25"), ("2026-10-19", "20:15")]
+WEEK7 = [("2026-10-22", "20:15"), ("2026-10-25", "13:00")]
+THU6_KICKOFF = datetime(2026, 10, 16, 0, 15, tzinfo=timezone.utc)
+
+
+def utc(*args):
+    return datetime(*args, tzinfo=timezone.utc)
+
+
+def kickoffs(con, weeks: dict[int, list[tuple]]):
+    """week -> [(gameday, gametime[, home_score, away_score])] REG games, nflverse column names/types."""
+    con.execute("""CREATE TABLE IF NOT EXISTS nfl_schedules (season INT, week INT, game_type VARCHAR, game_id VARCHAR,
+                   gameday VARCHAR, gametime VARCHAR, home_team VARCHAR, away_team VARCHAR,
+                   home_score INT, away_score INT)""")
+    for week, games in weeks.items():
+        for i, g in enumerate(games):
+            day, tm, h, a = (tuple(g) + (None, None))[:4]
+            con.execute("INSERT INTO nfl_schedules VALUES (?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?)",
+                        [SEASON, week, f"{SEASON}_{week:02d}_{i}", day, tm, f"H{i}", f"A{i}", h, a])
+
 
 def test_start_week_advances_only_when_every_current_week_game_is_final(con):
     schedule(con, {6: [(24, 17), (10, 13), (30, 27)]})
     s = evaluation_start_week(con, SEASON, 6, 17)
     assert s["evaluation_start_week"] == 7 and s["current_week_completed"] is True
-    assert "all 3 REG games in week 6" in s["reason"]
+    assert s["current_week_status"] == "completed" and "all 3 REG games of week 6 are final" in s["weeks_checked"][0]["detail"]
 
 
-def test_partial_week_is_not_skipped(con):
-    schedule(con, {6: [(24, 17), (None, None), (None, None)]})   # Thursday played, Sunday/Monday not
+def test_thursday_final_without_kickoff_columns_still_skips_the_started_week(con):
+    # Thursday played, Sunday/Monday not: some week-6 lineups are locked, so a new trade starts week 7.
+    # (Before this fix the whole week 6 was evaluated.) Score-only schedule: the final score is the evidence.
+    schedule(con, {6: [(24, 17), (None, None), (None, None)]})
     s = evaluation_start_week(con, SEASON, 6, 17)
-    assert s["evaluation_start_week"] == 6 and s["current_week_completed"] is False
-    assert "1 of 3" in s["reason"]
+    assert s["current_week_status"] == "in_progress" and s["current_week_kicked_off"] is True
+    assert s["current_week_completed"] is False and s["evaluation_start_week"] == 7
 
 
 def test_unknown_completion_defaults_to_current_week_with_reason(con):
     s = evaluation_start_week(con, SEASON, 6, 17)               # no schedule table at all
     assert s["evaluation_start_week"] == 6 and s["current_week_completed"] is None and "unavailable" in s["reason"]
+    assert s["uncertain"] is True and "could not be established" in s["warning"]
     schedule(con, {5: [(1, 2)]})                                 # table exists, week 6 absent
     s = evaluation_start_week(con, SEASON, 6, 17)
-    assert s["evaluation_start_week"] == 6 and "no REG games" in s["reason"]
+    assert s["evaluation_start_week"] == 6 and "no REG games" in s["reason"] and s["uncertain"] is True
 
 
-def test_start_week_without_score_columns_is_unknown(con):
+def test_start_week_without_score_or_kickoff_columns_is_uncertain(con):
     con.execute("CREATE TABLE nfl_schedules (season INT, week INT, game_type VARCHAR, home_team VARCHAR, away_team VARCHAR)")
     con.execute("INSERT INTO nfl_schedules VALUES (?, 6, 'REG', 'KC', 'BUF')", [SEASON])
     s = evaluation_start_week(con, SEASON, 6, 17)
-    assert s["evaluation_start_week"] == 6 and "no score columns" in s["reason"]
+    assert s["evaluation_start_week"] == 6 and s["uncertain"] is True and "no gameday/gametime" in s["reason"]
 
 
-def test_start_week_clamped_to_final_scoring_period(con):
-    schedule(con, {17: [(20, 10)]})
-    s = evaluation_start_week(con, SEASON, 17, 17)
-    assert s["evaluation_start_week"] == 17 and "clamped" in s["reason"]
+def test_current_week_before_first_kickoff_is_included(con):
+    kickoffs(con, {6: WEEK6, 7: WEEK7})
+    s = evaluation_start_week(con, SEASON, 6, 17, now=utc(2026, 10, 15, 23, 0))     # Thu 19:00 ET
+    assert s["evaluation_start_week"] == 6 and s["current_week_status"] == "not_started"
+    assert s["current_week_kicked_off"] is False and s["uncertain"] is False and s["warning"] is None
+    assert s["weeks_checked"][0]["first_kickoff"] == THU6_KICKOFF.isoformat()
+
+
+def test_kickoff_comparison_is_timezone_aware(con):
+    kickoffs(con, {6: WEEK6, 7: WEEK7})
+    # 20:15 ET is 00:15 UTC the next day; a naive ET-vs-UTC comparison would be four hours off.
+    before = evaluation_start_week(con, SEASON, 6, 17, now=THU6_KICKOFF - timedelta(minutes=1))
+    at = evaluation_start_week(con, SEASON, 6, 17, now=THU6_KICKOFF)
+    pacific = evaluation_start_week(con, SEASON, 6, 17,
+                                    now=datetime(2026, 10, 15, 17, 16, tzinfo=timezone(timedelta(hours=-7))))
+    assert before["evaluation_start_week"] == 6 and at["evaluation_start_week"] == 7
+    assert pacific["evaluation_start_week"] == 7                 # 17:16 PDT = 00:16 UTC, after kickoff
+    with pytest.raises(ValueError):
+        evaluation_start_week(con, SEASON, 6, 17, now=datetime(2026, 10, 15, 23, 0))   # naive: refused
+
+
+def test_kickoff_utc_parses_nflverse_and_date_values():
+    assert kickoff_utc("2026-10-15", "20:15") == THU6_KICKOFF
+    assert kickoff_utc(date(2026, 12, 13), "13:00") == utc(2026, 12, 13, 18, 0)        # EST in December
+    assert kickoff_utc("2026-10-15", None) is None and kickoff_utc(None, "13:00") is None
+    assert kickoff_utc("", "") is None and kickoff_utc("not-a-date", "13:00") is None
+    assert kickoff_utc("2026-10-15", "TBD") is None
+
+
+def test_one_game_kicked_off_without_any_final_score_skips_to_next_week(con):
+    kickoffs(con, {6: WEEK6, 7: WEEK7})                          # no scores anywhere
+    s = evaluation_start_week(con, SEASON, 6, 17, now=utc(2026, 10, 16, 1, 30))      # Thursday game live
+    assert s["evaluation_start_week"] == 7 and s["current_week_status"] == "in_progress"
+    assert s["current_week_kicked_off"] is True and s["current_week_completed"] is False
+    assert s["current_week_games_final"] == 0 and s["uncertain"] is False
+    assert s["weeks_checked"][0]["games_kicked_off"] == 1
+
+
+def test_thursday_completed_sunday_not_played(con):
+    kickoffs(con, {6: [(*WEEK6[0], 24, 17), *WEEK6[1:]], 7: WEEK7})
+    s = evaluation_start_week(con, SEASON, 6, 17, now=utc(2026, 10, 17, 16, 0))      # Saturday
+    assert s["evaluation_start_week"] == 7 and s["current_week_status"] == "in_progress"
+    assert s["weeks_checked"][0]["games_final"] == 1 and s["weeks_checked"][1]["status"] == "not_started"
+    assert "week 6 already kicked off" in s["reason"]
+
+
+def test_all_current_week_games_completed(con):
+    kickoffs(con, {6: [(d, t, 20, 13) for d, t in WEEK6], 7: WEEK7})
+    s = evaluation_start_week(con, SEASON, 6, 17, now=utc(2026, 10, 20, 15, 0))      # Tuesday
+    assert s["evaluation_start_week"] == 7 and s["current_week_status"] == "completed"
+    assert s["current_week_completed"] is True and s["remaining_weeks"] is True
+
+
+def test_missing_score_never_means_unplayed_and_zero_zero_is_not_final(con):
+    kickoffs(con, {6: [(*WEEK6[0], 0, 0), *WEEK6[1:]], 7: WEEK7})
+    pre = evaluation_start_week(con, SEASON, 6, 17, now=utc(2026, 10, 15, 12, 0))
+    assert pre["evaluation_start_week"] == 6 and pre["weeks_checked"][0]["games_final"] == 0   # 0-0 ignored
+    late = evaluation_start_week(con, SEASON, 6, 17, now=utc(2026, 10, 20, 15, 0))
+    assert late["evaluation_start_week"] == 7               # kickoffs passed although no score was recorded
+    assert late["current_week_status"] == "in_progress"      # never "completed" without final scores
+
+
+def test_missing_or_ambiguous_kickoff_data_is_reported_as_uncertain(con):
+    kickoffs(con, {6: [(WEEK6[0][0], None), *WEEK6[1:]], 7: WEEK7})   # Thursday's time missing
+    s = evaluation_start_week(con, SEASON, 6, 17, now=utc(2026, 10, 17, 12, 0))
+    assert s["evaluation_start_week"] == 6 and s["current_week_status"] == "unknown"
+    assert s["uncertain"] is True and s["current_week_kicked_off"] is None
+    assert "1 of 4 REG games of week 6 have no usable kickoff time" in s["reason"]
+    assert "may already have started" in s["warning"] and "start week 7" in s["warning"]
+    # A known kickoff in the past settles it even when another game's time is missing.
+    s = evaluation_start_week(con, SEASON, 6, 17, now=utc(2026, 10, 18, 18, 0))
+    assert s["evaluation_start_week"] == 7 and s["uncertain"] is False
+
+
+def test_stale_espn_current_week_skips_every_started_week(con):
+    kickoffs(con, {6: [(d, t, 20, 13) for d, t in WEEK6], 7: WEEK7, 8: [("2026-10-29", "20:15")]})
+    s = evaluation_start_week(con, SEASON, 6, 17, now=utc(2026, 10, 23, 12, 0))      # week 7 Thursday played
+    assert s["evaluation_start_week"] == 8 and "weeks 6-7 already kicked off" in s["reason"]
+
+
+def test_final_fantasy_week_completed_has_no_remaining_weeks(con):
+    kickoffs(con, {17: [("2026-12-31", "20:15", 20, 10), ("2027-01-03", "13:00", 27, 24)]})
+    s = evaluation_start_week(con, SEASON, 17, 17, now=utc(2027, 1, 5, 12, 0))
+    assert s["evaluation_start_week"] is None and s["remaining_weeks"] is False
+    assert s["current_week_status"] == "completed" and "No remaining fantasy scoring periods" in s["warning"]
+    past = evaluation_start_week(con, SEASON, 18, 17)            # ESPN moved past the final period
+    assert past["evaluation_start_week"] is None and past["current_week_status"] == "after_final"
+
+
+def test_final_fantasy_week_before_first_kickoff_is_still_actionable(con):
+    kickoffs(con, {17: [("2026-12-31", "20:15"), ("2027-01-03", "13:00")]})
+    s = evaluation_start_week(con, SEASON, 17, 17, now=utc(2026, 12, 31, 12, 0))
+    assert s["evaluation_start_week"] == 17 and s["remaining_weeks"] is True and s["uncertain"] is False
+    mid = evaluation_start_week(con, SEASON, 17, 17, now=utc(2027, 1, 2, 12, 0))     # Thursday played
+    assert mid["evaluation_start_week"] is None and mid["remaining_weeks"] is False
 
 
 # ---------------------------------------------------------------- league state + market --
@@ -300,3 +421,116 @@ def test_trade_api_endpoints(tmp_path, monkeypatch):
     assert len(team["weeks"]) == FINAL - CURRENT + 1
     assert {m["espn_player_id"] for m in team["marginal_values"]} == {pid for pid, _ in ROSTERS[2]}
     assert api.get("/api/teams/99/lineup-projection").status_code == 404
+
+
+# ------------------------------------------------- evaluation window end to end (DB + API) --
+# Fixture week CURRENT=3 of 2026: Thu 09-24 20:15 ET, Sun 09-27 13:00 ET; week 4 starts Thu 10-01.
+
+WEEK3 = [("2026-09-24", "20:15"), ("2026-09-27", "13:00")]
+WEEK4 = [("2026-10-01", "20:15"), ("2026-10-04", "13:00")]
+DERIVED = {"team_week_lineup_projections": "team_id, week", "team_ros_lineup_projections": "team_id"}
+
+
+def _final_week_state(con, scores):
+    """Move the synced league to its final scoring period (17) with week-17 rosters, and give week 17
+    the schedule rows `scores` (None = not yet played)."""
+    con.execute("UPDATE leagues SET current_week = ?", [FINAL])
+    con.execute(f"""INSERT INTO lineup_snapshots SELECT * REPLACE ({FINAL} AS scoring_period)
+                    FROM lineup_snapshots WHERE scoring_period = {CURRENT}""")
+    kickoffs(con, {FINAL: [(d, t, *(sc or (None, None))) for (d, t), sc in
+                           zip([("2026-12-31", "20:15"), ("2027-01-03", "13:00")], scores)]})
+
+
+def test_completed_final_week_returns_no_remaining_weeks_without_touching_stored_data(tmp_path, monkeypatch):
+    db_path = tmp_path / "end.duckdb"
+    con = synced(db_path)
+    _final_week_state(con, [(20, 10), (27, 24)])
+    derived = {t: fetch_dicts(con, f"SELECT * FROM {t} ORDER BY {o}") for t, o in DERIVED.items()}
+    raw = _raw_snapshot(con)
+    st = load_league_state(con)
+    assert st.start_week is None and st.window().weeks == () and st.start_week_reason["remaining_weeks"] is False
+    with pytest.raises(NoRemainingWeeksError, match="No remaining fantasy scoring periods"):
+        evaluate_trade(st, 2, 1, [304], [301])
+    with pytest.raises(NoRemainingWeeksError):
+        evaluate_trade(st, 2, 1, [304], [301], start_week=FINAL)     # no override can revive a played week
+    assert build_team_lineup_projections(con, SEASON)["skipped"] == "no remaining fantasy scoring periods"
+    assert _raw_snapshot(con) == raw                                  # stored projections/scores untouched
+    assert {t: fetch_dicts(con, f"SELECT * FROM {t} ORDER BY {o}") for t, o in DERIVED.items()} == derived
+    run_analytics(con, SEASON)                                        # the full pipeline copes too
+    assert {t: fetch_dicts(con, f"SELECT * FROM {t} ORDER BY {o}") for t, o in DERIVED.items()} == derived
+    after = _raw_snapshot(con)                                        # (player_ros_projections is the existing
+    assert {t: v for t, v in after.items() if t != "player_ros_projections"} == \
+        {t: v for t, v in raw.items() if t != "player_ros_projections"}   # ESPN ROS step, rebuilt as of week 17)
+    con.close()
+
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db_path))
+    from app.main import app
+    api = TestClient(app)
+    opts = api.get("/api/trades/options").json()
+    assert opts["evaluation"]["remaining_weeks"] is False and opts["evaluation"]["start_week"] is None
+    assert opts["evaluation"]["weeks"] == [] and "No remaining" in opts["evaluation"]["warning"]
+    res = api.post("/api/trades/evaluate", json={"team_a_id": 2, "team_b_id": 1, "team_a_sends": [304],
+                                                 "team_b_sends": [301]})
+    assert res.status_code == 409 and "No remaining fantasy scoring periods" in res.json()["detail"]
+    team = api.get("/api/teams/2/lineup-projection").json()
+    assert team["summary"] is None and team["weeks"] == [] and team["marginal_values"] == []
+    lp = api.get("/api/lineup-projections").json()
+    assert lp["replacement_market"] is None and lp["teams_note"] and len(lp["teams"]) == 4
+
+
+def test_final_week_before_first_kickoff_is_evaluated(tmp_path):
+    con = synced(tmp_path / "pre.duckdb", analytics=False)
+    _final_week_state(con, [None, None])
+    st = load_league_state(con, now=utc(2026, 12, 31, 20, 0))       # Thursday 15:00 ET
+    res = evaluate_trade(st, 2, 1, [304], [301])
+    assert st.start_week == FINAL and res["evaluation"]["weeks"] == [FINAL]
+    assert res["evaluation"]["uncertain"] is False and res["evaluation"]["remaining_weeks"] is True
+    assert load_league_state(con, now=utc(2027, 1, 1, 6, 0)).start_week is None   # Thursday kicked off
+    con.close()
+
+
+def test_started_current_week_moves_the_db_window_and_api_rejects_retroactive_override(tmp_path):
+    con = synced(tmp_path / "ko.duckdb", analytics=False)
+    kickoffs(con, {CURRENT: WEEK3, CURRENT + 1: WEEK4})
+    st = load_league_state(con, now=utc(2026, 9, 25, 12, 0))         # Thursday night game played
+    assert st.start_week == CURRENT + 1 and st.first_projection_week == CURRENT
+    res = evaluate_trade(st, 2, 1, [304], [301])
+    assert res["evaluation"]["weeks"][0] == CURRENT + 1 and res["evaluation"]["start_week_overridden"] is False
+    with pytest.raises(TradeError, match="before the earliest actionable week"):
+        evaluate_trade(st, 2, 1, [304], [301], start_week=CURRENT)
+    pre = load_league_state(con, now=utc(2026, 9, 24, 12, 0))
+    assert pre.start_week == CURRENT and evaluate_trade(pre, 2, 1, [304], [301])["evaluation"]["weeks"][0] == CURRENT
+    con.close()
+
+
+def test_ir_sensitivity_stays_separate_after_window_moves(tmp_path):
+    con = synced(tmp_path / "ir.duckdb", analytics=False)
+    kickoffs(con, {CURRENT: WEEK3, CURRENT + 1: WEEK4})
+    st = load_league_state(con, now=utc(2026, 9, 28, 12, 0))         # week 3 under way
+    assert next(p for p in st.rosters[2] if p.espn_player_id == 207).on_ir
+    res = evaluate_trade(st, 2, 1, [304], [301])
+    weeks = list(range(CURRENT + 1, FINAL + 1))
+    sens = {x["espn_player_id"]: x for x in res["team_a"]["ir_activation_sensitivity"]["players"]}
+    assert set(sens) == {207} and list(sens[207]["before_trade"]["weekly_projection"]) == weeks
+    assert sens[207]["before_trade"]["assumption"] == IR_HOLD_NOTE == res["ir_assumption"]
+    assert res["team_a"]["ir_activation_sensitivity"]["assumption"] == IR_HOLD_NOTE and IR_HOLD_NOTE in res["assumptions"]
+    for key in ("before", "after"):
+        assert all(207 not in {a["player_id"] for a in w["assignment"]} for w in res["team_a"]["lineups"][key])
+    # Canonical deltas are exactly those of a league where 207 has no projection at all.
+    blind = evaluate_trade(replace(st, projections={k: v for k, v in st.projections.items() if k != 207}),
+                           2, 1, [304], [301])
+    for side in ("team_a", "team_b"):
+        assert res[side]["deltas"] == blind[side]["deltas"]
+    con.close()
+
+
+def test_eastern_dst_fallback_matches_the_tz_database(monkeypatch):
+    import zoneinfo
+    cases = [("2026-09-10", "20:20"), ("2026-11-01", "13:00"), ("2026-10-31", "23:30"), ("2026-12-27", "16:25"),
+             ("2027-01-03", "13:00"), ("2026-03-08", "03:00")]
+    real = [kickoff_utc(d, t) for d, t in cases]
+
+    def missing(key):
+        raise zoneinfo.ZoneInfoNotFoundError(key)
+    monkeypatch.setattr(zoneinfo, "ZoneInfo", missing)
+    assert [kickoff_utc(d, t) for d, t in cases] == real

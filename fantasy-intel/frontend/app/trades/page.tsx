@@ -33,12 +33,24 @@ function tone(code: string) {
 const why = "Incomplete: a rostered player with an NFL team has no ESPN projection that week";
 const IR_WARNING = "Current IR players are excluded from canonical starting-lineup totals until activated. "
   + "ESPN future projections are shown separately as activation upside.";
+const IR_HOLD_NOTE = "Current IR status is held constant for this hypothetical evaluation. This does not predict when a "
+  + "player will return. Activation upside is shown separately and may require a roster move.";
 
 export default async function TradesPage({ searchParams }: PageProps<"/trades">) {
   const sp = await searchParams;
   const opts = await api<TradeOptions>("/api/trades/options");
   if (!opts.ok) return <ErrorBox error={opts.error} />;
   const { teams, evaluation } = opts.data;
+  const firstWeek = evaluation.start_week;
+  if (firstWeek === null || evaluation.remaining_weeks === false) {
+    return (
+      <div className="stack">
+        <div className="page-head"><h1>Trade evaluator</h1></div>
+        <Callout>{evaluation.warning ?? "No remaining fantasy scoring periods."}</Callout>
+        <p className="faint">{evaluation.start_week_reason.reason}</p>
+      </div>
+    );
+  }
   const mine = teams.find((t) => t.is_mine) ?? teams[0];
   const ta = Number(sp.ta ?? mine?.team_id);
   const tb = Number(sp.tb ?? teams.find((t) => t.team_id !== ta)?.team_id);
@@ -51,7 +63,7 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
   const hasIr = [teamA, teamB].some((t) => t?.roster.some((p) => p.on_ir));
   const ready = !!teamA && !!teamB && ta !== tb && aSends.length >= 1 && bSends.length >= 1;
   const tooMany = aSends.length > 2 || bSends.length > 2;
-  const evaluated = ready && !tooMany
+  const evaluated = ready && !tooMany && firstWeek !== null
     ? await api<TradeResult>("/api/trades/evaluate", { team_a_id: ta, team_b_id: tb, team_a_sends: aSends,
       team_b_sends: bSends, start_week: sw })
     : null;
@@ -61,13 +73,14 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
       <div className="page-head">
         <h1>Trade evaluator</h1>
         <span className="sub">
-          Projected points source: <b>ESPN</b> · Trade impact: <b>our exact lineup simulation</b> · weeks {evaluation.start_week}–{evaluation.final_week}
+          Projected points source: <b>ESPN</b> · Trade impact: <b>our exact lineup simulation</b> · weeks {firstWeek}–{evaluation.final_week}
         </span>
       </div>
       <p className="faint">
         Every remaining week, both teams&apos; optimal lineups are rebuilt before and after the trade with the league&apos;s real slots and FLEX rules.
-        Only starters count. Evaluation starts at week {evaluation.start_week}: {evaluation.start_week_reason.reason}
+        Only starters count. Evaluation starts at week {firstWeek}: {evaluation.start_week_reason.reason}
       </p>
+      {evaluation.uncertain && evaluation.warning && <Callout>{evaluation.warning}</Callout>}
 
       <form action="/trades" className="panel stack">
         <div className="row-flex">
@@ -78,9 +91,9 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
             {teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
           </select></label>
           <label>Start week <select name="sw" defaultValue={sw ?? ""}>
-            <option value="">auto ({evaluation.start_week})</option>
-            {Array.from({ length: evaluation.final_week - (evaluation.start_week_reason.espn_current_week ?? evaluation.start_week) + 1 },
-              (_, i) => (evaluation.start_week_reason.espn_current_week ?? evaluation.start_week) + i)
+            <option value="">auto ({firstWeek})</option>
+            {/* Weeks that have already kicked off are not offered: the API rejects them. */}
+            {Array.from({ length: evaluation.final_week - firstWeek + 1 }, (_, i) => firstWeek + i)
               .map((w) => <option key={w} value={w}>{w}</option>)}
           </select></label>
           <button type="submit">Evaluate</button>
@@ -114,7 +127,7 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
         </div>
       </form>
 
-      {hasIr && !(evaluated?.ok) && <Callout>{IR_WARNING}</Callout>}
+      {hasIr && !(evaluated?.ok) && <Callout>{IR_WARNING} {IR_HOLD_NOTE}</Callout>}
       {ta === tb && <Callout>Choose two different teams.</Callout>}
       {tooMany && <Callout>Each side can send at most 2 players (1-for-1, 2-for-1, 1-for-2, 2-for-2).</Callout>}
       {evaluated && !evaluated.ok && <ErrorBox error={evaluated.error} />}
@@ -145,8 +158,9 @@ function Result({ r }: { r: TradeResult }) {
         <p className="faint" style={{ marginBottom: 0 }}>
           Combined lineup delta {signed(r.result.combined_ros_delta)} · smaller-side delta {signed(r.result.min_side_ros_delta)}. {r.result.note}
         </p>
-        {r.evaluation.start_week_overridden && <p className="faint">Start week overridden: weeks {r.evaluation.weeks.join(", ")}.</p>}
-        {r.ir_warning && <Callout>{r.ir_warning}</Callout>}
+        {r.evaluation.start_week_overridden && <p className="faint">Start week overridden: weeks {r.evaluation.weeks.join(", ")}. {r.evaluation.start_week_reason.reason}</p>}
+        {r.evaluation.uncertain && r.evaluation.warning && <Callout>{r.evaluation.warning}</Callout>}
+        {r.ir_warning && <Callout>{r.ir_warning} {r.ir_assumption ?? IR_HOLD_NOTE}</Callout>}
       </section>
 
       <section className="panel">
@@ -313,6 +327,7 @@ function IrSensitivity({ r }: { r: TradeResult }) {
         Players currently in an IR slot start no canonical lineup. This shows what each would add to his team&apos;s optimal
         lineups if activated for free. It is deliberately optimistic: any roster move an activation needs is not chosen.
       </p>
+      <p className="faint">{r.ir_assumption ?? IR_HOLD_NOTE}</p>
       <div className="table-wrap">
         <table>
           <thead><tr><th>Team</th><th>Player</th><th>ESPN projected weeks</th><th>Would start</th>

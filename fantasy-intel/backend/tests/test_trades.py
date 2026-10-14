@@ -4,12 +4,13 @@ forced drops, open spots and result semantics. Pure, synthetic fantasy examples.
 League: QB, RB x2, WR x2, TE, FLEX(RB/WR/TE). Weeks 10-11 regular season, week 12 playoffs."""
 
 import copy
+from dataclasses import replace
 
 import pytest
 
 from app.analytics.lineup import lineup_slots
 from app.analytics.team_lineups import RosterPlayer, project_team
-from app.analytics.trades import LeagueState, TradeError, evaluate_trade, result_label
+from app.analytics.trades import LeagueState, NoRemainingWeeksError, TradeError, evaluate_trade, result_label
 
 SLOTS = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1})
 WEEKS = (10, 11, 12)
@@ -263,3 +264,33 @@ def test_traded_players_carry_marginal_value_and_replacement_context():
     assert rc["lineup_points_recovered"] + rc["residual_loss_vs_original"] == rc["lineup_points_lost_without_player"]
     # the hypothetical replacement never leaks into the canonical delta
     assert res["team_a"]["deltas"] == evaluate_trade(league(), 1, 2, [105], [204])["team_a"]["deltas"]
+
+
+def test_explicit_start_week_override_validation_and_labels():
+    st = league()                                                    # earliest actionable week 10
+    with pytest.raises(TradeError, match="before the earliest actionable week 10"):
+        evaluate_trade(st, 1, 2, [105], [204], start_week=9)         # would credit an already-started week
+    same = evaluate_trade(st, 1, 2, [105], [204], start_week=10)["evaluation"]
+    assert same["weeks"] == [10, 11, 12] and same["start_week_overridden"]
+    assert "equal to the earliest actionable week" in same["start_week_reason"]["reason"]
+    later = evaluate_trade(st, 1, 2, [105], [204], start_week=11)["evaluation"]
+    assert later["weeks"] == [11, 12] and later["earliest_actionable_week"] == 10
+    assert "actionable week 10 excluded" in later["start_week_reason"]["reason"]
+    auto = evaluate_trade(st, 1, 2, [105], [204])["evaluation"]
+    assert not auto["start_week_overridden"] and auto["uncertain"] is False and auto["remaining_weeks"] is True
+
+
+def test_uncertain_start_week_is_flagged_unless_overridden_past_it():
+    st = replace(league(), start_week_reason={"reason": "kickoff unknown", "uncertain": True, "warning": "may have started"})
+    auto = evaluate_trade(st, 1, 2, [105], [204])["evaluation"]
+    assert auto["uncertain"] is True and auto["warning"] == "may have started" and auto["weeks"][0] == 10
+    past = evaluate_trade(st, 1, 2, [105], [204], start_week=11)["evaluation"]
+    assert past["uncertain"] is False and past["warning"] is None
+
+
+def test_no_remaining_weeks_is_a_clear_error_and_window_is_empty():
+    st = replace(league(), start_week=None, start_week_reason={"reason": "all weeks kicked off"})
+    assert st.window().weeks == () and st.window().start is None
+    for sw in (None, 12):
+        with pytest.raises(NoRemainingWeeksError, match="all weeks kicked off"):
+            evaluate_trade(st, 1, 2, [105], [204], start_week=sw)
