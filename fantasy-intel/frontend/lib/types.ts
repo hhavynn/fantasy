@@ -264,3 +264,81 @@ export type TradeResult = {
   names: Record<string, { name: string | null; position: string | null; pro_team: string | null }>;
   projection_source: string; trade_impact_source: string; assumptions: string[]; limitations: string[];
 };
+
+// ------------------------------------------------------------ trade discovery --
+
+export type DiscoveryDeltas = {
+  ros_delta: number | null; regular_season_delta: number | null; playoff_delta: number | null;
+  known_ros_delta: number; average_weekly_delta: number | null;
+  weeks_improved: number; weeks_worsened: number; weeks_unchanged: number; weeks_incomplete: number[];
+  projection_complete: boolean;
+};
+
+export type DiscoveryUsage = { espn_player_id: number; name: string | null; position: string | null;
+  weeks_started: number[]; slots: Record<string, number> };
+
+export type DiscoverySide = {
+  team_id: number; team_name: string | null; deltas: DiscoveryDeltas;
+  before: Record<string, number | null>; after: Record<string, number | null>;
+  incoming_usage: DiscoveryUsage[]; outgoing_usage: DiscoveryUsage[];
+  displaced: { espn_player_id: number; name: string | null; position: string | null; starts_lost: number[]; starts_gained: number[] }[];
+  fit_notes: string[];
+  forced_drops: { espn_player_id: number; name: string | null; position: string | null; is_incoming: boolean }[];
+  forced_drop_lineup_cost: number | null;
+  redundant_incoming_asset: { names: string[]; lineup_points_saved_by_cutting_it: number } | null;
+  open_active_roster_spots_before: number; open_active_roster_spots: number;
+  hypothetical_fa_fill: { player: { espn_player_id: number; name: string | null; position: string | null } | null;
+    lineup_points_added?: number | null } | null;
+  incomplete: { missing_weeks: number[]; missing_players: number[] };
+  ir_activation_sensitivity: { assumption?: string; players: IrActivationPlayer[] };
+};
+
+export type ManagerContext = {
+  needs: { position: string; need_score: number | null; starters_required: number | null; rostered: number | null; healthy: number | null }[];
+  roster_construction: { position: string; count: number | null; league_average: number | null; league_comparison: string }[];
+  roster_scoring_period: number;
+  trade_history: { completed_trades: number; confidence: string; behavior: string; uneven_player_count_trades: number; rule: string };
+  headlines: { text: string; category: string; evidence: string[]; confidence: string }[];
+  note: string;
+};
+
+export type DiscoveryRow = {
+  key: string; shape: string; anchor_team_id: number; opponent_team_id: number; opponent_name: string | null;
+  sends: number[]; receives: number[]; mine: DiscoveryDeltas; theirs: DiscoveryDeltas;
+  combined_ros_delta: number | null; min_side_ros_delta: number | null;
+  forced_drops: { mine: number[]; theirs: number[] }; categories: string[]; simpler_equivalent: string | null;
+};
+
+export type DiscoveryResult = DiscoveryRow & {
+  consistent_with_manual_evaluator: boolean; result_label: string; regular_season_label: string; playoff_label: string;
+  players: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
+    injury_status: string | null; on_ir: boolean; from_team_id: number; to_team_id: number;
+    marginal_value_on_current_team: number | null }[];
+  mine_detail: DiscoverySide; theirs_detail: DiscoverySide;
+  ir_warning: string | null; ir_assumption: string;
+  manager_context: ManagerContext | null; need_notes: string[];
+};
+
+export type DiscoverySearch = {
+  candidates_considered: number; screened_out_by_upper_bound: number; survivors: number; matching_filters: number;
+  fully_evaluated: number; excluded_invalid_roster: number; excluded_missing_data: number; not_qualified: number;
+  qualified_found: number; simpler_equivalents_hidden: number; not_evaluated: number;
+  not_evaluated_reason: string | null; largest_unevaluated_upper_bound: number | null;
+  bounds_valid: boolean; exhaustive: boolean; max_exact: number; lineup_solves_stage_a: number;
+  seconds: { stage_a: number; stage_b: number }; consistency_checked: number; consistency_failures: number;
+};
+
+export type Discovery = {
+  league: { league_id: number; season: number; name: string; current_week: number; final_scoring_period: number };
+  anchor: { team_id: number; name: string; abbrev: string; is_mine: boolean };
+  teams: { team_id: number; name: string; abbrev: string; is_mine: boolean }[];
+  evaluation: { start_week: number; final_week: number; last_regular_season_week: number | null; weeks: number[];
+    uncertain: boolean; warning: string | null; start_week_reason: string | null };
+  query: { team_id: number; shapes: string[]; sort: string; category: string | null; opponent: number | null;
+    limit: number; include_equivalents: boolean };
+  results: DiscoveryResult[]; search: DiscoverySearch;
+  opponents: { opponent_team_id: number; team_name: string | null; best_my_gain: DiscoveryRow | null; best_mutual: DiscoveryRow | null }[];
+  names: Record<string, { name: string | null; position: string | null; pro_team: string | null; on_ir: boolean; injury_status: string | null }>;
+  categories: Record<string, string>; sorts: string[]; shapes: string[];
+  note: string; assumptions: string[]; limitations: string[];
+};

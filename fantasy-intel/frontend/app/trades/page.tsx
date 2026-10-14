@@ -73,7 +73,8 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
       <div className="page-head">
         <h1>Trade evaluator</h1>
         <span className="sub">
-          Projected points source: <b>ESPN</b> · Trade impact: <b>our exact lineup simulation</b> · weeks {firstWeek}–{evaluation.final_week}
+          Projected points source: <b>ESPN</b> · Trade impact: <b>our exact lineup simulation</b> · weeks {firstWeek}–{evaluation.final_week} ·{" "}
+          <Link href="/trades/discover">discover trades</Link>
         </span>
       </div>
       <p className="faint">

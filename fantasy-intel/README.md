@@ -93,6 +93,7 @@ fantasy-intel/
 | `/players`         | Search; per-player profile: underlying value vs box score, usage trend table, weekly snaps/targets/shares/aDOT/RZ/GL/xFP |
 | `/waivers`         | Available players ranked by local waiver score, with role trend, roster fit, league competition (LOW/MED/HIGH + likely competitors), recommendation, suggested drop. Filter by position / recommendation |
 | `/trades`          | Manual trade evaluator (1–2 players per side): both teams' optimal starting lineups rebuilt every remaining week before/after the trade on ESPN's projections; ROS / regular-season / playoff deltas, weekly table, starter changes, mandatory drop / open roster spot, hypothetical FA replacement, player context. No trade grade, no acceptance probability |
+| `/trades/discover` | Trade opportunity discovery: exact lineup impact for both teams across every 1-for-1 / 2-for-1 / 1-for-2 trade with every manager, sortable by projected gains, with categories, manager context and a link into the manual evaluator. No acceptance estimate |
 | `/managers`        | One card per manager: record, roster construction, waiver aggression, positional add interest, streaming, trades, confidence |
 | `/managers/[id]`   | The evidence: every metric with numerator/denominator, league mean, z-score, sample size, rule; weekly roster composition; full transaction history; failed claims |
 | `/data`            | ID-mapping summary, unmatched players, name-matched (medium confidence) players, sync history |
@@ -320,6 +321,17 @@ optimal projected lineup (`team_week_lineup_projections`, `team_ros_lineup_proje
 `GET /api/trades/options`, `GET /api/lineup-projections` (team summaries + replacement market),
 `GET /api/teams/{id}/lineup-projection` (weekly lineups + each player's marginal lineup value).
 Details: [`docs/v2_trade_evaluator.md`](docs/v2_trade_evaluator.md).
+
+## Trade opportunity discovery (V2)
+
+`GET /api/trades/discover` (and the `/trades/discover` page) searches every 1-for-1, 2-for-1 and 1-for-2 trade
+between your team (`is_mine`, or any `team_id`) and every other roster, and returns the best ones by your
+projected gain, their gain, combined gain, smaller-side gain or playoff gain, with categories (mutual
+improvement, helps me/costs them, consolidation, playoff- or regular-season-focused). Every number is the
+manual evaluator's exact lineup simulation (each shown result is re-run through it and checked); provable
+upper bounds skip candidates that cannot help you, and a best-first search returns a provably exact top K.
+Manager scouting is shown as secondary context. No trade-value chart, no new projection, no acceptance
+estimate; read-only. Details: [`docs/v2_trade_discovery.md`](docs/v2_trade_discovery.md).
 
 ## Upgrading an existing database (schema v6)
 
