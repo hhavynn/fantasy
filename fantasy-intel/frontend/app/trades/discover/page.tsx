@@ -24,6 +24,11 @@ const CATEGORY_TONE: Record<string, string> = {
   MUTUAL_PROJECTED_IMPROVEMENT: "good", IMPROVES_MINE_COSTS_THEIRS: "warn", IMPROVES_MINE_THEIRS_UNCHANGED: "info",
   CONSOLIDATION: "info", PLAYOFF_FOCUSED: "info", REGULAR_SEASON_FOCUSED: "info",
 };
+const COVERAGE: Record<string, string> = {
+  all_candidates_evaluated: "every candidate evaluated",
+  proven_by_upper_bounds: "rest proven by bounds",
+  evaluation_cap: "bounded: cap reached",
+};
 const why = "Incomplete: a rostered player with an NFL team has no ESPN projection in some week (never treated as 0)";
 
 function one(v: string | string[] | undefined): string | undefined {
@@ -139,7 +144,7 @@ function Body({ d, sort, category, opponent, equivalents }: {
           {d.shapes.map((x) => (
             <label key={x}><input type="checkbox" name="shape" value={x} defaultChecked={d.query.shapes.includes(x)} /> {x}</label>
           ))}
-          <label title="Two-player trades whose 1-for-1 sub-trade has identical deltas for both teams">
+          <label title="Two-player trades whose 1-for-1 sub-trade has identical deltas for both teams and is itself shown under the current filters">
             <input type="checkbox" name="equivalents" value="1" defaultChecked={equivalents} /> show simpler-trade equivalents</label>
           <button type="submit">Search</button>
           <Link href="/trades/discover">reset</Link>
@@ -191,15 +196,16 @@ function SearchStats({ s, limit }: { s: Discovery["search"]; limit: number }) {
       <div className="stat" title="Upper bound proves the trade cannot raise your rest-of-season or playoff starting total">
         <div className="label">Proven unable to help you</div><div className="value">{n(s.screened_out_by_upper_bound)}</div></div>
       <div className="stat"><div className="label">Fully evaluated</div><div className="value">{n(s.fully_evaluated)}</div></div>
-      <div className="stat" title={s.exhaustive ? "Every unevaluated candidate's upper bound is below the shown results" : s.not_evaluated_reason ?? ""}>
+      <div className="stat" title={s.not_evaluated_reason ?? "Every candidate matching the filters was evaluated exactly"}>
         <div className="label">Coverage</div>
-        <div className="value" style={{ fontSize: 15 }}>{s.exhaustive ? `exact top ${limit}` : "bounded (cap reached)"}</div></div>
+        <div className="value" style={{ fontSize: 15 }}>{COVERAGE[s.termination] ?? s.termination}</div>
+        <div className="faint" style={{ fontSize: 11 }}>{s.exhaustive ? `exact top ${limit}` : "not a proven top list"}</div></div>
       <p className="faint" style={{ gridColumn: "1 / -1", margin: 0 }}>
         {s.excluded_invalid_roster > 0 && <>{s.excluded_invalid_roster} excluded: no legal roster. </>}
         {s.excluded_missing_data > 0 && <>{s.excluded_missing_data} excluded: missing projections. </>}
         {s.simpler_equivalents_hidden > 0 && <>{s.simpler_equivalents_hidden} simpler-trade equivalents hidden. </>}
         {s.not_evaluated > 0 && <>{n(s.not_evaluated)} not evaluated: {s.not_evaluated_reason}. </>}
-        {!s.bounds_valid && <>A negative projection exists, so no candidate was screened out by bounds. </>}
+        {!s.bounds_valid && <>A negative projection exists, so upper bounds are not guaranteed: nothing was screened out and no bound ended the search. </>}
         {s.consistency_failures > 0
           ? <b>{s.consistency_failures} result(s) differed from the manual evaluator.</b>
           : <>All {s.consistency_checked} shown results re-checked with the manual evaluator.</>}

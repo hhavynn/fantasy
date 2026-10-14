@@ -333,7 +333,83 @@ def test_negative_projection_disables_screening_and_early_stopping():
         assert s["fully_evaluated"] == s["matching_filters"] and s["not_evaluated"] == 0   # bounds never end it
         assert [r["key"] for r in out["results"]] == [r["key"] for r in all_rows(ts, sort)[:3]]
     capped = TradeSearch(st, 1, max_exact=4).top("my_gain")["search"]
-    assert capped["exhaustive"] is False and capped["not_evaluated_reason"] == "evaluation cap reached"
+    assert capped["exhaustive"] is False and capped["termination"] == "evaluation_cap"
+    assert capped["largest_unevaluated_upper_bound"] is None          # an invalid bound proves nothing
+    assert "not a proven top list" in capped["not_evaluated_reason"]
+
+
+def test_negative_projection_where_the_best_trade_has_an_invalid_lower_bound():
+    """K -5 and D/ST -4 are forced into their slots, so dumping them raises my total (lineup totals are not
+    monotone with negative values). The best trade (K + D/ST for WR 25: +31/week) has a stage-A "bound"
+    of +26/week, below the exact +27/week of K-for-WR. Ending the search on that bound returned K-for-WR."""
+    slots = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "K": 1, "D/ST": 1})
+    a = [(101, "QB", 20), (102, "RB", 15), (103, "RB", 14), (104, "WR", 10), (105, "WR", 9), (106, "TE", 6),
+         (107, "K", -5), (108, "D/ST", -4), (109, "WR", 3)]
+    b = [(201, "QB", 18), (202, "RB", 12), (203, "RB", 11), (204, "WR", 25), (205, "WR", 8), (206, "TE", 7),
+         (207, "K", 8), (208, "D/ST", 7), (209, "WR", 2)]
+    st = replace(league({1: a, 2: b}), slots=slots)
+    ts = TradeSearch(st, 1, shapes=("1-for-1", "2-for-1"))
+    assert ts.T.negative and ts.screened_out == 0
+    best = next(c for c in ts.cands if c[:4] == ("2-for-1", 2, (107, 108), (204,)))
+    k_for_wr = next(c for c in ts.cands if c[:4] == ("1-for-1", 2, (107,), (204,)))
+    exact_best = ts.evaluate(best)["mine"]["ros_delta"]
+    exact_k = ts.evaluate(k_for_wr)["mine"]["ros_delta"]
+    assert exact_best == 93.0 and exact_k == 81.0
+    assert best[4][0] == 78.0 < exact_k < exact_best             # its bound is invalid (below its exact value)
+    assert k_for_wr[4][0] > best[4][0]                           # and below another candidate's bound
+    fresh = TradeSearch(st, 1, shapes=("1-for-1", "2-for-1"))
+    top = fresh.top("my_gain", limit=1)
+    assert [r["key"] for r in top["results"]] == ["2-for-1:2:107-108:204"]
+    assert top["search"]["termination"] == "all_candidates_evaluated" and top["search"]["exhaustive"]
+    assert top["search"]["fully_evaluated"] == top["search"]["matching_filters"] == len(fresh.cands)
+    for sort in SORTS:
+        for category in (None, *CATEGORIES):
+            got = fresh.top(sort, category, limit=3, include_redundant=True)["results"]
+            assert [r["key"] for r in got] == [r["key"] for r in all_rows(fresh, sort, category)[:3]], (sort, category)
+
+
+def test_equivalents_only_hidden_when_the_simpler_trade_is_eligible():
+    st = two_teams(extra_a=[(109, "TE", 0.5)])               # TE 0.5 never starts: a pure throw-in
+    filler, simple = "2-for-1:2:105-109:207", "1-for-1:2:105:207"
+
+    def keys(ts, **kw):
+        return [r["key"] for r in ts.top(kw.pop("sort", "my_gain"), limit=200, **kw)["results"]]
+
+    # Both eligible: the throw-in version is hidden by default, shown (and linked) with the toggle.
+    ts = TradeSearch(st, 1)
+    out = ts.top("my_gain", limit=200)
+    assert simple in keys(ts) and filler not in keys(ts) and out["search"]["simpler_equivalents_hidden"] > 0
+    shown = ts.top("my_gain", limit=200, include_redundant=True)["results"]
+    assert next(r for r in shown if r["key"] == filler)["simpler_equivalent"] == simple
+    # Same opponent filter and a category both trades belong to: still hidden.
+    assert filler not in keys(ts, opponent=2)
+    assert filler not in keys(ts, category="MUTUAL_PROJECTED_IMPROVEMENT", sort="min_side")
+    assert simple in keys(ts, category="MUTUAL_PROJECTED_IMPROVEMENT", sort="min_side")
+    # 1-for-1 not searched: nothing simpler is eligible, so the 2-for-1 is shown.
+    only = TradeSearch(st, 1, shapes=("2-for-1",))
+    o = only.top("my_gain", limit=200)
+    assert filler in [r["key"] for r in o["results"]] and o["search"]["simpler_equivalents_hidden"] == 0
+    assert next(r for r in o["results"] if r["key"] == filler)["simpler_equivalent"] is None
+    # CONSOLIDATION: a 1-for-1 can never be in it, so the qualifying 2-for-1 is shown.
+    cons = ts.top("my_gain", "CONSOLIDATION", limit=200)
+    assert filler in [r["key"] for r in cons["results"]] and cons["search"]["simpler_equivalents_hidden"] == 0
+    assert all("CONSOLIDATION" in r["categories"] for r in cons["results"])
+
+
+def test_hidden_equivalent_is_replaced_by_its_simpler_trade_even_under_the_cap():
+    # Raising a candidate's upper bound keeps it a valid bound; it makes the throw-in trade come first,
+    # and a cap of 1 then stops before the simpler trade's own turn. Hiding the throw-in must still
+    # surface the simpler trade instead of losing both.
+    st = two_teams(extra_a=[(109, "TE", 0.5)])
+    ts = TradeSearch(st, 1, max_exact=1)
+    ts.cands = [c[:4] + ((999.0, 999.0, 999.0), c[5]) if _key(*c[:4]) == "2-for-1:2:105-109:207" else c
+                for c in ts.cands]
+    out = ts.top("my_gain", limit=5)
+    assert [r["key"] for r in out["results"]] == ["1-for-1:2:105:207"]
+    assert out["search"]["fully_evaluated"] == 1 and out["search"]["simpler_equivalents_hidden"] == 1
+    assert out["search"]["termination"] == "evaluation_cap" and out["search"]["exhaustive"] is False
+    every = ts.top("my_gain", limit=5, include_redundant=True)["results"]
+    assert [r["key"] for r in every] == ["2-for-1:2:105-109:207"]
 
 
 def test_simpler_equivalents_are_hidden_but_counted():
@@ -353,7 +429,8 @@ def test_bounded_search_reports_the_cap_and_is_fast_on_a_full_league():
     ts = TradeSearch(st, 1)
     capped = TradeSearch(st, 1, max_exact=5).top("combined")
     assert capped["search"]["exhaustive"] is False and capped["search"]["fully_evaluated"] == 5
-    assert capped["search"]["not_evaluated_reason"] == "evaluation cap reached"
+    assert capped["search"]["termination"] == "evaluation_cap"
+    assert "not a proven top list" in capped["search"]["not_evaluated_reason"]
     assert capped["search"]["largest_unevaluated_upper_bound"] is not None
     outs = {s: ts.top(s, limit=25) for s in SORTS}
     elapsed = time.perf_counter() - t

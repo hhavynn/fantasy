@@ -82,10 +82,14 @@ exact delta.
 ### Stage B: exact deltas, best-first
 
 The surviving candidates are evaluated exactly in descending order of the bound on the requested sort key.
-The search stops as soon as the K-th best exact result is above every remaining bound (ties are resolved
-exactly), so the returned top K is provably the top K of all candidates; `exhaustive` is true. If the
-evaluation cap (`max_exact`, 20,000) is reached first, `exhaustive` is false and the largest unevaluated
-bound is reported.
+With valid bounds the search stops as soon as the K-th best exact result is above every remaining bound
+(ties are resolved exactly), so the returned top K is provably the top K of all candidates matching the
+filters (`termination: proven_by_upper_bounds`). When the bounds are invalid (a negative projection), no
+bound is used for anything: nothing is screened out, no category is pre-filtered by a bound, the search never
+stops on a bound, and every candidate matching the filters is evaluated (`termination:
+all_candidates_evaluated`). If the evaluation cap (`max_exact`, 20,000) is reached first, the search stops
+(`termination: evaluation_cap`, `exhaustive: false`): the results are the best among the candidates evaluated,
+not a proven top list, and the largest unevaluated bound is reported only when the bounds are valid.
 
 Exact deltas reproduce `trades.side_lineups` rule for rule on a faster totals-only solver: the same optimal
 picks summed in the same slot order with the same `sum()` (bit-identical totals, so every rounded delta,
@@ -106,15 +110,21 @@ reports `consistency_failures`, expected 0).
 
 A two-player candidate whose 1-for-1 sub-trade has identical canonical deltas for both teams (the extra player
 changes no projected lineup, e.g. a never-starting throw-in that the other side can absorb) is hidden by
-default and counted (`simpler_equivalents_hidden`); `include_equivalents=true` shows them. This is a display
-rule on exact results, not screening.
+default, but only when that simpler trade is itself eligible for the current results: 1-for-1 is one of the
+searched shapes, the simpler trade qualifies, and it belongs to the requested category (the opponent is the
+same by construction). So a 2-for-1-only search or a `CONSOLIDATION` search (which a 1-for-1 can never be in)
+shows the two-player trade. When an equivalent is hidden, its simpler trade is listed in its place (even if
+the evaluation cap stopped before the simpler trade's own turn), never both and never neither.
+`include_equivalents=true` shows the hidden trades, each linked to its simpler equivalent. Hidden trades are
+counted (`simpler_equivalents_hidden`). This is a display rule on exact results, not screening.
 
 ### What the response reports
 
 `candidates_considered`, `screened_out_by_upper_bound`, `survivors`, `matching_filters`, `fully_evaluated`,
 `excluded_invalid_roster` (no legal roster within the forced-drop limit), `excluded_missing_data`,
-`not_qualified`, `simpler_equivalents_hidden`, `not_evaluated` with the reason (proven below the K-th result,
-or the cap), `bounds_valid`, `exhaustive`, stage timings, and the consistency check. Counts other than
+`not_qualified`, `simpler_equivalents_hidden`, `not_evaluated`, `termination`
+(`proven_by_upper_bounds`, `all_candidates_evaluated` or `evaluation_cap`) with its explanation,
+`bounds_valid`, `exhaustive`, stage timings, and the consistency check. Counts other than
 `candidates_considered`/`screened_out_by_upper_bound` describe the candidates examined for the current query
 (the best-first search does not evaluate candidates that provably cannot enter the top K).
 
@@ -176,5 +186,8 @@ modification time, anchor, shapes and evaluation window, so changing the sort or
 * ESPN undroppable lists and trade-review/veto rules are not modeled.
 * Counts of qualified trades are for the candidates examined by the current query, not a census of all
   qualifying trades (most of which are lopsided "I get the better player" trades).
-* A league whose projections include negative values disables screening; the search then stays exact but
-  is bounded by the evaluation cap.
+* A league whose projections include a negative value disables all bound use; the search then evaluates
+  every matching candidate and, in a full 12-team league, reaches the evaluation cap (results are then the
+  best among 20,000 exactly evaluated candidates, reported as not exhaustive). A bound that stays valid with
+  negative values (bounding on non-negative clamped values plus the negative mass that forced slots can
+  absorb) would restore pruning; it is not implemented.

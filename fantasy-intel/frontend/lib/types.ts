@@ -324,6 +324,7 @@ export type DiscoverySearch = {
   fully_evaluated: number; excluded_invalid_roster: number; excluded_missing_data: number; not_qualified: number;
   qualified_found: number; simpler_equivalents_hidden: number; not_evaluated: number;
   not_evaluated_reason: string | null; largest_unevaluated_upper_bound: number | null;
+  termination: "all_candidates_evaluated" | "proven_by_upper_bounds" | "evaluation_cap";
   bounds_valid: boolean; exhaustive: boolean; max_exact: number; lineup_solves_stage_a: number;
   seconds: { stage_a: number; stage_b: number }; consistency_checked: number; consistency_failures: number;
 };
@@ -337,7 +338,7 @@ export type Discovery = {
   query: { team_id: number; shapes: string[]; sort: string; category: string | null; opponent: number | null;
     limit: number; include_equivalents: boolean };
   results: DiscoveryResult[]; search: DiscoverySearch;
-  opponents: { opponent_team_id: number; team_name: string | null; best_my_gain: DiscoveryRow | null; best_mutual: DiscoveryRow | null }[];
+  opponents: { opponent_team_id: number; team_name: string | null; best_my_gain: DiscoveryRow | null; best_mutual: DiscoveryRow | null; exhaustive: boolean }[];
   names: Record<string, { name: string | null; position: string | null; pro_team: string | null; on_ir: boolean; injury_status: string | null }>;
   categories: Record<string, string>; sorts: string[]; shapes: string[];
   note: string; assumptions: string[]; limitations: string[];

@@ -106,11 +106,12 @@ def discover(team_id: int | None = None,
             out = ts.top(sort, category or None, opponent, limit, include_equivalents)
             per_opp = []
             for opp in ts.opponents:
-                best = ts.top("my_gain", None, opp, 1)["results"]
-                mutual = ts.top("min_side", "MUTUAL_PROJECTED_IMPROVEMENT", opp, 1)["results"]
+                best = ts.top("my_gain", None, opp, 1)
+                mutual = ts.top("min_side", "MUTUAL_PROJECTED_IMPROVEMENT", opp, 1)
                 per_opp.append({"opponent_team_id": opp, "team_name": state.team_names.get(opp),
-                                "best_my_gain": best[0] if best else None,
-                                "best_mutual": mutual[0] if mutual else None})
+                                "best_my_gain": (best["results"] or [None])[0],
+                                "best_mutual": (mutual["results"] or [None])[0],
+                                "exhaustive": best["search"]["exhaustive"] and mutual["search"]["exhaustive"]})
         except NoRemainingWeeksError as err:
             raise HTTPException(409, str(err))
         except TradeError as err:

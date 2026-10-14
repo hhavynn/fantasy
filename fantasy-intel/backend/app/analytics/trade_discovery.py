@@ -25,8 +25,10 @@ Search (details and proofs in docs/v2_trade_discovery.md):
   bounds: then nothing is screened out and no bound ends the search.
 
   Stage B, exact canonical deltas, best-first. Survivors are evaluated in descending order of the
-  upper bound of the requested sort key; the search stops when the K-th best exact value is above
-  every remaining bound, so the returned top K is provably the true top K. Exact deltas follow
+  upper bound of the requested sort key; with valid bounds the search stops when the K-th best exact
+  value is above every remaining bound, so the returned top K is provably the true top K. With
+  invalid bounds every candidate matching the filters is evaluated; an evaluation cap ends either
+  search early and is reported (`termination`, `exhaustive`). Exact deltas follow
   trades.side_lineups rule for rule (same lineup optimum with bit-identical totals, the same
   forced-drop choice, the same completeness and rounding), on a faster totals-only solver.
 
@@ -183,7 +185,7 @@ class TradeSearch:
         self.base_complete = {t: self.T.complete(_active(state.rosters[t])) for t in [anchor, *self.opponents]}
         self.cands = self._screen()
         self.exact: dict[str, dict | None] = {}
-        self.stats = Counter()
+        self.status: dict[str, str] = {}
         self.stage_a_seconds = round(time.perf_counter() - t0, 3)
 
     # ---- stage A
@@ -304,26 +306,23 @@ class TradeSearch:
                 "forced_drops": drops}
 
     def evaluate(self, c: tuple) -> dict | None:
-        """Exact row for a stage-A candidate; None when it does not qualify (counted in stats)."""
+        """Exact row for a candidate; None when it does not qualify. Cached with its status
+        (qualified, not_qualified, excluded_missing_data, excluded_invalid_roster)."""
         shape, opp, sends, receives = c[:4]
         key = _key(shape, opp, sends, receives)
         if key in self.exact:
             return self.exact[key]
-        self.stats["fully_evaluated"] += 1
-        row = None
+        row, status = None, "not_qualified"
         try:
             mine = self._side(self.anchor, sends, receives)
             if mine["ros_delta"] is None:
-                self.stats["excluded_missing_data"] += 1
-            elif not (mine["ros_delta"] > 0 or (mine["playoff_delta"] is not None and mine["playoff_delta"] > 0)):
-                self.stats["not_qualified"] += 1
-            else:
+                status = "excluded_missing_data"
+            elif mine["ros_delta"] > 0 or (mine["playoff_delta"] is not None and mine["playoff_delta"] > 0):
                 theirs = self._side(opp, receives, sends)
-                row = self._row(shape, opp, sends, receives, mine, theirs)
-                self.stats["qualified"] += 1
+                row, status = self._row(shape, opp, sends, receives, mine, theirs), "qualified"
         except TradeError:
-            self.stats["excluded_invalid_roster"] += 1
-        self.exact[key] = row
+            status = "excluded_invalid_roster"
+        self.exact[key], self.status[key] = row, status
         return row
 
     def _row(self, shape, opp, sends, receives, mine, theirs) -> dict:
@@ -337,17 +336,20 @@ class TradeSearch:
                 "min_side_ros_delta": min(m, t) if t is not None else None,
                 "forced_drops": drops, "categories": _categories(shape, mine, theirs)}
 
-    def simpler_equivalent(self, row: dict) -> str | None:
-        """A two-player candidate whose 1-for-1 sub-trade has identical canonical deltas for both
-        teams: the extra player changes no projected lineup, so the simpler trade is shown instead."""
-        if row["shape"] == "1-for-1":
+    def simpler_equivalent(self, row: dict, category: str | None = None) -> dict | None:
+        """The 1-for-1 sub-trade with identical canonical deltas for both teams (the extra player changes
+        no projected lineup), but only when that simpler trade is itself eligible for the current results:
+        1-for-1 is a searched shape, it qualifies, and it belongs to the requested category (same
+        opponent by construction). Otherwise None, and the two-player trade is shown."""
+        if row["shape"] == "1-for-1" or "1-for-1" not in self.shapes:
             return None
         sig = ("ros_delta", "regular_season_delta", "playoff_delta")
         for s in row["sends"]:
             for t in row["receives"]:
                 sub = self.evaluate(("1-for-1", row["opponent_team_id"], (s,), (t,)))
-                if sub and all(sub[side][k] == row[side][k] for side in ("mine", "theirs") for k in sig):
-                    return sub["key"]
+                if sub and (category is None or category in sub["categories"]) and \
+                        all(sub[side][k] == row[side][k] for side in ("mine", "theirs") for k in sig):
+                    return sub
         return None
 
     # ---- ranking
@@ -359,59 +361,67 @@ class TradeSearch:
             raise TradeError(f"category must be one of {', '.join(CATEGORIES)}")
         limit = max(1, min(int(limit), MAX_LIMIT))
         t0 = time.perf_counter()
-        before = Counter(self.stats)
         pool = [c for c in self.cands if (opponent is None or c[1] == opponent) and self._may_match(c, category)]
         order = {s: i for i, s in enumerate(SHAPES)}
         pool.sort(key=lambda c: (-_bound(c, sort), order[c[0]], c[1], c[2], c[3]))
         rk = _rank_key(sort)
-        found, redundant, examined, cap_hit, last_bound = [], 0, 0, False, None
+        bounds_valid = not self.T.negative
+        found, keys, examined_keys, redundant = [], set(), [], 0
+        termination, stop_bound, stop_at = "all_candidates_evaluated", None, len(pool)
         for i, c in enumerate(pool):
             ub = _bound(c, sort)
-            if len(found) >= limit and not self.T.negative:      # invalid bounds never end the search
+            if bounds_valid and len(found) >= limit:          # invalid bounds never end the search
                 kv = _sort_value(found[limit - 1], sort)
                 if kv is not None and ub < kv - EPS:
-                    last_bound = ub
+                    termination, stop_bound, stop_at = "proven_by_upper_bounds", ub, i
                     break
-            if examined >= self.max_exact:
-                cap_hit, last_bound = True, ub
+            if len(examined_keys) >= self.max_exact:
+                termination, stop_bound, stop_at = "evaluation_cap", ub, i
                 break
-            examined += 1
+            examined_keys.append(_key(*c[:4]))
             row = self.evaluate(c)
-            if row is None or (category and category not in row["categories"]):
+            if row is None or (category and category not in row["categories"]) or row["key"] in keys:
                 continue
-            eq = self.simpler_equivalent(row)
-            if eq and not include_redundant:
+            sub = self.simpler_equivalent(row, category)
+            if sub is not None and not include_redundant:
                 redundant += 1
+                if sub["key"] not in keys:      # the eligible simpler trade is shown in its place
+                    insort(found, {**sub, "simpler_equivalent": None}, key=rk)
+                    keys.add(sub["key"])
                 continue
-            insort(found, {**row, "simpler_equivalent": eq}, key=rk)
-        else:
-            i = len(pool)
-        remaining = len(pool) - i
-        results = found[:limit]
-        delta = Counter(self.stats) - before
+            insort(found, {**row, "simpler_equivalent": sub["key"] if sub else None}, key=rk)
+            keys.add(row["key"])
+        remaining = len(pool) - stop_at
+        status = Counter(self.status[k] for k in examined_keys)
+        reason = {
+            "all_candidates_evaluated": None,
+            "proven_by_upper_bounds": f"each remaining candidate's upper bound on the sort key (largest "
+                                      f"{_r(stop_bound)}) is below the {limit}th result, so none can enter the results",
+            "evaluation_cap": f"exact-evaluation cap ({self.max_exact}) reached; the results are the best among the "
+                              "candidates evaluated, not a proven top list",
+        }[termination]
         return {
-            "results": results,
+            "results": found[:limit],
             "search": {
                 "candidates_considered": len(self.cands) + self.screened_out,
                 "screened_out_by_upper_bound": self.screened_out,
                 "survivors": len(self.cands),
                 "matching_filters": len(pool),
-                "fully_evaluated": examined,
-                "exact_evaluations_cached": len(self.exact),
-                "excluded_invalid_roster": delta["excluded_invalid_roster"],
-                "excluded_missing_data": delta["excluded_missing_data"],
-                "not_qualified": delta["not_qualified"],
-                "qualified_found": len(found) + redundant,
+                "fully_evaluated": len(examined_keys),
+                "excluded_invalid_roster": status["excluded_invalid_roster"],
+                "excluded_missing_data": status["excluded_missing_data"],
+                "not_qualified": status["not_qualified"],
+                "qualified_found": status["qualified"],
                 "simpler_equivalents_hidden": redundant,
                 "not_evaluated": remaining,
-                "not_evaluated_reason": None if not remaining else (
-                    "evaluation cap reached" if cap_hit else
-                    f"upper bound of the sort key ({_r(last_bound)}) is below the {limit}th result: "
-                    "proven unable to enter the top results"),
-                "largest_unevaluated_upper_bound": _r(last_bound) if remaining else None,
-                "bounds_valid": not self.T.negative,
-                "exhaustive": not cap_hit,
+                "termination": termination,
+                "not_evaluated_reason": reason,
+                # Only a valid bound says anything about unevaluated candidates.
+                "largest_unevaluated_upper_bound": _r(stop_bound) if remaining and bounds_valid else None,
+                "bounds_valid": bounds_valid,
+                "exhaustive": termination != "evaluation_cap",
                 "max_exact": self.max_exact,
+                "exact_evaluations_cached": len(self.exact),
                 "lineup_solves_stage_a": self.T.solves,
                 "seconds": {"stage_a": self.stage_a_seconds, "stage_b": round(time.perf_counter() - t0, 3)},
             },
