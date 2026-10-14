@@ -82,8 +82,11 @@ exact delta.
 ### Stage B: exact deltas, best-first
 
 The surviving candidates are evaluated exactly in descending order of the bound on the requested sort key.
-With valid bounds the search stops as soon as the K-th best exact result is above every remaining bound
-(ties are resolved exactly), so the returned top K is provably the top K of all candidates matching the
+With valid bounds the search stops as soon as every remaining candidate's displayed sort value is provably
+below the K-th result's: a displayed delta is rounded to 0.01, so it can exceed the exact value its bound
+applies to by 0.005 (0.015 for `combined`, which rounds a sum of two rounded deltas), and the search stops only
+when `bound + that slack` is strictly below the K-th displayed value. No remaining candidate can then tie the
+K-th result and win a tie-break, so the returned top K is provably the top K of all candidates matching the
 filters (`termination: proven_by_upper_bounds`). When the bounds are invalid (a negative projection), no
 bound is used for anything: nothing is screened out, no category is pre-filtered by a bound, the search never
 stops on a bound, and every candidate matching the filters is evaluated (`termination:
@@ -108,8 +111,9 @@ reports `consistency_failures`, expected 0).
 
 ### Simpler-trade equivalents
 
-A two-player candidate whose 1-for-1 sub-trade has identical canonical deltas for both teams (the extra player
-changes no projected lineup, e.g. a never-starting throw-in that the other side can absorb) is hidden by
+A two-player candidate whose 1-for-1 sub-trade has identical canonical effects for both teams (every aggregate
+delta, every weekly delta, completeness and the forced drops: the extra player changes no projected lineup
+and no roster move, e.g. a never-starting throw-in that the other side can absorb without a drop) is hidden by
 default, but only when that simpler trade is itself eligible for the current results: 1-for-1 is one of the
 searched shapes, the simpler trade qualifies, and it belongs to the requested category (the opponent is the
 same by construction). So a 2-for-1-only search or a `CONSOLIDATION` search (which a 1-for-1 can never be in)

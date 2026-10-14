@@ -48,7 +48,7 @@ from dataclasses import replace
 from itertools import combinations
 
 from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total
-from .team_lineups import RosterPlayer, lineup_relevant, r
+from .team_lineups import NDIGITS, RosterPlayer, lineup_relevant, r
 from .trades import (MAX_FORCED_DROPS, LeagueState, NoRemainingWeeksError, TradeError, evaluate_trade,
                      legal_roster)
 
@@ -66,7 +66,12 @@ CATEGORIES = {
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
 DEFAULT_MAX_EXACT = 20000
-EPS = 1e-6          # float tolerance on bounds; canonical deltas are rounded to 0.01
+EPS = 1e-6          # float tolerance on bounds
+HALF_UNIT = 0.5 * 10 ** -NDIGITS   # a canonical delta is rounded, so it can exceed its exact value by this much
+# How far a displayed sort value can exceed the exact value its bound applies to: one rounding for a
+# single delta (and for min_side, a min of rounded deltas); combined = round(round(mine) + round(theirs)).
+ROUNDING_SLACK = {"my_gain": HALF_UNIT, "their_gain": HALF_UNIT, "playoff_gain": HALF_UNIT,
+                  "min_side": HALF_UNIT, "combined": 3 * HALF_UNIT}
 NOTE = ("Every candidate's impact is the exact weekly optimal-lineup simulation on ESPN's projections, the same "
         "computation as the manual evaluator. Categories and orderings describe projected starting-lineup results "
         "only; they do not estimate whether a manager would accept.")
@@ -303,6 +308,7 @@ class TradeSearch:
                 "weeks_unchanged": sum(1 for x in rounded if x == 0),
                 "weeks_incomplete": [self.weeks[i] for i, k in enumerate(ok) if not k],
                 "projection_complete": ros is not None,
+                "weekly_known_deltas": [r(x) for x in d],
                 "forced_drops": drops}
 
     def evaluate(self, c: tuple) -> dict | None:
@@ -337,18 +343,17 @@ class TradeSearch:
                 "forced_drops": drops, "categories": _categories(shape, mine, theirs)}
 
     def simpler_equivalent(self, row: dict, category: str | None = None) -> dict | None:
-        """The 1-for-1 sub-trade with identical canonical deltas for both teams (the extra player changes
-        no projected lineup), but only when that simpler trade is itself eligible for the current results:
+        """The 1-for-1 sub-trade with identical canonical effects for both teams (every aggregate and
+        weekly delta and the forced drops: the extra player changes no projected lineup and no roster
+        move), but only when that simpler trade is itself eligible for the current results:
         1-for-1 is a searched shape, it qualifies, and it belongs to the requested category (same
         opponent by construction). Otherwise None, and the two-player trade is shown."""
         if row["shape"] == "1-for-1" or "1-for-1" not in self.shapes:
             return None
-        sig = ("ros_delta", "regular_season_delta", "playoff_delta")
         for s in row["sends"]:
             for t in row["receives"]:
                 sub = self.evaluate(("1-for-1", row["opponent_team_id"], (s,), (t,)))
-                if sub and (category is None or category in sub["categories"]) and \
-                        all(sub[side][k] == row[side][k] for side in ("mine", "theirs") for k in sig):
+                if sub and (category is None or category in sub["categories"]) and _same_effects(sub, row):
                     return sub
         return None
 
@@ -372,7 +377,9 @@ class TradeSearch:
             ub = _bound(c, sort)
             if bounds_valid and len(found) >= limit:          # invalid bounds never end the search
                 kv = _sort_value(found[limit - 1], sort)
-                if kv is not None and ub < kv - EPS:
+                # Every remaining displayed value is <= its bound + the rounding slack; stop only when that
+                # is strictly below the K-th displayed value, so no remaining candidate can tie or beat it.
+                if kv is not None and ub + ROUNDING_SLACK[sort] < kv - EPS:
                     termination, stop_bound, stop_at = "proven_by_upper_bounds", ub, i
                     break
             if len(examined_keys) >= self.max_exact:
@@ -455,6 +462,16 @@ class TradeSearch:
 
 DELTA_KEYS = ("ros_delta", "regular_season_delta", "playoff_delta", "known_ros_delta", "average_weekly_delta",
               "weeks_improved", "weeks_worsened", "weeks_unchanged", "weeks_incomplete", "projection_complete")
+
+
+EQUIVALENCE_KEYS = DELTA_KEYS + ("weekly_known_deltas",)
+
+
+def _same_effects(a: dict, b: dict) -> bool:
+    """Identical canonical outcome for both teams: every aggregate and weekly delta, completeness and
+    the forced drops (a different drop is a different roster effect even at zero lineup cost)."""
+    return all(a[side][k] == b[side][k] for side in ("mine", "theirs") for k in EQUIVALENCE_KEYS) \
+        and a["forced_drops"] == b["forced_drops"]
 
 
 def _r(x):

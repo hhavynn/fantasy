@@ -169,9 +169,15 @@ function Body({ d, sort, category, opponent, equivalents }: {
 
       {d.results.length === 0 ? (
         <Callout>
-          No candidate trade {category ? <>in <b>{CATEGORY_LABEL[category] ?? category}</b> </> : ""}
-          {opponent ? "with this manager " : ""}projects a positive rest-of-season or playoff gain for {d.anchor.name}.
-          Nothing is manufactured to fill the list. {s.excluded_missing_data > 0 && <>{s.excluded_missing_data} candidate(s) could not be judged because ESPN
+          {s.exhaustive ? (
+            <>No candidate trade {category ? <>in <b>{CATEGORY_LABEL[category] ?? category}</b> </> : ""}
+              {opponent ? "with this manager " : ""}projects a positive rest-of-season or playoff gain for {d.anchor.name}.</>
+          ) : (
+            <>No qualifying trade was found among the {s.fully_evaluated.toLocaleString()} evaluated candidates
+              {category ? <> in <b>{CATEGORY_LABEL[category] ?? category}</b></> : ""}
+              {opponent ? " with this manager" : ""}. The evaluation cap was reached, so unexamined trades may still qualify.</>
+          )}
+          {" "}Nothing is manufactured to fill the list. {s.excluded_missing_data > 0 && <>{s.excluded_missing_data} candidate(s) could not be judged because ESPN
           projections are missing.</>}
         </Callout>
       ) : (
