@@ -15,7 +15,8 @@ from fastapi.testclient import TestClient
 
 from app.analytics.lineup import lineup_slots
 from app.analytics.team_lineups import IR_HOLD_NOTE, RosterPlayer
-from app.analytics.trade_discovery import CATEGORIES, SHAPES, SORTS, TradeSearch, _key, _rank_key, detail
+from app.analytics.trade_discovery import (CATEGORIES, SHAPES, SORTS, TradeSearch, _key, _rank_key, _same_effects,
+                                          detail)
 from app.analytics.trades import LeagueState, NoRemainingWeeksError, TradeError, evaluate_trade, side_lineups
 from app.db.connection import connect, fetch_dicts
 
@@ -410,6 +411,46 @@ def test_hidden_equivalent_is_replaced_by_its_simpler_trade_even_under_the_cap()
     assert out["search"]["termination"] == "evaluation_cap" and out["search"]["exhaustive"] is False
     every = ts.top("my_gain", limit=5, include_redundant=True)["results"]
     assert [r["key"] for r in every] == ["2-for-1:2:105-109:207"]
+
+
+def test_cutoff_accounts_for_rounding_of_the_kth_value():
+    """ESPN projections carry more than two decimals. WR2-for-302 is +11.994 exact (shown +11.99) and has the
+    higher bound, so it is evaluated first; WR2-for-301 is +11.98599 exact, also shown +11.99, and wins the
+    tie-break (lower player id). Its bound 11.98599 is below the rounded K-th value 11.99, so comparing the
+    bound with the rounded value ended the search one candidate too early and returned the wrong trade."""
+    st = league({1: [(101, "QB", 20), (102, "RB", 10), (103, "RB", 9), (104, "WR", 8), (105, "WR", 2.0),
+                     (106, "TE", 5)],
+                 2: [(201, "QB", 18), (301, "WR", 5.99533), (302, "WR", 5.998)]})
+    ts = TradeSearch(st, 1, shapes=("1-for-1",))
+    out = ts.top("my_gain", limit=1)
+    assert [r["key"] for r in out["results"]] == ["1-for-1:2:105:301"]
+    assert [r["key"] for r in out["results"]] == [r["key"] for r in all_rows(ts, "my_gain")[:1]]
+    a, b = (ts.evaluate(next(c for c in ts.cands if c[3] == (pid,) and c[2] == (105,))) for pid in (301, 302))
+    assert a["mine"]["ros_delta"] == b["mine"]["ros_delta"] == 11.99 and a["combined_ros_delta"] == b["combined_ros_delta"]
+    for sort in SORTS:
+        for k in (1, 2, 3):
+            got = TradeSearch(st, 1, shapes=("1-for-1",)).top(sort, limit=k, include_redundant=True)
+            assert [r["key"] for r in got["results"]] == [r["key"] for r in all_rows(ts, sort)[:k]], (sort, k)
+
+
+def test_equivalence_requires_identical_weekly_and_forced_drop_effects():
+    # Forced drop: B is full, so the throw-in version makes B drop RB 0.2 (zero lineup cost, same deltas
+    # everywhere). A different roster move is a different trade: it is shown, not hidden.
+    st = two_teams(capacity=9, extra_a=[(109, "TE", 0.5)], extra_b=[(209, "RB", 0.2)])
+    ts = TradeSearch(st, 1)
+    keys = [r["key"] for r in ts.top("my_gain", limit=200)["results"]]
+    r_ = ts.evaluate(next(c for c in ts.cands if c[:4] == ("2-for-1", 2, (105, 109), (207,))))
+    s_ = ts.evaluate(next(c for c in ts.cands if c[:4] == ("1-for-1", 2, (105,), (207,))))
+    assert r_["forced_drops"]["theirs"] in ([203], [209]) and s_["forced_drops"]["theirs"] == []
+    assert all(r_[side][k] == s_[side][k] for side in ("mine", "theirs")
+               for k in ("ros_delta", "regular_season_delta", "playoff_delta", "weekly_known_deltas"))
+    assert r_["key"] in keys and s_["key"] in keys and ts.simpler_equivalent(r_) is None
+    # Weekly pattern: the same aggregates with different weeks (e.g. +4 / -4 within the regular season)
+    # are not equivalent either.
+    same = copy.deepcopy(s_)
+    moved = copy.deepcopy(s_)
+    moved["theirs"]["weekly_known_deltas"] = [x + d for x, d in zip(s_["theirs"]["weekly_known_deltas"], (4.0, -4.0, 0.0))]
+    assert _same_effects(s_, same) and not _same_effects(s_, moved)
 
 
 def test_simpler_equivalents_are_hidden_but_counted():
