@@ -140,13 +140,27 @@ Investigated / caveats:
 
 `load_player_stats`, `load_snap_counts`, `load_injuries`, `load_schedules`,
 `load_rosters_weekly`, `load_depth_charts`, `load_ff_opportunity` (expected
-fantasy points), `load_ff_playerids`, `load_players`, and `load_pbp` (aggregated
-to red-zone / goal-line usage and team opportunity totals; the full play-by-play
+fantasy points), `load_ff_playerids`, `load_players`, `load_pfr_advstats`
+(rush/rec/pass: contact yards, broken tackles, pressures), `load_nextgen_stats`
+(rushing/receiving, qualified players only), `load_ftn_charting` (read
+progression; numeric codes experimental), and `load_pbp` (aggregated into player-week usage, offensive
+team-week environment and defensive team-week counts; the raw play-by-play
 table is not stored).
+
+**Every NFL metric definition is specified and verified in
+[`docs/nfl_metrics_verified_contract.md`](docs/nfl_metrics_verified_contract.md)**
+(authoritative; `docs/nfl_fantasy_metrics_research.md` is background research).
 
 - **Route participation / routes run: unavailable.** nflverse participation data
   (`load_participation`) is not published for the in-progress season, so the app
   shows `unavailable` rather than approximating it. Snap share is shown instead.
+  It is **not** approximated from FTN read codes either. Man/zone splits are unavailable.
+- **FTN `read_thrown` numeric codes are UNVERIFIED.** The nflreadr dictionary documents
+  `"0"` = primary read, but observed data conflicts; clarification is pending in
+  nflverse/nflreadr#325. The app stores raw per-code counts and shows the code-`"1"` share
+  only as an experimental field. It's never used in scores, signals or waivers (contract §3).
+- **NGS** rows exist only for qualified players; missing NGS values stay NULL.
+- **PFR advanced stats** lag the games by a few days; unpublished weeks are NULL.
 - nflverse data typically lags games by a day; the header shows "stats thru wk N".
 
 ### ID mapping (ESPN → nflverse gsis)
@@ -162,58 +176,109 @@ Players are never joined by display name when an ID exists.
 ## Derived metrics (all in `backend/app/analytics`, all unit-tested)
 
 ### Player usage (`player_week_usage`, one row per player-game)
-snap share (`offense_pct`), targets, target share, receptions, receiving yards,
-air yards, **aDOT** = air yards / targets (missing when 0 targets), WOPR,
-carries, **rush share** = carries / team carries (designed runs + scrambles, no
-kneels/2-pt), yards per carry, red-zone targets/carries (yardline ≤ 20), goal-line
-carries (≤ 5), opportunities = targets + carries, nflverse PPR points, ESPN league
-points, **xFP** (nflverse expected PPR points from the role).
+snap share, targets, **target share (targets / team targets)**, air yards, air-yard
+share, WOPR, **aDOT** (missing when 0 targets), carries (official, includes kneels),
+**team_rush_share** (rush plays incl. scrambles, excl. kneels/2-pt ÷ team rush plays),
+**backfield_rush_share** (RBs: designed rushes ÷ team RB designed rushes; scrambles
+never count), rushing success rate and explosive-run rate (designed rushes), PFR
+yards before/after contact per attempt and broken tackles, red-zone targets,
+red-zone and goal-line carries (designed rushes ≤ 20 / ≤ 5), FTN designed and checkdown targets, raw
+FTN read-code counts (experimental code-"1" share, not used in any score), NGS rush yards over expected / separation (NULL when NGS has no
+row), opportunities, nflverse PPR, ESPN league points, nflverse xFP.
 
-A player with snaps but no box-score line is a measured zero; a player with no
-snap record has *unknown* snap share; bye/inactive weeks are skipped, never zero.
+A player with snaps but no box-score line is a measured zero; a game a source
+didn't cover is NULL; bye/inactive weeks are skipped, never zero.
 
 ### Underlying value vs box score (`player_scores`)
-- **Trend**: recent games (last 2, or last 3 once a player has 6+ games) vs his
-  earlier games. Needs ≥ 4 games. Per-metric thresholds (e.g. snap share ±8 pts,
-  target share ±4 pts, xFP ±2.0). Composite = mean of clamped delta/threshold → UP/FLAT/DOWN.
-- **Opportunity score** 0-10: position percentile of recent xFP/game.
-- **Production score** 0-10: position percentile of recent PPR/game.
-- **Value gap**: season PPR/g − xFP/g; ≥ max(2.5, 20% of xFP) → *production exceeds usage*
-  (regression risk), ≤ −that → *usage exceeds production* (buy-low).
-- **Classification**: BUY / HOLD / SELL / MONITOR (<3 games). Reasons are stored.
-- **Value score** 0-10 = 0.75·opportunity + 0.25·production + 1.0·trend.
+- **Opportunity basis** is stored and shown everywhere: `xfp`, or `targets+carries`
+  when xFP is missing (percentiles are computed separately per basis). Waivers add
+  `espn_points` (K/D/ST, unmatched players) and `unavailable`.
+- **Opportunity tier** (absolute, per position): recent xFP/game HIGH / MEDIUM at
+  QB 17 / 13, RB 12 / 7, WR 12 / 7, TE 9 / 5 (targets+carries basis: RB 15 / 9,
+  WR 7 / 4, TE 5 / 3).
+- **Role trend**: recent vs earlier games on snap share, target share / backfield
+  share / team rush share, volume and xFP; UP / FLAT / DOWN (needs ≥ 4 games).
+- **Value gap**: season PPR/g − xFP/g; ≥ max(2.5, 20% of xFP) → production exceeds usage.
+- **Market signal**: BUY / SELL / HOLD / WATCH / MONITOR. A rising role on a LOW
+  tier is only **WATCH**; BUY needs a MEDIUM/HIGH role that is rising (without
+  production outrunning it) or under-producing its role. SELL = production
+  outrunning the role (on any tier if the box score is fantasy-relevant) or a
+  shrinking role with a strong box score.
+
+### Player context (`player_context`, `team_context`, `defense_context`)
+Transparent, position-aware labels with their evidence (no master score): role,
+role trend, efficiency (RB: YAC/att + success-rate percentiles with a ≥ 30-carry
+sample; others: PPR vs xFP), scoring opportunity, run blocking (RB YBC), offensive
+environment (next implied team total), matchup (opponent's season-to-date EPA
+allowed rank, 1 = most generous; ≥ 3 games required) and data confidence. Team
+context: PROE, neutral pass rate, sack rate, hit-or-sack rate (never `hit + sack`),
+PFR pressure rate, implied team total (`(total ± spread) / 2`, positive spread =
+home favored). Defense context: pass/rush EPA allowed, rush success and explosive
+runs allowed, RB/TE target share allowed, all as season-to-date sums with sample sizes.
 
 ### Manager tendencies (`manager_metrics`, `manager_classifications`)
 transactions/adds/drops per week, roster churn rate (adds ÷ roster spots),
-positional add shares (QB/RB/WR/TE/K/D/ST), average QBs/RBs/WRs/TEs rostered,
-streaming rate per position (pickups/week) + starter turnover, rookie add rate,
-average hold length of added players, quick-drop rate (dropped within 7 days),
-injury replacement rate (added while a same-position player was Out/Doubtful/IR),
-trade count, 2-for-1 (uneven) trades, players sent/received, IR moves, FAAB spent %.
+positional add shares, average QBs/RBs/WRs/TEs rostered, pickups per week, starter
+turnover, distinct starters and short-hold share per position, rookie add rate,
+average hold length, quick-drop rate, injury replacement rate (newest same-week
+injury report), trade count (activity feed ∪ transactions, deduplicated by leg set
+within 3 days, provenance kept), 2-for-1 trades, players sent/received, IR moves,
+FAAB spent %.
 
-Labels are **league-relative**: HIGH if ≥ 0.75 SD above the league mean (with an
-absolute floor for HIGH; zero is always LOW), LOW if ≤ 0.75 SD below. Trade
-activity uses absolute counts. Each label carries its value, league mean/std,
-z-score, sample size and **confidence** (LOW below the minimum sample →
-`INSUFFICIENT`, MEDIUM below 2× minimum, else HIGH). One transaction never
-establishes a tendency.
+**Streaming** (QB/TE/K/D/ST) requires the *starter* to rotate: HIGH needs starter
+turnover ≥ 50%, ≥ 3 distinct starters and ≥ 2 pickups; MEDIUM needs turnover ≥ 25%
+and ≥ 2 starters. Frequent speculative adds behind a fixed starter are LOW.
+Other labels are league-relative (±0.75 SD with absolute floors); every label keeps
+its value, league mean/std, sample size, confidence and rule.
 
 ### Waiver engine (`waiver_recommendations`, `team_position_needs`)
-- **Opportunity** = player opportunity score ± 1 for role trend − 3 if Out/IR.
-  K/D/ST and unmapped players fall back to ESPN league-points percentile ("limited model").
-- **Positional need** per team = 0.55·shortage of healthy bodies + 0.45·gap
-  between that team's starters and the league-average starter.
-- **Roster fit** = 10·(0.35·need + 0.35·upgrade over your weakest starter +
-  0.30·upgrade over the suggested drop × depth utility), where depth utility is
-  1.0 for RB/WR, 0.3 for QB/TE, 0.15 for K/D/ST.
-- **Suggested drop** = your lowest-value bench player whose loss keeps every
-  position startable (never IR, never a starter).
-- **League interest** per manager = 0.4·their need + 0.25·their historical add rate
-  at the position + 0.2·waiver aggression + 0.15·FAAB/priority remaining → bucketed
-  LOW / MEDIUM / HIGH with the top 3 likely competitors and why. Not a probability.
-- **Recommendation**: score = 0.55·opportunity + 0.45·fit (+ small scarcity bonus).
-  CLAIM needs score ≥ 6.0, fit ≥ 3.0 and must beat the suggested drop by ≥ 0.5
-  value; WAIT ≥ 4.5; else IGNORE. Injured players are never CLAIM.
+- **Lineup model**: each team's optimal lineup is assigned slot by slot: fixed
+  slots first, then FLEX / RB-WR / WR-TE / OP by exact search. A FLEX is **one**
+  slot (2 RB + 2 WR + 1 FLEX = 5 starters), never an extra RB and an extra WR.
+- **Availability**: AVAILABLE 1.0, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0
+  (most severe of ESPN status, IR slot, current-week NFL report). These are risk
+  discounts, not play probabilities, and they're stored with each need.
+- **Positional need** = 0.55·min(1, 2·shortage of availability-weighted bodies vs
+  depth target) + 0.45·gap between the team's starters at the position (every lineup starter whose
+  player position matches, including FLEX/OP-assigned ones) and the league average.
+- **Roster fit** = 10·(0.35·need + 0.35·clamp(lineup gain / 3) + 0.30·upgrade over
+  the suggested drop × depth utility); lineup gain is the actual change in the
+  optimal lineup's value if the player is added.
+- **Suggested drop** = lowest-value non-starter (not IR) whose removal leaves every
+  fixed slot fillable.
+- **Opportunity** = player opportunity score ± 1 for role trend, minus 0.5 / 2 / 3
+  for Questionable / Doubtful / Out-IR. Explanations name the true basis and
+  include context lines (e.g. "82% backfield rush share over last 2 games",
+  "opponent bottom-third defense by rush epa allowed").
+- **League interest** = LOW / MEDIUM / HIGH with likely competitors (not a probability).
+- **Recommendation**: score = 0.55·opportunity + 0.45·fit (+ scarcity bonus when he'd
+  help). CLAIM needs score ≥ 6.0, fit ≥ 3.0 and must beat the drop by ≥ 0.5 value;
+  WAIT ≥ 4.5; else IGNORE. Unavailable players are never CLAIM.
+
+### Validation
+Each analytics run validates the NFL pipeline. **Errors** (logical corruption:
+shares outside 0..1, receptions > targets, goal-line > red-zone carries, red-zone >
+carries/targets, duplicate keys, hit-or-sack outside [sacks, dropbacks], bad
+implied-total arithmetic, negative broken tackles) roll the run back. **Warnings**
+(odd but possible: negative xFP, extreme PROE, unusual air-yard share or play counts,
+extreme contact metrics, target shares not summing to 1, the observed FTN read-code distribution (descriptive; semantics unresolved), missing
+NGS rows, ESPN→GSIS mapping failures, rejected team-snap estimates) are kept and
+shown on `/data`.
+
+## Upgrading an existing database (schema v3)
+
+The analytics-hardening release bumps the DuckDB schema to **v3** (v2: new metrics;
+v3: FTN read-code columns renamed to `ftn_read*`). On the first
+read-write open (any sync script), derived tables are dropped and recreated; raw
+ESPN and nflverse tables are kept. Then rebuild:
+
+```bash
+cd backend
+uv run python ../scripts/sync_nfl.py      # rebuilds PBP/PFR/FTN/NGS-derived tables + analytics
+uv run python ../scripts/sync_espn.py     # optional: refresh league + recompute waivers/managers
+```
+
+Until then the API returns a 503 asking you to re-sync.
 
 ---
 
@@ -224,12 +289,16 @@ cd backend
 uv run pytest
 ```
 
-Covers: schema init, idempotent ESPN sync (re-run → identical rows; changed
-status replaces, dropped player disappears from the current snapshot), SWID
-team detection, missing-vs-zero handling, ID mapping (crosswalk, name fallback,
-ambiguity, D/ST, conflicts), trend windows/labels, value-gap + classification
-rules, manager metrics + sample-size gating, waiver needs/drop/fit/claim logic,
-and an end-to-end API smoke test.
+Covers: schema init + v2 migration, idempotent ESPN sync, SWID handling,
+missing-vs-zero handling, ID mapping, lineup assignment (FLEX counted once; FLEX
+picks the best RB/WR/TE; non-nested flex slots; superflex), team vs backfield rush
+share, kneel / two-point / scramble filters, hit-or-sack without double counting,
+FTN read codes kept experimental and isolated from scoring, uncharted games, latest same-week injury report,
+Doubtful/Questionable availability in needs, opportunity basis in explanations,
+market signals (tiny rising role → WATCH, strong rising role → BUY, etc.),
+streaming requiring starter turnover, trade-source union/dedup, target-share sums,
+NGS NULLs, implied-total sign/arithmetic, team/defense aggregation keys,
+validation errors vs warnings, and an end-to-end API smoke test.
 
 ## Troubleshooting
 

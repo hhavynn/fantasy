@@ -8,7 +8,9 @@ type MapRow = {
   nfl_name: string | null; nfl_team: string | null; match_method: string; match_confidence: string; notes: string | null;
   availability_status?: string | null; percent_owned?: number | null;
 };
+type Issue = { severity: string; check_name: string; detail: string; count: number; examples: unknown[] };
 type DQ = {
+  validation_issues: Issue[]; schema_version: number | null;
   mapping_summary: { match_method: string; match_confidence: string; n: number }[];
   unmatched: MapRow[]; medium_confidence: MapRow[]; conflicts: MapRow[];
   sync_runs: { run_id: string; source: string; started_at: string; finished_at: string | null; status: string; message: string | null }[];
@@ -49,6 +51,24 @@ export default async function DataQualityPage() {
           </table>
         </section>
       </div>
+      <section className="panel">
+        <h2>Validation (latest analytics run) · schema v{d.schema_version ?? "?"}</h2>
+        {d.validation_issues.length === 0 ? <p className="faint">No validation issues.</p> : (
+          <table>
+            <thead><tr><th>Severity</th><th>Check</th><th>Detail</th><th className="num">Count</th><th>Examples</th></tr></thead>
+            <tbody>
+              {d.validation_issues.map((i) => (
+                <tr key={i.check_name}>
+                  <td><Badge value={i.severity.toUpperCase()} tone={i.severity === "error" ? "bad" : "warn"} /></td>
+                  <td className="mono">{i.check_name}</td><td className="wrap">{i.detail}</td>
+                  <td className="num">{i.count}</td><td className="wrap faint mono">{JSON.stringify(i.examples).slice(0, 160)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="faint" style={{ marginTop: 8 }}>Errors (logical corruption) abort the analytics run; warnings are statistically odd but kept.</p>
+      </section>
       <MapTable title="Unmatched players (rostered first, then by ownership)" rows={d.unmatched} />
       <MapTable title="Name-matched players (medium confidence: verify)" rows={d.medium_confidence} />
       {d.conflicts.length > 0 && <MapTable title="Conflicting crosswalks" rows={d.conflicts} />}

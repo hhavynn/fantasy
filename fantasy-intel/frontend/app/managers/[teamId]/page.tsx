@@ -120,7 +120,7 @@ export default async function ManagerDetail({ params }: PageProps<"/managers/[te
                     <td className="faint">{p.lineup_slot}</td>
                     <td><PlayerLink id={p.espn_player_id} name={p.full_name} /> <Pos value={p.position} /></td>
                     <td>{p.injury_status && !["ACTIVE", "NORMAL"].includes(p.injury_status) ? <Badge value={p.injury_status} /> : ""}</td>
-                    <td><Badge value={p.classification} /></td>
+                    <td><Badge value={p.market_signal} /></td>
                     <td className="num">{num(p.value_score)}</td>
                   </tr>
                 ))}

@@ -18,6 +18,11 @@ POSITIONS = ["QB", "RB", "WR", "TE", "K", "D/ST"]
 STREAM_POSITIONS = ["QB", "TE", "K", "D/ST"]
 Z_HIGH = 0.75
 QUICK_DROP_DAYS = 7
+SHORT_HOLD_DAYS = 14
+
+# Streaming = the *starter* actually rotates, not just speculative pickups.
+STREAM_HIGH = {"turnover": 0.5, "distinct": 3, "pickups": 2}
+STREAM_MEDIUM = {"turnover": 0.25, "distinct": 2}
 
 
 def pos_key(pos: str | None) -> str:
@@ -76,16 +81,24 @@ def hold_lengths(adds: list[dict], drops: list[dict]) -> dict[int, dict]:
     return out
 
 
-def starter_turnover(lineups: list[dict], team_id: int, position: str) -> tuple[int, int]:
-    """(# week transitions where the set of starters at `position` changed, # transitions)."""
+def starter_history(lineups: list[dict], team_id: int, position: str) -> dict[int, frozenset]:
     by_period: dict[int, frozenset] = {}
     for r in lineups:
         if r["team_id"] == team_id and r["is_starter"] and r.get("position") == position:
-            by_period.setdefault(r["period"], frozenset())
-            by_period[r["period"]] = by_period[r["period"]] | {r["espn_player_id"]}
+            by_period[r["period"]] = by_period.get(r["period"], frozenset()) | {r["espn_player_id"]}
+    return by_period
+
+
+def starter_turnover(lineups: list[dict], team_id: int, position: str) -> tuple[int, int]:
+    """(# week transitions where the set of starters at `position` changed, # transitions)."""
+    by_period = starter_history(lineups, team_id, position)
     periods = sorted(p for p, s in by_period.items() if s)
     changes = sum(1 for a, b in zip(periods, periods[1:]) if by_period[a] != by_period[b])
     return changes, max(0, len(periods) - 1)
+
+
+def distinct_starters(lineups: list[dict], team_id: int, position: str) -> int:
+    return len(set().union(*starter_history(lineups, team_id, position).values()) or set())
 
 
 def compute_metrics(inp: ManagerInputs) -> list[dict]:
@@ -152,13 +165,21 @@ def compute_metrics(inp: ManagerInputs) -> list[dict]:
             total = sum(v for (p, ps), v in pos_counts[tid].items() if ps == pos)
             m.append(_metric(tid, f"avg_{pos_key(pos)}s_rostered", _rate(total, n_periods), total, n_periods,
                              n_periods, "players", f"Average {pos}s on roster per weekly snapshot"))
+        h_all = holds[tid]
         for pos in STREAM_POSITIONS:
             k = pos_key(pos)
-            m.append(_metric(tid, f"stream_{k}_rate", pos_counter[pos] / weeks, pos_counter[pos], weeks, weeks,
-                             "adds/week", f"{pos} pickups per scoring period"))
+            m.append(_metric(tid, f"{k}_pickups_per_week", pos_counter[pos] / weeks, pos_counter[pos], weeks, weeks,
+                             "adds/week", f"{pos} pickups per scoring period (not by itself streaming)"))
             ch, tr = starter_turnover(inp.lineups, tid, pos)
             m.append(_metric(tid, f"starter_turnover_{k}", _rate(ch, tr), ch, tr, tr, "share",
                              f"Share of week-to-week transitions where the starting {pos} changed"))
+            m.append(_metric(tid, f"distinct_starters_{k}", distinct_starters(inp.lineups, tid, pos), n=tr,
+                             unit="players", desc=f"Different players started at {pos} this season"))
+            pos_ids = {a["espn_player_id"] for a in adds if a.get("position") == pos}
+            done = [c for c in h_all["completed"] if c["espn_player_id"] in pos_ids]
+            short = sum(1 for c in done if c["days"] <= SHORT_HOLD_DAYS)
+            m.append(_metric(tid, f"short_hold_share_{k}", _rate(short, len(done)), short, len(done), len(done),
+                             "share", f"Share of completed {pos} holds lasting <= {SHORT_HOLD_DAYS} days"))
         rookie_known = [a for a in adds if a.get("is_rookie") is not None and a.get("position") != "D/ST"]
         n_rookie = sum(1 for a in rookie_known if a["is_rookie"])
         m.append(_metric(tid, "rookie_add_rate", _rate(n_rookie, len(rookie_known)), n_rookie, len(rookie_known),
@@ -211,10 +232,10 @@ DIMENSIONS: dict[str, dict[str, Any]] = {
     "wr_interest": dict(metric="wr_add_share", min=5, mode="z", floor=0.25, title="WR add interest"),
     "te_interest": dict(metric="te_add_share", min=5, mode="z", floor=0.15, title="TE add interest"),
     "rb_hoarding": dict(metric="avg_rbs_rostered", min=2, mode="z", floor=None, title="RB hoarding"),
-    "qb_streaming": dict(metric="stream_qb_rate", min=3, mode="z", floor=0.2, title="QB streaming"),
-    "te_streaming": dict(metric="stream_te_rate", min=3, mode="z", floor=0.2, title="TE streaming"),
-    "dst_streaming": dict(metric="stream_dst_rate", min=3, mode="z", floor=0.3, title="D/ST streaming"),
-    "k_streaming": dict(metric="stream_k_rate", min=3, mode="z", floor=0.3, title="K streaming"),
+    "qb_streaming": dict(metric="starter_turnover_qb", pos="qb", min=3, mode="stream", title="QB streaming"),
+    "te_streaming": dict(metric="starter_turnover_te", pos="te", min=3, mode="stream", title="TE streaming"),
+    "dst_streaming": dict(metric="starter_turnover_dst", pos="dst", min=3, mode="stream", title="D/ST streaming"),
+    "k_streaming": dict(metric="starter_turnover_k", pos="k", min=3, mode="stream", title="K streaming"),
     "injury_response": dict(metric="injury_replacement_rate", min=5, mode="z", floor=0.2, title="Injury replacement"),
     "rookie_interest": dict(metric="rookie_add_rate", min=5, mode="z", floor=0.2, title="Rookie interest"),
     "trade_activity": dict(metric="trade_count", min=3, mode="abs", thresholds=(1, 2), title="Trade activity"),
@@ -250,6 +271,8 @@ def classify_metrics(metric_rows: list[dict]) -> list[dict]:
             if v is None or n < cfg["min"]:
                 label = "INSUFFICIENT"
                 rule = f"Needs sample >= {cfg['min']} (have {n})."
+            elif cfg["mode"] == "stream":
+                label, rule = stream_label(by_metric, tid, cfg["pos"], v)
             elif cfg["mode"] == "abs":
                 lo, hi = cfg["thresholds"]
                 label = "HIGH" if v >= hi else "MEDIUM" if v >= lo else "LOW"
@@ -275,3 +298,24 @@ def classify_metrics(metric_rows: list[dict]) -> list[dict]:
                 "min_sample": cfg["min"], "confidence": confidence(n, cfg["min"]), "rule": rule,
             })
     return out
+
+
+def stream_label(by_metric: dict, team_id: int, k: str, turnover: float) -> tuple[str, str]:
+    """Streaming needs the starter to actually rotate; pickups alone are not enough."""
+    def val(name):
+        r = by_metric.get(name, {}).get(team_id)
+        return (r or {}).get("value") or 0
+    distinct, pickups = val(f"distinct_starters_{k}"), val(f"{k}_pickups_per_week") * val("weeks_observed")
+    short = by_metric.get(f"short_hold_share_{k}", {}).get(team_id, {}).get("value")
+    evidence = (f"starter turnover {turnover:.0%}, {int(distinct)} distinct starters, {int(round(pickups))} pickups"
+                + (f", {short:.0%} of holds <= {SHORT_HOLD_DAYS}d" if short is not None else ""))
+    if turnover >= STREAM_HIGH["turnover"] and distinct >= STREAM_HIGH["distinct"] and pickups >= STREAM_HIGH["pickups"]:
+        label = "HIGH"
+    elif turnover >= STREAM_MEDIUM["turnover"] and distinct >= STREAM_MEDIUM["distinct"]:
+        label = "MEDIUM"
+    else:
+        label = "LOW"
+    rule = (f"Absolute: HIGH if starter turnover >= {STREAM_HIGH['turnover']:.0%}, >= {STREAM_HIGH['distinct']} distinct "
+            f"starters and >= {STREAM_HIGH['pickups']} pickups; MEDIUM if turnover >= {STREAM_MEDIUM['turnover']:.0%} "
+            f"and >= {STREAM_MEDIUM['distinct']} starters. Evidence: {evidence}")
+    return label, rule

@@ -6,7 +6,9 @@ from collections import defaultdict
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..db.connection import table_exists
+from ..analytics.availability import availability, injury_order_sql, latest_injuries
+from ..analytics.context import ftn_semantics
+from ..db.connection import schema_version, table_exists
 from .deps import db, one, rows
 
 router = APIRouter(prefix="/api")
@@ -15,7 +17,8 @@ PLAYER_COLS = """
     fp.espn_player_id, fp.full_name, fp.position, fp.pro_team, fp.injury_status, fp.availability_status,
     fp.on_team_id, fp.percent_owned, fp.percent_change, fp.season_points, fp.season_avg_points,
     m.gsis_id, m.match_method, m.match_confidence,
-    s.games, s.opportunity_score, s.production_score, s.usage_trend_score, s.trend_label,
+    s.games, s.opportunity_basis, s.opportunity_tier, s.role_trend, s.market_signal,
+    s.opportunity_score, s.production_score, s.usage_trend_score, s.trend_label,
     s.fp_per_game, s.xfp_per_game, s.fp_minus_xfp, s.value_gap_label, s.classification, s.value_score
 """
 PLAYER_JOINS = """
@@ -78,13 +81,7 @@ def _roster(con, league_id: int, season: int, week: int, team_id: int) -> list[d
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ? AND l.team_id = ?
         ORDER BY l.is_starter DESC, l.lineup_slot_id, fp.full_name
     """, [league_id, season, week, team_id])
-    inj = {}
-    if table_exists(con, "nfl_injuries"):
-        for r in rows(con, """
-            SELECT gsis_id, week, report_status, report_primary_injury, practice_status FROM (
-              SELECT *, row_number() OVER (PARTITION BY gsis_id ORDER BY week DESC) rn
-              FROM nfl_injuries WHERE season = ?) WHERE rn = 1""", [season]):
-            inj[r["gsis_id"]] = r
+    inj = latest_injuries(con, season)  # newest report: week, then date_modified when available
     playing: set[str] = set()
     if table_exists(con, "nfl_schedules"):
         playing = {r["t"] for r in rows(con, """
@@ -93,6 +90,8 @@ def _roster(con, league_id: int, season: int, week: int, team_id: int) -> list[d
                                          [season, week, season, week])}
     for p in roster:
         p["nfl_injury"] = inj.get(p["gsis_id"]) if p["gsis_id"] else None
+        report = p["nfl_injury"]["report_status"] if p["nfl_injury"] and p["nfl_injury"]["week"] == week else None
+        p["availability"] = availability(p["injury_status"], p["lineup_slot_id"], report)
         # None = schedule unknown; otherwise whether his NFL team has no game this week
         p["on_bye"] = (bool(p["pro_team"]) and p["pro_team"] not in playing) if playing else None
     return roster
@@ -197,8 +196,8 @@ def player_detail(espn_player_id: int):
                       [season, p["gsis_id"]]) if p["gsis_id"] else []
         league_pts = rows(con, """SELECT scoring_period, actual_points, projected_points FROM espn_player_weekly_points
                                   WHERE season=? AND espn_player_id=? ORDER BY scoring_period""", [season, espn_player_id])
-        injuries = rows(con, """SELECT week, report_status, report_primary_injury, practice_status FROM nfl_injuries
-                                WHERE season=? AND gsis_id=? ORDER BY week DESC""", [season, p["gsis_id"]]) \
+        injuries = rows(con, f"""SELECT * FROM nfl_injuries WHERE season=? AND gsis_id=?
+                                 ORDER BY {injury_order_sql(con)}""", [season, p["gsis_id"]]) \
             if p["gsis_id"] and table_exists(con, "nfl_injuries") else []
         depth = rows(con, """SELECT dt, team, pos_abb, pos_rank FROM nfl_depth_charts
                              WHERE season=? AND gsis_id=? ORDER BY dt DESC LIMIT 1""", [season, p["gsis_id"]]) \
@@ -207,13 +206,22 @@ def player_detail(espn_player_id: int):
                                  WHERE espn_player_id=? ORDER BY snapshot_date""", [espn_player_id])
         waiver = one(con, "SELECT * FROM waiver_recommendations WHERE espn_player_id=? AND season=?",
                      [espn_player_id, season])
+        context = one(con, "SELECT labels, evidence FROM player_context WHERE season=? AND gsis_id=?",
+                      [season, p["gsis_id"]]) if p["gsis_id"] else None
+        team_ctx = one(con, "SELECT * FROM team_context WHERE season=? AND team=?", [season, p["pro_team"]]) \
+            if p["pro_team"] else None
+        opp_def = one(con, "SELECT * FROM defense_context WHERE season=? AND defteam=?",
+                      [season, team_ctx["next_opponent"]]) if team_ctx and team_ctx.get("next_opponent") else None
         return {
             "player": p, "score": score, "weekly": weekly, "league_points": league_pts, "injuries": injuries,
             "depth_chart": depth[0] if depth else None, "ownership": ownership, "waiver": waiver,
+            "context": context, "team_context": team_ctx, "opponent_defense": opp_def,
             "unavailable_metrics": {
                 "route_participation": "unavailable: nflverse participation data is not published for the current season",
                 "routes_run": "unavailable",
+                "man_zone_splits": "unavailable: not in free data",
             },
+            "ftn_read_semantics": ftn_semantics(),
         }
 
 
@@ -234,11 +242,13 @@ def waivers(position: str | None = None, recommendation: str | None = None, limi
         out = rows(con, f"""
             SELECT w.*, fp.full_name, fp.pro_team, fp.injury_status, fp.percent_owned, fp.percent_change,
                    s.trend_label, s.classification, s.games, s.xfp_per_game, s.fp_per_game,
+                   s.opportunity_basis, s.opportunity_tier, s.role_trend, s.market_signal, pc.labels AS context_labels,
                    d.full_name AS drop_name, d.position AS drop_position
             FROM waiver_recommendations w
             JOIN fantasy_players fp ON fp.espn_player_id = w.espn_player_id
             LEFT JOIN player_id_map m ON m.espn_player_id = w.espn_player_id
             LEFT JOIN player_scores s ON s.gsis_id = m.gsis_id AND s.season = w.season
+            LEFT JOIN player_context pc ON pc.gsis_id = m.gsis_id AND pc.season = w.season
             LEFT JOIN fantasy_players d ON d.espn_player_id = w.suggested_drop_id
             WHERE w.league_id = ? AND w.season = ? {where}
             ORDER BY CASE w.recommendation WHEN 'CLAIM' THEN 0 WHEN 'WAIT' THEN 1 ELSE 2 END, w.waiver_score DESC
@@ -322,5 +332,8 @@ def data_quality():
                               WHERE m.match_confidence = 'medium' ORDER BY fp.percent_owned DESC NULLS LAST LIMIT 100""")
         conflicts = rows(con, "SELECT * FROM player_id_map WHERE notes LIKE 'Conflicting%' LIMIT 100")
         runs = rows(con, "SELECT run_id, source, started_at, finished_at, status, message FROM sync_runs ORDER BY started_at DESC LIMIT 30")
+        issues = rows(con, "SELECT * FROM validation_issues ORDER BY severity, check_name") \
+            if table_exists(con, "validation_issues") else []
         return {"mapping_summary": by_method, "unmatched": unmatched, "medium_confidence": medium,
-                "conflicts": conflicts, "sync_runs": runs, "sync": _sync_status(con)}
+                "conflicts": conflicts, "sync_runs": runs, "sync": _sync_status(con),
+                "validation_issues": issues, "schema_version": schema_version(con)}

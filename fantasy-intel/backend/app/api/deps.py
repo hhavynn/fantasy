@@ -7,10 +7,11 @@ from typing import Any, Iterator
 from fastapi import HTTPException
 
 from ..config import get_settings
-from ..db.connection import DatabaseBusy, connect, fetch_dicts
+from ..db.connection import SCHEMA_VERSION, DatabaseBusy, connect, fetch_dicts, schema_version
 
 JSON_COLUMNS = {"components", "reasons", "competitors", "roster_slots", "owner_ids", "matchup_acquisitions",
-                "stats", "details", "eligible_slots", "scoring_items", "waiver_process_days"}
+                "stats", "details", "eligible_slots", "scoring_items", "waiver_process_days",
+                "labels", "evidence", "ranks", "examples", "context_labels"}
 
 
 @contextmanager
@@ -23,9 +24,17 @@ def db() -> Iterator[Any]:
     except DatabaseBusy:
         raise HTTPException(503, "Database is busy (a sync is probably running). Retry in a few seconds.")
     try:
+        version = schema_version(con)
+        if version is not None and version < SCHEMA_VERSION or (version is None and _has_tables(con)):
+            raise HTTPException(503, f"Database schema v{version or 1} is older than v{SCHEMA_VERSION}. Run "
+                                     "`uv run python ../scripts/sync_nfl.py` (and sync_espn.py) to migrate and rebuild.")
         yield con
     finally:
         con.close()
+
+
+def _has_tables(con) -> bool:
+    return bool(con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'leagues'").fetchone()[0])
 
 
 def rows(con, sql: str, params=()) -> list[dict]:

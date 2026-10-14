@@ -3,6 +3,7 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, ErrorBox, Pos, Score, TrendArrow } from "@/components/ui";
 import { api } from "@/lib/api";
 import { label, num, signed, when } from "@/lib/format";
+import { BASIS_LABEL } from "@/lib/types";
 import type { League } from "@/lib/types";
 
 type Competitor = { team_id: number; name: string; interest: number; reasons: string[] };
@@ -12,10 +13,14 @@ type WaiverRow = {
   opportunity_score: number | null; roster_fit_score: number; league_interest: string; interest_score: number;
   waiver_score: number; recommendation: string; suggested_drop_id: number | null; drop_name: string | null;
   drop_position: string | null; trend_label: string | null; classification: string | null; games: number | null;
+  market_signal: string | null; role_trend: string | null; opportunity_tier: string | null; opportunity_basis: string | null;
+  context_labels: { matchup?: string; offensive_environment?: string; data_confidence?: string } | null;
   xfp_per_game: number | null; fp_per_game: number | null; reasons: string[]; competitors: Competitor[];
   components: {
-    player: { basis: string; base_opportunity: number | null; trend_adj: number; injury_adj: number; value: number | null };
-    roster: { need: number; my_starter_value: number | null; upgrade: number; bench_upgrade?: number; value_margin_vs_drop: number | null };
+    player: { basis: string; basis_description?: string; base_opportunity: number | null; trend_adj: number;
+      injury_adj: number; value: number | null; availability?: { status: string; weight: number } };
+    roster: { need: number; my_starter_value: number | null; upgrade: number; bench_upgrade?: number;
+      value_margin_vs_drop: number | null; lineup_gain?: number; enters_lineup?: boolean; lineup_slot?: string | null };
     league: { attractiveness: number; max_manager_interest: number; managers_interested: number; scarcity_bonus: number };
     formula: string;
   };
@@ -63,7 +68,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
           <table>
             <thead>
               <tr>
-                <th>Rec</th><th>Player</th><th>Status</th><th className="num">% own</th><th className="num">Opportunity</th><th>Role trend</th>
+                <th>Rec</th><th>Player</th><th>Status</th><th className="num">% own</th><th className="num">Opportunity</th><th>Role / trend</th><th>Matchup</th>
                 <th className="num">PPR/g</th><th className="num">xFP/g</th><th className="num">Roster fit</th><th>League competition</th>
                 <th>Suggested drop</th><th className="num">Score</th><th>Why</th>
               </tr>
@@ -78,8 +83,10 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
                   </td>
                   <td className="faint">{label(w.availability_status)}</td>
                   <td className="num">{num(w.percent_owned, 1)} <span className="faint">{signed(w.percent_change)}</span></td>
-                  <td><Score value={w.opportunity_score} /></td>
-                  <td><TrendArrow label={w.trend_label} /> <Badge value={w.classification} /></td>
+                  <td title={w.components.player.basis_description}><Score value={w.opportunity_score} />
+                    <div className="faint" style={{ fontSize: 11 }}>{BASIS_LABEL[w.components.player.basis] ?? w.components.player.basis}</div></td>
+                  <td><Badge value={w.opportunity_tier} title="Absolute opportunity tier" /> <TrendArrow label={w.role_trend} /> <Badge value={w.market_signal} /></td>
+                  <td><Badge value={w.context_labels?.matchup} title="Upcoming matchup (opponent season-to-date EPA allowed rank)" /></td>
                   <td className="num">{num(w.fp_per_game)}</td>
                   <td className="num">{num(w.xfp_per_game)}</td>
                   <td><Score value={w.roster_fit_score} /></td>
@@ -95,9 +102,9 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
                       <ul className="reasons">{w.reasons.slice(1).map((r, i) => <li key={i}>{r}</li>)}</ul>
                       <div className="kv faint" style={{ marginTop: 6 }}>
                         <span className="k">Player</span>
-                        <span>basis {w.components.player.basis}, base opp {num(w.components.player.base_opportunity)}, trend {signed(w.components.player.trend_adj, 0)}, injury {signed(w.components.player.injury_adj, 0)}, value {num(w.components.player.value)}</span>
+                        <span>{w.components.player.basis_description ?? w.components.player.basis}: base opp {num(w.components.player.base_opportunity)}, trend {signed(w.components.player.trend_adj, 0)}, availability {w.components.player.availability?.status ?? "?"} {signed(w.components.player.injury_adj, 1)}, value {num(w.components.player.value)}</span>
                         <span className="k">Roster</span>
-                        <span>need {w.components.roster.need.toFixed(2)}, my starters {num(w.components.roster.my_starter_value)}, upgrade {w.components.roster.upgrade.toFixed(2)}, vs drop {signed(w.components.roster.value_margin_vs_drop)}</span>
+                        <span>need {w.components.roster.need.toFixed(2)}, {w.components.roster.enters_lineup ? `enters lineup at ${w.components.roster.lineup_slot} (+${(w.components.roster.lineup_gain ?? 0).toFixed(1)})` : "would not start"}, vs drop {signed(w.components.roster.value_margin_vs_drop)}</span>
                         <span className="k">League</span>
                         <span>attractiveness {w.components.league.attractiveness.toFixed(2)}, top manager interest {w.components.league.max_manager_interest.toFixed(2)}, {w.components.league.managers_interested} interested</span>
                       </div>

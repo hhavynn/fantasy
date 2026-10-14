@@ -72,8 +72,9 @@ def compute_trend(metric: str, series: Sequence[tuple[int, float | None]], thres
 TREND_METRICS: dict[str, list[tuple[str, float]]] = {
     "WR": [("offense_pct", 0.08), ("target_share", 0.04), ("targets", 1.5), ("xfp", 2.0)],
     "TE": [("offense_pct", 0.08), ("target_share", 0.04), ("targets", 1.5), ("xfp", 2.0)],
-    "RB": [("offense_pct", 0.08), ("rush_share", 0.08), ("opportunities", 3.0), ("xfp", 2.0)],
-    "QB": [("offense_pct", 0.05), ("carries", 1.5), ("xfp", 2.0)],
+    "RB": [("offense_pct", 0.08), ("backfield_rush_share", 0.10), ("team_rush_share", 0.08),
+           ("opportunities", 3.0), ("xfp", 2.0)],
+    "QB": [("offense_pct", 0.05), ("rush_attempts", 1.5), ("xfp", 2.0)],
 }
 
 TREND_UP_CUTOFF = 0.35
