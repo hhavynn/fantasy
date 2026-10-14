@@ -6,6 +6,9 @@ import { api } from "@/lib/api";
 import { date, num } from "@/lib/format";
 import { ConfDot, DIMENSION_TITLES, formatMetric } from "@/lib/managers";
 import type { Classification, League, Metric, Move, Need, RosterPlayer, Team } from "@/lib/types";
+import type { ScoutingReport as Report } from "@/lib/manager-scouting";
+import { ScoutingReport } from "./ScoutingReport";
+import styles from "./scouting.module.css";
 
 type Detail = {
   league: League; team: Team; metrics: Metric[]; classifications: Classification[]; roster: RosterPlayer[];
@@ -18,7 +21,10 @@ const POS = ["QB", "RB", "WR", "TE", "K", "D/ST"];
 
 export default async function ManagerDetail({ params }: PageProps<"/managers/[teamId]">) {
   const { teamId } = await params;
-  const res = await api<Detail>(`/api/managers/${teamId}`);
+  const [res, scouting] = await Promise.all([
+    api<Detail>(`/api/managers/${teamId}`),
+    api<Report>(`/api/managers/${teamId}/scouting`),
+  ]);
   if (!res.ok) return <ErrorBox error={res.error} />;
   const d = res.data;
   const t = d.team;
@@ -28,7 +34,7 @@ export default async function ManagerDetail({ params }: PageProps<"/managers/[te
   const comp = (p: number, pos: string) => d.weekly_composition.find((r) => r.scoring_period === p && r.position === pos);
 
   return (
-    <div className="stack">
+    <div className={`stack ${styles.page}`}>
       <div className="page-head">
         <h1>{t.name}</h1>
         {t.is_mine && <Badge value="YOU" tone="info" />}
@@ -36,8 +42,10 @@ export default async function ManagerDetail({ params }: PageProps<"/managers/[te
         <Link href="/managers">← all managers</Link>
       </div>
 
-      <section className="panel">
-        <h2>Classifications &amp; evidence</h2>
+      {scouting.ok ? <ScoutingReport report={scouting.data} /> : <ErrorBox error={scouting.error} />}
+
+      <details className="panel">
+        <summary>All stored classifications &amp; rules</summary>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Tendency</th><th>Label</th><th className="num">Value</th><th className="num">League mean</th><th className="num">z</th>
@@ -58,9 +66,11 @@ export default async function ManagerDetail({ params }: PageProps<"/managers/[te
             </tbody>
           </table>
         </div>
-      </section>
+      </details>
 
-      <div className="grid grid-2">
+      <details className="panel">
+        <summary>Full metrics, roster &amp; weekly construction</summary>
+      <div className={`grid grid-2 ${styles.legacy}`}>
         <section className="panel">
           <h2>All measured metrics</h2>
           <table>
@@ -129,11 +139,12 @@ export default async function ManagerDetail({ params }: PageProps<"/managers/[te
           </section>
         </div>
       </div>
+      </details>
 
       {d.failed_claims.length > 0 && (
-        <section className="panel">
-          <h2>Unsuccessful waiver claims (visible in ESPN)</h2>
-          <table>
+        <details className="panel">
+          <summary>Unsuccessful waiver claims (visible in ESPN)</summary>
+          <div className="table-wrap"><table>
             <thead><tr><th>Date</th><th>Wk</th><th>Player</th><th>Status</th><th className="num">Bid</th></tr></thead>
             <tbody>
               {d.failed_claims.map((f) => (
@@ -141,14 +152,14 @@ export default async function ManagerDetail({ params }: PageProps<"/managers/[te
                   <td className="faint">{f.status}</td><td className="num">{f.bid_amount ? `$${f.bid_amount}` : ""}</td></tr>
               ))}
             </tbody>
-          </table>
-        </section>
+          </table></div>
+        </details>
       )}
 
-      <section className="panel">
-        <h2>Transaction history (evidence)</h2>
+      <details className="panel">
+        <summary>Transaction history (evidence)</summary>
         <MovesTable moves={d.moves} showTeam={false} />
-      </section>
+      </details>
     </div>
   );
 }

@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.routes import router
+from .api.manager_scouting import router as manager_scouting_router
 
 app = FastAPI(title="fantasy-intel", version="0.1.0")
 app.add_middleware(
@@ -13,6 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+app.include_router(manager_scouting_router)
 
 
 @app.get("/health")
