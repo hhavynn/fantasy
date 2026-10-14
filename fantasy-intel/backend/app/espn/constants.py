@@ -58,4 +58,12 @@ TRANSACTION_TYPES = [
 
 RECEPTION_STAT_ID = 53
 
+# Forward ESPN projections: one kona_player_info request per remaining fantasy week.
+PROJECTION_STATUSES = ("ONTEAM", "FREEAGENT", "WAIVERS")
+PROJECTION_LIMIT = 3000      # real league universe is ~1,050 players; a full page means "maybe truncated"
+# ESPN response header: total players matching the filter, independent of limit/offset
+# (verified 2026-10: 1052 combined = 190 ONTEAM + 862 FREEAGENT/WAIVERS, same with limit 50).
+PLAYER_COUNT_HEADER = "X-Fantasy-Filter-Player-Count"
+RESPONSE_META_KEY = "_response_meta"   # where the client attaches response metadata to the payload
+
 FANTASY_POSITIONS = ["QB", "RB", "WR", "TE", "K", "D/ST"]

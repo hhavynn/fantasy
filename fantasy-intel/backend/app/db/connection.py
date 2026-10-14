@@ -44,7 +44,7 @@ class DatabaseBusy(RuntimeError):
     pass
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Derived tables whose definitions changed in each version. Raw ESPN/nflverse tables
 # are never dropped; derived ones are rebuilt by re-running the syncs/analytics.
@@ -53,6 +53,7 @@ _REBUILD = {
         "manager_metrics", "manager_classifications", "nfl_team_week", "nfl_redzone_usage"],
     3: ["nfl_pbp_player_week", "nfl_team_week", "player_week_usage", "player_context"],  # FTN code columns renamed
     4: ["player_week_usage"],   # external route columns added; external_* tables are never dropped
+    5: [],                      # create-only: espn_projection_history + player_ros_projections
 }
 _V2_REBUILD = _REBUILD[2]
 
@@ -138,6 +139,34 @@ def upsert_rows(
         cond = " AND ".join(f"t.{k} IS NOT DISTINCT FROM s.{k}" for k in key_cols)
         con.execute(f"DELETE FROM {table} t WHERE EXISTS (SELECT 1 FROM {tmp} s WHERE {cond})")
         con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM {tmp}")
+    finally:
+        con.unregister(tmp)
+    return len(rows)
+
+
+def merge_columns(
+    con: duckdb.DuckDBPyConnection,
+    table: str,
+    rows: Sequence[dict],
+    key_cols: Sequence[str],
+    value_cols: Sequence[str],
+) -> int:
+    """Set only `value_cols` on rows whose key exists; insert rows whose key is new.
+    Every other column of an existing row is left untouched."""
+    if not rows:
+        return 0
+    seen: dict[tuple, dict] = {}
+    for r in rows:
+        seen[tuple(r.get(k) for k in key_cols)] = r
+    rows = list(seen.values())
+    tmp = f"_tmp_{uuid.uuid4().hex[:8]}"
+    con.register(tmp, _rows_to_arrow(con, table, rows))
+    try:
+        cond = " AND ".join(f"t.{k} IS NOT DISTINCT FROM s.{k}" for k in key_cols)
+        sets = ", ".join(f"{c} = s.{c}" for c in value_cols)
+        con.execute(f"UPDATE {table} t SET {sets} FROM {tmp} s WHERE {cond}")
+        con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM {tmp} s "
+                    f"WHERE NOT EXISTS (SELECT 1 FROM {table} t WHERE {cond})")
     finally:
         con.unregister(tmp)
     return len(rows)

@@ -11,7 +11,8 @@ from ..db.connection import SCHEMA_VERSION, DatabaseBusy, connect, fetch_dicts, 
 
 JSON_COLUMNS = {"components", "reasons", "competitors", "roster_slots", "owner_ids", "matchup_acquisitions",
                 "stats", "details", "eligible_slots", "scoring_items", "waiver_process_days",
-                "labels", "evidence", "ranks", "examples", "context_labels", "weeks", "previous"}
+                "labels", "evidence", "ranks", "examples", "context_labels", "weeks", "previous",
+                "bye_weeks", "missing_weeks"}
 
 
 @contextmanager

@@ -16,6 +16,7 @@ from .constants import (
     DEFAULT_POSITION_MAP,
     NON_STARTER_SLOTS,
     RECEPTION_STAT_ID,
+    RESPONSE_META_KEY,
     SLOT_MAP,
     nflverse_team,
 )
@@ -304,6 +305,85 @@ def parse_player_cards(raw: dict, *, season: int, synced_at: datetime) -> list[d
             elif s.get("statSourceId") == 1:
                 row["projected_points"] = s.get("appliedTotal")
     return list(out.values())
+
+
+def parse_projection_week(raw: dict, *, season: int, scoring_period: int, synced_at: datetime,
+                          rostered_ids: Iterable[int], expected_rostered_ids: Iterable[int], limit: int) -> dict:
+    """ESPN's projection for exactly one scoring period from a kona_player_info response.
+
+    Returns {"rows", "returned_ids", "complete", "coverage"}.
+
+    rows: one per returned player whose payload has a projection entry (statSourceId 1 / split 1)
+      for this period. 0 is a measured projection; a null appliedTotal stays None. Entries for
+      other periods are ignored, so a week's request can only ever write that week.
+    returned_ids: every player ESPN explicitly returned. Their week state is reconciled from this
+      response (returned without a projection entry -> no projection).
+    complete: the response provably contains ESPN's whole ONTEAM + FREEAGENT + WAIVERS universe,
+      so players it omits may be cleared too. Requires all of:
+        * ESPN's X-Fantasy-Filter-Player-Count (attached by the client) is present,
+        * the number of distinct players returned equals that count (so not truncated),
+        * fewer players than `limit` (a full page could hide more),
+        * every independently expected rostered player (`expected_rostered_ids`: rostered players
+          with a current NFL team) was returned.
+      Otherwise only returned players are reconciled; omitted players keep their previous values.
+    No free-agent count is ever invented: the FA universe is only "known" through ESPN's total."""
+    returned: dict[int, str | None] = {}
+    rows: dict[int, dict] = {}
+    for wrap in raw.get("players", []) or []:
+        player = wrap.get("player") or {}
+        pid = player.get("id") or wrap.get("id")
+        if pid is None:
+            continue
+        returned[pid] = wrap.get("status")
+        for s in player.get("stats") or []:
+            if (s.get("seasonId") == season and s.get("scoringPeriodId") == scoring_period
+                    and s.get("statSourceId") == 1 and s.get("statSplitTypeId") == 1):
+                rows[pid] = {"season": season, "espn_player_id": pid, "scoring_period": scoring_period,
+                             "projected_points": s.get("appliedTotal"), "synced_at": synced_at}
+    rostered = set(rostered_ids)
+    expected_rostered = set(expected_rostered_ids) & rostered
+    valued = {pid: r["projected_points"] for pid, r in rows.items() if r["projected_points"] is not None}
+    available = {pid for pid, status in returned.items() if pid not in rostered and status != "ONTEAM"}
+    total = ((raw.get(RESPONSE_META_KEY) or {}).get("filter_player_count"))
+
+    def returned_block(ids: set[int]) -> dict:
+        ids = ids & returned.keys()
+        return {"returned": len(ids), "with_projection": len(ids & valued.keys()),
+                "without_projection": len(ids - valued.keys()), "zero": sum(1 for pid in ids if valued.get(pid) == 0)}
+
+    truncated = len(returned) >= limit
+    omitted_rostered = sorted(expected_rostered - returned.keys())
+    if total is None:
+        reason = "ESPN player count header missing: universe not verifiable"
+    elif len(returned) != total:
+        reason = f"returned {len(returned)} of ESPN's {total} matching players"
+    elif truncated:
+        reason = f"response filled the {limit}-player limit"
+    elif omitted_rostered:
+        reason = f"{len(omitted_rostered)} expected rostered player(s) not returned"
+    else:
+        reason = None
+    rostered_block = returned_block(rostered)
+    rostered_block.update({
+        "rostered": len(rostered),
+        "expected": len(expected_rostered),            # rostered players with a current NFL team
+        "expected_returned": len(expected_rostered & returned.keys()),
+        "expected_with_projection": len(expected_rostered & valued.keys()),
+        "omitted": len(omitted_rostered),
+    })
+    coverage = {
+        "week": scoring_period,
+        "espn_total": total,                           # authoritative universe size; None = unknown
+        "returned": len(returned),
+        "returned_with_projection": len(valued),
+        "returned_without_projection": len(returned) - len(valued),
+        "zero": sum(1 for v in valued.values() if v == 0),
+        "truncated": truncated, "complete": reason is None, "reason": reason,
+        "rostered": rostered_block,
+        "available": returned_block(available),         # returned FA/waiver players; no expected count exists
+    }
+    return {"rows": list(rows.values()), "returned_ids": sorted(returned), "complete": reason is None,
+            "coverage": coverage}
 
 
 def merge_player_rows(*sources: Iterable[dict]) -> list[dict]:

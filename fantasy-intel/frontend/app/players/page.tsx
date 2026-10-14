@@ -4,7 +4,7 @@ import { Badge, ErrorBox, Pos, Score, Sparkline, TrendArrow } from "@/components
 import { api } from "@/lib/api";
 import { int, label, num, pct, signed, when } from "@/lib/format";
 import { BASIS_LABEL, FTN_READ1_LABEL, FTN_READ1_NOTE } from "@/lib/types";
-import type { ContextEvidence, ContextLabels, PlayerCore, RouteData, TrendInfo, UsageWeek } from "@/lib/types";
+import type { ContextEvidence, ContextLabels, ForwardProjection, PlayerCore, RouteData, TrendInfo, UsageWeek } from "@/lib/types";
 
 type Detail = {
   player: PlayerCore & { mapping_notes: string | null; nfl_name: string | null; nfl_team: string | null };
@@ -12,6 +12,7 @@ type Detail = {
     recent_opportunity_per_game: number | null; recent_ppr_per_game: number | null }; reasons: string[]; as_of_week: number } | null;
   weekly: UsageWeek[];
   league_points: { scoring_period: number; actual_points: number | null; projected_points: number | null }[];
+  forward_projection: ForwardProjection | null;
   injuries: { week: number; report_status: string | null; report_primary_injury: string | null; practice_status: string | null }[];
   depth_chart: { dt: string; team: string; pos_abb: string; pos_rank: number } | null;
   waiver: { recommendation: string; waiver_score: number; reasons: string[] } | null;
@@ -169,6 +170,7 @@ function PlayerDetail({ d }: { d: Detail }) {
         </div>
       )}
 
+      {d.forward_projection && <ForwardPanel f={d.forward_projection} />}
       {d.context && <ContextPanel d={d} />}
       {d.route_data && <RoutePanel r={d.route_data} />}
 
@@ -241,6 +243,71 @@ function PlayerDetail({ d }: { d: Detail }) {
         </section>
       )}
     </div>
+  );
+}
+
+
+function weeksRange(weeks: number[]): string {
+  return weeks.length ? `wk ${weeks.join(", ")}` : "none";
+}
+
+function ForwardPanel({ f }: { f: ForwardProjection }) {
+  const s = f.summary;
+  const span = (avail: number | null, expected: number | null) =>
+    expected === null ? "" : `${avail}/${expected} wk`;
+  const incomplete = "Not every week in this window has an ESPN projection, so no total is shown (missing weeks are not counted as 0)";
+  return (
+    <section className="panel">
+      <h2>ESPN forward projection <span className="faint" style={{ textTransform: "none" }}>
+        · Source: {f.source} · weeks {s.as_of_week}–{s.final_week} · synced {when(f.projection_synced_at)}</span></h2>
+      <div className="grid grid-2">
+        <div className="kv">
+          <span className="k">Rest of season</span>
+          <span>{num(s.ros_projected_points, 1, incomplete)} <span className="faint">{span(s.ros_weeks_available, s.ros_weeks_expected)}</span></span>
+          <span className="k">Regular season left</span>
+          <span>{s.last_regular_season_week === null ? <span className="faint">split unknown</span>
+            : <>{num(s.regular_season_projected_points, 1, incomplete)} <span className="faint">
+              {s.regular_season_weeks_expected ? `wk ${s.as_of_week}–${s.last_regular_season_week} · ` : ""}
+              {span(s.regular_season_weeks_available, s.regular_season_weeks_expected)}</span></>}</span>
+          <span className="k">Fantasy playoffs</span>
+          <span>{s.last_regular_season_week === null ? <span className="faint">split unknown</span>
+            : <>{num(s.playoff_projected_points, 1, incomplete)} <span className="faint">
+              wk {Math.max(s.last_regular_season_week + 1, s.as_of_week)}–{s.final_week} ·{" "}
+              {span(s.playoff_weeks_available, s.playoff_weeks_expected)}</span></>}</span>
+        </div>
+        <div className="kv">
+          <span className="k">This week</span><span>{num(s.current_week_projection, 1, "No ESPN projection for this week")}</span>
+          <span className="k">Coverage</span>
+          <span>{pct(s.ros_coverage, 0)}{s.missing_weeks.length > 0 && <span className="faint"> · missing {weeksRange(s.missing_weeks)}</span>}</span>
+          <span className="k">Remaining bye</span>
+          <span>{s.bye_weeks_remaining === null
+            ? <span className="faint" title="NFL schedule or team unknown for at least one remaining week">unknown{s.bye_weeks.length ? ` (${weeksRange(s.bye_weeks)})` : ""}</span>
+            : s.bye_weeks_remaining === 0 ? "none" : weeksRange(s.bye_weeks)}</span>
+        </div>
+      </div>
+      <div className="table-wrap" style={{ marginTop: 10 }}>
+        <table>
+          <thead><tr><th>Week</th><th>Opponent</th><th className="num">ESPN proj</th><th>Bye</th><th></th></tr></thead>
+          <tbody>
+            {f.weeks.map((w) => (
+              <tr key={w.week}>
+                <td>{w.week}</td>
+                <td>{w.on_bye ? <span className="faint">—</span>
+                  : w.opponent ? `${w.is_home ? "vs" : "@"} ${w.opponent}`
+                  : <span className="missing" title="NFL schedule unavailable">—</span>}</td>
+                <td className="num">{num(w.espn_projected_points, 1, "ESPN returned no projection for this week (unknown, not 0)")}</td>
+                <td>{w.on_bye === null ? <span className="missing" title="Schedule unknown">?</span> : w.on_bye ? <Badge value="BYE" tone="warn" /> : ""}</td>
+                <td className="faint">{w.phase === "playoff" ? "playoffs" : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="faint" style={{ marginTop: 8 }}>
+        {f.note} These are ESPN&apos;s weekly projections, shown unmodified; totals require every week in the window
+        (a projected 0 counts, a missing week does not). Byes come from the NFL schedule, not from a 0 projection.
+      </p>
+    </section>
   );
 }
 

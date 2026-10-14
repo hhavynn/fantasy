@@ -9,9 +9,11 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
+from ..analytics.projections import build_ros_projections
 from ..config import DATA_DIR
-from ..db.connection import SyncRun, replace_where, upsert_rows, utcnow
+from ..db.connection import SyncRun, merge_columns, replace_where, upsert_rows, utcnow
 from . import parse
+from .constants import PROJECTION_LIMIT
 
 log = logging.getLogger("espn.sync")
 
@@ -28,6 +30,9 @@ class EspnPayloads:
     pool: dict | None = None
     draft: dict | None = None
     cards: list[dict] = field(default_factory=list)
+    projection_weeks: list[int] = field(default_factory=list)       # weeks requested
+    projections: dict[int, dict] = field(default_factory=dict)      # week -> raw kona_player_info
+    projection_failures: dict[int, str] = field(default_factory=dict)  # week -> error
     warnings: list[str] = field(default_factory=list)
 
 
@@ -39,6 +44,27 @@ def _try(warnings: list[str], label: str, fn: Callable[[], Any]) -> Any:
         log.warning(msg)
         warnings.append(msg)
         return None
+
+
+def projection_weeks(current: int | None, final: int | None) -> list[int]:
+    """Fantasy weeks to fetch ESPN projections for: current .. final scoring period, inclusive.
+    League settings are authoritative (a league ending at 17 never fetches NFL week 18)."""
+    if not current or not final:
+        return []
+    return list(range(min(current, final), final + 1))
+
+
+def fetch_projections(client, p: EspnPayloads, weeks: list[int]) -> None:
+    p.projection_weeks = list(weeks)
+    for week in weeks:
+        log.info("ESPN projections week %s", week)
+        try:
+            p.projections[week] = client.player_projections(week)
+        except Exception as err:  # this week's stored projections are kept (see write_projections)
+            msg = f"ESPN projections week {week} failed: {type(err).__name__}: {err}"
+            log.warning(msg)
+            p.warnings.append(msg)
+            p.projection_failures[week] = msg
 
 
 def fetch_all(client, *, max_activity_pages: int = 40) -> EspnPayloads:
@@ -66,6 +92,11 @@ def fetch_all(client, *, max_activity_pages: int = 40) -> EspnPayloads:
             break
 
     p.pool = _try(p.warnings, "free-agent pool", lambda: client.player_pool(current))
+    final = league.get("status", {}).get("finalScoringPeriod")
+    if final:
+        fetch_projections(client, p, projection_weeks(current, final))
+    else:
+        p.warnings.append("League final scoring period unknown; future ESPN projections not fetched.")
     p.draft = _try(p.warnings, "draft", client.draft)
 
     ids = set()
@@ -107,6 +138,8 @@ def save_raw(p: EspnPayloads, run_id: str) -> Path:
         dump(f"activity_{i:02d}", v)
     for i, v in enumerate(p.cards):
         dump(f"cards_{i:02d}", v)
+    for k, v in p.projections.items():
+        dump(f"projections_{k:02d}", v)
     return out
 
 
@@ -131,7 +164,7 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
         # Rosters per period; the base league payload doubles as the current period.
         rosters = dict(p.rosters)
         rosters.setdefault(current, p.league)
-        lineup_count, points_rows, roster_players = 0, [], []
+        lineup_count, points_rows, roster_players, rostered_ids = 0, [], [], set()
         for period, raw in sorted(rosters.items()):
             r = parse.parse_rosters(raw, league_id=league_id, season=season, scoring_period=period, synced_at=now)
             lineup_count += replace_where(
@@ -140,6 +173,7 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
             points_rows += r["points"]
             if period == current:
                 roster_players = r["players"]
+                rostered_ids = {row["espn_player_id"] for row in r["lineups"] if row["espn_player_id"]}
         stats["lineup_rows"] = lineup_count
         stats["roster_periods"] = sorted(rosters)
 
@@ -164,6 +198,19 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
         } for r in pool + roster_players if r.get("percent_owned") is not None],
             ["snapshot_date", "espn_player_id"])
 
+        # Forward ESPN projections, parsed per week. Each week has a reconcile scope: the whole week
+        # when the response provably holds ESPN's full universe, otherwise only the players ESPN
+        # explicitly returned. Stored projections in scope are cleared first (so a player ESPN
+        # stopped projecting doesn't keep a stale value); this sync's roster/pool rows and the
+        # projection rows are then written on top. Players outside the scope are never touched.
+        expected_rostered = projection_eligible(rostered_ids, players)
+        proj = {week: parse.parse_projection_week(raw, season=season, scoring_period=week, synced_at=now,
+                                                  rostered_ids=rostered_ids, expected_rostered_ids=expected_rostered,
+                                                  limit=PROJECTION_LIMIT)
+                for week, raw in sorted(p.projections.items())}
+        for week, x in proj.items():
+            _in_scope(con, "UPDATE espn_player_weekly_points SET projected_points = NULL", season, week, x)
+
         # The free-agent pool payload (requested for the current scoring period) already carries each
         # free agent's single-period stats, including ESPN's projection for that period. Same
         # players[].player.stats shape as player cards, so the same parser applies.
@@ -183,6 +230,14 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
         stats["weekly_points"] = upsert_rows(
             con, "espn_player_weekly_points", list(merged_points.values()),
             ["season", "espn_player_id", "scoring_period"])
+        stats["projections"] = write_projections(con, p, proj, season=season, current=current,
+                                                 final=lg["league"]["final_scoring_period"])
+        for w, x in proj.items():
+            if not x["complete"]:
+                stats["warnings"].append(
+                    f"ESPN projections week {w}: universe not verified ({x['coverage']['reason']}); only the "
+                    f"{x['coverage']['returned']} returned players were updated, omitted players keep their previous values.")
+        stats["ros_projections"] = build_ros_projections(con, season)
 
         tx_rows, item_rows = [], []
         for raw in p.transactions.values():
@@ -214,6 +269,69 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
     stats["league"] = lg["league"]["name"]
     stats["current_week"] = current
     return stats
+
+
+def projection_eligible(rostered_ids: set[int], players: list[dict]) -> set[int]:
+    """Rostered players ESPN should return with an NFL projection context: everyone rostered except
+    players known to have no current NFL team (proTeamId missing or 0, e.g. a released player).
+    A rostered player we know nothing about stays expected (stricter check = fewer deletions)."""
+    team = {r["espn_player_id"]: r.get("pro_team_id") for r in players}
+    return {pid for pid in rostered_ids if pid not in team or team[pid] not in (None, 0)}
+
+
+def _in_scope(con, statement: str, season: int, week: int, x: dict, extra_where: str = "",
+              extra_params: list | None = None) -> None:
+    """Run `statement` (an UPDATE/DELETE on a table with season, scoring_period, espn_player_id)
+    restricted to this week's reconcile scope."""
+    where, params = "season = ? AND scoring_period = ?", [season, week]
+    if not x["complete"]:
+        if not x["returned_ids"]:
+            return
+        where += " AND espn_player_id IN (SELECT unnest(?))"
+        params.append(x["returned_ids"])
+    con.execute(f"{statement} WHERE {where}{extra_where}", params + (extra_params or []))
+
+
+def write_projections(con, p: EspnPayloads, proj: dict[int, dict], *, season: int, current: int,
+                      final: int | None) -> dict:
+    """Write parsed weekly projections (see docs/espn_ros_projections.md).
+
+    Every requested week is reconciled within its scope (projected_points in scope were already
+    cleared before this sync's roster/pool rows were written):
+      complete week (ESPN's player count matched, nothing truncated, every expected rostered
+        player returned): scope = the whole week. Players ESPN no longer returns lose their
+        projection; today's history for the week is replaced.
+      unverified week: scope = only the players ESPN explicitly returned. A returned player without
+        a projection loses it; an omitted player keeps his previous value and today's history row
+        (absence alone is not evidence). Warning recorded.
+      failed week: nothing is touched; previous values remain; warning recorded.
+    Rows left in scope with neither an actual nor a projection are deleted (unknown, not zero).
+    Only projected_points is ever written here: actual_points is never touched."""
+    rows = [r for x in proj.values() for r in x["rows"]]
+    merge_columns(con, "espn_player_weekly_points", rows, ["season", "espn_player_id", "scoring_period"],
+                  ["projected_points", "synced_at"])
+    today = date.today()
+    for week, x in proj.items():
+        _in_scope(con, "DELETE FROM espn_player_weekly_points", season, week, x,
+                  " AND actual_points IS NULL AND projected_points IS NULL")
+        _in_scope(con, "DELETE FROM espn_projection_history", season, week, x, " AND snapshot_date = ?", [today])
+    history = upsert_rows(con, "espn_projection_history", [{**r, "snapshot_date": today} for r in rows],
+                          ["snapshot_date", "season", "espn_player_id", "scoring_period"])
+    return {
+        "source": "ESPN kona_player_info (statSourceId 1, statSplitTypeId 1)",
+        "completeness": "complete = returned == ESPN X-Fantasy-Filter-Player-Count, not truncated, "
+                        "all rostered players with an NFL team returned",
+        "current_week": current, "final_scoring_period": final,
+        "weeks_requested": p.projection_weeks,
+        "weeks_complete": [w for w, x in proj.items() if x["complete"]],
+        "weeks_unverified": [w for w, x in proj.items() if not x["complete"]],
+        "weeks_failed": sorted(p.projection_failures),
+        "failures": {str(w): m for w, m in sorted(p.projection_failures.items())},
+        "coverage": [x["coverage"] for x in proj.values()],
+        "projection_rows": len(rows),
+        "history_rows": history,
+        "history_date": today.isoformat(),
+    }
 
 
 def _count(rows: list[dict], key: str) -> dict:

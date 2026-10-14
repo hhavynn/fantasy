@@ -118,6 +118,7 @@ source field or ID is lost (archived under `data/raw/espn/<run>/`).
 | Activity feed (adds/drops/trade legs) | `kona_league_communication` | `activity_messages` |
 | Free agents / waivers with % owned, % change, injury status | `kona_player_info` | `fantasy_players`, `player_ownership_history` |
 | League-scoring points per player per week | `kona_playercard` | `espn_player_weekly_points` |
+| ESPN weekly projections, current week through the league's final scoring period (rostered + FA + waivers) | `kona_player_info` + `scoringPeriodId`, one request per week | `espn_player_weekly_points.projected_points`, `espn_projection_history`, `player_ros_projections` |
 | Draft | `mDraftDetail` | `draft_picks` |
 
 Investigated / caveats:
@@ -296,11 +297,22 @@ page but **don't affect scores or recommendations yet**. Keep provider files und
 `data/imports/` (git-ignored). Full spec:
 [`docs/external_utilization_contract.md`](docs/external_utilization_contract.md).
 
-## Upgrading an existing database (schema v4)
+## ESPN forward projections (V2 baseline)
 
-The DuckDB schema is now **v4** (v2: new metrics; v3: FTN read-code columns renamed to
-`ftn_read*`; v4: external route columns on `player_week_usage` + `external_*` tables). On the first
-read-write open (any sync script), derived tables are dropped and recreated; raw
+Each ESPN sync stores ESPN's projection for every remaining fantasy week (current week through the
+league's final scoring period) and builds a rest-of-season summary with a regular-season / fantasy-playoff
+split from league settings, coverage and NFL-schedule byes. These are **ESPN's numbers, shown unmodified**:
+they are the forward fantasy-point baseline, not our model, and they do not feed any score, signal or
+waiver recommendation. Missing projections stay unknown (never 0), and a failed week keeps its previous
+values. A player ESPN omits only loses a stored projection when the response provably holds ESPN's whole
+universe (it matches ESPN's own player count). Details: [`docs/espn_ros_projections.md`](docs/espn_ros_projections.md).
+
+## Upgrading an existing database (schema v5)
+
+The DuckDB schema is now **v5** (v2: new metrics; v3: FTN read-code columns renamed to
+`ftn_read*`; v4: external route columns on `player_week_usage` + `external_*` tables; v5: create-only,
+adds `espn_projection_history` + `player_ros_projections`). On the first
+read-write open (any sync script), derived tables are dropped and recreated (v5 drops nothing); raw
 ESPN and nflverse tables are kept. Then rebuild:
 
 ```bash
@@ -341,7 +353,8 @@ validation errors vs warnings, and an end-to-end API smoke test.
 
 ## Roadmap (V2)
 
-Trade analyzer (lineup-aware, both sides), FAAB bid guidance once enough bid history
+Next: league-specific weekly lineup simulation + replacement value on top of the ESPN forward
+baseline, then trade evaluation. Also: trade analyzer (lineup-aware, both sides), FAAB bid guidance once enough bid history
 exists, claim-probability modelling after a season of failed-claim data, multi-season
 manager history (ESPN `leagueHistory`), matchup-aware start/sit, and an optional LLM
 layer that narrates the stored components (the deterministic scores stay the source of truth).
