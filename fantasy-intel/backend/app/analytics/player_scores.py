@@ -1,12 +1,15 @@
 """Underlying-value vs box-score model (transparent heuristics, no ML).
 
 For every skill player with games this season we store:
-  opportunity_score  0-10  position percentile of recent expected fantasy points/game
-                           (nflverse xFP; falls back to targets+carries/game)
+  opportunity_basis        "xfp" (nflverse expected fantasy points) or "targets+carries"
+                           when xFP is unavailable -- percentiles are computed per basis
+  opportunity_score  0-10  position percentile of recent opportunity per game (see basis)
+  opportunity_tier         HIGH / MEDIUM / LOW from ABSOLUTE per-position thresholds
   production_score   0-10  position percentile of recent PPR points/game
-  usage_trend_score  -1..1 composite of usage deltas (snap %, shares, volume, xFP)
+  role_trend               UP / FLAT / DOWN / INSUFFICIENT (composite of usage deltas)
   fp_minus_xfp             season PPR/game minus xFP/game -> value-gap label
-  classification           BUY / HOLD / SELL / MONITOR with written reasons
+  market_signal            BUY / SELL / HOLD / WATCH / MONITOR. Role trend alone never
+                           makes a BUY: a LOW-tier role that is rising is only WATCH.
 """
 
 from __future__ import annotations
@@ -23,6 +26,26 @@ MIN_GAMES_CLASSIFY = 3
 MIN_GAMES_PERCENTILE_POOL = 2
 GAP_ABS = 2.5     # PPR points/game
 GAP_REL = 0.20    # of xFP/game
+
+# Absolute opportunity tiers: (HIGH >=, MEDIUM >=) per basis and position.
+#   xfp: expected PPR points per game; targets+carries: opportunities per game.
+TIER_THRESHOLDS: dict[str, dict[str, tuple[float, float]]] = {
+    "xfp": {"QB": (17.0, 13.0), "RB": (12.0, 7.0), "WR": (12.0, 7.0), "TE": (9.0, 5.0)},
+    "targets+carries": {"RB": (15.0, 9.0), "WR": (7.0, 4.0), "TE": (5.0, 3.0)},
+}
+
+
+def opportunity_tier(basis: str, position: str | None, recent_per_game: float | None) -> str | None:
+    t = TIER_THRESHOLDS.get(basis, {}).get(position or "")
+    if t is None or recent_per_game is None:
+        return None
+    return "HIGH" if recent_per_game >= t[0] else "MEDIUM" if recent_per_game >= t[1] else "LOW"
+
+
+def meaningful_production(position: str | None, fp_pg: float | None) -> bool:
+    """Box score is fantasy-relevant: PPR/game at or above the position's MEDIUM xFP tier."""
+    t = TIER_THRESHOLDS["xfp"].get(position or "")
+    return t is not None and fp_pg is not None and fp_pg >= t[1]
 
 
 def percentile_scores(values: dict[str, float]) -> dict[str, float]:
@@ -55,28 +78,29 @@ def value_gap(fp_pg: float | None, xfp_pg: float | None, n_xfp: int) -> str:
     return "ALIGNED"
 
 
-def classify(games: int, trend_label: str, gap: str, opportunity: float | None,
-             production: float | None) -> tuple[str, list[str]]:
-    """Returns (classification, reasons). Pure + deterministic."""
-    reasons: list[str] = []
+def classify(games: int, role_trend: str, gap: str, tier: str | None, position: str | None = None,
+             fp_pg: float | None = None) -> tuple[str, list[str]]:
+    """Market signal from (role trend, absolute opportunity tier, value gap). Pure + deterministic."""
     if games < MIN_GAMES_CLASSIFY:
         return "MONITOR", [f"Only {games} game(s) played; need {MIN_GAMES_CLASSIFY} to classify."]
-    opp = opportunity if opportunity is not None else 0.0
-    prod = production if production is not None else 0.0
-    if trend_label == "UP" and gap != "PRODUCTION_EXCEEDS_USAGE":
-        reasons.append("Usage is trending up and production is not outrunning that usage.")
-        return "BUY", reasons
-    if gap == "USAGE_EXCEEDS_PRODUCTION" and trend_label != "DOWN" and opp >= 4:
-        reasons.append("Expected points from his role exceed his actual points: production should catch up if the role holds.")
-        return "BUY", reasons
-    if gap == "PRODUCTION_EXCEEDS_USAGE" and trend_label != "UP":
-        reasons.append("Scoring well above what his role normally produces (TD/efficiency driven): regression risk.")
-        return "SELL", reasons
-    if trend_label == "DOWN" and prod >= 6:
-        reasons.append("Box score still looks good but usage is declining.")
-        return "SELL", reasons
-    reasons.append("Role and production are consistent with each other.")
-    return "HOLD", reasons
+    if tier is None:
+        return "MONITOR", ["No opportunity tier available for this position/basis."]
+    productive = meaningful_production(position, fp_pg)
+    if tier == "LOW":
+        if gap == "PRODUCTION_EXCEEDS_USAGE" and productive:
+            return "SELL", ["Productive box score on a small role (TD/efficiency driven): sell-high candidate."]
+        if role_trend == "UP":
+            return "WATCH", ["Role is rising but still small in absolute terms: watch, don't buy yet."]
+        return "HOLD", ["Small role; nothing actionable."]
+    if role_trend == "UP" and gap != "PRODUCTION_EXCEEDS_USAGE":
+        return "BUY", [f"{tier.title()} role that is still growing, and production isn't outrunning it."]
+    if gap == "USAGE_EXCEEDS_PRODUCTION" and role_trend != "DOWN":
+        return "BUY", ["Expected points from his role exceed his actual points: production should catch up if the role holds."]
+    if gap == "PRODUCTION_EXCEEDS_USAGE" and role_trend != "UP":
+        return "SELL", ["Scoring well above what his role normally produces (TD/efficiency driven): regression risk."]
+    if role_trend == "DOWN" and productive:
+        return "SELL", ["Box score still looks good but the role is shrinking."]
+    return "HOLD", ["Role and production are consistent with each other."]
 
 
 def blended_value(opportunity: float | None, production: float | None, trend_score: float | None) -> float | None:
@@ -138,7 +162,8 @@ def score_players(usage_rows: Iterable[dict], season: int) -> list[dict]:
         gap_fp = s["fp_pg_matched"]
         gap = value_gap(gap_fp, s["xfp_pg"], s["n_xfp"])
         opp, prod = opp_pct.get(gsis), prod_pct.get(gsis)
-        cls, reasons = classify(s["games"], trend_label, gap, opp, prod)
+        tier = opportunity_tier(s["opp_basis"], pos, s["opp_metric"])
+        cls, reasons = classify(s["games"], trend_label, gap, tier, pos, s["fp_pg"])
         for t in trends:
             if t.label in ("UP", "DOWN"):
                 reasons.append(f"{t.metric} {t.label.lower()}: {_fmt(t.baseline_avg, t.metric)} -> {_fmt(t.recent_avg, t.metric)} "
@@ -155,6 +180,10 @@ def score_players(usage_rows: Iterable[dict], season: int) -> list[dict]:
             "position": pos,
             "as_of_week": last["week"],
             "games": s["games"],
+            "opportunity_basis": s["opp_basis"],
+            "opportunity_tier": tier,
+            "role_trend": trend_label,
+            "market_signal": cls,
             "opportunity_score": opp,
             "production_score": prod,
             "usage_trend_score": round(trend_score, 3) if trend_score is not None else None,
@@ -167,6 +196,7 @@ def score_players(usage_rows: Iterable[dict], season: int) -> list[dict]:
             "value_score": blended_value(opp, prod, trend_score),
             "components": {
                 "opportunity_basis": s["opp_basis"],
+                "tier_thresholds": TIER_THRESHOLDS.get(s["opp_basis"], {}).get(pos),
                 "recent_opportunity_per_game": round(s["opp_metric"], 2) if s["opp_metric"] is not None else None,
                 "recent_ppr_per_game": round(s["prod_metric"], 2) if s["prod_metric"] is not None else None,
                 "recent_weeks": [r["week"] for r in rows[-RECENT_GAMES:]],
@@ -183,7 +213,7 @@ def score_players(usage_rows: Iterable[dict], season: int) -> list[dict]:
 def _fmt(v: float | None, metric: str) -> str:
     if v is None:
         return "n/a"
-    if metric in ("offense_pct", "target_share", "rush_share"):
+    if metric in ("offense_pct", "target_share", "team_rush_share", "backfield_rush_share"):
         return f"{100 * v:.0f}%"
     return f"{v:.1f}"
 

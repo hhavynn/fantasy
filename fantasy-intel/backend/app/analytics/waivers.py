@@ -7,25 +7,21 @@ League interest is LOW / MEDIUM / HIGH (no fake probabilities).
 from __future__ import annotations
 
 import json
-import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 from statistics import mean
 
 from ..db.connection import fetch_dicts, replace_where, table_exists, utcnow
 from ..espn.constants import FANTASY_POSITIONS, IR_SLOT
+from .availability import availability, latest_injuries
+from .lineup import FIXED_SLOTS, assign_lineup, lineup_gain, lineup_slots
 from .player_scores import percentile_scores
 
-UNAVAILABLE_ESPN = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
-DEPTH_EXTRA = {"RB": 1, "WR": 1}          # bench depth wanted beyond starters
+DEPTH_EXTRA = {"RB": 1, "WR": 1}          # bench depth wanted beyond actual starters
 # How useful a non-starting player at the position is (flex/bye/injury cover).
 DEPTH_UTILITY = {"RB": 1.0, "WR": 1.0, "TE": 0.3, "QB": 0.3, "K": 0.15, "D/ST": 0.15}
-FLEX_SPLIT = {
-    "FLEX": {"RB": 0.45, "WR": 0.45, "TE": 0.10},
-    "RB/WR": {"RB": 0.5, "WR": 0.5},
-    "WR/TE": {"WR": 0.6, "TE": 0.4},
-    "OP": {"QB": 1.0},
-}
+# Opportunity penalty by availability status (points on the 0-10 scale).
+INJURY_ADJ = {"QUESTIONABLE": -0.5, "DOUBTFUL": -2.0, "OUT": -3.0, "IR": -3.0, "SUSPENDED": -3.0}
 
 W_OPP, W_FIT = 0.55, 0.45
 CLAIM_SCORE, WAIT_SCORE = 6.0, 4.5
@@ -34,32 +30,18 @@ CLAIM_MIN_FIT = 3.0                        # a CLAIM must actually help *my* ros
 INTERESTED = 0.55
 INTEREST_HIGH, INTEREST_MED = 0.45, 0.25
 
+BASIS_TEXT = {
+    "xfp": "recent expected-fantasy-points (xFP) percentile",
+    "targets+carries": "recent targets+carries percentile (xFP unavailable)",
+    "espn_points": "recent ESPN league-points percentile (no NFL usage data)",
+    "unavailable": "no usage or scoring data",
+}
+
 
 # --------------------------------------------------------------- helpers --
 
 def clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, x))
-
-
-def starters_by_position(slots: dict[str, int]) -> dict[str, float]:
-    req: dict[str, float] = defaultdict(float)
-    for slot, n in (slots or {}).items():
-        if slot in FANTASY_POSITIONS:
-            req[slot] += n
-        elif slot in FLEX_SPLIT:
-            for pos, share in FLEX_SPLIT[slot].items():
-                req[pos] += n * share
-    return dict(req)
-
-
-def starter_slots(required: float) -> int:
-    """Whole starting spots at a position; a flex share only counts if >= 0.4 (RB/WR, not TE)."""
-    whole = math.floor(required + 1e-9)
-    return whole + (1 if required - whole >= 0.4 else 0)
-
-
-def is_unavailable(p: dict) -> bool:
-    return p.get("lineup_slot_id") == IR_SLOT or (p.get("injury_status") or "").upper() in UNAVAILABLE_ESPN
 
 
 @dataclass
@@ -71,90 +53,116 @@ class PlayerValue:
     production: float | None
     trend_label: str | None
     classification: str | None
-    basis: str                      # usage_model | espn_points | none
+    basis: str                      # xfp | targets+carries | espn_points | unavailable
     gsis_id: str | None = None
     games: int | None = None
     extras: dict = field(default_factory=dict)
 
 
-# ------------------------------------------------------------ team needs --
+# ------------------------------------------------------- lineup + needs --
 
-def team_needs(roster: list[dict], values: dict[int, PlayerValue], required: dict[str, float],
-               league_starter_avg: dict[str, float]) -> dict[str, dict]:
-    """Need per position (0..1) for one team's roster rows (espn_player_id, position, lineup_slot_id, injury_status)."""
+def team_state(roster: list[dict], values: dict[int, PlayerValue], roster_slots: dict[str, int]) -> dict:
+    """Availability-weighted players and the team's optimal current lineup.
+
+    roster rows: espn_player_id, position, lineup_slot_id, injury_status, nfl_report_status, full_name.
+    """
+    players = []
+    for p in roster:
+        av = availability(p.get("injury_status"), p.get("lineup_slot_id"), p.get("nfl_report_status"))
+        v = values.get(p["espn_player_id"])
+        raw = v.value if v is not None and v.value is not None else None
+        players.append({
+            "espn_player_id": p["espn_player_id"], "position": p.get("position"), "full_name": p.get("full_name"),
+            "lineup_slot_id": p.get("lineup_slot_id"), "raw_value": raw,
+            "value": round((raw or 0.0) * av["weight"], 3), "available": av["weight"] > 0, "availability": av,
+        })
+    slots = lineup_slots(roster_slots)
+    return {"players": players, "slots": slots, "lineup": assign_lineup(players, slots)}
+
+
+def _fixed_values(state: dict, pos: str) -> list[float]:
+    return [a["value"] for a in state["lineup"] if a["slot"] == pos]
+
+
+def _has_value_data(state: dict, pos: str) -> bool:
+    return any(p["raw_value"] is not None for p in state["players"] if p["position"] == pos)
+
+
+def league_starter_averages(states: dict[int, dict], roster_slots: dict[str, int]) -> dict[str, float]:
+    """Mean value of each team's *fixed* starters at a position, averaged across teams."""
     out = {}
-    for pos in FANTASY_POSITIONS:
-        need_starters = required.get(pos, 0.0)
-        players = [p for p in roster if p.get("position") == pos]
-        healthy = [p for p in players if not is_unavailable(p)]
-        n_start = starter_slots(need_starters)
-        target = n_start + DEPTH_EXTRA.get(pos, 0)
-        hv = sorted((values[p["espn_player_id"]].value or 0.0 for p in healthy
-                     if p["espn_player_id"] in values and values[p["espn_player_id"]].value is not None), reverse=True)
-        starter_vals = (hv + [0.0] * n_start)[:n_start] if n_start and hv else []
-        starter_value = mean(starter_vals) if starter_vals else None   # None = no value data at all
-        shortage = clamp((target - len(healthy)) / target) if target else 0.0
-        gap = 0.0
-        if starter_value is not None and league_starter_avg.get(pos) is not None:
-            gap = clamp((league_starter_avg[pos] - starter_value) / 4.0)
-        need = round(clamp(0.55 * clamp(shortage * 2) + 0.45 * gap), 3) if n_start else 0.0
-        out[pos] = {
-            "position": pos, "starters_required": need_starters, "rostered": len(players),
-            "healthy": len(healthy), "unavailable": len(players) - len(healthy),
-            "starter_value": round(starter_value, 2) if starter_value is not None else None,
-            "need_score": need,
-            "details": {"depth_target": target,
-                        "weakest_starter_value": round(min(starter_vals), 2) if starter_vals else None, "shortage": round(shortage, 3), "quality_gap": round(gap, 3),
-                        "league_avg_starter_value": league_starter_avg.get(pos),
-                        "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap"},
-        }
-    return out
-
-
-def league_starter_averages(rosters: dict[int, list[dict]], values: dict[int, PlayerValue],
-                            required: dict[str, float]) -> dict[str, float]:
-    out = {}
-    for pos in FANTASY_POSITIONS:
-        n = starter_slots(required.get(pos, 0))
-        if not n:
+    for pos in FIXED_SLOTS:
+        if not roster_slots.get(pos):
             continue
-        per_team = []
-        for roster in rosters.values():
-            vals = sorted((values[p["espn_player_id"]].value for p in roster
-                           if p.get("position") == pos and not is_unavailable(p)
-                           and p["espn_player_id"] in values and values[p["espn_player_id"]].value is not None),
-                          reverse=True)
-            if vals:
-                per_team.append(mean((vals + [0.0] * n)[:n]))
+        per_team = [mean(_fixed_values(st, pos)) for st in states.values() if _has_value_data(st, pos)]
         if per_team:
             out[pos] = round(mean(per_team), 2)
     return out
 
 
+def team_needs(state: dict, roster_slots: dict[str, int], league_starter_avg: dict[str, float]) -> dict[str, dict]:
+    """Need per position (0..1) from the actual lineup assignment (flex counted once)."""
+    out = {}
+    for pos in FANTASY_POSITIONS:
+        fixed = int(roster_slots.get(pos, 0))
+        flex_filled = sum(1 for a in state["lineup"] if a["is_flex"] and a["position"] == pos)
+        starters = fixed + flex_filled
+        players = [p for p in state["players"] if p["position"] == pos]
+        weights = [p["availability"]["weight"] for p in players]
+        eff = round(sum(weights), 2)
+        target = (starters + DEPTH_EXTRA.get(pos, 0)) if starters else 0
+        fixed_vals = _fixed_values(state, pos)
+        has_data = _has_value_data(state, pos)
+        starter_value = mean(fixed_vals) if fixed_vals and has_data else None
+        weakest = min(fixed_vals) if fixed_vals and has_data else None
+        shortage = clamp((target - eff) / target) if target else 0.0
+        gap = 0.0
+        if starter_value is not None and league_starter_avg.get(pos) is not None:
+            gap = clamp((league_starter_avg[pos] - starter_value) / 4.0)
+        need = round(clamp(0.55 * clamp(shortage * 2) + 0.45 * gap), 3) if fixed else 0.0
+        out[pos] = {
+            "position": pos, "starters_required": starters, "rostered": len(players),
+            "healthy": sum(1 for w in weights if w == 1.0), "unavailable": sum(1 for w in weights if w == 0.0),
+            "effective_available": eff,
+            "starter_value": round(starter_value, 2) if starter_value is not None else None,
+            "need_score": need,
+            "details": {
+                "fixed_slots": fixed, "flex_slots_filled": flex_filled, "depth_target": target,
+                "weakest_starter_value": round(weakest, 2) if weakest is not None else None,
+                "shortage": round(shortage, 3), "quality_gap": round(gap, 3),
+                "league_avg_starter_value": league_starter_avg.get(pos),
+                "availability": [{"espn_player_id": p["espn_player_id"], "name": p["full_name"],
+                                  "status": p["availability"]["status"], "weight": p["availability"]["weight"]}
+                                 for p in players],
+                "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; shortage uses availability "
+                           "weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
+            },
+        }
+    return out
+
+
 # --------------------------------------------------------- suggested drop --
 
-def suggest_drop(my_roster: list[dict], values: dict[int, PlayerValue], candidate_pos: str,
-                 required: dict[str, float]) -> dict | None:
-    """Lowest-value bench player whose removal keeps every position startable."""
-    counts = defaultdict(int)
-    for p in my_roster:
-        if not is_unavailable(p):
-            counts[p.get("position")] += 1
-    options = []
-    for p in my_roster:
-        if p.get("lineup_slot_id") == IR_SLOT or p.get("is_starter"):
-            continue
-        pos = p.get("position")
-        min_needed = starter_slots(required.get(pos, 0))
-        if pos != candidate_pos and not is_unavailable(p) and counts[pos] - 1 < min_needed:
-            continue  # would leave the position short
-        v = values.get(p["espn_player_id"])
-        options.append((v.value if v and v.value is not None else 0.0, p))
-    if not options:
-        return None
-    value, p = min(options, key=lambda t: (t[0], t[1]["espn_player_id"]))
-    return {"espn_player_id": p["espn_player_id"], "name": p.get("full_name"), "position": p.get("position"),
-            "value": round(value, 2), "injury_status": p.get("injury_status")}
+def _empty_fixed(players: list[dict], slots: list[str]) -> int:
+    return sum(1 for a in assign_lineup(players, slots) if a["player_id"] is None and not a["is_flex"])
+
+
+def suggest_drop(state: dict, candidate: dict | None = None) -> dict | None:
+    """Lowest rest-of-season-value bench player whose removal (with the candidate
+    added) leaves no fixed lineup slot unfillable. Never a current starter or IR."""
+    starters = {a["player_id"] for a in state["lineup"] if a["player_id"] is not None}
+    base = state["players"] + ([candidate] if candidate else [])
+    holes_before = _empty_fixed(base, state["slots"])
+    bench = [p for p in state["players"]
+             if p["espn_player_id"] not in starters and p["lineup_slot_id"] != IR_SLOT]
+    for p in sorted(bench, key=lambda p: (p["raw_value"] if p["raw_value"] is not None else 0.0, p["espn_player_id"])):
+        remaining = [q for q in base if q["espn_player_id"] != p["espn_player_id"]]
+        if _empty_fixed(remaining, state["slots"]) > holes_before:
+            continue  # would leave a fixed slot unfillable
+        return {"espn_player_id": p["espn_player_id"], "name": p["full_name"], "position": p["position"],
+                "value": round(p["raw_value"] or 0.0, 2), "value_known": p["raw_value"] is not None,
+                "availability": p["availability"]["status"]}
+    return None
 
 
 # --------------------------------------------------------- league interest --
@@ -192,39 +200,40 @@ def interest_label(score: float) -> str:
 
 # --------------------------------------------------------------- evaluate --
 
-def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict[int, dict],
-                       my_roster: list[dict], values: dict[int, PlayerValue], required: dict[str, float],
+def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict[int, dict], my_state: dict,
                        profiles: dict[int, dict], league_pos_share: dict[str, float], team_names: dict[int, str],
-                       scarcity: dict[str, int]) -> dict:
+                       scarcity: dict[str, int], context_reasons: list[str] | None = None) -> dict:
     pos = c["position"]
     reasons: list[str] = []
-    injured = (c.get("injury_status") or "").upper() in UNAVAILABLE_ESPN
+    av = availability(c.get("injury_status"), None, c.get("nfl_report_status"))
+    injured = av["weight"] == 0.0
 
     # Player side
+    basis = cv.basis if cv.basis in BASIS_TEXT else "unavailable"
     base = cv.opportunity if cv.opportunity is not None else cv.value
     trend_adj = {"UP": 1.0, "DOWN": -1.0}.get(cv.trend_label or "", 0.0)
-    injury_adj = -3.0 if injured else 0.0
+    injury_adj = INJURY_ADJ.get(av["status"], 0.0)
     opportunity = round(clamp((base or 0.0) + trend_adj + injury_adj, 0, 10), 1) if base is not None else None
-    if cv.basis == "usage_model":
-        reasons.append(f"Opportunity {cv.opportunity:.1f}/10 at {pos} (recent expected-points percentile)"
-                       if cv.opportunity is not None else "No recent opportunity percentile")
-    elif cv.basis == "espn_points":
-        reasons.append("Limited model: based on recent ESPN league points only (no NFL usage data for this player)")
+    if base is not None:
+        reasons.append(f"Opportunity {base:.1f}/10 at {pos}: {BASIS_TEXT[basis]}")
     else:
-        reasons.append("No usage or scoring data available")
+        reasons.append(f"Opportunity unknown: {BASIS_TEXT['unavailable']}")
     if trend_adj:
-        reasons.append(f"Role trend {cv.trend_label} ({trend_adj:+.0f})")
-    if injured:
-        reasons.append(f"Currently {c.get('injury_status')} ({injury_adj:+.0f})")
+        reasons.append(f"Role {'rising' if trend_adj > 0 else 'falling'} ({trend_adj:+.0f})")
+    reasons += context_reasons or []
+    if injury_adj:
+        reasons.append(f"Currently {av['status']} ({', '.join(av['sources'])}; {injury_adj:+.1f})")
 
-    # My roster side
+    # My roster side: does he actually enter my optimal lineup?
     my_need = needs.get(my_team_id, {}).get(pos, {})
     need = my_need.get("need_score", 0.0)
-    starter_value = my_need.get("starter_value")
-    weakest = (my_need.get("details") or {}).get("weakest_starter_value")
     cand_value = cv.value or 0.0
-    upgrade = clamp((cand_value - (weakest or 0.0)) / 3.0)        # would he start over my weakest starter?
-    drop = suggest_drop(my_roster, values, pos, required)
+    cand = {"espn_player_id": c["espn_player_id"], "position": pos, "full_name": c.get("full_name"),
+            "lineup_slot_id": None, "raw_value": cv.value, "value": round(cand_value * av["weight"], 3),
+            "available": av["weight"] > 0, "availability": av}
+    lg = lineup_gain(my_state["players"], my_state["slots"], cand)
+    upgrade = clamp(lg["gain"] / 3.0)
+    drop = suggest_drop(my_state, cand)
     margin = cand_value - drop["value"] if drop else None
     bench_upgrade = clamp(margin / 4.0) if margin is not None else 1.0
     depth_utility = DEPTH_UTILITY.get(pos, 0.5)
@@ -235,8 +244,8 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
     fit = round(clamp(fit, 0, 10), 1)
     if need >= 0.5:
         reasons.append(f"Fills a real need at {pos} (need {need:.2f})")
-    if upgrade >= 0.5:
-        reasons.append(f"Would start over your weakest {pos} starter (value {cand_value:.1f} vs {weakest or 0:.1f})")
+    if lg["enters_lineup"]:
+        reasons.append(f"Would enter your lineup at {lg['slot']} (+{lg['gain']:.1f} lineup value)")
     elif depth_utility < 0.5 and need < 0.5:
         reasons.append(f"Wouldn't start for you and a backup {pos} rarely plays")
     scarcity_count = scarcity.get(pos, 0)
@@ -260,11 +269,14 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
     max_interest = others[0]["interest"] if others else 0.0
     interest_score = round(attractiveness * (0.6 * max_interest + 0.4 * min(1.0, len(interested) / 4)), 3)
     league_interest = interest_label(interest_score)
+    if others and others[0]["reasons"] and league_interest != "LOW":
+        reasons.append(f"Competition: {others[0]['name']} ({'; '.join(others[0]['reasons'])})")
 
     waiver_score = round(W_OPP * (opportunity or 0) + W_FIT * fit + scarcity_bonus, 2)
     if injured:
         rec = "WAIT" if (base or 0) >= 6 else "IGNORE"
-        reasons.append("Injured: stash only if you have the roster room" if rec == "WAIT" else "Injured and low role")
+        reasons.append("Unavailable now: stash only if you have the roster room" if rec == "WAIT"
+                       else "Unavailable and low role")
     elif waiver_score >= CLAIM_SCORE and fit >= CLAIM_MIN_FIT and (margin is None or margin >= CLAIM_MARGIN):
         rec = "CLAIM"
     elif waiver_score >= WAIT_SCORE:
@@ -288,14 +300,18 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
         "recommendation": rec,
         "suggested_drop_id": drop["espn_player_id"] if drop else None,
         "components": {
-            "player": {"basis": cv.basis, "base_opportunity": base, "trend_label": cv.trend_label,
-                       "trend_adj": trend_adj, "injury_adj": injury_adj, "value": cv.value,
-                       "classification": cv.classification, "percent_owned": c.get("percent_owned"),
-                       "percent_change": c.get("percent_change"), **cv.extras},
-            "roster": {"need": need, "my_starter_value": starter_value, "my_weakest_starter_value": weakest,
+            "player": {"basis": basis, "basis_description": BASIS_TEXT[basis], "base_opportunity": base,
+                       "trend_label": cv.trend_label, "trend_adj": trend_adj, "availability": av,
+                       "injury_adj": injury_adj, "value": cv.value, "classification": cv.classification,
+                       "percent_owned": c.get("percent_owned"), "percent_change": c.get("percent_change"),
+                       **cv.extras},
+            "roster": {"need": need, "my_starter_value": my_need.get("starter_value"),
+                       "my_weakest_starter_value": (my_need.get("details") or {}).get("weakest_starter_value"),
+                       "lineup_gain": lg["gain"], "enters_lineup": lg["enters_lineup"], "lineup_slot": lg["slot"],
+                       "displaced_id": lg["displaced_id"],
                        "upgrade": round(upgrade, 3), "bench_upgrade": round(bench_upgrade, 3),
                        "depth_utility": depth_utility,
-                       "fit_formula": "10*(0.35*need + 0.35*upgrade_over_weakest_starter + 0.30*upgrade_over_drop*depth_utility)",
+                       "fit_formula": "10*(0.35*need + 0.35*clamp(lineup_gain/3) + 0.30*upgrade_over_drop*depth_utility)",
                        "suggested_drop": drop, "value_margin_vs_drop": round(margin, 2) if margin is not None else None},
             "league": {"attractiveness": round(attractiveness, 3), "max_manager_interest": max_interest,
                        "managers_interested": len(interested), "scarcity_available_startable": scarcity_count,
@@ -320,7 +336,7 @@ def load_values(con, season: int, current_week: int) -> dict[int, PlayerValue]:
     """, [season]):
         values[r["espn_player_id"]] = PlayerValue(
             r["espn_player_id"], r["position"], r["value_score"], r["opportunity_score"], r["production_score"],
-            r["trend_label"], r["classification"], "usage_model", r["gsis_id"], r["games"])
+            r["role_trend"], r["market_signal"], r["opportunity_basis"] or "unavailable", r["gsis_id"], r["games"])
     # Fallback: recent ESPN league points percentile within position.
     pts = fetch_dicts(con, """
         SELECT p.espn_player_id, fp.position, avg(p.actual_points) AS ppg, count(*) AS n
@@ -382,7 +398,6 @@ def build_waivers(con) -> dict:
     lg = lg[0]
     league_id, season, week = lg["league_id"], lg["season"], lg["current_week"] or 1
     slots = json.loads(lg["roster_slots"]) if isinstance(lg["roster_slots"], str) else (lg["roster_slots"] or {})
-    required = starters_by_position(slots)
     teams = fetch_dicts(con, "SELECT * FROM fantasy_teams WHERE league_id=? AND season=?", [league_id, season])
     mine = [t["team_id"] for t in teams if t["is_mine"]]
     if not mine:
@@ -391,17 +406,21 @@ def build_waivers(con) -> dict:
     team_names = {t["team_id"]: t["name"] for t in teams}
 
     values = load_values(con, season, week)
+    reports = current_week_reports(con, season, week)
     roster_rows = fetch_dicts(con, """
         SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.is_starter, fp.position, fp.full_name,
-               coalesce(fp.injury_status, l.injury_status) AS injury_status
+               coalesce(fp.injury_status, l.injury_status) AS injury_status, m.gsis_id
         FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
+        LEFT JOIN player_id_map m USING (espn_player_id)
         WHERE l.league_id=? AND l.season=? AND l.scoring_period = ?
     """, [league_id, season, week])
     rosters: dict[int, list[dict]] = defaultdict(list)
     for r in roster_rows:
+        r["nfl_report_status"] = reports.get(r["gsis_id"])
         rosters[r["team_id"]].append(r)
-    lsa = league_starter_averages(rosters, values, required)
-    needs = {tid: team_needs(rosters.get(tid, []), values, required, lsa) for tid in team_names}
+    states = {tid: team_state(rosters.get(tid, []), values, slots) for tid in team_names}
+    lsa = league_starter_averages(states, slots)
+    needs = {tid: team_needs(states[tid], slots, lsa) for tid in team_names}
     now = utcnow()
     need_rows = [{"league_id": league_id, "season": season, "team_id": tid, **n, "computed_at": now}
                  for tid, per in needs.items() for n in per.values()]
@@ -409,7 +428,7 @@ def build_waivers(con) -> dict:
 
     profiles, league_share = load_profiles(con, league_id, season, teams, bool(lg["is_faab"]), lg["faab_budget"])
     cands = fetch_dicts(con, """
-        SELECT * FROM fantasy_players
+        SELECT fp.*, m.gsis_id FROM fantasy_players fp LEFT JOIN player_id_map m USING (espn_player_id)
         WHERE availability_status IN ('FREEAGENT', 'WAIVERS') AND position IN ('QB','RB','WR','TE','K','D/ST')
     """)
     cands = [c for c in cands if c["espn_player_id"] in values or (c.get("percent_owned") or 0) >= 0.5]
@@ -420,19 +439,48 @@ def build_waivers(con) -> dict:
                          and (values[c["espn_player_id"]].value or 0) >= (lsa.get(pos) or 99))
                 for pos in FANTASY_POSITIONS}
     depth = _latest_depth(con, season)
+    contexts = load_player_contexts(con, season)
     out = []
     for c in cands:
+        c["nfl_report_status"] = reports.get(c.get("gsis_id"))
         cv = values.get(c["espn_player_id"]) or PlayerValue(c["espn_player_id"], c["position"], None, None, None,
-                                                            None, None, "none")
+                                                            None, None, "unavailable")
         if cv.gsis_id and cv.gsis_id in depth:
             cv.extras = {**cv.extras, "depth_chart": depth[cv.gsis_id]}
-        row = evaluate_candidate(c, cv, my_team_id=my_team_id, needs=needs, my_roster=rosters.get(my_team_id, []),
-                                 values=values, required=required, profiles=profiles, league_pos_share=league_share,
-                                 team_names=team_names, scarcity=scarcity)
+        row = evaluate_candidate(c, cv, my_team_id=my_team_id, needs=needs, my_state=states[my_team_id],
+                                 profiles=profiles, league_pos_share=league_share, team_names=team_names,
+                                 scarcity=scarcity, context_reasons=context_reasons(contexts.get(cv.gsis_id)))
         row.update(league_id=league_id, season=season, computed_at=now)
         out.append(row)
     replace_where(con, "waiver_recommendations", out, "league_id=? AND season=?", [league_id, season])
     return {"candidates": len(out), "claims": sum(1 for r in out if r["recommendation"] == "CLAIM")}
+
+
+def current_week_reports(con, season: int, week: int) -> dict[str, str]:
+    """gsis -> NFL report status, only if the newest report is for this scoring week."""
+    out = {}
+    for g, r in latest_injuries(con, season).items():
+        if r["week"] == week and r["report_status"]:
+            out[g] = r["report_status"]
+    return out
+
+
+def load_player_contexts(con, season: int) -> dict[str, dict]:
+    if not table_exists(con, "player_context"):
+        return {}
+    out = {}
+    for r in fetch_dicts(con, "SELECT gsis_id, labels, evidence FROM player_context WHERE season = ?", [season]):
+        out[r["gsis_id"]] = {"labels": json.loads(r["labels"]) if isinstance(r["labels"], str) else r["labels"],
+                             "evidence": json.loads(r["evidence"]) if isinstance(r["evidence"], str) else r["evidence"]}
+    return out
+
+
+def context_reasons(ctx: dict | None) -> list[str]:
+    """Short, evidence-backed lines from the player context (see analytics/context.py)."""
+    if not ctx:
+        return []
+    # The role-trend line is already stated (with its score adjustment) by evaluate_candidate.
+    return [h for h in (ctx.get("evidence") or {}).get("headlines", []) if h not in ("Role rising", "Role shrinking")]
 
 
 def _latest_depth(con, season: int) -> dict[str, dict]:

@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 
-from ..db.connection import fetch_dicts, replace_where, table_exists, utcnow
+from ..db.connection import fetch_dicts, replace_where, utcnow
+from .availability import latest_injuries
 from ..espn.constants import IR_SLOT
 from .manager_metrics import ManagerInputs, classify_metrics, compute_metrics
 
@@ -53,30 +54,63 @@ def _adds_drops(con, league_id: int, season: int) -> tuple[list[dict], list[dict
     return adds, drops, "activity feed (fallback)"
 
 
+TRADE_DEDUP_DAYS = 3
+
+
+def merge_trades(activity_legs: list[dict], transaction_legs: list[dict]) -> list[dict]:
+    """Union trade evidence from the activity feed and mTransactions2.
+
+    Each source is grouped into trades (activity: topic_id, transactions:
+    transaction_id). Two trades are the same if they move the identical set of
+    (player, from_team, to_team) legs within TRADE_DEDUP_DAYS; the merged trade
+    keeps every source id. Trades whose transaction rows carry no legs (ESPN
+    often omits other teams' trade items) contribute nothing and are skipped.
+    """
+    def group(legs, key, source):
+        out: dict[str, dict] = {}
+        for leg in legs:
+            t = out.setdefault(str(leg[key]), {"date": leg.get("date"), "legs": [], "sources": [source],
+                                                "source_ids": {source: [str(leg[key])]}})
+            t["legs"].append({k: leg[k] for k in ("espn_player_id", "from_team_id", "to_team_id")})
+        return list(out.values())
+
+    def legset(t):
+        return frozenset((leg["espn_player_id"], leg["from_team_id"], leg["to_team_id"]) for leg in t["legs"])
+
+    def close(a, b):
+        if a is None or b is None:
+            return True
+        return abs((a - b).total_seconds()) <= TRADE_DEDUP_DAYS * 86400
+
+    merged = group(activity_legs, "topic_id", "activity")
+    for t in group(transaction_legs, "transaction_id", "transactions"):
+        match = next((m for m in merged if legset(m) == legset(t) and close(m["date"], t["date"])), None)
+        if match is None:
+            merged.append(t)
+            continue
+        for src, ids in t["source_ids"].items():
+            match["source_ids"].setdefault(src, [])
+            match["source_ids"][src] += [i for i in ids if i not in match["source_ids"][src]]
+            if src not in match["sources"]:
+                match["sources"].append(src)
+    for t in merged:
+        t["trade_id"] = "+".join(f"{s}:{','.join(v)}" for s, v in sorted(t["source_ids"].items()))
+    return merged
+
+
 def load_trades(con, league_id: int, season: int) -> list[dict]:
-    legs = fetch_dicts(con, """
-        SELECT topic_id, topic_date, espn_player_id, from_team_id, to_team_id FROM activity_messages
+    activity = fetch_dicts(con, """
+        SELECT topic_id, topic_date AS date, espn_player_id, from_team_id, to_team_id FROM activity_messages
         WHERE league_id = ? AND season = ? AND message_type_id = 244
     """, [league_id, season])
-    trades: dict[str, dict] = {}
-    for leg in legs:
-        t = trades.setdefault(leg["topic_id"], {"trade_id": leg["topic_id"], "date": leg["topic_date"],
-                                                 "legs": [], "source": "activity"})
-        t["legs"].append({k: leg[k] for k in ("espn_player_id", "from_team_id", "to_team_id")})
-    if trades:
-        return list(trades.values())
-    rows = fetch_dicts(con, """
+    transactions = fetch_dicts(con, """
         SELECT t.transaction_id, coalesce(t.process_date, t.proposed_date) AS date, ti.espn_player_id,
                ti.from_team_id, ti.to_team_id
         FROM transactions t JOIN transaction_items ti USING (transaction_id)
         WHERE t.league_id = ? AND t.season = ? AND t.status = 'EXECUTED'
           AND t.type IN ('TRADE_ACCEPT', 'TRADE_UPHOLD') AND ti.item_type = 'TRADE'
     """, [league_id, season])
-    for r in rows:
-        t = trades.setdefault(r["transaction_id"], {"trade_id": r["transaction_id"], "date": r["date"],
-                                                     "legs": [], "source": "transactions"})
-        t["legs"].append({k: r[k] for k in ("espn_player_id", "from_team_id", "to_team_id")})
-    return list(trades.values())
+    return merge_trades(activity, transactions)
 
 
 def load_inputs(con) -> tuple[ManagerInputs, str] | None:
@@ -96,11 +130,9 @@ def load_inputs(con) -> tuple[ManagerInputs, str] | None:
         con, "SELECT espn_player_id, gsis_id FROM player_id_map WHERE gsis_id IS NOT NULL")}
     rookie_season = {r["gsis_id"]: r["rookie_season"] for r in fetch_dicts(
         con, "SELECT gsis_id, rookie_season FROM nfl_players")}
-    injuries: dict[tuple, str] = {}
-    if table_exists(con, "nfl_injuries"):
-        for r in fetch_dicts(con, "SELECT gsis_id, week, report_status FROM nfl_injuries WHERE season = ?", [season]):
-            if r["report_status"]:
-                injuries[(r["gsis_id"], r["week"])] = r["report_status"]
+    # Newest report per player-week (date_modified when available; see availability.py).
+    injuries: dict[tuple, str] = {k: r["report_status"] for k, r in latest_injuries(con, season, per_week=True).items()
+                                  if r["report_status"]}
 
     roster_by: dict[tuple, list[dict]] = defaultdict(list)
     for r in lineups:

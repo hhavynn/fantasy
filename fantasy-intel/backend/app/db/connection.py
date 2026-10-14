@@ -44,8 +44,32 @@ class DatabaseBusy(RuntimeError):
     pass
 
 
+SCHEMA_VERSION = 2
+
+# Derived tables whose definitions changed in v2. Raw ESPN/nflverse tables are
+# never dropped; derived ones are rebuilt by re-running the syncs/analytics.
+_V2_REBUILD = ["player_week_usage", "player_scores", "team_position_needs", "waiver_recommendations",
+               "manager_metrics", "manager_classifications", "nfl_team_week", "nfl_redzone_usage"]
+
+
 def init_db(con: duckdb.DuckDBPyConnection) -> None:
+    con.execute("CREATE TABLE IF NOT EXISTS schema_meta (key VARCHAR PRIMARY KEY, value VARCHAR)")
+    row = con.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()
+    legacy = any(table_exists(con, t) for t in _V2_REBUILD)
+    version = int(row[0]) if row else (1 if legacy else SCHEMA_VERSION)
+    if version < 2:
+        for t in _V2_REBUILD:
+            con.execute(f"DROP TABLE IF EXISTS {t}")
     con.execute(SCHEMA_PATH.read_text())
+    con.execute("DELETE FROM schema_meta WHERE key = 'schema_version'")
+    con.execute("INSERT INTO schema_meta VALUES ('schema_version', ?)", [str(SCHEMA_VERSION)])
+
+
+def schema_version(con: duckdb.DuckDBPyConnection) -> int | None:
+    if not table_exists(con, "schema_meta"):
+        return None
+    row = con.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()
+    return int(row[0]) if row else None
 
 
 @contextmanager

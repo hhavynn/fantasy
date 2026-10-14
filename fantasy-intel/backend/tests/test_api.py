@@ -49,5 +49,6 @@ def test_api_endpoints(tmp_path, monkeypatch):
     assert len(pd["league_points"]) >= 2
 
     assert client.get("/api/status").status_code == 200
-    assert client.get("/api/data-quality").status_code == 200
+    dq = client.get("/api/data-quality").json()
+    assert "validation_issues" in dq and dq["schema_version"] == 2
     assert client.get("/api/players/123456789").status_code == 404

@@ -30,6 +30,11 @@ RAW_DATASETS: dict[str, tuple[Callable[[int], pl.DataFrame], str | None]] = {
         "season",
     ),
     "nfl_ff_playerids": (lambda s: nfl.load_ff_playerids(), None),
+    "nfl_pfr_rush": (lambda s: nfl.load_pfr_advstats([s], stat_type="rush", summary_level="week"), "season"),
+    "nfl_pfr_rec": (lambda s: nfl.load_pfr_advstats([s], stat_type="rec", summary_level="week"), "season"),
+    "nfl_pfr_pass": (lambda s: nfl.load_pfr_advstats([s], stat_type="pass", summary_level="week"), "season"),
+    "nfl_ngs_rushing": (lambda s: nfl.load_nextgen_stats([s], stat_type="rushing"), "season"),
+    "nfl_ngs_receiving": (lambda s: nfl.load_nextgen_stats([s], stat_type="receiving"), "season"),
 }
 
 
@@ -39,6 +44,7 @@ class NflPayloads:
     frames: dict[str, pl.DataFrame] = field(default_factory=dict)
     players: pl.DataFrame | None = None
     pbp: pl.DataFrame | None = None
+    ftn: pl.DataFrame | None = None
     warnings: list[str] = field(default_factory=list)
 
 
@@ -62,6 +68,8 @@ def fetch_all(season: int) -> NflPayloads:
     p.players = _try(p.warnings, "players", nfl.load_players)
     log.info("loading play-by-play")
     p.pbp = _try(p.warnings, "pbp", lambda: nfl.load_pbp([season]))
+    log.info("loading FTN charting")
+    p.ftn = _try(p.warnings, "ftn charting", lambda: nfl.load_ftn_charting([season]))
     return p
 
 
@@ -99,48 +107,174 @@ def curate_players(players: pl.DataFrame) -> list[dict]:
     return rows
 
 
-def derive_redzone(pbp: pl.DataFrame, season: int) -> tuple[list[dict], list[dict]]:
-    """Per-player red-zone usage and per-team opportunity totals from play-by-play.
+FIRST_READ_CODE = "1"   # see docs/nfl_metrics_verified_contract.md (FTN read_thrown)
 
-    Carries = run plays with a rusher (incl. scrambles), excluding kneels and
-    two-point tries. Targets = pass attempts with a receiver, excluding sacks.
+
+def _flag(col: str) -> pl.Expr:
+    return pl.col(col).fill_null(0) == 1
+
+
+def classify_plays(pbp: pl.DataFrame) -> pl.DataFrame:
+    """Adds explicit boolean play classes used by every PBP aggregate.
+
+    rush_play     : play_type == 'run', not a kneel, not a two-point try, has a rusher.
+                    Scrambles ARE included (they consume team rushing volume).
+    designed_rush : rush_play and not a scramble (used for RB backfield share, RZ/GL work).
+    target        : play_type == 'pass', pass_attempt, not a sack, has a receiver, not 2-pt.
+    dropback      : qb_dropback == 1, not 2-pt (includes sacks and scrambles).
+    hit_or_sack   : dropback and (sack == 1 OR qb_hit == 1) -- never qb_hit + sack.
     """
-    plays = pbp.filter(
-        pl.col("play_type").is_in(["run", "pass"])
-        & (pl.col("two_point_attempt").fill_null(0) == 0)
-        & (pl.col("season_type") == "REG")
+    not_2pt = ~_flag("two_point_attempt")
+    rush_play = ((pl.col("play_type") == "run") & ~_flag("qb_kneel") & not_2pt
+                 & pl.col("rusher_player_id").is_not_null())
+    return pbp.with_columns(
+        rush_play.alias("rush_play"),
+        (rush_play & ~_flag("qb_scramble")).alias("designed_rush"),
+        (rush_play & _flag("qb_scramble")).alias("scramble"),
+        ((pl.col("play_type") == "pass") & _flag("pass_attempt") & ~_flag("sack") & not_2pt
+         & pl.col("receiver_player_id").is_not_null()).alias("target"),
+        (_flag("qb_dropback") & not_2pt).alias("dropback"),
+        (_flag("qb_dropback") & not_2pt & (_flag("sack") | _flag("qb_hit"))).alias("hit_or_sack"),
+        (pl.col("play_type").is_in(["run", "pass"]) & not_2pt).alias("scrimmage"),
     )
-    carries = plays.filter((pl.col("rush_attempt") == 1) & pl.col("rusher_player_id").is_not_null()).select(
-        pl.col("week"), pl.col("posteam").alias("team"), pl.col("rusher_player_id").alias("player_id"),
-        pl.col("yardline_100"), pl.lit("carry").alias("kind"))
-    targets = plays.filter(
-        (pl.col("pass_attempt") == 1) & (pl.col("sack").fill_null(0) == 0)
-        & pl.col("receiver_player_id").is_not_null()
-    ).select(
-        pl.col("week"), pl.col("posteam").alias("team"), pl.col("receiver_player_id").alias("player_id"),
-        pl.col("yardline_100"), pl.lit("target").alias("kind"))
-    opp = pl.concat([carries, targets])
-    rz = pl.col("yardline_100") <= 20
-    i10 = pl.col("yardline_100") <= 10
-    gl = pl.col("yardline_100") <= 5
-    is_c, is_t = pl.col("kind") == "carry", pl.col("kind") == "target"
 
-    player = opp.group_by(["week", "player_id", "team"]).agg(
-        (is_t & rz).sum().alias("rz_targets"),
-        (is_c & rz).sum().alias("rz_carries"),
-        (is_t & i10).sum().alias("inside10_targets"),
-        (is_c & i10).sum().alias("inside10_carries"),
-        (is_c & gl).sum().alias("gl_carries"),
+
+def derive_pbp(pbp: pl.DataFrame, season: int, positions: dict[str, str],
+               ftn: pl.DataFrame | None = None, pfr_pass: pl.DataFrame | None = None,
+               ) -> tuple[list[dict], list[dict], list[dict]]:
+    """Player-week, offense team-week and defense team-week aggregates from play-by-play."""
+    p = classify_plays(pbp.filter(pl.col("season_type") == "REG"))
+    pos = pl.DataFrame({"pid": list(positions.keys()), "ppos": list(positions.values())},
+                       schema={"pid": pl.String, "ppos": pl.String})
+    p = (p.join(pos.rename({"pid": "rusher_player_id", "ppos": "rusher_pos"}), on="rusher_player_id", how="left")
+          .join(pos.rename({"pid": "receiver_player_id", "ppos": "receiver_pos"}), on="receiver_player_id", how="left"))
+    if ftn is not None and ftn.height:
+        codes = ftn.select(pl.col("nflverse_game_id").alias("game_id"),
+                           pl.col("nflverse_play_id").cast(pl.Float64).alias("play_id"), "read_thrown")
+        p = p.join(codes, on=["game_id", "play_id"], how="left")
+        charted_games = set(ftn["nflverse_game_id"].unique().to_list())
+    else:
+        p = p.with_columns(pl.lit(None, dtype=pl.String).alias("read_thrown"))
+        charted_games = set()
+    p = p.with_columns(pl.col("game_id").is_in(list(charted_games)).alias("ftn_game"))
+
+    rz, i10, gl = pl.col("yardline_100") <= 20, pl.col("yardline_100") <= 10, pl.col("yardline_100") <= 5
+    dr, tg, rp = pl.col("designed_rush"), pl.col("target"), pl.col("rush_play")
+    code = pl.col("read_thrown")
+    charted_target = tg & code.is_not_null() & (code != "0")
+
+    rushes = p.filter(rp).group_by(["week", "rusher_player_id", "posteam"]).agg(
+        pl.len().alias("rush_attempts"),
+        dr.sum().alias("designed_rushes"),
+        pl.col("scramble").sum().alias("scrambles"),
+        (dr & _flag("success")).sum().alias("designed_rush_success"),
+        (dr & (pl.col("yards_gained") >= 10)).sum().alias("explosive_runs"),
+        (dr & rz).sum().alias("rz_carries"),
+        (dr & i10).sum().alias("inside10_carries"),
+        (dr & gl).sum().alias("gl_carries"),
+    ).rename({"rusher_player_id": "player_id", "posteam": "team"})
+    targets = p.filter(tg).group_by(["week", "receiver_player_id", "posteam"]).agg(
+        pl.len().alias("targets"),
+        rz.sum().alias("rz_targets"),
+        i10.sum().alias("inside10_targets"),
+        pl.col("ftn_game").any().alias("ftn_game"),
+        charted_target.sum().alias("ftn_charted_targets"),
+        (code == FIRST_READ_CODE).sum().alias("first_read_targets"),
+        (code == "DES").sum().alias("designed_targets"),
+        (code == "CHK").sum().alias("checkdown_targets"),
+        (code == "SD").sum().alias("scramble_drill_targets"),
+    ).rename({"receiver_player_id": "player_id", "posteam": "team"})
+    player = rushes.join(targets, on=["week", "player_id", "team"], how="full", coalesce=True)
+    zero_cols = ["rush_attempts", "designed_rushes", "scrambles", "designed_rush_success", "explosive_runs",
+                 "rz_carries", "inside10_carries", "gl_carries", "targets", "rz_targets", "inside10_targets"]
+    ftn_cols = ["ftn_charted_targets", "first_read_targets", "designed_targets", "checkdown_targets",
+                "scramble_drill_targets"]
+    player = player.with_columns([pl.col(c).fill_null(0) for c in zero_cols])
+
+    team_off = p.filter(pl.col("scrimmage")).group_by(["week", "posteam"]).agg(
+        pl.col("defteam").first().alias("opponent"),
+        rp.sum().alias("team_rush_attempts"),
+        dr.sum().alias("team_designed_rushes"),
+        pl.col("scramble").sum().alias("team_scrambles"),
+        (dr & (pl.col("rusher_pos") == "RB")).sum().alias("team_rb_carries"),
+        tg.sum().alias("team_targets"),
+        (dr & rz).sum().alias("team_rz_carries"),
+        (tg & rz).sum().alias("team_rz_targets"),
+        (tg & (code == FIRST_READ_CODE)).sum().alias("team_first_read_targets"),
+        charted_target.sum().alias("team_ftn_charted_targets"),
+        pl.col("ftn_game").any().alias("ftn_game"),
+        pl.col("dropback").sum().alias("dropbacks"),
+        (pl.col("dropback") & _flag("sack")).sum().alias("sacks"),
+        pl.col("hit_or_sack").sum().alias("hit_or_sack"),
+        pl.col("pass_oe").drop_nulls().mean().alias("proe"),
+        pl.col("pass_oe").drop_nulls().len().alias("proe_plays"),
+        pl.col("pass").filter((pl.col("wp") >= 0.2) & (pl.col("wp") <= 0.8)
+                              & (pl.col("half_seconds_remaining") > 120)).mean().alias("neutral_pass_rate"),
+        ((pl.col("wp") >= 0.2) & (pl.col("wp") <= 0.8) & (pl.col("half_seconds_remaining") > 120)).sum()
+        .alias("neutral_plays"),
+        pl.len().alias("offense_plays"),
+    ).rename({"posteam": "team"})
+
+    pressures: dict[tuple, float] = {}
+    if pfr_pass is not None and pfr_pass.height:
+        for r in pfr_pass.filter(pl.col("game_type") == "REG").group_by(["week", "team"]).agg(
+                pl.col("times_pressured").sum()).iter_rows(named=True):
+            pressures[(r["week"], r["team"])] = r["times_pressured"]
+
+    defense = p.filter(pl.col("scrimmage")).group_by(["week", "defteam"]).agg(
+        pl.col("posteam").first().alias("opponent"),
+        (_flag("pass") & pl.col("epa").is_not_null()).sum().alias("pass_plays"),
+        pl.col("epa").filter(_flag("pass")).sum().alias("pass_epa_sum"),
+        (dr & pl.col("epa").is_not_null()).sum().alias("rush_plays"),
+        pl.col("epa").filter(dr).sum().alias("rush_epa_sum"),
+        (dr & _flag("success")).sum().alias("rush_success"),
+        (dr & (pl.col("yards_gained") >= 10)).sum().alias("explosive_runs"),
+        tg.sum().alias("targets"),
+        (tg & (pl.col("receiver_pos") == "RB")).sum().alias("rb_targets"),
+        (tg & (pl.col("receiver_pos") == "WR")).sum().alias("wr_targets"),
+        (tg & (pl.col("receiver_pos") == "TE")).sum().alias("te_targets"),
     )
-    team = opp.group_by(["week", "team"]).agg(
-        is_c.sum().alias("team_carries"),
-        is_t.sum().alias("team_targets"),
-        (is_c & rz).sum().alias("team_rz_carries"),
-        (is_t & rz).sum().alias("team_rz_targets"),
-    )
-    player_rows = [{**r, "season": season} for r in player.iter_rows(named=True)]
-    team_rows = [{**r, "season": season, "team_offense_snaps": None} for r in team.iter_rows(named=True)]
-    return player_rows, team_rows
+
+    player_rows = []
+    for r in player.iter_rows(named=True):
+        charted = r.pop("ftn_game")
+        if not charted:  # game not charted by FTN: unknown, not zero
+            for c in ftn_cols:
+                r[c] = None
+        else:
+            for c in ftn_cols:
+                r[c] = r[c] or 0
+        player_rows.append({**r, "season": season})
+    team_rows = []
+    for r in team_off.iter_rows(named=True):
+        charted = r.pop("ftn_game")
+        if not charted:
+            r["team_first_read_targets"] = r["team_ftn_charted_targets"] = None
+        db = r["dropbacks"]
+        r["sack_rate"] = r["sacks"] / db if db else None
+        r["hit_or_sack_rate"] = r["hit_or_sack"] / db if db else None
+        pr = pressures.get((r["week"], r["team"]))
+        r["pfr_pressures"] = int(pr) if pr is not None else None
+        r["pfr_pressure_rate"] = pr / db if pr is not None and db else None
+        r["team_offense_snaps"] = None  # filled from PFR snap counts in analytics
+        team_rows.append({**r, "season": season})
+    defense_rows = [{**r, "season": season} for r in defense.iter_rows(named=True)]
+    return player_rows, team_rows, defense_rows
+
+
+def player_positions(rosters_weekly: pl.DataFrame | None, players: pl.DataFrame | None) -> dict[str, str]:
+    """gsis -> position: latest weekly-roster position this season, else nflverse players table."""
+    out: dict[str, str] = {}
+    if players is not None:
+        for g, ps in players.select("gsis_id", "position").iter_rows():
+            if g and ps:
+                out[g] = "RB" if ps == "FB" else ps
+    if rosters_weekly is not None and rosters_weekly.height:
+        latest = rosters_weekly.sort("week").group_by("gsis_id").agg(pl.col("position").last())
+        for g, ps in latest.iter_rows():
+            if g and ps:
+                out[g] = "RB" if ps == "FB" else ps
+    return out
 
 
 def write_all(con, p: NflPayloads) -> dict:
@@ -155,10 +289,14 @@ def write_all(con, p: NflPayloads) -> dict:
         if p.players is not None:
             stats["nfl_players"] = upsert_rows(con, "nfl_players", curate_players(p.players), ["gsis_id"])
         if p.pbp is not None:
-            player_rows, team_rows = derive_redzone(p.pbp, p.season)
-            stats["nfl_redzone_usage"] = replace_where(con, "nfl_redzone_usage", player_rows, "season = ?", [p.season])
+            positions = player_positions(p.frames.get("nfl_rosters_weekly"), p.players)
+            player_rows, team_rows, defense_rows = derive_pbp(
+                p.pbp, p.season, positions, ftn=p.ftn, pfr_pass=p.frames.get("nfl_pfr_pass"))
+            stats["nfl_pbp_player_week"] = replace_where(con, "nfl_pbp_player_week", player_rows, "season = ?", [p.season])
             stats["nfl_team_week"] = replace_where(con, "nfl_team_week", team_rows, "season = ?", [p.season])
+            stats["nfl_defense_week"] = replace_where(con, "nfl_defense_week", defense_rows, "season = ?", [p.season])
             stats["pbp_max_week"] = p.pbp["week"].max()
+            stats["ftn_games_charted"] = p.ftn["nflverse_game_id"].n_unique() if p.ftn is not None else 0
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")

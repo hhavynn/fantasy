@@ -1,5 +1,13 @@
 # NFL Data Availability & Feasibility Research for In-Season Fantasy Analytics
 
+> **Status: background research, not the spec.** The authoritative, verified
+> definitions are in [`nfl_metrics_verified_contract.md`](nfl_metrics_verified_contract.md).
+> Several claims in the original version of this document were wrong and have been
+> corrected in place below (marked **Corrected**): target-share denominator,
+> rushing share (team vs backfield), the `qb_hit + sack` pressure formula, the
+> goal-line TD-rate claim, the spread sign for implied totals, NGS missing-data
+> handling, and the FTN `read_thrown` first-read code.
+
 **Audience**: Implementation / Backend Engineers  
 **Target Environment**: Python (`nflreadpy`, `duckdb`, `polars`) + `nflverse` open-source ecosystem  
 **Scope**: In-season current NFL season tracking beyond Points Per Game (PPG)  
@@ -41,8 +49,8 @@
 | Routes run | **D / E** | `load_participation()` (D) / Paid API (E) | Post-season only | High / Blocked | FTN participation data is blocked in-season by nflverse contract. |
 | Route participation | **D / E** | `load_participation()` (D) / Paid API (E) | Post-season only | High / Blocked | Routes / Team Dropbacks. In-season requires paid data. Use snap share as proxy. |
 | Targets | **A** | `nflreadpy.load_player_stats()` | Weekly / Post-game | Low | Official box score target count. Also verifiable via PBP. |
-| Target share | **A** | `nflreadpy.load_player_stats()` | Weekly (Tue AM) | Low | Pre-calculated column `target_share` in `load_player_stats()`. |
-| First-read targets | **B** | `load_ftn_charting()` + `load_pbp()` | Weekly / Nightly | Medium | Join on `game_id` and `play_id` where `ftn.read_thrown == '0'` (first read). |
+| Target share | **A** | `nflreadpy.load_player_stats()` | Weekly (Tue AM) | Low | Pre-calculated `target_share` = player targets / **team targets** (not pass attempts). **Corrected.** |
+| First-read targets | **B** | `load_ftn_charting()` + `load_pbp()` | Weekly / Nightly | Medium | Join on `game_id` and `play_id`. **Corrected:** in the actual data the first-read code is `'1'`; `'0'` is the default on non-progression plays (see contract §3). Not route participation. |
 | Air yards | **A** | `nflreadpy.load_player_stats()` | Weekly (Tue AM) | Low | Column `receiving_air_yards`. Includes incomplete passes. |
 | Air-yard share | **A** | `nflreadpy.load_player_stats()` | Weekly (Tue AM) | Low | Column `air_yards_share`. Can be volatile on deep targets. |
 | ADOT (Avg Depth of Target) | **B** | Derived: `load_player_stats()` | Weekly (Tue AM) | Low | `receiving_air_yards / targets`. Handle `targets == 0` (NULL). |
@@ -51,7 +59,7 @@
 | Slot / outside alignment | **D / E** | `load_participation()` (D) / Paid API (E) | Post-season only | High / Blocked | Snap-level receiver alignment is strictly historical in free data. |
 | **RB Usage** | | | | | |
 | Carries | **A** | `nflreadpy.load_player_stats()` | Weekly / Post-game | Low | Official rushing attempts (`carries`). |
-| Rushing share | **B** | Derived: `load_player_stats()` or `pbp` | Weekly (Tue AM) | Low | `player_carries / team_carries`. Exclude QB kneels if using PBP. |
+| Rushing share | **B** | Derived: `pbp` | Weekly (Tue AM) | Low | **Corrected:** two metrics. `team_rush_share` = player rush plays / team rush plays (scrambles in, kneels/2-pt out); `backfield_rush_share` = RB designed rushes / team RB designed rushes. Note `player_stats.carries` includes kneels. |
 | Goal-line carries (inside 5) | **B** | Derived: `nflreadpy.load_pbp()` | Post-game / Daily | Low | Filter `rush_attempt == 1 AND yardline_100 <= 5` (excl. kneels/scrambles). |
 | Red-zone carries (inside 20) | **B** | Derived: `nflreadpy.load_pbp()` | Post-game / Daily | Low | Filter `rush_attempt == 1 AND yardline_100 <= 20`. |
 | Routes (RB) | **D / E** | `load_participation()` (D) / Paid API (E) | Post-season only | High / Blocked | Same constraint as WR routes. |
@@ -83,14 +91,14 @@
 | Explosive plays allowed | **B** | Derived: `nflreadpy.load_pbp()` | Post-game / Weekly | Low | Count of passes >= 20 yds or rushes >= 10 yds conceded by `defteam`. |
 | Man vs. zone coverage | **E** | PFF / FantasyPoints / SIS | Paid API only | Blocked | Coverage schemes (Cover 1/2/3/4/Man/Zone) are not in free datasets. |
 | Defensive personnel (Nickel/Dime/Box) | **D / B** | `load_participation()` (D) / FTN Box (B) | Split | Medium | Nickel/Dime is post-season only. Box count is in-season via `ftn.n_defense_box`. |
-| Defensive pressure rate | **B / A** | `load_pbp()` (B) or PFR Def (A) | Weekly | Low | `(sacks + hits) / dropbacks` from PBP, or `pressure_pct` from PFR defense. |
+| Defensive pressure rate | **B / A** | `load_pbp()` (B) or PFR Def (A) | Weekly | Low | **Corrected:** hit-or-sack = dropbacks with `sack == 1 OR qb_hit == 1`, divided by dropbacks. Never `sacks + hits` (most sacks also carry `qb_hit = 1`). True pressure (incl. hurries) only from PFR. |
 | **Other Core Tables** | | | | | |
 | Injuries | **A** | `nflreadpy.load_injuries()` | Wed–Sun (multiple/wk) | Low | Official NFL injury reports: practice status (DNP/LP/FP) and game status. |
 | Depth charts | **A** | `nflreadpy.load_depth_charts()` | Weekly | Low | Team-issued depth charts (`depth_team` rank: 1 = starter, 2 = backup). |
 | Schedules & Vegas odds | **A** | `nflreadpy.load_schedules()` | Full season + Weekly | Low | Contains `spread_line`, `total_line`, weather, roof, gameday. |
 | Rosters | **A** | `nflreadpy.load_rosters_weekly()` | Weekly | Low | Active roster status, positions, teams, jersey numbers. |
 | Player ID crosswalk | **A** | `nflreadpy.load_ff_playerids()` | Continuous | Low | DynastyProcess mapping across `gsis_id`, `espn_id`, `sleeper_id`, `pfr_id`. |
-| Next Gen Stats (NGS) | **A** | `nflreadpy.load_nextgen_stats()` | Weekly (Tue AM) | Low | Passing, rushing, receiving tracking (separation, cushion, RYOE, CPOE). |
+| Next Gen Stats (NGS) | **A** | `nflreadpy.load_nextgen_stats()` | Weekly (Tue AM) | Low | Passing, rushing, receiving tracking (separation, cushion, RYOE, CPOE). Only qualified players get rows: LEFT JOIN, missing = NULL, never 0. |
 
 ---
 
@@ -104,9 +112,9 @@ These metrics are **100% free**, **reliably updated weekly in-season**, **proven
 3. **Air Yard Share (`air_yards_share`)**: Captures downfield target dominance; reveals buy-low candidates with high unrealized air yards.
 4. **WOPR (`wopr`)**: Weighted Opportunity Rating (`1.5 * target_share + 0.7 * air_yards_share`). Balances volume and depth into a single score.
 5. **Expected Fantasy Points (`xfp`)**: From `load_ff_opportunity()`. Isolates opportunity value from TD variance; identifies buy-low / sell-high value gaps.
-6. **Rushing Share (`rush_share`)**: RB carries divided by team non-kneel rush attempts; highlights true backfield committee splits.
+6. **Team rush share & backfield rush share** (**Corrected**): `team_rush_share` = share of all team rush plays (scrambles included); `backfield_rush_share` = share of RB designed carries. Only the latter shows true backfield committee splits next to a running QB.
 7. **Red-Zone Carries (`rz_carries`)**: Carries inside the 20-yard line; strong leading indicator for rushing touchdowns.
-8. **Goal-Line Carries (`gl_carries`)**: Carries inside the 5-yard line; the single highest-leverage touch in fantasy football (~0.55 expected TDs per carry).
+8. **Goal-Line Carries (`gl_carries`)**: Designed carries inside the 5-yard line; a very high-leverage touch. (**Corrected:** the earlier hardcoded "~0.55 expected TDs per carry" figure was unsourced and is not used.)
 9. **Red-Zone Targets (`rz_targets`)**: Targets inside the 20-yard line; predicts receiving touchdown equity.
 10. **RB Target Share (`rb_target_share`)**: Target share specifically earned by running backs; vital for identifying game-script-immune PPR backs.
 
@@ -170,21 +178,19 @@ Avoid spending development resources on these metrics for the MVP:
 ### 2. Red-Zone Carries & Targets (RZ Carries, RZ Targets)
 * **Goal**: Measure scoring-position opportunity volume.
 * **Source Table**: `nflreadpy.load_pbp()`
-* **Filter Conditions**:
-  * Carries: `rush_attempt == 1 AND yardline_100 <= 20 AND qb_kneel == 0`
+* **Filter Conditions** (**Corrected**: designed rushes only, so QB scrambles don't count):
+  * Carries: `play_type == 'run' AND qb_kneel == 0 AND qb_scramble == 0 AND two_point_attempt == 0 AND yardline_100 <= 20`
   * Targets: `pass_attempt == 1 AND yardline_100 <= 20 AND two_point_attempt == 0`
 * **Aggregation**: 
   * Carries: `COUNT(*) GROUP BY season, week, rusher_player_id`
   * Targets: `COUNT(*) GROUP BY season, week, receiver_player_id`
 
-### 3. Rushing Share
-* **Goal**: Measure backfield carry dominance.
-* **Source Table**: `nflreadpy.load_pbp()` or `load_player_stats()`
-* **Formula**:
-  $$\text{rush\_share} = \frac{\text{player\_carries}}{\text{team\_total\_carries}}$$
-* **Source Columns**:
-  * Numerator: `player_stats.carries` (or count of `rush_attempt == 1 AND qb_kneel == 0` by player)
-  * Denominator: `SUM(carries) OVER (PARTITION BY season, week, team)`
+### 3. Rushing Share (**Corrected**: split into two metrics)
+* **team_rush_share** = player rush plays / team rush plays, where a rush play is
+  `play_type == 'run' AND qb_kneel == 0 AND two_point_attempt == 0` (scrambles included).
+* **backfield_rush_share** (RBs only) = player designed rushes (`qb_scramble == 0`) /
+  team designed rushes by RBs.
+* Do not use `player_stats.carries` as the numerator for shares: it includes kneels.
 
 ### 4. Average Depth of Target (ADOT)
 * **Goal**: Characterize receiving depth profile.
@@ -263,10 +269,10 @@ Avoid spending development resources on these metrics for the MVP:
 ### 12. Vegas Implied Team Total
 * **Goal**: Project baseline scoring environment and touchdown volume per game.
 * **Source Table**: `nflreadpy.load_schedules()`
-* **Formulas**:
-  * Spread convention in nflverse: `spread_line` is from home team perspective (e.g. -3.5 means home team favored by 3.5).
-  * $\text{home\_implied\_total} = \frac{\text{total\_line} - \text{spread\_line}}{2}$
-  * $\text{away\_implied\_total} = \frac{\text{total\_line} + \text{spread\_line}}{2}$
+* **Formulas** (**Corrected** sign; verified against nflreadr dictionary and game results):
+  * Spread convention in nflverse: a **positive** `spread_line` means the **home** team is favored.
+  * $\text{home\_implied\_total} = \frac{\text{total\_line} + \text{spread\_line}}{2}$
+  * $\text{away\_implied\_total} = \frac{\text{total\_line} - \text{spread\_line}}{2}$
 * **Source Columns**: `total_line`, `spread_line`, `home_team`, `away_team`, `season`, `week`
 
 ---

@@ -73,14 +73,15 @@ export default async function OverviewPage() {
             <h2>Biggest roster needs</h2>
             <table>
               <thead>
-                <tr><th>Pos</th><th className="num">Need</th><th className="num">Healthy / target</th><th className="num">Out</th><th className="num">Starter value</th><th className="num">League avg</th></tr>
+                <tr><th>Pos</th><th className="num">Need</th><th className="num" title="Actual lineup slots this position fills (fixed + FLEX it wins)">Starts</th><th className="num" title="Availability-weighted bodies vs depth target">Avail / target</th><th className="num">Out</th><th className="num">Starter value</th><th className="num">League avg</th></tr>
               </thead>
               <tbody>
                 {o.needs.filter((n) => n.starters_required > 0).map((n) => (
                   <tr key={n.position}>
                     <td><Pos value={n.position} /></td>
                     <td><Score value={n.need_score * 10} /></td>
-                    <td className="num">{n.healthy} / {n.details.depth_target}</td>
+                    <td className="num">{n.starters_required}{n.details.flex_slots_filled ? <span className="faint"> (incl. FLEX)</span> : null}</td>
+                    <td className="num">{n.effective_available ?? n.healthy} / {n.details.depth_target}</td>
                     <td className="num">{n.unavailable}</td>
                     <td className="num">{num(n.starter_value)}</td>
                     <td className="num">{num(n.details.league_avg_starter_value)}</td>
@@ -89,7 +90,8 @@ export default async function OverviewPage() {
               </tbody>
             </table>
             <p className="faint" style={{ marginTop: 8 }}>
-              Need = 0.55·shortage of healthy bodies + 0.45·gap between your starters&apos; value and the league-average starter.
+              Need = 0.55·shortage of availability-weighted bodies + 0.45·gap between your fixed starters&apos; value and the league
+              average. FLEX is one real slot filled by the best eligible player. Weights: available 1, questionable 0.75, doubtful 0.15, out/IR 0.
             </p>
           </section>
 
@@ -147,7 +149,7 @@ function RosterTable({ rows, title }: { rows: RosterPlayer[]; title: string }) {
         <thead>
           <tr>
             <th>{title}</th><th>Player</th><th>NFL</th><th>Status</th><th title="Season PPR/game (nflverse)" className="num">PPR/g</th>
-            <th title="Expected PPR/game from role (nflverse xFP)" className="num">xFP/g</th><th>Trend</th><th title="Underlying-value classification">Class</th>
+            <th title="Expected PPR/game from role (nflverse xFP)" className="num">xFP/g</th><th>Trend</th><th title="Market signal (BUY needs a meaningful absolute role)">Signal</th>
             <th className="num" title="0-10 rest-of-season value proxy">Value</th>
           </tr>
         </thead>
@@ -157,11 +159,12 @@ function RosterTable({ rows, title }: { rows: RosterPlayer[]; title: string }) {
               <td className="faint">{p.lineup_slot}</td>
               <td><PlayerLink id={p.espn_player_id} name={p.full_name} /> <Pos value={p.position} /></td>
               <td>{p.pro_team ?? "FA"}{p.on_bye ? <> <Badge value="BYE" tone="warn" /></> : null}</td>
-              <td>{p.injury_status && !["ACTIVE", "NORMAL"].includes(p.injury_status) ? <Badge value={p.injury_status} /> : ""}</td>
+              <td>{p.availability && p.availability.status !== "AVAILABLE"
+                ? <Badge value={p.availability.status} title={`${p.availability.sources.join(", ")} · availability weight ${p.availability.weight}`} /> : ""}</td>
               <td className="num">{num(p.fp_per_game, 1, p.gsis_id ? "No games" : "No NFL id match")}</td>
               <td className="num">{num(p.xfp_per_game, 1, p.gsis_id ? "No games" : "No NFL id match")}</td>
               <td><TrendArrow label={p.trend_label} /></td>
-              <td><Badge value={p.classification} /></td>
+              <td><Badge value={p.market_signal} /></td>
               <td className="num">{num(p.value_score)}</td>
             </tr>
           ))}

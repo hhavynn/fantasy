@@ -10,6 +10,11 @@
 -- nfl_ff_playerids) are created by the NFL sync directly from the nflverse
 -- column sets so that no source field is lost; they are partitioned by season.
 
+CREATE TABLE IF NOT EXISTS schema_meta (
+    key    VARCHAR PRIMARY KEY,
+    value  VARCHAR
+);
+
 CREATE TABLE IF NOT EXISTS sync_runs (
     run_id       VARCHAR PRIMARY KEY,
     source       VARCHAR NOT NULL,          -- espn | nfl | analytics
@@ -242,30 +247,134 @@ CREATE TABLE IF NOT EXISTS nfl_players (
     draft_pick           INTEGER
 );
 
--- Red-zone / goal-line usage derived from play-by-play.
-CREATE TABLE IF NOT EXISTS nfl_redzone_usage (
-    season            INTEGER,
-    week              INTEGER,
-    player_id         VARCHAR,    -- gsis
-    team              VARCHAR,
-    rz_targets        INTEGER,    -- targets with yardline_100 <= 20
-    rz_carries        INTEGER,    -- carries with yardline_100 <= 20
-    inside10_targets  INTEGER,
-    inside10_carries  INTEGER,
-    gl_carries        INTEGER,    -- carries with yardline_100 <= 5
+-- Play-by-play derived player usage (see docs/nfl_metrics_verified_contract.md).
+--   rush play     = play_type 'run', not a kneel, not a 2-pt try (scrambles INCLUDED)
+--   designed rush = rush play with qb_scramble = 0
+--   target        = play_type 'pass', pass_attempt = 1, sack = 0, receiver present, not 2-pt
+CREATE TABLE IF NOT EXISTS nfl_pbp_player_week (
+    season              INTEGER,
+    week                INTEGER,
+    player_id           VARCHAR,    -- gsis
+    team                VARCHAR,
+    rush_attempts       INTEGER,    -- rush plays (incl. scrambles, excl. kneels)
+    designed_rushes     INTEGER,    -- rush plays excluding scrambles
+    scrambles           INTEGER,
+    designed_rush_success INTEGER,  -- designed rushes with success = 1 (EPA > 0)
+    explosive_runs      INTEGER,    -- designed rushes with yards_gained >= 10
+    rz_carries          INTEGER,    -- designed rushes with yardline_100 <= 20
+    inside10_carries    INTEGER,
+    gl_carries          INTEGER,    -- designed rushes with yardline_100 <= 5
+    targets             INTEGER,
+    rz_targets          INTEGER,
+    inside10_targets    INTEGER,
+    ftn_charted_targets INTEGER,    -- targets with an FTN read code; NULL = game not charted
+    first_read_targets  INTEGER,    -- FTN read_thrown = '1' (see contract: verified first-read code)
+    designed_targets    INTEGER,    -- FTN 'DES'
+    checkdown_targets   INTEGER,    -- FTN 'CHK'
+    scramble_drill_targets INTEGER, -- FTN 'SD'
     PRIMARY KEY (season, week, player_id)
 );
 
+-- Offensive team-week environment.
 CREATE TABLE IF NOT EXISTS nfl_team_week (
-    season              INTEGER,
-    week                INTEGER,
-    team                VARCHAR,
-    team_carries        INTEGER,   -- designed runs + scrambles, excl. kneels and 2pt
-    team_targets        INTEGER,
-    team_rz_carries     INTEGER,
-    team_rz_targets     INTEGER,
-    team_offense_snaps  INTEGER,
+    season                  INTEGER,
+    week                    INTEGER,
+    team                    VARCHAR,
+    opponent                VARCHAR,
+    team_rush_attempts      INTEGER,   -- rush plays incl. scrambles, excl. kneels/2-pt
+    team_designed_rushes    INTEGER,
+    team_scrambles          INTEGER,
+    team_rb_carries         INTEGER,   -- designed rushes by RBs (backfield denominator)
+    team_targets            INTEGER,
+    team_rz_carries         INTEGER,   -- designed rushes inside the 20
+    team_rz_targets         INTEGER,
+    team_first_read_targets INTEGER,   -- NULL when FTN has not charted the game
+    team_ftn_charted_targets INTEGER,
+    dropbacks               INTEGER,   -- qb_dropback = 1 (incl. sacks and scrambles)
+    sacks                   INTEGER,
+    hit_or_sack             INTEGER,   -- dropbacks with sack = 1 OR qb_hit = 1 (never summed)
+    sack_rate               DOUBLE,
+    hit_or_sack_rate        DOUBLE,
+    pfr_pressures           INTEGER,   -- PFR times_pressured summed over team QBs
+    pfr_pressure_rate       DOUBLE,    -- pfr_pressures / PBP dropbacks
+    proe                    DOUBLE,    -- mean(pass_oe) over run/pass plays, percentage points
+    proe_plays              INTEGER,
+    neutral_pass_rate       DOUBLE,    -- mean(pass) with 0.20 <= wp <= 0.80 and > 2 min left in half
+    neutral_plays           INTEGER,
+    offense_plays           INTEGER,   -- run/pass plays (sanity check vs snaps)
+    team_offense_snaps      INTEGER,   -- derived from PFR offense_snaps / offense_pct (validated)
     PRIMARY KEY (season, week, team)
+);
+
+-- Defensive team-week counts (aggregate across weeks for matchup context).
+CREATE TABLE IF NOT EXISTS nfl_defense_week (
+    season               INTEGER,
+    week                 INTEGER,
+    defteam              VARCHAR,
+    opponent             VARCHAR,   -- offense faced
+    pass_plays           INTEGER,   -- pass = 1 (dropbacks incl. sacks/scrambles) with EPA
+    pass_epa_sum         DOUBLE,
+    rush_plays           INTEGER,   -- designed rushes with EPA
+    rush_epa_sum         DOUBLE,
+    rush_success         INTEGER,
+    explosive_runs       INTEGER,
+    targets              INTEGER,
+    rb_targets           INTEGER,
+    wr_targets           INTEGER,
+    te_targets           INTEGER,
+    PRIMARY KEY (season, week, defteam)
+);
+
+-- Betting-implied team totals from nflverse schedules.
+-- spread_line > 0 means the HOME team is favored (verified upstream + against results).
+CREATE TABLE IF NOT EXISTS team_game_lines (
+    season          INTEGER,
+    week            INTEGER,
+    game_id         VARCHAR,
+    team            VARCHAR,
+    opponent        VARCHAR,
+    is_home         BOOLEAN,
+    spread_line     DOUBLE,
+    total_line      DOUBLE,
+    implied_total   DOUBLE,    -- home: (total + spread)/2, away: (total - spread)/2
+    PRIMARY KEY (season, week, team)
+);
+
+-- Season-to-date defensive context (through `through_week`) with sample sizes and ranks.
+CREATE TABLE IF NOT EXISTS defense_context (
+    season                     INTEGER,
+    through_week               INTEGER,
+    defteam                    VARCHAR,
+    games                      INTEGER,
+    pass_plays                 INTEGER,
+    pass_epa_allowed           DOUBLE,
+    rush_plays                 INTEGER,
+    rush_epa_allowed           DOUBLE,
+    rush_success_allowed       DOUBLE,
+    explosive_run_rate_allowed DOUBLE,
+    targets                    INTEGER,
+    rb_target_share_allowed    DOUBLE,
+    te_target_share_allowed    DOUBLE,
+    ranks                      JSON,      -- 1 = most generous to offenses
+    PRIMARY KEY (season, defteam)
+);
+
+-- Season-to-date offensive environment per team.
+CREATE TABLE IF NOT EXISTS team_context (
+    season               INTEGER,
+    through_week         INTEGER,
+    team                 VARCHAR,
+    games                INTEGER,
+    proe                 DOUBLE,
+    neutral_pass_rate    DOUBLE,
+    sack_rate            DOUBLE,
+    hit_or_sack_rate     DOUBLE,
+    pfr_pressure_rate    DOUBLE,
+    dropbacks            INTEGER,
+    next_week            INTEGER,
+    next_opponent        VARCHAR,
+    next_implied_total   DOUBLE,
+    PRIMARY KEY (season, team)
 );
 
 -- ------------------------------------------------------------ Mapping ----
@@ -288,38 +397,54 @@ CREATE TABLE IF NOT EXISTS player_id_map (
 -- ---------------------------------------------------------- Analytics ----
 
 CREATE TABLE IF NOT EXISTS player_week_usage (
-    season              INTEGER,
-    week                INTEGER,
-    gsis_id             VARCHAR,
-    team                VARCHAR,
-    opponent            VARCHAR,
-    position            VARCHAR,
-    offense_snaps       INTEGER,
-    offense_pct         DOUBLE,      -- 0..1, NULL if no snap record
-    team_offense_snaps  INTEGER,
-    targets             INTEGER,
-    receptions          INTEGER,
-    receiving_yards     DOUBLE,
-    receiving_tds       INTEGER,
-    air_yards           DOUBLE,
-    target_share        DOUBLE,
-    air_yards_share     DOUBLE,
-    wopr                DOUBLE,
-    adot                DOUBLE,      -- air yards / target, NULL if 0 targets
-    carries             INTEGER,
-    rushing_yards       DOUBLE,
-    rushing_tds         INTEGER,
-    team_carries        INTEGER,
-    rush_share          DOUBLE,
-    yards_per_carry     DOUBLE,      -- NULL if 0 carries
-    rz_targets          INTEGER,
-    rz_carries          INTEGER,
-    gl_carries          INTEGER,
-    opportunities       INTEGER,     -- targets + carries
-    fantasy_points_ppr  DOUBLE,      -- nflverse PPR
-    league_points       DOUBLE,      -- ESPN league scoring, NULL if unavailable
-    xfp                 DOUBLE,      -- nflverse ff_opportunity expected PPR points
-    stats_source        VARCHAR,     -- stats+snaps | stats_only | snaps_only
+    season                INTEGER,
+    week                  INTEGER,
+    gsis_id               VARCHAR,
+    team                  VARCHAR,
+    opponent              VARCHAR,
+    position              VARCHAR,
+    offense_snaps         INTEGER,
+    offense_pct           DOUBLE,      -- 0..1, NULL if no snap record
+    team_offense_snaps    INTEGER,
+    targets               INTEGER,
+    receptions            INTEGER,
+    receiving_yards       DOUBLE,
+    receiving_tds         INTEGER,
+    air_yards             DOUBLE,
+    target_share          DOUBLE,      -- targets / team targets (nflverse definition)
+    air_yards_share       DOUBLE,
+    wopr                  DOUBLE,      -- 1.5*target_share + 0.7*air_yards_share
+    adot                  DOUBLE,      -- air yards / target, NULL if 0 targets
+    carries               INTEGER,     -- nflverse official carries (includes kneels)
+    rushing_yards         DOUBLE,
+    rushing_tds           INTEGER,
+    rush_attempts         INTEGER,     -- PBP rush plays incl. scrambles, excl. kneels
+    designed_rushes       INTEGER,
+    team_rush_attempts    INTEGER,
+    team_rush_share       DOUBLE,      -- rush_attempts / team_rush_attempts
+    team_rb_carries       INTEGER,
+    backfield_rush_share  DOUBLE,      -- RBs only: designed_rushes / team RB designed rushes
+    yards_per_carry       DOUBLE,      -- NULL if 0 carries
+    rushing_success_rate  DOUBLE,      -- successful designed rushes / designed rushes
+    explosive_runs        INTEGER,
+    explosive_run_rate    DOUBLE,
+    ybc_per_att           DOUBLE,      -- PFR yards before contact / PFR carries
+    yac_per_att           DOUBLE,      -- PFR yards after contact / PFR carries
+    broken_tackles        INTEGER,     -- PFR rushing + receiving broken tackles
+    rz_targets            INTEGER,
+    rz_carries            INTEGER,     -- designed rushes inside the 20
+    gl_carries            INTEGER,     -- designed rushes inside the 5
+    first_read_targets    INTEGER,
+    first_read_target_share DOUBLE,    -- player first-read targets / team first-read targets
+    designed_targets      INTEGER,
+    checkdown_targets     INTEGER,
+    ngs_rush_yoe_per_att  DOUBLE,      -- NGS; NULL = not qualified/unavailable (never 0-filled)
+    ngs_avg_separation    DOUBLE,      -- NGS; NULL = not qualified/unavailable
+    opportunities         INTEGER,     -- targets + carries
+    fantasy_points_ppr    DOUBLE,
+    league_points         DOUBLE,
+    xfp                   DOUBLE,
+    stats_source          VARCHAR,
     PRIMARY KEY (season, week, gsis_id)
 );
 
@@ -330,7 +455,11 @@ CREATE TABLE IF NOT EXISTS player_scores (
     position             VARCHAR,
     as_of_week           INTEGER,
     games                INTEGER,
-    opportunity_score    DOUBLE,     -- 0-10 position percentile of recent xFP/game
+    opportunity_basis    VARCHAR,    -- xfp | targets+carries
+    opportunity_tier     VARCHAR,    -- HIGH | MEDIUM | LOW (absolute per-position thresholds)
+    role_trend           VARCHAR,    -- UP | FLAT | DOWN | INSUFFICIENT
+    market_signal        VARCHAR,    -- BUY | SELL | HOLD | WATCH | MONITOR
+    opportunity_score    DOUBLE,     -- 0-10 position percentile of recent opportunity (see basis)
     production_score     DOUBLE,     -- 0-10 position percentile of recent PPR/game
     usage_trend_score    DOUBLE,     -- -1..+1 composite of usage deltas
     trend_label          VARCHAR,    -- UP | DOWN | FLAT | INSUFFICIENT
@@ -338,7 +467,7 @@ CREATE TABLE IF NOT EXISTS player_scores (
     xfp_per_game         DOUBLE,
     fp_minus_xfp         DOUBLE,
     value_gap_label      VARCHAR,    -- PRODUCTION_EXCEEDS_USAGE | USAGE_EXCEEDS_PRODUCTION | ALIGNED | INSUFFICIENT
-    classification       VARCHAR,    -- BUY | HOLD | SELL | MONITOR
+    classification       VARCHAR,    -- = market_signal (kept for compatibility)
     value_score          DOUBLE,     -- 0-10 blended rest-of-season value proxy
     components           JSON,
     reasons              JSON,
@@ -389,6 +518,7 @@ CREATE TABLE IF NOT EXISTS team_position_needs (
     rostered           INTEGER,
     healthy            INTEGER,
     unavailable        INTEGER,
+    effective_available DOUBLE,     -- sum of availability weights (see analytics/availability.py)
     starter_value      DOUBLE,      -- avg value_score of the projected starters
     need_score         DOUBLE,      -- 0..1
     details            JSON,
@@ -414,4 +544,25 @@ CREATE TABLE IF NOT EXISTS waiver_recommendations (
     competitors            JSON,
     computed_at            TIMESTAMP,
     PRIMARY KEY (league_id, season, espn_player_id)
+);
+
+CREATE TABLE IF NOT EXISTS player_context (
+    season          INTEGER,
+    gsis_id         VARCHAR,
+    position        VARCHAR,
+    team            VARCHAR,
+    labels          JSON,      -- {role, role_trend, efficiency, scoring_opportunity, offensive_environment, matchup, data_confidence}
+    evidence        JSON,      -- the numbers behind each label
+    computed_at     TIMESTAMP,
+    PRIMARY KEY (season, gsis_id)
+);
+
+CREATE TABLE IF NOT EXISTS validation_issues (
+    run_id      VARCHAR,
+    severity    VARCHAR,       -- error | warning
+    check_name  VARCHAR,
+    detail      VARCHAR,
+    count       INTEGER,
+    examples    JSON,
+    created_at  TIMESTAMP
 );
