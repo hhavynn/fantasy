@@ -119,7 +119,9 @@ function PlayerDetail({ d }: { d: Detail }) {
               <Badge value={p.market_signal} title="Market signal (needs a meaningful absolute role for BUY)" />
               <span className="faint">role</span><Badge value={p.opportunity_tier} title="Absolute opportunity tier" />
               <span className="faint">trend</span><Badge value={p.role_trend} title="Composite usage trend" />
-              <Badge value={p.value_gap_label} />
+              <span className="faint">production</span>
+              <Badge value={p.production_sustainability ?? p.value_gap_label}
+                title="Production vs the opportunity (xFP) baseline. Regression evidence only, not a sell signal: xFP is an average-player model." />
             </div>
             <div className="kv">
               <span className="k">Opportunity score</span><span><Score value={p.opportunity_score} /> <span className="faint">basis: {BASIS_LABEL[p.opportunity_basis ?? "unavailable"] ?? p.opportunity_basis}</span></span>

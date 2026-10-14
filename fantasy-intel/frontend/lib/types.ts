@@ -29,6 +29,7 @@ export type PlayerCore = {
   value_gap_label: string | null; classification: string | null; value_score: number | null;
   opportunity_basis: string | null; opportunity_tier: string | null; role_trend: string | null;
   market_signal: string | null;
+  production_sustainability: string | null;   // production vs xFP baseline: regression evidence, not a trade call
   fantasy_team?: string | null;
 };
 

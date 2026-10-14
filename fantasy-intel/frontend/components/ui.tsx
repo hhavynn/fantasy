@@ -5,6 +5,7 @@ const TONE: Record<string, string> = {
   SELL: "bad", DOWN: "bad", IGNORE: "", LOW: "",
   HOLD: "", FLAT: "", MEDIUM: "warn", WAIT: "warn", MONITOR: "warn",
   INSUFFICIENT: "", USAGE_EXCEEDS_PRODUCTION: "good", PRODUCTION_EXCEEDS_USAGE: "bad",
+  BELOW_EXPECTATION: "info", ABOVE_EXPECTATION: "warn",
   OUT: "bad", INJURY_RESERVE: "bad", SUSPENSION: "bad", DOUBTFUL: "bad", QUESTIONABLE: "warn",
   Out: "bad", Doubtful: "bad", Questionable: "warn",
 };
@@ -14,6 +15,8 @@ const SHORT: Record<string, string> = {
   PRODUCTION_EXCEEDS_USAGE: "production > usage",
   INJURY_RESERVE: "IR",
   INSUFFICIENT: "insufficient data",
+  ABOVE_EXPECTATION: "production above xFP",
+  BELOW_EXPECTATION: "production below xFP",
 };
 
 export function Badge({ value, title, tone }: { value?: string | null; title?: string; tone?: string }) {

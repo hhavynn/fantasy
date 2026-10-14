@@ -19,7 +19,8 @@ PLAYER_COLS = """
     m.gsis_id, m.match_method, m.match_confidence,
     s.games, s.opportunity_basis, s.opportunity_tier, s.role_trend, s.market_signal,
     s.opportunity_score, s.production_score, s.usage_trend_score, s.trend_label,
-    s.fp_per_game, s.xfp_per_game, s.fp_minus_xfp, s.value_gap_label, s.classification, s.value_score
+    s.fp_per_game, s.xfp_per_game, s.fp_minus_xfp, s.value_gap_label, s.classification, s.value_score,
+    s.components->>'production_sustainability' AS production_sustainability
 """
 PLAYER_JOINS = """
     LEFT JOIN player_id_map m ON m.espn_player_id = fp.espn_player_id

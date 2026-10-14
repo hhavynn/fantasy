@@ -199,11 +199,22 @@ didn't cover is NULL; bye/inactive weeks are skipped, never zero.
 - **Role trend**: recent vs earlier games on snap share, target share / backfield
   share / team rush share, volume and xFP; UP / FLAT / DOWN (needs ≥ 4 games).
 - **Value gap**: season PPR/g − xFP/g; ≥ max(2.5, 20% of xFP) → production exceeds usage.
-- **Market signal**: BUY / SELL / HOLD / WATCH / MONITOR. A rising role on a LOW
-  tier is only **WATCH**; BUY needs a MEDIUM/HIGH role that is rising (without
-  production outrunning it) or under-producing its role. SELL = production
-  outrunning the role (on any tier if the box score is fantasy-relevant) or a
-  shrinking role with a strong box score.
+- **Production sustainability** (`production_sustainability`): ABOVE_EXPECTATION /
+  ALIGNED / BELOW_EXPECTATION / INSUFFICIENT, i.e. box-score production vs the xFP
+  baseline. This is **regression evidence, not a trade call**: xFP is an average-player
+  model and elite players can beat it persistently (talent, QB, target type, YAC).
+- **Market signal**: BUY / SELL / HOLD / WATCH / MONITOR, i.e. is there an actionable
+  market mismatch? It's conservative: HOLD beats a false SELL.
+  - LOW tier: a productive box score above expectation → SELL (sell-high); a rising role
+    is only **WATCH**; otherwise HOLD.
+  - MEDIUM/HIGH: a rising role with production not above expectation → BUY; production
+    below expectation with the role not shrinking → BUY.
+  - **HIGH tier is never SELL** while its recent absolute role is still HIGH. Above-
+    expectation production or a short-term usage dip means regression risk, not a sell
+    (HOLD with the reason). A real role collapse drops the recent tier to MEDIUM.
+  - MEDIUM: above expectation + role FLAT/DOWN + fantasy-relevant box score → SELL;
+    role DOWN + fantasy-relevant box score → SELL.
+  - An INSUFFICIENT role trend never drives a SELL.
 
 ### Player context (`player_context`, `team_context`, `defense_context`)
 Transparent, position-aware labels with their evidence (no master score): role,
