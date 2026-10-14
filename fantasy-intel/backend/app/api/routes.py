@@ -6,10 +6,15 @@ import json
 from collections import defaultdict
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from ..analytics.availability import availability, injury_order_sql, latest_injuries
 from ..analytics.context import ftn_semantics
 from ..analytics.projections import BASELINE_NOTE, league_window, player_forward
+from ..analytics.team_lineups import project_team, public_weeks, replacement_market, roster_marginal_value
+from ..analytics.trade_data import (load_league_state, manager_context, named_weeks, player_intelligence,
+                                    player_names)
+from ..analytics.trades import TradeError, evaluate_trade
 from ..db.connection import schema_version, table_exists
 from .deps import db, one, rows
 
@@ -475,3 +480,122 @@ def _external_quality(con) -> dict:
             "selection": {s: select_provider(con, s, pref) for s in seasons},
             "duplicate_noops": sum(1 for i in imports if i["status"] == "duplicate_noop"),
             "rejected": sum(1 for i in imports if i["status"] == "rejected")}
+
+
+# ------------------------------------------------------------- V2 lineups + trades --
+# Hypothetical and read-only: nothing below writes to the database or to ESPN.
+
+def _state(con):
+    state = load_league_state(con)
+    if state is None:
+        raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
+    return state
+
+
+def _window_info(state) -> dict:
+    w = state.window()
+    return {"start_week": w.start, "final_week": w.final, "last_regular_season_week": w.last_regular,
+            "weeks": list(w.weeks), "start_week_reason": state.start_week_reason}
+
+
+@router.get("/lineup-projections")
+def lineup_projections():
+    """Every team's stored optimal-lineup projection summary + the live replacement market."""
+    with db() as con:
+        lg = _league(con)
+        state = _state(con)
+        teams = rows(con, """SELECT r.*, t.name, t.abbrev, t.is_mine FROM team_ros_lineup_projections r
+                             JOIN fantasy_teams t ON t.league_id = r.league_id AND t.season = r.season
+                                                 AND t.team_id = r.team_id
+                             WHERE r.league_id = ? AND r.season = ?
+                             ORDER BY r.ros_known_starting_points DESC NULLS LAST""", [lg["league_id"], lg["season"]]) \
+            if table_exists(con, "team_ros_lineup_projections") else []
+        return {"league": lg, "evaluation": _window_info(state), "teams": teams,
+                "replacement_market": replacement_market(state.free_agents, state.slots, state.window(),
+                                                         state.projections),
+                "projection_source": "ESPN", "note": BASELINE_NOTE}
+
+
+@router.get("/teams/{team_id}/lineup-projection")
+def team_lineup_projection(team_id: int):
+    """Live weekly optimal lineups for one team + every rostered player's marginal lineup value."""
+    with db() as con:
+        lg = _league(con)
+        state = _state(con)
+        if team_id not in state.rosters:
+            raise HTTPException(404, "Unknown team")
+        roster, window = state.rosters[team_id], state.window()
+        team = project_team(roster, state.slots, window, state.projections)
+        names = player_names(con, [p.espn_player_id for p in roster])
+        marginal = [{"name": p.name, "position": p.position, "pro_team": p.pro_team, "on_ir": p.on_ir,
+                     **roster_marginal_value(roster, p.espn_player_id, state.slots, window, state.projections, team)}
+                    for p in roster]
+        marginal.sort(key=lambda m: -(m["known_marginal_lineup_points"] or 0))
+        return {"league": lg, "team_id": team_id, "team_name": state.team_names.get(team_id),
+                "evaluation": _window_info(state), "summary": team["summary"],
+                "weeks": named_weeks(public_weeks(team), names), "marginal_values": marginal}
+
+
+@router.get("/trades/options")
+def trade_options():
+    """Teams and current rosters for the Trade Evaluator."""
+    with db() as con:
+        lg = _league(con)
+        state = _state(con)
+        teams = rows(con, "SELECT team_id, name, abbrev, is_mine FROM fantasy_teams WHERE league_id=? AND season=? "
+                          "ORDER BY team_id", [lg["league_id"], lg["season"]])
+        ros = {r["espn_player_id"]: r for r in rows(con, """SELECT espn_player_id, ros_projected_points,
+                   regular_season_projected_points, playoff_projected_points FROM player_ros_projections
+                   WHERE season = ?""", [lg["season"]])} if table_exists(con, "player_ros_projections") else {}
+        order = {p: i for i, p in enumerate(["QB", "RB", "WR", "TE", "K", "D/ST"])}
+        for t in teams:
+            t["roster"] = sorted(
+                [{"espn_player_id": p.espn_player_id, "name": p.name, "position": p.position, "pro_team": p.pro_team,
+                  "on_ir": p.on_ir, "injury_status": p.injury_status,
+                  "ros_projected_points": (ros.get(p.espn_player_id) or {}).get("ros_projected_points")}
+                 for p in state.rosters.get(t["team_id"], [])],
+                key=lambda p: (order.get(p["position"], 9), -(p["ros_projected_points"] or 0), p["name"] or ""))
+        return {"league": lg, "evaluation": _window_info(state), "teams": teams,
+                "active_capacity": state.active_capacity, "position_limits": state.position_limits}
+
+
+class TradeRequest(BaseModel):
+    team_a_id: int
+    team_b_id: int
+    team_a_sends: list[int]
+    team_b_sends: list[int]
+    start_week: int | None = None
+
+
+@router.post("/trades/evaluate")
+def trades_evaluate(body: TradeRequest):
+    """Hypothetical exact before/after lineup simulation for both teams. Read-only."""
+    with db() as con:
+        lg = _league(con)
+        state = _state(con)
+        try:
+            res = evaluate_trade(state, body.team_a_id, body.team_b_id, body.team_a_sends, body.team_b_sends,
+                                 body.start_week)
+        except TradeError as err:
+            raise HTTPException(422, str(err))
+        ids = set(body.team_a_sends) | set(body.team_b_sends)
+        for side in (res["team_a"], res["team_b"]):
+            for key in ("before", "after"):
+                for w in side["lineups"][key]:
+                    ids |= {a["player_id"] for a in w["assignment"] if a["player_id"]}
+                    ids |= {b["player_id"] for b in w["bench"]}
+        names = player_names(con, ids)
+        for side in (res["team_a"], res["team_b"]):
+            for key in ("before", "after"):
+                side["lineups"][key] = named_weeks(side["lineups"][key], names)
+        intel = player_intelligence(con, lg["season"], sorted(set(body.team_a_sends) | set(body.team_b_sends)))
+        for p in res["players"]:
+            p["intelligence"] = intel.get(p["espn_player_id"])
+        res["manager_context"] = manager_context(con, lg["league_id"], lg["season"], [body.team_a_id, body.team_b_id])
+        res["names"] = {pid: {"name": n["full_name"], "position": n["position"], "pro_team": n["pro_team"]}
+                        for pid, n in names.items()}
+        res["league"] = {k: lg[k] for k in ("league_id", "season", "name", "current_week", "final_scoring_period")}
+        if state.undroppable_list_in_use:
+            res["limitations"] = res["limitations"] + [
+                "This league uses ESPN's undroppable list; forced drops may name a player ESPN would not let you drop."]
+        return res

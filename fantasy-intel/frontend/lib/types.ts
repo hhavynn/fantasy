@@ -155,3 +155,90 @@ export type ForwardProjection = {
   source: string; note: string; summary: RosSummary; projection_synced_at: string | null;
   weeks: ForwardWeek[]; schedule_available: boolean;
 };
+
+// V2 Trade Evaluator (POST /api/trades/evaluate). Projected points: ESPN. Trade impact: exact lineup simulation.
+export type TradeOptions = {
+  league: League;
+  evaluation: TradeWindow;
+  teams: { team_id: number; name: string; abbrev: string; is_mine: boolean;
+    roster: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
+      on_ir: boolean; injury_status: string | null; ros_projected_points: number | null }[] }[];
+  active_capacity: number;
+  position_limits: Record<string, number>;
+};
+
+export type TradeWindow = {
+  start_week: number; final_week: number; last_regular_season_week: number | null; weeks: number[];
+  start_week_overridden?: boolean;
+  start_week_reason: { reason?: string; evaluation_start_week?: number; espn_current_week?: number };
+};
+
+export type LineupSlot = { slot: string; player_id: number | null; name?: string | null; position: string | null;
+  points: number | null; is_flex: boolean };
+export type LineupWeek = { week: number; phase: string | null; projection_complete: boolean;
+  known_lineup_points: number; projected_lineup_points: number | null; assignment: LineupSlot[];
+  bench: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
+  missing_projection_ids: number[]; teamless_unprojected_ids: number[] };
+
+export type TeamLineupSummary = {
+  ros_projected_starting_points: number | null; ros_known_starting_points: number;
+  regular_season_projected_starting_points: number | null; playoff_projected_starting_points: number | null;
+  ros_weeks_expected: number; ros_weeks_complete: number; missing_weeks: number[]; missing_players: number[];
+};
+
+export type TradeDeltas = {
+  ros_delta: number | null; regular_season_delta: number | null; playoff_delta: number | null;
+  known_ros_delta: number; average_weekly_delta: number | null; weeks_improved: number; weeks_worsened: number;
+  weeks_unchanged: number; weeks_incomplete: number[]; projection_complete: boolean;
+};
+
+export type FaPick = {
+  label?: string; note?: string; player: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null } | null;
+  lineup_points_added?: number | null; known_lineup_points_added?: number; weeks_started?: number[];
+};
+
+export type TradeSide = {
+  team_id: number; team_name: string | null; sends: number[]; receives: number[];
+  before: TeamLineupSummary; after: TeamLineupSummary; deltas: TradeDeltas;
+  weekly: { week: number; phase: string | null; before: number | null; after: number | null; delta: number | null;
+    known_delta: number; projection_complete: boolean; entered: number[]; exited: number[] }[];
+  lineups: { before: LineupWeek[]; after: LineupWeek[] };
+  roster: { active_capacity: number; active_before: number; active_after: number; open_active_roster_spots: number;
+    open_active_roster_spots_before: number;
+    forced_drops: { espn_player_id: number; name: string | null; position: string | null; is_incoming: boolean }[];
+    forced_drop_lineup_cost: number | null; forced_drop_known_lineup_cost: number; forced_drop_basis: string | null;
+    redundant_incoming_asset: { player_ids: number[]; names: (string | null)[]; lineup_points_saved_by_cutting_it: number; note: string } | null };
+  incoming_usage: { espn_player_id: number; name: string | null; position: string | null; weeks_started: number[]; slots: Record<string, number> }[];
+  fit_notes: string[];
+  hypothetical_fa_fill: FaPick | null;
+  incomplete: { missing_weeks: number[]; missing_players: number[] };
+};
+
+export type TradePlayer = {
+  espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
+  injury_status: string | null; on_ir: boolean; from_team_id: number; to_team_id: number;
+  marginal_value_on_current_team: { roster_marginal_lineup_points: number | null; regular_season_marginal_lineup_points: number | null;
+    playoff_marginal_lineup_points: number | null; known_marginal_lineup_points: number; weeks_started: number[]; weeks_expected: number };
+  replacement_context: { replacement: FaPick["player"]; replacement_position: string | null; eligible_positions: string[];
+    lineup_points_lost_without_player: number | null; lineup_points_recovered: number | null;
+    residual_loss_vs_original: number | null; known_residual_loss_vs_original: number | null; note: string };
+  intelligence: { ros_projected_points: number | null; regular_season_projected_points: number | null;
+    playoff_projected_points: number | null; opportunity_tier: string | null; role_trend: string | null;
+    production_sustainability: string | null; market_signal: string | null; injury_status: string | null;
+    context_labels: Partial<ContextLabels> | null; note: string } | null;
+};
+
+export type TradeResult = {
+  league: { name: string; season: number; current_week: number; final_scoring_period: number };
+  evaluation: TradeWindow;
+  trade: { shape: string; team_a_id: number; team_b_id: number; team_a_sends: number[]; team_b_sends: number[] };
+  team_a: TradeSide; team_b: TradeSide;
+  result: { label: string; team_a_ros_delta: number | null; team_b_ros_delta: number | null;
+    combined_ros_delta: number | null; min_side_ros_delta: number | null; regular_season_label: string;
+    playoff_label: string; note: string };
+  players: TradePlayer[];
+  manager_context: Record<string, { needs: { position: string; need_score: number }[];
+    classifications: Record<string, { label: string; confidence: string }> }>;
+  names: Record<string, { name: string | null; position: string | null; pro_team: string | null }>;
+  projection_source: string; trade_impact_source: string; assumptions: string[]; limitations: string[];
+};

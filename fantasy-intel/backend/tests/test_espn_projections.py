@@ -538,7 +538,7 @@ def test_v4_database_migrates_create_only(tmp_path):
     con.execute("INSERT INTO player_ownership_history VALUES ('2026-10-01', 1, 50, 10, 1)")
     con.execute("INSERT INTO player_week_usage (season, week, gsis_id) VALUES (2026, 1, 'G1')")
     init_db(con)
-    assert con.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()[0] == str(SCHEMA_VERSION) == "5"
+    assert con.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()[0] == str(SCHEMA_VERSION)
     assert table_exists(con, "espn_projection_history") and table_exists(con, "player_ros_projections")
     for t in ("espn_player_weekly_points", "external_player_map", "external_player_week_usage_revisions",
               "player_ownership_history", "player_week_usage"):
@@ -595,4 +595,4 @@ def test_unmigrated_v4_database_is_refused_by_api_and_skipped_by_ros_builder(tmp
     api = TestClient(app)
     for path in ("/api/data-quality", "/api/players/201/forward"):   # the read-only API never migrates
         res = api.get(path)
-        assert res.status_code == 503 and "older than v5" in res.json()["detail"]
+        assert res.status_code == 503 and f"older than v{SCHEMA_VERSION}" in res.json()["detail"]
