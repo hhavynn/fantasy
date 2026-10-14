@@ -150,7 +150,55 @@ def describe_ftn_read_codes(code_counts: dict[str, int]) -> list[Issue]:
                   f"by code: {dist}", total, [dist])]
 
 
-def run_validations(con, season: int, extra: list[Issue] | None = None) -> list[Issue]:
+TPRR_TOL_ABS, TPRR_TOL_REL = 0.03, 0.15
+YPRR_TOL_ABS, YPRR_TOL_REL = 0.25, 0.15
+ROUTE_PART_TOL = 0.15
+
+
+def _differs(a: float, b: float, tol_abs: float, tol_rel: float) -> bool:
+    return abs(a - b) > tol_abs and abs(a - b) > tol_rel * max(abs(a), abs(b))
+
+
+def check_external_ratios(rows: list[dict]) -> list[Issue]:
+    """Provider TPRR/YPRR vs app-derived (nflverse targets/yards over provider routes).
+    A gap usually means different target/route definitions; the derived value is kept,
+    the provider value stays in source_*; nothing is overwritten."""
+    k = lambda r: (r["week"], r["gsis_id"], r.get("route_data_provider"))  # noqa: E731
+    out = _check(rows, lambda r: r.get("tprr") is not None and r.get("source_tprr") is not None
+                 and _differs(r["tprr"], r["source_tprr"], TPRR_TOL_ABS, TPRR_TOL_REL), "warning",
+                 "external_tprr_discrepancy", "provider TPRR differs from nflverse targets / provider routes", k)
+    out += _check(rows, lambda r: r.get("yprr") is not None and r.get("source_yprr") is not None
+                  and _differs(r["yprr"], r["source_yprr"], YPRR_TOL_ABS, YPRR_TOL_REL), "warning",
+                  "external_yprr_discrepancy", "provider YPRR differs from nflverse receiving yards / provider routes", k)
+    return out
+
+
+def check_route_participation(rows: list[dict]) -> list[Issue]:
+    """rows: routes, route_participation, team dropbacks. Route participation is
+    provider-defined, so inconsistency is only a warning."""
+    return _check(rows, lambda r: r.get("routes") is not None and r.get("route_participation") is not None
+                  and r.get("dropbacks") and abs(r["routes"] / r["dropbacks"] - r["route_participation"]) > ROUTE_PART_TOL,
+                  "warning", "route_participation_inconsistent",
+                  f"route participation differs from routes / team dropbacks by > {ROUTE_PART_TOL:.0%}",
+                  lambda r: (r["week"], r["gsis_id"]))
+
+
+def check_external_coverage(selection: dict, unmatched: int, ambiguous: int) -> list[Issue]:
+    out = []
+    if selection.get("status") == "conflict_unresolved":
+        out.append(Issue("warning", "external_provider_conflict", selection["message"], len(selection["providers"]),
+                         selection["providers"]))
+    if unmatched:
+        out.append(Issue("warning", "external_unmatched_players",
+                         "external usage rows without a gsis match (kept; see /data)", unmatched))
+    if ambiguous:
+        out.append(Issue("warning", "external_ambiguous_players",
+                         "external usage rows with ambiguous identity (kept; see /data)", ambiguous))
+    return out
+
+
+def run_validations(con, season: int, extra: list[Issue] | None = None,
+                    preferred_provider: str | None = None) -> list[Issue]:
     issues = list(extra or [])
     issues += check_usage(fetch_dicts(con, "SELECT * FROM player_week_usage WHERE season = ?", [season]))
     issues += check_pbp_player(fetch_dicts(con, "SELECT * FROM nfl_pbp_player_week WHERE season = ?", [season]))
@@ -184,4 +232,22 @@ def run_validations(con, season: int, extra: list[Issue] | None = None) -> list[
     if no_ngs:
         issues.append(Issue("warning", "ngs_missing_rows",
                             "players with 10+ opportunities in a game but no NGS row (unqualified; left NULL)", no_ngs))
+    issues += external_validations(con, season, preferred_provider)
     return issues
+
+
+def external_validations(con, season: int, preferred_provider: str | None) -> list[Issue]:
+    from ..external.selection import select_provider
+    if not table_exists(con, "external_player_week_usage"):
+        return []
+    sel = select_provider(con, season, preferred_provider)
+    unmatched, ambiguous = con.execute("""
+        SELECT count(*) FILTER (WHERE mapping_method = 'unmatched'), count(*) FILTER (WHERE mapping_method = 'ambiguous')
+        FROM external_player_week_usage WHERE season = ?""", [season]).fetchone()
+    out = check_external_coverage(sel, unmatched or 0, ambiguous or 0)
+    rows = fetch_dicts(con, """
+        SELECT u.week, u.gsis_id, u.routes, u.route_participation, u.tprr, u.yprr, u.source_tprr, u.source_yprr,
+               u.route_data_provider, tw.dropbacks
+        FROM player_week_usage u LEFT JOIN nfl_team_week tw ON tw.season = u.season AND tw.team = u.team AND tw.week = u.week
+        WHERE u.season = ? AND u.routes IS NOT NULL""", [season])
+    return out + check_external_ratios(rows) + check_route_participation(rows)

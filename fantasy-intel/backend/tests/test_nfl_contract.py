@@ -256,7 +256,7 @@ def test_schema_v2_to_v3_rebuilds_renamed_ftn_tables(tmp_path):
     assert "ftn_read1_targets" in cols and "first_read_targets" not in cols
     assert "x" in [r[0] for r in c.execute("SELECT column_name FROM information_schema.columns "
                                            "WHERE table_name='manager_metrics'").fetchall()]
-    assert schema_version(c) == 3
+    assert schema_version(c) == SCHEMA_VERSION      # later versions also run; v3 rebuild verified above
     c.close()
 
 

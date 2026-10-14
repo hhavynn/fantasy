@@ -16,6 +16,9 @@ from __future__ import annotations
 from statistics import median
 
 from ..db.connection import fetch_dicts, replace_where, table_exists
+from ..external.contract import METRICS as EXT_METRICS
+from ..external.contract import derived_ratio
+from ..external.selection import select_provider
 
 SKILL_POSITIONS = ("QB", "RB", "WR", "TE", "FB")
 
@@ -24,7 +27,28 @@ def _optional(con, table: str, sql: str, fallback: str) -> str:
     return sql if table_exists(con, table) else fallback
 
 
-def base_sql(con, season: int) -> str:
+def _sql_str(v: str) -> str:
+    return "'" + v.replace("'", "''") + "'"
+
+
+def external_sql(provider: str | None, season: int) -> str:
+    """One row per (gsis_id, week) for the selected provider. If two datasets (or two
+    source rows) disagree on a metric, that metric is NULL rather than an arbitrary pick."""
+    cols = ", ".join(f"CASE WHEN count(DISTINCT {m}) <= 1 THEN any_value({m}) END AS ext_{m}" for m in EXT_METRICS)
+    empty = ", ".join(f"NULL::DOUBLE AS ext_{m}" for m in EXT_METRICS)
+    if provider is None:
+        return (f"SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS week, {empty}, NULL::VARCHAR AS route_data_provider, "
+                "NULL::VARCHAR AS route_data_dataset, NULL::TIMESTAMP AS route_data_updated_at WHERE false")
+    return f"""
+        SELECT gsis_id, week, {cols}, any_value(provider) AS route_data_provider,
+               string_agg(DISTINCT dataset, ',' ORDER BY dataset) AS route_data_dataset,
+               max(coalesce(source_updated_at, imported_at)) AS route_data_updated_at
+        FROM external_player_week_usage
+        WHERE season = {int(season)} AND provider = {_sql_str(provider)} AND gsis_id IS NOT NULL
+        GROUP BY gsis_id, week"""
+
+
+def base_sql(con, season: int, external_provider: str | None = None) -> str:
     s = str(int(season))
     pfr_rush = _optional(con, "nfl_pfr_rush", f"""
         SELECT np.gsis_id, r.week, sum(r.carries) AS pfr_carries,
@@ -32,21 +56,21 @@ def base_sql(con, season: int) -> str:
                sum(r.rushing_broken_tackles) AS pfr_rush_bt
         FROM nfl_pfr_rush r JOIN nfl_players np ON np.pfr_id = r.pfr_player_id
         WHERE r.season = {s} AND r.game_type = 'REG' GROUP BY 1, 2""",
-        "SELECT NULL::VARCHAR gsis_id, NULL::INT week, NULL::DOUBLE pfr_carries, NULL::DOUBLE pfr_ybc, "
+        "SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS week, NULL::DOUBLE pfr_carries, NULL::DOUBLE pfr_ybc, "
         "NULL::DOUBLE pfr_yac, NULL::DOUBLE pfr_rush_bt WHERE false")
     pfr_rec = _optional(con, "nfl_pfr_rec", f"""
         SELECT np.gsis_id, r.week, sum(r.receiving_broken_tackles) AS pfr_rec_bt
         FROM nfl_pfr_rec r JOIN nfl_players np ON np.pfr_id = r.pfr_player_id
         WHERE r.season = {s} AND r.game_type = 'REG' GROUP BY 1, 2""",
-        "SELECT NULL::VARCHAR gsis_id, NULL::INT week, NULL::DOUBLE pfr_rec_bt WHERE false")
+        "SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS week, NULL::DOUBLE pfr_rec_bt WHERE false")
     ngs_rush = _optional(con, "nfl_ngs_rushing", f"""
         SELECT player_gsis_id AS gsis_id, week, any_value(rush_yards_over_expected_per_att) AS ngs_rush_yoe_per_att
         FROM nfl_ngs_rushing WHERE season = {s} AND season_type = 'REG' AND week >= 1 GROUP BY 1, 2""",
-        "SELECT NULL::VARCHAR gsis_id, NULL::INT week, NULL::DOUBLE ngs_rush_yoe_per_att WHERE false")
+        "SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS week, NULL::DOUBLE ngs_rush_yoe_per_att WHERE false")
     ngs_rec = _optional(con, "nfl_ngs_receiving", f"""
         SELECT player_gsis_id AS gsis_id, week, any_value(avg_separation) AS ngs_avg_separation
         FROM nfl_ngs_receiving WHERE season = {s} AND season_type = 'REG' AND week >= 1 GROUP BY 1, 2""",
-        "SELECT NULL::VARCHAR gsis_id, NULL::INT week, NULL::DOUBLE ngs_avg_separation WHERE false")
+        "SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS week, NULL::DOUBLE ngs_avg_separation WHERE false")
     return f"""
 WITH stats AS (
     SELECT player_id AS gsis_id, week, team, opponent_team AS opponent, position,
@@ -73,7 +97,8 @@ base AS (
     FULL OUTER JOIN snaps sn ON sn.gsis_id = st.gsis_id AND sn.week = st.week
     LEFT JOIN nfl_players np ON np.gsis_id = coalesce(st.gsis_id, sn.gsis_id)
 ),
-pfr_rush AS ({pfr_rush}), pfr_rec AS ({pfr_rec}), ngs_rush AS ({ngs_rush}), ngs_rec AS ({ngs_rec})
+pfr_rush AS ({pfr_rush}), pfr_rec AS ({pfr_rec}), ngs_rush AS ({ngs_rush}), ngs_rec AS ({ngs_rec}),
+ext AS ({external_sql(external_provider, season)})
 SELECT b.*, tw.team_offense_snaps, tw.team_targets, tw.team_rush_attempts, tw.team_rb_carries,
        tw.team_ftn_read1_targets, tw.team_targets IS NOT NULL AS has_pbp,
        pb.rush_attempts AS pbp_rush_attempts, pb.designed_rushes, pb.designed_rush_success, pb.explosive_runs,
@@ -81,6 +106,7 @@ SELECT b.*, tw.team_offense_snaps, tw.team_targets, tw.team_rush_attempts, tw.te
        pb.ftn_read1_targets, pb.designed_targets, pb.checkdown_targets,
        pr.pfr_carries, pr.pfr_ybc, pr.pfr_yac, pr.pfr_rush_bt, prc.pfr_rec_bt,
        nr.ngs_rush_yoe_per_att, nc.ngs_avg_separation,
+       ext.* EXCLUDE (gsis_id, week),
        fo.total_fantasy_points_exp AS xfp,
        lp.actual_points AS league_points
 FROM base b
@@ -90,6 +116,7 @@ LEFT JOIN pfr_rush pr ON pr.gsis_id = b.gsis_id AND pr.week = b.week
 LEFT JOIN pfr_rec prc ON prc.gsis_id = b.gsis_id AND prc.week = b.week
 LEFT JOIN ngs_rush nr ON nr.gsis_id = b.gsis_id AND nr.week = b.week
 LEFT JOIN ngs_rec nc ON nc.gsis_id = b.gsis_id AND nc.week = b.week
+LEFT JOIN ext ON ext.gsis_id = b.gsis_id AND ext.week = b.week
 LEFT JOIN nfl_ff_opportunity fo ON fo.season = {s} AND fo.player_id = b.gsis_id AND fo.week = b.week
 LEFT JOIN (SELECT gsis_id, min(espn_player_id) AS espn_player_id FROM player_id_map
            WHERE gsis_id IS NOT NULL GROUP BY 1) m ON m.gsis_id = b.gsis_id
@@ -184,11 +211,31 @@ def derive_usage_row(r: dict, season: int) -> dict:
             0 if ftn_charted else None),
         "ngs_rush_yoe_per_att": r.get("ngs_rush_yoe_per_att"),
         "ngs_avg_separation": r.get("ngs_avg_separation"),
+        **external_fields(r, targets, count("receiving_yards")),
         "opportunities": opportunities,
         "fantasy_points_ppr": count("fantasy_points_ppr"),
         "league_points": r.get("league_points"),
         "xfp": xfp,
         "stats_source": "stats+snaps" if has_stats and has_snaps else "stats_only" if has_stats else "snaps_only",
+    }
+
+
+def external_fields(r: dict, targets, receiving_yards) -> dict:
+    """External utilization columns. nflverse stays canonical for targets/yards: TPRR/YPRR
+    are derived from nflverse numerators over external routes (NULL when routes is 0/NULL).
+    Provider TPRR/YPRR are carried only as source_* for comparison."""
+    ext = {m: r.get(f"ext_{m}") for m in EXT_METRICS}
+    for m in ("routes", "pass_snaps", "pass_block_snaps"):
+        if ext[m] is not None:
+            ext[m] = int(ext[m])
+    routes = ext["routes"]
+    return {
+        **ext,
+        "tprr": derived_ratio(targets, routes),
+        "yprr": derived_ratio(receiving_yards, routes),
+        "route_data_provider": r.get("route_data_provider"),
+        "route_data_dataset": r.get("route_data_dataset"),
+        "route_data_updated_at": r.get("route_data_updated_at"),
     }
 
 
@@ -229,17 +276,19 @@ def update_team_snaps(con, season: int) -> list[str]:
     return warnings
 
 
-def build_player_week_usage(con, season: int) -> dict:
+def build_player_week_usage(con, season: int, preferred_provider: str | None = None) -> dict:
     needed = ["nfl_weekly_stats", "nfl_snap_counts", "nfl_ff_opportunity"]
     missing = [t for t in needed if not table_exists(con, t)]
     if missing:
         return {"skipped": f"missing tables: {missing}"}
     snap_warnings = update_team_snaps(con, season)
-    rows = [derive_usage_row(r, season) for r in fetch_dicts(con, base_sql(con, season))]
+    selection = select_provider(con, season, preferred_provider)
+    rows = [derive_usage_row(r, season) for r in fetch_dicts(con, base_sql(con, season, selection["provider"]))]
     replace_where(con, "player_week_usage", rows, "season = ?", [season])
     unmatched_snaps = con.execute("""
         SELECT count(DISTINCT pfr_player_id) FROM nfl_snap_counts s
         WHERE season = ? AND position IN ('QB','RB','WR','TE','FB')
           AND NOT EXISTS (SELECT 1 FROM nfl_players p WHERE p.pfr_id = s.pfr_player_id)
     """, [season]).fetchone()[0]
-    return {"rows": len(rows), "snap_players_without_gsis": unmatched_snaps, "team_snap_warnings": snap_warnings}
+    return {"rows": len(rows), "snap_players_without_gsis": unmatched_snaps, "team_snap_warnings": snap_warnings,
+            "external_provider": selection, "rows_with_routes": sum(1 for r in rows if r["routes"] is not None)}

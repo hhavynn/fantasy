@@ -48,3 +48,9 @@ data/logs/
 .vscode/
 *.swp
 *.swo
+
+# External utilization provider files (licensed/manual). Never commit.
+fantasy-intel/data/imports/
+fantasy-intel/data/staging/
+*.vendor.csv
+*.vendor.json

@@ -25,6 +25,40 @@
         "dev"
       ],
       "port": 3000
+    },
+    {
+      "name": "backend-dev-scratch",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "--directory",
+        "/Users/havyn/Documents/CS/Fantasy/fantasy-intel/backend",
+        "uvicorn",
+        "app.main:app",
+        "--port",
+        "8001"
+      ],
+      "env": {
+        "FANTASY_DB_PATH": "/private/tmp/claude-501/-Users-havyn-Documents-CS-Fantasy/d522b48f-5718-469d-a39f-77f602baa824/scratchpad/dev.duckdb"
+      },
+      "port": 8001
+    },
+    {
+      "name": "frontend-dev-scratch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "/Users/havyn/Documents/CS/Fantasy/fantasy-intel/frontend",
+        "run",
+        "start",
+        "--",
+        "--port",
+        "3001"
+      ],
+      "env": {
+        "API_URL": "http://127.0.0.1:8001"
+      },
+      "port": 3001
     }
   ]
 }

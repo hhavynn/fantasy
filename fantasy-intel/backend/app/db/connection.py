@@ -44,7 +44,7 @@ class DatabaseBusy(RuntimeError):
     pass
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Derived tables whose definitions changed in each version. Raw ESPN/nflverse tables
 # are never dropped; derived ones are rebuilt by re-running the syncs/analytics.
@@ -52,6 +52,7 @@ _REBUILD = {
     2: ["player_week_usage", "player_scores", "team_position_needs", "waiver_recommendations",
         "manager_metrics", "manager_classifications", "nfl_team_week", "nfl_redzone_usage"],
     3: ["nfl_pbp_player_week", "nfl_team_week", "player_week_usage", "player_context"],  # FTN code columns renamed
+    4: ["player_week_usage"],   # external route columns added; external_* tables are never dropped
 }
 _V2_REBUILD = _REBUILD[2]
 

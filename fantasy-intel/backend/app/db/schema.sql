@@ -444,6 +444,28 @@ CREATE TABLE IF NOT EXISTS player_week_usage (
     checkdown_targets     INTEGER,
     ngs_rush_yoe_per_att  DOUBLE,      -- NGS; NULL = not qualified/unavailable (never 0-filled)
     ngs_avg_separation    DOUBLE,      -- NGS; NULL = not qualified/unavailable
+    -- External utilization (LEFT JOIN; NULL = not provided). Never used in scores yet.
+    routes                INTEGER,
+    route_participation   DOUBLE,      -- provider-defined denominator
+    tprr                  DOUBLE,      -- nflverse targets / external routes; NULL if routes is 0 or missing
+    yprr                  DOUBLE,      -- nflverse receiving yards / external routes; NULL if routes is 0 or missing
+    source_tprr           DOUBLE,      -- provider's own TPRR (comparison only)
+    source_yprr           DOUBLE,
+    pass_snaps            INTEGER,
+    pass_block_snaps      INTEGER,
+    pass_block_rate       DOUBLE,
+    slot_rate             DOUBLE,
+    wide_rate             DOUBLE,
+    inline_rate           DOUBLE,
+    backfield_rate        DOUBLE,
+    two_minute_route_share DOUBLE,     -- provider-defined situation
+    long_down_route_share  DOUBLE,     -- provider-defined situation
+    short_down_route_share DOUBLE,     -- provider-defined situation
+    man_tprr              DOUBLE,
+    zone_tprr             DOUBLE,
+    route_data_provider   VARCHAR,
+    route_data_dataset    VARCHAR,
+    route_data_updated_at TIMESTAMP,
     opportunities         INTEGER,     -- targets + carries
     fantasy_points_ppr    DOUBLE,
     league_points         DOUBLE,
@@ -569,4 +591,105 @@ CREATE TABLE IF NOT EXISTS validation_issues (
     count       INTEGER,
     examples    JSON,
     created_at  TIMESTAMP
+);
+
+-- ------------------------------------------------------- External usage ----
+-- Provider-neutral ingestion of authorized/manual utilization files. Provider identity
+-- lives here as provenance only. These tables are never dropped by migrations.
+
+CREATE TABLE IF NOT EXISTS external_usage_imports (
+    import_id          VARCHAR PRIMARY KEY,
+    provider           VARCHAR,
+    dataset            VARCHAR,
+    source_filename    VARCHAR,       -- basename only
+    source_file_hash   VARCHAR,       -- sha256 of the file bytes
+    season             INTEGER,       -- NULL if the file spans several seasons
+    weeks              JSON,
+    imported_at        TIMESTAMP,
+    source_updated_at  TIMESTAMP,     -- max source_updated_at in the file
+    row_count          INTEGER,
+    matched_rows       INTEGER,
+    unmatched_rows     INTEGER,
+    ambiguous_rows     INTEGER,
+    warning_count      INTEGER,
+    error_count        INTEGER,
+    status             VARCHAR,       -- imported | duplicate_noop | rejected
+    duplicate_of       VARCHAR,       -- import_id of the identical earlier file
+    message            VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS external_player_week_usage (
+    provider               VARCHAR,
+    dataset                VARCHAR,
+    season                 INTEGER,
+    week                   INTEGER,
+    source_player_key      VARCHAR,   -- id:<provider id> | gsis:<id> | nm:<hash of name|team|pos>
+    provider_player_id     VARCHAR,
+    gsis_id                VARCHAR,   -- NULL when unmatched/ambiguous (row is still kept)
+    player_name            VARCHAR,
+    team                   VARCHAR,
+    position               VARCHAR,
+    routes                 INTEGER,
+    route_participation    DOUBLE,
+    source_tprr            DOUBLE,
+    source_yprr            DOUBLE,
+    pass_snaps             INTEGER,
+    pass_block_snaps       INTEGER,
+    pass_block_rate        DOUBLE,
+    slot_rate              DOUBLE,
+    wide_rate              DOUBLE,
+    inline_rate            DOUBLE,
+    backfield_rate         DOUBLE,
+    two_minute_route_share DOUBLE,
+    long_down_route_share  DOUBLE,
+    short_down_route_share DOUBLE,
+    man_tprr               DOUBLE,
+    zone_tprr              DOUBLE,
+    mapping_method         VARCHAR,   -- gsis_id | external_player_map | name_team_position | unmatched | ambiguous
+    mapping_confidence     VARCHAR,   -- high | reviewed | medium | none
+    mapping_reason         VARCHAR,   -- why unmatched/ambiguous
+    source_updated_at      TIMESTAMP,
+    imported_at            TIMESTAMP,
+    import_id              VARCHAR,
+    PRIMARY KEY (provider, dataset, season, week, source_player_key)
+);
+
+-- Previous versions of corrected rows (import history stays inspectable).
+CREATE TABLE IF NOT EXISTS external_player_week_usage_revisions (
+    provider           VARCHAR,
+    dataset            VARCHAR,
+    season             INTEGER,
+    week               INTEGER,
+    source_player_key  VARCHAR,
+    import_id          VARCHAR,       -- import that produced the superseded values
+    superseded_by      VARCHAR,       -- import that replaced them
+    superseded_at      TIMESTAMP,
+    previous           JSON
+);
+
+-- Reviewed / manual identity mappings for provider players.
+CREATE TABLE IF NOT EXISTS external_player_map (
+    provider            VARCHAR,
+    source_player_key   VARCHAR,
+    provider_player_id  VARCHAR,
+    gsis_id             VARCHAR,
+    match_method        VARCHAR,      -- manual | reviewed
+    match_confidence    VARCHAR,
+    reviewed_at         TIMESTAMP,
+    note                VARCHAR,
+    PRIMARY KEY (provider, source_player_key)
+);
+
+CREATE TABLE IF NOT EXISTS external_usage_issues (
+    import_id           VARCHAR,
+    severity            VARCHAR,      -- error | warning
+    check_name          VARCHAR,
+    detail              VARCHAR,
+    season              INTEGER,
+    week                INTEGER,
+    row_number          INTEGER,
+    source_player_key   VARCHAR,
+    player_name         VARCHAR,
+    provider_player_id  VARCHAR,
+    created_at          TIMESTAMP
 );

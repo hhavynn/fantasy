@@ -119,6 +119,14 @@ export const FTN_READ1_NOTE =
   "upstream clarification is pending (nflverse/nflreadr#325). Shown for exploration only and never used in scores, " +
   "signals or waiver recommendations. Not route participation.";
 
+export type RouteData = {
+  season: Partial<Record<"routes" | "route_participation" | "tprr" | "yprr" | "pass_snaps" | "pass_block_snaps" |
+    "pass_block_rate" | "slot_rate" | "wide_rate" | "inline_rate" | "backfield_rate" | "two_minute_route_share" |
+    "long_down_route_share" | "short_down_route_share" | "man_tprr" | "zone_tprr", number>>;
+  weeks: number[]; providers: string[]; datasets: string[]; source_updated_at: string | null;
+  provider_defined: string[]; note: string;
+};
+
 export const BASIS_LABEL: Record<string, string> = {
   xfp: "xFP (expected fantasy points)",
   "targets+carries": "targets + carries (xFP unavailable)",
