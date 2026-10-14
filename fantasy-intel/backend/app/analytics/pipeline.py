@@ -10,6 +10,7 @@ from .context import build_context, build_team_game_lines
 from .manager_loader import build_manager_metrics
 from .player_scores import build_player_scores
 from .projections import build_ros_projections
+from .trade_data import build_team_lineup_projections
 from .usage import build_player_week_usage
 from .validation import Issue, ValidationError, run_validations
 from .waivers import build_waivers
@@ -67,6 +68,8 @@ def run_analytics(con, season: int, preferred_provider: str | None = None) -> di
             # ESPN forward baseline summary (byes need the latest nfl_schedules). Display only:
             # nothing above reads it.
             stats["ros_projections"] = build_ros_projections(con, season)
+            # V2 team lineup projections (ESPN baseline, exact weekly lineups). Display/trade only.
+            stats["team_lineups"] = build_team_lineup_projections(con, season)
         _record_issues(con, run.run_id, issues)
         con.execute("COMMIT")
     except ValidationError as err:

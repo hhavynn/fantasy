@@ -1,11 +1,14 @@
-// Server-side fetch helper for the local FastAPI backend.
+// Server-side fetch helper for the local FastAPI backend (GET, or POST when a body is given).
 const API_URL = process.env.API_URL ?? "http://127.0.0.1:8000";
 
 export type ApiResult<T> = { ok: true; data: T; error: null } | { ok: false; data: null; error: string };
 
-export async function api<T>(path: string): Promise<ApiResult<T>> {
+export async function api<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
   try {
-    const res = await fetch(`${API_URL}${path}`, { cache: "no-store" });
+    const init: RequestInit = body === undefined
+      ? { cache: "no-store" }
+      : { cache: "no-store", method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+    const res = await fetch(`${API_URL}${path}`, init);
     if (!res.ok) {
       let detail = `${res.status} ${res.statusText}`;
       try {

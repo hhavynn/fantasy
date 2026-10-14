@@ -174,6 +174,49 @@ CREATE TABLE IF NOT EXISTS player_ros_projections (
     PRIMARY KEY (season, espn_player_id)
 );
 
+-- V2 (schema v6): every team's optimal projected starting lineup for every remaining fantasy week
+-- (evaluation start week .. final_scoring_period), from ESPN weekly projections, unmodified, with
+-- the league's real slots + exact FLEX rules. A projected 0 is real; a missing projection is
+-- unknown and never treated as 0: if a lineup-relevant rostered player with an NFL team lacks a
+-- projection, projection_complete = false and projected_lineup_points is NULL (known_lineup_points
+-- is the known-only total). Derived; rebuilt by analytics. See docs/v2_trade_evaluator.md.
+CREATE TABLE IF NOT EXISTS team_week_lineup_projections (
+    league_id                 BIGINT,
+    season                    INTEGER,
+    team_id                   INTEGER,
+    week                      INTEGER,
+    phase                     VARCHAR,     -- regular | playoff | NULL (split unknown)
+    known_lineup_points       DOUBLE,      -- optimal lineup from known projections only
+    projected_lineup_points   DOUBLE,      -- canonical; NULL unless projection_complete
+    projection_complete       BOOLEAN,
+    assignment                JSON,        -- [{slot, player_id, name, position, points, is_flex}]
+    bench                     JSON,        -- [{player_id, name, position, points}] (points NULL = no projection)
+    missing_projection_ids    JSON,        -- relevant rostered players with an NFL team and no projection
+    teamless_unprojected_ids  JSON,        -- teamless players without a projection (do not poison the week)
+    computed_at               TIMESTAMP,
+    PRIMARY KEY (league_id, season, team_id, week)
+);
+
+CREATE TABLE IF NOT EXISTS team_ros_lineup_projections (
+    league_id                                BIGINT,
+    season                                   INTEGER,
+    team_id                                  INTEGER,
+    evaluation_start_week                    INTEGER,
+    final_week                               INTEGER,
+    last_regular_season_week                 INTEGER,
+    ros_projected_starting_points            DOUBLE,    -- NULL unless every week is complete
+    ros_known_starting_points                DOUBLE,
+    regular_season_projected_starting_points DOUBLE,
+    playoff_projected_starting_points        DOUBLE,
+    ros_weeks_expected                       INTEGER,
+    ros_weeks_complete                       INTEGER,
+    missing_weeks                            JSON,
+    missing_players                          JSON,
+    start_week_reason                        VARCHAR,
+    computed_at                              TIMESTAMP,
+    PRIMARY KEY (league_id, season, team_id)
+);
+
 -- Weekly roster/lineup snapshot per team. The current period is overwritten on
 -- each sync; completed periods become the historical record.
 CREATE TABLE IF NOT EXISTS lineup_snapshots (

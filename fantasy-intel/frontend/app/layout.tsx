@@ -28,6 +28,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/">Overview</Link>
             <Link href="/players">Players</Link>
             <Link href="/waivers">Waivers</Link>
+            <Link href="/trades">Trades</Link>
             <Link href="/managers">Managers</Link>
             <Link href="/data">Data quality</Link>
           </nav>
