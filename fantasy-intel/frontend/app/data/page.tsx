@@ -9,8 +9,26 @@ type MapRow = {
   availability_status?: string | null; percent_owned?: number | null;
 };
 type Issue = { severity: string; check_name: string; detail: string; count: number; examples: unknown[] };
+type ExtImport = {
+  import_id: string; provider: string | null; dataset: string | null; source_filename: string; season: number | null;
+  weeks: number[] | null; imported_at: string; source_updated_at: string | null; row_count: number; matched_rows: number;
+  unmatched_rows: number; ambiguous_rows: number; warning_count: number; error_count: number; status: string;
+  duplicate_of: string | null; message: string | null;
+};
+type External = {
+  imports: ExtImport[];
+  coverage: { provider: string; dataset: string; season: number; weeks: number[]; rows: number; matched: number;
+    unmatched: number; ambiguous: number; updated_at: string | null }[];
+  unmatched: { provider: string; dataset: string; season: number; week: number; player_name: string | null;
+    team: string | null; position: string | null; provider_player_id: string | null; source_player_key: string;
+    mapping_method: string; mapping_reason: string | null }[];
+  issues: { import_id: string; severity: string; check_name: string; detail: string; week: number | null;
+    row_number: number | null; player_name: string | null }[];
+  selection: Record<string, { provider: string | null; status: string; providers: string[]; message: string }> | null;
+  duplicate_noops?: number; rejected?: number;
+};
 type DQ = {
-  validation_issues: Issue[]; schema_version: number | null;
+  validation_issues: Issue[]; schema_version: number | null; external: External;
   mapping_summary: { match_method: string; match_confidence: string; n: number }[];
   unmatched: MapRow[]; medium_confidence: MapRow[]; conflicts: MapRow[];
   sync_runs: { run_id: string; source: string; started_at: string; finished_at: string | null; status: string; message: string | null }[];
@@ -69,6 +87,7 @@ export default async function DataQualityPage() {
         )}
         <p className="faint" style={{ marginTop: 8 }}>Errors (logical corruption) abort the analytics run; warnings are statistically odd but kept.</p>
       </section>
+      <ExternalSection x={d.external} />
       <MapTable title="Unmatched players (rostered first, then by ownership)" rows={d.unmatched} />
       <MapTable title="Name-matched players (medium confidence: verify)" rows={d.medium_confidence} />
       {d.conflicts.length > 0 && <MapTable title="Conflicting crosswalks" rows={d.conflicts} />}
@@ -96,6 +115,104 @@ function MapTable({ title, rows }: { title: string; rows: MapRow[] }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+
+function ExternalSection({ x }: { x: External }) {
+  const last = x.imports[0];
+  return (
+    <section className="panel">
+      <h2>External utilization (routes / situational usage)</h2>
+      {x.imports.length === 0 ? (
+        <p className="faint">
+          No external utilization imported. Routes stay <b>unavailable</b> in-season. Import an authorized normalized CSV with{" "}
+          <code>uv run python ../scripts/import_external_usage.py FILE --provider NAME --dataset NAME</code>.
+        </p>
+      ) : (
+        <div className="stack">
+          <div className="row-flex faint">
+            <span>Last import: <b>{when(last.imported_at)}</b> · {last.provider} / {last.dataset} ·{" "}
+              <Badge value={last.status.toUpperCase()} tone={last.status === "imported" ? "good" : last.status === "rejected" ? "bad" : "warn"} /></span>
+            <span>· {x.duplicate_noops ?? 0} duplicate/no-op · {x.rejected ?? 0} rejected</span>
+          </div>
+          {x.selection && Object.entries(x.selection).map(([season, sel]) => (
+            <div key={season} className={sel.status === "conflict_unresolved" ? "callout" : "faint"}>
+              {season}: provider selection <b>{sel.status}</b>: {sel.message}
+            </div>
+          ))}
+          <table>
+            <thead><tr><th>Provider</th><th>Dataset</th><th>Season</th><th>Weeks covered</th><th className="num">Rows</th>
+              <th className="num">Matched</th><th className="num">Unmatched</th><th className="num">Ambiguous</th><th>Source updated</th></tr></thead>
+            <tbody>
+              {x.coverage.map((c) => (
+                <tr key={`${c.provider}-${c.dataset}-${c.season}`}>
+                  <td>{c.provider}</td><td>{c.dataset}</td><td>{c.season}</td><td className="mono">{c.weeks.join(", ")}</td>
+                  <td className="num">{c.rows}</td><td className="num">{c.matched}</td><td className="num">{c.unmatched}</td>
+                  <td className="num">{c.ambiguous}</td><td>{when(c.updated_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <details>
+            <summary>Import history ({x.imports.length})</summary>
+            <table>
+              <thead><tr><th>Imported</th><th>File</th><th>Provider / dataset</th><th>Status</th><th className="num">Rows</th>
+                <th className="num">Matched</th><th className="num">Unm.</th><th className="num">Amb.</th><th className="num">Warn</th>
+                <th className="num">Err</th><th>Message</th></tr></thead>
+              <tbody>
+                {x.imports.map((i) => (
+                  <tr key={i.import_id}>
+                    <td>{when(i.imported_at)}</td><td className="mono">{i.source_filename}</td><td>{i.provider} / {i.dataset}</td>
+                    <td><Badge value={i.status.toUpperCase()} tone={i.status === "imported" ? "good" : i.status === "rejected" ? "bad" : "warn"} /></td>
+                    <td className="num">{i.row_count}</td><td className="num">{i.matched_rows}</td><td className="num">{i.unmatched_rows}</td>
+                    <td className="num">{i.ambiguous_rows}</td><td className="num">{i.warning_count}</td><td className="num">{i.error_count}</td>
+                    <td className="wrap faint">{i.message}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+          <details open={x.issues.some((i) => i.severity === "error")}>
+            <summary>Validation issues ({x.issues.length})</summary>
+            <table>
+              <thead><tr><th>Severity</th><th>Check</th><th>Row</th><th>Wk</th><th>Player</th><th>Detail</th></tr></thead>
+              <tbody>
+                {x.issues.map((i, n) => (
+                  <tr key={`${i.import_id}-${n}`}>
+                    <td><Badge value={i.severity.toUpperCase()} tone={i.severity === "error" ? "bad" : "warn"} /></td>
+                    <td className="mono">{i.check_name}</td><td>{i.row_number ?? ""}</td><td>{i.week ?? ""}</td>
+                    <td>{i.player_name ?? ""}</td><td className="wrap faint">{i.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+          <div>
+            <h3>Unmatched / ambiguous external players · {x.unmatched.length}</h3>
+            {x.unmatched.length === 0 ? <p className="faint">None.</p> : (
+              <table>
+                <thead><tr><th>Source name</th><th>Team</th><th>Pos</th><th>Provider ID</th><th>Source key</th><th>Season/Wk</th>
+                  <th>Status</th><th>Reason</th></tr></thead>
+                <tbody>
+                  {x.unmatched.map((u) => (
+                    <tr key={`${u.provider}-${u.dataset}-${u.season}-${u.week}-${u.source_player_key}`}>
+                      <td>{u.player_name ?? "—"}</td><td>{u.team ?? ""}</td><td>{u.position ?? ""}</td>
+                      <td className="mono">{u.provider_player_id ?? ""}</td><td className="mono">{u.source_player_key}</td>
+                      <td>{u.season} / {u.week}</td><td><Badge value={u.mapping_method.toUpperCase()} tone="warn" /></td>
+                      <td className="wrap faint">{u.mapping_reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <p className="faint" style={{ marginTop: 6 }}>
+              Resolve with <code>uv run python ../scripts/map_external_player.py --provider P --source-player-key KEY --gsis-id ID</code>.
+            </p>
+          </div>
         </div>
       )}
     </section>

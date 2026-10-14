@@ -40,6 +40,7 @@ class Settings:
     swid: str | None
     my_team_id: int | None
     db_path: Path
+    external_preferred_provider: str | None = None
 
     @property
     def has_espn_credentials(self) -> bool:
@@ -59,4 +60,5 @@ def get_settings() -> Settings:
         swid=(os.getenv("SWID") or "").strip() or None,
         my_team_id=_int_or_none(os.getenv("ESPN_MY_TEAM_ID")),
         db_path=db_path,
+        external_preferred_provider=(os.getenv("EXTERNAL_USAGE_PREFERRED_PROVIDER") or "").strip() or None,
     )

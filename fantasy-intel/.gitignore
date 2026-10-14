@@ -11,3 +11,9 @@ node_modules/
 .next/
 frontend/next-env.d.ts
 .DS_Store
+
+# External utilization imports (licensed/manual provider files). NEVER commit these.
+data/imports/
+data/staging/
+*.vendor.csv
+*.vendor.json

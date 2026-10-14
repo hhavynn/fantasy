@@ -199,11 +199,22 @@ didn't cover is NULL; bye/inactive weeks are skipped, never zero.
 - **Role trend**: recent vs earlier games on snap share, target share / backfield
   share / team rush share, volume and xFP; UP / FLAT / DOWN (needs ≥ 4 games).
 - **Value gap**: season PPR/g − xFP/g; ≥ max(2.5, 20% of xFP) → production exceeds usage.
-- **Market signal**: BUY / SELL / HOLD / WATCH / MONITOR. A rising role on a LOW
-  tier is only **WATCH**; BUY needs a MEDIUM/HIGH role that is rising (without
-  production outrunning it) or under-producing its role. SELL = production
-  outrunning the role (on any tier if the box score is fantasy-relevant) or a
-  shrinking role with a strong box score.
+- **Production sustainability** (`production_sustainability`): ABOVE_EXPECTATION /
+  ALIGNED / BELOW_EXPECTATION / INSUFFICIENT, i.e. box-score production vs the xFP
+  baseline. This is **regression evidence, not a trade call**: xFP is an average-player
+  model and elite players can beat it persistently (talent, QB, target type, YAC).
+- **Market signal**: BUY / SELL / HOLD / WATCH / MONITOR, i.e. is there an actionable
+  market mismatch? It's conservative: HOLD beats a false SELL.
+  - LOW tier: a productive box score above expectation → SELL (sell-high); a rising role
+    is only **WATCH**; otherwise HOLD.
+  - MEDIUM/HIGH: a rising role with production not above expectation → BUY; production
+    below expectation with the role not shrinking → BUY.
+  - **HIGH tier is never SELL** while its recent absolute role is still HIGH. Above-
+    expectation production or a short-term usage dip means regression risk, not a sell
+    (HOLD with the reason). A real role collapse drops the recent tier to MEDIUM.
+  - MEDIUM: above expectation + role FLAT/DOWN + fantasy-relevant box score → SELL;
+    role DOWN + fantasy-relevant box score → SELL.
+  - An INSUFFICIENT role trend never drives a SELL.
 
 ### Player context (`player_context`, `team_context`, `defense_context`)
 Transparent, position-aware labels with their evidence (no master score): role,
@@ -265,10 +276,30 @@ extreme contact metrics, target shares not summing to 1, the observed FTN read-c
 NGS rows, ESPN→GSIS mapping failures, rejected team-snap estimates) are kept and
 shown on `/data`.
 
-## Upgrading an existing database (schema v3)
+## External utilization (routes, situational usage)
 
-The analytics-hardening release bumps the DuckDB schema to **v3** (v2: new metrics;
-v3: FTN read-code columns renamed to `ftn_read*`). On the first
+nflverse doesn't publish routes in-season. An authorized/manual provider file in the
+generic normalized CSV format can be imported (provider-neutral; no vendor code in this repo):
+
+```bash
+cd backend
+uv run python ../scripts/import_external_usage.py ../data/imports/external/FILE.csv \
+  --provider NAME --dataset NAME
+uv run python ../scripts/map_external_player.py --provider NAME --source-player-key KEY --gsis-id ID  # fix unmatched
+```
+
+Rows are validated (a hard error rejects the whole file), identity-resolved (unmatched rows
+are kept and listed on `/data`), stored with provenance, and LEFT JOINed into
+`player_week_usage` (`routes`, `route_participation`, `tprr`/`yprr` from **nflverse**
+targets/yards ÷ provider routes, alignment, situational shares). They appear on the player
+page but **don't affect scores or recommendations yet**. Keep provider files under
+`data/imports/` (git-ignored). Full spec:
+[`docs/external_utilization_contract.md`](docs/external_utilization_contract.md).
+
+## Upgrading an existing database (schema v4)
+
+The DuckDB schema is now **v4** (v2: new metrics; v3: FTN read-code columns renamed to
+`ftn_read*`; v4: external route columns on `player_week_usage` + `external_*` tables). On the first
 read-write open (any sync script), derived tables are dropped and recreated; raw
 ESPN and nflverse tables are kept. Then rebuild:
 

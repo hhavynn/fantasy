@@ -19,7 +19,8 @@ PLAYER_COLS = """
     m.gsis_id, m.match_method, m.match_confidence,
     s.games, s.opportunity_basis, s.opportunity_tier, s.role_trend, s.market_signal,
     s.opportunity_score, s.production_score, s.usage_trend_score, s.trend_label,
-    s.fp_per_game, s.xfp_per_game, s.fp_minus_xfp, s.value_gap_label, s.classification, s.value_score
+    s.fp_per_game, s.xfp_per_game, s.fp_minus_xfp, s.value_gap_label, s.classification, s.value_score,
+    s.components->>'production_sustainability' AS production_sustainability
 """
 PLAYER_JOINS = """
     LEFT JOIN player_id_map m ON m.espn_player_id = fp.espn_player_id
@@ -206,6 +207,7 @@ def player_detail(espn_player_id: int):
                                  WHERE espn_player_id=? ORDER BY snapshot_date""", [espn_player_id])
         waiver = one(con, "SELECT * FROM waiver_recommendations WHERE espn_player_id=? AND season=?",
                      [espn_player_id, season])
+        route_data = _route_summary(weekly)
         context = one(con, "SELECT labels, evidence FROM player_context WHERE season=? AND gsis_id=?",
                       [season, p["gsis_id"]]) if p["gsis_id"] else None
         team_ctx = one(con, "SELECT * FROM team_context WHERE season=? AND team=?", [season, p["pro_team"]]) \
@@ -215,7 +217,7 @@ def player_detail(espn_player_id: int):
         return {
             "player": p, "score": score, "weekly": weekly, "league_points": league_pts, "injuries": injuries,
             "depth_chart": depth[0] if depth else None, "ownership": ownership, "waiver": waiver,
-            "context": context, "team_context": team_ctx, "opponent_defense": opp_def,
+            "context": context, "team_context": team_ctx, "opponent_defense": opp_def, "route_data": route_data,
             "unavailable_metrics": {
                 "route_participation": "unavailable: nflverse participation data is not published for the current season",
                 "routes_run": "unavailable",
@@ -223,6 +225,44 @@ def player_detail(espn_player_id: int):
             },
             "ftn_read_semantics": ftn_semantics(),
         }
+
+
+ROUTE_FIELDS = ["routes", "route_participation", "tprr", "yprr", "pass_snaps", "pass_block_snaps",
+                "pass_block_rate", "slot_rate", "wide_rate", "inline_rate", "backfield_rate",
+                "two_minute_route_share", "long_down_route_share", "short_down_route_share", "man_tprr", "zone_tprr"]
+
+
+def _route_summary(weekly: list[dict]) -> dict | None:
+    """Season summary of external route data (None when no week has any). Route totals
+    are summed; rates are averaged over weeks that report them; TPRR/YPRR are recomputed
+    from season nflverse targets/yards over season routes."""
+    from ..external.contract import PROVIDER_DEFINED, derived_ratio
+    weeks = [w for w in weekly if any(w.get(f) is not None for f in ROUTE_FIELDS)]
+    if not weeks:
+        return None
+    def mean(f):
+        vals = [w[f] for w in weeks if w.get(f) is not None]
+        return sum(vals) / len(vals) if vals else None
+    def total(f):
+        vals = [w[f] for w in weeks if w.get(f) is not None]
+        return sum(vals) if vals else None
+    routed = [w for w in weeks if w.get("routes") is not None]
+    routes = total("routes")
+    summary = {f: mean(f) for f in ROUTE_FIELDS if f not in ("routes", "pass_snaps", "pass_block_snaps",
+                                                               "tprr", "yprr")}
+    summary.update(routes=routes, pass_snaps=total("pass_snaps"), pass_block_snaps=total("pass_block_snaps"),
+                   tprr=derived_ratio(sum(w["targets"] or 0 for w in routed) if routed else None, routes),
+                   yprr=derived_ratio(sum(w["receiving_yards"] or 0 for w in routed) if routed else None, routes))
+    return {
+        "season": {k: v for k, v in summary.items() if v is not None},
+        "weeks": [w["week"] for w in weeks],
+        "providers": sorted({w["route_data_provider"] for w in weeks if w.get("route_data_provider")}),
+        "datasets": sorted({w["route_data_dataset"] for w in weeks if w.get("route_data_dataset")}),
+        "source_updated_at": max((w["route_data_updated_at"] for w in weeks if w.get("route_data_updated_at")),
+                                 default=None),
+        "provider_defined": PROVIDER_DEFINED,
+        "note": "External provider data (not nflverse). TPRR/YPRR = nflverse targets/yards per provider route.",
+    }
 
 
 @router.get("/waivers")
@@ -334,6 +374,37 @@ def data_quality():
         runs = rows(con, "SELECT run_id, source, started_at, finished_at, status, message FROM sync_runs ORDER BY started_at DESC LIMIT 30")
         issues = rows(con, "SELECT * FROM validation_issues ORDER BY severity, check_name") \
             if table_exists(con, "validation_issues") else []
+        external = _external_quality(con)
         return {"mapping_summary": by_method, "unmatched": unmatched, "medium_confidence": medium,
                 "conflicts": conflicts, "sync_runs": runs, "sync": _sync_status(con),
-                "validation_issues": issues, "schema_version": schema_version(con)}
+                "validation_issues": issues, "schema_version": schema_version(con), "external": external}
+
+
+def _external_quality(con) -> dict:
+    from ..config import get_settings
+    from ..external.selection import select_provider
+    if not table_exists(con, "external_usage_imports"):
+        return {"imports": [], "coverage": [], "unmatched": [], "issues": [], "selection": None}
+    imports = rows(con, """SELECT import_id, provider, dataset, source_filename, season, weeks, imported_at,
+                                  source_updated_at, row_count, matched_rows, unmatched_rows, ambiguous_rows,
+                                  warning_count, error_count, status, duplicate_of, message
+                           FROM external_usage_imports ORDER BY imported_at DESC LIMIT 50""")
+    coverage = rows(con, """SELECT provider, dataset, season, list(DISTINCT week ORDER BY week) AS weeks,
+                                   count(*) AS rows, count(gsis_id) AS matched,
+                                   count(*) FILTER (WHERE mapping_method = 'unmatched') AS unmatched,
+                                   count(*) FILTER (WHERE mapping_method = 'ambiguous') AS ambiguous,
+                                   max(coalesce(source_updated_at, imported_at)) AS updated_at
+                            FROM external_player_week_usage GROUP BY 1, 2, 3 ORDER BY 3 DESC, 1, 2""")
+    unmatched = rows(con, """SELECT provider, dataset, season, week, player_name, team, position, provider_player_id,
+                                    source_player_key, mapping_method, mapping_reason
+                             FROM external_player_week_usage WHERE gsis_id IS NULL
+                             ORDER BY season DESC, week, player_name LIMIT 300""")
+    issues = rows(con, """SELECT i.import_id, i.severity, i.check_name, i.detail, i.week, i.row_number, i.player_name
+                          FROM external_usage_issues i JOIN external_usage_imports m USING (import_id)
+                          ORDER BY m.imported_at DESC, i.severity, i.row_number LIMIT 200""")
+    seasons = sorted({c["season"] for c in coverage}, reverse=True)
+    pref = get_settings().external_preferred_provider
+    return {"imports": imports, "coverage": coverage, "unmatched": unmatched, "issues": issues,
+            "selection": {s: select_provider(con, s, pref) for s in seasons},
+            "duplicate_noops": sum(1 for i in imports if i["status"] == "duplicate_noop"),
+            "rejected": sum(1 for i in imports if i["status"] == "rejected")}

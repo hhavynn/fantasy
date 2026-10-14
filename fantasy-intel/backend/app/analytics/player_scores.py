@@ -8,8 +8,14 @@ For every skill player with games this season we store:
   production_score   0-10  position percentile of recent PPR points/game
   role_trend               UP / FLAT / DOWN / INSUFFICIENT (composite of usage deltas)
   fp_minus_xfp             season PPR/game minus xFP/game -> value-gap label
-  market_signal            BUY / SELL / HOLD / WATCH / MONITOR. Role trend alone never
-                           makes a BUY: a LOW-tier role that is rising is only WATCH.
+  production_sustainability ABOVE_EXPECTATION / ALIGNED / BELOW_EXPECTATION / INSUFFICIENT:
+                           is box-score production running above or below the opportunity
+                           baseline? This is evidence of regression risk, NOT a trade call:
+                           xFP is an average-player model and elite players can beat it
+                           persistently (talent, QB, target type, YAC).
+  market_signal            BUY / SELL / HOLD / WATCH / MONITOR: is there an actionable
+                           fantasy market mismatch? Conservative by design (HOLD over a
+                           false SELL). See classify() for the rules.
 """
 
 from __future__ import annotations
@@ -78,28 +84,81 @@ def value_gap(fp_pg: float | None, xfp_pg: float | None, n_xfp: int) -> str:
     return "ALIGNED"
 
 
+SUSTAINABILITY = {
+    "PRODUCTION_EXCEEDS_USAGE": "ABOVE_EXPECTATION",
+    "USAGE_EXCEEDS_PRODUCTION": "BELOW_EXPECTATION",
+    "ALIGNED": "ALIGNED",
+    "INSUFFICIENT": "INSUFFICIENT",
+}
+
+
+def production_sustainability(gap: str) -> str:
+    """Box-score production vs the opportunity (xFP) baseline. Regression evidence only."""
+    return SUSTAINABILITY.get(gap, "INSUFFICIENT")
+
+
 def classify(games: int, role_trend: str, gap: str, tier: str | None, position: str | None = None,
              fp_pg: float | None = None) -> tuple[str, list[str]]:
-    """Market signal from (role trend, absolute opportunity tier, value gap). Pure + deterministic."""
+    """Market signal from (absolute opportunity tier, role trend, production sustainability).
+
+    Rules (pure, deterministic, conservative -- HOLD is preferred to a false SELL):
+      * < 3 games or no tier                        -> MONITOR
+      * an INSUFFICIENT role trend never drives a SELL (unknown is not "not rising")
+      * LOW tier:    above expectation + fantasy-relevant box score -> SELL (sell-high);
+                     role UP -> WATCH; else HOLD
+      * MEDIUM/HIGH: role UP + production not above expectation     -> BUY
+                     below expectation + role not DOWN              -> BUY
+      * HIGH tier is never SELL while its recent (absolute) role is still HIGH: above-expectation
+        production or a short-term role dip means regression risk, not a sell. If the role truly
+        collapses, the recent tier drops to MEDIUM and the MEDIUM rules apply.
+      * MEDIUM:      above expectation + role FLAT/DOWN + fantasy-relevant box score -> SELL;
+                     role DOWN + fantasy-relevant box score                          -> SELL
+      * otherwise HOLD
+    """
     if games < MIN_GAMES_CLASSIFY:
         return "MONITOR", [f"Only {games} game(s) played; need {MIN_GAMES_CLASSIFY} to classify."]
     if tier is None:
         return "MONITOR", ["No opportunity tier available for this position/basis."]
     productive = meaningful_production(position, fp_pg)
+    sustain = production_sustainability(gap)
+    trend_known = role_trend in ("UP", "FLAT", "DOWN")
+    above, below = sustain == "ABOVE_EXPECTATION", sustain == "BELOW_EXPECTATION"
+    regression_note = ("Production is running above the opportunity (xFP) baseline, so some efficiency "
+                       "regression is possible; xFP is an average-player model and strong players can beat it.")
+
     if tier == "LOW":
-        if gap == "PRODUCTION_EXCEEDS_USAGE" and productive:
+        if above and productive:
             return "SELL", ["Productive box score on a small role (TD/efficiency driven): sell-high candidate."]
         if role_trend == "UP":
             return "WATCH", ["Role is rising but still small in absolute terms: watch, don't buy yet."]
         return "HOLD", ["Small role; nothing actionable."]
-    if role_trend == "UP" and gap != "PRODUCTION_EXCEEDS_USAGE":
+
+    if role_trend == "UP" and not above:
         return "BUY", [f"{tier.title()} role that is still growing, and production isn't outrunning it."]
-    if gap == "USAGE_EXCEEDS_PRODUCTION" and role_trend != "DOWN":
+    if below and role_trend != "DOWN":
         return "BUY", ["Expected points from his role exceed his actual points: production should catch up if the role holds."]
-    if gap == "PRODUCTION_EXCEEDS_USAGE" and role_trend != "UP":
-        return "SELL", ["Scoring well above what his role normally produces (TD/efficiency driven): regression risk."]
+
+    if tier == "HIGH":
+        if above and role_trend == "UP":
+            return "HOLD", ["High-volume role is still growing, but production already outruns it: hold, don't chase.",
+                            regression_note]
+        if above:
+            return "HOLD", ["Elite/high-volume role remains intact; current production is above expectation, so some "
+                            "efficiency regression is possible without making the player a sell.", regression_note]
+        if role_trend == "DOWN":
+            return "HOLD", ["Usage has dipped from its earlier level but the recent role is still high-volume: "
+                            "monitor for a sustained decline before selling."]
+        return "HOLD", ["High-volume role and production are consistent with each other."]
+
+    # MEDIUM
+    if above and role_trend in ("FLAT", "DOWN") and productive:
+        return "SELL", ["Scoring well above what a mid-sized role normally produces, and the role isn't growing: "
+                        "sell-high candidate.", regression_note]
     if role_trend == "DOWN" and productive:
-        return "SELL", ["Box score still looks good but the role is shrinking."]
+        return "SELL", ["Box score still looks good but a mid-sized role is shrinking."]
+    if above:
+        return "HOLD", ["Production is above expectation but the evidence for selling is incomplete "
+                        f"(role trend {role_trend.lower() if trend_known else 'not yet measurable'})."]
     return "HOLD", ["Role and production are consistent with each other."]
 
 
@@ -196,6 +255,7 @@ def score_players(usage_rows: Iterable[dict], season: int) -> list[dict]:
             "value_score": blended_value(opp, prod, trend_score),
             "components": {
                 "opportunity_basis": s["opp_basis"],
+                "production_sustainability": production_sustainability(gap),
                 "tier_thresholds": TIER_THRESHOLDS.get(s["opp_basis"], {}).get(pos),
                 "recent_opportunity_per_game": round(s["opp_metric"], 2) if s["opp_metric"] is not None else None,
                 "recent_ppr_per_game": round(s["prod_metric"], 2) if s["prod_metric"] is not None else None,

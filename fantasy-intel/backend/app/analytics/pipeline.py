@@ -34,7 +34,9 @@ def _record_issues(con, run_id: str, issues: list[Issue]) -> None:
                   "true")
 
 
-def run_analytics(con, season: int) -> dict:
+def run_analytics(con, season: int, preferred_provider: str | None = None) -> dict:
+    from ..config import get_settings
+    preferred = preferred_provider or get_settings().external_preferred_provider
     run = SyncRun(con, "analytics")
     stats: dict = {}
     has_espn = bool(con.execute("SELECT count(*) FROM leagues").fetchone()[0])
@@ -47,12 +49,12 @@ def run_analytics(con, season: int) -> dict:
         else:
             stats["id_map"] = {"skipped": "needs both ESPN and NFL data"}
         if has_nfl:
-            stats["usage"] = build_player_week_usage(con, season)
+            stats["usage"] = build_player_week_usage(con, season, preferred)
             snap_warn = stats["usage"].get("team_snap_warnings") or []
             extra = [Issue("warning", "team_offense_snaps", "team snap estimate rejected; left NULL",
                            len(snap_warn), snap_warn[:5])] if snap_warn else []
             build_team_game_lines(con, season)   # needed by the implied-total validation
-            issues = run_validations(con, season, extra)
+            issues = run_validations(con, season, extra, preferred)
             errors = [i for i in issues if i.severity == "error"]
             if errors:
                 raise ValidationError(issues)

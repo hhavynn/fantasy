@@ -2,9 +2,9 @@ import Link from "next/link";
 import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, ErrorBox, Pos, Score, Sparkline, TrendArrow } from "@/components/ui";
 import { api } from "@/lib/api";
-import { int, label, num, pct, signed } from "@/lib/format";
+import { int, label, num, pct, signed, when } from "@/lib/format";
 import { BASIS_LABEL, FTN_READ1_LABEL, FTN_READ1_NOTE } from "@/lib/types";
-import type { ContextEvidence, ContextLabels, PlayerCore, TrendInfo, UsageWeek } from "@/lib/types";
+import type { ContextEvidence, ContextLabels, PlayerCore, RouteData, TrendInfo, UsageWeek } from "@/lib/types";
 
 type Detail = {
   player: PlayerCore & { mapping_notes: string | null; nfl_name: string | null; nfl_team: string | null };
@@ -16,6 +16,7 @@ type Detail = {
   depth_chart: { dt: string; team: string; pos_abb: string; pos_rank: number } | null;
   waiver: { recommendation: string; waiver_score: number; reasons: string[] } | null;
   unavailable_metrics: Record<string, string>;
+  route_data: RouteData | null;
   context: { labels: ContextLabels; evidence: ContextEvidence } | null;
   team_context: { proe: number | null; neutral_pass_rate: number | null; sack_rate: number | null;
     hit_or_sack_rate: number | null; pfr_pressure_rate: number | null; next_opponent: string | null;
@@ -118,7 +119,9 @@ function PlayerDetail({ d }: { d: Detail }) {
               <Badge value={p.market_signal} title="Market signal (needs a meaningful absolute role for BUY)" />
               <span className="faint">role</span><Badge value={p.opportunity_tier} title="Absolute opportunity tier" />
               <span className="faint">trend</span><Badge value={p.role_trend} title="Composite usage trend" />
-              <Badge value={p.value_gap_label} />
+              <span className="faint">production</span>
+              <Badge value={p.production_sustainability ?? p.value_gap_label}
+                title="Production vs the opportunity (xFP) baseline. Regression evidence only, not a sell signal: xFP is an average-player model." />
             </div>
             <div className="kv">
               <span className="k">Opportunity score</span><span><Score value={p.opportunity_score} /> <span className="faint">basis: {BASIS_LABEL[p.opportunity_basis ?? "unavailable"] ?? p.opportunity_basis}</span></span>
@@ -167,6 +170,7 @@ function PlayerDetail({ d }: { d: Detail }) {
       )}
 
       {d.context && <ContextPanel d={d} />}
+      {d.route_data && <RoutePanel r={d.route_data} />}
 
       <section className="panel">
         <h2>Weekly usage</h2>
@@ -221,7 +225,9 @@ function PlayerDetail({ d }: { d: Detail }) {
           </div>
         )}
         <p className="faint" style={{ marginTop: 8 }}>
-          Route participation / routes run: <b>unavailable</b> ({d.unavailable_metrics.route_participation}). Snap share is shown instead.
+          {d.route_data
+            ? <>Route data: external provider <b>{d.route_data.providers.join(", ")}</b> (not nflverse), weeks {d.route_data.weeks.join(", ")}.</>
+            : <>Route participation / routes run: <b>unavailable</b> ({d.unavailable_metrics.route_participation}). Snap share is shown instead.</>}
           * FTN code-1 share is experimental: read-code semantics are unresolved upstream (nflverse/nflreadr#325); it is not used in any score.
           “—” = data missing (hover for reason); 0 = measured zero.
         </p>
@@ -321,6 +327,43 @@ function ContextPanel({ d }: { d: Detail }) {
       )}
       <p className="faint" style={{ marginTop: 8 }}>
         Data confidence: <Badge value={L.data_confidence} tone={tone(L.data_confidence)} /> · {e.rules?.data_confidence}
+      </p>
+    </section>
+  );
+}
+
+
+const ROUTE_ROWS: [keyof RouteData["season"], string, "int" | "pct" | "num"][] = [
+  ["routes", "Routes", "int"], ["route_participation", "Route %", "pct"], ["tprr", "TPRR", "num"],
+  ["yprr", "YPRR", "num"], ["pass_block_snaps", "Pass blocks", "int"], ["pass_block_rate", "Pass-block rate", "pct"],
+  ["slot_rate", "Slot %", "pct"], ["wide_rate", "Wide %", "pct"], ["inline_rate", "Inline %", "pct"],
+  ["backfield_rate", "Backfield %", "pct"], ["two_minute_route_share", "Two-minute role", "pct"],
+  ["long_down_route_share", "Long-down role", "pct"], ["short_down_route_share", "Short-down role", "pct"],
+  ["man_tprr", "TPRR vs man", "num"], ["zone_tprr", "TPRR vs zone", "num"],
+];
+
+function RoutePanel({ r }: { r: RouteData }) {
+  const rows = ROUTE_ROWS.filter(([k]) => r.season[k] !== undefined && r.season[k] !== null);
+  return (
+    <section className="panel">
+      <h2>Route participation <span className="faint" style={{ textTransform: "none" }}>
+        · source {r.providers.join(", ")} ({r.datasets.join(", ")}) · updated {when(r.source_updated_at)} · weeks {r.weeks.join(", ")}</span></h2>
+      <div className="kv" style={{ maxWidth: 520 }}>
+        {rows.map(([k, label, kind]) => {
+          const v = r.season[k] as number;
+          const providerDefined = r.provider_defined.includes(k);
+          return (
+            <span key={k} style={{ display: "contents" }}>
+              <span className="k">{label}{providerDefined && <> <Badge value="provider-defined" tone="warn"
+                title="Definition belongs to the source provider; not normalized to an app-wide definition" /></>}</span>
+              <span>{kind === "pct" ? pct(v) : kind === "int" ? int(v) : num(v, 2)}</span>
+            </span>
+          );
+        })}
+      </div>
+      <p className="faint" style={{ marginTop: 8 }}>
+        {r.note} Season totals for counts, week averages for rates. External route metrics are shown for context only
+        and do not affect scores or recommendations yet.
       </p>
     </section>
   );

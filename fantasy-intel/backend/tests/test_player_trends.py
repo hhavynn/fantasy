@@ -42,21 +42,80 @@ def test_value_gap_thresholds():
     assert value_gap(20.0, 14.0, 2) == "INSUFFICIENT"
 
 
-def test_classify_market_signals():
-    # tiny role rising -> WATCH, never an automatic BUY
-    assert classify(5, "UP", "ALIGNED", "LOW", "WR", 3.0)[0] == "WATCH"
-    # elite role rising -> BUY
-    assert classify(5, "UP", "ALIGNED", "HIGH", "WR", 16.0)[0] == "BUY"
-    # high production on a weak role -> SELL (sell-high)
-    assert classify(5, "FLAT", "PRODUCTION_EXCEEDS_USAGE", "LOW", "WR", 11.0)[0] == "SELL"
-    # strong role, unlucky production -> BUY
-    assert classify(5, "FLAT", "USAGE_EXCEEDS_PRODUCTION", "HIGH", "RB", 9.0)[0] == "BUY"
-    # declining role with a strong box score -> SELL
+# ---- market signals: fantasy interpretation, not implementation branches ----------------
+
+def test_elite_role_outscoring_xfp_with_stable_usage_is_hold_not_sell():
+    sig, reasons = classify(5, "FLAT", "PRODUCTION_EXCEEDS_USAGE", "HIGH", "WR", 27.9)
+    assert sig == "HOLD"
+    assert "regression is possible without making the player a sell" in reasons[0]
+
+
+def test_elite_role_still_growing_while_outscoring_xfp_is_not_a_sell_or_a_chase():
+    sig, reasons = classify(5, "UP", "PRODUCTION_EXCEEDS_USAGE", "HIGH", "WR", 25.0)
+    assert sig == "HOLD"                                   # not SELL, and not BUY on trend alone
+    assert "don't chase" in reasons[0]
+
+
+def test_elite_role_underproducing_its_usage_is_a_buy_low():
+    assert classify(5, "FLAT", "USAGE_EXCEEDS_PRODUCTION", "HIGH", "RB", 11.0)[0] == "BUY"
+    assert classify(3, "INSUFFICIENT", "USAGE_EXCEEDS_PRODUCTION", "HIGH", "WR", 10.0)[0] == "BUY"
+
+
+def test_elite_role_with_a_usage_dip_but_strong_box_score_is_held_not_sold():
+    # Documented rule: HIGH tier is never SELL while the recent absolute role is still HIGH.
+    for gap in ("ALIGNED", "PRODUCTION_EXCEEDS_USAGE"):
+        sig, reasons = classify(5, "DOWN", gap, "HIGH", "WR", 18.0)
+        assert sig == "HOLD"
+    assert "monitor for a sustained decline" in classify(5, "DOWN", "ALIGNED", "HIGH", "WR", 18.0)[1][0]
+
+
+def test_mid_sized_role_with_inflated_production_and_no_growth_is_a_sell_high():
+    assert classify(5, "FLAT", "PRODUCTION_EXCEEDS_USAGE", "MEDIUM", "WR", 15.0)[0] == "SELL"
+    assert classify(5, "DOWN", "PRODUCTION_EXCEEDS_USAGE", "MEDIUM", "TE", 10.0)[0] == "SELL"
+    # but not when the box score isn't fantasy-relevant, or the role is still growing
+    assert classify(5, "FLAT", "PRODUCTION_EXCEEDS_USAGE", "MEDIUM", "WR", 5.0)[0] == "HOLD"
+    assert classify(5, "UP", "PRODUCTION_EXCEEDS_USAGE", "MEDIUM", "WR", 15.0)[0] == "HOLD"
+
+
+def test_mid_sized_role_shrinking_with_strong_box_score_is_a_sell():
     assert classify(5, "DOWN", "ALIGNED", "MEDIUM", "RB", 15.0)[0] == "SELL"
-    # small role, unlucky -> not a buy
+
+
+def test_small_role_with_a_productive_box_score_is_a_sell_high():
+    assert classify(5, "FLAT", "PRODUCTION_EXCEEDS_USAGE", "LOW", "WR", 11.0)[0] == "SELL"
+    assert classify(5, "FLAT", "PRODUCTION_EXCEEDS_USAGE", "LOW", "WR", 4.0)[0] == "HOLD"   # no market value
+
+
+def test_small_but_rising_role_is_watch_not_buy():
+    assert classify(5, "UP", "ALIGNED", "LOW", "WR", 3.0)[0] == "WATCH"
     assert classify(5, "FLAT", "USAGE_EXCEEDS_PRODUCTION", "LOW", "TE", 2.0)[0] == "HOLD"
+
+
+def test_strong_role_with_production_matching_usage_is_hold():
+    assert classify(5, "FLAT", "ALIGNED", "HIGH", "WR", 16.0)[0] == "HOLD"
+    assert classify(5, "FLAT", "ALIGNED", "MEDIUM", "RB", 10.0)[0] == "HOLD"
+    assert classify(5, "UP", "ALIGNED", "HIGH", "WR", 16.0)[0] == "BUY"   # elite and still growing
+
+
+def test_unknown_role_trend_never_triggers_a_sell():
+    for tier in ("HIGH", "MEDIUM"):
+        assert classify(3, "INSUFFICIENT", "PRODUCTION_EXCEEDS_USAGE", tier, "WR", 20.0)[0] == "HOLD"
+
+
+def test_too_few_games_or_no_tier_is_monitor():
     assert classify(2, "UP", "ALIGNED", "HIGH", "WR", 20.0)[0] == "MONITOR"
     assert classify(5, "UP", "ALIGNED", None, "QB", 20.0)[0] == "MONITOR"
+
+
+def test_production_sustainability_is_separate_from_the_market_signal():
+    from app.analytics.player_scores import production_sustainability
+    assert production_sustainability("PRODUCTION_EXCEEDS_USAGE") == "ABOVE_EXPECTATION"
+    assert production_sustainability("USAGE_EXCEEDS_PRODUCTION") == "BELOW_EXPECTATION"
+    assert production_sustainability("ALIGNED") == "ALIGNED"
+    assert production_sustainability("INSUFFICIENT") == "INSUFFICIENT"
+    # same sustainability, different market signals depending on role size
+    assert classify(5, "FLAT", "PRODUCTION_EXCEEDS_USAGE", "HIGH", "WR", 20.0)[0] == "HOLD"
+    assert classify(5, "FLAT", "PRODUCTION_EXCEEDS_USAGE", "MEDIUM", "WR", 15.0)[0] == "SELL"
 
 
 def test_opportunity_tiers_are_absolute():

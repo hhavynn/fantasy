@@ -281,7 +281,9 @@ def parse_pro_players(raw: Any, *, season: int, synced_at: datetime) -> list[dic
 
 
 def parse_player_cards(raw: dict, *, season: int, synced_at: datetime) -> list[dict]:
-    """Per-week league-scoring points for each player in a kona_playercard payload."""
+    """Per-week league-scoring points (statSplitTypeId 1) from any `players[].player.stats`
+    payload: kona_playercard or kona_player_info. statSourceId 0 = actual, 1 = ESPN projection.
+    Season splits (0) and statSplitTypeId 2 are not single-week values and are ignored here."""
     out: dict[tuple, dict] = {}
     for wrap in raw.get("players", []):
         player = wrap.get("player") or {}

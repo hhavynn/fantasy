@@ -122,3 +122,40 @@ def test_member_swids_are_never_stored(con, tmp_path, monkeypatch):
     assert "abcd-1234" not in dump.lower() and "m_" in dump
     # ownership detection still worked because it ran before hashing
     assert con.execute("SELECT team_id FROM fantasy_teams WHERE is_mine").fetchall() == [(2,)]
+
+
+
+def test_free_agent_current_week_projection_is_retained(con):
+    """ESPN's FA pool payload already includes each free agent's projection for the
+    requested period; it must be stored (previously only rostered players' were)."""
+    from espn_fixture import CURRENT, SEASON, pool_payload
+    pool = pool_payload()
+    pool["players"][0]["player"]["stats"] = [
+        {"seasonId": SEASON, "scoringPeriodId": CURRENT, "statSourceId": 1, "statSplitTypeId": 1, "appliedTotal": 11.5},
+        {"seasonId": SEASON, "scoringPeriodId": 0, "statSourceId": 1, "statSplitTypeId": 0, "appliedTotal": 140.0},
+        {"seasonId": SEASON, "scoringPeriodId": 0, "statSourceId": 1, "statSplitTypeId": 2, "appliedTotal": 150.0},
+    ]
+    client = FakeEspnClient()
+    client.player_pool = lambda period, limit=500: pool
+    client.player_cards = lambda ids, m: {"players": []}
+    write_all(con, fetch_all(client), swid=MY_SWID, my_team_id=None)
+    fa_id = pool["players"][0]["player"]["id"]
+    rows = con.execute("SELECT scoring_period, actual_points, projected_points FROM espn_player_weekly_points "
+                       "WHERE espn_player_id = ? ORDER BY 1", [fa_id]).fetchall()
+    assert rows == [(CURRENT, None, 11.5)]        # projection kept; no fake actual; season splits not stored as weeks
+
+
+def test_pool_projection_never_overwrites_a_known_actual(con):
+    from espn_fixture import CURRENT, SEASON, pool_payload
+    pool = pool_payload()
+    fa_id = pool["players"][0]["player"]["id"]
+    pool["players"][0]["player"]["stats"] = [
+        {"seasonId": SEASON, "scoringPeriodId": CURRENT - 1, "statSourceId": 1, "statSplitTypeId": 1, "appliedTotal": 9.0}]
+    client = FakeEspnClient()
+    client.player_pool = lambda period, limit=500: pool
+    client.player_cards = lambda ids, m: {"players": [{"id": fa_id, "player": {"id": fa_id, "stats": [
+        {"seasonId": SEASON, "scoringPeriodId": CURRENT - 1, "statSourceId": 0, "statSplitTypeId": 1, "appliedTotal": 4.0}]}}]}
+    write_all(con, fetch_all(client), swid=MY_SWID, my_team_id=None)
+    row = con.execute("SELECT actual_points, projected_points FROM espn_player_weekly_points WHERE espn_player_id = ? "
+                      "AND scoring_period = ?", [fa_id, CURRENT - 1]).fetchone()
+    assert row == (4.0, 9.0)
