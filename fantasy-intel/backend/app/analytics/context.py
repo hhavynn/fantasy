@@ -186,9 +186,6 @@ def player_recent(rows: list[dict]) -> dict:
         "air_yards_share": _mean(r["air_yards_share"] for r in recent),
         "wopr": _mean(r["wopr"] for r in recent),
         "adot": air / targets if targets else None,
-        "first_read_target_share": _mean(r["first_read_target_share"] for r in recent),
-        "first_read_targets": (sum(r["first_read_targets"] for r in recent if r["first_read_targets"] is not None)
-                               if any(r["first_read_targets"] is not None for r in recent) else None),
         "designed_targets": (sum(r["designed_targets"] for r in recent if r["designed_targets"] is not None)
                              if any(r["designed_targets"] is not None for r in recent) else None),
         "team_rush_share": _mean(r["team_rush_share"] for r in recent),
@@ -206,7 +203,24 @@ def player_recent(rows: list[dict]) -> dict:
                            if any(r["broken_tackles"] is not None for r in rows) else None),
         "ngs_rush_yoe_per_att": _mean(r["ngs_rush_yoe_per_att"] for r in recent),
         "ngs_avg_separation": _mean(r["ngs_avg_separation"] for r in recent),
+        # Experimental: FTN code-"1" share. Semantics unresolved upstream; display only,
+        # never used for labels, signals, scores or waiver decisions.
+        "experimental": {
+            "ftn_read1_target_share": _mean(r["ftn_read1_target_share"] for r in recent),
+            "ftn_read1_targets": (sum(r["ftn_read1_targets"] for r in recent if r["ftn_read1_targets"] is not None)
+                                  if any(r["ftn_read1_targets"] is not None for r in recent) else None),
+            **ftn_semantics(),
+        },
     }
+
+
+def ftn_semantics() -> dict:
+    from ..nfl.sync import FTN_ASSUMED_PRIMARY_READ_CODE, FTN_READ_SEMANTICS_STATUS, FTN_SEMANTICS_REFERENCE
+    return {"read_semantics_status": FTN_READ_SEMANTICS_STATUS,
+            "assumed_primary_read_code": FTN_ASSUMED_PRIMARY_READ_CODE,
+            "reference": FTN_SEMANTICS_REFERENCE,
+            "note": "Official dictionary documents 0 = primary read, but observed data conflicts; "
+                    "shown as 'FTN progression read-code 1 share' for exploration only."}
 
 
 def _tier3(v, hi, mid, labels=("HIGH", "MEDIUM", "LOW")):
@@ -235,8 +249,6 @@ def headlines(position: str | None, ev: dict, labels: dict) -> list[str]:
     elif position in ("WR", "TE"):
         if ev.get("snap_pct") is not None and ev.get("target_share") is not None:
             out.append(f"{ev['snap_pct']:.0%} snaps, {ev['target_share']:.0%} target share over {window}")
-        if ev.get("first_read_target_share") is not None:
-            out.append(f"{ev['first_read_target_share']:.0%} of team first-read targets")
     m = labels.get("matchup")
     mev = ev.get("matchup") or {}
     if m in ("FAVORABLE", "TOUGH") and mev.get("ranks"):

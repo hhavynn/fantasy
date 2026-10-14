@@ -267,8 +267,12 @@ CREATE TABLE IF NOT EXISTS nfl_pbp_player_week (
     targets             INTEGER,
     rz_targets          INTEGER,
     inside10_targets    INTEGER,
-    ftn_charted_targets INTEGER,    -- targets with an FTN read code; NULL = game not charted
-    first_read_targets  INTEGER,    -- FTN read_thrown = '1' (see contract: verified first-read code)
+    ftn_charted_targets INTEGER,    -- targets with any FTN read code; NULL = game not charted
+    -- Raw FTN read_thrown code counts. Numeric semantics are UNVERIFIED (nflverse/nflreadr#325);
+    -- experimental display only, never used in scores or recommendations.
+    ftn_read0_targets   INTEGER,
+    ftn_read1_targets   INTEGER,
+    ftn_read2_targets   INTEGER,
     designed_targets    INTEGER,    -- FTN 'DES'
     checkdown_targets   INTEGER,    -- FTN 'CHK'
     scramble_drill_targets INTEGER, -- FTN 'SD'
@@ -288,7 +292,7 @@ CREATE TABLE IF NOT EXISTS nfl_team_week (
     team_targets            INTEGER,
     team_rz_carries         INTEGER,   -- designed rushes inside the 20
     team_rz_targets         INTEGER,
-    team_first_read_targets INTEGER,   -- NULL when FTN has not charted the game
+    team_ftn_read1_targets  INTEGER,   -- FTN code "1" targets (UNVERIFIED semantics); NULL if not charted
     team_ftn_charted_targets INTEGER,
     dropbacks               INTEGER,   -- qb_dropback = 1 (incl. sacks and scrambles)
     sacks                   INTEGER,
@@ -434,8 +438,8 @@ CREATE TABLE IF NOT EXISTS player_week_usage (
     rz_targets            INTEGER,
     rz_carries            INTEGER,     -- designed rushes inside the 20
     gl_carries            INTEGER,     -- designed rushes inside the 5
-    first_read_targets    INTEGER,
-    first_read_target_share DOUBLE,    -- player first-read targets / team first-read targets
+    ftn_read1_targets     INTEGER,     -- EXPERIMENTAL: FTN read_thrown code "1" (semantics unverified)
+    ftn_read1_target_share DOUBLE,     -- EXPERIMENTAL: player / team code-"1" targets; not used in scoring
     designed_targets      INTEGER,
     checkdown_targets     INTEGER,
     ngs_rush_yoe_per_att  DOUBLE,      -- NGS; NULL = not qualified/unavailable (never 0-filled)

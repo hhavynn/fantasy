@@ -3,7 +3,7 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, ErrorBox, Pos, Score, Sparkline, TrendArrow } from "@/components/ui";
 import { api } from "@/lib/api";
 import { int, label, num, pct, signed } from "@/lib/format";
-import { BASIS_LABEL } from "@/lib/types";
+import { BASIS_LABEL, FTN_READ1_LABEL, FTN_READ1_NOTE } from "@/lib/types";
 import type { ContextEvidence, ContextLabels, PlayerCore, TrendInfo, UsageWeek } from "@/lib/types";
 
 type Detail = {
@@ -183,7 +183,7 @@ function PlayerDetail({ d }: { d: Detail }) {
                     <th className="num" title="PFR yards after contact / att">YAC/a</th><th className="num" title="PFR broken tackles (rush + rec)">BT</th></>}
                   <th className="num">Tgt</th><th className="num">Tgt sh</th><th className="num">Rec</th><th className="num">Rec yd</th>
                   {!isRB && <><th className="num">Air yd</th><th className="num">aDOT</th><th className="num">WOPR</th>
-                    <th className="num" title="Share of team first-read targets (FTN). NOT route participation.">1st-read sh</th></>}
+                    <th className="num" title={FTN_READ1_NOTE}>FTN code-1 sh*</th></>}
                   <th className="num">RZ tgt</th><th className="num">RZ car</th><th className="num">GL car</th><th className="num">TD</th>
                   <th className="num">PPR</th><th className="num">League pts</th><th className="num">xFP</th><th>Source</th>
                 </tr>
@@ -206,7 +206,7 @@ function PlayerDetail({ d }: { d: Detail }) {
                     {!isRB && <>
                       <td className="num">{int(w.air_yards)}</td><td className="num">{num(w.adot, 1, "No targets")}</td>
                       <td className="num">{num(w.wopr, 2)}</td>
-                      <td className="num">{pct(w.first_read_target_share, 0, "Game not charted by FTN")}</td></>}
+                      <td className="num faint" title={FTN_READ1_NOTE}>{pct(w.ftn_read1_target_share, 0, "Game not charted by FTN")}</td></>}
                     <td className="num">{int(w.rz_targets, "No play-by-play")}</td><td className="num">{int(w.rz_carries, "No play-by-play")}</td>
                     <td className="num">{int(w.gl_carries, "No play-by-play")}</td>
                     <td className="num">{int((w.receiving_tds ?? 0) + (w.rushing_tds ?? 0))}</td>
@@ -221,8 +221,8 @@ function PlayerDetail({ d }: { d: Detail }) {
           </div>
         )}
         <p className="faint" style={{ marginTop: 8 }}>
-          Route participation / routes run: <b>unavailable</b> ({d.unavailable_metrics.route_participation}). Snap share is shown instead;
-          first-read share is a target-quality signal, not route participation.
+          Route participation / routes run: <b>unavailable</b> ({d.unavailable_metrics.route_participation}). Snap share is shown instead.
+          * FTN code-1 share is experimental: read-code semantics are unresolved upstream (nflverse/nflreadr#325); it is not used in any score.
           “—” = data missing (hover for reason); 0 = measured zero.
         </p>
       </section>
@@ -260,8 +260,7 @@ function ContextPanel({ d }: { d: Detail }) {
             <span className="k">Target share</span><span>{pct(e.target_share)}</span>
             {pos === "RB" && <><span className="k">Backfield share</span><span>{pct(e.backfield_rush_share)}</span>
               <span className="k">Team rush share</span><span>{pct(e.team_rush_share)}</span></>}
-            {pos !== "RB" && <><span className="k">1st-read share</span><span>{pct(e.first_read_target_share, 0, "Not charted by FTN")}</span>
-              <span className="k">Air-yard share</span><span>{pct(e.air_yards_share)}</span></>}
+            {pos !== "RB" && <><span className="k">Air-yard share</span><span>{pct(e.air_yards_share)}</span></>}
           </div>
         </div>
         <div className="panel tight">
@@ -309,6 +308,17 @@ function ContextPanel({ d }: { d: Detail }) {
           <p className="faint" style={{ marginTop: 6 }}>Rank #1 = most generous defense of 32 (season to date).</p>
         </div>
       </div>
+      {pos !== "RB" && e.experimental && (
+        <details style={{ marginTop: 8 }}>
+          <summary>Advanced / experimental</summary>
+          <div className="kv faint">
+            <span className="k" title={FTN_READ1_NOTE}>{FTN_READ1_LABEL}</span>
+            <span>{pct(e.experimental.ftn_read1_target_share, 0, "Not charted by FTN")}{" "}
+              <Badge value={e.experimental.read_semantics_status} tone="warn" title={FTN_READ1_NOTE} /></span>
+          </div>
+          <p className="faint" style={{ marginTop: 4 }}>{FTN_READ1_NOTE}</p>
+        </details>
+      )}
       <p className="faint" style={{ marginTop: 8 }}>
         Data confidence: <Badge value={L.data_confidence} tone={tone(L.data_confidence)} /> · {e.rules?.data_confidence}
       </p>

@@ -6,7 +6,8 @@
 > corrected in place below (marked **Corrected**): target-share denominator,
 > rushing share (team vs backfield), the `qb_hit + sack` pressure formula, the
 > goal-line TD-rate claim, the spread sign for implied totals, NGS missing-data
-> handling, and the FTN `read_thrown` first-read code.
+> handling. The FTN `read_thrown` numeric codes are **unresolved** (dictionary vs
+> observed data conflict; nflverse/nflreadr#325): the app treats them as experimental.
 
 **Audience**: Implementation / Backend Engineers  
 **Target Environment**: Python (`nflreadpy`, `duckdb`, `polars`) + `nflverse` open-source ecosystem  
@@ -27,7 +28,7 @@
      * `load_pbp()`: Unmatched play-by-play depth (EPA, success, win probability, situational context like down/distance, goal line, red zone, and pre-modeled `pass_oe` / `xpass`).
      * `load_player_stats()`: Pre-computed weekly player aggregates including air yards, air yard share, target share, WOPR, EPA, and fantasy points.
      * `load_pfr_advstats()`: Advanced rushing and passing metrics (yards before/after contact, broken tackles, pressure rates, hurry rates, blitz rates).
-     * `load_ftn_charting()`: In-season weekly charting including first-read status (`read_thrown`), play action, RPO, screen passes, motion, and box counts.
+     * `load_ftn_charting()`: In-season weekly charting including read progression (`read_thrown`, numeric codes unresolved upstream), play action, RPO, screen passes, motion, and box counts.
      * `load_ff_opportunity()`: Expected fantasy points (xFP) based on situational machine learning models.
 
 ---
@@ -50,7 +51,7 @@
 | Route participation | **D / E** | `load_participation()` (D) / Paid API (E) | Post-season only | High / Blocked | Routes / Team Dropbacks. In-season requires paid data. Use snap share as proxy. |
 | Targets | **A** | `nflreadpy.load_player_stats()` | Weekly / Post-game | Low | Official box score target count. Also verifiable via PBP. |
 | Target share | **A** | `nflreadpy.load_player_stats()` | Weekly (Tue AM) | Low | Pre-calculated `target_share` = player targets / **team targets** (not pass attempts). **Corrected.** |
-| First-read targets | **B** | `load_ftn_charting()` + `load_pbp()` | Weekly / Nightly | Medium | Join on `game_id` and `play_id`. **Corrected:** in the actual data the first-read code is `'1'`; `'0'` is the default on non-progression plays (see contract §3). Not route participation. |
+| First-read targets | **B** | `load_ftn_charting()` + `load_pbp()` | Weekly / Nightly | Medium | Join on `game_id` and `play_id`. **Unresolved:** the dictionary says `'0'` = primary read, but observed data conflicts (`'1'` on ~50-60% of targets, `'0'` mostly on non-pass plays); pending nflverse/nflreadr#325. Experimental only (contract §3). Not route participation. |
 | Air yards | **A** | `nflreadpy.load_player_stats()` | Weekly (Tue AM) | Low | Column `receiving_air_yards`. Includes incomplete passes. |
 | Air-yard share | **A** | `nflreadpy.load_player_stats()` | Weekly (Tue AM) | Low | Column `air_yards_share`. Can be volatile on deep targets. |
 | ADOT (Avg Depth of Target) | **B** | Derived: `load_player_stats()` | Weekly (Tue AM) | Low | `receiving_air_yards / targets`. Handle `targets == 0` (NULL). |

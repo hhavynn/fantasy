@@ -143,7 +143,7 @@ Investigated / caveats:
 fantasy points), `load_ff_playerids`, `load_players`, `load_pfr_advstats`
 (rush/rec/pass: contact yards, broken tackles, pressures), `load_nextgen_stats`
 (rushing/receiving, qualified players only), `load_ftn_charting` (read
-progression), and `load_pbp` (aggregated into player-week usage, offensive
+progression; numeric codes experimental), and `load_pbp` (aggregated into player-week usage, offensive
 team-week environment and defensive team-week counts; the raw play-by-play
 table is not stored).
 
@@ -154,10 +154,11 @@ table is not stored).
 - **Route participation / routes run: unavailable.** nflverse participation data
   (`load_participation`) is not published for the in-progress season, so the app
   shows `unavailable` rather than approximating it. Snap share is shown instead.
-  FTN first-read target share is shown as a target-quality signal; it is **not**
-  route participation. Man/zone splits are unavailable.
-- **FTN `read_thrown`:** the data uses `"1"` for first read (`"0"` is the default on
-  non-progression plays), contrary to the nflreadr dictionary; see the contract §3.
+  It is **not** approximated from FTN read codes either. Man/zone splits are unavailable.
+- **FTN `read_thrown` numeric codes are UNVERIFIED.** The nflreadr dictionary documents
+  `"0"` = primary read, but observed data conflicts; clarification is pending in
+  nflverse/nflreadr#325. The app stores raw per-code counts and shows the code-`"1"` share
+  only as an experimental field. It's never used in scores, signals or waivers (contract §3).
 - **NGS** rows exist only for qualified players; missing NGS values stay NULL.
 - **PFR advanced stats** lag the games by a few days; unpublished weeks are NULL.
 - nflverse data typically lags games by a day; the header shows "stats thru wk N".
@@ -181,9 +182,8 @@ share, WOPR, **aDOT** (missing when 0 targets), carries (official, includes knee
 **backfield_rush_share** (RBs: designed rushes ÷ team RB designed rushes; scrambles
 never count), rushing success rate and explosive-run rate (designed rushes), PFR
 yards before/after contact per attempt and broken tackles, red-zone targets,
-red-zone and goal-line carries (designed rushes ≤ 20 / ≤ 5), FTN first-read targets
-and first-read target share (team first-read targets denominator), designed and
-checkdown targets, NGS rush yards over expected / separation (NULL when NGS has no
+red-zone and goal-line carries (designed rushes ≤ 20 / ≤ 5), FTN designed and checkdown targets, raw
+FTN read-code counts (experimental code-"1" share, not used in any score), NGS rush yards over expected / separation (NULL when NGS has no
 row), opportunities, nflverse PPR, ESPN league points, nflverse xFP.
 
 A player with snaps but no box-score line is a measured zero; a game a source
@@ -239,7 +239,8 @@ its value, league mean/std, sample size, confidence and rule.
   (most severe of ESPN status, IR slot, current-week NFL report). These are risk
   discounts, not play probabilities, and they're stored with each need.
 - **Positional need** = 0.55·min(1, 2·shortage of availability-weighted bodies vs
-  depth target) + 0.45·gap between the team's fixed starters and the league average.
+  depth target) + 0.45·gap between the team's starters at the position (every lineup starter whose
+  player position matches, including FLEX/OP-assigned ones) and the league average.
 - **Roster fit** = 10·(0.35·need + 0.35·clamp(lineup gain / 3) + 0.30·upgrade over
   the suggested drop × depth utility); lineup gain is the actual change in the
   optimal lineup's value if the player is added.
@@ -260,13 +261,14 @@ shares outside 0..1, receptions > targets, goal-line > red-zone carries, red-zon
 carries/targets, duplicate keys, hit-or-sack outside [sacks, dropbacks], bad
 implied-total arithmetic, negative broken tackles) roll the run back. **Warnings**
 (odd but possible: negative xFP, extreme PROE, unusual air-yard share or play counts,
-extreme contact metrics, target shares not summing to 1, FTN code drift, missing
+extreme contact metrics, target shares not summing to 1, the observed FTN read-code distribution (descriptive; semantics unresolved), missing
 NGS rows, ESPN→GSIS mapping failures, rejected team-snap estimates) are kept and
 shown on `/data`.
 
-## Upgrading an existing database (schema v2)
+## Upgrading an existing database (schema v3)
 
-The analytics-hardening release bumps the DuckDB schema to **v2**. On the first
+The analytics-hardening release bumps the DuckDB schema to **v3** (v2: new metrics;
+v3: FTN read-code columns renamed to `ftn_read*`). On the first
 read-write open (any sync script), derived tables are dropped and recreated; raw
 ESPN and nflverse tables are kept. Then rebuild:
 
@@ -291,7 +293,7 @@ Covers: schema init + v2 migration, idempotent ESPN sync, SWID handling,
 missing-vs-zero handling, ID mapping, lineup assignment (FLEX counted once; FLEX
 picks the best RB/WR/TE; non-nested flex slots; superflex), team vs backfield rush
 share, kneel / two-point / scramble filters, hit-or-sack without double counting,
-FTN first-read code and uncharted games, latest same-week injury report,
+FTN read codes kept experimental and isolated from scoring, uncharted games, latest same-week injury report,
 Doubtful/Questionable availability in needs, opportunity basis in explanations,
 market signals (tiny rising role → WATCH, strong rising role → BUY, etc.),
 streaming requiring starter turnover, trade-source union/dedup, target-share sums,

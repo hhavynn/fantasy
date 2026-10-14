@@ -110,14 +110,43 @@ def test_backfield_share_only_for_rbs_and_ngs_never_zero_filled():
     assert ngs["ngs_rush_yoe_per_att"] == 0.0       # a real 0 survives; only absence is NULL
 
 
-def test_first_read_share_null_when_game_not_charted():
+def test_ftn_read1_share_null_when_game_not_charted():
     charted = derive_usage_row({"gsis_id": "w", "week": 1, "has_stats": True, "has_snaps": True, "has_pbp": True,
-                                "position": "WR", "targets": 6, "first_read_targets": None,
-                                "team_first_read_targets": 20}, 2026)
-    assert charted["first_read_targets"] == 0 and charted["first_read_target_share"] == 0.0
+                                "position": "WR", "targets": 6, "ftn_read1_targets": None,
+                                "team_ftn_read1_targets": 20}, 2026)
+    assert charted["ftn_read1_targets"] == 0 and charted["ftn_read1_target_share"] == 0.0
     uncharted = derive_usage_row({"gsis_id": "w", "week": 1, "has_stats": True, "has_snaps": True,
                                   "has_pbp": True, "position": "WR", "targets": 6}, 2026)
-    assert uncharted["first_read_targets"] is None and uncharted["first_read_target_share"] is None
+    assert uncharted["ftn_read1_targets"] is None and uncharted["ftn_read1_target_share"] is None
+
+
+def test_ftn_read1_metric_never_affects_scores_or_signals():
+    """The unverified FTN code-"1" share must not move any score, tier, trend or signal."""
+    base = [_row("p", w, "WR", offense_pct=.5 + .05 * w, targets=w + 3, target_share=.1 + .02 * w, xfp=4.0 + w,
+                 fantasy_points_ppr=5.0 + w) for w in range(1, 6)]
+    low = [{**r, "ftn_read1_targets": 0, "ftn_read1_target_share": 0.0} for r in base]
+    high = [{**r, "ftn_read1_targets": 9, "ftn_read1_target_share": 0.9} for r in base]
+    strip = lambda rows: [{k: v for k, v in r.items() if k != "computed_at"} for r in rows]  # noqa: E731
+    assert strip(score_players(low, 2026)) == strip(score_players(high, 2026))
+    from app.analytics.trends import TREND_METRICS
+    assert not any("ftn" in m or "read" in m for ms in TREND_METRICS.values() for m, _ in ms)
+
+
+def test_ftn_read1_kept_only_as_experimental_context():
+    from app.analytics.context import headlines, player_recent
+    rows = [{**_row("p", w, "WR"), "air_yards": 40.0, "air_yards_share": .2, "wopr": .3, "adot": 8.0,
+             "team_rush_share": None, "backfield_rush_share": None, "rz_targets": 1, "rz_carries": 0,
+             "gl_carries": 0, "designed_rushes": 0, "rushing_success_rate": None, "explosive_runs": 0,
+             "ybc_per_att": None, "yac_per_att": None, "carries": 0, "broken_tackles": None,
+             "designed_targets": 1, "ngs_rush_yoe_per_att": None, "ngs_avg_separation": None,
+             "ftn_read1_targets": 4, "ftn_read1_target_share": 0.4} for w in range(1, 4)]
+    ev = player_recent(rows)
+    assert ev["experimental"]["ftn_read1_target_share"] == pytest.approx(0.4)
+    assert ev["experimental"]["read_semantics_status"] == "UNVERIFIED"
+    assert ev["experimental"]["assumed_primary_read_code"] == "1"
+    assert "ftn_read1_target_share" not in ev                      # not a first-class evidence field
+    lines = headlines("WR", ev, {"role_trend": "FLAT", "matchup": "NEUTRAL"})
+    assert lines and not any("read" in h.lower() for h in lines)    # never surfaced as a claim
 
 
 def test_team_snap_estimator():

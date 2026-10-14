@@ -80,8 +80,17 @@ def team_state(roster: list[dict], values: dict[int, PlayerValue], roster_slots:
     return {"players": players, "slots": slots, "lineup": assign_lineup(players, slots)}
 
 
-def _fixed_values(state: dict, pos: str) -> list[float]:
-    return [a["value"] for a in state["lineup"] if a["slot"] == pos]
+def _empty_slots(state: dict, pos: str) -> int:
+    """Dedicated slots for `pos` that no eligible player could fill (holes count as 0 value)."""
+    return sum(1 for a in state["lineup"] if a["slot"] == pos and a["player_id"] is None)
+
+
+def position_starter_values(state: dict, pos: str) -> list[float]:
+    """Values of every lineup starter whose *player* position is `pos`, whatever slot he
+    occupies (fixed, FLEX, RB/WR, WR/TE, OP), plus 0 for each unfilled dedicated `pos` slot.
+    Each assigned player sits in exactly one slot, so nothing is counted twice."""
+    vals = [a["value"] for a in state["lineup"] if a["player_id"] is not None and a["position"] == pos]
+    return vals + [0.0] * _empty_slots(state, pos)
 
 
 def _has_value_data(state: dict, pos: str) -> bool:
@@ -89,12 +98,12 @@ def _has_value_data(state: dict, pos: str) -> bool:
 
 
 def league_starter_averages(states: dict[int, dict], roster_slots: dict[str, int]) -> dict[str, float]:
-    """Mean value of each team's *fixed* starters at a position, averaged across teams."""
+    """Mean value of each team's starters at a position (fixed and flex-assigned), averaged
+    across teams that have value data at that position and start someone there."""
     out = {}
     for pos in FIXED_SLOTS:
-        if not roster_slots.get(pos):
-            continue
-        per_team = [mean(_fixed_values(st, pos)) for st in states.values() if _has_value_data(st, pos)]
+        per_team = [mean(v) for st in states.values() if _has_value_data(st, pos)
+                    for v in [position_starter_values(st, pos)] if v]
         if per_team:
             out[pos] = round(mean(per_team), 2)
     return out
@@ -111,15 +120,15 @@ def team_needs(state: dict, roster_slots: dict[str, int], league_starter_avg: di
         weights = [p["availability"]["weight"] for p in players]
         eff = round(sum(weights), 2)
         target = (starters + DEPTH_EXTRA.get(pos, 0)) if starters else 0
-        fixed_vals = _fixed_values(state, pos)
+        starter_vals = position_starter_values(state, pos)
         has_data = _has_value_data(state, pos)
-        starter_value = mean(fixed_vals) if fixed_vals and has_data else None
-        weakest = min(fixed_vals) if fixed_vals and has_data else None
+        starter_value = mean(starter_vals) if starter_vals and has_data else None
+        weakest = min(starter_vals) if starter_vals and has_data else None
         shortage = clamp((target - eff) / target) if target else 0.0
         gap = 0.0
         if starter_value is not None and league_starter_avg.get(pos) is not None:
             gap = clamp((league_starter_avg[pos] - starter_value) / 4.0)
-        need = round(clamp(0.55 * clamp(shortage * 2) + 0.45 * gap), 3) if fixed else 0.0
+        need = round(clamp(0.55 * clamp(shortage * 2) + 0.45 * gap), 3) if starters or fixed else 0.0
         out[pos] = {
             "position": pos, "starters_required": starters, "rostered": len(players),
             "healthy": sum(1 for w in weights if w == 1.0), "unavailable": sum(1 for w in weights if w == 0.0),
@@ -134,8 +143,10 @@ def team_needs(state: dict, roster_slots: dict[str, int], league_starter_avg: di
                 "availability": [{"espn_player_id": p["espn_player_id"], "name": p["full_name"],
                                   "status": p["availability"]["status"], "weight": p["availability"]["weight"]}
                                  for p in players],
-                "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; shortage uses availability "
-                           "weights (AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
+                "starter_values": [round(v, 2) for v in starter_vals],
+                "formula": "need = 0.55*min(1, 2*shortage) + 0.45*quality_gap; quality uses every lineup "
+                           "starter at the position (fixed + flex); shortage uses availability weights "
+                           "(AVAILABLE 1, QUESTIONABLE 0.75, DOUBTFUL 0.15, OUT/IR/SUSPENDED 0)",
             },
         }
     return out

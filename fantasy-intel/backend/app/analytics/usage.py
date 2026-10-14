@@ -7,6 +7,8 @@ Definitions live in docs/nfl_metrics_verified_contract.md. Key rules:
                         (scrambles included, kneels and 2-pt excluded)
   * backfield_rush_share (RBs only) = designed rushes / team RB designed rushes
   * NGS columns are LEFT JOINed and never coalesced (NULL = not qualified)
+  * FTN read-code "1" columns are EXPERIMENTAL (semantics unverified upstream) and are
+    never used by scores, signals or waiver logic
 """
 
 from __future__ import annotations
@@ -73,10 +75,10 @@ base AS (
 ),
 pfr_rush AS ({pfr_rush}), pfr_rec AS ({pfr_rec}), ngs_rush AS ({ngs_rush}), ngs_rec AS ({ngs_rec})
 SELECT b.*, tw.team_offense_snaps, tw.team_targets, tw.team_rush_attempts, tw.team_rb_carries,
-       tw.team_first_read_targets, tw.team_targets IS NOT NULL AS has_pbp,
+       tw.team_ftn_read1_targets, tw.team_targets IS NOT NULL AS has_pbp,
        pb.rush_attempts AS pbp_rush_attempts, pb.designed_rushes, pb.designed_rush_success, pb.explosive_runs,
        pb.rz_targets, pb.rz_carries, pb.gl_carries, pb.targets AS pbp_targets,
-       pb.first_read_targets, pb.designed_targets, pb.checkdown_targets,
+       pb.ftn_read1_targets, pb.designed_targets, pb.checkdown_targets,
        pr.pfr_carries, pr.pfr_ybc, pr.pfr_yac, pr.pfr_rush_bt, prc.pfr_rec_bt,
        nr.ngs_rush_yoe_per_att, nc.ngs_avg_separation,
        fo.total_fantasy_points_exp AS xfp,
@@ -129,9 +131,10 @@ def derive_usage_row(r: dict, season: int) -> dict:
         xfp = 0.0  # played, no targets/carries -> zero expected points (measured, not missing)
     rush_attempts, designed = pbp_count("pbp_rush_attempts"), pbp_count("designed_rushes")
     success, explosive = pbp_count("designed_rush_success"), pbp_count("explosive_runs")
-    fr = r.get("first_read_targets")
-    if fr is None and r.get("team_first_read_targets") is not None:
-        fr = 0  # team game was FTN-charted; player had no first-read targets
+    ftn_charted = r.get("team_ftn_read1_targets") is not None
+    fr = r.get("ftn_read1_targets")
+    if fr is None and ftn_charted:
+        fr = 0  # team game was FTN-charted; player had no code-"1" targets
     bt_parts = [r.get("pfr_rush_bt"), r.get("pfr_rec_bt")]
     return {
         "season": season,
@@ -173,12 +176,12 @@ def derive_usage_row(r: dict, season: int) -> dict:
         "rz_targets": pbp_count("rz_targets"),
         "rz_carries": pbp_count("rz_carries"),
         "gl_carries": pbp_count("gl_carries"),
-        "first_read_targets": fr,
-        "first_read_target_share": _ratio(fr, r.get("team_first_read_targets")) if fr is not None else None,
+        "ftn_read1_targets": fr,
+        "ftn_read1_target_share": _ratio(fr, r.get("team_ftn_read1_targets")) if fr is not None else None,
         "designed_targets": r.get("designed_targets") if r.get("designed_targets") is not None else (
-            0 if r.get("team_first_read_targets") is not None else None),
+            0 if ftn_charted else None),
         "checkdown_targets": r.get("checkdown_targets") if r.get("checkdown_targets") is not None else (
-            0 if r.get("team_first_read_targets") is not None else None),
+            0 if ftn_charted else None),
         "ngs_rush_yoe_per_att": r.get("ngs_rush_yoe_per_att"),
         "ngs_avg_separation": r.get("ngs_avg_separation"),
         "opportunities": opportunities,

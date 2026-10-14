@@ -75,7 +75,7 @@ export type UsageWeek = {
   team_rush_share: number | null; backfield_rush_share: number | null; rush_attempts: number | null;
   designed_rushes: number | null; rushing_success_rate: number | null; explosive_run_rate: number | null;
   ybc_per_att: number | null; yac_per_att: number | null; broken_tackles: number | null;
-  first_read_targets: number | null; first_read_target_share: number | null; designed_targets: number | null;
+  ftn_read1_targets: number | null; ftn_read1_target_share: number | null; designed_targets: number | null;
   checkdown_targets: number | null; ngs_rush_yoe_per_att: number | null; ngs_avg_separation: number | null;
   air_yards_share: number | null; yards_per_carry: number | null; rz_targets: number | null; rz_carries: number | null;
   gl_carries: number | null; opportunities: number | null; fantasy_points_ppr: number | null;
@@ -96,7 +96,7 @@ export type ContextLabels = {
 export type ContextEvidence = {
   games_recent: number; recent_weeks: number[]; games_season: number;
   snap_pct: number | null; target_share: number | null; air_yards_share: number | null; wopr: number | null;
-  adot: number | null; first_read_target_share: number | null; first_read_targets: number | null;
+  adot: number | null;
   designed_targets: number | null; team_rush_share: number | null; backfield_rush_share: number | null;
   rz_targets_pg: number | null; rz_carries_pg: number | null; gl_carries_recent: number | null;
   designed_rushes_season: number; rushing_success_rate: number | null; explosive_run_rate: number | null;
@@ -106,7 +106,18 @@ export type ContextEvidence = {
   team: { proe: number | null; neutral_pass_rate: number | null; sack_rate: number | null; hit_or_sack_rate: number | null;
     pfr_pressure_rate: number | null; next_opponent: string | null; next_implied_total: number | null };
   headlines: string[]; rules: Record<string, string>;
+  experimental?: FtnSemantics & { ftn_read1_target_share: number | null; ftn_read1_targets: number | null };
 };
+
+export type FtnSemantics = {
+  read_semantics_status: string; assumed_primary_read_code: string; reference: string; note: string;
+};
+
+export const FTN_READ1_LABEL = "FTN progression read-code 1 share (experimental)";
+export const FTN_READ1_NOTE =
+  "Experimental. The nflreadr dictionary documents read_thrown \"0\" as the primary read, but observed data conflicts; " +
+  "upstream clarification is pending (nflverse/nflreadr#325). Shown for exploration only and never used in scores, " +
+  "signals or waiver recommendations. Not route participation.";
 
 export const BASIS_LABEL: Record<string, string> = {
   xfp: "xFP (expected fantasy points)",

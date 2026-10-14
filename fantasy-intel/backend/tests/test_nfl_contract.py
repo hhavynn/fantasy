@@ -5,10 +5,10 @@ import pytest
 
 from app.analytics.availability import latest_injuries
 from app.analytics.context import implied_totals, rank_generous, summarize_defense, summarize_team
-from app.analytics.validation import (check_first_read_rate, check_lines, check_pbp_player, check_target_share_sums,
-                                      check_team_week, check_usage)
+from app.analytics.validation import (check_lines, check_pbp_player, check_target_share_sums, check_team_week,
+                                      check_usage, describe_ftn_read_codes)
 from app.db.connection import SCHEMA_VERSION, init_db, schema_version
-from app.nfl.sync import FIRST_READ_CODE, derive_pbp
+from app.nfl.sync import derive_pbp
 
 COLS = ["season_type", "week", "game_id", "play_id", "posteam", "defteam", "play_type", "two_point_attempt",
         "qb_kneel", "qb_scramble", "pass_attempt", "sack", "qb_hit", "qb_dropback", "pass", "rusher_player_id",
@@ -112,20 +112,53 @@ def test_defense_aggregates_use_defteam_week_keys():
     assert sorted((r["team"], r["week"]) for r in tr if r["team"] == "PHI") == [("PHI", 1), ("PHI", 2)]
 
 
-def test_ftn_first_read_code_and_uncharted_games():
-    ftn = pl.DataFrame({"nflverse_game_id": ["G1", "G1", "G1"], "nflverse_play_id": [8, 10, 11],
-                        "read_thrown": [FIRST_READ_CODE, "DES", "CHK"]},
-                       schema={"nflverse_game_id": pl.String, "nflverse_play_id": pl.Int32, "read_thrown": pl.String})
-    players, teams, _ = derive(sample_plays(), ftn=ftn)
-    assert players["WR1"]["first_read_targets"] == 1 and teams["PHI"]["team_first_read_targets"] == 1
-    assert players["TE1"]["designed_targets"] == 1 and players["RB1"]["checkdown_targets"] == 1
+def _ftn(codes):
+    return pl.DataFrame({"nflverse_game_id": ["G1"] * len(codes), "nflverse_play_id": [8, 10, 11][:len(codes)],
+                         "read_thrown": codes},
+                        schema={"nflverse_game_id": pl.String, "nflverse_play_id": pl.Int32, "read_thrown": pl.String})
+
+
+def test_ftn_raw_read_codes_are_counted_without_semantic_names():
+    players, teams, _ = derive(sample_plays(), ftn=_ftn(["1", "DES", "0"]))
+    assert players["WR1"]["ftn_read1_targets"] == 1 and teams["PHI"]["team_ftn_read1_targets"] == 1
+    assert players["TE1"]["designed_targets"] == 1
+    assert players["RB1"]["ftn_read0_targets"] == 1            # "0" is kept as a raw code, not dropped as "uncoded"
+    assert players["RB1"]["ftn_charted_targets"] == 1           # every coded target counts as charted
+    assert not any("first_read" in k for r in players.values() for k in r)   # no authoritative "first read" naming
+    assert not any("first_read" in k for k in teams["PHI"])
+
+
+def test_ftn_uncharted_games_are_null_not_zero():
     players, teams, _ = derive(sample_plays(), ftn=None)
-    assert players["WR1"]["first_read_targets"] is None and teams["PHI"]["team_first_read_targets"] is None
+    assert players["WR1"]["ftn_read1_targets"] is None and teams["PHI"]["team_ftn_read1_targets"] is None
+    assert players["WR1"]["ftn_read0_targets"] is None and players["TE1"]["designed_targets"] is None
 
 
-def test_first_read_rate_sanity_check():
-    assert check_first_read_rate(560, 1000, "1") == []
-    assert check_first_read_rate(17, 1000, "0")[0].check_name == "ftn_first_read_rate"
+def test_ftn_semantics_flagged_unverified():
+    from app.nfl.sync import FTN_ASSUMED_PRIMARY_READ_CODE, FTN_READ_SEMANTICS_STATUS, FTN_SEMANTICS_REFERENCE
+    assert FTN_READ_SEMANTICS_STATUS == "UNVERIFIED" and FTN_ASSUMED_PRIMARY_READ_CODE == "1"
+    assert FTN_SEMANTICS_REFERENCE.endswith("nflreadr/issues/325")
+
+
+def test_ftn_validation_is_descriptive_not_a_semantic_assertion():
+    # Either distribution must produce the same kind of note: never an error, never "verified".
+    for counts in ({"0": 17, "1": 560, "2": 130, "DES": 100, "CHK": 130, "SD": 63},
+                   {"0": 560, "1": 17, "2": 130, "DES": 100, "CHK": 130, "SD": 63}):
+        issues = describe_ftn_read_codes(counts)
+        assert len(issues) == 1 and issues[0].severity == "warning"
+        assert issues[0].check_name == "ftn_read_thrown_semantics_unresolved"
+        assert "UNVERIFIED" in issues[0].detail and "issues/325" in issues[0].detail
+        assert "verified" not in issues[0].detail.replace("UNVERIFIED", "")
+        assert issues[0].examples[0]["1"] == pytest.approx(counts["1"] / sum(counts.values()), abs=1e-3)
+    assert describe_ftn_read_codes({}) == []
+
+
+def test_ftn_code_counts_cannot_exceed_targets():
+    p = {"season": 2026, "week": 1, "player_id": "p", "gl_carries": 0, "rz_carries": 0, "designed_rushes": 0,
+         "rush_attempts": 0, "rz_targets": 0, "targets": 3, "ftn_charted_targets": 3, "ftn_read0_targets": 0,
+         "ftn_read1_targets": 3, "ftn_read2_targets": 1, "designed_targets": 0, "checkdown_targets": 0,
+         "scramble_drill_targets": 0}
+    assert {e.check_name for e in check_pbp_player([p])} == {"ftn_codes_gt_targets"}
 
 
 def test_latest_same_week_injury_report_wins(con):
@@ -196,7 +229,7 @@ def test_hard_validation_failures():
     dup = check_usage([{"season": 2026, "week": 1, "gsis_id": "a"}] * 2)
     assert dup[0].check_name == "usage_duplicate_keys"
     p = {"season": 2026, "week": 1, "player_id": "p", "gl_carries": 3, "rz_carries": 2, "designed_rushes": 2,
-         "rush_attempts": 2, "rz_targets": 0, "targets": 0, "first_read_targets": None}
+         "rush_attempts": 2, "rz_targets": 0, "targets": 0, "ftn_charted_targets": None}
     assert {e.check_name for e in check_pbp_player([p])} == {"gl_gt_rz_carries"}
     t = {"season": 2026, "week": 1, "team": "PHI", "hit_or_sack": 6, "sacks": 1, "dropbacks": 5,
          "sack_rate": 0.2, "hit_or_sack_rate": 1.2, "team_rb_carries": 1, "team_designed_rushes": 2,
@@ -208,6 +241,23 @@ def test_hard_validation_failures():
 def test_strange_values_are_warnings_not_errors():
     w = check_usage([{"season": 2026, "week": 1, "gsis_id": "a", "xfp": -1.0, "air_yards_share": 1.4}])
     assert w and all(i.severity == "warning" for i in w)
+
+
+def test_schema_v2_to_v3_rebuilds_renamed_ftn_tables(tmp_path):
+    from app.db.connection import connect
+    c = connect(tmp_path / "v2.duckdb")
+    c.execute("CREATE TABLE schema_meta (key VARCHAR PRIMARY KEY, value VARCHAR)")
+    c.execute("INSERT INTO schema_meta VALUES ('schema_version', '2')")
+    c.execute("CREATE TABLE nfl_pbp_player_week (season INT, week INT, player_id VARCHAR, first_read_targets INT)")
+    c.execute("CREATE TABLE manager_metrics (league_id BIGINT, x INT)")   # unchanged in v3: must survive
+    init_db(c)
+    cols = [r[0] for r in c.execute("SELECT column_name FROM information_schema.columns "
+                                    "WHERE table_name='nfl_pbp_player_week'").fetchall()]
+    assert "ftn_read1_targets" in cols and "first_read_targets" not in cols
+    assert "x" in [r[0] for r in c.execute("SELECT column_name FROM information_schema.columns "
+                                           "WHERE table_name='manager_metrics'").fetchall()]
+    assert schema_version(c) == 3
+    c.close()
 
 
 def test_schema_migration_rebuilds_only_derived_tables(tmp_path):

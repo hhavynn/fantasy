@@ -107,7 +107,14 @@ def curate_players(players: pl.DataFrame) -> list[dict]:
     return rows
 
 
-FIRST_READ_CODE = "1"   # see docs/nfl_metrics_verified_contract.md (FTN read_thrown)
+# FTN `read_thrown`: the nflreadr dictionary documents "0" = primary read, but observed
+# 2023-2026 data conflicts (code "1" covers ~50-60% of targets; "0" mostly tags non-pass
+# plays). Upstream clarification pending: https://github.com/nflverse/nflreadr/issues/325
+# We store raw per-code counts and do NOT treat any numeric code as the primary read.
+FTN_READ_SEMANTICS_STATUS = "UNVERIFIED"
+FTN_ASSUMED_PRIMARY_READ_CODE = "1"   # display-only assumption; never used in scoring
+FTN_SEMANTICS_REFERENCE = "https://github.com/nflverse/nflreadr/issues/325"
+FTN_NUMERIC_CODES = ("0", "1", "2")
 
 
 def _flag(col: str) -> pl.Expr:
@@ -161,7 +168,7 @@ def derive_pbp(pbp: pl.DataFrame, season: int, positions: dict[str, str],
     rz, i10, gl = pl.col("yardline_100") <= 20, pl.col("yardline_100") <= 10, pl.col("yardline_100") <= 5
     dr, tg, rp = pl.col("designed_rush"), pl.col("target"), pl.col("rush_play")
     code = pl.col("read_thrown")
-    charted_target = tg & code.is_not_null() & (code != "0")
+    charted_target = tg & code.is_not_null()
 
     rushes = p.filter(rp).group_by(["week", "rusher_player_id", "posteam"]).agg(
         pl.len().alias("rush_attempts"),
@@ -179,7 +186,7 @@ def derive_pbp(pbp: pl.DataFrame, season: int, positions: dict[str, str],
         i10.sum().alias("inside10_targets"),
         pl.col("ftn_game").any().alias("ftn_game"),
         charted_target.sum().alias("ftn_charted_targets"),
-        (code == FIRST_READ_CODE).sum().alias("first_read_targets"),
+        *[(code == c).sum().alias(f"ftn_read{c}_targets") for c in FTN_NUMERIC_CODES],
         (code == "DES").sum().alias("designed_targets"),
         (code == "CHK").sum().alias("checkdown_targets"),
         (code == "SD").sum().alias("scramble_drill_targets"),
@@ -187,8 +194,8 @@ def derive_pbp(pbp: pl.DataFrame, season: int, positions: dict[str, str],
     player = rushes.join(targets, on=["week", "player_id", "team"], how="full", coalesce=True)
     zero_cols = ["rush_attempts", "designed_rushes", "scrambles", "designed_rush_success", "explosive_runs",
                  "rz_carries", "inside10_carries", "gl_carries", "targets", "rz_targets", "inside10_targets"]
-    ftn_cols = ["ftn_charted_targets", "first_read_targets", "designed_targets", "checkdown_targets",
-                "scramble_drill_targets"]
+    ftn_cols = ["ftn_charted_targets", *[f"ftn_read{c}_targets" for c in FTN_NUMERIC_CODES],
+                "designed_targets", "checkdown_targets", "scramble_drill_targets"]
     player = player.with_columns([pl.col(c).fill_null(0) for c in zero_cols])
 
     team_off = p.filter(pl.col("scrimmage")).group_by(["week", "posteam"]).agg(
@@ -200,7 +207,7 @@ def derive_pbp(pbp: pl.DataFrame, season: int, positions: dict[str, str],
         tg.sum().alias("team_targets"),
         (dr & rz).sum().alias("team_rz_carries"),
         (tg & rz).sum().alias("team_rz_targets"),
-        (tg & (code == FIRST_READ_CODE)).sum().alias("team_first_read_targets"),
+        (tg & (code == FTN_ASSUMED_PRIMARY_READ_CODE)).sum().alias("team_ftn_read1_targets"),
         charted_target.sum().alias("team_ftn_charted_targets"),
         pl.col("ftn_game").any().alias("ftn_game"),
         pl.col("dropback").sum().alias("dropbacks"),
@@ -249,7 +256,7 @@ def derive_pbp(pbp: pl.DataFrame, season: int, positions: dict[str, str],
     for r in team_off.iter_rows(named=True):
         charted = r.pop("ftn_game")
         if not charted:
-            r["team_first_read_targets"] = r["team_ftn_charted_targets"] = None
+            r["team_ftn_read1_targets"] = r["team_ftn_charted_targets"] = None
         db = r["dropbacks"]
         r["sack_rate"] = r["sacks"] / db if db else None
         r["hit_or_sack_rate"] = r["hit_or_sack"] / db if db else None

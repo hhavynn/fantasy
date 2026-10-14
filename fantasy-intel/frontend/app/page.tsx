@@ -90,7 +90,7 @@ export default async function OverviewPage() {
               </tbody>
             </table>
             <p className="faint" style={{ marginTop: 8 }}>
-              Need = 0.55·shortage of availability-weighted bodies + 0.45·gap between your fixed starters&apos; value and the league
+              Need = 0.55·shortage of availability-weighted bodies + 0.45·gap between your starters&apos; value at the position (fixed and FLEX-assigned) and the league
               average. FLEX is one real slot filled by the best eligible player. Weights: available 1, questionable 0.75, doubtful 0.15, out/IR 0.
             </p>
           </section>

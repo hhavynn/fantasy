@@ -52,7 +52,7 @@ def _dupes(rows, keys, name) -> list[Issue]:
 def check_usage(rows: list[dict]) -> list[Issue]:
     k = lambda r: (r["week"], r["gsis_id"])  # noqa: E731
     out = _dupes(rows, ("season", "week", "gsis_id"), "usage_duplicate_keys")
-    for col in ("offense_pct", "target_share", "team_rush_share", "backfield_rush_share", "first_read_target_share"):
+    for col in ("offense_pct", "target_share", "team_rush_share", "backfield_rush_share", "ftn_read1_target_share"):
         out += _check(rows, lambda r, c=col: _out_of_unit(r.get(c)), "error", f"{col}_range", f"{col} outside 0..1", k)
     out += _check(rows, lambda r: r.get("receptions") is not None and r.get("targets") is not None
                   and r["receptions"] > r["targets"], "error", "receptions_gt_targets", "receptions > targets", k)
@@ -78,9 +78,12 @@ def check_pbp_player(rows: list[dict]) -> list[Issue]:
                   "red-zone targets > targets", k)
     out += _check(rows, lambda r: r["designed_rushes"] > r["rush_attempts"], "error", "designed_gt_rushes",
                   "designed rushes > rush attempts", k)
-    out += _check(rows, lambda r: r.get("first_read_targets") is not None
-                  and r["first_read_targets"] > r["targets"], "error", "first_read_gt_targets",
-                  "first-read targets > targets", k)
+    out += _check(rows, lambda r: r.get("ftn_charted_targets") is not None
+                  and (r["ftn_charted_targets"] > r["targets"]
+                       or sum(r.get(f"ftn_read{c}_targets") or 0 for c in ("0", "1", "2"))
+                       + (r.get("designed_targets") or 0) + (r.get("checkdown_targets") or 0)
+                       + (r.get("scramble_drill_targets") or 0) > r["ftn_charted_targets"]),
+                  "error", "ftn_codes_gt_targets", "FTN read-code counts exceed charted targets / targets", k)
     return out
 
 
@@ -132,18 +135,19 @@ def check_target_share_sums(rows: list[dict]) -> list[Issue]:
                   "target_share_sum", "team target shares do not sum to ~1.0", lambda r: (r["team"], r["week"]))
 
 
-FIRST_READ_MIN_RATE = 0.35   # first reads are normally ~50-60% of charted targets
-
-
-def check_first_read_rate(first_read: int, charted: int, code: str) -> list[Issue]:
-    """Sanity check on FTN code semantics: the first-read code should cover a large share of targets."""
-    if not charted:
+def describe_ftn_read_codes(code_counts: dict[str, int]) -> list[Issue]:
+    """Descriptive only. FTN `read_thrown` numeric semantics are unresolved upstream
+    (nflverse/nflreadr#325), so we report the observed distribution on targets without
+    concluding which code is the primary read and never fail the run."""
+    from ..nfl.sync import FTN_ASSUMED_PRIMARY_READ_CODE, FTN_READ_SEMANTICS_STATUS, FTN_SEMANTICS_REFERENCE
+    total = sum(code_counts.values())
+    if not total:
         return []
-    rate = first_read / charted
-    if rate < FIRST_READ_MIN_RATE:
-        return [Issue("warning", "ftn_first_read_rate", f"only {rate:.0%} of charted targets use first-read code "
-                      f"{code!r}; FTN code semantics may have changed", charted)]
-    return []
+    dist = {c: round(n / total, 3) for c, n in sorted(code_counts.items())}
+    return [Issue("warning", "ftn_read_thrown_semantics_unresolved",
+                  f"FTN read_thrown semantics {FTN_READ_SEMANTICS_STATUS} ({FTN_SEMANTICS_REFERENCE}); app shows code "
+                  f"{FTN_ASSUMED_PRIMARY_READ_CODE!r} share as experimental only. Observed share of charted targets "
+                  f"by code: {dist}", total, [dist])]
 
 
 def run_validations(con, season: int, extra: list[Issue] | None = None) -> list[Issue]:
@@ -157,10 +161,12 @@ def run_validations(con, season: int, extra: list[Issue] | None = None) -> list[
         issues += check_target_share_sums(fetch_dicts(con, """
             SELECT team, week, sum(target_share) AS share_sum FROM nfl_weekly_stats
             WHERE season = ? AND season_type = 'REG' GROUP BY 1, 2""", [season]))
-    from ..nfl.sync import FIRST_READ_CODE
-    fr, charted = con.execute("""SELECT coalesce(sum(first_read_targets), 0), coalesce(sum(ftn_charted_targets), 0)
-                                 FROM nfl_pbp_player_week WHERE season = ?""", [season]).fetchone()
-    issues += check_first_read_rate(int(fr), int(charted), FIRST_READ_CODE)
+    codes = con.execute("""SELECT coalesce(sum(ftn_read0_targets), 0), coalesce(sum(ftn_read1_targets), 0),
+                                  coalesce(sum(ftn_read2_targets), 0), coalesce(sum(designed_targets), 0),
+                                  coalesce(sum(checkdown_targets), 0), coalesce(sum(scramble_drill_targets), 0)
+                           FROM nfl_pbp_player_week WHERE season = ? AND ftn_charted_targets IS NOT NULL""",
+                        [season]).fetchone()
+    issues += describe_ftn_read_codes(dict(zip(("0", "1", "2", "DES", "CHK", "SD"), (int(x) for x in codes))))
     from .availability import duplicate_injury_reports
     dup, has_dm = duplicate_injury_reports(con, season)
     if dup and not has_dm:

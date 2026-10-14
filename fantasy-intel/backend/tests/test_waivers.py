@@ -87,10 +87,11 @@ def test_nfl_report_for_current_week_can_downgrade_espn_status():
     assert availability(None, 21, None)["status"] == "IR"
 
 
-def test_league_starter_average_uses_fixed_slots():
+def test_league_starter_average_uses_lineup_starters_by_player_position():
     st = team_state(my_roster(), values(), SLOTS)
     lsa = league_starter_averages({1: st}, SLOTS)
-    assert lsa["RB"] == pytest.approx(5.5)    # fixed RB slots: 6 and 5 (OUT/IR excluded)
+    assert lsa["RB"] == pytest.approx(5.5)    # RB starters 6 and 5 (OUT/IR excluded); FLEX went to a WR
+    assert lsa["WR"] == pytest.approx(round((8 + 7 + 4) / 3, 2))   # WR1, WR2 + the WR in FLEX
 
 
 def test_suggest_drop_weakest_bench_never_starter_or_ir():
@@ -194,3 +195,82 @@ def test_no_competition_when_nobody_needs_or_adds_position():
     profiles = {7: {"add_share": {"RB": 0.0}, "adds_total": 10, "aggression_pct": 0.0, "resource": 0.0},
                 8: {"add_share": {"RB": 0.0}, "adds_total": 10, "aggression_pct": 0.0, "resource": 0.0}}
     assert _eval(3.0, 3.0, profiles=profiles)["league_interest"] == "LOW"
+
+
+# ---- positional starter quality includes flex-assigned starters --------------------------
+
+FLEX_SLOTS = {"RB": 2, "WR": 2, "TE": 1, "FLEX": 1}
+
+
+def _flex_state(players, slots=FLEX_SLOTS):
+    roster = [p(pid, pos) for pid, pos, _ in players]
+    vals = {pid: pv(pid, pos, v) for pid, pos, v in players}
+    return team_state(roster, vals, slots)
+
+
+def test_wr_in_flex_contributes_to_wr_quality():
+    # WR 9, WR 7, FLEX -> WR 4 (beats RB3 = 3 and TE2 = 2)
+    st = _flex_state([(1, "WR", 9), (2, "WR", 7), (3, "WR", 4), (4, "RB", 8), (5, "RB", 6), (6, "RB", 3),
+                      (7, "TE", 5), (8, "TE", 2)])
+    flex = next(a for a in st["lineup"] if a["slot"] == "FLEX")
+    assert flex["player_id"] == 3
+    wr = team_needs(st, FLEX_SLOTS, {})["WR"]
+    assert wr["starters_required"] == 3
+    assert wr["starter_value"] == pytest.approx(round((9 + 7 + 4) / 3, 2))   # not mean(9, 7) = 8
+    assert wr["details"]["weakest_starter_value"] == 4                         # not 7
+    assert sorted(wr["details"]["starter_values"]) == [4, 7, 9]
+
+
+def test_rb_in_flex_contributes_to_rb_quality():
+    st = _flex_state([(1, "WR", 9), (2, "WR", 7), (3, "WR", 2), (4, "RB", 8), (5, "RB", 6), (6, "RB", 5),
+                      (7, "TE", 5)])
+    rb = team_needs(st, FLEX_SLOTS, {})["RB"]
+    assert rb["starters_required"] == 3 and rb["details"]["weakest_starter_value"] == 5
+    assert rb["starter_value"] == pytest.approx(round((8 + 6 + 5) / 3, 2))
+    wr = team_needs(st, FLEX_SLOTS, {})["WR"]
+    assert wr["starters_required"] == 2 and wr["details"]["weakest_starter_value"] == 7   # WR3 is benched
+
+
+def test_te_in_flex_contributes_to_te_quality():
+    st = _flex_state([(1, "WR", 9), (2, "WR", 7), (3, "WR", 2), (4, "RB", 8), (5, "RB", 6), (6, "RB", 1),
+                      (7, "TE", 6), (8, "TE", 5)])
+    te = team_needs(st, FLEX_SLOTS, {})["TE"]
+    assert te["starters_required"] == 2 and te["details"]["flex_slots_filled"] == 1
+    assert te["starter_value"] == pytest.approx(5.5) and te["details"]["weakest_starter_value"] == 5
+
+
+def test_league_starter_average_includes_flex_assigned_players():
+    a = _flex_state([(1, "WR", 9), (2, "WR", 7), (3, "WR", 4), (4, "RB", 8), (5, "RB", 6), (7, "TE", 5)])
+    b = _flex_state([(11, "WR", 8), (12, "WR", 6), (14, "RB", 8), (15, "RB", 6), (16, "RB", 5), (17, "TE", 5)])
+    lsa = league_starter_averages({1: a, 2: b}, FLEX_SLOTS)
+    assert lsa["WR"] == pytest.approx(round(((9 + 7 + 4) / 3 + (8 + 6) / 2) / 2, 2))   # team A's flex WR counts
+    assert lsa["RB"] == pytest.approx(round(((8 + 6) / 2 + (8 + 6 + 5) / 3) / 2, 2))   # team B's flex RB counts
+
+
+def test_flex_quality_change_keeps_exactly_five_rb_wr_te_starters():
+    st = _flex_state([(1, "WR", 9), (2, "WR", 7), (3, "WR", 4), (4, "RB", 8), (5, "RB", 6), (6, "RB", 3)],
+                     {"RB": 2, "WR": 2, "FLEX": 1})
+    needs = team_needs(st, {"RB": 2, "WR": 2, "FLEX": 1}, {})
+    total = sum(needs[x]["starters_required"] for x in ("RB", "WR", "TE"))
+    counted = sum(len(needs[x]["details"]["starter_values"]) for x in ("RB", "WR", "TE"))
+    assert total == 5 and counted == 5
+    assert sum(1 for a in st["lineup"] if a["player_id"] is not None) == 5
+
+
+def test_weak_flex_starter_raises_position_need_vs_league():
+    strong = _flex_state([(1, "WR", 9), (2, "WR", 8), (3, "WR", 8), (4, "RB", 8), (5, "RB", 6), (7, "TE", 5)])
+    weak = _flex_state([(1, "WR", 9), (2, "WR", 8), (3, "WR", 1), (4, "RB", 8), (5, "RB", 0.5), (7, "TE", 5)])
+    lsa = league_starter_averages({1: strong, 2: weak}, FLEX_SLOTS)
+    assert team_needs(weak, FLEX_SLOTS, lsa)["WR"]["need_score"] > team_needs(strong, FLEX_SLOTS, lsa)["WR"]["need_score"]
+
+
+def test_experimental_ftn_evidence_never_reaches_waiver_reasons_or_score():
+    from app.analytics.waivers import context_reasons
+    ctx = {"labels": {}, "evidence": {"headlines": ["14% target share"],
+                                      "experimental": {"ftn_read1_target_share": 0.9}}}
+    reasons = context_reasons(ctx)
+    assert reasons == ["14% target share"]
+    with_exp = _eval(6.0, 6.0, pos="WR", context=reasons)
+    without = _eval(6.0, 6.0, pos="WR", context=["14% target share"])
+    assert with_exp["waiver_score"] == without["waiver_score"]
+    assert with_exp["recommendation"] == without["recommendation"]

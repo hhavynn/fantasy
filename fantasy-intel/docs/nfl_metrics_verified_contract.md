@@ -4,7 +4,8 @@
 `nfl_fantasy_metrics_research.md` is background research; where the two differ,
 this file wins. Every rule below was checked against upstream nflverse source or
 documentation **and** against the 2026 data actually returned by `nflreadpy`
-(weeks 1-5, checked 2026-10-13). Code: `backend/app/nfl/sync.py`
+(weeks 1-5, checked 2026-10-13), except where a section is explicitly marked
+UNRESOLVED (FTN `read_thrown` numeric codes). Code: `backend/app/nfl/sync.py`
 (`classify_plays`, `derive_pbp`) and `backend/app/analytics/*`.
 
 Conventions: `NULL` = unknown/not available, `0` = measured zero. A game that a
@@ -57,30 +58,47 @@ There is **no hardcoded touchdown rate per goal-line carry** anywhere in the app
   if a team-week's shares don't sum to ~1.0 (2026: every team-week sums to 1.000).
 - `adot = receiving_air_yards / targets`, `NULL` when targets = 0.
 
-### FTN read progression (`read_thrown`): verified against data
+### FTN read progression (`read_thrown`): **UNRESOLVED, experimental only**
 
-The nflreadr dictionary says `"0"` = first read, `"1"` = second, `"2"` = third+.
-**The 2026 (and 2024) data does not match that.** Cross-tab of `read_thrown` by
-play type, joined to PBP on `(game_id, play_id)`:
+**Status: `UNVERIFIED`.** The official nflreadr dictionary currently documents
+`"0"` = first (primary) read, `"1"` = second read, `"2"` = third read or later.
+**Observed data conflicts with that**, and upstream clarification is pending in
+[nflverse/nflreadr#325](https://github.com/nflverse/nflreadr/issues/325).
+The app preserves the data but **does not treat the numeric semantics as
+authoritative**.
+
+What we observed (cross-tab joined to PBP on `(game_id, play_id)`):
 
 | season | run plays | pass plays: "0" | "1" | "2" | CHK | DES | SD |
 |---|---|---|---|---|---|---|---|
 | 2026 | 3,815 coded `"0"` (+285 SD) | 507 | 2,812 | 675 | 658 | 498 | 443 |
 | 2024 | 14,739 coded `"0"` | 1,935 | 10,162 | 1,561 | 2,634 | 2,113 | 1,602 |
 
-On *targets* specifically, `"0"` covers 83 of 5,006 (1.7%) and `"1"` covers ~56%,
-which matches typical first-read rates. `"0"` behaves as "no read / not a
-progression throw". The app therefore uses **`"1"` as the first-read code**
-(`FIRST_READ_CODE` in `nfl/sync.py`) and treats `"0"` on a target as uncoded.
-A validation check warns if first-read targets ever fall below 35% of charted
-targets (i.e. if FTN's coding changes).
+On targets, `"1"` covers roughly 50-60% and `"0"` about 2% (it mostly tags
+non-pass plays). That pattern *suggests* `"1"` behaves like a primary read, but
+the literal codes aren't confirmed, so nothing here is called "first read".
 
-- `first_read_target_share = player first-read targets / team first-read targets`
-- `designed_targets` = `DES`, `checkdown_targets` = `CHK`, `scramble_drill_targets` = `SD`
+How the app handles it:
+
+- Raw per-code target counts are stored: `ftn_read0_targets`,
+  `ftn_read1_targets`, `ftn_read2_targets`; `ftn_charted_targets` counts every
+  coded target. `DES` (designed), `CHK` (checkdown) and `SD` (scramble drill) are
+  not in dispute and keep normal names (`designed_targets`, `checkdown_targets`,
+  `scramble_drill_targets`).
+- `ftn_read1_target_share = player code-"1" targets / team code-"1" targets` is
+  shown only under **Advanced / experimental** on the player page as
+  "FTN progression read-code 1 share (experimental)", with metadata
+  `read_semantics_status = "UNVERIFIED"`, `assumed_primary_read_code = "1"`.
+- It is **not** used in any player score, opportunity tier, role trend, market
+  signal (BUY/SELL/WATCH), waiver score/explanation, or (later) trade value.
+  Tests enforce this.
+- Validation emits a **descriptive** warning (`ftn_read_thrown_semantics_unresolved`)
+  with the observed code distribution and the upstream reference. It never fails
+  the run and never concludes which code is primary.
 - Games FTN hasn't charted give `NULL`, not `0`.
-- **First-read share is not route participation.** Routes, route participation,
-  TPRR and YPRR are **unavailable** in-season (nflverse participation data is
-  published after the season). The app never approximates them.
+- **Not route participation.** Routes, route participation, TPRR and YPRR are
+  **unavailable** in-season (nflverse participation data is published after the
+  season). The app never approximates them.
 
 ## 4. Pressure / pass protection
 

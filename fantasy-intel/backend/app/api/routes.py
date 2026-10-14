@@ -7,6 +7,7 @@ from collections import defaultdict
 from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics.availability import availability, injury_order_sql, latest_injuries
+from ..analytics.context import ftn_semantics
 from ..db.connection import schema_version, table_exists
 from .deps import db, one, rows
 
@@ -219,8 +220,8 @@ def player_detail(espn_player_id: int):
                 "route_participation": "unavailable: nflverse participation data is not published for the current season",
                 "routes_run": "unavailable",
                 "man_zone_splits": "unavailable: not in free data",
-                "note": "first-read target share is NOT route participation",
             },
+            "ftn_read_semantics": ftn_semantics(),
         }
 
 
