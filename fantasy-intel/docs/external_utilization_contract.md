@@ -52,7 +52,7 @@ is a measured zero.
 ### Optional identity / provenance
 
 `provider_player_id`, `gsis_id`, `player_name`, `team`, `position`,
-`source_updated_at` (ISO-8601).
+`source_updated_at` (ISO-8601; a timestamp without a UTC offset is treated as UTC).
 
 ### Optional metrics (all nullable)
 

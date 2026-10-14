@@ -265,10 +265,30 @@ extreme contact metrics, target shares not summing to 1, the observed FTN read-c
 NGS rows, ESPN→GSIS mapping failures, rejected team-snap estimates) are kept and
 shown on `/data`.
 
-## Upgrading an existing database (schema v3)
+## External utilization (routes, situational usage)
 
-The analytics-hardening release bumps the DuckDB schema to **v3** (v2: new metrics;
-v3: FTN read-code columns renamed to `ftn_read*`). On the first
+nflverse doesn't publish routes in-season. An authorized/manual provider file in the
+generic normalized CSV format can be imported (provider-neutral; no vendor code in this repo):
+
+```bash
+cd backend
+uv run python ../scripts/import_external_usage.py ../data/imports/external/FILE.csv \
+  --provider NAME --dataset NAME
+uv run python ../scripts/map_external_player.py --provider NAME --source-player-key KEY --gsis-id ID  # fix unmatched
+```
+
+Rows are validated (a hard error rejects the whole file), identity-resolved (unmatched rows
+are kept and listed on `/data`), stored with provenance, and LEFT JOINed into
+`player_week_usage` (`routes`, `route_participation`, `tprr`/`yprr` from **nflverse**
+targets/yards ÷ provider routes, alignment, situational shares). They appear on the player
+page but **don't affect scores or recommendations yet**. Keep provider files under
+`data/imports/` (git-ignored). Full spec:
+[`docs/external_utilization_contract.md`](docs/external_utilization_contract.md).
+
+## Upgrading an existing database (schema v4)
+
+The DuckDB schema is now **v4** (v2: new metrics; v3: FTN read-code columns renamed to
+`ftn_read*`; v4: external route columns on `player_week_usage` + `external_*` tables). On the first
 read-write open (any sync script), derived tables are dropped and recreated; raw
 ESPN and nflverse tables are kept. Then rebuild:
 
