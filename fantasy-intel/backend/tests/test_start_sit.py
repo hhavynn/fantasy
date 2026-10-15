@@ -394,10 +394,266 @@ def test_decision_attribution_coordinated_cascade_no_double_counting():
     d = decisions[0]
     assert d.action == ACTION_COORDINATED_SWAP
     assert d.actionability == ACTIONABILITY_ACTIONABLE
+    assert len(decisions) == 1
+    d = decisions[0]
+    assert d.action == ACTION_COORDINATED_SWAP
+    assert d.actionability == ACTIONABILITY_ACTIONABLE
     assert len(d.start_players) == 2
     assert len(d.bench_players) == 2
     assert d.projected_net_gain == 12.0
     assert "Coordinated multi-player change" in d.explanation
+
+
+def test_api_start_sit_endpoint(tmp_path, monkeypatch):
+    import json
+    from fastapi.testclient import TestClient
+    from app.config import Settings
+    from app.db.connection import connect
+    from app.main import app
+
+    db_file = tmp_path / "fantasy.duckdb"
+    con = connect(db_file)
+    schema_path = tmp_path.parent.parent.parent / "fantasy-intel/backend/app/db/schema.sql"
+    if not schema_path.exists():
+        # fallback path
+        schema_path = tmp_path.parent / "schema.sql"
+    with open("backend/app/db/schema.sql" if __import__("os").path.exists("backend/app/db/schema.sql") else "app/db/schema.sql") as f:
+        con.execute(f.read())
+    con.execute("INSERT OR REPLACE INTO schema_meta VALUES ('schema_version', '6')")
+
+    # Seed league
+    con.execute("""
+        INSERT INTO leagues (league_id, season, name, size, scoring_type, current_week, final_scoring_period, roster_slots, synced_at)
+        VALUES (100, 2026, 'Test League', 10, 'PPR', 7, 14, '{"QB":1,"RB":2,"WR":2,"TE":1,"FLEX":1,"K":1,"D/ST":1,"BE":6,"IR":1}', '2026-10-14 12:00:00')
+    """)
+
+    # Seed teams
+    con.execute("""
+        INSERT INTO fantasy_teams (league_id, season, team_id, name, abbrev, is_mine)
+        VALUES (100, 2026, 1, 'My Champions', 'MY', true),
+               (100, 2026, 2, 'Rival Squad', 'RIV', false)
+    """)
+
+    # Seed players
+    for i in range(1, 15):
+        con.execute(f"""
+            INSERT INTO fantasy_players (espn_player_id, full_name, position, pro_team, injury_status)
+            VALUES ({i}, 'Player {i}', '{'QB' if i==1 else 'RB' if i in (2,3,4) else 'WR' if i in (5,6,7,8) else 'TE' if i in (9,10) else 'K' if i==11 else 'D/ST'}', 'KC', 'ACTIVE')
+        """)
+        # Seed weekly projections for week 7 and 8
+        con.execute(f"""
+            INSERT INTO espn_player_weekly_points (season, espn_player_id, scoring_period, projected_points, synced_at)
+            VALUES (2026, {i}, 7, {10.0 + i}, '2026-10-14 12:00:00'),
+                   (2026, {i}, 8, {11.0 + i}, '2026-10-14 12:00:00')
+        """)
+
+    # Seed actual lineup snapshots for team 1, week 7
+    # 9 starters, 5 bench
+    starters_slots = [(1, "QB", 0), (2, "RB", 2), (3, "RB", 2), (5, "WR", 4), (6, "WR", 4), (9, "TE", 6), (7, "FLEX", 23), (11, "K", 17), (12, "D/ST", 16)]
+    for pid, s_label, s_id in starters_slots:
+        con.execute(f"""
+            INSERT INTO lineup_snapshots (league_id, season, scoring_period, team_id, espn_player_id, lineup_slot_id, lineup_slot, is_starter, synced_at)
+            VALUES (100, 2026, 7, 1, {pid}, {s_id}, '{s_label}', true, '2026-10-14 12:00:00')
+        """)
+    bench_pids = [4, 8, 10, 13, 14]
+    for pid in bench_pids:
+        con.execute(f"""
+            INSERT INTO lineup_snapshots (league_id, season, scoring_period, team_id, espn_player_id, lineup_slot_id, lineup_slot, is_starter, synced_at)
+            VALUES (100, 2026, 7, 1, {pid}, 20, 'BE', false, '2026-10-14 12:00:00')
+        """)
+
+    # Seed schedule
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS nfl_schedules (
+            season INTEGER, week INTEGER, game_type VARCHAR, game_id VARCHAR,
+            gameday VARCHAR, gametime VARCHAR, home_team VARCHAR, away_team VARCHAR,
+            home_score INTEGER, away_score INTEGER
+        )
+    """)
+    for w in (7, 8):
+        for i in range(14):
+            con.execute(f"""
+                INSERT INTO nfl_schedules (season, week, game_type, game_id, gameday, gametime, home_team, away_team)
+                VALUES (2026, {w}, 'REG', 'g_{w}_{i}', '2026-10-18', '13:00', 'KC', 'BUF')
+            """)
+
+    con.close()
+
+    # Patch settings to point to our test DB
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db_file))
+
+    client = TestClient(app)
+
+    # 1. Default request: should fetch team 1 and week 7
+    res = client.get("/api/start-sit")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["team"]["id"] == 1
+    assert data["scoring_period"] == 7
+    assert data["is_future_preview"] is False
+    assert data["projection_source"] == "ESPN"
+    assert "summary" in data
+    assert "recommended_lineup" in data
+    assert "decisions" in data
+    assert "actual_lineup" in data
+    assert "unconstrained_lineup" in data
+
+    # 2. Future preview request: week 8
+    res_future = client.get("/api/start-sit?week=8")
+    assert res_future.status_code == 200
+    data_future = res_future.json()
+    assert data_future["scoring_period"] == 8
+    assert data_future["is_future_preview"] is True
+
+    # 3. Nonexistent team returns 404
+    res_404 = client.get("/api/start-sit?team_id=9999")
+    assert res_404.status_code == 404
+
+    # 4. Out of bounds week returns 422
+    res_422 = client.get("/api/start-sit?week=99")
+    assert res_422.status_code == 422
+
+
+def test_deterministic_tiebreaking_on_player_id():
+    from app.analytics.start_sit import (
+        build_slot_instances,
+        optimize_lock_constrained_lineup,
+    )
+
+    slots = build_slot_instances({"WR": 1})
+    # Two identical players with projection 15.0
+    roster = [
+        {"espn_player_id": 200, "position": "WR", "full_name": "Player 200"},
+        {"espn_player_id": 100, "position": "WR", "full_name": "Player 100"},
+    ]
+    projections = {200: 15.0, 100: 15.0}
+
+    res1 = optimize_lock_constrained_lineup(
+        roster_players=roster,
+        slot_instances=slots,
+        locked_starter_assignments=[],
+        locked_bench_ids=set(),
+        unavailable_ids=set(),
+        ir_ids=set(),
+        projections=projections,
+        actual_starters=[],
+    )
+    # Lower player_id wins tie-break (100 < 200)
+    assert res1["recommended_lineup"][0]["player_id"] == 100
+
+    # Reverse input order: result must be identical
+    res2 = optimize_lock_constrained_lineup(
+        roster_players=list(reversed(roster)),
+        slot_instances=slots,
+        locked_starter_assignments=[],
+        locked_bench_ids=set(),
+        unavailable_ids=set(),
+        ir_ids=set(),
+        projections=projections,
+        actual_starters=[],
+    )
+    assert res2["recommended_lineup"][0]["player_id"] == 100
+
+
+def test_true_zero_vs_missing_projection():
+    from app.analytics.start_sit import (
+        build_slot_instances,
+        optimize_lock_constrained_lineup,
+    )
+
+    slots = build_slot_instances({"QB": 1})
+    roster = [
+        {"espn_player_id": 1, "position": "QB", "full_name": "Zero QB", "pro_team": "KC"},
+        {"espn_player_id": 2, "position": "QB", "full_name": "Missing QB", "pro_team": "BUF"},
+    ]
+
+    # Scenario A: Player 1 has 0.0 (measured zero, e.g. injured or bye), player 2 is None
+    projections = {1: 0.0, 2: None}
+    res = optimize_lock_constrained_lineup(
+        roster_players=roster,
+        slot_instances=slots,
+        locked_starter_assignments=[],
+        locked_bench_ids=set(),
+        unavailable_ids=set(),
+        ir_ids=set(),
+        projections=projections,
+        actual_starters=[roster[0]],
+    )
+    # Player 1 is selected with 0.0 (Player 2 with None can never enter as 0.0)
+    assert res["recommended_lineup"][0]["player_id"] == 1
+    assert res["recommended_lineup"][0]["projected_points"] == 0.0
+    # Actual starter (player 1) has projection 0.0, so actual lineup is complete
+    assert res["is_complete"] is True
+    assert res["actual_total"] == 0.0
+    assert res["recommended_total"] == 0.0
+    assert res["projected_gain"] == 0.0
+
+    # Scenario B: Actual starter is Player 2 (whose projection is None)
+    res_missing = optimize_lock_constrained_lineup(
+        roster_players=roster,
+        slot_instances=slots,
+        locked_starter_assignments=[],
+        locked_bench_ids=set(),
+        unavailable_ids=set(),
+        ir_ids=set(),
+        projections=projections,
+        actual_starters=[roster[1]],
+    )
+    # Because actual starter has missing projection, week comparison is incomplete
+    assert res_missing["is_complete"] is False
+    assert res_missing["actual_total"] is None
+    assert res_missing["projected_gain"] is None
+    assert 2 in res_missing["missing_projection_ids"]
+
+
+def test_equivalence_to_pure_optimizer_when_unconstrained():
+    from app.analytics.lineup import assign_lineup
+    from app.analytics.start_sit import (
+        build_slot_instances,
+        optimize_lock_constrained_lineup,
+    )
+
+    roster_slots = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "K": 1, "D/ST": 1}
+    slots = build_slot_instances(roster_slots)
+
+    roster = [
+        {"espn_player_id": 1, "position": "QB", "pro_team": "KC"},
+        {"espn_player_id": 2, "position": "RB", "pro_team": "SF"},
+        {"espn_player_id": 3, "position": "RB", "pro_team": "LAR"},
+        {"espn_player_id": 4, "position": "WR", "pro_team": "MIN"},
+        {"espn_player_id": 5, "position": "WR", "pro_team": "DET"},
+        {"espn_player_id": 6, "position": "TE", "pro_team": "KC"},
+        {"espn_player_id": 7, "position": "WR", "pro_team": "JAX"},
+        {"espn_player_id": 8, "position": "RB", "pro_team": "BUF"},
+        {"espn_player_id": 9, "position": "K", "pro_team": "DAL"},
+        {"espn_player_id": 10, "position": "D/ST", "pro_team": "SF"},
+    ]
+    projections = {1: 22.0, 2: 17.0, 3: 15.0, 4: 16.0, 5: 14.0, 6: 12.0, 7: 13.0, 8: 11.0, 9: 8.0, 10: 7.0}
+
+    # Pure optimizer direct call
+    pool = [{"espn_player_id": p["espn_player_id"], "position": p["position"], "value": projections[p["espn_player_id"]]} for p in roster]
+    pure_res = assign_lineup(pool, [s.slot_type for s in slots])
+    pure_pids = sorted(a["player_id"] for a in pure_res if a["player_id"] is not None)
+    pure_total = sum(a["value"] for a in pure_res if a["value"] is not None)
+
+    # Constrained optimizer with NO locks
+    res = optimize_lock_constrained_lineup(
+        roster_players=roster,
+        slot_instances=slots,
+        locked_starter_assignments=[],
+        locked_bench_ids=set(),
+        unavailable_ids=set(),
+        ir_ids=set(),
+        projections=projections,
+        actual_starters=roster[:9],
+    )
+    rec_pids = sorted(a["player_id"] for a in res["recommended_lineup"] if a["player_id"] is not None)
+
+    assert rec_pids == pure_pids
+    assert res["recommended_total"] == round(pure_total, 2)
+    assert res["unconstrained_total"] == round(pure_total, 2)
+
+
 
 
 
