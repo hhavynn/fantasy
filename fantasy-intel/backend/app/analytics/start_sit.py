@@ -1052,6 +1052,15 @@ def load_start_sit_evaluation(
             "abbrev": target_team.get("abbrev"),
             "is_mine": bool(target_team.get("is_mine")),
         },
+        "teams": [
+            {
+                "id": t["team_id"],
+                "name": t.get("name"),
+                "abbrev": t.get("abbrev"),
+                "is_mine": bool(t.get("is_mine")),
+            }
+            for t in teams
+        ],
         "scoring_period": target_week,
         "is_future_preview": is_future_preview,
         "projection_source": "ESPN",
