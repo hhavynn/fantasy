@@ -479,3 +479,96 @@ export type PlayoffRace = {
   rules: { ordering: string; projection: string; close: string; clinch: string; espn_rules_reported: Record<string, unknown>; espn_rules_note: string };
   warnings: string[]; notes: string[];
 };
+
+// ------------------------------------------------------------------- my team value --
+
+export type TvPhase = "all" | "regular" | "playoff";
+export type TvRankRow = { team_id: number; name: string | null; total: number | null; average_weekly: number | null; rank: number };
+export type TvPhaseSplit = {
+  weeks: number[]; projected_points: number | null; known_points: number | null; average_weekly: number | null;
+  incomplete_weeks: number[]; league_rank: TvRankRow | null;
+};
+export type TvRaw = { points: number | null; known_points: number | null; missing_weeks: number[] };
+export type TvBench = { week: number; projection: number | null; code: string; text: string };
+export type TvPlayer = {
+  espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
+  injury_status: string | null; on_ir: boolean;
+  espn_projected: Record<TvPhase, TvRaw>;
+  marginal: { all: number | null; regular: number | null; playoff: number | null; known_all: number | null };
+  weeks_started: number[]; weeks_benched: number[]; weeks_expected: number; projection_complete: boolean;
+  weekly: { week: number; phase: string | null; marginal: number | null; known_marginal: number; started: boolean }[];
+  bench: TvBench[]; bench_reason_counts: Record<string, number>; unused_projected_points: number; started_points: number;
+  ir_activation_sensitivity: { lineup_points_upside: number | null; known_lineup_points_upside: number; weeks_would_start: number[];
+    roster_move_note: string | null; assumption: string } | null;
+};
+export type TvRemoval = {
+  espn_player_id: number; name: string | null; weeks_in_slot: number[]; lineup_points_lost: number | null;
+  known_lineup_points_lost: number; own_started_points: number; recovered_by_roster: number | null;
+  fill_ins: { espn_player_id: number; name: string | null; weeks: number[] }[];
+};
+export type TvSlot = {
+  slot: string; count: number;
+  strength: Record<TvPhase, { average: number | null; rank: number | null; teams_ranked: number; league_best: number | null }>;
+  removal_scenarios: TvRemoval[]; largest_single_loss: TvRemoval | null;
+};
+export type TvMatchupEffect = {
+  matchup_id: number; matchup_period: number; weeks: number[]; opponent_id: number; opponent_name: string | null;
+  margin_before: number | null; margin_after: number | null; projected_result_before: string | null;
+  projected_result_after: string | null; flips: boolean; changes_projected_result: boolean;
+};
+export type TvLite = { espn_player_id: number; name: string | null; position: string | null; pro_team?: string | null };
+export type TeamValue = {
+  team: { team_id: number; name: string; abbrev: string | null; is_mine: boolean };
+  teams: { team_id: number; name: string; is_mine: boolean }[];
+  league: { name: string; season: number; current_week: number; playoff_teams: number | null; last_regular_season_week: number | null };
+  window: { weeks: number[]; first_actionable_week: number | null; last_regular_season_week: number | null; final_week: number;
+    reason: string | null; uncertain: boolean; warning: string | null };
+  freshness: { league_synced_at: string | null; projections_synced_at: string | null };
+  standing: { record: PrRecord; espn_seed: number | null; points_for: number | null; points_against: number | null;
+    current: PrStanding; projected: PrStanding; playoff_spots: number | null };
+  notes: string[];
+  empty?: boolean; message?: string;
+  overview?: {
+    summary: { ros_projected_starting_points: number | null; ros_known_starting_points: number; missing_weeks: number[];
+      missing_players: number[]; ros_weeks_expected: number; ros_weeks_complete: number };
+    phases: Record<TvPhase, TvPhaseSplit>; missing_players: string[];
+    weekly: { week: number; phase: string | null; projected_lineup_points: number | null; known_lineup_points: number;
+      projection_complete: boolean; league_median: number | null }[];
+    league_ranks: { rule: string; teams_ranked: number[]; teams_unranked: number[];
+      excluded_weeks: { week: number; incomplete_teams: string[] }[];
+      phases: Record<TvPhase, { weeks: number[]; phase_weeks: number[]; teams: TvRankRow[] }> };
+  };
+  players?: TvPlayer[];
+  positions?: { slots: TvSlot[]; strongest: string[]; weakest: string[];
+    bench_coverage: { espn_player_id: number; name: string | null; covers: { for: string | null; slot: string; weeks: number[] }[] }[]; note: string };
+  bench?: { players: { espn_player_id: number; name: string | null; position: string | null; unused_projected_points: number;
+      started_points: number; weeks_started: number[]; weeks_benched: number[]; bench_reason_counts: Record<string, number>;
+      marginal: number | null; known_marginal: number; espn_projected: TvRaw }[];
+    consolidation_candidates: number[]; ir_players: number[]; note: string };
+  upgrades?: {
+    slot_gaps: { week: number; phase: string | null; slot: string; current_player_id: number | null; current_name: string | null;
+      current_points: number | null; best_available: TvLite & { points: number }; gap: number }[];
+    free_addition: { player: TvLite | null; lineup_points_added: number | null; known_lineup_points_added: number | null;
+      regular_season_points_added: number | null; playoff_points_added: number | null; weeks_started: number[] | null;
+      open_active_roster_spots: number; realistic: boolean; label: string; candidates: number; excluded_unprojected: number };
+    add_drop: { add: TvLite; drop: TvLite; ros_delta: number | null; regular_season_delta: number | null; playoff_delta: number | null;
+      known_ros_delta: number; drop_marginal: number | null }[];
+    waiver_checks: { add_id: number; add_name: string | null; position: string | null; recommendation: string; waiver_score: number | null;
+      drop_id: number | null; drop_name: string | null; status: string; ros_delta?: number | null; regular_season_delta?: number | null;
+      playoff_delta?: number | null }[];
+    trade_preview: { list: string; opponent_team_id: number; opponent_name: string; sends: number[]; receives: number[];
+      send_names: (string | null)[]; receive_names: (string | null)[];
+      mine: { ros_delta: number | null; regular_season_delta: number | null; playoff_delta: number | null };
+      theirs: { ros_delta: number | null; regular_season_delta: number | null; playoff_delta: number | null };
+      forced_drops: { mine: number[]; theirs: number[] }; categories: string[]; consistent_with_manual_evaluator: boolean;
+      evaluator_link: { ta: number; tb: number; a: number[]; b: number[] } }[];
+    trade_note: string | null; trade_preview_rule: string; waiver_rule: string;
+  };
+  playoff_race?: {
+    standing_now: PrStanding; standing_projected: PrStanding; cutline: PlayoffRace["scenario"]["cutline"];
+    remaining: PrRemaining[]; close_games: PrRemaining[]; leverage: PrLeverage[];
+    upgrade_effects: { add_drop: { add: TvLite; drop: TvLite; matchups: TvMatchupEffect[] } | null;
+      trade: { opponent_team_id: number; sends: number[]; receives: number[]; matchups: TvMatchupEffect[] } | null };
+    rule: string;
+  };
+};
