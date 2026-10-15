@@ -690,8 +690,13 @@ def load_start_sit_evaluation(
     team_id: int | None = None,
     week: int | None = None,
     now: datetime | None = None,
+    source: str = "espn",
 ) -> dict:
-    """Full evaluation payload for Start/Sit Command Center."""
+    """Full evaluation payload for Start/Sit Command Center. `source` is "espn" (default) or
+    "independent" (Fantasy Intel's model, see analytics/projection_source.py)."""
+    from .projection_source import NOTE, describe, normalize, weekly
+
+    source = normalize(source)
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
@@ -775,6 +780,13 @@ def load_start_sit_evaluation(
         projections[pid] = float(r["projected_points"]) if r["projected_points"] is not None else None
         if r.get("synced_at") and (latest_proj_sync is None or r["synced_at"] > latest_proj_sync):
             latest_proj_sync = r["synced_at"]
+    espn_projections = dict(projections)    # availability warnings quote ESPN's number by name
+    src = weekly(con, season, target_week, source)
+    origin: dict[int, str] = {}
+    if source == "independent" and src["available"]:
+        projections, origin = src["values"], src["origin"]
+    else:
+        origin = {pid: "espn" for pid, v in projections.items() if v is not None}
 
     # 6. Detect player locks & schedule coverage
     pro_teams = [p.get("pro_team") for p in all_roster]
@@ -782,7 +794,7 @@ def load_start_sit_evaluation(
 
     # 7. Availability & injuries
     ir_ids = {p["espn_player_id"] for p in ir if "espn_player_id" in p}
-    proj_by_week = {p["espn_player_id"]: {target_week: projections.get(p["espn_player_id"])} for p in all_roster if "espn_player_id" in p}
+    proj_by_week = {p["espn_player_id"]: {target_week: espn_projections.get(p["espn_player_id"])} for p in all_roster if "espn_player_id" in p}
     roster_players_for_avail = [
         RosterPlayer(
             espn_player_id=p["espn_player_id"],
@@ -872,6 +884,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": row.get("projected_points"),
+            "projection_origin": origin.get(pid) if pid is not None else None,
             "is_flex": row.get("is_flex", False),
             "is_currently_starting": pid in actual_starter_pids,
             "current_slot": p.get("lineup_slot") if pid in actual_starter_pids else ("BE" if p else None),
@@ -905,6 +918,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": projections.get(pid),
+            "projection_origin": origin.get(pid),
             "is_flex": slot_inst.is_flex if slot_inst else False,
             "is_currently_starting": True,
             "current_slot": p.get("lineup_slot"),
@@ -959,6 +973,7 @@ def load_start_sit_evaluation(
                     "position": p.get("position"),
                     "pro_team": p.get("pro_team"),
                     "projection": projections.get(p.get("espn_player_id")),
+                    "projection_origin": origin.get(p.get("espn_player_id")),
                     "lock_status": (locks.get(p.get("pro_team")) or PlayerLock(team=p.get("pro_team"), status=LOCK_UNKNOWN)).status,
                 }
                 for p in d.start_players
@@ -994,6 +1009,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": projections.get(pid),
+            "projection_origin": origin.get(pid),
             "lock_status": lock.status,
             "kickoff_utc": lock.kickoff_utc.isoformat() if lock.kickoff_utc else None,
             "opponent": lock.opponent,
@@ -1012,6 +1028,7 @@ def load_start_sit_evaluation(
             "position": p.get("position"),
             "pro_team": pro_team,
             "projected_points": projections.get(pid),
+            "projection_origin": origin.get(pid),
             "lock_status": lock.status,
             "kickoff_utc": lock.kickoff_utc.isoformat() if lock.kickoff_utc else None,
             "opponent": lock.opponent,
@@ -1067,7 +1084,8 @@ def load_start_sit_evaluation(
         ],
         "scoring_period": target_week,
         "is_future_preview": is_future_preview,
-        "projection_source": "ESPN",
+        "projection_source": "Independent model" if source == "independent" and src["available"] else "ESPN",
+        "projection_source_detail": describe(src),
         "summary": {
             "actual_projected_total": opt["actual_total"],
             "recommended_projected_total": opt["recommended_total"],
@@ -1101,7 +1119,8 @@ def load_start_sit_evaluation(
         },
         "limitations": [
             "Lock detection uses conservative NFL kickoff times and final scores from stored schedule data; exact ESPN transaction/lock acceptance cannot be guaranteed.",
-            "Projections are unmodified weekly ESPN projections (ESPN league scoring); live actual points are not blended into pregame projections.",
+            (NOTE if source == "independent" and src["available"] else
+             "Projections are unmodified weekly ESPN projections (ESPN league scoring); live actual points are not blended into pregame projections."),
             "Future preview is an informational projection on current roster assets and does not represent a submitted ESPN lineup.",
         ],
     }
