@@ -148,10 +148,10 @@ what order, and with which evidence.
   * they give up moderately more;
   * you surrender far more, or multiple strong assets;
   * a known NFL-ineligible stretch;
-  * a fantasy-IR player is involved;
+  * a fantasy-IR player whose NFL return is confirmed;
   * a forced drop.
 * **speculative**: incomplete projections; asset data insufficient; a player with unknown NFL eligibility or an
-  unconfirmed return; or receiving a fantasy-IR player.
+  unconfirmed return; or a traded fantasy-IR player whose return is unconfirmed.
 * **Excluded** from practical results (kept in the other modes):
   * one lineup does not improve;
   * a significant asset imbalance against them;
@@ -190,9 +190,13 @@ congestion.
   * If no free agent at the position is projected, the league-structure level is used instead: the projection of
     the first player beyond the league's starters at that position (teams × fixed slots).
   * The baseline used is shown for each player.
-* **Starter-caliber**: PAR ranks within the league's starters at the position (teams × fixed starting slots). This
-  is how a benched top asset keeps independent context. For example, a TE who never starts for his own team can
-  still be TE2 of the league and starter-caliber.
+* **Starter-caliber**: PAR ranks within the league's starters at the position (teams × fixed starting slots). Positional
+  PAR ranks are tie-aware (standard competition rank: 1 + count of players with strictly higher PAR using full-precision
+  PAR with a 1e-9 tolerance). If a tie spans the starter cutoff, all tied players receive the same rank and qualify as
+  starter-caliber (`rank <= starters`), even if that means more players qualify than the nominal starter count. Display
+  order remains deterministic (descending by PAR, breaking ties by ESPN player ID ascending), but display ordering is
+  strictly decoupled from value classification. This is how a benched top asset keeps independent context. For example,
+  a TE who never starts for his own team can still be TE2 of the league and starter-caliber.
 * **Labels**, based on the two packages' PAR (you send / they send):
 
   | Label | Rule |
@@ -422,8 +426,8 @@ The canonical row is marked. No probabilities are attached and there is no unive
 **Discovery treatment:**
 
 * Ineligible weeks already contribute nothing to the canonical deltas and to asset PAR.
-* Practical mode puts trades that depend on an unknown-eligibility or unconfirmed-return player, or on receiving a
-  fantasy-IR player, in **speculative**. Known ineligible stretches go to **concerns**.
+* Practical mode puts trades that depend on an unknown-eligibility or unconfirmed-return player, or on a traded
+  fantasy-IR player whose return is unconfirmed, in **speculative**. Known ineligible stretches go to **concerns**.
 * Warnings read, for example: "Currently on NFL reserve/injured. Earliest eligible return week 9; actual return not
   confirmed. Near-term lineup contribution (weeks 6-8) is unavailable."
 * Stale data is flagged: "NFL roster data was last synced for week N…", and "ESPN still projects X points in weeks
