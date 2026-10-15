@@ -289,7 +289,8 @@ def _route_summary(weekly: list[dict]) -> dict | None:
 
 
 @router.get("/waivers")
-def waivers(position: str | None = None, recommendation: str | None = None, limit: int = Query(150, le=300)):
+def waivers(position: str | None = None, recommendation: str | None = None,
+            limit: int = Query(150, ge=1, le=360), offset: int = Query(0, ge=0), view: str = "ALL"):
     with db() as con:
         lg = _league(con)
         season = lg["season"]
@@ -301,7 +302,21 @@ def waivers(position: str | None = None, recommendation: str | None = None, limi
         if recommendation:
             where += " AND w.recommendation = ?"
             params.append(recommendation.upper())
-        params.append(limit)
+        views = {
+            "BEST": " AND coalesce(try_cast(w.components->'decision'->>'actionable' AS BOOLEAN), false)",
+            "FREE_AGENTS": " AND w.availability_status = 'FREEAGENT'",
+            "CLAIMS": " AND w.availability_status = 'WAIVERS'",
+            "STREAMING": " AND w.position IN ('K', 'D/ST')",
+            "WATCHLIST": " AND (w.components->'decision'->>'action' IN ('MONITOR', 'PRESERVE_PRIORITY', 'VERIFY_LEGALITY', 'VERIFY_COST', 'NO_LEGAL_MOVE') OR coalesce(try_cast(w.components->'decision'->'utility'->>'stash' AS BOOLEAN), false))",
+            "ALL": "",
+        }
+        if view.upper() not in views:
+            raise HTTPException(422, "Unknown waiver view")
+        where += views[view.upper()]
+        total = one(con, f"SELECT count(*) n FROM waiver_recommendations w WHERE w.league_id=? AND w.season=? {where}", params)["n"]
+        meta = one(con, "SELECT components, computed_at FROM waiver_recommendations WHERE league_id=? AND season=? LIMIT 1",
+                   [lg["league_id"], season])
+        params.extend([limit, offset])
         out = rows(con, f"""
             SELECT w.*, fp.full_name, fp.pro_team, fp.injury_status, fp.percent_owned, fp.percent_change,
                    s.trend_label, s.classification, s.games, s.xfp_per_game, s.fp_per_game,
@@ -314,10 +329,15 @@ def waivers(position: str | None = None, recommendation: str | None = None, limi
             LEFT JOIN player_context pc ON pc.gsis_id = m.gsis_id AND pc.season = w.season
             LEFT JOIN fantasy_players d ON d.espn_player_id = w.suggested_drop_id
             WHERE w.league_id = ? AND w.season = ? {where}
-            ORDER BY CASE w.recommendation WHEN 'CLAIM' THEN 0 WHEN 'WAIT' THEN 1 ELSE 2 END, w.waiver_score DESC
-            LIMIT ?
+            ORDER BY coalesce(try_cast(w.components->'decision'->>'actionable' AS BOOLEAN), false) DESC,
+                     coalesce(try_cast(w.components->'decision'->'utility'->>'ranking_utility' AS DOUBLE), 0) DESC,
+                     CASE w.recommendation WHEN 'CLAIM' THEN 0 WHEN 'WAIT' THEN 1 ELSE 2 END,
+                     w.waiver_score DESC, w.espn_player_id
+            LIMIT ? OFFSET ?
         """, params)
-        return {"league": lg, "players": out, "computed_at": out[0]["computed_at"] if out else None}
+        return {"league": lg, "players": out, "computed_at": meta["computed_at"] if meta else None,
+                "coverage": (meta["components"].get("decision") or {}).get("coverage") if meta else None,
+                "total": total, "offset": offset, "limit": limit}
 
 
 def _team_composition(con, league_id, season, week) -> dict[int, dict]:
