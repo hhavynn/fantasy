@@ -96,6 +96,7 @@ fantasy-intel/
 | `/trades/discover` | Trade opportunity discovery: exact lineup impact for both teams across every 1-for-1 / 2-for-1 / 1-for-2 trade with every manager, sortable by projected gains, with categories, manager context and a link into the manual evaluator. No acceptance estimate |
 | `/schedule-intelligence` | Schedule intelligence: each remaining week's opponent (bye, home/away, regular season vs fantasy playoffs from league settings) and what that defense allowed in games presumed complete before the week (EPA per eligible pass play / designed rush, rush success, position target shares) with samples, ranks and insufficient-data reasons. Descriptive only |
 | `/playoff-race` | Playoff Race Lab: actual standings, all-play and points; every remaining regular-season matchup with ESPN-projected optimal lineup totals (multi-week periods supported); a deterministic projected-standings scenario, the playoff cutline, bubble teams and high-leverage games; URL-backed winner overrides. No probabilities, tiebreaks, clinching or elimination claims. Read-only |
+| `/my-team/value` | My Team Value: roster strength vs the league on comparable weeks, every player's exact lineup marginal value (regular/playoff, weekly starts, IR activation upside separately), slot strength and removal-scenario depth, unused bench projection with reasons, upgrade slot-weeks, realistic add/drop and a 1-for-1 trade preview, and the Playoff Race context. Read-only |
 | `/managers`        | One card per manager: record, roster construction, waiver aggression, positional add interest, streaming, trades, confidence |
 | `/managers/[id]`   | The evidence: every metric with numerator/denominator, league mean, z-score, sample size, rule; weekly roster composition; full transaction history; failed claims |
 | `/data`            | ID-mapping summary, unmatched players, name-matched (medium confidence) players, sync history |
@@ -353,6 +354,14 @@ projections left unresolved, games already under way never projected) as one det
 any open game with `override=MATCHUP_ID:home|away|tie|none` (the page keeps them in the URL). No tiebreak,
 division, clinch or elimination rule is applied or claimed. Details and the data audit:
 [`docs/v2_playoff_race.md`](docs/v2_playoff_race.md).
+
+## My Team Value (V2, read-only)
+
+`GET /api/my-team/value` (and `/my-team/value`) turns the canonical lineup engine into decisions for one team:
+league rank on comparable weeks (weeks every team's projection is complete), each player's exact lineup marginal
+value (never summed), depth from explicit removal scenarios, unused bench projection, free-agent and add/drop
+upgrades with roster capacity, a 1-for-1 trade preview checked against the manual evaluator, and the Playoff
+Race Lab context with re-projected matchups. Details: [`docs/v2_team_value.md`](docs/v2_team_value.md).
 
 ## Upgrading an existing database (schema v6)
 
