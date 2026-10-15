@@ -1,516 +1,438 @@
+import Link from "next/link";
+import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
-import { Badge, Callout, ErrorBox, Pos } from "@/components/ui";
-import { api } from "@/lib/api";
-import { label, num, when } from "@/lib/format";
 import {
-  actionabilityBadgeTone,
-  formatGain,
+  Badge, Delta, Method, Notice, PageHeader, Pos, Section, SortableTh, Stat, StatStrip,
+} from "@/components/ui";
+import { api } from "@/lib/api";
+import { Missing, num, when } from "@/lib/format";
+import { parseSort, sortRows, type SortState } from "@/lib/sort";
+import {
+  actionabilityBadge,
+  emptyStartingSlots,
+  lineupTotal,
   lockStatusBadge,
+  slotChange,
+  startSitVerdict,
 } from "@/lib/start-sit-helpers";
 import { StartSitControls } from "./StartSitControls";
-import type { LineupPlayer, StartSitResponse } from "./types";
+import type { BenchPlayer, DecisionPlayer, LineupPlayer, StartSitDecision, StartSitResponse } from "./types";
 import styles from "./start-sit.module.css";
 
 export const metadata = { title: "Start/Sit" };
 
-interface PageProps {
-  searchParams: Promise<{
-    team_id?: string;
-    week?: string;
-  }>;
-}
+const BENCH_SORTS = ["name", "proj"] as const;
+const BENCH_DEFAULT: SortState = { key: "proj", dir: "desc" };
 
-export default async function StartSitPage({ searchParams }: PageProps) {
-  const sp = await searchParams;
+/** Position filters the waivers page accepts via `?pos=`. */
+const WAIVER_POSITIONS = ["QB", "RB", "WR", "TE", "K", "D/ST"];
+
+const HEALTHY = ["ACTIVE", "NORMAL"];
+
+type SP = Record<string, string | string[] | undefined>;
+
+const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
+
+export default async function StartSitPage({ searchParams }: PageProps<"/start-sit">) {
+  const sp: SP = await searchParams;
   const qs = new URLSearchParams();
-  if (sp.team_id) qs.set("team_id", sp.team_id);
-  if (sp.week) qs.set("week", sp.week);
+  const teamId = one(sp.team_id);
+  const week = one(sp.week);
+  if (teamId) qs.set("team_id", teamId);
+  if (week) qs.set("week", week);
 
   const res = await api<StartSitResponse>(`/api/start-sit?${qs.toString()}`);
   if (!res.ok) {
     return (
-      <div className={`stack ${styles.page}`}>
-        <div className="page-head">
-          <h1>Weekly Start/Sit Command Center</h1>
-        </div>
-        <ErrorBox error={res.error} />
+      <div className="stack">
+        <PageHeader title="Start/Sit" />
+        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
       </div>
     );
   }
 
-  const data = res.data;
-  const {
-    league,
-    team,
-    teams = [],
-    scoring_period,
-    is_future_preview,
-    summary,
-    recommended_lineup,
-    decisions,
-    current_bench,
-    injury_warnings,
-    schedule_warnings,
-    freshness,
-    limitations,
-  } = data;
+  const d = res.data;
+  const { league, team, summary, decisions, recommended_lineup, actual_lineup, unconstrained_lineup, current_bench } = d;
+  const moves = decisions.filter((x) => x.action !== "NO_CHANGE");
+  const actionable = moves.filter((x) => x.actionability === "ACTIONABLE").length;
+  const hasLineup = summary.starters_count > 0;
+  const totalPlayers = summary.starters_count + summary.bench_count + summary.ir_count;
+  const lockedRows = recommended_lineup.filter((r) => r.lock_status === "LOCKED" && r.player_id !== null);
 
-  const statusLabelMap: Record<string, { label: string; tone: "good" | "info" | "warn" | "bad" }> = {
-    optimal: { label: "Lineup Optimal", tone: "good" },
-    upgrade_available: { label: "Upgrades Available", tone: "info" },
-    incomplete_data: { label: "Incomplete Projections", tone: "warn" },
-    all_locked: { label: "All Games Locked", tone: "info" },
-    future_preview: { label: "Future Preview", tone: "info" },
-  };
-
-  const statusInfo = statusLabelMap[summary.status] || {
-    label: label(summary.status),
-    tone: "info" as const,
-  };
+  const emptySlots = emptyStartingSlots(recommended_lineup);
+  const verdict = startSitVerdict({
+    status: summary.status,
+    startersCount: summary.starters_count,
+    projectedGain: summary.projected_gain,
+    missingProjections: summary.missing_projections.length,
+    scoringPeriod: d.scoring_period,
+    moves: moves.length,
+    actionableMoves: actionable,
+    emptySlots,
+  });
+  const actual = lineupTotal(hasLineup, summary.projection_complete, summary.actual_projected_total, summary.known_actual_total);
+  const recommended = lineupTotal(true, summary.projection_complete, summary.recommended_projected_total, summary.known_recommended_total);
+  const gainKnown = summary.projection_complete && summary.projected_gain !== null;
 
   return (
-    <div className={`stack ${styles.page}`}>
-      {/* Page Header */}
-      <div className="page-head">
-        <div>
-          <h1>Weekly Start/Sit Command Center</h1>
-          <span className="sub">
-            {team.name} ({team.abbrev}) · Week {scoring_period} · Source: {data.projection_source} Projections
-          </span>
-        </div>
-        <div style={{ marginLeft: "auto" }}>
-          <Badge value={statusInfo.label} tone={statusInfo.tone} />
-        </div>
-      </div>
-
-      {/* Interactive Controls Bar: Team Dropdown & Week Toggle */}
-      <StartSitControls
-        currentTeamId={team.id}
-        teams={teams.length > 0 ? teams : [team]}
-        currentWeek={league.current_week}
-        selectedWeek={scoring_period}
-        finalWeek={league.final_scoring_period}
+    <div className="stack">
+      <PageHeader
+        title={`Start/Sit · Week ${d.scoring_period}`}
+        meta={`${team.name} (${team.abbrev}) · ${d.projection_source} projections · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
+        actions={
+          <StartSitControls
+            currentTeamId={team.id}
+            teams={d.teams && d.teams.length > 0 ? d.teams : [team]}
+            currentWeek={league.current_week}
+            selectedWeek={d.scoring_period}
+            finalWeek={league.final_scoring_period}
+          />
+        }
       />
 
-      {is_future_preview && (
-        <Callout>
-          <b>Future Week Preview (Week {scoring_period}):</b> Lineup assignments represent an informational projection based on current roster assets. ESPN does not accept active lineup submissions for future scoring periods until the current week concludes.
-        </Callout>
-      )}
-
-      {/* Section A: Weekly Lineup Summary */}
-      <section className={styles.metricsGrid} aria-label="Lineup Summary Metrics">
-        <div className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span className={styles.metricLabel}>Actual Lineup Total</span>
-            <Badge value="ESPN Starters" />
-          </div>
-          <div className={styles.metricValue}>
-            {summary.starters_count === 0
-              ? "—"
-              : summary.projection_complete && summary.actual_projected_total !== null
-                ? `${num(summary.actual_projected_total, 1)} pts`
-                : `${num(summary.known_actual_total, 1)} pts*`}
-          </div>
-          <span className={styles.metricSubtext}>
-            {summary.starters_count === 0
-              ? "No submitted lineup for this week"
-              : summary.projection_complete ? "All starters projected" : "*Partial total (missing projections)"}
-          </span>
-        </div>
-
-        <div className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span className={styles.metricLabel}>Recommended Total</span>
-            <Badge value="Lock-Constrained" tone="info" />
-          </div>
-          <div className={styles.metricValue}>
-            {summary.projection_complete && summary.recommended_projected_total !== null
-              ? `${num(summary.recommended_projected_total, 1)} pts`
-              : `${num(summary.known_recommended_total, 1)} pts*`}
-          </div>
-          <span className={styles.metricSubtext}>
-            Respects confirmed kickoff locks
-          </span>
-        </div>
-
-        <div className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span className={styles.metricLabel}>Projected Net Gain</span>
-            {summary.projection_complete && summary.projected_gain !== null && summary.projected_gain > 0 ? (
-              <Badge value="Upgrade" tone="good" />
-            ) : null}
-          </div>
-          <div
-            className={`${styles.metricValue} ${
-              summary.projected_gain && summary.projected_gain > 0
-                ? styles.gainPositive
-                : styles.gainZero
-            }`}
-          >
-            {formatGain(summary.projected_gain)}
-          </div>
-          <span className={styles.metricSubtext}>
-            {summary.projected_gain && summary.projected_gain > 0
-              ? "Gain over actual ESPN lineup"
-              : summary.status === "incomplete_data"
-              ? "Cannot compute (missing projections)"
-              : summary.projected_gain === null
-              ? "No submitted lineup to compare"
-              : "Currently starting best lineup"}
-          </span>
-        </div>
-
-        <div className={styles.metricCard}>
-          <div className={styles.metricHeader}>
-            <span className={styles.metricLabel}>Roster Status</span>
-          </div>
-          <div className={styles.metricValue} style={{ fontSize: 20 }}>
-            {summary.starters_count} Starters · {summary.bench_count} Bench
-          </div>
-          <span className={styles.metricSubtext}>
-            {summary.locked_players_count} of {summary.starters_count + summary.bench_count + summary.ir_count} players kicked off
-          </span>
-        </div>
-      </section>
-
-      {/* Unconstrained Optimum Benchmark Bar */}
-      <div className={styles.benchmarkBar}>
-        <span>
-          <b>Theoretical Benchmark (Unconstrained Optimum):</b>{" "}
-          {summary.unconstrained_total !== null
-            ? `${num(summary.unconstrained_total, 1)} pts`
-            : `${num(summary.known_unconstrained_total, 1)} pts*`}
-          {" "}(Maximum achievable points assuming zero kickoff lock restrictions)
-        </span>
-        {summary.unconstrained_total !== null && summary.recommended_projected_total !== null && (
-          <span>
-            Lock Drag: -{num(Math.max(0, summary.unconstrained_total - summary.recommended_projected_total), 1)} pts
-          </span>
-        )}
+      {/* Verdict band: the answer first, then the numbers behind it. */}
+      <div className={styles.verdict}>
+        <Notice tone={verdict.tone} title={verdict.headline}>
+          {verdict.detail}
+          {emptySlots.map((slot) => (
+            <span key={slot}> <Link href={WAIVER_POSITIONS.includes(slot) ? `/waivers?pos=${encodeURIComponent(slot)}` : "/waivers"}>Find a {slot} on waivers</Link>.</span>
+          ))}
+        </Notice>
+        <StatStrip>
+          <Stat
+            label="Submitted lineup"
+            value={actual.value === null ? <Missing why="No submitted lineup for this week" /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
+            note={!hasLineup ? "No submitted lineup" : actual.partial ? "*Partial: some starters lack a projection" : "ESPN starters, projected pts"}
+          />
+          <Stat
+            label="Recommended lineup"
+            value={<>{num(recommended.value, 1)}{recommended.partial ? "*" : null}</>}
+            note={recommended.partial ? "*Partial: some players lack a projection" : "Projected pts, respects kickoff locks"}
+          />
+          <Stat
+            label="Projected gain"
+            tone={gainKnown && (summary.projected_gain ?? 0) > 0 ? "positive" : undefined}
+            value={gainKnown ? <Delta value={summary.projected_gain} suffix=" pts" /> : <Missing why={hasLineup ? "Cannot compute: missing projections" : "No submitted lineup to compare"} />}
+            note={
+              !hasLineup ? "Needs a submitted lineup"
+                : !summary.projection_complete ? "Needs every starter projected"
+                : (summary.projected_gain ?? 0) > 0 ? "Over the submitted lineup"
+                : "Submitted lineup is already the best"
+            }
+          />
+          <Stat label="Moves" value={moves.length} note={moves.length > 0 ? `${actionable} actionable now` : "No swaps recommended"} />
+          <Stat
+            label="Kickoff locks"
+            value={lockedRows.length}
+            note={lockedRows.length > 0 ? `Locked: ${lockedRows.map((r) => r.slot).join(", ")}` : "No starting slot locked"}
+          />
+        </StatStrip>
       </div>
 
-      {/* Section B: Start/Sit Recommendations */}
-      <section className={styles.section} aria-label="Start/Sit Recommendations">
-        <div className={styles.sectionHeading}>
-          <h2>Start/Sit Recommendations</h2>
-          <span className={styles.sectionSub}>
-            {decisions.length === 0 || decisions[0]?.action === "NO_CHANGE"
-              ? "0 moves needed"
-              : `${decisions.length} recommended ${decisions.length === 1 ? "move" : "moves"}`}
-          </span>
-        </div>
-
-        {decisions.length === 0 || decisions[0]?.action === "NO_CHANGE" ? (
-          <div className={styles.emptyState}>
-            <h3>Your Lineup is Already Optimal</h3>
-            <p>
-              Your currently submitted ESPN starting lineup maximizes projected points across all eligible, unlocked roster options. No swaps or bench promotions are recommended for Week {scoring_period}.
-            </p>
-          </div>
-        ) : (
-          <div className={styles.decisionsList}>
-            {decisions.map((decision) => {
-              const tone = actionabilityBadgeTone(decision.actionability);
-              const isActionable = decision.actionability === "ACTIONABLE";
-
-              return (
-                <article
-                  key={decision.id}
-                  className={`${styles.decisionCard} ${isActionable ? styles.actionable : ""}`}
-                >
-                  <div className={styles.decisionTop}>
-                    <div className={styles.decisionActionHeader}>
-                      <span
-                        className={`${styles.actionBadge} ${
-                          decision.action === "COORDINATED_SWAP" ? styles.cascade : styles.swap
-                        }`}
-                      >
-                        {decision.action === "COORDINATED_SWAP" ? "FLEX Cascade" : "1-for-1 Swap"}
-                      </span>
-                      <Badge
-                        value={label(decision.actionability)}
-                        tone={tone === "accent" ? "good" : tone === "warn" ? "warn" : "info"}
-                      />
-                      {decision.target_slot && (
-                        <span className={styles.slotTarget}>Slot: {decision.target_slot}</span>
-                      )}
-                    </div>
-                    {decision.projected_net_gain !== null && (
-                      <span className={styles.gainBadge}>
-                        +{num(decision.projected_net_gain, 1)} pts projected gain
-                      </span>
-                    )}
-                  </div>
-
-                  <div className={styles.decisionBody}>
-                    {/* Players to START */}
-                    <div className={`${styles.playerColumn} ${styles.start}`}>
-                      <span className={styles.columnRole}>Start (From Bench)</span>
-                      {decision.start_players.map((p) => (
-                        <div key={p.id}>
-                          <div className={styles.playerName}>
-                            <PlayerLink id={p.id} name={p.name} /> <Pos value={p.position} />
-                          </div>
-                          <div className={styles.playerMeta}>
-                            <span>{p.pro_team}</span>
-                            <span className={styles.playerProjection}>{num(p.projection, 1)} pts</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className={styles.swapArrow} aria-hidden="true">
-                      <span>⇄</span>
-                    </div>
-
-                    {/* Players to BENCH */}
-                    <div className={`${styles.playerColumn} ${styles.bench}`}>
-                      <span className={styles.columnRole}>Bench (Current Starter)</span>
-                      {decision.bench_players.map((p) => (
-                        <div key={p.id}>
-                          <div className={styles.playerName}>
-                            <PlayerLink id={p.id} name={p.name} /> <Pos value={p.position} />
-                          </div>
-                          <div className={styles.playerMeta}>
-                            <span>{p.pro_team}</span>
-                            <span className={styles.playerProjection}>{num(p.projection, 1)} pts</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <p className={styles.explanation}>{decision.explanation}</p>
-
-                  {decision.warnings && decision.warnings.length > 0 && (
-                    <div className={styles.decisionWarnings}>
-                      <b>Constraints &amp; Notice:</b>
-                      <ul>
-                        {decision.warnings.map((w, idx) => (
-                          <li key={idx}>{w}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* Section C: Complete Recommended Lineup */}
-      <section className={styles.section} aria-label="Complete Recommended Lineup">
-        <div className={styles.sectionHeading}>
-          <h2>Recommended Starting Lineup</h2>
-          <span className={styles.sectionSub}>Slot-by-slot lineup under lock constraints</span>
-        </div>
-
-        <div className="panel tight">
-          <div className="table-wrap">
-            <table className={styles.lineupTable}>
-              <thead>
-                <tr>
-                  <th>Slot</th>
-                  <th>Player</th>
-                  <th>Opponent / Kickoff</th>
-                  <th>Current Status</th>
-                  <th className="num">Projected</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recommended_lineup.map((row: LineupPlayer) => {
-                  const lockInfo = lockStatusBadge(
-                    row.lock_status,
-                    row.kickoff_utc,
-                    row.has_final_score,
-                    row.home_score,
-                    row.away_score
-                  );
-
-                  return (
-                    <tr key={row.slot_id}>
-                      <td className={styles.slotCell}>
-                        <b>{row.slot}</b>
-                      </td>
-                      <td>
-                        {row.player_id ? (
-                          <div className={styles.playerCell}>
-                            <div className={styles.playerMain}>
-                              <PlayerLink id={row.player_id} name={row.name} />
-                              <Pos value={row.position} />
-                              {row.injury_status && !["ACTIVE", "NORMAL"].includes(row.injury_status) && (
-                                <Badge value={row.injury_status} />
-                              )}
-                            </div>
-                            <div className={styles.playerSub}>
-                              <span>{row.pro_team ?? "FA"}</span>
-                              {row.is_flex && <span className="faint">(in FLEX slot)</span>}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="missing">Empty Slot</span>
-                        )}
-                      </td>
-                      <td>
-                        <div className={styles.playerSub}>
-                          {row.opponent ? (
-                            <span>
-                              {row.is_home ? "vs" : "@"} {row.opponent}
-                            </span>
-                          ) : (
-                            <span className="faint">{row.lock_status === "BYE" ? "BYE" : "No game"}</span>
-                          )}
-                          <Badge
-                            value={lockInfo.label}
-                            tone={lockInfo.tone === "info" ? "info" : lockInfo.tone === "warn" ? "warn" : ""}
-                          />
-                        </div>
-                      </td>
-                      <td>
-                        {row.is_currently_starting ? (
-                          <span className={`${styles.statusIndicator} ${styles.starting}`}>
-                            ✓ Started in ESPN
-                          </span>
-                        ) : (
-                          <span className={`${styles.statusIndicator} ${styles.promoted}`}>
-                            ★ Promoted from Bench
-                          </span>
-                        )}
-                      </td>
-                      <td className="num">
-                        <b>{num(row.projected_points, 1)}</b>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      {/* Section D: Current Bench & Depth */}
-      <section className={styles.section} aria-label="Current Bench Players">
-        <div className={styles.sectionHeading}>
-          <h2>Current Bench &amp; Reserves</h2>
-          <span className={styles.sectionSub}>{current_bench.length} players</span>
-        </div>
-
-        <div className="panel tight">
-          <div className="table-wrap">
-            <table className={styles.lineupTable}>
-              <thead>
-                <tr>
-                  <th>Player</th>
-                  <th>Opponent / Kickoff</th>
-                  <th>Designation</th>
-                  <th>Lock Status</th>
-                  <th className="num">Projected</th>
-                </tr>
-              </thead>
-              <tbody>
-                {current_bench.map((b) => {
-                  const lockInfo = lockStatusBadge(b.lock_status, b.kickoff_utc);
-                  const isPromoted = recommended_lineup.some((r) => r.player_id === b.player_id);
-
-                  return (
-                    <tr key={b.player_id}>
-                      <td>
-                        <div className={styles.playerCell}>
-                          <div className={styles.playerMain}>
-                            <PlayerLink id={b.player_id} name={b.name} />
-                            <Pos value={b.position} />
-                            {b.on_ir && <Badge value="IR Slot" tone="bad" />}
-                            {b.nfl_ineligible && <Badge value="NFL Out" tone="bad" />}
-                            {b.injury_status && !["ACTIVE", "NORMAL"].includes(b.injury_status) && (
-                              <Badge value={b.injury_status} />
-                            )}
-                          </div>
-                          <div className={styles.playerSub}>
-                            <span>{b.pro_team ?? "FA"}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div className={styles.playerSub}>
-                          {b.opponent ? (
-                            <span>
-                              {b.is_home ? "vs" : "@"} {b.opponent}
-                            </span>
-                          ) : (
-                            <span className="faint">{b.lock_status === "BYE" ? "BYE" : "No game"}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        {isPromoted ? (
-                          <span className={`${styles.statusIndicator} ${styles.promoted}`}>
-                            Recommended Starter
-                          </span>
-                        ) : (
-                          <span className={`${styles.statusIndicator} ${styles.starting}`}>
-                            Bench Reserve
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        <Badge
-                          value={lockInfo.label}
-                          tone={lockInfo.tone === "info" ? "info" : lockInfo.tone === "warn" ? "warn" : ""}
-                        />
-                      </td>
-                      <td className="num">{num(b.projected_points, 1)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      {/* Section E: Injury, Uncertainty & Warnings */}
-      {(injury_warnings.length > 0 || schedule_warnings.length > 0) && (
-        <section className={styles.section} aria-label="Lineup Warnings">
-          <div className={styles.warningBox}>
-            <div className={styles.warningTitle}>
-              <span>⚠</span> Injury &amp; Availability Alerts
-            </div>
-            {injury_warnings.map((w) => (
-              <div key={w.player_id} className={styles.warningItem}>
-                <b>{w.name}</b> ({w.position}): {w.warnings.join("; ")}
-              </div>
-            ))}
-            {schedule_warnings.map((sw, idx) => (
-              <div key={idx} className={styles.warningItem}>
-                <b>Schedule Alert:</b> {sw}
-              </div>
-            ))}
-          </div>
-        </section>
+      {d.is_future_preview && (
+        <Notice tone="info" title={`Future week preview (week ${d.scoring_period})`}>
+          Lineup assignments are an informational projection based on current roster assets. ESPN does not accept lineup submissions for a future scoring period until the current week concludes.
+        </Notice>
       )}
 
-      {/* Freshness & Limitations Footer */}
-      <footer className={styles.freshnessFooter}>
-        <div className={styles.freshnessRow}>
-          <span>
-            Lineup Snapshot: <b>{when(freshness.lineup_synced_at)}</b>
-          </span>
-          <span>
-            ESPN Projections: <b>{when(freshness.projection_synced_at)}</b>
-          </span>
-          <span>
-            NFL Schedule: <b>{when(freshness.nfl_schedule_synced_at)}</b>
-          </span>
-        </div>
-        <ul className={styles.limitationsList}>
-          {limitations.map((limit, idx) => (
-            <li key={idx}>{limit}</li>
-          ))}
+      {summary.missing_projections.length > 0 && (
+        <Notice tone="caution" title="Missing projections">
+          {summary.missing_projections.map((p) => `${p.name} (${p.position})`).join(", ")}. Their points are unknown, not zero.
+        </Notice>
+      )}
+
+      {moves.length > 0 && (
+        <Section
+          title="Recommended moves"
+          actions={<span className="faint">{moves.length} {moves.length === 1 ? "move" : "moves"} · not additive</span>}
+          footnote="Gains are measured against the submitted lineup as a whole and are never summed across moves: FLEX dependencies share opportunity cost."
+          flush
+        >
+          <ul className={styles.moves}>
+            {moves.map((m) => <Move key={m.id} move={m} />)}
+          </ul>
+        </Section>
+      )}
+
+      <Section
+        title="Lineup: submitted vs recommended"
+        footnote={`${summary.starters_count} starters · ${summary.bench_count} bench · ${summary.ir_count} IR. Kickoff locks use stored NFL schedule data and are conservative.`}
+        flush
+      >
+        <LineupTable recommended={recommended_lineup} actual={actual_lineup} />
+      </Section>
+
+      {d.injury_warnings.length > 0 || d.schedule_warnings.length > 0 ? (
+        <Section title="Availability alerts" flush={d.injury_warnings.length > 0}>
+          {d.injury_warnings.length > 0 && (
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Player</th><th>Status</th><th>Detail</th></tr></thead>
+                <tbody>
+                  {d.injury_warnings.map((w) => (
+                    <tr key={w.player_id}>
+                      <td><PlayerLink id={w.player_id} name={w.name} /> <Pos value={w.position} /></td>
+                      <td>
+                        <span className={styles.person2}>
+                          {w.injury_status && !HEALTHY.includes(w.injury_status) && <Badge value={w.injury_status} />}
+                          {w.on_ir && <Badge value="IR slot" tone="bad" />}
+                          {w.nfl_ineligible && <Badge value="NFL out" tone="bad" />}
+                        </span>
+                      </td>
+                      <td className="wrap">{w.warnings.length > 0 ? w.warnings.join("; ") : <span className="faint">Designation only</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {d.schedule_warnings.length > 0 && (
+            <ul className="reasons">
+              {d.schedule_warnings.map((w, i) => <li key={i}><b>Schedule:</b> {w}</li>)}
+            </ul>
+          )}
+        </Section>
+      ) : null}
+
+      <BenchSection bench={current_bench} recommended={recommended_lineup} sp={sp} />
+
+      <Benchmark
+        summary={summary}
+        recommended={recommended_lineup}
+        unconstrained={unconstrained_lineup}
+      />
+
+      <Method title="How this is calculated">
+        <p className={styles.prose}>
+          Three lineups are compared for the week: your submitted ESPN lineup, the best lineup under kickoff locks (the one recommended here),
+          and an unconstrained optimum used only as a benchmark. Projections are unmodified ESPN weekly projections. Players whose games
+          have kicked off keep their slots, and fantasy IR or NFL-ineligible players are never promoted.
+        </p>
+        <p className={styles.prose}>
+          Projected gain is the recommended total minus the submitted total. When any starter lacks a projection no gain is claimed.
+          A move that shuffles several slots (a FLEX cascade) is shown once, as a single coordinated move.
+        </p>
+        <ul className={`reasons ${styles.limits}`}>
+          {d.limitations.map((l, i) => <li key={i}>{l}</li>)}
         </ul>
-      </footer>
+      </Method>
+
+      <p className={styles.fresh}>
+        Lineup synced {when(d.freshness.lineup_synced_at)} · ESPN projections synced {when(d.freshness.projection_synced_at)} · NFL schedule synced {when(d.freshness.nfl_schedule_synced_at)}
+      </p>
     </div>
+  );
+}
+
+// ------------------------------------------------------------------- moves --
+
+function MovePlayer({ p }: { p: DecisionPlayer }) {
+  const lock = p.lock_status !== "UNLOCKED" ? lockStatusBadge(p.lock_status, null) : null;
+  return (
+    <span className={styles.person}>
+      <PlayerLink id={p.id} name={p.name} /> <Pos value={p.position} /> <span className={styles.proj}>({num(p.projection, 1)})</span>
+      {lock && <> <Badge value={lock.label} tone={lock.tone === "warn" ? "warn" : ""} /></>}
+    </span>
+  );
+}
+
+function PlayerList({ players }: { players: DecisionPlayer[] }) {
+  return (
+    <>
+      {players.map((p, i) => (
+        <span key={p.id}>{i > 0 ? ", " : ""}<MovePlayer p={p} /></span>
+      ))}
+    </>
+  );
+}
+
+function Move({ move }: { move: StartSitDecision }) {
+  const badge = actionabilityBadge(move.actionability);
+  return (
+    <li className={styles.move}>
+      <div>
+        <p className={styles.sentence}>
+          <span className={styles.verb}>Start</span> <PlayerList players={move.start_players} />{" "}
+          <span className={styles.over}>over</span> <PlayerList players={move.bench_players} />
+        </p>
+        <p className={styles.reason}>{move.explanation}</p>
+        {move.warnings.length > 0 && (
+          <ul className={styles.cautions}>
+            {move.warnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+        )}
+      </div>
+      <div className={styles.moveMeta}>
+        <span className={styles.gain}><Delta value={move.projected_net_gain} suffix=" pts" /></span>
+        <span className={styles.tags}>
+          <Badge value={badge.label} tone={badge.tone} />
+          <Badge value={move.action === "COORDINATED_SWAP" ? "FLEX cascade" : "1-for-1 swap"} tone="" />
+        </span>
+        {move.target_slot && <span className={styles.slotNote}>Slot: {move.target_slot}</span>}
+      </div>
+    </li>
+  );
+}
+
+// ------------------------------------------------------------------ lineup --
+
+function OppCell({ r }: { r: Pick<LineupPlayer, "opponent" | "is_home" | "lock_status" | "kickoff_utc" | "has_final_score" | "home_score" | "away_score"> }) {
+  const lock = lockStatusBadge(r.lock_status, r.kickoff_utc, r.has_final_score, r.home_score, r.away_score);
+  return (
+    <span className={styles.person2}>
+      {r.opponent
+        ? <span>{r.is_home ? "vs" : "@"} {r.opponent}</span>
+        : <span className="faint">{r.lock_status === "BYE" ? "Bye" : "No game"}</span>}
+      <Badge value={lock.label} tone={lock.tone === "warn" ? "warn" : lock.tone === "info" ? "info" : ""} />
+    </span>
+  );
+}
+
+function LineupTable({ recommended, actual }: { recommended: LineupPlayer[]; actual: LineupPlayer[] }) {
+  const kept = new Set(recommended.map((r) => r.player_id).filter((id): id is number => id !== null));
+  const leaving = actual.filter((a) => a.player_id !== null && !kept.has(a.player_id));
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Slot</th>
+            <th>Player</th>
+            <th>Opponent</th>
+            <th>Versus submitted</th>
+            <th className="num" title="ESPN projected points for the week">Proj</th>
+          </tr>
+        </thead>
+        <tbody>
+          {recommended.map((r) => {
+            const change = slotChange({ slot: r.slot, playerId: r.player_id, isCurrentlyStarting: r.is_currently_starting, currentSlot: r.current_slot });
+            return (
+              <tr key={r.slot_id}>
+                <td className={styles.slotName}>{r.slot}</td>
+                <td>
+                  {r.player_id !== null ? (
+                    <span className={styles.person2}>
+                      <PlayerLink id={r.player_id} name={r.name} />
+                      <Pos value={r.position} />
+                      <span className="faint">{r.pro_team ?? "FA"}</span>
+                      {r.injury_status && !HEALTHY.includes(r.injury_status) && <Badge value={r.injury_status} />}
+                    </span>
+                  ) : <span className={styles.empty}>Empty</span>}
+                </td>
+                <td>{r.player_id !== null ? <OppCell r={r} /> : <Missing why="No player in this slot" />}</td>
+                <td className={styles.change}>
+                  {change.kind === "promote" ? <span className={styles.promote}>{change.text}</span>
+                    : change.kind === "empty" ? <span className={styles.empty} title="No eligible player is on the roster for this slot">{change.text}</span>
+                    : change.text}
+                </td>
+                <td className="num"><b>{num(r.projected_points, 1)}</b></td>
+              </tr>
+            );
+          })}
+        </tbody>
+        {leaving.length > 0 && (
+          <tbody>
+            <tr className="group"><td colSpan={5}>Moving out of the lineup</td></tr>
+            {leaving.map((a) => (
+              <tr key={a.slot_id} className={styles.out}>
+                <td>{a.current_slot ?? a.slot}</td>
+                <td>
+                  <span className={styles.person2}>
+                    <PlayerLink id={a.player_id as number} name={a.name} />
+                    <Pos value={a.position} />
+                    <span className="faint">{a.pro_team ?? "FA"}</span>
+                    {a.injury_status && !HEALTHY.includes(a.injury_status) && <Badge value={a.injury_status} />}
+                  </span>
+                </td>
+                <td><OppCell r={a} /></td>
+                <td>To bench</td>
+                <td className="num">{num(a.projected_points, 1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        )}
+      </table>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------- bench --
+
+function BenchSection({ bench, recommended, sp }: { bench: BenchPlayer[]; recommended: LineupPlayer[]; sp: SP }) {
+  if (bench.length === 0) return null;
+  const sort = parseSort(sp, BENCH_SORTS, BENCH_DEFAULT);
+  const promoted = new Set(recommended.map((r) => r.player_id));
+  const rows = sortRows(bench, (b) => (sort.key === "name" ? b.name : b.projected_points), sort.dir);
+  return (
+    <Section title="Bench and reserves" actions={<span className="faint">{bench.length} players</span>} flush>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <SortableTh sortKey="name" label="Player" current={sort} searchParams={sp} defaultDir="asc" />
+              <th>Opponent</th>
+              <th>Role</th>
+              <SortableTh sortKey="proj" label="Proj" align="right" current={sort} searchParams={sp} title="ESPN projected points for the week" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((b) => (
+              <tr key={b.player_id}>
+                <td>
+                  <span className={styles.person2}>
+                    <PlayerLink id={b.player_id} name={b.name} />
+                    <Pos value={b.position} />
+                    <span className="faint">{b.pro_team ?? "FA"}</span>
+                    {b.on_ir && <Badge value="IR slot" tone="bad" />}
+                    {b.nfl_ineligible && <Badge value="NFL out" tone="bad" />}
+                    {b.injury_status && !HEALTHY.includes(b.injury_status) && <Badge value={b.injury_status} />}
+                  </span>
+                </td>
+                <td><OppCell r={{ ...b, has_final_score: false, home_score: null, away_score: null }} /></td>
+                <td>{promoted.has(b.player_id) ? <span className={styles.promote}>Recommended starter</span> : "Bench reserve"}</td>
+                <td className="num">{num(b.projected_points, 1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Section>
+  );
+}
+
+// --------------------------------------------------------------- benchmark --
+
+function Benchmark({ summary, recommended, unconstrained }: {
+  summary: StartSitResponse["summary"];
+  recommended: LineupPlayer[];
+  unconstrained: LineupPlayer[];
+}) {
+  const total = summary.unconstrained_total;
+  const rec = summary.recommended_projected_total;
+  const drag = total !== null && rec !== null ? Math.max(0, total - rec) : null;
+  const inRec = new Set(recommended.map((r) => r.player_id));
+  const extra = unconstrained.filter((u) => u.player_id !== null && !inRec.has(u.player_id));
+  return (
+    <Section title="Unconstrained benchmark" footnote="A theoretical ceiling that ignores kickoff locks. It is not a recommendation.">
+      <dl className={styles.figures}>
+        <div>
+          <dt>Unconstrained optimum</dt>
+          <dd>{total !== null ? num(total, 1) : <>{num(summary.known_unconstrained_total, 1)}*</>}</dd>
+        </div>
+        <div>
+          <dt title="Unconstrained optimum minus the lock-constrained recommendation">Lock drag</dt>
+          <dd>{drag !== null ? num(drag, 1) : <Missing why="Needs complete projections" />}</dd>
+        </div>
+      </dl>
+      {total === null && <p className={styles.prose}>*Partial total: some players lack a projection.</p>}
+      {drag !== null && drag > 0 ? (
+        <p className={styles.prose}>
+          Kickoff locks cost {num(drag, 1)} projected points. Without locks the lineup would also start{" "}
+          {extra.map((u, i) => <span key={u.slot_id}>{i > 0 ? ", " : ""}<PlayerLink id={u.player_id as number} name={u.name} /></span>)}.
+        </p>
+      ) : drag === 0 ? (
+        <p className={styles.prose}>Kickoff locks are not costing any projected points.</p>
+      ) : null}
+    </Section>
   );
 }
