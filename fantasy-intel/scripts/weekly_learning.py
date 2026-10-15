@@ -104,7 +104,7 @@ def _require_ready(args, src) -> dict:
     return rep
 
 
-def cmd_train(args, src, scoring, **_) -> dict:
+def cmd_train(args, src, scoring, store=None, **_) -> dict:
     _require_ready(args, src)
     sel_path, rep_path = args.ifp_dir / "selection.json", args.ifp_dir / "heldout_report.json"
     sel, rep = json.loads(sel_path.read_text()), json.loads(rep_path.read_text())
@@ -116,7 +116,7 @@ def cmd_train(args, src, scoring, **_) -> dict:
     t = time.time()
     champ, chal = wl.train(src, args.season, args.week, ifp_selection=sel, ifp_report=rep, cfg=ch.ChallengerConfig.load(),
                            scoring_desc=scoring.describe(), created_at=_now(args).isoformat(),
-                           retrospective=args.retrospective)
+                           retrospective=args.retrospective, store=store)
     res = {}
     for art in (champ, chal):
         aid, path, created = wl.save_artifact(art, args.out)
@@ -127,11 +127,24 @@ def cmd_train(args, src, scoring, **_) -> dict:
     return res
 
 
-def cmd_predict(args, live, src, scoring, **_) -> dict:
+def _pinned(path: Path, season: int, week: int, fingerprint: str):
+    art = wl.load_artifact(path)
+    wl.check_artifact(art, season, week, fingerprint)
+    return art, Path(path).stem.split("-", 1)[1], Path(path)
+
+
+def cmd_predict(args, live, src, scoring, artifacts: dict | None = None, **_) -> dict:
+    """`artifacts` ({version: path}) pins the exact artifacts to use (the learning cycle passes the
+    ones it just trained or reused); otherwise the most recently created artifact of each version."""
     rep = _require_ready(args, src)
     from app.analytics.participation import PARTICIPATION_VERSION, ParticipationArtifact
-    champ, cid, cpath = wl.latest_artifact(args.out, wl.MODEL_VERSION, args.season, args.week, scoring.fingerprint)
-    chal, xid, xpath = wl.latest_artifact(args.out, ch.CHALLENGER_VERSION, args.season, args.week, scoring.fingerprint)
+    if artifacts:
+        champ, cid, cpath = _pinned(artifacts[wl.MODEL_VERSION], args.season, args.week, scoring.fingerprint)
+        chal, xid, xpath = _pinned(artifacts[ch.CHALLENGER_VERSION], args.season, args.week, scoring.fingerprint)
+    else:
+        champ, cid, cpath = wl.latest_artifact(args.out, wl.MODEL_VERSION, args.season, args.week, scoring.fingerprint)
+        chal, xid, xpath = wl.latest_artifact(args.out, ch.CHALLENGER_VERSION, args.season, args.week,
+                                              scoring.fingerprint)
     for art in (champ, chal):
         if bool(art.config["provenance"]["retrospective"]) != bool(args.retrospective):
             raise wl.NotReady(f"{art.version} artifact retrospective={art.config['provenance']['retrospective']} does "
@@ -146,7 +159,9 @@ def cmd_predict(args, live, src, scoring, **_) -> dict:
                      artifact_ids={"champion": {"version": champ.version, "id": cid, "path": str(cpath)},
                                    "challenger": {"version": chal.version, "id": xid, "path": str(xpath)}})
     path, created = wl.write_run(run, args.out)
-    return {"run_id": run["run_id"], "path": str(path), "new": created, "rows": len(run["rows"]),
+    # an identical earlier run is kept and reported (its id), never rewritten
+    return {"run_id": run["run_id"] if created else path.stem, "path": str(path), "new": created,
+            "rows": len(run["rows"]),
             "pregame_rows": sum(r["pregame"] for r in run["rows"]),
             "with_challenger": sum(r["challenger"]["points"] is not None for r in run["rows"]),
             "runtime_seconds": round(time.time() - t, 2)}

@@ -545,6 +545,60 @@ Safety rules (each is tested in `tests/test_weekly_learning.py`):
 The participation model is not retrained weekly here (`participation-fit` is unchanged); its
 `expected_points` are recorded as is.
 
+### Automated weekly cycle (`scripts/learning_cycle.py`)
+
+**Where it runs.** The cycle needs the writable `data/fantasy.duckdb`, `data/nfl_history.duckdb`
+and the git-ignored `data/models/` (production `ifp-1.0.0` files; weekly artifacts, ledger and
+reports in `data/models/weekly/`). They exist only on the laptop that runs the syncs. MotherDuck
+holds a read-only published copy of the live database (no history database, no model files) and
+Vercel serves the API from it; GitHub Actions has neither. So the cycle is a second per-user launchd
+agent on that Mac (`scripts/launchd/com.fantasy-intel.weekly-learning.plist`, Tue/Wed/Thu 07:00
+Pacific), separate from `com.fantasy-intel.refresh` (ESPN snapshots, analytics, MotherDuck), which
+is unchanged and still owns the pregame ESPN snapshots. Moving the cycle to the cloud would need the
+history database and model directory in persistent hosted storage: new infrastructure, not done here.
+
+**One cycle** (`learning_cycle.py run`; every stage reuses a `weekly_learning.py` command):
+
+| Stage | What | Stops the cycle when |
+|---|---|---|
+| preflight | live DB, history DB, production `selection.json` / `heldout_report.json`, writable `--out`; refuses hosted mode (`MOTHERDUCK_DATABASE`) | anything missing (exit 5, with the action to take) |
+| lock | `<out>/locks/cycle.lock` (pid, host, start); a dead or > 6 h old lock is taken over | another cycle is running (exit 4) |
+| sync_nfl, sync_exits | existing `sync_nfl.py` (output to `<out>/logs/`) and `weekly_learning.py sync-exits` (`--skip-sync` skips both) | a sync fails (exit 1) |
+| target week | first REG week whose first kickoff (nflverse gameday + gametime, US Eastern, stored in UTC) is after now | no week left (exit 0) |
+| readiness | `weekly_learning.readiness`: every earlier game final, box scores / snaps / expected points synced, target not kicked off | data not ready (exit 3: retry before the reported kickoff) |
+| evaluate | `weekly_learning.py evaluate` (finality-aware, PRs above) | an error (exit 1) |
+| train | refit champion and challenger with frozen configuration, unless the **training fingerprint** (every training row, label and feature; challenger config hash; production selection and report bytes; scoring fingerprint; versions; target) matches the previous cycle's: then the same artifacts are reused. `--force-retrain` always refits | not pregame any more, or an error |
+| predict | `weekly_learning.py predict` with the exact artifacts of the train stage (not "latest"), pregame only | the target kicked off meanwhile (exit 3) |
+
+A stage failure stops every later stage. Reports: `<out>/reports/cycle-<stamp>-<pid>.json`
+(write-once) and `<out>/status/latest-cycle.json`: status (`forecast_frozen`, `up_to_date`,
+`waiting_for_data`, `failed`, `locked`, `config_error`, `no_upcoming_week`), season, target week and
+its first kickoff (UTC and Eastern), stages with timings, `nfl_synced_at` (last successful nflverse
+sync), latest final week, readiness warnings, previous-week finality, last included training week,
+artifact ids and whether they were created or reused, frozen projection counts, evaluation
+progress (prospective weeks, readiness per position), the target week's pregame ESPN snapshot
+status (read-only), the missed window, errors and required actions. Sync output goes to the log
+file only; no environment variable, token or cookie is written anywhere.
+
+**Kickoff safety.** Training and prediction are refused once the target week has kicked off (checked
+again at predict time). A week whose first kickoff passes without any frozen pregame row is
+recorded write-once in `<out>/missed/s<season>w<week>.json`; nothing is backdated and no
+retrospective replay is substituted (a manual `--retrospective` replay is still possible and is
+never pregame evidence).
+
+**Idempotence and restarts.** Artifacts are content-addressed and ledger runs dedupe on their inputs
+hash, so a repeated cycle changes nothing and reports `up_to_date`. Artifacts, ledger runs and missed
+records are written to a temporary file and hard-linked into place, so an interrupted write never
+leaves a partial file; a truncated file from an older version is reported (`NotReady`) and never
+overwritten. A changed input before kickoff (a stat correction, a late injury report) produces a new
+artifact and a new ledger run; every original stays byte-identical.
+
+**Limitations.** A Mac that is shut down skips the attempt (asleep: it runs on wake); three attempts
+Tue-Thu morning cover most delays, but if nflverse publishes after the Thursday attempt and before a
+Thursday-night kickoff, run `learning_cycle.py run` by hand. If the refresh and the cycle start
+together, the cycle's sync fails on DuckDB's write lock and the next attempt retries. The
+participation artifact is not retrained (unchanged); the challenger stays shadow-only.
+
 ### Prospective evaluation: outcome finality
 
 `evaluate` labels every frozen forecast row with an explicit outcome status

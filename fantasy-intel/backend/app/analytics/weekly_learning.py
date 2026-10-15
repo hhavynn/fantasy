@@ -28,7 +28,9 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
+import tempfile
 
 import polars as pl
 
@@ -228,17 +230,49 @@ def artifact_id(art: Artifact) -> str:
     return _sha(ch.round_floats(d, 10))
 
 
+def write_once(path: Path, text: str) -> bool:
+    """Create `path` with `text`, never overwriting: the text goes to a temporary file in the same
+    directory and is hard-linked into place, so an interrupted write never leaves a partial file at
+    `path` and a retry starts clean. Returns False if `path` already exists."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".partial")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        os.unlink(tmp)
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError) as err:
+        raise NotReady(f"{path} is unreadable ({err.__class__.__name__}); it was probably left by an interrupted "
+                       "write of an older version. Move it out of the directory (never edit it) and rerun.") from err
+
+
 def save_artifact(art: Artifact, root: Path) -> tuple[str, Path, bool]:
     """Content-addressed, write-once. Returns (id, path, created). Same content -> same file."""
     aid = artifact_id(art)
     s, w = art.config["provenance"]["target"]
     path = Path(root) / "artifacts" / art.version / f"s{s}w{w:02d}-{aid}.json"
     if path.exists():
+        _read_json(path)
         return aid, path, False
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "x") as f:
-        f.write(json.dumps(art.to_dict(), indent=1, default=str, allow_nan=False))
-    return aid, path, True
+    created = write_once(path, json.dumps(art.to_dict(), indent=1, default=str, allow_nan=False))
+    return aid, path, created
+
+
+def load_artifact(path: Path) -> Artifact:
+    return Artifact.from_dict(_read_json(path))
 
 
 def latest_artifact(root: Path, version: str, season: int, week: int, scoring_fp: str) -> tuple[Artifact, str, Path]:
@@ -247,7 +281,7 @@ def latest_artifact(root: Path, version: str, season: int, week: int, scoring_fp
     files = sorted((Path(root) / "artifacts" / version).glob(f"s{season}w{week:02d}-*.json"))
     if not files:
         raise NotReady(f"no {version} artifact for {season} week {week}; run train --week {week} first")
-    arts = [(Artifact.from_dict(json.loads(f.read_text())), f) for f in files]
+    arts = [(load_artifact(f), f) for f in files]
     art, path = max(arts, key=lambda t: t[0].created_at)
     check_artifact(art, season, week, scoring_fp)
     return art, path.stem.split("-", 1)[1], path
@@ -326,17 +360,17 @@ def write_run(run: dict, root: Path) -> tuple[Path, bool]:
     d = Path(root) / "ledger" / f"s{run['season']}w{run['week']:02d}"
     d.mkdir(parents=True, exist_ok=True)
     for f in sorted(d.glob("*.json")):
-        old = json.loads(f.read_text())
+        old = _read_json(f)
         if old.get("inputs_hash") == run["inputs_hash"] and old.get("kind") == run["kind"]:
             return f, False
     path = d / f"{run['run_id']}.json"
-    with open(path, "x") as fh:
-        fh.write(json.dumps(run, indent=1, default=str, allow_nan=False))
+    if not write_once(path, json.dumps(run, indent=1, default=str, allow_nan=False)):
+        raise FileExistsError(f"ledger run {path} already exists with different inputs")
     return path, True
 
 
 def load_ledger(root: Path) -> list[dict]:
-    return [json.loads(f.read_text()) for f in sorted((Path(root) / "ledger").glob("s*/*.json"))]
+    return [_read_json(f) for f in sorted((Path(root) / "ledger").glob("s*/*.json"))]
 
 
 # ----------------------------------------------------------------------------- prospective evaluation
@@ -660,6 +694,6 @@ def promotion_blockers(status: dict) -> dict:
             for pos, s in status.items()}
 
 
-__all__ = ["readiness", "train", "save_artifact", "latest_artifact", "predict", "write_run", "load_ledger",
-           "evaluate", "label_outcomes", "team_game_finality", "week_finality", "shadow_status",
+__all__ = ["readiness", "train", "save_artifact", "load_artifact", "write_once", "latest_artifact", "predict",
+           "write_run", "load_ledger", "evaluate", "label_outcomes", "team_game_finality", "week_finality", "shadow_status",
            "shadow_criteria", "promotion_blockers", "NotReady", "MODEL_VERSION", "interval_for"]
