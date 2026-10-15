@@ -24,7 +24,7 @@ from test_learning_cycle import _make_db
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 UTC = timezone.utc
-NOW = "2025-09-09T20:00:00+00:00"            # week 9 final, week 10 kicks off 2025-09-10 17:00 UTC
+NOW = "2025-09-10T08:00:00+00:00"            # after the synthetic nflverse sync; week 10 kicks off 17:00 UTC
 KICK10 = datetime(2025, 9, 10, 17, tzinfo=UTC)
 
 
@@ -152,7 +152,7 @@ def test_corrected_source_adds_a_snapshot_and_keeps_the_original(cli, env):
     run1 = _forecast(cli, env)
     before = _digest(env / "out" / "snapshots")
     _sql(env, "UPDATE nfl_weekly_stats SET rushing_yards = rushing_yards + 40 WHERE season = 2025 AND week = 7")
-    run2 = _forecast(cli, env, now="2025-09-09T22:00:00+00:00")
+    run2 = _forecast(cli, env, now="2025-09-10T10:00:00+00:00")
     assert run2["run_id"] != run1["run_id"] and run2["sources"]["manifest_id"] != run1["sources"]["manifest_id"]
     p1, p2 = run1["sources"]["parts"], run2["sources"]["parts"]
     assert p1["panel/s2025"] != p2["panel/s2025"]                     # the corrected season is a new part
@@ -313,7 +313,7 @@ def test_original_artifact_unchanged_by_later_sources(cli, env):
     run = _forecast(cli, env)
     arts = _digest(env / "out" / "artifacts")
     _sql(env, "UPDATE nfl_weekly_stats SET receiving_yards = receiving_yards + 5 WHERE season = 2025 AND week = 9")
-    _forecast(cli, env, now="2025-09-10T02:00:00+00:00")             # retrains: a new artifact is added
+    _forecast(cli, env, now="2025-09-10T12:00:00+00:00")             # retrains: a new artifact is added
     after = _digest(env / "out" / "artifacts")
     assert all(after[k] == v for k, v in arts.items()) and len(after) > len(arts)
     champ, chal = _arts(run)

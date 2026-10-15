@@ -58,15 +58,40 @@ CHALLENGER_STATUS = {
 APPEARED = "appeared"                    # own game final, team data complete, player in the panel
 CONFIRMED_ABSENT = "confirmed_absent"    # own game final, team data complete, player absent -> 0 points
 PENDING_GAME = "pending_game"            # own game not final yet (another game of the week may be)
-MISSING_INGESTION = "missing_ingestion"  # own game final, but the team's box scores or snaps are not synced
-BYE = "bye"                              # forecast team has no game scheduled that week
+MISSING_INGESTION = "missing_ingestion"  # own game final but box scores/snaps not synced, or the game the
+                                         # forecast saw (row kickoff) is missing from the current schedule
+BYE = "bye"                              # no game scheduled for his team, at forecast time or now
 UNRESOLVED_IDENTITY = "unresolved_identity"  # no/unknown gsis_id, or his box score/roster row is another team's
 OUTCOME_STATUSES = (APPEARED, CONFIRMED_ABSENT, PENDING_GAME, MISSING_INGESTION, BYE, UNRESOLVED_IDENTITY)
 RESOLVED = (APPEARED, CONFIRMED_ABSENT)
-FINALITY_RULE = ("a player's outcome is resolved only when HIS team's game has a final score in nflverse "
-                 "schedules AND that team's box scores and snap counts for the week are synced; then he "
-                 "appeared (league points) or is a confirmed zero. A week is prospective evidence only when "
-                 "every scheduled game is final and every team's data is complete.")
+FINALITY_RULE = ("a player's outcome is resolved only when HIS team's game is presumed final (both scores in "
+                 "nflverse schedules AND the data fetched at least 8 h after kickoff, the "
+                 "schedule_intelligence rule: nflverse has no game-status field and a score may be live) AND "
+                 "that team's box scores and snap counts for the week are synced; then he appeared (league "
+                 "points) or is a confirmed zero. A week is prospective evidence only when every scheduled game "
+                 "is final, every team's data is complete, and every game the forecasts saw is still scheduled.")
+
+
+def game_presumed_final(points_for, points_against, kickoff: datetime | None,
+                        fetched_at: datetime | None) -> tuple[bool, str | None]:
+    """The conservative completion rule of schedule_intelligence.game_completion: nflverse schedules
+    have no game-status field and do not say whether a score can be live, so a game is presumed final
+    only when both scores are present AND the data was fetched at least FINAL_AFTER_KICKOFF (after a
+    FETCH_MARGIN download margin) after its kickoff. `fetched_at`: start of the nflverse sync that
+    wrote the schedule (None: unknown, never presumed final). Returns (final, reason if not)."""
+    from .schedule_intelligence import FETCH_MARGIN, FINAL_AFTER_KICKOFF
+
+    if points_for is None or points_against is None:
+        return False, "no score"
+    if kickoff is None:
+        return False, "score present but kickoff unknown (it may be live)"
+    if fetched_at is None:
+        return False, "score present but the time it was fetched is unknown (it may be live)"
+    lag = _utc(fetched_at) - FETCH_MARGIN - kickoff
+    if lag < FINAL_AFTER_KICKOFF:
+        return False, (f"score fetched {lag.total_seconds() / 3600:.1f} h after kickoff (< "
+                       f"{FINAL_AFTER_KICKOFF.total_seconds() / 3600:.0f} h): it may be from a game in progress")
+    return True, None
 
 
 class NotReady(Exception):
@@ -95,8 +120,10 @@ def team_kickoffs(sources: Sources, season: int, week: int) -> dict[str, datetim
 # ----------------------------------------------------------------------------- readiness
 
 
-def readiness(sources: Sources, season: int, week: int, now: datetime) -> dict:
-    """Is every input for a week-W forecast present and final? Errors block training/prediction."""
+def readiness(sources: Sources, season: int, week: int, now: datetime, fetched_at: datetime | None = None) -> dict:
+    """Is every input for a week-W forecast present and final? Errors block training/prediction.
+    `fetched_at`: start of the nflverse sync that wrote the schedule; a scored game counts as final
+    only under game_presumed_final (unknown fetch time: never)."""
     errors, warnings = [], []
     now = _utc(now)
     games = sources.games.filter(pl.col("season") == season)
@@ -106,6 +133,15 @@ def readiness(sources: Sources, season: int, week: int, now: datetime) -> dict:
         wk = sorted(set(unfinished["week"].to_list()))
         errors.append(f"{unfinished.height // 2 or 1} game(s) before week {week} are not final (weeks {wk}); "
                       "a week enters training only when every game is final")
+    live = {}
+    from .projection_backtest import _kickoff
+    for g in before.filter(pl.col("points_for").is_not_null() & pl.col("is_home")).iter_rows(named=True):
+        ok, why = game_presumed_final(g["points_for"], g["points_against"], _kickoff(g), fetched_at)
+        if not ok:
+            live.setdefault(why, []).append(f"w{g['week']} {g['opponent']}@{g['team']}")
+    for why, gs in live.items():
+        errors.append(f"{len(gs)} scored game(s) before week {week} cannot be presumed final ({why}): "
+                      f"{', '.join(gs[:6])}{' ...' if len(gs) > 6 else ''}; rerun sync_nfl.py after the games end")
     target = games.filter(pl.col("week") == week)
     if target.height == 0:
         errors.append(f"no week-{week} schedule for {season}")
@@ -438,7 +474,7 @@ def frozen_rows(runs: list[dict], kind: str = "pregame") -> pl.DataFrame:
     recs = []
     for (s, w, g), (_, rid, r) in best.items():
         recs.append({"season": s, "week": w, "key": key(s, w), "gsis_id": g, "position": r["position"],
-                     "team": r.get("team"), "run_id": rid,
+                     "team": r.get("team"), "kickoff": r.get("kickoff"), "run_id": rid,
                      "pred_champion": r["champion"]["points"], "pred_challenger": r["challenger"]["points"],
                      "low_champion": r["champion"]["low"], "high_champion": r["champion"]["high"],
                      "low_challenger": r["challenger"]["low"], "high_challenger": r["challenger"]["high"],
@@ -446,24 +482,27 @@ def frozen_rows(runs: list[dict], kind: str = "pregame") -> pl.DataFrame:
                      "pred_A1": r["pred_A1"], "pred_A2": r["pred_A2"], "p_play": r["p_play"],
                      "last_injury_exit": (r.get("workload") or {}).get("last_injury_exit")})
     schema = {"season": pl.Int64, "week": pl.Int64, "key": pl.Int64, "gsis_id": pl.String, "position": pl.String,
-              "team": pl.String, "run_id": pl.String, **{c: pl.Float64 for c in ("pred_champion", "pred_challenger", "low_champion",
-                                                             "high_champion", "low_challenger", "high_challenger",
-                                                             "exp_champion", "exp_challenger", "pred_A1", "pred_A2",
-                                                             "p_play")}, "last_injury_exit": pl.Int64}
+              "team": pl.String, "kickoff": pl.String, "run_id": pl.String,
+              **{c: pl.Float64 for c in ("pred_champion", "pred_challenger", "low_champion", "high_champion",
+                                         "low_challenger", "high_challenger", "exp_champion", "exp_challenger",
+                                         "pred_A1", "pred_A2", "p_play")}, "last_injury_exit": pl.Int64}
     return pl.DataFrame(recs, schema=schema) if recs else pl.DataFrame(schema=schema)
 
 
-def team_game_finality(sources: Sources, season: int, week: int) -> pl.DataFrame:
-    """One row per team SCHEDULED in (season, week): is its game final, and are its box scores and
-    snap counts synced? A team is `complete` only when all three hold. The game of one team says
-    nothing about another's: a final Thursday game never makes a Monday game final."""
+def team_game_finality(sources: Sources, season: int, week: int, fetched_at: datetime | None = None) -> pl.DataFrame:
+    """One row per team SCHEDULED in (season, week): is its game presumed final (game_presumed_final,
+    `fetched_at` = when the schedule was fetched), and are its box scores and snap counts synced? A
+    team is `complete` only when all three hold. The game of one team says nothing about another's:
+    a final Thursday game never makes a Monday game final."""
+    from .projection_backtest import _kickoff
+
     games = sources.games.filter((pl.col("season") == season) & (pl.col("week") == week))
     panel = sources.panel.filter((pl.col("season") == season) & (pl.col("week") == week))
     stats = set(panel.filter(pl.col("has_stats"))["team"].to_list())
     snaps = set(panel.filter(pl.col("offense_pct").is_not_null())["team"].to_list())
     recs = []
     for g in games.iter_rows(named=True):
-        final = g["points_for"] is not None and g["points_against"] is not None
+        final, _ = game_presumed_final(g["points_for"], g["points_against"], _kickoff(g), fetched_at)
         box, snp = g["team"] in stats, g["team"] in snaps
         recs.append({"season": season, "week": week, "team": g["team"], "final": final, "has_box_scores": box,
                      "has_snaps": snp, "complete": final and box and snp})
@@ -472,9 +511,9 @@ def team_game_finality(sources: Sources, season: int, week: int) -> pl.DataFrame
     return pl.DataFrame(recs, schema=schema).unique("team", keep="first") if recs else pl.DataFrame(schema=schema)
 
 
-def week_finality(sources: Sources, season: int, week: int) -> dict:
+def week_finality(sources: Sources, season: int, week: int, fetched_at: datetime | None = None) -> dict:
     """Is the whole NFL week final? Only such weeks count toward promotion evidence."""
-    t = team_game_finality(sources, season, week)
+    t = team_game_finality(sources, season, week, fetched_at)
     pending = sorted(t.filter(~pl.col("final"))["team"].to_list())
     missing = sorted(t.filter(pl.col("final") & ~pl.col("complete"))["team"].to_list())
     return {"scheduled_teams": t.height, "final_teams": int(t["final"].sum()) if t.height else 0,
@@ -483,14 +522,17 @@ def week_finality(sources: Sources, season: int, week: int) -> dict:
             "fully_final": t.height > 0 and not pending and not missing}
 
 
-def label_outcomes(rows: pl.DataFrame, sources: Sources) -> pl.DataFrame:
+def label_outcomes(rows: pl.DataFrame, sources: Sources, fetched_at: dict | None = None) -> pl.DataFrame:
     """Attach `outcome_status` (OUTCOME_STATUSES) and `label` to frozen forecast rows. `label` is
     league points for APPEARED, 0.0 for CONFIRMED_ABSENT and null for every unresolved status, so
-    an unfinished, unsynced or unmatched player can never become a zero-point outcome."""
+    an unfinished, unsynced or unmatched player can never become a zero-point outcome. A team the
+    forecast saw scheduled (row kickoff) but the current schedule lacks is MISSING_INGESTION, never a
+    bye. `fetched_at`: {season: when its schedule was fetched} (see game_presumed_final)."""
     if rows.height == 0:
         return rows.with_columns(pl.lit(None, pl.String).alias("outcome_status"), pl.lit(None, pl.Float64).alias("label"))
     weeks = rows.select("season", "week").unique().sort("season", "week")
-    fin = pl.concat([team_game_finality(sources, int(s), int(w)) for s, w in weeks.iter_rows()])
+    fin = pl.concat([team_game_finality(sources, int(s), int(w), (fetched_at or {}).get(int(s)))
+                     for s, w in weeks.iter_rows()])
     panel = (sources.panel.join(weeks, on=["season", "week"], how="semi")
              .select("season", "week", "gsis_id", pl.col("team").alias("_panel_team"),
                      pl.col("league_points").alias("_points"))
@@ -511,6 +553,7 @@ def label_outcomes(rows: pl.DataFrame, sources: Sources) -> pl.DataFrame:
                                    & (pl.col("_roster_team") != pl.col("team")))
     no_id = pl.col("gsis_id").is_null() | (pl.col("gsis_id").str.strip_chars() == "") | pl.col("team").is_null()
     status = (pl.when(no_id | ~known).then(pl.lit(UNRESOLVED_IDENTITY))
+              .when(pl.col("final").is_null() & pl.col("kickoff").is_not_null()).then(pl.lit(MISSING_INGESTION))
               .when(pl.col("final").is_null()).then(pl.lit(BYE))
               .when(~pl.col("final")).then(pl.lit(PENDING_GAME))
               .when(other_team).then(pl.lit(UNRESOLVED_IDENTITY))
@@ -532,7 +575,10 @@ def _status_counts(df: pl.DataFrame) -> dict:
 
 def _position_reports(j: pl.DataFrame, seed: int, *, bootstrap: bool = True) -> dict:
     """Conditional (APPEARED) and unconditional (APPEARED + CONFIRMED_ABSENT) metrics per position.
-    `j` must come from label_outcomes; unresolved rows are dropped here, never zero-filled."""
+    `j` must come from label_outcomes; unresolved rows are dropped here, never zero-filled. The
+    starters pool is ranked over ALL frozen pregame rows of a week (who appears is not known
+    pregame), so an inactive top player is never backfilled by a lower-ranked one."""
+    j = j.with_columns(starters_pool_expr().alias("_starter"))
     cond = j.filter(pl.col("outcome_status") == APPEARED)
     resolved = j.filter(pl.col("outcome_status").is_in(RESOLVED))
     assert resolved["label"].null_count() == 0, "a resolved outcome without a label"
@@ -551,8 +597,10 @@ def _position_reports(j: pl.DataFrame, seed: int, *, bootstrap: bool = True) -> 
             if iv.height:
                 hit = iv.filter((pl.col("label") >= pl.col(f"low_{m}")) & (pl.col("label") <= pl.col(f"high_{m}"))).height
                 rep.setdefault("interval80_coverage", {})[m] = round(hit / iv.height, 4)
-        sp = g.filter(starters_pool_expr())
+        sp = g.filter(pl.col("_starter"))
         rep["starters_pool"] = {"n": sp.height, "definition": STARTERS_POOL_DEFINITION,
+                                "ranked_among": "every frozen pregame forecast of the week, before appearance "
+                                                "is known; MAE on the pool members who appeared",
                                 "mae": {m: metrics(_arr(sp, "label"), _arr(sp, f"pred_{m}"))["mae"]
                                         for m in ("champion", "challenger")}}
         ie = g.filter(pl.col("last_injury_exit") == 1)
@@ -566,15 +614,24 @@ def _position_reports(j: pl.DataFrame, seed: int, *, bootstrap: bool = True) -> 
     return out
 
 
-def evaluate(runs: list[dict], sources: Sources, kind: str = "pregame", seed: int = 20261014) -> dict:
+def evaluate(runs: list[dict], sources: Sources, kind: str = "pregame", seed: int = 20261014,
+             fetched_at: dict | None = None) -> dict:
     """Frozen forecasts vs finalized outcomes (FINALITY_RULE). Conditional: players who appeared
     (label = league points). Unconditional: appeared + confirmed absences (0). Rows whose own game
     is not final, whose team data is not synced, on a bye, or with an unresolved identity are
     excluded and counted in `outcomes`. Only fully final weeks are evidence (`weeks`, metrics,
-    shadow_status); resolved rows of partly final weeks are reported under `preliminary` only."""
-    rows = label_outcomes(frozen_rows(runs, kind), sources)
+    shadow_status); resolved rows of partly final weeks are reported under `preliminary` only.
+    `fetched_at`: {season: when its nflverse schedule was fetched}; without it no game is presumed
+    final (game_presumed_final), so nothing is evidence."""
+    rows = label_outcomes(frozen_rows(runs, kind), sources, fetched_at)
     wk = sorted({(int(s), int(w)) for s, w in rows.select("season", "week").unique().iter_rows()}) if rows.height else []
-    fin = {sw: week_finality(sources, *sw) for sw in wk}
+    fin = {sw: week_finality(sources, *sw, (fetched_at or {}).get(sw[0])) for sw in wk}
+    for (s, w), f in fin.items():
+        # a game the forecasts saw that the schedule no longer lists keeps the week open (never a bye)
+        gone = rows.filter((pl.col("season") == s) & (pl.col("week") == w) & pl.col("kickoff").is_not_null()
+                           & (pl.col("outcome_status") == MISSING_INGESTION))["team"].unique().to_list()
+        f["forecast_teams_missing_from_schedule"] = sorted(t for t in gone if t not in f["missing_ingestion_teams"])
+        f["fully_final"] = f["fully_final"] and not f["forecast_teams_missing_from_schedule"]
     final_weeks = [sw for sw in wk if fin[sw]["fully_final"]]
     in_final = pl.col("key").is_in([key(s, w) for s, w in final_weeks])
     evidence, partial = rows.filter(in_final), rows.filter(~in_final)

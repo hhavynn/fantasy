@@ -20,8 +20,11 @@ from synthetic_forecast import add_league, add_participation, generate, write
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 UTC = timezone.utc
-# synthetic week W kicks off 2025-09-W 13:00 US Eastern (17:00 UTC); weeks >= 10 have no results yet
-PRE_W10 = "2025-09-09T20:00:00+00:00"          # week 9 final, week 10 not started (a "Tuesday")
+# synthetic week W kicks off 2025-09-W 13:00 US Eastern (17:00 UTC); weeks >= 10 have no results yet.
+# The live DB records an nflverse sync at 2025-09-10 03:00 UTC, 10 h after week 9's kickoff, so week 9
+# is presumed final (weekly_learning.game_presumed_final); cycles run after it and before week 10.
+NFL_SYNC = "2025-09-10 03:00:00"
+PRE_W10 = "2025-09-10T08:00:00+00:00"          # week 9 final, week 10 not started (a "Tuesday")
 DURING_W10 = "2025-09-10T18:00:00+00:00"       # week 10 kicked off, not final
 
 
@@ -41,6 +44,9 @@ def _make_db(path: Path, seasons, unfinished=None, league=True):
     write(con, add_participation(generate(seasons, unfinished=unfinished)))
     if league:
         add_league(con, 2025, 10)
+        con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status, stats) VALUES "
+                    "('synthetic-nfl', 'nfl', ?, ?, 'ok', ?)",
+                    [NFL_SYNC, NFL_SYNC, json.dumps({"season": 2025, "nfl_schedules": 1})])
     con.close()
 
 
@@ -126,7 +132,7 @@ def test_normal_pre_thursday_run_with_all_prior_games_final(lc, env):
 def test_repeated_identical_execution_is_a_no_op(lc, env):
     code1, rep1 = _run(lc, env)
     arts, ledger = _digest(_files(env, "artifacts")), _digest(_files(env, "ledger"))
-    code2, rep2 = _run(lc, env, "2025-09-09T21:00:00+00:00")
+    code2, rep2 = _run(lc, env, "2025-09-10T09:00:00+00:00")
     assert (code1, code2) == (lc.EXIT_OK, lc.EXIT_OK)
     assert rep2["status"] == "up_to_date" and rep2["training"]["reused"]
     assert not any(a["created"] for a in rep2["training"]["artifacts"].values())
@@ -140,7 +146,7 @@ def test_changed_source_data_before_cutoff_retrains_and_keeps_originals(lc, env)
     arts, ledger = _digest(_files(env, "artifacts")), _digest(_files(env, "ledger"))
     _sql(env, "UPDATE nfl_weekly_stats SET receiving_yards = receiving_yards + 60 "
               "WHERE season = 2025 AND week = 8 AND player_id = '00-AAA-WR1'")   # a stat correction
-    code, rep2 = _run(lc, env, "2025-09-09T23:00:00+00:00")
+    code, rep2 = _run(lc, env, "2025-09-10T11:00:00+00:00")
     assert code == lc.EXIT_OK and rep2["status"] == "forecast_frozen" and not rep2["training"]["reused"]
     assert rep2["training"]["fingerprint"] != rep1["training"]["fingerprint"]
     assert rep2["forecast"]["run_id"] != rep1["forecast"]["run_id"]
@@ -149,7 +155,7 @@ def test_changed_source_data_before_cutoff_retrains_and_keeps_originals(lc, env)
     assert len(_files(env, "ledger")) == len(ledger) + 1
     assert len(_files(env, "artifacts")) > len(arts)
     # --force-retrain refits on identical inputs: content addressing reproduces the same ids
-    code, rep3 = _run(lc, env, "2025-09-10T01:00:00+00:00", "--force-retrain")
+    code, rep3 = _run(lc, env, "2025-09-10T13:00:00+00:00", "--force-retrain")
     assert code == lc.EXIT_OK and not rep3["training"]["reused"]
     assert {v: a["id"] for v, a in rep3["training"]["artifacts"].items()} == \
         {v: a["id"] for v, a in rep2["training"]["artifacts"].items()}
@@ -164,6 +170,8 @@ def test_changed_source_data_before_cutoff_retrains_and_keeps_originals(lc, env)
      "(SELECT max(game_id) FROM nfl_schedules WHERE season = 2025 AND week = 9)", "not final"),       # Monday game
     ("DELETE FROM nfl_snap_counts WHERE season = 2025 AND week = 9 AND team = 'AAA'", "snap counts"),
     ("DELETE FROM nfl_ff_opportunity WHERE season = 2025 AND week = 9", "expected points"),
+    # the only nflverse sync ran 2 h after week 9's kickoff: its scores may be live
+    ("UPDATE sync_runs SET started_at = TIMESTAMP '2025-09-09 19:00:00'", "cannot be presumed final"),
 ])
 def test_incomplete_previous_week_blocks_training_and_prediction(lc, env, stmt, needle):
     _sql(env, stmt)
@@ -272,7 +280,7 @@ def test_overlapping_attempts_are_refused_and_stale_locks_taken_over(lc, env):
     code, rep = _run(lc, env)
     assert code == lc.EXIT_OK and not lock.exists()
     lock.write_text(json.dumps({**held, "host": "another-mac", "started_at": "2025-09-09T00:00:00+00:00"}))
-    code, rep = _run(lc, env, "2025-09-09T21:00:00+00:00")            # > 6 h old on another host: stale
+    code, rep = _run(lc, env, "2025-09-10T09:00:00+00:00")            # > 6 h old on another host: stale
     assert code == lc.EXIT_OK and rep["status"] == "up_to_date"
 
 
