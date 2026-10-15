@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Barlow_Condensed, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { Nav } from "@/components/Nav";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import type { SyncInfo } from "@/lib/types";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
+
+const display = Barlow_Condensed({ subsets: ["latin"], weight: ["500", "600"], variable: "--font-barlow-condensed" });
+const sans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-plex-sans" });
+const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono" });
 
 export const metadata: Metadata = {
   title: "Fantasy Intel",
@@ -18,25 +23,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const status = await api<Status>("/api/status");
   const s = status.data;
   return (
-    <html lang="en">
+    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
       <body>
         <header className="topbar">
           <div className="brand">
             fantasy<span>intel</span>
           </div>
-          <nav className="nav">
-            <Link href="/">Overview</Link>
-            <Link href="/players">Players</Link>
-            <Link href="/waivers">Waivers</Link>
-            <Link href="/trades">Trades</Link>
-            <Link href="/trades/discover">Discover trades</Link>
-            <Link href="/schedule-intelligence">Schedule</Link>
-            <Link href="/luck-lab">Luck lab</Link>
-            <Link href="/playoff-race">Playoff race</Link>
-            <Link href="/my-team/value">Team value</Link>
-            <Link href="/managers">Managers</Link>
-            <Link href="/data">Data quality</Link>
-          </nav>
+          <Nav />
           <div className="syncinfo">
             {s ? (
               <>

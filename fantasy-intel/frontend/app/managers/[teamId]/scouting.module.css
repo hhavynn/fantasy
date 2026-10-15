@@ -1,4 +1,4 @@
-.page { min-width: 0; --faint: #9ba7b4; --muted: #a7b2bf; }
+.page { min-width: 0; }
 .report { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .legacy { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
 .legacy :global(.panel) { overflow-x: auto; }
