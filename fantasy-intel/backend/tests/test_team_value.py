@@ -63,7 +63,9 @@ def test_overview_and_marginals_equal_the_canonical_functions():
         assert row["marginal"] == {"all": mv["roster_marginal_lineup_points"],
                                    "regular": mv["regular_season_marginal_lineup_points"],
                                    "playoff": mv["playoff_marginal_lineup_points"],
-                                   "known_all": mv["known_marginal_lineup_points"]}
+                                   "known_all": mv["known_marginal_lineup_points"],
+                                   "known_regular": row["marginal"]["known_regular"],
+                                   "known_playoff": row["marginal"]["known_playoff"]}
         assert row["weeks_started"] == mv["weeks_started"] and row["weekly"] == mv["weeks"]
         assert sorted(row["weeks_started"] + row["weeks_benched"]) == list(window.weeks)
     # Marginal values are never summed into a team value.
@@ -245,6 +247,50 @@ def test_free_addition_add_drop_and_roster_capacity():
     gaps = res["upgrades"]["slot_gaps"]
     assert gaps and all(g["gap"] > 0 for g in gaps)
     assert any(g["slot"] == "FLEX" and g["best_available"]["espn_player_id"] == 9001 for g in gaps)
+
+
+def test_known_marginals_and_losses_stay_within_the_selected_phase():
+    # QB 1 has no week-10 (playoff) projection: the playoff total is unknown, and the known
+    # fallback for the playoff view must not include regular-season points.
+    d = small(projection_patch={101: {10: None}})
+    res = build_team_value(d, EXTRAS, trades=False)
+    phase_of = d.state.window().phase
+    for p in res["players"]:
+        m = p["marginal"]
+        for ph in ("regular", "playoff"):
+            assert m[f"known_{ph}"] == pytest.approx(sum(w["known_marginal"] for w in p["weekly"] if phase_of(w["week"]) == ph))
+        assert m["known_regular"] + m["known_playoff"] == pytest.approx(m["known_all"])
+    qb = player(res, 101)
+    assert qb["marginal"]["playoff"] is None and qb["marginal"]["regular"] is not None
+    assert qb["marginal"]["known_regular"] == qb["marginal"]["regular"]
+    assert qb["marginal"]["known_playoff"] < qb["marginal"]["known_all"]
+    rem = next(x for s in res["positions"]["slots"] for x in s["removal_scenarios"] if x["espn_player_id"] == 101)
+    assert rem["known_lineup_points_lost_by_phase"] == {"all": qb["marginal"]["known_all"],
+                                                        "regular": qb["marginal"]["known_regular"],
+                                                        "playoff": qb["marginal"]["known_playoff"]}
+
+
+def test_additions_respect_espn_position_limits():
+    d = small()
+    add_fa(d, 9001, "WR", 8.0)
+    add_fa(d, 9002, "QB", 40.0)                     # far better than QB 1, but the roster is at its QB limit
+    open_ = build_team_value(d, EXTRAS, trades=False)["upgrades"]
+    assert open_["free_addition"]["player"]["espn_player_id"] == 9002 and open_["free_addition"]["excluded_position_limit"] == 0
+    d.state.position_limits = {"QB": 1}
+    waivers = [{"espn_player_id": 9002, "position": "QB", "recommendation": "CLAIM", "waiver_score": 9.0,
+                "suggested_drop_id": 104},
+               {"espn_player_id": 9002, "position": "QB", "recommendation": "CLAIM", "waiver_score": 9.0,
+                "suggested_drop_id": 101}]
+    up = build_team_value(d, {"bye_weeks": {}, "waivers": waivers}, trades=False)["upgrades"]
+    st, window = d.state, d.state.window()
+    legal = [p for p in st.free_agents if p.position != "QB"]
+    free = best_fa_addition(st.rosters[1], legal, st.slots, window, st.projections)
+    assert up["free_addition"]["player"] == free["player"] and free["player"]["espn_player_id"] == 9001
+    assert up["free_addition"]["excluded_position_limit"] == sum(1 for p in st.free_agents if p.position == "QB")
+    assert up["add_drop"] and all(x["add"]["position"] != "QB" or x["drop"]["position"] == "QB" for x in up["add_drop"])
+    blocked, swap = up["waiver_checks"]
+    assert blocked["status"].startswith("not allowed") and "ros_delta" not in blocked
+    assert swap["status"] == "add/drop" and swap["ros_delta"] is not None   # QB for QB stays within the limit
 
 
 def test_stored_waiver_suggestions_are_rechecked_on_the_lineup_engine():

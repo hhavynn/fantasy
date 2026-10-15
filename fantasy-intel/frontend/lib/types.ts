@@ -494,7 +494,8 @@ export type TvPlayer = {
   espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
   injury_status: string | null; on_ir: boolean;
   espn_projected: Record<TvPhase, TvRaw>;
-  marginal: { all: number | null; regular: number | null; playoff: number | null; known_all: number | null };
+  marginal: { all: number | null; regular: number | null; playoff: number | null; known_all: number | null;
+    known_regular: number | null; known_playoff: number | null };
   weeks_started: number[]; weeks_benched: number[]; weeks_expected: number; projection_complete: boolean;
   weekly: { week: number; phase: string | null; marginal: number | null; known_marginal: number; started: boolean }[];
   bench: TvBench[]; bench_reason_counts: Record<string, number>; unused_projected_points: number; started_points: number;
@@ -504,7 +505,7 @@ export type TvPlayer = {
 export type TvRemoval = {
   espn_player_id: number; name: string | null; weeks_in_slot: number[]; lineup_points_lost: number | null;
   lineup_points_lost_by_phase: Record<TvPhase, number | null>;
-  known_lineup_points_lost: number; own_started_points: number; recovered_by_roster: number | null;
+  known_lineup_points_lost: number; known_lineup_points_lost_by_phase: Record<TvPhase, number | null>; own_started_points: number; recovered_by_roster: number | null;
   fill_ins: { espn_player_id: number; name: string | null; weeks: number[] }[];
 };
 export type TvSlot = {
@@ -551,11 +552,12 @@ export type TeamValue = {
       current_points: number | null; best_available: TvLite & { points: number }; gap: number }[];
     free_addition: { player: TvLite | null; lineup_points_added: number | null; known_lineup_points_added: number | null;
       regular_season_points_added: number | null; playoff_points_added: number | null; weeks_started: number[] | null;
-      open_active_roster_spots: number; realistic: boolean; label: string; candidates: number; excluded_unprojected: number };
+      open_active_roster_spots: number; realistic: boolean; label: string; candidates: number; excluded_unprojected: number;
+      excluded_position_limit: number };
     add_drop: { add: TvLite; drop: TvLite; ros_delta: number | null; regular_season_delta: number | null; playoff_delta: number | null;
       known_ros_delta: number; drop_marginal: number | null }[];
     waiver_checks: { add_id: number; add_name: string | null; position: string | null; recommendation: string; waiver_score: number | null;
-      drop_id: number | null; drop_name: string | null; status: string; ros_delta?: number | null; regular_season_delta?: number | null;
+      drop_id: number | null; drop_name: string | null; status: string; ros_delta?: number | null; known_ros_delta?: number; regular_season_delta?: number | null;
       playoff_delta?: number | null }[];
     trade_preview: { list: string; opponent_team_id: number; opponent_name: string; sends: number[]; receives: number[];
       send_names: (string | null)[]; receive_names: (string | null)[];

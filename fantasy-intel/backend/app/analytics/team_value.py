@@ -22,6 +22,7 @@ season and playoffs are separate windows. Two additions of this module:
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import datetime
 
 from ..db.connection import fetch_dicts, table_exists
@@ -92,6 +93,23 @@ def load_team_value_inputs(con, now: datetime | None = None) -> tuple[RaceData, 
 
 def _iso(t):
     return t.isoformat() if hasattr(t, "isoformat") else t
+
+
+def _known_phase(weeks: list[dict], phase: str) -> float | None:
+    """Known (projected-weeks-only) marginal points within one phase; None when the phase has no weeks."""
+    ws = [w["known_marginal"] for w in weeks if w["phase"] == phase]
+    return r(sum(ws)) if ws else None
+
+
+def _position_legal(candidates: list[RosterPlayer], players: list[RosterPlayer], before: list[RosterPlayer],
+                    state) -> list[RosterPlayer]:
+    """Candidates whose addition to `players` keeps every position within ESPN's roster limit, using the
+    trade engine's rule (trades.legal_roster): a limit the roster already exceeded is not tightened."""
+    if not state.position_limits:
+        return list(candidates)
+    counts, prior = Counter(p.position for p in players), Counter(p.position for p in before)
+    lim = state.position_limits
+    return [c for c in candidates if c.position not in lim or counts[c.position] + 1 <= max(lim[c.position], prior[c.position])]
 
 
 def _phase_weeks(window, phase: str) -> list[int]:
@@ -340,7 +358,9 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
             "injury_status": p.injury_status, "on_ir": p.on_ir,
             "espn_projected": raw,
             "marginal": {"all": mv["roster_marginal_lineup_points"], "regular": mv["regular_season_marginal_lineup_points"],
-                         "playoff": mv["playoff_marginal_lineup_points"], "known_all": mv["known_marginal_lineup_points"]},
+                         "playoff": mv["playoff_marginal_lineup_points"], "known_all": mv["known_marginal_lineup_points"],
+                         "known_regular": _known_phase(mv["weeks"], "regular"),
+                         "known_playoff": _known_phase(mv["weeks"], "playoff")},
             "weeks_started": mv["weeks_started"], "weeks_benched": [b["week"] for b in bench],
             "weeks_expected": mv["weeks_expected"], "projection_complete": mv["projection_complete"],
             "weekly": mv["weeks"], "bench": bench,
@@ -375,6 +395,9 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                 "lineup_points_lost": loss, "known_lineup_points_lost": pm["marginal"]["known_all"],
                 "lineup_points_lost_by_phase": {"all": loss, "regular": pm["marginal"]["regular"],
                                                 "playoff": pm["marginal"]["playoff"]},
+                "known_lineup_points_lost_by_phase": {"all": pm["marginal"]["known_all"],
+                                                      "regular": pm["marginal"]["known_regular"],
+                                                      "playoff": pm["marginal"]["known_playoff"]},
                 "own_started_points": pm["started_points"],
                 "recovered_by_roster": None if loss is None else r(pm["started_points"] - loss),
                 "fill_ins": [{"espn_player_id": q, "name": names.get(q), "weeks": ws} for q, ws in sorted(fill.items())]})
@@ -433,11 +456,13 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                              "current_points": weakest["points"], "best_available": best,
                              "gap": r(best["points"] - mine_pts)})
     gaps.sort(key=lambda x: (-x["gap"], x["week"], x["slot"]))
-    free = best_fa_addition(roster, state.free_agents, slots, window, proj)
+    addable = _position_legal(state.free_agents, roster, roster, state)
+    free = best_fa_addition(roster, addable, slots, window, proj)
     fa_by_id = {p.espn_player_id: p for p in state.free_agents}
     free_out = {**{k: free.get(k) for k in ("player", "lineup_points_added", "known_lineup_points_added",
                                             "regular_season_points_added", "playoff_points_added", "weeks_started",
                                             "candidates", "excluded_unprojected", "projection_complete")},
+                "excluded_position_limit": len(state.free_agents) - len(addable),
                 "open_active_roster_spots": open_spots,
                 "realistic": open_spots > 0,
                 "label": ("Free addition into an open active roster spot" if open_spots > 0 else
@@ -448,7 +473,8 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
     add_drop = []
     for d in drops:
         rest_players = without(roster, [d["espn_player_id"]])
-        fa = best_fa_addition(rest_players, state.free_agents, slots, window, proj)
+        fa = best_fa_addition(rest_players, _position_legal(state.free_agents, rest_players, roster, state),
+                              slots, window, proj)
         if fa["player"] is None:
             continue
         after = project_team(rest_players + [fa_by_id[fa["player"]["espn_player_id"]]], slots, window, proj)
@@ -474,6 +500,10 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                 waiver_checks.append({**row, "status": "no longer a free agent or waiver player"})
                 continue
             after_players = (without(roster, [drop.espn_player_id]) if drop else list(roster)) + [add]
+            if not _position_legal([add], after_players[:-1], roster, state):
+                waiver_checks.append({**row, "status": f"not allowed: over ESPN's {add.position} roster limit "
+                                                        f"({state.position_limits[add.position]})"})
+                continue
             if drop is None and open_spots == 0:
                 row["status"] = "optimistic: no open active roster spot and no suggested drop"
             else:

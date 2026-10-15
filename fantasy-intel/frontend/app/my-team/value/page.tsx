@@ -39,6 +39,16 @@ function marginal(p: TvPlayer, phase: TvPhase): number | null {
   return phase === "all" ? p.marginal.all : phase === "regular" ? p.marginal.regular : p.marginal.playoff;
 }
 
+function knownMarginal(p: TvPlayer, phase: TvPhase): number | null {
+  return phase === "all" ? p.marginal.known_all : phase === "regular" ? p.marginal.known_regular : p.marginal.known_playoff;
+}
+
+// An exact delta when every lineup-relevant projection exists; otherwise the partial total, labelled.
+function Delta({ value, known }: { value: number | null | undefined; known: number | null | undefined }) {
+  if (value !== null && value !== undefined) return <>{signed(value)}</>;
+  return <span title="Some lineup-relevant players lack projections: partial total over projected weeks only">known {signed(known)} (incomplete)</span>;
+}
+
 export default async function TeamValuePage({ searchParams }: PageProps<"/my-team/value">) {
   const sp = await searchParams;
   const team = one(sp.team);
@@ -151,7 +161,7 @@ function Summary({ d, phase }: { d: TeamValue; phase: TvPhase }) {
       </div>
       <ul className="reasons" style={{ marginTop: 10 }}>
         {pos.strongest.length > 0 && <li>Strongest starting slots vs the league: <b>{pos.strongest.join(", ")}</b>; weakest: <b>{pos.weakest.join(", ")}</b> (average projected points per comparable week).</li>}
-        {best && best.known_ros_delta > 0 && <li>Best add/drop found: add <b>{best.add.name}</b> ({best.add.position}), drop <b>{best.drop.name}</b>: {signed(best.ros_delta ?? best.known_ros_delta)} projected starting points over the rest of the season (reg {signed(best.regular_season_delta)} · playoffs {signed(best.playoff_delta)}).</li>}
+        {best && best.known_ros_delta > 0 && <li>Best add/drop found: add <b>{best.add.name}</b> ({best.add.position}), drop <b>{best.drop.name}</b>: <Delta value={best.ros_delta} known={best.known_ros_delta} /> projected starting points over the rest of the season (reg {signed(best.regular_season_delta)} · playoffs {signed(best.playoff_delta)}).</li>}
         {closest && <li>Closest remaining matchup: week {closest.weeks?.join("–")} {closest.home ? "vs" : "@"} {closest.opponent_name}, projected margin {signed(closest.projected_margin)}{closest.close ? " (close)" : ""}.</li>}
         <li>Playoff race: now {rec(race.standing_now.record)}{race.standing_now.rank ? ` #${race.standing_now.rank}` : ""}, projected {rec(race.standing_projected.record)}{race.standing_projected.rank ? ` #${race.standing_projected.rank}` : ""} ({race.standing_projected.status?.replace("_", " ") ?? "no cutline"}) · <Link href={`/playoff-race?team=${d.team.team_id}`}>open the Playoff Race Lab</Link></li>
       </ul>
@@ -221,7 +231,7 @@ function Positions({ d, phase }: { d: TeamValue; phase: TvPhase }) {
                   </td>
                   <td>{st.rank !== null ? <Badge value={`#${st.rank} of ${st.teams_ranked}`} tone={st.rank <= 3 ? "good" : st.rank > st.teams_ranked - 3 ? "bad" : ""} /> : <span className="faint">—</span>}</td>
                   <td className="wrap" style={{ minWidth: 220 }}>{loss ? <>
-                    <PlayerLink id={loss.espn_player_id} name={loss.name} />: lineup loses <b>{loss.lineup_points_lost_by_phase[phase] !== null ? pts(loss.lineup_points_lost_by_phase[phase]) : <span title="Incomplete weeks in this window">known {pts(loss.known_lineup_points_lost)} (all weeks)</span>}</b>
+                    <PlayerLink id={loss.espn_player_id} name={loss.name} />: lineup loses <b>{loss.lineup_points_lost_by_phase[phase] !== null ? pts(loss.lineup_points_lost_by_phase[phase]) : <span title="Incomplete weeks in this window">known {pts(loss.known_lineup_points_lost_by_phase[phase])}</span>}</b>
                     {phase === "all" && loss.recovered_by_roster !== null && <span className="faint"> (roster recovers {pts(loss.recovered_by_roster)} of his {pts(loss.own_started_points)})</span>}
                     {loss.fill_ins.length > 0 && <div className="faint" style={{ fontSize: 11 }}>covered by {loss.fill_ins.map((f) => `${f.name} (${f.weeks.length} wk)`).join(", ")}</div>}
                   </> : <span className="faint">no starter</span>}</td>
@@ -261,7 +271,7 @@ function Strip({ p, weeks }: { p: TvPlayer; weeks: number[] }) {
 }
 
 function Marginals({ d, phase }: { d: TeamValue; phase: TvPhase }) {
-  const rows = [...d.players!].sort((a, b) => (marginal(b, phase) ?? b.marginal.known_all ?? 0) - (marginal(a, phase) ?? a.marginal.known_all ?? 0) || a.espn_player_id - b.espn_player_id);
+  const rows = [...d.players!].sort((a, b) => (marginal(b, phase) ?? knownMarginal(b, phase) ?? 0) - (marginal(a, phase) ?? knownMarginal(a, phase) ?? 0) || a.espn_player_id - b.espn_player_id);
   const weeks = d.window.weeks;
   return (
     <section className="panel">
@@ -279,7 +289,7 @@ function Marginals({ d, phase }: { d: TeamValue; phase: TvPhase }) {
                 <tr key={p.espn_player_id}>
                   <td><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /> <span className="faint">{p.pro_team ?? "FA"}</span></td>
                   <td className="num">{raw.points !== null ? pts(raw.points) : <span className="faint" title={`No ESPN projection for week(s) ${raw.missing_weeks.join(", ")}`}>known {pts(raw.known_points)}</span>}</td>
-                  <td className="num"><b>{m !== null ? pts(m) : <span title="Incomplete weeks">known {pts(p.marginal.known_all)}</span>}</b></td>
+                  <td className="num"><b>{m !== null ? pts(m) : <span title="Incomplete weeks in this window">known {pts(knownMarginal(p, phase))}</span>}</b></td>
                   <td className="num faint">{pts(p.marginal.regular)} / {pts(p.marginal.playoff)}</td>
                   <td><Strip p={p} weeks={weeks} /></td>
                   <td className="num">{p.weeks_started.length} / {p.weeks_benched.length}</td>
@@ -362,7 +372,7 @@ function Upgrades({ d, trades, team, phase }: { d: TeamValue; trades: boolean; t
         <div>
           <h3>Waiver moves (exact lineup change)</h3>
           {fa.player ? <p>
-            Best free addition: <b>{fa.player.name}</b> ({fa.player.position}) {signed(fa.lineup_points_added ?? fa.known_lineup_points_added)}
+            Best free addition: <b>{fa.player.name}</b> ({fa.player.position}) <Delta value={fa.lineup_points_added} known={fa.known_lineup_points_added} />
             <span className="faint"> (reg {signed(fa.regular_season_points_added)} · playoffs {signed(fa.playoff_points_added)})</span>{" "}
             <Badge value={fa.realistic ? "open roster spot" : "optimistic: needs a drop"} tone={fa.realistic ? "good" : "warn"} title={fa.label} />
           </p> : <p className="faint">No fully projected free agent improves the lineup.</p>}
@@ -371,14 +381,16 @@ function Upgrades({ d, trades, team, phase }: { d: TeamValue; trades: boolean; t
             <tbody>{up.add_drop.map((x) => (
               <tr key={`${x.add.espn_player_id}-${x.drop.espn_player_id}`}>
                 <td>{x.add.name} <Pos value={x.add.position} /></td><td><PlayerLink id={x.drop.espn_player_id} name={x.drop.name} /></td>
-                <td className="num"><b>{signed(x.ros_delta ?? x.known_ros_delta)}</b></td>
+                <td className="num"><b><Delta value={x.ros_delta} known={x.known_ros_delta} /></b></td>
                 <td className="num faint">{signed(x.regular_season_delta)} / {signed(x.playoff_delta)}</td>
               </tr>))}</tbody>
           </table>}
+          {up.add_drop.some((x) => x.ros_delta === null) && <p className="faint">Rows marked incomplete are ordered by partial totals over projected weeks; they are not a complete projected comparison.</p>}
+          {fa.excluded_position_limit > 0 && <p className="faint">{fa.excluded_position_limit} available players skipped: adding them would exceed an ESPN position limit.</p>}
           {up.waiver_checks.length > 0 && <>
             <h3 style={{ marginTop: 8 }}>Waiver page suggestions, re-checked</h3>
             <ul className="reasons">{up.waiver_checks.map((w) => (
-              <li key={w.add_id}>{w.recommendation} {w.add_name ?? w.add_id}{w.drop_name ? ` / drop ${w.drop_name}` : ""}: {w.ros_delta !== undefined ? <b>{signed(w.ros_delta)}</b> : null} <span className="faint">({w.status}; waiver score {pts(w.waiver_score, 2)})</span></li>))}</ul>
+              <li key={w.add_id}>{w.recommendation} {w.add_name ?? w.add_id}{w.drop_name ? ` / drop ${w.drop_name}` : ""}: {w.known_ros_delta !== undefined ? <b><Delta value={w.ros_delta} known={w.known_ros_delta} /></b> : null} <span className="faint">({w.status}; waiver score {pts(w.waiver_score, 2)})</span></li>))}</ul>
             <p className="faint">{up.waiver_rule}</p>
           </>}
         </div>

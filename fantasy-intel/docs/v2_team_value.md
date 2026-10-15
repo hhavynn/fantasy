@@ -27,7 +27,7 @@ It writes nothing and changes no other module.
 | Depth | `team_lineups.without` + `project_team` (explicit removal) | Who fills in for each starter, which weeks, and how much of his points the roster recovers |
 | Bench reasons | lineup assignments; `lineup.eligible`; `player_ros_projections.bye_weeks` | A reason code per benched week: IR, no projection, projected 0, NFL bye, FLEX competition, outscored |
 | Upgrade slot-weeks | `team_lineups.replacement_market` | Gap between your weakest starter in a slot and the best available free agent for that slot-week |
-| Waiver moves | `team_lineups.best_fa_addition`; stored `waiver_recommendations` | Realistic add/drop (best free agent per candidate drop, net exact lineup delta); roster-capacity label; stored waiver suggestions re-checked on the lineup engine |
+| Waiver moves | `team_lineups.best_fa_addition`; stored `waiver_recommendations` | Realistic add/drop (best free agent per candidate drop, net exact lineup delta); roster-capacity label; ESPN position limits enforced with the trade engine's rule (a free agent that would exceed one is skipped and counted); stored waiver suggestions re-checked on the lineup engine |
 | Trades | `trade_discovery.TradeSearch` + `detail` (manual evaluator consistency), `trades.evaluate_trade` | A small 1-for-1 preview (both-gain list and my-gain list), with links to the evaluator |
 | Playoff race | `playoff_race.build_playoff_race` (PR #13) | Re-projection of your remaining matchups after the best add/drop and the top trade preview |
 
@@ -45,7 +45,9 @@ weeks add 0, and a current-IR player adds 0. It depends on the rest of the roste
 * it is not trade currency.
 
 **Missing vs zero.** A missing projection makes the week incomplete. The canonical total is NULL, and the known-only
-total is shown and labelled. A projected 0 (a bye, or out) is a real value.
+total is shown and labelled "known … (incomplete)", always for the selected phase only (a missing playoff week never pulls
+regular-season points into the playoff view). Add/drop rows with incomplete deltas are ordered by those partial totals and
+say so. A projected 0 (a bye, or out) is a real value.
 
 **IR.** Current-IR players are inactive, as in the canonical engine. Their hypothetical free-activation upside
 (`ir_activation_sensitivity`) is shown next to them and never enters a total.
