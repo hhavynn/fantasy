@@ -104,12 +104,16 @@ export default async function StartSitPage({ searchParams }: PageProps) {
             <Badge value="ESPN Starters" />
           </div>
           <div className={styles.metricValue}>
-            {summary.projection_complete && summary.actual_projected_total !== null
-              ? `${num(summary.actual_projected_total, 1)} pts`
-              : `${num(summary.known_actual_total, 1)} pts*`}
+            {summary.starters_count === 0
+              ? "—"
+              : summary.projection_complete && summary.actual_projected_total !== null
+                ? `${num(summary.actual_projected_total, 1)} pts`
+                : `${num(summary.known_actual_total, 1)} pts*`}
           </div>
           <span className={styles.metricSubtext}>
-            {summary.projection_complete ? "All starters projected" : "*Partial total (missing projections)"}
+            {summary.starters_count === 0
+              ? "No submitted lineup for this week"
+              : summary.projection_complete ? "All starters projected" : "*Partial total (missing projections)"}
           </span>
         </div>
 
@@ -149,6 +153,8 @@ export default async function StartSitPage({ searchParams }: PageProps) {
               ? "Gain over actual ESPN lineup"
               : summary.status === "incomplete_data"
               ? "Cannot compute (missing projections)"
+              : summary.projected_gain === null
+              ? "No submitted lineup to compare"
               : "Currently starting best lineup"}
           </span>
         </div>

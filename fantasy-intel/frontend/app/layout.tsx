@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Barlow_Condensed, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
-import { NavGroups, SubNav } from "@/components/Nav";
+import { MobileNav, NavGroups, SubNav } from "@/components/Nav";
 import { SyncPill } from "@/components/SyncPill";
 import { api } from "@/lib/api";
-import type { SyncInfo } from "@/lib/types";
+import type { StatusPayload } from "@/lib/sync-status";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +18,8 @@ export const metadata: Metadata = {
   description: "Local fantasy football war room",
 };
 
-type Status = { league: { name: string; current_week: number } | null; sync: SyncInfo; nfl_latest_week: number | null };
-
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const status = await api<Status>("/api/status");
+  const status = await api<NonNullable<StatusPayload>>("/api/status");
   const s = status.data;
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
@@ -38,7 +36,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   {s.league.name} <span className="faint">· wk {s.league.current_week}</span>
                 </span>
               )}
-              <SyncPill sync={s?.sync ?? null} nflLatestWeek={s?.nfl_latest_week ?? null} />
+              <SyncPill status={s ?? null} />
+              <MobileNav />
             </div>
           </div>
           <SubNav />

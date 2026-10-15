@@ -1,0 +1,47 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { ALL_NAV_PAGES, NAV_GROUPS, getActiveRoute } from "./navigation.ts";
+
+const group = (path: string) => getActiveRoute(path).activeGroup?.label ?? null;
+
+test("root route ('/') activates Overview in My team", () => {
+  assert.equal(getActiveRoute("/").activeHref, "/");
+  assert.equal(group("/"), "My team");
+});
+
+test("nested trade routes: the longest match wins", () => {
+  assert.equal(getActiveRoute("/trades").activeHref, "/trades");
+  assert.equal(getActiveRoute("/trades/discover").activeHref, "/trades/discover");
+  assert.equal(getActiveRoute("/trades/discover/something").activeHref, "/trades/discover");
+  assert.equal(group("/trades/discover"), "Trades");
+});
+
+test("detail pages activate their list page", () => {
+  assert.equal(getActiveRoute("/managers/123").activeHref, "/managers");
+  assert.equal(group("/managers/123"), "League");
+  assert.equal(getActiveRoute("/players/4262921").activeHref, "/players");
+  assert.equal(group("/players/4262921"), "Players");
+});
+
+test("matching respects path boundaries and trailing slashes", () => {
+  assert.equal(getActiveRoute("/managersx").activeHref, null);
+  assert.equal(getActiveRoute("/start-sit/").activeHref, "/start-sit");
+  assert.equal(group("/start-sit"), "My team");
+});
+
+test("unknown routes and Data quality activate nothing (never Overview)", () => {
+  for (const path of ["/unknown", "/another-fake-page/nested", "/data", "", null]) {
+    assert.deepEqual(getActiveRoute(path), { activeHref: null, activeGroup: null });
+  }
+});
+
+test("every page appears once and every group has pages", () => {
+  const hrefs = ALL_NAV_PAGES.map((p) => p.href);
+  assert.equal(hrefs.length, new Set(hrefs).size, "duplicate hrefs in navigation");
+  assert.deepEqual(NAV_GROUPS.map((g) => g.label), ["My team", "Players", "Trades", "League"]);
+  assert.ok(NAV_GROUPS.every((g) => g.pages.length > 0));
+  for (const href of ["/", "/start-sit", "/my-team/value", "/players", "/waivers", "/trades", "/trades/discover",
+    "/schedule-intelligence", "/luck-lab", "/playoff-race", "/managers"]) {
+    assert.ok(hrefs.includes(href), `${href} missing from navigation`);
+  }
+});

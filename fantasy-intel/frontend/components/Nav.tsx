@@ -2,57 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
-
-type Page = { href: string; label: string };
-type Group = { label: string; pages: Page[] };
-
-// Data quality is reached from the sync pill, not the nav.
-const GROUPS: Group[] = [
-  {
-    label: "My team",
-    pages: [{ href: "/", label: "Overview" }, { href: "/start-sit", label: "Start/Sit" }, { href: "/my-team/value", label: "Team value" }],
-  },
-  { label: "Players", pages: [{ href: "/players", label: "Players" }, { href: "/waivers", label: "Waivers" }] },
-  { label: "Trades", pages: [{ href: "/trades", label: "Analyzer" }, { href: "/trades/discover", label: "Discover" }] },
-  {
-    label: "League",
-    pages: [
-      { href: "/schedule-intelligence", label: "Schedule" },
-      { href: "/luck-lab", label: "Luck lab" },
-      { href: "/playoff-race", label: "Playoff race" },
-      { href: "/managers", label: "Managers" },
-    ],
-  },
-];
-
-/** Longest matching prefix wins, so /trades/discover marks only "Discover". */
-function activeHref(pathname: string): string | null {
-  let best: string | null = null;
-  for (const { href } of GROUPS.flatMap((g) => g.pages)) {
-    const hit = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
-    if (hit && (!best || href.length > best.length)) best = href;
-  }
-  return best;
-}
-
-function useActive() {
-  const href = activeHref(usePathname());
-  const group = GROUPS.find((g) => g.pages.some((p) => p.href === href)) ?? null;
-  return { href, group };
-}
+import { useCallback, useRef, useState } from "react";
+import { NAV_GROUPS, getActiveRoute } from "@/lib/navigation";
+import { useDismiss } from "./useDismiss";
 
 export function NavGroups() {
-  const { group } = useActive();
-  const pathname = usePathname();
-  // The layout persists across client navigation, so close any open popover (sync details) on route change.
-  useEffect(() => {
-    document.querySelectorAll("details.sync[open]").forEach((d) => d.removeAttribute("open"));
-  }, [pathname]);
+  const { activeGroup } = getActiveRoute(usePathname());
   return (
     <nav className="nav-groups" aria-label="Sections">
-      {GROUPS.map((g) => (
-        <Link key={g.label} href={g.pages[0].href} aria-current={g === group ? "true" : undefined}>
+      {NAV_GROUPS.map((g) => (
+        <Link key={g.label} href={g.pages[0].href} aria-current={g === activeGroup ? "true" : undefined}>
           {g.label}
         </Link>
       ))}
@@ -61,15 +20,57 @@ export function NavGroups() {
 }
 
 export function SubNav() {
-  const { href, group } = useActive();
-  if (!group) return null;
+  const { activeHref, activeGroup } = getActiveRoute(usePathname());
+  if (!activeGroup) return null;
   return (
-    <nav className="subnav" aria-label={`${group.label} pages`}>
-      {group.pages.map((p) => (
-        <Link key={p.href} href={p.href} aria-current={p.href === href ? "page" : undefined}>
+    <nav className="subnav" aria-label={`${activeGroup.label} pages`}>
+      {activeGroup.pages.map((p) => (
+        <Link key={p.href} href={p.href} aria-current={p.href === activeHref ? "page" : undefined}>
           {p.label}
         </Link>
       ))}
     </nav>
+  );
+}
+
+/** Phones: the section row collapses into a menu button with every group's pages. */
+export function MobileNav() {
+  const pathname = usePathname();
+  const { activeHref } = getActiveRoute(pathname);
+  const [open, setOpen] = useState(false);
+  const [shownFor, setShownFor] = useState(pathname);
+  if (shownFor !== pathname) {          // the layout persists across navigation: close on route change
+    setShownFor(pathname);
+    setOpen(false);
+  }
+  const root = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(open, close, root, toggle);
+
+  return (
+    <div className="mobile-nav" ref={root}>
+      <button ref={toggle} type="button" className="menu-toggle" aria-expanded={open} aria-controls="mobile-nav-panel"
+              aria-label={open ? "Close menu" : "Open menu"} onClick={() => setOpen((o) => !o)}>
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+          <path d={open ? "M4 4l10 10M14 4L4 14" : "M3 5h12M3 9h12M3 13h12"} fill="none" stroke="currentColor"
+                strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <nav id="mobile-nav-panel" className="mobile-nav-panel" aria-label="All pages">
+          {NAV_GROUPS.map((g) => (
+            <div key={g.label} className="mobile-nav-group">
+              <span className="mobile-nav-title">{g.label}</span>
+              {g.pages.map((p) => (
+                <Link key={p.href} href={p.href} aria-current={p.href === activeHref ? "page" : undefined} onClick={close}>
+                  {p.label}
+                </Link>
+              ))}
+            </div>
+          ))}
+        </nav>
+      )}
+    </div>
   );
 }
