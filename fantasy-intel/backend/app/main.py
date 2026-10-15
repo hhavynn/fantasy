@@ -7,6 +7,7 @@ from .api.routes import router
 from .api.manager_scouting import router as manager_scouting_router
 from .api.trade_discovery import router as trade_discovery_router
 from .api.schedule_intelligence import router as schedule_intelligence_router
+from .api.playoff_race import router as playoff_race_router
 
 app = FastAPI(title="fantasy-intel", version="0.1.0")
 app.add_middleware(
@@ -19,6 +20,7 @@ app.include_router(router)
 app.include_router(manager_scouting_router)
 app.include_router(trade_discovery_router)
 app.include_router(schedule_intelligence_router)
+app.include_router(playoff_race_router)
 
 
 @app.get("/health")

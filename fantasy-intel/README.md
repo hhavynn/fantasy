@@ -95,6 +95,7 @@ fantasy-intel/
 | `/trades`          | Manual trade evaluator (1–2 players per side): both teams' optimal starting lineups rebuilt every remaining week before/after the trade on ESPN's projections; ROS / regular-season / playoff deltas, weekly table, starter changes, mandatory drop / open roster spot, hypothetical FA replacement, player context. No trade grade, no acceptance probability |
 | `/trades/discover` | Trade opportunity discovery: exact lineup impact for both teams across every 1-for-1 / 2-for-1 / 1-for-2 trade with every manager, sortable by projected gains, with categories, manager context and a link into the manual evaluator. No acceptance estimate |
 | `/schedule-intelligence` | Schedule intelligence: each remaining week's opponent (bye, home/away, regular season vs fantasy playoffs from league settings) and what that defense allowed in games presumed complete before the week (EPA per eligible pass play / designed rush, rush success, position target shares) with samples, ranks and insufficient-data reasons. Descriptive only |
+| `/playoff-race` | Playoff Race Lab: actual standings, all-play and points; every remaining regular-season matchup with ESPN-projected optimal lineup totals (multi-week periods supported); a deterministic projected-standings scenario, the playoff cutline, bubble teams and high-leverage games; URL-backed winner overrides. No probabilities, tiebreaks, clinching or elimination claims. Read-only |
 | `/managers`        | One card per manager: record, roster construction, waiver aggression, positional add interest, streaming, trades, confidence |
 | `/managers/[id]`   | The evidence: every metric with numerator/denominator, league mean, z-score, sample size, rule; weekly roster composition; full transaction history; failed claims |
 | `/data`            | ID-mapping summary, unmatched players, name-matched (medium confidence) players, sync history |
@@ -343,6 +344,15 @@ status, so a suspended game with a partial score can still count; see the doc), 
 denominators, games sampled, ranks and explicit missing reasons. Computed on request from `nfl_defense_week` and
 `nfl_schedules`; read-only; no effect on projections, scores, waivers, scouting or trades.
 Details and the source-data audit: [`docs/v2_schedule_intelligence.md`](docs/v2_schedule_intelligence.md).
+
+## Playoff Race Lab (V2, read-only)
+
+`GET /api/playoff-race` (and `/playoff-race`) starts from ESPN's verified standings and adds the higher
+ESPN-projected side of every remaining regular-season matchup (canonical weekly lineup optimizer, missing
+projections left unresolved, games already under way never projected) as one deterministic scenario. Override
+any open game with `override=MATCHUP_ID:home|away|tie|none` (the page keeps them in the URL). No tiebreak,
+division, clinch or elimination rule is applied or claimed. Details and the data audit:
+[`docs/v2_playoff_race.md`](docs/v2_playoff_race.md).
 
 ## Upgrading an existing database (schema v6)
 

@@ -405,3 +405,76 @@ export type ScheduleIntelligence = {
   primary_metric: Record<string, string>;
   labels: Record<SiLabel, string>; label_rule: string; notes: string[];
 };
+
+// ------------------------------------------------------------------ playoff race lab --
+
+export type PrRecord = { wins: number; losses: number; ties: number; unresolved?: number };
+export type PrStatus = "inside" | "outside" | "cutline_tie" | null;
+export type PrStanding = { team_id: number; record: PrRecord | null; pct: number | null; rank: number | null; tied: boolean; status: PrStatus };
+
+export type PrSide = {
+  projected_points: number | null; known_points: number | null; complete: boolean;
+  weekly: { week: number; projected_lineup_points: number | null; known_lineup_points: number | null; projection_complete: boolean }[];
+  missing_projection_ids: number[]; missing_players: string[]; gap: string | null;
+};
+
+export type PrOutcome = "home" | "away" | "tie";
+export type PrMatchup = {
+  matchup_id: number; matchup_period: number; weeks: number[] | null;
+  home_team_id: number | null; away_team_id: number | null; home_name: string | null; away_name: string | null;
+  espn_winner: string | null; playoff_tier: string | null;
+  status: "final" | "bye" | "in_progress" | "upcoming" | "unmapped"; detail?: string;
+  result?: PrOutcome; home_points?: number | null; away_points?: number | null;
+  home_projection?: PrSide; away_projection?: PrSide; projected_margin?: number | null; close?: boolean | null;
+  weekly_margins?: { week: number; margin: number }[]; projected_winner?: PrOutcome | null;
+  override?: PrOutcome | "none"; scenario_result: PrOutcome | null;
+};
+
+export type PrRemaining = {
+  matchup_id: number; matchup_period: number; weeks: number[] | null; opponent_id: number | null; opponent_name: string | null;
+  home: boolean; status: PrMatchup["status"]; projected_margin: number | null; close: boolean | null; scenario_result: "win" | "loss" | "tie" | null;
+};
+
+export type PrTeam = {
+  team_id: number; name: string; abbrev: string | null; is_mine: boolean; division_id: number | null; espn_seed: number | null;
+  record: PrRecord; points_for: number | null; points_against: number | null;
+  current: PrStanding; projected: PrStanding;
+  all_play: { wins: number; losses: number; ties: number; periods: number[]; pct: number | null };
+  regular_season_projected_points: number | null; regular_season_known_points: number | null;
+  projection_weeks_incomplete: number[] | null; projection_gap: string | null;
+  remaining: PrRemaining[]; high_leverage_games: number[];
+};
+
+export type PrLeverage = {
+  matchup_id: number; matchup_period: number; weeks: number[] | null; opponent_id: number | null; status: string;
+  close: boolean | null; scenario_result: "win" | "loss" | "tie" | null;
+  if_win: { rank: number | null; status: PrStatus }; if_loss: { rank: number | null; status: PrStatus }; high_leverage: boolean;
+};
+
+export type PrPlace = { rank: number | null; status: PrStatus; record: PrRecord | null };
+
+export type PlayoffRace = {
+  league: { league_id: number; season: number; name: string; current_week: number; current_matchup_period: number | null;
+    final_scoring_period: number; reg_season_matchups: number | null; playoff_teams: number | null;
+    last_regular_season_week: number | null; divisions: number; matchup_periods: Record<string, number[] | null> };
+  window: { first_actionable_week: number | null; reason: string | null; uncertain: boolean | null; current_week_status: string | null };
+  focus_team_id: number | null;
+  teams: PrTeam[];
+  matchups: { regular: PrMatchup[]; playoff_known: PrMatchup[] };
+  scenario: {
+    base: "projected" | "actual"; overrides: { matchup_id: number; outcome: PrOutcome | "none" }[];
+    decided_open_games: number; unresolved_open_games: number;
+    current_standings: PrStanding[]; projected_standings: PrStanding[];
+    cutline: { playoff_spots: number; last_inside: PrStanding | null; first_outside: PrStanding | null; cutline_tie: boolean;
+      near_cutline: number[]; bubble: number[] } | null;
+    leverage: Record<string, PrLeverage[]>;
+    focus: { scenario: PrPlace; win_out: PrPlace; lose_out: PrPlace; open_games: number;
+      fewest_wins_to_get_inside: { wins_needed: number | null; of_games: number; method: string; games: number[]; note?: string } | null;
+      helpful_other_results: { matchup_id: number; matchup_period: number; result: PrOutcome; loser_id: number; rank: number | null; status: PrStatus }[] } | null;
+  };
+  schedule_coverage: { checked: boolean; reason?: string; regular_season_periods?: number; complete?: boolean;
+    missing: { team_id: number; periods: number[] }[]; unmapped_periods?: number[] };
+  record_check: string[];
+  rules: { ordering: string; projection: string; close: string; clinch: string; espn_rules_reported: Record<string, unknown>; espn_rules_note: string };
+  warnings: string[]; notes: string[];
+};
