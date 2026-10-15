@@ -77,10 +77,11 @@ def make_inputs(overrides=None, injuries=(), roster_status=()):
                            injuries=list(injuries), roster_status=list(roster_status), names=names)
 
 
-# Buy-low: AAA WR2 has a WR1-sized role (target, air-yard and red-zone share) but a WR3 box score.
+# Buy-low: AAA WR2 has a near-WR1 role (target, air-yard and red-zone share) but a WR3 box score.
+# Kept below the elite cut: an elite role is never a buy-low without a public price.
 def _buy_wr(w, r):
-    r.update(target_share=0.30, air_yards_share=0.40, wopr=1.5 * 0.30 + 0.7 * 0.40, rz_targets=4,
-             targets=10, receiving_yards=30.0, receiving_tds=0, offense_pct=0.95, opportunities=10)
+    r.update(target_share=0.22, air_yards_share=0.30, wopr=1.5 * 0.22 + 0.7 * 0.30, rz_targets=2,
+             targets=8, receiving_yards=30.0, receiving_tds=0, offense_pct=0.9, opportunities=8)
     return r
 
 
@@ -296,3 +297,20 @@ def test_only_the_current_week_report_sets_availability():
     m = tm.build_market(inputs)
     assert m["EEE-WR1"].available and "LISTED_OUT_LAST_WEEK" in m["EEE-WR1"].flags
     assert not m["GGG-WR1"].available and m["GGG-WR1"].status == "Doubtful"
+
+
+def test_elite_roles_need_a_public_price_to_be_a_buy_low():
+    """A star with a quiet box score is not a discount unless a public market rank says so."""
+    def quiet_star(w, r):
+        r = _elite_wr(w, r)
+        r.update(receiving_yards=20.0, receiving_tds=0)
+        return r
+    inputs = make_inputs({**OVERRIDES, ("CCC", "WR1"): quiet_star})
+    m = tm.build_market(inputs)
+    assert m["CCC-WR1"].usage_rank == 1 and m["CCC-WR1"].gap >= tm.GAP_MIN
+    assert tm.buy_low_score(m["CCC-WR1"]) is None
+    wrs = sorted({r["gsis_id"] for r in inputs.usage if "WR" in r["gsis_id"]})
+    adp = {g: i for i, g in enumerate([g for g in wrs if g != "CCC-WR1"] + ["CCC-WR1"], start=1)}
+    priced = tm.build_market(inputs, adp_ranks=adp)
+    assert priced["CCC-WR1"].market_source == "adp"
+    assert tm.buy_low_score(priced["CCC-WR1"]) is not None

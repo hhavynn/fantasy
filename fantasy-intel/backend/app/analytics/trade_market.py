@@ -119,6 +119,8 @@ class PlayerMarket:
     usage_value: float = 0.0
     market_value: float = 0.0
     partial_weeks: tuple[int, ...] = ()     # games excluded from role metrics (see full_games)
+    trend_moves: list[dict] = field(default_factory=list)   # metrics that moved: baseline vs recent weeks
+    market_source: str = "box_score"        # "box_score" proxy or "adp" (public rank supplied)
     status: str | None = None               # latest injury report / roster status
     available: bool = True
     flags: list[str] = field(default_factory=list)
@@ -198,6 +200,11 @@ def derive_metric(rows: Sequence[Mapping], metric: str, weeks: Iterable[int] | N
 def _plural(v: float, one: str, many: str | None = None) -> str:
     n = round(v)
     return f"{n} {one if n == 1 else many or one + 's'}"
+
+
+def _weeks_text(weeks: Sequence[int]) -> str:
+    ws = list(weeks)
+    return f"{ws[0]}-{ws[-1]}" if len(ws) > 1 and ws == list(range(ws[0], ws[-1] + 1)) else ", ".join(map(str, ws))
 
 
 def _pct_text(v: float | None) -> str:
@@ -428,6 +435,8 @@ def build_market(inputs: MarketInputs, adp_ranks: Mapping[str, int] | None = Non
             usage_score=round(usage, 1), status=st,
             available=st not in UNAVAILABLE_STATUSES and st not in UNAVAILABLE_ROSTER,
             partial_weeks=tuple(w for w in r["weeks"] if w not in set(r["role_weeks"])),
+            trend_moves=[{"metric": t.metric, "label": t.label, "baseline_weeks": tuple(t.baseline_weeks),
+                          "recent_weeks": tuple(t.recent_weeks)} for t in trends if t.label in ("UP", "DOWN")],
         )
 
     _value(out, adp_ranks)
@@ -448,6 +457,7 @@ def _value(players: dict[str, PlayerMarket], adp_ranks: Mapping[str, int] | None
         for g, p in pool.items():
             k = 1.0 if p.available else INJURED_DISCOUNT
             p.usage_rank, p.market_rank = u_rank[g], m_rank[g]
+            p.market_source = "adp" if adp_ranks and g in adp_ranks else "box_score"
             p.usage_value = round(k * value_curve(u_rank[g], pos), 1)
             p.market_value = round(k * value_curve(m_rank[g], pos), 1)
 
@@ -519,6 +529,12 @@ def _flags(players: dict[str, PlayerMarket], rows_by: dict[str, list[dict]], inp
                     p.evidence.append(say("yards_per_target", lambda v: f"{v:.1f} yards per target"))
         if p.trend_label in ("UP", "DOWN"):
             p.flags.append(f"ROLE_{p.trend_label}")
+            for mv in p.trend_moves:
+                if mv["label"] == p.trend_label and mv["metric"] in METRIC_LABELS:
+                    for key, when in (("baseline_weeks", "earlier"), ("recent_weeks", "recent")):
+                        p.evidence.append(_ev(g, rows, mv["metric"], list(mv[key]),
+                                              lambda v, m=mv["metric"], when=when, ws=mv[key]:
+                                              f"{_metric_text(m, v)} in weeks {_weeks_text(ws)} ({when})"))
         if p.partial_weeks and p.partial_weeks[-1] == p.weeks[-1]:
             p.flags.append("LEFT_LAST_GAME_EARLY")
             p.evidence.append(_ev(g, rows, "offense_pct", [p.weeks[-1]],
@@ -552,7 +568,9 @@ def buy_low_score(p: PlayerMarket) -> float | None:
     """A startable role the market prices lower than we do. None = not a candidate."""
     if (p.games < MIN_GAMES_CLASSIFY or not p.available or p.gap < GAP_MIN or p.usage_rank is None
             or p.usage_rank > STARTERS[p.position] or p.market_value <= 0
-            or ("LEFT_LAST_GAME_EARLY" in p.flags and p.status is None)):   # health unknown until a report
+            or ("LEFT_LAST_GAME_EARLY" in p.flags and p.status is None)    # health unknown until a report
+            # Managers price stars by name; a quiet box score is not a discount without a public price.
+            or (p.market_source == "box_score" and p.usage_rank <= ELITE_SHARE * STARTERS[p.position])):
         return None
     s = p.gap + (8 if "ROLE_UP" in p.flags else 0) + (5 if "TD_LIGHT" in p.flags else 0) \
         + (4 if "VACATED_ROLE" in p.flags else 0) - (8 if "ROLE_DOWN" in p.flags else 0) \
