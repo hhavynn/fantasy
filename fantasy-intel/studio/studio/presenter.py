@@ -474,6 +474,37 @@ def apply(ep: Episode, mode: str) -> Path | None:
         write_json(ep.path(f"presenter_{mode}.json"), rec)
 
 
+def present(ep: Episode, mode: str) -> Path | None:
+    """The host version of a finished Short.
+
+    With [presenter] voice set to a different Kokoro voice than the Short's (the host's own voice, chosen by
+    audition), the story is re-rendered as `<slug>-host` with that voice: same script, claims, hook and
+    scenes, re-timed to the new narration, then the host layer goes on top of it. The original episode and
+    its final.mp4 are never touched. Without a different voice, the layer goes straight onto the original."""
+    if mode == "off":
+        return None
+    voice = (getattr(ep.cfg, "raw", {}).get("presenter") or {}).get("voice")
+    if not voice or voice == ep.cfg["shorts"].get("voice"):
+        return apply(ep, mode)
+    import copy
+    from .cli import SHORT, finish, run_stages
+    cfg = copy.deepcopy(ep.cfg)
+    cfg.raw["shorts"] = {**cfg.raw["shorts"], "voice": voice}
+    host = Episode(ep.season, ep.week, ep.fmt, cfg, force=getattr(ep, "force", set()), slug=f"{ep.slug}-host")
+    host.dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ep.path("snapshot.json"), host.path("snapshot.json"))
+    story = {**read_json(ep.path("story.json")), "variant_of": ep.id}
+    if not host.path("story.json").exists() or read_json(host.path("story.json")) != story:
+        write_json(host.path("story.json"), story)
+    hook = read_json(ep.path("script.json"))["structure"]["hook"]      # the same opening as the original
+    ep.log(f"  presenter: re-voicing {ep.id} with {voice} as {host.id}")
+    run_stages(host, SHORT, hook)
+    if not finish(host):
+        ep.log(f"  presenter: {host.id} failed the standard QC; no host version")
+        return None
+    return apply(host, mode)
+
+
 def _metadata(ep: Episode, mode: str) -> None:
     meta = read_json(ep.path("metadata.json"))
     meta["description"] = meta["description"].rstrip() + "\nThe on-screen host is an AI-generated character, not a real person."
@@ -502,7 +533,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{eid}: no final.mp4; render it first")
             ok = False
             continue
-        ok &= apply(ep, a.mode) is not None
+        ok &= present(ep, a.mode) is not None
     return 0 if ok else 1
 
 

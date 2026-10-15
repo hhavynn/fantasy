@@ -95,7 +95,7 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
         passed = finish(ep)
         if passed and presenter_mode != "off":       # optional AI host layer; never touches final.mp4
             from . import presenter
-            presenter.apply(ep, presenter_mode)
+            presenter.present(ep, presenter_mode)
         results.append((ep, story, passed))
     index = ["# Shorts for review", "", f"Week {week}, {season}. Watch each, read its review.md, then publish by hand.", ""]
     for ep, story, passed in results:

@@ -73,3 +73,13 @@ def test_lipsync_gate_passes_a_mouth_that_follows_speech_and_fails_a_frozen_one(
     assert not frozen["lipsync_tracks_audio"]["pass"]
     lost = P.clip_qc(clip, audio, LM, len(speech) - 1, {"open": [None] * len(speech), "frames_without_face": 44})
     assert not lost["face_tracked"]["pass"]
+
+
+def test_same_voice_puts_the_host_straight_on_the_original(tmp_path, monkeypatch):
+    ep = _episode(tmp_path, monkeypatch)
+    ep.cfg.raw["presenter"]["voice"] = ep.cfg["shorts"]["voice"]
+    calls = []
+    monkeypatch.setattr(P, "apply", lambda e, m: calls.append((e.id, m)))
+    P.present(ep, "hook")
+    assert calls == [(ep.id, "hook")]                      # no re-voiced -host episode needed
+    assert P.present(ep, "off") is None

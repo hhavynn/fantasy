@@ -8,7 +8,22 @@ An optional, fully local AI host that delivers the opening line (`hook`), or the
 
 **Verdict: it works end to end, but it isn't production-ready.** It looks like a competent AI avatar, not a person (see "How good it looks").
 
-## Results on the two publish-ready videos
+## Update: the host's own voice
+
+You picked **`am_adam`** (voice 7) from the 8-voice audition (`studio/episodes/presenter-audition/voice_audition.mp4`), set as `[presenter] voice` in `config.toml`.
+
+- **How host versions are built:** they're re-rendered as `<slug>-host`, with the same script, claims, hook and scenes, narrated by `am_adam` and re-timed to it. Then the host is added on top.
+- **What stays the same:** the regular Shorts and their fenrir `final.mp4` are untouched.
+- **What the invariants check:** the host version's own audio and timing against its re-voiced `final.mp4`.
+
+| Video | Host hook | Host hybrid |
+|---|---|---|
+| Allen (`2026-w06-short-braelon-allen-host/`) | QC passed, lip-sync correlation 0.56 | QC passed |
+| Gadsden (`2026-w06-short-oronde-gadsden-ii-host/`) | withheld | withheld |
+
+**Correction about Gadsden.** I said earlier that his withheld clip "looked in sync". The per-frame data proves otherwise. With both voices, the mouth stays closed through "snaps both weeks" and opens wide in the silent pause after it. The gate was right to withhold it. This line ("Same snaps both weeks. 8 targets, then 1.") is one MuseTalk handles badly, for reasons I haven't pinned down.
+
+## Results on the two publish-ready videos (first pass, fenrir voice)
 
 | Video | Original | Hook | Hybrid |
 |---|---|---|---|

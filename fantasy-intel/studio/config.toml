@@ -85,3 +85,6 @@ engine = "~/models/musetalk-mac"
 cache = "~/models/presenter"
 # the fictional host, generated once with Z-Image-Turbo (Apache-2.0); see assets/presenter/host.json
 portrait = "assets/presenter/host.png"
+# The host's own voice (picked by audition: episodes/presenter-audition). Different from [shorts] voice, so host
+# versions are re-rendered as <slug>-host with this voice; the regular Shorts keep theirs.
+voice = "am_adam"
