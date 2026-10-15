@@ -93,18 +93,29 @@ export interface VerdictInput {
   scoringPeriod: number;
   moves: number;
   actionableMoves: number;
+  /** Starting slots of the recommended lineup with no player (see `emptyStartingSlots`). */
+  emptySlots: string[];
 }
+
+/** Slot names of recommended-lineup rows that hold no player: a plain "no player in a starting slot". */
+export function emptyStartingSlots(rows: readonly { slot: string; player_id: number | null }[]): string[] {
+  return rows.filter((r) => r.player_id === null).map((r) => r.slot);
+}
+
+const EMPTY_REASON = "no eligible rostered player is available";
 
 /**
  * The one-sentence answer the Start/Sit page opens with. It only restates backend facts
  * (status, gain, move counts); it never computes a gain of its own.
  */
 export function startSitVerdict(v: VerdictInput): Verdict {
+  const empty = v.emptySlots.length > 0;
+  const emptyList = v.emptySlots.join(", ");
   if (v.status === "future_preview") {
     return {
-      tone: "info",
+      tone: empty ? "caution" : "info",
       headline: `Week ${v.scoringPeriod} preview: no submitted lineup to compare`,
-      detail: "This is the best projected lineup for the current roster. Moves are not actionable until the current week ends.",
+      detail: `This is the best projected lineup for the current roster. Moves are not actionable until the current week ends.${empty ? ` ${emptyList} stays empty: ${EMPTY_REASON}.` : ""}`,
     };
   }
   if (v.status === "incomplete_data") {
@@ -122,6 +133,13 @@ export function startSitVerdict(v: VerdictInput): Verdict {
     };
   }
   if (v.moves === 0) {
+    if (empty) {
+      return {
+        tone: "caution",
+        headline: `Best available lineup leaves ${emptyList} empty: ${EMPTY_REASON}`,
+        detail: "No swap improves the projected total under kickoff locks.",
+      };
+    }
     return v.status === "all_locked"
       ? { tone: "info", headline: "Every relevant game has kicked off", detail: "No lineup changes are possible under kickoff locks." }
       : { tone: "positive", headline: "Your lineup is optimal for the projections", detail: "No swap improves the projected total under kickoff locks." };
@@ -133,7 +151,11 @@ export function startSitVerdict(v: VerdictInput): Verdict {
     : v.actionableMoves === 0
       ? "None can be made yet: see the badge on each move."
       : `${v.actionableMoves} can be made now.`;
-  return { tone: "info", headline, detail };
+  return {
+    tone: empty ? "caution" : "info",
+    headline,
+    detail: empty ? `${detail} ${emptyList} stays empty: ${EMPTY_REASON}.` : detail,
+  };
 }
 
 /** Text badge for a decision's actionability class. */

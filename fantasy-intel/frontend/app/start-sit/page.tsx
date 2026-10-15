@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
@@ -8,6 +9,7 @@ import { Missing, num, when } from "@/lib/format";
 import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import {
   actionabilityBadge,
+  emptyStartingSlots,
   lineupTotal,
   lockStatusBadge,
   slotChange,
@@ -21,6 +23,9 @@ export const metadata = { title: "Start/Sit" };
 
 const BENCH_SORTS = ["name", "proj"] as const;
 const BENCH_DEFAULT: SortState = { key: "proj", dir: "desc" };
+
+/** Position filters the waivers page accepts via `?pos=`. */
+const WAIVER_POSITIONS = ["QB", "RB", "WR", "TE", "K", "D/ST"];
 
 const HEALTHY = ["ACTIVE", "NORMAL"];
 
@@ -54,6 +59,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   const totalPlayers = summary.starters_count + summary.bench_count + summary.ir_count;
   const lockedRows = recommended_lineup.filter((r) => r.lock_status === "LOCKED" && r.player_id !== null);
 
+  const emptySlots = emptyStartingSlots(recommended_lineup);
   const verdict = startSitVerdict({
     status: summary.status,
     startersCount: summary.starters_count,
@@ -62,6 +68,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
     scoringPeriod: d.scoring_period,
     moves: moves.length,
     actionableMoves: actionable,
+    emptySlots,
   });
   const actual = lineupTotal(hasLineup, summary.projection_complete, summary.actual_projected_total, summary.known_actual_total);
   const recommended = lineupTotal(true, summary.projection_complete, summary.recommended_projected_total, summary.known_recommended_total);
@@ -85,7 +92,12 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
       {/* Verdict band: the answer first, then the numbers behind it. */}
       <div className={styles.verdict}>
-        <Notice tone={verdict.tone} title={verdict.headline}>{verdict.detail}</Notice>
+        <Notice tone={verdict.tone} title={verdict.headline}>
+          {verdict.detail}
+          {emptySlots.map((slot) => (
+            <span key={slot}> <Link href={WAIVER_POSITIONS.includes(slot) ? `/waivers?pos=${encodeURIComponent(slot)}` : "/waivers"}>Find a {slot} on waivers</Link>.</span>
+          ))}
+        </Notice>
         <StatStrip>
           <Stat
             label="Submitted lineup"

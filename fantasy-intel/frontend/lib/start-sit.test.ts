@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  formatGain, actionabilityBadgeTone, lockStatusBadge, lineupTotal, startSitVerdict, actionabilityBadge, slotChange,
+  formatGain, actionabilityBadgeTone, lockStatusBadge, lineupTotal, startSitVerdict, emptyStartingSlots, actionabilityBadge, slotChange,
 } from "./start-sit-helpers.ts";
 
 test("formatGain formats positive, zero, and missing gains", () => {
@@ -45,7 +45,7 @@ test("lineupTotal never presents a partial sum as a full total", () => {
   assert.deepEqual(lineupTotal(true, true, null, 90.1), { value: 90.1, partial: true });
 });
 
-const base = { status: "optimal", startersCount: 9, projectedGain: 0, missingProjections: 0, scoringPeriod: 6, moves: 0, actionableMoves: 0 };
+const base = { status: "optimal", startersCount: 9, projectedGain: 0, missingProjections: 0, scoringPeriod: 6, moves: 0, actionableMoves: 0, emptySlots: [] as string[] };
 
 test("startSitVerdict opens with the decision", () => {
   assert.equal(startSitVerdict(base).tone, "positive");
@@ -78,4 +78,17 @@ test("slotChange separates real promotions from slot relabelling", () => {
   assert.equal(slotChange({ slot: "WR", playerId: 1, isCurrentlyStarting: true, currentSlot: "FLEX" }).kind, "relabel");
   assert.equal(slotChange({ slot: "D/ST", playerId: 2, isCurrentlyStarting: false, currentSlot: "BE" }).text, "Promoted from bench");
   assert.equal(slotChange({ slot: "D/ST", playerId: null, isCurrentlyStarting: false, currentSlot: null }).kind, "empty");
+});
+
+test("an empty starting slot is flagged instead of called optimal", () => {
+  assert.deepEqual(emptyStartingSlots([{ slot: "QB", player_id: 1 }, { slot: "D/ST", player_id: null }]), ["D/ST"]);
+  assert.deepEqual(emptyStartingSlots([{ slot: "QB", player_id: 1 }]), []);
+  const none = startSitVerdict({ ...base, emptySlots: ["D/ST"] });
+  assert.equal(none.tone, "caution");
+  assert.match(none.headline, /leaves D\/ST empty/);
+  assert.match(none.detail, /No swap improves/);
+  const swaps = startSitVerdict({ ...base, status: "upgrade_available", projectedGain: 3.9, moves: 1, actionableMoves: 1, emptySlots: ["D/ST"] });
+  assert.equal(swaps.tone, "caution");
+  assert.match(swaps.headline, /\+3\.9 pts/);
+  assert.match(swaps.detail, /D\/ST stays empty/);
 });

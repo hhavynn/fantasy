@@ -5,7 +5,8 @@ import styles from "./Delta.module.css";
 /**
  * A signed change with a direction glyph, tone and text: "▲ +1.2". Positive is good by default;
  * pass `invert` where lower is better (points against, rank). `null`/`undefined` renders as the
- * muted missing dash; a value that rounds to zero is a measured zero ("▬ 0.0"), not a change.
+ * muted missing dash; a value that rounds to zero is a measured zero, shown as plain "0.0" in the flat
+ * tone with no glyph (a glyph would read as the missing dash at display size).
  */
 export function Delta({ value, digits = 1, suffix = "", invert = false, className }: {
   value: number | null | undefined;
@@ -22,7 +23,7 @@ export function Delta({ value, digits = 1, suffix = "", invert = false, classNam
   const tone = good === null ? styles.flat : good ? styles.good : styles.bad;
   return (
     <span className={cx(styles.delta, tone, className)}>
-      <span className={styles.glyph} aria-hidden="true">{flat ? "▬" : up ? "▲" : "▼"}</span>
+      {!flat && <span className={styles.glyph} aria-hidden="true">{up ? "▲" : "▼"}</span>}
       <span>{flat ? "" : up ? "+" : "−"}{text}{suffix}</span>
     </span>
   );
