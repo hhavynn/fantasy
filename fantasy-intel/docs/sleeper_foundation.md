@@ -49,6 +49,9 @@ season):
 | `api/trade_discovery.py` `discover()` | `/trades/discover` |
 | `analytics/trade_data.py` `load_league_state()` | trade evaluator, trade discovery, `playoff_race.load_race_data`, `team_value.load_team_value_inputs` |
 | `analytics/luck_lab.py` `load_luck_data()` | `/luck-lab` |
+| `analytics/start_sit.py` `load_start_sit_evaluation()` | `/start-sit` |
+| `api/independent_projections.py` `build_response()` | independent projections API |
+| `analytics/independent_projection_store.py` `league_scoring(season)` (first row of `ORDER BY synced_at DESC`) | independent projection runs: which league's scoring rules are applied |
 | `analytics/manager_loader.py` `load_league()` | `load_inputs` (manager metrics), `manager_scouting` |
 | `analytics/waivers.py` `build_waivers()` | analytics pipeline |
 | `analytics/projections.py` `league_window(season)` | ROS projections, team lineups, `/data-quality` |
