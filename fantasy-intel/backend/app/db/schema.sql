@@ -781,3 +781,46 @@ CREATE TABLE IF NOT EXISTS external_usage_issues (
     provider_player_id  VARCHAR,
     created_at          TIMESTAMP
 );
+
+-- ------------------------------------------- Independent projections ----
+-- Research output of the independent (non-ESPN) weekly model; see docs/independent_projection_engine.md.
+-- Create-only tables written ONLY by scripts/backtest_independent_projections.py project; read only by
+-- GET /api/projections/independent. Nothing else (lineups, trades, waivers, scores) reads them.
+CREATE TABLE IF NOT EXISTS independent_projection_runs (
+    run_id               VARCHAR PRIMARY KEY,
+    season               INTEGER,
+    week                 INTEGER,
+    model_version        VARCHAR,
+    scoring_fingerprint  VARCHAR,
+    artifact_created_at  VARCHAR,
+    data_through_season  INTEGER,     -- latest completed (season, week) used by any feature
+    data_through_week    INTEGER,
+    nfl_synced_at        TIMESTAMP,   -- latest successful live NFL sync before the run
+    model_status         JSON,        -- position -> {status, validated_for, start_sit_ready, reasons}
+    evaluation           JSON,        -- held-out aggregates from the artifact
+    created_at           TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS independent_player_projections (
+    season               INTEGER,
+    week                 INTEGER,
+    espn_player_id       BIGINT,
+    gsis_id              VARCHAR,
+    run_id               VARCHAR,
+    position             VARCHAR,
+    nfl_team             VARCHAR,
+    opponent             VARCHAR,
+    is_home              BOOLEAN,
+    projected_points     DOUBLE,      -- NULL = no independent estimate (see coverage_status)
+    interval_low         DOUBLE,      -- empirical 80% prediction interval; NULL unless validated + calibrated
+    interval_high        DOUBLE,
+    model                VARCHAR,     -- context | opportunity
+    coverage_status      VARCHAR,     -- projected | abstain_no_history | bye | withheld_unavailable | ...
+    games_used           INTEGER,
+    latest_usage_season  INTEGER,
+    latest_usage_week    INTEGER,
+    missing_inputs       JSON,
+    flags                JSON,
+    explanation          JSON,        -- [{feature, value, training_mean, contribution, text}]
+    PRIMARY KEY (season, week, espn_player_id)
+);
