@@ -48,7 +48,7 @@
 
 ### Task 3: Real league audit and delivery
 
-**Files:** new `scripts/check_manager_scouting.py`, `docs/manager-scouting.md`, `docs/manager-scouting-los-subies.md`.
+**Files:** new `scripts/check_manager_scouting.py`, `docs/manager-scouting.md`, plus a real-league audit report (kept out of the repo in the gitignored `local/` folder).
 
 - [x] Run all 12 reports read-only, document strongest supported tendency, biggest need, completed trades and conservative trade confidence; spot-check user's team and move/trade extremes.
 - [x] Run full `uv run pytest`, `npm run lint`, `npm run build`.

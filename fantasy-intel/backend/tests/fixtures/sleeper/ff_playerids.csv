@@ -1,0 +1,14 @@
+mfl_id,sportradar_id,gsis_id,sleeper_id,espn_id,name,merge_name,position,team,db_season
+13116,a1,00-0033873,4046,3139477,Quinn Arbor,quinn arbor,QB,KCC,2026
+14000,a2,00-0035700,6794,4241457,Rory Bend,rory bend,RB,LVR,2026
+14100,a3,00-0036900,7564,,Wes Crane,wes crane,WR,JAC,2026
+14200,a4,00-0036100,8130,,Tate Dorsey,tate dorsey,TE,LAR,2026
+14300,a5,00-0034000,4984,,Jo Ellis,jo ellis,WR,WAS,2026
+14400,a6,00-0035000,5850,,Ike Fuller,ike fuller,RB,SFO,2026
+14500,a7,00-0040000,12500,,Taxi Rookie,taxi rookie,WR,GBP,2026
+14600,a8,,10229,,Kai Hollis,kai hollis,PK,FA,2026
+14700,a9,00-0031000,2133,,Dual Record,dual record,WR,NEP,2026
+14701,a10,00-0031001,2133,,Dual Record,dual record,WR,NEP,2026
+14800,a11,00-0035800,6801,,Flex Ingram,flex ingram,RB,LVR,2026
+14801,a12,00-0035800,6801,,Flex Ingram,flex ingram,WR,LVR,2026
+15000,a13,00-0011111,,,No Sleeper Id,no sleeper id,QB,BUF,2026
