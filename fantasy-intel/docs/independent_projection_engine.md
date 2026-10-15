@@ -865,6 +865,14 @@ Status vocabulary (separate axes):
 ifp-1?" per position: every non-passing criterion's explanation plus the approval and production
 gate. The CLI summary prints one line per criterion.
 
+### Shallow gradient boosting (research, retain ridge)
+
+`docs/research/hgb_challenger.md`: per-position HistGradientBoosting on ifp-2's features (`ifp-hgb-0.1.0`,
+research only, scikit-learn in the `research` dependency group) is worse than ifp-2 on development
+(+0.025 MAE, CI [+0.003, +0.045]) and not better on the 2023-26 replay; ridge is retained. Its frozen
+configuration writes write-once pregame research forecasts (`hgb_research.py predict`) as prospective
+evidence only.
+
 ### Runtime
 
 Feature store 2020-2026 (42.7k rows, with classification) 6.4 s; development grid of 20 specs x 8

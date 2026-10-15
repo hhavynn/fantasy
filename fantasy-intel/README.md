@@ -487,6 +487,9 @@ Vercel installs with `uv sync --no-dev`, which skips the sync-only packages (pol
 nflreadpy, espn-api live in the `sync` dependency group) and keeps the function bundle
 around 310 MB, under Vercel's 500 MB limit. `tests/test_hosting.py` fails if an API route
 starts importing them. Cold starts download the MotherDuck extension (a couple of seconds).
+The offline gradient-boosting research (`scripts/hgb_research.py`) needs scikit-learn, which
+lives in the `research` group (included by `dev`, so also skipped by `--no-dev`);
+`tests/test_hgb_research.py` fails if the API ever loads it.
 
 **4. Dashboard project on Vercel.** Import the repository again with Root Directory
 `fantasy-intel/frontend`. Environment variables:
