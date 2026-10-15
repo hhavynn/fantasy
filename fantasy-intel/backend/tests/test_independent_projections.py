@@ -99,7 +99,10 @@ PLAYERS = {  # espn id -> (name, position, gsis, confidence, injury)
     7: ("Rookie RB", "RB", "00-ROOKIE", "high", "ACTIVE"),
     8: ("Bye WR", "WR", gsis("HHH", "WR1"), "high", "ACTIVE"),
     9: ("Healthy TE", "TE", gsis("FFF", "TE"), "high", "QUESTIONABLE"),
+    10: ("Exempt-list WR", "WR", gsis("GGG", "WR1"), "high", "DAY_TO_DAY"),
+    11: ("Backup WR", "WR", gsis("GGG", "WR2"), "high", "ACTIVE"),
 }
+ESPN_ZERO = {11}
 
 
 @pytest.fixture
@@ -113,8 +116,10 @@ def live(tmp_path):
     for g, t in team.items():
         for w in range(1, 7):
             res = g == gsis("CCC", "QB") and w >= 5
+            exe = g == gsis("GGG", "WR1")
             roster.append({"season": 2026, "week": w, "gsis_id": g, "team": t, "game_type": "REG",
-                           "status": "RES" if res else "ACT", "status_description_abbr": "R01" if res else "A01"})
+                           "status": "RES" if res else "EXE" if exe else "ACT",
+                           "status_description_abbr": "R01" if res else "E02" if exe else "A01"})
     roster.append({"season": 2026, "week": 6, "gsis_id": "00-ROOKIE", "team": "GGG", "game_type": "REG",
                    "status": "ACT", "status_description_abbr": "A01"})
     con.register("_r", pl.DataFrame(roster).to_arrow())
@@ -126,7 +131,7 @@ def live(tmp_path):
         con.execute("INSERT INTO player_id_map (espn_player_id, gsis_id, match_method, match_confidence) VALUES "
                     "(?, ?, ?, ?)", [pid, g, "espn_id:nfl_players" if conf == "high" else "name_position_team", conf])
         con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, ?, 6, NULL, ?, '2026-10-13 12:00:00')",
-                    [pid, 10.0 + pid])
+                    [pid, 0.0 if pid in ESPN_ZERO else 10.0 + pid])
         con.execute("INSERT INTO lineup_snapshots (league_id, season, scoring_period, team_id, espn_player_id, "
                     "lineup_slot_id, is_starter) VALUES (99, 2026, 6, 1, ?, ?, false)", [pid, 21 if pid == 6 else 20])
     src = load_sources(con, SCORING)
@@ -151,6 +156,8 @@ def test_live_coverage_statuses_and_null_not_zero(live):
     assert r[7]["coverage_status"] == "abstain_no_history" and r[7]["projected_points"] is None
     assert r[8]["coverage_status"] == "bye"
     assert any("QUESTIONABLE" in f for f in r[9]["flags"])
+    assert r[10]["coverage_status"] == "withheld_unavailable" and "EXE" in r[10]["missing_inputs"][0]
+    assert r[11]["coverage_status"] == "projected"
     assert meta["data_through_season"] == 2026 and meta["data_through_week"] == 5
     assert r[1]["latest_usage_week"] == 5 and r[1]["games_used"] == 5
 
@@ -226,10 +233,15 @@ def test_api_contract_is_stable(live, monkeypatch):
     assert ok["comparison"]["independent_minus_espn"] == pytest.approx(
         ok["independent"]["projected_points"] - ok["espn"]["projected_points"], abs=0.01)
     assert any(e["kind"] == "model_input" for e in ok["comparison"]["evidence"])
+    assert ok["comparison"]["comparable"] is True
     out = players[4]
     assert out["independent"]["projected_points"] is None and out["espn"]["projected_points"] == 14.0
-    assert out["comparison"] == {"independent_minus_espn": None, "evidence": []}
+    assert out["comparison"] == {"independent_minus_espn": None, "comparable": False,
+                                 "comparability_note": "one or both projections unavailable", "evidence": []}
     assert players[5]["independent"]["model_status"] == "unsupported"
+    backup = players[11]["comparison"]
+    assert backup["independent_minus_espn"] > 0 and backup["comparable"] is False
+    assert "does not expect him to play" in backup["comparability_note"]
     wr = client.get("/api/projections/independent", params={"week": 6, "position": "wr"}).json()
     assert {p["position"] for p in wr["players"]} == {"WR"}
     assert client.get("/api/projections/independent", params={"week": 6, "position": "XX"}).status_code == 422

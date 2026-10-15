@@ -362,6 +362,9 @@ def flags_for(row: dict) -> list[str]:
         out.append(f"changed team ({row.get('last_team')} -> {row.get('team')}): role shares come from the old team")
     if (row.get("weeks_since_last") or 0) >= 4:
         out.append(f"returning after {row.get('weeks_since_last')} weeks without a game")
+    if row.get("snap_pct") is not None and row["snap_pct"] < 0.5:
+        out.append(f"part-time role (recent snap share {row['snap_pct']:.0%}): the estimate assumes he plays, "
+                   "not that he starts or plays a full game")
     if row.get("snap_trend") is not None and abs(row["snap_trend"]) >= 0.2:
         out.append(f"snap share changed {row['snap_trend']:+.0%} in the last game")
     return out

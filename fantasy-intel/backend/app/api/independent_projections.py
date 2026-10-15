@@ -64,8 +64,20 @@ def _player(p: dict, run: dict | None) -> dict:
             "explanation": p.get("explanation") or [], "is_espn_fallback": False,
         },
         "espn": {"projected_points": espn, "synced_at": str(p["espn_synced_at"]) if p.get("espn_synced_at") else None},
-        "comparison": {"independent_minus_espn": diff, "evidence": _evidence(p, diff)},
+        "comparison": {"independent_minus_espn": diff, **_comparability(indep, espn),
+                       "evidence": _evidence(p, diff)},
     }
+
+
+def _comparability(indep: float | None, espn: float | None) -> dict:
+    """ESPN projects 0 for players it does not expect to play; the independent estimate is
+    conditional on playing, so that difference is about participation, not performance."""
+    if indep is None or espn is None:
+        return {"comparable": False, "comparability_note": "one or both projections unavailable"}
+    if espn == 0:
+        return {"comparable": False, "comparability_note": "ESPN projects 0 (it does not expect him to play); the "
+                "independent estimate assumes he plays, so the difference is not a performance disagreement"}
+    return {"comparable": True, "comparability_note": None}
 
 
 def build_response(con, week: int | None, position: str | None, team_id: int | None) -> dict:

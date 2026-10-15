@@ -7,8 +7,9 @@ Guards (each produces an explicit coverage_status and a NULL projection, never a
   uncertain_id_mapping   no high-confidence ESPN->GSIS crosswalk (a wrong id would borrow
                          another player's history)
   bye                    the player's team has no game in week W
-  withheld_unavailable   NFL-ineligible for week W (player_availability rule) or ESPN status
-                         OUT / INJURY_RESERVE / SUSPENSION
+  withheld_unavailable   NFL-ineligible for week W (player_availability rule), ESPN status
+                         OUT / INJURY_RESERVE / SUSPENSION, or latest NFL weekly roster status not
+                         ACT/INA (exempt, suspended, practice squad, reserve, released)
   abstain_no_history     no NFL game in the lookback window (rookie debut, long absence)
   no_model               the artifact has no model for the position
 """
@@ -28,6 +29,7 @@ from .league_scoring import resolve_skill_scoring
 from .player_availability import RESTRICTED, derive
 
 WITHHELD_ESPN = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
+ACTIVE_ROSTER = {"ACT", "INA"}     # nflverse weekly roster: active 53 (INA = game-day inactive that week)
 SUPPORTED_MAPPING = "high"
 
 
@@ -121,10 +123,17 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
                        team_games=team_weeks.get(team), weeks=[week])
         if c["espn_player_id"] in on_ir:
             rec["flags"].append("in a fantasy IR slot")
+        roster_status = (hist[-1].get("status") or "").upper() if hist else None
         if (avail["status"] in RESTRICTED and week in avail["unavailable_weeks"]) \
                 or (c["injury_status"] or "").upper() in WITHHELD_ESPN:
             rec["coverage_status"] = "withheld_unavailable"
             rec["missing_inputs"] = [w for w in avail["warnings"]] or [f"ESPN status {c['injury_status']}"]
+            continue
+        if roster_status and roster_status not in ACTIVE_ROSTER:
+            # Exempt, suspended, practice squad, released, reserve of any kind: not on the active roster.
+            rec["coverage_status"] = "withheld_unavailable"
+            rec["missing_inputs"] = [f"not on the NFL active roster (weekly roster status {roster_status}, "
+                                     f"week {hist[-1]['week']})"]
             continue
         if (c["injury_status"] or "").upper() in ("QUESTIONABLE", "DOUBTFUL"):
             rec["flags"].append(f"ESPN injury status {c['injury_status']}: projection assumes he plays")
