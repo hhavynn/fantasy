@@ -804,6 +804,12 @@ availability risk after an exit is missing the next game, which `participation.p
 `inj_exits_recent` as an input, so partial-game risk stays in the conditional mean rather than being
 assumed away.
 
+Follow-up research (`docs/research/adaptive_workload.md`, research only, rejected): an exposure-weighted
+established workload (an injury-shortened game counts as the fraction of a game the player was on the
+field) and an adaptive recent-vs-established blend (`ifp-aw-0.1.0`) were within +/-0.003 MAE of ifp-2
+on every window, so `xfpl_eb` stays as frozen. The blend helps persistent usage declines and hurts
+upward streaks, which regress; a decline-only variant would need a fresh, prospective pre-registration.
+
 ### Intervals
 
 The challenger reuses the empirical tercile bands, built from development-window residuals (no
