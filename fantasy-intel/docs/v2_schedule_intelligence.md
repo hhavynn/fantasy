@@ -1,0 +1,187 @@
+# V2 schedule intelligence (Phase A: descriptive)
+
+Code: `backend/app/analytics/schedule_intelligence.py` (read-only service), `backend/app/api/schedule_intelligence.py`
+(`GET /api/schedule-intelligence`), the `/schedule-intelligence` page. Tests: `tests/test_schedule_intelligence.py`
+(controlled synthetic inputs in `tests/synthetic_nfl.py`). Specification: `docs/research/v2_schedule_intelligence.md`.
+
+For each QB/RB/WR/TE on a fantasy roster and each remaining scoring period: the player's current NFL team, the
+scheduled opponent, home/away or bye, regular season or fantasy playoffs, and what that opponent's defense has
+allowed in games presumed complete **before** that week, with numerators, denominators, games sampled, ranks and
+explicit reasons when evidence is missing or too thin. It is context, not a projection: no number here enters ESPN
+projections, player scores, BUY/HOLD/SELL, waivers, manager scouting, the trade evaluator or trade discovery.
+
+## Source-data audit (existing tables; no new ingestion, no schema change)
+
+`nfl_defense_week` is built in `nfl/sync.py::derive_pbp` from nflverse REG play-by-play, one row per defense and
+week, restricted to `scrimmage` plays (`play_type` run or pass, not a two-point try):
+
+| column | exact meaning (verified in code) | finding |
+|---|---|---|
+| `pass_plays` | rows with nflverse `pass` = 1 **and EPA present** | nflverse `pass` covers pass attempts, sacks and QB scrambles; penalty no-plays (`play_type` `no_play`) and two-point tries are excluded. It is the nflverse pass-play definition, close to but **not verified identical to `qb_dropback`**, so it is labelled "eligible pass play", never "dropback". |
+| `pass_epa_sum` | sum of EPA over the same rows | consistent with `pass_plays` (null EPA excluded from both) |
+| `rush_plays` | designed rushes (run with a rusher, not a scramble, not a kneel, not 2-pt) **with EPA** | |
+| `rush_epa_sum` / `rush_success` | EPA sum / count of nflverse `success` = 1 (EPA > 0) over designed rushes | consistent with `rush_plays` |
+| `explosive_runs` | designed rushes with >= 10 yards, **including rows without EPA** | denominator mismatch with `rush_plays` (used by `defense_context.explosive_run_rate_allowed`); not used here |
+| `targets` | pass attempts with a receiver, not a sack, not 2-pt | |
+| `rb/wr/te_targets` | targets whose receiver's nflverse position is RB (FB counted as RB) / WR / TE | position = the receiver's **latest** weekly-roster position this season (else the players table), not the position in that week; targets to other or unidentified receivers count only in `targets` (unknown and "other" cannot be told apart) |
+
+Not available from the stored aggregates: **passing success rate allowed** (no pass success column), pressure,
+coverage scheme, alignment, cornerback assignments, routes. They are not shown.
+
+`defense_context` is a season-to-date snapshot (`through_week` = the latest week loaded). It is **not** reused: it
+would leak later games into any earlier week, and it counts every game with play-by-play rows, including one that
+was still in progress at sync time (nothing in `derive_pbp` checks completion). The existing next-week matchup label
+in `player_context` keeps using it unchanged.
+
+## No lookahead and presumed-complete games only
+
+For a matchup in week W, the opponent's sample is its `nfl_defense_week` rows of the same season with week < W
+whose game is **presumed complete**. Every defense is ranked under the same cutoff, so ranks for week W use only
+pre-W games league-wide. Other seasons never enter.
+
+**No stored field proves a game is final.** `nfl_schedules` keeps every nflverse schedule column (scores, `result`,
+`overtime`, kickoff date and time, ...) but none of them is a game status. The nflverse dictionary defines
+`home_score` / `away_score` / `result` only as "NA for games which haven't yet been played" and does not say whether
+a score can be live. `nfl_defense_week` is an aggregate and keeps nothing (such as an end-of-game play) that could
+show a game finished, and no ESPN table stores NFL game status. So completion is **inferred**, not verified.
+
+**The heuristic (Phase A).** A game is presumed complete only when:
+
+1. both scores are present (a shutout or a 0-0 counts once the timing rule holds), and
+2. its scheduled kickoff (`gameday` + `gametime`, US Eastern, converted to UTC) is known, and
+3. both inputs were fetched at least **8 hours after the scheduled kickoff**: the schedule and the defensive
+   play-by-play aggregates. Each fetch time is the start (`sync_runs.started_at`, recorded after the nflverse
+   downloads finish) of the latest successful NFL sync **for the league's season** whose stats show it refreshed
+   that table (`nfl_schedules`, `nfl_defense_week`), minus a 1-hour download margin. The earlier of the two
+   decides. A sync can succeed with one download failed, leaving the older rows (and their older fetch time) in
+   place; a sync that refreshed only other NFL tables is not evidence for either input.
+
+Every other game is excluded, with a reason code listed per matchup (`excluded_reasons`) and counted per game in
+`schedule.games_by_completion`:
+
+| code | meaning |
+|---|---|
+| `no_score` | no score in the stored schedule (not played, not yet published, or not recorded) |
+| `kickoff_unknown` | score present, scheduled kickoff unknown |
+| `fetch_time_unknown` | score present, but no successful sync for the season is recorded as refreshing the schedule and/or the defensive aggregates (the reason names which) |
+| `fetched_too_early` | score present, but fetched < 8 h after kickoff (after the margin): possibly a game in progress |
+| `not_in_schedule` | defensive rows with no matching game in the stored schedule (for example a canceled game) |
+
+A game is picked up at a later sync once the rule holds.
+
+**What the heuristic cannot rule out** (also returned as `schedule.completion_limits` and shown on the page):
+
+* **Suspended or abandoned games.** Bills-Bengals on 2 January 2023 was suspended in the first quarter and later
+  canceled. If a schedule shows a partial score for such a game, the rule presumes it complete once 8 hours pass and
+  counts its partial defensive rows (pinned by a regression test). The current public nflverse `games.csv` no
+  longer lists that game (2022 week 17 has 15 games), so once a canceled game is dropped its rows fall back to
+  `not_in_schedule`. What the file showed between the suspension and the cancellation is not known here.
+* **Resumed games and very long delays.** A game resumed on a later day, or delayed beyond 8 hours, can be presumed
+  complete while unfinished. Ordinary overtime and weather delays fit well within 8 hours.
+* **Upstream build time.** The rule measures when this app downloaded the files, not when nflverse generated them.
+  A file built upstream during a game and downloaded later would pass. nflverse release timestamps are not stored.
+* **The 1-hour margin is an assumption, not a bound.** `run_nfl_sync` downloads every dataset (schedules among the
+  first, play-by-play near the end) before it records the run's start. nflreadpy limits each HTTP request's wait
+  (30 s by default), not a whole download, so a very slow sync could exceed the margin. Syncs run as a fresh
+  process (`scripts/sync_nfl.py`), so nflreadpy's default in-memory cache does not carry over between syncs. With
+  its filesystem cache enabled (`NFLREADPY_CACHE=filesystem`), a sync can reuse downloads up to 24 hours old (the
+  default `NFLREADPY_CACHE_DURATION`), and its recorded time would overstate freshness.
+
+No ingestion change was made for Phase A. A reliable signal would need a source that publishes game status (or an
+upstream build timestamp), stored at sync time.
+
+**Freshness shown to the user.**
+
+* `freshness.nfl_schedules` and `freshness.nfl_defense_week` give each input's latest refresh (`fetched_at` = run
+  start, `refreshed_at` = run finish) from successful same-season syncs that refreshed it, or `null` when none is
+  recorded.
+* `freshness.latest_nfl_sync` is the latest successful same-season sync, with flags for which of the two inputs it
+  refreshed.
+* `schedule.completion_reference_time` is the earlier fetch less the margin: scored games that kicked off at least 8
+  hours before it are presumed complete.
+* `schedule.warnings` lists `{code, message}` entries:
+  * `schedule_refresh_unknown` / `defense_refresh_unknown`: no defensive evidence can be shown;
+  * `inputs_refreshed_separately`: the two inputs come from different syncs, for example after a schedule-only refresh;
+  * `latest_sync_refreshed_neither`;
+  * `kickoff_unknown`, `fetched_too_early` and `not_in_schedule`.
+
+## Metrics by position
+
+All are sums over the sampled games (never a mean of per-game rates). Rank 1 = most permissive (the highest value
+allowed to offenses), among defenses with >= 3 presumed-complete sampled games (`MIN_DEF_GAMES`, the existing app constant).
+
+| metric | positions | numerator / denominator |
+|---|---|---|
+| EPA allowed per eligible pass play | QB (primary), WR (primary), TE (primary) | `pass_epa_sum` / `pass_plays` |
+| EPA allowed per designed rush | RB (primary) | `rush_epa_sum` / `rush_plays` |
+| Designed-rush success rate allowed | RB | `rush_success` / `rush_plays` |
+| Share of targets to RBs / WRs / TEs | RB / WR / TE | `rb_targets` / `targets` (etc.), plus position coverage `(rb + wr + te) / targets` |
+
+Target shares are observed tendencies of what offenses did against the defense; they are not proof of a "funnel"
+and say nothing about one player's targets.
+
+## Labels (descriptive, documented, not predictive)
+
+The tougher/permissive band uses only the position's primary metric and the same thresholds as the existing
+next-week matchup label (`analytics/context.py`): ranks 1-10 "observed more permissive", the 10 lowest ranks
+"observed tougher", otherwise "middle". "Insufficient evidence" when the opponent has fewer than 3 sampled games, the
+metric has no eligible plays or a needed column is missing, or fewer than 21 defenses can be ranked (the two bands
+would touch). "Bye" when the team has no game that week; "unavailable" when the NFL schedule does not cover the week
+or the player has no current NFL team. There is no composite schedule score: window summaries only count weeks per
+label.
+
+## Missing versus zero
+
+A metric with no eligible denominator is NULL with a reason ("no eligible rush plays in the sample"); a game whose
+needed column is NULL makes that metric NULL ("pass_plays/pass_epa_sum missing for 1 game(s)"), never 0. A real
+observed 0 (e.g. no successful designed rushes in 175 attempts) is 0. NULL ranks stay unranked.
+
+## Weeks and windows
+
+Scoring periods come from the league (ESPN `current_week` .. `final_scoring_period`); the regular-season/playoff
+boundary and multi-week playoff matchups come from ESPN `scheduleSettings` (`last_regular_season_week`, matchup
+period per scoring period). Nothing is hard-coded to weeks 15-17. ESPN NFL scoring periods are NFL weeks (see
+`docs/v2_trade_evaluator.md`). The first actionable week is the trade evaluator's kickoff-aware rule; a current week
+already under way is shown as informational (`actionable: false`). Windows: next actionable week, remaining regular
+season, fantasy playoffs, all remaining. Player teams are the current ESPN snapshot for every remaining week (no
+prediction of trades or releases). A player whose latest nflverse weekly-roster team differs from ESPN's, or whose
+ESPN-to-GSIS mapping is not high-confidence, carries a note; the schedule always uses ESPN's team.
+
+## API
+
+`GET /api/schedule-intelligence?team_id=&position=all|QB|RB|WR|TE&phase=all|regular|playoffs&player_id=`
+
+* `team_id` defaults to the `is_mine` team; `player_id` returns any one skill-position player (also a free agent).
+* Read-only connection; no writes, syncs or ESPN calls. 404 unknown team/player, 422 bad filter, 503 no league.
+* Response: league, team(s), the window (first actionable week, playoff weeks, matchup periods, uncertainty),
+  schedule coverage and completion counts, per-input freshness and warnings, per-player weeks with evidence and
+  summaries, metric definitions, the label rule and notes. Deterministic for the same database and clock.
+
+## Page
+
+`/schedule-intelligence` (nav "Schedule"): filters for team (default yours), position, regular season/playoffs and
+player; an overview table (next actionable matchup with its evidence, regular-season and playoff opponents as
+colour-coded chips with the opponent's rank, coverage); a fantasy-playoff section; a player drilldown with every
+week's metrics, numerators/denominators, ranks, games sampled and excluded weeks with reasons; the refresh time of
+each input (and whether the latest sync skipped one), the completion warnings, the completion rule and its limits;
+definitions and limitations. The player page links to it.
+
+## Validation and performance
+
+Synthetic only: no local ESPN/nflverse database exists in the development environment, so nothing was validated
+against real 2026 Los Subies data. The tests use controlled synthetic defensive values (not real NFL outcomes).
+Latency on the synthetic league (32 teams, 18 weeks, defensive weeks 1-8): ~45 ms for a 10-player roster, ~90 ms
+for 234 players; the payload for a 10-player roster is ~140 KB.
+
+## Limitations
+
+* Descriptive only. Allowed EPA and target shares mix defense quality with the offenses and game scripts faced; no
+  opponent adjustment, shrinkage or recency weighting (Phase B research, `docs/research/v2_schedule_intelligence.md`).
+* Receiver positions are latest-season positions, not week-specific; "other" and "unidentified" receivers cannot be
+  separated.
+* Completion is presumed by a timing heuristic, not verified: see 'What the heuristic cannot rule out' above
+  (suspended, resumed or very long games, upstream build time, the download margin, nflreadpy's filesystem cache).
+* A sync during a game stores partial rows; they are excluded until a sync at least 8 hours after kickoff.
+* With no successful NFL sync recorded as refreshing either input, no game can be presumed complete, so no defensive
+  evidence is shown.
+* Explosive-run rate is not shown because its stored numerator and denominator use different filters.

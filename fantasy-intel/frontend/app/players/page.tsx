@@ -171,6 +171,12 @@ function PlayerDetail({ d }: { d: Detail }) {
       )}
 
       {d.forward_projection && <ForwardPanel f={d.forward_projection} />}
+      {["QB", "RB", "WR", "TE"].includes(d.player.position ?? "") && (
+        <p className="faint" style={{ margin: 0 }}>
+          <Link href={`/schedule-intelligence?player=${d.player.espn_player_id}`}>Schedule intelligence</Link>: remaining opponents
+          and what each defense has observed allowing (descriptive; separate from the projection above).
+        </p>
+      )}
       {d.context && <ContextPanel d={d} />}
       {d.route_data && <RoutePanel r={d.route_data} />}
 

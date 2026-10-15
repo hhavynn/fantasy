@@ -30,6 +30,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/waivers">Waivers</Link>
             <Link href="/trades">Trades</Link>
             <Link href="/trades/discover">Discover trades</Link>
+            <Link href="/schedule-intelligence">Schedule</Link>
             <Link href="/managers">Managers</Link>
             <Link href="/data">Data quality</Link>
           </nav>
