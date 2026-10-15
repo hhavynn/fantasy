@@ -16,7 +16,9 @@ from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
 from ..analytics.trade_discovery import (ALL_SHAPES, CATEGORIES, HEURISTIC_SHAPES, NOTE, SHAPES, SKILL_POSITIONS, SORTS,
                                          TradeSearch, evaluation)
 from ..analytics.trade_practical import MODES, PHASES, STRICTNESS
-from ..analytics.trades import ASSUMPTIONS, LIMITATIONS, NoRemainingWeeksError, TradeError
+from ..analytics.team_lineups import stream_summary
+from ..analytics.trades import (LIMITATIONS, NoRemainingWeeksError, TradeError, assumptions, streaming_enabled,
+                                with_streaming)
 from .deps import data_version, db, one, rows
 
 router = APIRouter(prefix="/api/trades", tags=["trade discovery"])
@@ -35,7 +37,8 @@ NEED_HIGH_BAND = 0.66      # the manager-scouting "high need" display band (anal
 
 def _search(con, state, anchor: int, shapes: tuple[str, ...], positions: tuple[str, ...]) -> TradeSearch:
     reason = state.start_week_reason or {}
-    key = (data_version(con), anchor, shapes, positions, state.start_week, bool(reason.get("uncertain")))
+    key = (data_version(con), anchor, shapes, positions, state.start_week, bool(reason.get("uncertain")),
+           streaming_enabled(state))
     if key in _CACHE:
         _CACHE.move_to_end(key)
         return _CACHE[key]
@@ -130,10 +133,13 @@ class DiscoverParams:
                  sort: str = Query("my_gain", description="'all' mode only: " + " | ".join(SORTS)),
                  category: str | None = Query(None, description="'all' mode only"),
                  opponent: int | None = None,
-                 limit: int = Query(10, ge=1, le=50), heuristic: bool = True):
+                 limit: int = Query(10, ge=1, le=50), heuristic: bool = True,
+                 kdst_streaming: bool = Query(True, description="value K and D/ST against weekly free-agent "
+                                                                "streaming (false: hold current K/D/ST all season)")):
         self.team_id, self.mode, self.phase, self.strictness = team_id, mode, phase, strictness
         self.include_kdst, self.positions, self.shapes, self.sort = include_kdst, positions, shapes, sort
         self.category, self.opponent, self.limit, self.heuristic = category, opponent, limit, heuristic
+        self.kdst_streaming = kdst_streaming
 
 
 class _Resolved:
@@ -166,6 +172,8 @@ def _resolve(con, p: DiscoverParams) -> _Resolved:
     state = load_league_state(con, lg["season"])
     if state is None:
         raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
+    if p.kdst_streaming:
+        state = with_streaming(state)
     shape_list = tuple(x for x in ALL_SHAPES if x in {y.strip() for y in p.shapes.split(",") if y.strip()})
     if not shape_list or {y.strip() for y in p.shapes.split(",") if y.strip()} - set(ALL_SHAPES):
         raise HTTPException(422, f"shapes must be among {', '.join(ALL_SHAPES)}")
@@ -182,12 +190,26 @@ def _context(r: _Resolved, p: DiscoverParams, ev: dict) -> dict:
         "query": {"team_id": r.team_id, "mode": p.mode, "phase": p.phase, "strictness": p.strictness,
                   "positions": list(r.pos), "include_kdst": any(x in r.pos for x in ("K", "D/ST")),
                   "shapes": list(r.shape_list), "sort": p.sort, "category": p.category, "opponent": p.opponent,
-                  "limit": p.limit, "heuristic": p.heuristic},
+                  "limit": p.limit, "heuristic": p.heuristic, "kdst_streaming": p.kdst_streaming},
         "mode_text": MODES[p.mode],
         "modes": MODES, "phases": list(PHASES), "strictness_options": STRICTNESS,
         "categories": CATEGORIES, "sorts": list(SORTS), "exact_shapes": list(SHAPES),
         "heuristic_shapes": list(HEURISTIC_SHAPES),
     }
+
+
+def _kdst_policy(traded: bool, streaming: bool) -> str:
+    stream = ("Every lineup, before and after a trade, can stream K and D/ST from free agents each week, so a "
+              "kicker or defense counts only for what it adds above that weekly streaming baseline."
+              if streaming else
+              "The K/D/ST streaming baseline is off: each team is assumed to start its current K and D/ST all "
+              "season, so gaining or losing one can look much larger than it is.")
+    if not traded:
+        return ("Kickers and team defenses are left out of automatic discovery by default: ESPN's weekly D/ST and K "
+                "projections swing with matchups and both positions are routinely streamed from free agents. They "
+                "stay fully available in the manual analyzer. " + stream)
+    return ("Kickers and team defenses are included. Their asset value is measured above the best available free "
+            "agent at the position each week. " + stream)
 
 
 def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
@@ -223,15 +245,10 @@ def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
         **{k: out[k] for k in ("mode_text", "sections", "tiers", "excluded", "pool_rule", "pool_size", "coverage",
                                "opponents", "my_needs", "asset_note", "asset_thresholds")},
         "results": shown, "search": search, "names": names,
-        "kdst_policy": ("Kickers and team defenses are left out of automatic discovery by default: ESPN's weekly "
-                        "D/ST and K projections swing with matchups, both positions are routinely streamed from "
-                        "free agents, and the lineup delta does not credit the other team with that streaming. "
-                        "They stay fully available in the manual analyzer."
-                        if not kdst else
-                        "Kickers and team defenses are included. Their asset value is measured above the best "
-                        "available free agent at the position each week (the streaming baseline)."),
+        "kdst_policy": _kdst_policy(kdst, streaming_enabled(state)),
+        "kdst_streaming": stream_summary(state.projections, state.window()),
         "availability_note": AVAILABILITY_NOTE,
-        "note": NOTE, "assumptions": ASSUMPTIONS, "limitations": LIMITATIONS + [
+        "note": NOTE, "assumptions": assumptions(state), "limitations": LIMITATIONS + [
             "Exact discovery covers 1-for-1, 2-for-1 and 1-for-2 trades with one other team (proven top lists). "
             "Larger shapes come from a bounded beam search: exact rows, not a proven top list. Multi-team trades "
             "are not searched.",
@@ -245,7 +262,7 @@ def _view(con, r: _Resolved, p: DiscoverParams) -> dict:
     reason = r.state.start_week_reason or {}
     key = (data_version(con), r.team_id, r.shape_list, r.pos, r.state.start_week, bool(reason.get("uncertain")),
            reason.get("reason"), reason.get("warning"), p.mode, p.phase, p.strictness, p.sort, p.category, p.opponent,
-           p.limit, p.heuristic)
+           p.limit, p.heuristic, p.kdst_streaming)
     with _VIEWS_LOCK:
         if key in _VIEWS:
             _VIEWS.move_to_end(key)

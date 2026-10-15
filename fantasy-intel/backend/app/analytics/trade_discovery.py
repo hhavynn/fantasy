@@ -48,7 +48,7 @@ from dataclasses import replace
 from itertools import combinations
 
 from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total
-from .team_lineups import NDIGITS, RosterPlayer, lineup_relevant, r
+from .team_lineups import NDIGITS, STREAMER_IDS, RosterPlayer, lineup_relevant, r, slot_filled, stream_levels
 from .trades import (EvaluationUnavailable, LeagueState, NoRemainingWeeksError, TradeError, choose_forced_drops,
                      evaluate_trade, legal_roster)
 
@@ -116,17 +116,25 @@ class _Totals:
         self.val = [{p: (positions.get(p), float(state.projections[p][w])) for p in pids
                      if state.projections.get(p, {}).get(w) is not None and w not in blocked.get(p, ())} for w in weeks]
         self.negative = any(v < 0 for row in self.val for _, v in row.values())
+        # The K/D/ST waiver streamer (team_lineups.project_week): a player every roster always has, worth the
+        # week's streaming baseline. Adding one fixed element to every set keeps the lineup total monotone and
+        # submodular, so every stage-A bound below stays valid.
+        levels = stream_levels(state.projections)
+        self.stream = [{pos: per[w] for pos, per in levels.items() if pos in state.slots and per.get(w) is not None}
+                       for w in weeks]
         relevant = {p for p in pids if lineup_relevant(positions.get(p), state.slots) and teams.get(p)}
         self.missing = [frozenset(p for p in relevant if p not in row and w not in blocked.get(p, ()))
                         for w, row in zip(weeks, self.val)]
         self.solves = 0
 
     def week(self, ids, i: int) -> float:
-        row = self.val[i]
+        row, stream = self.val[i], self.stream[i]
         if self.general:
             return lineup_total(assign_lineup([{"espn_player_id": p, "position": self.pos.get(p), "value": row[p][1]}
-                                               for p in ids if p in row], self.slots))
-        by: dict = {}
+                                               for p in ids if p in row]
+                                              + [{"espn_player_id": STREAMER_IDS[pos], "position": pos, "value": v}
+                                                 for pos, v in stream.items()], self.slots))
+        by: dict = {pos: [v] for pos, v in stream.items()}
         for p in ids:
             e = row.get(p)
             if e is not None:
@@ -693,9 +701,9 @@ def _empty_slots(side: dict) -> list[dict]:
     """Starting slots the team could fill before the trade but not after (no eligible player)."""
     out = []
     for b, a in zip(side["lineups"]["before"], side["lineups"]["after"]):
-        had = [x["slot"] for x in b["assignment"] if x["player_id"] is not None]
+        had = [x["slot"] for x in b["assignment"] if slot_filled(x)]
         for x in a["assignment"]:
-            if x["player_id"] is None and x["slot"] in had:
+            if not slot_filled(x) and x["slot"] in had:
                 had.remove(x["slot"])
                 out.append({"week": a["week"], "slot": x["slot"]})
     return out

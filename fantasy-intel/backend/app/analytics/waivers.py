@@ -19,7 +19,7 @@ from .player_scores import percentile_scores
 from .waiver_roster import plan_roster_move
 from .waiver_decisions import acquisition_utility, classify_action, evaluate_streaming, resource_diagnostics
 from .waiver_data import (attach_roster_evidence, comparable_free_agents, load_waiver_context, select_candidates,
-                          stale_snapshot, streaming_evidence)
+                          stale_snapshot, streaming_evidence, streaming_floor)
 
 DEPTH_EXTRA = {"RB": 1, "WR": 1}          # bench depth wanted beyond actual starters
 # How useful a non-starting player at the position is (flex/bye/injury cover).
@@ -474,7 +474,9 @@ def load_profiles(con, league_id: int, season: int, teams: list[dict], is_faab: 
     return profiles, league_share
 
 
-def build_waivers(con) -> dict:
+def build_waivers(con, kdst_streaming: bool = True) -> dict:
+    """Waiver recommendations for your team. `kdst_streaming` credits holding a K or D/ST only for future weeks
+    it beats the weekly streaming baseline (waiver_data.streaming_floor)."""
     lg = fetch_dicts(con, "SELECT * FROM leagues ORDER BY synced_at DESC LIMIT 1")
     if not lg:
         return {"skipped": "no ESPN league synced"}
@@ -526,6 +528,8 @@ def build_waivers(con) -> dict:
     rostered_ids = {r["espn_player_id"] for r in roster_rows}
     pool = [c for c in cands if c["espn_player_id"] not in rostered_ids]
     rostered_conflicts = len(cands) - len(pool)
+    if kdst_streaming:
+        states[my_team_id]["stream"] = streaming_floor(pool, decision_ctx, slots)
     depth = _latest_depth(con, season)
     cands, coverage = select_candidates(pool, values, decision_ctx["projections"], depth, decision_ctx["weeks"])
     candidates_by_id = {p["espn_player_id"]: p for p in cands}

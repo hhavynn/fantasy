@@ -16,7 +16,7 @@ from app.analytics.playoff_race import build_playoff_race
 from app.analytics.team_lineups import (RosterPlayer, best_fa_addition, compare, ir_activation_sensitivity,
                                         project_team, roster_marginal_value, starters, without)
 from app.analytics.team_value import NotFound, build_team_value, load_team_value_inputs
-from app.analytics.trades import evaluate_trade
+from app.analytics.trades import evaluate_trade, with_streaming
 from app.db.connection import connect, fetch_dicts
 
 import synthetic_race as sr
@@ -50,7 +50,7 @@ def add_fa(d, pid, pos, pts, weeks=range(5, 11)):
 def test_overview_and_marginals_equal_the_canonical_functions():
     d = sv.value_race(fa_count=40)
     res = build_team_value(d, EXTRAS, trades=False)
-    st, window = d.state, d.state.window()
+    st, window = with_streaming(d.state), d.state.window()     # team value streams K and D/ST by default
     roster = st.rosters[1]
     base = project_team(roster, st.slots, window, st.projections)
     assert res["overview"]["summary"] == base["summary"]
@@ -68,6 +68,11 @@ def test_overview_and_marginals_equal_the_canonical_functions():
                                    "known_playoff": row["marginal"]["known_playoff"]}
         assert row["weeks_started"] == mv["weeks_started"] and row["weekly"] == mv["weeks"]
         assert sorted(row["weeks_started"] + row["weeks_benched"]) == list(window.weeks)
+    # Opting out reproduces the raw canonical functions (current K/D/ST held all season).
+    raw = build_team_value(d, EXTRAS, trades=False, kdst_streaming=False)
+    assert raw["kdst_streaming"] == {"enabled": False, "positions": []}
+    assert raw["overview"]["summary"] == project_team(roster, st.slots, window, d.state.projections)["summary"]
+    assert res["kdst_streaming"]["enabled"] is True
     # Marginal values are never summed into a team value.
     flat = json.dumps(res)
     assert "total_marginal" not in flat and "marginal_total" not in flat
@@ -183,7 +188,7 @@ def test_ir_player_is_inactive_and_activation_sensitivity_is_separate():
 def test_removal_scenarios_match_explicit_rosters_without_the_player():
     d = sv.value_race(fa_count=10)
     res = build_team_value(d, EXTRAS, trades=False)
-    st, window = d.state, d.state.window()
+    st, window = with_streaming(d.state), d.state.window()     # team value streams K and D/ST by default
     roster = st.rosters[1]
     base = project_team(roster, st.slots, window, st.projections)
     for row in res["positions"]["slots"]:

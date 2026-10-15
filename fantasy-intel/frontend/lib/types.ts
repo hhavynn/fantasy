@@ -176,8 +176,13 @@ export type TradeWindow = {
     current_week_status?: string; uncertain?: boolean; warning?: string | null };
 };
 
+/** `streamer`: the K/D/ST waiver streamer at that week's streaming baseline (player_id null, not an empty slot). */
 export type LineupSlot = { slot: string; player_id: number | null; name?: string | null; position: string | null;
-  points: number | null; is_flex: boolean };
+  points: number | null; is_flex: boolean; streamer?: boolean };
+/** The K/D/ST weekly streaming baseline a lineup computation used (enabled false = current K/D/ST held all season). */
+export type KdstStreaming = { enabled: boolean; rank?: number; note?: string;
+  positions: { position: string; weeks: { week: number; phase: string | null; espn_player_id: number; name: string | null;
+    pro_team: string | null; points: number; rank: number; available_projected: number }[] }[] };
 export type LineupWeek = { week: number; phase: string | null; projection_complete: boolean;
   known_lineup_points: number; projected_lineup_points: number | null; assignment: LineupSlot[];
   bench: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
@@ -263,6 +268,7 @@ export type TradeResult = {
     classifications: Record<string, { label: string; confidence: string }> }>;
   names: Record<string, { name: string | null; position: string | null; pro_team: string | null }>;
   projection_source: string; trade_impact_source: string; assumptions: string[]; limitations: string[];
+  kdst_streaming?: KdstStreaming;
 };
 
 // ------------------------------------------------------------ trade discovery --
@@ -548,7 +554,7 @@ export type TeamValue = {
       marginal: number | null; known_marginal: number; espn_projected: TvRaw }[];
     consolidation_candidates: number[]; ir_players: number[]; note: string };
   upgrades?: {
-    slot_gaps: { week: number; phase: string | null; slot: string; current_player_id: number | null; current_name: string | null;
+    slot_gaps: { week: number; phase: string | null; slot: string; current_player_id: number | null; current_name: string | null; current_is_streamer?: boolean;
       current_points: number | null; best_available: TvLite & { points: number }; gap: number }[];
     free_addition: { player: TvLite | null; lineup_points_added: number | null; known_lineup_points_added: number | null;
       regular_season_points_added: number | null; playoff_points_added: number | null; weeks_started: number[] | null;

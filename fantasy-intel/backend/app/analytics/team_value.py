@@ -29,10 +29,11 @@ from datetime import datetime
 from ..db.connection import fetch_dicts, table_exists
 from .lineup import FLEX_ELIGIBILITY, eligible
 from .playoff_race import RaceData, build_playoff_race, load_race_data
-from .team_lineups import (RosterPlayer, best_fa_addition, compare, project_team, projection, r,
-                           replacement_market, roster_marginal_value, starters, without)
+from .team_lineups import (STREAM_NOTE, STREAM_POSITIONS, RosterPlayer, best_fa_addition, compare, project_team,
+                           projection, r, replacement_market, roster_marginal_value, slot_filled, starters,
+                           stream_summary, without)
 from .trade_discovery import TradeSearch, detail
-from .trades import TradeError
+from .trades import TradeError, with_streaming
 
 PHASES = ("all", "regular", "playoff")
 DROP_CANDIDATES = 3          # add/drop search: the active players whose removal costs the least
@@ -190,7 +191,7 @@ def position_strength(teams: dict[int, dict | None], slots: list[str], window, c
                 continue
             for g in groups:
                 pts = sum(a["value"] if "value" in a else a["points"] for w in p["weeks"] if w["week"] in weeks
-                          for a in w["assignment"] if a["slot"] == g and a["player_id"] is not None)
+                          for a in w["assignment"] if a["slot"] == g and slot_filled(a))
                 per[g][t] = pts / len(weeks)
         out[phase] = {g: {"ranks": _rank({t: round(v, 6) for t, v in per[g].items()}),
                           "average": {t: r(v) for t, v in per[g].items()}} for g in groups}
@@ -211,12 +212,15 @@ def bench_reason(p: RosterPlayer, week: dict, proj, byes: list[int] | None, name
         bye = byes is not None and w in byes
         return {"code": "bye" if bye else "zero_projection",
                 "text": "NFL bye (projected 0)" if bye else "ESPN projects 0"}
-    held = [a for a in week["assignment"] if a["player_id"] is not None and eligible(a["slot"], p.position)]
+    held = [a for a in week["assignment"] if slot_filled(a) and eligible(a["slot"], p.position)]
     fixed = [a for a in held if a["slot"] not in FLEX_ELIGIBILITY]
     flex = [a for a in held if a["slot"] in FLEX_ELIGIBILITY]
     def who(rows):
-        return ", ".join(f"{names.get(a['player_id']) or a['player_id']} ({a['points']:.1f})"
-                         for a in sorted(rows, key=lambda a: -(a["points"] or 0)))
+        return ", ".join(f"{a.get('name') if a.get('streamer') else names.get(a['player_id']) or a['player_id']} "
+                         f"({a['points']:.1f})" for a in sorted(rows, key=lambda a: -(a["points"] or 0)))
+    if p.position in STREAM_POSITIONS and fixed and all(a.get("streamer") for a in fixed):
+        return {"code": "streamable", "text": f"a waiver streamer projects more at {p.position}: {who(fixed)} "
+                                              f"(he projects {v:.1f})"}
     if flex:
         return {"code": "flex_competition", "text": f"{p.position} slots held by {who(fixed) or 'nobody'}; "
                                                     f"FLEX taken by {who(flex)} (he projects {v:.1f})"}
@@ -225,9 +229,19 @@ def bench_reason(p: RosterPlayer, week: dict, proj, byes: list[int] | None, name
 
 # ---------------------------------------------------------- matchup effects --
 
-def matchup_effects(race_res: dict, tid: int, my_after: dict, opp_after: dict[int, dict] | None = None) -> list[dict]:
+def _period_points(team: dict, weeks: list[int]) -> float | None:
+    by = {w["week"]: w for w in team["weeks"]}
+    ws = [by.get(w) for w in weeks]
+    return r(sum(w["projected_lineup_points"] for w in ws)) if all(w is not None and w["projection_complete"]
+                                                                   for w in ws) else None
+
+
+def matchup_effects(race_res: dict, tid: int, my_after: dict, opp_after: dict[int, dict] | None = None,
+                    baseline: dict[int, dict | None] | None = None) -> list[dict]:
     """Re-project my remaining upcoming matchups with a changed roster (and a changed trade partner),
-    same rules: each side's optimized weekly totals over the matchup's weeks. Deterministic scenario."""
+    same rules: each side's optimized weekly totals over the matchup's weeks. Deterministic scenario.
+    `baseline` (every team's project_team under the same lineup model as the "after" rosters, e.g. with
+    the K/D/ST streaming baseline) replaces the race's stored projections so both margins compare alike."""
     opp_after = opp_after or {}
     by_week = {w["week"]: w for w in my_after["weeks"]}
     out = []
@@ -238,6 +252,9 @@ def matchup_effects(race_res: dict, tid: int, my_after: dict, opp_after: dict[in
         mine_side, opp_side = (m["home_projection"], m["away_projection"]) if home else \
             (m["away_projection"], m["home_projection"])
         opp = m["away_team_id"] if home else m["home_team_id"]
+        if baseline is not None:
+            mine_side = {"projected_points": _period_points(baseline[tid], m["weeks"]) if baseline.get(tid) else None}
+            opp_side = {"projected_points": _period_points(baseline[opp], m["weeks"]) if baseline.get(opp) else None}
         new_weeks = [by_week.get(w) for w in m["weeks"]]
         mine_new = r(sum(w["projected_lineup_points"] for w in new_weeks)) \
             if all(w is not None and w["projection_complete"] for w in new_weeks) else None
@@ -266,9 +283,11 @@ def matchup_effects(race_res: dict, tid: int, my_after: dict, opp_after: dict[in
 
 # -------------------------------------------------------------------- build --
 
-def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, trades: bool = True) -> dict:
-    """Read-only. Raises NotFound."""
-    state = race.state
+def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, trades: bool = True,
+                     kdst_streaming: bool = True) -> dict:
+    """Read-only. Raises NotFound. `kdst_streaming` values K and D/ST against weekly free-agent streaming
+    (trades.with_streaming) everywhere below: overview, marginal values, upgrades, trades, matchup effects."""
+    state = with_streaming(race.state) if kdst_streaming else race.state
     teams_meta = {t["team_id"]: t for t in race.teams}
     tid = team_id
     if tid is None:
@@ -300,7 +319,9 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                         "playoff_spots": race_res["league"]["playoff_teams"]},
            "notes": [MARGINAL_NOTE, DEPTH_NOTE, CONSOLIDATION_NOTE,
                      "Projections are ESPN's weekly projections, unmodified; lineups are the exact weekly optimum with "
-                     "the league's slots. A projected 0 is real; a missing projection is unknown and never 0."]}
+                     "the league's slots. A projected 0 is real; a missing projection is unknown and never 0."]
+           + ([STREAM_NOTE] if kdst_streaming else []),
+           "kdst_streaming": stream_summary(state.projections, window)}
     if not window.weeks:
         out.update(empty=True, message="No remaining fantasy scoring periods: every week has kicked off.")
         return out
@@ -448,12 +469,14 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
             continue
         for g in groups:
             held = [a for a in bw["assignment"] if a["slot"] == g]
-            weakest = min(held, key=lambda a: (a["points"] if a["player_id"] is not None else -1))
+            weakest = min(held, key=lambda a: (a["points"] if slot_filled(a) else -1))
             best = (mw["positions"].get(g) or {}).get("best_available")
-            mine_pts = weakest["points"] if weakest["player_id"] is not None else 0.0
+            mine_pts = weakest["points"] if slot_filled(weakest) else 0.0
             if best and best["points"] > mine_pts:
                 gaps.append({"week": bw["week"], "phase": bw["phase"], "slot": g,
-                             "current_player_id": weakest["player_id"], "current_name": names.get(weakest["player_id"]),
+                             "current_player_id": weakest["player_id"],
+                             "current_name": weakest.get("name") if weakest.get("streamer") else names.get(weakest["player_id"]),
+                             "current_is_streamer": bool(weakest.get("streamer")),
                              "current_points": weakest["points"], "best_available": best,
                              "gap": r(best["points"] - mine_pts)})
     gaps.sort(key=lambda x: (-x["gap"], x["week"], x["slot"]))
@@ -548,7 +571,7 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
     effects = {"add_drop": None, "trade": None}
     if best_ad:
         effects["add_drop"] = {"add": best_ad["add"], "drop": best_ad["drop"],
-                               "matchups": matchup_effects(race_res, tid, best_ad["_after"])}
+                               "matchups": matchup_effects(race_res, tid, best_ad["_after"], baseline=projections)}
     top_trade = next((t for t in trade_rows if t["mine"]["ros_delta"] and t["mine"]["ros_delta"] > 0), None)
     if top_trade:
         opp = top_trade["opponent_team_id"]
@@ -561,7 +584,8 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
         opp_after = without(opp_after, forced.get("theirs", []))
         effects["trade"] = {"opponent_team_id": opp, "sends": top_trade["sends"], "receives": top_trade["receives"],
                             "matchups": matchup_effects(race_res, tid, project_team(mine_after, slots, window, proj),
-                                                        {opp: project_team(opp_after, slots, window, proj)})}
+                                                        {opp: project_team(opp_after, slots, window, proj)},
+                                                        baseline=projections)}
     my_games = [m for m in me_race["remaining"]]
     out["playoff_race"] = {"standing_now": me_race["current"], "standing_projected": me_race["projected"],
                            "cutline": race_res["scenario"]["cutline"], "remaining": my_games,

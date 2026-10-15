@@ -253,6 +253,12 @@ status. HOLD is not untouchable, SELL is not must-trade, BUY is not accept-any-p
 impact. Manager context (team position needs, manager classifications) is secondary; no acceptance
 probability is computed.
 
+## K / D/ST streaming (opt-in)
+
+`trades.with_streaming(state)` lets every lineup fill K and D/ST from a weekly free-agent streaming baseline: the
+3rd-best available player's ESPN projection. The trade evaluator, discovery and team value turn it on by default
+(`kdst_streaming`). See [`kdst_streaming_baseline.md`](kdst_streaming_baseline.md).
+
 ## Known limitations
 
 * ESPN projections can be wrong.

@@ -37,6 +37,10 @@ IR occupants do not consume active capacity. Positional caps conservatively coun
 
 ## D/ST and kicker streaming
 
+The forward comparison credits holding a K or D/ST only for later weeks it beats the streaming baseline (the
+3rd-best available player's projection). The upcoming week stays the streaming decision below. See
+[`kdst_streaming_baseline.md`](kdst_streaming_baseline.md).
+
 Use the earliest full actionable scoring week. Compare stored league-scoring projected points against the weakest required incumbent starter, respecting multiple K/D/ST starters. Require opponent/schedule and comparable incumbent evidence. Show schedule, other available projected options, implied team totals, stored opponent offense/defense context, timestamps and missing data. Lines/context are supporting facts, never converted into invented points.
 
 A ≥1 upcoming-point improvement is a short-term streamer; improvement in at least two of the next three supplied matchup/projection comparisons is a multiweek hold candidate. No league starting requirement → unnecessary stash; no demonstrated improvement → pass; missing evidence → incomplete/monitor. A short-term same-position swap may sacrifice full-horizon points only with that sacrifice explicitly explained. Prefer replacing the incumbent streamer over dropping useful RB/WR depth. An open roster still produces no required drop; adding a second streamer is a short-term scenario, not an endorsement to hold it all season.

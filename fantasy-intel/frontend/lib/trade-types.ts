@@ -1,6 +1,6 @@
 // V3 trade analyzer + discovery API types (GET /api/trades/options, POST /api/trades/evaluate,
 // GET /api/trades/discover). Kept apart from lib/types.ts.
-import type { League, ManagerContext, TradeDeltas, TradeResult, TradeSide, TradeWindow } from "@/lib/types";
+import type { KdstStreaming, League, ManagerContext, TradeDeltas, TradeResult, TradeSide, TradeWindow } from "@/lib/types";
 
 export type AvailabilityBrief = {
   status: string; nfl_designation_label: string | null; earliest_eligible_week: number | null;
@@ -115,7 +115,8 @@ export type DiscoveryV3 = {
   evaluation: { start_week: number; final_week: number; last_regular_season_week: number | null; weeks: number[];
     uncertain: boolean; warning: string | null; start_week_reason: string | null };
   query: { team_id: number; mode: string; phase: string; strictness: string; positions: string[]; include_kdst: boolean;
-    shapes: string[]; sort: string; category: string | null; opponent: number | null; limit: number; heuristic: boolean };
+    shapes: string[]; sort: string; category: string | null; opponent: number | null; limit: number; heuristic: boolean;
+    kdst_streaming?: boolean };
   mode_text: string;
   sections: Record<string, DResult[]>;
   tiers: Record<string, string>;
@@ -139,7 +140,7 @@ export type DiscoveryV3 = {
     injury_status: string | null; nfl_ineligible_weeks: number[] }>;
   modes: Record<string, string>; phases: string[]; strictness_options: Record<string, string>;
   categories: Record<string, string>; sorts: string[]; exact_shapes: string[]; heuristic_shapes: string[];
-  kdst_policy: string; availability_note: string; note: string; assumptions: string[]; limitations: string[];
+  kdst_policy: string; kdst_streaming?: KdstStreaming; availability_note: string; note: string; assumptions: string[]; limitations: string[];
 };
 
 /** The page header and filters (`GET /api/trades/discover/context`): no search is run. */

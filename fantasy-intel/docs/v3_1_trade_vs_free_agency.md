@@ -122,7 +122,10 @@ thresholds, multipliers or penalties.
   same player, `contested` says only one of them could add him.
 * **K/D/ST streaming frontier.** For each K or D/ST position moved in the trade, the best available player at the
   position each week is added for free, before and after the trade. It is labelled an optimistic illustration
-  (perfect foresight, no drop, no competition) and is never part of a metric.
+  (perfect foresight, no drop, no competition) and is never part of a metric. Separately, the canonical lineups
+  themselves now stream K and D/ST at the 3rd-best available player's projection by default
+  ([`kdst_streaming_baseline.md`](kdst_streaming_baseline.md)), so the frontier shows only the extra upside of
+  always taking the best one.
 * **Position alternatives.** For each incoming position, the best available player at that position is shown.
   * A position no flex slot accepts (K, D/ST, QB without OP) compares slot points directly, with the same majority
     rule ("An available D/ST could provide a similar lineup improvement…").

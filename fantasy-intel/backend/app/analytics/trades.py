@@ -8,7 +8,9 @@ A trade's value is what it does to both teams' optimal starting lineups over the
 
 No generic trade-chart values, no consolidation tax, no star premium, no playoff weighting, no
 acceptance probability. Bench points never count. Hypothetical free-agent pickups are reported
-separately and never enter the canonical delta. Nothing here reads or writes the database.
+separately and never enter the canonical delta. The one opt-in exception is the K/D/ST streaming
+baseline (with_streaming): on such a state every lineup, both before and after, may fill K and D/ST
+from weekly free-agent streaming. Nothing here reads or writes the database.
 See docs/v2_trade_evaluator.md.
 """
 
@@ -19,9 +21,10 @@ from dataclasses import dataclass, field, replace
 from itertools import combinations
 
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, NOTE as AVAILABILITY_NOTE, is_restricted
-from .team_lineups import (IR_HOLD_NOTE, PROJECTION_SOURCE, Projections, RosterPlayer, Window, best_fa_addition,
-                           compare, ir_activation_sensitivity, known_total, project_team, public_weeks, r,
-                           replacement_context, roster_marginal_value, starters)
+from .team_lineups import (IR_HOLD_NOTE, PROJECTION_SOURCE, STREAM_NOTE, STREAM_RANK, Projections, RosterPlayer,
+                           StreamingProjections, Window, best_fa_addition, compare, ir_activation_sensitivity,
+                           known_total, project_team, public_weeks, r, replacement_context, roster_marginal_value,
+                           starters, stream_summary, with_stream)
 
 # Manual trades take any player counts from 1 up to this many per side (a performance guard, not a
 # rule of the game; override with max_per_side / settings.trade_max_players_per_side).
@@ -96,6 +99,26 @@ class LeagueState:
         if start is None:
             return Window((), self.last_regular)      # no remaining weeks: never manufacture one
         return Window(tuple(range(start, self.final_week + 1)), self.last_regular)
+
+
+def with_streaming(state: LeagueState, rank: int = STREAM_RANK) -> LeagueState:
+    """The same league state whose lineups value K and D/ST against weekly free-agent streaming
+    (team_lineups.StreamingProjections). Opt-in: the trade evaluator, discovery, team value and every
+    canonical delta built on the returned state use it consistently; `state` itself is not changed."""
+    weeks = sorted({w for per in state.projections.values() for w in per})
+    return replace(state, projections=with_stream(state.projections, state.free_agents, state.slots, weeks, rank))
+
+
+def streaming_enabled(state: LeagueState) -> bool:
+    return isinstance(state.projections, StreamingProjections)
+
+
+def assumptions(state: LeagueState) -> list[str]:
+    if not streaming_enabled(state):
+        return ASSUMPTIONS
+    return [STREAM_NOTE if a.startswith("Each team's current roster") else a for a in ASSUMPTIONS] + [
+        "Apart from that weekly K/D/ST stream, each team's current roster is assumed to be its roster for every "
+        "remaining week (no other waiver moves)."]
 
 
 # --------------------------------------------------------------------- roster rules --
@@ -606,6 +629,7 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
         "availability_note": AVAILABILITY_NOTE,
         "projection_source": PROJECTION_SOURCE,
         "trade_impact_source": "exact optimal-lineup simulation",
-        "assumptions": ASSUMPTIONS,
+        "kdst_streaming": stream_summary(state.projections, window),
+        "assumptions": assumptions(state),
         "limitations": LIMITATIONS,
     }

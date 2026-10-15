@@ -16,6 +16,7 @@ const HEALTHY = ["ACTIVE", "NORMAL"];
 const REASON_TEXT: Record<string, string> = {
   flex_competition: "lost FLEX/slot competition", outscored: "outscored at his position", bye: "NFL bye",
   zero_projection: "projected 0", no_projection: "no projection", ir: "IR (inactive)",
+  streamable: "a waiver streamer projects more",
 };
 
 /** An exact signed change, or the partial known total labelled as incomplete (never passed off as exact). */

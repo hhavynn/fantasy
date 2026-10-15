@@ -357,6 +357,11 @@ single legal acquisition of a currently available player (ESPN free agents; waiv
 guaranteed), and what the trade still adds once that move is made. It never enters the canonical delta. Details:
 [`docs/v3_1_trade_vs_free_agency.md`](docs/v3_1_trade_vs_free_agency.md).
 
+Trades, discovery, My Team Value and waivers value **K and D/ST against weekly streaming**. Each week either slot
+can be filled at the projection of the 3rd-best available player, so a kicker or defense counts only for what it
+adds above streaming. Pass `kdst_streaming=false` to hold current K/D/ST all season instead. Details:
+[`docs/kdst_streaming_baseline.md`](docs/kdst_streaming_baseline.md).
+
 ## Trade opportunity discovery (V2)
 
 `GET /api/trades/discover` (and the `/trades/discover` page) searches every 1-for-1, 2-for-1 and 1-for-2 trade
