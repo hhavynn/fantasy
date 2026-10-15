@@ -41,7 +41,6 @@
 .facts dd { margin: 0; min-width: 0; }
 .facts dd > * + * { margin-left: 8px; }
 .sub { display: block; color: var(--ink-faint); font-size: 12px; line-height: 16px; margin-top: 2px; }
-.stack8 > * + * { margin-top: 8px; }
 .details { margin-top: 12px; }
 .lineupWeek { margin-top: 8px; }
 .lineupWeek table { margin-top: 4px; }

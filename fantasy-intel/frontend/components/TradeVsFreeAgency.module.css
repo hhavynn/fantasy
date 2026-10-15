@@ -2,9 +2,7 @@
 .sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 24px; }
 .side { min-width: 0; }
 .sideTitle { margin: 0 0 8px; font-size: 14px; line-height: 20px; }
-.who { display: block; font-size: 12px; line-height: 16px; color: var(--ink); margin-top: 4px; }
 .sub { display: block; font-size: 12px; line-height: 16px; color: var(--ink-faint); margin-top: 2px; }
-.stack8 > * + * { margin-top: 8px; }
 .statements { margin: 8px 0 0; padding-left: 16px; color: var(--ink-muted); }
 .statements li { margin: 2px 0; }
 .interact { margin: 8px 0 0; font-size: 12px; line-height: 16px; color: var(--ink-faint); }

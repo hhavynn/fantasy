@@ -77,7 +77,7 @@ function TeamStrip({ r, s }: { r: TradeResult; s: TradeSide }) {
         <Link href={`/managers/${s.team_id}`}>{s.team_name}</Link>
         <span>receives {s.receives.length === 0 ? "nobody" : names(r, s.receives)}</span>
       </h3>
-      <StatStrip className={styles.stats}>
+      <StatStrip>
         <Stat label="Rest of season" value={<Delta value={d.ros_delta} />}
           note={d.ros_delta === null ? incomplete : <>{num(s.before.ros_projected_starting_points, 1, why)} → {num(s.after.ros_projected_starting_points, 1, why)} pts</>} />
         <Stat label="Regular season" value={<Delta value={d.regular_season_delta} />}

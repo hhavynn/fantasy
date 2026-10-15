@@ -36,7 +36,6 @@
 .bye b { color: var(--ink-faint); font-weight: 500; }
 .none { color: var(--ink-faint); }
 
-.sample { white-space: normal; max-width: 460px; }
 .evidence { white-space: normal; min-width: 280px; max-width: 420px; color: var(--ink-muted); }
 .evidence b { color: var(--ink); font-weight: 600; }
 .note { display: block; color: var(--ink-faint); font-size: 12px; }
