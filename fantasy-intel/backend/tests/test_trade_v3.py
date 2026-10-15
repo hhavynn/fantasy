@@ -490,3 +490,153 @@ def test_practical_rows_all_match_the_manual_analyzer_and_carry_no_probability()
     out = discover(TradeSearch(st, 1, tuple(SHAPES) + ("2-for-2", "3-for-1", "1-for-3")), "practical", limit=8)
     assert out["consistency_failures"] == 0 and out["consistency_checked"] > 0
     assert "probab" not in str(out["sections"]).lower().replace("no probability", "")
+
+
+# ------------------------------------------------------------- regression tests: IR symmetry & ties --
+
+def test_fantasy_ir_uncertainty_is_symmetric_between_anchor_and_opponent():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    st = injured_league(on_ir=True)
+    board = AssetBoard(st, st.window())
+
+    # Case A: Team 1 is anchor, RECEIVING fantasy-IR player 299 from Team 2
+    ts1 = TradeSearch(st, 1, ("1-for-1",), opponents=[2], positions=None)
+    cand_recv = next(c for c in ts1.cands if 299 in c[3])
+    row_recv = ts1.evaluate(cand_recv)
+    assert row_recv["mine"]["playoff_delta"] > 0 and row_recv["theirs"]["playoff_delta"] > 0
+    bal_recv = board.package(row_recv["sends"], row_recv["receives"])
+    inj_recv = injury_flags(st, row_recv["sends"] + row_recv["receives"])
+    tier_recv, reasons_recv = classify(row_recv, bal_recv, inj_recv, "playoff", "standard")
+
+    assert tier_recv == "speculative"
+    assert any("not confirmed" in r or "not established" in r for r in reasons_recv)
+
+    # Case B: Team 2 is anchor, SENDING fantasy-IR player 299 to Team 1 (same trade, reversed anchor)
+    ts2 = TradeSearch(st, 2, ("1-for-1",), opponents=[1], positions=None)
+    cand_send = next(c for c in ts2.cands if 299 in c[2] and cand_recv[2][0] in c[3])
+    row_send = ts2.evaluate(cand_send)
+    assert row_send["mine"]["playoff_delta"] == row_recv["theirs"]["playoff_delta"]
+    assert row_send["theirs"]["playoff_delta"] == row_recv["mine"]["playoff_delta"]
+    bal_send = board.package(row_send["sends"], row_send["receives"])
+    inj_send = injury_flags(st, row_send["sends"] + row_send["receives"])
+    tier_send, reasons_send = classify(row_send, bal_send, inj_send, "playoff", "standard")
+
+    # Symmetrical: anchor sending the fantasy-IR player must ALSO be speculative
+    assert tier_send == "speculative"
+    assert any("not confirmed" in r or "not established" in r for r in reasons_send)
+
+
+def test_fantasy_ir_player_with_confirmed_return_is_concerns_not_speculative():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    st = injured_league(on_ir=True)
+    # Player was on IR, but is now activated on the NFL roster (return_confirmed=True, status=RETURNED)
+    rec = derive(espn_status="ACTIVE", on_ir=True, rows=etienne_rows(through=8) + [{"week": 9, "status": "ACT", "abbr": "A01"}],
+                 team_games=list(range(1, 19)), weeks=WEEKS)
+    assert rec["status"] == "returned_from_reserve" and rec["return_confirmed"] is True
+    st.availability[299] = rec
+    st.rosters[2] = [replace(p, unavailable_weeks=frozenset()) if p.espn_player_id == 299 else p for p in st.rosters[2]]
+
+    board = AssetBoard(st, st.window())
+
+    # Anchor sends
+    cand = next(c for c in TradeSearch(st, 2, ("1-for-1",), opponents=[1], positions=None).cands if 299 in c[2])
+    row = TradeSearch(st, 2, ("1-for-1",), opponents=[1], positions=None).evaluate(cand)
+    bal = board.package(row["sends"], row["receives"])
+    inj = injury_flags(st, row["sends"] + row["receives"])
+    tier, reasons = classify(row, bal, inj, "playoff", "standard")
+    assert tier == "concerns"
+    assert any("Activated from an NFL reserve list" in r for r in reasons)
+
+    # Anchor receives (with strictness="off" to isolate injury tier from lopsided exclusion)
+    cand_recv = next(c for c in TradeSearch(st, 1, ("1-for-1",), opponents=[2], positions=None).cands if 299 in c[3])
+    row_recv = TradeSearch(st, 1, ("1-for-1",), opponents=[2], positions=None).evaluate(cand_recv)
+    bal_recv = board.package(row_recv["sends"], row_recv["receives"])
+    inj_recv = injury_flags(st, row_recv["sends"] + row_recv["receives"])
+    tier_recv, reasons_recv = classify(row_recv, bal_recv, inj_recv, "playoff", "off")
+    assert tier_recv == "concerns"
+    assert any("Activated from an NFL reserve list" in r for r in reasons_recv)
+
+
+def test_nfl_ineligible_on_normal_bench_slot_is_concerns_not_speculative():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    # Injured player on normal bench (on_ir=False) with verified ineligible weeks
+    st = injured_league(on_ir=False)
+    board = AssetBoard(st, st.window())
+    row = {"mine": {"playoff_delta": 9.0}, "theirs": {"playoff_delta": 5.0}, "forced_drops": {"mine": [], "theirs": []}, "sends": [102], "receives": [299]}
+    bal = {"label": "balanced", "text": "Asset packages appear relatively balanced"}
+    inj = injury_flags(st, row["sends"] + row["receives"])
+    assert any(f["status"] == "nfl_ineligible" and not f["fantasy_ir_slot"] for f in inj)
+
+    tier, reasons = classify(row, bal, inj, "playoff", "standard")
+    # Normal bench slot with verified ineligible weeks is a concern, not speculative
+    assert tier == "concerns"
+    assert any("Earliest eligible return week 13" in r for r in reasons)
+
+
+def test_unconfirmed_return_and_missing_availability_are_speculative():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    # 1. ELIGIBLE_UNCONFIRMED on bench slot
+    st = injured_league(on_ir=False)
+    st.availability[299] = derive(espn_status="INJURY_RESERVE", on_ir=False, rows=etienne_rows(through=8),
+                                  team_games=list(range(1, 19)), weeks=WEEKS)
+    assert st.availability[299]["status"] == "eligible_return_unconfirmed"
+    row = {"mine": {"playoff_delta": 9.0}, "theirs": {"playoff_delta": 5.0}, "forced_drops": {"mine": [], "theirs": []}, "sends": [102], "receives": [299]}
+    bal = {"label": "balanced", "text": "Asset packages appear relatively balanced"}
+    inj = injury_flags(st, row["sends"] + row["receives"])
+    tier, reasons = classify(row, bal, inj, "playoff", "standard")
+    assert tier == "speculative"
+    assert any("his return is not established" in r for r in reasons)
+
+    # 2. UNKNOWN availability (ESPN only, no NFL roster history)
+    st2 = injured_league(on_ir=False)
+    st2.availability[299] = derive(espn_status="INJURY_RESERVE", on_ir=False, rows=[], team_games=None, weeks=WEEKS)
+    assert st2.availability[299]["status"] == "reserve_eligibility_unknown"
+    inj2 = injury_flags(st2, row["sends"] + row["receives"])
+    tier2, reasons2 = classify(row, bal, inj2, "playoff", "standard")
+    assert tier2 == "speculative"
+    assert any("earliest eligible week is unknown" in r for r in reasons2)
+
+
+def test_fantasy_ir_trade_failing_mutual_improvement_is_excluded_one_sided():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    st = injured_league(on_ir=True)
+    board = AssetBoard(st, st.window())
+    # In regular season (weeks 10-12), player 299 is ineligible, so Team 1 delta is negative
+    ts = TradeSearch(st, 1, ("1-for-1",), opponents=[2], positions=None)
+    cand = next(c for c in ts.cands if 299 in c[3])
+    row = ts.evaluate(cand)
+    assert row["mine"]["regular_season_delta"] < 0
+    bal = board.package(row["sends"], row["receives"])
+    inj = injury_flags(st, row["sends"] + row["receives"])
+    tier, reasons = classify(row, bal, inj, "regular", "standard")
+    # Must be excluded_one_sided, NOT speculative
+    assert tier == "excluded_one_sided"
+    assert "your lineup does not improve in this phase" in reasons
+
+
+def test_fantasy_ir_trade_with_lopsided_package_is_excluded_lopsided():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    st = injured_league(on_ir=True)
+    board = AssetBoard(st, st.window())
+    # Fabricate a balance that is significantly against them
+    ts = TradeSearch(st, 1, ("1-for-1",), opponents=[2], positions=None)
+    cand = next(c for c in ts.cands if 299 in c[3])
+    row = ts.evaluate(cand)
+    fake_bal = {"label": "significant_they_give_more", "text": "Significant asset imbalance: they surrender far more"}
+    inj = injury_flags(st, row["sends"] + row["receives"])
+    tier, reasons = classify(row, fake_bal, inj, "playoff", "standard")
+    assert tier == "excluded_lopsided"
+    assert "Significant asset imbalance" in reasons[0]
+
