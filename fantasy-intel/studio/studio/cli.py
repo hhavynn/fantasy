@@ -65,7 +65,7 @@ def editorial_pick(cfg: Config, snap: dict, season: int, week: int, recent: set[
 
 
 def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str | None,
-                hook: str | None = None, slug_suffix: str = "") -> int:
+                hook: str | None = None, slug_suffix: str = "", presenter_mode: str = "off") -> int:
     week_ep = Episode(season, week, "short", cfg, force=force)
     week_ep.dir.mkdir(parents=True, exist_ok=True)
     snapshot.run(week_ep)
@@ -92,7 +92,11 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
         if not ep.path("story.json").exists() or read_json(ep.path("story.json")) != story:
             write_json(ep.path("story.json"), story)
         run_stages(ep, SHORT, hook or cfg["shorts"].get("hook") or None)
-        results.append((ep, story, finish(ep)))
+        passed = finish(ep)
+        if passed and presenter_mode != "off":       # optional AI host layer; never touches final.mp4
+            from . import presenter
+            presenter.apply(ep, presenter_mode)
+        results.append((ep, story, passed))
     index = ["# Shorts for review", "", f"Week {week}, {season}. Watch each, read its review.md, then publish by hand.", ""]
     for ep, story, passed in results:
         meta = read_json(ep.path("metadata.json"))
@@ -115,15 +119,19 @@ def main(argv: list[str] | None = None) -> int:
                                     "shorts.voice_clone); written to <slug>-voice-<name>")
     ap.add_argument("--hook", help="Shorts only: force a hook family (e.g. where, talk, warning) for A/B variants; "
                                    "the variant is written to <slug>-hook-<name>")
+    ap.add_argument("--presenter", choices=["off", "hook", "hybrid"],
+                    help="Shorts only, EXPERIMENTAL: also write final_presenter_<mode>.mp4 with the AI host "
+                         "(default: config.toml [presenter] mode, which is off)")
     args = ap.parse_args(argv)
     cfg = Config.load()
+    presenter_mode = args.presenter or (cfg.raw.get("presenter") or {}).get("mode", "off")
     if args.voice:
         cfg.raw["shorts"] = {**cfg.raw["shorts"], "voice_clone": args.voice}
     season = args.season or cfg.season
     force = {s.strip() for s in args.force.split(",") if s.strip()}
     if args.format == "short":
         suffix = (f"-hook-{args.hook}" if args.hook else "") + (f"-voice-{args.voice}" if args.voice else "")
-        return make_shorts(cfg, season, args.week, force, args.player, args.hook, suffix)
+        return make_shorts(cfg, season, args.week, force, args.player, args.hook, suffix, presenter_mode)
     ep = Episode(season, args.week, "long", cfg, force=force)
     ep.dir.mkdir(parents=True, exist_ok=True)
     print(f"episode {ep.id} -> {ep.dir}")

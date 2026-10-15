@@ -74,3 +74,14 @@ sfx_db = -12.0
 voice_clone = ""
 # Default hook per storyline; empty = rotate least recently used.
 hook = ""
+
+[presenter]
+# EXPERIMENTAL AI host layer (studio/presenter.py). off | hook | hybrid. Off keeps the pipeline exactly as before;
+# hook/hybrid also write final_presenter_<mode>.mp4 next to final.mp4, which is never changed.
+mode = "off"
+# MuseTalk 1.5 (musetalk-mac) install with its own .venv and weights; see docs/presenter/README.md
+engine = "~/models/musetalk-mac"
+# base clips, lip-sync clips and landmark caches (large, outside the repo)
+cache = "~/models/presenter"
+# the fictional host, generated once with Z-Image-Turbo (Apache-2.0); see assets/presenter/host.json
+portrait = "assets/presenter/host.png"

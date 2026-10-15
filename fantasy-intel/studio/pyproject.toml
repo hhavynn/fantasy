@@ -26,6 +26,7 @@ dependencies = [
 [project.scripts]
 make-episode = "studio.cli:main"
 enroll-voice = "studio.voice:main"
+make-presenter = "studio.presenter:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]
