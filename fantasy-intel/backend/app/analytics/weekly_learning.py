@@ -12,7 +12,10 @@ Cycle for target week W (scripts/weekly_learning.py, docs "Weekly learning and t
   4. ledger      one immutable JSON file per run (never overwritten); a rerun with identical
                  inputs is a no-op, a changed input (e.g. a late injury report) adds a new run
   5. evaluate    per player, the latest run created BEFORE his kickoff by artifacts whose data
-                 cutoff precedes W; retrospective runs are reported separately and never counted
+                 cutoff precedes W; retrospective runs are reported separately and never counted.
+                 Each forecast row gets an explicit outcome status (`label_outcomes`): only a
+                 player whose OWN game is final with complete box scores and snaps is resolved
+                 (appeared, or a confirmed zero), and only fully final weeks are evidence
 
 Artifacts are content-addressed (sha256 of the artifact without its timestamp), so retraining on
 identical inputs reproduces the same id, and every artifact records its training seasons, latest
@@ -46,6 +49,22 @@ CHALLENGER_STATUS = {
                      + (["80% interval coverage 74.0% (confirmation) is outside 75-85%: intervals withheld"]
                         if pos == "QB" else [])}
     for pos in POSITIONS}
+
+
+# Outcome of one frozen forecast row (`label_outcomes`). Only the first two are labels; every other
+# status is excluded from conditional AND unconditional metrics (never a zero-point outcome).
+APPEARED = "appeared"                    # own game final, team data complete, player in the panel
+CONFIRMED_ABSENT = "confirmed_absent"    # own game final, team data complete, player absent -> 0 points
+PENDING_GAME = "pending_game"            # own game not final yet (another game of the week may be)
+MISSING_INGESTION = "missing_ingestion"  # own game final, but the team's box scores or snaps are not synced
+BYE = "bye"                              # forecast team has no game scheduled that week
+UNRESOLVED_IDENTITY = "unresolved_identity"  # no/unknown gsis_id, or his box score/roster row is another team's
+OUTCOME_STATUSES = (APPEARED, CONFIRMED_ABSENT, PENDING_GAME, MISSING_INGESTION, BYE, UNRESOLVED_IDENTITY)
+RESOLVED = (APPEARED, CONFIRMED_ABSENT)
+FINALITY_RULE = ("a player's outcome is resolved only when HIS team's game has a final score in nflverse "
+                 "schedules AND that team's box scores and snap counts for the week are synced; then he "
+                 "appeared (league points) or is a confirmed zero. A week is prospective evidence only when "
+                 "every scheduled game is final and every team's data is complete.")
 
 
 class NotReady(Exception):
@@ -341,7 +360,8 @@ def frozen_rows(runs: list[dict], kind: str = "pregame") -> pl.DataFrame:
                 best[k] = (created, run["run_id"], r)
     recs = []
     for (s, w, g), (_, rid, r) in best.items():
-        recs.append({"season": s, "week": w, "key": key(s, w), "gsis_id": g, "position": r["position"], "run_id": rid,
+        recs.append({"season": s, "week": w, "key": key(s, w), "gsis_id": g, "position": r["position"],
+                     "team": r.get("team"), "run_id": rid,
                      "pred_champion": r["champion"]["points"], "pred_challenger": r["challenger"]["points"],
                      "low_champion": r["champion"]["low"], "high_champion": r["champion"]["high"],
                      "low_challenger": r["challenger"]["low"], "high_challenger": r["challenger"]["high"],
@@ -349,38 +369,104 @@ def frozen_rows(runs: list[dict], kind: str = "pregame") -> pl.DataFrame:
                      "pred_A1": r["pred_A1"], "pred_A2": r["pred_A2"], "p_play": r["p_play"],
                      "last_injury_exit": (r.get("workload") or {}).get("last_injury_exit")})
     schema = {"season": pl.Int64, "week": pl.Int64, "key": pl.Int64, "gsis_id": pl.String, "position": pl.String,
-              "run_id": pl.String, **{c: pl.Float64 for c in ("pred_champion", "pred_challenger", "low_champion",
+              "team": pl.String, "run_id": pl.String, **{c: pl.Float64 for c in ("pred_champion", "pred_challenger", "low_champion",
                                                              "high_champion", "low_challenger", "high_challenger",
                                                              "exp_champion", "exp_challenger", "pred_A1", "pred_A2",
                                                              "p_play")}, "last_injury_exit": pl.Int64}
     return pl.DataFrame(recs, schema=schema) if recs else pl.DataFrame(schema=schema)
 
 
-def evaluate(runs: list[dict], sources: Sources, kind: str = "pregame", seed: int = 20261014) -> dict:
-    """Frozen forecasts vs completed outcomes. Conditional: players who appeared (label = league
-    points). Unconditional: every forecast row of a final game (0 when he did not appear)."""
-    rows = frozen_rows(runs, kind)
-    final = sources.games.filter(pl.col("points_for").is_not_null()).select("season", "week", "team").unique()
-    pops = []
-    for (s, w), g in rows.group_by(["season", "week"], maintain_order=True) if rows.height else []:
-        if final.filter((pl.col("season") == s) & (pl.col("week") == w)).height == 0:
-            continue
-        pops.append(g)
-    if not pops:
-        return {"kind": kind, "weeks": [], "note": "no frozen forecast has a final outcome yet", "positions": {}}
-    rows = pl.concat(pops)
-    labels = sources.panel.select("season", "week", "gsis_id", pl.col("league_points").alias("label"))
-    j = rows.join(labels, on=["season", "week", "gsis_id"], how="left")
-    cond = j.filter(pl.col("label").is_not_null())
-    out = {"kind": kind, "weeks": sorted({(int(s), int(w)) for s, w in j.select("season", "week").unique().iter_rows()}),
-           "positions": {}}
+def team_game_finality(sources: Sources, season: int, week: int) -> pl.DataFrame:
+    """One row per team SCHEDULED in (season, week): is its game final, and are its box scores and
+    snap counts synced? A team is `complete` only when all three hold. The game of one team says
+    nothing about another's: a final Thursday game never makes a Monday game final."""
+    games = sources.games.filter((pl.col("season") == season) & (pl.col("week") == week))
+    panel = sources.panel.filter((pl.col("season") == season) & (pl.col("week") == week))
+    stats = set(panel.filter(pl.col("has_stats"))["team"].to_list())
+    snaps = set(panel.filter(pl.col("offense_pct").is_not_null())["team"].to_list())
+    recs = []
+    for g in games.iter_rows(named=True):
+        final = g["points_for"] is not None and g["points_against"] is not None
+        box, snp = g["team"] in stats, g["team"] in snaps
+        recs.append({"season": season, "week": week, "team": g["team"], "final": final, "has_box_scores": box,
+                     "has_snaps": snp, "complete": final and box and snp})
+    schema = {"season": pl.Int64, "week": pl.Int64, "team": pl.String, "final": pl.Boolean,
+              "has_box_scores": pl.Boolean, "has_snaps": pl.Boolean, "complete": pl.Boolean}
+    return pl.DataFrame(recs, schema=schema).unique("team", keep="first") if recs else pl.DataFrame(schema=schema)
+
+
+def week_finality(sources: Sources, season: int, week: int) -> dict:
+    """Is the whole NFL week final? Only such weeks count toward promotion evidence."""
+    t = team_game_finality(sources, season, week)
+    pending = sorted(t.filter(~pl.col("final"))["team"].to_list())
+    missing = sorted(t.filter(pl.col("final") & ~pl.col("complete"))["team"].to_list())
+    return {"scheduled_teams": t.height, "final_teams": int(t["final"].sum()) if t.height else 0,
+            "complete_teams": int(t["complete"].sum()) if t.height else 0,
+            "pending_teams": pending, "missing_ingestion_teams": missing,
+            "fully_final": t.height > 0 and not pending and not missing}
+
+
+def label_outcomes(rows: pl.DataFrame, sources: Sources) -> pl.DataFrame:
+    """Attach `outcome_status` (OUTCOME_STATUSES) and `label` to frozen forecast rows. `label` is
+    league points for APPEARED, 0.0 for CONFIRMED_ABSENT and null for every unresolved status, so
+    an unfinished, unsynced or unmatched player can never become a zero-point outcome."""
+    if rows.height == 0:
+        return rows.with_columns(pl.lit(None, pl.String).alias("outcome_status"), pl.lit(None, pl.Float64).alias("label"))
+    weeks = rows.select("season", "week").unique().sort("season", "week")
+    fin = pl.concat([team_game_finality(sources, int(s), int(w)) for s, w in weeks.iter_rows()])
+    panel = (sources.panel.join(weeks, on=["season", "week"], how="semi")
+             .select("season", "week", "gsis_id", pl.col("team").alias("_panel_team"),
+                     pl.col("league_points").alias("_points"))
+             .unique(["season", "week", "gsis_id"], keep="first"))
+    j = (rows.join(fin.select("season", "week", "team", "final", "complete"), on=["season", "week", "team"], how="left")
+         .join(panel, on=["season", "week", "gsis_id"], how="left"))
+    known, other_team = pl.lit(True), pl.col("_panel_team").is_not_null() & (pl.col("_panel_team") != pl.col("team"))
+    if sources.rosters is not None:
+        ids = sources.rosters.select("season", "gsis_id").unique()
+        j = j.join(ids.with_columns(pl.lit(True).alias("_on_roster")), on=["season", "gsis_id"], how="left")
+        wk = (sources.rosters.join(weeks, on=["season", "week"], how="semi")
+              .select("season", "week", "gsis_id", pl.col("team").alias("_roster_team"))
+              .unique(["season", "week", "gsis_id"], keep="first"))
+        j = j.join(wk, on=["season", "week", "gsis_id"], how="left")
+        known = pl.col("_on_roster").fill_null(False) | pl.col("_panel_team").is_not_null()
+        # the week's roster puts him on another team (e.g. traded after the forecast): not his game
+        other_team = other_team | (pl.col("_panel_team").is_null() & pl.col("_roster_team").is_not_null()
+                                   & (pl.col("_roster_team") != pl.col("team")))
+    no_id = pl.col("gsis_id").is_null() | (pl.col("gsis_id").str.strip_chars() == "") | pl.col("team").is_null()
+    status = (pl.when(no_id | ~known).then(pl.lit(UNRESOLVED_IDENTITY))
+              .when(pl.col("final").is_null()).then(pl.lit(BYE))
+              .when(~pl.col("final")).then(pl.lit(PENDING_GAME))
+              .when(other_team).then(pl.lit(UNRESOLVED_IDENTITY))
+              .when(~pl.col("complete")).then(pl.lit(MISSING_INGESTION))
+              .when(pl.col("_panel_team").is_not_null()).then(pl.lit(APPEARED))
+              .otherwise(pl.lit(CONFIRMED_ABSENT)))
+    j = j.with_columns(status.alias("outcome_status"))
+    j = j.with_columns(pl.when(pl.col("outcome_status") == APPEARED).then(pl.col("_points"))
+                       .when(pl.col("outcome_status") == CONFIRMED_ABSENT).then(pl.lit(0.0))
+                       .otherwise(pl.lit(None, pl.Float64)).alias("label"))
+    tmp = ("final", "complete", "_panel_team", "_points", "_on_roster", "_roster_team")
+    return j.drop([c for c in tmp if c in j.columns])
+
+
+def _status_counts(df: pl.DataFrame) -> dict:
+    counts = dict(df.group_by("outcome_status").len().iter_rows()) if df.height else {}
+    return {s: int(counts.get(s, 0)) for s in OUTCOME_STATUSES}
+
+
+def _position_reports(j: pl.DataFrame, seed: int, *, bootstrap: bool = True) -> dict:
+    """Conditional (APPEARED) and unconditional (APPEARED + CONFIRMED_ABSENT) metrics per position.
+    `j` must come from label_outcomes; unresolved rows are dropped here, never zero-filled."""
+    cond = j.filter(pl.col("outcome_status") == APPEARED)
+    resolved = j.filter(pl.col("outcome_status").is_in(RESOLVED))
+    assert resolved["label"].null_count() == 0, "a resolved outcome without a label"
+    out = {}
     for pos in [*POSITIONS, "ALL"]:
         g = cond if pos == "ALL" else cond.filter(pl.col("position") == pos)
         g = g.filter(pl.col("pred_champion").is_not_null() & pl.col("pred_challenger").is_not_null())
         a = _arr(g, "label")
         rep = {"n": g.height, "metrics": {m: metrics(a, _arr(g, f"pred_{m}"))
                                           for m in ("champion", "challenger", "A1", "A2")}}
-        if g.select("key").n_unique() >= 2:
+        if bootstrap and g.select("key").n_unique() >= 2:
             rep["challenger_minus_champion_mae"] = week_bootstrap_mae_diff(g, "pred_challenger", "pred_champion",
                                                                            1000, seed)
         for m in ("champion", "challenger"):
@@ -391,11 +477,44 @@ def evaluate(runs: list[dict], sources: Sources, kind: str = "pregame", seed: in
         ie = g.filter(pl.col("last_injury_exit") == 1)
         rep["after_injury_exit"] = {"n": ie.height, **{m: metrics(_arr(ie, "label"), _arr(ie, f"pred_{m}"))["mae"]
                                                          for m in ("champion", "challenger")}}
-        u = j.filter(pl.col("exp_champion").is_not_null() & pl.col("exp_challenger").is_not_null())
+        u = resolved.filter(pl.col("exp_champion").is_not_null() & pl.col("exp_challenger").is_not_null())
         u = u if pos == "ALL" else u.filter(pl.col("position") == pos)
-        ua = u["label"].fill_null(0.0).to_numpy().astype(float)
+        ua = _arr(u, "label")
         rep["unconditional"] = {"n": u.height, **{m: metrics(ua, _arr(u, f"exp_{m}")) for m in ("champion", "challenger")}}
-        out["positions"][pos] = rep
+        out[pos] = rep
+    return out
+
+
+def evaluate(runs: list[dict], sources: Sources, kind: str = "pregame", seed: int = 20261014) -> dict:
+    """Frozen forecasts vs finalized outcomes (FINALITY_RULE). Conditional: players who appeared
+    (label = league points). Unconditional: appeared + confirmed absences (0). Rows whose own game
+    is not final, whose team data is not synced, on a bye, or with an unresolved identity are
+    excluded and counted in `outcomes`. Only fully final weeks are evidence (`weeks`, metrics,
+    shadow_status); resolved rows of partly final weeks are reported under `preliminary` only."""
+    rows = label_outcomes(frozen_rows(runs, kind), sources)
+    wk = sorted({(int(s), int(w)) for s, w in rows.select("season", "week").unique().iter_rows()}) if rows.height else []
+    fin = {sw: week_finality(sources, *sw) for sw in wk}
+    final_weeks = [sw for sw in wk if fin[sw]["fully_final"]]
+    in_final = pl.col("key").is_in([key(s, w) for s, w in final_weeks])
+    evidence, partial = rows.filter(in_final), rows.filter(~in_final)
+    out = {"kind": kind, "weeks": final_weeks, "finality_rule": FINALITY_RULE,
+           "finality": {f"{s}-{w:02d}": fin[(s, w)] for s, w in wk},
+           "outcomes": {"evidence": _status_counts(evidence), "not_yet_evidence": _status_counts(partial)},
+           "positions": {}}
+    prelim_weeks = [sw for sw in wk if sw not in final_weeks]
+    if prelim_weeks:
+        resolved = partial.filter(pl.col("outcome_status").is_in(RESOLVED))
+        out["preliminary"] = {
+            "note": "PRELIMINARY: weeks that are not fully final. Never counted as prospective weeks and never "
+                    "used by shadow_status or any promotion decision; unresolved players are excluded, not zero.",
+            "weeks": prelim_weeks, "n_resolved": resolved.height, "n_unresolved": partial.height - resolved.height,
+            "positions": _position_reports(partial, seed, bootstrap=False) if resolved.height else {}}
+    if not final_weeks:
+        out["note"] = "no frozen forecast is in a fully final week yet"
+        out["shadow_status"] = shadow_status(out)
+        return out
+    out["positions"] = _position_reports(evidence, seed)
+    cond = evidence.filter(pl.col("outcome_status") == APPEARED)
     both = cond.filter(pl.col("pred_champion").is_not_null() & pl.col("pred_challenger").is_not_null()
                        & pl.col("pred_A1").is_not_null())
     if both.height:
@@ -432,4 +551,5 @@ def shadow_status(report: dict) -> dict:
 
 
 __all__ = ["readiness", "train", "save_artifact", "latest_artifact", "predict", "write_run", "load_ledger",
-           "evaluate", "NotReady", "MODEL_VERSION", "interval_for"]
+           "evaluate", "label_outcomes", "team_game_finality", "week_finality", "NotReady", "MODEL_VERSION",
+           "interval_for"]

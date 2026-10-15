@@ -517,7 +517,7 @@ without touching `fit`, `project` or the live tables.
 | same | `... status --week W` | Read-only readiness: every REG game before W final; box scores and snaps for every team that played; nflverse expected points for >= 50% of appearances; W has not kicked off |
 | Wed, before Thursday's kickoff | `... train --week W` | Champion = `ifp-1.0.0` frozen selection refit (bit-identical to `fit`); challenger = frozen `ifp-2.0.0` config; both on FINAL weeks < W |
 | Wed-Sun, before kickoff (rerun after late injury news is fine) | `... predict --week W` | Frozen pregame forecasts for every ACT/INA roster player on a team playing in W: champion, challenger, trailing baselines, P(appears) |
-| any time | `... evaluate` | Prospective accuracy of frozen pregame forecasts with final outcomes; progress to `SHADOW_PROMOTION_CRITERIA` |
+| any time | `... evaluate` | Prospective accuracy of frozen pregame forecasts whose own games are final and synced; only fully final weeks count toward `SHADOW_PROMOTION_CRITERIA` (see "Prospective evaluation: outcome finality") |
 | | `... cycle --week W` | `sync-exits`, `status`, `train`, `predict`, `evaluate` in order; stops at the first refusal |
 
 One-time history: `... sync-exits --history-seasons 2019-2025`. Defaults: `--out data/models/weekly`
@@ -544,6 +544,34 @@ Safety rules (each is tested in `tests/test_weekly_learning.py`):
 
 The participation model is not retrained weekly here (`participation-fit` is unchanged); its
 `expected_points` are recorded as is.
+
+### Prospective evaluation: outcome finality
+
+`evaluate` labels every frozen forecast row with an explicit outcome status
+(`weekly_learning.label_outcomes`). Finality is decided **per player's own game**, never per week:
+a final Thursday or Sunday game says nothing about a Monday game.
+
+| Status | Rule | Conditional | Unconditional |
+|---|---|---|---|
+| `appeared` | his team's game has a final score in `nfl_schedules`, the team's box scores AND snap counts for the week are synced, and he has a panel row (box score or offensive snaps > 0) | league points | league points |
+| `confirmed_absent` | same finality and completeness, no panel row (inactive, healthy scratch, did not play) | excluded | **0** |
+| `pending_game` | his team's game has no final score | excluded | excluded |
+| `missing_ingestion` | final score, but the team's box scores or snaps are not synced yet | excluded | excluded |
+| `bye` | his forecast team has no game scheduled that week | excluded | excluded |
+| `unresolved_identity` | no `gsis_id`, an id on no roster or box score of the season, or his week box score / roster row is for a different team than the forecast | excluded | excluded |
+
+Only `appeared` and `confirmed_absent` carry a label; every other status has a null label, so an
+unfinished, unsynced or unmatched player can never become a zero-point outcome (asserted).
+
+A week is **prospective evidence** only when it is fully final: every scheduled game has a final
+score and every scheduled team's box scores and snaps are synced. `weeks`, the per-position
+metrics, the bootstrap CI, pair decisions and `shadow_status` use fully final weeks only, so a
+partly final week counts as **zero** prospective weeks toward `SHADOW_PROMOTION_CRITERIA`.
+Resolved players of partly final weeks are reported separately under `preliminary` (marked
+PRELIMINARY, no bootstrap, never read by `shadow_status`). The report also carries `finality` per
+week (scheduled / final / complete teams, pending and missing-ingestion teams) and `outcomes`
+(status counts for evidence and not-yet-evidence rows). Rerunning `evaluate` after the last game
+is final and synced turns the week into evidence; the ledger is never rewritten.
 
 ### Game classification and healthy-game usage (all point-in-time)
 

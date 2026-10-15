@@ -162,6 +162,8 @@ def cmd_evaluate(args, src, **_) -> dict:
     path.write_text(json.dumps(rep, indent=1, default=str))
     p = rep["pregame"]
     return {"report": str(path), "pregame_weeks": p.get("weeks"),
+            "preliminary_weeks_not_evidence": (p.get("preliminary") or {}).get("weeks", []),
+            "outcomes": p.get("outcomes"),
             "by_position": {pos: {"n": r["n"], "mae": {m: v["mae"] for m, v in r["metrics"].items()},
                                   "diff": r.get("challenger_minus_champion_mae")}
                             for pos, r in p.get("positions", {}).items()},
