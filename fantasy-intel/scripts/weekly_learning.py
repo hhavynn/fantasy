@@ -90,12 +90,19 @@ def cmd_sync_exits(args, **_) -> dict:
     return {"seasons": out}
 
 
-def cmd_status(args, src, **_) -> dict:
-    return wl.readiness(src, args.season, args.week, _now(args))
+def _fetched_at(live, season: int):
+    """Start of the latest successful nflverse sync that wrote the season's schedule (the fetch time
+    game_presumed_final needs), or None."""
+    from app.analytics.schedule_intelligence import nfl_fetch_times
+    return nfl_fetch_times(live, season)["schedules"] if live is not None else None
 
 
-def _require_ready(args, src) -> dict:
-    rep = wl.readiness(src, args.season, args.week, _now(args))
+def cmd_status(args, src, live=None, **_) -> dict:
+    return wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season))
+
+
+def _require_ready(args, src, live=None) -> dict:
+    rep = wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season))
     if not rep["ok"]:
         raise wl.NotReady("; ".join(rep["errors"]))
     if not rep["pregame"] and not args.retrospective:
@@ -104,8 +111,8 @@ def _require_ready(args, src) -> dict:
     return rep
 
 
-def cmd_train(args, src, scoring, **_) -> dict:
-    _require_ready(args, src)
+def cmd_train(args, src, scoring, live=None, **_) -> dict:
+    _require_ready(args, src, live)
     sel_path, rep_path = args.ifp_dir / "selection.json", args.ifp_dir / "heldout_report.json"
     sel, rep = json.loads(sel_path.read_text()), json.loads(rep_path.read_text())
     import hashlib
@@ -128,7 +135,7 @@ def cmd_train(args, src, scoring, **_) -> dict:
 
 
 def cmd_predict(args, live, src, scoring, **_) -> dict:
-    rep = _require_ready(args, src)
+    rep = _require_ready(args, src, live)
     from app.analytics.participation import PARTICIPATION_VERSION, ParticipationArtifact
     champ, cid, cpath = wl.latest_artifact(args.out, wl.MODEL_VERSION, args.season, args.week, scoring.fingerprint)
     chal, xid, xpath = wl.latest_artifact(args.out, ch.CHALLENGER_VERSION, args.season, args.week, scoring.fingerprint)
@@ -152,10 +159,11 @@ def cmd_predict(args, live, src, scoring, **_) -> dict:
             "runtime_seconds": round(time.time() - t, 2)}
 
 
-def cmd_evaluate(args, src, **_) -> dict:
+def cmd_evaluate(args, src, live=None, **_) -> dict:
     runs = wl.load_ledger(args.out)
-    rep = {"pregame": wl.evaluate(runs, src, "pregame"),
-           "retrospective_not_evidence": wl.evaluate(runs, src, "retrospective")}
+    fetched = {args.season: _fetched_at(live, args.season)}
+    rep = {"pregame": wl.evaluate(runs, src, "pregame", fetched_at=fetched),
+           "retrospective_not_evidence": wl.evaluate(runs, src, "retrospective", fetched_at=fetched)}
     d = args.out / "reports"
     d.mkdir(parents=True, exist_ok=True)
     path = d / f"evaluate-{_now(args):%Y%m%dT%H%M%S}.json"
