@@ -48,6 +48,15 @@ function signed(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
 }
 
+// Row index after which the dashed cutline is drawn: after the last spot, or above a tied group that
+// straddles it (that group shares the remaining spots; no tiebreak picks among them).
+function cutAfter(d: PlayoffRace): number | null {
+  const spots = d.league.playoff_teams;
+  if (spots === null) return null;
+  const tie = d.scenario.cutline?.cutline_tie;
+  return tie ? d.scenario.projected_standings.filter((x) => x.status === "inside").length : spots;
+}
+
 const STATUS_TEXT: Record<string, string> = { inside: "inside cutline", outside: "outside", cutline_tie: "tied at cutline" };
 const STATUS_TONE: Record<string, string> = { inside: "good", outside: "bad", cutline_tie: "warn" };
 
@@ -261,6 +270,8 @@ function LeverageTable({ rows, q, name, d, tid }: { rows: PrLeverage[]; q: Q; na
 function Standings({ d, name }: { d: PlayoffRace; name: (id: number | null) => string }) {
   const s = d.scenario;
   const spots = d.league.playoff_teams;
+  const after = cutAfter(d);
+  const tie = s.cutline?.cutline_tie;
   const cur = new Map(s.current_standings.map((x) => [x.team_id, x]));
   const teams = new Map(d.teams.map((t) => [t.team_id, t]));
   return (
@@ -285,8 +296,9 @@ function Standings({ d, name }: { d: PlayoffRace; name: (id: number | null) => s
                     <td className="num">{move === null || move === 0 ? <span className="faint">·</span> : move > 0 ? <span style={{ color: AHEAD }}>▲{move}</span> : <span style={{ color: BEHIND }}>▼{-move}</span>}</td>
                     <td><StatusBadge s={x.status} /></td>
                   </tr>
-                  {spots !== null && i + 1 === spots && i + 1 < s.projected_standings.length && (
-                    <tr><td colSpan={7} style={{ borderBottom: `2px dashed ${AHEAD}`, padding: 0 }} title={`Playoff cutline: ${spots} spots`} /></tr>
+                  {after !== null && i + 1 === after && i + 1 < s.projected_standings.length && (
+                    <tr><td colSpan={7} style={{ borderBottom: `2px dashed ${AHEAD}`, padding: 0 }}
+                            title={tie ? `Cutline: ${tie.spots_left} spot(s) shared by the tied teams below` : `Playoff cutline: ${spots} spots`} /></tr>
                   )}
                 </Fragment>
               );
@@ -294,14 +306,15 @@ function Standings({ d, name }: { d: PlayoffRace; name: (id: number | null) => s
           </tbody>
         </table>
       </div>
-      <p className="faint" style={{ marginTop: 6 }}>“=” marks a shared rank (equal winning percentage; no tiebreak applied). “+n?” counts games still unresolved in this scenario. The dashed line is the cutline after {spots ?? "?"} spots.</p>
+      <p className="faint" style={{ marginTop: 6 }}>“=” marks a shared rank (equal winning percentage; no tiebreak applied). “+n?” counts games still unresolved in this scenario. The dashed line is the cutline after {spots ?? "?"} spots{tie ? `; a tied group straddles it, so it is drawn above them and they share ${tie.spots_left} spot(s)` : ""}.</p>
     </section>
   );
 }
 
 function Ladder({ d, name }: { d: PlayoffRace; name: (id: number | null) => string }) {
   const rows = d.scenario.projected_standings;
-  const spots = d.league.playoff_teams;
+  const after = cutAfter(d);
+  const tie = d.scenario.cutline?.cutline_tie;
   const mine = new Set(d.teams.filter((t) => t.team_id === d.focus_team_id).map((t) => t.team_id));
   const rowH = 22, labelW = 150, barW = 260, top = 8;
   const h = top + rows.length * rowH + 8;
@@ -323,10 +336,10 @@ function Ladder({ d, name }: { d: PlayoffRace; name: (id: number | null) => stri
               </text>
               {x.pct !== null && <rect x={labelW} y={y + 4} width={w} height={rowH - 8} rx={4} fill={mine.has(x.team_id) ? AHEAD : NEUTRAL} />}
               <text x={labelW + barW + 6} y={y + 14} fontSize={11} fill="var(--muted)">{rec(x.record)}</text>
-              {spots !== null && i + 1 === spots && i + 1 < rows.length && (
+              {after !== null && i + 1 === after && i + 1 < rows.length && (
                 <g>
                   <line x1={labelW - 4} x2={labelW + barW + 106} y1={y + rowH} y2={y + rowH} stroke={AHEAD} strokeWidth={2} strokeDasharray="4 3" />
-                  <text x={labelW + barW + 106} y={y + rowH - 4} fontSize={10} textAnchor="end" fill="var(--text)">cutline</text>
+                  <text x={labelW + barW + 106} y={y + rowH - 4} fontSize={10} textAnchor="end" fill="var(--text)">{tie ? `cutline · ${tie.spots_left} shared` : "cutline"}</text>
                 </g>
               )}
             </g>
@@ -379,6 +392,10 @@ function Margins({ t }: { t: PrTeam }) {
 
 // -------------------------------------------------------------------- race & leverage --
 
+function group(rows: { team_id: number; record: PrRecord | null }[], name: (id: number | null) => string): string {
+  return rows.length ? rows.map((x) => `${name(x.team_id)} ${rec(x.record)}`).join(" = ") : "—";
+}
+
 function Race({ d, q, name }: { d: PlayoffRace; q: Q; name: (id: number | null) => string }) {
   const cut = d.scenario.cutline;
   if (!cut) return <Callout>Playoff spots are not reported in league settings, so no cutline or bubble can be shown.</Callout>;
@@ -386,9 +403,12 @@ function Race({ d, q, name }: { d: PlayoffRace; q: Q; name: (id: number | null) 
     <section className="panel">
       <h2>Playoff race · {cut.playoff_spots} spots</h2>
       <p>
-        Last spot in this scenario: <b>{cut.last_inside ? `${name(cut.last_inside.team_id)} ${rec(cut.last_inside.record)}` : "—"}</b>
-        {" "}· first team out: <b>{cut.first_outside ? `${name(cut.first_outside.team_id)} ${rec(cut.first_outside.record)}` : "—"}</b>
-        {cut.cutline_tie && <> · <Badge value="tie at the cutline: unresolved (no tiebreak applied)" tone="warn" /></>}
+        {cut.cutline_tie ? <>
+          Tied at the cutline: <b>{cut.cutline_tie.team_ids.map((id) => name(id)).join(", ")}</b> share {cut.cutline_tie.spots_left} remaining
+          spot(s) <Badge value="unresolved: no tiebreak applied" tone="warn" />
+        </> : <>
+          Last in: <b>{group(cut.last_inside, name)}</b> · first out: <b>{group(cut.first_outside, name)}</b>
+        </>}
       </p>
       <p className="faint">Bubble teams: those with at least one remaining game whose result changes their cutline status (all else as in this scenario), plus any team tied at the cutline.</p>
       {cut.bubble.length === 0 ? <p className="faint">No team&apos;s status depends on a single result in this scenario.</p> : (

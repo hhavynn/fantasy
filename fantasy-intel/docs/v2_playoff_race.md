@@ -61,6 +61,10 @@ Schedule Intelligence.
   * *inside* when the teams strictly ahead, plus the team's own tie group, fit in P;
   * *outside* when P teams are strictly ahead;
   * otherwise *tied at the cutline*: unresolved, because no tiebreak is applied.
+* **Boundary teams are whole rank groups.** "Last in" is the lowest-ranked group fully inside and "first out" the
+  highest-ranked group fully outside. A group straddling the last spot is reported as a cutline tie, with the number
+  of spots its members would share, and no member of it is named in or out. On the page, the dashed cutline is drawn
+  above such a group.
 * **No clinch or elimination** is ever claimed. That would need the full seeding, tiebreak and division rules,
   which are not verifiably available. Win-out and lose-out records are shown instead.
 

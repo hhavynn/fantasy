@@ -59,9 +59,18 @@ def test_current_standings_records_ties_and_all_play():
         (1, 1, False, "inside"), (2, 2, False, "inside"), (3, 3, True, "outside"), (4, 3, True, "outside")]
     assert standing(cur, 3)["pct"] == round(1 / 6, 4)                                  # a tie counts half
     assert res["record_check"] == []                                                   # ESPN records match the finals
-    # With 3 spots the two tied teams straddle the cutline: unresolved, no tiebreak applied.
-    cur3 = build_playoff_race(tie_league(spots=3), base="actual")["scenario"]["current_standings"]
+    # With 3 spots the two tied teams straddle the cutline: unresolved, no tiebreak applied, and
+    # neither is named the last team in or the first team out.
+    res3 = build_playoff_race(tie_league(spots=3), base="actual")
+    cur3 = res3["scenario"]["current_standings"]
     assert standing(cur3, 3)["status"] == standing(cur3, 4)["status"] == "cutline_tie"
+    cut = res3["scenario"]["cutline"]
+    assert cut["cutline_tie"] == {"team_ids": [3, 4], "spots_left": 1}
+    assert [x["team_id"] for x in cut["last_inside"]] == [2] and cut["first_outside"] == []
+    assert {3, 4} <= set(cut["bubble"])
+    # A tied group that fits exactly is reported whole as the last group inside.
+    cut4 = build_playoff_race(tie_league(spots=4), base="actual")["scenario"]["cutline"]
+    assert [x["team_id"] for x in cut4["last_inside"]] == [3, 4] and cut4["cutline_tie"] is None
 
 
 def test_espn_record_is_the_verified_start_and_mismatches_are_reported():
@@ -192,7 +201,9 @@ def test_playoff_spots_boundary_known_playoff_matchups_and_rule_warnings():
     assert all(m["matchup_period"] <= 5 for m in res["matchups"]["regular"])
     cut = res["scenario"]["cutline"]
     proj = res["scenario"]["projected_standings"]
-    assert cut["playoff_spots"] == 4 and cut["last_inside"] == proj[3] and cut["first_outside"] == proj[4]
+    inside = [x for x in proj if x["status"] == "inside"]
+    assert cut["playoff_spots"] == 4 and cut["last_inside"] == [x for x in inside if x["rank"] == inside[-1]["rank"]]
+    assert all(x["status"] == "outside" for x in cut["first_outside"])
     assert sum(1 for x in proj if x["status"] == "inside") <= 4
     assert any("2 divisions" in w for w in res["warnings"])
     assert res["rules"]["espn_rules_reported"] == {"scheduleSettings.playoffSeedingRule": "TOTAL_POINTS_SCORED"}

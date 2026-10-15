@@ -569,12 +569,19 @@ def build_playoff_race(data: RaceData, team_id: int | None = None, base: str = "
 
     cut = None
     if spots:
-        ranked = [x for x in projected_rows if x["rank"] is not None]
-        last_in = ranked[spots - 1] if len(ranked) >= spots else None
-        first_out = ranked[spots] if len(ranked) > spots else None
-        cut = {"playoff_spots": spots, "last_inside": last_in, "first_outside": first_out,
-               "cutline_tie": any(x["status"] == "cutline_tie" for x in projected_rows),
-               "near_cutline": [x["team_id"] for x in ranked[max(0, spots - 2): spots + 2]],
+        # Boundary teams are whole rank groups, never one member of a tie picked by team id: the
+        # lowest-ranked group fully inside, the highest-ranked group fully outside, and any group
+        # straddling the last spot with the number of spots its members would share.
+        inside = [x for x in projected_rows if x["status"] == "inside"]
+        outside = [x for x in projected_rows if x["status"] == "outside"]
+        tied = [x for x in projected_rows if x["status"] == "cutline_tie"]
+        last_rank = max((x["rank"] for x in inside), default=None)
+        first_rank = min((x["rank"] for x in outside), default=None)
+        cut = {"playoff_spots": spots,
+               "last_inside": [x for x in inside if x["rank"] == last_rank],
+               "first_outside": [x for x in outside if x["rank"] == first_rank],
+               "cutline_tie": {"team_ids": [x["team_id"] for x in tied], "spots_left": spots - len(inside)}
+               if tied else None,
                "bubble": sorted({tid for tid in team_ids if any(g["high_leverage"] for g in lev[tid])}
                                 | {x["team_id"] for x in projected_rows if x["status"] == "cutline_tie"})}
 

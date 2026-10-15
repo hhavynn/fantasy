@@ -465,8 +465,9 @@ export type PlayoffRace = {
     base: "projected" | "actual"; overrides: { matchup_id: number; outcome: PrOutcome | "none" }[];
     decided_open_games: number; unresolved_open_games: number;
     current_standings: PrStanding[]; projected_standings: PrStanding[];
-    cutline: { playoff_spots: number; last_inside: PrStanding | null; first_outside: PrStanding | null; cutline_tie: boolean;
-      near_cutline: number[]; bubble: number[] } | null;
+    // Boundary groups are whole rank groups; a group straddling the last spot is cutline_tie (no tiebreak).
+    cutline: { playoff_spots: number; last_inside: PrStanding[]; first_outside: PrStanding[];
+      cutline_tie: { team_ids: number[]; spots_left: number } | null; bubble: number[] } | null;
     leverage: Record<string, PrLeverage[]>;
     focus: { scenario: PrPlace; win_out: PrPlace; lose_out: PrPlace; open_games: number;
       fewest_wins_to_get_inside: { wins_needed: number | null; of_games: number; method: string; games: number[]; note?: string } | null;
