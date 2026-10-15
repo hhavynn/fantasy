@@ -1,0 +1,17 @@
+{
+ "4046": {"player_id": "4046", "full_name": "Quinn Arbor", "first_name": "Quinn", "last_name": "Arbor", "position": "QB", "fantasy_positions": ["QB"], "team": "KC", "status": "Active", "injury_status": null, "active": true, "gsis_id": "00-0033873", "espn_id": 3139477, "sport": "nfl"},
+ "6794": {"player_id": "6794", "full_name": "Rory Bend", "position": "RB", "fantasy_positions": ["RB"], "team": "LV", "status": "Active", "injury_status": "Questionable", "active": true, "gsis_id": null, "espn_id": 4241457},
+ "7564": {"player_id": "7564", "full_name": "Wes Crane", "position": "WR", "fantasy_positions": ["WR"], "team": "JAX", "status": "Active", "injury_status": null, "active": true, "gsis_id": " 00-0036900"},
+ "8130": {"player_id": "8130", "full_name": "Tate Dorsey", "position": "TE", "fantasy_positions": ["TE"], "team": "LAR", "status": "Active", "injury_status": null, "active": true, "gsis_id": "00-0099999"},
+ "4984": {"player_id": "4984", "full_name": "Jo Ellis", "position": "WR", "fantasy_positions": ["WR"], "team": "WAS", "status": "Active", "injury_status": null, "active": true},
+ "5850": {"player_id": "5850", "full_name": "Ike Fuller", "position": "RB", "fantasy_positions": ["RB"], "team": "SF", "status": "Injured Reserve", "injury_status": "IR", "active": true, "gsis_id": null},
+ "12500": {"player_id": "12500", "full_name": "Taxi Rookie", "position": "WR", "fantasy_positions": ["WR"], "team": "GB", "status": "Active", "injury_status": null, "active": true},
+ "9509": {"player_id": "9509", "full_name": "Mo Gaines", "position": "WR", "fantasy_positions": ["WR"], "team": "NO", "status": "Active", "injury_status": null, "active": true, "gsis_id": "00-0038000"},
+ "11632": {"first_name": "Rookie", "last_name": "Runner", "position": "RB", "fantasy_positions": ["RB"], "team": "TB", "status": "Active", "injury_status": null, "active": true, "gsis_id": null},
+ "10229": {"player_id": "10229", "full_name": "Kai Hollis", "position": "K", "fantasy_positions": ["K"], "team": null, "status": "Inactive", "injury_status": null, "active": false},
+ "2133": {"player_id": "2133", "full_name": "Dual Record", "position": "WR", "fantasy_positions": ["WR"], "team": "NE", "status": "Active", "injury_status": null, "active": true},
+ "6801": {"player_id": "6801", "full_name": "Flex Ingram", "position": "RB", "fantasy_positions": ["RB", "WR"], "team": "OAK", "status": "Active", "injury_status": null, "active": true},
+ "DET": {"player_id": "DET", "first_name": "Detroit", "last_name": "Lions", "position": "DEF", "fantasy_positions": ["DEF"], "team": "DET", "active": true, "injury_status": null, "sport": "nfl"},
+ "LAR": {"player_id": "LAR", "first_name": "Los Angeles", "last_name": "Rams", "position": "DEF", "fantasy_positions": ["DEF"], "team": "LAR", "active": true, "injury_status": null, "sport": "nfl"},
+ "1111": {"player_id": "1111", "full_name": "Not Rostered", "position": "QB", "fantasy_positions": ["QB"], "team": "BUF", "active": true}
+}
