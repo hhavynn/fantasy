@@ -133,9 +133,46 @@ def _pinned(path: Path, season: int, week: int, fingerprint: str):
     return art, Path(path).stem.split("-", 1)[1], Path(path)
 
 
-def cmd_predict(args, live, src, scoring, artifacts: dict | None = None, **_) -> dict:
+def _retrieved_at(args, live) -> dict:
+    """Upper bounds on when each source family was downloaded: the live season's tables were
+    written by the latest successful nflverse sync; history seasons are unknown (null); the
+    play-by-play evidence file by its write time."""
+    synced = None
+    if live is not None:
+        try:
+            row = live.execute("SELECT max(finished_at) FROM sync_runs WHERE source = 'nfl' AND status = 'ok'").fetchone()
+            synced = row[0] if row else None
+        except duckdb.Error:
+            synced = None
+    out = {fam: {args.season: synced} for fam in ("panel", "games", "defense", "rosters", "injuries")}
+    out["exits"] = {}
+    for s in (args.season - 1, args.season):
+        f = args.out / "pbp_exits" / f"{s}.parquet"
+        out["exits"][s] = datetime.fromtimestamp(f.stat().st_mtime, timezone.utc) if f.exists() else None
+    return out
+
+
+def capture_sources(args, live, hist, src, participation_sources) -> dict:
+    """Snapshot what this forecast reads (source_provenance). Fails closed: no snapshot, no forecast."""
+    from app.analytics import source_provenance as sp
+    cov = {s: sp.injury_timestamp_coverage(live if s == args.season else hist, s) for s in (args.season - 1, args.season)}
+    fallback = participation_sources[1] if participation_sources else set()
+    extra = {}
+    if fallback:
+        extra[sp.PARTICIPATION_INJURIES] = participation_sources[0].injuries.filter(
+            (pl.col("season") == args.season) & (pl.col("week") == args.week))
+    try:
+        return sp.capture(args.out, src, args.season, args.week, captured_at=_now(args),
+                          retrieved_at=_retrieved_at(args, live), meta=sp.source_meta(cov, fallback), extra=extra)
+    except Exception as err:
+        raise wl.NotReady(f"could not snapshot the forecast's sources ({err.__class__.__name__}: {err}); no forecast "
+                          "was frozen") from err
+
+
+def cmd_predict(args, live, src, scoring, artifacts: dict | None = None, hist=None, **_) -> dict:
     """`artifacts` ({version: path}) pins the exact artifacts to use (the learning cycle passes the
-    ones it just trained or reused); otherwise the most recently created artifact of each version."""
+    ones it just trained or reused); otherwise the most recently created artifact of each version.
+    The sources the forecast reads are snapshotted first (source_provenance) and referenced by the run."""
     rep = _require_ready(args, src)
     from app.analytics.participation import PARTICIPATION_VERSION, ParticipationArtifact
     if artifacts:
@@ -154,8 +191,17 @@ def cmd_predict(args, live, src, scoring, artifacts: dict | None = None, **_) ->
     part = ParticipationArtifact.from_dict(json.loads(ppath.read_text())) \
         if ppath.exists() and not args.retrospective else None
     t = time.time()
+    psrc = None
+    if part is not None and live is not None:
+        from app.analytics.independent_projection_store import espn_designation_fallback
+        psrc = espn_designation_fallback(live, src, args.season, args.week)
+    manifest = capture_sources(args, live, hist, src, psrc)
     run = wl.predict(src, champ, chal, args.season, args.week, _now(args), con=live, participation=part,
                      kind="retrospective" if args.retrospective else "pregame", readiness_report=rep,
+                     participation_sources=psrc,
+                     sources_manifest={"manifest_id": manifest["manifest_id"],
+                                       "parts": {k: v["hash"] for k, v in manifest["parts"].items()}},
+                     report_times=manifest["meta"]["injury_report_timestamps"],
                      artifact_ids={"champion": {"version": champ.version, "id": cid, "path": str(cpath)},
                                    "challenger": {"version": chal.version, "id": xid, "path": str(xpath)}})
     path, created = wl.write_run(run, args.out)
@@ -164,6 +210,7 @@ def cmd_predict(args, live, src, scoring, artifacts: dict | None = None, **_) ->
             "rows": len(run["rows"]),
             "pregame_rows": sum(r["pregame"] for r in run["rows"]),
             "with_challenger": sum(r["challenger"]["points"] is not None for r in run["rows"]),
+            "source_manifest": manifest["manifest_id"],
             "runtime_seconds": round(time.time() - t, 2)}
 
 
@@ -191,8 +238,8 @@ def cmd_evaluate(args, src, **_) -> dict:
 
 def cmd_cycle(args, **ctx) -> dict:
     out = {"sync_exits": cmd_sync_exits(args)}
-    live, _, scoring, src = _context(args)
-    ctx = {"live": live, "src": src, "scoring": scoring}
+    live, hist, scoring, src = _context(args)
+    ctx = {"live": live, "hist": hist, "src": src, "scoring": scoring}
     out["status"] = cmd_status(args, **ctx)
     out["train"] = cmd_train(args, **ctx)
     out["predict"] = cmd_predict(args, **ctx)
@@ -224,9 +271,9 @@ def main(argv=None) -> int:
         elif args.command == "cycle":
             result = cmd_cycle(args)
         else:
-            live, _, scoring, src = _context(args)
+            live, hist, scoring, src = _context(args)
             result = {"status": cmd_status, "train": cmd_train, "predict": cmd_predict, "evaluate": cmd_evaluate}[
-                args.command](args, live=live, src=src, scoring=scoring)
+                args.command](args, live=live, hist=hist, src=src, scoring=scoring)
     except (wl.NotReady, FileNotFoundError, ValueError) as err:
         print(f"NOT READY: {err}", file=sys.stderr)
         return 3

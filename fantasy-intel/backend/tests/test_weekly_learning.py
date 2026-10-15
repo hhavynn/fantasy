@@ -215,10 +215,11 @@ def test_weekly_pipeline_never_imports_into_consumers():
     import pathlib
     root = pathlib.Path(__file__).resolve().parents[1] / "app"
     for path in root.rglob("*.py"):
-        if path.name in ("weekly_learning.py", "challenger.py"):
+        if path.name in ("weekly_learning.py", "challenger.py", "source_provenance.py"):
             continue
         text = path.read_text()
         assert "weekly_learning" not in text and "from .challenger" not in text, path
+        assert "source_provenance" not in text, path
     assert json.loads(json.dumps(ch.SHADOW_PROMOTION_CRITERIA))["min_prospective_weeks"] == 8
 
 
