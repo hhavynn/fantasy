@@ -1,0 +1,27 @@
+.note { margin: 0 0 12px; color: var(--ink-muted); font-size: 13px; line-height: 19px; max-width: 100ch; }
+.sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 24px; }
+.side { min-width: 0; }
+.sideTitle { margin: 0 0 8px; font-size: 14px; line-height: 20px; }
+.who { display: block; font-size: 12px; line-height: 16px; color: var(--ink); margin-top: 4px; }
+.sub { display: block; font-size: 12px; line-height: 16px; color: var(--ink-faint); margin-top: 2px; }
+.stack8 > * + * { margin-top: 8px; }
+.statements { margin: 8px 0 0; padding-left: 16px; color: var(--ink-muted); }
+.statements li { margin: 2px 0; }
+.interact { margin: 8px 0 0; font-size: 12px; line-height: 16px; color: var(--ink-faint); }
+.alert { margin: 0 0 12px; }
+
+.details { margin-top: 16px; }
+.formulaTable { margin: 0 -16px; }
+.formulaTable table { width: 100%; }
+.inline .formulaTable { margin: 0; }
+.list { margin: 4px 0 8px; padding-left: 16px; color: var(--ink-muted); }
+.list li { margin: 2px 0; }
+.faintItem { color: var(--ink-faint); }
+.block { margin-top: 12px; }
+.frontierNote { margin: 8px 0 4px; font-size: 13px; }
+.starters { font-size: 11px; color: var(--ink-faint); }
+.totalRow td { color: var(--ink-faint); }
+
+/* Compact variant used inside a discovery row. */
+.inline { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.inlineTitle { margin: 0 0 4px; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink); }
