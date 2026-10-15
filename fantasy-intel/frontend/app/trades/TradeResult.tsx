@@ -376,7 +376,7 @@ function Replacement({ r }: { r: TradeResult }) {
               const c = p.replacement_context;
               return (
                 <tr key={p.espn_player_id}>
-                  <td>{p.name} <Pos value={p.position} /></td>
+                  <td><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /></td>
                   <td>
                     {c.replacement
                       ? <><PlayerLink id={c.replacement.espn_player_id} name={c.replacement.name} /> <Pos value={c.replacement.position} /></>
@@ -473,7 +473,7 @@ function InjuryScenarioPanel({ r }: { r: TradeResult }) {
       <p className={`faint ${styles.small}`}>{r.availability_note}</p>
       {r.injury_scenarios.map((p) => (
         <div key={p.espn_player_id} className={styles.scenario}>
-          <h3>{p.name} <Pos value={p.position} /> <Badge value={p.status.replaceAll("_", " ")} tone="warn" /></h3>
+          <h3><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /> <Badge value={p.status.replaceAll("_", " ")} tone="warn" /></h3>
           <div className="faint">
             {p.eligibility_basis ? `${p.eligibility_basis}.` : "No NFL eligibility date is known."} {p.return_confirmed ? "Return confirmed." : "Actual return not confirmed."}
           </div>

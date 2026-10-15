@@ -12,6 +12,7 @@
 
 
 /* ---------- Profile header ---------- */
+.titleLine { display: inline-flex; align-items: center; gap: 14px; }
 .metaLine { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .facts {
   display: flex;

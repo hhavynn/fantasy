@@ -5,6 +5,7 @@
 // filter are local view state; the selection itself lives in TradeBuilder (and reaches the URL on Evaluate).
 
 import { useId, useState } from "react";
+import { PlayerPhoto } from "@/components/PlayerPhoto";
 import { Badge, Pos } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { filterRoster, groupByPosition, positionsIn, sideLimit } from "@/lib/trade-builder";
@@ -102,6 +103,7 @@ export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, on
                       <input id={id} type="checkbox" className={styles.check} checked={on} disabled={blocked}
                         onChange={() => onToggle(p.espn_player_id)} />
                       <span className={styles.rowMain}>
+                        <PlayerPhoto id={p.espn_player_id} name={playerName(p)} />
                         <span>{playerName(p)}</span>
                         {p.on_ir && <Badge value="fantasy IR slot" tone="bad" title="In an ESPN IR slot (inactive in the canonical lineup)" />}
                         {availabilityBadge(p)}

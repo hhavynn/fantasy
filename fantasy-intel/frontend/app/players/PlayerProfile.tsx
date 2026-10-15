@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PlayerPhoto } from "@/components/PlayerPhoto";
 import { Badge, Notice, PageHeader, Pos, Score, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
 import { label, num, pct, signed } from "@/lib/format";
 import { metricLabel, tidyReason } from "@/lib/reason-text";
@@ -64,7 +65,7 @@ function ProfileHeader({ d, q }: { d: Detail; q: string }) {
   const report = latestInj?.report_status;
   return (
     <PageHeader
-      title={p.full_name}
+      title={<span className={styles.titleLine}><PlayerPhoto id={p.espn_player_id} name={p.full_name} size={56} />{p.full_name}</span>}
       meta={
         <span className={styles.metaLine}>
           <Pos value={p.position} />
