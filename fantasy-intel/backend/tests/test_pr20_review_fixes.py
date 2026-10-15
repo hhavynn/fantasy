@@ -416,3 +416,26 @@ def test_discovery_premium_dst_without_replacement_remains_practical():
 
     # Moderate defense 210 is flagged into concerns as replaceable by FA 901
     assert any(210 in r["receives"] for r in concerns_rows)
+
+
+def test_anchor_opportunity_cost_activates_incoming_fantasy_ir_player():
+    """Discovery's opportunity-cost check must build scenario E like trades.side_lineups: an incoming
+    player who sat in a fantasy IR slot on his old team is active for the receiving team. Its
+    trade_advantage must equal the full analysis's value."""
+    from app.analytics.trade_practical import _anchor_opportunity_cost
+
+    t1 = [r for r in filler(0, 100) if r[0] != 110]
+    t2 = filler(0, 200) + [(211, "D/ST", 9.0, {"on_ir": True})]
+    st = make_league({1: t1, 2: t2}, [(901, "D/ST", 8.5)], capacity=11)
+    st.free_agent_status = {901: "FREEAGENT"}
+
+    ref = analyze(st, 1, 2, [107], [211])["team_a"]["comparison"]
+    board = FreeAgencyBoard(st, st.window())
+    alt = board.best_acquisition(1, st.rosters[1], kinds=("free_agent",))
+    fa = next(p for p in board.pool if p.espn_player_id == 901)
+    names = {p.espn_player_id: p for ps in st.rosters.values() for p in ps}
+    row = {"mine": {"ros_delta": ref["canonical_gain"]["ros_delta"]}, "sends": [107], "receives": [211]}
+
+    oc = _anchor_opportunity_cost(board, 1, row, alt, fa, None, names, st.window())
+    assert ref["trade_advantage"]["ros_delta"] is not None
+    assert oc["trade_advantage"] == pytest.approx(ref["trade_advantage"]["ros_delta"])

@@ -19,6 +19,8 @@ counts), and no row carries an acceptance probability.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, UNKNOWN
 from .team_lineups import compare
 from .trade_assets import AGAINST_THEM, NOTE as ASSET_NOTE, AssetBoard, league_needs
@@ -87,7 +89,9 @@ def _anchor_opportunity_cost(board, anchor: int, row: dict, alt: dict, fa,
     g = row["mine"]["ros_delta"]
     if g is None or g <= 0 or alt.get("player") is None or fa is None:
         return {"has_concern": False, "trade_advantage": g, "available_without_trade": 0.0, "lead": None}
-    incoming = [names[x] for x in row["receives"] if x in names]
+    # Incoming players are active after the trade (as in trades.side_lineups), even if they sat in a
+    # fantasy IR slot on their old team; otherwise scenario E would leave them out of the lineup.
+    incoming = [replace(names[x], on_ir=False) for x in row["receives"] if x in names]
     c_team = alt["_team"]
     try:
         combined = board.trade_with(anchor, [p for p in board.state.rosters[anchor] if p.espn_player_id not in row["sends"]] + incoming,
@@ -335,7 +339,8 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
     sections: dict[str, list] = {}
     if mode == "practical":
         def _practical_sort_key(x):
-            adv = x.get("opp_cost_advantage")
+            # trade_advantage is a rest-of-season figure: only comparable with the ros phase.
+            adv = x.get("opp_cost_advantage") if phase == "ros" else None
             if adv is None:
                 adv = _phase_delta(x["mine"], phase) or 0.0
             theirs = _phase_delta(x["theirs"], phase) or 0.0
