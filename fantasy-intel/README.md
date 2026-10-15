@@ -406,6 +406,21 @@ Until then the API returns a 503 asking you to re-sync.
 
 ---
 
+## Sleeper source (phase 1: library only)
+
+`backend/app/sleeper/` reads public Sleeper leagues (league, users, rosters, NFL state, players)
+by explicit league id, normalises them to the same row shapes as the ESPN parser and maps
+Sleeper player ids to nflverse gsis ids. Nothing is stored in DuckDB or shown in the dashboard
+yet. Caches live in `data/sleeper/` (git-ignored); `/players/nfl` is fetched at most once a day.
+Details, id rules and the remaining single-league lookups: [`docs/sleeper_foundation.md`](docs/sleeper_foundation.md).
+
+Optional live check (skipped unless the variable is set):
+
+```bash
+cd backend
+SLEEPER_LIVE_LEAGUE_ID=<public league id> uv run pytest tests/test_sleeper_live.py -s
+```
+
 ## Tests
 
 ```bash
@@ -464,7 +479,7 @@ npm run build
 ### Isolation and environment requirements
 
 - **No live ESPN access**: CI runs without ESPN credentials (`ESPN_S2`, `SWID`) and never contacts ESPN or external network services. All tests run against deterministic in-memory synthetic league fixtures and synthetic NFL data.
-- **Local-only tests**: Exactly one test (`test_real_league_smoke_read_only` in `backend/tests/test_trade_discovery.py`) checks for a local DuckDB file (`data/fantasy.duckdb`). It is safely skipped in CI and on machines without a configured local ESPN database.
+- **Local-only tests**: `test_real_league_smoke_read_only` in `backend/tests/test_trade_discovery.py` checks for a local DuckDB file (`data/fantasy.duckdb`) and is skipped without one. `backend/tests/test_sleeper_live.py` calls the real Sleeper API only when `SLEEPER_LIVE_LEAGUE_ID` is set. Both are skipped in CI; Sleeper unit tests use recorded fixtures in `backend/tests/fixtures/sleeper/`.
 
 ## Troubleshooting
 

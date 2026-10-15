@@ -268,6 +268,7 @@ dependencies = [
     { name = "polars" },
     { name = "pyarrow" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -286,6 +287,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.0" },
     { name = "pyarrow", specifier = ">=15" },
     { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "requests", specifier = ">=2.31" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
 
