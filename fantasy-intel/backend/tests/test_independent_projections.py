@@ -300,7 +300,8 @@ def test_live_participation_gives_unconditional_expected_points(live, monkeypatc
 def test_canonical_espn_systems_do_not_read_independent_projections():
     """Lineups, trades, waivers, scores and ESPN projections must not depend on this research model."""
     allowed = {"independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
-               "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql"}
+               "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",
+               "connection.py"}   # connection.py: schema-version rebuild list only (like schema.sql)
     for f in APP.rglob("*"):
         if f.suffix not in (".py", ".sql") or f.name in allowed:
             continue
