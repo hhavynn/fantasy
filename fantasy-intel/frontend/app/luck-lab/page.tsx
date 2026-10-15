@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Badge, Callout, ErrorBox } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { LlBrief, LlCounterfactual, LlLeader, LlRecord, LlResult, LlScheduleRow, LlTimeline, LuckLab } from "@/lib/luck-types";
+import { ScheduleSelector } from "./ScheduleSelector";
 
 // Luck vs. Skill Lab: expected wins from all-play, schedule luck (actual minus expected), schedule
 // difficulty, notable results and counterfactual opponent schedules, over completed, fully observed
@@ -75,17 +76,16 @@ function Body({ d }: { d: LuckLab }) {
   const gaps = cov.excluded_periods.filter((e) => e.kind !== "not_completed");
   return (
     <>
-      <form action="/luck-lab" className="row-flex">
-        <label>Team <select name="team" defaultValue={d.focus_team_id}>
-          {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
-        </select></label>
-        <label>With the schedule of <select name="vs" defaultValue={d.schedule_of ?? ""}>
-          <option value="">—</option>
-          {d.teams.filter((t) => t.team_id !== d.focus_team_id).map((t) => <option key={t.team_id} value={t.team_id}>{t.name}</option>)}
-        </select></label>
-        <button type="submit">Show</button>
-        <span className="faint" style={{ marginLeft: "auto" }}><Link href="/playoff-race">Playoff race</Link> · <Link href="/">Standings</Link></span>
-      </form>
+      <ScheduleSelector
+        key={`${d.focus_team_id}-${d.schedule_of ?? ""}`}
+        teams={d.teams}
+        focusTeamId={d.focus_team_id}
+        scheduleOf={d.schedule_of}
+      >
+        <span className="faint" style={{ marginLeft: "auto" }}>
+          <Link href="/playoff-race">Playoff race</Link> · <Link href="/">Standings</Link>
+        </span>
+      </ScheduleSelector>
       <p className="faint" style={{ margin: 0 }}>
         <b>{cov.eligible_periods.length}</b> completed, fully observed regular-season period(s) of {cov.teams} teams
         {pending.length > 0 && <> · not completed yet: period{pending.length > 1 ? "s" : ""} {pending.join(", ")}</>}
