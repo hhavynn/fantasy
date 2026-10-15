@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Barlow_Condensed, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
+import { CommandPalette } from "@/components/CommandPalette";
 import { MobileNav, NavGroups, SubNav } from "@/components/Nav";
 import { SyncPill } from "@/components/SyncPill";
 import { api } from "@/lib/api";
@@ -36,6 +37,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   {s.league.name} <span className="faint">· wk {s.league.current_week}</span>
                 </span>
               )}
+              <CommandPalette />
               <SyncPill status={s ?? null} />
               <MobileNav />
             </div>

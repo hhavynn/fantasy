@@ -20,6 +20,15 @@
   --caution-soft: #f2bd5226;
   --neutral-soft: #8a95a529;
   --focus: #9cc8ff;
+  --scrim: rgba(3, 6, 10, 0.66);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-edge: rgba(0, 0, 0, 0.5);
+
+  /* Motion: short ease-out transitions; everything below is switched off under prefers-reduced-motion. */
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 160ms;
+  --dur-slow: 180ms;
 
   /* Chart palette. Categorical order: blue, orange, green, pink, yellow, slate. Each is >= 7:1 on
      --surface, and every pair stays distinguishable (CIELAB distance >= 10) under protan/deutan/tritan
@@ -60,6 +69,7 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+html { scrollbar-gutter: stable; }
 body {
   background: var(--bg);
   color: var(--ink);
@@ -101,7 +111,7 @@ p { margin: 0 0 8px; }
 .sync-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--positive); }
 .sync-pill[data-state="stale"]::before { background: var(--caution); }
 .sync-pill[data-state="offline"]::before { background: var(--negative); }
-.sync-pop { position: absolute; right: 0; top: calc(100% + 8px); width: 290px; padding: 12px 16px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); font-size: 13px; white-space: normal; }
+.sync-pop { position: absolute; right: 0; top: calc(100% + 8px); width: 290px; padding: 12px 16px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-pop); font-size: 13px; white-space: normal; }
 .sync-pop dl { margin: 0 0 10px; display: grid; gap: 4px; }
 .sync-pop dl > div { display: flex; justify-content: space-between; gap: 16px; }
 .sync-pop dt { color: var(--ink-muted); }
@@ -114,7 +124,7 @@ p { margin: 0 0 8px; }
 .mobile-nav { display: none; }
 .menu-toggle { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--ink-muted); cursor: pointer; }
 .menu-toggle:hover, .menu-toggle[aria-expanded="true"] { color: var(--ink); border-color: var(--line-control); }
-.mobile-nav-panel { position: absolute; left: 0; right: 0; top: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; max-height: calc(100dvh - 100px); overflow-y: auto; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: 0 12px 24px rgba(0, 0, 0, 0.45); }
+.mobile-nav-panel { position: absolute; left: 0; right: 0; top: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; max-height: calc(100dvh - 100px); overflow-y: auto; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-pop); }
 .mobile-nav-group { display: flex; flex-direction: column; gap: 2px; }
 .mobile-nav-title { padding: 0 10px 4px; font-size: 12px; font-weight: 600; color: var(--ink-faint); }
 .mobile-nav-group a { display: flex; align-items: center; min-height: 42px; padding: 0 10px; border-radius: 6px; color: var(--ink-muted); }
