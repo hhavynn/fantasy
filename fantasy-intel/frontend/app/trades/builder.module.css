@@ -105,4 +105,5 @@
 
 .results { scroll-margin-top: calc(var(--appbar-h) + 88px); }
 .previous { opacity: .55; }
+.resultSkeleton { display: grid; gap: 16px; }
 .pendingNote { margin: 0 0 16px; color: var(--ink-muted); }

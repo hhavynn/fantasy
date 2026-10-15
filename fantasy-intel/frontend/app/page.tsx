@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { MovesTable } from "@/components/MovesTable";
 import { PlayerLink } from "@/components/PlayerLink";
@@ -6,14 +7,13 @@ import {
   Badge, EmptyState, Method, Notice, PageHeader, Pos, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { buildActionItems, type StartSitInput, type WaiverInput } from "@/lib/action-items";
+import type { StartSitInput, WaiverInput } from "@/lib/action-items";
 import { num } from "@/lib/format";
 import { ordinal } from "@/lib/matchup";
 import type { Matchup } from "@/lib/matchup-types";
 import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import type { League, Move, Need, RosterPlayer, SyncInfo, Team } from "@/lib/types";
-import { ActionItems } from "./ActionItems";
-import { MatchupCard } from "./MatchupCard";
+import { WeekBand, WeekBandSkeleton } from "./WeekBand";
 import styles from "./home.module.css";
 
 // The template does not apply to a page in the layout's own segment, so the full title is given.
@@ -29,23 +29,22 @@ const STANDINGS_DEFAULT: SortState = { key: "rank", dir: "asc" };
 
 export default async function OverviewPage({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
-  // Each section has its own source; one failing endpoint degrades only its own section.
-  const [res, matchup, startSit, waivers] = await Promise.all([
-    api<Overview>("/api/overview"),
-    api<Matchup>("/api/matchup"),
-    api<StartSitInput>("/api/start-sit"),
-    api<{ players: WaiverInput[]; total: number }>("/api/waivers?view=BEST&limit=3"),
-  ]);
-  const actions = buildActionItems({
-    roster: res.ok ? res.data.roster : null,
-    matchup: matchup.ok ? matchup.data : null,
-    startSit: startSit.ok ? startSit.data : null,
-    waivers: waivers.ok ? waivers.data : null,
-  });
-  const week = matchup.ok ? matchup.data.league.current_week : res.ok ? res.data.league.current_week : null;
+  // Each section has its own source; one failing endpoint degrades only its own section. The week band's three
+  // sources start now but are not awaited here: the band streams in behind the header, stat strip and roster.
+  const matchup = api<Matchup>("/api/matchup");
+  const startSit = api<StartSitInput>("/api/start-sit");
+  const waivers = api<{ players: WaiverInput[]; total: number }>("/api/waivers?view=BEST&limit=3");
+  const res = await api<Overview>("/api/overview");
+  const band = (
+    <Suspense fallback={<WeekBandSkeleton />}>
+      <WeekBand matchup={matchup} startSit={startSit} waivers={waivers} roster={res.ok ? res.data.roster : null}
+                fallbackWeek={res.ok ? res.data.league.current_week : null} />
+    </Suspense>
+  );
 
   if (!res.ok) {
-    if (!matchup.ok) {
+    // Without the overview, the page is only worth showing if the matchup (the week band's anchor) loaded.
+    if (!(await matchup).ok) {
       return (
         <div className="stack">
           <PageHeader title="Overview" />
@@ -57,10 +56,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       <div className="stack">
         <PageHeader title="Overview" />
         <Notice tone="caution" title="Team overview unavailable">{res.error} The roster, needs and standings below are missing; the rest of the page still loaded.</Notice>
-        <div className={styles.band}>
-          <MatchupCard result={matchup} />
-          <ActionItems list={actions} week={week} />
-        </div>
+        {band}
       </div>
     );
   }
@@ -101,10 +97,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </StatStrip>
       )}
 
-      <div className={styles.band}>
-        <MatchupCard result={matchup} />
-        <ActionItems list={actions} week={week} />
-      </div>
+      {band}
 
       <div className="grid-main">
         <Section title="Current roster" flush>
