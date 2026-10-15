@@ -249,6 +249,31 @@ def interval_bands(df: pl.DataFrame, col: str, nominal: float = 0.80) -> dict:
     return {"nominal": nominal, "bands": bands, "source": "validation residuals"}
 
 
+def snap_split_ablation(store: pl.DataFrame, selection: dict, protocol: Protocol) -> dict:
+    """VALIDATION seasons only: the selected context model C versus the same model with
+    snap_trend replaced by snap_trend_role + injury_exit_last (penalty fixed at C's selected
+    value). A research diagnostic; it does not change the frozen ifp selection."""
+    protocol.check()
+    weeks = sorted({(int(s), int(w)) for s, w in store.filter(pl.col("season").is_in(protocol.validation_seasons))
+                    .select("season", "week").unique().iter_rows()})
+    lam = {p: s["lambda"]["C"] for p, s in selection["positions"].items()}
+    preds = walk_forward(store, weeks, {p: {"C": [lam[p]], "Cs": [lam[p]]} for p in POSITIONS},
+                         protocol.train_start_season)
+    out = {}
+    for pos in POSITIONS:
+        a, b = f"pred_C_{lam[pos]:g}", f"pred_Cs_{lam[pos]:g}"
+        rows = preds.filter((pl.col("position") == pos) & pl.col(a).is_not_null() & pl.col(b).is_not_null())
+        y = _arr(rows, "label")
+        drop = rows.filter(pl.col("injury_exit_last") == 1)
+        out[pos] = {"n": rows.height, "C": metrics(y, _arr(rows, a)), "C_snap_split": metrics(y, _arr(rows, b)),
+                    "snap_split_minus_C_mae": week_bootstrap_mae_diff(rows, b, a, PROMOTION_CRITERIA["bootstrap_resamples"],
+                                                                      protocol.seed),
+                    "injury_exit_rows": {"n": drop.height, "C": metrics(_arr(drop, "label"), _arr(drop, a)),
+                                         "C_snap_split": metrics(_arr(drop, "label"), _arr(drop, b))}}
+    return {"validation_seasons": list(protocol.validation_seasons), "lambda": lam, "positions": out,
+            "note": "Validation only. Held-out seasons were not used; the frozen ifp-1.0.0 selection is unchanged."}
+
+
 # ----------------------------------------------------------------------------- held-out
 
 

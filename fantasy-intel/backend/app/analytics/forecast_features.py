@@ -10,6 +10,9 @@ Leakage contract (tested in tests/test_forecast_features.py):
     home/away from the schedule. Its box score, snaps, xFP and points are never inputs.
   * Betting lines are NOT used: nflverse stores closing lines, which are set after a
     Tuesday-Thursday forecast cutoff.
+  * Injury reports (optional `Sources.injuries`) may be used up to and INCLUDING week W: the
+    week-W report is published before the week-W game (rows modified at or after kickoff are
+    dropped at load time). They are used only to label a last-game snap drop as an injury exit.
   * Unknown values stay null and get a missing indicator; a measured zero stays zero.
 
 Units: `league_points` are this league's fantasy points (app.analytics.league_scoring).
@@ -35,6 +38,8 @@ TEAM_SHRINK_GAMES = 3.0     # team offense per-game rates
 OPP_SHRINK_GAMES = 4.0      # opponent points allowed to a position
 OPP_SHRINK_PLAYS = 150.0    # opponent EPA per play
 ABSENCE_WEEKS = 3           # weeks since last game at or above which a player is "returning"
+SNAP_DROP = 0.15            # last-game snap share this far below the earlier recent mean is a "drop"
+EXIT_REPORT_WEEKS = 2       # an injury listing within this many weeks after the drop game marks an injury exit
 
 PANEL_COLUMNS = (
     "season", "week", "gsis_id", "position", "team", "opponent", "has_stats", "has_snaps",
@@ -184,6 +189,8 @@ class Sources:
     panel: pl.DataFrame
     games: pl.DataFrame
     defense: pl.DataFrame
+    rosters: pl.DataFrame | None = None     # nflverse weekly roster status (participation model)
+    injuries: pl.DataFrame | None = None    # nflverse weekly injury report, pregame rows only
 
     @staticmethod
     def concat(parts: list["Sources"]) -> "Sources":
@@ -196,14 +203,75 @@ class Sources:
             new = seasons - seen
             seen |= seasons
             flt = pl.col("season").is_in(sorted(new))
-            keep.append(Sources(part.panel.filter(flt), part.games.filter(flt), part.defense.filter(flt)))
+            keep.append(Sources(part.panel.filter(flt), part.games.filter(flt), part.defense.filter(flt),
+                                None if part.rosters is None else part.rosters.filter(flt),
+                                None if part.injuries is None else part.injuries.filter(flt)))
         keep.reverse()
+
+        def optional(name):
+            frames = [getattr(k, name) for k in keep if getattr(k, name) is not None]
+            return pl.concat(frames) if frames else None
+
         return Sources(pl.concat([k.panel for k in keep]).sort("season", "week", "gsis_id"),
-                       pl.concat([k.games for k in keep]), pl.concat([k.defense for k in keep]))
+                       pl.concat([k.games for k in keep]), pl.concat([k.defense for k in keep]),
+                       optional("rosters"), optional("injuries"))
+
+
+ROSTER_SCHEMA = {"season": pl.Int64, "week": pl.Int64, "gsis_id": pl.String, "team": pl.String,
+                 "position": pl.String, "status": pl.String}
+INJURY_SCHEMA = {"season": pl.Int64, "week": pl.Int64, "gsis_id": pl.String, "team": pl.String,
+                 "report_status": pl.String, "practice_status": pl.String, "injury": pl.String,
+                 "not_injury": pl.Boolean}
+
+
+def load_rosters(con, seasons: list[int] | None = None) -> pl.DataFrame | None:
+    """One row per (season, week, player) from nflverse weekly rosters (REG). A player listed
+    twice in a week (trade) keeps the ACT row, then INA, then any other."""
+    need = {"season", "week", "gsis_id", "team", "position", "status"}
+    if not table_exists(con, "nfl_rosters_weekly") or not need <= set(table_columns(con, "nfl_rosters_weekly")):
+        return None
+    where = f"AND season IN ({', '.join(str(int(s)) for s in seasons)})" if seasons else ""
+    gt = "AND (game_type = 'REG' OR game_type IS NULL)" if "game_type" in table_columns(con, "nfl_rosters_weekly") else ""
+    pref = "CASE status WHEN 'ACT' THEN 0 WHEN 'INA' THEN 1 ELSE 2 END"
+    df = pl.from_arrow(con.execute(f"""
+        SELECT season::INT AS season, week::INT AS week, gsis_id, min_by(team, {pref}) AS team,
+               min_by(CASE WHEN position = 'FB' THEN 'RB' ELSE position END, {pref}) AS position,
+               min_by(status, {pref}) AS status
+        FROM nfl_rosters_weekly WHERE gsis_id IS NOT NULL {gt} {where} GROUP BY 1, 2, 3""").arrow())
+    return df.cast(ROSTER_SCHEMA, strict=False).select(list(ROSTER_SCHEMA)) if df.height else pl.DataFrame(schema=ROSTER_SCHEMA)
+
+
+def load_injuries(con, seasons: list[int] | None = None) -> pl.DataFrame | None:
+    """One row per (season, week, player) from the nflverse weekly injury report (REG). When the
+    table records date_modified, rows modified at or after the team's kickoff are DROPPED: a report
+    is a pregame input only if it existed before the game."""
+    cols = set(table_columns(con, "nfl_injuries")) if table_exists(con, "nfl_injuries") else set()
+    if not {"season", "week", "gsis_id", "report_status", "practice_status"} <= cols:
+        return None
+    where = f"AND i.season IN ({', '.join(str(int(s)) for s in seasons)})" if seasons else ""
+    gt = "AND i.game_type = 'REG'" if "game_type" in cols else ""
+    pregame, kick = "", ""
+    if "date_modified" in cols and table_exists(con, "nfl_schedules"):
+        kick = """LEFT JOIN (
+            SELECT season, week, t AS team, timezone('America/New_York', (gameday || ' ' || gametime)::TIMESTAMP) AS ko
+            FROM (SELECT season, week, gameday, gametime, home_team AS t FROM nfl_schedules WHERE game_type = 'REG'
+                  UNION ALL SELECT season, week, gameday, gametime, away_team FROM nfl_schedules WHERE game_type = 'REG')
+            WHERE gameday IS NOT NULL AND gametime IS NOT NULL) k
+          ON k.season = i.season AND k.week = i.week AND k.team = i.team"""
+        pregame = "AND (i.date_modified IS NULL OR k.ko IS NULL OR i.date_modified < k.ko)"
+    df = pl.from_arrow(con.execute(f"""
+        SELECT i.season::INT AS season, i.week::INT AS week, i.gsis_id, any_value(i.team) AS team,
+               any_value(i.report_status) AS report_status, any_value(trim(i.practice_status)) AS practice_status,
+               any_value(coalesce(i.report_primary_injury, i.practice_primary_injury)) AS injury,
+               bool_or(lower(coalesce(i.practice_primary_injury, '')) LIKE 'not injury related%') AS not_injury
+        FROM nfl_injuries i {kick}
+        WHERE i.gsis_id IS NOT NULL {gt} {where} {pregame} GROUP BY 1, 2, 3""").arrow())
+    return df.cast(INJURY_SCHEMA, strict=False).select(list(INJURY_SCHEMA)) if df.height else pl.DataFrame(schema=INJURY_SCHEMA)
 
 
 def load_sources(con, scoring: SkillScoring, seasons: list[int] | None = None) -> Sources:
-    return Sources(load_panel(con, scoring, seasons), load_games(con, seasons), load_defense(con, seasons))
+    return Sources(load_panel(con, scoring, seasons), load_games(con, seasons), load_defense(con, seasons),
+                   load_rosters(con, seasons), load_injuries(con, seasons))
 
 
 # ----------------------------------------------------------------------------- features
@@ -236,6 +304,13 @@ FEATURE_DOCS: dict[str, tuple[str, str]] = {
     "gl_carries_pg": ("Designed rushes inside the 5 per game, last <=5 games", "nfl_pbp_player_week"),
     "snap_pct": ("Mean offensive snap share over the last <=5 games with a snap record", "nfl_snap_counts"),
     "snap_trend": ("Last game's snap share minus the mean of the earlier recent games (null with <2)", "nfl_snap_counts"),
+    "snap_last": ("Snap share in the player's most recent game (null without a snap record)", "nfl_snap_counts"),
+    "injury_exit_last": (f"1 if the last game was a snap drop (snap_trend <= -{SNAP_DROP:g}) AND the player is on an "
+                         f"injury report (designation or injury practice listing) within {EXIT_REPORT_WEEKS} weeks after "
+                         "it, up to and including the target week's pregame report; 0 otherwise; null without "
+                         "snap_trend or injury reports", "nfl_snap_counts + nfl_injuries"),
+    "snap_trend_role": ("snap_trend with injury exits removed (null when injury_exit_last = 1): the role-change "
+                        "part of the last-game snap change", "nfl_snap_counts + nfl_injuries"),
     "opp_trend": ("Last game's targets+carries minus the mean of the earlier recent games (null with <2)",
                   "nfl_weekly_stats"),
     "games_recent": ("Games in the recent window (0-5)", "derived"),
@@ -390,11 +465,36 @@ def features_for_week(sources: Sources, season: int, week: int, targets: pl.Data
         pl.col("_tg_n").fill_null(0).alias("team_games"),
         pl.lit(len(set(games["team"].to_list())) if games.height else 0).alias("_teams_with_games"),
     )
+    out = _injury_exits(out, sources.injuries, season, week)
     keep = ["season", "week", "gsis_id", "position", "team", "opponent", "last_team", "last_season", "last_week",
             "opp_games", "team_games", *FEATURE_DOCS]
     out = out.select([c for c in dict.fromkeys(keep) if c in out.columns])
     # Parallel aggregation can change float summation order (~1e-15); rounding makes features bit-reproducible.
     return out.with_columns([pl.col(c).round(10) for c, t in out.schema.items() if t == pl.Float64])
+
+
+def _injury_exits(out: pl.DataFrame, injuries: pl.DataFrame | None, season: int, week: int) -> pl.DataFrame:
+    """Split the last-game snap change into an injury exit and a role change. A drop counts as an
+    injury exit when the player appears on an injury report (any listing except 'not injury
+    related') in the EXIT_REPORT_WEEKS weeks after that game, using only reports up to and
+    including the target week's pregame report."""
+    out = out.with_columns(pl.col("_snap_last").alias("snap_last"))
+    if injuries is None:
+        return out.with_columns(pl.lit(None, dtype=pl.Int8).alias("injury_exit_last"),
+                                pl.col("snap_trend").alias("snap_trend_role"))
+    listed = injuries.filter((pl.col("season") * 100 + pl.col("week") <= key(season, week))
+                             & ~pl.col("not_injury").fill_null(False)).select("gsis_id", "season", "week")
+    hit = (out.select("gsis_id", "last_season", "last_week").drop_nulls("last_season")
+           .join(listed, on="gsis_id", how="inner")
+           .filter((pl.col("season") == pl.col("last_season")) & (pl.col("week") > pl.col("last_week"))
+                   & (pl.col("week") <= pl.col("last_week") + EXIT_REPORT_WEEKS))
+           .select("gsis_id").unique().with_columns(pl.lit(True).alias("_listed_after")))
+    out = out.join(hit, on="gsis_id", how="left").with_columns(
+        pl.when(pl.col("snap_trend").is_null()).then(None)
+          .when((pl.col("snap_trend") <= -SNAP_DROP) & pl.col("_listed_after").fill_null(False)).then(1)
+          .otherwise(0).cast(pl.Int8).alias("injury_exit_last"))
+    return out.with_columns(pl.when(pl.col("injury_exit_last") == 1).then(None).otherwise(pl.col("snap_trend"))
+                            .alias("snap_trend_role"))
 
 
 def played_targets(sources: Sources, season: int, week: int) -> pl.DataFrame:
