@@ -11,3 +11,14 @@
 .details[open] > summary { margin-bottom: 0; border-bottom: 1px solid var(--line); }
 .alignStart { align-items: start; }
 .bare { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; max-width: 110ch; }
+
+/* Independent projection promotion tracker */
+.nowrap { white-space: nowrap; }
+.clears { color: var(--positive); font-weight: 600; }
+.short { color: var(--caution); font-weight: 600; }
+.progress { display: flex; align-items: center; gap: 8px; min-width: 160px; max-width: 280px; }
+.count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.meter { flex: 1; min-width: 64px; }
+.small { display: block; font-size: 12px; line-height: 16px; }
+.list { margin: 0; padding-left: 20px; display: grid; gap: 8px; color: var(--ink-muted); font-size: 13px; line-height: 19px; max-width: 110ch; }
+.methodMeta { margin: 12px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }

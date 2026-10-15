@@ -44,6 +44,7 @@ roster-population weeks; it says nothing about ESPN.
 | `backend/app/analytics/independent_projection_store.py` | Live week-W run with availability/ID guards |
 | `backend/app/api/independent_projections.py` | Read-only `GET /api/projections/independent` |
 | `backend/app/analytics/participation.py` | Roster population, participation features, logistic model, walk-forward evaluation, live P(appears) |
+| `backend/app/analytics/promotion_tracker.py`, `backend/app/api/projection_promotion.py` | Read-only `GET /api/projections/independent/promotion` (the tracker on `/data`) |
 | `scripts/backtest_independent_projections.py` | `audit`, `select`, `evaluate`, `fit`, `participation-select`, `participation-evaluate`, `participation-fit`, `snap-ablation`, `project` |
 
 Added dependency: **numpy** (closed-form ridge, bootstrap). No scikit-learn, no gradient boosting,
@@ -324,6 +325,56 @@ conditional model `ifp-1.0.0` is **unchanged**: a validation-only ablation (`sna
 validation MAE by -0.006 / -0.004 / -0.002 / 0.000 (QB/RB/WR/TE), every 95% CI spanning 0, and was
 slightly worse on the injury-exit rows themselves. The held-out seasons were not used for it.
 
+## Weekly evidence routine and promotion tracker
+
+The ESPN criterion can only be met with ESPN projections captured **before** kickoff, and ESPN
+history only began on 2026-10-14. Nothing backfills a missed week, so every week:
+
+1. **Before Thursday's first kickoff**, capture a pregame ESPN snapshot (from `backend/`):
+
+   ```bash
+   uv run python ../scripts/sync_espn.py
+   ```
+
+   Syncing again before Sunday is fine and keeps the comparison current: each player is compared
+   with the last snapshot taken before *his own* kickoff (`forecast_backtest.espn_pregame`).
+   `espn_projection_history` keeps one snapshot per calendar day, so a sync later the same day
+   replaces that day's earlier snapshot. A Thursday sync after the Thursday game has kicked off
+   therefore leaves that game's players with the previous day's snapshot; sync on Wednesday as well
+   if you want a fallback.
+2. **Store the week's independent projection** (needs the fitted artifacts in `data/models`, see
+   "Runbook"): `uv run python ../scripts/backtest_independent_projections.py project --week N`.
+   Its features use only games completed before week N, but its weights come from the artifact:
+   `fit` trains on every completed week. A run therefore counts as evidence only if its artifact
+   was fitted **before week N's first kickoff** (and under the current model version and league
+   scoring); a backfill with a later artifact is listed as excluded. Without a counted run a week
+   contributes no matched observation to the tracker.
+3. After the week's games are final and nflverse is synced (`sync_nfl.py`), the tracker counts the
+   new matched player-weeks automatically.
+
+The **Data quality page (`/data`) section "Independent projections: path to promotion"** reads
+`GET /api/projections/independent/promotion` (`independent-promotion/v1`, read-only):
+
+* per position, the held-out status, relative MAE improvement vs the `PROMOTION_CRITERIA` bar,
+  held-out MAE and n, copied from the evaluation stored with the latest live run of the current
+  model version under the current league scoring (nothing is recomputed; with no such run these
+  are null and the page says why);
+* matched pregame-ESPN observations so far vs `espn_min_matched_per_position`, computed with
+  `espn_pregame` + `espn_comparison` on counted stored weekly projections (`pred_primary`; see step 2)
+  and completed
+  appearances (league points from nflverse box scores), plus the pool of completed player-weeks
+  with a pregame ESPN snapshot whether or not a projection was stored; MAE ours vs ESPN once
+  there is at least one matched row;
+* whether the current week already has an ESPN snapshot taken before its first kickoff (a later
+  snapshot still counts for players whose own game kicks off after it).
+
+The tracker never promotes anything: once a position reaches the matched count, rerun `evaluate`,
+and only after a position passes the frozen criteria **and the user approves** may its
+projections reach lineups, start/sit, trades or waivers. The isolation test in
+`tests/test_independent_projections.py` keeps every other module from importing the tracker or
+the projection tables. The hosted API bundle ships without polars, so there the endpoint answers
+`available: false` instead of a copy of the criteria.
+
 ## Live runs and abstention
 
 Week-W rows (`coverage_status`): `projected`; `abstain_no_history`; `bye`;
@@ -435,8 +486,9 @@ explains ESPN's number. Players are ordered by independent projection (nulls las
 
 ## Recommended next steps
 
-1. Keep syncing ESPN daily so `espn_projection_history` accumulates true pregame snapshots;
-   rerun `evaluate` once >= 300 matched completed player-weeks per position exist.
+1. Follow the weekly evidence routine above so `espn_projection_history` accumulates true pregame
+   snapshots and every week has a stored run; rerun `evaluate` once the `/data` tracker shows
+   >= 300 matched completed player-weeks per position.
 2. Recalibrate QB/RB participation (e.g. isotonic or Platt on validation predictions) and add a
    team-level constraint for QBs (probabilities of a team's QBs taking the first snap sum to 1),
    then re-evaluate on a later held-out window; the 2025-26 held-out has now been used.

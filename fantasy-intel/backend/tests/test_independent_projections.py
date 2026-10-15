@@ -301,12 +301,13 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
     """Lineups, trades, waivers, scores and ESPN projections must not depend on this research model."""
     allowed = {"independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
                "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",
-               "connection.py"}   # connection.py: schema-version rebuild list only (like schema.sql)
+               "connection.py",   # connection.py: schema-version rebuild list only (like schema.sql)
+               "promotion_tracker.py", "projection_promotion.py"}   # read-only promotion tracker
     for f in APP.rglob("*"):
         if f.suffix not in (".py", ".sql") or f.name in allowed:
             continue
         text = f.read_text()
         for needle in ("independent_projection", "independent_player_projections", "forecast_features",
                        "forecast_backtest", "league_scoring", "analytics.participation", "from .participation",
-                       "import participation"):
+                       "import participation", "promotion_tracker"):
             assert needle not in text, f"{f.relative_to(APP)} references {needle}"
