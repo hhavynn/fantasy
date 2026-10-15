@@ -554,6 +554,82 @@ def test_discovery_api_is_read_only_and_defaults_to_my_team(tmp_path, monkeypatc
     con.close()
 
 
+def _untimed(v):
+    """A payload without the search's run instrumentation (wall-clock `seconds`, lineup-solve counters), which
+    differs between runs of the same search."""
+    if isinstance(v, dict):
+        return {k: _untimed(x) for k, x in v.items() if k != "seconds" and not k.startswith("lineup_solves")}
+    return [_untimed(x) for x in v] if isinstance(v, list) else v
+
+
+def test_discovery_split_endpoints_match_the_full_payload(tmp_path, monkeypatch):
+    """context + summary + evidence are /discover cut into pieces: same numbers, same caveats, nothing new."""
+    db_path = tmp_path / "split.duckdb"
+    synced(db_path).close()
+    mtime = db_path.stat().st_mtime_ns
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db_path))
+    from app.main import app
+    from app.api.trade_discovery import EVIDENCE_FIELDS, SUMMARY_FIELDS
+    api = TestClient(app)
+    for params in ({}, {"mode": "upside", "include_kdst": True}, {"mode": "all", "sort": "min_side", "limit": 5},
+                   {"team_id": 1, "shapes": "1-for-1,2-for-1", "opponent": 3}):
+        full = api.get("/api/trades/discover", params=params).json()
+        ctx = api.get("/api/trades/discover/context", params=params).json()
+        summary = api.get("/api/trades/discover/summary", params=params).json()
+        assert summary == api.get("/api/trades/discover/summary", params=params).json()     # memoized, stable
+        for k in ("league", "anchor", "teams", "evaluation", "query", "mode_text", "modes", "phases",
+                  "strictness_options", "categories", "sorts", "exact_shapes", "heuristic_shapes"):
+            assert ctx[k] == full[k], k
+        assert "sections" not in ctx and "results" not in ctx
+        assert "results" not in summary
+        for k, v in full.items():
+            if k not in ("sections", "results", "names"):
+                assert _untimed(summary[k]) == _untimed(v), k
+        assert {k: [x["key"] for x in v] for k, v in summary["sections"].items()} == \
+            {k: [x["key"] for x in v] for k, v in full["sections"].items()}
+        shown = {pid for v in summary["sections"].values() for x in v for pid in x["sends"] + x["receives"]}
+        assert shown <= {int(pid) for pid in summary["names"]}
+        assert all(summary["names"][pid] == full["names"][pid] for pid in summary["names"])
+        rows = {x["key"]: x for x in full["results"]}
+        for x in (x for v in summary["sections"].values() for x in v):
+            r = rows[x["key"]]
+            assert {k: x[k] for k in SUMMARY_FIELDS} == {k: r[k] for k in SUMMARY_FIELDS}
+            assert x["rationale"] == {"trade_type": r["rationale"]["trade_type"], "concerns": r["rationale"]["concerns"]}
+            assert all(x["asset_balance"][k] == r["asset_balance"][k] for k in x["asset_balance"])
+            if r["manager_context"] is None:
+                assert x["manager_context"] is None
+            else:
+                assert x["manager_context"]["trade_history"]["completed_trades"] == r["manager_context"]["trade_history"]["completed_trades"]
+            ev = api.get("/api/trades/discover/evidence", params={**params, "key": x["key"]}).json()
+            assert {k: ev[k] for k in EVIDENCE_FIELDS} == {k: r[k] for k in EVIDENCE_FIELDS}
+            assert ev["rationale"] == {"points": r["rationale"]["points"], "concerns": r["rationale"]["concerns"]}
+            assert all(ev["asset_balance"][k] == r["asset_balance"][k] for k in ("you_send", "they_send", "caveats"))
+            for side in ("mine_detail", "theirs_detail"):
+                assert all(ev[side][k] == r[side][k] for k in ("team_id", "team_name", "fit_notes"))
+    assert api.get("/api/trades/discover/evidence", params={"key": "nope"}).status_code == 404
+    for path in ("context", "summary", "evidence"):
+        extra = {"key": "x"} if path == "evidence" else {}
+        assert api.get(f"/api/trades/discover/{path}", params={"shapes": "4-for-4", **extra}).status_code == 422
+        assert api.get(f"/api/trades/discover/{path}", params={"mode": "fair", **extra}).status_code == 422
+        assert api.get(f"/api/trades/discover/{path}", params={"team_id": 99, **extra}).status_code == 404
+    assert db_path.stat().st_mtime_ns == mtime                 # nothing written
+
+
+def test_discovery_split_endpoints_with_no_remaining_weeks(tmp_path, monkeypatch):
+    from test_trade_data import _final_week_state
+    db_path = tmp_path / "over-split.duckdb"
+    con = synced(db_path)
+    _final_week_state(con, [(20, 10), (27, 24)])
+    con.close()
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db_path))
+    from app.main import app
+    api = TestClient(app)
+    full = api.get("/api/trades/discover")
+    for path in ("context", "summary"):
+        res = api.get(f"/api/trades/discover/{path}")
+        assert res.status_code == 409 and res.json()["detail"] == full.json()["detail"]
+
+
 def test_discovery_api_with_no_remaining_weeks(tmp_path, monkeypatch):
     from test_trade_data import _final_week_state
     db_path = tmp_path / "over.duckdb"

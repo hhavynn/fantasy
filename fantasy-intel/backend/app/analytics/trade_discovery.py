@@ -598,11 +598,16 @@ class TradeSearch:
         return True
 
     def evaluation(self) -> dict:
-        reason = self.state.start_week_reason or {}
-        return {"start_week": self.window.start, "final_week": self.window.final,
-                "last_regular_season_week": self.window.last_regular, "weeks": list(self.weeks),
-                "uncertain": bool(reason.get("uncertain")), "warning": reason.get("warning"),
-                "start_week_reason": reason.get("reason")}
+        return evaluation(self.state, self.window)
+
+
+def evaluation(state: LeagueState, window) -> dict:
+    """The evaluation window and why it starts where it does (no search needed)."""
+    reason = state.start_week_reason or {}
+    return {"start_week": window.start, "final_week": window.final,
+            "last_regular_season_week": window.last_regular, "weeks": list(window.weeks),
+            "uncertain": bool(reason.get("uncertain")), "warning": reason.get("warning"),
+            "start_week_reason": reason.get("reason")}
 
 
 DELTA_KEYS = ("ros_delta", "regular_season_delta", "playoff_delta", "known_ros_delta", "average_weekly_delta",
