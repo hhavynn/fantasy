@@ -34,6 +34,13 @@ where `p_play` = P(appears in week W) from pregame roster status, injury report 
 "Validated" here means calibrated and better than simple pregame baselines on held-out
 roster-population weeks; it says nothing about ESPN.
 
+**Research challenger `ifp-2.0.0` (shadow, see "Weekly learning and the ifp-2 challenger"):**
+injury-aware established workload, previous-season usage priors and recency-weighted training.
+It passed its frozen confirmation rules on 2023-24 (pooled MAE 4.031 -> 4.016, 95% CI of the
+difference [-0.023, -0.007]) but the gain is ~0.4%, far below the 3% promotion bar. It runs in shadow
+only: nothing reads it, `ifp-1.0.0` and its artifacts are unchanged, and only frozen pregame forecasts
+from 2026 week 6 onward count as evidence for it.
+
 ## Files
 
 | File | Role |
@@ -48,6 +55,10 @@ roster-population weeks; it says nothing about ESPN.
 | `backend/app/analytics/participation.py` | Roster population, participation features, logistic model, walk-forward evaluation, live P(appears) |
 | `backend/app/analytics/promotion_tracker.py`, `backend/app/api/projection_promotion.py` | Read-only `GET /api/projections/independent/promotion` (the tracker on `/data`) |
 | `scripts/backtest_independent_projections.py` | `audit`, `select`, `evaluate`, `fit`, `participation-select`, `participation-evaluate`, `participation-fit`, `snap-ablation`, `project` |
+| `backend/app/nfl/pbp_exits.py` | Play-by-play in-game injury evidence per player-game (research input) |
+| `backend/app/analytics/challenger.py`, `challenger_config.json` | ifp-2 challenger: weighted/robust linear fits, walk-forward specs, cohorts, frozen config, confirmation and shadow criteria |
+| `backend/app/analytics/weekly_learning.py`, `scripts/weekly_learning.py` | Weekly cycle: readiness gate, versioned artifacts, write-once forecast ledger, prospective evaluation |
+| `scripts/challenger_research.py` | `store`, `develop`, `freeze`, `confirm`, `exploratory`, `exits-audit`, `cases` |
 
 Added dependency: **numpy** (closed-form ridge, bootstrap). No scikit-learn, no gradient boosting,
 no cloud services, no LLM numbers.
@@ -484,6 +495,174 @@ numbers and is available whenever both exist; check `participation.model_status`
 contributions (points relative to the training-average player) plus data-quality flags; it never
 explains ESPN's number. Players are ordered by independent projection (nulls last), then id.
 
+## Weekly learning and the ifp-2 challenger (research, shadow)
+
+Full evidence, tables and examples: `docs/research/ifp2_weekly_learning_report.md`.
+
+### What the champion did with completed weeks
+
+`ifp-1.0.0` learned from a finished week only when someone ran `fit`, which retrains the frozen
+selection on every completed week and **overwrites** `independent_projections_ifp-1.0.0.json`.
+There was no completeness gate (an unfinished Monday game was simply absent), no record of which
+artifact produced a stored forecast beyond `artifact_created_at`, and `project` replaces the week's
+rows, so a rerun after kickoff erased the pregame forecast. The weekly pipeline below fixes this
+without touching `fit`, `project` or the live tables.
+
+### Weekly cycle (`scripts/weekly_learning.py`, from `backend/`)
+
+| When (US Eastern) | Command | What it does |
+|---|---|---|
+| Tue/Wed, after Monday night is final and nflverse has published | `uv run python ../scripts/sync_nfl.py` | Existing nflverse sync (box scores, snaps, xFP, injuries, rosters) |
+| same | `uv run python ../scripts/weekly_learning.py sync-exits` | Play-by-play in-game injury evidence for the season's final weeks (`<out>/pbp_exits/<season>.parquet`) |
+| same | `... status --week W` | Read-only readiness: every REG game before W final; box scores and snaps for every team that played; nflverse expected points for >= 50% of appearances; W has not kicked off |
+| Wed, before Thursday's kickoff | `... train --week W` | Champion = `ifp-1.0.0` frozen selection refit (bit-identical to `fit`); challenger = frozen `ifp-2.0.0` config; both on FINAL weeks < W |
+| Wed-Sun, before kickoff (rerun after late injury news is fine) | `... predict --week W` | Frozen pregame forecasts for every ACT/INA roster player on a team playing in W: champion, challenger, trailing baselines, P(appears) |
+| any time | `... evaluate` | Prospective accuracy of frozen pregame forecasts with final outcomes; progress to `SHADOW_PROMOTION_CRITERIA` |
+| | `... cycle --week W` | `sync-exits`, `status`, `train`, `predict`, `evaluate` in order; stops at the first refusal |
+
+One-time history: `... sync-exits --history-seasons 2019-2025`. Defaults: `--out data/models/weekly`
+(`WEEKLY_MODEL_DIR`, git-ignored), production files read from `--ifp-dir data/models` (read-only).
+Exit code 3 and `NOT READY: ...` on any refusal.
+
+Safety rules (each is tested in `tests/test_weekly_learning.py`):
+
+* A week enters training only when **every** game of it is final; a partly final week is excluded
+  whole. Training rows have `(season, week) < W` (asserted) and features from earlier games only.
+* `train`/`predict` refuse after week W's first kickoff unless `--retrospective`; retrospective
+  artifacts and runs are labeled, get no P(appears) (the participation artifact was fitted later),
+  and are reported separately as "not evidence".
+* Artifacts are content-addressed: `artifacts/<version>/s<season>w<week>-<sha>.json`, written once.
+  Retraining on identical inputs reproduces the same id; changed inputs add a new file. Provenance:
+  target week, data cutoff, latest included week, training seasons, rows per position, data hash,
+  configuration hash, scoring fingerprint, play-by-play coverage, retrospective flag.
+* A ledger run (`ledger/s<season>w<week>/<run_id>.json`) is never overwritten. An identical rerun is
+  a no-op; a changed input (e.g. a Saturday injury report) adds a run. Evaluation uses, per player,
+  the latest run created **before his own kickoff** by artifacts whose data cutoff precedes W.
+* Scoring fingerprint, artifact schema and data cutoff are checked before every prediction.
+* Nothing in `app/` imports the pipeline or the challenger (tested). Weekly retraining never
+  re-tunes: penalties, features and interval bands come from committed configuration.
+
+The participation model is not retrained weekly here (`participation-fit` is unchanged); its
+`expected_points` are recorded as is.
+
+### Game classification and healthy-game usage (all point-in-time)
+
+Every pre-cutoff game is classified for a forecast of week W (`forecast_features.classify_games`):
+
+| Class | Rule (snap drop = snap share >= 15 points below the mean of the player's previous <= 4 games) |
+|---|---|
+| `injury_exit` | snap drop AND (play-by-play says he was injured in that game, OR a NEW injury listing appears within 2 weeks, using reports up to W's pregame report only) |
+| `blowout_low` | snap drop, no injury evidence, final margin >= 17 |
+| `listed_low` | snap drop, listed after it but also on that week's own report (chronic listing; ambiguous) |
+| `role_low` | snap drop with no injury evidence (possible role cut, coaching decision, rest, or an unreported injury; ambiguous) |
+| `full` / `unknown` | no snap drop / no snap share or reference |
+
+Low fantasy points never mark an injury. Play-by-play evidence (`app/nfl/pbp_exits.py`) comes from
+"<TEAM>-<jersey>-<name> was injured during the play" in nflverse play descriptions, mapped with that
+week's roster (team + jersey) and confirmed by surname; unconfirmed mentions are dropped.
+
+Measured on 2020-2026 week 5 (`challenger_research.py exits-audit`): 1,283 `injury_exit` games (435
+with a play-by-play mention, 848 report-only). The ifp-1.0.0-era `injury_exit_last` label agrees on
+862 of its 1,265 forecast rows; only ~20% of its labeled exits have a play-by-play injury mention.
+A play-by-play mention alone does not mean an exit (median snap share 85% of normal). Next
+appearance after each class (players with reference snap share >= 40%, median opportunities vs the
+pre-game reference): RB 0.86 after a play-by-play exit vs 0.58 after `role_low`; WR 0.83 vs 0.52;
+only ~25% of play-by-play exits appear the following week.
+
+Challenger inputs (all from games before W; `FEATURE_DOCS` has exact definitions):
+
+* `h_*`: usage over the last <= 5 games that were not injury exits; `inj_exits_recent`,
+  `last_injury_exit`, `last_role_low`, `last_blowout_low`.
+* `prev_*`: previous-season usage over healthy games (`prev_xfpl_pg` shrunk 2 games toward the
+  position mean); `prev_team_changed`.
+* `xfpl_eb` (established workload): this season's healthy-game expected league points per game shrunk
+  toward `prev_xfpl_pg` by k = 3 games (toward the position mean with no previous season). The weight
+  on the current season is n / (n + 3) after n healthy games: 25% after 1, 50% after 3, 77% after 10.
+  On development, k in {~0, 1, 3, 6, 10} were indistinguishable (pooled MAE 4.208-4.211); k = 3 is the
+  pre-set default.
+* Expected league points (`xfpl*`): nflverse expected counts x this league's weights, split into
+  touchdown and non-touchdown parts. For this league (full PPR, 4-point passing TD) it is nearly
+  identical to nflverse xFP (correlation 0.999998); it matters for other scoring formats.
+
+### Model selection (frozen before confirmation, commit `cc0845b`)
+
+Windows: development 2021-22 (all choices), confirmation 2023-24 (one run), exploratory 2025 + 2026
+weeks 1-5 (already inspected; never used to choose), prospective 2026 week 6 onward.
+
+| Candidate (development, pooled MAE; C = 4.215) | Result | Decision |
+|---|---|---|
+| Huber loss (c = 1.0 / 1.345 / 2.0) | 4.052 / 4.080 / 4.126, but bias +0.63 / +0.47 / +0.22 (C -0.23), RMSE worse, pair accuracy lower | rejected: lowers MAE by targeting the median, not a better expectation |
+| Touchdown/yardage efficiency split (X) | 4.211, after-TD-boom cohort worse | rejected |
+| Team volume / margin context (K) | 4.216 | rejected |
+| Healthy-usage averages added (U) or replacing raw usage (R) | 4.212 / 4.209; after-injury-exit cohort worse | rejected |
+| Previous-season usage (P, Q) | 4.216 / 4.212; team-change cohort -1.2% | Q kept |
+| Game-class flags (F) | 4.214; after-role-drop cohort -2.9% | kept |
+| Established workload blend (E) | 4.208 [-0.01, -0.00] | kept |
+| Recency half-life 18 / 36 / 72 weeks on C | 4.207 / 4.210 / 4.212 | 36 weeks kept with F+E+Q |
+| **F + E + Q, 36-week half-life (RB/WR/TE)** | **4.203 [-0.018, -0.004]**, RMSE 5.869 vs 5.878 | **frozen**; QB keeps C (no addition helped QB) |
+
+### Confirmation (2023-24, run once) and exploratory replay
+
+| Pos | n | A1 | A2 | B | C | ifp-2 | ifp-2 - C (95% CI) | RMSE C / ifp-2 | Bias C / ifp-2 |
+|---|---|---|---|---|---|---|---|---|---|
+| QB | 1,330 | 6.30 | 6.19 | 6.29 | 6.056 | 6.056 | 0 (same model) | 7.60 / 7.60 | +0.17 / +0.17 |
+| RB | 3,398 | 4.08 | 4.07 | 4.16 | 4.015 | 4.006 | -0.009 [-0.022, +0.004] | 5.67 / 5.68 | -0.06 / -0.02 |
+| WR | 5,409 | 4.39 | 4.29 | 4.36 | 4.237 | 4.211 | -0.026 [-0.038, -0.014] | 5.97 / 5.96 | -0.05 / +0.03 |
+| TE | 3,208 | 2.95 | 2.89 | 2.95 | 2.860 | 2.853 | -0.007 [-0.024, +0.009] | 4.23 / 4.23 | +0.08 / +0.09 |
+| All | 13,345 | 4.16 | 4.09 | 4.16 | 4.031 | 4.016 | -0.014 [-0.023, -0.007] | 5.72 / 5.72 | +0.00 / +0.05 |
+
+All `CONFIRMATION_RULES` passed -> status `shadow`. Start/Sit pairs 65.45% -> 65.57% (regret 2.505
+-> 2.495), close calls 60.38% -> 60.52%. Exploratory 2025-26 (n = 8,645, not a fresh test): pooled
+-0.018 [-0.028, -0.009], RB -0.030 [-0.049, -0.010], WR -0.020 [-0.034, -0.008].
+
+Where it helps and where it hurts (confirmation; exploratory agrees in direction):
+
+| Cohort | n | C | ifp-2 | Bias C / ifp-2 |
+|---|---|---|---|---|
+| After a role drop (`role_low`) | 1,016 | 3.29 | 3.18 | -0.61 / -0.29 |
+| Team changed | 2,957 | 3.70 | 3.62 | -0.32 / -0.09 |
+| Starters pool | 5,616 | 5.76 | 5.74 | +0.24 / +0.28 |
+| After an injury exit | 292 | 4.40 | 4.42 | +0.47 / +0.15 |
+| Repeated injury exits (>= 2 of last 5) | 179 | 3.75 | 3.77 | -0.28 / -0.46 |
+| After a touchdown boom | 303 | 6.15 | 6.10 | +1.03 / +1.04 |
+
+After injury exits the challenger removes most of C's under-projection but is no more accurate:
+returning players get ~85% of their previous opportunities and some exit again, so restoring the
+full established workload overshoots about as often as C undershoots. Exploratory: 4.41 -> 4.50.
+
+### Workload vs availability
+
+The data does not support a second probability model for "normal workload given he appears": an
+injury exit happens in ~2.7% of appearances and prior exits do not raise it (QB 2.8% -> 4.7%, RB 2.7%
+-> 3.6%, WR 3.3% -> 3.8%, TE 2.6% -> 2.8% after one recent exit; lower after two). The real
+availability risk after an exit is missing the next game, which `participation.py` already models
+(it sees `injury_exit_last` and the week-W report). The conditional estimate keeps
+`inj_exits_recent` as an input, so partial-game risk stays in the conditional mean rather than being
+assumed away.
+
+### Intervals
+
+The challenger reuses the empirical tercile bands, built from development-window residuals (no
+multipliers). Coverage is flat across volatility terciles (e.g. WR 79-85%), so no volatility split
+was added. QB coverage 74.0% (confirmation) is outside 75-85%: QB intervals are withheld, as for C.
+The band's high end is the 90th-percentile outcome (the "ceiling").
+
+### Promotion
+
+`PROMOTION_CRITERIA` and the participation criteria are unchanged. The challenger additionally
+needs `challenger.SHADOW_PROMOTION_CRITERIA` on frozen pregame forecasts: >= 8 prospective weeks,
+>= 400 matched appearances per position, challenger - champion MAE CI entirely below 0, bias not
+worse by > 0.15, starters-pool MAE not worse, interval coverage 75-85%. Meeting it yields
+`eligible_for_review`, never a promotion; consumer-facing use also needs the existing
+`PROMOTION_CRITERIA` (>= 3% vs the best trailing baseline, ESPN rule) and your approval. The
+challenger is expected to fail the 3% bar: its confirmed gain is ~0.4%.
+
+### Runtime
+
+Feature store 2020-2026 (42.7k rows, with classification) 6.4 s; development grid of 20 specs x 8
+penalties 16 s (parallel); confirmation 2.8 s; weekly `train` ~10 s; `predict` ~1 s; play-by-play
+sync ~0.5 s per season (nflverse cache). Artifacts ~30 KB each, ledger runs ~0.7 MB per week (436 players in week 6).
+
 ## Known biases and unsupported populations
 
 * **`projected_points` is still conditional on playing**; use `expected_points` for an
@@ -500,6 +679,9 @@ explains ESPN's number. Players are ordered by independent projection (nulls las
   unchanged in `projected_points` (Barkley and Moore are now flagged as injury exits and their
   P(appears) is 0.77 / 0.52; Rice is flagged as a possible demotion).
 * Low-volume RBs and players with < 3 recent games are worse than simple averages.
+* ifp-2 challenger: the injury-exit classification is partial (report-only exits are noisier than
+  play-by-play ones; week-18 rest and unreported injuries look like role cuts), and after injury exits
+  it is no more accurate than C (see "Where it helps and where it hurts").
 * Team changes carry old-team shares (flagged); rookies abstain until their first game.
 * The conditional model uses no injury reports, depth charts, coaching or QB changes (the
   participation model uses injury reports and a snap-based depth order); no weather or Vegas.
@@ -508,6 +690,8 @@ explains ESPN's number. Players are ordered by independent projection (nulls las
 
 ## Recommended next steps
 
+0. Run the weekly learning cycle every week (before Thursday's kickoff) so the challenger accumulates
+   frozen pregame forecasts; check `weekly_learning.py evaluate` after 8 weeks.
 1. Follow the weekly evidence routine above so `espn_projection_history` accumulates true pregame
    snapshots and every week has a stored run; rerun `evaluate` once the `/data` tracker shows
    >= 300 matched completed player-weeks per position.

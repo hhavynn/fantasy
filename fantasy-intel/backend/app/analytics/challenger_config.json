@@ -1,0 +1,192 @@
+{
+  "version": "ifp-2.0.0",
+  "positions": {
+    "QB": {
+      "groups": "",
+      "lam": 0.01
+    },
+    "RB": {
+      "groups": "FEQ",
+      "half_life_weeks": 36.0,
+      "lam": 0.01
+    },
+    "WR": {
+      "groups": "FEQ",
+      "half_life_weeks": 36.0,
+      "lam": 0.03
+    },
+    "TE": {
+      "groups": "FEQ",
+      "half_life_weeks": 36.0,
+      "lam": 0.03
+    }
+  },
+  "intervals": {
+    "QB": {
+      "nominal": 0.8,
+      "bands": [
+        {
+          "low": null,
+          "high": 13.233,
+          "q_low": -8.546,
+          "q_high": 9.282,
+          "n": 426
+        },
+        {
+          "low": 13.233,
+          "high": 16.787,
+          "q_low": -9.423,
+          "q_high": 8.195,
+          "n": 427
+        },
+        {
+          "low": 16.787,
+          "high": null,
+          "q_low": -11.525,
+          "q_high": 10.64,
+          "n": 427
+        }
+      ],
+      "source": "validation residuals"
+    },
+    "RB": {
+      "nominal": 0.8,
+      "bands": [
+        {
+          "low": null,
+          "high": 3.569,
+          "q_low": -2.671,
+          "q_high": 3.696,
+          "n": 1185
+        },
+        {
+          "low": 3.569,
+          "high": 9.033,
+          "q_low": -5.718,
+          "q_high": 7.714,
+          "n": 1186
+        },
+        {
+          "low": 9.033,
+          "high": null,
+          "q_low": -9.355,
+          "q_high": 10.462,
+          "n": 1186
+        }
+      ],
+      "source": "validation residuals"
+    },
+    "WR": {
+      "nominal": 0.8,
+      "bands": [
+        {
+          "low": null,
+          "high": 3.864,
+          "q_low": -2.991,
+          "q_high": 3.98,
+          "n": 1774
+        },
+        {
+          "low": 3.864,
+          "high": 9.017,
+          "q_low": -6.116,
+          "q_high": 7.895,
+          "n": 1775
+        },
+        {
+          "low": 9.017,
+          "high": null,
+          "q_low": -9.519,
+          "q_high": 10.908,
+          "n": 1775
+        }
+      ],
+      "source": "validation residuals"
+    },
+    "TE": {
+      "nominal": 0.8,
+      "bands": [
+        {
+          "low": null,
+          "high": 1.869,
+          "q_low": -1.519,
+          "q_high": 2.275,
+          "n": 1070
+        },
+        {
+          "low": 1.869,
+          "high": 4.792,
+          "q_low": -3.449,
+          "q_high": 4.452,
+          "n": 1070
+        },
+        {
+          "low": 4.792,
+          "high": null,
+          "q_low": -6.646,
+          "q_high": 7.886,
+          "n": 1071
+        }
+      ],
+      "source": "validation residuals"
+    }
+  },
+  "usage_prior_games": 3.0,
+  "selected_on": [
+    2021,
+    2022
+  ],
+  "evidence": {
+    "QB": {
+      "development_spec": "C",
+      "n": 1280,
+      "mae_C": 6.008,
+      "mae_challenger": 6.008,
+      "minus_C": null
+    },
+    "RB": {
+      "development_spec": "C_FEQ_hl36",
+      "n": 3557,
+      "mae_C": 4.312,
+      "mae_challenger": 4.296,
+      "minus_C": {
+        "diff": -0.016,
+        "ci95": [
+          -0.034,
+          0.001
+        ]
+      }
+    },
+    "WR": {
+      "development_spec": "C_FEQ_hl36",
+      "n": 5324,
+      "mae_C": 4.455,
+      "mae_challenger": 4.438,
+      "minus_C": {
+        "diff": -0.017,
+        "ci95": [
+          -0.026,
+          -0.008
+        ]
+      }
+    },
+    "TE": {
+      "development_spec": "C_FEQ_hl36",
+      "n": 3211,
+      "mae_C": 2.993,
+      "mae_challenger": 2.99,
+      "minus_C": {
+        "diff": -0.003,
+        "ci95": [
+          -0.014,
+          0.008
+        ]
+      }
+    }
+  },
+  "notes": [
+    "Selected on 2021-2022 only (walk-forward). QB keeps the ifp-1.0.0 context features: no addition improved QB on development.",
+    "RB/WR/TE: context model C + game-class flags (F) + empirical-Bayes established workload (E) + previous-season expected points / team change (Q), training rows weighted with a 36-week half-life.",
+    "Rejected on development: Huber loss (lower MAE by targeting the median: bias +0.47 to +0.63, worse RMSE and pair accuracy), touchdown/yardage efficiency split (X), extra team context (K), healthy usage averages (U), opportunity-first variant (O)."
+  ]
+}
