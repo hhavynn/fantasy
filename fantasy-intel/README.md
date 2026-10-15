@@ -97,6 +97,7 @@ fantasy-intel/
 | `/luck-lab` | Luck vs. Skill Lab: expected wins from all-play, schedule luck (actual minus expected), schedule difficulty, brutal losses and fortunate wins, scoring consistency, and counterfactual records against other managers' opponents, over completed, fully observed regular-season periods. Historical and explanatory, read-only |
 | `/schedule-intelligence` | Schedule intelligence: each remaining week's opponent (bye, home/away, regular season vs fantasy playoffs from league settings) and what that defense allowed in games presumed complete before the week (EPA per eligible pass play / designed rush, rush success, position target shares) with samples, ranks and insufficient-data reasons. Descriptive only |
 | `/playoff-race` | Playoff Race Lab: actual standings, all-play and points; every remaining regular-season matchup with ESPN-projected optimal lineup totals (multi-week periods supported); a deterministic projected-standings scenario, the playoff cutline, bubble teams and high-leverage games; URL-backed winner overrides. No probabilities, tiebreaks, clinching or elimination claims. Read-only |
+| `/my-team/value` | My Team Value: roster strength vs the league on comparable weeks, every player's exact lineup marginal value (regular/playoff, weekly starts, IR activation upside separately), slot strength and removal-scenario depth, unused bench projection with reasons, upgrade slot-weeks, realistic add/drop and a 1-for-1 trade preview, and the Playoff Race context. Read-only |
 | `/managers`        | One card per manager: record, roster construction, waiver aggression, positional add interest, streaming, trades, confidence |
 | `/managers/[id]`   | The evidence: every metric with numerator/denominator, league mean, z-score, sample size, rule; weekly roster composition; full transaction history; failed claims |
 | `/data`            | ID-mapping summary, unmatched players, name-matched (medium confidence) players, sync history |
@@ -363,6 +364,14 @@ any open game with `override=MATCHUP_ID:home|away|tie|none` (the page keeps them
 division, clinch or elimination rule is applied or claimed. Details and the data audit:
 [`docs/v2_playoff_race.md`](docs/v2_playoff_race.md).
 
+## My Team Value (V2, read-only)
+
+`GET /api/my-team/value` (and `/my-team/value`) turns the canonical lineup engine into decisions for one team:
+league rank on comparable weeks (weeks every team's projection is complete), each player's exact lineup marginal
+value (never summed), depth from explicit removal scenarios, unused bench projection, free-agent and add/drop
+upgrades with roster capacity, a 1-for-1 trade preview checked against the manual evaluator, and the Playoff
+Race Lab context with re-projected matchups. Details: [`docs/v2_team_value.md`](docs/v2_team_value.md).
+
 ## Upgrading an existing database (schema v6)
 
 The DuckDB schema is now **v6** (v2: new metrics; v3: FTN read-code columns renamed to
@@ -399,6 +408,46 @@ market signals (tiny rising role → WATCH, strong rising role → BUY, etc.),
 streaming requiring starter turnover, trade-source union/dedup, target-share sums,
 NGS NULLs, implied-total sign/arithmetic, team/defense aggregation keys,
 validation errors vs warnings, and an end-to-end API smoke test.
+
+## Continuous Integration (CI)
+
+Every push to `main` and pull request targeting `main` automatically triggers GitHub Actions (`.github/workflows/ci.yml`).
+
+### What CI checks
+
+- **Backend job (`backend`)**: Runs on Ubuntu with Python 3.12 and `uv`. Installs pinned dependencies from `backend/uv.lock` and executes the full pytest suite.
+- **Frontend job (`frontend`)**: Runs on Ubuntu with Node.js 22 LTS. Installs pinned dependencies from `frontend/package-lock.json` with `npm ci`, runs ESLint, verifies TypeScript types (`npm run typecheck`), and compiles a production build (`npm run build`).
+
+### Reproducing checks locally
+
+From the repository root:
+
+```bash
+# Backend checks
+cd fantasy-intel/backend
+uv sync --frozen
+TZ=UTC uv run pytest
+
+# Frontend checks
+cd ../frontend
+npm ci
+npm run lint
+npm run typecheck
+npm run build
+```
+
+### What to do when CI fails
+
+1. Check the GitHub Actions run log to determine which job and step failed.
+2. If backend tests fail: re-run the failing test locally with `TZ=UTC uv run pytest tests/<test_file>.py -vv`. Note that tests expect UTC timezone semantics.
+3. If frontend lint fails: run `npm run lint` locally and resolve rule violations.
+4. If frontend typecheck fails: run `npm run typecheck` (which runs `next typegen` followed by `tsc --noEmit`).
+5. If frontend build fails: run `npm run build` locally and inspect Next.js build errors.
+
+### Isolation and environment requirements
+
+- **No live ESPN access**: CI runs without ESPN credentials (`ESPN_S2`, `SWID`) and never contacts ESPN or external network services. All tests run against deterministic in-memory synthetic league fixtures and synthetic NFL data.
+- **Local-only tests**: Exactly one test (`test_real_league_smoke_read_only` in `backend/tests/test_trade_discovery.py`) checks for a local DuckDB file (`data/fantasy.duckdb`). It is safely skipped in CI and on machines without a configured local ESPN database.
 
 ## Troubleshooting
 
