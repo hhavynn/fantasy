@@ -5,12 +5,18 @@
     uv run python ../scripts/backtest_independent_projections.py select      # validation seasons only
     uv run python ../scripts/backtest_independent_projections.py evaluate    # frozen selection -> held-out
     uv run python ../scripts/backtest_independent_projections.py fit         # final model artifact
+    uv run python ../scripts/backtest_independent_projections.py participation-select    # validation only
+    uv run python ../scripts/backtest_independent_projections.py participation-evaluate  # frozen -> held-out
+    uv run python ../scripts/backtest_independent_projections.py participation-fit       # participation artifact
+    uv run python ../scripts/backtest_independent_projections.py snap-ablation           # validation only
     uv run python ../scripts/backtest_independent_projections.py project --week 7   # writes live tables
 
 Inputs: the live DB (FANTASY_DB_PATH, opened read-only except by `project`) and the optional
 history DB from scripts/sync_nfl_history.py (NFL_HISTORY_DB_PATH, default data/nfl_history.duckdb).
-Outputs go to data/models/ (git-ignored): selection.json, heldout_report.json, artifact JSON.
-`evaluate` refuses a selection made on other seasons; `fit` refuses an evaluation of another selection.
+Outputs go to data/models/ (git-ignored): selection.json, heldout_report.json, artifact JSON, and for
+the participation model participation_selection.json, participation_heldout_report.json and its artifact.
+`evaluate` refuses a selection made on other seasons; `fit` refuses an evaluation of another selection;
+the participation commands refuse a participation selection made with another conditional selection.
 """
 
 from __future__ import annotations
@@ -31,6 +37,7 @@ import polars as pl
 from app.analytics.forecast_backtest import (Protocol, build_store, completed_weeks, espn_pregame, evaluate,
                                              league_roster_pairs, select)
 from app.analytics.forecast_features import Sources, load_sources
+from app.analytics import participation as pm
 from app.analytics.independent_projections import MODEL_VERSION, Artifact, fit_final
 from app.analytics.league_scoring import reconcile_with_espn
 from app.config import REPO_ROOT, get_settings
@@ -154,27 +161,94 @@ def cmd_fit(args, live, hist, scoring, protocol) -> dict:
             "train_window": {p: m.train_window for p, m in art.models.items()}}
 
 
+def _participation_stores(src, protocol, last_season):
+    weeks = completed_weeks(src, list(range(protocol.train_start_season, last_season + 1)))
+    return build_store(src, weeks), pm.build_store(src, weeks)
+
+
+def cmd_participation_select(args, live, hist, scoring, protocol) -> dict:
+    sel_path = args.out / "selection.json"
+    ifp = json.loads(sel_path.read_text())
+    if ifp.get("scoring_fingerprint") != scoring.fingerprint:
+        raise SystemExit("selection.json was made under different league scoring")
+    src = _sources(live, hist, scoring.require_supported())
+    t = time.time()
+    cond_store, store = _participation_stores(src, protocol, max(protocol.validation_seasons))
+    sel = pm.select(store, cond_store, ifp, protocol)
+    sel.update(ifp_selection_sha=_sha(sel_path), scoring_fingerprint=scoring.fingerprint,
+               created_at=datetime.now(timezone.utc).isoformat(), store_rows=store.height,
+               snap_drop_diagnostic_train_and_validation=pm.snap_drop_diagnostic(store),
+               runtime_seconds=round(time.time() - t, 1))
+    _dump(args.out / "participation_selection.json", sel)
+    return sel
+
+
+def cmd_participation_evaluate(args, live, hist, scoring, protocol) -> dict:
+    sel_path, psel_path = args.out / "selection.json", args.out / "participation_selection.json"
+    ifp, psel = json.loads(sel_path.read_text()), json.loads(psel_path.read_text())
+    if psel.get("ifp_selection_sha") != _sha(sel_path):
+        raise SystemExit("participation_selection.json was made with another selection.json; rerun participation-select")
+    src = _sources(live, hist, scoring.require_supported())
+    t = time.time()
+    cond_store, store = _participation_stores(src, protocol, max(protocol.heldout_seasons))
+    rep = pm.evaluate(store, cond_store, psel, ifp, protocol)
+    rep.update(participation_selection_sha=_sha(psel_path), created_at=datetime.now(timezone.utc).isoformat(),
+               runtime_seconds=round(time.time() - t, 1),
+               data_source="real nflverse + league data" if not args.synthetic_label else "SYNTHETIC")
+    _dump(args.out / "participation_heldout_report.json", rep)
+    return rep
+
+
+def cmd_participation_fit(args, live, hist, scoring, protocol) -> dict:
+    psel_path, rep_path = args.out / "participation_selection.json", args.out / "participation_heldout_report.json"
+    psel, rep = json.loads(psel_path.read_text()), json.loads(rep_path.read_text())
+    if rep.get("participation_selection_sha") != _sha(psel_path):
+        raise SystemExit("participation_heldout_report.json does not evaluate the current participation selection")
+    src = _sources(live, hist, scoring.require_supported())
+    t = time.time()
+    _, store = _participation_stores(src, protocol, max(protocol.heldout_seasons))
+    art = pm.fit_final(store, psel, rep, datetime.now(timezone.utc).isoformat(), protocol.train_start_season)
+    path = args.out / f"participation_{pm.PARTICIPATION_VERSION}.json"
+    _dump(path, art.to_dict())
+    return {"artifact": str(path), "bytes": path.stat().st_size, "runtime_seconds": round(time.time() - t, 1),
+            "status": art.status, "trained_rows": {p: m.n_train for p, m in art.models.items()},
+            "converged": {p: m.converged for p, m in art.models.items()}}
+
+
+def cmd_snap_ablation(args, live, hist, scoring, protocol) -> dict:
+    from app.analytics.forecast_backtest import snap_split_ablation
+    ifp = json.loads((args.out / "selection.json").read_text())
+    src = _sources(live, hist, scoring.require_supported())
+    weeks = completed_weeks(src, list(range(protocol.train_start_season, max(protocol.validation_seasons) + 1)))
+    return snap_split_ablation(build_store(src, weeks), ifp, protocol)
+
+
 def cmd_project(args, hist, scoring) -> dict:
     from app.analytics.independent_projection_store import build_live, write_live
     from app.db.connection import open_db
 
     art = Artifact.from_dict(json.loads((args.out / f"independent_projections_{MODEL_VERSION}.json").read_text()))
+    ppath = args.out / f"participation_{pm.PARTICIPATION_VERSION}.json"
+    part = pm.ParticipationArtifact.from_dict(json.loads(ppath.read_text())) if ppath.exists() else None
     with open_db(args.live_db) as con:
         src = _sources(con, hist, scoring.require_supported())
         t = time.time()
-        meta, rows = build_live(con, src, art, args.season, args.week)
+        meta, rows = build_live(con, src, art, args.season, args.week, participation=part)
         n = write_live(con, meta, rows)
     by = {}
     for r in rows:
         by[r["coverage_status"]] = by.get(r["coverage_status"], 0) + 1
     return {"run_id": meta["run_id"], "rows": n, "coverage": by, "runtime_seconds": round(time.time() - t, 2),
+            "participation": meta["participation_version"],
+            "with_expected_points": sum(r["expected_points"] is not None for r in rows),
             "data_through": [meta["data_through_season"], meta["data_through_week"]]}
 
 
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["audit", "select", "evaluate", "fit", "project"])
+    parser.add_argument("command", choices=["audit", "select", "evaluate", "fit", "project", "participation-select",
+                                            "participation-evaluate", "participation-fit", "snap-ablation"])
     parser.add_argument("--live-db", type=Path, default=settings.db_path)
     parser.add_argument("--history-db", type=Path, default=_path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
     parser.add_argument("--out", type=Path, default=_path("INDEPENDENT_MODEL_DIR", "data/models"))
@@ -200,7 +274,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "audit":
             result = cmd_audit(args, live, hist, scoring)
         else:
-            result = {"select": cmd_select, "evaluate": cmd_evaluate, "fit": cmd_fit}[args.command](
+            result = {"select": cmd_select, "evaluate": cmd_evaluate, "fit": cmd_fit,
+                      "participation-select": cmd_participation_select,
+                      "participation-evaluate": cmd_participation_evaluate,
+                      "participation-fit": cmd_participation_fit, "snap-ablation": cmd_snap_ablation}[args.command](
                 args, live, hist, scoring, protocol)
     except (ValueError, FileNotFoundError) as err:
         print(str(err), file=sys.stderr)

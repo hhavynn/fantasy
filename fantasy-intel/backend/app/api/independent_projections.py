@@ -15,13 +15,16 @@ from .deps import db, one, rows
 
 router = APIRouter(prefix="/api", tags=["independent projections"])
 
-SCHEMA_VERSION = "independent-projections/v1"
+SCHEMA_VERSION = "independent-projections/v2"
 POSITIONS = ("QB", "RB", "WR", "TE", "K", "D/ST")
 NOTES = [
     "independent.projected_points is Fantasy Intelligence's NFL-evidence model; it never uses ESPN projections.",
     "espn.projected_points is ESPN's number as synced; it is shown for comparison only.",
     "A null independent value means no independent estimate (see coverage_status); it is not zero.",
-    "Independent projections are conditional on the player playing; availability is reported, not modeled.",
+    "independent.projected_points is conditional on the player appearing. independent.expected_points = "
+    "participation.p_play * projected_points is the unconditional expectation (null without a participation estimate).",
+    "Compare ESPN with expected_points (comparison.expected_minus_espn): both are unconditional. "
+    "independent_minus_espn compares a conditional estimate and is marked not comparable when ESPN projects 0.",
     "Experimental positions are research output: do not treat them as better than ESPN.",
 ]
 
@@ -45,6 +48,9 @@ def _player(p: dict, run: dict | None) -> dict:
     indep = p.get("projected_points")
     espn = p.get("espn_projected_points")
     diff = round(indep - espn, 2) if indep is not None and espn is not None else None
+    expected = p.get("expected_points")
+    part = p.get("participation")
+    exp_diff = round(expected - espn, 2) if expected is not None and espn is not None else None
     interval = ({"low": p["interval_low"], "high": p["interval_high"], "nominal_coverage": 0.8}
                 if p.get("interval_low") is not None and p.get("interval_high") is not None else None)
     return {
@@ -62,9 +68,16 @@ def _player(p: dict, run: dict | None) -> dict:
                              if p.get("latest_usage_week") is not None else None),
             "missing_inputs": p.get("missing_inputs") or [], "flags": p.get("flags") or [],
             "explanation": p.get("explanation") or [], "is_espn_fallback": False,
+            "expected_points": expected,
+            "participation": None if not part else {
+                "p_play": part.get("p_play"), "model_version": part.get("model_version"),
+                "model_status": part.get("status"), "expected_points_status": part.get("expected_points_status"),
+                "depth_rank": part.get("depth_rank"), "explanation": part.get("explanation") or [],
+                "flags": part.get("flags") or [], "note": part.get("note")},
         },
         "espn": {"projected_points": espn, "synced_at": str(p["espn_synced_at"]) if p.get("espn_synced_at") else None},
         "comparison": {"independent_minus_espn": diff, **_comparability(indep, espn),
+                       "expected_minus_espn": exp_diff, "expected_comparable": exp_diff is not None,
                        "evidence": _evidence(p, diff)},
     }
 
@@ -100,7 +113,7 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
         return {**base, "available": False, "unavailable_reason": f"No independent projection run for week {week}.",
                 "run": None, "model_status": None, "players": []}
     import json
-    for k in ("model_status", "evaluation"):
+    for k in ("model_status", "evaluation", "participation_status", "participation_evaluation"):
         if isinstance(run.get(k), str):
             run[k] = json.loads(run[k])
     where, params = ["p.season = ?", "p.week = ?", "p.run_id = ?"], [lg["season"], week, run["run_id"]]
@@ -120,7 +133,7 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
         WHERE {' AND '.join(where)}
         ORDER BY p.projected_points DESC NULLS LAST, p.espn_player_id""", params)
     for p in players:
-        for k in ("missing_inputs", "flags", "explanation"):
+        for k in ("missing_inputs", "flags", "explanation", "participation"):
             if isinstance(p.get(k), str):
                 p[k] = json.loads(p[k])
     return {**base, "available": True, "unavailable_reason": None,
@@ -131,7 +144,11 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
                                        "data_through_week": run["data_through_week"],
                                        "rule": "only NFL games completed before the target week"},
                     "nfl_synced_at": str(run["nfl_synced_at"]) if run.get("nfl_synced_at") else None,
-                    "heldout_evaluation": run.get("evaluation")},
+                    "heldout_evaluation": run.get("evaluation"),
+                    "participation": ({"model_version": run["participation_version"],
+                                       "status": run.get("participation_status"),
+                                       "heldout_evaluation": run.get("participation_evaluation")}
+                                      if run.get("participation_version") else None)},
             "model_status": run["model_status"], "players": [_player(p, run) for p in players]}
 
 

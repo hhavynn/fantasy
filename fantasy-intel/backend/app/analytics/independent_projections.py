@@ -51,12 +51,16 @@ CONTEXT = {
     "WR": OPPORTUNITY["WR"] + CONTEXT_EXTRA + ["opp_pass_epa"],
     "TE": OPPORTUNITY["TE"] + CONTEXT_EXTRA + ["opp_pass_epa"],
 }
-FEATURE_SETS = {"B": OPPORTUNITY, "C": CONTEXT}
+# Research variant (not a production model): C with the last-game snap change split into an
+# injury exit and a role change. Evaluated on validation seasons only (forecast_backtest.snap_split_ablation).
+CONTEXT_SNAP_SPLIT = {p: [f for f in feats if f != "snap_trend"] + ["snap_trend_role", "injury_exit_last"]
+                      for p, feats in CONTEXT.items()}
+FEATURE_SETS = {"B": OPPORTUNITY, "C": CONTEXT, "Cs": CONTEXT_SNAP_SPLIT}
 MODEL_NAMES = {"A1": "recent_avg", "A2": "season_avg", "B": "opportunity", "C": "context"}
 LAMBDA_GRID = (0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0)
 MIN_TRAIN_ROWS = 200
 
-for _feats in [*OPPORTUNITY.values(), *CONTEXT.values()]:
+for _feats in [*OPPORTUNITY.values(), *CONTEXT.values(), *CONTEXT_SNAP_SPLIT.values()]:
     assert all(f in FEATURE_DOCS for f in _feats), _feats
 
 
@@ -75,6 +79,40 @@ def baseline_predictions(features: pl.DataFrame) -> pl.DataFrame:
 # ----------------------------------------------------------------------------- ridge
 
 
+def design_matrix(columns: list[str], means: list[float], df: pl.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Raw design matrix (nulls imputed with `means`, unstandardized) and a boolean matrix of
+    imputed cells. A "<f>__missing" column is the null indicator of base feature f."""
+    raw, imputed = [], []
+    mean = dict(zip(columns, means))
+    for col in columns:
+        if col.endswith("__missing"):
+            base = col[: -len("__missing")]
+            vals = df[base].is_null().cast(pl.Float64).to_numpy() if base in df.columns else np.ones(df.height)
+            raw.append(vals)
+            imputed.append(np.zeros(df.height, dtype=bool))
+        else:
+            s = df[col].cast(pl.Float64) if col in df.columns else pl.Series([None] * df.height, dtype=pl.Float64)
+            arr = s.to_numpy().astype(float)
+            miss = np.isnan(arr)
+            arr[miss] = mean[col]
+            raw.append(arr)
+            imputed.append(miss)
+    return np.column_stack(raw) if raw else np.zeros((df.height, 0)), np.column_stack(imputed)
+
+
+def training_means(train: pl.DataFrame, columns: list[str]) -> list[float]:
+    """Imputation/centering means from TRAINING rows: feature means, or null rates for indicators."""
+    means = []
+    for c in columns:
+        if c.endswith("__missing"):
+            base = c[: -len("__missing")]
+            means.append(float(train[base].is_null().mean()) if base in train.columns else 1.0)
+        else:
+            m = train[c].cast(pl.Float64).mean() if c in train.columns else None
+            means.append(float(m) if m is not None and not math.isnan(m) else 0.0)
+    return means
+
+
 @dataclass
 class RidgeModel:
     position: str
@@ -91,22 +129,7 @@ class RidgeModel:
 
     def design(self, df: pl.DataFrame) -> tuple[np.ndarray, np.ndarray]:
         """Raw design matrix (imputed, unstandardized) and a boolean matrix of imputed cells."""
-        raw, imputed = [], []
-        mean = dict(zip(self.columns, self.means))
-        for col in self.columns:
-            if col.endswith("__missing"):
-                base = col[: -len("__missing")]
-                vals = df[base].is_null().cast(pl.Float64).to_numpy() if base in df.columns else np.ones(df.height)
-                raw.append(vals)
-                imputed.append(np.zeros(df.height, dtype=bool))
-            else:
-                s = df[col].cast(pl.Float64) if col in df.columns else pl.Series([None] * df.height, dtype=pl.Float64)
-                arr = s.to_numpy().astype(float)
-                miss = np.isnan(arr)
-                arr[miss] = mean[col]
-                raw.append(arr)
-                imputed.append(miss)
-        return np.column_stack(raw) if raw else np.zeros((df.height, 0)), np.column_stack(imputed)
+        return design_matrix(self.columns, self.means, df)
 
     def predict(self, df: pl.DataFrame) -> np.ndarray:
         x, _ = self.design(df)
@@ -144,14 +167,7 @@ def fit_ridge(train: pl.DataFrame, position: str, model: str, lams: tuple[float,
     columns = _design_columns(train, features)
     proto = RidgeModel(position, model, features, columns, [0.0] * len(columns), [1.0] * len(columns),
                        [0.0] * len(columns), 0.0, 0.0, train.height)
-    means = []
-    for c in columns:
-        if c.endswith("__missing"):
-            base = c[: -len("__missing")]
-            means.append(float(train[base].is_null().mean()))
-        else:
-            m = train[c].cast(pl.Float64).mean() if c in train.columns else None
-            means.append(float(m) if m is not None and not math.isnan(m) else 0.0)
+    means = training_means(train, columns)
     proto.means = means
     x, _ = proto.design(train)
     stds = x.std(axis=0)
@@ -307,9 +323,11 @@ def fit_final(store: pl.DataFrame, selection: dict, evaluation: dict, scoring_de
 # ----------------------------------------------------------------------------- inference
 
 LIMITATIONS = [
-    "Conditional on the player suiting up; availability is reported separately, not modeled.",
+    "projected_points is conditional on the player appearing; expected_points = p_play * projected_points when "
+    "the participation model ran.",
     "Trained on nflverse box scores scored with this league's offensive rules (QB/RB/WR/TE only).",
-    "Uses only games completed before the target week; no betting lines, injury reports or depth charts.",
+    "projected_points uses only games completed before the target week (no betting lines, injury reports or depth "
+    "charts); p_play also uses the pregame week-W injury report.",
     "Not validated against ESPN unless the model status says an ESPN comparison criterion was met.",
 ]
 
@@ -366,5 +384,12 @@ def flags_for(row: dict) -> list[str]:
         out.append(f"part-time role (recent snap share {row['snap_pct']:.0%}): the estimate assumes he plays, "
                    "not that he starts or plays a full game")
     if row.get("snap_trend") is not None and abs(row["snap_trend"]) >= 0.2:
-        out.append(f"snap share changed {row['snap_trend']:+.0%} in the last game")
+        if row.get("injury_exit_last") == 1:
+            out.append(f"snap share fell {row['snap_trend']:+.0%} in the last game and he was on the injury report "
+                       "after it: treated as an in-game injury exit, not a role demotion")
+        elif row["snap_trend"] < 0 and row.get("injury_exit_last") == 0:
+            out.append(f"snap share fell {row['snap_trend']:+.0%} in the last game with no injury report after it: "
+                       "possible role demotion")
+        else:
+            out.append(f"snap share changed {row['snap_trend']:+.0%} in the last game")
     return out

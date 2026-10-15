@@ -17,7 +17,8 @@ from app.analytics.trade_data import (build_team_lineup_projections, evaluation_
                                       load_league_state)
 from app.analytics.team_lineups import IR_HOLD_NOTE
 from app.analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade
-from app.db.connection import SCHEMA_VERSION, connect, fetch_dicts, init_db, open_db, table_exists, upsert_rows
+from app.db.connection import (SCHEMA_VERSION, connect, fetch_dicts, init_db, open_db, table_columns, table_exists,
+                               upsert_rows)
 from app.espn.sync import run_espn_sync
 
 from espn_fixture import CURRENT, FREE_AGENTS, MY_SWID, ROSTERS, SEASON, FakeEspnClient, projection_payload
@@ -278,7 +279,7 @@ def test_v5_database_migrates_to_v6_preserving_raw_data(tmp_path):
     con.execute("INSERT INTO external_player_map (provider, source_player_key, gsis_id) VALUES ('p', 'k', 'G1')")
     con.execute("INSERT INTO player_scores (season, gsis_id) VALUES (2026, 'G1')")
     init_db(con)
-    assert con.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()[0] == "6" == str(SCHEMA_VERSION)
+    assert con.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()[0] == str(SCHEMA_VERSION)
     assert table_exists(con, "team_week_lineup_projections") and table_exists(con, "team_ros_lineup_projections")
     for t in ("espn_player_weekly_points", "espn_projection_history", "player_ros_projections", "lineup_snapshots",
               "external_player_map", "player_scores"):
@@ -536,3 +537,19 @@ def test_eastern_dst_fallback_matches_the_tz_database(monkeypatch):
         raise zoneinfo.ZoneInfoNotFoundError(key)
     monkeypatch.setattr(zoneinfo, "ZoneInfo", missing)
     assert [kickoff_utc(d, t) for d, t in cases] == real
+
+
+def test_v6_database_rebuilds_independent_projection_tables_with_participation_columns(tmp_path):
+    con = connect(tmp_path / "v6.duckdb")
+    init_db(con)
+    # A v6 database built before the participation columns existed.
+    con.execute("DROP TABLE independent_player_projections")
+    con.execute("CREATE TABLE independent_player_projections (season INTEGER, week INTEGER, espn_player_id BIGINT)")
+    con.execute("ALTER TABLE independent_projection_runs DROP COLUMN participation_version")
+    con.execute("UPDATE schema_meta SET value = '6' WHERE key = 'schema_version'")
+    con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, 1, 7, NULL, 6.0, NULL)")
+    init_db(con)
+    assert {"p_play", "expected_points", "participation"} <= set(table_columns(con, "independent_player_projections"))
+    assert "participation_version" in table_columns(con, "independent_projection_runs")
+    assert con.execute("SELECT count(*) FROM espn_player_weekly_points").fetchone()[0] == 1
+    con.close()

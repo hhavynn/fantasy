@@ -118,9 +118,10 @@ def live(tmp_path):
             res = g == gsis("CCC", "QB") and w >= 5
             exe = g == gsis("GGG", "WR1")
             roster.append({"season": 2026, "week": w, "gsis_id": g, "team": t, "game_type": "REG",
+                           "position": next(v[1] for v in PLAYERS.values() if v[2] == g),
                            "status": "RES" if res else "EXE" if exe else "ACT",
                            "status_description_abbr": "R01" if res else "E02" if exe else "A01"})
-    roster.append({"season": 2026, "week": 6, "gsis_id": "00-ROOKIE", "team": "GGG", "game_type": "REG",
+    roster.append({"season": 2026, "week": 6, "gsis_id": "00-ROOKIE", "team": "GGG", "game_type": "REG", "position": "RB",
                    "status": "ACT", "status_description_abbr": "A01"})
     con.register("_r", pl.DataFrame(roster).to_arrow())
     con.execute("CREATE TABLE nfl_rosters_weekly AS SELECT * FROM _r")
@@ -197,7 +198,9 @@ PLAYER_KEYS = {"espn_player_id", "gsis_id", "name", "position", "nfl_team", "opp
                "injury_status", "independent", "espn", "comparison"}
 INDEP_KEYS = {"projected_points", "interval_80", "model", "model_version", "model_status", "start_sit_ready",
               "coverage_status", "games_used", "latest_usage", "missing_inputs", "flags", "explanation",
-              "is_espn_fallback"}
+              "is_espn_fallback", "expected_points", "participation"}
+COMPARISON_KEYS = {"independent_minus_espn", "comparable", "comparability_note", "expected_minus_espn",
+                   "expected_comparable", "evidence"}
 
 
 def _client(monkeypatch, path):
@@ -222,11 +225,12 @@ def test_api_contract_is_stable(live, monkeypatch):
     con.close()
     client = _client(monkeypatch, path)
     body = client.get("/api/projections/independent", params={"week": 6}).json()
-    assert set(body) == TOP_KEYS and body["available"] is True and body["schema_version"] == "independent-projections/v1"
+    assert set(body) == TOP_KEYS and body["available"] is True and body["schema_version"] == "independent-projections/v2"
     assert body["run"]["feature_cutoff"]["data_through_week"] == 5
     players = {p["espn_player_id"]: p for p in body["players"]}
     for p in players.values():
-        assert set(p) == PLAYER_KEYS and set(p["independent"]) == INDEP_KEYS
+        assert set(p) == PLAYER_KEYS and set(p["independent"]) == INDEP_KEYS and set(p["comparison"]) == COMPARISON_KEYS
+        assert p["independent"]["expected_points"] is None and p["independent"]["participation"] is None   # not run
         assert p["independent"]["is_espn_fallback"] is False
         assert set(p["espn"]) == {"projected_points", "synced_at"}
     ok = players[1]
@@ -237,7 +241,8 @@ def test_api_contract_is_stable(live, monkeypatch):
     out = players[4]
     assert out["independent"]["projected_points"] is None and out["espn"]["projected_points"] == 14.0
     assert out["comparison"] == {"independent_minus_espn": None, "comparable": False,
-                                 "comparability_note": "one or both projections unavailable", "evidence": []}
+                                 "comparability_note": "one or both projections unavailable",
+                                 "expected_minus_espn": None, "expected_comparable": False, "evidence": []}
     assert players[5]["independent"]["model_status"] == "unsupported"
     backup = players[11]["comparison"]
     assert backup["independent_minus_espn"] > 0 and backup["comparable"] is False
@@ -248,17 +253,60 @@ def test_api_contract_is_stable(live, monkeypatch):
     assert client.get("/api/projections/independent", params={"week": 7}).json()["available"] is False
 
 
+def _participation_artifact(intercept=2.0):
+    from app.analytics.participation import LogitModel, ParticipationArtifact
+    models = {p: LogitModel(p, ["snap_pct"], ["snap_pct"], [0.5], [1.0], [0.0], intercept, 0.01, 0, [])
+              for p in ("QB", "RB", "WR", "TE")}
+    status = {p: {"participation": "experimental", "expected_points": "experimental", "reasons": ["synthetic"]}
+              for p in models}
+    return ParticipationArtifact("ipm-test", "2026-10-14T00:00:00+00:00", {}, models, status, {})
+
+
+def test_live_participation_gives_unconditional_expected_points(live, monkeypatch):
+    con, src, path = live
+    art = _artifact(src)
+    plain = _by_id(build_live(con, src, art, 2026, 6)[1])
+    con.execute("UPDATE fantasy_players SET injury_status = 'QUESTIONABLE' WHERE espn_player_id = 6")
+    meta, rows = build_live(con, src, art, 2026, 6, participation=_participation_artifact())
+    r = _by_id(rows)
+    p = 1 / (1 + np.exp(-2.0))
+    for pid in (1, 6, 11):
+        assert r[pid]["projected_points"] == plain[pid]["projected_points"]          # conditional estimate unchanged
+        assert r[pid]["p_play"] == pytest.approx(p, abs=1e-4)
+        assert r[pid]["expected_points"] == pytest.approx(round(p * r[pid]["projected_points"], 2), abs=0.011)
+        assert r[pid]["participation"]["depth_rank"] >= 1
+        assert any("designations" in f for f in r[pid]["participation"]["flags"])     # no nflverse report synced
+    # ESPN QUESTIONABLE fills the missing nflverse designation for BBB (status, never a projection)
+    assert any("ESPN injury status" in f for f in r[6]["participation"]["flags"])
+    assert not any("ESPN injury status" in f for f in r[1]["participation"]["flags"])
+    for pid in (2, 3, 4, 5, 7, 8, 10):                                                # no conditional estimate
+        assert r[pid]["expected_points"] is None and r[pid]["p_play"] is None
+    assert meta["participation_version"] == "ipm-test"
+    write_live(con, meta, rows)
+    con.close()
+    body = _client(monkeypatch, path).get("/api/projections/independent", params={"week": 6}).json()
+    assert body["run"]["participation"]["model_version"] == "ipm-test"
+    players = {x["espn_player_id"]: x for x in body["players"]}
+    backup = players[11]
+    assert backup["independent"]["participation"]["model_status"] == "experimental"
+    assert backup["comparison"]["expected_comparable"] is True
+    assert backup["comparison"]["expected_minus_espn"] == pytest.approx(backup["independent"]["expected_points"], abs=0.01)
+    assert backup["comparison"]["comparable"] is False                               # conditional vs ESPN 0
+
+
 # ----------------------------------------------------------------------------- isolation
 
 
 def test_canonical_espn_systems_do_not_read_independent_projections():
     """Lineups, trades, waivers, scores and ESPN projections must not depend on this research model."""
     allowed = {"independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
-               "forecast_features.py", "league_scoring.py", "main.py", "schema.sql"}
+               "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",
+               "connection.py"}   # connection.py: schema-version rebuild list only (like schema.sql)
     for f in APP.rglob("*"):
         if f.suffix not in (".py", ".sql") or f.name in allowed:
             continue
         text = f.read_text()
         for needle in ("independent_projection", "independent_player_projections", "forecast_features",
-                       "forecast_backtest", "league_scoring"):
+                       "forecast_backtest", "league_scoring", "analytics.participation", "from .participation",
+                       "import participation"):
             assert needle not in text, f"{f.relative_to(APP)} references {needle}"
