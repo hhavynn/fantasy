@@ -6,9 +6,15 @@ import {
   Badge, EmptyState, Method, Notice, PageHeader, Pos, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { buildActionItems, type StartSitInput, type WaiverInput } from "@/lib/action-items";
 import { num } from "@/lib/format";
+import { ordinal } from "@/lib/matchup";
+import type { Matchup } from "@/lib/matchup-types";
 import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import type { League, Move, Need, RosterPlayer, SyncInfo, Team } from "@/lib/types";
+import { ActionItems } from "./ActionItems";
+import { MatchupCard } from "./MatchupCard";
+import styles from "./home.module.css";
 
 // The template does not apply to a page in the layout's own segment, so the full title is given.
 export const metadata = { title: { absolute: "Overview · Fantasy Intel" } };
@@ -23,12 +29,38 @@ const STANDINGS_DEFAULT: SortState = { key: "rank", dir: "asc" };
 
 export default async function OverviewPage({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
-  const res = await api<Overview>("/api/overview");
+  // Each section has its own source; one failing endpoint degrades only its own section.
+  const [res, matchup, startSit, waivers] = await Promise.all([
+    api<Overview>("/api/overview"),
+    api<Matchup>("/api/matchup"),
+    api<StartSitInput>("/api/start-sit"),
+    api<{ players: WaiverInput[] }>("/api/waivers?view=BEST&limit=5"),
+  ]);
+  const actions = buildActionItems({
+    roster: res.ok ? res.data.roster : null,
+    matchup: matchup.ok ? matchup.data : null,
+    startSit: startSit.ok ? startSit.data : null,
+    waivers: waivers.ok ? waivers.data.players : null,
+  });
+  const week = matchup.ok ? matchup.data.league.current_week : res.ok ? res.data.league.current_week : null;
+
   if (!res.ok) {
+    if (!matchup.ok) {
+      return (
+        <div className="stack">
+          <PageHeader title="Overview" />
+          <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+        </div>
+      );
+    }
     return (
       <div className="stack">
         <PageHeader title="Overview" />
-        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+        <Notice tone="caution" title="Team overview unavailable">{res.error} The roster, needs and standings below are missing; the rest of the page still loaded.</Notice>
+        <div className={styles.band}>
+          <MatchupCard result={matchup} />
+          <ActionItems list={actions} week={week} />
+        </div>
       </div>
     );
   }
@@ -69,6 +101,11 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </StatStrip>
       )}
 
+      <div className={styles.band}>
+        <MatchupCard result={matchup} />
+        <ActionItems list={actions} week={week} />
+      </div>
+
       <div className="grid-main">
         <Section title="Current roster" flush>
           <RosterTable rows={o.roster} />
@@ -107,10 +144,8 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
             </p>
           </Method>
 
-          <Section title="Injuries on my roster" flush={o.injuries.length > 0}>
-            {o.injuries.length === 0 ? (
-              <EmptyState title="No injury designations">Nobody on your roster carries an ESPN injury designation right now.</EmptyState>
-            ) : (
+          {o.injuries.length > 0 && (
+            <Section title="Injuries on my roster" flush>
               <div className="table-wrap">
                 <table>
                   <thead><tr><th>Player</th><th>ESPN</th><th>NFL report</th></tr></thead>
@@ -129,18 +164,19 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
                   </tbody>
                 </table>
               </div>
-            )}
-          </Section>
-
-          <StandingsSection standings={o.standings} sp={sp} />
+            </Section>
+          )}
         </div>
       </div>
 
-      <Section title="Recent league transactions" flush={o.recent_transactions.length > 0}>
-        {o.recent_transactions.length === 0
-          ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next ESPN sync.</EmptyState>
-          : <MovesTable moves={o.recent_transactions} />}
-      </Section>
+      <div className={styles.pair}>
+        <StandingsSection standings={o.standings} sp={sp} />
+        <Section title="Recent league transactions" flush={o.recent_transactions.length > 0}>
+          {o.recent_transactions.length === 0
+            ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next ESPN sync.</EmptyState>
+            : <MovesTable moves={o.recent_transactions} />}
+        </Section>
+      </div>
     </div>
   );
 }
@@ -193,11 +229,6 @@ function StandingsSection({ standings, sp }: { standings: Team[]; sp: Record<str
 function avail(v: number | null | undefined) {
   if (v === null || v === undefined) return <span className="missing" title="Not computed">—</span>;
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
-}
-
-function ordinal(n: number): string {
-  const v = n % 100;
-  return `${n}${v >= 11 && v <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 }
 
 function RosterTable({ rows }: { rows: RosterPlayer[] }) {
