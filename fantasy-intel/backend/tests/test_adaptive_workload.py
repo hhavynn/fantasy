@@ -137,6 +137,15 @@ def test_sudden_breakout_moves_toward_the_new_regime():
     assert r["aw_eb"] < r["aw_role"] < 18.0
 
 
+def test_a_two_game_regime_is_found_even_when_one_game_alone_is_not_enough():
+    # prior role 10, two 13-point games: each is 30% above the role WITHOUT both games, while the
+    # latest is only ~21% above a baseline that still contains the other one
+    rows = _player("P1", 2024, range(1, 18), xfpl=10.0) + _filler() + _player("P1", 2025, [1, 2], xfpl=13.0)
+    r = _role(_sources(rows), 3)
+    assert r["aw_streak"] == 2 and r["aw_r"] == pytest.approx(0.5)
+    assert r["aw_role"] == pytest.approx(0.5 * r["aw_eb"] + 0.5 * 13.0)
+
+
 def test_repeated_injury_exits_do_not_create_a_decline_regime():
     rows = (_player("P1", 2025, [1]) + _player("P1", 2025, [2], snap=0.1, xfpl=2.0) + _player("P1", 2025, [3])
             + _player("P1", 2025, [4], snap=0.05, xfpl=1.0))

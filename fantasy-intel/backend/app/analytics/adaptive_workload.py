@@ -40,7 +40,8 @@ k = USAGE_PRIOR_GAMES (times TEAM_CHANGE_PRIOR_FACTOR after a team change, in th
 Adaptive regime blend (aw_role): the most recent <= REGIME_GAMES face-value games (normal, role_low,
 unknown; exits, blowouts and week-18 drops are skipped, they neither extend nor break a streak) are
 compared with the established role computed WITHOUT them. If the latest n >= MIN_REGIME_GAMES of them
-all deviate in the same direction by >= REGIME_DELTA, the recent regime gets weight r = n / (n + REGIME_K)
+all deviate in the same direction by >= REGIME_DELTA (the largest such n, tested longest first), the
+recent regime gets weight r = n / (n + REGIME_K)
 (0.5 for two games, 0.6 for three):
 
   aw_role = (1 - r) * aw_eb + r * mean(o over the n streak games)
@@ -156,15 +157,17 @@ def _role_one(rows: list[dict], season: int, prior_pos: float, team: str | None,
     if not cfg.adaptive:
         return out
     face = [r for r in cur_x if r["info_class"] in FACE_VALUE][:REGIME_GAMES]
+    # The longest qualifying streak wins, tested longest first: a shorter candidate's baseline still
+    # contains the other shifted games, so it can fail even when the longer regime is clear.
     streak, sign = 0, 0
-    for n in range(1, len(face) + 1):
+    for n in range(len(face), 0, -1):
         ids = {(g["season"], g["week"]) for g in face[:n]}
         base = eb([g for g in cur_x if (g["season"], g["week"]) not in ids])
         devs = [g["xfpl"] / base - 1.0 if base > 0 else 0.0 for g in face[:n]]
         s = 1 if all(d >= REGIME_DELTA for d in devs) else -1 if all(d <= -REGIME_DELTA for d in devs) else 0
-        if s == 0 or (sign and s != sign):
+        if s:
+            streak, sign = n, s
             break
-        streak, sign = n, s
     if streak >= MIN_REGIME_GAMES:
         r = streak / (streak + REGIME_K)
         recent = sum(g["xfpl"] for g in face[:streak]) / streak

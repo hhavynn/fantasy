@@ -14,8 +14,10 @@ Inputs as in challenger_research.py (play-by-play exits from `weekly_learning.py
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
+import hashlib
 import json
 import multiprocessing
 import os
@@ -31,6 +33,7 @@ sys.path.insert(0, str(SCRIPTS))
 import challenger_research as cr  # noqa: E402
 
 import duckdb  # noqa: E402
+import numpy as np  # noqa: E402
 import polars as pl  # noqa: E402
 
 from app.analytics import adaptive_workload as aw  # noqa: E402
@@ -52,18 +55,40 @@ def _out(args) -> Path:
     return p
 
 
-def full_store(args, src) -> pl.DataFrame:
-    """ifp-2 feature store + role features of every RoleConfig + evaluation columns (cached)."""
-    path = _out(args) / "store_aw.parquet"
-    if path.exists() and not args.rebuild:
-        return pl.read_parquet(path)
+def _frame_hash(df: pl.DataFrame | None) -> str | None:
+    """Order-independent content hash of a source frame."""
+    if df is None:
+        return None
+    return hashlib.sha256(np.sort(df.hash_rows(seed=0).to_numpy()).tobytes()).hexdigest()[:16]
+
+
+def input_fingerprint(args, src, scoring_fingerprint: str, weeks) -> str:
+    """Everything the cached store depends on: source data, weeks, scoring, role configs and the
+    code that builds it. Any change rebuilds the cache."""
+    code = [Path(m.__file__).read_bytes() for m in (aw, ch, sys.modules["app.analytics.forecast_features"],
+                                                     sys.modules["app.analytics.forecast_backtest"])]
+    parts = {"season": args.season, "weeks": weeks, "scoring": scoring_fingerprint, "version": aw.AW_VERSION,
+             "configs": {k: asdict(c) for k, c in aw.CONFIGS.items()}, "polars": pl.__version__,
+             "code": hashlib.sha256(b"".join(code)).hexdigest()[:16],
+             **{n: _frame_hash(getattr(src, n)) for n in ("panel", "games", "injuries", "exits", "rosters")}}
+    return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def full_store(args, src, scoring_fingerprint: str) -> pl.DataFrame:
+    """ifp-2 feature store + role features of every RoleConfig + evaluation columns. Cached with an
+    input fingerprint; reused only when every input is unchanged (else rebuilt)."""
+    path, meta = _out(args) / "store_aw.parquet", _out(args) / "store_aw.meta.json"
     weeks = completed_weeks(src, list(range(ch.TRAIN_START, args.season + 1)))
+    fp = input_fingerprint(args, src, scoring_fingerprint, weeks)
+    if path.exists() and meta.exists() and not args.rebuild and json.loads(meta.read_text()).get("fingerprint") == fp:
+        return pl.read_parquet(path)
     store = ch.add_last_game(build_store(src, weeks), src.panel)
     for suffix, cfg in aw.CONFIGS.items():
         roles = aw.build_role_store(src, store, cfg, suffix)
         store = store.join(roles, on=["key", "gsis_id"], how="left")
     store = aw.attach_evaluation_columns(store, src)
     store.write_parquet(path)
+    meta.write_text(json.dumps({"fingerprint": fp, "rows": store.height, "weeks": len(weeks)}))
     return store
 
 
@@ -103,7 +128,7 @@ def _check_qb_identical(df: pl.DataFrame, models: dict) -> None:
 def cmd_run(args) -> dict:
     t0 = time.time()
     src, scoring = _sources(args)
-    store = full_store(args, src)
+    store = full_store(args, src, scoring.fingerprint)
     t_store = round(time.time() - t0, 1)
     store_path = _out(args) / "store_aw.parquet"
     cfg = ch.ChallengerConfig.load()
@@ -177,8 +202,8 @@ def cmd_run(args) -> dict:
 def cmd_audit(args) -> dict:
     """Information content of each game class: next appearance usage relative to the pregame
     established workload (outcome side, every report up to the end of the data)."""
-    src, _ = _sources(args)
-    store = full_store(args, src)
+    src, scoring = _sources(args)
+    store = full_store(args, src, scoring.fingerprint)
     exits = src.exits
     final = aw.final_regular_weeks(src.games)
     c = aw.information_classes(classify_games(src.panel, src, 9999, 1), exits, final)
@@ -246,8 +271,8 @@ def _fit_predict(store, rows, k, features, lam, half_life):
 
 
 def cmd_cases(args) -> dict:
-    src, _ = _sources(args)
-    store = full_store(args, src)
+    src, scoring = _sources(args)
+    store = full_store(args, src, scoring.fingerprint)
     rep = json.loads((_out(args) / "report.json").read_text())
     best, chosen = rep["development"]["best_lambda"], rep["development"]["selected"]
     cfg = ch.ChallengerConfig.load()

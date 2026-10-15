@@ -19,9 +19,9 @@ The study has two useful findings:
    in aggregate. Injury exits are only about 3% of games, and the per-snap rate in those games is
    close to the healthy rate.
 2. **Usage regimes are asymmetric.** Two or more consecutive games well below the established role
-   persist: blending toward them improves MAE by 0.036-0.039 points (95% CI below zero) in both
+   persist: blending toward them improves MAE by 0.030-0.033 points (95% CI below zero) in both
    development and diagnostic seasons. Two or more consecutive games well above the role regress:
-   the same blend worsens MAE by 0.044-0.048 points (CI above zero). The two effects cancel. A
+   the same blend worsens MAE by 0.036-0.045 points (CI above zero). The two effects cancel. A
    decline-only blend is the natural next hypothesis, but it was found by looking at these cohorts.
    Testing it honestly needs a new pre-registration evaluated on prospective weeks only.
 
@@ -88,6 +88,10 @@ evidence at his per-snap rate. It is neither a full game of 2 carries nor discar
 * Compare each with the established role computed without those games.
 * If the latest n ≥ 2 all deviate in the same direction by ≥ 25%, aw_role = (1 − r)·aw_eb + r·mean,
   with r = n/(n + 2), so 0.5 or 0.6.
+* The largest qualifying n is used, tested longest first. A shorter candidate's baseline still
+  contains the other shifted games, so it can miss a clear regime: a prior of 10 followed by two
+  13-point games is a two-game regime, though the latest game alone is only 21% above a baseline
+  that includes the first. This was a Codex review finding, fixed before these results.
 * r is a fixed function of pregame evidence and is never fitted to outcomes.
 
 The two-game minimum was set after inspecting one feature value (Barkley's week-2 input, where a
@@ -153,64 +157,64 @@ tuned on it.
 ## 5. Results
 
 **Pooled MAE, with candidate − ifp-2 and a week-clustered 95% CI.** RB/WR/TE/QB are on identical
-rows; the selection rule picked AW_E.
+rows; the selection rule picked AW_BX.
 
 | Window | C | ifp-2 | AW_E | AW_B | AW_BX | AW_B_noexp |
 |---|---|---|---|---|---|---|
-| Development 2021-22 (n = 13,372) | 4.216 | 4.202 | 4.203 (+0.000 [−0.000, +0.001]) | 4.203 (+0.000 [−0.002, +0.003]) | 4.203 (+0.001 [−0.002, +0.004]) | 4.204 (+0.001 [−0.001, +0.004]) |
-| 2023-24, inspected (n = 13,345) | 4.031 | 4.016 | 4.017 (+0.000) | 4.019 (+0.003) | 4.016 (+0.000) | 4.018 (+0.002) |
-| 2025-26, inspected (n = 8,645) | 4.068 | 4.050 | 4.049 (−0.001) | 4.053 (+0.003) | 4.048 (−0.002) | 4.053 (+0.003) |
-| 2023-26 pooled (n = 21,990) | 4.045 | 4.030 | 4.029 (−0.000 [−0.001, +0.000]) | 4.032 (+0.003 [+0.001, +0.005]) | 4.029 (−0.001 [−0.002, +0.001]) | 4.032 (+0.002 [+0.000, +0.004]) |
+| Development 2021-22 (n = 13,372) | 4.216 | 4.202 | 4.203 (+0.000 [−0.000, +0.001]) | 4.203 (+0.000 [−0.002, +0.003]) | 4.202 (−0.001 [−0.004, +0.003]) | 4.204 (+0.001 [−0.001, +0.004]) |
+| 2023-24, inspected (n = 13,345) | 4.031 | 4.016 | 4.017 (+0.000) | 4.019 (+0.003) | 4.017 (+0.000) | 4.019 (+0.003) |
+| 2025-26, inspected (n = 8,645) | 4.068 | 4.050 | 4.049 (−0.001) | 4.052 (+0.002) | 4.048 (−0.002) | 4.052 (+0.002) |
+| 2023-26 pooled (n = 21,990) | 4.045 | 4.030 | 4.029 (−0.000 [−0.001, +0.000]) | 4.032 (+0.003 [+0.001, +0.005]) | 4.029 (−0.001 [−0.002, +0.001]) | 4.032 (+0.003 [+0.001, +0.005]) |
 
-RMSE and bias are unchanged to the second decimal (pooled RMSE 5.744-5.746, bias +0.010 to +0.018).
+RMSE and bias are unchanged to the second decimal (pooled RMSE 5.744-5.746, bias +0.009 to +0.016).
 
 Start/Sit pair accuracy and mean regret on 2023-26 pooled:
 
 * ifp-2: 65.47%, 2.492.
 * AW_E: 65.49%, 2.490.
-* AW_B: 65.47%, 2.492.
-* AW_BX: 65.48%, 2.493.
+* AW_B: 65.45%, 2.494.
+* AW_BX: 65.47%, 2.495.
 
 **By position, 2023-26 pooled (candidate − ifp-2).** All differences are within ±0.004:
 
 * RB: AW_E +0.001, AW_B +0.004 [−0.001, +0.009].
 * WR: AW_B +0.003 [+0.000, +0.006].
-* TE: AW_BX −0.003 [−0.006, −0.000].
+* TE: AW_BX −0.004 [−0.006, −0.001].
 
 **Required cohorts, 2023-26 pooled.** MAE, with bias in parentheses; [CI] is candidate − ifp-2.
 
 | Cohort | n | ifp-2 | AW_E | AW_B | AW_BX |
 |---|---|---|---|---|---|
-| RB starters pool | 2,832 | 5.582 | 5.584 | 5.586 | 5.580 |
-| RB high volume (healthy xFP ≥ 15) | 291 | 7.114 | 7.117 | 7.095 [−0.041, +0.002] | 7.092 [−0.041, −0.003] |
-| Injury return | 778 | 4.317 (−0.03) | 4.318 (−0.04) | 4.322 (−0.03) | 4.308 [−0.019, −0.000] |
-| Multiple early exits | 302 | 4.023 (−0.36) | 4.017 | 4.012 | 4.018 |
-| Unexplained role reduction | 1,682 | 3.120 (−0.11) | 3.122 | 3.127 [+0.001, +0.012] | 3.123 |
-| Breakout regime (pregame streak ≥ +2) | 1,284 | 5.334 (+0.15) | 5.333 | 5.381 (−0.12) [+0.028, +0.063] | 5.342 |
-| Decline regime (pregame streak ≤ −2) | 3,239 | 2.948 (−0.10) | 2.949 | 2.912 (+0.03) [−0.043, −0.029] | 2.956 |
-| Team changed | 4,753 | 3.585 | 3.587 | 3.588 | 3.580 [−0.009, −0.002] |
-| Week 18 target | 1,173 | 4.180 | 4.180 | 4.184 | 4.177 |
-| After a Week-18 low game | 175 | 4.133 (+0.79) | 4.132 | 4.152 [+0.004, +0.037] | 4.133 |
-| Genuine demotion (outcome-defined) | 1,735 | 3.684 (−3.10) | 3.687 (−3.10) | 3.682 (−3.09) | 3.684 (−3.10) |
-| Breakout (outcome-defined) | 677 | 9.049 (+8.48) | 9.049 | 9.039 | 9.063 |
-| Limited history (< 3 games) | 1,032 | 3.059 | 3.059 | 3.065 [+0.004, +0.009] | 3.063 |
+| RB starters pool | 2,832 | 5.582 | 5.584 | 5.585 | 5.579 |
+| RB high volume (healthy xFP ≥ 15) | 291 | 7.114 | 7.117 | 7.095 [−0.045, +0.005] | 7.091 [−0.047, −0.000] |
+| Injury return | 778 | 4.317 (−0.03) | 4.318 (−0.04) | 4.320 (−0.03) | 4.307 [−0.020, −0.000] |
+| Multiple early exits | 302 | 4.023 (−0.36) | 4.017 | 4.008 | 4.019 |
+| Unexplained role reduction | 1,682 | 3.120 (−0.11) | 3.122 | 3.128 [+0.001, +0.013] | 3.123 |
+| Breakout regime (pregame streak ≥ +2) | 1,682 | 5.438 (+0.26) | 5.437 | 5.474 (+0.02) [+0.020, +0.051] | 5.443 |
+| Decline regime (pregame streak ≤ −2) | 3,790 | 3.022 (−0.06) | 3.024 | 2.993 (+0.05) [−0.035, −0.024] | 3.028 |
+| Team changed | 4,753 | 3.585 | 3.587 | 3.588 | 3.581 [−0.008, −0.001] |
+| Week 18 target | 1,173 | 4.180 | 4.180 | 4.185 | 4.177 |
+| After a Week-18 low game | 175 | 4.133 (+0.79) | 4.132 | 4.153 [+0.003, +0.043] | 4.134 |
+| Genuine demotion (outcome-defined) | 1,735 | 3.684 (−3.10) | 3.687 (−3.10) | 3.681 (−3.09) | 3.683 (−3.10) |
+| Breakout (outcome-defined) | 677 | 9.049 (+8.48) | 9.049 | 9.033 | 9.059 |
+| Limited history (< 3 games) | 1,032 | 3.059 | 3.059 | 3.068 [+0.006, +0.012] | 3.064 |
 
 The development cohorts (2021-22) show the same regime asymmetry for AW_B:
 
-* Breakout regime: +0.044 [+0.018, +0.071].
-* Decline regime: −0.039 [−0.047, −0.031].
+* Breakout regime (n = 1,017): +0.045 [+0.024, +0.065].
+* Decline regime (n = 2,531): −0.033 [−0.040, −0.026].
 
 The injury-return cohort is flat. C → ifp-2 already moved its bias from +0.25 to −0.03, at the cost
 of +0.014 MAE, and no candidate moves it further.
 
 ## 6. Decision (`AW_DECISION_RULES`)
 
-* **AW_E (selected on development): rejected.** It has no development gain (+0.000, CI
-  [−0.000, +0.001]). No diagnostic rule fires.
-* **AW_B: rejected.** It has no development gain, and its 2023-26 pooled MAE is worse (+0.003).
-* **AW_BX: rejected.** It has no development gain. Its diagnostic numbers are the best of the four
+* **AW_BX (selected on development): rejected.** It has no development gain (−0.001, CI
+  [−0.004, +0.003]). No diagnostic rule fires. Its 2023-26 numbers are the best of the four
   (−0.001 pooled; TE, team-change and injury-return CIs below zero), but those seasons cannot select
   a model.
+* **AW_E: rejected.** It has no development gain (+0.000, CI [−0.000, +0.001]).
+* **AW_B: rejected.** It has no development gain, and its 2023-26 pooled MAE is worse (+0.003).
 * **AW_B_noexp (ablation): rejected.** It is worse, and WR is significantly worse.
 
 How the Phase-5 rejection criteria came out:
@@ -220,7 +224,7 @@ How the Phase-5 rejection criteria came out:
 * Manual player rules: none exist.
 * RMSE and bias: unchanged.
 * Pregame-only data: yes. It is enforced by `role_features_for_week`'s cutoff and tested.
-* Low-sample stability: AW_B and AW_BX are slightly worse on limited history (+0.006 and +0.004,
+* Low-sample stability: AW_B and AW_BX are slightly worse on limited history (+0.009 and +0.005,
   under the 2% threshold).
 * Retrospective injury data: labelled. The 2025-2026 injury rows have no `date_modified`, so their
   pre-kickoff filter cannot be applied. Play-by-play exits describe completed games only.
@@ -253,11 +257,11 @@ Conditional projection if he plays:
 
 * ifp-2: 7.57.
 * AW_E: 7.90.
-* AW_B: 7.78.
-* AW_BX: 7.97.
-* AW_B_noexp: 7.14.
+* AW_B: 7.89.
+* AW_BX: 8.03.
+* AW_B_noexp: 7.16.
 
-The experimental workload restores about 1 more point of established xFP and about 0.3 projected
+The experimental workload restores about 1 more point of established xFP and 0.3-0.5 projected
 points. That is still far below his healthy-game level. The main drag is `snap_trend` and the
 last-5 production features, not the workload estimate. This is one player-week and proves nothing
 about aggregate accuracy, which is unchanged (section 5).
@@ -270,18 +274,18 @@ reacts in that direction. The pregame regime cohorts in section 5 are the fair c
 * **Lost a starting role: Diontae Johnson, 2024 week 12 (WR).**
   * Three consecutive face-value games well below his role (streak −3, last game `role_low`).
   * `xfpl_eb` 12.2 and `aw_eb` 12.4, but `aw_role` 7.7.
-  * Projections: ifp-2 6.32, AW_E 6.27, AW_B 5.47. Actual 0.0, on 1.6 xFP.
-  * In the 58 such rows, AW_B's MAE is 6.10 against ifp-2's 6.39.
-* **Broke out: Tank Dell, 2023 week 11 (WR).**
-  * Two consecutive games far above his role (streak +2): `aw_role` 19.0 against `xfpl_eb` 12.4.
-  * Projections: ifp-2 12.78, AW_B 13.68. Actual 28.9.
-  * In the selected 274 rows AW_B looks better (7.53 vs 7.70). Over all 1,284 pregame
-    breakout-regime rows it is worse (5.381 vs 5.334): most positive streaks regress, and the ones
+  * Projections: ifp-2 6.32, AW_E 6.27, AW_B 5.50. Actual 0.0, on 1.6 xFP.
+  * In the 69 such rows, AW_B's MAE is 6.01 against ifp-2's 6.28.
+* **Broke out: CeeDee Lamb, 2023 week 10 (WR).**
+  * Two consecutive games far above his role (streak +2): `aw_role` 23.0 against `xfpl_eb` 16.6.
+  * Projections: ifp-2 18.66, AW_B 19.50. Actual 39.5.
+  * In the selected 362 rows AW_B looks better (7.79 vs 7.96). Over all 1,682 pregame
+    breakout-regime rows it is worse (5.474 vs 5.438): most positive streaks regress, and the ones
     selected here are the exceptions.
 * **Ambiguous injury classification: Kenneth Walker III, 2023 week 10 (RB).**
   * His last game is a report-only `injury_exit_report`: a snap drop followed by a new listing, with
     no play-by-play injury mention.
-  * Projections: ifp-2 14.30, AW_E 14.23, AW_B 14.93 (C 12.69). Actual 19.7, on 14.5 xFP: the role
+  * Projections: ifp-2 14.30, AW_E 14.23, AW_B 15.09 (C 12.69). Actual 19.7, on 14.5 xFP: the role
     was intact.
   * Ladd McConkey, 2026 week 3 (`listed_low`, chronic listing) is the opposite kind of ambiguity:
     `aw_eb` 12.4 against `xfpl_eb` 9.2. The experimental estimate keeps more of the drop game, and
