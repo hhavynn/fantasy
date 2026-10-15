@@ -1,8 +1,12 @@
 """FastAPI entrypoint:  cd backend && uv run uvicorn app.main:app --reload"""
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import hmac
 
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from .config import get_settings
 from .api.routes import router
 from .api.manager_scouting import router as manager_scouting_router
 from .api.trade_discovery import router as trade_discovery_router
@@ -20,6 +24,19 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    """When FANTASY_API_KEY is set (hosted mode), only the dashboard, which sends it, may call the API."""
+    key = get_settings().api_key
+    if key and request.url.path != "/health":
+        sent = request.headers.get("x-api-key", "")
+        if not hmac.compare_digest(sent.encode(), key.encode()):
+            return JSONResponse({"detail": "Missing or wrong X-API-Key."}, status_code=401)
+    return await call_next(request)
+
+
 app.include_router(router)
 app.include_router(manager_scouting_router)
 app.include_router(trade_discovery_router)

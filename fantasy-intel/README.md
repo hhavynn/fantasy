@@ -7,6 +7,8 @@ fantasy points, and how does my league behave?*
 
 Everything runs on your laptop: Python/FastAPI + DuckDB backend, Next.js dashboard.
 No accounts, no cloud, no LLM calls. All scores are deterministic and explainable.
+Optionally, a read-only copy can be hosted for free on Vercel + MotherDuck; see
+[Hosting](#hosting-vercel--motherduck).
 
 ---
 
@@ -425,6 +427,67 @@ Optional live check (skipped unless the variable is set):
 cd backend
 SLEEPER_LIVE_LEAGUE_ID=<public league id> uv run pytest tests/test_sleeper_live.py -s
 ```
+
+## Hosting (Vercel + MotherDuck)
+
+Optional. Syncs still run on your laptop against the local DuckDB file. A publish step
+copies that file to [MotherDuck](https://motherduck.com) (hosted DuckDB), and two Vercel
+projects serve it: the FastAPI backend reads MotherDuck, and the Next.js dashboard calls the
+backend. The free tiers of both cover this. The hosted side only reads: ESPN
+cookies stay in your local `.env`.
+
+```
+laptop: sync_espn.py / sync_nfl.py -> data/fantasy.duckdb -> publish_motherduck.py
+                                                                    |
+Vercel: dashboard (SITE_PASSWORD) -> API (X-API-Key) -> md:fantasy_intel
+```
+
+**1. MotherDuck.** Sign up (the free Lite plan is enough) and create two access tokens under
+Settings -> Access Tokens: one for your laptop and one for the API, so either can be revoked on
+its own. Both are normal read/write tokens: read-only read-scaling tokens need MotherDuck's paid
+Business plan. The API never writes (it only runs SELECTs, with `saas_mode` on), and only the
+dashboard can call it (`FANTASY_API_KEY`); if you are on Business, a read-scaling token works too.
+
+**2. Publish from your laptop.** Add the laptop token to `.env` as `MOTHERDUCK_TOKEN`,
+then after any sync:
+
+```bash
+cd backend
+uv run python ../scripts/publish_motherduck.py     # replaces md:fantasy_intel
+```
+
+Do not put `MOTHERDUCK_DATABASE` in your local `.env`: it switches the local API to
+MotherDuck too.
+
+**3. Backend project on Vercel.** Import this repository, set Root Directory to
+`fantasy-intel/backend` (FastAPI is detected; `[tool.vercel] entrypoint = "app.main:app"`).
+Environment variables:
+
+| variable              | value                                             |
+|-----------------------|---------------------------------------------------|
+| `MOTHERDUCK_TOKEN`    | the API's access token from step 1               |
+| `MOTHERDUCK_DATABASE` | `fantasy_intel`                                   |
+| `FANTASY_API_KEY`     | a long random string (`openssl rand -hex 32`)     |
+
+Vercel installs with `uv sync --no-dev`, which skips the sync-only packages (polars,
+nflreadpy, espn-api live in the `sync` dependency group) and keeps the function bundle
+around 310 MB, under Vercel's 500 MB limit. `tests/test_hosting.py` fails if an API route
+starts importing them. Cold starts download the MotherDuck extension (a couple of seconds).
+
+**4. Dashboard project on Vercel.** Import the repository again with Root Directory
+`fantasy-intel/frontend`. Environment variables:
+
+| variable        | value                                                   |
+|-----------------|---------------------------------------------------------|
+| `API_URL`       | the backend's production URL, e.g. `https://<backend>.vercel.app` |
+| `API_KEY`       | the same value as the backend's `FANTASY_API_KEY`       |
+| `SITE_PASSWORD` | the password the browser will ask for (any username)    |
+
+`SITE_PASSWORD` matters: without it anyone with the URL sees your league. Locally none of
+these are set, so the API key check and the password prompt are off.
+
+**Refreshing the hosted data:** run the syncs, then `publish_motherduck.py`. No redeploy is
+needed; the API reads the new copy on the next request.
 
 ## Tests
 

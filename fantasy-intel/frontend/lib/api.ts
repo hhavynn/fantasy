@@ -1,5 +1,7 @@
 // Server-side fetch helper for the local FastAPI backend (GET, or POST when a body is given).
 const API_URL = process.env.API_URL ?? "http://127.0.0.1:8000";
+// Hosted mode: the backend only answers requests carrying its FANTASY_API_KEY.
+const AUTH: Record<string, string> = process.env.API_KEY ? { "X-API-Key": process.env.API_KEY } : {};
 
 /**
  * What went wrong, so the UI can say something useful:
@@ -21,8 +23,8 @@ export function classifyHttpError(detail: string): "schema" | "http" {
 
 export async function api<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
   const init: RequestInit = body === undefined
-    ? { cache: "no-store" }
-    : { cache: "no-store", method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+    ? { cache: "no-store", headers: AUTH }
+    : { cache: "no-store", method: "POST", headers: { ...AUTH, "Content-Type": "application/json" }, body: JSON.stringify(body) };
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, init);

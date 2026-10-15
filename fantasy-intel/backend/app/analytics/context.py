@@ -215,7 +215,7 @@ def player_recent(rows: list[dict]) -> dict:
 
 
 def ftn_semantics() -> dict:
-    from ..nfl.sync import FTN_ASSUMED_PRIMARY_READ_CODE, FTN_READ_SEMANTICS_STATUS, FTN_SEMANTICS_REFERENCE
+    from ..nfl.ftn import FTN_ASSUMED_PRIMARY_READ_CODE, FTN_READ_SEMANTICS_STATUS, FTN_SEMANTICS_REFERENCE
     return {"read_semantics_status": FTN_READ_SEMANTICS_STATUS,
             "assumed_primary_read_code": FTN_ASSUMED_PRIMARY_READ_CODE,
             "reference": FTN_SEMANTICS_REFERENCE,
