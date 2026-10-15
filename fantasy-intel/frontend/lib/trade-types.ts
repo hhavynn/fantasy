@@ -55,6 +55,7 @@ export type TradeResultV3 = Omit<TradeResult, "team_a" | "team_b" | "players" | 
   injury_warnings: { espn_player_id: number; name: string | null; status: string; warnings: string[] }[];
   injury_scenarios: InjuryScenarios[];
   availability_note: string;
+  trade_vs_free_agency?: TradeVsFreeAgency;
 };
 
 // ------------------------------------------------------------------------- discovery --
@@ -101,6 +102,7 @@ export type DResult = DRow & {
   injury_scenarios: InjuryScenarios[];
   rationale: { trade_type: { kind: string; text: string }; points: string[]; concerns: string[] };
   manager_context: ManagerContext | null; need_notes: string[];
+  trade_vs_free_agency?: TradeVsFreeAgency;
 };
 
 export type NeedRow = { slot_points_per_week: number | null; slots: number; surplus: number[]; league_rank: number | null;
@@ -139,3 +141,60 @@ export type DiscoveryV3 = {
   categories: Record<string, string>; sorts: string[]; exact_shapes: string[]; heuristic_shapes: string[];
   kdst_policy: string; availability_note: string; note: string; assumptions: string[]; limitations: string[];
 };
+
+// ------------------------------------------------------- trade vs. free agency (V3.1) --
+// analytics/trade_alternatives.py: one hypothetical acquisition next to the canonical delta (never in it).
+
+export type TvfDeltas = {
+  ros_delta: number | null; regular_season_delta: number | null; playoff_delta: number | null;
+  known_ros_delta: number | null; projection_complete: boolean;
+};
+export type TvfPlayer = { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null };
+export type TvfAcquisition = {
+  player: (TvfPlayer & { acquisition_type: string }) | null; reason: string | null; acquisition_type: string | null;
+  acquisition_note?: string; drops: TvfPlayer[]; requires_drop: boolean; drop_lineup_cost: number | null;
+  drop_cost_unknown: boolean; gain: TvfDeltas; weeks_started: number[];
+  search: { candidates: number; after_dominance: number; solved: number; excluded_unprojected: number; method: string };
+};
+export type TvfFrontierWeek = {
+  week: number; phase: string | null; starter_points: number | null; starter_slots?: (number | null)[];
+  gain: number | null; known_gain: number;
+  best_available: (TvfPlayer & { points: number; acquisition_type: string })[];
+};
+export type TvfFrontier = {
+  position: string; slot_count?: number; label: string; total_gain: number | null; known_total_gain: number;
+  weeks: TvfFrontierWeek[];
+};
+export type TvfSlotRow = { slot: string } & Record<string, number | string>;
+export type TvfSide = {
+  team_id: number; team_name: string | null; label: string;
+  comparison: {
+    canonical_gain: TvfDeltas; free_agent_alternative_gain: TvfDeltas; trade_advantage: TvfDeltas;
+    available_without_trade: TvfDeltas; trade_instead_of_free_agent: TvfDeltas;
+    trade_plus_best_free_agent_gain: TvfDeltas; trade_advantage_if_both_add: TvfDeltas;
+    share_available_without_trade: number | null;
+    interaction_type?: string;
+    interaction_note?: string | null;
+  };
+  free_agent_alternative: TvfAcquisition;
+  trade_with_free_agent: {
+    available?: boolean; reason?: string | null; drops: TvfPlayer[]; drop_cost_unknown: boolean;
+    retained_player_ids?: number[]; error?: string;
+  } | null;
+  waiver_claim_alternative: TvfAcquisition | null;
+  unknown_availability_alternative?: TvfAcquisition | null;
+  position_alternatives: (TvfAcquisition & { position: string; slot_delta: number | null; same_as_headline?: boolean })[];
+  with_trade_alternative: TvfAcquisition;
+  slot_breakdown: TvfSlotRow[];
+  streaming_frontier: { position: string; no_trade: TvfFrontier; after_trade: TvfFrontier }[];
+  statements: string[]; projection_complete: boolean;
+};
+export type TradeVsFreeAgency =
+  | { available: false; reason: string }
+  | {
+    available: true; consistent_with_canonical: boolean; label: string; note: string; majority_rule: string;
+    formulas: Record<string, string>; team_a: TvfSide; team_b: TvfSide;
+    contested: { player: TvfPlayer & { acquisition_type: string }; note: string } | null;
+    pool: { available_players_scored: number; excluded_unprojected: Record<string, number>; acquisition_types: Record<string, number> };
+    assumptions: string[]; limitations: string[];
+  };
