@@ -120,8 +120,8 @@ function Dashboard({ d, phase, trades, team }: { d: TeamValue; phase: TvPhase; t
       <BenchSection d={d} />
       <Upgrades d={d} trades={trades} team={team} phase={phase} />
       <Race d={d} />
-      <section className="panel">
-        <h2>How to read this</h2>
+      <details className="panel method">
+        <summary>How to read this</summary>
         <ul className="reasons">
           {d.notes.map((n, i) => <li key={i}>{n}</li>)}
           <li>{ov.league_ranks.rule}</li>
@@ -130,7 +130,7 @@ function Dashboard({ d, phase, trades, team }: { d: TeamValue; phase: TvPhase; t
           {d.window.reason && <li>Projection window: {d.window.reason}</li>}
           <li>Data: ESPN league synced {when(d.freshness.league_synced_at)} · ESPN projections synced {when(d.freshness.projections_synced_at)}.</li>
         </ul>
-      </section>
+      </details>
     </>
   );
 }

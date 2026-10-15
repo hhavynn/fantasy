@@ -270,11 +270,11 @@ function Result({ r }: { r: TradeResult }) {
           })}
           <p className="faint">No acceptance probability is computed.</p>
         </section>
-        <section className="panel">
-          <h2>Assumptions &amp; limitations</h2>
+        <details className="panel method">
+          <summary>Assumptions &amp; limitations</summary>
           <ul className="reasons">{r.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>
           <ul className="reasons">{r.limitations.map((a, i) => <li key={i} className="faint">{a}</li>)}</ul>
-        </section>
+        </details>
       </div>
     </>
   );

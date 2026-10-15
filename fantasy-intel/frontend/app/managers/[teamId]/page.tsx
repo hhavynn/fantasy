@@ -37,7 +37,7 @@ export default async function ManagerDetail({ params }: PageProps<"/managers/[te
     <div className={`stack ${styles.page}`}>
       <div className="page-head">
         <h1>{t.name}</h1>
-        {t.is_mine && <Badge value="YOU" tone="info" />}
+        {t.is_mine && <Badge value="You" tone="info" />}
         <span className="sub">{t.owner_names} · {t.wins}-{t.losses}{t.ties ? `-${t.ties}` : ""} · PF {num(t.points_for, 1)}</span>
         <Link href="/managers">← all managers</Link>
       </div>

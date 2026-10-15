@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Barlow_Condensed, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
-import { Nav } from "@/components/Nav";
+import Link from "next/link";
+import { NavGroups, SubNav } from "@/components/Nav";
+import { SyncPill } from "@/components/SyncPill";
 import { api } from "@/lib/api";
-import { when } from "@/lib/format";
 import type { SyncInfo } from "@/lib/types";
 import "./globals.css";
 
@@ -25,30 +26,22 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
       <body>
-        <header className="topbar">
-          <div className="brand">
-            fantasy<span>intel</span>
-          </div>
-          <Nav />
-          <div className="syncinfo">
-            {s ? (
-              <>
-                {s.league && (
-                  <span>
-                    <b>{s.league.name}</b> · week {s.league.current_week}
-                  </span>
-                )}
-                <span>ESPN sync: <b>{when(s.sync.last_success.espn)}</b></span>
-                <span>
-                  NFL sync: <b>{when(s.sync.last_success.nfl)}</b>
-                  {s.nfl_latest_week ? ` (stats thru wk ${s.nfl_latest_week})` : ""}
+        <header className="appbar">
+          <div className="topbar">
+            <Link href="/" className="brand" aria-label="Fantasy Intel home">
+              fantasy<span>intel</span>
+            </Link>
+            <NavGroups />
+            <div className="topbar-end">
+              {s?.league && (
+                <span className="league-chip">
+                  {s.league.name} <span className="faint">· wk {s.league.current_week}</span>
                 </span>
-                <span>Analytics: <b>{when(s.sync.last_success.analytics)}</b></span>
-              </>
-            ) : (
-              <span>backend offline</span>
-            )}
+              )}
+              <SyncPill sync={s?.sync ?? null} nflLatestWeek={s?.nfl_latest_week ?? null} />
+            </div>
           </div>
+          <SubNav />
         </header>
         <main>{children}</main>
       </body>

@@ -48,7 +48,7 @@ export default async function ManagersPage() {
           return (
             <Link key={m.team_id} href={`/managers/${m.team_id}`} className="panel mgr-card">
               <div className="row-flex" style={{ justifyContent: "space-between" }}>
-                <h3 style={{ margin: 0 }}>{m.name} {m.is_mine && <Badge value="YOU" tone="info" />}</h3>
+                <h3 style={{ margin: 0 }}>{m.name} {m.is_mine && <Badge value="You" tone="info" />}</h3>
                 <span className="mono">{m.wins}-{m.losses}{m.ties ? `-${m.ties}` : ""}</span>
               </div>
               <div className="faint" style={{ marginBottom: 8 }}>{m.owner_names ?? "owner unknown"}</div>

@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui";
-import { num, pct } from "@/lib/format";
+import { label, num, pct } from "@/lib/format";
 import type { Classification } from "@/lib/types";
 
 export const DIMENSION_TITLES: Record<string, string> = {
@@ -36,7 +36,7 @@ export function ClassBadge({ c }: { c?: Classification }) {
   const tip = `${formatMetricText(c)} · league mean ${c.league_mean?.toFixed(2) ?? "?"} · n=${c.sample_size} (min ${c.min_sample}) · ${c.rule}`;
   return (
     <span className="row-flex" style={{ gap: 4 }} title={tip}>
-      <Badge value={c.label} tone={c.label === "HIGH" ? "info" : c.label === "MEDIUM" ? "warn" : ""} />
+      <Badge value={c.label === "INSUFFICIENT" ? c.label : label(c.label)} tone={c.label === "HIGH" ? "info" : c.label === "MEDIUM" ? "warn" : ""} />
       <span className="faint">{formatMetric(c.metric, c.value)}</span>
       <ConfDot level={c.confidence} />
     </span>
