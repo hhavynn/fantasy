@@ -281,3 +281,15 @@ def test_api_without_league_and_module_isolation(tmp_path, monkeypatch):
     for f in ("player_scores.py", "waivers.py", "projections.py", "trades.py", "team_lineups.py", "trade_data.py",
               "trade_discovery.py", "pipeline.py", "context.py", "schedule_intelligence.py", "playoff_race.py"):
         assert "luck_lab" not in (root / f).read_text(), f
+
+
+def test_ranks_use_exact_values_not_rounded_display_numbers():
+    # Team 1 averages 100.0033, Team 2 exactly 100.00: both display as 100.00 but must not share a rank.
+    games = [(1, 1, 1, 2, 100.01, 100.0, "HOME"), (2, 1, 3, 4, 50.0, 40.0, "HOME"),
+             (3, 2, 1, 3, 100.0, 50.0, "HOME"), (4, 2, 2, 4, 100.0, 40.0, "HOME"),
+             (5, 3, 1, 4, 100.0, 40.0, "HOME"), (6, 3, 2, 3, 100.0, 50.0, "HOME")]
+    res = build_luck_lab(league(games=games, reg=3))
+    lb = {r["team_id"]: r for r in res["leaderboard"]}
+    assert lb[1]["scoring_mean"] == lb[2]["scoring_mean"] == 100.0
+    assert (lb[1]["scoring_rank"], lb[2]["scoring_rank"]) == (1, 2)
+    assert sum(r["schedule_luck"] for r in res["leaderboard"]) == pytest.approx(0.0)

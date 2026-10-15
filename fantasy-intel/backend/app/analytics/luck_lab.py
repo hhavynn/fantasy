@@ -19,6 +19,7 @@ Rules:
 from __future__ import annotations
 
 from collections import Counter
+from fractions import Fraction
 from statistics import median, quantiles
 
 from .playoff_race import FINAL_WINNERS, RaceData, is_regular, period_all_play, period_weeks
@@ -326,14 +327,22 @@ def build_luck_lab(data: RaceData, team_id: int | None = None, schedule_of: int 
                  espn_record={"wins": teams[t]["wins"], "losses": teams[t]["losses"], "ties": teams[t]["ties"]},
                  espn_points_for=teams[t]["points_for"], espn_points_against=teams[t]["points_against"])
         summaries[t] = s
-    lucks = {t: summaries[t]["schedule_luck"] for t in team_ids if summaries[t]["periods"]}
-    luck_rank = {t: 1 + sum(1 for v in lucks.values() if v > lucks[t]) for t in lucks}
-    means = {t: summaries[t]["scoring"]["mean"] for t in lucks}
-    scoring_rank = {t: 1 + sum(1 for v in means.values() if v > means[t]) for t in means}
-    ew = {t: summaries[t]["expected_wins"] for t in lucks}
-    ew_rank = {t: 1 + sum(1 for v in ew.values() if v > ew[t]) for t in ew}
-    opp_mean = {t: summaries[t]["difficulty"]["opponent_points_mean"] for t in lucks}
-    difficulty_rank = {t: 1 + sum(1 for v in opp_mean.values() if v > opp_mean[t]) for t in opp_mean}
+    # Ranks compare exact values, never the rounded display numbers: expected wins from the all-play
+    # counts, and point means from cent-precision totals (ESPN scores have two decimals).
+    played = [t for t in team_ids if summaries[t]["periods"]]
+    ew = {t: sum(Fraction(2 * x["all_play"]["wins"] + x["all_play"]["ties"], 2 * (x["teams"] - 1)) for x in by_team[t])
+          for t in played}
+    lucks = {t: Fraction(sum(2 if x["result"] == "W" else 1 if x["result"] == "T" else 0 for x in by_team[t]), 2) - ew[t]
+             for t in played}
+
+    def cents_mean(vals):
+        return Fraction(round(sum(vals) * 100), len(vals))
+    means = {t: cents_mean([x["score"] for x in by_team[t]]) for t in played}
+    opp_mean = {t: cents_mean([x["opponent_score"] for x in by_team[t]]) for t in played}
+
+    def rank(vals):
+        return {t: 1 + sum(1 for v in vals.values() if v > vals[t]) for t in vals}
+    luck_rank, scoring_rank, ew_rank, difficulty_rank = rank(lucks), rank(means), rank(ew), rank(opp_mean)
     leaderboard = []
     for t in sorted(lucks, key=lambda t: (-lucks[t], t)):
         s = summaries[t]
