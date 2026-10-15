@@ -462,18 +462,28 @@ def _sync_and_analyze(db_path, client):
         con.close()
 
 
-def test_waivers_needs_and_managers_identical_with_and_without_future_projections(tmp_path):
+def test_player_scores_needs_and_managers_isolated_from_forward_waiver_evidence(tmp_path):
     no_proj = FakeEspnClient(projections={w: RuntimeError("off") for w in WEEKS})
     _sync_and_analyze(tmp_path / "a.duckdb", no_proj)
     _sync_and_analyze(tmp_path / "b.duckdb", FakeEspnClient())
     a, b = _analytics_snapshot(tmp_path / "a.duckdb"), _analytics_snapshot(tmp_path / "b.duckdb")
     assert a["waiver_recommendations"] and a["team_position_needs"] and a["manager_metrics"]
-    assert a == b
-    # ...and wildly different projections change nothing either
+    # V3 intentionally consumes forward evidence for waiver decisions. It must not
+    # change player market signals, underlying scoring, manager metrics or needs.
+    assert {k: v for k, v in a.items() if k != "waiver_recommendations"} == {
+        k: v for k, v in b.items() if k != "waiver_recommendations"}
+    for left, right in zip(a["waiver_recommendations"], b["waiver_recommendations"]):
+        assert left["espn_player_id"] == right["espn_player_id"]
+        assert left["opportunity_score"] == right["opportunity_score"]
+        assert json.loads(left["components"])["decision"]["version"] == 3
+    assert a["waiver_recommendations"] != b["waiver_recommendations"]
+    # Wildly different projections still must not affect the shared scoring layers.
     zeros = FakeEspnClient(projections={w: projection_payload(w, values={pid: 0.0 for pid in ROSTERED | FAS})
                                         for w in WEEKS})
     _sync_and_analyze(tmp_path / "b.duckdb", zeros)
-    assert _analytics_snapshot(tmp_path / "b.duckdb") == a
+    c = _analytics_snapshot(tmp_path / "b.duckdb")
+    assert {k: v for k, v in c.items() if k != "waiver_recommendations"} == {
+        k: v for k, v in a.items() if k != "waiver_recommendations"}
     con = connect(tmp_path / "b.duckdb")
     assert con.execute("SELECT count(*) FROM player_ros_projections").fetchone()[0] > 0   # but the baseline exists
     con.close()

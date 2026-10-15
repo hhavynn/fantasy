@@ -41,6 +41,17 @@ def test_api_endpoints(tmp_path, monkeypatch):
 
     w = client.get("/api/waivers", params={"position": "RB"}).json()
     assert all(p["position"] == "RB" for p in w["players"])
+    assert w["coverage"]["evaluated"] >= len(w["players"])
+    assert all("decision" in p["components"] for p in w["players"])
+    best = client.get("/api/waivers", params={"view": "BEST"}).json()
+    assert all(p["components"]["decision"]["actionable"] for p in best["players"])
+    free = client.get("/api/waivers", params={"view": "FREE_AGENTS"}).json()
+    assert all(p["availability_status"] == "FREEAGENT" for p in free["players"])
+    assert client.get("/api/waivers", params={"limit": -1}).status_code == 422
+    first = client.get("/api/waivers", params={"limit": 1}).json()
+    second = client.get("/api/waivers", params={"limit": 1, "offset": 1}).json()
+    if second["players"]:
+        assert first["players"][0]["espn_player_id"] != second["players"][0]["espn_player_id"]
 
     found = client.get("/api/players", params={"q": "echo"}).json()
     assert found and found[0]["full_name"] == "Echo RB"

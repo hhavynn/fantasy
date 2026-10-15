@@ -131,7 +131,9 @@ def test_strong_rising_back_is_a_claim_and_rival_is_top_competitor():
     r = _eval(8.5, 8.0, trend="UP")
     assert r["recommendation"] == "CLAIM"
     assert r["opportunity_score"] == 9.0
-    assert r["suggested_drop_id"] == 13
+    # Twelve active players for sixteen slots: preserve the bench and use open capacity.
+    assert r["suggested_drop_id"] is None
+    assert r["components"]["decision"]["roster_move"]["status"] == "ADD_WITHOUT_DROP"
     assert r["components"]["roster"]["enters_lineup"] is True
     assert r["competitors"][0]["name"] == "Rival"
     assert r["league_interest"] in ("MEDIUM", "HIGH")
@@ -161,6 +163,13 @@ def test_injured_player_is_never_a_claim():
     assert r["recommendation"] in ("WAIT", "IGNORE")
     assert r["components"]["player"]["injury_adj"] == -3.0
     assert _eval(8.5, 8.0, injury="DOUBTFUL")["components"]["player"]["injury_adj"] == -2.0
+
+
+@pytest.mark.parametrize("injury", [None, "UNKNOWN", "NOT_REPORTED"])
+def test_unknown_injury_is_not_an_affirmative_claim(injury):
+    r = _eval(8.5, 8.0, injury=injury)
+    assert r["recommendation"] == "WAIT"
+    assert r["components"]["decision"]["action"] == "MONITOR"
 
 
 @pytest.mark.parametrize("basis,phrase", [
