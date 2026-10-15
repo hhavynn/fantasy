@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ChartFrame } from "./ChartFrame";
 import { extent, linearScale, niceTicks } from "./scale";
 import { defaultFormat, phoneFont, signedFormat, textWidth, truncate } from "./shared";
@@ -26,7 +27,7 @@ const TONE_COLOR: Record<BarTone, string> = {
  * `--chart-positive` / `--chart-negative` and value labels carry a +/− sign, so direction is
  * never colour alone. Set `tone` on a datum to override.
  */
-export function BarChart({ data, orientation = "vertical", valueFormat, height, width = 480, showValues, divider, ariaLabel = "Bar chart", className }: {
+export function BarChart({ data, orientation = "vertical", valueFormat, height, width = 480, showValues, divider, ariaLabel = "Bar chart", title, caption, className }: {
   data: BarDatum[];
   orientation?: "vertical" | "horizontal";
   /** Formats value labels and tooltips. Defaults to a signed format for diverging data. */
@@ -39,6 +40,9 @@ export function BarChart({ data, orientation = "vertical", valueFormat, height, 
   /** Horizontal charts only: a dashed line with a label after the first `after` rows (e.g. a cutline). */
   divider?: { after: number; label: string };
   ariaLabel?: string;
+  /** Visible heading and source/sample line, drawn by ChartFrame. */
+  title?: ReactNode;
+  caption?: ReactNode;
   className?: string;
 }) {
   const ext = extent(data.map((d) => d.value));
@@ -81,7 +85,7 @@ export function BarChart({ data, orientation = "vertical", valueFormat, height, 
     const gap = hasDivider ? pf + 8 : 0;
     const h = data.length * rowH + 8 + gap;
     return (
-      <ChartFrame width={width} height={h} label={summary} className={className}>
+      <ChartFrame width={width} height={h} label={summary} title={title} caption={caption} className={className}>
         {data.map((d, i) => {
           const cy = 4 + i * rowH + rowH / 2 + (hasDivider && i >= (divider?.after ?? 0) ? gap : 0);
           const v = d.value;
@@ -123,7 +127,7 @@ export function BarChart({ data, orientation = "vertical", valueFormat, height, 
   const maxChars = Math.max(2, Math.floor((slot - 4) / (pf * 0.58)));
   const values = showValues ?? data.length <= 8;
   return (
-    <ChartFrame width={width} height={h} label={summary} className={className}>
+    <ChartFrame width={width} height={h} label={summary} title={title} caption={caption} className={className}>
       {nice.ticks.map((t) => (
         <g key={t}>
           <line x1={left} x2={width - right} y1={ys(t)} y2={ys(t)} className={t === 0 ? styles.axis : styles.grid} />

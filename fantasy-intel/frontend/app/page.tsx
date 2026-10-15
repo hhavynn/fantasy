@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { MovesTable } from "@/components/MovesTable";
+import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
   Badge, EmptyState, Method, Notice, PageHeader, Pos, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
@@ -76,8 +77,9 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
   return (
     <div className="stack">
       <PageHeader
+        eyebrow={`Week ${o.league.current_week} · ${o.league.name}`}
         title={me ? me.name : "Your team"}
-        meta={`${o.league.name} · ${o.league.season} · week ${o.league.current_week} · ${o.league.size} teams · ${scoring}${o.league.is_faab ? ` · FAAB $${o.league.faab_budget}` : " · waiver priority"}`}
+        meta={`${o.league.season} season · ${o.league.size} teams · ${scoring}${o.league.is_faab ? ` · FAAB $${o.league.faab_budget}` : " · waiver priority"}`}
       />
 
       {!me && (
@@ -85,6 +87,15 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
           Your team wasn&apos;t identified from SWID. Set <code>ESPN_MY_TEAM_ID</code> in <code>.env</code> and re-sync.
         </Notice>
       )}
+
+
+      {projection === "ours" && (
+        <Notice tone="info" title="This week's matchup and lineup use Fantasy Intel projections">
+          Switched in the header (research model; K and D/ST keep ESPN&apos;s number). Waiver and rest-of-season numbers stay on ESPN.
+        </Notice>
+      )}
+
+      {band}
 
       {me && (
         <StatStrip>
@@ -100,13 +111,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </StatStrip>
       )}
 
-      {projection === "ours" && (
-        <Notice tone="info" title="This week's matchup and lineup use Fantasy Intel projections">
-          Switched in the header (research model; K and D/ST keep ESPN&apos;s number). Waiver and rest-of-season numbers stay on ESPN.
-        </Notice>
-      )}
-
-      {band}
+      <ToolShortcuts />
 
       <div className="grid-main">
         <Section title="Current roster" flush>
@@ -243,22 +248,24 @@ function RosterTable({ rows }: { rows: RosterPlayer[] }) {
       <table>
         <thead>
           <tr>
-            <th>Slot</th><th>Player</th><th>NFL</th><th>Status</th><th title="Season PPR/game (nflverse)" className="num">PPR/g</th>
+            <th>Slot</th><th>Player</th><th>Status</th><th title="Season PPR/game (nflverse)" className="num">PPR/g</th>
             <th title="Expected PPR/game from role (nflverse xFP)" className="num">xFP/g</th><th>Trend</th><th title="Market signal (BUY needs a meaningful absolute role)">Signal</th>
             <th title="0-10 rest-of-season value proxy">Value</th>
           </tr>
         </thead>
         {groups.map(([title, ps]) => (
           <tbody key={title}>
-            <tr className="group"><td colSpan={9}>{title}</td></tr>
+            <tr className="group"><td colSpan={8}>{title}</td></tr>
             {ps.map((p) => (
               <tr key={p.espn_player_id}>
                 <td className="slot">{p.lineup_slot}</td>
-                <td><PlayerLink id={p.espn_player_id} name={p.full_name} /> <Pos value={p.position} /></td>
-                <td>{p.pro_team ?? "FA"}{p.on_bye ? <> <Badge value="BYE" tone="warn" /></> : null}</td>
+                <td>
+                  <PlayerIdentity id={p.espn_player_id} name={p.full_name} position={p.position} team={p.pro_team}
+                                  meta={p.on_bye ? <Badge value="BYE" tone="warn" /> : null} />
+                </td>
                 <td>{p.availability && p.availability.status !== "AVAILABLE"
                   ? <Badge value={p.availability.status} title={`${p.availability.sources.join(", ")} · availability weight ${p.availability.weight}`} /> : ""}</td>
-                <td className="num">{num(p.fp_per_game, 1, p.gsis_id ? "No games" : "No NFL id match")}</td>
+                <td className="num key">{num(p.fp_per_game, 1, p.gsis_id ? "No games" : "No NFL id match")}</td>
                 <td className="num">{num(p.xfp_per_game, 1, p.gsis_id ? "No games" : "No NFL id match")}</td>
                 <td><TrendArrow label={p.trend_label} /></td>
                 <td><Badge value={p.market_signal} /></td>
@@ -269,5 +276,37 @@ function RosterTable({ rows }: { rows: RosterPlayer[] }) {
         ))}
       </table>
     </div>
+  );
+}
+
+const TOOLS = [
+  { href: "/start-sit", title: "Start/Sit", text: "Your lineup against the best projected one, swap by swap.",
+    icon: <><path d="M4 9.5 7.5 13 14 5.5" /></> },
+  { href: "/waivers", title: "Waivers", text: "Pickups the analysis supports for your roster, with the drop.",
+    icon: <><path d="M9 3.5v11M3.5 9h11" /></> },
+  { href: "/trades", title: "Trade analyzer", text: "Exact lineup impact of any trade, week by week.",
+    icon: <><path d="M3 6h11l-3-3" /><path d="M15 12H4l3 3" /></> },
+  { href: "/players", title: "Player research", text: "Usage, expected points and role trends beneath the box score.",
+    icon: <><circle cx="8" cy="8" r="4.5" /><path d="m11.5 11.5 3.5 3.5" /></> },
+] as const;
+
+/** Where to go next: the four workspaces most weeks start from. Copy describes the tool, never a recommendation. */
+function ToolShortcuts() {
+  return (
+    <nav aria-label="Tools">
+      <ul className={styles.tools}>
+        {TOOLS.map((t) => (
+          <li key={t.href}>
+            <Link className={styles.tool} href={t.href}>
+              <span className={styles.toolIcon}>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{t.icon}</svg>
+              </span>
+              <span className={styles.toolTitle}>{t.title}</span>
+              <span className={styles.toolText}>{t.text}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }

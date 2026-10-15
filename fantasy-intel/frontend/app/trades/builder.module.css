@@ -5,10 +5,17 @@
 
 .sides {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 16px;
 }
-.side { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+/* Team A blue, team B orange: the same side colours as the result and the matchup card. */
+.sideA { --side-color: var(--chart-1); }
+.sideB { --side-color: var(--chart-2); }
+.side { min-width: 0; display: flex; flex-direction: column; gap: 12px; padding-top: 12px; border-top: 3px solid var(--side-color, var(--line)); }
+.swap {
+  align-self: start; margin-top: 30px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid var(--line-control); background: var(--surface-raised); color: var(--ink-muted);
+}
 .sideHead { display: flex; flex-direction: column; gap: 4px; }
 .role { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
 .teamSelect { width: 100%; min-width: 0; font-weight: 600; }
@@ -16,7 +23,7 @@
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; min-height: 30px; align-items: center; }
 .chip {
   display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
-  padding: 2px 4px 2px 12px; border-radius: 999px; background: var(--accent-soft);
+  padding: 2px 4px 2px 3px; border-radius: 999px; background: var(--accent-soft);
   border: 1px solid var(--accent); color: var(--ink); font-size: 13px; line-height: 20px; font-weight: 500;
 }
 .chipName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -25,6 +32,7 @@
   border: 0; border-radius: 50%; background: transparent; color: var(--ink-muted); font-size: 16px; line-height: 1; font-weight: 400;
 }
 .chipRemove:hover { background: var(--surface-hover); color: var(--ink); filter: none; }
+.side .chip { border-color: var(--side-color, var(--accent)); }
 .chipsEmpty { color: var(--ink-faint); font-size: 13px; }
 
 .find { display: flex; flex-direction: column; gap: 8px; }
@@ -87,7 +95,8 @@
 }
 
 @media (max-width: 720px) {
-  .sides { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .sides { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .swap { justify-self: center; margin: 0; transform: rotate(90deg); }
   .bar { margin-left: -16px; margin-right: -16px; border-radius: 10px 10px 0 0; border-left: 0; border-right: 0; padding-bottom: env(safe-area-inset-bottom); }
   .barInner { padding: 8px 16px; }
   .controls { width: 100%; flex-wrap: nowrap; gap: 8px; }

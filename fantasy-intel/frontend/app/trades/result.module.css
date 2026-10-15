@@ -7,16 +7,26 @@
 
 /* ---------- Verdict ---------- */
 
-.exchange { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 16px; align-items: start; }
-.exchangeSide { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.exchangeArrow { color: var(--ink-faint); font-size: 18px; line-height: 21px; padding-top: 18px; }
-.exchangeList { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
-.exchangeList li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.exchange { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 12px; align-items: stretch; }
+/* Each side of the trade keeps one colour (team A blue, team B orange) from the exchange through its stat strip. */
+.sideA { --side-color: var(--chart-1); }
+.sideB { --side-color: var(--chart-2); }
+.exchangeSide {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px 14px;
+  border-radius: var(--radius-sm); background: var(--surface-raised); box-shadow: inset 0 3px 0 var(--side-color);
+}
+.exchangeArrow {
+  align-self: center; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid var(--line-control); background: var(--surface); color: var(--ink-muted);
+}
+.exchangeList { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.exchangeList li { display: flex; min-width: 0; }
 .labels { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 16px 0 0; }
 
 .strips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
 .strip { min-width: 0; }
 .stripHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 8px; font-size: 14px; line-height: 20px; }
+.strip .stripHead::before { content: ""; align-self: center; width: 10px; height: 10px; border-radius: 3px; background: var(--side-color); }
 .stripHead a { color: var(--ink); }
 .stripHead a:hover { color: var(--accent); }
 .stripHead span { font-weight: 400; color: var(--ink-faint); font-size: 12px; }
@@ -58,6 +68,6 @@
   .strips, .charts, .cols { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 720px) {
-  .exchange { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .exchangeArrow { display: none; }
+  .exchange { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .exchangeArrow { justify-self: center; transform: rotate(90deg); width: 32px; height: 32px; }
 }

@@ -4,15 +4,21 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px 24px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 .text { flex: 1 1 320px; min-width: 0; }
+.eyebrow {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 6px; color: var(--accent); font-size: 11px; line-height: 16px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.eyebrow::before { content: ""; width: 14px; height: 2px; border-radius: 2px; background: currentColor; }
 .title { margin: 0; overflow-wrap: anywhere; }
-.meta { margin: 4px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+.meta { margin: 6px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; max-width: 90ch; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .extra { flex: 1 0 100%; min-width: 0; max-width: 100%; }
 
 @media (max-width: 720px) {
-  .title { font-size: 28px; line-height: 32px; }
+  .title { font-size: 30px; line-height: 32px; }
   .actions { flex: 1 0 100%; }
 }
