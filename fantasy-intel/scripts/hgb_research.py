@@ -19,6 +19,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")    # one thread per process; proce
 import argparse  # noqa: E402
 from concurrent.futures import ProcessPoolExecutor  # noqa: E402
 from datetime import datetime, timezone  # noqa: E402
+import hashlib  # noqa: E402
 import json  # noqa: E402
 import multiprocessing  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -55,13 +56,35 @@ def _sources(args):
                                       out=args.exits_dir))
 
 
-def full_store(args, src) -> pl.DataFrame:
+def _frame_hash(df: pl.DataFrame | None) -> str | None:
+    """Order-independent content hash of a source frame."""
+    if df is None:
+        return None
+    return hashlib.sha256(np.sort(df.hash_rows(seed=0).to_numpy()).tobytes()).hexdigest()[:16]
+
+
+def input_fingerprint(args, src, scoring_fingerprint: str, weeks) -> str:
+    """Everything the cached store depends on: source data, weeks, scoring and the code that builds
+    it. Any change rebuilds the cache."""
+    mods = ["app.analytics.challenger", "app.analytics.forecast_features", "app.analytics.forecast_backtest", "app.analytics.hgb_research"]
+    code = b"".join(Path(sys.modules[m].__file__).read_bytes() for m in mods)
+    parts = {"season": args.season, "weeks": weeks, "scoring": scoring_fingerprint, "polars": pl.__version__,
+             "code": hashlib.sha256(code).hexdigest()[:16],
+             **{n: _frame_hash(getattr(src, n)) for n in ("panel", "games", "injuries", "exits", "rosters")}}
+    return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def full_store(args, src, scoring_fingerprint: str) -> pl.DataFrame:
+    """Cached feature store, reused only when its recorded input fingerprint still matches."""
     path = _out(args) / "store.parquet"
-    if path.exists() and not args.rebuild:
-        return pl.read_parquet(path)
+    meta = path.with_suffix(".meta.json")
     weeks = completed_weeks(src, list(range(ch.TRAIN_START, args.season + 1)))
+    fp = input_fingerprint(args, src, scoring_fingerprint, weeks)
+    if path.exists() and meta.exists() and not args.rebuild and json.loads(meta.read_text()).get("fingerprint") == fp:
+        return pl.read_parquet(path)
     store = ch.add_last_game(build_store(src, weeks), src.panel)
     store.write_parquet(path)
+    meta.write_text(json.dumps({"fingerprint": fp, "rows": store.height, "weeks": len(weeks)}))
     return store
 
 
@@ -110,7 +133,7 @@ def _write_once(path: Path, obj) -> bool:
 def cmd_develop(args) -> dict:
     t0 = time.time()
     src, scoring = _sources(args)
-    store = full_store(args, src)
+    store = full_store(args, src, scoring.fingerprint)
     store_path = _out(args) / "store.parquet"
     cfg = ch.ChallengerConfig.load()
     sel = json.loads((args.ifp_dir / "selection.json").read_text())
@@ -274,7 +297,7 @@ def decision(dev: dict, diag: dict, cand: str, base: str = "ifp2") -> dict:
 def cmd_diagnose(args) -> dict:
     t0 = time.time()
     src, scoring = _sources(args)
-    store = full_store(args, src)
+    store = full_store(args, src, scoring.fingerprint)
     store_path = _out(args) / "store.parquet"
     frozen = _frozen(args)
     cfg = ch.ChallengerConfig.load()
@@ -342,7 +365,8 @@ def cmd_diagnose(args) -> dict:
 def cmd_ablate(args) -> dict:
     """Refit the frozen configuration without each feature group on development weeks (explanatory;
     selection is already frozen)."""
-    store = pl.read_parquet(_out(args) / "store.parquet")
+    src, scoring = _sources(args)
+    store = full_store(args, src, scoring.fingerprint)      # validates (or rebuilds) the cached store
     frozen = _frozen(args)
     weeks = ch.window_weeks(store, hg.DEVELOPMENT)
     payloads = []
@@ -376,7 +400,8 @@ def _ablate_job(payload):
 def cmd_cases(args) -> dict:
     import duckdb
 
-    store = pl.read_parquet(_out(args) / "store.parquet")
+    src, scoring = _sources(args)
+    store = full_store(args, src, scoring.fingerprint)
     d = pl.read_parquet(_out(args) / "diagnostic_preds.parquet").join(
         store.select("key", "gsis_id", "carries_pg", "targets_pg", "snap_pct", "xfpl_eb", "prev_xfpl_pg",
                      "games_recent", "inj_exits_recent", "last_injury_exit", "last_role_low", "team_changed",
