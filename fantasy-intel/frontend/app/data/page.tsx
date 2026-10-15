@@ -6,8 +6,10 @@ import { cx } from "@/lib/cx";
 import { feedHealth, mappingCoverage, validationCounts } from "@/lib/data-health";
 import { num, when } from "@/lib/format";
 import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/sort";
+import type { PromotionResponse } from "@/lib/promotion";
 import { ago } from "@/lib/sync-status";
 import styles from "./data.module.css";
+import { PromotionSection } from "./PromotionSection";
 
 export const metadata = { title: "Data quality" };
 
@@ -75,7 +77,10 @@ const MAP_DEFAULT: SortState = { key: "order", dir: "asc" };
 
 export default async function DataQualityPage({ searchParams }: PageProps<"/data">) {
   const sp = await searchParams;
-  const res = await api<DQ>("/api/data-quality");
+  const [res, promo] = await Promise.all([
+    api<DQ>("/api/data-quality"),
+    api<PromotionResponse>("/api/projections/independent/promotion"),
+  ]);
   if (!res.ok) {
     return (
       <div className="stack">
@@ -174,6 +179,11 @@ export default async function DataQualityPage({ searchParams }: PageProps<"/data
       {d.conflicts.length > 0 && <MapTable title="Conflicting crosswalks" rows={d.conflicts} sp={sp} param="conflicts" />}
 
       {d.espn_projections && <ProjectionSection p={d.espn_projections} />}
+      {promo.ok && promo.data.available ? <PromotionSection t={promo.data} /> : (
+        <Notice tone="caution" title="Independent projection promotion tracker unavailable">
+          {promo.ok ? promo.data.unavailable_reason : promo.error}
+        </Notice>
+      )}
       <ExternalSection x={d.external} />
     </div>
   );
