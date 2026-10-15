@@ -292,8 +292,34 @@ def _in_scope(con, statement: str, season: int, week: int, x: dict, extra_where:
     con.execute(f"{statement} WHERE {where}{extra_where}", params + (extra_params or []))
 
 
+def pregame_history_locked(con, season: int, week: int, day: date, now) -> set[int]:
+    """ESPN ids whose `day` history row for `week` was captured before their NFL team's kickoff
+    while that kickoff has now passed. That row is the pregame benchmark; a later same-day sync
+    must not replace it with a post-kickoff projection. Unknown team or kickoff: not locked."""
+    from ..analytics.projection_backtest import _kickoff, _utc
+    from ..db.connection import fetch_dicts, table_columns, table_exists
+
+    if not table_exists(con, "nfl_schedules") or not {"gameday", "gametime"} <= set(table_columns(con, "nfl_schedules")):
+        return set()
+    kick = {}
+    for g in fetch_dicts(con, "SELECT gameday, gametime, home_team, away_team FROM nfl_schedules "
+                              "WHERE season = ? AND week = ? AND game_type = 'REG'", [season, week]):
+        for t in (g["home_team"], g["away_team"]):
+            kick[t] = _kickoff(g)
+    now = _utc(now)
+    out = set()
+    for r in fetch_dicts(con, """SELECT h.espn_player_id, h.synced_at, fp.pro_team FROM espn_projection_history h
+                                 JOIN fantasy_players fp USING (espn_player_id)
+                                 WHERE h.snapshot_date = ? AND h.season = ? AND h.scoring_period = ?""",
+                         [day, season, week]):
+        ko, cap = kick.get(r["pro_team"]), _utc(r["synced_at"])
+        if ko is not None and cap is not None and cap < ko <= now:
+            out.add(int(r["espn_player_id"]))
+    return out
+
+
 def write_projections(con, p: EspnPayloads, proj: dict[int, dict], *, season: int, current: int,
-                      final: int | None) -> dict:
+                      final: int | None, now=None) -> dict:
     """Write parsed weekly projections (see docs/espn_ros_projections.md).
 
     Every requested week is reconciled within its scope (projected_points in scope were already
@@ -311,11 +337,17 @@ def write_projections(con, p: EspnPayloads, proj: dict[int, dict], *, season: in
     merge_columns(con, "espn_player_weekly_points", rows, ["season", "espn_player_id", "scoring_period"],
                   ["projected_points", "synced_at"])
     today = date.today()
+    now = now or utcnow()
+    locked: set[tuple[int, int]] = set()
     for week, x in proj.items():
         _in_scope(con, "DELETE FROM espn_player_weekly_points", season, week, x,
                   " AND actual_points IS NULL AND projected_points IS NULL")
-        _in_scope(con, "DELETE FROM espn_projection_history", season, week, x, " AND snapshot_date = ?", [today])
-    history = upsert_rows(con, "espn_projection_history", [{**r, "snapshot_date": today} for r in rows],
+        keep = sorted(pregame_history_locked(con, season, week, today, now))
+        locked |= {(week, pid) for pid in keep}
+        _in_scope(con, "DELETE FROM espn_projection_history", season, week, x,
+                  " AND snapshot_date = ? AND espn_player_id NOT IN (SELECT unnest(?::BIGINT[]))", [today, keep])
+    history = upsert_rows(con, "espn_projection_history", [{**r, "snapshot_date": today} for r in rows
+                                                           if (r["scoring_period"], r["espn_player_id"]) not in locked],
                           ["snapshot_date", "season", "espn_player_id", "scoring_period"])
     return {
         "source": "ESPN kona_player_info (statSourceId 1, statSplitTypeId 1)",

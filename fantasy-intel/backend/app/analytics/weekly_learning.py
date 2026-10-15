@@ -340,9 +340,14 @@ def check_artifact(art: Artifact, season: int, week: int, scoring_fp: str) -> No
 
 def predict(sources: Sources, champion: Artifact, challenger: Artifact, season: int, week: int, now: datetime, *,
             artifact_ids: dict, participation=None, con=None, kind: str = "pregame",
-            readiness_report: dict | None = None) -> dict:
-    """One ledger run: every ACT/INA roster player on a team playing in W (no ESPN inputs)."""
+            readiness_report: dict | None = None, participation_sources: tuple | None = None,
+            sources_manifest: dict | None = None, report_times: dict | None = None) -> dict:
+    """One ledger run: every ACT/INA roster player on a team playing in W (no ESPN inputs).
+    `participation_sources`: (Sources, fallback teams) for P(appears), as captured; otherwise the
+    ESPN-status fallback is computed from `con`. `sources_manifest`: the source_provenance snapshot
+    the run used (part of the run's inputs). `report_times`: injury-report timestamp coverage."""
     from .participation import live_population, predict_week
+    from .source_provenance import injury_evidence
 
     now = _utc(now)
     pop = live_population(sources, season, week)
@@ -356,10 +361,13 @@ def predict(sources: Sources, champion: Artifact, challenger: Artifact, season: 
         parts = {}
         if participation is not None:
             psources, fallback = sources, set()
-            if con is not None:
+            if participation_sources is not None:
+                psources, fallback = participation_sources
+            elif con is not None:
                 from .independent_projection_store import espn_designation_fallback
                 psources, fallback = espn_designation_fallback(con, sources, season, week)
             parts = predict_week(psources, participation, season, week, fallback_teams=fallback)
+        evidence = injury_evidence(sources, season, week, feats["gsis_id"].to_list(), report_times)
         kick = team_kickoffs(sources, season, week)
         for f in feats.sort("gsis_id").iter_rows(named=True):
             g = f["gsis_id"]
@@ -381,14 +389,49 @@ def predict(sources: Sources, champion: Artifact, challenger: Artifact, season: 
                                                    "last_injury_exit", "last_role_low", "last_blowout_low",
                                                    "xfpl_eb", "cur_h_games", "prev_h_games", "prev_xfpl_pg",
                                                    "team_changed", "prev_team_changed")},
-                "flags": flags_for(f)})
+                "flags": flags_for(f), "injury_evidence": evidence.get(g)})
     content = {"season": season, "week": week, "kind": kind, "artifacts": artifact_ids,
                "participation": None if participation is None else participation.version,
                "rows": [{k: v for k, v in r.items() if k != "pregame"} for r in rows]}
+    if sources_manifest is not None:
+        content["sources"] = sources_manifest
     inputs_hash = _sha(ch.round_floats(content, 8))
     return {"schema": LEDGER_SCHEMA, "run_id": f"{kind}-s{season}w{week:02d}-{now:%Y%m%dT%H%M%S}-{inputs_hash[:8]}",
             "created_at": now.isoformat(), "inputs_hash": inputs_hash, "readiness": readiness_report,
             **content, "rows": rows}
+
+
+def participation_sources_from(sources: Sources, extra: dict, manifest: dict, season: int, week: int):
+    """Rebuild the (Sources, fallback teams) P(appears) used, from a capture. With an ESPN-status
+    fallback the captured week-W designations replace the nflverse ones, exactly as
+    independent_projection_store.espn_designation_fallback built them (it carries no exits)."""
+    from .source_provenance import PARTICIPATION_INJURIES
+
+    teams = set(manifest.get("meta", {}).get("espn_status_fallback_teams") or [])
+    if not teams or PARTICIPATION_INJURIES not in extra:
+        return sources, set()
+    keep = sources.injuries.filter(~((pl.col("season") == season) & (pl.col("week") == week)))
+    inj = pl.concat([keep, extra[PARTICIPATION_INJURIES].cast(keep.schema, strict=False).select(keep.columns)])
+    return Sources(sources.panel, sources.games, sources.defense, sources.rosters, inj), teams
+
+
+def rebuild_run(root: Path, run: dict, champion: Artifact, challenger: Artifact, participation=None) -> dict:
+    """Recompute a ledger run from its persisted source snapshots and its artifacts only (never
+    the current database). Equal rows and inputs_hash prove what the forecast knew."""
+    from . import source_provenance as sp
+
+    info = run.get("sources")
+    if not info:
+        raise NotReady(f"run {run['run_id']} has no source snapshot (made before provenance capture); "
+                       "it cannot be rebuilt exactly")
+    manifest = sp.load_manifest(root, run["season"], run["week"], info["manifest_id"])
+    sources, extra = sp.reconstruct(root, manifest)
+    psrc = participation_sources_from(sources, extra, manifest, run["season"], run["week"]) \
+        if participation is not None else None
+    return predict(sources, champion, challenger, run["season"], run["week"], datetime.fromisoformat(run["created_at"]),
+                   artifact_ids=run["artifacts"], participation=participation, kind=run["kind"],
+                   readiness_report=run.get("readiness"), participation_sources=psrc, sources_manifest=info,
+                   report_times=manifest.get("meta", {}).get("injury_report_timestamps"))
 
 
 def write_run(run: dict, root: Path) -> tuple[Path, bool]:
@@ -752,5 +795,5 @@ def promotion_blockers(status: dict) -> dict:
 
 
 __all__ = ["readiness", "train", "save_artifact", "load_artifact", "write_once", "latest_artifact", "predict",
-           "write_run", "load_ledger", "evaluate", "label_outcomes", "team_game_finality", "week_finality", "shadow_status",
+           "write_run", "load_ledger", "rebuild_run", "evaluate", "label_outcomes", "team_game_finality", "week_finality", "shadow_status",
            "shadow_criteria", "promotion_blockers", "NotReady", "MODEL_VERSION", "interval_for"]

@@ -356,9 +356,10 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                               "latest_included_week": tr["artifacts"][wl.MODEL_VERSION]["latest_included_week"],
                               "artifacts": {v: {"id": a["id"], "created": bool(a["new"]) and not tr["reused"],
                                                 "path": a["path"]} for v, a in tr["artifacts"].items()}}
-        pr = stage("predict", cli.cmd_predict, args, live=live, src=src, scoring=scoring,
+        pr = stage("predict", cli.cmd_predict, args, live=live, hist=hist, src=src, scoring=scoring,
                    artifacts={v: a["path"] for v, a in tr["artifacts"].items()})
-        report["forecast"] = {k: pr[k] for k in ("run_id", "path", "new", "rows", "pregame_rows", "with_challenger")}
+        report["forecast"] = {k: pr[k] for k in ("run_id", "path", "new", "rows", "pregame_rows", "with_challenger",
+                                                 "source_manifest")}
         report["status"] = "forecast_frozen" if pr["new"] else "up_to_date"
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code

@@ -599,6 +599,82 @@ Thursday-night kickoff, run `learning_cycle.py run` by hand. If the refresh and 
 together, the cycle's sync fails on DuckDB's write lock and the next attempt retries. The
 participation artifact is not retrained (unchanged); the challenger stays shadow-only.
 
+### Pregame source provenance (`app/analytics/source_provenance.py`)
+
+**Audit: what could be silently rewritten.**
+
+| Source | Storage | Rewritten by later refreshes? |
+|---|---|---|
+| nflverse injury reports (`nfl_injuries`) | live DB, season partition | **Yes**: every `sync_nfl.py` replaces the season. `load_injuries` drops rows with `date_modified` at or after kickoff, but rows without `date_modified` (many 2025-2026 rows) cannot be filtered by time |
+| nflverse weekly rosters, schedules, box scores, snaps, expected points | live DB, season partitions | **Yes**, replaced on every sync (stat corrections, flexed kickoffs, roster status changes) |
+| Play-by-play injury evidence (`pbp_exits/<season>.parquet`) | weekly model dir | **Yes**, rewritten by `sync-exits` |
+| nflverse depth charts (`nfl_depth_charts`) | live DB | Yes, but no forecast reads it (participation ranks depth from snaps) |
+| ESPN status fallback (`fantasy_players.injury_status`) | live DB | **Yes**, every ESPN sync |
+| ESPN projection snapshots (`espn_projection_history`) | live DB, one row per player, week and **local date** | A same-day sync replaced that day's row, including one captured before kickoff by a sync after it. **Fixed**: such a row is now locked (below) |
+| Model artifacts, ledger runs | weekly model dir | No: content-addressed / write-once (earlier sections) |
+| Production `ifp-1.0.0` runs (`independent_projection_runs`) | live DB | `project` replaces the week's rows (unchanged; documented above) |
+
+No historical leakage is claimed: forecasts were made pregame from the tables as they were then.
+The problem was reconstruction: a past forecast's inputs could only be re-read from tables that had
+since been replaced.
+
+**What is captured.** Every `weekly_learning.py predict` (and so every learning cycle) snapshots the
+exact `Sources` frames the forecast reads (box-score panel, schedule, defense, weekly rosters,
+injury reports, play-by-play exits) for the target season and the previous one, which is every
+season the feature pipeline reads (a test rebuilds a forecast from these two seasons against a
+database holding three). When the ESPN-status fallback supplied a team's designations, the week's
+designations as P(appears) used them are captured too (gsis id, team, status; no ESPN ids, cookies
+or raw payloads). Each part is a parquet file named by the sha256 of its content
+(`<out>/snapshots/<family>/s<season>/<sha>.parquet`), so an unchanged season (e.g. the previous one)
+is stored once. A write-once manifest per capture
+(`<out>/snapshots/manifests/s<season>w<week>/<id>.json`) lists the parts, and the ledger run stores
+the manifest id and part hashes as part of its inputs (a changed source gives a new run). If the
+snapshot cannot be written, no forecast is frozen. `weekly_learning.rebuild_run` recomputes a run
+from its snapshots and artifacts only and must reproduce its rows and inputs hash.
+
+**Timestamps.** Event = the NFL week and the team's kickoff. Published = nflverse `date_modified`
+per injury row, when present; its coverage per season (and the count of rows without a player id)
+is recorded as `available`, `partial` or `missing` and never imputed. Retrieved = an upper bound on
+the download time: the finish of the nflverse sync that wrote the live season (`sync_runs`), the
+play-by-play file's write time, or null (history seasons). Captured = the forecast's creation time.
+Used = the ledger run's `created_at`. `known_by` = retrieved if known, else captured.
+
+**Point-in-time reads.** `source_provenance.injuries_as_of(season, week, kickoffs)` returns, per team,
+the week's injury rows from the latest snapshot known strictly before **that team's** kickoff,
+reading snapshots only. An update received after kickoff never reaches that team; a team with no
+snapshot before its kickoff gets no rows (listed in `no_pregame_snapshot`), never today's table.
+
+**Corrections.** A corrected source (a stat correction, a re-issued injury report) is a new part and a
+new manifest; earlier parts, manifests, artifacts and ledger runs stay byte-identical, and every
+earlier forecast still rebuilds exactly. Unreadable or hash-mismatched snapshots raise
+`ProvenanceError`; nothing falls back to the current database.
+
+**Injury evidence quality.** Each ledger row carries `injury_evidence` for the player's last game
+before the forecast, from the forecast's own game classification (descriptive, not a model input):
+`pbp_injury_mention` (play-by-play says he was injured in that game), `injury_report_listing` (snap
+drop plus a new report listing after it, with the report's publication-time status),
+`snap_drop_without_injury_evidence` (role cut, rest, game script or an unreported injury: never
+called an injury), `no_snap_drop` or `unknown`, plus whether play-by-play covered that week.
+
+**ESPN pregame benchmark.** `sync_espn.py` keeps one history row per player, week and day. A row
+captured before the player's team kicked off is now locked once that kickoff has passed: a later
+same-day sync neither deletes nor overwrites it (`espn.sync.pregame_history_locked`). Players whose
+game has not started are replaced as before; with an unknown team or kickoff nothing is locked.
+
+**Retention and deployment.** Snapshots live in the git-ignored weekly model directory on the machine
+that runs the cycle; they survive process restarts and database rebuilds (separate files), are not
+published to MotherDuck, and are lost with that disk, so include `data/models/` in backups. Size:
+two seasons of frames per new capture, a few MB at most, deduplicated by content; never delete a part
+a manifest references.
+
+**What remains unrecoverable.** Forecasts made before this capture existed have no snapshot and
+`rebuild_run` refuses them. Seasons synced before now carry only today's version of their injury
+reports, rosters and stats: their original publication or retrieval times cannot be recovered, and
+`date_modified` is missing for many 2025-2026 injury rows. Retrospective replays of past weeks therefore
+use present-day tables and stay labeled retrospective. Sources that should adopt the same snapshot
+store next: the ESPN projection snapshots themselves (today a DB table), nflverse depth charts if a
+model starts reading them, and any future injury or news feed.
+
 ### Prospective evaluation: outcome finality
 
 `evaluate` labels every frozen forecast row with an explicit outcome status
