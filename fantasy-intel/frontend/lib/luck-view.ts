@@ -36,7 +36,7 @@ export function scatterPoints(rows: readonly LlLeader[], minLuck = 1): ScatterPo
     id: p.team_id,
     x: p.expected_wins,
     y: p.actual.win_equivalents,
-    label: p.is_mine || Math.abs(p.schedule_luck) >= minLuck ? p.name.slice(0, 14) : undefined,
+    label: p.is_mine || Math.abs(p.schedule_luck) >= minLuck ? p.name : undefined,
     highlight: p.is_mine,
     title: `${p.name}: actual ${p.actual.win_equivalents.toFixed(1)}, expected ${p.expected_wins.toFixed(2)}, luck ${signedText(p.schedule_luck)}`,
   }));

@@ -311,8 +311,8 @@ function Ladder({ d, name }: { d: PlayoffRace; name: Name }) {
   const tie = d.scenario.cutline?.cutline_tie;
   return (
     <Section
-      title="Playoff line ladder: scenario winning %"
-      footnote={<>Bars: winning % in this scenario (decided games only){d.focus_team_id !== null ? `, ${name(d.focus_team_id)} highlighted` : ""}. Teams are in standings order; the dashed line is the playoff line.</>}
+      title="Scenario record: win share (wins ÷ games)"
+      footnote={<>Bars: each team&apos;s win share in the deterministic scenario, W ÷ (W + L) over decided games. It is the scenario&apos;s record, not a probability or a chance of making the playoffs{d.focus_team_id !== null ? `; ${name(d.focus_team_id)} is highlighted` : ""}. Teams are in standings order; the dashed line is the playoff line.</>}
     >
       <BarChart
         orientation="horizontal"
@@ -323,7 +323,7 @@ function Ladder({ d, name }: { d: PlayoffRace; name: Name }) {
         }))}
         valueFormat={(v) => `${Math.round(v * 100)}%`}
         divider={after !== null ? { after, label: tie ? `Playoff line · ${tie.spots_left} shared` : "Playoff line" } : undefined}
-        ariaLabel="Scenario winning percentage by team with the playoff line"
+        ariaLabel="Scenario win share (wins divided by games) by team with the playoff line"
       />
     </Section>
   );

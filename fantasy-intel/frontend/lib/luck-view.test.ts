@@ -49,7 +49,7 @@ test("scatterPoints labels your team and big movers only", () => {
   ]);
   assert.equal(pts[0].label, "Mine");
   assert.equal(pts[0].highlight, true);
-  assert.equal(pts[1].label, "Lucky Team Wit");
+  assert.equal(pts[1].label, "Lucky Team With A Long Name");
   assert.equal(pts[2].label, undefined);
   assert.equal(pts[2].x, 2);
 });
