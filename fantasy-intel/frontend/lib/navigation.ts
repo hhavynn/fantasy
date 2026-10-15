@@ -1,103 +1,48 @@
-export type NavGroupId = "insights" | "more";
+export type NavPage = { href: string; label: string };
+export type NavGroup = { label: string; pages: NavPage[] };
 
-export type NavItem = {
-  label: string;
-  href: string;
-  exact?: boolean;
-};
-
-export type NavGroup = {
-  id: NavGroupId;
-  label: string;
-  items: NavItem[];
-};
-
-export const PRIMARY_NAV_ITEMS: NavItem[] = [
-  { label: "Overview", href: "/", exact: true },
-  { label: "My Team", href: "/my-team/value" },
-  { label: "Players", href: "/players" },
-  { label: "Waivers", href: "/waivers" },
-  { label: "Trades", href: "/trades" },
-  { label: "Trade Finder", href: "/trades/discover" },
-];
-
+// Section groups; the app bar shows the groups and a sub-nav for the active group's pages.
+// Data quality is reached from the sync status, not the nav.
 export const NAV_GROUPS: NavGroup[] = [
   {
-    id: "insights",
-    label: "Insights",
-    items: [
-      { label: "Schedule Intelligence", href: "/schedule-intelligence" },
-      { label: "Playoff Race", href: "/playoff-race" },
-      { label: "Luck Lab", href: "/luck-lab" },
+    label: "My team",
+    pages: [
+      { href: "/", label: "Overview" },
+      { href: "/start-sit", label: "Start/Sit" },
+      { href: "/my-team/value", label: "Team value" },
     ],
   },
+  { label: "Players", pages: [{ href: "/players", label: "Players" }, { href: "/waivers", label: "Waivers" }] },
+  { label: "Trades", pages: [{ href: "/trades", label: "Analyzer" }, { href: "/trades/discover", label: "Discover" }] },
   {
-    id: "more",
-    label: "More",
-    items: [
-      { label: "Managers", href: "/managers" },
-      { label: "Data Quality", href: "/data" },
+    label: "League",
+    pages: [
+      { href: "/schedule-intelligence", label: "Schedule" },
+      { href: "/luck-lab", label: "Luck lab" },
+      { href: "/playoff-race", label: "Playoff race" },
+      { href: "/managers", label: "Managers" },
     ],
   },
 ];
 
-export const ALL_NAV_ITEMS: NavItem[] = [
-  ...PRIMARY_NAV_ITEMS,
-  ...NAV_GROUPS.flatMap((g) => g.items),
-];
+export const ALL_NAV_PAGES: NavPage[] = NAV_GROUPS.flatMap((g) => g.pages);
 
-export type ActiveRoute = {
-  activeHref: string | null;
-  activeGroupId: NavGroupId | null;
-};
+export type ActiveRoute = { activeHref: string | null; activeGroup: NavGroup | null };
 
 /**
- * Determines which navigation item and group (if any) are active for the given pathname.
- * - '/' strictly requires exact match.
- * - Subroutes use boundary-aware matching (e.g. /managers/1 matches /managers).
- * - When multiple routes match (e.g. /trades and /trades/discover), the longest/most specific href wins.
- * - Unknown routes return activeHref: null, activeGroupId: null (never incorrectly highlights Overview).
+ * The nav page and group that `pathname` belongs to.
+ * - "/" matches only itself, so unknown routes never highlight Overview.
+ * - Other pages match themselves and their sub-paths on a "/" boundary (/managers/1, not /managersx).
+ * - The longest match wins, so /trades/discover marks Discover, not Analyzer.
+ * - Unknown routes return nulls.
  */
-export function getActiveRoute(pathname: string): ActiveRoute {
-  if (!pathname) return { activeHref: null, activeGroupId: null };
-
-  // Normalize: remove trailing slash unless it's the root '/'
-  const normalized = pathname.length > 1 && pathname.endsWith("/")
-    ? pathname.slice(0, -1)
-    : pathname;
-
-  const matches: NavItem[] = [];
-
-  for (const item of ALL_NAV_ITEMS) {
-    if (item.exact || item.href === "/") {
-      if (normalized === item.href) {
-        matches.push(item);
-      }
-    } else {
-      if (normalized === item.href || normalized.startsWith(`${item.href}/`)) {
-        matches.push(item);
-      }
-    }
+export function getActiveRoute(pathname: string | null | undefined): ActiveRoute {
+  if (!pathname) return { activeHref: null, activeGroup: null };
+  const path = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  let best: string | null = null;
+  for (const { href } of ALL_NAV_PAGES) {
+    const hit = href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`);
+    if (hit && (!best || href.length > best.length)) best = href;
   }
-
-  if (matches.length === 0) {
-    return { activeHref: null, activeGroupId: null };
-  }
-
-  // Sort by href length descending to prioritize the most specific route
-  matches.sort((a, b) => b.href.length - a.href.length);
-  const bestMatch = matches[0];
-
-  let activeGroupId: NavGroupId | null = null;
-  for (const group of NAV_GROUPS) {
-    if (group.items.some((i) => i.href === bestMatch.href)) {
-      activeGroupId = group.id;
-      break;
-    }
-  }
-
-  return {
-    activeHref: bestMatch.href,
-    activeGroupId,
-  };
+  return { activeHref: best, activeGroup: NAV_GROUPS.find((g) => g.pages.some((p) => p.href === best)) ?? null };
 }

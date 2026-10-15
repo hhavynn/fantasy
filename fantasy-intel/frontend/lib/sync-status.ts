@@ -1,153 +1,91 @@
 import type { SyncInfo } from "./types.ts";
 
-export type SyncHealthState = "healthy" | "warning" | "offline" | "not_synced";
-
-export type SyncSourceDetail = {
-  timestamp: string | null;
-  formatted: string;
-};
-
-export type SyncFailure = {
-  source: string;
-  message: string | null;
-  finished_at: string | null;
-};
-
-export type SyncSummary = {
-  state: SyncHealthState;
-  label: string;
-  tone: "neutral" | "warn" | "bad";
-  details: {
-    espn: SyncSourceDetail;
-    nfl: SyncSourceDetail & { statsWeek: number | null };
-    analytics: SyncSourceDetail;
-  };
+export type StatusPayload = {
+  sync: SyncInfo;
+  nfl_latest_week: number | null;
   league: { name: string; current_week: number } | null;
+} | null;
+
+export const FEEDS = [
+  { key: "espn", label: "ESPN league" },
+  { key: "nfl", label: "NFL stats" },
+  { key: "analytics", label: "Analytics" },
+] as const;
+export const STALE_HOURS = 36;
+
+/** The pill's dot: ok (green), stale (amber: old, failed or missing data), offline (red). */
+export type SyncState = "ok" | "stale" | "offline";
+export type FeedStatus = { key: string; label: string; timestamp: string | null; hours: number | null };
+export type SyncFailure = { source: string; label: string; status: string; message: string | null; finished_at: string | null };
+export type SyncSummary = {
+  state: SyncState;
+  text: string;
+  feeds: FeedStatus[];
   activeFailures: SyncFailure[];
+  nflLatestWeek: number | null;
 };
 
-export function formatSyncTime(v: string | null | undefined): string {
-  if (!v) return "Never synced";
-  try {
-    const d = new Date(v.endsWith("Z") || v.includes("+") ? v : `${v}Z`);
-    if (Number.isNaN(d.getTime())) return "Invalid date";
-    return d.toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return "Invalid date";
-  }
+const OK = new Set(["ok", "success"]);
+
+/** Backend timestamps without an offset are UTC. Unparseable values are null, never "now". */
+export function parseTimestamp(v: string | null | undefined): number | null {
+  if (!v) return null;
+  const t = new Date(/([zZ]|[+-]\d{2}:?\d{2})$/.test(v) ? v : `${v}Z`).getTime();
+  return Number.isNaN(t) ? null : t;
 }
 
+export function ago(hours: number): string {
+  if (hours < 1) return "just now";
+  if (hours < 48) return `${Math.floor(hours)}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+const feedLabel = (source: string) => FEEDS.find((f) => f.key === source)?.label ?? source;
+
 /**
- * Computes a conservative sync status summary from the /api/status payload.
- * - Backend offline: null input returns 'offline' with 'bad' tone.
- * - Completely unsynced: returns 'not_synced' with 'warn' tone.
- * - Active failures: latest run for a source failed and has no newer success timestamp -> 'warning' with 'warn' tone.
- * - Resolved failures: a newer success clears older failures for that source.
- * - Healthy: normal 'healthy' state with 'neutral' tone.
+ * One conservative health summary for the /api/status payload.
+ * - null (backend unreachable) is offline.
+ * - A failure counts only when it is its source's latest run and no newer success cleared it.
+ * - Any feed never synced, or the oldest feed older than STALE_HOURS, is stale.
  */
-export function computeSyncSummary(
-  data: {
-    sync: SyncInfo;
-    nfl_latest_week: number | null;
-    league: { name: string; current_week: number } | null;
-  } | null
-): SyncSummary {
+export function computeSyncSummary(data: StatusPayload, now: number = Date.now()): SyncSummary {
   if (!data) {
-    return {
-      state: "offline",
-      label: "Backend offline",
-      tone: "bad",
-      details: {
-        espn: { timestamp: null, formatted: "Backend unreachable" },
-        nfl: { timestamp: null, formatted: "Backend unreachable", statsWeek: null },
-        analytics: { timestamp: null, formatted: "Backend unreachable" },
-      },
-      league: null,
-      activeFailures: [],
-    };
+    return { state: "offline", text: "Backend offline", feeds: [], activeFailures: [], nflLatestWeek: null };
   }
+  const lastSuccess = data.sync?.last_success ?? {};
+  const runs = data.sync?.latest_runs ?? [];
 
-  const sync = data.sync;
-  const lastSuccess = sync?.last_success ?? {};
-  const latestRuns = sync?.latest_runs ?? [];
+  const feeds: FeedStatus[] = FEEDS.map((f) => {
+    const timestamp = lastSuccess[f.key] ?? null;
+    const t = parseTimestamp(timestamp);
+    return { key: f.key, label: f.label, timestamp, hours: t === null ? null : Math.max(0, (now - t) / 36e5) };
+  });
 
-  const espnTimestamp = lastSuccess.espn ?? null;
-  const nflTimestamp = lastSuccess.nfl ?? null;
-  const analyticsTimestamp = lastSuccess.analytics ?? null;
-
-  const hasAnySuccess = Boolean(espnTimestamp || nflTimestamp || analyticsTimestamp);
-
-  // Group latest runs by source and find the most recent one for each
-  const runsBySource = new Map<string, (typeof latestRuns)[number]>();
-  for (const run of latestRuns) {
+  const latest = new Map<string, (typeof runs)[number]>();
+  for (const run of runs) {
     if (!run?.source) continue;
-    const existing = runsBySource.get(run.source);
-    if (!existing) {
-      runsBySource.set(run.source, run);
-    } else {
-      const existingTime = existing.finished_at ? new Date(existing.finished_at).getTime() : 0;
-      const runTime = run.finished_at ? new Date(run.finished_at).getTime() : 0;
-      if (runTime >= existingTime) {
-        runsBySource.set(run.source, run);
-      }
-    }
+    const prev = latest.get(run.source);
+    if (!prev || (parseTimestamp(run.finished_at) ?? 0) >= (parseTimestamp(prev.finished_at) ?? 0)) latest.set(run.source, run);
   }
-
   const activeFailures: SyncFailure[] = [];
-  for (const [source, run] of runsBySource.entries()) {
-    const statusLower = run.status ? run.status.toLowerCase() : "";
-    const isSuccess = statusLower === "ok" || statusLower === "success";
-    if (!isSuccess) {
-      const successTs = lastSuccess[source];
-      if (successTs && run.finished_at) {
-        const successTime = new Date(successTs).getTime();
-        const failureTime = new Date(run.finished_at).getTime();
-        if (successTime > failureTime) {
-          // An earlier failure was cleared by a later successful run
-          continue;
-        }
-      }
-      activeFailures.push({
-        source,
-        message: run.message ?? null,
-        finished_at: run.finished_at ?? null,
-      });
-    }
+  for (const [source, run] of latest) {
+    if (OK.has((run.status ?? "").toLowerCase())) continue;
+    const success = parseTimestamp(lastSuccess[source]);
+    const failed = parseTimestamp(run.finished_at);
+    if (success !== null && failed !== null && success > failed) continue;     // cleared by a newer success
+    activeFailures.push({ source, label: feedLabel(source), status: (run.status ?? "failed").toLowerCase(),
+                          message: run.message ?? null, finished_at: run.finished_at ?? null });
   }
 
-  let state: SyncHealthState = "healthy";
-  let label = "Sync status";
-  let tone: "neutral" | "warn" | "bad" = "neutral";
-
-  if (activeFailures.length > 0) {
-    state = "warning";
-    label = "Sync warning";
-    tone = "warn";
-  } else if (!hasAnySuccess && latestRuns.length === 0) {
-    state = "not_synced";
-    label = "Not synced";
-    tone = "warn";
+  const base = { feeds, activeFailures, nflLatestWeek: data.nfl_latest_week ?? null };
+  const missing = feeds.find((f) => f.hours === null);
+  if (feeds.every((f) => f.hours === null) && runs.length === 0) return { ...base, state: "stale", text: "Not synced" };
+  if (activeFailures.length) {
+    const f = activeFailures[0];
+    return { ...base, state: "stale", text: `${f.label} sync ${f.status}` };
   }
-
-  return {
-    state,
-    label,
-    tone,
-    details: {
-      espn: { timestamp: espnTimestamp, formatted: formatSyncTime(espnTimestamp) },
-      nfl: {
-        timestamp: nflTimestamp,
-        formatted: formatSyncTime(nflTimestamp),
-        statsWeek: data.nfl_latest_week ?? null,
-      },
-      analytics: { timestamp: analyticsTimestamp, formatted: formatSyncTime(analyticsTimestamp) },
-    },
-    league: data.league ?? null,
-    activeFailures,
-  };
+  if (missing) return { ...base, state: "stale", text: `${missing.label} never synced` };
+  const oldest = feeds.reduce((m, f) => (f.hours! > m.hours! ? f : m));
+  if (oldest.hours! > STALE_HOURS) return { ...base, state: "stale", text: `${oldest.label} ${ago(oldest.hours!)}` };
+  return { ...base, state: "ok", text: `Synced ${ago(oldest.hours!)}` };
 }

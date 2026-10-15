@@ -1,0 +1,19 @@
+[
+ {"roster_id": 2, "owner_id": "700000000000000102", "co_owners": ["700000000000000103"], "league_id": "1180000000000000001",
+  "players": ["9509", "11632", "10229", "2133", "LAR", "6801"], "starters": ["0", "11632", "6801", "9509", "2133", "0", "0", "0", "10229", "LAR"],
+  "reserve": null, "taxi": null, "keepers": null, "player_map": null, "metadata": null,
+  "settings": {"wins": 2, "losses": 3, "ties": 0, "fpts": 501, "fpts_decimal": 5, "fpts_against": 560, "fpts_against_decimal": 40,
+               "waiver_position": 1, "waiver_budget_used": 37, "total_moves": 9, "division": 1}},
+ {"roster_id": 1, "owner_id": "700000000000000101", "co_owners": null, "league_id": "1180000000000000001",
+  "players": ["4046", "6794", "7564", "8130", "5850", "12500", "DET", "99999", "4984"],
+  "starters": ["4046", "6794", "99999", "7564", "4984", "8130", "0", "0", "0", "DET"],
+  "reserve": ["5850"], "taxi": ["12500"], "keepers": null, "player_map": null, "metadata": null,
+  "settings": {"wins": 4, "losses": 1, "ties": 0, "fpts": 725, "fpts_decimal": 64, "fpts_against": 616, "fpts_against_decimal": 78,
+               "waiver_position": 4, "waiver_budget_used": 0, "total_moves": 3}},
+ {"roster_id": 3, "owner_id": null, "co_owners": null, "league_id": "1180000000000000001",
+  "players": [], "starters": [], "reserve": null, "taxi": null, "keepers": null, "player_map": null, "metadata": null,
+  "settings": {"wins": 0, "losses": 5, "ties": 0, "fpts": 300, "fpts_against": 700, "waiver_position": 2, "waiver_budget_used": 0, "total_moves": 0}},
+ {"roster_id": 4, "owner_id": "700000000000009999", "co_owners": null, "league_id": "1180000000000000001",
+  "players": null, "starters": null, "reserve": null, "taxi": null, "keepers": null, "player_map": null, "metadata": null,
+  "settings": {"wins": 3, "losses": 2, "ties": 0, "waiver_position": 3, "total_moves": 1}}
+]

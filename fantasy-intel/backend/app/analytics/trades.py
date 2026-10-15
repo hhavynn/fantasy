@@ -89,6 +89,7 @@ class LeagueState:
     undroppable_list_in_use: bool | None = None
     first_projection_week: int | None = None       # earliest week whose projections were loaded
     availability: dict = field(default_factory=dict)  # espn_player_id -> player_availability record (explanation)
+    free_agent_status: dict = field(default_factory=dict)  # free agent id -> ESPN FREEAGENT | WAIVERS; absent = unknown
 
     def window(self, start_week: int | None = None) -> Window:
         start = self.start_week if start_week is None else start_week

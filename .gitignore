@@ -15,7 +15,7 @@ Thumbs.db
 !.env.example
 
 # Python
-.venv/
+.venv
 venv/
 ENV/
 __pycache__/
@@ -45,6 +45,7 @@ data/logs/
 fantasy-intel/data/*.duckdb
 fantasy-intel/data/*.duckdb.wal
 fantasy-intel/data/raw/
+fantasy-intel/data/sleeper/
 fantasy-intel/data/logs/
 
 # IDE & editors
@@ -64,3 +65,6 @@ fantasy-intel/data/imports/
 fantasy-intel/data/staging/
 *.vendor.csv
 *.vendor.json
+
+# Personal / league-specific notes (real manager names, scouting). Never commit.
+/local/

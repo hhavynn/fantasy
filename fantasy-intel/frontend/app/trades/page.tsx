@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PlayerLink } from "@/components/PlayerLink";
+import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { Badge, Callout, ErrorBox, Pos, TrendArrow } from "@/components/ui";
 import { api } from "@/lib/api";
 import { label, num, signed } from "@/lib/format";
@@ -156,6 +157,8 @@ function Result({ r }: { r: TradeResult }) {
         ))}
       </section>
 
+      <TradeVsFreeAgency t={r.trade_vs_free_agency} />
+
       <RosterAndStarts r={r} />
 
       <InjuryScenarioPanel r={r} />
@@ -270,11 +273,11 @@ function Result({ r }: { r: TradeResult }) {
           })}
           <p className="faint">No acceptance probability is computed.</p>
         </section>
-        <section className="panel">
-          <h2>Assumptions &amp; limitations</h2>
+        <details className="panel method">
+          <summary>Assumptions &amp; limitations</summary>
           <ul className="reasons">{r.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>
           <ul className="reasons">{r.limitations.map((a, i) => <li key={i} className="faint">{a}</li>)}</ul>
-        </section>
+        </details>
       </div>
     </>
   );

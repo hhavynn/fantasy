@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, Callout, ErrorBox, Pos } from "@/components/ui";
+import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { api } from "@/lib/api";
 import { signed } from "@/lib/format";
 import type { DResult, DiscoveryV3, NeedRow } from "@/lib/trade-types";
@@ -134,8 +135,8 @@ function Body({ d }: { d: DiscoveryV3 }) {
 
       <Managers d={d} />
 
-      <section className="panel">
-        <h2>Method, assumptions and limitations</h2>
+      <details className="panel method">
+        <summary>Method, assumptions and limitations</summary>
         <p className="faint">{d.note}</p>
         <p className="faint">{d.asset_note} Thresholds: balanced when the smaller package is at least{" "}
           {Math.round(d.asset_thresholds.balanced_ratio * 100)}% of the larger; significant imbalance below{" "}
@@ -145,7 +146,7 @@ function Body({ d }: { d: DiscoveryV3 }) {
         <p className="faint">{d.availability_note}</p>
         <ul className="reasons">{d.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>
         <ul className="reasons">{d.limitations.map((a, i) => <li key={i} className="faint">{a}</li>)}</ul>
-      </section>
+      </details>
     </>
   );
 }
@@ -285,6 +286,7 @@ function TradeCard({ r, d }: { r: DResult; d: DiscoveryV3 }) {
         <div className="stat"><div className="label">Trade type</div><div style={{ marginTop: 4 }}>{r.rationale.trade_type.text}</div></div>
       </div>
       {r.rationale.points.length > 0 && <ul className="reasons" style={{ marginTop: 8 }}>{r.rationale.points.map((p, i) => <li key={i}>{p}</li>)}</ul>}
+      <TradeVsFreeAgency t={r.trade_vs_free_agency} only="team_a" />
       <details style={{ marginTop: 6 }}>
         <summary>Evidence: asset profiles, lineup changes, manager context</summary>
         <AssetTable r={r} />

@@ -15,6 +15,7 @@ from ..analytics.team_lineups import project_team, public_weeks, replacement_mar
 from ..analytics.trade_data import (load_league_state, manager_context, named_weeks, player_intelligence,
                                     player_names)
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
+from ..analytics.trade_alternatives import for_evaluation as trade_vs_free_agency
 from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade
 from ..config import get_settings
 from ..db.connection import schema_version, table_exists
@@ -643,4 +644,7 @@ def trades_evaluate(body: TradeRequest):
         if state.undroppable_list_in_use:
             res["limitations"] = res["limitations"] + [
                 "This league uses ESPN's undroppable list; forced drops may name a player ESPN would not let you drop."]
+        res["trade_vs_free_agency"] = trade_vs_free_agency(state, res, body.team_a_id, body.team_b_id,
+                                                           body.team_a_sends, body.team_b_sends, body.start_week)
         return res
+
