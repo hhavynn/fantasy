@@ -22,6 +22,7 @@ import soundfile as sf
 from PIL import Image, ImageDraw
 
 from .. import audio_design as A
+from .. import headshots
 from .. import motion as M
 from .. import scenes as S
 from ..core import Episode, read_json, run_stage, write_json
@@ -30,7 +31,7 @@ from .assemble import srt_time
 from .script import PLACEHOLDER, fill
 from .story import last
 
-VERSION = 9
+VERSION = 12
 TRANSITION = 0.2
 CAPTION = {"font": "Inter-Black.ttf", "font_size": M.CAPTION_FONT[1], "max_width_px": M.CAPTION_MAX_W,
            "max_lines": 2}
@@ -74,13 +75,19 @@ def align(seg: dict, words: list[dict], claims: dict) -> list[dict]:
 
 def phrases(tokens: list[dict], max_words: int = 3) -> list[list[dict]]:
     """Caption cards of up to three words, breaking after punctuation, and never splitting one claim's words
-    ("per the Week 6 injury report") across cards when they fit on one (up to five words)."""
+    ("per the Week 6 injury report") or a "from X to Y" range across cards when they fit on one (up to five
+    words)."""
     out, cur = [], []
     for i, tok in enumerate(tokens):
         cur.append(tok)
         nxt = tokens[i + 1] if i + 1 < len(tokens) else None
         same_claim = nxt is not None and tok["claim"] and nxt["claim"] == tok["claim"] and len(cur) < 5
-        if (len(cur) >= max_words and not same_claim) or re.search(r"[.,!?:;]$", tok["text"]):
+        # "23% down to 12%" stays on one card: alone, "THAT'S 23% DOWN" reads as a 23-point drop
+        nxt2 = tokens[i + 2] if i + 2 < len(tokens) else None
+        to_range = len(cur) < 5 and nxt is not None and (
+            (nxt["text"].lower() == "to" and nxt2 is not None and nxt2["claim"])
+            or (tok["text"].lower() == "to" and nxt["claim"]))
+        if (len(cur) >= max_words and not (same_claim or to_range)) or re.search(r"[.,!?:;]$", tok["text"]):
             out.append(cur)
             cur = []
     if cur:
@@ -107,6 +114,11 @@ class Ctx:
         self.primary, self.secondary = M.team_colors(self.team)
         self.primary_vivid = M.vivid(self.primary)
         self.tokens: list[dict] = []
+        self.headshot = None
+
+    def art(self, width: int):
+        """The player's picture: his headshot (when enabled and available) or the jersey graphic."""
+        return M.player_art(self.team, str(self.p.get("jersey") or ""), last(self.p["name"]), self.headshot, width)
 
     def d(self, cid: str) -> str:
         return self.claims[cid]["display"]
@@ -147,7 +159,7 @@ def scene_hook(img, t, dur, spec, c: Ctx):
         grow = 1 + 0.18 * M.ease_out(punch) if i == len(lines) - 1 else 1.0
         M.put_text(img, line, M.CENTER_X, 330 + i * 140 + 30 * M.ease_out(punch) * i, size=size, fill=color,
                    scale=(0.6 + 0.4 * k) * grow * (pulse if i == len(lines) - 1 else 1), alpha=M.clamp(k * 1.4))
-    j = M.jersey(c.team, str(p.get("jersey") or ""), last(p["name"]), 660)
+    j = c.art(660)
     k = M.back_out(M.progress(t + 0.15, 0.0, 0.45))
     back = M.ease_in_out(punch)
     M.paste(img, j, M.CENTER_X + 40 * back, 920 + (1 - k) * 380 + 90 * back + M.wobble(t, 4),
@@ -232,11 +244,18 @@ def scene_twist(img, t, dur, spec, c: Ctx):
         if kr <= 0:
             continue
         M.put_text(img, m["label"].upper(), M.SAFE_LEFT, y, size=76, fill=col, alpha=kr, anchor="l")
-        for j, (lab, cid, bc) in enumerate((("BEFORE", m["baseline"], (120, 130, 146)), ("NOW", m["recent"], col))):
+        if m.get("weekly"):     # an up-and-down metric is shown game by game, as the narration says it
+            pairs = [(f"WK {w}", cid, col) for w, cid in zip(p["recent_weeks"], m["weekly"])]
+        else:
+            pairs = [("BEFORE", m["baseline"], (120, 130, 146)), ("NOW", m["recent"], col)]
+        for j, (lab, cid, bc) in enumerate(pairs):
+            kj = kr * (M.ease_out(M.progress(t, c.at(claim=cid, default=0.0) - 0.1, 0.3)) if m.get("weekly") else 1)
+            if kj <= 0:
+                continue
             yy = y + 100 + j * 130
-            M.put_text(img, lab, M.SAFE_LEFT, yy + 40, size=40, fill=M.MUTED, alpha=kr, anchor="l")
-            _hbar(d, M.SAFE_LEFT + 200, yy + 10, 470 * kr, 64, c.claims[cid]["value"], bc)
-            M.put_text(img, c.d(cid), M.SAFE_LEFT + 700, yy + 42, size=78, fill=M.INK, alpha=kr, anchor="l")
+            M.put_text(img, lab, M.SAFE_LEFT, yy + 40, size=40, fill=M.MUTED, alpha=kj, anchor="l")
+            _hbar(d, M.SAFE_LEFT + 200, yy + 10, 470 * kj, 64, c.claims[cid]["value"], bc)
+            M.put_text(img, c.d(cid), M.SAFE_LEFT + 700, yy + 42, size=78, fill=M.INK, alpha=kj, anchor="l")
     if c.story == "vanishing_targets":
         ts = c.at(word="barely", default=dur * 0.6)
         ks = M.back_out(M.progress(t, ts - 0.05, 0.3))
@@ -270,7 +289,7 @@ def scene_spread(img, t, dur, spec, c: Ctx):
 
 def scene_statement(img, t, dur, spec, c: Ctx):
     lines = spec.get("lines", [])
-    j = M.jersey(c.team, str(c.p.get("jersey") or ""), last(c.p["name"]), 520)
+    j = c.art(520)
     M.paste(img, j, M.CENTER_X + 170, 1130 + M.wobble(t, 3), 1.0, 0.35)
     for i, line in enumerate(lines):
         k = M.back_out(M.progress(t, 0.05 + i * 0.16, 0.3))
@@ -431,6 +450,7 @@ def _run(ep: Episode) -> None:
     p = facts["players"][0]
     accent = M.GOLD if story == "fill_in" else (M.DOWN if p["role"] == "faller" else M.UP)
     ctx = Ctx(facts, claims, accent, story)
+    ctx.headshot = headshots.for_player(ep.cfg, p)
 
     scenes, cues, voice, offset, events = [], [], [], 0.0, []
     sr = None
@@ -519,6 +539,8 @@ def _run(ep: Episode) -> None:
 
 
 def run(ep: Episode) -> None:
-    run_stage(ep, "render", VERSION, {"video": ep.cfg["video"], "shorts": ep.cfg["shorts"], "caption": CAPTION},
+    shot = headshots.record(ep.cfg, read_json(ep.path("facts.json"))["players"][0])
+    run_stage(ep, "render", VERSION, {"video": ep.cfg["video"], "shorts": ep.cfg["shorts"], "caption": CAPTION,
+                                      "headshot": shot and shot["sha256"]},
               ["script.json", "facts.json", "audio", "story.json"], ["final.mp4", "captions.srt", "captions.json"],
               lambda: _run(ep))

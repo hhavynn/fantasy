@@ -54,8 +54,8 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
                                            cfg["selection"]["recent_episode_window"], week, season, fmt="short")
     stories = facts.pick_stories(snap, cfg["shorts"]["risers"], cfg["shorts"]["fallers"], recent)
     write_json(week_ep.path("stories.json"), stories)
-    if only:
-        stories = [s for s in stories if s["slug"] == only]
+    if only:      # an explicitly requested player isn't limited by the weekly quota, only by the selection rules
+        stories = facts.pick_stories(snap, 0, 0, recent, only=only)[:1]
         if not stories:
             print(f"no story for {only!r}; this week's: {[s['slug'] for s in read_json(week_ep.path('stories.json'))]}")
             return 2

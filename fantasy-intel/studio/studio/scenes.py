@@ -96,7 +96,7 @@ def scene_player_card(img, t, dur, spec, c):
     tag = f"{p['position']} · {c.d(p['team_name']).upper()}"
     cd.rounded_rectangle((60, 300, 60 + M.font("black", 36).getlength(tag) + 44, 360), radius=30, fill=M.INK)
     cd.text((82, 330), tag, font=M.font("black", 36), fill=M.DARK, anchor="lm")
-    j = M.jersey(c.team, str(p.get("jersey") or ""), p["name"].split()[-1], 470)
+    j = c.art(470)
     card.alpha_composite(j, (W - 500, 250))
     # premise strip
     crash = c.at(word=spec.get("crash_word") or "", default=0.45) if spec.get("crash_word") else 0.45
@@ -219,10 +219,10 @@ def scene_split(img, t, dur, spec, c):
                 on = i < filled and ks * 20 > i
                 marker(d, cx, cy, 22, M.INK if j == 0 else c.primary_vivid, on)
             M.put_text(img, c.d(cid), M.SAFE_LEFT + 800, y + 4, size=70, fill=M.INK, alpha=M.clamp(ks * 2), anchor="l")
-        tsame = c.at(word="same", default=99)
+        tsame = c.at(word=spec.get("stamp_word", "same"), default=99)
         kk = M.back_out(M.progress(t, tsame - 0.05, 0.3))
         if kk > 0:
-            stamp = M.text_layer("ABOUT THE SAME", "black", 84, M.GOLD, stroke=8)
+            stamp = M.text_layer(spec.get("stamp", "ABOUT THE SAME"), "black", 84, M.GOLD, stroke=8)
             M.paste(img, stamp.rotate(4, expand=True, resample=Image.BICUBIC), M.CENTER_X, 1290, 1.4 - 0.4 * kk,
                     M.clamp(kk * 2))
 

@@ -25,7 +25,7 @@ import json
 from ..core import Episode, canonical_json, read_json, run_stage, sha256_bytes, write_json
 from .script import PLACEHOLDER, fill
 
-VERSION = 4
+VERSION = 7
 WORDS_PER_SECOND = 2.9          # am_fenrir at ~1.1x, measured on the hook line
 
 SNAPS_BARELY_PTS = 5            # a snap-share change this small (displayed points) "barely moved"
@@ -60,6 +60,8 @@ HOOKS = {
     },
     "unresolved": {
         "yet": ("{name} is playing way more. The targets haven't followed. Yet.", ["yet"]),
+        # his target share swung game to game (26%, then 5%): "haven't followed" would be false
+        "swing": ("{name} is playing way more. His targets? All over the place.", ["all", "over"]),
     },
     "breakout": {
         "growing": ("{name}'s role is growing, and the numbers back it up.", ["growing"]),
@@ -74,6 +76,7 @@ HEADLINES = {
     ("fill_in", "catch"): ["THERE'S A", "CATCH."], ("fill_in", "real"): ["REAL ROLE", "OR FILL-IN?"],
     ("held", "stayed"): ["HE'S BACK.", "ROLE STAYED."], ("displaced", "reason"): ["ROLE", "SHRANK."],
     ("takeover", "took_over"): ["BACKFIELD", "TAKEOVER."], ("unresolved", "yet"): ["MORE SNAPS.", "TARGETS NEXT?"],
+    ("unresolved", "swing"): ["MORE SNAPS.", "TARGETS: ???"],
     ("breakout", "growing"): ["ROLE", "GROWING."],
 }
 
@@ -102,6 +105,12 @@ def last(name: str) -> str:
     return parts[-1]
 
 
+def snaps_change_pts(p: dict, claims: dict) -> int | None:
+    """His displayed snap-share change in points (None without a snap metric)."""
+    snaps = next((m for m in p["metrics"] if m["column"] == "offense_pct"), None)
+    return None if snaps is None else round(claims[snaps["change"]]["value"] * 100)
+
+
 def storyline(p: dict, claims: dict) -> str:
     tm = p.get("teammate")
     if tm and tm["kind"] == "vacated":
@@ -110,16 +119,17 @@ def storyline(p: dict, claims: dict) -> str:
         return "displaced"
     lead = p["metrics"][0]
     if p["role"] == "faller":
-        snaps = next((m for m in p["metrics"] if m["column"] == "offense_pct"), None)
-        if lead["column"] == "target_share" and snaps is not None \
-                and abs(round(claims[snaps["change"]]["value"] * 100)) <= SNAPS_BARELY_PTS:
+        # Targets fell while his playing time held or grew: not a shrinking role, a vanishing one.
+        pts = snaps_change_pts(p, claims)
+        if lead["column"] == "target_share" and pts is not None and pts >= -SNAPS_BARELY_PTS:
             return "vanishing_targets"
         return "shrinking"
     if lead["column"] == "backfield_rush_share":
         return "takeover"
     if lead["column"] == "offense_pct":
         ts = next((m for m in p["metrics"] if m["column"] == "target_share"), None)
-        return "breakout" if ts and ts["delta_over_threshold"] >= 1 else "unresolved"
+        return ("breakout" if ts and ts["delta_over_threshold"] >= 1 and ts.get("sustained", True)
+                else "unresolved")
     return "breakout"
 
 
@@ -153,6 +163,12 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
     tm = p.get("teammate")
     story = storyline(p, claims)
     hooks = HOOKS[story]
+    snaps_up = story == "vanishing_targets" and (snaps_change_pts(p, claims) or 0) > SNAPS_BARELY_PTS
+    if snaps_up:                         # "Same snaps" would be false: he's playing more
+        hooks = {k: v for k, v in hooks.items() if k != "comparison"}
+    if story == "unresolved":
+        swing = bool(next(m for m in p["metrics"] if m["column"] == "target_share").get("weekly"))
+        hooks = {k: v for k, v in hooks.items() if (k == "swing") == swing}
     hook_key = hook_override if hook_override in hooks else choose(list(hooks), used.get("hook", []), seed)
     team = claims[p["team_name"]]["display"]
     who = {"name": p["name"], "last": last(p["name"]), "team": team, "tm": tm["name"] if tm else ""}
@@ -199,7 +215,7 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
 
     elif story == "shrinking":
         m2 = p["metrics"][1] if len(p["metrics"]) > 1 else None
-        if m2:
+        if m2 and m2.get("sustained", True):
             beats.append(beat("support", f"His {m2['label']}: {ph(m2['baseline'])} to {ph(m2['recent'])}.",
                               {"type": "twist", "snaps": m2["column"]}, [], 1.08))
         beats.append(beat("takeaway", "It's a small sample. But this is the trend that matters.",
@@ -253,12 +269,17 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
         m2 = p["metrics"][1] if len(p["metrics"]) > 1 else None
         if story == "unresolved":
             ts = next(m for m in p["metrics"] if m["column"] == "target_share")
-            beats.append(beat("support", f"But his target share is only {ph(ts['recent'])}.",
-                              {"type": "twist", "snaps": "target_share"}, ["only"], 1.08))
+            if ts.get("weekly"):          # up and down: say the games rather than a misleading mean
+                beats.append(beat("support", "But his target share hasn't settled: "
+                                             + ", then ".join(ph(c) for c in ts["weekly"]) + ".",
+                                  {"type": "twist", "snaps": "target_share"}, ["settled"], 1.08))
+            else:
+                beats.append(beat("support", f"But his target share is only {ph(ts['recent'])}.",
+                                  {"type": "twist", "snaps": "target_share"}, ["only"], 1.08))
             take = ("Playing time moves first. Watch whether the targets follow.",
                     ["PLAYING TIME", "MOVES FIRST."])
         else:
-            if m2:
+            if m2 and m2.get("sustained", True):
                 beats.append(beat("support", f"And his {m2['label']} went from {ph(m2['baseline'])} to "
                                              f"{ph(m2['recent'])}.", {"type": "twist", "snaps": m2["column"]}, [],
                                   1.08))
@@ -295,7 +316,12 @@ def vanishing_beats(p: dict, claims: dict, who: dict, hook_key: str = "") -> lis
     k = decline_split(vals)
     if k is not None:
         out.append(beat("evidence", _counts_sentence(games, k), {"type": "target_balls", "split": k}, ["since"], 1.16))
-    if hook_key != "comparison":         # that hook already said "same snaps"
+    pts = round(claims[snaps["change"]]["value"] * 100)
+    if pts > SNAPS_BARELY_PTS:
+        out.append(beat("twist", f"His snaps? Up to {ph(snaps['recent'])}. He's on the field more than before.",
+                        {"type": "split", "role": "twist", "stamp": "MORE THAN BEFORE", "stamp_word": "more"},
+                        ["more"], 1.15))
+    elif hook_key != "comparison":       # that hook already said "same snaps"
         out.append(beat("twist", f"His snaps? {ph(snaps['recent'])}. About the same as before.",
                         {"type": "split", "role": "twist"}, ["same"], 1.15))
     team = [g for g in games if g.get("team_targets")]

@@ -180,9 +180,11 @@ def mix(voice: np.ndarray, events: list[tuple[float, str, float]], use_music: bo
     v = voice / (np.max(np.abs(voice)) + 1e-9) * db(-3)
     bed = np.zeros(n, np.float32)
     if use_music:
-        bed = music(n / SR)[:n] * db(music_db)
+        m = music(n / SR)
+        bed = np.pad(m, (0, max(0, n - len(m))))[:n] * db(music_db)      # exactly n samples
         speech = envelope(v)
         duck = 1 - 0.55 * np.clip(speech / (np.percentile(speech, 90) + 1e-9), 0, 1)
+        duck = np.pad(duck, (0, max(0, n - len(duck))), mode="edge")[:n]
         bed = bed * duck
     fx = np.zeros(n, np.float32)
     for at, kind, gain_db in events:

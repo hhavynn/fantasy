@@ -6,3 +6,5 @@ episodes/*
 voices/*
 !voices/RECORDING.md
 !voices/script.txt
+# Third-party player headshots (studio/headshots.py): cached locally, never committed.
+assets/headshots/

@@ -198,3 +198,37 @@ def test_decline_split_finds_the_drop_off():
     assert decline_split([6, 6, 6, 6]) is None           # no drop-off
     assert decline_split([6, 3, 3]) == 1
     assert decline_split([6, 2]) is None                 # needs at least two games after the break
+
+
+def test_headshots_are_opt_in_and_fall_back_to_the_jersey(tmp_path):
+    from PIL import Image
+    from studio import headshots, motion as M
+    off = {"shorts": {"headshots": False}}
+    assert headshots.for_player(off, {"name": "A B", "espn_id": 15847}) is None      # no download when off
+    assert headshots.for_player({"shorts": {"headshots": True}}, {"name": "A B", "espn_id": None}) is None
+    jersey = M.player_art("KC", "87", "Kelce", None, 300)
+    assert jersey.size == M.jersey("KC", "87", "Kelce", 300).size
+    shot = tmp_path / "h.png"
+    Image.new("RGBA", (600, 436), (200, 150, 120, 255)).save(shot)
+    art = M.player_art("KC", "87", "Kelce", shot, 300)
+    assert art.size == jersey.size                       # same footprint, drops into the same layout
+
+
+def test_a_number_range_stays_on_one_caption_card():
+    words = ["As", "a", "share,", "that's", "23%", "down", "to", "12%."]
+    toks = [{"text": w, "claim": ("c1" if w == "23%" else "c2" if w == "12%." else None)} for w in words]
+    cards = [" ".join(t["text"] for t in ph) for ph in phrases(toks)]
+    assert "that's 23% down to 12%." in cards
+
+
+def test_targets_falling_while_snaps_rise_is_not_a_shrinking_role():
+    claims = {"c009": {"value": 0.06}}
+    p = {"role": "faller", "metrics": [_metric("target_share", -3), _metric("offense_pct", 1.2)]}
+    assert storyline(p, claims) == "vanishing_targets"
+
+
+def test_an_absence_after_the_rise_does_not_explain_it():
+    # The riser was already up in Week 4 with the starter playing; the starter missed only Week 5.
+    f, p, cl = _riser(_with_teammate({5}))
+    assert p["teammate"] is None
+    assert storyline(p, cl) != "fill_in"

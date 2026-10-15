@@ -21,7 +21,7 @@ from ..numbers import render, round_half_up
 sys.path.insert(0, str(STUDIO_ROOT.parent / "backend"))
 from app.analytics.trends import compute_trend, composite_trend  # noqa: E402  (pure stdlib module)
 
-VERSION = 7
+VERSION = 9
 PLAYOFF_WEEKS = [15, 16, 17]
 
 # (metric column, label, trend threshold). Thresholds for offense_pct/target_share/backfield_rush_share
@@ -321,6 +321,8 @@ def player_facts(book: ClaimBook, snap: dict, entry: dict, role: str) -> dict:
                                 "recent_weeks": t.recent_weeks, "baseline_weeks": t.baseline_weeks},
                                player=gid, team=team),
             "delta_over_threshold": t.delta / t.threshold,
+            # every recent game moved (the selection rule); a mean of 26% and 5% is not a trend to claim
+            "sustained": _sustained(rows, t, t.delta > 0),
             "series": [{"week": r["week"], "value": r[col]} for r in rows],
         })
     # Lead with the stable metric that moved most relative to its threshold (same rule as selection).
@@ -415,6 +417,10 @@ def teammate_event(snap: dict, p: dict) -> dict | None:
         if r["team"] == p["team"] and r["position"] in TEAMMATE_GROUP[p["position"]] and r["gsis_id"] != p["gsis_id"]:
             rows[r["gsis_id"]][r["week"]] = r
     games = _team_games(snap, p["team"])
+    # The riser's own lead metric by week: a teammate's absence only explains a role that rose WITH it.
+    lead = p["metrics"][0]["column"] if p.get("metrics") else None
+    own = {r["week"]: r.get(lead) or 0 for r in snap["tables"]["player_week_usage"]
+           if r["gsis_id"] == p["gsis_id"]} if lead else {}
     best = None
     for gid, by_week in rows.items():
         base = [w for w in p["baseline_weeks"] if w in by_week]
@@ -425,7 +431,14 @@ def teammate_event(snap: dict, p: dict) -> dict | None:
         if p["role"] == "riser" and base and missed_recent:
             role = median(by_week[w][col] or 0 for w in base)
             snaps = median(by_week[w]["offense_pct"] or 0 for w in base)
-            if role >= floor and snaps >= TEAMMATE_MIN_SNAPS[p["position"]]:
+            # Already up in a recent game he played, before his absence: the role didn't come from it.
+            first_missed = missed_recent[0]
+            with_him = [w for w in p["recent_weeks"] if w < first_missed and w in by_week and w in own]
+            base_own = [own[w] for w in p["baseline_weeks"] if w in own]
+            rec_own = [own[w] for w in p["recent_weeks"] if w in own]
+            midway = (median(base_own) + sum(rec_own) / len(rec_own)) / 2 if base_own and rec_own else None
+            rose_before = midway is not None and any(own[w] >= midway for w in with_him)
+            if role >= floor and snaps >= TEAMMATE_MIN_SNAPS[p["position"]] and not rose_before:
                 ev = {"kind": "vacated", "gsis_id": gid, "role_weeks": base, "missed_weeks": p["recent_weeks"],
                       "returned": p["recent_weeks"][-1] in by_week, "strength": role}
         elif p["role"] == "faller" and rec == p["recent_weeks"] and missed_base:
@@ -558,12 +571,19 @@ def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str],
     players = ([player_facts(book, snap, e, "riser") for e in risers]
                + [player_facts(book, snap, e, "faller") for e in fallers])
     jerseys = {j["gsis_id"]: j["jersey_number"] for j in snap["tables"].get("jerseys", [])}
+    espn = {x["gsis_id"]: x.get("espn_id") for x in snap["tables"]["nfl_players"]}
     for p in players:
         p["jersey"] = jerseys.get(p["gsis_id"])          # roster number, for the jersey graphic only
+        p["espn_id"] = espn.get(p["gsis_id"])            # for the headshot only (studio/headshots.py)
         p["teammate"] = teammate_facts(book, snap, p)
         p["gainers"] = gainer_facts(book, snap, p)
         p["recent_values"] = week_values(book, p)
         p["counts"] = game_counts(book, snap, p)
+        for m in p["metrics"]:
+            if m["column"] == "target_share" and not m["sustained"]:     # say the games, not the mean
+                m["weekly"] = [book.add(f"{m['label']}, week {w}", "pct",
+                                        {"kind": "usage_value", "gsis_id": p["gsis_id"], "column": m["column"],
+                                         "week": w}, player=p["gsis_id"]) for w in p["recent_weeks"]]
     return {"season": snap["season"], "week": snap["week"], "data_through_week": snap["data_through_week"],
             "snapshot_sha256": snap["content_sha256"], "episode": episode, "players": players,
             "claims": book.claims}
@@ -583,19 +603,23 @@ def recent_featured_players(history_path, window: int, before_week: int, season:
 ALL = {"risers": 99, "fallers": 99, "max_per_position": 99}
 
 
-def pick_stories(snap: dict, n_risers: int, n_fallers: int, recent_featured: set[str]) -> list[dict]:
+def pick_stories(snap: dict, n_risers: int, n_fallers: int, recent_featured: set[str],
+                 only: str | None = None) -> list[dict]:
     """Shorts: the strongest sustained moves, one player per Short, at most one Short per team (two Bears
-    Shorts would repeat the same QB and schedule lines), recently featured players last."""
+    Shorts would repeat the same QB and schedule lines), recently featured players last. `only` (a slug)
+    returns that player's story if he meets the selection rules, regardless of the weekly quota."""
     risers, fallers = select_players(snap, ALL["risers"], ALL["fallers"], ALL["max_per_position"], recent_featured)
     stories, teams = [], set()
     for pool, n, role in ((risers, n_risers, "riser"), (fallers, n_fallers, "faller")):
         taken = 0
         for e in pool:
-            if taken == n or e["team"] in teams:
+            slug = re.sub(r"[^a-z0-9]+", "-", e["name"].lower()).strip("-")
+            if only and slug != only:
+                continue
+            if not only and (taken == n or e["team"] in teams):
                 continue
             teams.add(e["team"])
             taken += 1
-            slug = re.sub(r"[^a-z0-9]+", "-", e["name"].lower()).strip("-")
             stories.append({"gsis_id": e["gsis_id"], "name": e["name"], "role": role, "team": e["team"],
                             "slug": slug, "order": len(stories)})
     return stories

@@ -64,6 +64,9 @@ trim_silence = true
 segment_tail_silence = 0.12
 # Original procedural music bed and sound design (no third-party audio). Set music = false for voice only.
 music = true
+# ESPN player headshots in place of the jersey graphic. Not licensed to the channel (see studio/headshots.py):
+# set false to go back to the jersey everywhere if copyright claims start.
+headshots = true
 music_db = -28.0
 sfx_db = -12.0
 # The channel owner's enrolled voice (see voices/RECORDING.md). Empty = Kokoro's own voice.

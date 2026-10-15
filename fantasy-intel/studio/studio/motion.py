@@ -256,6 +256,68 @@ def jersey(team: str, number: str, last_name: str, width: int = 720) -> Image.Im
     return img
 
 
+@lru_cache(maxsize=16)
+def portrait(team: str, number: str, headshot: str, width: int = 720) -> Image.Image:
+    """The player's headshot cut out over a team-colour disc, head breaking out of the top. Same footprint
+    as jersey() so either drops into the same layout."""
+    primary, secondary = team_colors(team)
+    w, h = width, int(width * 1.08)
+    d_ = int(w * 0.92)
+    cx, bottom = w // 2, int(h * 0.97)
+    box = (cx - d_ // 2, bottom - d_, cx + d_ // 2, bottom)
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).ellipse((box[0] + 10, box[1] + 18, box[2] + 10, box[3] + 18), fill=(0, 0, 0, 150))
+    img.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(16)))
+    fill = primary if luminance(primary) > 25 else (40, 44, 52)
+    disc = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    dd = ImageDraw.Draw(disc)
+    dd.ellipse(box, fill=fill)
+    # soft top-left light so the disc reads as a lit badge rather than a flat circle
+    light = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(light).ellipse((box[0] - d_ // 4, box[1] - d_ // 4, cx + d_ // 6, box[1] + d_ // 2), fill=70)
+    light = light.filter(ImageFilter.GaussianBlur(d_ // 6))
+    disc_mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(disc_mask).ellipse(box, fill=255)
+    glow = Image.new("RGBA", (w, h), (255, 255, 255, 0))
+    glow.putalpha(Image.fromarray(np.minimum(np.asarray(light), np.asarray(disc_mask)), "L"))
+    disc.alpha_composite(glow)
+    img.alpha_composite(disc)
+    trim = secondary if abs(luminance(secondary) - luminance(fill)) > 40 else (240, 240, 240)
+    # the cutout: scaled so the head sits a little above the disc; below the disc's centre it is clipped
+    # to the disc, above it only to the disc's width, so the head breaks out of the badge
+    src = Image.open(headshot).convert("RGBA")
+    sw = int(w * 1.28)
+    sh = int(src.height * sw / src.width)
+    src = src.resize((sw, sh), Image.LANCZOS)
+    layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    layer.paste(src, (cx - sw // 2, bottom - sh), src)
+    clip = Image.new("L", (w, h), 0)
+    cd = ImageDraw.Draw(clip)
+    cd.ellipse(box, fill=255)
+    cd.rectangle((box[0] + d_ * 0.08, 0, box[2] - d_ * 0.08, (box[1] + box[3]) // 2), fill=255)
+    layer.putalpha(Image.fromarray(np.minimum(np.asarray(layer.getchannel("A")), np.asarray(clip)), "L"))
+    img.alpha_composite(layer)
+    ImageDraw.Draw(img).ellipse(box, outline=trim, width=max(4, w // 90))
+    if number:
+        f = font("black", int(w * 0.11))
+        tw = f.getlength(f"#{number}") + w * 0.08
+        bh = int(w * 0.15)
+        x1, y1 = box[2] - tw * 0.85, bottom - bh * 0.9
+        bd = ImageDraw.Draw(img)
+        bd.rounded_rectangle((x1, y1, x1 + tw, y1 + bh), radius=bh // 2, fill=trim)
+        bd.text((x1 + tw / 2, y1 + bh / 2), f"#{number}", font=f, fill=DARK if luminance(trim) > 120 else INK,
+                anchor="mm")
+    return img
+
+
+def player_art(team: str, number: str, last_name: str, headshot, width: int = 720) -> Image.Image:
+    """The headshot portrait when there is one, otherwise the jersey."""
+    if headshot:
+        return portrait(team, number, str(headshot), width)
+    return jersey(team, number, last_name, width)
+
+
 # ----------------------------------------------------------------------------------------- captions
 
 CAPTION_FONT = ("black", 66)
