@@ -14,8 +14,8 @@ const sans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "
 const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono" });
 
 export const metadata: Metadata = {
-  title: "Fantasy Intel",
-  description: "Local fantasy football war room",
+  title: { default: "Fantasy Intel", template: "%s · Fantasy Intel" },
+  description: "Fantasy football war room for your league",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

@@ -11,6 +11,8 @@ import { StartSitControls } from "./StartSitControls";
 import type { LineupPlayer, StartSitResponse } from "./types";
 import styles from "./start-sit.module.css";
 
+export const metadata = { title: "Start/Sit" };
+
 interface PageProps {
   searchParams: Promise<{
     team_id?: string;

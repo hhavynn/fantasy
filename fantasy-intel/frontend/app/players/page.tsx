@@ -6,6 +6,8 @@ import { int, label, num, pct, signed, when } from "@/lib/format";
 import { BASIS_LABEL, FTN_READ1_LABEL, FTN_READ1_NOTE } from "@/lib/types";
 import type { ContextEvidence, ContextLabels, ForwardProjection, PlayerCore, RouteData, TrendInfo, UsageWeek } from "@/lib/types";
 
+export const metadata = { title: "Players" };
+
 type Detail = {
   player: PlayerCore & { mapping_notes: string | null; nfl_name: string | null; nfl_team: string | null };
   score: { components: { trends: TrendInfo[]; opportunity_basis: string; recent_weeks: number[]; value_formula: string;

@@ -4,6 +4,8 @@ import { api } from "@/lib/api";
 import { ClassBadge, ConfDot } from "@/lib/managers";
 import type { Classification, League, Metric, Team } from "@/lib/types";
 
+export const metadata = { title: "Managers" };
+
 type ManagerCard = Team & {
   classifications: Record<string, Classification>;
   metrics: Record<string, Metric>;

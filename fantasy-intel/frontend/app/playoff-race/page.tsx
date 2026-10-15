@@ -4,6 +4,8 @@ import { Badge, Callout, ErrorBox } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { PlayoffRace, PrLeverage, PrMatchup, PrOutcome, PrPlace, PrRecord, PrStatus, PrTeam } from "@/lib/types";
 
+export const metadata = { title: "Playoff race" };
+
 // Playoff Race Lab: actual standings and all-play, projected remaining matchups (ESPN weekly projections
 // through the canonical lineup optimizer), one deterministic projected scenario and URL-backed overrides.
 // Nothing here is a probability; no clinch or elimination is claimed.

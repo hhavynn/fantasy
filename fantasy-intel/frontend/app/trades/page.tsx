@@ -9,6 +9,8 @@ import type { InjuryScenarios, TradeOptionsV3, TradeResultV3, TradeSideV3 } from
 import type { IrActivation, LineupWeek } from "@/lib/types";
 import { TradeBuilder } from "./TradeBuilder";
 
+export const metadata = { title: "Trade analyzer" };
+
 // Manual Trade Analyzer. Projected points: ESPN (unmodified). Trade impact: our exact weekly
 // optimal-lineup simulation for both teams. Any player counts per side up to the configured limit.
 // No trade grade, no acceptance probability. Team and player selection is client-side (TradeBuilder);

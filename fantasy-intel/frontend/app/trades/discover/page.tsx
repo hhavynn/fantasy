@@ -7,6 +7,8 @@ import { signed } from "@/lib/format";
 import type { DResult, DiscoveryV3, NeedRow } from "@/lib/trade-types";
 import type { TradeDeltas } from "@/lib/types";
 
+export const metadata = { title: "Discover trades" };
+
 // Trade Discovery. Every number is the exact weekly optimal-lineup simulation on ESPN's projections
 // (the manual analyzer's computation). Modes decide which exact trades are shown and how they are
 // explained; asset balance is a separate diagnostic. No trade grade, no acceptance probability.

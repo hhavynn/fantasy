@@ -10,6 +10,8 @@ import type { ScoutingReport as Report } from "@/lib/manager-scouting";
 import { ScoutingReport } from "./ScoutingReport";
 import styles from "./scouting.module.css";
 
+export const metadata = { title: "Manager" };
+
 type Detail = {
   league: League; team: Team; metrics: Metric[]; classifications: Classification[]; roster: RosterPlayer[];
   weekly_composition: { scoring_period: number; position: string; n: number; starters: number }[];
