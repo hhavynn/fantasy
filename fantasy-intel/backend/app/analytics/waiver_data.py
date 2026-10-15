@@ -101,14 +101,24 @@ def load_waiver_context(con, league: dict, now: datetime | None = None) -> dict:
     if table_exists(con, "nfl_schedules") and {"gameday", "gametime"} <= set(table_columns(con, "nfl_schedules")):
         games = fetch_dicts(con, "SELECT gameday, gametime FROM nfl_schedules WHERE season=? AND week=? AND game_type='REG'",
                             [league["season"], start])
-        kicks = []
+        kicks, invalid_kickoff = [], False
         for g in games:
             if g["gameday"] and g["gametime"]:
-                kick = datetime.fromisoformat(f"{g['gameday']}T{g['gametime']}").replace(tzinfo=ZoneInfo("America/New_York"))
+                try:
+                    kick = datetime.fromisoformat(f"{g['gameday']}T{g['gametime']}").replace(tzinfo=ZoneInfo("America/New_York"))
+                except (ValueError, TypeError):
+                    invalid_kickoff = True
+                    continue
                 kicks.append(kick)
+            else:
+                invalid_kickoff = True
         if kicks and min(kicks) <= now:
             start += 1
             warnings.append("Current scoring period has started; full-week projection comparisons begin next week. Check individual player locks in ESPN.")
+        elif invalid_kickoff and actionable is not False:
+            actionable = None
+        if invalid_kickoff:
+            warnings.append("Some stored kickoff dates/times are missing or malformed; current-week game-lock timing is incomplete.")
     weeks = list(range(start, final + 1)) if final and start <= final and actionable is not False else []
     if final and start > final:
         actionable = False

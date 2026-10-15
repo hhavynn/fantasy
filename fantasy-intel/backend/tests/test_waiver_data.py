@@ -87,3 +87,17 @@ def test_stale_roster_and_stale_projections_cannot_establish_a_move(tmp_path):
         d = json.loads(row["components"])["decision"]
         assert d["roster_move"]["status"] == "UNKNOWN" and not d["actionable"]
     con.close()
+
+
+def test_malformed_kickoff_is_unknown_not_a_failed_build(tmp_path):
+    path = tmp_path / "kickoff.duckdb"
+    run_espn_sync(lambda: open_db(path), SimpleNamespace(swid=MY_SWID, my_team_id=None),
+                  client=FakeEspnClient(), save_raw_payloads=False)
+    con = connect(path)
+    league = fetch_dicts(con, "SELECT * FROM leagues")[0]
+    con.execute("CREATE TABLE nfl_schedules (season INTEGER, week INTEGER, game_type VARCHAR, home_team VARCHAR, away_team VARCHAR, gameday VARCHAR, gametime VARCHAR)")
+    con.execute("INSERT INTO nfl_schedules VALUES (?, ?, 'REG', 'KC', 'NYJ', 'bad-date', 'bad-time')", [league["season"], league["current_week"]])
+    ctx = load_waiver_context(con, league)
+    assert ctx["actionable"] is None and any("kickoff" in r.lower() for r in ctx["warnings"])
+    assert build_waivers(con)["candidates"] > 0
+    con.close()

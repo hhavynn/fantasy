@@ -55,6 +55,12 @@ def test_ir_excluded_from_active_capacity_but_included_in_positional_counts():
     assert move["status"] == "ADD_WITHOUT_DROP" and move["active_count"] == 1
 
 
+def test_out_player_already_in_ir_does_not_block_all_acquisitions():
+    st = state([player(1, "RB", 8), player(2, "WR", 7, injury_status="OUT") | {"lineup_slot_id": 21}])
+    move = plan_roster_move(st, player(99, "WR", 8))
+    assert move["status"] == "ADD_WITHOUT_DROP" and move["drop"] is None
+
+
 def test_redundant_defense_preserves_strong_backup_rb():
     st = state([player(1, "RB", 9), player(2, "RB", 6), player(3, "D/ST", 7), player(4, "D/ST", 6.1)],
                {"RB": 1, "D/ST": 1, "BE": 2})

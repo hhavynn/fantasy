@@ -72,7 +72,7 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
               "warnings": warnings, "summary": "Roster legality cannot be established from the available settings."}
     if capacity is None or not slots or not constraints.get("snapshot_complete", True):
         return result
-    if any(p.get("lineup_slot_id") == IR_SLOT and p.get("injury_status") not in ("IR", "INJURY_RESERVE") for p in players):
+    if any(p.get("lineup_slot_id") == IR_SLOT and p.get("injury_status") not in ("IR", "INJURY_RESERVE", "OUT") for p in players):
         result["summary"] = "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding."
         return result
     if constraints.get("settings_complete") is False:

@@ -25,7 +25,7 @@ IR activation and stale snapshots must not imply open capacity. An add/drop must
 - [x] 3. Add fixture pipeline tests; implement waiver_data.py to batch stored projections, schedules, settings and candidates. Replace global candidate cap with bounded per-position evidence-aware selection and expose exclusions. Integrate V3 diagnostics in waivers.py and sort/filter only the waiver endpoint.
 - [x] 4. Update /waivers with local types/styles, decision views, roster impact, evidence and risks; retain player/manager drill-downs. Use existing PRODUCT.md and app conventions.
 - [x] 5. Run full pytest, frontend lint/build and benchmark script for realistic 10/12/14-team pools. Document before/after scenarios, constraints, performance and integration needs.
-- [ ] 6. Review diff against protected paths; commit, push, create/attach focused PR, request Codex review, address actionable findings and report exact results.
+- [x] 6. Review diff against protected paths; commit, push, create/attach focused PR, request Codex review, address actionable findings and report exact results.
 
 ## Decisions and verification ledger
 
@@ -35,6 +35,8 @@ IR activation and stale snapshots must not imply open capacity. An add/drop must
 
 - Implementation complete: legality/drop, utility/resources, streaming, batched adapter, coverage and compact decision UI.
 - Verified RED→GREEN on IR eligibility, unknown player value, exhausted FAAB, low-owned coverage, stale roster/projection data, alternatives, streaming replacements and future positional holes.
-- Independent review findings reproduced and resolved. Full suite: 494 passed, 1 skipped, three confirmed baseline projection-backtest failures; focused waiver/API: 69 passed. Frontend lint/build passed.
+- Independent review findings reproduced and resolved. Full suite: 496 passed, 1 skipped, three confirmed baseline projection-backtest failures; focused waiver/API: 71 passed. Frontend lint/build passed.
 - Benchmark final synthetic 10/12/14-team builds: 6.390/7.277/6.173s; stored-results API 108.79/79.14/79.02ms.
 - Ruling: preserve known failing backtest module unchanged and disclose baseline failures in the requested PR, rather than expanding concurrent-work scope.
+
+- PR #17 opened against main; Codex review completed on c63939d. Both findings reproduced and fixed: accept existing OUT IR occupants; tolerate invalid kickoff data. Follow-up full suite: 496 passed, 1 skipped, same three baseline failures; focused suite: 71 passed.

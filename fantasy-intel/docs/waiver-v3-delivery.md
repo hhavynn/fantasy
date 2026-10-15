@@ -33,7 +33,7 @@ The freshness boundary is 72 hours: dated current-week roster and candidate deta
 | UNKNOWN | Incomplete/stale settings or roster, unsupported slots, or unresolved IR eligibility |
 | INCOMPATIBLE | No single active drop satisfies known restrictions |
 
-IR occupants do not consume active capacity. Positional caps conservatively count all rostered players, including IR; ESPN's exact application should be confirmed for unusual leagues. Provider nonpositive positionLimits retain the existing repository convention of “unlimited.” Healthy, questionable, doubtful, OUT-with-unconfirmed-eligibility or unknown-status IR occupants force verification; only a positively identified IR status is accepted without further eligibility information. No null drop ID implies an opening. A beneficial transaction cannot hide a newly unfilled future starting slot behind a large season-total gain.
+IR occupants do not consume active capacity. Positional caps conservatively count all rostered players, including IR; ESPN's exact application should be confirmed for unusual leagues. Provider nonpositive positionLimits retain the existing repository convention of “unlimited.” Existing OUT/IR/injury-reserve placements are accepted; healthy, questionable, doubtful or unknown-status IR occupants force verification. No null drop ID implies an opening. A beneficial transaction cannot hide a newly unfilled future starting slot behind a large season-total gain.
 
 ## D/ST and kicker streaming
 
@@ -66,8 +66,8 @@ Additional regressions cover preserving a value-6 backup RB over a redundant val
 
 Final commands/results:
 
-- Backend `.venv/bin/python -m pytest -q --tb=short`: **494 passed, 1 skipped, 3 pre-existing failures** in 64.55s. Existing Starlette/httpx deprecation warning.
-- Focused waiver/pipeline/API run: **69 passed**.
+- Backend `.venv/bin/python -m pytest -q --tb=short`: **496 passed, 1 skipped, 3 pre-existing failures** in 55.38s. Existing Starlette/httpx deprecation warning.
+- Focused waiver/pipeline/API run: **71 passed**.
 - Frontend `npm run lint`, `npm run build`: pass.
 - `git diff --check`: pass.
 - Six asserted examples: `scripts/waiver_examples.py`: pass.
@@ -86,9 +86,9 @@ Full backend pytest was run on the isolated branch. Three failures already repro
 
 Two existing assertions were intentionally updated to match the requested stronger behavior: an open roster no longer recommends dropping player 13; forward projections can now change waiver decisions, while player scores/market signals, usage, needs and manager metrics retain exact isolation assertions. All trade tests remain in the full suite. No protected trade files or shared availability/scoring logic changed.
 
-Frontend lint and production build passed (Next.js 16.4.0). Browser checks used a synthetic fixture DB: default empty state when IR legality is unresolved, ALL view, evidence expansion, player/manager links, explicit open capacity after resolving fixture IR status, and 390px phone layout (350px recommendation rows, no row overflow). No live ESPN mutation was attempted.
+Frontend lint and production build passed (Next.js 16.4.0). Browser checks used a synthetic fixture DB: empty-state presentation, ALL view, evidence expansion, player/manager links, explicit open capacity, and 390px phone layout (350px recommendation rows, no row overflow). No live ESPN mutation was attempted.
 
-Independent review found IR eligibility, stale roster/projection evidence and free-agent comparison gaps. Each was reproduced and fixed with regression tests. A final additional finding—trying another alternative after the first fails—was also reproduced and fixed. GitHub Codex review is requested after pushing.
+Independent review found IR eligibility, stale roster/projection evidence and free-agent comparison gaps. Each was reproduced and fixed with regression tests. A final additional finding—trying another alternative after the first fails—was also reproduced and fixed. GitHub Codex review of c63939d returned two findings: accept existing OUT placements in IR, and tolerate malformed kickoff values. Both were reproduced RED→GREEN and addressed. Malformed/missing kickoff timing now yields warnings and uncertainty rather than aborting analytics.
 
 ## Files and integration boundary
 
