@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test lib/*.test.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test lib/*.test.ts"
+    "lint": "eslint"
   },
   "dependencies": {
     "next": "16.4.0",
