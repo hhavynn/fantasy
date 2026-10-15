@@ -41,6 +41,13 @@ function Who({ a }: { a: TvfAcquisition }) {
 function SideSummary({ s }: { s: TvfSide }) {
   const c = s.comparison;
   const share = c.share_available_without_trade;
+  const isInteracting =
+    c.interaction_type === "positive_synergy" ||
+    c.interaction_type === "negative_interaction" ||
+    (share !== null && (share < 0 || share > 1));
+  const interactionText =
+    c.interaction_note ?? "These roster moves interact, so a simple percentage of replaceable gain would be misleading.";
+
   return (
     <div>
       <h3 style={{ margin: "4px 0" }}>{s.label === "You" ? "You" : s.label}</h3>
@@ -53,8 +60,23 @@ function SideSummary({ s }: { s: TvfSide }) {
           <div style={{ fontSize: 12 }}><Who a={s.free_agent_alternative} /></div></div>
         <div className="stat" title="L(trade + the same free agent − drops) − L(current roster + that free agent − drop)">
           <div className="label">Trade beyond that move</div><div className="value"><D v={c.trade_advantage} /></div>
-          <div className="faint" style={{ fontSize: 11 }}>{share !== null ? `${Math.round(Math.max(0, share) * 100)}% of the trade's gain is available without trading` : "share not defined"}</div></div>
+          <div className="faint" style={{ fontSize: 11 }}>
+            {isInteracting ? (
+              <span title={interactionText}>Moves interact; simple % misleading</span>
+            ) : share !== null ? (
+              `${Math.round(share * 100)}% of the trade's gain is available without trading`
+            ) : (
+              "share not defined"
+            )}
+          </div>
+        </div>
       </div>
+      {isInteracting && (
+        <p className="faint" style={{ margin: "4px 0", fontSize: 11 }}>
+          {interactionText} Free agency adds {signed(c.free_agent_alternative_gain.ros_delta)}, and the trade adds{" "}
+          {signed(c.trade_advantage.ros_delta)} beyond it.
+        </p>
+      )}
       {s.statements.length > 0 && <ul className="reasons" style={{ marginTop: 6 }}>{s.statements.map((x, i) => <li key={i}>{x}</li>)}</ul>}
     </div>
   );
@@ -102,22 +124,50 @@ function Details({ t, sides }: { t: Extract<Tvf, { available: true }>; sides: Tv
               <li key={p.position}>Best available {p.position}: <Who a={p} /> <span className="faint">→ whole lineup <D v={p.gain} />{p.slot_delta !== null ? `, ${p.position} slot ${p.slot_delta > 0 ? "+" : ""}${p.slot_delta.toFixed(1)}` : ""}</span></li>
             ))}
             {s.waiver_claim_alternative && <li>Waiver claim: <Who a={s.waiver_claim_alternative} /> <span className="faint">→ <D v={s.waiver_claim_alternative.gain} /> if the claim succeeds</span></li>}
+            {s.unknown_availability_alternative && <li>Unconfirmed availability: <Who a={s.unknown_availability_alternative} /> <span className="faint">→ <D v={s.unknown_availability_alternative.gain} /> if addable</span></li>}
             <li>After the trade, its own best free agent: <Who a={s.with_trade_alternative} /> <span className="faint">→ <D v={s.with_trade_alternative.gain} /></span></li>
-            {s.trade_with_free_agent && s.trade_with_free_agent.drops.length > 0 && <li className="faint">Trade + {s.free_agent_alternative.player?.name} would drop {s.trade_with_free_agent.drops.map((d) => d.name ?? d.espn_player_id).join(", ")}.</li>}
+            {s.trade_with_free_agent && (
+              <li className="faint">
+                {s.trade_with_free_agent.available === false ? (
+                  <span>Trade + {s.free_agent_alternative.player?.name ?? "free agent"} cannot be legally combined: {s.trade_with_free_agent.reason?.replace(/_/g, " ")}.</span>
+                ) : s.trade_with_free_agent.drops.length > 0 ? (
+                  <span>Trade + {s.free_agent_alternative.player?.name} would drop {s.trade_with_free_agent.drops.map((d) => d.name ?? d.espn_player_id).join(", ")}.</span>
+                ) : (
+                  <span>Trade + {s.free_agent_alternative.player?.name} needs no additional drop.</span>
+                )}
+              </li>
+            )}
             <li className="faint">Search: {s.free_agent_alternative.search.candidates} available players scored, {s.free_agent_alternative.search.solved} solved exactly ({s.free_agent_alternative.search.method}); {s.free_agent_alternative.search.excluded_unprojected} unprojected not scored.</li>
           </ul>
           {s.streaming_frontier.map((f) => (
             <div key={f.position} className="table-wrap">
               <p className="faint" style={{ margin: "4px 0" }}><b>{f.position} streaming frontier</b>: {f.no_trade.label}</p>
               <table>
-                <thead><tr><th>Wk</th><th>Best available {f.position}</th><th className="num">Pts</th><th className="num">Your starter now</th><th className="num">Gain (no trade)</th><th className="num">Gain (after trade)</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Wk</th>
+                    <th>Best available {f.position}</th>
+                    <th className="num">Pts</th>
+                    <th className="num">{f.no_trade.slot_count && f.no_trade.slot_count > 1 ? `Starters (${f.no_trade.slot_count})` : "Your starter now"}</th>
+                    <th className="num">Gain (no trade)</th>
+                    <th className="num">Gain (after trade)</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {f.no_trade.weeks.map((w, i) => (
                     <tr key={w.week}>
                       <td>{w.week}</td>
-                      <td>{w.best_available[0]?.name ?? <span className="faint">none projected</span>}</td>
-                      <td className="num">{num(w.best_available[0]?.points)}</td>
-                      <td className="num">{num(w.starter_points)}</td>
+                      <td>{w.best_available.length > 0 ? w.best_available.map((b) => b.name ?? `#${b.espn_player_id}`).join(", ") : <span className="faint">none projected</span>}</td>
+                      <td className="num">{w.best_available.length > 1 ? `${w.best_available.map((b) => num(b.points)).join(" + ")} (${num(w.best_available.reduce((sum, b) => sum + b.points, 0))})` : num(w.best_available[0]?.points)}</td>
+                      <td className="num">
+                        {w.starter_slots && w.starter_slots.length > 1 ? (
+                          <span>
+                            {num(w.starter_points)} <span className="faint" style={{ fontSize: 10 }}>({w.starter_slots.map((s) => (s !== null ? s.toFixed(1) : "—")).join(", ")})</span>
+                          </span>
+                        ) : (
+                          num(w.starter_points)
+                        )}
+                      </td>
                       <td className="num">{signed(w.gain)}</td>
                       <td className="num">{signed(f.after_trade.weeks[i]?.gain)}</td>
                     </tr>

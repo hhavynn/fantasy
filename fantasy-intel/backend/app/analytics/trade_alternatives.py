@@ -67,7 +67,7 @@ from .trades import EvaluationUnavailable, LeagueState, TradeError, choose_force
 
 EPS = 1e-6
 STREAMING_POSITIONS = ("K", "D/ST")
-IMMEDIATE = ("free_agent", "unknown")   # the headline pool; waiver claims are reported separately
+IMMEDIATE = ("free_agent",)             # confirmed free agents only; waivers and unknown availability reported separately
 KINDS = {"FREEAGENT": "free_agent", "WAIVERS": "waiver_claim"}
 DELTA_KEYS = ("ros_delta", "regular_season_delta", "playoff_delta", "known_ros_delta", "projection_complete")
 ACQUISITION_NOTES = {
@@ -288,16 +288,57 @@ class FreeAgencyBoard:
     def trade_with(self, team_id: int, pre: list[RosterPlayer], incoming: set[int], fa: RosterPlayer) -> dict:
         """The post-swap roster (`pre`: outgoing removed, incoming active, before forced drops) plus `fa`,
         made legal by the trade evaluator's forced-drop rule with `fa` counted as incoming (so he is cut
-        only when nothing else is legal). {"team", "drops"}; raises TradeError when no legal roster exists."""
+        only when nothing else is legal). Both `fa` and all incoming traded assets must survive in the
+        resolved roster for the combined scenario to be legally retained. If either cannot be retained,
+        returns available=False with a structured reason and does not claim the combination was completed."""
         players = pre + [fa]
         st = self.state
         drops: tuple = ()
         if not legal_roster(players, st, st.rosters[team_id]):
-            res = choose_forced_drops(players, st.rosters[team_id], st, incoming | {fa.espn_player_id}, self.total,
-                                      self.negative)
-            drops = (res["best"].get(False) or res["best"][True])[1]
-        return {"team": self.team([p for p in players if p not in drops]), "drops": [_brief(p) for p in drops],
-                "drop_cost_unknown": any(self.unprojected(p) for p in drops)}
+            try:
+                res = choose_forced_drops(players, st.rosters[team_id], st, incoming | {fa.espn_player_id}, self.total,
+                                          self.negative)
+            except EvaluationUnavailable as err:
+                return {"available": False, "reason": "evaluation_unavailable", "team": None, "drops": [],
+                        "drop_cost_unknown": False, "retained_player_ids": [], "error": str(err)}
+            except TradeError as err:
+                return {"available": False, "reason": "no_legal_roster", "team": None, "drops": [],
+                        "drop_cost_unknown": False, "retained_player_ids": [], "error": str(err)}
+            if False not in res["best"]:
+                # Any legal drop set cuts at least one incoming player or the free agent
+                best_illegal = res["best"].get(True)
+                drop_combo = best_illegal[1] if best_illegal else ()
+                drop_pids = {p.espn_player_id for p in drop_combo}
+                if fa.espn_player_id in drop_pids and any(p in incoming for p in drop_pids):
+                    reason = "cannot_retain_combination"
+                elif fa.espn_player_id in drop_pids:
+                    reason = "free_agent_dropped"
+                elif any(p in incoming for p in drop_pids):
+                    reason = "traded_asset_dropped"
+                else:
+                    reason = "cannot_retain_combination"
+                retained_pids = [p.espn_player_id for p in players if p not in drop_combo]
+                return {"available": False, "reason": reason, "team": None,
+                        "drops": [_brief(p) for p in drop_combo],
+                        "drop_cost_unknown": any(self.unprojected(p) for p in drop_combo),
+                        "retained_player_ids": retained_pids}
+            _, drops, total = res["best"][False]
+        retained = [p for p in players if p not in drops]
+        retained_ids = [p.espn_player_id for p in retained]
+        if fa.espn_player_id not in retained_ids:
+            return {"available": False, "reason": "free_agent_dropped", "team": None,
+                    "drops": [_brief(p) for p in drops],
+                    "drop_cost_unknown": any(self.unprojected(p) for p in drops),
+                    "retained_player_ids": retained_ids}
+        if any(p not in retained_ids for p in incoming):
+            return {"available": False, "reason": "traded_asset_dropped", "team": None,
+                    "drops": [_brief(p) for p in drops],
+                    "drop_cost_unknown": any(self.unprojected(p) for p in drops),
+                    "retained_player_ids": retained_ids}
+        return {"available": True, "reason": None, "team": self.team(retained),
+                "drops": [_brief(p) for p in drops],
+                "drop_cost_unknown": any(self.unprojected(p) for p in drops),
+                "retained_player_ids": retained_ids}
 
     # ---- K / D/ST streaming frontier (illustration only)
     def frontier(self, roster: list[RosterPlayer], position: str) -> dict:
@@ -307,7 +348,8 @@ class FreeAgencyBoard:
         weeks, total, complete = [], 0.0, True
         for w, bw in zip(self.weeks, base["weeks"]):
             avail = sorted(((v, p) for p in self.state.free_agents
-                            if p.position == position and p.espn_player_id not in have and w not in p.unavailable_weeks
+                            if p.position == position and self.kind[p.espn_player_id] == "free_agent"
+                            and p.espn_player_id not in have and w not in p.unavailable_weeks
                             and (v := projection(self.state.projections, p.espn_player_id, w)) is not None),
                            key=lambda t: (-t[0], t[1].espn_player_id))[:n]
             plus = project_week(roster + [p for _, p in avail], self.state.slots, w, self.state.projections)
@@ -315,12 +357,19 @@ class FreeAgencyBoard:
             ok = bw["projection_complete"]
             complete = complete and ok
             total += gain
-            incumbent = [a["points"] for a in bw["assignment"] if a["slot"] == position]
-            weeks.append({"week": w, "phase": bw["phase"], "starter_points": incumbent[0] if n == 1 else incumbent,
+            incumbent_slots = [(a["points"] if a.get("player_id") is not None else 0.0) for a in bw["assignment"] if a["slot"] == position]
+            if not incumbent_slots:
+                starter_pts = 0.0
+            elif any(pts is None for pts in incumbent_slots):
+                starter_pts = None
+            else:
+                starter_pts = r(sum(pts for pts in incumbent_slots if pts is not None))
+            weeks.append({"week": w, "phase": bw["phase"], "starter_points": starter_pts,
+                          "starter_slots": incumbent_slots,
                           "best_available": [{**_brief(p), "points": v, "acquisition_type": self.kind[p.espn_player_id]}
                                              for v, p in avail],
                           "gain": r(gain) if ok else None, "known_gain": r(gain)})
-        return {"position": position, "label": FRONTIER_LABEL, "weeks": weeks,
+        return {"position": position, "slot_count": n, "label": FRONTIER_LABEL, "weeks": weeks,
                 "total_gain": r(total) if complete else None, "known_total_gain": r(total)}
 
 
@@ -364,14 +413,25 @@ def _name(p: dict | None) -> str:
 
 
 def statements(label: str, cmp: dict, alt: dict, waiver: dict | None, position_alts: list[dict],
-               slots: list[dict]) -> list[str]:
+               slots: list[dict], combined: dict | None = None, unknown_alt: dict | None = None) -> list[str]:
     """Plain, calculated evidence for one side. The only qualitative rule is the majority rule."""
     _, whose = _who(label)
     g, a = cmp["canonical_gain"]["ros_delta"], cmp["free_agent_alternative_gain"]["ros_delta"]
     t, av = cmp["trade_advantage"]["ros_delta"], cmp["available_without_trade"]["ros_delta"]
     p = alt["player"]
     out = []
-    if g is None or a is None or (p is not None and t is None):
+    if combined is not None and not combined.get("available"):
+        reason = combined.get("reason")
+        if reason == "free_agent_dropped":
+            out.append(f"The trade cannot be legally combined with adding {_name(p)}: roster limits would require "
+                       f"dropping {_name(p)}, so trade advantage beyond free agency is unavailable.")
+        elif reason == "traded_asset_dropped":
+            out.append(f"The trade cannot be legally combined with adding {_name(p)}: retaining {_name(p)} would require "
+                       "dropping an acquired traded player, so trade advantage beyond free agency is unavailable.")
+        else:
+            out.append(f"The trade cannot be legally combined with adding {_name(p)} under roster limits; "
+                       "trade advantage beyond free agency is unavailable.")
+    elif g is None or a is None or (p is not None and t is None):
         out.append("Replacement comparison unavailable: incomplete ESPN projections (no canonical total).")
     elif p is None:
         if alt["reason"] == "no_legal_acquisition":
@@ -384,6 +444,9 @@ def statements(label: str, cmp: dict, alt: dict, waiver: dict | None, position_a
     elif g <= 0:
         out.append(f"The trade does not improve {whose} lineup ({g:+.1f}); adding {_name(p)} ({p['position']}) alone "
                    f"would ({a:+.1f}).")
+    elif av is not None and av < -EPS and t is not None:
+        out.append(f"The trade and free-agent pickup interact favorably: adding {_name(p)} gives {a:+.1f}, and "
+                   f"the trade adds {t:+.1f} beyond it (higher than its {g:+.1f} canonical gain alone).")
     elif t <= 0:
         out.append(f"All of this projected gain is available without trading: adding {_name(p)} ({p['position']}) gives "
                    f"{a:+.1f}, and with that move made the trade adds {t:+.1f}.")
@@ -406,6 +469,12 @@ def statements(label: str, cmp: dict, alt: dict, waiver: dict | None, position_a
             out.append(f"{_name(p)} fits in an open active roster spot (no drop needed).")
         if alt["acquisition_type"] == "unknown":
             out.append(ACQUISITION_NOTES["unknown"])
+    if unknown_alt and unknown_alt.get("player") is not None and p is None:
+        up = unknown_alt["player"]
+        ug = (unknown_alt.get("gain") or {}).get("ros_delta")
+        if ug is not None:
+            out.append(f"An available player with unconfirmed availability status ({_name(up)}, {up['position']}) would add {ug:+.1f}, "
+                       "but availability status is unconfirmed (verify that he can be added).")
     if waiver and waiver["player"] is not None:
         wg = waiver["gain"]["ros_delta"]
         if wg is not None:
@@ -443,18 +512,26 @@ def side_alternatives(board: FreeAgencyBoard, team_id: int, core: dict, incoming
     w = board.window
     before, after = core["before"], core["after"]
     a_team, b_team = core["before_team"], core["after_team"]
-    alt = board.best_acquisition(team_id, before)
+    alt = board.best_acquisition(team_id, before, kinds=("free_agent",))
     waiver = board.best_acquisition(team_id, before, kinds=("waiver_claim",))
-    with_trade = board.best_acquisition(team_id, after)
+    unknown = board.best_acquisition(team_id, before, kinds=("unknown",))
+    with_trade = board.best_acquisition(team_id, after, kinds=("free_agent",))
     c_team, d_team = alt["_team"], with_trade["_team"]
     combined = None                       # scenario E: the trade made together with the same acquisition
     if alt["player"] is not None:
-        fa = next(p for p in board.pool if p.espn_player_id == alt["player"]["espn_player_id"])
-        try:
-            combined = board.trade_with(team_id, core["pre"], {p.espn_player_id for p in incoming}, fa)
-        except TradeError as err:         # includes EvaluationUnavailable: no result is invented
-            combined = {"team": None, "drops": [], "error": str(err)}
-    e_team = b_team if combined is None else combined["team"]
+        fa = next((p for p in board.pool if p.espn_player_id == alt["player"]["espn_player_id"]), None)
+        if fa is not None:
+            try:
+                combined = board.trade_with(team_id, core["pre"], {p.espn_player_id for p in incoming}, fa)
+            except TradeError as err:         # includes EvaluationUnavailable: no result is invented
+                combined = {"available": False, "reason": "no_legal_roster", "team": None, "drops": [],
+                            "drop_cost_unknown": False, "retained_player_ids": [], "error": str(err)}
+    if combined is not None and not combined.get("available"):
+        e_team = None
+    elif combined is not None:
+        e_team = combined.get("team")
+    else:
+        e_team = b_team
     none = {k: None for k in DELTA_KEYS} | {"projection_complete": False}
     cu, du = alt["drop_cost_unknown"], with_trade["drop_cost_unknown"]
     eu = cu or bool(combined and combined.get("drop_cost_unknown"))
@@ -471,13 +548,38 @@ def side_alternatives(board: FreeAgencyBoard, team_id: int, core: dict, incoming
         {"projection_complete": g["projection_complete"] and t["projection_complete"]}
     ga, av = g["ros_delta"], cmp["available_without_trade"]["ros_delta"]
     cmp["share_available_without_trade"] = round(av / ga, 3) if ga is not None and av is not None and ga > 0 else None
+
+    # Interaction classification
+    t_ros = t["ros_delta"]
+    if ga is None or t_ros is None or av is None:
+        interaction_type = "unavailable"
+        interaction_note = None
+    elif ga <= 0:
+        interaction_type = "non_positive_gain"
+        interaction_note = None
+    elif av < -EPS:
+        interaction_type = "positive_synergy"
+        interaction_note = "These roster moves interact favorably, so a simple percentage of replaceable gain would be misleading."
+    elif av > ga + EPS:
+        interaction_type = "negative_interaction"
+        interaction_note = "These roster moves interact, so a simple percentage of replaceable gain would be misleading."
+    elif abs(av) <= EPS:
+        interaction_type = "independent"
+        interaction_note = None
+    else:
+        interaction_type = "ordinary_overlap"
+        interaction_note = None
+
+    cmp["interaction_type"] = interaction_type
+    cmp["interaction_note"] = interaction_note
+
     a = alt["gain"]["ros_delta"]
     slots = slot_breakdown({"before": a_team, "trade": b_team, "alternative": c_team})
     by_slot = {s["slot"]: s for s in slots}
     position_alts = []
     head_pos = (alt["player"] or {}).get("position")
     for pos in sorted({p.position for p in incoming if p.position} - {head_pos}):
-        pa = board.best_acquisition(team_id, before, positions=(pos,))
+        pa = board.best_acquisition(team_id, before, kinds=("free_agent",), positions=(pos,))
         row = None
         if pa["player"] is not None:
             row = {s["slot"]: s for s in slot_breakdown({"before": a_team, "alternative": pa["_team"]})}.get(pos)
@@ -487,7 +589,9 @@ def side_alternatives(board: FreeAgencyBoard, team_id: int, core: dict, incoming
                                  "same_as_headline": True})
     waiver_out = _public(waiver) if waiver["player"] is not None and (
         a is None or (waiver["gain"]["ros_delta"] or 0) > a + EPS) else None
-    stmts = statements(label, cmp, alt, waiver_out, position_alts, slots)
+    unknown_out = _public(unknown) if unknown["player"] is not None and (
+        a is None or (unknown["gain"]["ros_delta"] or 0) > a + EPS) else None
+    stmts = statements(label, cmp, alt, waiver_out, position_alts, slots, combined=combined, unknown_alt=unknown_out)
     return {
         "team_id": team_id, "team_name": board.state.team_names.get(team_id), "label": label,
         "comparison": cmp,
@@ -495,6 +599,7 @@ def side_alternatives(board: FreeAgencyBoard, team_id: int, core: dict, incoming
         "trade_with_free_agent": None if combined is None else
         {k: v for k, v in combined.items() if k != "team"},
         "waiver_claim_alternative": waiver_out,
+        "unknown_availability_alternative": unknown_out,
         "position_alternatives": position_alts,
         "with_trade_alternative": _public(with_trade),
         "slot_breakdown": slots,

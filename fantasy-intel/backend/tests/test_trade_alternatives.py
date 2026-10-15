@@ -318,8 +318,13 @@ def test_unknown_acquisition_type_is_labelled():
     st = dst_league()
     st.free_agent_status = {}
     me = side(analyze(st, 1, 2, [107], [211], labels={1: "You"}))
-    assert me["free_agent_alternative"]["acquisition_type"] == "unknown"
-    assert any("availability type not synced" in s for s in me["statements"])
+    # Headline alternative must not claim an unconfirmed player is an immediate free agent
+    assert me["free_agent_alternative"]["player"] is None
+    # Unknown availability is reported separately
+    unk = me["unknown_availability_alternative"]
+    assert unk is not None and unk["player"]["espn_player_id"] == 901
+    assert unk["acquisition_type"] == "unknown"
+    assert any("unconfirmed availability status" in s for s in me["statements"])
 
 
 def test_large_canonical_gain_with_little_advantage_over_free_agency():

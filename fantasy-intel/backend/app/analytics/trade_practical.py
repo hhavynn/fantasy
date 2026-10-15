@@ -20,8 +20,10 @@ counts), and no row carries an acceptance probability.
 from __future__ import annotations
 
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, UNKNOWN
+from .team_lineups import compare
 from .trade_assets import AGAINST_THEM, NOTE as ASSET_NOTE, AssetBoard, league_needs
 from .trade_discovery import TradeSearch, _rank_key, detail
+from .trades import TradeError
 
 MODES = {
     "practical": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete "
@@ -37,7 +39,7 @@ STRICTNESS = {
     "standard": "Leave out packages with a significant imbalance against them (or multiple strong assets for fewer).",
     "off": "No asset filter (labels still shown).",
 }
-PRACTICAL_POOL = 60
+PRACTICAL_POOL = 100
 # Display diversity in the practical tier: near-identical variants (same manager, same players received)
 # crowd out other ideas, so at most PER_IDEA per (manager, players received) and PER_MANAGER per manager
 # are listed there; the rest are counted, never re-ranked, and remain in the other modes.
@@ -78,7 +80,42 @@ def injury_flags(state, pids) -> list[dict]:
     return out
 
 
-def classify(row: dict, balance: dict, injuries: list[dict], phase: str, strictness: str) -> tuple[str, list[str]]:
+def _anchor_opportunity_cost(board, anchor: int, row: dict, alt: dict, fa,
+                             before_team: dict, names: dict, window) -> dict:
+    """Evaluate whether the anchor manager's candidate trade has a replacement opportunity-cost concern
+    under the majority rule (available_without_trade > 0.5 * canonical_gain or trade_advantage <= 0)."""
+    g = row["mine"]["ros_delta"]
+    if g is None or g <= 0 or alt.get("player") is None or fa is None:
+        return {"has_concern": False, "trade_advantage": g, "available_without_trade": 0.0, "lead": None}
+    incoming = [names[x] for x in row["receives"] if x in names]
+    c_team = alt["_team"]
+    try:
+        combined = board.trade_with(anchor, [p for p in board.state.rosters[anchor] if p.espn_player_id not in row["sends"]] + incoming,
+                                    set(row["receives"]), fa)
+    except TradeError:
+        return {"has_concern": False, "trade_advantage": None, "available_without_trade": None, "lead": None}
+    if not combined.get("available") or combined.get("team") is None:
+        return {"has_concern": False, "trade_advantage": None, "available_without_trade": None, "lead": None}
+    e_team = combined["team"]
+    t = compare(c_team, e_team, window)["ros_delta"]
+    if t is None:
+        return {"has_concern": False, "trade_advantage": None, "available_without_trade": None, "lead": None}
+    av = round(g - t, 9)
+    p_info = alt["player"]
+    p_name = p_info.get("name") or f"#{p_info.get('espn_player_id')}"
+    p_pos = p_info.get("position", "")
+    a_gain = alt["gain"]["ros_delta"] or 0.0
+    if t <= 0:
+        lead = f"All of this projected gain is available without trading: adding {p_name} ({p_pos}) gives {a_gain:+.1f}, and with that move made the trade adds {t:+.1f}."
+        return {"has_concern": True, "trade_advantage": t, "available_without_trade": av, "lead": lead}
+    if 2 * av > g:
+        lead = f"Most of this projected gain is available without trading: adding {p_name} ({p_pos}) gives {a_gain:+.1f}; with that move made, the trade adds only {t:+.1f} of its {g:+.1f}."
+        return {"has_concern": True, "trade_advantage": t, "available_without_trade": av, "lead": lead}
+    return {"has_concern": False, "trade_advantage": t, "available_without_trade": av, "lead": None}
+
+
+def classify(row: dict, balance: dict, injuries: list[dict], phase: str, strictness: str,
+             opp_cost: dict | None = None) -> tuple[str, list[str]]:
     """(tier, reasons): practical | concerns | speculative | excluded_one_sided | excluded_lopsided."""
     m, t = _phase_delta(row["mine"], phase), _phase_delta(row["theirs"], phase)
     reasons = []
@@ -106,8 +143,13 @@ def classify(row: dict, balance: dict, injuries: list[dict], phase: str, strictn
                 and f["warnings"]]
     if row["forced_drops"]["mine"] or row["forced_drops"]["theirs"]:
         reasons.append("requires a forced drop")
+    if opp_cost and opp_cost.get("has_concern"):
+        lead = opp_cost.get("lead")
+        if lead and lead not in reasons:
+            reasons.append(lead)
     if lab in ("they_give_more", "significant_you_give_more", "you_surrender_multiple_strong") or \
-            any(f["status"] in (INELIGIBLE, NO_WEEK_LEFT) or f["fantasy_ir_slot"] for f in injuries):
+            any(f["status"] in (INELIGIBLE, NO_WEEK_LEFT) or f["fantasy_ir_slot"] for f in injuries) or \
+            (opp_cost and opp_cost.get("has_concern")):
         return "concerns", reasons
     return "practical", reasons
 
@@ -231,7 +273,7 @@ def _pool(ts: TradeSearch, sort: str, category: str | None, opponent: int | None
 
 def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", opponent: int | None = None,
              limit: int = 10, strictness: str = "standard", sort: str | None = None, category: str | None = None,
-             heuristic: bool = True) -> dict:
+             heuristic: bool = True, board: FreeAgencyBoard | None = None) -> dict:
     """Rows for one mode, assessed and explained. Every shown row is re-run through the manual
     evaluator (detail) and carries consistent_with_manual_evaluator."""
     if mode not in MODES:
@@ -241,8 +283,8 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
     if strictness not in STRICTNESS:
         raise ValueError(f"strictness must be one of {', '.join(STRICTNESS)}")
     state, window = ts.state, ts.window
-    board = AssetBoard(state, window)
-    needs = league_needs(state, window, board)
+    asset_board = AssetBoard(state, window)
+    needs = league_needs(state, window, asset_board)
     names = {p.espn_player_id: {"name": p.name, "position": p.position} for ps in state.rosters.values() for p in ps}
     n = len(window.weeks)
     phase_sort = PHASES[phase][0]
@@ -268,17 +310,45 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
     else:
         rows, exact_search, heur_search = _pool(ts, sort or "my_gain", category, opponent, max(limit, 1), heuristic)
         pool_rule = f"exact {sort or 'my_gain'} order" + (f" in {category}" if category else "")
+
+    fa_board = board
+    if fa_board is None and getattr(state, "free_agents", None):
+        from .trade_alternatives import FreeAgencyBoard
+        fa_board = FreeAgencyBoard(state, window)
+
+    alt_anchor = fa_board.best_acquisition(ts.anchor, state.rosters[ts.anchor], kinds=("free_agent",)) if fa_board else {}
+    fa_anchor = next((p for p in fa_board.pool if p.espn_player_id == alt_anchor["player"]["espn_player_id"]), None) \
+        if fa_board and alt_anchor.get("player") else None
+    player_map = {p.espn_player_id: p for ps in state.rosters.values() for p in ps} if fa_board else {}
+    before_anchor = fa_board.team(state.rosters[ts.anchor]) if fa_board else {}
+
     assessed = []
     for row in rows:
-        bal = board.package(row["sends"], row["receives"])
+        bal = asset_board.package(row["sends"], row["receives"])
         inj = injury_flags(state, row["sends"] + row["receives"])
-        tier, reasons = classify(row, bal, inj, phase, strictness)
-        assessed.append({**row, "asset_balance": bal, "injury_flags": inj, "tier": tier, "tier_reasons": reasons})
+        opp_cost = _anchor_opportunity_cost(fa_board, ts.anchor, row, alt_anchor, fa_anchor, before_anchor,
+                                           player_map, window) if fa_board else None
+        tier, reasons = classify(row, bal, inj, phase, strictness, opp_cost=opp_cost)
+        assessed.append({**row, "asset_balance": bal, "injury_flags": inj, "tier": tier, "tier_reasons": reasons,
+                         "opp_cost_advantage": opp_cost.get("trade_advantage") if opp_cost else None})
     excluded = {"one_sided": 0, "lopsided": 0, "similar_variants": 0}
     sections: dict[str, list] = {}
     if mode == "practical":
+        def _practical_sort_key(x):
+            adv = x.get("opp_cost_advantage")
+            if adv is None:
+                adv = _phase_delta(x["mine"], phase) or 0.0
+            theirs = _phase_delta(x["theirs"], phase) or 0.0
+            inc_min = min(adv, theirs)
+            return (-round(inc_min, 9), _rank_key(phase_sort)(x))
+
+        practical_cands = [x for x in assessed if x["tier"] == "practical"]
+        practical_cands.sort(key=_practical_sort_key)
+        other_cands = [x for x in assessed if x["tier"] != "practical"]
+        ordered_assessed = practical_cands + other_cands
+
         ideas, managers = {}, {}
-        for x in assessed:
+        for x in ordered_assessed:
             if x["tier"].startswith("excluded"):
                 excluded["one_sided" if x["tier"] == "excluded_one_sided" else "lopsided"] += 1
                 continue
@@ -300,7 +370,7 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
         for x in items:
             d = detail(state, x)
             d.update({k2: x[k2] for k2 in ("asset_balance", "injury_flags", "tier", "tier_reasons", "search_method")})
-            d["rationale"] = rationale(d, needs, board, names, n)
+            d["rationale"] = rationale(d, needs, asset_board, names, n)
             full.append(d)
         sections[k] = full
         shown += full
@@ -328,5 +398,5 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
         "consistency_checked": len(shown),
         "consistency_failures": sum(1 for x in shown if not x["consistent_with_manual_evaluator"]),
         "asset_note": ASSET_NOTE,
-        "asset_thresholds": board.package([], [])["thresholds"],
+        "asset_thresholds": asset_board.package([], [])["thresholds"],
     }

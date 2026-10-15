@@ -146,9 +146,11 @@ def discover(team_id: int | None = None,
             raise HTTPException(422, f"shapes must be among {', '.join(ALL_SHAPES)}")
         pos = tuple(sorted({x.strip() for x in positions.split(",") if x.strip()})) if positions else \
             tuple(SKILL_POSITIONS) + (("K", "D/ST") if include_kdst else ())
+        board = FreeAgencyBoard(state, state.window())
         try:
             ts = _search(state, team_id, shape_list, pos)
-            out = practical.discover(ts, mode, phase, opponent, limit, strictness, sort, category or None, heuristic)
+            out = practical.discover(ts, mode, phase, opponent, limit, strictness, sort, category or None, heuristic,
+                                     board=board)
         except NoRemainingWeeksError as err:
             raise HTTPException(409, str(err))
         except (TradeError, ValueError) as err:
@@ -159,7 +161,6 @@ def discover(team_id: int | None = None,
                  for ps in state.rosters.values() for p in ps}
         shown = [r for items in out["sections"].values() for r in items]
         ctx = {opp: _manager_context(con, opp) for opp in sorted({r["opponent_team_id"] for r in shown})}
-        board = FreeAgencyBoard(state, ts.window)     # one pool and cache shared by every shown row
         for r in shown:
             r["manager_context"] = ctx.get(r["opponent_team_id"])
             r["need_notes"] = _need_notes(r, r["manager_context"], names)

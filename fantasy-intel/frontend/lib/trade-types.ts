@@ -156,10 +156,14 @@ export type TvfAcquisition = {
   drop_cost_unknown: boolean; gain: TvfDeltas; weeks_started: number[];
   search: { candidates: number; after_dominance: number; solved: number; excluded_unprojected: number; method: string };
 };
+export type TvfFrontierWeek = {
+  week: number; phase: string | null; starter_points: number | null; starter_slots?: (number | null)[];
+  gain: number | null; known_gain: number;
+  best_available: (TvfPlayer & { points: number; acquisition_type: string })[];
+};
 export type TvfFrontier = {
-  position: string; label: string; total_gain: number | null; known_total_gain: number;
-  weeks: { week: number; phase: string | null; starter_points: number | null; gain: number | null; known_gain: number;
-    best_available: (TvfPlayer & { points: number; acquisition_type: string })[] }[];
+  position: string; slot_count?: number; label: string; total_gain: number | null; known_total_gain: number;
+  weeks: TvfFrontierWeek[];
 };
 export type TvfSlotRow = { slot: string } & Record<string, number | string>;
 export type TvfSide = {
@@ -169,10 +173,16 @@ export type TvfSide = {
     available_without_trade: TvfDeltas; trade_instead_of_free_agent: TvfDeltas;
     trade_plus_best_free_agent_gain: TvfDeltas; trade_advantage_if_both_add: TvfDeltas;
     share_available_without_trade: number | null;
+    interaction_type?: string;
+    interaction_note?: string | null;
   };
   free_agent_alternative: TvfAcquisition;
-  trade_with_free_agent: { drops: TvfPlayer[]; drop_cost_unknown: boolean; error?: string } | null;
+  trade_with_free_agent: {
+    available?: boolean; reason?: string | null; drops: TvfPlayer[]; drop_cost_unknown: boolean;
+    retained_player_ids?: number[]; error?: string;
+  } | null;
   waiver_claim_alternative: TvfAcquisition | null;
+  unknown_availability_alternative?: TvfAcquisition | null;
   position_alternatives: (TvfAcquisition & { position: string; slot_delta: number | null; same_as_headline?: boolean })[];
   with_trade_alternative: TvfAcquisition;
   slot_breakdown: TvfSlotRow[];
