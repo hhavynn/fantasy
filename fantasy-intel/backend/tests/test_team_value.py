@@ -188,7 +188,10 @@ def test_removal_scenarios_match_explicit_rosters_without_the_player():
         for rem in row["removal_scenarios"]:
             pid = rem["espn_player_id"]
             rest = project_team(without(roster, [pid]), st.slots, window, st.projections)
-            assert rem["known_lineup_points_lost"] == compare(rest, base, window)["known_ros_delta"]
+            c = compare(rest, base, window)
+            assert rem["known_lineup_points_lost"] == c["known_ros_delta"]
+            assert rem["lineup_points_lost_by_phase"] == {"all": c["ros_delta"], "regular": c["regular_season_delta"],
+                                                          "playoff": c["playoff_delta"]}
             fill = {}
             for bw, rw in zip(base["weeks"], rest["weeks"]):
                 for q in starters(rw) - starters(bw):

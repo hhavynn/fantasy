@@ -503,6 +503,7 @@ export type TvPlayer = {
 };
 export type TvRemoval = {
   espn_player_id: number; name: string | null; weeks_in_slot: number[]; lineup_points_lost: number | null;
+  lineup_points_lost_by_phase: Record<TvPhase, number | null>;
   known_lineup_points_lost: number; own_started_points: number; recovered_by_roster: number | null;
   fill_ins: { espn_player_id: number; name: string | null; weeks: number[] }[];
 };

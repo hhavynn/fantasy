@@ -151,7 +151,7 @@ function Summary({ d, phase }: { d: TeamValue; phase: TvPhase }) {
       </div>
       <ul className="reasons" style={{ marginTop: 10 }}>
         {pos.strongest.length > 0 && <li>Strongest starting slots vs the league: <b>{pos.strongest.join(", ")}</b>; weakest: <b>{pos.weakest.join(", ")}</b> (average projected points per comparable week).</li>}
-        {best && best.known_ros_delta > 0 && <li>Best add/drop found: add <b>{best.add.name}</b> ({best.add.position}), drop <b>{best.drop.name}</b>: {signed(best.ros_delta ?? best.known_ros_delta)} projected starting points.</li>}
+        {best && best.known_ros_delta > 0 && <li>Best add/drop found: add <b>{best.add.name}</b> ({best.add.position}), drop <b>{best.drop.name}</b>: {signed(best.ros_delta ?? best.known_ros_delta)} projected starting points over the rest of the season (reg {signed(best.regular_season_delta)} · playoffs {signed(best.playoff_delta)}).</li>}
         {closest && <li>Closest remaining matchup: week {closest.weeks?.join("–")} {closest.home ? "vs" : "@"} {closest.opponent_name}, projected margin {signed(closest.projected_margin)}{closest.close ? " (close)" : ""}.</li>}
         <li>Playoff race: now {rec(race.standing_now.record)}{race.standing_now.rank ? ` #${race.standing_now.rank}` : ""}, projected {rec(race.standing_projected.record)}{race.standing_projected.rank ? ` #${race.standing_projected.rank}` : ""} ({race.standing_projected.status?.replace("_", " ") ?? "no cutline"}) · <Link href={`/playoff-race?team=${d.team.team_id}`}>open the Playoff Race Lab</Link></li>
       </ul>
@@ -221,8 +221,8 @@ function Positions({ d, phase }: { d: TeamValue; phase: TvPhase }) {
                   </td>
                   <td>{st.rank !== null ? <Badge value={`#${st.rank} of ${st.teams_ranked}`} tone={st.rank <= 3 ? "good" : st.rank > st.teams_ranked - 3 ? "bad" : ""} /> : <span className="faint">—</span>}</td>
                   <td className="wrap" style={{ minWidth: 220 }}>{loss ? <>
-                    <PlayerLink id={loss.espn_player_id} name={loss.name} />: lineup loses <b>{pts(loss.lineup_points_lost ?? loss.known_lineup_points_lost)}</b>
-                    {loss.recovered_by_roster !== null && <span className="faint"> (roster recovers {pts(loss.recovered_by_roster)} of his {pts(loss.own_started_points)})</span>}
+                    <PlayerLink id={loss.espn_player_id} name={loss.name} />: lineup loses <b>{loss.lineup_points_lost_by_phase[phase] !== null ? pts(loss.lineup_points_lost_by_phase[phase]) : <span title="Incomplete weeks in this window">known {pts(loss.known_lineup_points_lost)} (all weeks)</span>}</b>
+                    {phase === "all" && loss.recovered_by_roster !== null && <span className="faint"> (roster recovers {pts(loss.recovered_by_roster)} of his {pts(loss.own_started_points)})</span>}
                     {loss.fill_ins.length > 0 && <div className="faint" style={{ fontSize: 11 }}>covered by {loss.fill_ins.map((f) => `${f.name} (${f.weeks.length} wk)`).join(", ")}</div>}
                   </> : <span className="faint">no starter</span>}</td>
                 </tr>
@@ -241,6 +241,7 @@ function Positions({ d, phase }: { d: TeamValue; phase: TvPhase }) {
 function Strip({ p, weeks }: { p: TvPlayer; weeks: number[] }) {
   const started = new Set(p.weeks_started);
   const bench = new Map(p.bench.map((b) => [b.week, b]));
+  const weekly = new Map(p.weekly.map((x) => [x.week, x]));
   return (
     <svg width={weeks.length * 9} height={12} role="img" aria-label={`Started ${p.weeks_started.length} of ${weeks.length} weeks`}>
       {weeks.map((w, i) => {
@@ -248,7 +249,10 @@ function Strip({ p, weeks }: { p: TvPlayer; weeks: number[] }) {
         const fill = started.has(w) ? AHEAD : b?.code === "ir" ? "var(--warn)" : b?.code === "no_projection" ? "none" : NEUTRAL;
         return (
           <rect key={w} x={i * 9} y={1} width={7} height={10} rx={2} fill={fill} stroke={fill === "none" ? NEUTRAL : "none"} opacity={started.has(w) ? 1 : 0.55}>
-            <title>{`Week ${w}: ${started.has(w) ? "starts" : b ? b.text : "bench"}`}</title>
+            <title>{`Week ${w}: ${started.has(w) ? "starts" : b ? b.text : "bench"} · lineup marginal ${(() => {
+              const m = weekly.get(w);
+              return m ? (m.marginal !== null ? m.marginal.toFixed(1) : `known ${m.known_marginal.toFixed(1)} (incomplete week)`) : "—";
+            })()}`}</title>
           </rect>
         );
       })}
@@ -266,7 +270,7 @@ function Marginals({ d, phase }: { d: TeamValue; phase: TvPhase }) {
       <div className="table-wrap">
         <table>
           <thead><tr><th>Player</th><th className="num">ESPN projected</th><th className="num">Lineup marginal</th><th className="num">Reg / playoff</th>
-            <th>Starts (blue) by week</th><th className="num">Starts / bench</th><th>Context</th></tr></thead>
+            <th title="Hover a week for its lineup marginal points">Starts (blue) by week</th><th className="num">Starts / bench</th><th>Context</th></tr></thead>
           <tbody>
             {rows.map((p) => {
               const raw = p.espn_projected[phase];

@@ -373,6 +373,8 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
             removal.append({"espn_player_id": pid, "name": pm["name"], "weeks_in_slot": sorted(
                 w["week"] for w in base["weeks"] for a in w["assignment"] if a["slot"] == g and a["player_id"] == pid),
                 "lineup_points_lost": loss, "known_lineup_points_lost": pm["marginal"]["known_all"],
+                "lineup_points_lost_by_phase": {"all": loss, "regular": pm["marginal"]["regular"],
+                                                "playoff": pm["marginal"]["playoff"]},
                 "own_started_points": pm["started_points"],
                 "recovered_by_roster": None if loss is None else r(pm["started_points"] - loss),
                 "fill_ins": [{"espn_player_id": q, "name": names.get(q), "weeks": ws} for q, ws in sorted(fill.items())]})
