@@ -24,7 +24,7 @@ import json
 from ..core import Episode, canonical_json, read_json, run_stage, sha256_bytes, write_json
 from .script import PLACEHOLDER, WORDS_PER_SECOND, fill
 
-VERSION = 5
+VERSION = 6
 
 UNIT = {"offense_pct": "snaps", "target_share": "targets", "air_yards_share": "air yards",
         "backfield_rush_share": "running back carries"}
@@ -38,12 +38,18 @@ HOOKS = {
     "warning_targets": "Don't wait for targets to notice what happened to {name}.",
     "backfield": "This backfield changed more than the box score shows.",
     "warning_down": "The role is shrinking for {name}.",
+    "fill_in_question": "Is {name}'s new role here to stay?",
+    "fill_in_why": "{name}'s role jumped. The reason matters more than the number.",
+    "displaced": "{name}'s role shrank, and there's a reason.",
 }
 ANGLE_HOOKS = {
     "expansion": ["number_first", "question_up", "contrarian"],
     "unresolved": ["warning_targets", "number_first", "question_up"],
     "takeover": ["backfield", "number_first", "contrarian"],
     "contraction": ["warning_down", "number_first", "question_down"],
+    "fill_in": ["fill_in_question", "number_first", "fill_in_why"],
+    "held": ["number_first", "question_up", "contrarian"],
+    "displaced": ["displaced", "number_first", "question_down"],
 }
 # Hooks that never name the player: the reveal must.
 NAMELESS = {"backfield"}
@@ -65,10 +71,31 @@ VERDICTS = {
                  "One backfield, one role. The question now is whether it holds."],
     "contraction": ["Roles shrink before box scores do. This one already has.",
                     "Next week tells us whether he wins that role back."],
+    "fill_in": ["The role is real while {tm} is out. The question is what happens when he's back.",
+                "Use the role while it lasts, and check {tm}'s status before you count on it."],
+    # When the teammate is practicing fully or off the report, he may play this week: say so.
+    "fill_in_ir": ["With {tm} on injured reserve, this role is his for now.",
+                   "{tm} is on injured reserve. Until he's back, this is the role to use."],
+    "fill_in_returning": ["If {tm} plays this week, this role gets tested right away.",
+                          "Check {tm}'s status before you count on this role."],
+    "held": ["That's a role change, not a fill-in.", "{tm} came back, and the role stayed."],
+    "displaced": ["That's what a returning teammate does to a role. The box score won't show it.",
+                  "The role shrank when {tm} came back. Expect that while he's on the field."],
+}
+# Injury context, only ever from the usage data (who missed games) and the official injury report / roster
+# status (why, and where he stands now). Reasons and statuses are claims, never typed by hand.
+TEAMMATE = {
+    "fill_in": ["Here's why: {tm} missed {missed}{with_reason}.",
+                "Before that, {tm} had {tm_role} of the {team}' {tm_unit}.",
+                "Right now, {tm} is {status}."],
+    "held": ["{tm} missed {missed}{with_reason}, then came back in {back_week}.",
+             "And {name}'s role held with him back."],
+    "displaced": ["{tm} is back. He missed {missed}{with_reason}.",
+                  "Since returning, he has {tm_role} of the {team}' {tm_unit}."],
 }
 PLAYOFF = "Role first, schedule second: in {weeks} he gets {opponents}. So far this season, that's {summary}."
 CTA_NO_SITE = ["Follow for the next usage signal.",
-               "I'm building the full usage dashboard now. Follow to see it when it launches."]
+               "The full usage dashboard is coming. Follow to see it first."]
 CTA_SITE = "The full chart is in the first link on my channel."
 
 TITLES = {
@@ -79,6 +106,11 @@ TITLES = {
                  "Don't Evaluate {name} by the Box Score"],
     "contraction": ["The Role Is Shrinking for {name}", "The {Stat} Change Behind {name}",
                     "One Number I'm Watching on {name}"],
+    "fill_in": ["Is {name}'s Role Real or a Fill-In?", "{name} Is Filling In for {tm}",
+                "The {Stat} Change Behind {name}"],
+    "held": ["{name}'s Role Survived {tm}'s Return", "{name}'s Role Just Changed", "The {Stat} Change Behind {name}"],
+    "displaced": ["{tm} Is Back. {name}'s Role Shrank.", "The Role Is Shrinking for {name}",
+                  "The {Stat} Change Behind {name}"],
 }
 
 
@@ -87,6 +119,11 @@ def ph(cid: str) -> str:
 
 
 def angle_for(p: dict) -> str:
+    tm = p.get("teammate")
+    if tm and tm["kind"] == "vacated":
+        return "held" if tm["returned"] else "fill_in"
+    if tm and tm["kind"] == "returned":
+        return "displaced"
     if p["role"] == "faller":
         return "contraction"
     lead = p["metrics"][0]["column"]
@@ -138,45 +175,82 @@ def context_sentence(p: dict, angle: str, snap_recent: float | None) -> str:
 
 def compose(facts: dict, claims: dict, seed: str, used: dict[str, list[str]], cta_url: str = "",
             runway: bool = False) -> tuple[list[dict], list[str], dict]:
-    """Return (segments, title templates, structure) for the single player in facts.json."""
+    """Return (segments, title templates, structure) for the single player in facts.json.
+
+    One sentence per segment, each with its own visual, so the picture changes every few seconds."""
     p = facts["players"][0]
     lead = p["metrics"][0]
+    tm = p.get("teammate")
     angle = angle_for(p)
     hook_family = choose(ANGLE_HOOKS[angle], used.get("hook", []), seed)
     evidence_i = choose([str(i) for i in range(len(EVIDENCE))], used.get("evidence", []), seed)
-    verdicts = [str(i) for i, v in enumerate(VERDICTS[angle])
+    verdict_key = angle
+    if angle == "fill_in":
+        code, _, detail = claims[tm["status"]]["value"]
+        if code == "ir":
+            verdict_key = "fill_in_ir"
+        elif code == "none" or detail == "Full Participation in Practice":
+            verdict_key = "fill_in_returning"
+    verdicts = [str(i) for i, v in enumerate(VERDICTS[verdict_key])
                 if not (hook_family == "warning_down" and "shrink" in v)]     # never say it twice
     verdict_i = choose(verdicts, used.get("verdict", []), seed)
     cta_i = choose([str(i) for i in range(len(CTA_NO_SITE))], used.get("cta", []), seed)
     team = ph(p["team_name"])
+    pid = p["gsis_id"]
 
-    hook = HOOKS[hook_family].format(name=p["name"], stat=lead["label"])
-    reveal = REVEAL.format(who=p["name"] if hook_family in NAMELESS else "He", before=ph(lead["baseline"]),
-                           now=ph(lead["recent"]), team=team, unit=UNIT[lead["column"]],
-                           recent=ph(p["recent_games"]), earlier=ph(p["baseline_games"]))
-    snaps = next((m for m in p["metrics"] if m["column"] == "offense_pct"), None)
-    snap_recent = claims[snaps["recent"]]["value"] if snaps else None
-    context = [context_sentence(p, angle, snap_recent), VOLUME[p["volume"]["label"]].format(v=ph(p["volume"]["recent"]))]
+    segs: list[tuple[str, str, dict]] = [
+        ("hook", HOOKS[hook_family].format(name=p["name"], stat=lead["label"]),
+         {"type": "hero_stat", "player": pid, "metric": 0}),
+        ("reveal", REVEAL.format(who=p["name"] if hook_family in NAMELESS else "He", before=ph(lead["baseline"]),
+                                 now=ph(lead["recent"]), team=team, unit=UNIT[lead["column"]],
+                                 recent=ph(p["recent_games"]), earlier=ph(p["baseline_games"])),
+         {"type": "usage_bars", "player": pid, "metric": 0, "checks": False}),
+    ]
+    volume = ("volume", VOLUME[p["volume"]["label"]].format(v=ph(p["volume"]["recent"])),
+              {"type": "volume_card", "player": pid})
+    if tm:
+        fmt = {"tm": tm["name"], "name": p["name"], "missed": ph(tm["missed"]), "team": team,
+               "with_reason": f" with {ph(tm['reason'])}" if "reason" in tm else "",
+               "tm_role": ph(tm["role"]), "tm_unit": tm["unit"], "status": ph(tm["status"]),
+               "back_week": ph(tm["back_week"]) if "back_week" in tm else ""}
+        lines = [t.format(**fmt) for t in TEAMMATE[angle]]
+        if angle == "fill_in":
+            segs += [("why", lines[0], {"type": "teammate_timeline", "player": pid, "phase": 1}),
+                     ("teammate_role", lines[1], {"type": "teammate_timeline", "player": pid, "phase": 2}),
+                     ("status", lines[2], {"type": "status_card", "player": pid})]   # no volume: time is short
+        elif angle == "held":
+            segs += [("why", lines[0], {"type": "teammate_timeline", "player": pid, "phase": 1}),
+                     ("held", lines[1], {"type": "usage_bars", "player": pid, "metric": 0, "checks": True}), volume]
+        else:
+            segs += [("why", lines[0], {"type": "teammate_timeline", "player": pid, "phase": 1}),
+                     ("teammate_role", lines[1], {"type": "teammate_timeline", "player": pid, "phase": 2})]
+    else:
+        snaps = next((m for m in p["metrics"] if m["column"] == "offense_pct"), None)
+        snap_recent = claims[snaps["recent"]]["value"] if snaps else None
+        segs.append(("evidence", EVIDENCE[int(evidence_i)],
+                     {"type": "usage_bars", "player": pid, "metric": 0, "checks": True}))
+        ctx = context_sentence(p, angle, snap_recent)
+        if ctx:
+            segs.append(("context", ctx, {"type": "stat_compare", "player": pid}))
+        segs.append(volume)
     if len(claims[p["context"]["qbs_recent"]]["value"]) == 2:
-        context.append(QB_CHANGE.format(qbs=ph(p["context"]["qbs_recent"])))
-
-    segs = [("hook", f"{hook} {reveal}", {"type": "hero_stat", "player": p["gsis_id"], "metric": 0}),
-            ("evidence", EVIDENCE[int(evidence_i)], {"type": "usage_bars", "player": p["gsis_id"], "metric": 0}),
-            ("context", " ".join(c for c in context if c), {"type": "support_card", "player": p["gsis_id"]})]
+        segs.append(("qb", QB_CHANGE.format(qbs=ph(p["context"]["qbs_recent"])), {"type": "qb_card", "player": pid}))
     if runway:
         segs.append(("playoff", PLAYOFF.format(weeks=ph(facts["episode"]["playoff_weeks"]),
                                                opponents=ph(p["playoff"]["opponents"]),
                                                summary=ph(p["playoff"]["summary"])),
-                     {"type": "playoff_tiles", "player": p["gsis_id"]}))
-    segs.append(("verdict", VERDICTS[angle][int(verdict_i)], {"type": "takeaway_card", "angle": angle}))
+                     {"type": "playoff_tiles", "player": pid}))
+    segs.append(("verdict", VERDICTS[verdict_key][int(verdict_i)].format(tm=tm["name"] if tm else ""),
+                 {"type": "takeaway_card", "angle": angle}))
     segs.append(("cta", CTA_SITE if cta_url else CTA_NO_SITE[int(cta_i)], {"type": "follow_card"}))
 
     stat_cap = lead["label"].title()
-    titles = [t.format(name=p["name"], Stat=stat_cap) for t in TITLES[angle]]
-    out = [{"id": f"s{i + 1:02d}", "section": sec, "player": p["gsis_id"] if sec != "cta" else None,
+    titles = [t.format(name=p["name"], Stat=stat_cap, tm=tm["name"] if tm else "") for t in TITLES[angle]]
+    out = [{"id": f"s{i + 1:02d}", "section": sec, "player": pid if sec != "cta" else None,
             "text_template": text, "shot_spec": shot} for i, (sec, text, shot) in enumerate(segs)]
-    structure = {"angle": angle, "hook": hook_family, "evidence": evidence_i, "verdict": verdict_i,
-                 "cta": "site" if cta_url else cta_i, "primary_metric": lead["column"], "runway": runway}
+    structure = {"angle": angle, "verdict_set": verdict_key, "hook": hook_family, "evidence": evidence_i, "verdict": verdict_i,
+                 "cta": "site" if cta_url else cta_i, "primary_metric": lead["column"], "runway": runway,
+                 "teammate": tm["name"] if tm else None}
     return out, titles, structure
 
 

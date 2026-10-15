@@ -16,12 +16,12 @@ from collections import defaultdict
 from statistics import mean, median
 
 from ..core import STUDIO_ROOT, Episode, read_json, run_stage, write_json
-from ..numbers import render
+from ..numbers import render, round_half_up
 
 sys.path.insert(0, str(STUDIO_ROOT.parent / "backend"))
 from app.analytics.trends import compute_trend, composite_trend  # noqa: E402  (pure stdlib module)
 
-VERSION = 2
+VERSION = 5
 PLAYOFF_WEEKS = [15, 16, 17]
 
 # (metric column, label, trend threshold). Thresholds for offense_pct/target_share/backfield_rush_share
@@ -71,8 +71,11 @@ def evaluate_claim(snap: dict, src: dict):
     if kind == "usage_mean":
         return mean(_usage_values(snap, src["gsis_id"], src["column"], src["weeks"]))
     if kind == "usage_delta":
-        return (mean(_usage_values(snap, src["gsis_id"], src["column"], src["recent_weeks"]))
-                - mean(_usage_values(snap, src["gsis_id"], src["column"], src["baseline_weeks"])))
+        # The change between the two percentages AS SHOWN (each rounded to a whole percent), so the
+        # on-screen arithmetic always adds up: 68% -> 65% is -3 pts, never -4 from unrounded means.
+        recent = mean(_usage_values(snap, src["gsis_id"], src["column"], src["recent_weeks"]))
+        base = mean(_usage_values(snap, src["gsis_id"], src["column"], src["baseline_weeks"]))
+        return float(round_half_up(recent * 100) - round_half_up(base * 100)) / 100
     if kind == "usage_value":
         vals = _usage_values(snap, src["gsis_id"], src["column"], [src["week"]])
         return vals[0]
@@ -126,6 +129,25 @@ def evaluate_claim(snap: dict, src: dict):
             if opp != "bye":
                 grades.append(evaluate_claim(snap, {"kind": "defense_band", "team": opp, "rank_key": src["rank_key"]}))
         return grade_summary(grades)
+    if kind == "absent_weeks":
+        played = {r["week"] for r in snap["tables"]["player_week_usage"] if r["gsis_id"] == src["gsis_id"]}
+        games = _team_games(snap, src["team"])
+        return [w for w in src["weeks"] if w in games and w not in played]
+    if kind == "absence_reason":
+        rows = [i for i in snap["tables"]["nfl_injuries"] if i["gsis_id"] == src["gsis_id"]
+                and i["week"] in src["weeks"] and i["report_primary_injury"]]
+        return f"a {rows[-1]['report_primary_injury'].lower()} injury" if rows else None
+    if kind == "player_status":
+        week = src["week"]
+        if any(r["gsis_id"] == src["gsis_id"] and r["week"] == week and r["status"] == "RES"
+               for r in snap["tables"]["nfl_rosters_weekly"]):
+            return ["ir", week, ""]
+        rep = [i for i in snap["tables"]["nfl_injuries"] if i["gsis_id"] == src["gsis_id"] and i["week"] == week]
+        if rep and rep[-1]["report_status"]:
+            return ["designation", week, rep[-1]["report_status"]]
+        if rep and rep[-1]["practice_status"]:
+            return ["practice", week, rep[-1]["practice_status"]]
+        return ["none", week, ""]
     if kind == "week_value":
         return src["week"]
     if kind == "episode_week":
@@ -225,7 +247,8 @@ def select_players(snap: dict, n_risers: int, n_fallers: int, max_per_position: 
     out_now = {i["gsis_id"] for i in snap["tables"]["nfl_injuries"]
                if i["week"] == week and i["report_status"] in EXCLUDE_STATUSES}
     # A usage drop next to an injury designation is an injury story, not a role story: skip it.
-    on_report = {i["gsis_id"] for i in snap["tables"]["nfl_injuries"] if i["report_status"]}
+    on_report = {i["gsis_id"] for i in snap["tables"]["nfl_injuries"]
+                 if i["report_status"] and i["week"] >= week - 1}
     candidates = {"riser": [], "faller": []}
     for gsis_id, rows in _player_series(snap).items():
         position = rows[-1]["position"]
@@ -366,6 +389,88 @@ def player_facts(book: ClaimBook, snap: dict, entry: dict, role: str) -> dict:
     return facts
 
 
+# Whose role a story player could be absorbing (or losing back to): same position group, same team.
+TEAMMATE_GROUP = {"WR": ("WR", "TE"), "TE": ("WR", "TE"), "RB": ("RB",)}
+TEAMMATE_ROLE = {"WR": ("target_share", 0.12, "targets"), "TE": ("target_share", 0.12, "targets"),
+                 "RB": ("backfield_rush_share", 0.30, "running back carries")}
+# Committee backs rarely clear 40% of snaps even with a real role.
+TEAMMATE_MIN_SNAPS = {"WR": 0.40, "TE": 0.40, "RB": 0.30}
+
+
+def teammate_event(snap: dict, p: dict) -> dict | None:
+    """The injury context a role change needs.
+
+    Riser: a teammate who held a real role in the earlier window and MISSED games in the recent window (no
+    snaps while the team played) is a vacated role; the riser may only be filling in.
+    Faller: a teammate who missed games in the earlier window and is back with a real role in the recent window
+    took his role back.
+    Missing a game is read from the usage data itself (the team played, he had no snaps); the reason and the
+    current status come from the official injury report and weekly roster status."""
+    col, floor, unit = TEAMMATE_ROLE[p["position"]]
+    rows = defaultdict(dict)
+    for r in snap["tables"]["player_week_usage"]:
+        if r["team"] == p["team"] and r["position"] in TEAMMATE_GROUP[p["position"]] and r["gsis_id"] != p["gsis_id"]:
+            rows[r["gsis_id"]][r["week"]] = r
+    games = _team_games(snap, p["team"])
+    best = None
+    for gid, by_week in rows.items():
+        base = [w for w in p["baseline_weeks"] if w in by_week]
+        rec = [w for w in p["recent_weeks"] if w in by_week]
+        missed_recent = [w for w in p["recent_weeks"] if w in games and w not in by_week]
+        missed_base = [w for w in p["baseline_weeks"] if w in games and w not in by_week]
+        ev = None
+        if p["role"] == "riser" and base and missed_recent:
+            role = median(by_week[w][col] or 0 for w in base)
+            snaps = median(by_week[w]["offense_pct"] or 0 for w in base)
+            if role >= floor and snaps >= TEAMMATE_MIN_SNAPS[p["position"]]:
+                ev = {"kind": "vacated", "gsis_id": gid, "role_weeks": base, "missed_weeks": p["recent_weeks"],
+                      "returned": p["recent_weeks"][-1] in by_week, "strength": role}
+        elif p["role"] == "faller" and rec == p["recent_weeks"] and missed_base:
+            role = median(by_week[w][col] or 0 for w in rec)
+            if role >= floor:
+                ev = {"kind": "returned", "gsis_id": gid, "role_weeks": rec, "missed_weeks": p["baseline_weeks"],
+                      "returned": True, "strength": role}
+        if ev is None:
+            continue
+        if best is None or ev["strength"] > best["strength"]:
+            best = ev
+    if best:
+        best.update(column=col, unit=unit)
+    return best
+
+
+def teammate_facts(book: "ClaimBook", snap: dict, p: dict) -> dict | None:
+    ev = teammate_event(snap, p)
+    if not ev:
+        return None
+    names = {x["gsis_id"]: x["display_name"] for x in snap["tables"]["nfl_players"]}
+    gid, team = ev["gsis_id"], p["team"]
+    absent_src = {"kind": "absent_weeks", "team": team, "gsis_id": gid, "weeks": ev["missed_weeks"]}
+    missed = evaluate_claim(snap, absent_src)
+    out = {"kind": ev["kind"], "gsis_id": gid, "name": names.get(gid, gid), "returned": ev["returned"],
+           "unit": ev["unit"], "column": ev["column"],
+           "missed": book.add(f"weeks {names.get(gid, gid)} missed", "weeks_list", absent_src, player=gid, team=team),
+           "role": book.add(f"{names.get(gid, gid)}'s {ev['column'].replace('_', ' ')} "
+                            f"{'before he missed time' if ev['kind'] == 'vacated' else 'since he returned'}", "pct",
+                            {"kind": "usage_mean", "gsis_id": gid, "column": ev["column"], "weeks": ev["role_weeks"]},
+                            player=gid, team=team),
+           "status": book.add(f"{names.get(gid, gid)}'s latest availability", "status",
+                              {"kind": "player_status", "gsis_id": gid, "week": snap["week"]}, player=gid, team=team),
+           # A list, not a {week: value} dict: JSON would turn the int week keys into strings.
+           "series": sorted(({"week": r["week"], "value": r[ev["column"]]} for r in snap["tables"]["player_week_usage"]
+                             if r["gsis_id"] == gid), key=lambda x: x["week"]),
+           "missed_values": missed}
+    reason_src = {"kind": "absence_reason", "gsis_id": gid, "weeks": missed}
+    if evaluate_claim(snap, reason_src):
+        out["reason"] = book.add(f"why {names.get(gid, gid)} missed time (injury report)", "text", reason_src,
+                                 player=gid, team=team)
+    if ev["kind"] == "vacated" and ev["returned"]:
+        back = [w for w in p["recent_weeks"] if w not in missed]
+        out["back_week"] = book.add(f"week {names.get(gid, gid)} returned", "week",
+                                    {"kind": "week_value", "week": back[0]}, team=team)
+    return out
+
+
 def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str],
                 only: str | None = None) -> dict:
     """Facts for the long-form episode, or (`only` = gsis_id) for one Short about that player."""
@@ -382,6 +487,8 @@ def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str],
     }
     players = ([player_facts(book, snap, e, "riser") for e in risers]
                + [player_facts(book, snap, e, "faller") for e in fallers])
+    for p in players:
+        p["teammate"] = teammate_facts(book, snap, p)
     return {"season": snap["season"], "week": snap["week"], "data_through_week": snap["data_through_week"],
             "snapshot_sha256": snap["content_sha256"], "episode": episode, "players": players,
             "claims": book.claims}

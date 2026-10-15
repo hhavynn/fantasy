@@ -39,7 +39,17 @@ One player, one protagonist stat, 30-45 s, 1080x1920. Built on the strategy in
 - **Script**: composed deterministically from data claims, no LLM. The angle comes from the data
   (expansion, unresolved, takeover, contraction) and sets the context line and verdict; hook families
   rotate least-recently-used across the channel so it never looks templated.
-- **Shot rhythm**: stat (fully drawn on frame 0) -> weekly bars -> one context card -> takeaway -> follow.
+- **Injury context**: a riser whose teammate (same position group, a real role before) missed the recent
+  games is a *fill-in*, and the Short says so: who missed which weeks, why (official injury report), the
+  role he held, and his status this week (IR, game designation or practice participation). The verdict
+  follows that status. A teammate back in the latest game with the role intact makes a *held* story; a
+  faller whose teammate returned is *displaced*. Missed games come from the usage data itself (the team
+  played, he had no snaps); reasons and statuses only from the injury report and roster status.
+- **Shot rhythm**: one sentence per beat, each with its own visual: stat (fully drawn on frame 0) ->
+  weekly bars (checkmarks on each game the move held) -> teammate timeline (OUT weeks) -> status card ->
+  stat compare / volume -> takeaway -> follow. A progress bar and a drifting glow keep every frame moving;
+  numbers in captions are highlighted. Changes are computed from the displayed percentages, so the
+  on-screen arithmetic always adds up.
   From week 11 a "role first, schedule second" Weeks 15-17 beat joins.
 - **CTA**: "Follow for the next usage signal" until the site exists; then "the first link on my channel"
   (links in Shorts descriptions are not clickable).

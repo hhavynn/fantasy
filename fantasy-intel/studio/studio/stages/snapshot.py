@@ -33,7 +33,7 @@ DEFENSE_CONTEXT_COLUMNS = (
 
 # Allow-list: the snapshot may only read these tables.
 TABLES = ("player_week_usage", "nfl_players", "nfl_schedules", "team_context", "defense_context",
-          "nfl_injuries", "sync_runs")
+          "nfl_injuries", "nfl_rosters_weekly", "sync_runs")
 
 
 class StaleDataError(RuntimeError):
@@ -79,9 +79,15 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
     if not team_ctx or not defense_ctx:
         raise StaleDataError(f"team/defense context is not computed through week {data_week}; "
                              "run scripts/compute_analytics.py")
-    injuries = _rows(con, """select gsis_id, week, report_status from {nfl_injuries}
-                             where season = ? and week in (?, ?) and gsis_id in (select unnest(?))
-                             order by gsis_id, week""", [season, week - 1, week, ids])
+    # The whole season to date (and the episode week's report so far): who missed games, why, and where a
+    # returning player stands this week.
+    injuries = _rows(con, """select gsis_id, team, week, report_status, report_primary_injury, practice_status
+                             from {nfl_injuries}
+                             where season = ? and week <= ? and gsis_id in (select unnest(?))
+                             order by gsis_id, week""", [season, week, ids])
+    rosters = _rows(con, """select gsis_id, team, week, status from {nfl_rosters_weekly}
+                            where season = ? and week <= ? and status <> 'ACT' and gsis_id in (select unnest(?))
+                            order by gsis_id, week""", [season, week, ids])
     sync = _rows(con, """select run_id, finished_at from {sync_runs} where source = 'nfl' and status = 'ok'
                          order by finished_at desc limit 1""", [])
     return {
@@ -90,6 +96,7 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
         "tables": {
             "player_week_usage": usage, "nfl_players": players, "nfl_schedules": schedules,
             "team_context": team_ctx, "defense_context": defense_ctx, "nfl_injuries": injuries,
+            "nfl_rosters_weekly": rosters,
         },
     }
 

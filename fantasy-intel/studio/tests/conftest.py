@@ -54,7 +54,7 @@ def make_snapshot(week: int = 6) -> dict:
                 "ranks": {"pass_epa_allowed": r, "rush_epa_allowed": r, "te_target_share_allowed": r,
                           "rb_target_share_allowed": r}} for t, r in zip(TEAMS, [3, 30, 15, 24])]
     tables = {"player_week_usage": usage, "nfl_players": players, "nfl_schedules": _schedule(),
-              "team_context": team_ctx, "defense_context": defense, "nfl_injuries": []}
+              "team_context": team_ctx, "defense_context": defense, "nfl_injuries": [], "nfl_rosters_weekly": []}
     return {"season": 2026, "week": week, "data_through_week": week - 1, "source_sync": None, "tables": tables,
             "content_sha256": sha256_bytes(canonical_json(tables).encode())}
 

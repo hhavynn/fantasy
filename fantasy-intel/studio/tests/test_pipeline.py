@@ -76,3 +76,15 @@ def test_script_end_to_end_with_fake_llm(episode):
         assert set(seg["claims_used"]) <= set(claims)
     assert s["narration_segments"][-1]["section"] == "cta"
     assert {sh["type"] for sh in s["shots"]} >= {"hero_stat", "usage_chart", "context_card", "playoff_table"}
+
+
+def test_displayed_changes_add_up(episode):
+    """'68% -> 65%' must say '-3 pts', never a change computed from unrounded means."""
+    facts.run(episode)
+    f = read_json(episode.path("facts.json"))
+    claims = {c["id"]: c for c in f["claims"]}
+    for p in f["players"]:
+        for m in p["metrics"]:
+            before, now = (int(claims[m[k]]["display"].rstrip("%")) for k in ("baseline", "recent"))
+            change = claims[m["change"]]["display"].replace("−", "-").replace("+", "").replace(" pts", "")
+            assert int(change) == now - before, (m["label"], before, now, change)

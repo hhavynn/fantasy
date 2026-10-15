@@ -57,3 +57,5 @@ risers = 2
 fallers = 1
 # From this week a "role first, schedule second" Weeks 15-17 beat joins each Short.
 playoff_runway_from_week = 11
+# One sentence per beat: a shorter pause between beats keeps the pace up.
+segment_tail_silence = 0.18

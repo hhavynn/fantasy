@@ -25,8 +25,9 @@ from ..numbers import TEAM_NAMES, render
 from .assemble import LOUDNESS, _wrap_px, srt_time, time_chunks
 from .facts import FAVORABLE_RANK, TOUGH_RANK
 from .script import fill
+from .tts import tts_config
 
-VERSION = 5
+VERSION = 6
 W, H = 1080, 1920
 LEFT, RIGHT = 80, 1000
 CAPTION = {"font": "Inter-Black.ttf", "font_size": 64, "max_width_px": 860, "max_lines": 2, "center_y": 1450}
@@ -50,9 +51,19 @@ def mix(c1: str, c2: str, a: float) -> tuple[int, int, int]:
 
 
 class Frame:
-    def __init__(self):
+    def __init__(self, t: float = 0.0, color: str | None = None, progress: float | None = None):
         self.img = Image.new("RGB", (W, H), V.BG)
+        if color:
+            rgb, alpha = glow(color)
+            x = int(-250 + 260 * math.sin(t * 0.35))
+            y = int(380 + 220 * math.cos(t * 0.27))
+            self.img.paste(rgb, (x, y), alpha)
         self.d = ImageDraw.Draw(self.img)
+        if progress is not None:
+            # Thin progress bar along the top: motion on every frame, and a cue that the Short is short.
+            self.d.rounded_rectangle((LEFT, 150, RIGHT, 158), radius=4, fill="#1b222c")
+            self.d.rounded_rectangle((LEFT, 150, LEFT + (RIGHT - LEFT) * min(progress, 1), 158), radius=4,
+                                     fill=color or V.ACCENT)
 
     def text(self, xy, s, weight, size, color, anchor="la", t=1.0, rise=30):
         a = ease(t)
@@ -80,13 +91,20 @@ class ShortCards:
         self.p = self.facts["players"][0]
         self.color = V.POSITIVE if self.p["role"] == "riser" else V.NEGATIVE
         self.week = self.d(self.facts["episode"]["week"])
+        tm = self.p.get("teammate")
+        self.tm = tm
+        self.kicker = ("FILL-IN ROLE" if tm and tm["kind"] == "vacated" and not tm["returned"]
+                       else "RISER" if self.p["role"] == "riser" else "FALLER")
+        if self.kicker == "FILL-IN ROLE":
+            self.color = V.CAUTION
 
     def d(self, cid):
         return self.claims[cid]["display"]
 
     def header(self, f: Frame, t: float, kicker: str):
         p = self.p
-        f.text((LEFT, 200), f"{self.week.upper()} USAGE {kicker}", "bold", 34, self.color, t=t * 3)
+        label = f"{self.week.upper()} · {self.kicker}" if self.kicker == "FILL-IN ROLE" else f"{self.week.upper()} USAGE {kicker}"
+        f.text((LEFT, 200), label, "bold", 34, self.color, t=t * 3)
         size = f.fit(p["name"], "black", 84, RIGHT - LEFT)
         f.text((LEFT, 250), p["name"], "black", size, V.INK, t=t * 3 - 0.2)
         f.text((LEFT, 260 + size + 8), f"{p['position']} · {self.d(p['team_name'])}", "semibold", 40,
@@ -109,10 +127,13 @@ class ShortCards:
         f.text((W / 2 - 40, 1200), self.d(m["change"]), "bold", 46, self.color, "ma")
 
     def takeaway_card(self, f: Frame, t: float, shot: dict):
+        tm_last = (self.tm["name"].split()[-1] if self.tm else "").upper()
         headline = {"expansion": ["THE ROLE", "GOT BIGGER"], "unresolved": ["DO THE TARGETS", "FOLLOW?"],
-                    "takeover": ["DOES THE", "ROLE HOLD?"], "contraction": ["THE ROLE IS", "SHRINKING"]}[shot["angle"]]
+                    "takeover": ["DOES THE", "ROLE HOLD?"], "contraction": ["THE ROLE IS", "SHRINKING"],
+                    "fill_in": ["FILL-IN ROLE.", f"WATCH {tm_last}."], "held": ["THE ROLE", "HELD"],
+                    "displaced": [f"{tm_last} IS BACK.", "ROLE SHRANK."]}[shot["angle"]]
         m = self.p["metrics"][0]
-        self.header(f, 1.0, "RISER" if self.p["role"] == "riser" else "FALLER")
+        self.header(f, 1.0, self.kicker)
         for i, line in enumerate(headline):
             f.text((LEFT, 560 + i * 140), line, "black", f.fit(line, "black", 130, RIGHT - LEFT - 40),
                    self.color if i == 1 else V.INK, t=t * 6 + 0.2 - i * 0.3)
@@ -144,34 +165,21 @@ class ShortCards:
             f.text((x + bw / 2, y_base - h - 52), label, "bold", 36, V.INK, "ma", t=grow * 1.3 - 0.3, rise=0)
             f.text((x + bw / 2, y_base + 18), f"Wk {s['week']}", "semibold", 30, V.INK_MUTED, "ma", t=t * 4)
         f.d.line((x0, y_base, x1, y_base), fill=V.LINE, width=3)
+        if shot.get("checks"):
+            # "It showed up in every one of those games": tick each recent game as it is said.
+            for i, s_ in enumerate(series):
+                if s_["week"] in recent:
+                    k = sorted(recent).index(s_["week"])
+                    ct = ease((t - 0.3 - k * 0.45) * 3)
+                    if ct > 0:
+                        x, cy = x0 + i * (bw + gap) + bw / 2, y_base - 60
+                        r = 34 * ct
+                        f.d.ellipse((x - r, cy - r, x + r, cy + r), fill=V.INK)
+                        f.d.line((x - 15 * ct, cy, x - 4 * ct, cy + 12 * ct, x + 17 * ct, cy - 13 * ct),
+                                 fill=V.BG, width=7, joint="curve")
         legend_t = t * 3 - 1.2
         f.text((LEFT, 1300), f"Before: {self.d(m['baseline'])}", "bold", 40, V.INK_FAINT, t=legend_t)
         f.text((520, 1300), f"Now: {self.d(m['recent'])}", "bold", 40, self.color, t=legend_t - 0.2)
-
-    def support_card(self, f: Frame, t: float, shot: dict):
-        p = self.p
-        self.header(f, 1.0, "RISER" if p["role"] == "riser" else "FALLER")
-        rows = []
-        if len(p["metrics"]) > 1:
-            m = p["metrics"][1]
-            rows.append((m["label"].upper(), f"{self.d(m['baseline'])} → {self.d(m['recent'])}"))
-        vol_label = "TARGETS PER GAME" if "target" in p["volume"]["label"] else "DESIGNED RUNS PER GAME"
-        rows.append((f"{vol_label}, LAST {self.d(p['recent_games'])}", self.d(p["volume"]["recent"])))
-        y = 470
-        for i, (label, value) in enumerate(rows):
-            rt = t * 3.5 - i * 0.5
-            f.rect((LEFT, y, RIGHT - 60, y + 210), V.SURFACE, outline=V.LINE, width=2, t=rt)
-            f.text((LEFT + 36, y + 34), label, "bold", 30, V.INK_FAINT, t=rt)
-            f.text((LEFT + 36, y + 84), value, "black", f.fit(value, "black", 96, RIGHT - LEFT - 140), V.INK, t=rt)
-            y += 240
-        ctx = p["context"]
-        if len(self.claims[ctx["qbs_recent"]]["value"]) < 2:
-            return                       # the QB box only appears when the narration mentions a QB change
-        label, value = "STARTING QBS IN THAT STRETCH", self.d(ctx["qbs_recent"])
-        rt = t * 3.5 - len(rows) * 0.5
-        f.rect((LEFT, y, RIGHT - 60, y + 210), V.SURFACE, outline=V.LINE, width=2, t=rt)
-        f.text((LEFT + 36, y + 34), label, "bold", 30, V.INK_FAINT, t=rt)
-        f.text((LEFT + 36, y + 90), value, "black", f.fit(value, "black", 64, RIGHT - LEFT - 140), V.INK, t=rt)
 
     def playoff_tiles(self, f: Frame, t: float, shot: dict):
         p = self.p
@@ -194,6 +202,108 @@ class ShortCards:
                        "ra", t=rt)
                 f.text((RIGHT - 96, y + 150), g, "semibold", 28, V.BAND_COLOR[g], "ra", t=rt)
             y += 240
+
+    # ------------------------------------------------------------------------- context cards
+
+    def teammate_timeline(self, f: Frame, t: float, shot: dict):
+        """Week by week: the teammate's role (or OUT) above the player's protagonist stat. Phase 2 spotlights
+        the role the teammate held before he missed time."""
+        p, tm = self.p, self.tm
+        m = p["metrics"][0]
+        self.header(f, 1.0, self.kicker)
+        tc = t + 5 if shot.get("phase") == 2 else t      # phase 2 continues the same picture: no re-reveal
+        f.text((LEFT, 470), "Why the role changed", "bold", 46, V.INK, t=tc * 4)
+        weeks = [s_["week"] for s_ in m["series"]]
+        missed = set(tm["missed_values"])
+        n = len(weeks)
+        gap = 18
+        cw = (RIGHT - 60 - LEFT - gap * (n - 1)) / n
+        rows = [(tm["name"], tm["column"].replace("_", " "), {x["week"]: x["value"] for x in tm["series"]}, True),
+                (p["name"], m["label"], {s_["week"]: s_["value"] for s_ in m["series"]}, False)]
+        for r, (name, label, series, is_tm) in enumerate(rows):
+            y = 560 + r * 330
+            rt = tc * 4 - r * 0.4
+            f.text((LEFT, y), name, "black", f.fit(name, "black", 44, RIGHT - LEFT - 60), V.INK, t=rt)
+            f.text((LEFT, y + 56), label, "semibold", 30, V.INK_MUTED, t=rt)
+            for i, w in enumerate(weeks):
+                x = LEFT + i * (cw + gap)
+                ct = ease((tc - 0.15 - r * 0.25 - i * 0.12) * 3)
+                box = (x, y + 110, x + cw, y + 250)
+                f.text((x + cw / 2, y + 268), f"Wk {w}", "semibold", 26, V.INK_FAINT, "ma", t=ct)
+                if ct <= 0:
+                    continue
+                if is_tm and w in missed:
+                    f.rect(box, V.NEGATIVE, radius=14, t=ct)
+                    f.text((x + cw / 2, y + 180), "OUT", "black", 40, V.BG, "mm", t=ct, rise=0)
+                    continue
+                val = series.get(w)
+                if val is None:
+                    f.rect(box, V.SURFACE, radius=14, outline=V.LINE, width=2, t=ct)
+                    f.text((x + cw / 2, y + 180), "—", "bold", 36, V.INK_FAINT, "mm", t=ct, rise=0)
+                    continue
+                spotlight = shot.get("phase") == 2 and is_tm and w not in missed
+                hot = (not is_tm and w in p["recent_weeks"])
+                fill = self.color if hot else (V.ACCENT if spotlight else V.SURFACE_RAISED)
+                f.rect(box, fill, radius=14, outline=V.LINE, width=2, t=ct)
+                txt = V.BG if (hot or spotlight) else V.INK
+                f.text((x + cw / 2, y + 180), render("pct", val)[0], "black", 40, txt, "mm", t=ct, rise=0)
+        if shot.get("phase") == 2:
+            f.text((LEFT, 1250), f"Before missing time: {self.d(tm['role'])}", "bold", 44, V.ACCENT, t=t * 4 - 0.4)
+        elif "reason" in tm:
+            reason = self.d(tm["reason"])
+            f.text((LEFT, 1250), f"Out with {reason}", "bold", 44, V.NEGATIVE, t=t * 4 - 1.0)
+
+    def status_card(self, f: Frame, t: float, shot: dict):
+        tm = self.tm
+        code, week, detail = self.claims[tm["status"]]["value"]
+        big = {"ir": "INJURED RESERVE", "none": "NOT ON THE REPORT"}.get(code)
+        if code == "designation":
+            big = f"LISTED {detail.upper()}"
+        if code == "practice":
+            big = {"Did Not Participate In Practice": "NOT PRACTICING",
+                   "Limited Participation in Practice": "LIMITED IN PRACTICE",
+                   "Full Participation in Practice": "PRACTICING FULLY"}.get(detail, detail.upper())
+        color = V.NEGATIVE if code in ("ir", "designation") or "NOT" in big else V.CAUTION if "LIMITED" in big else V.POSITIVE
+        self.header(f, 1.0, self.kicker)
+        f.text((LEFT, 470), f"{tm['name']} right now".upper(), "bold", 40, V.INK_MUTED, t=t * 4)
+        words = big.split()
+        lines = [" ".join(words[:len(words) // 2 or 1]), " ".join(words[len(words) // 2 or 1:])] if len(words) > 1 else [big]
+        for i, line in enumerate(l for l in lines if l):
+            f.text((LEFT, 560 + i * 150), line, "black", f.fit(line, "black", 140, RIGHT - LEFT - 40), color,
+                   t=t * 5 - i * 0.3)
+        src = "NFL roster status" if code == "ir" else "Official injury report"
+        f.text((LEFT, 900), f"{src}, Week {week}", "semibold", 38, V.INK_FAINT, t=t * 4 - 0.8)
+
+    def stat_compare(self, f: Frame, t: float, shot: dict):
+        p = self.p
+        m = p["metrics"][1] if len(p["metrics"]) > 1 else p["metrics"][0]
+        self.header(f, 1.0, self.kicker)
+        f.text((LEFT, 470), m["label"].upper(), "black", 56, V.INK, t=t * 4)
+        for i, (lab, cid, col) in enumerate((("EARLIER", m["baseline"], V.INK_FAINT), ("RECENT", m["recent"], self.color))):
+            x = LEFT + i * 440
+            rt = t * 4 - 0.3 - i * 0.4
+            f.rect((x, 580, x + 400, 900), V.SURFACE, radius=24, outline=V.LINE, width=2, t=rt)
+            f.text((x + 200, 620), lab, "bold", 32, V.INK_FAINT, "ma", t=rt)
+            f.text((x + 200, 690), self.d(cid), "black", 130, col, "ma", t=rt)
+        f.text((LEFT, 960), f"Change: {self.d(m['change'])}", "bold", 46, self.color, t=t * 4 - 1.2)
+
+    def volume_card(self, f: Frame, t: float, shot: dict):
+        p = self.p
+        unit = "TARGETS A GAME" if "target" in p["volume"]["label"] else "DESIGNED RUNS A GAME"
+        self.header(f, 1.0, self.kicker)
+        f.text((W / 2 - 40, 520), self.d(p["volume"]["recent"]), "black", 300, V.INK, "ma", t=t * 4, rise=40)
+        f.text((W / 2 - 40, 880), unit, "black", 56, self.color, "ma", t=t * 4 - 0.3)
+        f.text((W / 2 - 40, 960), f"Last {self.d(p['recent_games'])} games", "semibold", 40, V.INK_MUTED, "ma",
+               t=t * 4 - 0.5)
+
+    def qb_card(self, f: Frame, t: float, shot: dict):
+        qbs = self.claims[self.p["context"]["qbs_recent"]]["value"]
+        self.header(f, 1.0, self.kicker)
+        f.text((LEFT, 470), "STARTING QBS IN THAT STRETCH", "bold", 36, V.INK_MUTED, t=t * 4)
+        for i, name in enumerate(qbs):
+            rt = t * 4 - 0.3 - i * 0.4
+            f.rect((LEFT, 560 + i * 200, RIGHT - 60, 730 + i * 200), V.SURFACE, radius=20, outline=V.LINE, width=2, t=rt)
+            f.text((LEFT + 40, 600 + i * 200), name, "black", f.fit(name, "black", 70, RIGHT - LEFT - 140), V.INK, t=rt)
 
     def follow_card(self, f: Frame, t: float, shot: dict):
         m = self.p["metrics"][0]
@@ -261,17 +371,36 @@ def caption_chunks_short(template: str, claims: dict) -> list[dict]:
 
 
 @lru_cache(maxsize=512)
-def caption_layer(text: str) -> Image.Image:
+def caption_layer(text: str, accent: str) -> Image.Image:
+    """Bold outlined caption; words carrying a number (88%, 19, Week 6) are drawn in the accent colour."""
     font = F("black", CAPTION["font_size"])
     lines = _wrap_px(text, font, CAPTION["max_width_px"])
     layer = Image.new("RGBA", (W, 260), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     lh = int(CAPTION["font_size"] * 1.18)
     y0 = 130 - lh * len(lines) / 2
+    space = d.textlength(" ", font=font)
     for i, line in enumerate(lines):
-        d.text((W / 2 - 40, y0 + i * lh + lh / 2), line, font=font, fill=V.INK, anchor="mm",
-               stroke_width=7, stroke_fill=(5, 7, 10))
+        words = line.split()
+        width = sum(d.textlength(w, font=font) for w in words) + space * (len(words) - 1)
+        x = W / 2 - 40 - width / 2
+        y = y0 + i * lh + lh / 2
+        for w in words:
+            color = accent if re.search(r"\d", w) else V.INK
+            d.text((x, y), w, font=font, fill=color, anchor="lm", stroke_width=7, stroke_fill=(5, 7, 10))
+            x += d.textlength(w, font=font) + space
     return layer
+
+
+@lru_cache(maxsize=4)
+def glow(color: str) -> tuple[Image.Image, Image.Image]:
+    """A soft radial glow in the story colour, drifted slowly behind every card so no frame is static."""
+    size = 1100
+    yy, xx = np.mgrid[0:size, 0:size]
+    r = np.sqrt((xx - size / 2) ** 2 + (yy - size / 2) ** 2) / (size / 2)
+    alpha = (np.clip(1 - r, 0, 1) ** 2.2 * 46).astype(np.uint8)
+    rgb = Image.new("RGB", (size, size), color)
+    return rgb, Image.fromarray(alpha, "L")
 
 
 # ------------------------------------------------------------------------------------------- run
@@ -282,7 +411,7 @@ def _run(ep: Episode) -> None:
     cards = ShortCards(ep)
     claims = cards.claims
     fps = ep.cfg["video"]["fps"]
-    tail = ep.cfg["tts"]["segment_tail_silence"]
+    tail = tts_config(ep)["segment_tail_silence"]
 
     beats, cues, offset, audio = [], [], 0.0, []
     for seg, shot in zip(script["narration_segments"], script["shots"]):
@@ -312,13 +441,14 @@ def _run(ep: Episode) -> None:
     for n in range(frames):
         t = n / fps
         beat = next((b for b in beats if b["start"] <= t < b["end"]), beats[-1])
-        f = Frame()
+        f = Frame(t, cards.color, t / offset)
         getattr(cards, beat["shot"]["type"])(f, t - beat["start"], beat["shot"])
         while ci + 1 < len(cues) and cues[ci + 1]["start"] <= t:
             ci += 1
         cue = cues[ci]
         if cue["start"] <= t < cue["end"]:
-            f.img.paste(caption_layer(cue["text"]), (0, CAPTION["center_y"] - 130), caption_layer(cue["text"]))
+            layer = caption_layer(cue["text"], cards.color)
+            f.img.paste(layer, (0, CAPTION["center_y"] - 130), layer)
         proc.stdin.write(f.img.tobytes())
     proc.stdin.close()
     if proc.wait():

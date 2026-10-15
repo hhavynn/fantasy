@@ -66,7 +66,7 @@ def synthesize(pipe, text: str, cfg: dict) -> tuple[np.ndarray, list[dict], list
 
 def _run(ep: Episode) -> None:
     script = read_json(ep.path("script.json"))
-    cfg = ep.cfg["tts"]
+    cfg = tts_config(ep)
     lexicon = load_pronunciations()
     pipe = make_pipeline(cfg)
     out_dir = ep.path("audio")
@@ -95,7 +95,14 @@ def _run(ep: Episode) -> None:
            f"{len(fallback_words)} words via espeak-ng fallback")
 
 
+def tts_config(ep: Episode) -> dict:
+    cfg = dict(ep.cfg["tts"])
+    if ep.fmt == "short":
+        cfg["segment_tail_silence"] = ep.cfg["shorts"]["segment_tail_silence"]
+    return cfg
+
+
 def run(ep: Episode) -> None:
     pron = PRONUNCIATIONS.read_text() if PRONUNCIATIONS.exists() else ""
-    run_stage(ep, "tts", VERSION, {"tts": ep.cfg["tts"], "pronunciations": pron},
+    run_stage(ep, "tts", VERSION, {"tts": tts_config(ep), "pronunciations": pron},
               ["script.json"], ["audio"], lambda: _run(ep))

@@ -135,6 +135,34 @@ def fmt_team(v) -> tuple[str, str]:
     return name, "Niners" if v == "SF" else name
 
 
+def fmt_weeks_list(v: list) -> tuple[str, str]:
+    """[4, 5] -> ('Weeks 4 and 5', 'Weeks four and five'); [4] -> ('Week 4', 'Week four')."""
+    v = [int(x) for x in v]
+    if len(v) == 1:
+        return f"Week {v[0]}", f"Week {int_words(v[0])}"
+    if v == list(range(v[0], v[-1] + 1)) and len(v) > 2:
+        return f"Weeks {v[0]}–{v[-1]}", f"Weeks {int_words(v[0])} through {int_words(v[-1])}"
+    return f"Weeks {_join([str(x) for x in v]).replace(',', '')}", f"Weeks {_join([int_words(x) for x in v]).replace(',', '')}"
+
+
+PRACTICE = {"Did Not Participate In Practice": "not practicing", "Limited Participation in Practice":
+            "limited in practice", "Full Participation in Practice": "practicing fully"}
+
+
+def fmt_status(v: list) -> tuple[str, str]:
+    """[code, week, detail] -> what follows "<player> is": the latest official word on his availability."""
+    code, week, detail = v[0], int(v[1]), v[2]
+    wd, ws = f"Week {week}", f"Week {int_words(week)}"
+    if code == "ir":
+        return "on injured reserve", "on injured reserve"
+    if code == "designation":
+        return f"listed {detail.lower()} for {wd}", f"listed {detail.lower()} for {ws}"
+    if code == "practice":
+        phrase = PRACTICE.get(detail, detail.lower())
+        return f"{phrase}, per the {wd} injury report", f"{phrase}, per the {ws} injury report"
+    return f"not on the {wd} injury report", f"not on the {ws} injury report"
+
+
 def fmt_opponents(v: list) -> tuple[str, str]:
     """['SEA', 'bye', 'SF'] -> ('the Seahawks, a bye and the 49ers', 'the Seahawks, a bye and the Niners')."""
     display = [("a bye" if t == "bye" else f"the {fmt_team(t)[0]}") for t in v]
@@ -153,7 +181,8 @@ def _join(items: list) -> str:
 
 FORMATTERS = {
     "pct": fmt_pct, "pp": fmt_pp, "signed_pct1": fmt_signed_pct1, "dec1": fmt_dec1, "int": fmt_int,
-    "ordinal": fmt_ordinal, "week": fmt_week, "team": fmt_team, "opponents": fmt_opponents, "weeks_range": fmt_weeks_range, "text": fmt_text,
+    "ordinal": fmt_ordinal, "week": fmt_week, "team": fmt_team, "opponents": fmt_opponents, "weeks_list": fmt_weeks_list,
+    "status": fmt_status, "weeks_range": fmt_weeks_range, "text": fmt_text,
 }
 
 
