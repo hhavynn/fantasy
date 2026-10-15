@@ -171,3 +171,47 @@ def test_motherduck_connect_supplies_home_when_empty(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     connection.connect_motherduck("fantasy_intel")
     assert seen["home"] == str(tmp_path)
+
+
+def test_replace_tables_updates_in_place(api_db, tmp_path):
+    """Publishing rewrites the target's tables without dropping the target database, so a reader
+    attached before the publish sees the new data on its next query."""
+    import duckdb
+    from app.db.publish import replace_tables
+
+    target = tmp_path / "hosted.duckdb"
+    reader_path = str(target)
+    con = duckdb.connect()
+    con.execute(f"ATTACH '{api_db}' AS src (READ_ONLY)")
+    con.execute(f"ATTACH '{reader_path}' AS hosted")
+    con.execute("CREATE TABLE hosted.main.gone (x INT)")          # left over from an older publish
+    con.execute("CREATE TABLE hosted.main.schema_meta (key VARCHAR, value VARCHAR)")
+    n = replace_tables(con, "src", "hosted", "2026-10-15T09:00:00")
+    src_tables = {r[0] for r in con.execute(
+        "SELECT table_name FROM duckdb_tables() WHERE database_name='src'").fetchall()}
+    hosted_tables = {r[0] for r in con.execute(
+        "SELECT table_name FROM duckdb_tables() WHERE database_name='hosted'").fetchall()}
+    assert n == len(src_tables) and hosted_tables == src_tables
+    for t in ("leagues", "sync_runs", "player_week_usage"):
+        assert con.execute(f"SELECT count(*) FROM hosted.{t}").fetchone() == \
+            con.execute(f"SELECT count(*) FROM src.{t}").fetchone()
+    stamp = "SELECT value FROM hosted.schema_meta WHERE key='published_at'"
+    assert con.execute(stamp).fetchone() == ("2026-10-15T09:00:00",)
+    replace_tables(con, "src", "hosted", "2026-10-15T10:00:00")      # same attachment, second publish
+    assert con.execute(stamp).fetchall() == [("2026-10-15T10:00:00",)]
+    con.close()
+
+
+def test_replace_tables_rolls_back_on_failure(api_db, tmp_path, monkeypatch):
+    import duckdb
+    from app.db import publish as pub
+
+    con = duckdb.connect()
+    con.execute(f"ATTACH '{api_db}' AS src (READ_ONLY)")
+    con.execute(f"ATTACH '{tmp_path / 'hosted.duckdb'}' AS hosted")
+    pub.replace_tables(con, "src", "hosted", "first")
+    monkeypatch.setattr(pub, "_ident", lambda name: '"no such table"' if name == "leagues" else '"' + name + '"')
+    with pytest.raises(duckdb.Error):
+        pub.replace_tables(con, "src", "hosted", "second")
+    assert con.execute("SELECT value FROM hosted.schema_meta WHERE key='published_at'").fetchone() == ("first",)
+    con.close()
