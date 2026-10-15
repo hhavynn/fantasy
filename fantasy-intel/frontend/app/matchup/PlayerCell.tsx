@@ -1,4 +1,5 @@
 import { PlayerLink } from "@/components/PlayerLink";
+import { OriginTag } from "@/components/ProjectionNotice";
 import { Badge, Pos } from "@/components/ui";
 import { num } from "@/lib/format";
 import { hasDesignation, type PlayerRow } from "@/lib/matchup";
@@ -19,6 +20,7 @@ export function PlayerCell({ row, align = "left", emptyReason = "No player is pr
       {row.pro_team ? <span className={styles.team3}>{row.pro_team}</span> : null}
       {row.bye ? <Badge value="BYE" tone="warn" title="His NFL team has no game this week" /> : null}
       {hasDesignation(row.injury) ? <Badge value={row.injury} /> : null}
+      <OriginTag origin={row.origin} ours />
     </span>
   );
 }

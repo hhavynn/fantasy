@@ -298,8 +298,11 @@ def test_live_participation_gives_unconditional_expected_points(live, monkeypatc
 
 
 def test_canonical_espn_systems_do_not_read_independent_projections():
-    """Lineups, trades, waivers, scores and ESPN projections must not depend on this research model."""
-    allowed = {"independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
+    """Lineups, trades, waivers, scores and ESPN projections must not depend on this research model.
+    The only path to it is the opt-in projection switch (analytics/projection_source.py, ESPN by
+    default), which only Start/Sit and Matchup import (test below)."""
+    allowed = {"projection_source.py",   # opt-in weekly source switch; SQL only, ESPN unless asked
+               "independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
                "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",
                "connection.py",   # connection.py: schema-version rebuild list only (like schema.sql)
                "promotion_tracker.py", "projection_promotion.py"}   # read-only promotion tracker
@@ -311,3 +314,18 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                        "forecast_backtest", "league_scoring", "analytics.participation", "from .participation",
                        "import participation", "promotion_tracker"):
             assert needle not in text, f"{f.relative_to(APP)} references {needle}"
+
+
+def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
+    import inspect
+
+    from app.analytics import matchup, projection_source, start_sit
+    from app.analytics.independent_projections import MODEL_VERSION
+
+    assert projection_source.MODEL_VERSION == MODEL_VERSION
+    assert inspect.signature(start_sit.load_start_sit_evaluation).parameters["source"].default == "espn"
+    assert inspect.signature(matchup.load_matchup).parameters["source"].default == "espn"
+    import re
+    imports = re.compile(r"from \.+(analytics\.)?projection_source import|import projection_source")
+    users = {f.relative_to(APP).as_posix() for f in APP.rglob("*.py") if imports.search(f.read_text())}
+    assert users == {"analytics/start_sit.py", "analytics/matchup.py"}

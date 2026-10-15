@@ -1,6 +1,7 @@
 // Pure presentation helpers for the matchup page and the Overview matchup card. They select, order and
 // compare numbers the backend already computed; nothing here is a new analytic.
 import type { Matchup, MatchupStatus, TeamSide } from "./matchup-types.ts";
+import type { ProjectionOrigin } from "./projection-source.ts";
 
 export type Basis = "actual" | "projected" | "known";
 
@@ -144,7 +145,13 @@ export type PlayerRow = {
   bye: boolean | null;
   /** Projected points, or actual points for a set lineup once the matchup has started. null = unknown. */
   value: number | null;
+  /** Where a projected value came from when the projection switch is on "Ours" (absent otherwise). */
+  origin?: ProjectionOrigin;
 };
+
+/** `origin` only for a projection with a known source, so ESPN-mode rows keep their exact shape. */
+const tagged = (origin: ProjectionOrigin | null | undefined, projected: boolean) =>
+  origin && projected ? { origin } : {};
 
 export const hasStarted = (status: MatchupStatus) => status === "in_progress" || status === "final";
 
@@ -173,12 +180,13 @@ export function lineupRows(side: TeamSide, view: LineupView, status: MatchupStat
   if (view === "projected") {
     return side.lineup.length === 0 ? null : side.lineup.map((s) => ({
       slot: s.slot, id: s.player_id, name: s.name, position: s.position, pro_team: s.pro_team,
-      injury: s.injury_status, bye: s.on_bye, value: s.points,
+      injury: s.injury_status, bye: s.on_bye, value: s.points, ...tagged(s.projection_origin, true),
     }));
   }
   return side.actual_lineup === null ? null : side.actual_lineup.map((p) => ({
     slot: p.slot, id: p.player_id, name: p.name, position: p.position, pro_team: p.pro_team,
     injury: p.injury_status, bye: p.on_bye, value: hasStarted(status) ? p.points : p.projected_points,
+    ...tagged(p.projection_origin, !hasStarted(status)),
   }));
 }
 
@@ -188,12 +196,13 @@ export function benchRows(side: TeamSide, view: LineupView, status: MatchupStatu
     if (side.lineup.length === 0) return null;
     return side.bench.map((b) => ({
       slot: "BE", id: b.player_id, name: b.name, position: b.position, pro_team: b.pro_team,
-      injury: b.injury_status, bye: b.on_bye, value: b.points,
+      injury: b.injury_status, bye: b.on_bye, value: b.points, ...tagged(b.projection_origin, true),
     }));
   }
   return side.actual_bench === null ? null : side.actual_bench.map((p) => ({
     slot: p.slot, id: p.player_id, name: p.name, position: p.position, pro_team: p.pro_team,
     injury: p.injury_status, bye: p.on_bye, value: hasStarted(status) ? p.points : p.projected_points,
+    ...tagged(p.projection_origin, !hasStarted(status)),
   }));
 }
 

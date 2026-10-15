@@ -3,10 +3,12 @@ import { Barlow_Condensed, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google
 import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
 import { MobileNav, NavGroups, SubNav } from "@/components/Nav";
+import { ProjectionSwitch } from "@/components/ProjectionSwitch";
 import { SyncPill } from "@/components/SyncPill";
 import { TableScroll } from "@/components/TableScroll";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { api } from "@/lib/api";
+import { getProjectionSource } from "@/lib/projection-source.server";
 import type { StatusPayload } from "@/lib/sync-status";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
@@ -23,7 +25,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const status = await api<NonNullable<StatusPayload>>("/api/status");
+  const [status, projection] = await Promise.all([api<NonNullable<StatusPayload>>("/api/status"), getProjectionSource()]);
   const s = status.data;
   return (
     // suppressHydrationWarning: the inline script below sets data-theme on <html> before React hydrates.
@@ -45,9 +47,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 </span>
               )}
               <CommandPalette />
+              <ProjectionSwitch value={projection} className="topbar-proj" />
               <ThemeSwitch className="topbar-theme" />
               <SyncPill status={s ?? null} />
-              <MobileNav />
+              <MobileNav projection={projection} />
             </div>
           </div>
           <SubNav />

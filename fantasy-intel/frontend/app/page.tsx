@@ -10,6 +10,8 @@ import { api } from "@/lib/api";
 import type { StartSitInput, WaiverInput } from "@/lib/action-items";
 import { num } from "@/lib/format";
 import { ordinal } from "@/lib/matchup";
+import { withSource } from "@/lib/projection-source";
+import { getProjectionSource } from "@/lib/projection-source.server";
 import type { Matchup } from "@/lib/matchup-types";
 import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import type { League, Move, Need, RosterPlayer, SyncInfo, Team } from "@/lib/types";
@@ -31,8 +33,9 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
   // Each section has its own source; one failing endpoint degrades only its own section. The week band's three
   // sources start now but are not awaited here: the band streams in behind the header, stat strip and roster.
-  const matchup = api<Matchup>("/api/matchup");
-  const startSit = api<StartSitInput>("/api/start-sit");
+  const projection = await getProjectionSource();
+  const matchup = api<Matchup>(withSource("/api/matchup", projection));
+  const startSit = api<StartSitInput>(withSource("/api/start-sit", projection));
   const waivers = api<{ players: WaiverInput[]; total: number }>("/api/waivers?view=BEST&limit=3");
   const res = await api<Overview>("/api/overview");
   const band = (
@@ -95,6 +98,12 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
           />
           <Stat label="Injury designations" value={o.injuries.length} note="on your roster" />
         </StatStrip>
+      )}
+
+      {projection === "ours" && (
+        <Notice tone="info" title="This week's matchup and lineup use Fantasy Intel projections">
+          Switched in the header (research model; K and D/ST keep ESPN&apos;s number). Waiver and rest-of-season numbers stay on ESPN.
+        </Notice>
       )}
 
       {band}

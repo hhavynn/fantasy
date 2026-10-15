@@ -101,12 +101,16 @@ def _on_bye(pro_team: str | None, playing: set[str]) -> bool | None:
     return pro_team not in playing
 
 
-def _projected_side(con, key: tuple, players_by_id: dict, playing: set[str]) -> dict:
-    rows = fetch_dicts(con, """
+def _projected_side(con, key: tuple, players_by_id: dict, playing: set[str], row: dict | None = None,
+                    origin: dict[int, str] | None = None) -> dict:
+    """`row` (independent source) replaces the stored ESPN lineup row; `origin` tags each player's number."""
+    rows = [row] if row is not None else fetch_dicts(con, """
         SELECT phase, known_lineup_points, projected_lineup_points, projection_complete, assignment, bench,
                missing_projection_ids FROM team_week_lineup_projections
         WHERE league_id = ? AND season = ? AND team_id = ? AND week = ?""", list(key)) \
         if table_exists(con, "team_week_lineup_projections") else []
+    tag = (lambda pid: {"projection_origin": origin.get(pid) if pid is not None else None}) if origin is not None \
+        else (lambda pid: {})
     if not rows:
         return {"phase": None, "known_points": None, "projected_points": None, "projection_complete": False,
                 "lineup": [], "bench": [], "missing_ids": []}
@@ -118,7 +122,8 @@ def _projected_side(con, key: tuple, players_by_id: dict, playing: set[str]) -> 
         lineup.append({"slot": a.get("slot"), "player_id": pid, "name": a.get("name") or p.get("full_name"),
                        "position": a.get("position") or p.get("position"), "pro_team": p.get("pro_team"),
                        "points": _r(a.get("points")), "is_flex": bool(a.get("is_flex")),
-                       "injury_status": p.get("injury_status"), "on_bye": _on_bye(p.get("pro_team"), playing)})
+                       "injury_status": p.get("injury_status"), "on_bye": _on_bye(p.get("pro_team"), playing),
+                       **tag(pid)})
     bench = []
     for b in _json(r["bench"], []):
         pid = b.get("player_id")
@@ -126,14 +131,17 @@ def _projected_side(con, key: tuple, players_by_id: dict, playing: set[str]) -> 
         bench.append({"player_id": pid, "name": b.get("name") or p.get("full_name"),
                       "position": b.get("position") or p.get("position"), "pro_team": p.get("pro_team"),
                       "points": _r(b.get("points")), "injury_status": p.get("injury_status"),
-                      "on_bye": _on_bye(p.get("pro_team"), playing)})
+                      "on_bye": _on_bye(p.get("pro_team"), playing), **tag(pid)})
     return {"phase": r["phase"], "known_points": r["known_lineup_points"],
             "projected_points": r["projected_lineup_points"] if r["projection_complete"] else None,
             "projection_complete": bool(r["projection_complete"]), "lineup": lineup, "bench": bench,
             "missing_ids": _json(r["missing_projection_ids"], [])}
 
 
-def _actual_side(con, key: tuple, players_by_id: dict, playing: set[str], started: bool) -> tuple[list | None, list | None]:
+def _actual_side(con, key: tuple, players_by_id: dict, playing: set[str], started: bool,
+                 src: dict | None = None) -> tuple[list | None, list | None]:
+    """`src` (independent source): each set player's projection comes from it instead of the
+    snapshot's ESPN projection, with its origin."""
     rows = fetch_dicts(con, """
         SELECT espn_player_id, lineup_slot, lineup_slot_id, is_starter, injury_status, points, projected_points
         FROM lineup_snapshots WHERE league_id = ? AND season = ? AND team_id = ? AND scoring_period = ?
@@ -147,11 +155,42 @@ def _actual_side(con, key: tuple, players_by_id: dict, playing: set[str], starte
                 "position": p.get("position"), "pro_team": p.get("pro_team"),
                 "projected_points": _r(r["projected_points"]), "points": _r(r["points"]) if started else None,
                 "injury_status": r["injury_status"], "on_bye": _on_bye(p.get("pro_team"), playing)}
+        if src is not None:
+            pid = r["espn_player_id"]
+            item["projected_points"] = _r(src["values"].get(pid))
+            item["projection_origin"] = src["origin"].get(pid) if item["projected_points"] is not None else None
         (starters if r["is_starter"] else bench).append(item)
     return starters, bench
 
 
-def load_matchup(con, team_id: int | None = None, week: int | None = None) -> dict:
+def independent_lineups(con, season: int, week: int, team_ids: list[int]) -> tuple[dict, dict[int, dict]]:
+    """Each team's optimal projected lineup for `week` from the independent source (same solver and
+    rosters as the stored ESPN lineups). Returns (projection_source.weekly result, {team_id: row})."""
+    from .projection_source import weekly
+    from .team_lineups import project_week
+    from .trade_data import load_league_state
+
+    w = weekly(con, season, week, "independent")
+    if not w["available"]:
+        return w, {}
+    state = load_league_state(con, season)
+    if state is None:
+        return {**w, "available": False, "reason": "League rosters are not synced, so ESPN projections are shown."}, {}
+    proj = {pid: {week: v} for pid, v in w["values"].items() if v is not None}
+    rows = {}
+    for tid in team_ids:
+        res = project_week(state.rosters.get(tid, []), state.slots, week, proj)
+        rows[tid] = {"phase": None, **{k: res[k] for k in ("known_lineup_points", "projected_lineup_points",
+                                                            "projection_complete", "assignment", "bench",
+                                                            "missing_projection_ids")}}
+    return w, rows
+
+
+def load_matchup(con, team_id: int | None = None, week: int | None = None, source: str = "espn") -> dict:
+    """`source`: "espn" (default, the stored lineups) or "independent" (analytics/projection_source.py)."""
+    from .projection_source import describe, normalize, weekly
+
+    source = normalize(source)
     lgs = fetch_dicts(con, "SELECT league_id, season, name, current_week, final_scoring_period, reg_season_matchups, "
                            "settings_raw FROM leagues ORDER BY synced_at DESC LIMIT 1")
     if not lgs:
@@ -245,6 +284,10 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None) -> di
         con, "SELECT espn_player_id FROM lineup_snapshots WHERE league_id = ? AND season = ? AND scoring_period = ? "
              "AND team_id IN (?, ?)", [league_id, season, week, team_id, opp_id if opp_id is not None else team_id])}
     projected_ids: set[int] = set()
+    src, alt_rows = (independent_lineups(con, season, week, [t for t in (team_id, opp_id) if t is not None])
+                     if source == "independent" else (weekly(con, season, week, "espn"), {}))
+    for ar in alt_rows.values():
+        projected_ids |= {x.get("player_id") for x in ar["assignment"] + ar["bench"]}
     projection_rows = fetch_dicts(con, """
         SELECT assignment, bench FROM team_week_lineup_projections WHERE league_id = ? AND season = ? AND week = ?
           AND team_id IN (?, ?)""", [league_id, season, week, team_id, opp_id if opp_id is not None else team_id]) \
@@ -258,17 +301,26 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None) -> di
     def side(tid: int) -> tuple[dict, str | None]:
         t = by_id[tid]
         key = (league_id, season, tid, week)
-        proj = _projected_side(con, key, players_by_id, playing)
+        stored_phase = None
+        if tid in alt_rows:
+            stored = _projected_side(con, key, {}, playing)
+            stored_phase = stored["phase"]
+        proj = _projected_side(con, key, players_by_id, playing, alt_rows.get(tid),
+                               src["origin"] if tid in alt_rows else None)
+        if stored_phase is not None:
+            proj["phase"] = stored_phase
         if not proj["lineup"] and not proj["bench"] and proj["known_points"] is None:
             unprojected.append(t["name"])
         elif not proj["projection_complete"]:
             missing = [players_by_id.get(i, {}).get("full_name") or f"player {i}" for i in proj["missing_ids"]]
             notes.append(f"{t['name']}: projection incomplete"
-                         + (f" ({len(missing)} rostered without an ESPN projection: {', '.join(missing)})"
+                         + (f" ({len(missing)} rostered without {'a' if alt_rows else 'an ESPN'} projection: "
+                            f"{', '.join(missing)})"
                             if missing else "")
                          + f". Only the known lineup total ({proj['known_points']}) is shown; "
                            "it is not a full-lineup projection.")
-        actual, actual_bench = _actual_side(con, key, players_by_id, playing, snapshot_started)
+        actual, actual_bench = _actual_side(con, key, players_by_id, playing, snapshot_started,
+                                            src if tid in alt_rows else None)
         return {"team_id": tid, "name": t["name"], "abbrev": t["abbrev"],
                 "record": {"wins": t["wins"], "losses": t["losses"], "ties": t["ties"]},
                 "standing": standing.get(tid),
@@ -302,4 +354,5 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None) -> di
         "matchup_period": period, "period_weeks": span if len(span) > 1 else None,
         "is_bye_week": is_bye, "weeks_available": weeks_available,
         "me": me, "opponent": opponent, "status": status, "notes": notes,
+        "projection_source": describe({**src, "available": bool(alt_rows)} if source == "independent" else src),
     }

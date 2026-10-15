@@ -433,3 +433,8 @@ html.theme-fading, html.theme-fading *, html.theme-fading *::before, html.theme-
   }
   :where(button):active:not(:disabled) { transform: none; }
 }
+
+/* ---------- Projection source switch (header) ---------- */
+/* The caption goes first on narrow desktops; on phones the switch moves into the menu drawer (as the theme switch does). */
+@media (max-width: 960px) { .topbar-proj [aria-hidden="true"] { display: none; } }
+@media (max-width: 720px) { .topbar-end .topbar-proj { display: none; } }

@@ -1,8 +1,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
+import { ProjectionNotice } from "@/components/ProjectionNotice";
 import { EmptyState, Method, Notice, PageHeader, Tabs } from "@/components/ui";
 import { api } from "@/lib/api";
+import { withSource } from "@/lib/projection-source";
+import { getProjectionSource } from "@/lib/projection-source.server";
 import {
   availableViews, chooseView, matchupHref, parseWeekParam, statusLabel, switcherWeeks, type LineupView,
 } from "@/lib/matchup";
@@ -45,7 +48,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
   const qs = new URLSearchParams();
   if (wk.kind === "ok") qs.set("week", String(wk.week));
   if (teamParam) qs.set("team_id", teamParam);
-  const res = await api<Matchup>(`/api/matchup${qs.size ? `?${qs}` : ""}`);
+  const res = await api<Matchup>(withSource(`/api/matchup${qs.size ? `?${qs}` : ""}`, await getProjectionSource()));
 
   if (!res.ok) {
     if (res.kind === "http" && (res.status === 422 || res.status === 404)) {
@@ -102,6 +105,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
         />
       </PageHeader>
 
+      <ProjectionNotice detail={m.projection_source} />
       {opp ? <Scoreboard m={m} opponent={opp} /> : (
         <EmptyState title={m.is_bye_week ? `${m.me.name} has a bye in week ${m.week}` : `No opponent scheduled for week ${m.week}`}>
           {m.is_bye_week

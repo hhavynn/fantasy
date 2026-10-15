@@ -1,8 +1,10 @@
 # Independent Weekly Projection Engine (V1, research)
 
 An NFL-evidence fantasy-point model for QB/RB/WR/TE that **never uses ESPN projections as an
-input**. ESPN appears only as an external comparison. It is research output: nothing in lineups,
-trades, waivers, playoff odds, player scores or market signals reads it.
+input**. ESPN appears only as an external comparison. It is research output: by default nothing in
+lineups, trades, waivers, playoff odds, player scores or market signals reads it. The one opt-in
+path is the **projection switch** (header toggle "ESPN | Ours", see "Projection switch" below),
+which only changes the weekly numbers on Home, Matchup and Start/Sit.
 
 **Current status (model `ifp-1.0.0`, held-out evaluation on real data, see "Results"):**
 
@@ -374,6 +376,26 @@ projections reach lineups, start/sit, trades or waivers. The isolation test in
 `tests/test_independent_projections.py` keeps every other module from importing the tracker or
 the projection tables. The hosted API bundle ships without polars, so there the endpoint answers
 `available: false` instead of a copy of the criteria.
+
+## Projection switch (opt-in weekly view)
+
+A header toggle (**ESPN | Ours**, in the menu drawer on phones) stores the visitor's choice in the
+`fi_projection` cookie. With "Ours", Home, Matchup and Start/Sit request `source=independent`
+(`GET /api/start-sit`, `GET /api/matchup`); ESPN stays the default everywhere.
+`app/analytics/projection_source.py` turns the stored run for the week into lineup numbers:
+
+* `ours`: `expected_points` (unconditional, like ESPN's weekly projection);
+* `ours_zero`: 0.0 for a bye or a row withheld as unavailable;
+* `espn`: ESPN's number where no independent estimate exists (K, D/ST, abstentions, uncertain ID
+  mapping, no participation estimate), tagged "ESPN" in the UI.
+
+Only a run of the current model version under the league's current scoring is used; otherwise the
+response says `available: false` and shows ESPN. Start/Sit and Matchup rerun the same lineup
+optimizer on these numbers (Matchup computes both teams' lineups on the fly instead of reading
+`team_week_lineup_projections`). Availability warnings still quote ESPN's number, because they say
+so by name. Rest-of-season features (trades, waivers, team value, playoff race) stay on ESPN: the
+model projects one week at a time. The switch is a view, not a promotion: the frozen
+`PROMOTION_CRITERIA` and the tracker are unchanged.
 
 ## Live runs and abstention
 

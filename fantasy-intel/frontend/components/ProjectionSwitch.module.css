@@ -1,0 +1,36 @@
+/* Projection source switch: ESPN / Ours as a segmented radio group (same shape as the theme switch). Tokens only. */
+.switch {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+.caption { padding: 0 4px 0 6px; font-size: 12px; color: var(--ink-faint); }
+.option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  min-width: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  filter: none;
+}
+.option:hover { color: var(--ink); background: var(--surface-hover); filter: none; }
+.option[aria-checked="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line-control); }
+.option.ours[aria-checked="true"] { background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pending { opacity: .7; }
+
+/* In the drawer on phones: full width, comfortable targets. */
+.labelled { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+.labelled .option { height: 40px; }
