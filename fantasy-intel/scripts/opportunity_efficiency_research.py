@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
+import hashlib
 import json
 import multiprocessing
 import os
@@ -45,13 +46,35 @@ def _out(args) -> Path:
     return p
 
 
-def full_store(args, src) -> pl.DataFrame:
+def _frame_hash(df: pl.DataFrame | None) -> str | None:
+    """Order-independent content hash of a source frame."""
+    if df is None:
+        return None
+    return hashlib.sha256(np.sort(df.hash_rows(seed=0).to_numpy()).tobytes()).hexdigest()[:16]
+
+
+def input_fingerprint(args, src, scoring_fingerprint: str, weeks) -> str:
+    """Everything the cached store depends on: source data, weeks, scoring and the code that builds
+    it. Any change rebuilds the cache."""
+    mods = ["app.analytics.challenger", "app.analytics.forecast_features", "app.analytics.forecast_backtest", "app.analytics.opportunity_efficiency"]
+    code = b"".join(Path(sys.modules[m].__file__).read_bytes() for m in mods)
+    parts = {"season": args.season, "weeks": weeks, "scoring": scoring_fingerprint, "polars": pl.__version__,
+             "code": hashlib.sha256(code).hexdigest()[:16],
+             **{n: _frame_hash(getattr(src, n)) for n in ("panel", "games", "injuries", "exits", "rosters")}}
+    return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def full_store(args, src, scoring_fingerprint: str) -> pl.DataFrame:
+    """Cached feature store, reused only when its recorded input fingerprint still matches."""
     path = _out(args) / "store_oe.parquet"
-    if path.exists() and not args.rebuild:
-        return pl.read_parquet(path)
+    meta = path.with_suffix(".meta.json")
     weeks = completed_weeks(src, list(range(ch.TRAIN_START, args.season + 1)))
+    fp = input_fingerprint(args, src, scoring_fingerprint, weeks)
+    if path.exists() and meta.exists() and not args.rebuild and json.loads(meta.read_text()).get("fingerprint") == fp:
+        return pl.read_parquet(path)
     store = oe.attach_targets(ch.add_last_game(build_store(src, weeks), src.panel), src.panel)
     store.write_parquet(path)
+    meta.write_text(json.dumps({"fingerprint": fp, "rows": store.height, "weeks": len(weeks)}))
     return store
 
 
@@ -139,7 +162,7 @@ def cmd_run(args) -> dict:
     t0 = time.time()
     src, scoring = cr.sources(SimpleNamespace(live_db=args.live_db, history_db=args.history_db, season=args.season,
                                               out=args.exits_dir))
-    store = full_store(args, src)
+    store = full_store(args, src, scoring.fingerprint)
     store_path = _out(args) / "store_oe.parquet"
     cfg = ch.ChallengerConfig.load()
     sel = json.loads((args.ifp_dir / "selection.json").read_text())
