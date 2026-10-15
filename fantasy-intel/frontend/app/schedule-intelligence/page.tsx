@@ -96,6 +96,7 @@ function Body({ d, detail, position, phase, sp }: { d: ScheduleIntelligence; det
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="League"
         title="Schedule intelligence"
         meta={<>
           {d.team?.name ?? "Roster"} · {range}{regular} · first actionable week {w.first_actionable_week ?? "none"}.

@@ -33,7 +33,12 @@
 
 /* Phones: two stats per row; an odd one out stretches across the last row. */
 @media (max-width: 720px) {
-  .stat { flex-basis: 45%; }
+  .stat { flex-basis: 45%; padding: 12px 14px; }
+  .value { font-size: 26px; line-height: 30px; }
+}
+@media (max-width: 360px) {
+  .stat { padding: 10px 12px; }
+  .value { font-size: 23px; line-height: 27px; }
 }
 /* Tablets: where the strip would wrap five stats as four over one, or six as five over one, it reads as three rows of three instead. */
 @media (min-width: 721px) and (max-width: 870px) {

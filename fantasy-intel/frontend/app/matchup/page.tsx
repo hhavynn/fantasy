@@ -85,6 +85,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="My team"
         title={`Week ${m.week} matchup`}
         meta={[
           m.league.name, phase, opp ? statusLabel(m.status) : null, m.week === here ? "current week" : null,
