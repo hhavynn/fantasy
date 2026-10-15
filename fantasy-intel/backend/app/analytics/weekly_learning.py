@@ -33,8 +33,8 @@ from pathlib import Path
 import polars as pl
 
 from . import challenger as ch
-from .forecast_backtest import (PAIR_POOL, _arr, build_store, completed_weeks, metrics, pair_decisions,
-                                week_bootstrap_mae_diff)
+from .forecast_backtest import (PAIR_POOL, PROMOTION_CRITERIA, STARTERS_POOL_DEFINITION, _arr, build_store,
+                                completed_weeks, metrics, pair_decisions, starters_pool_expr, week_bootstrap_mae_diff)
 from .forecast_features import POSITIONS, Sources, features_for_week, key
 from .independent_projections import (ARTIFACT_SCHEMA, MODEL_VERSION, Artifact, baseline_predictions, fit_final,
                                       flags_for, interval_for, predict_frame)
@@ -498,7 +498,10 @@ def _status_counts(df: pl.DataFrame) -> dict:
 
 def _position_reports(j: pl.DataFrame, seed: int, *, bootstrap: bool = True) -> dict:
     """Conditional (APPEARED) and unconditional (APPEARED + CONFIRMED_ABSENT) metrics per position.
-    `j` must come from label_outcomes; unresolved rows are dropped here, never zero-filled."""
+    `j` must come from label_outcomes; unresolved rows are dropped here, never zero-filled. The
+    starters pool is ranked over ALL frozen pregame rows of a week (who appears is not known
+    pregame), so an inactive top player is never backfilled by a lower-ranked one."""
+    j = j.with_columns(starters_pool_expr().alias("_starter"))
     cond = j.filter(pl.col("outcome_status") == APPEARED)
     resolved = j.filter(pl.col("outcome_status").is_in(RESOLVED))
     assert resolved["label"].null_count() == 0, "a resolved outcome without a label"
@@ -517,6 +520,12 @@ def _position_reports(j: pl.DataFrame, seed: int, *, bootstrap: bool = True) -> 
             if iv.height:
                 hit = iv.filter((pl.col("label") >= pl.col(f"low_{m}")) & (pl.col("label") <= pl.col(f"high_{m}"))).height
                 rep.setdefault("interval80_coverage", {})[m] = round(hit / iv.height, 4)
+        sp = g.filter(pl.col("_starter"))
+        rep["starters_pool"] = {"n": sp.height, "definition": STARTERS_POOL_DEFINITION,
+                                "ranked_among": "every frozen pregame forecast of the week, before appearance "
+                                                "is known; MAE on the pool members who appeared",
+                                "mae": {m: metrics(_arr(sp, "label"), _arr(sp, f"pred_{m}"))["mae"]
+                                        for m in ("champion", "challenger")}}
         ie = g.filter(pl.col("last_injury_exit") == 1)
         rep["after_injury_exit"] = {"n": ie.height, **{m: metrics(_arr(ie, "label"), _arr(ie, f"pred_{m}"))["mae"]
                                                          for m in ("champion", "challenger")}}
@@ -564,6 +573,7 @@ def evaluate(runs: list[dict], sources: Sources, kind: str = "pregame", seed: in
     if not final_weeks:
         out["note"] = "no frozen forecast is in a fully final week yet"
         out["shadow_status"] = shadow_status(out)
+        out["promotion_blockers"] = promotion_blockers(out["shadow_status"])
         return out
     out["positions"] = _position_reports(evidence, seed)
     cond = evidence.filter(pl.col("outcome_status") == APPEARED)
@@ -572,36 +582,141 @@ def evaluate(runs: list[dict], sources: Sources, kind: str = "pregame", seed: in
     if both.height:
         out["pairs"] = pair_decisions(both, ["pred_champion", "pred_challenger"], pool=PAIR_POOL)
     out["shadow_status"] = shadow_status(out)
+    out["promotion_blockers"] = promotion_blockers(out["shadow_status"])
     return out
+
+
+PASS, FAIL, INSUFFICIENT = "pass", "fail", "insufficient_data"
+# Readiness (from the evidence) and lifecycle (what consumers read) are separate. Evaluation can
+# reach `eligible_for_review` at most; nothing here changes the lifecycle of any model.
+READINESS = ("insufficient_evidence", "failed_evaluation", "eligible_for_review")
+LIFECYCLE = {
+    "research_shadow": "trained and forecast weekly, never read by lineups, start/sit, trades, waivers, matchups "
+                       "or the website (ifp-2.0.0 in every position)",
+    "approved_production": "explicitly approved by the user AND wired into consumers by a reviewed code change; "
+                           "never set by an evaluation",
+}
+SAMPLE_CRITERIA = ("frozen_pregame_evidence", "prospective_weeks", "matched_appearances")
+
+
+def _criterion(name: str, observed, required, result: str, explanation: str) -> dict:
+    return {"name": name, "observed": observed, "required": required, "result": result, "explanation": explanation}
+
+
+def shadow_criteria(report: dict, pos: str) -> list[dict]:
+    """Every SHADOW_PROMOTION_CRITERIA condition for one position as an auditable result. Missing
+    evidence is `insufficient_data`, never a pass."""
+    g = ch.SHADOW_GATE
+    r = (report.get("positions") or {}).get(pos) or {}
+    kind, weeks, n = report.get("kind"), len(report.get("weeks") or []), r.get("n") or 0
+    out = [_criterion("frozen_pregame_evidence", kind, g["evidence_kind"],
+                      PASS if kind == g["evidence_kind"] else FAIL,
+                      "frozen pregame ledger rows (latest run before each player's kickoff)" if kind == g["evidence_kind"]
+                      else f"{kind!r} runs are replays made after kickoff and are never prospective evidence"),
+           _criterion("prospective_weeks", weeks, f">= {g['min_prospective_weeks']} fully final weeks",
+                      PASS if weeks >= g["min_prospective_weeks"] else INSUFFICIENT,
+                      f"{weeks} prospective weeks {'>=' if weeks >= g['min_prospective_weeks'] else '<'} "
+                      f"{g['min_prospective_weeks']} (only fully final weeks count)"),
+           _criterion("matched_appearances", n, f">= {g['min_matched_appearances_per_position']}",
+                      PASS if n >= g["min_matched_appearances_per_position"] else INSUFFICIENT,
+                      f"{n} matched appearances {'>=' if n >= g['min_matched_appearances_per_position'] else '<'} "
+                      f"{g['min_matched_appearances_per_position']} (both models forecast, player appeared)")]
+
+    diff = r.get("challenger_minus_champion_mae") or {}
+    ci = diff.get("ci95")
+    if not ci or ci[1] is None:
+        out.append(_criterion("mae_vs_champion", None, "95% CI upper bound < 0", INSUFFICIENT,
+                              "no week-clustered bootstrap CI of challenger - champion MAE (needs paired rows in "
+                              ">= 2 fully final weeks)"))
+    else:
+        ok = ci[1] < g["mae_ci95_upper_below"]
+        out.append(_criterion("mae_vs_champion", {"diff": diff.get("diff"), "ci95": ci, "n": n},
+                              "95% CI upper bound < 0", PASS if ok else FAIL,
+                              f"challenger - champion MAE {diff.get('diff')} with CI {ci} "
+                              + ("excludes 0" if ok else "does not exclude 0") + " (identical observations)"))
+
+    m = r.get("metrics") or {}
+    bc, bh = (m.get("challenger") or {}).get("bias"), (m.get("champion") or {}).get("bias")
+    tol = g["bias_tolerance_points"]
+    if bc is None or bh is None:
+        out.append(_criterion("bias_guard", None, f"|bias| <= |champion bias| + {tol}", INSUFFICIENT,
+                              "bias of the challenger or the champion is missing"))
+    else:
+        ok = abs(bc) <= abs(bh) + tol + 1e-9
+        out.append(_criterion("bias_guard", {"challenger": bc, "champion": bh}, f"|bias| <= |champion bias| + {tol}",
+                              PASS if ok else FAIL,
+                              f"|challenger bias| {abs(bc):.3f} vs |champion bias| {abs(bh):.3f} + {tol}"
+                              + ("" if ok else ": worse by more than the tolerance")))
+
+    sp = r.get("starters_pool") or {}
+    sc, sh = (sp.get("mae") or {}).get("challenger"), (sp.get("mae") or {}).get("champion")
+    req = f"MAE <= champion's + {g['starters_pool_mae_tolerance']:g}"
+    if not sp.get("n") or sc is None or sh is None:
+        out.append(_criterion("starters_pool_mae", None, req, INSUFFICIENT,
+                              "no starters-pool MAE for both models (" + g["starters_pool"] + ")"))
+    else:
+        ok = sc <= sh + g["starters_pool_mae_tolerance"] + 1e-9
+        out.append(_criterion("starters_pool_mae", {"challenger": sc, "champion": sh, "n": sp["n"]}, req,
+                              PASS if ok else FAIL,
+                              f"starters-pool MAE {sc} vs champion {sh} on {sp['n']} rows"
+                              + ("" if ok else ": challenger is worse")))
+
+    lo, hi = g["interval_coverage"]
+    cov = (r.get("interval80_coverage") or {}).get("challenger")
+    if cov is None:
+        withheld = not CHALLENGER_STATUS.get(pos, {}).get("intervals_published", True)
+        why = (f"challenger {pos} intervals are withheld by policy (confirmation coverage outside {lo}-{hi}); "
+               "there is no coverage evidence, so this criterion cannot pass (a policy limitation, not an exemption)"
+               if withheld else "no challenger 80% interval observations")
+        out.append(_criterion("interval_coverage", None, [lo, hi], INSUFFICIENT, why))
+    else:
+        ok = lo <= cov <= hi
+        out.append(_criterion("interval_coverage", cov, [lo, hi], PASS if ok else FAIL,
+                              f"80% interval coverage {cov} "
+                              + ("within" if ok else ("below (undercoverage)" if cov < lo else "above (overcoverage)"))
+                              + f" {lo}-{hi}"))
+    return out
+
+
+def readiness_from(criteria: list[dict]) -> str:
+    res = {c["name"]: c["result"] for c in criteria}
+    if any(res.get(k) != PASS for k in SAMPLE_CRITERIA):
+        return "insufficient_evidence"
+    if any(v == FAIL for v in res.values()):
+        return "failed_evaluation"
+    if any(v != PASS for v in res.values()):
+        return "insufficient_evidence"
+    return "eligible_for_review"
 
 
 def shadow_status(report: dict) -> dict:
-    """Progress toward SHADOW_PROMOTION_CRITERIA. Never promotes; 'eligible_for_review' at most."""
-    c = ch.SHADOW_PROMOTION_CRITERIA
-    weeks = len(report.get("weeks", []))
+    """Progress toward SHADOW_PROMOTION_CRITERIA, fail-closed. `status` is the readiness
+    (READINESS); `eligible_for_review` is the most an evaluation can yield. The lifecycle stays
+    `research_shadow`: nothing here changes which model any consumer reads."""
     out = {}
     for pos in POSITIONS:
-        r = report["positions"].get(pos) or {}
-        reasons = []
-        if weeks < c["min_prospective_weeks"]:
-            reasons.append(f"{weeks} prospective weeks < {c['min_prospective_weeks']}")
-        if r.get("n", 0) < c["min_matched_appearances_per_position"]:
-            reasons.append(f"{r.get('n', 0)} matched appearances < {c['min_matched_appearances_per_position']}")
-        ci = (r.get("challenger_minus_champion_mae") or {}).get("ci95")
-        if not ci or ci[1] >= 0:
-            reasons.append(f"challenger - champion MAE CI {ci} does not exclude 0")
-        m = r.get("metrics") or {}
-        if m.get("challenger", {}).get("bias") is not None and \
-                abs(m["challenger"]["bias"]) > abs(m["champion"]["bias"]) + 0.15:
-            reasons.append("bias worse than the champion's by more than 0.15")
-        cov = (r.get("interval80_coverage") or {}).get("challenger")
-        lo, hi = c["interval_coverage"]
-        if cov is not None and not lo <= cov <= hi:
-            reasons.append(f"interval coverage {cov} outside {lo}-{hi}")
-        out[pos] = {"status": "eligible_for_review" if not reasons else "shadow", "reasons": reasons}
+        crit = shadow_criteria(report, pos)
+        blocking = [c["explanation"] for c in crit if c["result"] != PASS]
+        out[pos] = {"status": readiness_from(crit), "lifecycle": "research_shadow", "production_approved": False,
+                    "criteria": crit, "blocking": blocking, "reasons": blocking,
+                    "production_gate": {
+                        "criteria": "forecast_backtest.PROMOTION_CRITERIA", "status": "not_evaluated",
+                        "explanation": "consumer-facing use additionally needs a held-out evaluation meeting "
+                                       f"PROMOTION_CRITERIA (>= {PROMOTION_CRITERIA['min_relative_mae_improvement_vs_best_trailing_baseline']:.0%} "
+                                       "MAE improvement vs the best trailing baseline with CI below 0; ESPN rule "
+                                       "for Start/Sit) and explicit user approval; the weekly evaluation does not "
+                                       "evaluate it"}}
     return out
 
 
+def promotion_blockers(status: dict) -> dict:
+    """Answer 'what prevents ifp-2 from replacing ifp-1?' per position from shadow_status."""
+    return {pos: {"status": s["status"], "lifecycle": s["lifecycle"],
+                  "blocking": s["blocking"] + ["explicit user approval and the separate PROMOTION_CRITERIA "
+                                               "production gate (never automatic)"]}
+            for pos, s in status.items()}
+
+
 __all__ = ["readiness", "train", "save_artifact", "latest_artifact", "predict", "write_run", "load_ledger",
-           "evaluate", "label_outcomes", "team_game_finality", "week_finality", "NotReady", "MODEL_VERSION",
-           "interval_for"]
+           "evaluate", "label_outcomes", "team_game_finality", "week_finality", "shadow_status",
+           "shadow_criteria", "promotion_blockers", "NotReady", "MODEL_VERSION", "interval_for"]

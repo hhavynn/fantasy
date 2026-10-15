@@ -24,8 +24,8 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from .forecast_backtest import (PAIR_POOL, PROMOTION_CRITERIA, _arr, interval_bands, metrics, pair_decisions,
-                                week_bootstrap_mae_diff)
+from .forecast_backtest import (PROMOTION_CRITERIA, STARTERS_POOL_DEFINITION, _arr, interval_bands,
+                                metrics, pair_decisions, starters_pool_expr, week_bootstrap_mae_diff)
 from .forecast_features import FEATURE_DOCS, POSITIONS, key
 from .independent_projections import (CONTEXT, LAMBDA_GRID, MIN_TRAIN_ROWS, OPPORTUNITY, RidgeModel, _design_columns,
                                       design_matrix, interval_for, training_means)
@@ -216,10 +216,8 @@ def add_last_game(store: pl.DataFrame, panel: pl.DataFrame) -> pl.DataFrame:
 def cohorts(df: pl.DataFrame) -> dict[str, pl.Expr]:
     """Cohort filters (all pregame quantities)."""
     prev_mean = (pl.col("pts_recent_raw") * pl.col("games_recent") - pl.col("last_pts")) / (pl.col("games_recent") - 1)
-    pool = pl.col("pred_A1").rank("ordinal", descending=True).over(["season", "week", "position"])
-    pool_n = pl.col("position").replace_strict(PAIR_POOL, default=0)
     return {
-        "starters_pool": pool <= pool_n,
+        "starters_pool": starters_pool_expr(),
         "low_volume_lt5_opps": (pl.col("targets_pg") + pl.col("carries_pg")) < 5,
         "limited_history_lt3_games": pl.col("games_recent") < 3,
         "after_boom": (pl.col("games_recent") >= 3) & (pl.col("last_pts") >= prev_mean + 10),
@@ -305,6 +303,20 @@ SHADOW_PROMOTION_CRITERIA = {
     "interval_coverage": [0.75, 0.85],
     "also_required": "the existing PROMOTION_CRITERIA (>= 3% vs best trailing baseline, ESPN rule) for any "
                      "consumer-facing use, and explicit user approval",
+}
+
+# The same criteria as enforceable thresholds (weekly_learning.shadow_status). Kept separate so the
+# pre-registered text above, which is stored in every challenger artifact, stays byte-identical.
+# A criterion whose evidence is missing is `insufficient_data`, never a pass.
+SHADOW_GATE = {
+    "evidence_kind": "pregame",                     # frozen pregame ledger rows only; never retrospective
+    "min_prospective_weeks": SHADOW_PROMOTION_CRITERIA["min_prospective_weeks"],          # fully final weeks
+    "min_matched_appearances_per_position": SHADOW_PROMOTION_CRITERIA["min_matched_appearances_per_position"],
+    "mae_ci95_upper_below": 0.0,                    # challenger - champion, week-clustered, identical rows
+    "bias_tolerance_points": 0.15,                  # |bias(challenger)| <= |bias(champion)| + 0.15
+    "starters_pool": STARTERS_POOL_DEFINITION,
+    "starters_pool_mae_tolerance": 0.0,             # MAE(challenger) <= MAE(champion) on the pool
+    "interval_coverage": tuple(SHADOW_PROMOTION_CRITERIA["interval_coverage"]),
 }
 
 

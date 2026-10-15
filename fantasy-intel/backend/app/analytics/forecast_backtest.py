@@ -44,6 +44,15 @@ PROMOTION_CRITERIA = {
 }
 PAIR_POOL = {"QB": 24, "RB": 48, "WR": 60, "TE": 24}   # pregame relevance pool per position-week
 CLOSE_PAIR_POINTS = 3.0
+STARTERS_POOL_DEFINITION = ("per (season, week, position), the top PAIR_POOL[position] players (QB 24, RB 48, "
+                            "WR 60, TE 24) by the recent-average baseline A1, a pregame quantity identical for "
+                            "every model; the same pool as the Start/Sit pair decisions")
+
+
+def starters_pool_expr(pool: dict[str, int] = PAIR_POOL) -> pl.Expr:
+    """True for rows in the starters pool (STARTERS_POOL_DEFINITION); null pred_A1 is never in it."""
+    rank = pl.col("pred_A1").rank("ordinal", descending=True).over(["season", "week", "position"])
+    return (rank <= pl.col("position").replace_strict(pool, default=0)).fill_null(False)
 
 
 @dataclass(frozen=True)
