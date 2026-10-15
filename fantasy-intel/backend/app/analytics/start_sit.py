@@ -22,6 +22,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..db.connection import fetch_dicts, table_exists
+from ..espn.constants import BENCH_SLOT, IR_SLOT, NON_STARTER_SLOTS, SLOT_MAP
+from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, eligible
 from .trade_data import kickoff_utc
 
 # Lock status categories
@@ -185,3 +187,156 @@ def detect_player_locks(
                 )
 
     return out
+
+
+@dataclass(frozen=True)
+class SlotInstance:
+    slot_id: str          # e.g. "RB_0", "RB_1", "FLEX_0"
+    slot_type: str        # e.g. "RB", "FLEX"
+    index: int            # 0, 1, ...
+    is_flex: bool
+
+
+def build_slot_instances(roster_slots: dict[str, int]) -> list[SlotInstance]:
+    """Expand league roster slot configuration into uniquely identified starting SlotInstance objects."""
+    slots: list[SlotInstance] = []
+    # Fixed slots in canonical order
+    for s in FIXED_SLOTS:
+        count = int((roster_slots or {}).get(s, 0))
+        for i in range(count):
+            slots.append(SlotInstance(slot_id=f"{s}_{i}", slot_type=s, index=i, is_flex=False))
+
+    # Flex slots in canonical order (sorted by eligibility width)
+    for s in sorted(FLEX_ELIGIBILITY, key=lambda k: len(FLEX_ELIGIBILITY[k])):
+        count = int((roster_slots or {}).get(s, 0))
+        for i in range(count):
+            slots.append(SlotInstance(slot_id=f"{s}_{i}", slot_type=s, index=i, is_flex=True))
+
+    return slots
+
+
+def map_actual_starters_to_slots(
+    actual_starters: list[dict],
+    slots: list[SlotInstance],
+) -> list[dict]:
+    """Map actual starting players from lineup_snapshots to unique starting SlotInstance objects.
+
+    Matches first on explicit slot label (e.g. FLEX -> FLEX_0, RB -> RB_0), then on positional eligibility.
+    """
+    assigned: list[dict] = []
+    used_slots: set[str] = set()
+
+    # Pass 1: Exact slot type matches
+    unmatched_players: list[dict] = []
+    for p in actual_starters:
+        slot_label = p.get("lineup_slot")
+        if not slot_label and p.get("lineup_slot_id") is not None:
+            slot_label = SLOT_MAP.get(p["lineup_slot_id"])
+
+        matched_slot = next(
+            (s for s in slots if s.slot_id not in used_slots and s.slot_type == slot_label),
+            None,
+        )
+        if matched_slot is not None:
+            used_slots.add(matched_slot.slot_id)
+            assigned.append({"slot": matched_slot, "player": p, "player_id": p.get("espn_player_id")})
+        else:
+            unmatched_players.append(p)
+
+    # Pass 2: Positionally eligible matches for any remaining starters
+    for p in unmatched_players:
+        pos = p.get("position")
+        matched_slot = next(
+            (s for s in slots if s.slot_id not in used_slots and eligible(s.slot_type, pos)),
+            None,
+        )
+        if matched_slot is not None:
+            used_slots.add(matched_slot.slot_id)
+            assigned.append({"slot": matched_slot, "player": p, "player_id": p.get("espn_player_id")})
+        else:
+            # Fallback placeholder if roster has extra players beyond slots
+            assigned.append({"slot": None, "player": p, "player_id": p.get("espn_player_id")})
+
+    return assigned
+
+
+def preserve_locked_assignments(
+    actual_assignments: list[dict],
+    actual_bench: list[dict],
+    locks: dict[str | None, PlayerLock],
+    all_slots: list[SlotInstance],
+) -> tuple[list[dict], list[SlotInstance], set[int], set[int]]:
+    """Identify locked starters and locked bench players.
+
+    Preserves locked starters in their exact assigned slot instances, removes those slots
+    from remaining_slots, and identifies bench players who cannot enter the lineup.
+    """
+    locked_starters: list[dict] = []
+    locked_starter_ids: set[int] = set()
+    locked_slot_ids: set[str] = set()
+
+    for item in actual_assignments:
+        p = item.get("player") or {}
+        pid = p.get("espn_player_id")
+        pro_team = p.get("pro_team")
+        lock = locks.get(pro_team) or PlayerLock(team=pro_team, status=LOCK_UNKNOWN)
+
+        if lock.status == LOCK_LOCKED:
+            locked_starters.append(item)
+            if pid is not None:
+                locked_starter_ids.add(pid)
+            if item.get("slot") is not None:
+                locked_slot_ids.add(item["slot"].slot_id)
+
+    remaining_slots = [s for s in all_slots if s.slot_id not in locked_slot_ids]
+
+    locked_bench_ids: set[int] = set()
+    for p in actual_bench:
+        pid = p.get("espn_player_id")
+        pro_team = p.get("pro_team")
+        lock = locks.get(pro_team) or PlayerLock(team=pro_team, status=LOCK_UNKNOWN)
+        if lock.status == LOCK_LOCKED and pid is not None:
+            locked_bench_ids.add(pid)
+
+    return locked_starters, remaining_slots, locked_starter_ids, locked_bench_ids
+
+
+def load_actual_lineup(
+    con: Any,
+    league_id: int,
+    season: int,
+    scoring_period: int,
+    team_id: int,
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """Load actual lineup snapshots for a team in a specific scoring period.
+
+    Returns:
+      (starters, bench, ir)
+    """
+    rows = fetch_dicts(
+        con,
+        """
+        SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, l.is_starter,
+               l.points, l.projected_points AS snapshot_projected_points, l.synced_at AS snapshot_synced_at,
+               fp.full_name, fp.position, fp.pro_team,
+               coalesce(fp.injury_status, l.injury_status) AS injury_status
+        FROM lineup_snapshots l
+        JOIN fantasy_players fp USING (espn_player_id)
+        WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ? AND l.team_id = ?
+        ORDER BY l.is_starter DESC, l.lineup_slot_id, fp.full_name
+        """,
+        [league_id, season, scoring_period, team_id],
+    )
+
+    starters, bench, ir = [], [], []
+    for r in rows:
+        slot_id = r.get("lineup_slot_id")
+        if slot_id == IR_SLOT:
+            ir.append(r)
+        elif r.get("is_starter") or (slot_id is not None and slot_id not in NON_STARTER_SLOTS):
+            starters.append(r)
+        else:
+            bench.append(r)
+
+    return starters, bench, ir
+

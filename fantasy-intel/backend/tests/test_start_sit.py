@@ -115,3 +115,70 @@ def test_lock_status_teamless_player(mem_db):
     assert locks[None].status == LOCK_TEAMLESS
     assert locks["FA"].status == LOCK_TEAMLESS
     assert locks[""].status == LOCK_TEAMLESS
+
+
+def test_slot_preservation_and_locked_starters():
+    from app.analytics.start_sit import (
+        SlotInstance,
+        build_slot_instances,
+        map_actual_starters_to_slots,
+        preserve_locked_assignments,
+    )
+
+    roster_slots = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "K": 1, "D/ST": 1}
+    slots = build_slot_instances(roster_slots)
+    assert len(slots) == 9
+    assert [s.slot_id for s in slots if s.slot_type == "RB"] == ["RB_0", "RB_1"]
+    assert [s.slot_id for s in slots if s.slot_type == "FLEX"] == ["FLEX_0"]
+
+    actual_starters = [
+        {"espn_player_id": 1, "full_name": "Patrick Mahomes", "position": "QB", "lineup_slot": "QB", "lineup_slot_id": 0, "pro_team": "KC"},
+        {"espn_player_id": 2, "full_name": "Christian McCaffrey", "position": "RB", "lineup_slot": "RB", "lineup_slot_id": 2, "pro_team": "SF"},
+        {"espn_player_id": 3, "full_name": "Kyren Williams", "position": "RB", "lineup_slot": "RB", "lineup_slot_id": 2, "pro_team": "LAR"},
+        {"espn_player_id": 4, "full_name": "Justin Jefferson", "position": "WR", "lineup_slot": "WR", "lineup_slot_id": 4, "pro_team": "MIN"},
+        {"espn_player_id": 5, "full_name": "Amon-Ra St. Brown", "position": "WR", "lineup_slot": "WR", "lineup_slot_id": 4, "pro_team": "DET"},
+        {"espn_player_id": 6, "full_name": "Travis Kelce", "position": "TE", "lineup_slot": "TE", "lineup_slot_id": 6, "pro_team": "KC"},
+        {"espn_player_id": 7, "full_name": "Brian Thomas Jr.", "position": "WR", "lineup_slot": "FLEX", "lineup_slot_id": 23, "pro_team": "JAX"},
+        {"espn_player_id": 8, "full_name": "Brandon Aubrey", "position": "K", "lineup_slot": "K", "lineup_slot_id": 17, "pro_team": "DAL"},
+        {"espn_player_id": 9, "full_name": "San Francisco 49ers", "position": "D/ST", "lineup_slot": "D/ST", "lineup_slot_id": 16, "pro_team": "SF"},
+    ]
+
+    assignments = map_actual_starters_to_slots(actual_starters, slots)
+    assert len(assignments) == 9
+    # Brian Thomas Jr. is mapped to FLEX_0
+    flex_starter = next(a for a in assignments if a["slot"].slot_id == "FLEX_0")
+    assert flex_starter["player"]["espn_player_id"] == 7
+
+    # Suppose Kyren Williams (LAR, RB) and Brian Thomas Jr. (JAX, FLEX) kicked off on Thursday and are LOCKED
+    locks = {
+        "LAR": PlayerLock(team="LAR", status=LOCK_LOCKED),
+        "JAX": PlayerLock(team="JAX", status=LOCK_LOCKED),
+        "KC": PlayerLock(team="KC", status=LOCK_UNLOCKED),
+        "SF": PlayerLock(team="SF", status=LOCK_UNLOCKED),
+        "MIN": PlayerLock(team="MIN", status=LOCK_UNLOCKED),
+        "DET": PlayerLock(team="DET", status=LOCK_UNLOCKED),
+        "DAL": PlayerLock(team="DAL", status=LOCK_UNLOCKED),
+    }
+
+    actual_bench = [
+        {"espn_player_id": 10, "full_name": "Jameson Williams", "position": "WR", "pro_team": "DET", "lineup_slot_id": 20},
+        {"espn_player_id": 11, "full_name": "Jordan Mason", "position": "RB", "pro_team": "LAR", "lineup_slot_id": 20},
+    ]
+
+    locked_starters, remaining_slots, locked_starter_ids, locked_bench_ids = preserve_locked_assignments(
+        assignments, actual_bench, locks, slots
+    )
+
+    # 2 starters locked: Kyren Williams (RB_0 or RB_1) and Brian Thomas Jr. (FLEX_0)
+    assert len(locked_starters) == 2
+    assert locked_starter_ids == {3, 7}
+    # Jordan Mason (LAR) was on the bench and LAR is locked -> locked on bench!
+    assert locked_bench_ids == {11}
+
+    # Remaining open slots should have exactly 1 RB, 2 WR, 1 QB, 1 TE, 1 K, 1 D/ST, and 0 FLEX!
+    remaining_types = [s.slot_type for s in remaining_slots]
+    assert remaining_types.count("FLEX") == 0
+    assert remaining_types.count("RB") == 1
+    assert remaining_types.count("WR") == 2
+    assert len(remaining_slots) == 7
+
