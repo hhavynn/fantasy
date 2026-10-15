@@ -2,6 +2,7 @@
 .sortLabel { color: var(--ink-faint); margin-right: 4px; }
 .sortLink { padding: 3px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-muted); }
 .sortLink:hover { color: var(--ink); background: var(--surface-hover); text-decoration: none; }
+@media (max-width: 720px) { .sortLink { display: inline-flex; align-items: center; min-height: 40px; padding-top: 0; padding-bottom: 0; } }
 .sortActive { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); font-weight: 600; }
 
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }

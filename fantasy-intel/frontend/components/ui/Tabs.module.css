@@ -19,3 +19,7 @@
 .tab:hover { color: var(--ink); background: var(--surface-hover); text-decoration: none; }
 .tab[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
 .count { color: var(--ink-faint); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 720px) {
+  .tab { min-height: 40px; }
+}

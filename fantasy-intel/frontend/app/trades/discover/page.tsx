@@ -339,7 +339,7 @@ function Results({ d, rows, total, excluded, sp }: {
           {" "}Nothing is manufactured to fill the list.
         </EmptyState>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap flat">
           <nav className={styles.phoneSort} aria-label="Sort trades">
             <span>Sort by</span>
             {PHONE_SORTS.map(([key, text]) => {

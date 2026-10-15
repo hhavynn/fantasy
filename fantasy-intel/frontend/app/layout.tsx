@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import { Barlow_Condensed, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
+import { CommandPalette } from "@/components/CommandPalette";
 import { MobileNav, NavGroups, SubNav } from "@/components/Nav";
 import { SyncPill } from "@/components/SyncPill";
+import { TableScroll } from "@/components/TableScroll";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { api } from "@/lib/api";
 import type { StatusPayload } from "@/lib/sync-status";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +26,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const status = await api<NonNullable<StatusPayload>>("/api/status");
   const s = status.data;
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    // suppressHydrationWarning: the inline script below sets data-theme on <html> before React hydrates.
+    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body>
         <header className="appbar">
           <div className="topbar">
@@ -36,6 +44,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   {s.league.name} <span className="faint">· wk {s.league.current_week}</span>
                 </span>
               )}
+              <CommandPalette />
+              <ThemeSwitch className="topbar-theme" />
               <SyncPill status={s ?? null} />
               <MobileNav />
             </div>
@@ -43,6 +53,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <SubNav />
         </header>
         <main>{children}</main>
+        <TableScroll />
       </body>
     </html>
   );

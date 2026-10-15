@@ -1,6 +1,5 @@
 /* Trade builder: two roster pickers, a sticky action bar, then the server-rendered result. */
 
-.builder { --appbar-h: 94px; }
 
 /* ---------- Pickers ---------- */
 
@@ -97,8 +96,9 @@
   .week select { width: 92px; padding: 0 4px 0 8px; }
   .counts { font-size: 20px; line-height: 24px; }
   .row { min-height: 44px; }
-  .pos { height: 32px; }
-  .builder .results { scroll-margin-top: 96px; }
+  .pos { height: 40px; }
+  .chipRemove { width: 40px; height: 40px; margin: -8px -4px -8px -8px; }
+  .builder .results { scroll-margin-top: calc(var(--appbar-h) + 8px); }
 }
 
 /* ---------- Results ---------- */

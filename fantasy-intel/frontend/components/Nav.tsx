@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { NAV_GROUPS, getActiveRoute } from "@/lib/navigation";
+import { ThemeSwitch } from "./ThemeSwitch";
+import { ScrollToActive } from "./ui/ScrollToActive";
 import { useDismiss } from "./useDismiss";
 
 export function NavGroups() {
@@ -29,6 +31,7 @@ export function SubNav() {
           {p.label}
         </Link>
       ))}
+      <ScrollToActive current={activeHref} />
     </nav>
   );
 }
@@ -69,6 +72,10 @@ export function MobileNav() {
               ))}
             </div>
           ))}
+          <div className="mobile-nav-theme">
+            <span className="mobile-nav-title">Theme</span>
+            <ThemeSwitch labels />
+          </div>
         </nav>
       )}
     </div>

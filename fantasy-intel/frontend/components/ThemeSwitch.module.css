@@ -1,0 +1,34 @@
+/* Theme switch: System / Light / Dark as a segmented radio group. Tokens only. */
+.switch {
+  display: inline-flex;
+  align-self: center;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+.option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  min-width: 30px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  filter: none;
+}
+.option:hover { color: var(--ink); background: var(--surface-hover); filter: none; }
+.option[aria-checked="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line-control); }
+.icon { flex: none; }
+
+/* In the drawer on phones: words beside the icons, full width, comfortable targets. */
+.labelled { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+.labelled .option { height: 40px; }

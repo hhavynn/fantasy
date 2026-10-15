@@ -1,0 +1,176 @@
+/* Command palette: the app bar trigger and the dialog. Tokens only; see globals.css. */
+
+/* ---------- Trigger (app bar) ---------- */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: center;
+  height: 34px;
+  min-width: 0;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  filter: none;
+}
+.trigger:hover { color: var(--ink); border-color: var(--line-control); filter: none; }
+.triggerIcon { flex: none; }
+.triggerLabel { white-space: nowrap; }
+.kbd {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+/* Narrow desktops: drop the long label first; phones: icon only (the name stays for assistive tech). */
+@media (max-width: 1100px) {
+  .trigger { padding: 0 10px; }
+  .kbd { display: none; }
+  .triggerLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+@media (max-width: 720px) {
+  .trigger { width: 40px; height: 40px; padding: 0; justify-content: center; border-radius: 8px; }
+}
+
+/* ---------- Dialog ---------- */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12vh 16px 16px;
+  background: var(--scrim);
+  animation: fade var(--dur-fast) var(--ease-out);
+}
+.palette {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 600px;
+  max-height: min(560px, calc(100dvh - 12vh - 32px));
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-control);
+  border-radius: 10px;
+  box-shadow: var(--shadow-pop);
+  animation: rise var(--dur) var(--ease-out);
+}
+@keyframes fade { from { opacity: 0; } }
+@keyframes rise { from { opacity: 0; transform: translateY(-8px) scale(.985); } }
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+.fieldIcon { flex: none; color: var(--ink-faint); }
+.palette input.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 52px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 16px;
+}
+.palette input.input:hover { border: 0; }
+.palette input.input:focus-visible { outline: none; }
+.field:focus-within { box-shadow: inset 0 -2px 0 var(--accent); }
+.close {
+  flex: none;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 500;
+  filter: none;
+}
+.close:hover { color: var(--ink); border-color: var(--line-control); filter: none; }
+@media (max-width: 720px) {
+  .close { min-width: 40px; height: 40px; }
+}
+
+.body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 0 8px; }
+.group { padding: 12px 16px 4px; color: var(--ink-faint); font-size: 12px; line-height: 16px; font-weight: 600; }
+.option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 40px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.option[aria-selected="true"] { background: var(--surface-hover); box-shadow: inset 2px 0 0 var(--accent); }
+.label { min-width: 0; color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
+.hint { flex: none; max-width: 55%; color: var(--ink-muted); font-size: 12px; text-align: right; }
+.note { margin: 0; padding: 16px; color: var(--ink-muted); font-size: 13px; }
+
+.foot {
+  display: flex;
+  gap: 16px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+.foot kbd {
+  display: inline-block;
+  min-width: 18px;
+  margin-right: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+}
+@media (max-width: 720px), (hover: none) {
+  .foot { display: none; }
+  .backdrop { padding-top: 8px; }
+  .palette { max-height: calc(100dvh - 16px); }
+}
+
+.status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop, .palette { animation: none; }
+  .option { transition: none; }
+}
