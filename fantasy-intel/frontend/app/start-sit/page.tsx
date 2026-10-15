@@ -101,12 +101,12 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         <StatStrip>
           <Stat
             label="Submitted lineup"
-            value={actual.value === null ? <Missing why="No submitted lineup for this week" /> : `${num(actual.value, 1)}${actual.partial ? "*" : ""}`}
+            value={actual.value === null ? <Missing why="No submitted lineup for this week" /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
             note={!hasLineup ? "No submitted lineup" : actual.partial ? "*Partial: some starters lack a projection" : "ESPN starters, projected pts"}
           />
           <Stat
             label="Recommended lineup"
-            value={`${num(recommended.value, 1)}${recommended.partial ? "*" : ""}`}
+            value={<>{num(recommended.value, 1)}{recommended.partial ? "*" : null}</>}
             note={recommended.partial ? "*Partial: some players lack a projection" : "Projected pts, respects kickoff locks"}
           />
           <Stat

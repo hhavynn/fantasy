@@ -4,7 +4,7 @@ import { Missing, num } from "@/lib/format";
 import { Notice, PageHeader, Stat, StatStrip, Tabs } from "@/components/ui";
 import { api } from "@/lib/api";
 import { parseSort, type SortState } from "@/lib/sort";
-import { PHASE_TEXT, parsePhase, recordText, withParams } from "@/lib/team-value-helpers";
+import { PHASE_TEXT, parsePhase, phaseState, recordText, withParams } from "@/lib/team-value-helpers";
 import type { TeamValue, TvPhase, TvPhaseSplit } from "@/lib/types";
 import {
   BenchSection, MARGINAL_SORT_KEYS, MarginalTable, RaceContext, SlotGaps, SlotStrength, Summary, TopContributors,
@@ -25,10 +25,16 @@ const TAB_TEXT: Record<TvPhase, string> = { all: "Rest of season", regular: "Reg
 
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
-/** A phase's projected total, or its known partial sum marked with an asterisk. */
+/** A phase's projected total; its known partial sum marked with an asterisk; or a dash when no weeks are left. */
 function total(s: TvPhaseSplit) {
-  return s.projected_points !== null ? num(s.projected_points, 1) : <>{num(s.known_points, 1)}*</>;
+  switch (phaseState(s)) {
+    case "empty": return <Missing why="No weeks left in this phase" />;
+    case "incomplete": return <>{num(s.known_points, 1)}*</>;
+    default: return num(s.projected_points, 1);
+  }
 }
+
+const NO_WEEKS = "No weeks left in this phase";
 
 export default async function TeamValuePage({ searchParams }: PageProps<"/my-team/value">) {
   const sp = await searchParams;
@@ -107,19 +113,22 @@ function Dashboard({ d, phase, trades, sort, sp }: {
   const split = ov.phases[phase];
   const ranks = ov.league_ranks.phases[phase];
   const unused = [...d.bench!.players].sort((a, b) => b.unused_projected_points - a.unused_projected_points)[0];
-  const partial = ov.phases.regular.projected_points === null || ov.phases.playoff.projected_points === null;
+  const partial = [ov.phases.regular, ov.phases.playoff].some((s) => phaseState(s) === "incomplete");
   return (
     <>
       <StatStrip>
         <Stat
           label="Record (ESPN)"
           value={recordText(d.standing.record)}
-          note={`Seed ${d.standing.espn_seed ?? "—"} · PF ${num(d.standing.points_for, 1)} · PA ${num(d.standing.points_against, 1)}`}
+          note={<>Seed {d.standing.espn_seed ?? "—"} · PF {num(d.standing.points_for, 1)} · PA {num(d.standing.points_against, 1)}</>}
         />
         <Stat
           label={`Projected starting points`}
           value={total(split)}
-          note={`${split.weeks.length} weeks · ${split.average_weekly !== null ? `${num(split.average_weekly, 1)} per week` : `incomplete: week ${split.incomplete_weeks.join(", ")}`}`}
+          note={
+            phaseState(split) === "empty" ? NO_WEEKS
+              : <>{split.weeks.length} weeks · {split.average_weekly !== null ? <>{num(split.average_weekly, 1)} per week</> : `incomplete: week ${split.incomplete_weeks.join(", ")}`}</>
+          }
         />
         <Stat
           label="Roster strength rank"
@@ -129,7 +138,11 @@ function Dashboard({ d, phase, trades, sort, sp }: {
         <Stat
           label="Regular season"
           value={total(ov.phases.regular)}
-          note={<>Fantasy playoffs {total(ov.phases.playoff)}{partial ? " · *known total, some weeks incomplete" : ""}</>}
+          note={<>
+            {phaseState(ov.phases.regular) === "empty" ? `${NO_WEEKS} · ` : null}
+            Fantasy playoffs {phaseState(ov.phases.playoff) === "empty" ? "none left" : total(ov.phases.playoff)}
+            {partial ? " · *known total, some weeks incomplete" : null}
+          </>}
         />
         <Stat
           label="Largest unused bench projection"

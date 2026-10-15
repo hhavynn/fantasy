@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { TvPlayer } from "./types.ts";
 import {
-  knownMarginalFor, marginalFor, marginalSortValue, parsePhase, recordText, topContributors, withParams,
+  knownMarginalFor, marginalFor, marginalSortValue, parsePhase, phaseState, recordText, topContributors, withParams,
 } from "./team-value-helpers.ts";
 
 function player(id: number, name: string, marginal: Partial<TvPlayer["marginal"]>): TvPlayer {
@@ -60,4 +60,11 @@ test("withParams keeps unrelated params and drops removed ones", () => {
   assert.equal(withParams("/my-team/value", sp, { phase: null, sort: null, dir: null }), "/my-team/value?team=6");
   assert.equal(withParams("/my-team/value", {}, { phase: null }), "/my-team/value");
   assert.equal(withParams("/my-team/value", { trades: "off" }, { trades: "on" }), "/my-team/value?trades=on");
+});
+
+test("phaseState separates a phase with no weeks left from one with incomplete projections", () => {
+  assert.equal(phaseState({ weeks: [], projected_points: null }), "empty");
+  assert.equal(phaseState({ weeks: [9, 10], projected_points: null }), "incomplete");
+  assert.equal(phaseState({ weeks: [9, 10], projected_points: 210.5 }), "complete");
+  assert.equal(phaseState({ weeks: [], projected_points: 0 }), "empty");
 });

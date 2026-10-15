@@ -1,6 +1,6 @@
 // Pure helpers for the My team value page. Everything here sorts, filters or formats numbers the
 // backend already computed; nothing derives a new analytic.
-import type { PrRecord, TvPhase, TvPlayer } from "./types";
+import type { PrRecord, TvPhase, TvPhaseSplit, TvPlayer } from "./types";
 
 export const PHASE_TEXT: Record<TvPhase, string> = {
   all: "Rest of season",
@@ -64,4 +64,16 @@ export function withParams(path: string, sp: Params, changes: Record<string, str
   for (const [k, v] of Object.entries(changes)) if (v !== null) qs.set(k, v);
   const s = qs.toString();
   return s ? `${path}?${s}` : path;
+}
+
+export type PhaseState = "empty" | "incomplete" | "complete";
+
+/**
+ * Whether a phase total is usable. A phase with no weeks left (e.g. the regular season while the
+ * fantasy playoffs are under way) is "empty", not incomplete: there is nothing to project. A phase
+ * with weeks but no exact total is "incomplete" (only a partial known sum exists).
+ */
+export function phaseState(s: Pick<TvPhaseSplit, "weeks" | "projected_points">): PhaseState {
+  if (s.weeks.length === 0) return "empty";
+  return s.projected_points === null ? "incomplete" : "complete";
 }
