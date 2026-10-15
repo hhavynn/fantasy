@@ -2,6 +2,7 @@
 running without the sync-only packages that are left out of the hosted bundle."""
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -154,3 +155,19 @@ def test_hosted_mode_without_token_fails_fast(monkeypatch):
     from app.main import app
     r = TestClient(app).get("/api/overview")
     assert r.status_code == 503 and "MOTHERDUCK_TOKEN is not set" in r.json()["detail"]
+
+
+def test_motherduck_connect_supplies_home_when_empty(monkeypatch, tmp_path):
+    """Vercel functions run with HOME empty; the motherduck extension refuses to load without one."""
+    import tempfile
+
+    import app.db.connection as connection
+    seen = {}
+    monkeypatch.setenv("MOTHERDUCK_TOKEN", "t")
+    monkeypatch.setenv("HOME", "")
+    monkeypatch.setattr(connection.duckdb, "connect", lambda dsn, **kw: seen.update(dsn=dsn, home=os.environ["HOME"]))
+    connection.connect_motherduck("fantasy_intel")
+    assert seen == {"dsn": "md:fantasy_intel?attach_mode=single&saas_mode=true", "home": tempfile.gettempdir()}
+    monkeypatch.setenv("HOME", str(tmp_path))
+    connection.connect_motherduck("fantasy_intel")
+    assert seen["home"] == str(tmp_path)
