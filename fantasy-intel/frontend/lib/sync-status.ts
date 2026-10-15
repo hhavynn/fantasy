@@ -100,8 +100,9 @@ export function computeSyncSummary(
 
   const activeFailures: SyncFailure[] = [];
   for (const [source, run] of runsBySource.entries()) {
-    const isError = run.status && run.status.toLowerCase() !== "success";
-    if (isError) {
+    const statusLower = run.status ? run.status.toLowerCase() : "";
+    const isSuccess = statusLower === "ok" || statusLower === "success";
+    if (!isSuccess) {
       const successTs = lastSuccess[source];
       if (successTs && run.finished_at) {
         const successTime = new Date(successTs).getTime();

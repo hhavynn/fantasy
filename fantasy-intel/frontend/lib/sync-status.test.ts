@@ -28,7 +28,7 @@ test("completely unsynced data (all last_success null, no runs) reports not_sync
   assert.equal(result.activeFailures.length, 0);
 });
 
-test("healthy sync runs report normal status with neutral tone", () => {
+test("healthy sync runs report normal status with neutral tone (supports status 'ok' and 'success')", () => {
   const data = {
     league: { name: "Test League", current_week: 5 },
     nfl_latest_week: 5,
@@ -39,9 +39,9 @@ test("healthy sync runs report normal status with neutral tone", () => {
         analytics: "2026-10-14T12:10:00Z",
       },
       latest_runs: [
-        { source: "espn", status: "success", message: null, finished_at: "2026-10-14T12:00:00Z" },
+        { source: "espn", status: "ok", message: null, finished_at: "2026-10-14T12:00:00Z" },
         { source: "nfl", status: "success", message: null, finished_at: "2026-10-14T12:05:00Z" },
-        { source: "analytics", status: "success", message: null, finished_at: "2026-10-14T12:10:00Z" },
+        { source: "analytics", status: "ok", message: null, finished_at: "2026-10-14T12:10:00Z" },
       ],
     },
   };
