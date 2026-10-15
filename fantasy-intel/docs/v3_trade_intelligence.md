@@ -269,6 +269,8 @@ No projection was scaled.
   baseline, shown per player). So "a large projected D/ST improvement alone" does not make a lopsided skill
   package practical: the one-sided rows above are excluded from practical results because the other lineup loses.
 * The manual analyzer always accepts K and D/ST.
+* V3.1 adds the replacement-aware comparison this section lacked: every trade now shows how much of its gain one
+  available free agent (often a D/ST) already provides. See [`v3_1_trade_vs_free_agency.md`](v3_1_trade_vs_free_agency.md).
 
 ## 8. Expanded search methodology
 

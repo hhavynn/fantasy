@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PlayerLink } from "@/components/PlayerLink";
+import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { Badge, Callout, ErrorBox, Pos, TrendArrow } from "@/components/ui";
 import { api } from "@/lib/api";
 import { label, num, signed } from "@/lib/format";
@@ -155,6 +156,8 @@ function Result({ r }: { r: TradeResult }) {
           </Callout>
         ))}
       </section>
+
+      <TradeVsFreeAgency t={r.trade_vs_free_agency} />
 
       <RosterAndStarts r={r} />
 
