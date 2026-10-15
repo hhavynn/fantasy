@@ -9,6 +9,7 @@ from ..core import Episode, read_json, run_stage, write_json
 
 VERSION = 1
 AI_DISCLOSURE = "Narrated with an AI voice."
+AI_DISCLOSURE_CLONE = "Narrated with an AI voice (a synthetic version of the creator's own voice)."
 ATTRIBUTION = ("Data: nflverse (CC BY 4.0): play-by-play, snap counts and schedules. "
                "Usage figures are from games before the week shown.")
 CHAPTER_NAMES = {"cold_open": "Intro", "method": "What we measure", "playoff_watch": "Fantasy playoff schedules",
@@ -54,10 +55,11 @@ def _run(ep: Episode) -> None:
     hook = (f"{hero['name']}'s {m['label']} went from {claims[m['baseline']]['display']} to "
             f"{claims[m['recent']]['display']}.")
     cta = script["cta"]
+    disclosure = AI_DISCLOSURE_CLONE if (short and ep.cfg["shorts"].get("voice_clone")) else AI_DISCLOSURE
     if short:
         lines = [hook, f"Over his last {claims[hero['recent_games']]['display']} games versus the "
                  f"{claims[hero['baseline_games']]['display']} before. Usage, not box scores.", "",
-                 AI_DISCLOSURE, ATTRIBUTION, "", "#shorts #fantasyfootball #nfl"]
+                 disclosure, ATTRIBUTION, "", "#shorts #fantasyfootball #nfl"]
     else:
         lines = [
             hook,

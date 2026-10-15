@@ -17,7 +17,7 @@ import soundfile as sf
 
 from ..core import STUDIO_ROOT, Episode, read_json, run_stage, write_json
 
-VERSION = 2
+VERSION = 3
 PRONUNCIATIONS = STUDIO_ROOT / "studio" / "pronunciations.toml"
 
 
@@ -91,9 +91,19 @@ def _run(ep: Episode) -> None:
         if missing:
             unknown[seg["id"]] = sorted(set(missing))
             continue
-        sf.write(out_dir / f"{seg['id']}.wav", audio, cfg["sample_rate"], subtype="PCM_16")
-        timings["segments"].append({"id": seg["id"], "duration": round(len(audio) / cfg["sample_rate"], 3),
-                                    "words": words})
+        wav = out_dir / f"{seg['id']}.wav"
+        sf.write(wav, audio, cfg["sample_rate"], subtype="PCM_16")
+        duration = len(audio) / cfg["sample_rate"]
+        if cfg.get("clone"):
+            # Re-voice in the enrolled speaker's timbre; the converter keeps the timing, so the word
+            # timestamps still hold. Kept at the converter's rate; the renderer resamples.
+            from ..voice import convert
+            kokoro_wav = out_dir / f"{seg['id']}.kokoro.wav"
+            wav.rename(kokoro_wav)
+            sr_out = convert(kokoro_wav, wav, cfg["voice"], cfg["clone"])
+            kokoro_wav.unlink()
+            duration = sf.info(wav).frames / sr_out
+        timings["segments"].append({"id": seg["id"], "duration": round(duration, 3), "words": words})
     if unknown:
         write_json(ep.path("tts_unknown_words.json"), unknown)
         raise RuntimeError(
@@ -111,11 +121,18 @@ def tts_config(ep: Episode) -> dict:
     if ep.fmt == "short":
         sh = ep.cfg["shorts"]
         cfg.update(segment_tail_silence=sh["segment_tail_silence"], voice=sh.get("voice", cfg["voice"]),
-                   trim=sh.get("trim_silence", False))
+                   trim=sh.get("trim_silence", False), clone=sh.get("voice_clone") or None)
     return cfg
 
 
 def run(ep: Episode) -> None:
     pron = PRONUNCIATIONS.read_text() if PRONUNCIATIONS.exists() else ""
-    run_stage(ep, "tts", VERSION, {"tts": tts_config(ep), "pronunciations": pron},
+    cfg = tts_config(ep)
+    if cfg.get("clone"):
+        from ..voice import consent
+        rec = consent(cfg["clone"])
+        if rec is None:
+            raise RuntimeError(f"voice_clone '{cfg['clone']}' is not enrolled; run enroll-voice first")
+        cfg = {**cfg, "clone_embedding": rec["embedding_sha256"]}     # re-render when the voice changes
+    run_stage(ep, "tts", VERSION, {"tts": cfg, "pronunciations": pron},
               ["script.json"], ["audio"], lambda: _run(ep))

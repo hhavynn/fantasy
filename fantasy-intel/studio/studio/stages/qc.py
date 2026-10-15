@@ -262,8 +262,13 @@ def gate_licenses(cfg, installed: set[str]) -> Gate:
         blob = json.dumps(cfg[section]).lower()
         failures += [f"{section}: banned model reference {w!r}" for w in BANNED_MODEL_WORDS if w in blob]
     if cfg["tts"].get("engine") != "kokoro":
-        failures.append("tts engine is not Kokoro; OpenVoice needs a recorded consent check first")
-    return _gate("licenses", failures, allowed_models=ALLOWED_MODELS)
+        failures.append("tts engine is not Kokoro")
+    clone = (cfg.raw.get("shorts") or {}).get("voice_clone") if hasattr(cfg, "raw") else None
+    if clone:
+        # A cloned voice is only ever the channel owner's own, with a declaration on file.
+        from ..voice import consent_problems
+        failures += consent_problems(clone)
+    return _gate("licenses", failures, allowed_models=ALLOWED_MODELS, voice_clone=clone or None)
 
 
 def gate_metadata(meta: dict, thumbnail: Path, fmt: str = "long") -> Gate:
@@ -274,7 +279,7 @@ def gate_metadata(meta: dict, thumbnail: Path, fmt: str = "long") -> Gate:
         failures.append("made_for_kids must be false")
     if meta["contains_synthetic_media"] is not True:
         failures.append("contains_synthetic_media must be true (AI voice)")
-    if "Narrated with an AI voice." not in meta["description"]:
+    if "Narrated with an AI voice" not in meta["description"]:
         failures.append("description lacks the AI-voice disclosure")
     if "nflverse" not in meta["description"]:
         failures.append("description lacks the data attribution")

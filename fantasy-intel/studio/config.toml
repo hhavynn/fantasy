@@ -66,5 +66,8 @@ segment_tail_silence = 0.12
 music = true
 music_db = -28.0
 sfx_db = -12.0
+# The channel owner's enrolled voice (see voices/RECORDING.md). Empty = Kokoro's own voice.
+# Kokoro still performs; OpenVoice V2 re-voices it. QC blocks publishing without a valid consent record.
+voice_clone = ""
 # Default hook per storyline; empty = rotate least recently used.
 hook = ""

@@ -91,15 +91,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--season", type=int, help="defaults to config.toml season")
     ap.add_argument("--force", default="", help="comma-separated stages to rerun regardless of cache, or 'all'")
     ap.add_argument("--player", help="Shorts only: build just this story (its slug, e.g. braelon-allen)")
+    ap.add_argument("--voice", help="Shorts only: narrate with this enrolled voice (overrides config "
+                                    "shorts.voice_clone); written to <slug>-voice-<name>")
     ap.add_argument("--hook", help="Shorts only: force a hook family (e.g. where, talk, warning) for A/B variants; "
                                    "the variant is written to <slug>-hook-<name>")
     args = ap.parse_args(argv)
     cfg = Config.load()
+    if args.voice:
+        cfg.raw["shorts"] = {**cfg.raw["shorts"], "voice_clone": args.voice}
     season = args.season or cfg.season
     force = {s.strip() for s in args.force.split(",") if s.strip()}
     if args.format == "short":
-        return make_shorts(cfg, season, args.week, force, args.player, args.hook,
-                           f"-hook-{args.hook}" if args.hook else "")
+        suffix = (f"-hook-{args.hook}" if args.hook else "") + (f"-voice-{args.voice}" if args.voice else "")
+        return make_shorts(cfg, season, args.week, force, args.player, args.hook, suffix)
     ep = Episode(season, args.week, "long", cfg, force=force)
     ep.dir.mkdir(parents=True, exist_ok=True)
     print(f"episode {ep.id} -> {ep.dir}")
