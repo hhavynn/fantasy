@@ -74,23 +74,23 @@ def load_panel(con, scoring: SkillScoring, seasons: list[int] | None = None) -> 
                max(s.offense_pct) AS offense_pct
         FROM nfl_snap_counts s JOIN nfl_players np ON np.pfr_id = s.pfr_player_id
         WHERE s.game_type = 'REG' {where.replace('season', 's.season')} GROUP BY 1, 2, 3""",
-        "SELECT NULL::VARCHAR gsis_id, NULL::INT season, NULL::INT week, NULL::VARCHAR team, "
-        "NULL::VARCHAR opponent, NULL::DOUBLE offense_snaps, NULL::DOUBLE offense_pct WHERE false")
+        "SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS season, NULL::INT AS week, NULL::VARCHAR AS team, "
+        "NULL::VARCHAR AS opponent, NULL::DOUBLE AS offense_snaps, NULL::DOUBLE AS offense_pct WHERE false")
     xfp = _optional_sql(con, "nfl_ff_opportunity", {"player_id", "total_fantasy_points_exp"}, f"""
         SELECT player_id AS gsis_id, season::INT AS season, week::INT AS week,
                sum(total_fantasy_points_exp) AS xfp
         FROM nfl_ff_opportunity WHERE true {where} GROUP BY 1, 2, 3""",
-        "SELECT NULL::VARCHAR gsis_id, NULL::INT season, NULL::INT week, NULL::DOUBLE xfp WHERE false")
+        "SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS season, NULL::INT AS week, NULL::DOUBLE AS xfp WHERE false")
     pbp = _optional_sql(con, "nfl_pbp_player_week", {"rz_targets", "rz_carries", "gl_carries"}, f"""
         SELECT player_id AS gsis_id, season, week, rz_targets, rz_carries, gl_carries, designed_rushes
         FROM nfl_pbp_player_week WHERE true {where}""",
-        "SELECT NULL::VARCHAR gsis_id, NULL::INT season, NULL::INT week, NULL::INT rz_targets, "
-        "NULL::INT rz_carries, NULL::INT gl_carries, NULL::INT designed_rushes WHERE false")
+        "SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS season, NULL::INT AS week, NULL::INT AS rz_targets, "
+        "NULL::INT AS rz_carries, NULL::INT AS gl_carries, NULL::INT AS designed_rushes WHERE false")
     team = _optional_sql(con, "nfl_team_week", {"team_targets", "team_rush_attempts", "team_rb_carries"}, f"""
         SELECT season, week, team, team_targets, team_rush_attempts, team_rb_carries
         FROM nfl_team_week WHERE true {where}""",
-        "SELECT NULL::INT season, NULL::INT week, NULL::VARCHAR team, NULL::INT team_targets, "
-        "NULL::INT team_rush_attempts, NULL::INT team_rb_carries WHERE false")
+        "SELECT NULL::INT AS season, NULL::INT AS week, NULL::VARCHAR AS team, NULL::INT AS team_targets, "
+        "NULL::INT AS team_rush_attempts, NULL::INT AS team_rb_carries WHERE false")
     pts = points_sql(scoring, "w")
     sql = f"""
     WITH stats AS (
@@ -392,7 +392,9 @@ def features_for_week(sources: Sources, season: int, week: int, targets: pl.Data
     )
     keep = ["season", "week", "gsis_id", "position", "team", "opponent", "last_team", "last_season", "last_week",
             "opp_games", "team_games", *FEATURE_DOCS]
-    return out.select([c for c in dict.fromkeys(keep) if c in out.columns])
+    out = out.select([c for c in dict.fromkeys(keep) if c in out.columns])
+    # Parallel aggregation can change float summation order (~1e-15); rounding makes features bit-reproducible.
+    return out.with_columns([pl.col(c).round(10) for c, t in out.schema.items() if t == pl.Float64])
 
 
 def played_targets(sources: Sources, season: int, week: int) -> pl.DataFrame:

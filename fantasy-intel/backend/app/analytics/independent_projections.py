@@ -264,3 +264,104 @@ def explain_row(model: RidgeModel, row: pl.DataFrame, top: int = 4) -> list[dict
                       "contribution": round(c, 2), "text": text})
     items.sort(key=lambda d: (-abs(d["contribution"]), d["feature"]))
     return items[:top]
+
+
+# ----------------------------------------------------------------------------- final fit
+
+
+def fit_final(store: pl.DataFrame, selection: dict, evaluation: dict, scoring_desc: dict,
+              created_at: str, train_start: int) -> Artifact:
+    """Train each position's primary model on every labeled store row with the FROZEN penalty.
+    Status and intervals come from the held-out evaluation; nothing is re-tuned here."""
+    models = {}
+    for pos, s in selection["positions"].items():
+        rows = store.filter((pl.col("position") == pos) & (pl.col("season") >= train_start)
+                            & (pl.col("games_recent") > 0) & pl.col("label").is_not_null())
+        if rows.height < MIN_TRAIN_ROWS:
+            continue
+        lam = s["lambda"][s["primary"]]
+        models[pos] = fit_ridge(rows, pos, s["primary"], [lam])[lam]
+    status = {}
+    for pos in POSITIONS:
+        st = dict(evaluation.get("status", {}).get(pos)
+                  or {"status": "insufficient_data", "reasons": ["not evaluated"], "start_sit_ready": False})
+        if pos not in models:
+            st = {"status": "insufficient_data", "reasons": ["too few training rows"], "start_sit_ready": False}
+        status[pos] = st
+    intervals = {pos: selection["positions"][pos]["intervals"] for pos in models
+                 if status[pos].get("intervals_published")}
+    keep = ("common_support_n", "metrics", "best_trailing_baseline", "relative_mae_improvement",
+            "primary_minus_best_baseline_mae", "interval80_empirical_coverage", "coverage", "primary_model")
+    summary = {pos: {k: v for k, v in rep.items() if k in keep} for pos, rep in evaluation.get("positions", {}).items()}
+    summary["heldout_seasons"] = evaluation.get("heldout_seasons")
+    summary["espn_matched_observations"] = evaluation.get("espn_comparison", {}).get("matched_observations", 0)
+    summary["pair_decisions"] = evaluation.get("pair_decisions", {}).get("all")
+    return Artifact(version=MODEL_VERSION, created_at=created_at, scoring_fingerprint=scoring_desc["fingerprint"],
+                    scoring=scoring_desc,
+                    config={"selection": {p: {"primary": s["primary"], "lambda": s["lambda"]}
+                                          for p, s in selection["positions"].items()},
+                            "protocol": selection["protocol"], "train_start_season": train_start},
+                    models=models, intervals=intervals, status=status, evaluation=summary)
+
+
+# ----------------------------------------------------------------------------- inference
+
+LIMITATIONS = [
+    "Conditional on the player suiting up; availability is reported separately, not modeled.",
+    "Trained on nflverse box scores scored with this league's offensive rules (QB/RB/WR/TE only).",
+    "Uses only games completed before the target week; no betting lines, injury reports or depth charts.",
+    "Not validated against ESPN unless the model status says an ESPN comparison criterion was met.",
+]
+
+
+def predict_frame(artifact: Artifact, features: pl.DataFrame) -> list[dict]:
+    """Apply frozen models to point-in-time features. One dict per row; model_points is None
+    for an abstention (no game in the lookback window or no model for the position)."""
+    out = []
+    for pos in POSITIONS:
+        rows = features.filter(pl.col("position") == pos)
+        if rows.height == 0:
+            continue
+        model = artifact.models.get(pos)
+        preds = model.predict(rows) if model else None
+        for i, rec in enumerate(rows.iter_rows(named=True)):
+            item = {**rec, "model_points": None, "interval_low": None, "interval_high": None, "explanation": []}
+            if model is not None and (rec.get("games_recent") or 0) > 0:
+                p = round(float(preds[i]), 2)
+                iv = interval_for(artifact.intervals, pos, p)
+                item.update(model_points=p, explanation=explain_row(model, rows.slice(i, 1)),
+                            interval_low=None if iv is None else round(iv[0], 2),
+                            interval_high=None if iv is None else round(iv[1], 2))
+            out.append(item)
+    return out
+
+
+def missing_inputs(row: dict) -> list[str]:
+    out = []
+    if row.get("xfp_missing"):
+        out.append("nflverse xFP unavailable in recent games")
+    if row.get("snap_missing"):
+        out.append("snap counts unavailable in recent games")
+    if row.get("rz_missing"):
+        out.append("play-by-play red-zone data unavailable in recent games")
+    if row.get("pts_prev_season") is None:
+        out.append("no previous-season games")
+    if (row.get("games_season") or 0) == 0:
+        out.append("no games this season before the target week")
+    if (row.get("opp_games") or 0) == 0:
+        out.append("opponent has no completed games this season (league-average matchup assumed)")
+    return out
+
+
+def flags_for(row: dict) -> list[str]:
+    out = []
+    g = row.get("games_recent") or 0
+    if 0 < g < 3:
+        out.append(f"low sample: {g} recent game(s)")
+    if row.get("team_changed"):
+        out.append(f"changed team ({row.get('last_team')} -> {row.get('team')}): role shares come from the old team")
+    if (row.get("weeks_since_last") or 0) >= 4:
+        out.append(f"returning after {row.get('weeks_since_last')} weeks without a game")
+    if row.get("snap_trend") is not None and abs(row["snap_trend"]) >= 0.2:
+        out.append(f"snap share changed {row['snap_trend']:+.0%} in the last game")
+    return out
