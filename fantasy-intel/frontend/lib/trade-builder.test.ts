@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  canEvaluate, changeTeam, initialSelection, problems, rosterPreview, selectionKey, setStartWeek, shapeLabel,
-  toQuery, togglePlayer, type BuilderTeam,
+  canEvaluate, changeTeam, clearPicks, filterRoster, groupByPosition, initialSelection, positionsIn, problems,
+  rosterPreview, selectionKey, setStartWeek, shapeLabel, sideLimit, toQuery, togglePlayer, type BuilderTeam,
 } from "./trade-builder.ts";
 
 const P = (id: number, position = "WR", on_ir = false) => ({ espn_player_id: id, position, on_ir });
@@ -81,4 +81,51 @@ test("roster preview flags capacity and position limits before drops", () => {
   assert.deepEqual(pv.positionsOver, []);         // WR 203 out, WR 103 in: still 2 WR
   const pv2 = rosterPreview(own, [202], [P(105, "WR"), P(106, "WR")], 10, { WR: 2 });
   assert.deepEqual(pv2.positionsOver, [{ position: "WR", count: 4, limit: 2 }]);
+});
+
+test("a full side refuses another player but still lets one be removed", () => {
+  let s = initialSelection(TEAMS, { ta: 1, tb: 2, a: [101, 102] });
+  const full = togglePlayer(s, "a", 103, 2);
+  assert.equal(full, s);                              // unchanged, same object
+  assert.deepEqual(full.a, [101, 102]);
+  s = togglePlayer(s, "a", 102, 2);                   // removing works at the limit
+  assert.deepEqual(s.a, [101]);
+  s = togglePlayer(s, "a", 103, 2);                   // and frees a slot
+  assert.deepEqual(s.a, [101, 103]);
+  assert.deepEqual(togglePlayer(initialSelection(TEAMS, { ta: 1, tb: 2 }), "a", 101).a, [101]);   // no max: unchanged behaviour
+});
+
+test("clearPicks empties both sides and keeps teams and start week", () => {
+  const s = initialSelection(TEAMS, { ta: 1, tb: 2, a: [102], b: [203], sw: 9 });
+  assert.deepEqual(clearPicks(s), { ta: 1, tb: 2, a: [], b: [], sw: 9 });
+});
+
+test("sideLimit reports remaining room and the limit state", () => {
+  assert.deepEqual(sideLimit(2, 6), { count: 2, max: 6, remaining: 4, atLimit: false, over: false });
+  assert.deepEqual(sideLimit(6, 6), { count: 6, max: 6, remaining: 0, atLimit: true, over: false });
+  assert.deepEqual(sideLimit(7, 6), { count: 7, max: 6, remaining: 0, atLimit: true, over: true });
+});
+
+test("roster groups follow the picker position order and keep player order inside a group", () => {
+  const ps = [P(1, "WR"), P(2, "K"), P(3, "QB"), P(4, "WR"), P(5, "D/ST"), P(6, "RB"), { ...P(7), position: null }, P(8, "TE"), P(9, "LB")];
+  const groups = groupByPosition(ps);
+  assert.deepEqual(groups.map((g) => g.position), ["QB", "RB", "WR", "TE", "K", "D/ST", "LB", "?"]);
+  assert.deepEqual(groups.find((g) => g.position === "WR")!.players.map((p) => p.espn_player_id), [1, 4]);
+  assert.deepEqual(positionsIn(ps), ["QB", "RB", "WR", "TE", "K", "D/ST", "LB", "?"]);
+  assert.deepEqual(groupByPosition([]), []);
+});
+
+test("roster filter matches name or NFL team and a position, ignoring case and padding", () => {
+  const ps = [
+    { name: "Jalen Hurts", position: "QB", pro_team: "PHI" },
+    { name: "A.J. Brown", position: "WR", pro_team: "PHI" },
+    { name: "Bijan Robinson", position: "RB", pro_team: "ATL" },
+    { name: null, position: null, pro_team: null },
+  ];
+  assert.equal(filterRoster(ps, "", "").length, 4);
+  assert.deepEqual(filterRoster(ps, "  HURTS ", "").map((p) => p.name), ["Jalen Hurts"]);
+  assert.deepEqual(filterRoster(ps, "phi", "").map((p) => p.name), ["Jalen Hurts", "A.J. Brown"]);
+  assert.deepEqual(filterRoster(ps, "phi", "WR").map((p) => p.name), ["A.J. Brown"]);
+  assert.deepEqual(filterRoster(ps, "", "?").length, 1);
+  assert.deepEqual(filterRoster(ps, "zzz", ""), []);
 });
