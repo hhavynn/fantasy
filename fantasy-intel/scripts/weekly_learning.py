@@ -165,6 +165,10 @@ def cmd_predict(args, live, src, scoring, artifacts: dict | None = None, **_) ->
                      kind="retrospective" if args.retrospective else "pregame", readiness_report=rep,
                      artifact_ids={"champion": {"version": champ.version, "id": cid, "path": str(cpath)},
                                    "challenger": {"version": chal.version, "id": xid, "path": str(xpath)}})
+    if not run["rows"] or (run["kind"] == "pregame" and not any(r["pregame"] for r in run["rows"])):
+        raise wl.NotReady(f"no {run['kind']} forecast row for {args.season} week {args.week} (no ACT/INA roster player "
+                          "on a team playing that week, or every game has kicked off): nothing was frozen; rerun "
+                          "after nflverse publishes the weekly rosters")
     path, created = wl.write_run(run, args.out)
     # an identical earlier run is kept and reported (its id), never rewritten
     return {"run_id": run["run_id"] if created else path.stem, "path": str(path), "new": created,
