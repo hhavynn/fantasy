@@ -1,0 +1,43 @@
+.figure { margin: 0; width: 100%; min-width: 0; }
+.svg { display: block; width: 100%; height: auto; }
+
+/* Text: 11 chart units at the natural width; larger units on phones (see phoneFont). */
+.t {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  fill: var(--chart-axis);
+  font-variant-numeric: tabular-nums;
+}
+.strong { fill: var(--ink); }
+.muted { fill: var(--ink-muted); }
+.halo { paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+
+.grid { stroke: var(--chart-grid); stroke-width: 1; }
+.axis { stroke: var(--line-control); stroke-width: 1; }
+.ref { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 4 3; }
+.line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dot { stroke: var(--surface); stroke-width: 1.5; }
+.empty { font-family: var(--font-sans); font-size: 13px; fill: var(--ink-faint); }
+
+/* Phones: a viewBox chart shrinks, so labels use a larger unit size and sparser tick sets. */
+@media (max-width: 720px) {
+  .t { font-size: var(--t-phone); }
+  .desktopOnly { display: none; }
+}
+@media (min-width: 721px) {
+  .phoneOnly { display: none; }
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.legendItem { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 12px; height: 3px; border-radius: 2px; }
