@@ -60,7 +60,15 @@ def _fixed_counts(slots: list[str]) -> Counter:
 
 
 class AssetBoard:
-    """Replacement baselines, per-player PAR and positional ranks for one league state and window."""
+    """Replacement baselines, per-player PAR and positional ranks for one league state and window.
+
+    Positional PAR ranks are tie-aware (standard competition rank: 1 + count of players with strictly
+    higher PAR using full-precision PAR with a 1e-9 tolerance). When ties span the league starter
+    threshold, all tied players receive the same rank and qualify as starter-caliber (rank <= starters),
+    even if that means more players qualify than the nominal starter count. Display order remains
+    deterministic (descending by PAR, breaking ties by ESPN player ID ascending), but display ordering
+    is strictly decoupled from value classification.
+    """
 
     def __init__(self, state, window: Window):
         self.state, self.window = state, window
@@ -86,18 +94,24 @@ class AssetBoard:
                               "source": "league-structure replacement (no free agent projected)"}
             self.base[pos] = per
         self.profiles = {p.espn_player_id: self._profile(p) for p in rostered}
-        by_pos: dict[str, list] = {}
+        by_pos: dict[str, list[tuple[float, int]]] = {}
         for pid, pr in self.profiles.items():
-            if pr["par"] is not None:
-                by_pos.setdefault(pr["position"], []).append((-pr["par"], pid))
+            raw_par = pr.pop("_raw_par", None)
+            if raw_par is not None:
+                by_pos.setdefault(pr["position"], []).append((raw_par, pid))
         for pos, items in by_pos.items():
-            items.sort()
-            for i, (_, pid) in enumerate(items):
+            # Deterministic presentation ordering: highest PAR first, ties broken by ESPN player ID
+            items.sort(key=lambda x: (-x[0], x[1]))
+            known_raws = [x[0] for x in items]
+            for raw_par, pid in items:
                 pr = self.profiles[pid]
-                pr["position_rank"] = i + 1
+                # Tie-aware competition rank: 1 + number of players with strictly higher PAR
+                rank = 1 + sum(1 for other_raw in known_raws if other_raw > raw_par + 1e-9)
+                pr["position_rank"] = rank
                 pr["position_rank_of"] = len(items)
                 pr["league_starters_at_position"] = self.starters.get(pos)
-                pr["starter_caliber"] = pos in self.starters and i + 1 <= self.starters[pos]
+                # All tied players spanning the cutoff receive starter_caliber=True
+                pr["starter_caliber"] = pos in self.starters and rank <= self.starters[pos]
 
     def _profile(self, p: RosterPlayer) -> dict:
         avail = (self.state.availability or {}).get(p.espn_player_id) or {}
@@ -124,7 +138,7 @@ class AssetBoard:
         sources = sorted({(base.get(w) or {}).get("source") for w in self.weeks if w in base} - {None})
         status = avail.get("status")
         return {"espn_player_id": p.espn_player_id, "name": p.name, "position": p.position,
-                "par": r(par) if complete else None, "known_par": r(par),
+                "par": r(par) if complete else None, "known_par": r(par), "_raw_par": par if complete else None,
                 "par_regular": r(per["regular"]) if complete else None, "par_playoff": r(per["playoff"]) if complete else None,
                 "espn_points_eligible_weeks": r(raw) if complete else None,
                 "replacement_per_week": r(sum((base.get(w) or {}).get("level", 0.0) for w in self.weeks) / len(self.weeks))
