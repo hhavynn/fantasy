@@ -30,6 +30,16 @@ Outputs land in `episodes/<season>-wNN-long/`: `final.mp4`, `thumbnail.png`, `me
 intermediate (`snapshot.json`, `facts.json`, `script.json`, `audio/`, `shots/`). Rerunning skips any
 stage whose inputs did not change; `--force script,tts` reruns specific stages.
 
+## QC and provenance
+
+`make-episode` finishes with QC gates and exits non-zero if any fails (upload is blocked):
+data claims re-derived from the snapshot, no number in narration or titles outside a claim, duration
+(8-12 min long form), silences over 1.5 s and clipping, black or frozen frames, A/V length, caption
+overflow, originality versus `episodes/history.jsonl` (5-gram overlap and recycled players), model and
+package licenses, private-only upload metadata, and pipeline integrity (no stale stage output).
+Results with evidence: `qc.json`. Rights and reproducibility record: `provenance.json` (git commit,
+model checkpoints with licenses and sha256, tool versions, data snapshot hash, every prompt, file hashes).
+
 Read the script and watch the video before publishing: the local model still occasionally writes a
 sentence the data does not support, and every upload is a human decision.
 

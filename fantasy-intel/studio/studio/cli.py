@@ -3,7 +3,8 @@
     uv run make-episode --week 6 --format long
     uv run make-episode --week 6 --format long --force script,tts
 
-Stages skip themselves when their inputs are unchanged, so a rerun only redoes what changed.
+Stages skip themselves when their inputs are unchanged, so a rerun only redoes what changed. QC gates run
+last; the command exits non-zero, and upload stays blocked, if any gate fails.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import sys
 import time
 
 from .core import Config, Episode
-from .stages import assemble, charts, facts, metadata, script, snapshot, thumbnail, tts
+from .stages import assemble, charts, facts, metadata, provenance, qc, script, snapshot, thumbnail, tts
 
 STAGES = [("snapshot", snapshot), ("facts", facts), ("script", script), ("tts", tts), ("charts", charts),
           ("assemble", assemble), ("thumbnail", thumbnail), ("metadata", metadata)]
@@ -39,7 +40,14 @@ def main(argv: list[str] | None = None) -> int:
         stage.run(ep)
         print(f"  [{name} {time.time() - t0:.1f}s]")
         if name == args.until:
-            break
+            return 0
+    # QC always runs on the finished episode; provenance records the result either way.
+    passed = qc.run(ep)
+    provenance.run(ep)
+    if not passed:
+        print(f"QC FAILED: see {ep.path('qc.json')}. Upload is blocked.", file=sys.stderr)
+        return 1
+    print(f"QC passed. Review {ep.path('final.mp4')} before uploading.")
     return 0
 
 
