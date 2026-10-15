@@ -38,17 +38,31 @@ function wk(weeks: number[] | null, period: number): string {
 
 export default async function LuckLabPage({ searchParams }: PageProps<"/luck-lab">) {
   const sp = await searchParams;
-  const team = one(sp.team), vs = one(sp.vs);
+  const team = one(sp.team);
+  // A schedule equal to the focus team is meaningless (the API rejects it): drop it rather than show an error.
+  // When the focus team is the default (yours), the page cannot know it up front, so retry without the schedule.
+  let vs = one(sp.vs);
+  if (vs && team && vs === team) vs = undefined;
   const q = new URLSearchParams();
   if (team) q.set("team_id", team);
   if (vs) q.set("schedule_of", vs);
-  const res = await api<LuckLab>(`/api/luck-lab?${q.toString()}`);
+  let res = await api<LuckLab>(`/api/luck-lab?${q.toString()}`);
+  let cleared = one(sp.vs) !== undefined && one(sp.vs) !== "" && vs === undefined;
+  if (!res.ok && vs) {
+    q.delete("schedule_of");
+    const retry = await api<LuckLab>(`/api/luck-lab?${q.toString()}`);
+    if (retry.ok && retry.data.focus_team_id === Number(vs)) {
+      res = retry;
+      cleared = true;
+    }
+  }
   return (
     <div className="stack">
       <div className="page-head">
         <h1>Luck vs. skill lab</h1>
         <span className="sub">Scoring strength, head-to-head results and schedule advantage · historical, explanatory, not a prediction</span>
       </div>
+      {cleared && res.ok && <Callout>The schedule comparison was cleared: a team cannot be compared against its own schedule. Pick another manager&apos;s schedule.</Callout>}
       {!res.ok ? <ErrorBox error={res.error} /> : <Body d={res.data} />}
     </div>
   );
