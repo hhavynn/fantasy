@@ -305,7 +305,10 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
                "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",
                "connection.py",   # connection.py: schema-version rebuild list only (like schema.sql)
-               "promotion_tracker.py", "projection_promotion.py"}   # read-only promotion tracker
+               "promotion_tracker.py", "projection_promotion.py",   # read-only promotion tracker
+               # ifp-2 research challenger + weekly learning pipeline (shadow only; nothing imports them,
+               # see tests/test_weekly_learning.py::test_weekly_pipeline_never_imports_into_consumers)
+               "challenger.py", "weekly_learning.py"}
     for f in APP.rglob("*"):
         if f.suffix not in (".py", ".sql") or f.name in allowed:
             continue

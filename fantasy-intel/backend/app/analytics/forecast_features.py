@@ -110,7 +110,10 @@ def load_panel(con, scoring: SkillScoring, seasons: list[int] | None = None) -> 
         "SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS season, NULL::INT AS week, NULL::INT AS rz_targets, "
         "NULL::INT AS rz_carries, NULL::INT AS gl_carries, NULL::INT AS designed_rushes WHERE false")
     exp = {k: c for k, c in EXPECTED_COMPONENTS.items() if k in scoring.weights}
-    exp_sum = lambda keys: " + ".join(f"{float(scoring.weights[k])!r} * coalesce({exp[k]}, 0)" for k in keys) or "0"  # noqa: E731
+
+    def exp_sum(keys) -> str:
+        return " + ".join(f"{float(scoring.weights[k])!r} * coalesce({exp[k]}, 0)" for k in keys) or "0"
+
     xfpl = _optional_sql(con, "nfl_ff_opportunity", {"player_id", *exp.values()}, f"""
         SELECT player_id AS gsis_id, season::INT AS season, week::INT AS week,
                sum({exp_sum(exp)}) AS xfpl, sum({exp_sum([k for k in exp if k.endswith('_tds')])}) AS xfpl_td

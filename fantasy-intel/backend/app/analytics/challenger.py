@@ -54,12 +54,22 @@ for _f in [f for g in GROUPS.values() for f in g]:
     assert _f in FEATURE_DOCS, _f
 
 
+# "R": replace last-5 usage by its healthy-game counterpart (injury exits removed) instead of adding it
+HEALTHY_REPLACEMENT = {"xfp_recent": "h_xfpl_pg", "targets_pg": "h_targets_pg", "carries_pg": "h_carries_pg",
+                       "snap_pct": "h_snap_pct", "snap_trend": "snap_trend_role"}
+
+
 def feature_set(groups: str, opportunity_first: bool = False) -> dict[str, list[str]]:
     """Context model C plus the named groups (letters of GROUPS). `opportunity_first` drops the raw
-    production averages so production enters only through the expected-points decomposition."""
+    production averages so production enters only through the expected-points decomposition.
+    "R" in `groups` swaps raw last-5 usage for healthy-game usage (HEALTHY_REPLACEMENT)."""
     out = {}
+    replace, groups = "R" in groups, groups.replace("R", "")
     for pos in POSITIONS:
         feats = [f for f in CONTEXT[pos] if not (opportunity_first and f in RAW_PRODUCTION)]
+        if replace:
+            feats = [HEALTHY_REPLACEMENT.get(f, f) for f in feats]
+            feats += [f for f in ("last_injury_exit", "inj_exits_recent") if f not in feats]
         for g in groups:
             feats += [f for f in GROUPS[g] if f not in feats]
         out[pos] = feats

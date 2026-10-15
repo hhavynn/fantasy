@@ -24,7 +24,7 @@ from pathlib import Path
 import sys
 import time
 
-import _bootstrap  # noqa: F401
+import _bootstrap
 import duckdb
 import polars as pl
 
@@ -88,6 +88,8 @@ DEV_SPECS = [
     # round 2 (added after round-1 development results; still development window only)
     ch.Spec("C_F", "F"), ch.Spec("C_U", "U"), ch.Spec("C_Q", "Q"), ch.Spec("C_FE", "FE"), ch.Spec("C_FQ", "FQ"),
     ch.Spec("C_FEQ", "FEQ"), ch.Spec("C_FUEQ", "FUEQ"), ch.Spec("C_FEQ_hl36", "FEQ", half_life_weeks=36),
+    # round 3 (after confirmation; development window only, reported, cannot change the frozen config)
+    ch.Spec("C_R", "R"), ch.Spec("C_RFEQ_hl36", "RFEQ", half_life_weeks=36),
 ]
 
 
@@ -278,6 +280,41 @@ def cmd_exits_audit(args) -> dict:
     return out
 
 
+def cmd_cases(args) -> dict:
+    """Player-level examples from the confirmation + exploratory replays (numbers only; the
+    'why' is inferred from the classified evidence and labeled as such)."""
+    store = _load_store(args)
+    preds = pl.concat([pl.read_parquet(args.out / "research" / f"{w}_preds.parquet") for w in ("confirmation", "exploratory")])
+    live = duckdb.connect(str(args.live_db), read_only=True)
+    names = dict(live.execute("SELECT gsis_id, display_name FROM nfl_players").fetchall())
+    cols = ["season", "week", "gsis_id", "position", "label", "pred_C", "pred_ifp2", "carries_pg", "h_carries_pg",
+            "targets_pg", "h_targets_pg", "xfpl_eb", "inj_exits_recent", "last_pts", "last_td_pts", "last_opps",
+            "pts_recent_raw", "games_recent"]
+    j = preds.join(store.select("key", "gsis_id", *[c for c in cols if c not in preds.columns]), on=["key", "gsis_id"])
+    j = j.with_columns(pl.col("gsis_id").replace_strict(names, default=None).alias("name"),
+                       (pl.col("pred_ifp2") - pl.col("pred_C")).round(2).alias("ifp2_minus_C"))
+    out = {}
+    sel = {"established_rb_after_injury_exit": (pl.col("position") == "RB") & (pl.col("last_injury_exit") == 1)
+                                               & (pl.col("h_carries_pg") >= 14),
+           "low_opportunity_td_boom": (pl.col("last_td_pts") >= 12) & (pl.col("last_opps") <= 6)
+                                      & (pl.col("games_recent") >= 3),
+           "possible_role_cut": (pl.col("last_role_low") == 1) & (pl.col("h_xfpl_pg") >= 10)}
+    for name, flt in sel.items():
+        g = j.join(store.select("key", "gsis_id", "last_injury_exit", "last_role_low", "h_xfpl_pg"),
+                   on=["key", "gsis_id"]).filter(flt)
+        a = g["label"].to_numpy()
+        out[name] = {"n": g.height, "mae_C": ch.metrics(a, ch._arr(g, "pred_C"))["mae"],
+                     "mae_ifp2": ch.metrics(a, ch._arr(g, "pred_ifp2"))["mae"],
+                     "bias_C": ch.metrics(a, ch._arr(g, "pred_C"))["bias"],
+                     "bias_ifp2": ch.metrics(a, ch._arr(g, "pred_ifp2"))["bias"],
+                     "examples": g.sort("ifp2_minus_C", descending=True).head(args.limit).select(
+                         "name", "season", "week", "position", "carries_pg", "h_carries_pg", "targets_pg", "h_targets_pg",
+                         "inj_exits_recent", "last_pts", "last_td_pts", "last_opps", "pred_C", "pred_ifp2", "label")
+                     .with_columns(pl.col(pl.Float64).round(2)).to_dicts()}
+    (args.out / "research" / "cases.json").write_text(json.dumps(out, indent=1, default=str))
+    return out
+
+
 def summarize(report: dict) -> dict:
     rep = report["report"]
     out = {}
@@ -292,7 +329,8 @@ def summarize(report: dict) -> dict:
 def main(argv=None) -> int:
     settings = get_settings()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["store", "develop", "freeze", "confirm", "exploratory", "exits-audit"])
+    ap.add_argument("command", choices=["store", "develop", "freeze", "confirm", "exploratory", "exits-audit", "cases"])
+    ap.add_argument("--limit", type=int, default=6)
     ap.add_argument("--ifp-dir", type=Path, default=_path("IFP_MODEL_DIR", "data/models"),
                     help="directory with the frozen ifp-1.0.0 selection.json (read-only)")
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
@@ -304,7 +342,8 @@ def main(argv=None) -> int:
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     args = ap.parse_args(argv)
     result = {"store": cmd_store, "develop": cmd_develop, "freeze": cmd_freeze, "confirm": cmd_confirm,
-              "exploratory": cmd_exploratory, "exits-audit": cmd_exits_audit}[args.command](args)
+              "exploratory": cmd_exploratory, "exits-audit": cmd_exits_audit,
+              "cases": cmd_cases}[args.command](args)
     print(json.dumps(result, indent=1, default=str))
     return 0
 
