@@ -161,16 +161,16 @@ def _side(team: dict | None, weeks: list[int], names: dict[int, str]) -> dict:
 
 
 def classify_matchups(data: RaceData, team_proj: dict[int, dict | None]) -> tuple[list[dict], list[dict], list[int]]:
-    """(regular-season matchups with status and projection, known playoff matchups, ids of matchups
-    ESPN sent without a matchup period: they cannot be placed in the schedule, so they are left out
-    of every grouping and reported)."""
+    """(regular-season matchups with status and projection, known playoff matchups, matchups ESPN
+    sent without a matchup period: they cannot be placed in the schedule, so they are left out of
+    every schedule-dependent grouping and reported; their final results still count for records)."""
     lg, sched, start = data.league, data.schedule_settings, data.state.start_week
     names = {p.espn_player_id: p.name for ps in data.state.rosters.values() for p in ps}
     team_names = {t["team_id"]: t["name"] for t in data.teams}
     regular, playoff, no_period = [], [], []
     for m in data.matchups:
         if m["matchup_period"] is None:
-            no_period.append(m["matchup_id"])
+            no_period.append(m)
             continue
         weeks = period_weeks(sched, m["matchup_period"])
         row = {"matchup_id": m["matchup_id"], "matchup_period": m["matchup_period"], "weeks": weeks,
@@ -490,7 +490,12 @@ def build_playoff_race(data: RaceData, team_id: int | None = None, base: str = "
             m["override"] = overrides[m["matchup_id"]]
         m["scenario_result"] = results.get(m["matchup_id"]) if m["status"] != "final" else m["result"]
 
-    derived = derived_records(regular, team_ids)
+    # Period-less finals cannot be scheduled, but their regular-season results are still results.
+    period_less_finals = [{"status": "final", "result": FINAL_WINNERS[m["winner"]], "home_team_id": m["home_team_id"],
+                           "away_team_id": m["away_team_id"]} for m in no_period
+                          if m["winner"] in FINAL_WINNERS and m["home_team_id"] is not None
+                          and m["away_team_id"] is not None and m.get("playoff_tier") in (None, "NONE")]
+    derived = derived_records(regular + period_less_finals, team_ids)
     base_records, record_notes = {}, []
     for tid in team_ids:
         rec = _record(teams[tid])
@@ -529,8 +534,9 @@ def build_playoff_race(data: RaceData, team_id: int | None = None, base: str = "
                         "games only; override them to see their effect.")
     if no_period:
         warnings.append(f"ESPN sent {len(no_period)} matchup(s) without a matchup period (ids "
-                        f"{', '.join(str(x) for x in sorted(no_period, key=str))}); they are left out of all-play, "
-                        "schedules and scenarios. ESPN's records still count any that are final.")
+                        f"{', '.join(str(m['matchup_id']) for m in sorted(no_period, key=lambda m: str(m['matchup_id'])))}); they are "
+                        "left out of all-play, schedules and scenarios, but final results among them still count "
+                        "toward records.")
     coverage = _schedule_coverage(data, regular)
     if coverage.get("missing"):
         warnings.append(f"The ESPN schedule is missing regular-season matchups for {len(coverage['missing'])} team(s); "

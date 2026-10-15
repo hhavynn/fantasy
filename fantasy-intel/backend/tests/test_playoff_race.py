@@ -240,7 +240,13 @@ def test_matchup_without_a_period_is_left_out_and_reported():
     assert 77 not in {m["matchup_id"] for m in res["matchups"]["regular"] + res["matchups"]["playoff_known"]}
     assert team(res, 1)["all_play"]["periods"] == [1, 2, 3]
     assert any("without a matchup period (ids 77)" in w for w in res["warnings"])
-    assert any("differs from the final matchups stored" in n for n in res["record_check"])   # ESPN still counts it
+    assert res["record_check"] == []                       # its final result still counts toward derived records
+    # With ESPN's record missing, the fallback derives it including the period-less final.
+    d.teams[0]["wins"] = None
+    res = build_playoff_race(d)
+    expect = (sum(1 for m in d.matchups if m["winner"] == "HOME" and m["home_team_id"] == 1)
+              + sum(1 for m in d.matchups if m["winner"] == "AWAY" and m["away_team_id"] == 1))
+    assert team(res, 1)["record"]["wins"] == expect and any("derived from final matchups" in n for n in res["record_check"])
 
 
 def test_schedule_coverage_reports_missing_regular_season_matchups():
