@@ -16,6 +16,7 @@ from test_independent_projections import SCORING, _artifact, live  # noqa: F401 
 
 # Synthetic week-5 games kick off 2026-09-05 13:00 Eastern = 17:00 UTC; week 6 on 2026-09-06.
 PRE_W5, POST_W5 = "2026-09-05 16:59:00", "2026-09-05 17:00:00"
+FIT_BEFORE_W5 = "2026-09-01T00:00:00+00:00"
 
 
 def _snapshot(con, espn_id: int, week: int, points: float, synced_at: str) -> None:
@@ -31,6 +32,8 @@ def tracked(live):  # noqa: F811
     con, src, path = live
     meta, rows = build_live(con, src, _artifact(src), 2026, 5)
     write_live(con, meta, rows)
+    # As if the artifact had been fitted before week 5 (the synthetic one is stamped 2026-10-14).
+    con.execute("UPDATE independent_projection_runs SET artifact_created_at = ?", [FIT_BEFORE_W5])
     for pid, pts in ((1, 14.0), (6, 3.0), (9, 8.0)):
         _snapshot(con, pid, 5, pts, PRE_W5)
     _snapshot(con, 11, 5, 9.0, POST_W5)
@@ -104,6 +107,30 @@ def test_other_model_versions_do_not_count(tracked):
     t = build_tracker(con)
     assert t["espn"]["matched_observations"] == 0
     assert next(p for p in t["positions"] if p["position"] == "WR")["espn"]["pregame_completed"] == 2
+    # Neither the evidence nor the held-out status of another model version is shown.
+    assert t["run"] is None and "another model version" in t["run_missing_reason"]
+    assert all(p["model"]["status"] is None for p in t["positions"])
+    assert t["espn"]["excluded_runs"][0]["reason"].startswith("model ifp-0.0.0")
+
+
+def test_artifact_fitted_after_the_week_does_not_count(tracked):
+    """`fit` trains on every completed week: an artifact fitted after week 5 kicked off may have
+    seen week 5's results, so its week-5 projections are not evidence."""
+    con, _, _ = tracked
+    con.execute("UPDATE independent_projection_runs SET artifact_created_at = ?", ["2026-09-05T17:00:00+00:00"])
+    t = build_tracker(con)
+    assert t["espn"]["matched_observations"] == 0
+    [ex] = t["espn"]["excluded_runs"]
+    assert ex["week"] == 5 and ex["reason"].startswith("artifact fitted after the week's first kickoff")
+    assert t["run"] is not None   # the held-out status itself is still the current model's
+
+
+def test_other_league_scoring_does_not_count(tracked):
+    con, _, _ = tracked
+    con.execute("UPDATE independent_projection_runs SET scoring_fingerprint = 'other-scoring'")
+    t = build_tracker(con)
+    assert t["espn"]["matched_observations"] == 0 and t["run"] is None
+    assert t["espn"]["excluded_runs"][0]["reason"] == "made under different league scoring"
 
 
 def test_no_run_means_no_status_but_espn_pool_is_still_counted(live):  # noqa: F811
@@ -119,6 +146,7 @@ def test_current_week_pregame_snapshot(live):  # noqa: F811
     con, _, _ = live
     s = pregame_snapshot(con, 2026, 6)
     assert s["first_kickoff"] == "2026-09-06T17:00:00+00:00" and s["captured"] is False
+    assert s["last_kickoff"] == "2026-09-06T17:00:00+00:00"
     _snapshot(con, 1, 6, 10.0, "2026-09-06 17:30:00")      # after kickoff: not a pregame snapshot
     s = pregame_snapshot(con, 2026, 6)
     assert s["captured"] is False and s["latest_snapshot_at"].startswith("2026-09-06T17:30")

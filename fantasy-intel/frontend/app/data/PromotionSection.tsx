@@ -1,7 +1,7 @@
 import { Badge, Method, Notice, Pos, Section } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { Missing, num, when } from "@/lib/format";
-import { STATUS_LABEL, clearsBar, matchedProgress, signedPct, type PromotionTracker } from "@/lib/promotion";
+import { STATUS_LABEL, clearsBar, coversLaterGames, matchedProgress, signedPct, type PromotionTracker } from "@/lib/promotion";
 import styles from "./data.module.css";
 
 const SYNC_CMD = "uv run python ../scripts/sync_espn.py";
@@ -20,10 +20,13 @@ function SnapshotNotice({ t }: { t: PromotionTracker }) {
       </Notice>
     );
   }
+  const late = s.latest_snapshot_at;
   return (
-    <Notice tone="caution" title={`No pregame ESPN snapshot for week ${s.week} yet`}>
-      First kickoff {when(s.first_kickoff)}. From <code>backend/</code>, run <code>{SYNC_CMD}</code> before then.
-      {s.latest_snapshot_at && <> The latest snapshot ({when(s.latest_snapshot_at)}) was taken after kickoff and never counts.</>}
+    <Notice tone="caution" title={`No ESPN snapshot from before week ${s.week}'s first kickoff`}>
+      First kickoff {when(s.first_kickoff)}. From <code>backend/</code>, run <code>{SYNC_CMD}</code> before each week&apos;s first kickoff.
+      {late && (coversLaterGames(late, s.last_kickoff)
+        ? <> The latest snapshot ({when(late)}) came after the first kickoff: it doesn&apos;t count for games that had already started, but it still counts for players whose games kick off after it.</>
+        : <> The latest snapshot ({when(late)}) came after every game had kicked off, so it doesn&apos;t count for this week.</>)}
     </Notice>
   );
 }
@@ -113,9 +116,15 @@ export function PromotionSection({ t }: { t: PromotionTracker }) {
             <li>
               Weekly: from <code>backend/</code> run <code>{SYNC_CMD}</code> before Thursday&apos;s first kickoff (again before Sunday is fine), and
               <code>uv run python ../scripts/backtest_independent_projections.py project --week N</code> so the week has a stored independent projection.
+              A run counts only if its model artifact was fitted before that week&apos;s first kickoff, because <code>fit</code> trains on every completed week.
               Once a position has {c.espn_min_matched_per_position} matched observations, rerun <code>evaluate</code>; promotion still needs your approval.
             </li>
           </ul>
+          {t.espn.excluded_runs.length > 0 && (
+            <p className={styles.methodMeta}>
+              Not counted as evidence: {t.espn.excluded_runs.map((r) => `week ${r.week} (${r.reason})`).join("; ")}.
+            </p>
+          )}
           {t.run && <p className={styles.methodMeta}>Status from run <span className="mono">{t.run.run_id}</span> (week {t.run.week}, {when(t.run.created_at)}).</p>}
           {t.espn.by_week.length === 0 ? <p className={styles.methodMeta}>No completed week has a pregame ESPN snapshot yet.</p> : (
             <div className="table-wrap">

@@ -12,7 +12,7 @@ export type EspnEvidence = {
   mae_independent: number | null; mae_espn: number | null;
 };
 export type PregameSnapshot = {
-  week: number; first_kickoff: string | null; latest_pregame_snapshot_at: string | null;
+  week: number; first_kickoff: string | null; last_kickoff: string | null; latest_pregame_snapshot_at: string | null;
   latest_snapshot_at: string | null; captured: boolean; players: number;
 };
 /** The hosted API bundle has no research packages and answers `available: false` with a reason only. */
@@ -32,7 +32,8 @@ export type PromotionTracker = {
   run: { run_id: string; week: number; model_version: string; created_at: string } | null;
   run_missing_reason: string | null;
   espn: { available: boolean; unavailable_reason: string | null; matched_observations: number;
-    by_week: { week: number; pregame_completed: number; matched: number }[] };
+    by_week: { week: number; pregame_completed: number; matched: number }[];
+    excluded_runs: { run_id: string; week: number; reason: string }[] };
   pregame_snapshot: PregameSnapshot;
   positions: { position: string; model: ModelEvidence; espn: EspnEvidence }[];
 };
@@ -52,6 +53,13 @@ export function signedPct(v: number | null, digits = 1): string | null {
 }
 
 /** Whether a stored improvement clears the frozen bar; null when there is no stored result. */
+/** A snapshot taken after the week's first kickoff still counts for games that start after it. */
+export function coversLaterGames(snapshotAt: string | null, lastKickoff: string | null): boolean {
+  if (!snapshotAt || !lastKickoff) return false;
+  const s = Date.parse(snapshotAt), k = Date.parse(lastKickoff);
+  return !Number.isNaN(s) && !Number.isNaN(k) && s < k;
+}
+
 export function clearsBar(v: number | null, bar: number): boolean | null {
   return v === null || Number.isNaN(v) ? null : v >= bar;
 }

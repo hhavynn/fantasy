@@ -18,6 +18,7 @@ are not read by lineups, start/sit, trades or waivers.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import polars as pl
 
@@ -34,7 +35,8 @@ NOTES = [
     "promotes a model: promotion needs a rerun of evaluate and your approval.",
     "Independent projections are research output. They are not used in lineups, start/sit, trades or waivers.",
     "Matched = a player-week with an ESPN projection captured strictly before the player's kickoff, a completed "
-    "appearance (league points from nflverse box scores) and a stored independent projection.",
+    "appearance (league points from nflverse box scores) and a stored independent projection of the current model "
+    "under the current league scoring, from an artifact fitted before that week's first kickoff.",
     "MAE is in league points and conditional on the player appearing, the population of the frozen criterion.",
 ]
 
@@ -53,17 +55,33 @@ def _json(v):
     return json.loads(v) if isinstance(v, str) else v
 
 
-def latest_run(con, season: int) -> dict | None:
-    if not table_exists(con, "independent_projection_runs"):
+def latest_run(con, season: int, fingerprint: str | None) -> dict | None:
+    """Newest run of the current model under the league's current scoring. A run of another model
+    version or scoring carries another model's held-out status, so it is never shown here."""
+    if fingerprint is None or not table_exists(con, "independent_projection_runs"):
         return None
     rows = fetch_dicts(con, """SELECT run_id, week, model_version, created_at, model_status, evaluation
-                               FROM independent_projection_runs WHERE season = ?
-                               ORDER BY created_at DESC LIMIT 1""", [season])
+                               FROM independent_projection_runs
+                               WHERE season = ? AND model_version = ? AND scoring_fingerprint = ?
+                               ORDER BY created_at DESC LIMIT 1""", [season, MODEL_VERSION, fingerprint])
     if not rows:
         return None
     run = rows[0]
     run["model_status"], run["evaluation"] = _json(run["model_status"]) or {}, _json(run["evaluation"]) or {}
     return run
+
+
+def _run_missing_reason(con, season: int, fingerprint: str | None) -> str:
+    project = ("From backend/, run `uv run python ../scripts/backtest_independent_projections.py project --week N` "
+               "(it needs the fitted artifacts in data/models; see the runbook in docs/independent_projection_engine.md).")
+    if fingerprint is None:
+        return "League scoring is not supported by the independent model, so no held-out status applies."
+    other = fetch_dicts(con, "SELECT count(*) AS n FROM independent_projection_runs WHERE season = ?",
+                        [season])[0]["n"] if table_exists(con, "independent_projection_runs") else 0
+    if other:
+        return (f"Stored runs are from another model version or league scoring, so the held-out status of "
+                f"{MODEL_VERSION} under the current scoring is not shown. {project}")
+    return f"No independent projection run is stored for this season, so the held-out status is not shown. {project}"
 
 
 def model_evidence(run: dict | None, position: str) -> dict:
@@ -84,27 +102,65 @@ def model_evidence(run: dict | None, position: str) -> dict:
             "ci95_primary_minus_baseline": (ev.get("primary_minus_best_baseline_mae") or {}).get("ci95")}
 
 
-def _stored_projections(con, season: int) -> pl.DataFrame:
+def first_kickoffs(con, season: int) -> dict[int, datetime]:
+    if not table_exists(con, "nfl_schedules"):
+        return {}
+    out: dict[int, datetime] = {}
+    for g in fetch_dicts(con, "SELECT week, gameday, gametime FROM nfl_schedules WHERE season = ? AND game_type = 'REG'",
+                         [season]):
+        k = _kickoff(g)
+        if k is not None and (g["week"] not in out or k < out[g["week"]]):
+            out[g["week"]] = k
+    return out
+
+
+def eligible_runs(con, season: int, fingerprint: str) -> tuple[list[str], list[dict]]:
+    """Runs whose projections may count as evidence: the current model, the league's current scoring,
+    and an artifact fitted before the target week's first kickoff (`fit` trains on every completed
+    week, so a later artifact has seen the results it would be judged on). Returns (run ids,
+    excluded runs with a reason)."""
+    if not table_exists(con, "independent_projection_runs"):
+        return [], []
+    kick = first_kickoffs(con, season)
+    keep, excluded = [], []
+    for r in fetch_dicts(con, """SELECT run_id, week, model_version, scoring_fingerprint, artifact_created_at
+                                 FROM independent_projection_runs WHERE season = ? ORDER BY week, run_id""", [season]):
+        fitted, first = _utc(r["artifact_created_at"]), kick.get(r["week"])
+        if r["model_version"] != MODEL_VERSION:
+            reason = f"model {r['model_version']}, not {MODEL_VERSION}"
+        elif r["scoring_fingerprint"] != fingerprint:
+            reason = "made under different league scoring"
+        elif fitted is None or first is None:
+            reason = "artifact fit time or week kickoff unknown"
+        elif fitted >= first:
+            reason = "artifact fitted after the week's first kickoff (it may have trained on that week)"
+        else:
+            keep.append(r["run_id"])
+            continue
+        excluded.append({"run_id": r["run_id"], "week": r["week"], "reason": reason})
+    return keep, excluded
+
+
+def _stored_projections(con, season: int, run_ids: list[str]) -> pl.DataFrame:
     schema = {"season": pl.Int64, "week": pl.Int64, "gsis_id": pl.String, "pred_primary": pl.Float64}
-    if not (table_exists(con, "independent_player_projections") and table_exists(con, "independent_projection_runs")):
+    if not run_ids or not table_exists(con, "independent_player_projections"):
         return pl.DataFrame(schema=schema)
     rows = fetch_dicts(con, """
-        SELECT p.season, p.week, p.gsis_id, any_value(p.projected_points) AS pred_primary
-        FROM independent_player_projections p JOIN independent_projection_runs r USING (run_id)
-        WHERE p.season = ? AND r.model_version = ? AND p.coverage_status = 'projected'
-          AND p.projected_points IS NOT NULL AND p.gsis_id IS NOT NULL
-        GROUP BY 1, 2, 3 HAVING count(*) = 1""", [season, MODEL_VERSION])
+        SELECT season, week, gsis_id, any_value(projected_points) AS pred_primary
+        FROM independent_player_projections
+        WHERE season = ? AND run_id IN (SELECT unnest(?)) AND coverage_status = 'projected'
+          AND projected_points IS NOT NULL AND gsis_id IS NOT NULL
+        GROUP BY 1, 2, 3 HAVING count(*) = 1""", [season, run_ids])
     return pl.DataFrame(rows, schema=schema) if rows else pl.DataFrame(schema=schema)
 
 
-def espn_evidence(con, season: int) -> dict:
+def espn_evidence(con, season: int, scoring) -> dict:
     """Matched pregame-ESPN observations so far, per position and per week."""
     need = PROMOTION_CRITERIA["espn_min_matched_per_position"]
     empty = {"available": False, "unavailable_reason": None, "matched_observations": 0,
              "by_position": {p: {"n": 0, "pregame_completed": 0, "required": need, "criterion_met": False,
                                  "mae_independent": None, "mae_espn": None} for p in POSITIONS},
-             "by_week": []}
-    _, scoring = league_scoring(con, season)
+             "by_week": [], "excluded_runs": []}
     if not scoring.supported:
         return {**empty, "unavailable_reason": "League scoring is not supported by the independent model."}
     try:
@@ -114,7 +170,8 @@ def espn_evidence(con, season: int) -> dict:
     labels = panel.select("season", "week", "gsis_id", "position", pl.col("league_points").alias("label"))
     espn = espn_pregame(con, season)
     pool = labels.join(espn, on=["season", "week", "gsis_id"], how="inner")
-    preds = labels.join(_stored_projections(con, season), on=["season", "week", "gsis_id"], how="inner")
+    run_ids, excluded = eligible_runs(con, season, scoring.fingerprint)
+    preds = labels.join(_stored_projections(con, season, run_ids), on=["season", "week", "gsis_id"], how="inner")
     comp = espn_comparison(preds, espn)
     matched = preds.join(espn, on=["season", "week", "gsis_id"], how="inner")
     by_pos = {}
@@ -128,13 +185,14 @@ def espn_evidence(con, season: int) -> dict:
     by_week = [{"week": int(w), "pregame_completed": pool.filter(pl.col("week") == w).height,
                 "matched": matched.filter(pl.col("week") == w).height} for w in weeks]
     return {"available": True, "unavailable_reason": None, "matched_observations": comp["matched_observations"],
-            "by_position": by_pos, "by_week": by_week}
+            "by_position": by_pos, "by_week": by_week, "excluded_runs": excluded}
 
 
 def pregame_snapshot(con, season: int, week: int) -> dict:
-    """Was an ESPN projection snapshot for `week` captured before the week's first kickoff?"""
-    out = {"week": week, "first_kickoff": None, "latest_pregame_snapshot_at": None, "latest_snapshot_at": None,
-           "captured": False, "players": 0}
+    """Was an ESPN projection snapshot for `week` captured before the week's first kickoff? A later
+    snapshot still counts for players whose own game kicks off after it (espn_pregame is per player)."""
+    out = {"week": week, "first_kickoff": None, "last_kickoff": None, "latest_pregame_snapshot_at": None,
+           "latest_snapshot_at": None, "captured": False, "players": 0}
     if not table_exists(con, "nfl_schedules"):
         return out
     kicks = [k for k in (_kickoff(g) for g in fetch_dicts(
@@ -143,7 +201,7 @@ def pregame_snapshot(con, season: int, week: int) -> dict:
     if not kicks:
         return out
     first = min(kicks)
-    out["first_kickoff"] = first.isoformat()
+    out["first_kickoff"], out["last_kickoff"] = first.isoformat(), max(kicks).isoformat()
     if not table_exists(con, "espn_projection_history"):
         return out
     rows = fetch_dicts(con, """SELECT synced_at, count(DISTINCT espn_player_id) AS players
@@ -166,8 +224,10 @@ def build_tracker(con) -> dict:
     if not lg:
         raise LookupError("No ESPN league synced yet.")
     season, week = lg[0]["season"], lg[0]["current_week"]
-    run = latest_run(con, season)
-    espn = espn_evidence(con, season)
+    _, scoring = league_scoring(con, season)
+    fingerprint = scoring.fingerprint if scoring.supported else None
+    run = latest_run(con, season, fingerprint)
+    espn = espn_evidence(con, season, scoring)
     criteria = _criteria()
     positions = [{"position": pos, "model": model_evidence(run, pos), "espn": espn["by_position"][pos]}
                  for pos in POSITIONS]
@@ -177,10 +237,8 @@ def build_tracker(con) -> dict:
             "run": None if run is None else {"run_id": run["run_id"], "week": run["week"],
                                               "model_version": run["model_version"],
                                               "created_at": str(run["created_at"])},
-            "run_missing_reason": None if run is not None else (
-                "No independent projection run is stored for this season, so the held-out status is not shown. From "
-                "backend/, run `uv run python ../scripts/backtest_independent_projections.py project --week N` (it needs "
-                "the fitted artifacts in data/models; see the runbook in docs/independent_projection_engine.md)."),
-            "espn": {k: espn[k] for k in ("available", "unavailable_reason", "matched_observations", "by_week")},
+            "run_missing_reason": None if run is not None else _run_missing_reason(con, season, fingerprint),
+            "espn": {k: espn[k] for k in ("available", "unavailable_reason", "matched_observations", "by_week",
+                                               "excluded_runs")},
             "pregame_snapshot": pregame_snapshot(con, season, week),
             "positions": positions}

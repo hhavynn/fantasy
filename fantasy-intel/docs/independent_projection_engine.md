@@ -344,8 +344,11 @@ history only began on 2026-10-14. Nothing backfills a missed week, so every week
    if you want a fallback.
 2. **Store the week's independent projection** (needs the fitted artifacts in `data/models`, see
    "Runbook"): `uv run python ../scripts/backtest_independent_projections.py project --week N`.
-   The projection uses only games completed before week N, so it can be run any time during the
-   week, but without a stored run a week contributes no matched observation to the tracker.
+   Its features use only games completed before week N, but its weights come from the artifact:
+   `fit` trains on every completed week. A run therefore counts as evidence only if its artifact
+   was fitted **before week N's first kickoff** (and under the current model version and league
+   scoring); a backfill with a later artifact is listed as excluded. Without a counted run a week
+   contributes no matched observation to the tracker.
 3. After the week's games are final and nflverse is synced (`sync_nfl.py`), the tracker counts the
    new matched player-weeks automatically.
 
@@ -353,14 +356,17 @@ The **Data quality page (`/data`) section "Independent projections: path to prom
 `GET /api/projections/independent/promotion` (`independent-promotion/v1`, read-only):
 
 * per position, the held-out status, relative MAE improvement vs the `PROMOTION_CRITERIA` bar,
-  held-out MAE and n, copied from the evaluation stored with the latest live run (nothing is
-  recomputed; with no stored run these are null and the page says so);
+  held-out MAE and n, copied from the evaluation stored with the latest live run of the current
+  model version under the current league scoring (nothing is recomputed; with no such run these
+  are null and the page says why);
 * matched pregame-ESPN observations so far vs `espn_min_matched_per_position`, computed with
-  `espn_pregame` + `espn_comparison` on stored weekly projections (`pred_primary`) and completed
+  `espn_pregame` + `espn_comparison` on counted stored weekly projections (`pred_primary`; see step 2)
+  and completed
   appearances (league points from nflverse box scores), plus the pool of completed player-weeks
   with a pregame ESPN snapshot whether or not a projection was stored; MAE ours vs ESPN once
   there is at least one matched row;
-* whether the current week already has an ESPN snapshot taken before its first kickoff.
+* whether the current week already has an ESPN snapshot taken before its first kickoff (a later
+  snapshot still counts for players whose own game kicks off after it).
 
 The tracker never promotes anything: once a position reaches the matched count, rerun `evaluate`,
 and only after a position passes the frozen criteria **and the user approves** may its
