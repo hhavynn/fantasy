@@ -18,6 +18,15 @@ SR = 48000
 BPM = 100
 ROOTS = [57, 53, 48, 55]                 # A3, F3, C3, G3 (MIDI) - one chord per bar
 CHORDS = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]]
+# Per-format moods: the mystery is slow and suspended (D minor to an A major turnaround, a ticking clock and
+# no backbeat); the opportunity is bright and driving (F-C-G-Am, a fuller groove at 108 BPM).
+MOODS = {
+    "drive": {"bpm": BPM, "roots": ROOTS, "chords": CHORDS, "pattern": "full"},
+    "tense": {"bpm": 84, "roots": [50, 46, 43, 45], "chords": [[50, 53, 57], [46, 50, 53], [43, 46, 50], [45, 49, 52]],
+              "pattern": "tense"},
+    "bright": {"bpm": 108, "roots": [53, 48, 55, 57], "chords": [[53, 57, 60], [48, 52, 55], [55, 59, 62], [57, 60, 64]],
+               "pattern": "full"},
+}
 
 
 def midi_hz(n: float) -> float:
@@ -95,12 +104,14 @@ def pad_chord(notes: list[int], dur: float) -> np.ndarray:
     return out * swell / (len(notes) * 2 * 2.1)
 
 
-def music(duration: float, seed: int = 7) -> np.ndarray:
-    """A loopable minimal beat, as long as `duration`."""
+def music(duration: float, seed: int = 7, mood: str = "drive") -> np.ndarray:
+    """A loopable minimal beat, as long as `duration`, in one of the MOODS."""
     rng = np.random.default_rng(seed)
     n = int((duration + 1.0) * SR)
     out = np.zeros(n, np.float32)
-    beat = 60 / BPM
+    md = MOODS[mood]
+    beat = 60 / md["bpm"]
+    roots, chords = md["roots"], md["chords"]
     k, c, h = kick(rng), clap(rng), hat(rng)
 
     def add(sig, at, gain):
@@ -115,11 +126,19 @@ def music(duration: float, seed: int = 7) -> np.ndarray:
     for b in range(bars):
         t0 = b * bar_len
         ch = b % 4
-        add(pad_chord(CHORDS[ch], bar_len), t0, 0.35)
+        if md["pattern"] == "tense":
+            add(pad_chord(chords[ch], bar_len), t0, 0.42)
+            for i in range(16):                       # a quiet clock: sixteenth ticks, accent on the beat
+                add(h, t0 + i * beat / 4, 0.55 if i % 4 == 0 else 0.22)
+            for i in range(4):                        # a low pulse on each beat, no backbeat
+                add(bass_note(midi_hz(roots[ch] - 12), beat * 0.8), t0 + i * beat, 0.36 if i == 0 else 0.2)
+            add(k, t0, 0.7)
+            continue
+        add(pad_chord(chords[ch], bar_len), t0, 0.35)
         for i in range(8):                            # eighth notes
             at = t0 + i * beat / 2
             add(h, at + (0.018 if i % 2 else 0), 0.5 if i % 2 else 0.8)
-            add(bass_note(midi_hz(ROOTS[ch] - 12), beat / 2 * 0.9), at, 0.32 if i % 2 == 0 else 0.18)
+            add(bass_note(midi_hz(roots[ch] - 12), beat / 2 * 0.9), at, 0.32 if i % 2 == 0 else 0.18)
         add(k, t0, 1.0)
         add(k, t0 + 2 * beat, 1.0)
         add(k, t0 + 3.5 * beat, 0.6)
@@ -146,6 +165,18 @@ def sfx(kind: str, seed: int = 3) -> np.ndarray:
         n = int(0.06 * SR)
         t = np.arange(n) / SR
         return (np.sin(2 * np.pi * 1700 * t) * np.exp(-t / 0.012) * 0.7).astype(np.float32)
+    if kind == "stamp":                   # a rubber stamp: a short thud and a paper slap
+        n = int(0.3 * SR)
+        t = np.arange(n) / SR
+        thud = np.sin(2 * np.pi * (90 + 60 * np.exp(-t / 0.02)) * t) * np.exp(-t / 0.06)
+        slap = _highpass(_noise(n, rng), 0.85) * np.exp(-t / 0.018) * 0.8
+        return np.tanh(1.8 * (thud + slap)).astype(np.float32)
+    if kind == "cut":                     # a hard cut: a dry click over a short sub hit
+        n = int(0.25 * SR)
+        t = np.arange(n) / SR
+        sub_ = np.sin(2 * np.pi * 55 * t) * np.exp(-t / 0.07)
+        click = _highpass(_noise(n, rng), 0.7) * np.exp(-t / 0.004)
+        return np.tanh(1.5 * (sub_ * 0.9 + click * 0.7)).astype(np.float32)
     if kind == "rise":
         n = int(0.5 * SR)
         x = _lowpass_sweep(_noise(n, rng), 400, 9000)
@@ -174,13 +205,13 @@ def db(v: float) -> float:
 
 
 def mix(voice: np.ndarray, events: list[tuple[float, str, float]], use_music: bool, music_db: float,
-        sfx_db: float) -> np.ndarray:
+        sfx_db: float, mood: str = "drive") -> np.ndarray:
     """Voice (48 kHz mono) + ducked music + sound effects -> stereo float32, peak-safe."""
     n = len(voice)
     v = voice / (np.max(np.abs(voice)) + 1e-9) * db(-3)
     bed = np.zeros(n, np.float32)
     if use_music:
-        m = music(n / SR)
+        m = music(n / SR, mood=mood)
         bed = np.pad(m, (0, max(0, n - len(m))))[:n] * db(music_db)      # exactly n samples
         speech = envelope(v)
         duck = 1 - 0.55 * np.clip(speech / (np.percentile(speech, 90) + 1e-9), 0, 1)

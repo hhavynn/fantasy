@@ -234,6 +234,16 @@ def gate_originality(episode_id: str, narration: list[str], players: list[str], 
         last = [e["structure"]["hook"] for e in prior[-SAME_HOOK_RUN_MAX:]]
         if len(last) == SAME_HOOK_RUN_MAX and all(h == structure["hook"] for h in last):
             failures.append(f"hook '{structure['hook']}' would open {SAME_HOOK_RUN_MAX + 1} Shorts in a row")
+        # the same scene sequence three times running is the same video with different numbers
+        seqs = [e["structure"].get("scenes") for e in prior[-SAME_HOOK_RUN_MAX:]]
+        if structure.get("scenes") and len(seqs) == SAME_HOOK_RUN_MAX and all(s == structure["scenes"] for s in seqs):
+            failures.append(f"scene sequence {structure['scenes']} would repeat {SAME_HOOK_RUN_MAX + 1} times in a row")
+        # the same opening sentence with only names and numbers swapped, in 2 of the last 4
+        mine_open = opening_skeleton(narration[0]) if narration else ""
+        same_open = [e["episode_id"] for e in prior[-4:] if e.get("narration")
+                     and opening_skeleton(e["narration"][0]) == mine_open]
+        if mine_open and len(same_open) >= 2:
+            failures.append(f"opening line {mine_open!r} already used by {same_open}")
     for e in history:
         if e["episode_id"] == episode_id:
             continue
@@ -246,6 +256,49 @@ def gate_originality(episode_id: str, narration: list[str], players: list[str], 
         if overlap > PLAYER_OVERLAP_MAX:
             failures.append(f"{overlap:.0%} of players already featured in {e['episode_id']}")
     return _gate("originality", failures, compared=scores)
+
+
+def opening_skeleton(line: str) -> str:
+    """'Darius Cooper's role just jumped.' -> "_ _'s role just jumped." (names, numbers and weeks blanked)."""
+    words = line.split()
+    out = [("_" + w[len(w.rstrip("'s.,?!")):] if (w[:1].isupper() and i > 0) or w[:1].isdigit() else w)
+           for i, w in enumerate(words)]
+    if words and words[0][:1].isupper() and words[0].lower() not in OPENERS:
+        out[0] = "_"
+    return " ".join(out).lower()
+
+
+OPENERS = {"same", "the", "first", "but", "so", "he", "his", "this", "when", "then", "as", "before", "one"}
+
+LIVE_STATUS_KINDS = {"player_status"}
+SYNC_MAX_AGE_DAYS = 7
+
+
+def gate_timeliness(script: dict, facts: dict, now=None) -> Gate:
+    """A live injury status is only true until kickoff: after it, the video must not go out as is. And the
+    data behind any dated claim must be recent."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    now = now or datetime.now(et)
+    failures, info = [], {}
+    live = [c for c in script["claims"] if c["source"]["kind"] in LIVE_STATUS_KINDS]
+    nxt = (facts["players"][0].get("details") or {}).get("next_game") or {}
+    if live:
+        if not nxt.get("kickoff"):
+            failures.append("a live injury status is claimed but this week's kickoff is unknown")
+        else:
+            kick = datetime.strptime(nxt["kickoff"], "%Y-%m-%d %H:%M").replace(tzinfo=et)
+            info["valid_until"] = kick.isoformat()
+            if now >= kick:
+                failures.append(f"injury status is stale: kickoff was {nxt['kickoff']} ET; re-sync and re-render")
+    synced = [c for c in script["claims"] if c["source"]["kind"] == "data_as_of"]
+    for c in synced:
+        when = datetime.strptime(str(c["value"])[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=et)
+        info["data_as_of"] = when.isoformat()
+        if now - when > timedelta(days=SYNC_MAX_AGE_DAYS):
+            failures.append(f"data synced {c['display']}, more than {SYNC_MAX_AGE_DAYS} days ago")
+    return _gate("timeliness", failures, live_status_claims=[c["id"] for c in live], **info)
 
 
 def installed_distributions() -> set[str]:
@@ -347,6 +400,7 @@ def run_gates(ep: Episode) -> list[Gate]:
         gate_originality(ep.id, narration, [p["gsis_id"] for p in facts["players"]], history,
                          {**script["structure"], "_week": ep.week,
                           "_order": read_json(ep.path("story.json"))["order"]} if ep.fmt == "short" else None),
+        gate_timeliness(script, facts),
         gate_licenses(ep.cfg, installed_distributions()),
         gate_metadata(read_json(ep.path("metadata.json")), ep.path("thumbnail.png"), ep.fmt),
         gate_integrity(ep),

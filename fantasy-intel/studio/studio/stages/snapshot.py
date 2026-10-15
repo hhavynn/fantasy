@@ -18,11 +18,11 @@ POSITIONS = ("RB", "WR", "TE")
 
 USAGE_COLUMNS = (
     "week", "gsis_id", "team", "opponent", "position", "offense_snaps", "team_offense_snaps",
-    "offense_pct", "targets", "target_share", "air_yards", "air_yards_share", "adot", "carries",
-    "designed_rushes", "backfield_rush_share", "team_rush_share", "rz_targets", "rz_carries", "gl_carries",
+    "offense_pct", "targets", "receptions", "target_share", "air_yards", "air_yards_share", "adot", "carries",
+    "designed_rushes", "team_rb_carries", "backfield_rush_share", "team_rush_share", "rz_targets", "rz_carries", "gl_carries",
 )
 SCHEDULE_COLUMNS = (
-    "game_id", "week", "game_type", "gameday", "away_team", "home_team", "away_score", "home_score",
+    "game_id", "week", "game_type", "gameday", "gametime", "away_team", "home_team", "away_score", "home_score",
     "away_qb_name", "home_qb_name", "away_coach", "home_coach",
 )
 TEAM_CONTEXT_COLUMNS = ("team", "through_week", "games", "proe", "neutral_pass_rate", "dropbacks")
@@ -66,7 +66,8 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
             f"usage data runs through week {data_week}, but a week {week} episode needs week {week - 1}. "
             "Run `uv run python ../scripts/sync_nfl.py` in fantasy-intel/backend first.")
     ids = sorted({r["gsis_id"] for r in usage})
-    players = _rows(con, """select gsis_id, display_name, position, espn_id from {nfl_players}
+    players = _rows(con, """select gsis_id, display_name, position, espn_id, draft_round, years_of_experience
+                            from {nfl_players}
                             where gsis_id in (select unnest(?)) order by gsis_id""", [ids])
     schedules = _round(_rows(con, f"""select {", ".join(SCHEDULE_COLUMNS)} from {{nfl_schedules}}
                                     where season = ? and game_type = 'REG' order by week, game_id""", [season]))

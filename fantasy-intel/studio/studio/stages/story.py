@@ -1,5 +1,8 @@
 """Stage 3 (Shorts): find the football story in the data and write it like a person would say it.
 
+First the editorial desk (studio/editorial.py) picks a format from the data: a `mystery` or an
+`opportunity` gets its own shape (stages/formats.py); everything else uses the storylines below.
+
 Not a statistics template. Python reads the facts and picks the strongest defensible storyline:
 
   vanishing_targets  faller: target share fell while his snaps barely moved, and (if the data shows it)
@@ -22,10 +25,12 @@ from __future__ import annotations
 
 import json
 
+from .. import editorial as E
 from ..core import Episode, canonical_json, read_json, run_stage, sha256_bytes, write_json
+from . import formats as F
 from .script import PLACEHOLDER, fill
 
-VERSION = 7
+VERSION = 8
 WORDS_PER_SECOND = 2.9          # am_fenrir at ~1.1x, measured on the hook line
 
 SNAPS_BARELY_PTS = 5            # a snap-share change this small (displayed points) "barely moved"
@@ -161,6 +166,14 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
     p = facts["players"][0]
     lead = p["metrics"][0]
     tm = p.get("teammate")
+    fmt = E.choose_format(p, claims)
+    if fmt in ("mystery", "opportunity"):
+        build = F.mystery if fmt == "mystery" else F.opportunity
+        beats, titles, hook_key, variants = build(p, claims, used, hook_override)
+        beats, titles, structure = finish(beats, p, lead, fmt, hook_key, tm, {"tm": tm["name"] if tm else ""},
+                                          titles=titles)
+        structure["hook_variants"] = variants
+        return beats, titles, structure
     story = storyline(p, claims)
     hooks = HOOKS[story]
     snaps_up = story == "vanishing_targets" and (snaps_change_pts(p, claims) or 0) > SNAPS_BARELY_PTS
@@ -352,13 +365,14 @@ def _counts_sentence(games: list[dict], k: int) -> str:
     return f"{head}. Since then: {', '.join(late)}."
 
 
-def finish(beats, p, lead, story, hook_key, tm, who):
-    titles = [t.format(name=p["name"], Stat=lead["label"].title(), tm=who["tm"]) for t in TITLES[story]]
+def finish(beats, p, lead, story, hook_key, tm, who, titles=None):
+    titles = titles or [t.format(name=p["name"], Stat=lead["label"].title(), tm=who["tm"]) for t in TITLES[story]]
     for i, b in enumerate(beats):
         b["id"] = f"s{i + 1:02d}"
         b["player"] = p["gsis_id"]
-    structure = {"angle": story, "hook": hook_key, "primary_metric": lead["column"],
-                 "teammate": tm["name"] if tm else None, "beats": [b["section"] for b in beats]}
+    structure = {"angle": story, "format": story if story in ("mystery", "opportunity") else "template",
+                 "hook": hook_key, "primary_metric": lead["column"], "teammate": tm["name"] if tm else None,
+                 "beats": [b["section"] for b in beats], "scenes": [b["scene"]["type"] for b in beats]}
     return beats, titles, structure
 
 
@@ -386,7 +400,9 @@ def _run(ep: Episode, used: dict, hook: str | None) -> None:
         b["target_words"] = len(b["text_spoken"].split())
         b["shot"] = f"shot_{b['id']}"
         shots.append({"id": b["shot"], "segment": b["id"], **b["scene"]})
-    used_ids = sorted({c for b in beats for c in b["claims_used"]} |
+    for b in beats:      # numbers drawn on screen are claims too: listed, so QC re-derives them
+        b["claims_on_screen"] = sorted(c for c in b["scene"].get("claims", []) if c)
+    used_ids = sorted({c for b in beats for c in b["claims_used"] + b["claims_on_screen"]} |
                       {c for t in titles for c in PLACEHOLDER.findall(t)})
     words = sum(len(b["text_spoken"].split()) for b in beats)
     script = {
@@ -401,6 +417,9 @@ def _run(ep: Episode, used: dict, hook: str | None) -> None:
                 "note": "Shorts are composed from storyline rules and claims; no language model."},
     }
     write_json(ep.path("script.json"), script)
+    recent = E.history(ep.cfg.episodes_dir, ep.season, exclude=ep.id)
+    p = dict(facts["players"][0], _episode_week=ep.week)
+    write_json(ep.path("editorial.json"), E.score(p, claims, structure["format"], recent))
     ep.log(f"  story: {structure['angle']} / hook {structure['hook']}, {len(beats)} beats, {words} words "
            f"(~{script['expected_duration_seconds']}s)")
 
@@ -408,4 +427,4 @@ def _run(ep: Episode, used: dict, hook: str | None) -> None:
 def run(ep: Episode, hook: str | None = None) -> None:
     used = used_structures(ep)
     run_stage(ep, "script", VERSION, {"cta": ep.cfg["cta"], "used": used, "hook": hook},
-              ["facts.json", "story.json"], ["script.json"], lambda: _run(ep, used, hook))
+              ["facts.json", "story.json"], ["script.json", "editorial.json"], lambda: _run(ep, used, hook))

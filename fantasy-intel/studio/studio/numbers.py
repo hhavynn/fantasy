@@ -163,6 +163,16 @@ def fmt_status(v: list) -> tuple[str, str]:
     return f"not on the {wd} injury report", f"not on the {ws} injury report"
 
 
+MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+          "November", "December")
+
+
+def fmt_date(v: str) -> tuple[str, str]:
+    """'2026-10-15 10:20:33' -> ('Oct 15', 'October fifteenth')."""
+    y, m, d = (int(x) for x in str(v)[:10].split("-"))
+    return f"{MONTHS[m - 1][:3]} {d}", f"{MONTHS[m - 1]} {ordinal_words(d)}"
+
+
 def fmt_opponents(v: list) -> tuple[str, str]:
     """['SEA', 'bye', 'SF'] -> ('the Seahawks, a bye and the 49ers', 'the Seahawks, a bye and the Niners')."""
     display = [("a bye" if t == "bye" else f"the {fmt_team(t)[0]}") for t in v]
@@ -182,7 +192,7 @@ def _join(items: list) -> str:
 FORMATTERS = {
     "pct": fmt_pct, "pp": fmt_pp, "signed_pct1": fmt_signed_pct1, "dec1": fmt_dec1, "int": fmt_int,
     "ordinal": fmt_ordinal, "week": fmt_week, "team": fmt_team, "opponents": fmt_opponents, "weeks_list": fmt_weeks_list,
-    "status": fmt_status, "weeks_range": fmt_weeks_range, "text": fmt_text,
+    "status": fmt_status, "weeks_range": fmt_weeks_range, "text": fmt_text, "date": fmt_date,
 }
 
 

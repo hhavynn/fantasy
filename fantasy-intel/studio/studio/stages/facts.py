@@ -21,7 +21,7 @@ from ..numbers import render, round_half_up
 sys.path.insert(0, str(STUDIO_ROOT.parent / "backend"))
 from app.analytics.trends import compute_trend, composite_trend  # noqa: E402  (pure stdlib module)
 
-VERSION = 9
+VERSION = 11
 PLAYOFF_WEEKS = [15, 16, 17]
 
 # (metric column, label, trend threshold). Thresholds for offense_pct/target_share/backfield_rush_share
@@ -51,7 +51,7 @@ FAVORABLE_RANK, TOUGH_RANK = 10, 23
 
 def _usage_values(snap: dict, gsis_id: str, column: str, weeks: list[int]) -> list[float]:
     return [r[column] for r in snap["tables"]["player_week_usage"]
-            if r["gsis_id"] == gsis_id and r["week"] in weeks and r[column] is not None]
+            if r["gsis_id"] == gsis_id and r["week"] in weeks and r.get(column) is not None]
 
 
 def _team_games(snap: dict, team: str) -> dict[int, dict]:
@@ -151,6 +151,43 @@ def evaluate_claim(snap: dict, src: dict):
         if rep and rep[-1]["practice_status"]:
             return ["practice", week, rep[-1]["practice_status"]]
         return ["none", week, ""]
+    if kind == "usage_sum":
+        return sum(_usage_values(snap, src["gsis_id"], src["column"], src["weeks"]))
+    if kind == "team_week_sum":
+        # A team-level column repeated on every player row of that team-week (e.g. team_rb_carries)
+        total = 0
+        for w in src["weeks"]:
+            vals = {r[src["column"]] for r in snap["tables"]["player_week_usage"]
+                    if r["team"] == src["team"] and r["week"] == w and r.get(src["column"]) is not None}
+            if len(vals) != 1:
+                raise ValueError(f"{src['team']} week {w} {src['column']}: inconsistent or missing {vals}")
+            total += vals.pop()
+        return total
+    if kind == "pooled_share":
+        # his total over the weeks / the team's total over the same weeks (38 of 40 = 95%), so the share on
+        # screen always matches the counts beside it; a mean of per-game shares (100%, 92% -> 96%) would not
+        num = evaluate_claim(snap, {"kind": "usage_sum", "gsis_id": src["gsis_id"], "column": src["column"],
+                                    "weeks": src["weeks"]})
+        den = evaluate_claim(snap, {"kind": "team_week_sum", "team": src["team"], "column": src["team_column"],
+                                    "weeks": src["weeks"]})
+        return num / den
+    if kind == "team_max_targets":
+        return max(((r["targets"] or 0) for r in snap["tables"]["player_week_usage"]
+                    if r["team"] == src["team"] and r["week"] == src["week"]
+                    and r["gsis_id"] not in src.get("exclude", [])), default=0)
+    if kind == "players_targeted":
+        return sum(1 for r in snap["tables"]["player_week_usage"]
+                   if r["team"] == src["team"] and r["week"] == src["week"] and (r["targets"] or 0) > 0)
+    if kind == "absent_together":
+        # The weeks (of those asked) that EVERY listed player missed while the team played
+        games = _team_games(snap, src["team"])
+        played = {(r["gsis_id"], r["week"]) for r in snap["tables"]["player_week_usage"]}
+        return [w for w in src["weeks"] if w in games and all((g, w) not in played for g in src["gsis_ids"])]
+    if kind == "venue":
+        g = _team_games(snap, src["team"])[src["week"]]
+        return "at" if g["away_team"] == src["team"] else "vs"
+    if kind == "data_as_of":
+        return snap["source_sync"]["finished_at"]
     if kind == "week_value":
         return src["week"]
     if kind == "episode_week":
@@ -536,6 +573,156 @@ def week_values(book: "ClaimBook", p: dict) -> list[dict]:
             for w in p["recent_weeks"]]
 
 
+def kickoff(snap: dict, team: str, week: int) -> str | None:
+    """'2026-10-18 13:00' (US Eastern, as nflverse publishes it), or None on a bye."""
+    g = _team_games(snap, team).get(week)
+    return f"{g['gameday']} {g.get('gametime') or '00:00'}" if g else None
+
+
+def story_details(book: "ClaimBook", snap: dict, p: dict) -> dict:
+    """The football detail the editorial formats tell a story with, every number a claim:
+
+    games      per recent game: snaps (count and share), targets (count and share), catches, air yards and
+               the team's targets; comparable single games, never a mean pretending to be a game
+    spread     pass catchers: who got the latest game's targets, the most any teammate got, and which
+               teammates with a real role sat it out (from the usage data: the team played, they had no snaps)
+    carries    backs with a vacated role: his and the absent teammate's designed runs, and the team's running
+               back carries, summed over the earlier and the recent window
+    as_of      when the data (and so any injury status) was last synced
+    next_game  this week's opponent and venue; kickoff is when a status claim stops being current
+    """
+    gid, team = p["gsis_id"], p["team"]
+    names = {x["gsis_id"]: x for x in snap["tables"]["nfl_players"]}
+    rows = {r["week"]: r for r in snap["tables"]["player_week_usage"] if r["gsis_id"] == gid}
+    team_weeks = {r["week"] for r in snap["tables"].get("nfl_team_week", []) if r["team"] == team}
+
+    def val(label, fmt, column, week, who=gid):
+        if not _usage_values(snap, who, column, [week]):
+            return None                  # not in the data (older snapshots, test fixtures): no claim, no scene
+        return book.add(f"{label}, week {week}", fmt, {"kind": "usage_value", "gsis_id": who, "column": column,
+                                                       "week": week}, player=who, team=team)
+    games = []
+    for w in p["recent_weeks"]:
+        if w not in rows:
+            continue
+        g = {"week": w, "week_claim": book.add("game week", "week", {"kind": "week_value", "week": w}),
+             "snaps": val("offensive snaps", "int", "offense_snaps", w),
+             "snap_share": val("snap share", "pct", "offense_pct", w)}
+        if p["position"] != "RB" or (rows[w].get("targets") or 0) > 0:
+            g.update(targets=val("targets", "int", "targets", w), target_share=val("target share", "pct", "target_share", w),
+                     catches=val("catches", "int", "receptions", w), air_yards=val("air yards", "int", "air_yards", w))
+        if w in team_weeks:
+            g["team_targets"] = book.add(f"{team} targets, week {w}", "int", {"kind": "team_targets", "team": team, "week": w},
+                                         team=team)
+        if p["position"] == "RB":
+            g["carries"] = val("designed runs", "int", "designed_rushes", w)
+        games.append(g)
+    out = {"games": games}
+
+    latest = p["recent_weeks"][-1]
+    if p["position"] in ("WR", "TE"):
+        group = TEAMMATE_GROUP[p["position"]]
+        by_player = defaultdict(dict)
+        for r in snap["tables"]["player_week_usage"]:
+            if r["team"] == team and r["gsis_id"] != gid and r["position"] in group:
+                by_player[r["gsis_id"]][r["week"]] = r
+        targeted = sorted((r for r in snap["tables"]["player_week_usage"]
+                           if r["team"] == team and r["week"] == latest and (r["targets"] or 0) > 0),
+                          key=lambda r: (-r["targets"], r["gsis_id"]))
+        out["spread"] = {
+            "week": latest, "week_claim": book.add("game week", "week", {"kind": "week_value", "week": latest}),
+            "players_targeted": book.add(f"{team} players targeted, week {latest}", "int",
+                                         {"kind": "players_targeted", "team": team, "week": latest}, team=team),
+            "most_by_teammate": book.add(f"most targets by a {team} teammate, week {latest}", "int",
+                                         {"kind": "team_max_targets", "team": team, "week": latest, "exclude": [gid]},
+                                         team=team),
+            "catchers": [{"gsis_id": r["gsis_id"], "name": names.get(r["gsis_id"], {}).get("display_name", r["gsis_id"]),
+                          "position": r["position"], "is_player": r["gsis_id"] == gid,
+                          "targets": val("targets", "int", "targets", latest, r["gsis_id"])} for r in targeted],
+            "absent": [],
+        }
+        for tid, by_week in by_player.items():
+            base = [w for w in p["baseline_weeks"] if w in by_week]
+            if not base or latest in by_week or latest not in _team_games(snap, team):
+                continue
+            role = median(by_week[w]["target_share"] or 0 for w in base)
+            snaps_ = median(by_week[w]["offense_pct"] or 0 for w in base)
+            if role >= TEAMMATE_ROLE[p["position"]][1] and snaps_ >= TEAMMATE_MIN_SNAPS[p["position"]]:
+                out["spread"]["absent"].append({
+                    "gsis_id": tid, "name": names.get(tid, {}).get("display_name", tid), "role_value": role,
+                    "missed": book.add(f"weeks {names.get(tid, {}).get('display_name', tid)} missed", "weeks_list",
+                                       {"kind": "absent_weeks", "team": team, "gsis_id": tid, "weeks": [latest]},
+                                       player=tid, team=team)})
+        out["spread"]["absent"].sort(key=lambda a: -a["role_value"])
+        # Same-position teammates back in the latest game after missing the one before it (a returning
+        # tight end, say). Reported side by side with him; never claimed as the cause of anything.
+        out["spread"]["returned"] = []
+        window = [w for w in p["baseline_weeks"] + p["recent_weeks"] if w < latest and w in _team_games(snap, team)]
+        for tid, by_week in by_player.items():
+            same_pos = next(iter(by_week.values()))["position"] == p["position"]
+            missed = [w for w in window if w not in by_week]
+            if not same_pos or latest not in by_week or not missed or window[-1] not in missed:
+                continue
+            nm = names.get(tid, {}).get("display_name", tid)
+            out["spread"]["returned"].append({
+                "gsis_id": tid, "name": nm, "espn_id": names.get(tid, {}).get("espn_id"),
+                "missed": book.add(f"weeks {nm} missed", "weeks_list",
+                                   {"kind": "absent_weeks", "team": team, "gsis_id": tid, "weeks": missed},
+                                   player=tid, team=team),
+                "snaps": val("offensive snaps", "int", "offense_snaps", latest, tid),
+                "snap_share": val("snap share", "pct", "offense_pct", latest, tid),
+                "targets": val("targets", "int", "targets", latest, tid)})
+        ab = out["spread"]["absent"]
+        if len(ab) >= 2:
+            out["spread"]["absent_together"] = book.add(
+                "weeks they all missed", "weeks_list",
+                {"kind": "absent_together", "team": team, "gsis_ids": [a["gsis_id"] for a in ab[:2]], "weeks": [latest]},
+                team=team)
+
+    tm = p.get("teammate")
+    has_rb_carries = any(r.get("team_rb_carries") is not None for r in snap["tables"]["player_week_usage"]
+                         if r["team"] == team)
+    if p["position"] == "RB" and tm and tm["kind"] == "vacated" and has_rb_carries:
+        bw, rw = p["baseline_weeks"], p["recent_weeks"]
+        out["carries"] = {
+            "own_base": book.add("his designed runs, earlier games", "int",
+                                 {"kind": "usage_sum", "gsis_id": gid, "column": "designed_rushes", "weeks": bw}, player=gid),
+            "own_recent": book.add("his designed runs, recent games", "int",
+                                   {"kind": "usage_sum", "gsis_id": gid, "column": "designed_rushes", "weeks": rw},
+                                   player=gid),
+            "tm_base": book.add(f"{tm['name']}'s designed runs, earlier games", "int",
+                                {"kind": "usage_sum", "gsis_id": tm["gsis_id"], "column": "designed_rushes", "weeks": bw},
+                                player=tm["gsis_id"]),
+            "team_base": book.add(f"{team} running back carries, earlier games", "int",
+                                  {"kind": "team_week_sum", "team": team, "column": "team_rb_carries", "weeks": bw},
+                                  team=team),
+            "team_recent": book.add(f"{team} running back carries, recent games", "int",
+                                    {"kind": "team_week_sum", "team": team, "column": "team_rb_carries", "weeks": rw},
+                                    team=team),
+            "own_recent_share": book.add("his share of RB carries, recent games (pooled)", "pct",
+                                         {"kind": "pooled_share", "gsis_id": gid, "column": "designed_rushes",
+                                          "team": team, "team_column": "team_rb_carries", "weeks": rw}, player=gid),
+            "own_base_share": book.add("his share of RB carries, earlier games (pooled)", "pct",
+                                       {"kind": "pooled_share", "gsis_id": gid, "column": "designed_rushes",
+                                        "team": team, "team_column": "team_rb_carries", "weeks": bw}, player=gid),
+            "tm_base_share": book.add(f"{tm['name']}'s share of RB carries, earlier games (pooled)", "pct",
+                                      {"kind": "pooled_share", "gsis_id": tm["gsis_id"], "column": "designed_rushes",
+                                       "team": team, "team_column": "team_rb_carries", "weeks": bw},
+                                      player=tm["gsis_id"]),
+            "base_weeks": book.add("earlier weeks", "weeks_range", {"kind": "constant_weeks", "weeks": bw}),
+            "recent_weeks": book.add("recent weeks", "weeks_range", {"kind": "constant_weeks", "weeks": rw}),
+        }
+    if snap.get("source_sync"):
+        out["as_of"] = book.add("data synced", "date", {"kind": "data_as_of"})
+    if snap["week"] in _team_games(snap, team):
+        out["next_game"] = {
+            "opponent": book.add("this week's opponent", "team", {"kind": "opponent", "team": team, "week": snap["week"]},
+                                 team=team),
+            "venue": book.add("home or away", "text", {"kind": "venue", "team": team, "week": snap["week"]}, team=team),
+            "kickoff": kickoff(snap, team, snap["week"])}
+    return out
+
+
 def game_counts(book: "ClaimBook", snap: dict, p: dict) -> dict:
     """Per-game volume (targets, or designed runs for backs) for every game he played, plus his team's
     targets per game: the countable version of a share story ("six, eight, then three, two, two")."""
@@ -579,6 +766,13 @@ def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str],
         p["gainers"] = gainer_facts(book, snap, p)
         p["recent_values"] = week_values(book, p)
         p["counts"] = game_counts(book, snap, p)
+        meta = next((x for x in snap["tables"]["nfl_players"] if x["gsis_id"] == p["gsis_id"]), {})
+        p["draft_round"], p["years_exp"] = meta.get("draft_round"), meta.get("years_of_experience")
+        if p["teammate"]:
+            tmeta = next((x for x in snap["tables"]["nfl_players"] if x["gsis_id"] == p["teammate"]["gsis_id"]), {})
+            p["teammate"]["espn_id"] = tmeta.get("espn_id")
+            p["teammate"]["jersey"] = jerseys.get(p["teammate"]["gsis_id"])
+        p["details"] = story_details(book, snap, p)
         for m in p["metrics"]:
             if m["column"] == "target_share" and not m["sustained"]:     # say the games, not the mean
                 m["weekly"] = [book.add(f"{m['label']}, week {w}", "pct",

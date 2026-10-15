@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from ..core import Episode, read_json
 from ..numbers import render
-from .script import PLACEHOLDER
+from .script import PLACEHOLDER, fill
+
+
+def fill_display(template: str, claims: dict) -> str:
+    return fill(template, claims, "display")
 
 ODD_GAME_SNAPS = 0.30
 
@@ -37,7 +41,50 @@ def describe_source(src: dict) -> str:
         return f"nfl_schedules QB of record ({src['team']}, {wk})"
     if k == "proe_tendency":
         return f"team_context.proe league rank ({src['team']}): top 10 pass-heavy, bottom 10 run-heavy"
+    if k == "usage_value":
+        return f"player_week_usage.{src['column']}, week {src['week']} only (one game, not an average)"
+    if k == "usage_sum":
+        return f"player_week_usage.{src['column']}, summed over {wk}"
+    if k == "team_week_sum":
+        return f"player_week_usage.{src['column']} ({src['team']} team total per game), summed over {wk}"
+    if k == "team_targets":
+        return f"nfl_team_week.team_targets ({src['team']}, week {src['week']})"
+    if k == "team_max_targets":
+        return f"player_week_usage.targets: most by any other {src['team']} player, week {src['week']}"
+    if k == "players_targeted":
+        return f"player_week_usage: {src['team']} players with a target, week {src['week']}"
+    if k in ("absent_weeks", "absent_together"):
+        return f"player_week_usage: team played, no snaps ({wk})"
+    if k == "absence_reason":
+        return f"nfl_injuries.report_primary_injury ({wk})"
+    if k == "player_status":
+        return (f"nfl_rosters_weekly (IR) > nfl_injuries.report_status > practice_status, week {src['week']}; "
+                "true only until this week's kickoff")
+    if k == "data_as_of":
+        return "sync_runs.finished_at (latest successful nflverse sync)"
+    if k == "pooled_share":
+        return (f"sum of player_week_usage.{src['column']} / sum of {src['team_column']} ({src['team']}), {wk} "
+                "(pooled, so it matches the counts shown)")
+    if k == "constant_weeks":
+        return f"the window compared: {wk}"
+    if k == "venue":
+        return f"nfl_schedules ({src['team']}, week {src['week']}): home or away"
     return k.replace("_", " ")
+
+
+def storyboard(ep: Episode, script: dict) -> list[str]:
+    path = ep.path("work/timeline.json")
+    if not path.exists():
+        return []
+    tl = read_json(path)
+    segs = {s["id"]: s for s in script["narration_segments"]}
+    out = ["## Storyboard", "", "| time | scene | in | on screen / said |", "|---|---|---|---|"]
+    for sc in tl["scenes"]:
+        seg = segs.get(sc.get("segment"), {})
+        stage = f" ({sc['stage']})" if sc.get("stage") else ""
+        out.append(f"| {sc['_start']:.1f}–{sc['_start'] + sc['_dur']:.1f}s | {sc['type']}{stage} | "
+                   f"{sc.get('transition', 'push')} | {seg.get('text_display', '')} |")
+    return out + [""]
 
 
 def flags(facts: dict, claims: dict, fallback_words: list[str], text: str) -> list[str]:
@@ -80,10 +127,30 @@ def build(ep: Episode) -> str:
     lines += ["## What it says, and where every number comes from", ""]
     for seg in script["narration_segments"]:
         lines.append(f"**{seg['section']}**: {seg['text_display']}")
-        for cid in dict.fromkeys(PLACEHOLDER.findall(seg["text_template"])):
+        said = list(dict.fromkeys(PLACEHOLDER.findall(seg["text_template"])))
+        for cid in said:
             c = claims[cid]
             lines.append(f"- `{c['display']}`: {c['label']}. *{describe_source(c['source'])}*")
+        shown = [c for c in seg.get("claims_on_screen", []) if c not in said]
+        for cid in shown:
+            c = claims[cid]
+            lines.append(f"- on screen `{c['display']}`: {c['label']}. *{describe_source(c['source'])}*")
         lines.append("")
+    lines += storyboard(ep, script)
+    st = script["structure"]
+    if st.get("hook_variants"):
+        lines += ["## Opening hook variants", "", f"Used: **{st['hook']}**. Render another with `--hook <name>`.", ""]
+        lines += [f"- `{k}`: {fill_display(v, claims)}" for k, v in st["hook_variants"].items()] + [""]
+    if ep.path("editorial.json").exists():
+        ed = read_json(ep.path("editorial.json"))
+        lines += [f"## Editorial score: {ed['total']}/40 ({ed['format']}, {ed['verdict']})", "",
+                  "Heuristic for choosing stories, not a retention prediction.", ""]
+        lines += [f"- {k}: {ed['scores'][k]} ({ed['reasons'][k]})" for k in ed["scores"]] + [""]
+    if qc:
+        tg = next((g for g in qc["gates"] if g["name"] == "timeliness"), None)
+        if tg and tg.get("details", {}).get("valid_until"):
+            lines += [f"**Publish before {tg['details']['valid_until']}** (kickoff): the injury status is only "
+                      "current until then. Re-check the final injury report first.", ""]
     lines += ["## Weekly data behind the story", ""]
     for p in facts["players"]:
         weeks = [s["week"] for s in p["metrics"][0]["series"]]

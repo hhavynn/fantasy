@@ -10,7 +10,7 @@ from .. import motion as M
 from .. import visual as V
 from ..core import Episode, read_json, run_stage
 
-VERSION = 2
+VERSION = 4
 SIZE = (1280, 720)
 
 
@@ -23,16 +23,29 @@ def _run(ep: Episode) -> None:
     m = p["metrics"][hero_shot.get("metric", 0)]
     up = p["role"] == "riser"
     color = V.POSITIVE if up else V.NEGATIVE
+    fmt = script.get("structure", {}).get("format")
+    d = lambda cid: claims[cid]["display"]
+    hook_shot = script["shots"][0]
+    if fmt == "mystery":                  # the contradiction itself: same snaps, very different targets
+        a, b = [g for g in p["details"]["games"] if g["week"] in hook_shot["games"]]
+        kicker, stat, label = "SAME SNAPS. WHAT HAPPENED?", f"{d(a['targets'])} → {d(b['targets'])}", "TARGETS"
+        color = V.NEGATIVE
+    elif fmt == "opportunity":            # the workload, as counts that match the share
+        car = p["details"]["carries"]
+        kicker, stat, label = f"WITH {p['teammate']['name'].split()[-1].upper()} OUT", f"{d(car['own_recent'])} OF {d(car['team_recent'])}", "RB CARRIES"
+        color = V.POSITIVE
+    else:
+        kicker = stat = label = None
 
     shot = headshots.for_player(ep.cfg, p) if ep.fmt == "short" else None
     text_w = (800 if shot else SIZE[0]) - 128
     c = V.Canvas(SIZE)
     c.rect((0, 0, 18, SIZE[1]), fill=color, radius=0)
     week = claims[facts["episode"]["week"]]["display"]
-    c.text((64, 70), f"{week.upper()} USAGE {'RISER' if up else 'FALLER'}", "black", 40, color)
-    stat = f"{claims[m['baseline']]['display']} → {claims[m['recent']]['display']}"
+    c.text((64, 70), kicker or f"{week.upper()} USAGE {'RISER' if up else 'FALLER'}", "black", 40, color)
+    stat = stat or f"{claims[m['baseline']]['display']} → {claims[m['recent']]['display']}"
     c.text((64, 300), stat, "black", c.fit_text(stat, "black", 210, text_w), V.INK, "lm")
-    c.text((64, 450), m["label"].upper(), "black", 64, color, "lm")
+    c.text((64, 450), (label or m["label"]).upper(), "black", 64, color, "lm")
     name = p["name"].upper()
     c.text((64, 600), name, "black", c.fit_text(name, "black", 80, text_w), V.INK, "lm")
     img = c.img.resize(SIZE, Image.LANCZOS)

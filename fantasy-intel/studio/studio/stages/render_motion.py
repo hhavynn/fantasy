@@ -19,9 +19,10 @@ import subprocess
 
 import numpy as np
 import soundfile as sf
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 from .. import audio_design as A
+from .. import format_scenes as FS
 from .. import headshots
 from .. import motion as M
 from .. import scenes as S
@@ -31,7 +32,7 @@ from .assemble import srt_time
 from .script import PLACEHOLDER, fill
 from .story import last
 
-VERSION = 12
+VERSION = 17
 TRANSITION = 0.2
 CAPTION = {"font": "Inter-Black.ttf", "font_size": M.CAPTION_FONT[1], "max_width_px": M.CAPTION_MAX_W,
            "max_lines": 2}
@@ -115,6 +116,7 @@ class Ctx:
         self.primary_vivid = M.vivid(self.primary)
         self.tokens: list[dict] = []
         self.headshot = None
+        self.headshots_on = False
 
     def art(self, width: int):
         """The player's picture: his headshot (when enabled and available) or the jersey graphic."""
@@ -392,6 +394,8 @@ SCENES = {"hook": ("field", scene_hook), "big_compare": ("team", scene_big_compa
           "status_stamp": ("team", scene_status_stamp)}
 
 SCENES.update(S.STORY_SCENES)
+SCENES.update(FS.FORMAT_SCENES)
+MOOD = {"mystery": "tense", "opportunity": "bright"}
 
 # Sound design per scene: (local time source, kind, gain dB)
 def sound_events(scene: dict, start: float, dur: float, c: Ctx) -> list[tuple[float, str, float]]:
@@ -417,27 +421,36 @@ def sound_events(scene: dict, start: float, dur: float, c: Ctx) -> list[tuple[fl
     if kind == "decision":
         ev.append((start - 0.4, "rise", -6))
     ev += S.sounds(scene, start, dur, c)
+    ev += FS.sounds(scene, start, dur, c)
     return [e for e in ev if e[0] < start + dur + 1]
 
 
 # ------------------------------------------------------------------------------------------- render
 
-def _camera(frame: Image.Image, k: float, punch: float = 0.0) -> Image.Image:
-    """Slow push-in over a scene (up to 3.5%), plus a quick punch-in on a reveal that settles back."""
-    s = 1 + 0.035 * k + punch
+def _camera(frame: Image.Image, k: float, punch: float = 0.0, mode: str = "push") -> Image.Image:
+    """Slow push-in over a scene (up to 3.5%), plus a quick punch-in on a reveal that settles back.
+    'still' holds the frame and only snaps in on reveals (the mystery); 'drift' pushes and slides sideways."""
+    s = 1 + (0.0 if mode == "still" else 0.035 * k) + punch
     if s <= 1.001:
         return frame
     cw, ch = M.W / s, M.H / s
     x0, y0 = (M.W - cw) / 2, (M.H - ch) * 0.45
+    if mode == "drift":
+        x0 = (M.W - cw) * (0.5 - 0.35 * (k - 0.5))
     return frame.resize((M.W, M.H), Image.BILINEAR, box=(x0, y0, x0 + cw, y0 + ch))
 
 
 def draw_scene(scene: dict, t: float, dur: float, c: Ctx) -> Image.Image:
     bg_kind, fn = SCENES[scene["type"]]
-    img = M.background(bg_kind, c.team, c.accent, t + scene.get("_start", 0))
+    if bg_kind in ("casefile", "alert"):
+        img = FS.background(bg_kind, c, t + scene.get("_start", 0))
+    else:
+        img = M.background(bg_kind, c.team, c.accent, t + scene.get("_start", 0))
     fn(img, t, dur, scene, c)
-    punch = sum(0.045 * math.exp(-(t - tp) / 0.16) for tp in S.punches(scene, c, dur) if t >= tp)
-    return _camera(img, min(t / max(dur, 0.1), 1), punch)
+    hits = S.punches(scene, c, dur) + FS.punches(scene, c, dur)
+    strength = 0.06 if scene.get("camera") == "still" else 0.045
+    punch = sum(strength * math.exp(-(t - tp) / 0.16) for tp in hits if t >= tp)
+    return _camera(img, min(t / max(dur, 0.1), 1), punch, scene.get("camera", "push"))
 
 
 def _run(ep: Episode) -> None:
@@ -448,9 +461,10 @@ def _run(ep: Episode) -> None:
     fps = ep.cfg["video"]["fps"]
     story = script["structure"]["angle"]
     p = facts["players"][0]
-    accent = M.GOLD if story == "fill_in" else (M.DOWN if p["role"] == "faller" else M.UP)
+    accent = M.GOLD if story in ("fill_in", "mystery", "opportunity") else (M.DOWN if p["role"] == "faller" else M.UP)
     ctx = Ctx(facts, claims, accent, story)
     ctx.headshot = headshots.for_player(ep.cfg, p)
+    ctx.headshots_on = headshots.enabled(ep.cfg)
 
     scenes, cues, voice, offset, events = [], [], [], 0.0, []
     sr = None
@@ -469,13 +483,16 @@ def _run(ep: Episode) -> None:
         cue["end"] = cues[i + 1]["start"] if i + 1 < len(cues) else total
     for i, sc in enumerate(scenes):
         ctx.tokens = sc["_tokens"]
-        if i > 0:
+        tr = sc.get("transition", "push")
+        if i > 0 and tr in ("push", "whip", "rewind"):
             events.append((sc["_start"] - 0.12, "whoosh", -4))
+        elif i > 0 and tr == "cut":
+            events.append((sc["_start"] - 0.01, "cut", -5))
         events += sound_events(sc, sc["_start"], sc["_dur"], ctx)
 
     sh = ep.cfg["shorts"]
     mixed = A.mix(A.upsample(np.concatenate(voice), sr), events, sh.get("music", True), sh.get("music_db", -22),
-                  sh.get("sfx_db", -12))
+                  sh.get("sfx_db", -12), MOOD.get(story, "drive"))
     work = ep.path("work")
     work.mkdir(parents=True, exist_ok=True)
     sf.write(work / "mix.wav", mixed, A.SR, subtype="PCM_16")
@@ -504,7 +521,25 @@ def _run(ep: Episode) -> None:
         ctx.tokens = sc["_tokens"]
         tl = t - sc["_start"]
         frame = draw_scene(sc, tl, sc["_dur"], ctx)
-        if prev_last is not None and tl < TRANSITION:
+        tr = sc.get("transition", "push")
+        if prev_last is not None and tr == "cut" and tl < 0.067:
+            # A hard cut with a two-frame flash: the mystery's evidence slams onto the table.
+            frame = Image.blend(frame, Image.new("RGB", frame.size, (255, 255, 255)), 0.3 * (1 - tl / 0.067))
+        elif prev_last is not None and tr in ("whip", "rewind") and tl < TRANSITION:
+            # A whip pan: the old scene leaves sideways and the new one arrives smeared, then sharp.
+            k = M.ease_out(tl / TRANSITION)
+            sign = 1 if tr == "whip" else -1
+            canvas = Image.new("RGB", frame.size, M.DARK)
+            canvas.paste(prev_last, (int(-sign * M.W * k), 0))
+            canvas.paste(frame, (int(sign * M.W * (1 - k)), 0))
+            if k < 0.85:
+                canvas = canvas.filter(ImageFilter.BoxBlur(int(18 * (1 - k)) + 1)) if (1 - k) > 0.2 else canvas
+            if tr == "rewind" and k < 0.9:
+                d = ImageDraw.Draw(canvas, "RGBA")
+                for yy in range(0, M.H, 12):
+                    d.line((0, yy, M.W, yy), fill=(255, 255, 255, int(28 * (1 - k))))
+            frame = canvas
+        elif prev_last is not None and tr == "push" and tl < TRANSITION:
             # Push with a short motion blur: the incoming scene slides up over the outgoing one.
             k = M.ease_out(tl / TRANSITION)
             out = Image.blend(prev_last, Image.new("RGB", prev_last.size, M.DARK), 0.45 * k)

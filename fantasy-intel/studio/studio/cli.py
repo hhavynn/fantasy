@@ -17,6 +17,7 @@ import shutil
 import sys
 import time
 
+from . import editorial
 from .core import Config, Episode, read_json, sha256_file, write_json
 from .stages import (assemble, charts, facts, metadata, provenance, qc, render_motion, review, script, snapshot,
                      story, thumbnail, tts)
@@ -44,6 +45,25 @@ def run_stages(ep: Episode, stages, hook: str | None = None) -> None:
         ep.log(f"  [{name} {time.time() - t0:.1f}s]")
 
 
+def editorial_pick(cfg: Config, snap: dict, season: int, week: int, recent: set[str], week_ep: Episode) -> list[dict]:
+    """Score every qualifying story (one per team) on the editorial board and keep the best that pass, up to
+    the weekly quota. The board, with every score's reason, is written to editorial.md for review."""
+    candidates = facts.pick_stories(snap, 99, 99, recent)
+    hist = editorial.history(cfg.episodes_dir, season, before_week=week)
+    rows = []
+    for s in candidates:
+        f = facts.build_facts(snap, facts.ALL, set(), only=s["gsis_id"])
+        if not f["players"]:
+            continue
+        claims = {c["id"]: c for c in f["claims"]}
+        p = dict(f["players"][0], _episode_week=week)
+        rows.append((s, editorial.score(p, claims, editorial.choose_format(p, claims), hist)))
+    week_ep.path("editorial.md").write_text(editorial.board_markdown([r for _, r in rows]))
+    quota = cfg["shorts"]["risers"] + cfg["shorts"]["fallers"]
+    keep = [s for s, r in sorted(rows, key=lambda x: -x[1]["total"]) if r["verdict"] == "make"][:quota]
+    return [{**s, "order": i} for i, s in enumerate(keep)]
+
+
 def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str | None,
                 hook: str | None = None, slug_suffix: str = "") -> int:
     week_ep = Episode(season, week, "short", cfg, force=force)
@@ -52,7 +72,7 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
     snap = read_json(week_ep.path("snapshot.json"))
     recent = facts.recent_featured_players(cfg.episodes_dir / "history.jsonl",
                                            cfg["selection"]["recent_episode_window"], week, season, fmt="short")
-    stories = facts.pick_stories(snap, cfg["shorts"]["risers"], cfg["shorts"]["fallers"], recent)
+    stories = editorial_pick(cfg, snap, season, week, recent, week_ep)
     write_json(week_ep.path("stories.json"), stories)
     if only:      # an explicitly requested player isn't limited by the weekly quota, only by the selection rules
         stories = facts.pick_stories(snap, 0, 0, recent, only=only)[:1]
