@@ -42,12 +42,22 @@ data/*.duckdb
 data/*.duckdb.wal
 data/raw/
 data/logs/
+fantasy-intel/data/*.duckdb
+fantasy-intel/data/*.duckdb.wal
+fantasy-intel/data/raw/
+fantasy-intel/data/logs/
 
 # IDE & editors
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# Local tooling, worktrees, & agent caches
+.worktrees/
+worktrees/
+.serena/
+.ruff_cache/
 
 # External utilization provider files (licensed/manual). Never commit.
 fantasy-intel/data/imports/

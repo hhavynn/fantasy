@@ -391,6 +391,46 @@ streaming requiring starter turnover, trade-source union/dedup, target-share sum
 NGS NULLs, implied-total sign/arithmetic, team/defense aggregation keys,
 validation errors vs warnings, and an end-to-end API smoke test.
 
+## Continuous Integration (CI)
+
+Every push to `main` and pull request targeting `main` automatically triggers GitHub Actions (`.github/workflows/ci.yml`).
+
+### What CI checks
+
+- **Backend job (`backend`)**: Runs on Ubuntu with Python 3.12 and `uv`. Installs pinned dependencies from `backend/uv.lock` and executes the full pytest suite.
+- **Frontend job (`frontend`)**: Runs on Ubuntu with Node.js 22 LTS. Installs pinned dependencies from `frontend/package-lock.json` with `npm ci`, runs ESLint, verifies TypeScript types (`npm run typecheck`), and compiles a production build (`npm run build`).
+
+### Reproducing checks locally
+
+From the repository root:
+
+```bash
+# Backend checks
+cd fantasy-intel/backend
+uv sync --frozen
+TZ=UTC uv run pytest
+
+# Frontend checks
+cd fantasy-intel/frontend
+npm ci
+npm run lint
+npm run typecheck
+npm run build
+```
+
+### What to do when CI fails
+
+1. Check the GitHub Actions run log to determine which job and step failed.
+2. If backend tests fail: re-run the failing test locally with `TZ=UTC uv run pytest tests/<test_file>.py -vv`. Note that tests expect UTC timezone semantics.
+3. If frontend lint fails: run `npm run lint` locally and resolve rule violations.
+4. If frontend typecheck fails: run `npm run typecheck` (which runs `next typegen` followed by `tsc --noEmit`).
+5. If frontend build fails: run `npm run build` locally and inspect Next.js build errors.
+
+### Isolation and environment requirements
+
+- **No live ESPN access**: CI runs without ESPN credentials (`ESPN_S2`, `SWID`) and never contacts ESPN or external network services. All tests run against deterministic in-memory synthetic league fixtures and synthetic NFL data.
+- **Local-only tests**: Exactly one test (`test_real_league_smoke_read_only` in `backend/tests/test_trade_discovery.py`) checks for a local DuckDB file (`data/fantasy.duckdb`). It is safely skipped in CI and on machines without a configured local ESPN database.
+
 ## Troubleshooting
 
 - **`ESPNAccessDenied`**: `ESPN_S2`/`SWID` missing, expired or copied without the braces.
