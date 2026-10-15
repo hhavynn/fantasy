@@ -4,6 +4,8 @@ import { api } from "@/lib/api";
 import type { LlBrief, LlCounterfactual, LlLeader, LlRecord, LlResult, LlScheduleRow, LlTimeline, LuckLab } from "@/lib/luck-types";
 import { ScheduleSelector } from "./ScheduleSelector";
 
+export const metadata = { title: "Luck lab" };
+
 // Luck vs. Skill Lab: expected wins from all-play, schedule luck (actual minus expected), schedule
 // difficulty, notable results and counterfactual opponent schedules, over completed, fully observed
 // regular-season periods only. Historical and explanatory: no probabilities, no projections.

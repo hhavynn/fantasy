@@ -1,92 +1,81 @@
 import Link from "next/link";
+import { BackendProblem } from "@/components/BackendProblem";
 import { MovesTable } from "@/components/MovesTable";
 import { PlayerLink } from "@/components/PlayerLink";
-import { Badge, Callout, ErrorBox, Pos, Score, TrendArrow } from "@/components/ui";
+import {
+  Badge, EmptyState, Method, Notice, PageHeader, Pos, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { num } from "@/lib/format";
+import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import type { League, Move, Need, RosterPlayer, SyncInfo, Team } from "@/lib/types";
+
+// The template does not apply to a page in the layout's own segment, so the full title is given.
+export const metadata = { title: { absolute: "Overview · Fantasy Intel" } };
 
 type Overview = {
   league: League; my_team: Team | null; standings: Team[]; roster: RosterPlayer[]; injuries: RosterPlayer[];
   needs: Need[]; recent_transactions: Move[]; sync: SyncInfo; nfl_latest_week: number | null;
 };
 
-function SetupHelp({ error }: { error: string }) {
-  return (
-    <>
-      <ErrorBox error={error} />
-      <Callout>
-        <b>First run?</b> Fill in <code>.env</code> (copy <code>.env.example</code>), then from <code>backend/</code> run{" "}
-        <code>uv run python ../scripts/sync_espn.py</code> and <code>uv run python ../scripts/sync_nfl.py</code>.
-      </Callout>
-    </>
-  );
-}
+const STANDINGS_SORTS = ["rank", "record", "pf", "pa"] as const;
+const STANDINGS_DEFAULT: SortState = { key: "rank", dir: "asc" };
 
-export default async function OverviewPage() {
+export default async function OverviewPage({ searchParams }: PageProps<"/">) {
+  const sp = await searchParams;
   const res = await api<Overview>("/api/overview");
-  if (!res.ok) return <SetupHelp error={res.error} />;
+  if (!res.ok) {
+    return (
+      <div className="stack">
+        <PageHeader title="Overview" />
+        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+      </div>
+    );
+  }
   const o = res.data;
   const me = o.my_team;
   const rank = me ? o.standings.findIndex((t) => t.team_id === me.team_id) + 1 : null;
   const n = o.standings.length;
   const rankBy = (k: "points_for" | "points_against") =>
     me ? [...o.standings].sort((a, b) => (b[k] ?? 0) - (a[k] ?? 0)).findIndex((t) => t.team_id === me.team_id) + 1 : null;
+  const pfRank = rankBy("points_for");
+  const paRank = rankBy("points_against");
   const scoring = o.league.reception_points === 1 ? "PPR" : o.league.reception_points ? `${o.league.reception_points} PPR` : "Scoring ?";
 
   return (
     <div className="stack">
-      <div className="page-head">
-        <h1>{me ? me.name : "Your team"}</h1>
-        <span className="sub">
-          {o.league.name} · {o.league.season} · week {o.league.current_week} · {o.league.size} teams · {scoring}
-          {o.league.is_faab ? ` · FAAB $${o.league.faab_budget}` : " · waiver priority"}
-        </span>
-      </div>
+      <PageHeader
+        title={me ? me.name : "Your team"}
+        meta={`${o.league.name} · ${o.league.season} · week ${o.league.current_week} · ${o.league.size} teams · ${scoring}${o.league.is_faab ? ` · FAAB $${o.league.faab_budget}` : " · waiver priority"}`}
+      />
 
-      {!me && <Callout>Your team wasn&apos;t identified from SWID. Set <code>ESPN_MY_TEAM_ID</code> in <code>.env</code> and re-sync.</Callout>}
+      {!me && (
+        <Notice tone="caution">
+          Your team wasn&apos;t identified from SWID. Set <code>ESPN_MY_TEAM_ID</code> in <code>.env</code> and re-sync.
+        </Notice>
+      )}
 
       {me && (
-        <div className="grid grid-4">
-          <div className="stat">
-            <div className="label">Record</div>
-            <div className="value">{me.wins}–{me.losses}{me.ties ? `–${me.ties}` : ""}</div>
-            <div className="note">{rank ? `${ordinal(rank)} of ${n}` : ""}</div>
-          </div>
-          <div className="stat">
-            <div className="label">Points for</div>
-            <div className="value">{num(me.points_for, 1)}</div>
-            <div className="note">{rankBy("points_for") ? `${ordinal(rankBy("points_for")!)} most in league` : ""}</div>
-          </div>
-          <div className="stat">
-            <div className="label">Points against</div>
-            <div className="value">{num(me.points_against, 1)}</div>
-            <div className="note">{rankBy("points_against") ? `${ordinal(rankBy("points_against")!)} most in league` : ""}</div>
-          </div>
-          <div className="stat">
-            <div className="label">{o.league.is_faab ? "FAAB left" : "Waiver priority"}</div>
-            <div className="value">
-              {o.league.is_faab ? `$${(o.league.faab_budget ?? 0) - (me.faab_spent ?? 0)}` : `#${me.waiver_rank ?? "?"}`}
-            </div>
-            <div className="note">{o.league.is_faab ? `of $${o.league.faab_budget ?? "?"}` : `of ${n} teams`}</div>
-          </div>
-          <div className="stat">
-            <div className="label">Injury designations</div>
-            <div className="value">{o.injuries.length}</div>
-            <div className="note">on your roster</div>
-          </div>
-        </div>
+        <StatStrip>
+          <Stat label="Record" value={`${me.wins}–${me.losses}${me.ties ? `–${me.ties}` : ""}`} note={rank ? `${ordinal(rank)} of ${n}` : undefined} />
+          <Stat label="Points for" value={num(me.points_for, 1)} note={pfRank ? `${ordinal(pfRank)} most in league` : undefined} />
+          <Stat label="Points against" value={num(me.points_against, 1)} note={paRank ? `${ordinal(paRank)} most in league` : undefined} />
+          <Stat
+            label={o.league.is_faab ? "FAAB left" : "Waiver priority"}
+            value={o.league.is_faab ? `$${(o.league.faab_budget ?? 0) - (me.faab_spent ?? 0)}` : `#${me.waiver_rank ?? "?"}`}
+            note={o.league.is_faab ? `of $${o.league.faab_budget ?? "?"}` : `of ${n} teams`}
+          />
+          <Stat label="Injury designations" value={o.injuries.length} note="on your roster" />
+        </StatStrip>
       )}
 
       <div className="grid-main">
-        <section className="panel">
-          <h2>Current roster</h2>
+        <Section title="Current roster" flush>
           <RosterTable rows={o.roster} />
-        </section>
+        </Section>
 
         <div className="stack">
-          <section className="panel">
-            <h2>Biggest roster needs</h2>
+          <Section title="Biggest roster needs" flush>
             <div className="table-wrap">
               <table>
                 <thead>
@@ -110,18 +99,18 @@ export default async function OverviewPage() {
                 </tbody>
               </table>
             </div>
-            <details>
-              <summary>How need is calculated</summary>
-              <p className="faint">
-                Need = 0.55·shortage of availability-weighted bodies + 0.45·gap between your starters&apos; value at the position (fixed and FLEX-assigned) and the league
-                average. FLEX is one real slot filled by the best eligible player. Weights: available 1, questionable 0.75, doubtful 0.15, out/IR 0.
-              </p>
-            </details>
-          </section>
+          </Section>
+          <Method title="How need is calculated">
+            <p>
+              Need = 0.55·shortage of availability-weighted bodies + 0.45·gap between your starters&apos; value at the position (fixed and FLEX-assigned) and the league
+              average. FLEX is one real slot filled by the best eligible player. Weights: available 1, questionable 0.75, doubtful 0.15, out/IR 0.
+            </p>
+          </Method>
 
-          <section className="panel">
-            <h2>Injuries on my roster</h2>
-            {o.injuries.length === 0 ? <p className="faint">No injury designations on your roster.</p> : (
+          <Section title="Injuries on my roster" flush={o.injuries.length > 0}>
+            {o.injuries.length === 0 ? (
+              <EmptyState title="No injury designations">Nobody on your roster carries an ESPN injury designation right now.</EmptyState>
+            ) : (
               <div className="table-wrap">
                 <table>
                   <thead><tr><th>Player</th><th>ESPN</th><th>NFL report</th></tr></thead>
@@ -141,35 +130,63 @@ export default async function OverviewPage() {
                 </table>
               </div>
             )}
-          </section>
+          </Section>
 
-          <section className="panel">
-            <h2>Standings</h2>
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th className="num">#</th><th>Team</th><th>W–L</th><th className="num">PF</th><th className="num">PA</th></tr></thead>
-                <tbody>
-                  {o.standings.map((t, i) => (
-                    <tr key={t.team_id} className={t.is_mine ? "mine" : ""}>
-                      <td className="num faint">{i + 1}</td>
-                      <td><Link href={`/managers/${t.team_id}`}>{t.name}</Link></td>
-                      <td>{t.wins}–{t.losses}{t.ties ? `–${t.ties}` : ""}</td>
-                      <td className="num">{num(t.points_for, 1)}</td>
-                      <td className="num">{num(t.points_against, 1)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <StandingsSection standings={o.standings} sp={sp} />
         </div>
       </div>
 
-      <section className="panel">
-        <h2>Recent league transactions</h2>
-        <MovesTable moves={o.recent_transactions} />
-      </section>
+      <Section title="Recent league transactions" flush={o.recent_transactions.length > 0}>
+        {o.recent_transactions.length === 0
+          ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next ESPN sync.</EmptyState>
+          : <MovesTable moves={o.recent_transactions} />}
+      </Section>
     </div>
+  );
+}
+
+const gamesOf = (t: Team) => t.wins + t.losses + t.ties;
+/** Win share for sorting only (a tie counts half); teams with no games yet sort last. */
+const winShare = (t: Team) => (gamesOf(t) === 0 ? null : (t.wins + t.ties / 2) / gamesOf(t));
+
+function StandingsSection({ standings, sp }: { standings: Team[]; sp: Record<string, string | string[] | undefined> }) {
+  const sort = parseSort(sp, STANDINGS_SORTS, STANDINGS_DEFAULT);
+  const ranked = standings.map((team, i) => ({ team, rank: i + 1 }));
+  const rows = sortRows(ranked, ({ team, rank }) => {
+    switch (sort.key) {
+      case "record": return winShare(team);
+      case "pf": return team.points_for;
+      case "pa": return team.points_against;
+      default: return rank;
+    }
+  }, sort.dir);
+  return (
+    <Section title="Standings" flush>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <SortableTh sortKey="rank" label="#" align="right" defaultDir="asc" current={sort} searchParams={sp} title="League standing" />
+              <th>Team</th>
+              <SortableTh sortKey="record" label="W–L" defaultDir="desc" current={sort} searchParams={sp} title="Sorted by win share (a tie counts half)" />
+              <SortableTh sortKey="pf" label="PF" align="right" current={sort} searchParams={sp} title="Points for" />
+              <SortableTh sortKey="pa" label="PA" align="right" current={sort} searchParams={sp} title="Points against" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ team: t, rank }) => (
+              <tr key={t.team_id} className={t.is_mine ? "mine" : ""}>
+                <td className="num faint">{rank}</td>
+                <td><Link href={`/managers/${t.team_id}`}>{t.name}</Link></td>
+                <td>{t.wins}–{t.losses}{t.ties ? `–${t.ties}` : ""}</td>
+                <td className="num">{num(t.points_for, 1)}</td>
+                <td className="num">{num(t.points_against, 1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Section>
   );
 }
 
