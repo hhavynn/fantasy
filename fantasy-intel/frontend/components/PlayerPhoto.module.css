@@ -1,0 +1,10 @@
+.photo {
+  position: relative; display: inline-flex; flex: none; align-items: center; justify-content: center;
+  overflow: hidden; border-radius: 50%; vertical-align: middle;
+  background: var(--neutral-soft); color: var(--ink-muted); font-weight: 600; line-height: 1;
+}
+/* Team logos are transparent marks; keep them whole on a plain disc rather than cropped. */
+.logo { background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line); }
+.initials { letter-spacing: 0.02em; user-select: none; }
+.img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.logo .img { object-fit: contain; padding: 12%; }

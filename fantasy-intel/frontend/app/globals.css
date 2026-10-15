@@ -328,6 +328,8 @@ tr.group:hover td { background: var(--bg); }
 
 /* Player names are the scan anchor: ink, not link blue. */
 .player-link { color: var(--ink); font-weight: 500; }
+/* The headshot sits just before the name; inline so it wraps with the name inside prose and comma lists. */
+.player-link > :first-child { margin: -2px 6px 0 0; }
 .player-link:hover { color: var(--accent); }
 
 /* ---------- Tags ---------- */

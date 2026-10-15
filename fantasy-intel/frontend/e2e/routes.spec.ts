@@ -18,6 +18,11 @@ const THEMES = ["light", "dark"] as const;
 // Titles of BackendProblem and the route error boundary: a page that shows one did not render its data.
 const FAILURE_TEXT = /Can't reach the backend|The backend returned an error|database schema is out of date|Something went wrong|This page couldn't be rendered/;
 
+// Player photos come from ESPN's CDN. Serve a 1x1 PNG instead so the test stays offline and a
+// synthetic player id with no ESPN headshot doesn't log a 404 as a console error.
+const PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("console", (msg) => {
@@ -33,6 +38,7 @@ for (const route of ROUTES) {
       await page.addInitScript(([key, value]) => {
         window.localStorage.setItem(key, value);
       }, [THEME_KEY, theme] as const);
+      await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
       const errors = collectErrors(page);
 
       const res = await page.goto(route, { waitUntil: "load" });
