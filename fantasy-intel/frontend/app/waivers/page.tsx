@@ -6,6 +6,8 @@ import { label, num, when } from "@/lib/format";
 import type { Coverage, Decision, WaiverRow } from "./types";
 import styles from "./waivers.module.css";
 
+export const metadata = { title: "Waivers" };
+
 const POSITIONS = ["ALL", "QB", "RB", "WR", "TE", "K", "D/ST"];
 const VIEWS: Record<string, string> = {
   BEST: "Best moves for my team", FREE_AGENTS: "Free-agent adds", CLAIMS: "Waiver claims",

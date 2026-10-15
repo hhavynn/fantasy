@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import type { PrRecord, TeamValue, TvMatchupEffect, TvPhase, TvPlayer } from "@/lib/types";
 
+export const metadata = { title: "Team value" };
+
 // My Team Value: roster strength vs the league, who really moves the starting lineup, unused bench
 // projection, upgrades and the playoff-race context. Every number comes from the canonical engine
 // (ESPN weekly projections + the exact weekly lineup optimizer); nothing here is a probability.

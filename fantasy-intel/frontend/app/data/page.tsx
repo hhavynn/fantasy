@@ -3,6 +3,8 @@ import { Badge, ErrorBox, Pos } from "@/components/ui";
 import { api } from "@/lib/api";
 import { num, when } from "@/lib/format";
 
+export const metadata = { title: "Data quality" };
+
 type MapRow = {
   espn_player_id: number; espn_name: string; espn_position: string; espn_team: string | null; gsis_id: string | null;
   nfl_name: string | null; nfl_team: string | null; match_method: string; match_confidence: string; notes: string | null;

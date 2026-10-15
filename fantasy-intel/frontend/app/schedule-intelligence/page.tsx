@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import type { ScheduleIntelligence, SiLabel, SiMetric, SiPlayer, SiWeek } from "@/lib/types";
 
+export const metadata = { title: "Schedule" };
+
 // Schedule intelligence: each remaining week's opponent and what that defense has allowed in games
 // completed before the week. Descriptive only: no projection, no points adjustment, no composite score.
 

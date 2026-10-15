@@ -1,0 +1,11 @@
+.delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.glyph { font-size: 0.75em; }
+.good { color: var(--positive); }
+.bad { color: var(--negative); }
+.flat { color: var(--ink-muted); }

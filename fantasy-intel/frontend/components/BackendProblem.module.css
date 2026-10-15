@@ -1,0 +1,15 @@
+.commands {
+  margin: 8px 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+.commands code { padding: 0; background: none; font-size: inherit; }
+.detail { color: var(--ink-faint); font-size: 12px; }
+.firstRun { margin-top: 12px; color: var(--ink-muted); }

@@ -21,6 +21,20 @@
   --neutral-soft: #8a95a529;
   --focus: #9cc8ff;
 
+  /* Chart palette. Categorical order: blue, orange, green, pink, yellow, slate. Each is >= 7:1 on
+     --surface, and every pair stays distinguishable (CIELAB distance >= 10) under protan/deutan/tritan
+     simulation; the lightness steps differ too, so greyscale reads. Series are also named in a legend. */
+  --chart-1: #6aaeff;
+  --chart-2: #f5a35c;
+  --chart-3: #3fc79a;
+  --chart-4: #e08ac0;
+  --chart-5: #eedb5a;
+  --chart-6: #c0c8d4;
+  --chart-grid: #232b36;
+  --chart-axis: var(--ink-faint);
+  --chart-positive: var(--positive);
+  --chart-negative: var(--negative);
+
   --font-display: var(--font-barlow-condensed), "Arial Narrow", system-ui, sans-serif;
   --font-sans: var(--font-plex-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
