@@ -338,6 +338,11 @@ and All candidates modes remain. K and D/ST are excluded from automatic discover
 fantasy IR slot) removes verified ineligible weeks from every lineup simulation, with return scenarios for injured
 traded players. No acceptance probability. Details: [`docs/v3_trade_intelligence.md`](docs/v3_trade_intelligence.md).
 
+Every evaluated or discovered trade also gets a **Trade vs. free agency** panel (V3.1): for each manager, the best
+single legal acquisition of a currently available player (ESPN free agents; waiver claims shown separately as not
+guaranteed), and what the trade still adds once that move is made. It never enters the canonical delta. Details:
+[`docs/v3_1_trade_vs_free_agency.md`](docs/v3_1_trade_vs_free_agency.md).
+
 ## Trade opportunity discovery (V2)
 
 `GET /api/trades/discover` (and the `/trades/discover` page) searches every 1-for-1, 2-for-1 and 1-for-2 trade
