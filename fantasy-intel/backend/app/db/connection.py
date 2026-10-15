@@ -54,14 +54,16 @@ def motherduck_dsn(database: str) -> str:
 
 
 def connect_motherduck(database: str) -> duckdb.DuckDBPyConnection:
-    """Open the hosted database. On Vercel the only writable directory is /tmp, so the motherduck
-    extension is downloaded there on a cold start (home_directory is not honoured for md: URLs)."""
+    """Open the hosted database. The motherduck extension needs a home directory, and Vercel
+    functions run with HOME empty, so fall back to the temp dir (the only writable one there);
+    the extension is then downloaded under it on a cold start. The home_directory /
+    extension_directory connect options are not honoured for md: URLs, so it has to be HOME."""
     if not (os.getenv("MOTHERDUCK_TOKEN") or os.getenv("motherduck_token")):
         # Without a token the extension falls back to an interactive browser login and blocks ~1 min.
         raise duckdb.InvalidInputException("MOTHERDUCK_TOKEN is not set")
-    config = {"extension_directory": os.path.join(tempfile.gettempdir(), "duckdb_extensions")} \
-        if os.getenv("VERCEL") else {}
-    return duckdb.connect(motherduck_dsn(database), config=config)
+    if not os.getenv("HOME"):
+        os.environ["HOME"] = tempfile.gettempdir()
+    return duckdb.connect(motherduck_dsn(database))
 
 
 SCHEMA_VERSION = 7
