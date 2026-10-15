@@ -126,11 +126,14 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         <WaiverTable rows={pageRows} sort={sort} sp={spNoOffset} empty={empty} />
       </Section>
 
-      <nav className={styles.pager} aria-label="Waiver pages">
-        {offset > 0 && <Link className="chip" href={withParams(sp, { offset: offset - PAGE_SIZE > 0 ? String(offset - PAGE_SIZE) : null })}>Previous</Link>}
-        <span className="sub">{ordered.length ? `${offset + 1}–${Math.min(offset + pageRows.length, ordered.length)} of ${ordered.length}` : "0 results"}</span>
-        {offset + pageRows.length < ordered.length && <Link className="chip" href={withParams(sp, { offset: String(offset + PAGE_SIZE) })}>Next</Link>}
-      </nav>
+      {/* An empty list already shows its EmptyState; no "0 results" line beneath it. */}
+      {ordered.length > 0 && (
+        <nav className={styles.pager} aria-label="Waiver pages">
+          {offset > 0 && <Link className="chip" href={withParams(sp, { offset: offset - PAGE_SIZE > 0 ? String(offset - PAGE_SIZE) : null })}>Previous</Link>}
+          <span className="sub">{`${offset + 1}–${Math.min(offset + pageRows.length, ordered.length)} of ${ordered.length}`}</span>
+          {offset + pageRows.length < ordered.length && <Link className="chip" href={withParams(sp, { offset: String(offset + PAGE_SIZE) })}>Next</Link>}
+        </nav>
+      )}
 
       <Method title="How waiver advice is calculated">
         <div className={styles.method}>

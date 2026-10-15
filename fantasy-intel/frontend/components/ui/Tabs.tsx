@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cx } from "@/lib/cx";
+import { ScrollToActive } from "./ScrollToActive";
 import styles from "./Tabs.module.css";
 
 export type TabItem = { href: string; label: string; count?: number | null };
@@ -29,6 +30,7 @@ export function Tabs({ items, current, label, className }: {
           {item.count !== undefined && item.count !== null ? <span className={styles.count}>{item.count}</span> : null}
         </Link>
       ))}
+      <ScrollToActive current={current} />
     </nav>
   );
 }

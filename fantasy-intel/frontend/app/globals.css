@@ -307,6 +307,8 @@ tr.group:hover td { background: var(--bg); }
    lowest specificity so row hover, group rows and the own-team tint still win. A client island
    (components/TableScroll.tsx) sets data-scrolled once the table has moved, which adds the edge shadow.
    Opt out with .table-wrap.flat (tables that restack into cards on phones). */
+/* Separate borders: in the collapsed model a pinned cell's bottom border stays behind while the cell moves. */
+.table-wrap:not(.flat) > table { border-collapse: separate; border-spacing: 0; }
 .table-wrap:not(.flat) > table :is(th, td):first-child { position: sticky; left: 0; z-index: 1; }
 .table-wrap:not(.flat) > table th:first-child { z-index: 3; }
 :where(.table-wrap:not(.flat) > table) td:first-child { background-color: var(--cell-bg); }
