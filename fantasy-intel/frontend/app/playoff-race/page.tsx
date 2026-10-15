@@ -48,13 +48,16 @@ function signed(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
 }
 
-// Row index after which the dashed cutline is drawn: after the last spot, or above a tied group that
-// straddles it (that group shares the remaining spots; no tiebreak picks among them).
+// Row index BEFORE which the dashed cutline is drawn: the first row past the last spot, or the first
+// row of a tied group that straddles it (that group shares the remaining spots; no tiebreak picks
+// among them). 0 = above the first row (e.g. every team tied at 0-0); not drawn when it is past the end.
+// The position comes from the statuses, never from row order alone: no line when no team has a decided
+// game yet (nothing establishes a cutline position).
 function cutAfter(d: PlayoffRace): number | null {
-  const spots = d.league.playoff_teams;
-  if (spots === null) return null;
-  const tie = d.scenario.cutline?.cutline_tie;
-  return tie ? d.scenario.projected_standings.filter((x) => x.status === "inside").length : spots;
+  if (d.league.playoff_teams === null) return null;
+  const rows = d.scenario.projected_standings;
+  if (rows.every((x) => x.status === null)) return null;
+  return rows.filter((x) => x.status === "inside").length;      // inside teams come first in the order
 }
 
 const STATUS_TEXT: Record<string, string> = { inside: "inside cutline", outside: "outside", cutline_tie: "tied at cutline" };
@@ -287,6 +290,10 @@ function Standings({ d, name }: { d: PlayoffRace; name: (id: number | null) => s
               const t = teams.get(x.team_id);
               return (
                 <Fragment key={x.team_id}>
+                  {after !== null && i === after && (
+                    <tr><td colSpan={7} style={{ borderBottom: `2px dashed ${AHEAD}`, padding: 0 }}
+                            title={tie ? `Cutline: ${tie.spots_left} spot(s) shared by the tied teams below` : `Playoff cutline: ${spots} spots`} /></tr>
+                  )}
                   <tr className={t?.is_mine ? "mine" : ""}>
                     <td>{x.rank ?? "—"}{x.tied ? "=" : ""}</td>
                     <td>{name(x.team_id)}</td>
@@ -296,17 +303,15 @@ function Standings({ d, name }: { d: PlayoffRace; name: (id: number | null) => s
                     <td className="num">{move === null || move === 0 ? <span className="faint">·</span> : move > 0 ? <span style={{ color: AHEAD }}>▲{move}</span> : <span style={{ color: BEHIND }}>▼{-move}</span>}</td>
                     <td><StatusBadge s={x.status} /></td>
                   </tr>
-                  {after !== null && i + 1 === after && i + 1 < s.projected_standings.length && (
-                    <tr><td colSpan={7} style={{ borderBottom: `2px dashed ${AHEAD}`, padding: 0 }}
-                            title={tie ? `Cutline: ${tie.spots_left} spot(s) shared by the tied teams below` : `Playoff cutline: ${spots} spots`} /></tr>
-                  )}
                 </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
-      <p className="faint" style={{ marginTop: 6 }}>“=” marks a shared rank (equal winning percentage; no tiebreak applied). “+n?” counts games still unresolved in this scenario. The dashed line is the cutline after {spots ?? "?"} spots{tie ? `; a tied group straddles it, so it is drawn above them and they share ${tie.spots_left} spot(s)` : ""}.</p>
+      <p className="faint" style={{ marginTop: 6 }}>“=” marks a shared rank (equal winning percentage; no tiebreak applied). “+n?” counts games still unresolved in this scenario. {after === null
+        ? (spots === null ? " Playoff spots are unknown, so no cutline is drawn." : " No team has a decided game in this scenario yet, so no cutline position is drawn.")
+        : <> The dashed line is the cutline after {spots} spots{tie ? `; a tied group straddles it, so it is drawn above them and they share ${tie.spots_left} spot(s)` : ""}.</>}</p>
     </section>
   );
 }
@@ -316,7 +321,7 @@ function Ladder({ d, name }: { d: PlayoffRace; name: (id: number | null) => stri
   const after = cutAfter(d);
   const tie = d.scenario.cutline?.cutline_tie;
   const mine = new Set(d.teams.filter((t) => t.team_id === d.focus_team_id).map((t) => t.team_id));
-  const rowH = 22, labelW = 150, barW = 260, top = 8;
+  const rowH = 22, labelW = 150, barW = 260, top = 16;
   const h = top + rows.length * rowH + 8;
   return (
     <section className="panel">
@@ -336,10 +341,10 @@ function Ladder({ d, name }: { d: PlayoffRace; name: (id: number | null) => stri
               </text>
               {x.pct !== null && <rect x={labelW} y={y + 4} width={w} height={rowH - 8} rx={4} fill={mine.has(x.team_id) ? AHEAD : NEUTRAL} />}
               <text x={labelW + barW + 6} y={y + 14} fontSize={11} fill="var(--muted)">{rec(x.record)}</text>
-              {after !== null && i + 1 === after && i + 1 < rows.length && (
+              {after !== null && i === after && (
                 <g>
-                  <line x1={labelW - 4} x2={labelW + barW + 106} y1={y + rowH} y2={y + rowH} stroke={AHEAD} strokeWidth={2} strokeDasharray="4 3" />
-                  <text x={labelW + barW + 106} y={y + rowH - 4} fontSize={10} textAnchor="end" fill="var(--text)">{tie ? `cutline · ${tie.spots_left} shared` : "cutline"}</text>
+                  <line x1={labelW - 4} x2={labelW + barW + 106} y1={y} y2={y} stroke={AHEAD} strokeWidth={2} strokeDasharray="4 3" />
+                  <text x={labelW + barW + 106} y={y - 4} fontSize={10} textAnchor="end" fill="var(--text)">{tie ? `cutline · ${tie.spots_left} shared` : "cutline"}</text>
                 </g>
               )}
             </g>

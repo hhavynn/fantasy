@@ -68,6 +68,15 @@ def test_current_standings_records_ties_and_all_play():
     assert cut["cutline_tie"] == {"team_ids": [3, 4], "spots_left": 1}
     assert [x["team_id"] for x in cut["last_inside"]] == [2] and cut["first_outside"] == []
     assert {3, 4} <= set(cut["bubble"])
+    # Every team tied (all period-1 games tied): the whole league straddles the cutline, nobody is in.
+    every = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=2, final_week=8,
+                    scores={(1, t): 100.0 for t in range(1, 5)})
+    cut_all = build_playoff_race(every, base="actual")["scenario"]["cutline"]
+    assert cut_all["cutline_tie"] == {"team_ids": [1, 2, 3, 4], "spots_left": 2} and cut_all["last_inside"] == []
+    # No decided games at all: no status, so no cutline position.
+    none = build_playoff_race(sr.race(n_teams=4, reg_periods=6, spots=2, start_week=1, final_week=8), base="actual")
+    assert all(x["status"] is None for x in none["scenario"]["projected_standings"])
+    assert none["scenario"]["cutline"]["cutline_tie"] is None and none["scenario"]["cutline"]["last_inside"] == []
     # A tied group that fits exactly is reported whole as the last group inside.
     cut4 = build_playoff_race(tie_league(spots=4), base="actual")["scenario"]["cutline"]
     assert [x["team_id"] for x in cut4["last_inside"]] == [3, 4] and cut4["cutline_tie"] is None
