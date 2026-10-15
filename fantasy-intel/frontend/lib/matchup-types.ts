@@ -60,6 +60,9 @@ export type Matchup = {
   week: number;
   phase: MatchupPhase | null;
   matchup_id: number | null;
+  /** The matchup period this week belongs to, and its scoring weeks when it spans several. */
+  matchup_period: number | null;
+  period_weeks: number[] | null;
   is_bye_week: boolean;
   weeks_available: number[];
   me: TeamSide;

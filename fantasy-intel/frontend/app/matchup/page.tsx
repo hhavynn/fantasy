@@ -83,7 +83,10 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
     <div className="stack">
       <PageHeader
         title={`Week ${m.week} matchup`}
-        meta={[m.league.name, phase, opp ? statusLabel(m.status) : null, m.week === here ? "current week" : null].filter(Boolean).join(" · ")}
+        meta={[
+          m.league.name, phase, opp ? statusLabel(m.status) : null, m.week === here ? "current week" : null,
+          m.period_weeks ? `Matchup period ${m.matchup_period} spans weeks ${m.period_weeks[0]}–${m.period_weeks[m.period_weeks.length - 1]}` : null,
+        ].filter(Boolean).join(" · ")}
         actions={
           <div className={styles.weekNav}>
             {prev ? <Link className="chip" href={matchupHref({ week: prev, ...keep })}>← Week {prev}</Link> : null}

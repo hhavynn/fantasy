@@ -28,7 +28,9 @@ const waiver = (id: number, over: Partial<NonNullable<WaiverInput["components"][
     utility: { forward: { total_gain: null, weeks: [] } }, ...over } },
 });
 
-const clean: ActionSources = { roster: [starter(1)], matchup: matchup(), startSit: startSit([{ ...swap("x", 1), action: "NO_CHANGE", actionability: "NO_CHANGE" }]), waivers: [] };
+const waivers = (players: WaiverInput[], total = players.length) => ({ players, total });
+
+const clean: ActionSources = { roster: [starter(1)], matchup: matchup(), startSit: startSit([{ ...swap("x", 1), action: "NO_CHANGE", actionability: "NO_CHANGE" }]), waivers: waivers([]) };
 
 test("nothing actionable gives an empty list with every source available", () => {
   const r = buildActionItems(clean);
@@ -122,17 +124,20 @@ test("waiver pickups: only actionable, capped, with the drop and the forward gai
     waiver(3),
     waiver(4, { actionable: false, action: "MONITOR" }),
   ];
-  const r = buildActionItems({ ...clean, waivers: w });
+  const r = buildActionItems({ ...clean, waivers: waivers(w, 7) });
   assert.deepEqual(r.items.map((i) => i.id), ["waiver-1", "waiver-2"]);
   assert.equal(r.items[0].title, "Add W1 (RB)");
   assert.equal(r.items[0].reason, "drop Dropper · +12.3 projected lineup points over 3 weeks.");
   assert.equal(r.items[1].title, "Claim W2 (RB)");
   assert.equal(r.items[1].reason, "Open spot.");
-  assert.equal(r.more.waivers, 1);
+  // the page fetches only a few rows; the overflow comes from the endpoint's total, not the rows in hand
+  assert.equal(r.more.waivers, 5);
+  assert.equal(buildActionItems({ ...clean, waivers: waivers(w.slice(0, 2), 2) }).more.waivers, 0);
+  assert.equal(buildActionItems({ ...clean, waivers: waivers(w.slice(0, 3), 40) }).more.waivers, 38);
 });
 
 test("a failed source is named and does not hide the others", () => {
-  const r = buildActionItems({ roster: null, matchup: matchup(), startSit: null, waivers: [waiver(1)] });
+  const r = buildActionItems({ roster: null, matchup: matchup(), startSit: null, waivers: waivers([waiver(1)]) });
   assert.deepEqual(r.unavailable, ["Roster", "Start/Sit"]);
   assert.deepEqual(r.items.map((i) => i.id), ["waiver-1"]);
   const all = buildActionItems({ roster: null, matchup: null, startSit: null, waivers: null });
@@ -146,7 +151,7 @@ test("priority order: lineup problems, then swaps, empty slots, questionable, pi
     roster: [starter(1, { availability: q }), starter(2, { availability: { status: "OUT", sources: [] } })],
     matchup: matchup({ me: { lineup: [{ slot: "K", player_id: null }] } }),
     startSit: startSit([swap("a", 2)]),
-    waivers: [waiver(9)],
+    waivers: waivers([waiver(9)]),
   });
   assert.deepEqual(r.items.map((i) => i.id), ["out-2", "swap-a", "empty-K", "questionable", "waiver-9"]);
 });

@@ -61,7 +61,8 @@ export type ActionSources = {
   roster: RosterInput[] | null;
   matchup: MatchupInput | null;
   startSit: StartSitInput | null;
-  waivers: WaiverInput[] | null;
+  /** The BEST view of /api/waivers: a few rows plus `total`, the number of actionable pickups overall. */
+  waivers: { players: WaiverInput[]; total: number } | null;
 };
 
 export type ActionList = {
@@ -163,8 +164,9 @@ export function buildActionItems(src: ActionSources, caps: { swaps?: number; wai
   const pickups: ActionItem[] = [];
   let waiversMore = 0;
   if (src.waivers) {
-    const actionable = src.waivers.filter((w) => w.components.decision?.actionable);
-    for (const w of actionable.slice(0, maxWaivers)) {
+    const actionable = src.waivers.players.filter((w) => w.components.decision?.actionable);
+    const listed = actionable.slice(0, maxWaivers);
+    for (const w of listed) {
       const d = w.components.decision!;
       const verb = d.action === "ADD_NOW" ? "Add" : d.action === "WAIVER_CLAIM" ? "Claim" : "Consider";
       const gain = d.utility.forward.total_gain;
@@ -177,7 +179,7 @@ export function buildActionItems(src: ActionSources, caps: { swaps?: number; wai
         reason: parts.length ? `${parts.join(" · ")}.` : d.roster_move.summary, href: "/waivers", cta: "Waivers",
       });
     }
-    waiversMore = Math.max(0, actionable.length - maxWaivers);
+    waiversMore = Math.max(0, Math.max(src.waivers.total, actionable.length) - listed.length);
   }
 
   return { items: [...severe, ...lineup, ...swaps, ...empty, ...risky, ...pickups], more: { swaps: swapsMore, waivers: waiversMore }, unavailable };

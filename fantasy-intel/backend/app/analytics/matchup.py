@@ -11,7 +11,11 @@ Read-only shaping of rows that already exist; nothing here computes a new analyt
     when a snapshot exists for that week. Its `points` are NULL until the matchup has started: a
     pre-game 0.0 is "not played yet", not a measured zero.
 
-Matchup period and scoring period are treated as the same number (as the rest of the app does).
+`week` is a scoring week. It is resolved to its matchup period with ESPN's scheduleSettings.matchupPeriods
+(the same `period_weeks` helper the playoff race uses), so a multi-week period (common in the playoffs) finds
+its pairing from either of its weeks. Projections and lineup snapshots stay keyed by scoring week. A period
+that spans several weeks reports `matchup_period` and `period_weeks`; its actual points cover the whole period.
+Without a usable schedule the period is assumed to equal the week, and a note says so.
 
 Status rule (`status`), from stored data only:
   * "final"       ESPN marked a winner (HOME, AWAY or TIE).
@@ -26,6 +30,7 @@ import json
 from typing import Any
 
 from ..db.connection import fetch_dicts, table_exists
+from .playoff_race import period_weeks
 
 DECIDED = ("HOME", "AWAY", "TIE")
 HEALTHY = (None, "", "ACTIVE", "NORMAL")
@@ -147,11 +152,12 @@ def _actual_side(con, key: tuple, players_by_id: dict, playing: set[str], starte
 
 
 def load_matchup(con, team_id: int | None = None, week: int | None = None) -> dict:
-    lgs = fetch_dicts(con, "SELECT league_id, season, name, current_week, final_scoring_period, reg_season_matchups "
-                           "FROM leagues ORDER BY synced_at DESC LIMIT 1")
+    lgs = fetch_dicts(con, "SELECT league_id, season, name, current_week, final_scoring_period, reg_season_matchups, "
+                           "settings_raw FROM leagues ORDER BY synced_at DESC LIMIT 1")
     if not lgs:
         raise LeagueNotSynced("ESPN league not synced yet. Run scripts/sync_espn.py.")
     lg = lgs[0]
+    sched = (_json(lg.pop("settings_raw"), {}) or {}).get("scheduleSettings") or {}
     league_id, season = lg["league_id"], lg["season"]
     current = int(lg["current_week"] or 1)
 
@@ -173,7 +179,24 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None) -> di
         FROM matchups WHERE league_id = ? AND season = ? AND matchup_period IS NOT NULL
           AND (home_team_id = ? OR away_team_id = ?) ORDER BY matchup_period, matchup_id""",
                             [league_id, season, team_id, team_id])
-    weeks_available = sorted({int(m["matchup_period"]) for m in mine_rows})
+    league_periods = {int(r["p"]) for r in fetch_dicts(
+        con, "SELECT DISTINCT matchup_period p FROM matchups WHERE league_id = ? AND season = ? "
+             "AND matchup_period IS NOT NULL", [league_id, season])}
+    # scoring week -> matchup period, from ESPN's schedule; a period whose weeks are unknown is taken as itself
+    week_to_period: dict[int, int] = {}
+    period_span: dict[int, list[int]] = {}
+    assumed = False
+    for per in sorted(league_periods):
+        ws = period_weeks(sched, per)
+        if ws is None:
+            ws, assumed = [per], True
+        period_span[per] = ws
+        for w in ws:
+            week_to_period.setdefault(w, per)
+    if not sched.get("matchupPeriods") and sched.get("matchupPeriodLength") is None and league_periods:
+        assumed = True
+    my_periods = {int(m["matchup_period"]) for m in mine_rows}
+    weeks_available = sorted(w for w, per in week_to_period.items() if per in my_periods)
     last_week = max([int(lg["final_scoring_period"] or 0), *weeks_available])
 
     if week is None:
@@ -181,10 +204,19 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None) -> di
     elif week < 1 or week > last_week:
         raise WeekOutOfRange(f"Week {week} is outside the fantasy season (1-{last_week}).")
 
-    row = next((m for m in mine_rows if int(m["matchup_period"]) == week), None)
-    status = matchup_status(row, week, current)
+    period = week_to_period.get(week)
+    span = period_span.get(period, [week]) if period is not None else [week]
+    row = next((m for m in mine_rows if period is not None and int(m["matchup_period"]) == period), None)
+    status = matchup_status(row, max(span), current)
     started = status in ("in_progress", "final")
+    snapshot_started = started and week <= current       # a snapshot's points exist only for weeks already under way
     notes: list[str] = []
+    if assumed:
+        notes.append("ESPN's matchup period schedule is not in the synced settings, so matchup periods are "
+                     "assumed to match scoring weeks.")
+    if row and len(span) > 1:
+        notes.append(f"Actual points cover the whole matchup period (weeks {span[0]}–{span[-1]}); "
+                     f"projections and lineups are for week {week} only.")
 
     opp_id = None
     my_points = opp_points = None
@@ -198,9 +230,7 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None) -> di
         if opp_id is None or opp_id not in by_id:
             opp_id = None
 
-    league_has_week = bool(fetch_dicts(con, """SELECT 1 FROM matchups WHERE league_id = ? AND season = ?
-                                               AND matchup_period = ? LIMIT 1""", [league_id, season, week]))
-    is_bye = row is None and league_has_week
+    is_bye = row is None and period is not None
     if opp_id is None:
         if is_bye:
             notes.append(f"{by_id[team_id]['name']} has a bye in week {week}: no opponent is scheduled.")
@@ -238,7 +268,7 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None) -> di
                             if missing else "")
                          + f". Only the known lineup total ({proj['known_points']}) is shown; "
                            "it is not a full-lineup projection.")
-        actual, actual_bench = _actual_side(con, key, players_by_id, playing, started)
+        actual, actual_bench = _actual_side(con, key, players_by_id, playing, snapshot_started)
         return {"team_id": tid, "name": t["name"], "abbrev": t["abbrev"],
                 "record": {"wins": t["wins"], "losses": t["losses"], "ties": t["ties"]},
                 "standing": standing.get(tid),
@@ -264,11 +294,12 @@ def load_matchup(con, team_id: int | None = None, week: int | None = None) -> di
         if tier not in (None, "NONE"):
             phase = "playoff"
         elif reg:
-            phase = "regular" if week <= reg else "playoff"
+            phase = "regular" if (period if period is not None else week) <= reg else "playoff"
 
     return {
         "league": {"league_id": league_id, "season": season, "name": lg["name"], "current_week": current},
         "week": week, "phase": phase, "matchup_id": row["matchup_id"] if row else None,
+        "matchup_period": period, "period_weeks": span if len(span) > 1 else None,
         "is_bye_week": is_bye, "weeks_available": weeks_available,
         "me": me, "opponent": opponent, "status": status, "notes": notes,
     }

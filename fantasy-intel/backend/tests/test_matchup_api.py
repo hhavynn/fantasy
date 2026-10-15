@@ -18,6 +18,14 @@ from test_trade_data import synced
 MY_ID, CURRENT_WEEK = 2, 3
 
 
+def set_schedule(con, matchup_periods: dict | None, length: int | None = 1):
+    """Store ESPN's scheduleSettings (matchup period -> scoring weeks) in the league settings."""
+    sched = {} if matchup_periods is None else {"matchupPeriods": matchup_periods}
+    if length is not None:
+        sched["matchupPeriodLength"] = length
+    con.execute("UPDATE leagues SET settings_raw = ?", [json.dumps({"scheduleSettings": sched})])
+
+
 @pytest.fixture
 def league(tmp_path):
     """(db_path, writable connection): periods 1-2 final, 3 current and unplayed, 4-14 ahead."""
@@ -36,6 +44,7 @@ def league(tmp_path):
             else:
                 con.execute("INSERT INTO matchups VALUES (?, ?, ?, ?, ?, ?, 0.0, 0.0, 'UNDECIDED', 'NONE')",
                             [lid, SEASON, mid, p, h, a])
+    set_schedule(con, {str(w): [w] for w in range(1, 18)})
     # the fixture only snapshots period 1: reuse it for the final week 2 and the current week 3
     con.execute("DELETE FROM lineup_snapshots WHERE scoring_period IN (2, 3)")
     for period, with_points in ((2, True), (3, False)):
@@ -169,6 +178,60 @@ def test_a_playoff_week_without_pairings_is_not_a_bye(api):
     assert body["status"] == "unknown" and 15 not in body["weeks_available"]
     assert body["me"]["projected_points"] > 0
     assert any("No opponent is scheduled for week 15" in n for n in body["notes"])
+
+
+def test_single_week_periods_report_their_period_and_no_span(api):
+    body = api.get("/api/matchup", params={"week": 4}).json()
+    assert body["matchup_period"] == 4 and body["period_weeks"] is None
+
+
+def test_a_two_week_playoff_period_resolves_from_either_scoring_week(league, serve):
+    _, con, lid = league
+    # playoff matchup period 15 covers scoring weeks 15 and 16; period 16 does not exist
+    set_schedule(con, {**{str(w): [w] for w in range(1, 15)}, "15": [15, 16]})
+    mid = fetch_dicts(con, "SELECT max(matchup_id) m FROM matchups")[0]["m"] + 1
+    con.execute("INSERT INTO matchups VALUES (?, ?, ?, 15, ?, ?, 0.0, 0.0, 'UNDECIDED', 'WINNERS_BRACKET')",
+                [lid, SEASON, mid, MY_ID, 4])
+    con.execute("INSERT INTO matchups VALUES (?, ?, ?, 15, 1, 3, 0.0, 0.0, 'UNDECIDED', 'WINNERS_BRACKET')",
+                [lid, SEASON, mid + 1])
+    api = serve(league)
+    w15 = api.get("/api/matchup", params={"week": 15}).json()
+    w16 = api.get("/api/matchup", params={"week": 16}).json()
+    for body, week in ((w15, 15), (w16, 16)):
+        assert body["week"] == week and body["matchup_period"] == 15 and body["period_weeks"] == [15, 16]
+        assert body["opponent"]["team_id"] == 4 and body["matchup_id"] == mid
+        assert body["phase"] == "playoff" and not body["is_bye_week"] and body["status"] == "upcoming"
+        assert any("whole matchup period (weeks 15–16)" in n for n in body["notes"])
+    assert {15, 16} <= set(w15["weeks_available"]) and 17 not in w15["weeks_available"]
+    # projections stay keyed by the scoring week
+    assert w15["me"]["projected_points"] != w16["me"]["projected_points"]
+    # week 17 has no pairing: no opponent, not a bye
+    w17 = api.get("/api/matchup", params={"week": 17}).json()
+    assert w17["opponent"] is None and w17["matchup_period"] is None and not w17["is_bye_week"]
+
+
+def test_a_period_in_progress_scores_the_whole_period_but_not_the_unplayed_week(league, serve):
+    _, con, lid = league
+    set_schedule(con, {**{str(w): [w] for w in range(1, 15)}, "15": [15, 16]})
+    con.execute("INSERT INTO matchups VALUES (?, ?, 900, 15, ?, 4, 61.5, 40.0, 'UNDECIDED', 'WINNERS_BRACKET')",
+                [lid, SEASON, MY_ID])
+    con.execute("UPDATE leagues SET current_week = 16")
+    con.execute("DELETE FROM lineup_snapshots WHERE scoring_period = 16")
+    con.execute("""INSERT INTO lineup_snapshots
+                   SELECT league_id, season, 16, team_id, espn_player_id, lineup_slot_id, lineup_slot, is_starter,
+                          acquisition_type, acquisition_date, injury_status, 9.0, projected_points, synced_at
+                   FROM lineup_snapshots WHERE scoring_period = 1""")
+    body = serve(league).get("/api/matchup", params={"week": 16}).json()
+    assert body["status"] == "in_progress"
+    assert (body["me"]["actual_points"], body["opponent"]["actual_points"]) == (61.5, 40.0)
+
+
+def test_missing_schedule_settings_fall_back_to_week_equals_period_with_a_note(league, serve):
+    _, con, _ = league
+    con.execute("UPDATE leagues SET settings_raw = NULL")
+    body = serve(league).get("/api/matchup", params={"week": 4}).json()
+    assert body["matchup_period"] == 4 and body["opponent"]["team_id"] == opponent_of(4)
+    assert any("matchup period schedule is not in the synced settings" in n for n in body["notes"])
 
 
 def test_incomplete_projection_keeps_projected_null_and_adds_a_note(league, serve):

@@ -21,8 +21,10 @@ def get_matchup(
       league          {league_id, season, name, current_week}
       week, phase     "regular" | "playoff" | null
       matchup_id      null when the team has no matchup row that week
+      matchup_period  the ESPN matchup period the week belongs to (null when none); period_weeks lists its
+                      scoring weeks when it spans several (actual points then cover the whole period)
       is_bye_week     true only when other teams play that week and this one does not
-      weeks_available weeks with a matchup row for the team
+      weeks_available scoring weeks whose matchup period has a row for the team
       status          "upcoming" | "in_progress" | "final" | "unknown" (rule: analytics/matchup.py)
       me, opponent    TeamSide, opponent is null with no opponent (bye, or pairings not set yet)
       notes           data caveats worth showing next to the numbers

@@ -34,13 +34,13 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
     api<Overview>("/api/overview"),
     api<Matchup>("/api/matchup"),
     api<StartSitInput>("/api/start-sit"),
-    api<{ players: WaiverInput[] }>("/api/waivers?view=BEST&limit=5"),
+    api<{ players: WaiverInput[]; total: number }>("/api/waivers?view=BEST&limit=3"),
   ]);
   const actions = buildActionItems({
     roster: res.ok ? res.data.roster : null,
     matchup: matchup.ok ? matchup.data : null,
     startSit: startSit.ok ? startSit.data : null,
-    waivers: waivers.ok ? waivers.data.players : null,
+    waivers: waivers.ok ? waivers.data : null,
   });
   const week = matchup.ok ? matchup.data.league.current_week : res.ok ? res.data.league.current_week : null;
 
