@@ -15,7 +15,14 @@ function apply(choice: ThemeChoice) {
   else root.setAttribute("data-theme", choice);
 }
 
+let fadeTimer: ReturnType<typeof setTimeout> | undefined;
+
 function select(choice: ThemeChoice) {
+  // Fade colours for a moment (globals.css, html.theme-fading); reduced-motion users get no fade.
+  const root = document.documentElement;
+  root.classList.add("theme-fading");
+  clearTimeout(fadeTimer);
+  fadeTimer = setTimeout(() => root.classList.remove("theme-fading"), 260);
   apply(choice);
   try {
     if (choice === "system") window.localStorage.removeItem(THEME_KEY);

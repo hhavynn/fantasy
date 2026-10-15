@@ -388,7 +388,7 @@ ul.reasons li { margin: 1px 0; }
 .callout.error::before { background: var(--negative); }
 .callout code, code { font-family: var(--font-mono); font-size: 12px; background: var(--surface-raised); padding: 1px 5px; border-radius: 4px; }
 
-.mgr-card { display: block; color: inherit; transition: border-color .12s; }
+.mgr-card { display: block; color: inherit; }
 .mgr-card:hover { text-decoration: none; border-color: var(--accent); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: center; }
 .kv .k { color: var(--ink-muted); }
@@ -396,3 +396,42 @@ ul.reasons li { margin: 1px 0; }
 .meter > div { height: 100%; background: var(--accent); }
 .spark { vertical-align: middle; }
 .row-flex { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ---------- Motion ---------- */
+/* 120-180ms ease-out on colour, background, border and shadow for anything you can point at or focus.
+   :where() keeps these defaults at zero specificity, so a component's own transition still wins.
+   Only paint properties animate (never size or position), so nothing shifts. Focus outlines stay instant. */
+:where(a, button, input, select, summary, .chip, tbody tr > td) {
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out),
+    filter var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+}
+:where(button):active:not(:disabled) { transform: translateY(1px); }
+
+/* Popovers and the phone menu drawer ease in; the command palette has its own (CommandPalette.module.css). */
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes drawer-in { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes content-in { from { opacity: 0; } }
+.sync-pop { animation: pop-in var(--dur) var(--ease-out); }
+.mobile-nav-panel { animation: drawer-in var(--dur-slow) var(--ease-out); }
+details.method[open] > :not(summary) { animation: content-in var(--dur-slow) var(--ease-out); }
+
+/* Switching theme fades colours for a moment instead of snapping (class added by ThemeSwitch). */
+html.theme-fading, html.theme-fading *, html.theme-fading *::before, html.theme-fading *::after {
+  transition: background-color var(--dur-slow) var(--ease-out), color var(--dur-slow) var(--ease-out),
+    border-color var(--dur-slow) var(--ease-out), box-shadow var(--dur-slow) var(--ease-out),
+    fill var(--dur-slow) var(--ease-out), stroke var(--dur-slow) var(--ease-out) !important;
+}
+
+/* Last on purpose: for people who ask for less motion nothing above moves, and no CSS module can out-rank it. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  :where(button):active:not(:disabled) { transform: none; }
+}
