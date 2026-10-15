@@ -498,6 +498,65 @@ these are set, so the API key check and the password prompt are off.
 **Refreshing the hosted data:** run the syncs, then `publish_motherduck.py`. No redeploy is
 needed; the API reads the new copy on the next request.
 
+## Scheduled refresh (macOS launchd)
+
+ESPN projections are only stored as history (`espn_projection_history`) when a sync runs, and
+the projection promotion tracker only counts snapshots taken **before kickoff**. A week without
+a pregame sync has no ESPN baseline, so the refresh should run on a schedule. ESPN cookies live
+in your local `.env`, so it has to run on your Mac (not in GitHub Actions).
+
+`scripts/refresh_all.py` runs `sync_espn.py` → `sync_nfl.py` → `compute_analytics.py`, then
+`publish_motherduck.py` only if `MOTHERDUCK_TOKEN` is set. Each step runs in its own process,
+the first failure stops the chain and the script exits 1. Every run writes
+`data/logs/refresh-<UTC stamp>.log`. At the end it checks that the current week's ESPN
+projections were snapshotted before that week's first kickoff and prints a `WARNING:` line if
+not (`/data` shows the same check under "Independent projections: path to promotion").
+
+```bash
+cd backend
+uv run python ../scripts/refresh_all.py                # full refresh (+ publish when configured)
+uv run python ../scripts/refresh_all.py --no-publish   # never touch MotherDuck
+uv run python ../scripts/refresh_all.py --check-only   # only the pregame snapshot check
+```
+
+`scripts/launchd/com.fantasy-intel.refresh.plist` is a template; nothing installs it for you.
+It runs the refresh on **Thursday 3pm, Sunday 8am, Monday 3pm and Tuesday 8am**, in the
+Mac's local time zone (the times assume Pacific; edit them otherwise). A run missed while the
+Mac sleeps fires when it wakes; one missed while it is shut down is skipped.
+
+**Install** (from `fantasy-intel/` in the checkout that has your `.env`):
+
+```bash
+mkdir -p data/logs ~/Library/LaunchAgents
+sed -e "s|__FANTASY_INTEL_DIR__|$PWD|g" -e "s|__UV__|$(command -v uv)|g" scripts/launchd/com.fantasy-intel.refresh.plist > ~/Library/LaunchAgents/com.fantasy-intel.refresh.plist
+plutil -lint ~/Library/LaunchAgents/com.fantasy-intel.refresh.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.fantasy-intel.refresh.plist
+```
+
+Run it once now to confirm it works under launchd: `launchctl kickstart gui/$(id -u)/com.fantasy-intel.refresh`.
+
+**Check it ran:**
+
+```bash
+launchctl print gui/$(id -u)/com.fantasy-intel.refresh | grep -E "state|runs|last exit code"
+ls -t data/logs/refresh-*.log | head -3                       # newest run first
+tail -n 30 "$(ls -t data/logs/refresh-*.log | head -1)"       # FAILED / WARNING lines are at the end
+cat data/logs/launchd.err.log                                 # uv or permission errors before the log opened
+```
+
+**Uninstall:**
+
+```bash
+launchctl bootout gui/$(id -u)/com.fantasy-intel.refresh
+rm ~/Library/LaunchAgents/com.fantasy-intel.refresh.plist
+```
+
+After editing the template, uninstall and install again. If the repository lives under
+`~/Documents`, `~/Desktop` or `~/Downloads`, macOS privacy protection can block a launchd job
+from reading it (`Operation not permitted` in `launchd.err.log`, with no refresh log). Grant
+Full Disk Access to `uv` and to the Python in `backend/.venv` (System Settings → Privacy &
+Security), or keep the checkout somewhere else.
+
 ## Tests
 
 ```bash
