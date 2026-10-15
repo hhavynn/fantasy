@@ -237,8 +237,8 @@ def test_start_week_override_shrinks_the_window():
     ((1, 1, [105], [106]), "different"),
     ((1, 2, [105], [105]), "more than once"),
     ((1, 2, [204], [205]), "not on team 1"),
-    ((1, 2, [101, 102, 103], [204]), "1 or 2"),
-    ((1, 2, [], [204]), "1 or 2"),
+    ((1, 2, [101, 102, 103, 104, 105, 106, 107], [204]), "between 1 and 6"),
+    ((1, 2, [], [204]), "between 1 and 6"),
     ((1, 3, [105], [204]), "unknown team"),
 ])
 def test_invalid_trades_are_rejected(args, msg):

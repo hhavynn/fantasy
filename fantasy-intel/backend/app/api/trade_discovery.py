@@ -9,7 +9,11 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics.manager_scouting import build_manager_scouting
 from ..analytics.trade_data import load_league_state
-from ..analytics.trade_discovery import CATEGORIES, NOTE, SHAPES, SORTS, TradeSearch, detail
+from ..analytics import trade_practical as practical
+from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
+from ..analytics.trade_discovery import (ALL_SHAPES, CATEGORIES, HEURISTIC_SHAPES, NOTE, SHAPES, SKILL_POSITIONS, SORTS,
+                                         TradeSearch)
+from ..analytics.trade_practical import MODES, PHASES, STRICTNESS
 from ..analytics.trades import ASSUMPTIONS, LIMITATIONS, NoRemainingWeeksError, TradeError
 from ..config import get_settings
 from .deps import db, one, rows
@@ -23,14 +27,15 @@ _CACHE_SIZE = 4
 NEED_HIGH_BAND = 0.66      # the manager-scouting "high need" display band (analytics/manager_scouting.py)
 
 
-def _search(state, anchor: int, shapes: tuple[str, ...]) -> TradeSearch:
+def _search(state, anchor: int, shapes: tuple[str, ...], positions: tuple[str, ...]) -> TradeSearch:
     path = get_settings().db_path
     reason = state.start_week_reason or {}
-    key = (str(path), path.stat().st_mtime_ns, anchor, shapes, state.start_week, bool(reason.get("uncertain")))
+    key = (str(path), path.stat().st_mtime_ns, anchor, shapes, positions, state.start_week,
+           bool(reason.get("uncertain")))
     if key in _CACHE:
         _CACHE.move_to_end(key)
         return _CACHE[key]
-    ts = TradeSearch(state, anchor, shapes)
+    ts = TradeSearch(state, anchor, shapes, positions=positions)
     _CACHE[key] = ts
     while len(_CACHE) > _CACHE_SIZE:
         _CACHE.popitem(last=False)
@@ -76,13 +81,25 @@ def _need_notes(row: dict, ctx: dict | None, names: dict[int, dict]) -> list[str
     return out
 
 
+DEFAULT_SHAPES = ("1-for-1", "2-for-1", "1-for-2", "2-for-2", "3-for-1", "1-for-3", "3-for-2", "2-for-3")
+
+
 @router.get("/discover")
 def discover(team_id: int | None = None,
-             shapes: str = Query(",".join(SHAPES), description="comma-separated: 1-for-1,2-for-1,1-for-2"),
-             sort: str = Query("my_gain", description=" | ".join(SORTS)),
-             category: str | None = None, opponent: int | None = None,
-             limit: int = Query(20, ge=1, le=100), include_equivalents: bool = False):
-    """Hypothetical trade opportunities for one team (default: yours), exact lineup impact for both sides."""
+             mode: str = Query("practical", description=" | ".join(MODES)),
+             phase: str = Query("ros", description="ros | regular | playoff"),
+             strictness: str = Query("standard", description=" | ".join(STRICTNESS)),
+             include_kdst: bool = Query(False, description="also trade kickers and team defenses"),
+             positions: str | None = Query(None, description="comma-separated tradeable positions (overrides include_kdst)"),
+             shapes: str = Query(",".join(DEFAULT_SHAPES),
+                                 description="comma-separated; exact: 1-for-1,2-for-1,1-for-2; heuristic: "
+                                             + ",".join(HEURISTIC_SHAPES)),
+             sort: str = Query("my_gain", description="'all' mode only: " + " | ".join(SORTS)),
+             category: str | None = Query(None, description="'all' mode only"),
+             opponent: int | None = None,
+             limit: int = Query(10, ge=1, le=50), heuristic: bool = True):
+    """Hypothetical trade opportunities for one team (default: yours). Every row is the exact lineup
+    simulation for both teams; modes only decide which rows are shown and how they are explained."""
     with db() as con:
         lg = one(con, "SELECT league_id, season, name, current_week, final_scoring_period FROM leagues "
                       "ORDER BY synced_at DESC LIMIT 1")
@@ -97,46 +114,63 @@ def discover(team_id: int | None = None,
             team_id = mine[0]["team_id"]
         if team_id not in {t["team_id"] for t in teams}:
             raise HTTPException(404, "Unknown team")
+        if mode not in MODES or phase not in PHASES or strictness not in STRICTNESS:
+            raise HTTPException(422, f"mode must be one of {', '.join(MODES)}; phase one of {', '.join(PHASES)}; "
+                                     f"strictness one of {', '.join(STRICTNESS)}")
+        if sort not in SORTS:
+            raise HTTPException(422, f"sort must be one of {', '.join(SORTS)}")
         state = load_league_state(con, lg["season"])
         if state is None:
             raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
-        shape_list = tuple(s.strip() for s in shapes.split(",") if s.strip())
+        shape_list = tuple(x for x in ALL_SHAPES if x in {y.strip() for y in shapes.split(",") if y.strip()})
+        if not shape_list or {y.strip() for y in shapes.split(",") if y.strip()} - set(ALL_SHAPES):
+            raise HTTPException(422, f"shapes must be among {', '.join(ALL_SHAPES)}")
+        pos = tuple(sorted({x.strip() for x in positions.split(",") if x.strip()})) if positions else \
+            tuple(SKILL_POSITIONS) + (("K", "D/ST") if include_kdst else ())
         try:
-            ts = _search(state, team_id, shape_list)
-            out = ts.top(sort, category or None, opponent, limit, include_equivalents)
-            per_opp = []
-            for opp in ts.opponents:
-                best = ts.top("my_gain", None, opp, 1)
-                mutual = ts.top("min_side", "MUTUAL_PROJECTED_IMPROVEMENT", opp, 1)
-                per_opp.append({"opponent_team_id": opp, "team_name": state.team_names.get(opp),
-                                "best_my_gain": (best["results"] or [None])[0],
-                                "best_mutual": (mutual["results"] or [None])[0],
-                                "exhaustive": best["search"]["exhaustive"] and mutual["search"]["exhaustive"]})
+            ts = _search(state, team_id, shape_list, pos)
+            out = practical.discover(ts, mode, phase, opponent, limit, strictness, sort, category or None, heuristic)
         except NoRemainingWeeksError as err:
             raise HTTPException(409, str(err))
-        except TradeError as err:
+        except (TradeError, ValueError) as err:
             raise HTTPException(422, str(err))
-        results = [detail(state, r) for r in out["results"]]
         names = {p.espn_player_id: {"name": p.name, "position": p.position, "pro_team": p.pro_team,
-                                    "on_ir": p.on_ir, "injury_status": p.injury_status}
+                                    "on_ir": p.on_ir, "injury_status": p.injury_status,
+                                    "nfl_ineligible_weeks": sorted(p.unavailable_weeks)}
                  for ps in state.rosters.values() for p in ps}
-        ctx = {opp: _manager_context(con, opp) for opp in sorted({r["opponent_team_id"] for r in results})}
-        for r in results:
+        shown = [r for items in out["sections"].values() for r in items]
+        ctx = {opp: _manager_context(con, opp) for opp in sorted({r["opponent_team_id"] for r in shown})}
+        for r in shown:
             r["manager_context"] = ctx.get(r["opponent_team_id"])
             r["need_notes"] = _need_notes(r, r["manager_context"], names)
-        search = out["search"]
-        search["consistency_checked"] = len(results)
-        search["consistency_failures"] = sum(1 for r in results if not r["consistent_with_manual_evaluator"])
+        search = dict(out["coverage"]["exact"] or {})
+        search["consistency_checked"] = out["consistency_checked"]
+        search["consistency_failures"] = out["consistency_failures"]
+        kdst = any(p in pos for p in ("K", "D/ST"))
         return {
             "league": lg, "anchor": next(t for t in teams if t["team_id"] == team_id), "teams": teams,
             "evaluation": ts.evaluation(),
-            "query": {"team_id": team_id, "shapes": ts.shapes, "sort": sort, "category": category,
-                      "opponent": opponent, "limit": limit, "include_equivalents": include_equivalents},
-            "results": results, "search": search, "opponents": per_opp, "names": names,
-            "categories": CATEGORIES, "sorts": list(SORTS), "shapes": list(SHAPES),
+            "query": {"team_id": team_id, "mode": mode, "phase": phase, "strictness": strictness,
+                      "positions": list(pos), "include_kdst": kdst, "shapes": list(shape_list), "sort": sort,
+                      "category": category, "opponent": opponent, "limit": limit, "heuristic": heuristic},
+            **{k: out[k] for k in ("mode_text", "sections", "tiers", "excluded", "pool_rule", "pool_size", "coverage",
+                                   "opponents", "my_needs", "asset_note", "asset_thresholds")},
+            "results": shown, "search": search, "names": names,
+            "modes": MODES, "phases": list(PHASES), "strictness_options": STRICTNESS,
+            "categories": CATEGORIES, "sorts": list(SORTS), "exact_shapes": list(SHAPES),
+            "heuristic_shapes": list(HEURISTIC_SHAPES),
+            "kdst_policy": ("Kickers and team defenses are left out of automatic discovery by default: ESPN's weekly "
+                            "D/ST and K projections swing with matchups, both positions are routinely streamed from "
+                            "free agents, and the lineup delta does not credit the other team with that streaming. "
+                            "They stay fully available in the manual analyzer."
+                            if not kdst else
+                            "Kickers and team defenses are included. Their asset value is measured above the best "
+                            "available free agent at the position each week (the streaming baseline)."),
+            "availability_note": AVAILABILITY_NOTE,
             "note": NOTE, "assumptions": ASSUMPTIONS, "limitations": LIMITATIONS + [
-                "Discovery covers 1-for-1, 2-for-1 and 1-for-2 trades with one other team; 2-for-2 and multi-team "
-                "trades are not searched yet.",
-                "Sorting by a projected gain is descriptive; it is not an estimate of which trade a manager would accept.",
+                "Exact discovery covers 1-for-1, 2-for-1 and 1-for-2 trades with one other team (proven top lists). "
+                "Larger shapes come from a bounded beam search: exact rows, not a proven top list. Multi-team trades "
+                "are not searched.",
+                "A roster need or asset balance is not a willingness to trade; nothing here estimates acceptance.",
             ],
         }

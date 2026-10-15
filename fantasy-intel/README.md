@@ -92,7 +92,7 @@ fantasy-intel/
 | `/`                | League, your record/standing, current roster with usage + classification, injuries (ESPN + NFL report), positional needs, standings, recent league transactions |
 | `/players`         | Search; per-player profile: underlying value vs box score, usage trend table, weekly snaps/targets/shares/aDOT/RZ/GL/xFP |
 | `/waivers`         | Available players ranked by local waiver score, with role trend, roster fit, league competition (LOW/MED/HIGH + likely competitors), recommendation, suggested drop. Filter by position / recommendation |
-| `/trades`          | Manual trade evaluator (1–2 players per side): both teams' optimal starting lineups rebuilt every remaining week before/after the trade on ESPN's projections; ROS / regular-season / playoff deltas, weekly table, starter changes, mandatory drop / open roster spot, hypothetical FA replacement, player context. No trade grade, no acceptance probability |
+| `/trades`          | Manual trade analyzer (any player counts up to 6 per side; teams switch instantly, Evaluate runs the URL-backed selection): both teams' optimal starting lineups rebuilt every remaining week before/after the trade on ESPN's projections; ROS / regular-season / playoff deltas, weekly table, starter changes, mandatory drop / open roster spot, hypothetical FA replacement, player context. No trade grade, no acceptance probability |
 | `/trades/discover` | Trade opportunity discovery: exact lineup impact for both teams across every 1-for-1 / 2-for-1 / 1-for-2 trade with every manager, sortable by projected gains, with categories, manager context and a link into the manual evaluator. No acceptance estimate |
 | `/luck-lab` | Luck vs. Skill Lab: expected wins from all-play, schedule luck (actual minus expected), schedule difficulty, brutal losses and fortunate wins, scoring consistency, and counterfactual records against other managers' opponents, over completed, fully observed regular-season periods. Historical and explanatory, read-only |
 | `/schedule-intelligence` | Schedule intelligence: each remaining week's opponent (bye, home/away, regular season vs fantasy playoffs from league settings) and what that defense allowed in games presumed complete before the week (EPA per eligible pass play / designed rush, rush success, position target shares) with samples, ranks and insufficient-data reasons. Descriptive only |
@@ -325,6 +325,18 @@ optimal projected lineup (`team_week_lineup_projections`, `team_ros_lineup_proje
 `GET /api/trades/options`, `GET /api/lineup-projections` (team summaries + replacement market),
 `GET /api/teams/{id}/lineup-projection` (weekly lineups + each player's marginal lineup value).
 Details: [`docs/v2_trade_evaluator.md`](docs/v2_trade_evaluator.md).
+
+## Trade intelligence (V3)
+
+The manual analyzer takes any trade shape up to a configurable per-side limit (`TRADE_MAX_PLAYERS_PER_SIDE`,
+default 6) with exact forced drops for any number of removals, and its team/player selection is instant
+(client-side; only Evaluate runs an evaluation). Trade Discovery defaults to **Practical trades**: both lineups
+improve, the asset packages (points above the best available free agent, independent of bench congestion) are
+not lopsided against the other manager, and injured or incomplete packages are set apart; Mutual, Maximum upside
+and All candidates modes remain. K and D/ST are excluded from automatic discovery unless asked for; 2-for-2 to
+3-for-3 come from a labelled heuristic beam search. NFL reserve-list eligibility (separate from ESPN status and the
+fantasy IR slot) removes verified ineligible weeks from every lineup simulation, with return scenarios for injured
+traded players. No acceptance probability. Details: [`docs/v3_trade_intelligence.md`](docs/v3_trade_intelligence.md).
 
 ## Trade opportunity discovery (V2)
 

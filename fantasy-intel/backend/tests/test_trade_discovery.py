@@ -62,6 +62,12 @@ def two_teams(extra_a=(), extra_b=(), **kw):
     return league({1: a, 2: b}, **kw)
 
 
+def TS(*args, **kw):
+    """The V2 exact engine over every position (the V3 discovery default leaves out K and D/ST)."""
+    kw.setdefault("positions", None)
+    return TradeSearch(*args, **kw)
+
+
 def find(rows, sends, receives):
     return next((r for r in rows if r["sends"] == list(sends) and r["receives"] == list(receives)), None)
 
@@ -88,7 +94,7 @@ def every_candidate(state: LeagueState, anchor: int, shapes=tuple(SHAPES)):
 
 def test_genuinely_mutual_one_for_one():
     st = two_teams()
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     rows = all_rows(ts)
     r = find(rows, [105], [207])               # A's benched RB 12 for B's benched WR 13
     assert r["mine"]["ros_delta"] == 33.0 and r["theirs"]["ros_delta"] == 33.0   # +11/week each
@@ -101,7 +107,7 @@ def test_genuinely_mutual_one_for_one():
 
 def test_trade_that_helps_me_and_costs_them():
     st = two_teams()
-    r = find(all_rows(TradeSearch(st, 1)), [107], [204])     # my weak WR 2 for their WR1 16
+    r = find(all_rows(TS(st, 1)), [107], [204])     # my weak WR 2 for their WR1 16
     assert r["mine"]["ros_delta"] > 0 > r["theirs"]["ros_delta"]
     assert r["categories"][0] == "IMPROVES_MINE_COSTS_THEIRS"
     assert r["combined_ros_delta"] == r["mine"]["ros_delta"] + r["theirs"]["ros_delta"]
@@ -109,7 +115,7 @@ def test_trade_that_helps_me_and_costs_them():
 
 def test_consolidation_where_second_incoming_never_starts_and_forced_drop_cost():
     st = two_teams(capacity=8)                               # A is full: 1-for-2 forces a drop
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     r = find(all_rows(ts), [107], [203, 206])                # get WR 14 + RB 1 (RB 1 never starts for A)
     assert r is not None and r["forced_drops"]["mine"]
     d = detail(st, r)
@@ -131,7 +137,7 @@ def test_flex_and_position_scarcity_drive_value():
                      (106, "TE", 6), (107, "QB", 15)],
                  2: [(201, "QB", 18), (202, "TE", 9), (203, "TE", 8), (204, "WR", 7), (205, "RB", 5),
                      (206, "RB", 4), (207, "WR", 3)]})
-    rows = all_rows(TradeSearch(st, 1))
+    rows = all_rows(TS(st, 1))
     te, wr = find(rows, [107], [203]), find(rows, [107], [204])
     assert te["mine"]["ros_delta"] == 24.0 and wr["mine"]["ros_delta"] == 21.0
     assert te["theirs"]["ros_delta"] == -24.0              # B loses its FLEX TE and has no one to replace him
@@ -144,7 +150,7 @@ def test_flex_and_position_scarcity_drive_value():
 def test_bye_week_zero_is_real_and_counted():
     bye = {10: 14.0, 11: 0.0, 12: 14.0}                     # incoming WR on bye in week 11
     st = two_teams(extra_b=[(209, "WR", bye)])
-    r = find(all_rows(TradeSearch(st, 1)), [105], [209])
+    r = find(all_rows(TS(st, 1)), [105], [209])
     assert r["mine"]["projection_complete"] and r["mine"]["weeks_incomplete"] == []
     assert r["mine"]["ros_delta"] == 24.0                   # +12, 0 (bye: WR 2 starts as before), +12
     assert (r["mine"]["weeks_improved"], r["mine"]["weeks_unchanged"]) == (2, 1)
@@ -154,20 +160,20 @@ def test_playoff_versus_regular_season_split_and_categories():
     late = {10: 0.0, 11: 0.0, 12: 30.0}                     # projected only for the playoff week
     early = {10: 30.0, 11: 30.0, 12: 0.0}
     st = two_teams(extra_b=[(209, "WR", late), (210, "WR", early)])
-    rows = all_rows(TradeSearch(st, 1))
+    rows = all_rows(TS(st, 1))
     po = find(rows, [105], [209])
     assert po["mine"]["regular_season_delta"] == 0.0 and po["mine"]["playoff_delta"] == 28.0
     assert "PLAYOFF_FOCUSED" in po["categories"]
     reg = find(rows, [105], [210])
     assert reg["mine"]["regular_season_delta"] == 56.0 and reg["mine"]["playoff_delta"] == 0.0
     assert "REGULAR_SEASON_FOCUSED" in reg["categories"]
-    top_po = TradeSearch(st, 1).top("playoff_gain", limit=1)["results"][0]
+    top_po = TS(st, 1).top("playoff_gain", limit=1)["results"][0]
     assert top_po["mine"]["playoff_delta"] >= 28.0
 
 
 def test_ir_players_follow_evaluator_rules_and_sensitivity_stays_separate():
     st = two_teams(extra_a=[(109, "WR", 30, True)], extra_b=[(209, "RB", 25, True)])
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     rows = all_rows(ts)
     # My IR WR 30 never counts for me; sending him costs my canonical lineup nothing.
     send_ir = find(rows, [109], [207])
@@ -185,12 +191,12 @@ def test_missing_projection_is_never_zero_and_is_counted():
     # My rostered WR with an NFL team has no week-11 projection: my "before" week 11 is incomplete, so
     # no trade has a canonical delta for me (missing is never 0). Nothing is shown, the reason is counted.
     st = two_teams(extra_a=[(109, "WR", {10: 5.0, 12: 5.0})])
-    out = TradeSearch(st, 1).top("my_gain", limit=200)
+    out = TS(st, 1).top("my_gain", limit=200)
     assert out["results"] == [] and out["search"]["excluded_missing_data"] > 0
     assert evaluate_trade(st, 1, 2, [109], [207])["team_a"]["deltas"]["ros_delta"] is None
     # Their missing projection leaves my side canonical: the trade qualifies, theirs is incomplete.
     st = two_teams(extra_b=[(209, "WR", {10: 5.0, 12: 5.0})])
-    rows = TradeSearch(st, 1).top("their_gain", limit=200)["results"]
+    rows = TS(st, 1).top("their_gain", limit=200)["results"]
     r = find(rows, [105], [207])
     assert r["mine"]["ros_delta"] == 33.0 and r["theirs"]["ros_delta"] is None
     assert r["theirs"]["weeks_incomplete"] == [11] and "MUTUAL_PROJECTED_IMPROVEMENT" not in r["categories"]
@@ -203,7 +209,7 @@ def test_missing_projection_is_never_zero_and_is_counted():
 def test_no_remaining_scoring_weeks():
     st = replace(two_teams(), start_week=None, start_week_reason={"reason": "season over"})
     with pytest.raises(NoRemainingWeeksError, match="season over"):
-        TradeSearch(st, 1)
+        TS(st, 1)
 
 
 def test_empty_candidate_results_are_not_manufactured():
@@ -211,14 +217,14 @@ def test_empty_candidate_results_are_not_manufactured():
                      (106, "TE", 9), (107, "RB", 10)],
                  2: [(201, "QB", 5), (202, "RB", 2), (203, "RB", 1), (204, "WR", 3), (205, "WR", 2),
                      (206, "TE", 1)]})
-    out = TradeSearch(st, 1).top("my_gain")
+    out = TS(st, 1).top("my_gain")
     assert out["results"] == [] and out["search"]["exhaustive"] is True
     assert out["search"]["screened_out_by_upper_bound"] == out["search"]["candidates_considered"]
 
 
 def test_multiple_opposing_teams_and_opponent_filter():
     st = synthetic_league(n_teams=4, weeks=range(12, 18), roster=SMALL_ROSTER, seed=3)
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     assert ts.opponents == [2, 3, 4]
     for opp in (2, 3, 4):
         rows = ts.top("my_gain", opponent=opp, limit=10)["results"]
@@ -226,7 +232,7 @@ def test_multiple_opposing_teams_and_opponent_filter():
         roster = {p.espn_player_id for p in st.rosters[opp]}
         mine = {p.espn_player_id for p in st.rosters[1]}
         assert all(set(r["receives"]) <= roster and set(r["sends"]) <= mine for r in rows)
-    both = TradeSearch(st, 1, opponents=[3, 4])
+    both = TS(st, 1, opponents=[3, 4])
     assert both.opponents == [3, 4]
 
 
@@ -237,10 +243,10 @@ def test_rankings_are_deterministic_and_order_independent():
     for t in shuffled.rosters:
         rng.shuffle(shuffled.rosters[t])
     for sort in SORTS:
-        a = [r["key"] for r in TradeSearch(st, 1).top(sort, limit=30)["results"]]
-        b = [r["key"] for r in TradeSearch(shuffled, 1).top(sort, limit=30)["results"]]
+        a = [r["key"] for r in TS(st, 1).top(sort, limit=30)["results"]]
+        b = [r["key"] for r in TS(shuffled, 1).top(sort, limit=30)["results"]]
         assert a == b and len(a) == 30
-        rows = TradeSearch(st, 1).top(sort, limit=30)["results"]
+        rows = TS(st, 1).top(sort, limit=30)["results"]
         assert rows == sorted(rows, key=_rank_key(sort))
 
 
@@ -249,7 +255,7 @@ def test_rankings_are_deterministic_and_order_independent():
 @pytest.fixture(scope="module")
 def small():
     st = synthetic_league(n_teams=3, weeks=range(12, 18), roster=SMALL_ROSTER, seed=11)
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     exact, invalid = {}, 0
     for c in every_candidate(st, 1):
         try:
@@ -309,7 +315,7 @@ def test_mixed_flex_types_and_position_limits_use_the_exact_rules():
     slots = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "RB/WR": 1, "WR/TE": 1, "K": 1, "D/ST": 1})
     st = synthetic_league(n_teams=2, weeks=range(14, 18), roster=SMALL_ROSTER, slots=slots, seed=2)
     st = replace(st, position_limits={"RB": 4, "QB": 1})
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     assert ts.T.general
     for c in every_candidate(st, 1):
         try:
@@ -325,7 +331,7 @@ def test_mixed_flex_types_and_position_limits_use_the_exact_rules():
 
 def test_negative_projection_disables_screening_and_early_stopping():
     st = two_teams(extra_b=[(209, "WR", -1.0)])
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     assert ts.T.negative and ts.screened_out == 0
     for sort in SORTS:
         out = ts.top(sort, limit=3, include_redundant=True)
@@ -333,7 +339,7 @@ def test_negative_projection_disables_screening_and_early_stopping():
         assert s["bounds_valid"] is False and s["exhaustive"] is True
         assert s["fully_evaluated"] == s["matching_filters"] and s["not_evaluated"] == 0   # bounds never end it
         assert [r["key"] for r in out["results"]] == [r["key"] for r in all_rows(ts, sort)[:3]]
-    capped = TradeSearch(st, 1, max_exact=4).top("my_gain")["search"]
+    capped = TS(st, 1, max_exact=4).top("my_gain")["search"]
     assert capped["exhaustive"] is False and capped["termination"] == "evaluation_cap"
     assert capped["largest_unevaluated_upper_bound"] is None          # an invalid bound proves nothing
     assert "not a proven top list" in capped["not_evaluated_reason"]
@@ -349,7 +355,7 @@ def test_negative_projection_where_the_best_trade_has_an_invalid_lower_bound():
     b = [(201, "QB", 18), (202, "RB", 12), (203, "RB", 11), (204, "WR", 25), (205, "WR", 8), (206, "TE", 7),
          (207, "K", 8), (208, "D/ST", 7), (209, "WR", 2)]
     st = replace(league({1: a, 2: b}), slots=slots)
-    ts = TradeSearch(st, 1, shapes=("1-for-1", "2-for-1"))
+    ts = TS(st, 1, shapes=("1-for-1", "2-for-1"))
     assert ts.T.negative and ts.screened_out == 0
     best = next(c for c in ts.cands if c[:4] == ("2-for-1", 2, (107, 108), (204,)))
     k_for_wr = next(c for c in ts.cands if c[:4] == ("1-for-1", 2, (107,), (204,)))
@@ -358,7 +364,7 @@ def test_negative_projection_where_the_best_trade_has_an_invalid_lower_bound():
     assert exact_best == 93.0 and exact_k == 81.0
     assert best[4][0] == 78.0 < exact_k < exact_best             # its bound is invalid (below its exact value)
     assert k_for_wr[4][0] > best[4][0]                           # and below another candidate's bound
-    fresh = TradeSearch(st, 1, shapes=("1-for-1", "2-for-1"))
+    fresh = TS(st, 1, shapes=("1-for-1", "2-for-1"))
     top = fresh.top("my_gain", limit=1)
     assert [r["key"] for r in top["results"]] == ["2-for-1:2:107-108:204"]
     assert top["search"]["termination"] == "all_candidates_evaluated" and top["search"]["exhaustive"]
@@ -377,7 +383,7 @@ def test_equivalents_only_hidden_when_the_simpler_trade_is_eligible():
         return [r["key"] for r in ts.top(kw.pop("sort", "my_gain"), limit=200, **kw)["results"]]
 
     # Both eligible: the throw-in version is hidden by default, shown (and linked) with the toggle.
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     out = ts.top("my_gain", limit=200)
     assert simple in keys(ts) and filler not in keys(ts) and out["search"]["simpler_equivalents_hidden"] > 0
     shown = ts.top("my_gain", limit=200, include_redundant=True)["results"]
@@ -387,7 +393,7 @@ def test_equivalents_only_hidden_when_the_simpler_trade_is_eligible():
     assert filler not in keys(ts, category="MUTUAL_PROJECTED_IMPROVEMENT", sort="min_side")
     assert simple in keys(ts, category="MUTUAL_PROJECTED_IMPROVEMENT", sort="min_side")
     # 1-for-1 not searched: nothing simpler is eligible, so the 2-for-1 is shown.
-    only = TradeSearch(st, 1, shapes=("2-for-1",))
+    only = TS(st, 1, shapes=("2-for-1",))
     o = only.top("my_gain", limit=200)
     assert filler in [r["key"] for r in o["results"]] and o["search"]["simpler_equivalents_hidden"] == 0
     assert next(r for r in o["results"] if r["key"] == filler)["simpler_equivalent"] is None
@@ -402,7 +408,7 @@ def test_hidden_equivalent_is_replaced_by_its_simpler_trade_even_under_the_cap()
     # and a cap of 1 then stops before the simpler trade's own turn. Hiding the throw-in must still
     # surface the simpler trade instead of losing both.
     st = two_teams(extra_a=[(109, "TE", 0.5)])
-    ts = TradeSearch(st, 1, max_exact=1)
+    ts = TS(st, 1, max_exact=1)
     ts.cands = [c[:4] + ((999.0, 999.0, 999.0), c[5]) if _key(*c[:4]) == "2-for-1:2:105-109:207" else c
                 for c in ts.cands]
     out = ts.top("my_gain", limit=5)
@@ -421,7 +427,7 @@ def test_cutoff_accounts_for_rounding_of_the_kth_value():
     st = league({1: [(101, "QB", 20), (102, "RB", 10), (103, "RB", 9), (104, "WR", 8), (105, "WR", 2.0),
                      (106, "TE", 5)],
                  2: [(201, "QB", 18), (301, "WR", 5.99533), (302, "WR", 5.998)]})
-    ts = TradeSearch(st, 1, shapes=("1-for-1",))
+    ts = TS(st, 1, shapes=("1-for-1",))
     out = ts.top("my_gain", limit=1)
     assert [r["key"] for r in out["results"]] == ["1-for-1:2:105:301"]
     assert [r["key"] for r in out["results"]] == [r["key"] for r in all_rows(ts, "my_gain")[:1]]
@@ -429,7 +435,7 @@ def test_cutoff_accounts_for_rounding_of_the_kth_value():
     assert a["mine"]["ros_delta"] == b["mine"]["ros_delta"] == 11.99 and a["combined_ros_delta"] == b["combined_ros_delta"]
     for sort in SORTS:
         for k in (1, 2, 3):
-            got = TradeSearch(st, 1, shapes=("1-for-1",)).top(sort, limit=k, include_redundant=True)
+            got = TS(st, 1, shapes=("1-for-1",)).top(sort, limit=k, include_redundant=True)
             assert [r["key"] for r in got["results"]] == [r["key"] for r in all_rows(ts, sort)[:k]], (sort, k)
 
 
@@ -437,7 +443,7 @@ def test_equivalence_requires_identical_weekly_and_forced_drop_effects():
     # Forced drop: B is full, so the throw-in version makes B drop RB 0.2 (zero lineup cost, same deltas
     # everywhere). A different roster move is a different trade: it is shown, not hidden.
     st = two_teams(capacity=9, extra_a=[(109, "TE", 0.5)], extra_b=[(209, "RB", 0.2)])
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     keys = [r["key"] for r in ts.top("my_gain", limit=200)["results"]]
     r_ = ts.evaluate(next(c for c in ts.cands if c[:4] == ("2-for-1", 2, (105, 109), (207,))))
     s_ = ts.evaluate(next(c for c in ts.cands if c[:4] == ("1-for-1", 2, (105,), (207,))))
@@ -455,7 +461,7 @@ def test_equivalence_requires_identical_weekly_and_forced_drop_effects():
 
 def test_simpler_equivalents_are_hidden_but_counted():
     st = two_teams(extra_a=[(109, "TE", 0.5)])               # a TE who never starts: pure filler
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     shown = ts.top("my_gain", limit=200)
     every = ts.top("my_gain", limit=200, include_redundant=True)
     assert shown["search"]["simpler_equivalents_hidden"] > 0
@@ -467,8 +473,8 @@ def test_simpler_equivalents_are_hidden_but_counted():
 def test_bounded_search_reports_the_cap_and_is_fast_on_a_full_league():
     st = synthetic_league(n_teams=12)
     t = time.perf_counter()
-    ts = TradeSearch(st, 1)
-    capped = TradeSearch(st, 1, max_exact=5).top("combined")
+    ts = TS(st, 1)
+    capped = TS(st, 1, max_exact=5).top("combined")
     assert capped["search"]["exhaustive"] is False and capped["search"]["fully_evaluated"] == 5
     assert capped["search"]["termination"] == "evaluation_cap"
     assert "not a proven top list" in capped["search"]["not_evaluated_reason"]
@@ -484,7 +490,7 @@ def test_bounded_search_reports_the_cap_and_is_fast_on_a_full_league():
 def test_discovery_never_mutates_the_league_state():
     st = synthetic_league(n_teams=3, weeks=range(14, 18), roster=SMALL_ROSTER)
     snap = copy.deepcopy((st.rosters, st.projections, st.free_agents, st.start_week))
-    ts = TradeSearch(st, 1)
+    ts = TS(st, 1)
     for r in ts.top("min_side", limit=5)["results"]:
         detail(st, r)
     assert (st.rosters, st.projections, st.free_agents, st.start_week) == snap
@@ -493,12 +499,12 @@ def test_discovery_never_mutates_the_league_state():
 def test_validation_errors():
     st = two_teams()
     with pytest.raises(TradeError, match="unknown team"):
-        TradeSearch(st, 9)
+        TS(st, 9)
     with pytest.raises(TradeError, match="shapes"):
-        TradeSearch(st, 1, shapes=("2-for-2",))
+        TS(st, 1, shapes=("4-for-4",))
     with pytest.raises(TradeError, match="sort"):
-        TradeSearch(st, 1).top("acceptance")
-    only = TradeSearch(st, 1, shapes=("1-for-1",)).top("my_gain", limit=200)["results"]
+        TS(st, 1).top("acceptance")
+    only = TS(st, 1, shapes=("1-for-1",)).top("my_gain", limit=200)["results"]
     assert {r["shape"] for r in only} == {"1-for-1"}
 
 
@@ -514,8 +520,11 @@ def test_discovery_api_is_read_only_and_defaults_to_my_team(tmp_path, monkeypatc
     monkeypatch.setenv("FANTASY_DB_PATH", str(db_path))
     from app.main import app
     api = TestClient(app)
-    body = api.get("/api/trades/discover").json()
-    assert body["anchor"]["is_mine"] is True and body["anchor"]["team_id"] == 2      # from is_mine, not hardcoded
+    default = api.get("/api/trades/discover").json()
+    assert default["anchor"]["is_mine"] is True and default["anchor"]["team_id"] == 2   # from is_mine, not hardcoded
+    assert default["query"]["mode"] == "practical" and default["query"]["include_kdst"] is False
+    assert set(default["sections"]) == {"practical", "concerns", "speculative"}
+    body = api.get("/api/trades/discover", params={"mode": "upside", "include_kdst": True}).json()
     assert body["results"] and body["search"]["consistency_failures"] == 0
     assert all(r["consistent_with_manual_evaluator"] for r in body["results"])
     r = body["results"][0]
@@ -523,15 +532,17 @@ def test_discovery_api_is_read_only_and_defaults_to_my_team(tmp_path, monkeypatc
     assert {p["espn_player_id"] for p in r["players"]} == set(r["sends"]) | set(r["receives"])
     assert r["anchor_team_id"] == 2 and r["opponent_team_id"] != 2
     assert len(body["opponents"]) == 3 and "acceptance" not in str(body["categories"]).lower()
+    assert all("asset_balance" in x and "rationale" in x for x in body["results"])
     manual = api.post("/api/trades/evaluate", json={"team_a_id": 2, "team_b_id": r["opponent_team_id"],
                                                     "team_a_sends": r["sends"], "team_b_sends": r["receives"]}).json()
     assert manual["team_a"]["deltas"]["ros_delta"] == r["mine"]["ros_delta"]
     assert manual["team_b"]["deltas"]["ros_delta"] == r["theirs"]["ros_delta"]
 
-    other = api.get("/api/trades/discover", params={"team_id": 1, "shapes": "1-for-1", "sort": "min_side",
-                                                    "limit": 5}).json()
+    other = api.get("/api/trades/discover", params={"team_id": 1, "shapes": "1-for-1", "mode": "all",
+                                                    "sort": "min_side", "limit": 5}).json()
     assert other["anchor"]["team_id"] == 1 and {x["shape"] for x in other["results"]} <= {"1-for-1"}
-    assert api.get("/api/trades/discover", params={"shapes": "2-for-2"}).status_code == 422
+    assert api.get("/api/trades/discover", params={"shapes": "4-for-4"}).status_code == 422
+    assert api.get("/api/trades/discover", params={"mode": "fair"}).status_code == 422
     assert api.get("/api/trades/discover", params={"sort": "fairness"}).status_code == 422
     assert api.get("/api/trades/discover", params={"team_id": 99}).status_code == 404
     assert api.get("/api/trades/discover", params={"category": "MUTUAL_PROJECTED_IMPROVEMENT"}).status_code == 200
@@ -577,7 +588,7 @@ def test_real_league_smoke_read_only():
         mine = fetch_dicts(con, "SELECT team_id FROM fantasy_teams WHERE is_mine ORDER BY season DESC LIMIT 1")
         if state is None or not mine or state.start_week is None:
             pytest.skip("league window unavailable or season over")
-        ts = TradeSearch(state, mine[0]["team_id"])
+        ts = TS(state, mine[0]["team_id"])
         out = ts.top("min_side", limit=10)
         for r in out["results"]:
             assert detail(state, r)["consistent_with_manual_evaluator"]

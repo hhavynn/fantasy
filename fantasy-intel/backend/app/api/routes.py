@@ -14,7 +14,9 @@ from ..analytics.projections import BASELINE_NOTE, league_window, player_forward
 from ..analytics.team_lineups import project_team, public_weeks, replacement_market, roster_marginal_value
 from ..analytics.trade_data import (load_league_state, manager_context, named_weeks, player_intelligence,
                                     player_names)
+from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
 from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade
+from ..config import get_settings
 from ..db.connection import schema_version, table_exists
 from .deps import db, one, rows
 
@@ -473,7 +475,6 @@ def _projection_quality(con) -> dict | None:
 
 
 def _external_quality(con) -> dict:
-    from ..config import get_settings
     from ..external.selection import select_provider
     if not table_exists(con, "external_usage_imports"):
         return {"imports": [], "coverage": [], "unmatched": [], "issues": [], "selection": None}
@@ -581,11 +582,22 @@ def trade_options():
             t["roster"] = sorted(
                 [{"espn_player_id": p.espn_player_id, "name": p.name, "position": p.position, "pro_team": p.pro_team,
                   "on_ir": p.on_ir, "injury_status": p.injury_status,
-                  "ros_projected_points": (ros.get(p.espn_player_id) or {}).get("ros_projected_points")}
+                  "ros_projected_points": (ros.get(p.espn_player_id) or {}).get("ros_projected_points"),
+                  "nfl_ineligible_weeks": sorted(p.unavailable_weeks),
+                  "availability": _availability_brief(state.availability.get(p.espn_player_id))}
                  for p in state.rosters.get(t["team_id"], [])],
                 key=lambda p: (order.get(p["position"], 9), -(p["ros_projected_points"] or 0), p["name"] or ""))
         return {"league": lg, "evaluation": _window_info(state), "teams": teams,
-                "active_capacity": state.active_capacity, "position_limits": state.position_limits}
+                "active_capacity": state.active_capacity, "position_limits": state.position_limits,
+                "max_players_per_side": get_settings().trade_max_players_per_side,
+                "availability_note": AVAILABILITY_NOTE}
+
+
+def _availability_brief(rec: dict | None) -> dict | None:
+    if not rec or (rec["status"] == "available" and not rec["warnings"]):
+        return None
+    return {k: rec[k] for k in ("status", "nfl_designation_label", "earliest_eligible_week", "return_confirmed",
+                                "fantasy_ir_slot", "espn_injury_status", "warnings")}
 
 
 class TradeRequest(BaseModel):
@@ -604,7 +616,7 @@ def trades_evaluate(body: TradeRequest):
         state = _state(con)
         try:
             res = evaluate_trade(state, body.team_a_id, body.team_b_id, body.team_a_sends, body.team_b_sends,
-                                 body.start_week)
+                                 body.start_week, max_per_side=get_settings().trade_max_players_per_side)
         except NoRemainingWeeksError as err:
             raise HTTPException(409, str(err))
         except TradeError as err:
@@ -616,6 +628,7 @@ def trades_evaluate(body: TradeRequest):
                     ids |= {a["player_id"] for a in w["assignment"] if a["player_id"]}
                     ids |= {b["player_id"] for b in w["bench"]}
                     ids |= {x["player_id"] for x in w["ir"]}
+                    ids |= {x["player_id"] for x in w.get("unavailable", [])}
         names = player_names(con, ids)
         for side in (res["team_a"], res["team_b"]):
             for key in ("before", "after"):

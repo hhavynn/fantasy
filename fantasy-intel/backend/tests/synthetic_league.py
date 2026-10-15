@@ -47,3 +47,20 @@ def synthetic_league(n_teams: int = 12, weeks: range = range(6, 18), last_regula
                        start_week=weeks[0], rosters=rosters, free_agents=[], projections=proj,
                        active_capacity=capacity, position_limits={},
                        team_names={t: f"Team {t}" for t in rosters}, first_projection_week=weeks[0])
+
+
+def add_free_agents(state: LeagueState, n: int = 60, seed: int = 11, start_id: int = 50000,
+                    scale: float = 0.6) -> LeagueState:
+    """`n` free agents with ESPN-like weekly projections at `scale` of the rostered means (in place)."""
+    rng = random.Random(seed)
+    weeks = range(state.window().start or state.final_week, state.final_week + 1)
+    out = []
+    for i in range(n):
+        pos = rng.choice(["QB", "RB", "RB", "WR", "WR", "TE", "K", "D/ST"])
+        pid = start_id + i
+        lo, hi = MEAN[pos]
+        base = rng.uniform(lo, hi) * scale
+        state.projections[pid] = {w: round(max(0.0, base + rng.uniform(-2, 2)), 2) for w in weeks}
+        out.append(RosterPlayer(pid, pos, rng.choice(NFL), f"FA {pos} {pid}"))
+    state.free_agents = [*state.free_agents, *out]
+    return state
