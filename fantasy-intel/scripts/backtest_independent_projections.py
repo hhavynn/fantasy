@@ -228,15 +228,19 @@ def cmd_project(args, hist, scoring) -> dict:
     from app.db.connection import open_db
 
     art = Artifact.from_dict(json.loads((args.out / f"independent_projections_{MODEL_VERSION}.json").read_text()))
+    ppath = args.out / f"participation_{pm.PARTICIPATION_VERSION}.json"
+    part = pm.ParticipationArtifact.from_dict(json.loads(ppath.read_text())) if ppath.exists() else None
     with open_db(args.live_db) as con:
         src = _sources(con, hist, scoring.require_supported())
         t = time.time()
-        meta, rows = build_live(con, src, art, args.season, args.week)
+        meta, rows = build_live(con, src, art, args.season, args.week, participation=part)
         n = write_live(con, meta, rows)
     by = {}
     for r in rows:
         by[r["coverage_status"]] = by.get(r["coverage_status"], 0) + 1
     return {"run_id": meta["run_id"], "rows": n, "coverage": by, "runtime_seconds": round(time.time() - t, 2),
+            "participation": meta["participation_version"],
+            "with_expected_points": sum(r["expected_points"] is not None for r in rows),
             "data_through": [meta["data_through_season"], meta["data_through_week"]]}
 
 

@@ -17,6 +17,21 @@ trades, waivers, playoff odds, player scores or market signals reads it.
 No position is Start/Sit ready: there are **zero** completed player-weeks with a pregame ESPN
 snapshot, so no claim of beating ESPN is possible yet.
 
+**Participation model (`ipm-1.0.0`, held-out on real data, see "Participation"):** weekly
+estimates now come in two forms. `projected_points` is the conditional estimate above ("points if
+he appears"). `expected_points = p_play * projected_points` is an **unconditional** expected score,
+where `p_play` = P(appears in week W) from pregame roster status, injury report and snap history.
+
+| Position | P(appears) | Expected points | Unconditional MAE vs conditional-as-is |
+|---|---|---|---|
+| QB | `experimental` (ECE 0.042 > 0.02; Brier beats baselines) | `experimental` | 6.76 -> **4.33** (-36%) |
+| RB | `experimental` (ECE 0.025 > 0.02; Brier beats baselines) | `experimental` | 4.03 -> **3.59** (-11%) |
+| WR | `validated` | `validated` | 4.15 -> **3.71** (-11%) |
+| TE | `validated` | `validated` | 2.95 -> **2.74** (-7%) |
+
+"Validated" here means calibrated and better than simple pregame baselines on held-out
+roster-population weeks; it says nothing about ESPN.
+
 ## Files
 
 | File | Role |
@@ -28,7 +43,8 @@ snapshot, so no claim of beating ESPN is possible yet.
 | `backend/app/analytics/forecast_backtest.py` | Walk-forward validation, selection, held-out evaluation, ESPN matching |
 | `backend/app/analytics/independent_projection_store.py` | Live week-W run with availability/ID guards |
 | `backend/app/api/independent_projections.py` | Read-only `GET /api/projections/independent` |
-| `scripts/backtest_independent_projections.py` | `audit`, `select`, `evaluate`, `fit`, `project` |
+| `backend/app/analytics/participation.py` | Roster population, participation features, logistic model, walk-forward evaluation, live P(appears) |
+| `scripts/backtest_independent_projections.py` | `audit`, `select`, `evaluate`, `fit`, `participation-select`, `participation-evaluate`, `participation-fit`, `snap-ablation`, `project` |
 
 Added dependency: **numpy** (closed-form ridge, bootstrap). No scikit-learn, no gradient boosting,
 no cloud services, no LLM numbers.
@@ -43,13 +59,21 @@ uv run python ../scripts/backtest_independent_projections.py audit
 uv run python ../scripts/backtest_independent_projections.py select              # validation seasons only
 uv run python ../scripts/backtest_independent_projections.py evaluate            # frozen selection -> held-out
 uv run python ../scripts/backtest_independent_projections.py fit                 # data/models/independent_projections_ifp-1.0.0.json
+uv run python ../scripts/backtest_independent_projections.py participation-select    # validation only
+uv run python ../scripts/backtest_independent_projections.py participation-evaluate  # frozen -> held-out
+uv run python ../scripts/backtest_independent_projections.py participation-fit       # data/models/participation_ipm-1.0.0.json
+uv run python ../scripts/backtest_independent_projections.py snap-ablation           # validation-only diagnostic
 uv run python ../scripts/backtest_independent_projections.py project --week 7    # writes the two live tables
 ```
 
 `select`/`evaluate`/`fit`/`audit` open the live DB read-only. Only `project` writes, and only the
 tables `independent_projection_runs` and `independent_player_projections` (create-only, no schema
 version bump). `evaluate` refuses a selection made on other seasons or other scoring; `fit` refuses a
-held-out report that does not hash-match the current `selection.json`. Override paths with
+held-out report that does not hash-match the current `selection.json`. The participation commands
+chain the same way: `participation-select` records the hash of `selection.json` (the conditional
+model it multiplies), `participation-evaluate` refuses a stale participation selection, and
+`participation-fit` refuses a report of another selection. `project` applies the participation
+artifact when `data/models/participation_ipm-1.0.0.json` exists. Override paths with
 `--live-db`, `--history-db`, `--out` or `NFL_HISTORY_DB_PATH` / `INDEPENDENT_MODEL_DIR`.
 
 ## Data audit (real local data, 2026-10-14)
@@ -112,7 +136,9 @@ season's games before W. The target week contributes only team, opponent and hom
 | `targets_pg`, `carries_pg`, `pass_att_pg`, `air_yards_pg` | Per game, last <=5 | box score |
 | `target_share`, `rush_share` | Player / team totals over the window | box score + `nfl_team_week` |
 | `rz_opps_pg`, `gl_carries_pg` | Red-zone targets+rushes, inside-5 rushes | `nfl_pbp_player_week` |
-| `snap_pct`, `snap_trend` | Mean snap share; last game minus earlier games | `nfl_snap_counts` |
+| `snap_pct`, `snap_trend`, `snap_last` | Mean snap share; last game minus earlier games; last game | `nfl_snap_counts` |
+| `injury_exit_last` | 1 if the last game was a snap drop (`snap_trend <= -0.15`) **and** the player is on an injury report (any listing except "not injury related") within 2 weeks after it, up to the target week's pregame report | `nfl_snap_counts` + `nfl_injuries` |
+| `snap_trend_role` | `snap_trend` with injury exits removed (null when `injury_exit_last = 1`) | derived |
 | `opp_trend` | Last game's targets+carries minus earlier mean | box score |
 | `games_recent`, `games_season`, `weeks_since_last`, `team_changed` | Sample and role-change context | derived |
 | `team_pts_pg` | Team points/game vs league (shrunk 3 games) | `nfl_schedules` |
@@ -186,6 +212,118 @@ Runtime (Apple silicon laptop): history ingestion 17 s; feature store 42.7k rows
 selection 4.4 s; held-out evaluation 5.4 s; final fit 3.4 s; live week run 0.45 s for 657
 players; API read ~0.12 s. Artifact: 29 KB JSON (coefficients only, no player data).
 
+## Participation (P(appears), model `ipm-1.0.0`)
+
+The conditional models above are trained and evaluated only on players who appeared, so a healthy
+backup QB got ~10-12 points "if he plays" while ESPN projected 0. The participation model estimates
+P(appears) so the engine can report an unconditional expected score.
+
+**Population (roster-based).** One row per player-week on the nflverse weekly roster with status
+ACT or INA (the game-day 53), position QB/RB/WR/TE (FB -> RB), team playing that week, and >= 1
+game in the conditional model's lookback window. Label `played` = the player appears (box-score row
+or offensive snaps > 0, the same definition as the conditional model's training rows); otherwise
+his league points are 0. 2020-2026 week 5: 51,124 rows; appearance rate QB 55%, RB 82%, WR 87%,
+TE 89% (the conditional model's training rows are the appearing subset).
+
+**Leakage rules.**
+
+* The week-W roster status defines the population only. **ACT vs INA is the game-day inactive
+  decision**: on real data no INA player ever appears (0 of 7,674 INA skill rows; 90% of ACT rows
+  appear), so using it would be the label itself. It is never a feature; a test flips every
+  week-W ACT <-> INA and requires identical features.
+* Box scores, snaps and roster statuses: weeks strictly before W only (tested by corrupting
+  every row at or after W).
+* The week-W injury report is a pregame input. nflverse `date_modified` shows 78% of timestamped
+  rows (66% of all) last modified on a Friday; the 22 rows (8 at skill positions) modified at or after kickoff are
+  **dropped** at load time. Rows without `date_modified` (the live table) are kept.
+* Depth order is ranked from earlier games; who is on the week-W 53 is a pregame fact.
+
+**Features** (`participation.FEATURE_DOCS`): week-W designation (Out / Doubtful / Questionable)
+and final practice status (DNP / Limited); Out the previous team week; appeared in the team's last
+game; share of the team's last <= 4 games played; previous-season appearance share; latest
+pre-week roster status (INA / reserve / off the 53); returned from a reserve list since his last
+game; depth order at his position on the team (1 / 2 / 3+, by recent snap share, then xFP, then
+points); a teammate ahead designated Out/Doubtful or Questionable; snap share (recent, last game),
+`snap_trend_role`, `injury_exit_last`, games recent/season, weeks since last game, team change,
+xFP. Missing values: training-mean imputation plus indicator, as in the ridge models.
+
+**Model.** Per-position L2 logistic regression (Newton steps, numpy; penalty lambda * n on
+standardized coefficients, intercept unpenalized). Chosen over trees for the same reasons as the
+ridge models (modest samples, additive explanations). Explanations list the largest logit
+contributions relative to the training-average player.
+
+**Protocol.** Identical seasons to the conditional model: training from 2020, lambda selected by
+validation log loss on 2023-2024, held-out 2025 + 2026 weeks 1-5, walk-forward refits every week
+on strictly earlier weeks. The conditional estimate in every evaluation row is the frozen
+`ifp-1.0.0` selection refit walk-forward on appearance rows (exactly the PR #22 protocol).
+`PARTICIPATION_CRITERIA` were committed (commit `4e45304`) before the held-out run:
+>= 400 held-out rows; Brier below the better of two simple baselines with a week-clustered
+bootstrap 95% CI entirely below 0; ECE <= 0.02 over 10 equal-width bins and no bin with n >= 100
+off by more than 0.08. Expected points are `validated` only if participation is validated **and**
+unconditional MAE improves >= 3% over the conditional estimate with a CI below 0.
+
+Baselines: `always_plays` (1.0, what the conditional estimate implicitly assumes);
+`designation_rate` (training appearance rate per week-W designation); `trailing_appearance`
+(share of the team's recent games played, shrunk one game toward the base rate).
+
+### Participation results (REAL data, held-out, run once)
+
+Validation (2023-24) selected lambda QB 0.003, RB 0.0001, WR 0.0001, TE 0.001.
+
+Probability quality on held-out roster rows (Brier, lower is better; log loss in parentheses):
+
+| Pos | n | Appeared | Always plays | Designation rate | Trailing appearance | **Model** | Model - best baseline (95% CI) | ECE | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| QB | 1,544 | 54.9% | 0.451 | 0.235 | 0.163 | **0.112** (0.355) | -0.051 [-0.062, -0.041] | 0.042 | experimental |
+| RB | 2,593 | 84.9% | 0.151 | 0.102 | 0.108 | **0.071** (0.234) | -0.031 [-0.039, -0.023] | 0.025 | experimental |
+| WR | 3,975 | 87.0% | 0.130 | 0.070 | 0.118 | **0.056** (0.198) | -0.015 [-0.019, -0.011] | 0.012 | validated |
+| TE | 2,424 | 87.6% | 0.124 | 0.078 | 0.102 | **0.054** (0.177) | -0.024 [-0.031, -0.017] | 0.015 | validated |
+
+QB and RB fail **only** the calibration bar. QB reliability (held-out): predictions of 0.4-0.6
+came true 30-36% of the time (n = 116, overconfident in the middle), 0.1-0.2 came true 21% (n = 242,
+underconfident for backups); the extremes are well calibrated (0.96 predicted vs 0.98 observed,
+n = 508). RB's largest gaps are in sparse bins (0.1-0.2 and 0.3-0.4, n <= 49). Recalibration is a
+follow-up; the frozen statuses stand.
+
+Unconditional league points (actual = points if he appeared, else 0), same rows:
+
+| Pos | Conditional as-is | Out rule (Out -> 0) | Best baseline x conditional | **Expected points** | vs conditional (95% CI) | vs Out rule (95% CI) |
+|---|---|---|---|---|---|---|
+| QB | 6.76 (bias -3.26) | 6.26 | 4.98 | **4.33** (bias +0.12) | -36% [-2.64, -2.24] | -31% [-2.11, -1.76] |
+| RB | 4.03 (bias -0.59) | 3.84 | 3.67 | **3.59** (bias +0.02) | -11% [-0.48, -0.38] | -6.3% [-0.26, -0.22] |
+| WR | 4.15 (bias -0.74) | 3.85 | 3.72 | **3.71** (bias -0.16) | -11% [-0.50, -0.39] | -3.6% [-0.16, -0.12] |
+| TE | 2.95 (bias -0.23) | 2.80 | 2.73 | **2.74** (bias +0.07) | -7.2% [-0.26, -0.17] | -2.2% [-0.08, -0.04] |
+| All | 4.23 (RMSE 5.96) | 3.96 | 3.80 | **3.55** (RMSE 5.41) | -16% | |
+
+MAE in league points; CIs are of the MAE difference in points. Bias = mean(actual - estimate): the
+conditional estimate over-projects everyone who might sit. The "Out rule" approximates what the
+live run did before (withhold ESPN OUT, assume everyone else plays). Note that expected value
+minimizes squared error, not absolute error; RMSE improves too (all positions 5.96 -> 5.41).
+
+Cohorts (held-out, all positions agree in direction): designated Out/Doubtful players appeared 0
+times in 436 rows (model mean 0.1-1.8%); Questionable appeared 24% (QB) to 71% (RB); depth-2+ QBs
+appeared 29%, and 63% when the starter was designated Out/Doubtful (model 60%); players coming off
+an injury exit appeared 33-68%. Model Brier by season (2025 / 2026): QB 0.118 / 0.089, RB 0.069 /
+0.075, WR 0.057 / 0.051, TE 0.054 / 0.051.
+
+### Injury exit vs role demotion (`snap_trend`)
+
+`snap_trend` treated a player who left the last game hurt like a player whose role shrank.
+`injury_exit_last` labels a last-game snap drop (>= 15 points below the earlier recent mean) as an
+injury exit when an injury report lists him within two weeks after it (rest listings excluded),
+using reports only up to the target week's pregame report; `snap_trend_role` keeps the role part.
+Evidence (2020-2024, 7,183 drops): after an injury exit the player appeared next week 52% of the
+time (role drops: 74%); when he did appear, his snap share was back within 10 points of the
+pre-drop level 48% of the time (role drops: 37%). Separation is real but partial: injury reports
+also list players for unrelated reasons, and blowout/garbage-time drops look like role drops.
+
+Use: `injury_exit_last` and `snap_trend_role` are participation-model inputs, and live flags now
+say "treated as an in-game injury exit, not a role demotion" or "possible role demotion". The
+conditional model `ifp-1.0.0` is **unchanged**: a validation-only ablation (`snap-ablation`,
+2023-24) replacing `snap_trend` by `snap_trend_role` + `injury_exit_last` in model C moved
+validation MAE by -0.006 / -0.004 / -0.002 / 0.000 (QB/RB/WR/TE), every 95% CI spanning 0, and was
+slightly worse on the injury-exit rows themselves. The held-out seasons were not used for it.
+
 ## Live runs and abstention
 
 Week-W rows (`coverage_status`): `projected`; `abstain_no_history`; `bye`;
@@ -194,21 +332,48 @@ SUSPENSION, or latest weekly roster status not ACT/INA, e.g. exempt list); `unce
 (anything but a high-confidence, conflict-free ESPN->GSIS link); `unsupported_position` (K, D/ST);
 `unsupported_scoring`; `no_model`. Fantasy IR and ESPN QUESTIONABLE/DOUBTFUL are flags only.
 
-## API contract (`independent-projections/v1`)
+**Participation in live runs.** When the participation artifact exists, `project` computes
+P(appears) for every player whose latest weekly roster row of the season (week <= W) is ACT/INA
+on a team playing in W (the week-W roster may not be posted yet), ranks depth on that full
+population, and stores `p_play` and `expected_points = p_play * projected_points` on every
+`projected` row (null elsewhere; a projected player without an ACT/INA roster row gets a note and
+no estimate). The nflverse week-W injury report usually syncs late in the week (on 2026-10-14 it
+covered 2 of 32 teams with no designations yet). For a team with no synced nflverse designation the
+run falls back to the **ESPN injury status** (OUT / DOUBTFUL / QUESTIONABLE, high-confidence ID
+map) as that team's designation and flags every affected row; this is injury status, never an ESPN
+projection, and the model was trained on nflverse designations, so the fallback itself is
+unvalidated. Teams with no designation from either source are flagged too.
+
+Real week-6 run (2026-10-14 data, 386 projected rows, 0.75 s): the 73 rows where ESPN projects 0
+average P(appears) 0.51 and expected points 1.46 (conditional estimate 3.85), so the mean gap to
+ESPN on those rows falls from 3.85 to 1.46 points. Drew Lock (SEA backup, ESPN Questionable):
+P 0.05, expected 0.58 (conditional 10.77). Tyler Huntley (BAL): P 0.71, expected 8.84 (conditional
+12.47) because Lamar Jackson is Questionable and Huntley played most of the last game; ESPN says
+0. On the 313 rows where ESPN projects > 0 the mean absolute gap to ESPN rises slightly (1.19
+conditional -> 1.35 expected): ESPN's positive projections behave more like "if he plays". None
+of this is an accuracy claim; no week-6 game is final.
+
+## API contract (`independent-projections/v2`)
+
+v2 = v1 plus `independent.expected_points`, `independent.participation`,
+`comparison.expected_minus_espn`, `comparison.expected_comparable` and `run.participation`
+(additive; v1 fields keep their meaning).
 
 `GET /api/projections/independent?week=7[&position=WR][&team_id=3]` (default week: league
 `current_week`). 200 with `available: false` when no run exists; 422 for a bad position.
 
 ```json
 {
-  "schema_version": "independent-projections/v1",
+  "schema_version": "independent-projections/v2",
   "league": {"id": 123, "season": 2026}, "week": 7,
   "available": true, "unavailable_reason": null, "notes": ["..."],
   "run": {"run_id": "ifp-2026w7-...", "model_version": "ifp-1.0.0", "artifact_created_at": "...",
           "created_at": "...", "scoring_fingerprint": "e165b59686110c7d",
           "feature_cutoff": {"data_through_season": 2026, "data_through_week": 6,
                              "rule": "only NFL games completed before the target week"},
-          "nfl_synced_at": "...", "heldout_evaluation": {"...": "aggregates"}},
+          "nfl_synced_at": "...", "heldout_evaluation": {"...": "aggregates"},
+          "participation": {"model_version": "ipm-1.0.0", "status": {"WR": {"participation": "validated",
+                            "expected_points": "validated", "reasons": []}}, "heldout_evaluation": {"...": "aggregates"}}},
   "model_status": {"WR": {"status": "experimental", "validated_for": null, "start_sit_ready": false,
                           "intervals_published": true, "reasons": ["relative MAE improvement 0.0276 < 0.03", "..."]}},
   "players": [{
@@ -221,9 +386,16 @@ SUSPENSION, or latest weekly roster status not ACT/INA, e.g. exempt list); `unce
       "latest_usage": {"season": 2026, "week": 6}, "missing_inputs": [], "flags": [],
       "explanation": [{"feature": "target_share", "value": 0.27, "training_mean": 0.119,
                        "contribution": 1.9, "text": "target share: 0.270 (training average 0.119)"}],
-      "is_espn_fallback": false},
+      "is_espn_fallback": false,
+      "expected_points": 10.9,
+      "participation": {"p_play": 0.956, "model_version": "ipm-1.0.0", "model_status": "validated",
+                        "expected_points_status": "validated", "depth_rank": 1,
+                        "explanation": [{"feature": "played_last_team_game", "logit_contribution": 0.8,
+                                         "text": "played in the team's last game: 1", "direction": "raises"}],
+                        "flags": [], "note": null}},
     "espn": {"projected_points": 9.8, "synced_at": "2026-10-20 12:00:00"},
     "comparison": {"independent_minus_espn": 1.6, "comparable": true, "comparability_note": null,
+                   "expected_minus_espn": 1.1, "expected_comparable": true,
                    "evidence": [{"kind": "model_input", "feature": "target_share", "contribution": 1.9,
                                  "text": "target share: 0.270 (training average 0.119)"}]}
   }]
@@ -233,20 +405,31 @@ SUSPENSION, or latest weekly roster status not ACT/INA, e.g. exempt list); `unce
 Rules for consumers: `null` means unavailable, never zero. `independent` is never filled from
 ESPN (`is_espn_fallback` is always false). Use `independent_minus_espn` only when
 `comparable` is true: ESPN projects 0 for players it does not expect to play, while the
-independent estimate assumes the player plays. `evidence` lists the model's own largest input
+independent estimate assumes the player plays. `expected_minus_espn` compares two unconditional
+numbers and is available whenever both exist; check `participation.model_status` (QB/RB are
+`experimental`) before trusting it. `evidence` lists the model's own largest input
 contributions (points relative to the training-average player) plus data-quality flags; it never
 explains ESPN's number. Players are ordered by independent projection (nulls last), then id.
 
 ## Known biases and unsupported populations
 
-* **Conditional on playing.** No participation model: backups, game-time decisions and
-  players returning from absence get an estimate as if they play. 73 of 386 live week-6
-  estimates had an ESPN projection of 0 (marked not comparable).
-* **`snap_trend` conflates an in-game injury exit with a demotion.** The largest comparable
-  week-6 disagreements (Barkley, Rice, Moore) are driven by a last-game snap drop.
+* **`projected_points` is still conditional on playing**; use `expected_points` for an
+  unconditional number. Participation is `experimental` for QB and RB (calibration only).
+* **Participation has no team-level coherence.** Each player is scored alone, so two backup QBs on
+  one team can both get ~0.74 (CHI, week 6) although only one usually plays. QB miscalibration in
+  the 0.3-0.6 range is consistent with this.
+* **Live designations may be from ESPN** (see "Participation in live runs"); that mapping is not
+  validated. Practice status is unknown in that case.
+* **Injury-exit labeling is partial.** `injury_exit_last` needs an injury listing within two weeks;
+  rest listings are excluded, but unrelated listings still count and blowout snap drops look like
+  role drops. It changed the conditional model's validation MAE by nothing measurable, so
+  `ifp-1.0.0` keeps `snap_trend`; the week-6 Barkley / Rice / Moore gaps to ESPN are therefore
+  unchanged in `projected_points` (Barkley and Moore are now flagged as injury exits and their
+  P(appears) is 0.77 / 0.52; Rice is flagged as a possible demotion).
 * Low-volume RBs and players with < 3 recent games are worse than simple averages.
 * Team changes carry old-team shares (flagged); rookies abstain until their first game.
-* No injury reports, depth charts, coaching or QB changes as inputs; no weather or Vegas.
+* The conditional model uses no injury reports, depth charts, coaching or QB changes (the
+  participation model uses injury reports and a snap-based depth order); no weather or Vegas.
 * Label noise: one 2026 WR player-week differs from ESPN by 2.0 (unexplained).
 * K and D/ST are not modeled.
 
@@ -254,8 +437,11 @@ explains ESPN's number. Players are ordered by independent projection (nulls las
 
 1. Keep syncing ESPN daily so `espn_projection_history` accumulates true pregame snapshots;
    rerun `evaluate` once >= 300 matched completed player-weeks per position exist.
-2. Add a participation model (P(plays) from roster status, injury report and snap history) so
-   expected points are unconditional, and evaluate it on the roster-based population.
-3. Separate in-game injury exits from role changes (e.g. game-level snap counts by quarter or
-   injury report the following week) before trusting `snap_trend`.
-4. Only then let the Start/Sit page show both lineups, with the model status visible.
+2. Recalibrate QB/RB participation (e.g. isotonic or Platt on validation predictions) and add a
+   team-level constraint for QBs (probabilities of a team's QBs taking the first snap sum to 1),
+   then re-evaluate on a later held-out window; the 2025-26 held-out has now been used.
+3. Sync the nflverse injury report daily from Wednesday so live runs rarely need the ESPN-status
+   fallback, and measure the fallback against nflverse designations once both exist for a week.
+4. A finer injury-exit signal (per-quarter snaps from play-by-play) could sharpen
+   `injury_exit_last`.
+5. Only then let the Start/Sit page show both lineups, with the model statuses visible.

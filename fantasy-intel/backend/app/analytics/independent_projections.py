@@ -323,9 +323,11 @@ def fit_final(store: pl.DataFrame, selection: dict, evaluation: dict, scoring_de
 # ----------------------------------------------------------------------------- inference
 
 LIMITATIONS = [
-    "Conditional on the player suiting up; availability is reported separately, not modeled.",
+    "projected_points is conditional on the player appearing; expected_points = p_play * projected_points when "
+    "the participation model ran.",
     "Trained on nflverse box scores scored with this league's offensive rules (QB/RB/WR/TE only).",
-    "Uses only games completed before the target week; no betting lines, injury reports or depth charts.",
+    "projected_points uses only games completed before the target week (no betting lines, injury reports or depth "
+    "charts); p_play also uses the pregame week-W injury report.",
     "Not validated against ESPN unless the model status says an ESPN comparison criterion was met.",
 ]
 
@@ -382,5 +384,12 @@ def flags_for(row: dict) -> list[str]:
         out.append(f"part-time role (recent snap share {row['snap_pct']:.0%}): the estimate assumes he plays, "
                    "not that he starts or plays a full game")
     if row.get("snap_trend") is not None and abs(row["snap_trend"]) >= 0.2:
-        out.append(f"snap share changed {row['snap_trend']:+.0%} in the last game")
+        if row.get("injury_exit_last") == 1:
+            out.append(f"snap share fell {row['snap_trend']:+.0%} in the last game and he was on the injury report "
+                       "after it: treated as an in-game injury exit, not a role demotion")
+        elif row["snap_trend"] < 0 and row.get("injury_exit_last") == 0:
+            out.append(f"snap share fell {row['snap_trend']:+.0%} in the last game with no injury report after it: "
+                       "possible role demotion")
+        else:
+            out.append(f"snap share changed {row['snap_trend']:+.0%} in the last game")
     return out

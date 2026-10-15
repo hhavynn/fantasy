@@ -798,6 +798,9 @@ CREATE TABLE IF NOT EXISTS independent_projection_runs (
     nfl_synced_at        TIMESTAMP,   -- latest successful live NFL sync before the run
     model_status         JSON,        -- position -> {status, validated_for, start_sit_ready, reasons}
     evaluation           JSON,        -- held-out aggregates from the artifact
+    participation_version    VARCHAR, -- participation model (P(appears)); NULL when not applied
+    participation_status     JSON,    -- position -> {participation, expected_points, reasons}
+    participation_evaluation JSON,    -- held-out participation aggregates
     created_at           TIMESTAMP
 );
 
@@ -822,5 +825,8 @@ CREATE TABLE IF NOT EXISTS independent_player_projections (
     missing_inputs       JSON,
     flags                JSON,
     explanation          JSON,        -- [{feature, value, training_mean, contribution, text}]
+    p_play               DOUBLE,      -- P(appears in week W); NULL = no participation estimate
+    expected_points      DOUBLE,      -- p_play * projected_points (unconditional); NULL if either is NULL
+    participation        JSON,        -- {p_play, status, depth_rank, explanation, flags, ...}
     PRIMARY KEY (season, week, espn_player_id)
 );

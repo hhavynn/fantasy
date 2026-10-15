@@ -259,6 +259,10 @@ def build_store(sources: Sources, weeks: list[tuple[int, int]]) -> pl.DataFrame:
 # ----------------------------------------------------------------------------- logistic model
 
 
+def _sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1.0 / (1.0 + np.exp(-np.clip(x, -35.0, 35.0)))
+
+
 @dataclass
 class LogitModel:
     position: str
@@ -279,7 +283,7 @@ class LogitModel:
         return z @ np.array(self.coef) + self.intercept
 
     def predict(self, df: pl.DataFrame) -> np.ndarray:
-        return 1.0 / (1.0 + np.exp(-self.logits(df)))
+        return _sigmoid(self.logits(df))
 
     def contributions(self, df: pl.DataFrame) -> np.ndarray:
         """Per-column contribution to the logit relative to the training-average player."""
@@ -318,7 +322,7 @@ def fit_logit(train: pl.DataFrame, position: str, lams, label: str = "played",
         beta[0] = math.log(base / (1 - base))
         converged = False
         for _ in range(100):
-            p = 1.0 / (1.0 + np.exp(-(z @ beta)))
+            p = _sigmoid(z @ beta)
             grad = z.T @ (y - p) - pen * beta
             w = np.clip(p * (1 - p), 1e-9, None)
             hess = (z * w[:, None]).T @ z + np.diag(pen) + 1e-9 * np.eye(k)
@@ -728,3 +732,60 @@ def explain(model: LogitModel, row: pl.DataFrame, top: int = 3) -> list[dict]:
                       "direction": "raises" if c > 0 else "lowers"})
     items.sort(key=lambda d: (-abs(d["logit_contribution"]), d["feature"]))
     return items[:top]
+
+
+# ----------------------------------------------------------------------------- live week
+
+
+def live_population(sources: Sources, season: int, week: int) -> pl.DataFrame:
+    """Live counterpart of roster_population: each player's LATEST weekly roster row of the season
+    with week <= W (the week-W roster may not be posted yet), status ACT/INA, team playing in W."""
+    if sources.rosters is None:
+        return pl.DataFrame()
+    r = (sources.rosters.filter((pl.col("season") == season) & (pl.col("week") <= week))
+         .sort("week", descending=True).group_by("gsis_id", maintain_order=True).first()
+         .filter(pl.col("status").is_in(ACTIVE_ROSTER) & pl.col("position").is_in(POSITIONS)))
+    games = sources.games.filter((pl.col("season") == season) & (pl.col("week") == week)).select(
+        "team", "opponent", "is_home")
+    return r.select("gsis_id", "position", "team").join(games, on="team", how="inner").sort("gsis_id")
+
+
+def predict_week(sources: Sources, artifact: ParticipationArtifact, season: int, week: int,
+                 fallback_teams: frozenset[str] | set[str] = frozenset()) -> dict[str, dict]:
+    """P(appears) for every live-population player with a lookback game. Never trains.
+    `fallback_teams`: teams whose week-W designations in `sources.injuries` come from a live
+    fallback source rather than the nflverse report (flagged on every affected row)."""
+    pop = live_population(sources, season, week)
+    if pop.height == 0:
+        return {}
+    base = features_for_week(sources, season, week, pop).filter(pl.col("games_recent") > 0)
+    if base.height == 0:
+        return {}
+    feats = participation_features(sources, season, week, base)
+    published: set[str] = set()
+    if sources.injuries is not None:
+        published = set(sources.injuries.filter((pl.col("season") == season) & (pl.col("week") == week)
+                                                & pl.col("report_status").is_not_null())["team"].unique().to_list())
+        published -= set(fallback_teams)
+    out = {}
+    for pos in POSITIONS:
+        model = artifact.models.get(pos)
+        rows = feats.filter(pl.col("position") == pos)
+        if model is None or rows.height == 0:
+            continue
+        probs = model.predict(rows)
+        st = artifact.status.get(pos, {})
+        for i, rec in enumerate(rows.iter_rows(named=True)):
+            flags = []
+            if rec["team"] in fallback_teams:
+                flags.append(f"week-{week} designations for {rec['team']} come from ESPN injury status (the nflverse "
+                             "report the model was trained on is not synced yet); practice status unknown")
+            elif rec["team"] not in published:
+                flags.append(f"no week-{week} game-status designations synced for {rec['team']} (not yet published, "
+                             "or none issued): P(plays) treats him as undesignated")
+            out[rec["gsis_id"]] = {
+                "p_play": round(float(probs[i]), 4), "model_version": artifact.version,
+                "status": st.get("participation", "insufficient_data"),
+                "expected_points_status": st.get("expected_points", "insufficient_data"),
+                "depth_rank": int(rec["depth_rank"]), "explanation": explain(model, rows.slice(i, 1)), "flags": flags}
+    return out

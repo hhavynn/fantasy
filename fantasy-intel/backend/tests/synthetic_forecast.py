@@ -138,3 +138,81 @@ def add_league(con, season: int, current_week: int, scoring_items=None) -> None:
     con.execute("INSERT INTO leagues (league_id, season, name, current_week, final_scoring_period, scoring_items, "
                 "synced_at) VALUES (99, ?, 'Synthetic', ?, 17, ?, '2026-10-01 00:00:00')",
                 [season, current_week, json.dumps(scoring_items or SCORING_ITEMS)])
+
+
+def add_participation(frames: dict[str, pl.DataFrame], seed: int = 11, p_out: float = 0.06,
+                      p_questionable: float = 0.08) -> dict[str, pl.DataFrame]:
+    """Weekly rosters + injury reports, and remove the box scores of players who did not appear.
+    Each team also carries a backup QB ("QB2") who plays the whole game only when the starter is
+    Out and otherwise takes a few garbage-time snaps a quarter of the time. Like nflverse, the
+    week-W roster marks a designated player who sat INA (a game-day inactive); a healthy backup
+    who did not play stays ACT. Injury rows carry date_modified two days before kickoff."""
+    from datetime import datetime, timedelta, timezone
+
+    rng = random.Random(seed)
+    stats, snaps = frames["nfl_weekly_stats"], frames["nfl_snap_counts"]
+    sched = {(r["season"], r["week"], t): r for r in frames["nfl_schedules"].iter_rows(named=True)
+             for t in (r["home_team"], r["away_team"])}
+    removed, added_stats, added_snaps, roster, injuries = set(), [], [], [], []
+    for (season, week, team), g in stats.group_by(["season", "week", "team"], maintain_order=True):
+        game = sched[(season, week, team)]
+        kick = datetime.fromisoformat(f"{game['gameday']}T17:00:00+00:00")
+        qb_out = False
+        for slot, pos in SLOTS:
+            gid = gsis(team, slot)
+            r = rng.random()
+            status, plays, practice = None, True, "Full Participation in Practice"
+            if r < p_out:
+                status, plays, practice = "Out", False, "Did Not Participate In Practice"
+            elif r < p_out + p_questionable:
+                status, practice = "Questionable", "Limited Participation in Practice"
+                plays = rng.random() < 0.6
+            if status:
+                injuries.append({"season": season, "game_type": "REG", "team": team, "week": week, "gsis_id": gid,
+                                 "position": pos, "report_status": status, "report_primary_injury": "Knee",
+                                 "practice_primary_injury": "Knee", "practice_status": practice,
+                                 "date_modified": kick - timedelta(days=2)})
+            if not plays:
+                removed.add((season, week, gid))
+                qb_out |= slot == "QB"
+            roster.append({"season": season, "week": week, "gsis_id": gid, "team": team, "position": pos,
+                           "game_type": "REG", "status": "ACT" if plays else "INA",
+                           "status_description_abbr": "A01"})
+        backup = gsis(team, "QB2")
+        qb_row = g.filter(pl.col("position") == "QB").to_dicts()[0]
+        if qb_out:
+            added_stats.append({**qb_row, "player_id": backup})
+            added_snaps.append({"pfr_player_id": f"pfr-{backup}", "season": season, "week": week, "game_type": "REG",
+                                "team": team, "opponent": qb_row["opponent_team"], "offense_snaps": 60, "offense_pct": 0.97})
+        elif rng.random() < 0.25:
+            added_snaps.append({"pfr_player_id": f"pfr-{backup}", "season": season, "week": week, "game_type": "REG",
+                                "team": team, "opponent": qb_row["opponent_team"], "offense_snaps": 3, "offense_pct": 0.05})
+        roster.append({"season": season, "week": week, "gsis_id": backup, "team": team, "position": "QB",
+                       "game_type": "REG", "status": "ACT", "status_description_abbr": "A01"})
+    gone = pl.DataFrame([{"season": s, "week": w, "gid": g} for s, w, g in removed],
+                        schema={"season": pl.Int64, "week": pl.Int64, "gid": pl.String})
+    out = dict(frames)
+    for name, col, fn in (("nfl_weekly_stats", "player_id", lambda c: pl.col(c)),
+                          ("nfl_ff_opportunity", "player_id", lambda c: pl.col(c)),
+                          ("nfl_pbp_player_week", "player_id", lambda c: pl.col(c)),
+                          ("nfl_snap_counts", "pfr_player_id", lambda c: pl.col(c).str.strip_prefix("pfr-"))):
+        df = frames[name].with_columns(fn(col).alias("gid"), pl.col("season").cast(pl.Int64), pl.col("week").cast(pl.Int64))
+        out[name] = df.join(gone, on=["season", "week", "gid"], how="anti").drop("gid")
+    out["nfl_weekly_stats"] = pl.concat([out["nfl_weekly_stats"], pl.DataFrame(added_stats).cast(
+        out["nfl_weekly_stats"].schema)]) if added_stats else out["nfl_weekly_stats"]
+    out["nfl_snap_counts"] = pl.concat([out["nfl_snap_counts"], pl.DataFrame(added_snaps).cast(
+        out["nfl_snap_counts"].schema)]) if added_snaps else out["nfl_snap_counts"]
+    out["nfl_rosters_weekly"] = pl.DataFrame(roster)
+    out["nfl_injuries"] = pl.DataFrame(injuries).with_columns(pl.col("date_modified").dt.convert_time_zone("UTC"))
+    players = frames["nfl_players"].to_dicts()
+    players += [{"gsis_id": gsis(t, "QB2"), "display_name": f"{t} QB2", "position": "QB", "latest_team": t,
+                 "pfr_id": f"pfr-{gsis(t, 'QB2')}"} for t in TEAMS]
+    out["nfl_players"] = pl.DataFrame(players)
+    return out
+
+
+def participation_database(path, seasons: list[int], seed: int = 7, **kw):
+    con = connect(path)
+    init_db(con)
+    write(con, add_participation(generate(seasons, seed=seed), **kw))
+    return con

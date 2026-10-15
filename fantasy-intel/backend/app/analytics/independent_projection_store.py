@@ -12,6 +12,10 @@ Guards (each produces an explicit coverage_status and a NULL projection, never a
                          ACT/INA (exempt, suspended, practice squad, reserve, released)
   abstain_no_history     no NFL game in the lookback window (rookie debut, long absence)
   no_model               the artifact has no model for the position
+
+With a participation artifact (app.analytics.participation), each projected row also gets
+p_play = P(appears in week W) and expected_points = p_play * projected_points (unconditional).
+projected_points stays the estimate CONDITIONAL on appearing.
 """
 
 from __future__ import annotations
@@ -77,9 +81,49 @@ def _fantasy_ir(con, season: int, week: int) -> set[int]:
     return {r["espn_player_id"] for r in rows}
 
 
-def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int) -> tuple[dict, list[dict]]:
+ESPN_DESIGNATION = {"OUT": "Out", "DOUBTFUL": "Doubtful", "QUESTIONABLE": "Questionable"}
+
+
+def espn_designation_fallback(con, sources: Sources, season: int, week: int) -> tuple[Sources, set[str]]:
+    """Live only. The participation model reads the nflverse week-W injury report, which is often
+    not synced until late in the week. For a team with no nflverse week-W designation yet, use the
+    ESPN injury status (OUT/DOUBTFUL/QUESTIONABLE, high-confidence id mapping) as its designation.
+    This is injury STATUS, never an ESPN projection; affected rows are flagged. Teams with a synced
+    nflverse designation keep nflverse only."""
+    from .forecast_features import INJURY_SCHEMA
+
+    if sources.rosters is None or not all(table_exists(con, t) for t in ("fantasy_players", "player_id_map")):
+        return sources, set()
+    inj = sources.injuries if sources.injuries is not None else pl.DataFrame(schema=INJURY_SCHEMA)
+    synced = set(inj.filter((pl.col("season") == season) & (pl.col("week") == week)
+                            & pl.col("report_status").is_not_null())["team"].unique().to_list())
+    teams = {r["gsis_id"]: r["team"] for r in sources.rosters.filter(
+        (pl.col("season") == season) & (pl.col("week") <= week)).sort("week").iter_rows(named=True)}
+    espn = fetch_dicts(con, """
+        SELECT m.gsis_id, upper(fp.injury_status) AS status FROM fantasy_players fp
+        JOIN player_id_map m USING (espn_player_id)
+        WHERE m.match_confidence = 'high' AND m.gsis_id IS NOT NULL
+          AND upper(fp.injury_status) IN ('OUT', 'DOUBTFUL', 'QUESTIONABLE')""")
+    add = {r["gsis_id"]: ESPN_DESIGNATION[r["status"]] for r in espn
+           if teams.get(r["gsis_id"]) and teams[r["gsis_id"]] not in synced}
+    if not add:
+        return sources, set()
+    current = inj.filter((pl.col("season") == season) & (pl.col("week") == week) & pl.col("gsis_id").is_in(list(add)))
+    practice = {r["gsis_id"]: r for r in current.iter_rows(named=True)}
+    rows = pl.DataFrame([{"season": season, "week": week, "gsis_id": g, "team": teams[g], "report_status": st,
+                          "practice_status": (practice.get(g) or {}).get("practice_status"),
+                          "injury": (practice.get(g) or {}).get("injury"), "not_injury": False}
+                         for g, st in sorted(add.items())], schema=INJURY_SCHEMA)
+    keep = inj.filter(~((pl.col("season") == season) & (pl.col("week") == week) & pl.col("gsis_id").is_in(list(add))))
+    return (Sources(sources.panel, sources.games, sources.defense, sources.rosters, pl.concat([keep, rows])),
+            {teams[g] for g in add})
+
+
+def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int,
+               participation=None) -> tuple[dict, list[dict]]:
     """Run metadata + one row per candidate. `sources` must contain the live season (and
-    ideally the previous season from the history DB)."""
+    ideally the previous season from the history DB). `participation`: optional
+    ParticipationArtifact; without it p_play and expected_points stay null."""
     _, scoring = league_scoring(con, season)
     scoring_ok = scoring.supported and scoring.fingerprint == artifact.scoring_fingerprint
     games = sources.games.filter((pl.col("season") == season) & (pl.col("week") == week))
@@ -95,7 +139,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
                "position": c["position"], "projected_points": None, "interval_low": None, "interval_high": None,
                "model": None, "games_used": None, "latest_usage_season": None, "latest_usage_week": None,
                "missing_inputs": [], "flags": [], "explanation": [], "nfl_team": c["pro_team"], "opponent": None,
-               "is_home": None}
+               "is_home": None, "p_play": None, "expected_points": None, "participation": None}
         rows.append(rec)
         if c["position"] not in POSITIONS:
             rec["coverage_status"] = "unsupported_position"
@@ -162,6 +206,20 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
                    interval_low=p["interval_low"], interval_high=p["interval_high"],
                    model={"B": "opportunity", "C": "context"}[artifact.models[rec["position"]].model],
                    explanation=p["explanation"])
+    parts: dict[str, dict] = {}
+    if participation is not None:
+        from .participation import predict_week
+        psources, fallback = espn_designation_fallback(con, sources, season, week)
+        parts = predict_week(psources, participation, season, week, fallback_teams=fallback)
+    for rec in rows:
+        if participation is None or rec.get("coverage_status") != "projected":
+            continue
+        q = parts.get(rec["gsis_id"])
+        if q is None:
+            rec["participation"] = {"p_play": None, "model_version": participation.version,
+                                    "note": "no ACT/INA NFL weekly roster row for this season: no participation estimate"}
+            continue
+        rec.update(p_play=q["p_play"], expected_points=round(q["p_play"] * rec["projected_points"], 2), participation=q)
     before = sources.panel.filter(pl.col("season") * 100 + pl.col("week") < key(season, week))
     last = before.select(pl.col("season").max(), pl.col("week").filter(
         pl.col("season") == pl.col("season").max()).max()).row(0) if before.height else (None, None)
@@ -171,6 +229,9 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
             "week": week, "model_version": artifact.version, "scoring_fingerprint": scoring.fingerprint if scoring.supported else None,
             "artifact_created_at": artifact.created_at, "data_through_season": last[0], "data_through_week": last[1],
             "nfl_synced_at": synced[0]["t"], "model_status": artifact.status, "evaluation": artifact.evaluation,
+            "participation_version": participation.version if participation is not None else None,
+            "participation_status": participation.status if participation is not None else None,
+            "participation_evaluation": participation.evaluation if participation is not None else None,
             "created_at": utcnow()}
     for rec in rows:
         rec["run_id"] = meta["run_id"]
