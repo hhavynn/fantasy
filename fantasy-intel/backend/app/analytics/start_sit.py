@@ -447,6 +447,8 @@ def optimize_lock_constrained_lineup(
         p = item.get("player") or {}
         pid = item.get("player_id") or p.get("espn_player_id")
         proj_val = projections.get(pid) if pid is not None else None
+        if pid in unavailable_ids:
+            proj_val = 0.0          # verified NFL-ineligible: his projection is ignored
         preserved_locked.append({
             "slot_id": slot_inst.slot_id if slot_inst else "LOCKED",
             "slot": slot_inst.slot_type if slot_inst else p.get("position"),
@@ -469,7 +471,7 @@ def optimize_lock_constrained_lineup(
     actual_complete = True
     for p in actual_starters:
         pid = p.get("espn_player_id")
-        proj_val = projections.get(pid)
+        proj_val = 0.0 if pid in unavailable_ids else projections.get(pid)
         if proj_val is None:
             if p.get("pro_team") not in TEAMLESS_ABBRS:
                 actual_complete = False
@@ -492,7 +494,9 @@ def optimize_lock_constrained_lineup(
 
     is_complete = actual_complete and rec_complete
 
-    actual_total = round(actual_known_total, 2) if actual_complete else None
+    # No submitted lineup (a future-week preview or no snapshot) has no actual total: 0 would turn
+    # the whole recommended lineup into a "gain".
+    actual_total = round(actual_known_total, 2) if actual_complete and actual_starters else None
     recommended_total = round(rec_known_total, 2) if rec_complete else None
     unconstrained_total = round(unc_known_total, 2) if is_complete else None
     projected_gain = (
@@ -769,7 +773,7 @@ def load_start_sit_evaluation(
     for r in proj_rows:
         pid = r["espn_player_id"]
         projections[pid] = float(r["projected_points"]) if r["projected_points"] is not None else None
-        if r.get("synced_at"):
+        if r.get("synced_at") and (latest_proj_sync is None or r["synced_at"] > latest_proj_sync):
             latest_proj_sync = r["synced_at"]
 
     # 6. Detect player locks & schedule coverage

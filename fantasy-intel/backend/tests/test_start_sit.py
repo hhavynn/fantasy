@@ -657,3 +657,28 @@ def test_equivalence_to_pure_optimizer_when_unconstrained():
 
 
 
+
+
+def test_ineligible_starter_scores_zero_and_no_lineup_has_no_actual_total():
+    from app.analytics.start_sit import build_slot_instances, optimize_lock_constrained_lineup
+
+    slots = build_slot_instances({"WR": 1})
+    roster = [
+        {"espn_player_id": 1, "full_name": "Suspended WR", "position": "WR", "pro_team": "CIN"},
+        {"espn_player_id": 2, "full_name": "Bench WR", "position": "WR", "pro_team": "BUF"},
+    ]
+    projections = {1: 15.0, 2: 10.0}
+    kw = dict(roster_players=roster, slot_instances=slots, locked_starter_assignments=[], locked_bench_ids=set(),
+              unavailable_ids={1}, ir_ids=set(), projections=projections)
+
+    # A verified NFL-ineligible starter contributes nothing, as he would in the recommended lineup.
+    res = optimize_lock_constrained_lineup(**kw, actual_starters=[roster[0]])
+    assert res["actual_total"] == 0.0
+    assert res["recommended_total"] == 10.0
+    assert res["projected_gain"] == 10.0
+
+    # No submitted lineup: no actual total, so no "gain" equal to the whole recommended lineup.
+    res = optimize_lock_constrained_lineup(**kw, actual_starters=[])
+    assert res["actual_total"] is None
+    assert res["projected_gain"] is None
+    assert res["recommended_total"] == 10.0
