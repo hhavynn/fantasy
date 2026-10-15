@@ -13,7 +13,8 @@ export type LabelInput = {
 };
 
 export type Anchor = "start" | "end" | "middle";
-export type PlacedLabel = LabelInput & { x: number; y: number; anchor: Anchor };
+/** `text` is what to draw: the original, or an ellipsized form when the full text could not fit. */
+export type PlacedLabel = LabelInput & { x: number; y: number; anchor: Anchor; truncated?: boolean };
 
 export type PlaceOptions = {
   /** Estimated width of one character in chart units. */
@@ -25,7 +26,13 @@ export type PlaceOptions = {
   /** Omit non-priority labels that cannot be placed without overlap (default true).
    *  When false they are placed at the first offset anyway. */
   dropOnCollision?: boolean;
+  /** Further points to keep labels off (for example unlabeled points). A label's own point is ignored. */
+  obstacles?: readonly { id: string | number; px: number; py: number }[];
+  /** Shortest text (characters, including the ellipsis) a label may be cut to before it is dropped. */
+  minChars?: number;
 };
+
+const ellipsize = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, Math.max(1, max - 1)).trimEnd()}…`);
 
 type Box = { x0: number; x1: number; y0: number; y1: number };
 
@@ -48,8 +55,8 @@ export function placeLabels(
   bounds: { width: number; height: number },
   options: PlaceOptions = {},
 ): PlacedLabel[] {
-  const { charWidth = 6.2, textHeight = 11, markerRadius = 5, dropOnCollision = true } = options;
-  const obstacles = labels.map((l) => ({
+  const { charWidth = 6.2, textHeight = 11, markerRadius = 5, dropOnCollision = true, obstacles: extra = [], minChars = 4 } = options;
+  const obstacles = [...labels, ...extra].map((l) => ({
     id: l.id,
     box: { x0: l.px - markerRadius, x1: l.px + markerRadius, y0: l.py - markerRadius, y1: l.py + markerRadius },
   }));
@@ -57,26 +64,43 @@ export function placeLabels(
   const out: PlacedLabel[] = [];
   const order = [...labels].sort((a, b) => Number(!!b.priority) - Number(!!a.priority) || a.py - b.py);
 
-  for (const l of order) {
-    const w = l.text.length * charWidth;
-    let pick: [number, number, Anchor] | null = null;
-    let pickBox: Box | null = null;
+  // The first offset whose text box clears the bounds, placed labels and other points; edge labels
+  // therefore flip to the other side of their point.
+  const fit = (l: LabelInput, text: string): { pick: [number, number, Anchor]; box: Box } | null => {
+    const w = text.length * charWidth;
     for (const t of offsets(!!l.priority)) {
       const x0 = t[2] === "start" ? l.px + t[0] : t[2] === "end" ? l.px + t[0] - w : l.px - w / 2;
       const box = { x0, x1: x0 + w, y0: l.py + t[1] - textHeight + 2, y1: l.py + t[1] + 2 };
       if (box.x0 < 0 || box.x1 > bounds.width || box.y0 < 0 || box.y1 > bounds.height) continue;
       if (placed.some((b) => hit(box, b))) continue;
       if (obstacles.some((o) => o.id !== l.id && hit(box, o.box))) continue;
-      pick = t;
-      pickBox = box;
-      break;
+      return { pick: t, box };
     }
-    if (!pick) {
-      if (dropOnCollision && !l.priority) continue;
-      pick = offsets(!!l.priority)[0];
+    return null;
+  };
+
+  for (const l of order) {
+    let text = l.text;
+    let found = fit(l, text);
+    // Never clip silently: shorten with an ellipsis until it fits (the caller keeps the full text in a tooltip).
+    for (let n = l.text.length - 1; !found && n >= minChars; n--) {
+      text = ellipsize(l.text, n);
+      found = fit(l, text);
     }
-    if (pickBox) placed.push(pickBox);
-    out.push({ ...l, x: l.px + pick[0], y: l.py + pick[1], anchor: pick[2] });
+    if (found) {
+      placed.push(found.box);
+      out.push({ ...l, text, x: l.px + found.pick[0], y: l.py + found.pick[1], anchor: found.pick[2], truncated: text !== l.text });
+      continue;
+    }
+    if (dropOnCollision && !l.priority) continue;
+    // A priority label is never dropped: keep it inside the bounds, cut to the width if need be.
+    const maxChars = Math.max(minChars, Math.floor(bounds.width / charWidth));
+    const t = ellipsize(l.text, maxChars);
+    const w = t.length * charWidth;
+    const x0 = Math.min(Math.max(l.px - w / 2, 0), Math.max(0, bounds.width - w));
+    const y = Math.min(Math.max(l.py - 10, textHeight - 2), bounds.height - 2);
+    placed.push({ x0, x1: x0 + w, y0: y - textHeight + 2, y1: y + 2 });
+    out.push({ ...l, text: t, x: x0, y, anchor: "start", truncated: t !== l.text });
   }
   return out;
 }

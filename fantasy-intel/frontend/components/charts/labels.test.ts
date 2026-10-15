@@ -68,6 +68,35 @@ test("labels avoid other points' markers", () => {
   assert.ok(!(a.anchor === "start" && a.x === 109 && a.y === 104));
 });
 
+test("an edge label flips left with its full text, fully inside the bounds", () => {
+  const [l] = placeLabels([{ id: 1, text: "Carted Off Field", px: 280, py: 100 }], { width: W, height: H }, { charWidth: CHAR });
+  assert.equal(l.anchor, "end");
+  assert.equal(l.text, "Carted Off Field");
+  assert.ok(!l.truncated);
+  const b = boxOf(l);
+  assert.ok(b.x0 >= 0 && b.x1 <= W);
+});
+
+test("a label that fits on neither side is ellipsized, never clipped", () => {
+  const [l] = placeLabels([{ id: 1, text: "A very long team name indeed", px: 140, py: 100 }], { width: 160, height: H }, { charWidth: CHAR });
+  assert.ok(l.truncated);
+  assert.ok(l.text.endsWith("…"));
+  const b = boxOf(l);
+  assert.ok(b.x0 >= 0 && b.x1 <= 160, "inside the bounds");
+});
+
+test("unlabeled points passed as obstacles are avoided", () => {
+  const out = placeLabels([{ id: 1, text: "A", px: 100, py: 100 }], { width: W, height: H }, { charWidth: CHAR, markerRadius: 5, obstacles: [{ id: 2, px: 109, py: 99 }] });
+  assert.ok(!(out[0].anchor === "start" && out[0].x === 109 && out[0].y === 104));
+});
+
+test("a priority label that cannot fit anywhere is clamped inside the bounds", () => {
+  const [l] = placeLabels([{ id: 1, text: "Extremely long priority label", px: 40, py: 100, priority: true }], { width: 90, height: H }, { charWidth: CHAR });
+  assert.ok(l.truncated);
+  const b = boxOf(l);
+  assert.ok(b.x0 >= 0 && b.x1 <= 90);
+});
+
 test("a label near the right edge flips to the left side", () => {
   const [l] = placeLabels([{ id: 1, text: "EdgeCase", px: 290, py: 100 }], { width: W, height: H }, { charWidth: CHAR });
   assert.equal(l.anchor, "end");

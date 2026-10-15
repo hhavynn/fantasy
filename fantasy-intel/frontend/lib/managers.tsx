@@ -1,6 +1,7 @@
-import { Badge } from "@/components/ui";
+import { Badge, VisuallyHidden } from "@/components/ui";
 import { label, num, pct } from "@/lib/format";
 import type { Classification } from "@/lib/types";
+import styles from "./managers.module.css";
 
 export const DIMENSION_TITLES: Record<string, string> = {
   waiver_aggression: "Waiver aggression",
@@ -31,12 +32,29 @@ export function formatMetric(metric: string, v: number | null | undefined) {
   return num(v, 2);
 }
 
+const CONFIDENCE_TEXT: Record<string, string> = { HIGH: "high confidence", MEDIUM: "medium confidence", LOW: "low confidence" };
+
+/** Confidence as a dot plus (optionally) words: the dot's colour is never the only signal. */
+export function ConfDot({ level, withText = false }: { level: string; withText?: boolean }) {
+  const tone = level === "HIGH" ? styles.high : level === "MEDIUM" ? styles.medium : styles.low;
+  return (
+    <span className={styles.conf} title={`Confidence ${level}`}>
+      <span className={`${styles.dot} ${tone}`} aria-hidden="true">●</span>
+      {withText ? <span className={styles.confText}>{CONFIDENCE_TEXT[level] ?? level.toLowerCase()}</span> : <VisuallyHidden>{CONFIDENCE_TEXT[level] ?? level.toLowerCase()}</VisuallyHidden>}
+    </span>
+  );
+}
+
+export function labelTone(l: string): string {
+  return l === "HIGH" ? "info" : l === "MEDIUM" ? "warn" : "";
+}
+
 export function ClassBadge({ c }: { c?: Classification }) {
   if (!c) return <span className="missing" title="Not computed">—</span>;
   const tip = `${formatMetricText(c)} · league mean ${c.league_mean?.toFixed(2) ?? "?"} · n=${c.sample_size} (min ${c.min_sample}) · ${c.rule}`;
   return (
-    <span className="row-flex" style={{ gap: 4 }} title={tip}>
-      <Badge value={c.label === "INSUFFICIENT" ? c.label : label(c.label)} tone={c.label === "HIGH" ? "info" : c.label === "MEDIUM" ? "warn" : ""} />
+    <span className={styles.classBadge} title={tip}>
+      <Badge value={c.label === "INSUFFICIENT" ? c.label : label(c.label)} tone={labelTone(c.label)} />
       <span className="faint">{formatMetric(c.metric, c.value)}</span>
       <ConfDot level={c.confidence} />
     </span>
@@ -46,9 +64,4 @@ export function ClassBadge({ c }: { c?: Classification }) {
 function formatMetricText(c: Classification) {
   if (c.value === null) return "no value";
   return `${c.metric} = ${c.value.toFixed(3)}`;
-}
-
-export function ConfDot({ level }: { level: string }) {
-  const color = level === "HIGH" ? "var(--good)" : level === "MEDIUM" ? "var(--warn)" : "var(--faint)";
-  return <span title={`Confidence ${level}`} style={{ color, fontSize: 10 }}>●</span>;
 }

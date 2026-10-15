@@ -67,7 +67,7 @@ export function ScatterChart({ points, xLabel, yLabel, xFormat = defaultFormat, 
     placeLabels(
       labeled.map((p) => ({ id: p.id, text: p.label as string, px: xs(p.x), py: ys(p.y), priority: p.highlight })),
       { width, height: height - bottom + 4 },
-      { charWidth: font * 0.58, textHeight: font, markerRadius: 6 },
+      { charWidth: font * 0.58, textHeight: font, markerRadius: 6, obstacles: points.map((p) => ({ id: p.id, px: xs(p.x), py: ys(p.y) })) },
     );
   const desktop = placeFor(BASE_FONT);
   const phone = placeFor(pf);
@@ -77,6 +77,7 @@ export function ScatterChart({ points, xLabel, yLabel, xFormat = defaultFormat, 
       const hl = points.find((p) => p.id === l.id)?.highlight;
       return (
         <text key={`${cls}-${l.id}`} x={l.x} y={l.y} textAnchor={l.anchor} className={`${styles.t} ${styles.halo} ${hl ? styles.strong : styles.muted} ${cls ?? ""}`}>
+          {l.truncated ? <title>{points.find((p) => p.id === l.id)?.label}</title> : null}
           {l.text}
         </text>
       );
