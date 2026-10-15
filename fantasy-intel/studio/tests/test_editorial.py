@@ -77,3 +77,27 @@ def test_the_same_opening_with_new_names_is_caught():
         qc.opening_skeleton("Emanuel Wilson's role just jumped. But there's a catch.")
     assert qc.opening_skeleton("Braelon Allen just got almost every Jets running back carry.") != \
         qc.opening_skeleton("Oronde Gadsden played the exact same snaps in back-to-back weeks.")
+
+
+def test_pre_render_check_answers_every_question_and_rejects_long_scripts():
+    p, claims = _mystery_player()
+    row = E.score(p, claims, "mystery", [])
+    ch = E.checks(row, words=90)
+    assert set(ch) == set(E.QUESTIONS) and not ch["fits_20s"]["pass"]
+    assert E.checks(row, words=55)["fits_20s"]["pass"]
+
+
+def test_hook_choice_keeps_the_strongest_unless_it_just_ran_twice():
+    from studio.stages.formats import MYSTERY_HOOKS, pick_hook
+    first = list(MYSTERY_HOOKS)[0]
+    assert pick_hook(MYSTERY_HOOKS, [], None)[0] == first
+    assert pick_hook(MYSTERY_HOOKS, [first], None)[0] != first
+    assert pick_hook(MYSTERY_HOOKS, [first, first], "cliff")[0] == "cliff"
+
+
+def test_the_same_ending_three_times_running_fails():
+    struct = {"hook": "h", "scenes": ["a"], "ending": "decision:", "_week": 6, "_order": 3}
+    prior = [{"episode_id": f"e{i}", "week": 6, "order": i, "players": [f"p{i}"], "narration": [f"line {i} x y z w"],
+              "structure": {"hook": f"h{i}", "scenes": [f"s{i}"], "ending": "decision:"}} for i in range(2)]
+    g = qc.gate_originality("new", ["a fresh line here today"], ["me"], prior, struct)
+    assert not g.passed and any("ending" in f for f in g.failures)

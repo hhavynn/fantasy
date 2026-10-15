@@ -94,6 +94,36 @@ def history(episodes_dir: Path, season: int, before_week: int | None = None, exc
             and r.get("structure") and (before_week is None or r["week"] < before_week)]
 
 
+QUESTIONS = {
+    "why_care": "Why would a fantasy manager care? (a starter-level role, or a recognizable name)",
+    "surprise": "Is there a surprising observation?",
+    "timely": "Is it about this week's decision?",
+    "evidence": "Is the evidence strong enough for the claim?",
+    "consequence": "Does it change a start, sit, add or hold?",
+    "fits_20s": "Can it be told in about 20 seconds?",
+    "beyond_ranking": "Is it more than a ranking? (a contradiction or an opportunity, not just a move)",
+    "fresh_angle": "Is it a different angle from the last few videos?",
+}
+MAX_WORDS = 70            # ~20-23 s at this voice's pace
+
+
+def checks(row: dict, words: int | None = None) -> dict:
+    """The pre-render editorial check as eight yes/no questions with the reason for each."""
+    s, r = row["scores"], row["reasons"]
+    out = {
+        "why_care": (s["relevance"] >= 3, r["relevance"]),
+        "surprise": (s["surprise"] >= 3, r["surprise"]),
+        "timely": (s["timeliness"] >= 3, r["timeliness"]),
+        "evidence": (s["evidence"] >= 3, r["evidence"]),
+        "consequence": (s["actionability"] >= 3, r["actionability"]),
+        "beyond_ranking": (row["format"] != "template", "format: " + row["format"]),
+        "fresh_angle": (s["distinctiveness"] >= 3, r["distinctiveness"]),
+    }
+    if words is not None:
+        out["fits_20s"] = (words <= MAX_WORDS, f"{words} words (max {MAX_WORDS})")
+    return {k: {"question": QUESTIONS[k], "pass": v[0], "why": v[1]} for k, v in out.items()}
+
+
 def score(p: dict, claims: dict, fmt: str, recent: list[dict]) -> dict:
     """Eight 0-5 scores with reasons. `recent`: prior Shorts' history rows, oldest first."""
     s, why = {}, {}
@@ -172,8 +202,11 @@ def score(p: dict, claims: dict, fmt: str, recent: list[dict]) -> dict:
     reject += [f"{k} {s[k]} < {v}" for k, v in MIN_EACH.items() if s[k] < v]
     if s["hook"] < 4 and not recognizable(p):
         reject.append("no clear reason to care: a usage move without a twist, on a player few will know")
-    return {"player": p["name"], "format": fmt, "scores": s, "reasons": why, "total": total,
-            "recognizable": recognizable(p), "verdict": "reject" if reject else "make", "reject_reasons": reject}
+    row = {"player": p["name"], "format": fmt, "scores": s, "reasons": why, "total": total,
+           "recognizable": recognizable(p)}
+    failed = [k for k, v in checks(row).items() if not v["pass"] and k in ("evidence", "consequence", "fresh_angle")]
+    reject += [f"fails '{QUESTIONS[k]}'" for k in failed]
+    return {**row, "verdict": "reject" if reject else "make", "reject_reasons": reject, "checks": checks(row)}
 
 
 def board_markdown(rows: list[dict]) -> str:

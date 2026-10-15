@@ -21,7 +21,7 @@ from ..numbers import render, round_half_up
 sys.path.insert(0, str(STUDIO_ROOT.parent / "backend"))
 from app.analytics.trends import compute_trend, composite_trend  # noqa: E402  (pure stdlib module)
 
-VERSION = 11
+VERSION = 12
 PLAYOFF_WEEKS = [15, 16, 17]
 
 # (metric column, label, trend threshold). Thresholds for offense_pct/target_share/backfield_rush_share
@@ -618,6 +618,11 @@ def story_details(book: "ClaimBook", snap: dict, p: dict) -> dict:
             g["carries"] = val("designed runs", "int", "designed_rushes", w)
         games.append(g)
     out = {"games": games}
+    # every game this season, for the zoom-out ("before that 8-target game: 2, 2, 3")
+    out["season"] = [{"week": w, "week_claim": book.add("game week", "week", {"kind": "week_value", "week": w}),
+                      "snaps": val("offensive snaps", "int", "offense_snaps", w),
+                      "targets": val("targets", "int", "targets", w) if p["position"] != "RB" else None}
+                     for w in sorted(rows) if w in p["baseline_weeks"] + p["recent_weeks"]]
 
     latest = p["recent_weeks"][-1]
     if p["position"] in ("WR", "TE"):
@@ -680,6 +685,10 @@ def story_details(book: "ClaimBook", snap: dict, p: dict) -> dict:
                 team=team)
 
     tm = p.get("teammate")
+    if tm and tm.get("status"):
+        out["status_brief"] = book.add(f"{tm['name']}'s latest availability (short)", "status_brief",
+                                       dict(next(c for c in book.claims if c["id"] == tm["status"])["source"]),
+                                       player=tm["gsis_id"], team=team)
     has_rb_carries = any(r.get("team_rb_carries") is not None for r in snap["tables"]["player_week_usage"]
                          if r["team"] == team)
     if p["position"] == "RB" and tm and tm["kind"] == "vacated" and has_rb_carries:

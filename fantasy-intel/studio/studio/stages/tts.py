@@ -17,7 +17,7 @@ import soundfile as sf
 
 from ..core import STUDIO_ROOT, Episode, read_json, run_stage, write_json
 
-VERSION = 3
+VERSION = 5
 PRONUNCIATIONS = STUDIO_ROOT / "studio" / "pronunciations.toml"
 
 
@@ -61,6 +61,9 @@ def synthesize(pipe, text: str, cfg: dict, speed: float | None = None) -> tuple[
         chunks.append(audio)
         offset += len(audio) / sr
     audio = np.concatenate(chunks).astype(np.float32)
+    peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
+    if peak > 0.95:                       # Kokoro occasionally overshoots full scale on a stressed word
+        audio *= 0.95 / peak
     if cfg.get("trim") and words:
         # Kokoro pads each clip with ~0.15 s of silence and lets the last word ring out; trim to the speech
         # (with a short breath either side) so beats run together without dead air.
@@ -85,9 +88,20 @@ def _run(ep: Episode) -> None:
     timings, unknown = {"sample_rate": cfg["sample_rate"], "voice": cfg["voice"], "segments": []}, {}
     fallback_words: set[str] = set()
     for seg in script["narration_segments"]:
-        text = apply_pronunciations(seg["text_spoken"], lexicon)
         fallback_words |= set(lexicon_misses(seg["text_spoken"])) - set(lexicon)
-        audio, words, missing = synthesize(pipe, text, cfg, seg.get("speed"))
+        tail = seg.get("pause", cfg["segment_tail_silence"])
+        parts = seg.get("spoken_parts") or [seg["text_spoken"]]
+        audio, words, missing = None, [], []
+        for i, part in enumerate(parts):
+            # each part trimmed to its speech, then the planned silence: within a line, part_pause; after it,
+            # the line's own pause
+            gap = seg.get("part_pause", 0.3) if i < len(parts) - 1 else tail
+            a, w, m = synthesize(pipe, apply_pronunciations(part, lexicon), {**cfg, "segment_tail_silence": gap},
+                                 seg.get("speed"))
+            off = 0.0 if audio is None else len(audio) / cfg["sample_rate"]
+            words += [{**x, "start": round(x["start"] + off, 3), "end": round(x["end"] + off, 3)} for x in w]
+            missing += m
+            audio = a if audio is None else np.concatenate([audio, a])
         if missing:
             unknown[seg["id"]] = sorted(set(missing))
             continue

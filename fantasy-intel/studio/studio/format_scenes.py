@@ -264,7 +264,7 @@ def scene_rival(img, t, dur, spec, c):
         ImageDraw.Draw(pill).rounded_rectangle((0, 8, pill.width - 1, pill.height - 8), radius=22, fill=M.GOLD)
         pill.alpha_composite(lay, (5, 0))
         M.paste(img, pill, min(xr, M.SAFE_RIGHT - pill.width / 2), 445, 0.6 + 0.4 * kb, M.clamp(kb * 2))
-    rows = [("SNAPS", b["snaps"], r["snaps"], c.at(word="more", default=1.6)),
+    rows = [("SNAPS", b["snaps"], r["snaps"], c.at(word="outsnap", default=1.6)),
             ("TARGETS", b["targets"], r["targets"], c.at(claim=r["targets"], default=2.4))]
     for i, (label, mine, theirs, at) in enumerate(rows):
         y = 960 + i * 180
@@ -329,8 +329,9 @@ def scene_giant_number(img, t, dur, spec, c):
     M.put_text(img, c.d(car["own_recent_share"]), M.CENTER_X + shake, 680, size=380, fill=M.INK, scale=1.6 - 0.6 * k,
                alpha=M.clamp(k * 3), stroke=0)
     kn = M.ease_out(M.progress(t, 0.15, 0.3))
-    name = c.p["name"].upper()
-    M.put_text(img, name, M.SAFE_LEFT, 300, size=M.fit_size(name, "black", 72, 860), alpha=kn, anchor="l")
+    if spec.get("reveal_player", True):
+        name = c.p["name"].upper()
+        M.put_text(img, name, M.SAFE_LEFT, 300, size=M.fit_size(name, "black", 72, 860), alpha=kn, anchor="l")
     team = c.d(c.p["team_name"]).upper()
     M.put_text(img, f"OF THE {team}' RUNNING BACK CARRIES", M.CENTER_X, 905,
                size=M.fit_size(f"OF THE {team}' RUNNING BACK CARRIES", "black", 50, 860), alpha=kn)
@@ -341,8 +342,9 @@ def scene_giant_number(img, t, dur, spec, c):
     ImageDraw.Draw(pill).rounded_rectangle((0, 12, pill.width - 1, pill.height - 12), radius=28, fill=M.GOLD)
     pill.alpha_composite(lay, (10, 0))
     M.paste(img, pill, M.CENTER_X, 1000, 1.0, kc)
-    kh = M.ease_out(M.progress(t, 0.35, 0.35))
-    M.paste(img, c.art(170), M.SAFE_RIGHT - 80 + (1 - kh) * 300, 290, 1.0, kh)
+    if spec.get("reveal_player", True):
+        kh = M.ease_out(M.progress(t, 0.35, 0.35))
+        M.paste(img, c.art(170), M.SAFE_RIGHT - 80 + (1 - kh) * 300, 290, 1.0, kh)
     # the carries themselves, filling while the line is said: a preview of the grid that follows
     total, mine = _n(c, car["team_recent"]), _n(c, car["own_recent"])
     per, step, size = 10, 74, 58
@@ -391,7 +393,7 @@ def scene_carry_grid(img, t, dur, spec, c):
     x0 = M.CENTER_X - (per - 1) * step / 2
     ball_grid(img, his, x0, 430, per, step, size, t, 0.05, 0.8, tint=SILVER, highlight=0)
     gold = _tinted(size, M.GOLD)
-    g0 = max(0.9, c.at(claim=car["own_base"], default=1.2) - 0.45)
+    g0 = max(0.9, c.at(claim=car["own_base_share"], default=1.2) - 0.45)
     for i in range(mine):
         r, col = divmod(his + i, per)
         k = M.back_out(M.progress(t, g0 + 0.03 * i, 0.18))
@@ -402,15 +404,17 @@ def scene_carry_grid(img, t, dur, spec, c):
         r, col = divmod(his + mine + i, per)
         M.paste(img, football(size, ghost=True), x0 + col * step, 430 + r * step * 0.8, 1.0,
                 M.clamp((t - 1.6) * 4))
-    for x, art, n, col, cid in ((M.CENTER_X - 220, _tm_face(c, 190), his, SILVER, car["tm_base"]),
-                                (M.CENTER_X + 220, c.art(190), mine, M.GOLD, car["own_base"])):
-        k = M.back_out(M.progress(t, c.at(claim=cid, default=1.2) - 0.1, 0.25))
+    for x, art, col, share, count, at in (
+            (M.CENTER_X - 230, _tm_face(c, 190), SILVER, car["tm_base_share"], car["tm_base"], 0.5),
+            (M.CENTER_X + 210, c.art(190), M.GOLD, car["own_base_share"], car["own_base"],
+             c.at(claim=car["own_base_share"], default=1.2))):
+        k = M.back_out(M.progress(t, at - 0.1, 0.25))
         if k <= 0:
             continue
-        M.paste(img, art, x - 110, 1130, 1.0, M.clamp(k * 2))
-        M.put_text(img, c.d(cid), x + 60, 1130, size=120, fill=col, scale=0.6 + 0.4 * k, alpha=M.clamp(k * 2))
+        M.paste(img, art, x - 95, 1120, 0.8, M.clamp(k * 2))
+        M.put_text(img, c.d(share), x + 85, 1110, size=96, fill=col, scale=0.6 + 0.4 * k, alpha=M.clamp(k * 2))
         nm = (tm["name"] if col == SILVER else c.p["name"]).split()[-1].upper()
-        M.put_text(img, nm, x - 110, 1245, size=32, fill=col, alpha=M.clamp(k * 2))
+        M.put_text(img, f"{nm} · {c.d(count)} CARRIES", x, 1250, size=30, fill=col, alpha=M.clamp(k * 2))
 
 
 def scene_handoff(img, t, dur, spec, c):
@@ -456,7 +460,7 @@ def scene_report(img, t, dur, spec, c):
     k = M.ease_out(M.progress(t, 0.0, 0.35))
     W_, H_ = 860, 760
     sheet = Image.new("RGBA", (W_, H_), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(sheet)
+    sd = ImageDraw.Draw(sheet, "RGBA")
     sd.rounded_rectangle((0, 0, W_ - 1, H_ - 1), radius=18, fill=PAPER + (255,))
     sd.rectangle((0, 0, W_, 110), fill=(36, 40, 48))
     sd.text((40, 55), f"OFFICIAL INJURY REPORT · WEEK {week}", font=M.font("black", 40), fill=PAPER, anchor="lm")
@@ -466,6 +470,12 @@ def scene_report(img, t, dur, spec, c):
         sd.line((40, y, W_ - 40, y), fill=(200, 196, 186), width=2)
     sd.text((40, 390), "PRACTICE STATUS" if code == "practice" else "STATUS", font=M.font("bold", 32),
             fill=(90, 94, 102), anchor="lm")
+    if tm.get("reason"):
+        # each line of the report appears as it is said, so a long sentence keeps moving
+        kr = M.clamp((t - c.at(claim=tm["reason"], default=0.8) + 0.2) * 4)
+        injury = c.d(tm["reason"]).upper().removeprefix("A ").removeprefix("AN ")
+        sd.text((40, 510), f"{injury} · MISSED {c.d(tm['missed']).upper()}", font=M.font("black", 34),
+                fill=PAPER_INK + (int(255 * kr),), anchor="lm")
     asof = c.d(c.p["details"]["as_of"]).upper() if "as_of" in c.p["details"] else ""
     sd.text((40, 650), f"DATA AS OF {asof} · CHECK FINAL STATUS BEFORE KICKOFF", font=M.font("bold", 26),
             fill=(90, 94, 102), anchor="lm")
@@ -479,8 +489,9 @@ def scene_report(img, t, dur, spec, c):
     M.paste(img, sheet, M.CENTER_X, 720 + (1 - k) * 900, 1.0, 1.0)
     word = {"ir": "INJURED RESERVE", "none": "NOT ON REPORT"}.get(code) or (
         detail.upper() if code == "designation" else STATUS_WORDS.get(detail, detail.upper()))
-    ks = M.back_out(M.progress(t, c.at(claim=tm["status"], default=1.0) + 0.1, 0.25))
-    stamp(img, word, M.CENTER_X, 830, RED if code != "none" else M.UP, ks, size=88, angle=-7)
+    brief = c.p["details"].get("status_brief")
+    ks = M.back_out(M.progress(t, c.at(claim=brief or tm["status"], default=1.0) + 0.1, 0.25))
+    stamp(img, word, M.CENTER_X, 745, RED if code != "none" else M.UP, ks, size=88, angle=-7)
 
 
 def scene_window(img, t, dur, spec, c):
@@ -531,7 +542,146 @@ def scene_window(img, t, dur, spec, c):
     brand(img, t, dur)
 
 
+
+# ------------------------------------------------------------------------------------- pass 4 scenes
+
+def _card(text_top: str, text_big: str, col, w: int = 330, h: int = 210) -> Image.Image:
+    card = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(card)
+    d.rounded_rectangle((0, 0, w - 1, h - 1), radius=24, fill=(20, 26, 34, 240), outline=col + (160,), width=4)
+    d.text((w / 2, 50), text_top, font=M.font("black", 34), fill=M.MUTED, anchor="mm")
+    d.text((w / 2, 135), text_big, font=M.font("black", M.fit_size(text_big, "black", 72, w - 30)), fill=col,
+           anchor="mm")
+    return card
+
+
+def scene_which(img, t, dur, spec, c):
+    """The question, centred on the player: his face between the two games that disagree."""
+    a, b = _games(c, spec["games"])
+    k = M.ease_out(M.progress(t, 0.0, 0.3))
+    M.paste(img, c.art(430), M.CENTER_X, 640, 0.9 + 0.1 * k, k)
+    name = c.p["name"].upper()
+    M.put_text(img, name, M.CENTER_X, 905, size=M.fit_size(name, "black", 62, 860), alpha=k)
+    for g, x, side, col in ((a, M.SAFE_LEFT + 165, -1, M.INK), (b, M.SAFE_RIGHT - 165, 1, RED)):
+        kc = M.ease_out(M.progress(t, 0.1, 0.3))
+        n = _n(c, g["targets"])
+        card = _card(c.d(g["week_claim"]).upper(), f"{c.d(g['targets'])} TARGET{'S' if n != 1 else ''}", col)
+        M.paste(img, card, x + side * (1 - kc) * 400, 1090, 1.0, kc)
+    kq = M.back_out(M.progress(t, c.at(word="real", default=dur * 0.6) - 0.1, 0.25))
+    if kq > 0:
+        M.put_text(img, "?", M.CENTER_X + 190, 470, size=220, fill=M.GOLD, scale=1.5 - 0.5 * kq,
+                   alpha=M.clamp(kq * 2), stroke=6)
+
+
+def _season_layer(c, spec, t, stage_t) -> Image.Image:
+    """Every game this season as a stack of footballs (targets) over a snap count: drawn once per frame on a
+    transparent layer so the zoom can move it as a whole."""
+    lay = Image.new("RGBA", (M.W, M.H), (0, 0, 0, 0))
+    season = [g for g in c.p["details"]["season"] if g.get("targets")]
+    spike = spec.get("spike")
+    n = len(season)
+    step = (M.SAFE_RIGHT - M.SAFE_LEFT - 60) / max(n - 1, 1)
+    ball = football(78)
+    for i, g in enumerate(season):
+        x = M.SAFE_LEFT + 30 + i * step
+        val = _n(c, g["targets"])
+        recent = g["week"] >= (spike or 99) or g is season[-1]
+        at = 0.0 if recent else c.at(claim=g["targets"], default=0.5)
+        k = M.back_out(M.progress(stage_t, at - 0.1, 0.25))
+        if k > 0:
+            for j in range(val):
+                M.paste(lay, ball if g["week"] != spike else _tinted(78, M.GOLD), x, 1000 - j * 50,
+                        0.5 + 0.5 * k, M.clamp(k * 2))
+            M.put_text(lay, c.d(g["targets"]), x, 1000 - val * 50 - 40, size=72,
+                       fill=M.GOLD if g["week"] == spike else M.INK, alpha=M.clamp(k * 2))
+        M.put_text(lay, f"WK {g['week']}", x, 1070, size=34, fill=M.MUTED)
+        if g.get("snaps"):
+            M.put_text(lay, c.d(g["snaps"]), x, 1150, size=48, fill=TEAL)
+    M.put_text(lay, "TARGETS", M.SAFE_LEFT, 380, size=40, fill=M.MUTED, anchor="l")
+    M.put_text(lay, "SNAPS", M.SAFE_LEFT, 1205, size=28, fill=TEAL, anchor="l")
+    return lay, season, step
+
+
+def scene_zoom_out(img, t, dur, spec, c):
+    """His whole season, revealed by pulling back from the two games everyone saw."""
+    lay, season, step = _season_layer(c, spec, t, t if spec.get("stage") == "zoom" else 9)
+    if spec.get("stage") == "zoom":
+        idx = [i for i, g in enumerate(season) if g["week"] >= (spec.get("spike") or 0)]
+        cx = M.SAFE_LEFT + 30 + step * (sum(idx) / max(len(idx), 1))
+        z = M.ease_in_out(M.progress(t, c.at(word="zoom", default=0.3), 0.9))
+        s = 1.8 - 0.8 * z
+        cx = cx + (M.W / 2 - cx) * z
+        cy = 800 + (M.H / 2 - 800) * z
+        hw, hh = M.W / (2 * s), M.H / (2 * s)
+        cx, cy = min(max(cx, hw), M.W - hw), min(max(cy, hh), M.H - hh)
+        box = (cx - hw, cy - hh, cx + hw, cy + hh)
+        lay = lay.resize((M.W, M.H), Image.BILINEAR, box=box)
+    img.paste(lay, (0, 0), lay)
+    if spec.get("stage") != "verdict":
+        return
+    spike = spec.get("spike")
+    if spike:
+        i = next(i for i, g in enumerate(season) if g["week"] == spike)
+        ko = M.back_out(M.progress(t, c.at(word="outlier", default=0.6) - 0.05, 0.25))
+        top = 1000 - _n(c, season[i]["targets"]) * 50 - 40
+        stamp(img, "OUTLIER", M.SAFE_LEFT + 30 + i * step - 40, top - 105, M.GOLD, ko, size=64, angle=-10)
+    if spec.get("locked"):
+        kl = M.ease_out(M.progress(t, c.at(word="locked", default=1.5) - 0.05, 0.3))
+        locked = [i for i, g in enumerate(season) if g["week"] >= (spike or 0) - 1]
+        if kl > 0 and locked:
+            x0 = M.SAFE_LEFT + 30 + locked[0] * step - 50
+            x1 = M.SAFE_LEFT + 30 + locked[-1] * step + 50
+            d = ImageDraw.Draw(img, "RGBA")
+            d.rounded_rectangle((x0, 1112, x0 + (x1 - x0) * kl, 1188), radius=20, outline=TEAL + (230,), width=5)
+            M.put_text(img, "LOCKED IN", (x0 + x1) / 2, 1240, size=34, fill=TEAL, alpha=kl)
+    kc = M.back_out(M.progress(t, c.at(word="chase", default=dur * 0.8) - 0.1, 0.25))
+    if kc > 0:
+        M.put_text(img, spec.get("stamp", ""), M.CENTER_X, 300, size=M.fit_size(spec.get("stamp", ""), "black", 76, 860),
+                   fill=M.INK, scale=1.3 - 0.3 * kc, alpha=M.clamp(kc * 2))
+    M.put_text(img, f"{len(season)}-GAME SAMPLE", M.SAFE_RIGHT - 140, 380, size=28, fill=M.MUTED,
+               alpha=0.9)
+    brand(img, t, dur, y=1295)
+
+
+def scene_fork(img, t, dur, spec, c):
+    """The call, both ways: what to do if the starter sits, and what the only evidence says if he's back."""
+    tm = c.p["teammate"]
+    car = c.p["details"]["carries"]
+    nxt = c.p["details"].get("next_game")
+    last = lambda s: s.split()[-1].upper()
+    if nxt:
+        chip = f"WEEK {c.p['recent_weeks'][-1] + 1} · {c.d(nxt['venue']).upper()} {c.d(nxt['opponent']).upper()}"
+        M.put_text(img, chip, M.CENTER_X, 300, size=40, fill=M.GOLD, alpha=M.clamp(t * 4))
+    d = ImageDraw.Draw(img, "RGBA")
+    k0 = M.ease_out(M.progress(t, 0.05, 0.35))
+    node = (M.CENTER_X, 380)
+    d.ellipse((node[0] - 16, node[1] - 16, node[0] + 16, node[1] + 16), fill=M.INK + (int(255 * k0),))
+    branches = [
+        (f"IF {last(tm['name'])} SITS", f"START {last(c.p['name'])}", M.UP, c.art(170),
+         f"{c.d(car['own_recent_share'])} OF RB CARRIES · {c.d(car['recent_weeks']).upper()}",
+         c.at(word="sits", default=0.4), 600),
+        (f"IF {last(tm['name'])} IS BACK", "THE OLD SPLIT", SILVER, _tm_face(c, 170),
+         f"{last(c.p['name'])} HAD {c.d(car['own_base_share'])} · {c.d(car['base_weeks']).upper()}",
+         c.at(word="back", default=dur * 0.6), 960),
+    ]
+    for head, call, col, face_, sub_, at, y in branches:
+        k = M.ease_out(M.progress(t, at - 0.15, 0.35))
+        if k <= 0:
+            continue
+        d.line((node[0], node[1], node[0], node[1] + (y - 120 - node[1]) * k), fill=col + (200,), width=6)
+        card = Image.new("RGBA", (880, 260), (0, 0, 0, 0))
+        cd = ImageDraw.Draw(card)
+        cd.rounded_rectangle((0, 0, 879, 259), radius=30, fill=(10, 16, 14, 225), outline=col + (200,), width=5)
+        cd.text((230, 62), head, font=M.font("black", 40), fill=M.MUTED, anchor="lm")
+        cd.text((230, 140), call, font=M.font("black", M.fit_size(call, "black", 92, 620)), fill=col, anchor="lm")
+        cd.text((230, 212), sub_, font=M.font("bold", 30), fill=M.INK, anchor="lm")
+        card.alpha_composite(face_, (30, 45))
+        M.paste(img, card, M.CENTER_X + (1 - k) * 300, y, 1.0, k)
+    brand(img, t, dur)
+
+
 FORMAT_SCENES = {
+    "which": ("casefile", scene_which), "zoom_out": ("casefile", scene_zoom_out), "fork": ("alert", scene_fork),
     "mirror": ("casefile", scene_mirror), "volume_balls": ("casefile", scene_volume_balls),
     "rival": ("casefile", scene_rival), "verdict": ("casefile", scene_verdict),
     "giant_number": ("alert", scene_giant_number), "carry_grid": ("alert", scene_carry_grid),
@@ -546,11 +696,17 @@ def punches(scene: dict, c, dur: float) -> list[float]:
         return ([0.33] if scene.get("stage") != "targets" else []) + \
             ([c.at(claim=b["targets"], default=99)] if scene.get("stage") != "collide" else [])
     if kind == "rival":
-        return [c.at(word="more", default=99)]
+        return [c.at(word="outsnap", default=99)]
     if kind == "verdict":
         return [c.at(word="budge", default=99)] if scene.get("stage") != "call" else [0.4]
     if kind == "giant_number":
         return [0.0]
+    if kind == "which":
+        return [c.at(word="real", default=99)]
+    if kind == "zoom_out":
+        return [c.at(word="outlier", default=99)] if scene.get("stage") == "verdict" else []
+    if kind == "fork":
+        return [c.at(word="start", default=99)]
     if kind == "handoff":
         return [c.at(word="out", default=99)]
     if kind == "report":
@@ -570,23 +726,32 @@ def sounds(scene: dict, start: float, dur: float, c) -> list[tuple[float, str, f
         if scene.get("stage") != "collide":
             for g in (a, b):
                 at = c.at(claim=g["targets"], default=99)
-                ev += [(start + at + 0.04 * i, "tick", -9) for i in range(min(8, _n(c, g["targets"])))]
+                ev.append((start + at, "tick", -8))
             ev.append((start + c.at(claim=b["targets"], default=99) + 0.05, "stamp", -5))
     if kind == "volume_balls":
-        ev += [(start + 0.15 + 0.06 * i, "tick", -12) for i in range(10)]
-        ev.append((start + 1.4, "stamp", -6))
+        ev.append((start + 1.2, "stamp", -8))
     if kind == "rival":
         ev.append((start + c.at(word="back", default=99) - 0.05, "stamp", -5))
-        ev.append((start + c.at(word="more", default=99) - 0.1, "impact", -4))
+        ev.append((start + c.at(word="outsnap", default=99) - 0.1, "impact", -4))
     if kind == "verdict":
         if scene.get("stage") == "call":
             ev += [(start + 0.35, "stamp", -3), (start + 0.85, "stamp", -5)]
         else:
             ev.append((start + c.at(word="budge", default=99) - 0.05, "stamp", -4))
     if kind == "giant_number":
-        ev.append((start, "impact", 0))
+        ev.append((start, "impact", -1))
+    if kind == "which":
+        ev.append((start + c.at(word="real", default=99) - 0.1, "tick", -4))
+    if kind == "zoom_out":
+        if scene.get("stage") == "zoom":
+            ev.append((start + c.at(word="zoom", default=99), "rise", -10))
+        else:
+            ev.append((start + c.at(word="outlier", default=99) - 0.05, "stamp", -4))
+            ev.append((start + c.at(word="chase", default=99) - 0.1, "impact", -6))
+    if kind == "fork":
+        ev.append((start + c.at(word="start", default=99) - 0.05, "stamp", -5))
     if kind == "carry_grid":
-        ev += [(start + 0.1 + 0.08 * i, "tick", -12) for i in range(12)]
+        pass
     if kind == "handoff":
         ev.append((start + c.at(word="out", default=99) - 0.1, "stamp", -2))
     if kind == "report":

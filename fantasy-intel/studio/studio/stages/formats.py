@@ -1,16 +1,19 @@
 """Editorial formats for Shorts: a story shape chosen from the data (studio/editorial.py), not a template.
 
 Each format owns its opening, the order and voice of its beats, its scenes, transitions, music and ending.
-Narration interprets; the screen carries the exact numbers. Every number, week, reason and status is still a
-claim placeholder ({{c012}}), and every number drawn on screen is a claim the scene spec lists, so QC checks
-both against the data.
+Narration interprets, in the voice of a fan telling a friend something surprising: short lines, contractions,
+a question where a person would ask one, numbers only where the number is the point. The screen carries the
+exact figures and their denominators. Every number, week, reason and status is a claim placeholder
+({{c012}}); every number drawn on screen is a claim the scene spec lists; QC re-derives both.
 
-  mystery      "Same snaps, two weeks straight. Eight targets, then one." Clues from the data (the team threw
-               less; a teammate came back) are shown side by side, never claimed as the cause. Ends on a verdict
-               the evidence supports: what is stable, what is not, and the decision that follows.
-  opportunity  "He just got almost every running back carry." The old split, the absence (official report),
-               the status as of a date, and the window: start him while it is open, and what the only
-               evidence says happens when the starter returns.
+Rhythm is written into the lines: `‖` is a deliberate pause inside a line (story.PAUSE), and each beat's
+`pause` is the silence after it: short when the next line follows straight on, longer after a reveal.
+
+  mystery      Opens on the contradiction itself (same snaps, very different targets), asks which game was
+               real, shows what the data can (the team's volume, a teammate who came back), then zooms out
+               to his whole season for the answer. Clues are shown side by side, never claimed as causes.
+  opportunity  Opens on the workload number, then who and why, the split with the starter, the injury and
+               its dated status, and a conditional call: what to do if the starter sits, and if he returns.
 """
 
 from __future__ import annotations
@@ -26,31 +29,47 @@ def said(name: str) -> str:
 
 
 POS_WORD = {"TE": "tight end", "WR": "receiver", "RB": "running back"}
-ORDINAL_CLUE = ["First clue", "Second clue", "Third clue"]
 
+# Opening candidates, strongest first (scored in docs/creative-pass-4/README.md). The first one not used
+# by this format in its last two videos opens the video; the rest stay available for A/B tests (--hook).
 MYSTERY_HOOKS = {
-    # opening line(s); the mirror scene's staging follows: snaps collide first, or both rows land at once
-    "same_snaps": "{name} played {same} snaps in back-to-back weeks.",
-    "question": "Same snaps, back-to-back weeks. So why did {name} go from {t1} targets to {t2}?",
-    "rhythm": "{s1} snaps, {t1} targets. {s2} snaps, {t2}. Same {pos}.",
+    "collide": "Same snaps both weeks. {t1} targets, then {t2}.",
+    "how": "How do you play the exact same snaps and go from {t1} targets to {t2}?",
+    "cliff": "{name}'s targets just fell off a cliff. His snaps didn't move.",
 }
 OPPORTUNITY_HOOKS = {
-    "giant": "{name} just got almost every {team} running back carry.",
-    "count": "{own} of {all}. That's how many {team} running back carries went to {name}.",
-    "changed_hands": "The {team} backfield just changed hands. And it might not be for long.",
+    "share": "{share} of the backfield?",
+    "count": "{own} of {all} running back carries. One guy.",
+    "hall_out": "{tm}'s out, and {name}'s getting basically every carry.",
 }
 TITLES = {
-    "mystery": ["{name}: Same Snaps, {t1} Targets, Then {t2}", "What Happened to {name}'s Targets?",
-                "The {name} Mystery"],
-    "opportunity": ["{name} Just Took Over the {team} Backfield", "{own} of {all}: {name}'s Window",
+    "mystery": ["{name}: Same Snaps, {t1} Targets, Then {t2}", "Which {name} Is Real?",
+                "The {name} Target Mystery"],
+    "opportunity": ["{share} of the Backfield: {name} With {tm} Out", "{own} of {all}: {name}'s Window",
                     "Start {name} While {tm} Sits?"],
 }
 
 
-def _hook_order(options: dict, used: list[str]) -> list[str]:
-    from .story import choose
-    first = choose(list(options), used, "")
-    return [first] + [k for k in options if k != first]
+def pick_hook(options: dict, used: list[str], override: str | None) -> tuple[str, list[str]]:
+    """The strongest opening unless it opened one of the last two Shorts: vary only when repetition would
+    show, never at random."""
+    order = list(options)
+    if override in options:
+        return override, order
+    recent = used[-2:]
+    hook = next((k for k in order if k not in recent), order[0])
+    return hook, order
+
+
+def outlier_game(claims: dict, season: list[dict]) -> dict | None:
+    """The one game far above the rest (at least double every other game's targets), if there is one."""
+    games = [g for g in season if g.get("targets")]
+    if len(games) < 4:
+        return None
+    vals = [claims[g["targets"]]["value"] for g in games]
+    top = max(range(len(vals)), key=lambda i: vals[i])
+    others = vals[:top] + vals[top + 1:]
+    return games[top] if vals[top] >= 2 * max(others) and vals[top] >= 5 else None
 
 
 def mystery(p: dict, claims: dict, used: dict, hook_override: str | None = None):
@@ -60,105 +79,112 @@ def mystery(p: dict, claims: dict, used: dict, hook_override: str | None = None)
     a, b = case["games"]
     who = last(p["name"])
     pos = POS_WORD.get(p["position"], "player")
-    same_count = claims[a["snaps"]]["value"] == claims[b["snaps"]]["value"]
-    order = _hook_order(MYSTERY_HOOKS, used.get("hook", []))
-    hook = hook_override if hook_override in MYSTERY_HOOKS else order[0]
-    fields = {"name": said(p["name"]), "pos": pos, "same": "the exact same" if same_count else "the same",
-              "t1": ph(a["targets"]), "t2": ph(b["targets"]), "s1": ph(a["snaps"]), "s2": ph(b["snaps"])}
-    mirror = {"type": "mirror", "games": [a["week"], b["week"]], "transition": "cut", "camera": "still",
+    hook, order = pick_hook(MYSTERY_HOOKS, used.get("hook", []), hook_override)
+    fields = {"name": said(p["name"]), "t1": ph(a["targets"]), "t2": ph(b["targets"])}
+    mirror = {"type": "mirror", "games": [a["week"], b["week"]], "stage": "both", "camera": "still",
               "claims": [a["snaps"], b["snaps"], a["snap_share"], b["snap_share"], a["targets"], b["targets"],
                          a["week_claim"], b["week_claim"]]}
-    beats = [beat("hook", MYSTERY_HOOKS[hook].format(**fields),
-                  {**mirror, "stage": "collide" if hook == "same_snaps" else "both"},
-                  ["exact", "same"] if hook == "same_snaps" else ["why"] if hook == "question" else ["same"], 1.12)]
-    if hook == "same_snaps":
-        beats.append(beat("contradiction", f"{ph(a['targets'])} targets. Then {ph(b['targets'])}.",
-                          {**mirror, "stage": "targets", "transition": "none"}, [], 0.98))
-    returned = None
-    for i, clue in enumerate(clues):
-        lead_in = ORDINAL_CLUE[i]
+    beats = [beat("hook", MYSTERY_HOOKS[hook].format(**fields), mirror,
+                  {"collide": ["same"], "how": ["exact", "same"], "cliff": ["cliff"]}[hook], 1.1, pause=0.25)]
+    beats.append(beat("question", f"So which one's the real {said(p['name'])}?",
+                      {"type": "which", "games": [a["week"], b["week"]], "transition": "zoom", "camera": "still",
+                       "claims": [a["targets"], b["targets"], a["week_claim"], b["week_claim"]]},
+                      ["real"], 1.14, pause=0.2))
+    # One clue, the one that matters going forward: a teammate who came back beats the team's one-week volume.
+    clues = sorted(clues, key=lambda c_: c_["kind"] != "returned")[:1]
+    for clue in clues:
         if clue["kind"] == "volume":
-            beats.append(beat("clue", f"{lead_in}: the {_team(p, claims)} threw way less.",
+            beats.append(beat("clue", f"Part of it? The {_team(p, claims)} just threw way less.",
                               {"type": "volume_balls", "games": [a["week"], b["week"]], "transition": "cut",
-                               "camera": "still", "exhibit": "A" if i == 0 else "B",
+                               "sfx": True, "camera": "still", "exhibit": "A",
                                "claims": [a["team_targets"], b["team_targets"], a["targets"], b["targets"]]},
-                              ["way", "less"], 1.1))
+                              ["less"], 1.16, pause=0.15))
         elif clue["kind"] == "returned":
-            returned = r = clue["who"]
-            beats.append(beat("clue", f"{lead_in}: another {pos}, {said(r['name'])}, was back. More snaps than {who}, "
-                                      f"and {ph(r['targets'])} targets.",
-                              {"type": "rival", "rival": r["gsis_id"], "transition": "cut", "camera": "still",
-                               "exhibit": "A" if i == 0 else "B",
+            r = clue["who"]
+            beats.append(beat("clue", f"Part of it? {said(r['name'])} was back, out-snapping him and drawing "
+                                      f"{ph(r['targets'])} targets.",
+                              {"type": "rival", "rival": r["gsis_id"], "transition": "cut", "sfx": True,
+                               "camera": "still", "exhibit": "B",
                                "claims": [r["missed"], r["snaps"], r["targets"], b["snaps"], b["targets"]]},
-                              ["back", "more"], 1.1))
-    if case["falling"]:
-        steady = (f"But even with {last(returned['name'])} back, {who}'s snaps didn't budge." if returned and same_count
-                  else f"But {who}'s playing time didn't budge.")
-        verdict = "Don't start him off one big week. Don't cut him off one bad one."
-        stamp = ["HOLD HIM.", "DON'T START HIM YET."]
+                              ["back"], 1.16, pause=0.25))
+    season = p["details"].get("season", [])
+    spike = outlier_game(claims, season)
+    zoom = {"type": "zoom_out", "transition": "cut", "camera": "still",
+            "claims": [c for g in season for c in (g["targets"], g["snaps"], g["week_claim"]) if c]}
+    if spike and case["falling"] and spike["week"] == a["week"]:
+        before = [g for g in season if g["week"] < spike["week"] and g.get("targets")]
+        steady = [g for g in season if g["week"] >= a["week"] - 1 and g.get("snaps")]
+        locked = len({claims[g["snaps"]]["value"] for g in steady}) == 1
+        beats.append(beat("zoom", f"But zoom out. Before that {ph(spike['targets'])}-target game?‖ "
+                                  + ", ".join(ph(g["targets"]) for g in before[-3:]) + ".",
+                          {**zoom, "stage": "zoom", "spike": spike["week"]}, ["zoom", "out"], 1.12, pause=0.3))
+        snaps_line = "His snaps are locked in. The targets aren't." if locked else \
+            "He's on the field plenty. The targets just aren't there."
+        beats.append(beat("verdict", f"That {ph(spike['targets'])} was the outlier. {snaps_line}‖ "
+                                     "Don't chase the big week.",
+                          {**zoom, "stage": "verdict", "spike": spike["week"], "transition": "none",
+                           "locked": locked, "stamp": "DON'T CHASE THE SPIKE"},
+                          ["outlier", "chase"], 1.08, pause=0.6))
     else:
-        steady = f"And {who}'s playing time held steady."
-        verdict = "One big week isn't a role yet. But the snaps say he's worth a bench spot."
-        stamp = ["STASH HIM.", "DON'T START HIM YET."]
-    board = {"type": "verdict", "games": [a["week"], b["week"]], "transition": "cut", "camera": "still",
-             "stamp": stamp, "claims": [a["snaps"], b["snaps"], a["targets"], b["targets"]]}
-    beats.append(beat("verdict", steady, {**board, "stage": "board"}, ["didn't", "budge"], 1.06))
-    beats.append(beat("takeaway", verdict, {**board, "stage": "call", "transition": "none"}, ["start", "cut"], 1.02))
+        beats.append(beat("verdict", f"His playing time held.‖ The targets didn't.‖ Don't start him off one big "
+                                     "week,‖ and don't cut him off one bad one.",
+                          {**zoom, "stage": "verdict", "spike": None, "transition": "cut", "locked": False,
+                           "stamp": "HOLD, DON'T START"}, ["held", "didn't"], 1.08, pause=0.6))
     t = {"name": p["name"], "t1": ph(a["targets"]), "t2": ph(b["targets"])}
     titles = [x.format(**t) for x in TITLES["mystery"]]
-    variants = {k: MYSTERY_HOOKS[k].format(**fields) for k in order}
+    variants = {k: MYSTERY_HOOKS[k].format(**fields).replace("‖", "") for k in order}
     return beats, titles, hook, variants
 
 
 def opportunity(p: dict, claims: dict, used: dict, hook_override: str | None = None):
     from .story import beat, last, ph
     tm = p["teammate"]
-    car = p["details"]["carries"]
-    lead = p["metrics"][0]
+    d = p["details"]
+    car = d["carries"]
     who, tml = last(p["name"]), last(tm["name"])
     team = _team(p, claims)
-    order = _hook_order(OPPORTUNITY_HOOKS, used.get("hook", []))
-    hook = hook_override if hook_override in OPPORTUNITY_HOOKS else order[0]
-    fields = {"name": said(p["name"]), "team": team, "own": ph(car["own_recent"]), "all": ph(car["team_recent"])}
+    hook, order = pick_hook(OPPORTUNITY_HOOKS, used.get("hook", []), hook_override)
+    fields = {"name": said(p["name"]), "team": team, "tm": said(tm["name"]), "share": ph(car["own_recent_share"]),
+              "own": ph(car["own_recent"]), "all": ph(car["team_recent"])}
     beats = [beat("hook", OPPORTUNITY_HOOKS[hook].format(**fields),
-                  {"type": "giant_number" if hook != "count" else "carry_grid", "stage": "recent",
-                   "identify": hook == "count",
-                   "transition": "cut", "camera": "drift",
+                  {"type": "giant_number", "camera": "drift", "reveal_player": hook == "hall_out",
                    "claims": [car["own_recent_share"], car["recent_weeks"], car["own_recent"], car["team_recent"]]},
-                  ["almost", "every"] if hook == "giant" else ["changed", "hands"], 1.08)]
-    if hook != "count":
-        beats.append(beat("count", f"{ph(car['own_recent'])} of {ph(car['team_recent'])} since {tml} went out.",
-                          {"type": "carry_grid", "stage": "recent", "transition": "whip", "camera": "drift",
-                           "claims": [car["own_recent"], car["team_recent"], car["recent_weeks"]]}, [], 1.04))
-    beats.append(beat("before", f"Before that? This was {said(tm['name'])}'s backfield. {ph(car['tm_base'])} carries to "
-                                f"{ph(car['own_base'])}.",
-                      {"type": "carry_grid", "stage": "before", "transition": "rewind", "camera": "drift",
-                       "claims": [car["tm_base"], car["own_base"], car["team_base"], car["base_weeks"]]},
-                      [tml.lower() + "'s"], 1.1))
-    reason = ph(tm["reason"]) if tm.get("reason") else "an absence"
-    beats.append(beat("absence", f"Then {reason} kept {tml} out.",
-                      {"type": "handoff", "transition": "whip", "camera": "drift",
-                       "claims": [c for c in (tm.get("reason"), tm["missed"]) if c]}, ["out"], 1.04))
-    status = claims[tm["status"]]["value"]
-    if "as_of" in p["details"]:
-        beats.append(beat("status", f"As of {ph(p['details']['as_of'])}, {tml} was {ph(tm['status'])}.",
-                          {"type": "report", "transition": "whip", "camera": "drift",
-                           "claims": [tm["status"], p["details"]["as_of"]]}, [], 1.12))
-    code, _, detail = status
-    nxt = p["details"].get("next_game")
-    window = {"type": "window", "transition": "whip", "camera": "drift",
-              "claims": [car["own_base_share"], car["tm_base_share"], car["base_weeks"]]
-              + ([nxt["opponent"], nxt["venue"]] if nxt else [])}
+                  {"share": ["backfield"], "count": ["one", "guy"], "hall_out": ["every"]}[hook], 1.08, pause=0.2)]
+    reveal = (f"That's {said(p['name'])}, with {said(tm['name'])} out." if hook != "hall_out"
+              else f"{ph(car['own_recent'])} of {ph(car['team_recent'])}, to be exact.")
+    beats.append(beat("reveal", reveal,
+                      {"type": "carry_grid", "stage": "recent", "identify": True, "transition": "whip", "sfx": True,
+                       "camera": "drift", "claims": [car["own_recent"], car["team_recent"], car["recent_weeks"]]},
+                      [who.lower()], 1.14, pause=0.2))
+    beats.append(beat("before", f"With {tml} playing? {who} got {ph(car['own_base_share'])} of the carries.",
+                      {"type": "carry_grid", "stage": "before", "transition": "rewind", "sfx": True, "camera": "drift",
+                       "claims": [car["own_base_share"], car["tm_base_share"], car["tm_base"], car["own_base"],
+                                  car["team_base"], car["base_weeks"]]},
+                      [tml.lower()], 1.14, pause=0.25))
+    reason = f" with {ph(tm['reason'])}" if tm.get("reason") else ""
+    status_bits = ([f"as of {ph(d['as_of'])},‖ he was {ph(d['status_brief'])}"]
+                   if "as_of" in d and "status_brief" in d else [])
+    line = f"{tml}'s missed {ph(tm['missed'])}{reason}" + (",‖ and " + status_bits[0].replace("‖", "")
+                                                           if status_bits else "") + "."
+    beats.append(beat("status", line,
+                      {"type": "report", "transition": "cut", "camera": "drift",
+                       "claims": [c for c in (tm["status"], tm.get("reason"), tm["missed"], d.get("as_of"),
+                                              d.get("status_brief")) if c]},
+                      [], 1.16, pause=0.3))
+    code, _, detail = claims[tm["status"]]["value"]
+    nxt = d.get("next_game")
+    fork = {"type": "fork", "transition": "whip", "sfx": True, "camera": "still",
+            "claims": [car["own_recent_share"], car["own_base_share"], car["recent_weeks"], car["base_weeks"]]
+            + ([nxt["opponent"], nxt["venue"]] if nxt else [])}
     if code == "none" or detail == "Full Participation in Practice":
-        call = f"If {tml} plays this week, {who}'s window could close right away."
+        call = f"{tml}'s practicing again, so this could flip right away.‖ If he's back, expect the old split."
     else:
-        call = f"So while {tml} sits, {who}'s a starter."
-    beats.append(beat("verdict", call, {**window, "stage": "open"}, ["sits", "starter"], 1.04))
-    beats.append(beat("caveat", f"When {tml}'s back, the only split we've seen is this one.",
-                      {**window, "stage": "closing", "transition": "none"}, ["only"], 1.06))
-    t = {"name": p["name"], "team": team, "tm": tml, "own": ph(car["own_recent"]), "all": ph(car["team_recent"])}
+        call = f"If {tml} sits again, {who}'s an easy start.‖ If he's back, expect the old split."
+    beats.append(beat("verdict", call, fork, ["start", "split"], 1.08, pause=0.6))
+    t = {"name": p["name"], "team": team, "tm": tml, "own": ph(car["own_recent"]), "all": ph(car["team_recent"]),
+         "share": ph(car["own_recent_share"])}
     titles = [x.format(**t) for x in TITLES["opportunity"]]
-    variants = {k: OPPORTUNITY_HOOKS[k].format(**fields) for k in order}
+    variants = {k: OPPORTUNITY_HOOKS[k].format(**fields).replace("‖", "") for k in order}
     return beats, titles, hook, variants
 
 

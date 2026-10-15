@@ -173,6 +173,19 @@ def fmt_date(v: str) -> tuple[str, str]:
     return f"{MONTHS[m - 1][:3]} {d}", f"{MONTHS[m - 1]} {ordinal_words(d)}"
 
 
+def fmt_status_brief(v: list) -> tuple[str, str]:
+    """The status without its source clause ('not practicing'), for a line that dates it separately."""
+    code, detail = v[0], v[2]
+    if code == "ir":
+        return "on injured reserve", "on injured reserve"
+    if code == "designation":
+        return f"listed {detail.lower()}", f"listed {detail.lower()}"
+    if code == "practice":
+        phrase = PRACTICE.get(detail, detail.lower())
+        return phrase, phrase
+    return "off the injury report", "off the injury report"
+
+
 def fmt_opponents(v: list) -> tuple[str, str]:
     """['SEA', 'bye', 'SF'] -> ('the Seahawks, a bye and the 49ers', 'the Seahawks, a bye and the Niners')."""
     display = [("a bye" if t == "bye" else f"the {fmt_team(t)[0]}") for t in v]
@@ -193,6 +206,7 @@ FORMATTERS = {
     "pct": fmt_pct, "pp": fmt_pp, "signed_pct1": fmt_signed_pct1, "dec1": fmt_dec1, "int": fmt_int,
     "ordinal": fmt_ordinal, "week": fmt_week, "team": fmt_team, "opponents": fmt_opponents, "weeks_list": fmt_weeks_list,
     "status": fmt_status, "weeks_range": fmt_weeks_range, "text": fmt_text, "date": fmt_date,
+    "status_brief": fmt_status_brief,
 }
 
 

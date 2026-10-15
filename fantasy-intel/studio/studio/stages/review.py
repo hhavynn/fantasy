@@ -146,6 +146,10 @@ def build(ep: Episode) -> str:
         lines += [f"## Editorial score: {ed['total']}/40 ({ed['format']}, {ed['verdict']})", "",
                   "Heuristic for choosing stories, not a retention prediction.", ""]
         lines += [f"- {k}: {ed['scores'][k]} ({ed['reasons'][k]})" for k in ed["scores"]] + [""]
+        if ed.get("checks"):
+            lines += ["Pre-render check:", ""]
+            lines += [f"- {'yes' if v['pass'] else '**no**'}: {v['question']} ({v['why']})" for v in ed["checks"].values()]
+            lines += [""] + ([f"Rejected: {'; '.join(ed['reject_reasons'])}", ""] if ed.get("reject_reasons") else [])
     if qc:
         tg = next((g for g in qc["gates"] if g["name"] == "timeliness"), None)
         if tg and tg.get("details", {}).get("valid_until"):

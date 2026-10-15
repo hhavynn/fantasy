@@ -30,7 +30,7 @@ from ..core import Episode, canonical_json, read_json, run_stage, sha256_bytes, 
 from . import formats as F
 from .script import PLACEHOLDER, fill
 
-VERSION = 8
+VERSION = 9
 WORDS_PER_SECOND = 2.9          # am_fenrir at ~1.1x, measured on the hook line
 
 SNAPS_BARELY_PTS = 5            # a snap-share change this small (displayed points) "barely moved"
@@ -145,8 +145,18 @@ def choose(options: list[str], used: list[str], seed: str) -> str:
     return min(options, key=lambda o: (last_use(o), options.index(o)))
 
 
-def beat(section: str, text: str, scene: dict, emphasis: list[str] | None = None, speed: float = 1.1) -> dict:
-    return {"section": section, "text_template": text, "scene": scene, "emphasis": emphasis or [], "speed": speed}
+PAUSE = "‖"            # a deliberate beat inside a line: "8 targets.‖ Then 1." (the narrator lets it land)
+PAUSE_SECONDS = 0.18
+
+
+def beat(section: str, text: str, scene: dict, emphasis: list[str] | None = None, speed: float = 1.1,
+         pause: float | None = None) -> dict:
+    """One spoken line and its scene. `pause` is the silence after it (None = the config default): short when
+    the next line follows straight on, longer after a reveal that needs a moment to register."""
+    b = {"section": section, "text_template": text, "scene": scene, "emphasis": emphasis or [], "speed": speed}
+    if pause is not None:
+        b["pause"] = pause
+    return b
 
 
 def _then_list(values: list[dict]) -> str:
@@ -372,7 +382,12 @@ def finish(beats, p, lead, story, hook_key, tm, who, titles=None):
         b["player"] = p["gsis_id"]
     structure = {"angle": story, "format": story if story in ("mystery", "opportunity") else "template",
                  "hook": hook_key, "primary_metric": lead["column"], "teammate": tm["name"] if tm else None,
-                 "beats": [b["section"] for b in beats], "scenes": [b["scene"]["type"] for b in beats]}
+                 "beats": [b["section"] for b in beats], "scenes": [b["scene"]["type"] for b in beats],
+                 # what a returning viewer would notice repeating: how it opens, cuts, breathes and ends
+                 "opening": beats[0]["scene"]["type"],
+                 "transitions": [b["scene"].get("transition", "push") for b in beats[1:]],
+                 "rhythm": [b.get("pause") for b in beats],
+                 "ending": beats[-1]["scene"]["type"] + ":" + str(beats[-1]["scene"].get("stage", ""))}
     return beats, titles, structure
 
 
@@ -394,6 +409,11 @@ def _run(ep: Episode, used: dict, hook: str | None) -> None:
     beats, titles, structure = compose(facts, claims, ep.id, used, hook)
     shots = []
     for b in beats:
+        parts = b["text_template"].split(PAUSE)
+        b["text_template"] = "".join(parts)
+        if len(parts) > 1:      # TTS speaks each part and leaves PAUSE_SECONDS between them
+            b["spoken_parts"] = [fill(x.strip(), claims, "spoken") for x in parts if x.strip()]
+            b["part_pause"] = PAUSE_SECONDS
         b["text_display"] = fill(b["text_template"], claims, "display")
         b["text_spoken"] = fill(b["text_template"], claims, "spoken")
         b["claims_used"] = sorted(set(PLACEHOLDER.findall(b["text_template"])))
@@ -419,12 +439,18 @@ def _run(ep: Episode, used: dict, hook: str | None) -> None:
     write_json(ep.path("script.json"), script)
     recent = E.history(ep.cfg.episodes_dir, ep.season, exclude=ep.id)
     p = dict(facts["players"][0], _episode_week=ep.week)
-    write_json(ep.path("editorial.json"), E.score(p, claims, structure["format"], recent))
+    ed = E.score(p, claims, structure["format"], recent)
+    ed["checks"] = E.checks(ed, words)
+    if not ed["checks"]["fits_20s"]["pass"]:
+        ed["verdict"], ed["reject_reasons"] = "reject", ed["reject_reasons"] + ["too long to tell in ~20 s"]
+    write_json(ep.path("editorial.json"), ed)
     ep.log(f"  story: {structure['angle']} / hook {structure['hook']}, {len(beats)} beats, {words} words "
            f"(~{script['expected_duration_seconds']}s)")
 
 
 def run(ep: Episode, hook: str | None = None) -> None:
     used = used_structures(ep)
-    run_stage(ep, "script", VERSION, {"cta": ep.cfg["cta"], "used": used, "hook": hook},
+    from pathlib import Path
+    code = {f: sha256_bytes(Path(m.__file__).read_bytes()) for f, m in (("formats", F), ("editorial", E))}
+    run_stage(ep, "script", VERSION, {"cta": ep.cfg["cta"], "used": used, "hook": hook, "code": code},
               ["facts.json", "story.json"], ["script.json", "editorial.json"], lambda: _run(ep, used, hook))

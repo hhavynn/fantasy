@@ -238,6 +238,10 @@ def gate_originality(episode_id: str, narration: list[str], players: list[str], 
         seqs = [e["structure"].get("scenes") for e in prior[-SAME_HOOK_RUN_MAX:]]
         if structure.get("scenes") and len(seqs) == SAME_HOOK_RUN_MAX and all(s == structure["scenes"] for s in seqs):
             failures.append(f"scene sequence {structure['scenes']} would repeat {SAME_HOOK_RUN_MAX + 1} times in a row")
+        # the same ending three times running (the old lineup + yes/no card on every video)
+        ends = [e["structure"].get("ending") for e in prior[-SAME_HOOK_RUN_MAX:]]
+        if structure.get("ending") and len(ends) == SAME_HOOK_RUN_MAX and all(x == structure["ending"] for x in ends):
+            failures.append(f"ending '{structure['ending']}' would close {SAME_HOOK_RUN_MAX + 1} Shorts in a row")
         # the same opening sentence with only names and numbers swapped, in 2 of the last 4
         mine_open = opening_skeleton(narration[0]) if narration else ""
         same_open = [e["episode_id"] for e in prior[-4:] if e.get("narration")

@@ -32,7 +32,7 @@ from .assemble import srt_time
 from .script import PLACEHOLDER, fill
 from .story import last
 
-VERSION = 17
+VERSION = 18
 TRANSITION = 0.2
 CAPTION = {"font": "Inter-Black.ttf", "font_size": M.CAPTION_FONT[1], "max_width_px": M.CAPTION_MAX_W,
            "max_lines": 2}
@@ -484,10 +484,13 @@ def _run(ep: Episode) -> None:
     for i, sc in enumerate(scenes):
         ctx.tokens = sc["_tokens"]
         tr = sc.get("transition", "push")
-        if i > 0 and tr in ("push", "whip", "rewind"):
-            events.append((sc["_start"] - 0.12, "whoosh", -4))
-        elif i > 0 and tr == "cut":
-            events.append((sc["_start"] - 0.01, "cut", -5))
+        # A transition sound only where the edit is a moment (format scenes opt in with "sfx"); a plain scene
+        # change is silent, so the whoosh never becomes wallpaper.
+        loud = sc.get("sfx", sc["type"] not in FS.FORMAT_SCENES)
+        if i > 0 and loud and tr in ("push", "whip", "rewind"):
+            events.append((sc["_start"] - 0.12, "whoosh", -6))
+        elif i > 0 and loud and tr == "cut":
+            events.append((sc["_start"] - 0.01, "cut", -7))
         events += sound_events(sc, sc["_start"], sc["_dur"], ctx)
 
     sh = ep.cfg["shorts"]
@@ -525,6 +528,14 @@ def _run(ep: Episode) -> None:
         if prev_last is not None and tr == "cut" and tl < 0.067:
             # A hard cut with a two-frame flash: the mystery's evidence slams onto the table.
             frame = Image.blend(frame, Image.new("RGB", frame.size, (255, 255, 255)), 0.3 * (1 - tl / 0.067))
+        elif prev_last is not None and tr == "zoom" and tl < 0.2:
+            # Punch in: the old frame rushes past the camera while the new one settles from slightly close.
+            k = M.ease_out(tl / 0.2)
+            s_old = 1 + 0.35 * k
+            cw, ch = M.W / s_old, M.H / s_old
+            old = prev_last.resize((M.W, M.H), Image.BILINEAR,
+                                   box=((M.W - cw) / 2, (M.H - ch) / 2, (M.W + cw) / 2, (M.H + ch) / 2))
+            frame = Image.blend(old, frame, M.clamp(k * 1.2))
         elif prev_last is not None and tr in ("whip", "rewind") and tl < TRANSITION:
             # A whip pan: the old scene leaves sideways and the new one arrives smeared, then sharp.
             k = M.ease_out(tl / TRANSITION)
@@ -575,7 +586,11 @@ def _run(ep: Episode) -> None:
 
 def run(ep: Episode) -> None:
     shot = headshots.record(ep.cfg, read_json(ep.path("facts.json"))["players"][0])
+    from pathlib import Path
+    from ..core import sha256_file
+    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A)}
     run_stage(ep, "render", VERSION, {"video": ep.cfg["video"], "shorts": ep.cfg["shorts"], "caption": CAPTION,
+                                      "code": code,
                                       "headshot": shot and shot["sha256"]},
               ["script.json", "facts.json", "audio", "story.json"], ["final.mp4", "captions.srt", "captions.json"],
               lambda: _run(ep))
