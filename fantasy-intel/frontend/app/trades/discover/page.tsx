@@ -135,8 +135,8 @@ function Body({ d }: { d: DiscoveryV3 }) {
 
       <Managers d={d} />
 
-      <section className="panel">
-        <h2>Method, assumptions and limitations</h2>
+      <details className="panel method">
+        <summary>Method, assumptions and limitations</summary>
         <p className="faint">{d.note}</p>
         <p className="faint">{d.asset_note} Thresholds: balanced when the smaller package is at least{" "}
           {Math.round(d.asset_thresholds.balanced_ratio * 100)}% of the larger; significant imbalance below{" "}
@@ -146,7 +146,7 @@ function Body({ d }: { d: DiscoveryV3 }) {
         <p className="faint">{d.availability_note}</p>
         <ul className="reasons">{d.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>
         <ul className="reasons">{d.limitations.map((a, i) => <li key={i} className="faint">{a}</li>)}</ul>
-      </section>
+      </details>
     </>
   );
 }

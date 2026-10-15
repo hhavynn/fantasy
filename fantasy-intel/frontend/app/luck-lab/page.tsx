@@ -101,8 +101,8 @@ function Body({ d }: { d: LuckLab }) {
         <Explorer d={d} name={name} />
         <Matrix d={d} />
       </>}
-      <section className="panel">
-        <h2>How the numbers work</h2>
+      <details className="panel method">
+        <summary>How the numbers work</summary>
         <ul className="reasons">
           <li>{d.rules.expected}</li><li>{d.rules.luck}</li><li>{d.rules.eligible}</li><li>{d.rules.counterfactual}</li>
           <li>{d.rules.bands}</li><li>{d.rules.result_source}</li>
@@ -112,7 +112,7 @@ function Body({ d }: { d: LuckLab }) {
           {cov.data_notes.no_period.length > 0 && <li>Matchups without a matchup period are ignored: {cov.data_notes.no_period.length}.</li>}
           {cov.data_notes.playoff_rows > 0 && <li>{cov.data_notes.playoff_rows} playoff matchup(s) are never mixed with the regular season.</li>}
         </ul>
-      </section>
+      </details>
     </>
   );
 }
@@ -230,16 +230,46 @@ function Scatter({ d }: { d: LuckLab }) {
             <title>{`${p.name}: actual ${p.actual.win_equivalents.toFixed(1)}, expected ${p.expected_wins.toFixed(2)}, luck ${signed(p.schedule_luck)}`}</title>
             <circle cx={x(p.expected_wins)} cy={y(p.actual.win_equivalents)} r={p.is_mine ? 6 : 4.5}
                     fill={p.is_mine ? AHEAD : NEUTRAL} stroke="var(--panel)" strokeWidth={2} />
-            {(p.is_mine || Math.abs(p.schedule_luck) >= 1) && (
-              <text x={x(p.expected_wins) + (p.is_mine ? 0 : 8)} y={y(p.actual.win_equivalents) + (p.is_mine ? -10 : 4)}
-                    textAnchor={p.is_mine ? "middle" : "start"} fontSize={10} fontWeight={p.is_mine ? 600 : 400} fill="var(--text)">{p.name.slice(0, 14)}</text>
-            )}
           </g>
+        ))}
+        {placeLabels(pts.filter((p) => p.is_mine || Math.abs(p.schedule_luck) >= 1).map((p) => ({
+          key: p.team_id, text: p.name.slice(0, 14), mine: p.is_mine, px: x(p.expected_wins), py: y(p.actual.win_equivalents),
+        })), W).map((l) => (
+          <text key={l.key} x={l.x} y={l.y} textAnchor={l.anchor} fontSize={10} fontWeight={l.mine ? 600 : 400} fill="var(--text)"
+                stroke="var(--panel)" strokeWidth={3} paintOrder="stroke">{l.text}</text>
         ))}
       </svg>
       <p className="faint" style={{ marginTop: 6 }}>Diagonal = actual equals expected. Labelled: your team and teams at least one win off the diagonal. Hover any point for its numbers.</p>
     </section>
   );
+}
+
+type Label = { key: number; text: string; mine: boolean; px: number; py: number };
+
+/** Greedy label placement: try a few offsets around each point and keep the first that collides with no placed label. */
+function placeLabels(labels: Label[], width: number) {
+  const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
+  const out: (Label & { x: number; y: number; anchor: "start" | "end" | "middle" })[] = [];
+  const order = [...labels].sort((a, b) => Number(b.mine) - Number(a.mine) || a.py - b.py);
+  for (const l of order) {
+    const w = l.text.length * 5.6;
+    const tries: [number, number, "start" | "end" | "middle"][] = l.mine
+      ? [[0, -10, "middle"], [0, 16, "middle"], [8, 4, "start"], [-8, 4, "end"]]
+      : [[8, 4, "start"], [8, -8, "start"], [8, 16, "start"], [-8, 4, "end"], [-8, -8, "end"], [-8, 16, "end"]];
+    let pick = tries[0];
+    for (const t of tries) {
+      const x0 = t[2] === "start" ? l.px + t[0] : t[2] === "end" ? l.px + t[0] - w : l.px - w / 2;
+      const box = { x0, x1: x0 + w, y0: l.py + t[1] - 9, y1: l.py + t[1] + 2 };
+      if (box.x0 < 0 || box.x1 > width) continue;
+      if (!placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0)) {
+        pick = t;
+        placed.push(box);
+        break;
+      }
+    }
+    out.push({ ...l, x: l.px + pick[0], y: l.py + pick[1], anchor: pick[2] });
+  }
+  return out;
 }
 
 // -------------------------------------------------------------------- timeline --

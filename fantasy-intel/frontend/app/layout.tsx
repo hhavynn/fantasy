@@ -1,11 +1,17 @@
 import type { Metadata } from "next";
+import { Barlow_Condensed, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
+import { NavGroups, SubNav } from "@/components/Nav";
+import { SyncPill } from "@/components/SyncPill";
 import { api } from "@/lib/api";
-import { when } from "@/lib/format";
 import type { SyncInfo } from "@/lib/types";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
+
+const display = Barlow_Condensed({ subsets: ["latin"], weight: ["500", "600"], variable: "--font-barlow-condensed" });
+const sans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-plex-sans" });
+const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono" });
 
 export const metadata: Metadata = {
   title: "Fantasy Intel",
@@ -18,45 +24,24 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const status = await api<Status>("/api/status");
   const s = status.data;
   return (
-    <html lang="en">
+    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
       <body>
-        <header className="topbar">
-          <div className="brand">
-            fantasy<span>intel</span>
-          </div>
-          <nav className="nav">
-            <Link href="/">Overview</Link>
-            <Link href="/start-sit">Start/Sit</Link>
-            <Link href="/players">Players</Link>
-            <Link href="/waivers">Waivers</Link>
-            <Link href="/trades">Trades</Link>
-            <Link href="/trades/discover">Discover trades</Link>
-            <Link href="/schedule-intelligence">Schedule</Link>
-            <Link href="/luck-lab">Luck lab</Link>
-            <Link href="/playoff-race">Playoff race</Link>
-            <Link href="/my-team/value">Team value</Link>
-            <Link href="/managers">Managers</Link>
-            <Link href="/data">Data quality</Link>
-          </nav>
-          <div className="syncinfo">
-            {s ? (
-              <>
-                {s.league && (
-                  <span>
-                    <b>{s.league.name}</b> · week {s.league.current_week}
-                  </span>
-                )}
-                <span>ESPN sync: <b>{when(s.sync.last_success.espn)}</b></span>
-                <span>
-                  NFL sync: <b>{when(s.sync.last_success.nfl)}</b>
-                  {s.nfl_latest_week ? ` (stats thru wk ${s.nfl_latest_week})` : ""}
+        <header className="appbar">
+          <div className="topbar">
+            <Link href="/" className="brand" aria-label="Fantasy Intel home">
+              fantasy<span>intel</span>
+            </Link>
+            <NavGroups />
+            <div className="topbar-end">
+              {s?.league && (
+                <span className="league-chip">
+                  {s.league.name} <span className="faint">· wk {s.league.current_week}</span>
                 </span>
-                <span>Analytics: <b>{when(s.sync.last_success.analytics)}</b></span>
-              </>
-            ) : (
-              <span>backend offline</span>
-            )}
+              )}
+              <SyncPill sync={s?.sync ?? null} nflLatestWeek={s?.nfl_latest_week ?? null} />
+            </div>
           </div>
+          <SubNav />
         </header>
         <main>{children}</main>
       </body>

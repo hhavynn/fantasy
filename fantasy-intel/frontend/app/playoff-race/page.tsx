@@ -536,7 +536,7 @@ function Power({ d }: { d: PlayoffRace }) {
           <tbody>
             {rows.map((t) => (
               <tr key={t.team_id} className={t.is_mine ? "mine" : ""}>
-                <td>{t.name}{t.is_mine && <> <Badge value="you" tone="info" /></>}</td>
+                <td>{t.name}{t.is_mine && <> <Badge value="You" tone="info" /></>}</td>
                 <td>{rec(t.record)}</td>
                 <td className="num">{pts(t.points_for)}</td>
                 <td className="num">{pts(t.points_against)}</td>
@@ -581,8 +581,8 @@ function KnownPlayoffs({ d }: { d: PlayoffRace }) {
 function Method({ d }: { d: PlayoffRace }) {
   const cov = d.schedule_coverage;
   return (
-    <section className="panel">
-      <h2>How this works (and what it cannot say)</h2>
+    <details className="panel method">
+      <summary>How this works (and what it cannot say)</summary>
       <ul className="reasons">
         <li>{d.rules.ordering}</li>
         <li>{d.rules.projection}</li>
@@ -597,6 +597,6 @@ function Method({ d }: { d: PlayoffRace }) {
         {d.record_check.map((n, i) => <li key={`rc${i}`}>{n}</li>)}
         {d.window.reason && <li>Projection window: {d.window.reason}</li>}
       </ul>
-    </section>
+    </details>
   );
 }

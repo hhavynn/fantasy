@@ -133,8 +133,8 @@ function Body({ d, detail, position, phase }: { d: ScheduleIntelligence; detail?
       {detail && <Detail p={detail} />}
       {phase !== "regular" && d.players.length > 0 && w.playoff_weeks.length > 0 && <Playoffs d={d} href={href} />}
 
-      <section className="panel">
-        <h2>What this is (and is not)</h2>
+      <details className="panel method">
+        <summary>What this is (and is not)</summary>
         <ul className="reasons">{d.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
         <details>
           <summary>How games are presumed complete (and what that cannot rule out)</summary>
@@ -149,7 +149,7 @@ function Body({ d, detail, position, phase }: { d: ScheduleIntelligence; detail?
             ))}
           </ul>
         </details>
-      </section>
+      </details>
     </>
   );
 }
