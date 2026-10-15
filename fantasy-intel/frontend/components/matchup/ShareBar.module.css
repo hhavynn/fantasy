@@ -1,0 +1,11 @@
+.wrap { display: grid; gap: 4px; }
+.bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--chart-2); gap: 2px; }
+.me { display: block; height: 100%; background: var(--chart-1); border-radius: 4px 0 0 4px; }
+.opp { display: block; flex: 1 1 0; height: 100%; background: var(--chart-2); }
+.legend { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12px; line-height: 16px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.caption { color: var(--ink-faint); text-align: center; }
+.meKey, .oppKey { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
+.meKey { background: var(--chart-1); }
+.oppKey { background: var(--chart-2); }
+@media (max-width: 480px) { .legend > .caption { display: none; } }

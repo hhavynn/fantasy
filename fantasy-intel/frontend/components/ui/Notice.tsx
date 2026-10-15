@@ -4,9 +4,9 @@ import styles from "./Notice.module.css";
 
 export type NoticeTone = "info" | "caution" | "negative" | "positive";
 
-/** One glyph per tone, so meaning never depends on colour alone. */
-function Icon({ tone }: { tone: NoticeTone }) {
-  const common = { width: 20, height: 20, viewBox: "0 0 20 20", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, className: styles.icon } as const;
+/** One glyph per tone, so meaning never depends on colour alone. Exported as `ToneIcon` for lists that need the same glyphs. */
+export function Icon({ tone, className = styles.icon }: { tone: NoticeTone; className?: string }) {
+  const common = { width: 20, height: 20, viewBox: "0 0 20 20", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, className } as const;
   switch (tone) {
     case "caution":
       return <svg {...common}><path d="M10 2.8 18 16.5H2L10 2.8Z" /><path d="M10 8v4" /><path d="M10 14.2v.1" /></svg>;

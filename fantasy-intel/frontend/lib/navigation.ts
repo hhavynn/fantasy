@@ -8,6 +8,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "My team",
     pages: [
       { href: "/", label: "Overview" },
+      { href: "/matchup", label: "Matchup" },
       { href: "/start-sit", label: "Start/Sit" },
       { href: "/my-team/value", label: "Team value" },
     ],

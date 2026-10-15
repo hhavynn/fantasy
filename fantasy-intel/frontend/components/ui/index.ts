@@ -3,7 +3,7 @@ export { Badge } from "./Badge";
 export { Delta } from "./Delta";
 export { EmptyState } from "./EmptyState";
 export { Method } from "./Method";
-export { Callout, ErrorBox, Notice, type NoticeTone } from "./Notice";
+export { Callout, ErrorBox, Icon as ToneIcon, Notice, type NoticeTone } from "./Notice";
 export { PageHeader } from "./PageHeader";
 export { Pos } from "./Pos";
 export { Score } from "./Score";
