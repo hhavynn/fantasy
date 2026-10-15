@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, Callout, ErrorBox, Pos } from "@/components/ui";
+import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { api } from "@/lib/api";
 import { signed } from "@/lib/format";
 import type { DResult, DiscoveryV3, NeedRow } from "@/lib/trade-types";
@@ -285,6 +286,7 @@ function TradeCard({ r, d }: { r: DResult; d: DiscoveryV3 }) {
         <div className="stat"><div className="label">Trade type</div><div style={{ marginTop: 4 }}>{r.rationale.trade_type.text}</div></div>
       </div>
       {r.rationale.points.length > 0 && <ul className="reasons" style={{ marginTop: 8 }}>{r.rationale.points.map((p, i) => <li key={i}>{p}</li>)}</ul>}
+      <TradeVsFreeAgency t={r.trade_vs_free_agency} only="team_a" />
       <details style={{ marginTop: 6 }}>
         <summary>Evidence: asset profiles, lineup changes, manager context</summary>
         <AssetTable r={r} />

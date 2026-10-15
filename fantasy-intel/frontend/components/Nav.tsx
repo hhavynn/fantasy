@@ -9,7 +9,10 @@ type Group = { label: string; pages: Page[] };
 
 // Data quality is reached from the sync pill, not the nav.
 const GROUPS: Group[] = [
-  { label: "My team", pages: [{ href: "/", label: "Overview" }, { href: "/my-team/value", label: "Team value" }] },
+  {
+    label: "My team",
+    pages: [{ href: "/", label: "Overview" }, { href: "/start-sit", label: "Start/Sit" }, { href: "/my-team/value", label: "Team value" }],
+  },
   { label: "Players", pages: [{ href: "/players", label: "Players" }, { href: "/waivers", label: "Waivers" }] },
   { label: "Trades", pages: [{ href: "/trades", label: "Analyzer" }, { href: "/trades/discover", label: "Discover" }] },
   {

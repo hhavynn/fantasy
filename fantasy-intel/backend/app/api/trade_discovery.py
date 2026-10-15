@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from ..analytics.manager_scouting import build_manager_scouting
 from ..analytics.trade_data import load_league_state
 from ..analytics import trade_practical as practical
+from ..analytics.trade_alternatives import FreeAgencyBoard, for_evaluation as trade_vs_free_agency
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
 from ..analytics.trade_discovery import (ALL_SHAPES, CATEGORIES, HEURISTIC_SHAPES, NOTE, SHAPES, SKILL_POSITIONS, SORTS,
                                          TradeSearch)
@@ -81,6 +82,24 @@ def _need_notes(row: dict, ctx: dict | None, names: dict[int, dict]) -> list[str
     return out
 
 
+def _free_agency_evidence(row: dict) -> None:
+    """Promote the anchor's trade-vs-free-agency verdict to the row's concerns when most of the gain is
+    available without trading (majority rule, analytics/trade_alternatives), the comparison is unavailable
+    or the trade loses; otherwise it stays in the row's own panel. Presentation only: tiers, ordering and
+    canonical deltas are untouched."""
+    tvf = row.get("trade_vs_free_agency") or {}
+    if not tvf.get("available"):
+        return
+    me = tvf["team_a"]
+    g = me["comparison"]["canonical_gain"]["ros_delta"]
+    av = me["comparison"]["available_without_trade"]["ros_delta"]
+    lead = me["statements"][0] if me["statements"] else None
+    if lead is None:
+        return
+    if g is None or av is None or g <= 0 or 2 * av > g:
+        row["rationale"]["concerns"] = [lead] + [c for c in row["rationale"]["concerns"] if c != lead]
+
+
 DEFAULT_SHAPES = ("1-for-1", "2-for-1", "1-for-2", "2-for-2", "3-for-1", "1-for-3", "3-for-2", "2-for-3")
 
 
@@ -127,9 +146,11 @@ def discover(team_id: int | None = None,
             raise HTTPException(422, f"shapes must be among {', '.join(ALL_SHAPES)}")
         pos = tuple(sorted({x.strip() for x in positions.split(",") if x.strip()})) if positions else \
             tuple(SKILL_POSITIONS) + (("K", "D/ST") if include_kdst else ())
+        board = FreeAgencyBoard(state, state.window())
         try:
             ts = _search(state, team_id, shape_list, pos)
-            out = practical.discover(ts, mode, phase, opponent, limit, strictness, sort, category or None, heuristic)
+            out = practical.discover(ts, mode, phase, opponent, limit, strictness, sort, category or None, heuristic,
+                                     board=board)
         except NoRemainingWeeksError as err:
             raise HTTPException(409, str(err))
         except (TradeError, ValueError) as err:
@@ -143,6 +164,10 @@ def discover(team_id: int | None = None,
         for r in shown:
             r["manager_context"] = ctx.get(r["opponent_team_id"])
             r["need_notes"] = _need_notes(r, r["manager_context"], names)
+            r["trade_vs_free_agency"] = trade_vs_free_agency(
+                state, {"team_a": r["mine_detail"], "team_b": r["theirs_detail"]}, team_id, r["opponent_team_id"],
+                r["sends"], r["receives"], board=board, labels={team_id: "You"})
+            _free_agency_evidence(r)
         search = dict(out["coverage"]["exact"] or {})
         search["consistency_checked"] = out["consistency_checked"]
         search["consistency_failures"] = out["consistency_failures"]
