@@ -124,14 +124,15 @@ def _fit_platt(p: np.ndarray, y: np.ndarray, prior: float) -> dict:
 
 
 def _fit_isotonic(p: np.ndarray, y: np.ndarray, min_block: int) -> dict:
-    """Pool-adjacent-violators on rows sorted by p (ties kept together), then adjacent blocks are
-    merged until every block has >= min_block rows. Merging adjacent monotone blocks keeps the
-    map monotone. Knots: block mean p -> block outcome rate."""
-    order = np.lexsort((y, p))
-    p, y = p[order], y[order]
+    """Pool-adjacent-violators over the distinct values of p (all rows with the same base
+    probability form one starting block, whatever their outcomes, so a tie can never be split by
+    its labels), then adjacent blocks are merged until every block has >= min_block rows. Merging
+    adjacent monotone blocks keeps the map monotone. Knots: block mean p -> block outcome rate."""
+    values, inverse, counts = np.unique(p, return_inverse=True, return_counts=True)
+    y_sum = np.bincount(inverse, weights=y.astype(float), minlength=len(values))
     blocks: list[list[float]] = []            # [sum_p, sum_y, n]
-    for pi, yi in zip(p, y):
-        blocks.append([pi, yi, 1.0])
+    for v, sy, n in zip(values, y_sum, counts):
+        blocks.append([float(v) * float(n), float(sy), float(n)])
         while len(blocks) > 1 and blocks[-2][1] / blocks[-2][2] >= blocks[-1][1] / blocks[-1][2]:
             sp, sy, n = blocks.pop()
             blocks[-1][0] += sp

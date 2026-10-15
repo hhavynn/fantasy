@@ -32,6 +32,7 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 import backtest_independent_projections as bip  # noqa: E402
 
+import numpy as np  # noqa: E402
 import polars as pl  # noqa: E402
 
 from app.analytics import participation as pm  # noqa: E402
@@ -46,6 +47,13 @@ def _hash(obj) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
+def _frame_hash(df: pl.DataFrame) -> str:
+    """Order-independent content hash of every non-nested column (features AND outcomes)."""
+    flat = df.select([c for c, t in df.schema.items() if not t.is_nested()])
+    return hashlib.sha256(np.sort(flat.hash_rows(seed=0).to_numpy()).tobytes()
+                          + ",".join(sorted(flat.columns)).encode()).hexdigest()[:16]
+
+
 def oos_predictions(src, protocol, ifp_sel: dict, psel: dict, cache_dir: Path) -> tuple[pl.DataFrame, str]:
     weeks = completed_weeks(src, list(range(protocol.train_start_season, max(protocol.heldout_seasons) + 1)))
     cond_store, store = bip.build_store(src, weeks), pm.build_store(src, weeks)
@@ -53,8 +61,15 @@ def oos_predictions(src, protocol, ifp_sel: dict, psel: dict, cache_dir: Path) -
                                .write_csv().encode()).hexdigest()[:16]
     lams = {p: [psel["positions"][p]["lambda"]] for p in pm.POSITIONS}
     spec = pm._ifp_cond_spec(ifp_sel)
-    tag = _hash({"data": data_hash, "lams": lams, "cond": spec, "train_start": protocol.train_start_season,
-                 "oos_start": OOS_START_SEASON, "version": pm.PARTICIPATION_VERSION})
+    # The cache key covers every input of the prediction: both feature stores in full (any corrected
+    # roster, injury, schedule or usage value changes it), the penalties, the conditional spec and the
+    # code that builds and fits the models.
+    code = b"".join(Path(m.__file__).read_bytes() for m in (pm, sys.modules["app.analytics.forecast_features"],
+                                                             sys.modules["app.analytics.forecast_backtest"]))
+    tag = _hash({"data": data_hash, "store": _frame_hash(store), "cond_store": _frame_hash(cond_store),
+                 "lams": lams, "cond": spec, "train_start": protocol.train_start_season,
+                 "oos_start": OOS_START_SEASON, "version": pm.PARTICIPATION_VERSION, "polars": pl.__version__,
+                 "code": hashlib.sha256(code).hexdigest()[:16]})
     path = cache_dir / f"oos_base_{tag}.parquet"
     if path.exists():
         return pl.read_parquet(path), data_hash
@@ -79,8 +94,9 @@ def cmd_run(args) -> dict:
     live, hist = bip._ro(args.live_db), bip._ro(args.history_db)
     try:
         scoring = bip._scoring(live, args.season)
-        if psel.get("scoring_fingerprint") != scoring.fingerprint:
-            raise SystemExit("participation_selection.json was made under different league scoring")
+        for name, sel in (("participation_selection.json", psel), ("selection.json", ifp_sel)):
+            if sel.get("scoring_fingerprint") != scoring.fingerprint:
+                raise SystemExit(f"{name} was made under different league scoring")
         src = bip._sources(live, hist, scoring.require_supported())
     finally:
         for c in (live, hist):

@@ -111,6 +111,17 @@ def test_position_without_history_keeps_the_base_probability():
     assert pc.fit_calibrator([0.5] * 400, [1] * 400, "platt").fallback == "calibration rows have a single outcome class"
 
 
+def test_tied_probabilities_are_pooled_before_pav_whatever_their_outcomes():
+    # 50 x (0.2, 1), 50 x (0.5, 0), 50 x (0.5, 1): the 0.5 tie must stay together, so the violation
+    # against the 0.2 block pools everything at 2/3 (not a 0.5 knot plus a separate 1.0 knot)
+    p = np.array([0.2] * 50 + [0.5] * 100)
+    y = np.array([1] * 50 + [0] * 50 + [1] * 50)
+    fit = pc._fit_isotonic(p, y, min_block=50)
+    assert fit["x"] == pytest.approx([0.4]) and fit["y"] == pytest.approx([2 / 3]) and fit["block_n"] == [150]
+    shuffled = np.random.default_rng(0).permutation(len(p))
+    assert pc._fit_isotonic(p[shuffled], y[shuffled], min_block=50) == fit
+
+
 def test_sparse_regions_are_pooled_and_never_extrapolated():
     rng = np.random.default_rng(0)
     p = np.concatenate([rng.uniform(0.3, 0.7, 600), [0.99, 0.995]])          # almost nothing above 0.7
