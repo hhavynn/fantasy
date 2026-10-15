@@ -277,28 +277,16 @@ function LineupTable({ before, after }: { before: LineupWeek; after: LineupWeek 
   );
 }
 
-function TeamImpact({ r, s }: { r: TradeResult; s: TradeSide }) {
-  const n = r.evaluation.weeks.length;
+function TeamImpact({ s }: { s: TradeSide }) {
   const ro = s.roster;
   const iss = ro.issues_before_drops;
-  const gained = s.incoming_usage.filter((u) => u.weeks_started.length > 0);
-  const benched = s.incoming_usage.filter((u) => u.weeks_started.length === 0);
-  const left = s.outgoing_usage.filter((u) => u.weeks_started.length > 0);
   const cost = ro.forced_drop_lineup_cost === null ? `${ro.forced_drop_known_lineup_cost.toFixed(1)} known only` : ro.forced_drop_lineup_cost.toFixed(1);
   return (
     <div className={styles.col}>
       <h3 className={styles.colTitle}>{s.team_name}</h3>
+      {/* fit_notes already state, per player, how many weeks he starts (or never starts) and who is displaced. */}
       <ul className={styles.list}>
-        {gained.map((u) => <li key={u.espn_player_id}><span className="up">Becomes a starter</span>: {u.name} ({u.position}) starts {u.weeks_started.length} of {n} weeks</li>)}
-        {benched.map((u) => <li key={u.espn_player_id}>{u.name} ({u.position}) <b>would not start</b> in any remaining week</li>)}
-        {left.map((u) => <li key={u.espn_player_id}><span className="down">Starter leaves</span>: {u.name} ({u.position}) started {u.weeks_started.length} of {n} weeks</li>)}
-        {s.displaced.map((d) => (
-          <li key={d.espn_player_id}>
-            {d.name} ({d.position}){d.starts_lost.length > 0 && <> <span className="down">loses {d.starts_lost.length} start(s)</span></>}
-            {d.starts_gained.length > 0 && <> <span className="up">gains {d.starts_gained.length} start(s)</span></>}
-          </li>
-        ))}
-        {s.fit_notes.map((note, i) => <li key={`fit-${i}`}>{note}</li>)}
+        {s.fit_notes.map((note, i) => <li key={i}>{note}</li>)}
       </ul>
 
       <dl className={styles.facts}>
@@ -362,8 +350,8 @@ function StarterChanges({ r }: { r: TradeResult }) {
   return (
     <Section title="Roster limits and starting opportunities">
       <div className={styles.cols}>
-        <TeamImpact r={r} s={r.team_a} />
-        <TeamImpact r={r} s={r.team_b} />
+        <TeamImpact s={r.team_a} />
+        <TeamImpact s={r.team_b} />
       </div>
     </Section>
   );

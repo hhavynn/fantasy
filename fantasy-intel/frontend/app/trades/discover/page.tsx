@@ -7,7 +7,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { num, signed } from "@/lib/format";
-import { sortRows } from "@/lib/sort";
+import { nextDir, sortHref, sortRows } from "@/lib/sort";
 import { isApiSort, resolveSort, sortValue } from "@/lib/trade-discovery";
 import { signedText } from "@/lib/trade-format";
 import type { DResult, DiscoveryV3, NeedRow } from "@/lib/trade-types";
@@ -32,6 +32,10 @@ const ASSET_TONE: Record<string, string> = {
 };
 const TIER_TONE: Record<string, string> = { practical: "good", concerns: "warn", speculative: "warn" };
 const TIER_SHORT: Record<string, string> = { practical: "Practical", concerns: "Concerns", speculative: "Speculative" };
+/** Sort links shown instead of the column headers on phones, where each trade is a card. */
+const PHONE_SORTS: [string, string][] = [
+  ["my_gain", "Your Δ"], ["their_gain", "Their Δ"], ["min_side", "Smaller side"], ["asset", "Asset balance"], ["partner", "Partner"], ["shape", "Shape"],
+];
 const why = "Incomplete: a rostered player with an NFL team has no ESPN projection in some week (never treated as 0)";
 
 type Params = Record<string, string | string[] | undefined>;
@@ -336,6 +340,18 @@ function Results({ d, rows, total, excluded, sp }: {
         </EmptyState>
       ) : (
         <div className="table-wrap">
+          <nav className={styles.phoneSort} aria-label="Sort trades">
+            <span>Sort by</span>
+            {PHONE_SORTS.map(([key, text]) => {
+              const active = sort.key === key;
+              const dir = nextDir(sort, key, key === "shape" || key === "partner" ? "asc" : "desc");
+              return (
+                <Link key={key} href={sortHref(sp, key, dir)} scroll={false} prefetch={false} aria-current={active ? "true" : undefined}>
+                  {text}{active ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
+                </Link>
+              );
+            })}
+          </nav>
           <table className={styles.table}>
             <thead>
               <tr>
@@ -366,21 +382,21 @@ function TradeRows({ tier, r, d }: { tier: string; r: DResult; d: DiscoveryV3 })
   return (
     <tbody>
       <tr className={styles.mainRow}>
-        <td>{r.shape}</td>
-        <td className={styles.partner}>
+        <td data-label="Shape">{r.shape}</td>
+        <td className={styles.partner} data-label="Partner">
           <Link href={`/managers/${r.opponent_team_id}`}>{r.opponent_name}</Link>
           {mc && <span className={styles.subline}>{mc.trade_history.completed_trades} completed trades · {mc.trade_history.confidence.toLowerCase()} confidence</span>}
         </td>
-        <td className={styles.wrapCell}><Players ids={r.sends} d={d} /></td>
-        <td className={styles.wrapCell}><Players ids={r.receives} d={d} /></td>
-        <td className="num"><DeltaCell v={r.mine} /></td>
-        <td className="num"><DeltaCell v={r.theirs} /></td>
-        <td className="num">{r.min_side_ros_delta === null ? <span className="missing" title={why}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
-        <td className={styles.assetCell}>
+        <td className={styles.wrapCell} data-label="You give"><Players ids={r.sends} d={d} /></td>
+        <td className={styles.wrapCell} data-label="You get"><Players ids={r.receives} d={d} /></td>
+        <td className="num" data-label="Your Δ"><DeltaCell v={r.mine} /></td>
+        <td className="num" data-label="Their Δ"><DeltaCell v={r.theirs} /></td>
+        <td className="num" data-label="Smaller side">{r.min_side_ros_delta === null ? <span className="missing" title={why}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
+        <td className={styles.assetCell} data-label="Asset balance">
           <span title={b.note}><Badge value={b.text} tone={ASSET_TONE[b.label]} /></span>
           {b.you_send_par !== null && <span className={styles.subline}>you give {b.you_send_par.toFixed(0)} · they give {b.they_send_par?.toFixed(0)} pts above replacement</span>}
         </td>
-        <td className={styles.typeCell}>
+        <td className={styles.typeCell} data-label="Type">
           <div className={styles.tags}>
             {TIER_SHORT[tier] && <Badge value={TIER_SHORT[tier]} tone={TIER_TONE[tier] ?? ""} title={d.tiers[tier]} />}
             {concerns.length > 0 && <Badge value={`${concerns.length} concern${concerns.length === 1 ? "" : "s"}`} tone="warn" />}
@@ -389,10 +405,10 @@ function TradeRows({ tier, r, d }: { tier: string; r: DResult; d: DiscoveryV3 })
           </div>
           <span className={styles.subline}>{r.rationale.trade_type.text}</span>
         </td>
-        <td><Link href={analyzerHref(r)}>Analyze →</Link></td>
+        <td className={styles.action}><Link href={analyzerHref(r)}>Analyze →</Link></td>
       </tr>
       <tr className={styles.detailRow}>
-        <td colSpan={10}>
+        <td colSpan={10} className={styles.detailCell}>
           <details className={styles.detail}>
             <summary>Why this trade, concerns and evidence</summary>
             <div className={styles.detailBody}>

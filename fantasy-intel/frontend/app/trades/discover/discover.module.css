@@ -60,7 +60,33 @@
 .mgrNote { margin: 0; color: var(--ink-faint); font-size: 13px; line-height: 19px; }
 .empty { padding: 16px; }
 
+.phoneSort { display: none; }
+.action { white-space: nowrap; }
+
+/* Phones: each trade becomes a two-column card (the columns would not fit); sorting moves to the links above. */
 @media (max-width: 720px) {
+  .phoneSort {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+    font-size: 13px; color: var(--ink-faint);
+  }
+  .phoneSort a { padding: 2px 10px; border: 1px solid var(--line-control); border-radius: 999px; color: var(--ink-muted); }
+  .phoneSort a[aria-current] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); font-weight: 600; }
+  .phoneSort a:hover { text-decoration: none; color: var(--ink); }
+  .table, .table thead, .table tbody, .table td { display: block; }
+  .table thead { height: 0; overflow: hidden; }
+  .table tbody {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .table tr { display: contents; }
+  .table td, .table .mainRow td, .table .detailRow td { padding: 0; border: 0; min-width: 0; max-width: none; text-align: left; white-space: normal; }
+  .table td[data-label]::before {
+    content: attr(data-label); display: block; margin-bottom: 2px; font-size: 11px; line-height: 14px; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint);
+  }
+  .table td.typeCell, .table td.action, .table td.detailCell { grid-column: 1 / -1; }
+  .table tbody:last-of-type { border-bottom: 0; }
+  .table tbody:hover td { background: transparent; }
   .field { flex: 1 1 100%; }
   .field select { width: 100%; }
   .actions { margin-left: 0; width: 100%; }
