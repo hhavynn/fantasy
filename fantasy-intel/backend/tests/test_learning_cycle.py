@@ -322,3 +322,39 @@ def test_status_command_and_cli_entry(lc, env, capsys):
     assert st["latest_cycle"]["status"] == "forecast_frozen" and st["lock"] is None
     assert st["artifacts"] == {"ifp-1.0.0": 1, "ifp-2.0.0": 1} and st["ledger_runs"] == 1
     assert st["missed_windows"] == ["s2025w09.json"]
+
+
+def test_empty_forecast_is_not_ready_not_success(lc, env):
+    """No current-season roster rows: nothing can be forecast, so the cycle must keep retrying."""
+    _sql(env, "DELETE FROM nfl_rosters_weekly WHERE season = 2025")
+    code, rep = _run(lc, env)
+    assert code == lc.EXIT_NOT_READY and rep["status"] == "waiting_for_data"
+    assert ("predict", "not_ready") in _stages(rep) and any("no pregame forecast row" in e for e in rep["errors"])
+    assert _files(env, "ledger") == []
+
+
+def test_unreadable_ledger_file_still_writes_a_report(lc, env):
+    bad = env / "out" / "ledger" / "s2025w09" / "pregame-truncated.json"
+    bad.parent.mkdir(parents=True)
+    bad.write_text('{"trunc')                                       # left by an older, non-atomic writer
+    code, rep = _run(lc, env)
+    assert code == lc.EXIT_FAILED and rep["status"] == "failed"
+    assert any("interrupted write" in e for e in rep["errors"]) and rep["required_actions"]
+    assert json.loads((env / "out" / "status" / "latest-cycle.json").read_text())["status"] == "failed"
+    assert not (env / "out" / "locks" / "cycle.lock").exists() and bad.read_text() == '{"trunc'
+
+
+def test_sync_subprocess_uses_the_cycles_database_and_season(lc, env, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen.update(cmd=cmd, env=kw["env"])
+        return type("Done", (), {"returncode": 0})()
+    monkeypatch.setattr(lc.subprocess, "run", fake_run)
+    monkeypatch.setattr(lc, "stage_sync_exits", lambda args: {"seasons": []})
+    args = _args(lc, env)
+    args.skip_sync = False
+    code, rep = lc.run_cycle(args)
+    assert code == lc.EXIT_OK and seen["cmd"][-1].endswith("sync_nfl.py")
+    assert seen["env"]["FANTASY_DB_PATH"] == str((env / "live.duckdb").resolve())
+    assert seen["env"]["NFL_SEASON"] == "2025"

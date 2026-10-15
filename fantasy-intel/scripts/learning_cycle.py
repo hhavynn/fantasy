@@ -199,8 +199,11 @@ def stage_sync_nfl(args, log_path: Path) -> dict:
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(f"==> sync_nfl.py {datetime.now(timezone.utc).isoformat()}\n")
         log.flush()
+        # sync_nfl.py reads its database and season from the environment: pass this cycle's choices
+        env = {**os.environ, "PYTHONUNBUFFERED": "1", "FANTASY_DB_PATH": str(Path(args.live_db).resolve()),
+               "NFL_SEASON": str(args.season)}
         code = subprocess.run([sys.executable, str(SCRIPTS / "sync_nfl.py")], cwd=_bootstrap.BACKEND,
-                              stdout=log, stderr=subprocess.STDOUT, env={**os.environ, "PYTHONUNBUFFERED": "1"}).returncode
+                              stdout=log, stderr=subprocess.STDOUT, env=env).returncode
     if code != 0:
         raise RuntimeError(f"sync_nfl.py exited {code} (see {log_path}); a DuckDB lock error means another "
                            "process (refresh_all.py, the API) is writing the live database: retry later")
@@ -252,7 +255,7 @@ def missed_window(args, week: int | None, kickoffs: dict[int, datetime], now: da
     if week is None:
         return None
     d = Path(args.out) / "ledger" / f"s{args.season}w{week:02d}"
-    runs = [json.loads(f.read_text()) for f in sorted(d.glob("*.json"))] if d.exists() else []
+    runs = [wl._read_json(f) for f in sorted(d.glob("*.json"))] if d.exists() else []   # NotReady if unreadable
     pregame_rows = sum(r["pregame"] for run in runs if run.get("kind") == "pregame" for r in run["rows"])
     if pregame_rows:
         return None
@@ -363,6 +366,10 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         if stop.status not in ("no_upcoming_week",):
             report["errors"].append(str(stop))
         report["required_actions"] += stop.actions
+    except Exception as err:          # outside a stage: still report, release the lock, exit 1
+        report["status"], code = "failed", EXIT_FAILED
+        report["errors"].append(f"{err.__class__.__name__}: {err}")
+        report["required_actions"].append("fix the error above and rerun; later stages were not run")
     finally:
         for con in conns:
             if con is not None:
