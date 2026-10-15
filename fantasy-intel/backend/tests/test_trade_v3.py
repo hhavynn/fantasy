@@ -490,3 +490,346 @@ def test_practical_rows_all_match_the_manual_analyzer_and_carry_no_probability()
     out = discover(TradeSearch(st, 1, tuple(SHAPES) + ("2-for-2", "3-for-1", "1-for-3")), "practical", limit=8)
     assert out["consistency_failures"] == 0 and out["consistency_checked"] > 0
     assert "probab" not in str(out["sections"]).lower().replace("no probability", "")
+
+
+# ------------------------------------------------------------- regression tests: IR symmetry & ties --
+
+def test_fantasy_ir_uncertainty_is_symmetric_between_anchor_and_opponent():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    st = injured_league(on_ir=True)
+    board = AssetBoard(st, st.window())
+
+    # Case A: Team 1 is anchor, RECEIVING fantasy-IR player 299 from Team 2
+    ts1 = TradeSearch(st, 1, ("1-for-1",), opponents=[2], positions=None)
+    cand_recv = next(c for c in ts1.cands if 299 in c[3])
+    row_recv = ts1.evaluate(cand_recv)
+    assert row_recv["mine"]["playoff_delta"] > 0 and row_recv["theirs"]["playoff_delta"] > 0
+    bal_recv = board.package(row_recv["sends"], row_recv["receives"])
+    inj_recv = injury_flags(st, row_recv["sends"] + row_recv["receives"])
+    tier_recv, reasons_recv = classify(row_recv, bal_recv, inj_recv, "playoff", "standard")
+
+    assert tier_recv == "speculative"
+    assert any("not confirmed" in r or "not established" in r for r in reasons_recv)
+
+    # Case B: Team 2 is anchor, SENDING fantasy-IR player 299 to Team 1 (same trade, reversed anchor)
+    ts2 = TradeSearch(st, 2, ("1-for-1",), opponents=[1], positions=None)
+    cand_send = next(c for c in ts2.cands if 299 in c[2] and cand_recv[2][0] in c[3])
+    row_send = ts2.evaluate(cand_send)
+    assert row_send["mine"]["playoff_delta"] == row_recv["theirs"]["playoff_delta"]
+    assert row_send["theirs"]["playoff_delta"] == row_recv["mine"]["playoff_delta"]
+    bal_send = board.package(row_send["sends"], row_send["receives"])
+    inj_send = injury_flags(st, row_send["sends"] + row_send["receives"])
+    tier_send, reasons_send = classify(row_send, bal_send, inj_send, "playoff", "standard")
+
+    # Symmetrical: anchor sending the fantasy-IR player must ALSO be speculative
+    assert tier_send == "speculative"
+    assert any("not confirmed" in r or "not established" in r for r in reasons_send)
+
+
+def test_fantasy_ir_player_with_confirmed_return_is_concerns_not_speculative():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    st = injured_league(on_ir=True)
+    # Player was on IR, but is now activated on the NFL roster (return_confirmed=True, status=RETURNED)
+    rec = derive(espn_status="ACTIVE", on_ir=True, rows=etienne_rows(through=8) + [{"week": 9, "status": "ACT", "abbr": "A01"}],
+                 team_games=list(range(1, 19)), weeks=WEEKS)
+    assert rec["status"] == "returned_from_reserve" and rec["return_confirmed"] is True
+    st.availability[299] = rec
+    st.rosters[2] = [replace(p, unavailable_weeks=frozenset()) if p.espn_player_id == 299 else p for p in st.rosters[2]]
+
+    board = AssetBoard(st, st.window())
+
+    # Anchor sends
+    cand = next(c for c in TradeSearch(st, 2, ("1-for-1",), opponents=[1], positions=None).cands if 299 in c[2])
+    row = TradeSearch(st, 2, ("1-for-1",), opponents=[1], positions=None).evaluate(cand)
+    bal = board.package(row["sends"], row["receives"])
+    inj = injury_flags(st, row["sends"] + row["receives"])
+    tier, reasons = classify(row, bal, inj, "playoff", "standard")
+    assert tier == "concerns"
+    assert any("Activated from an NFL reserve list" in r for r in reasons)
+
+    # Anchor receives (with strictness="off" to isolate injury tier from lopsided exclusion)
+    cand_recv = next(c for c in TradeSearch(st, 1, ("1-for-1",), opponents=[2], positions=None).cands if 299 in c[3])
+    row_recv = TradeSearch(st, 1, ("1-for-1",), opponents=[2], positions=None).evaluate(cand_recv)
+    bal_recv = board.package(row_recv["sends"], row_recv["receives"])
+    inj_recv = injury_flags(st, row_recv["sends"] + row_recv["receives"])
+    tier_recv, reasons_recv = classify(row_recv, bal_recv, inj_recv, "playoff", "off")
+    assert tier_recv == "concerns"
+    assert any("Activated from an NFL reserve list" in r for r in reasons_recv)
+
+
+def test_nfl_ineligible_on_normal_bench_slot_is_concerns_not_speculative():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    # Injured player on normal bench (on_ir=False) with verified ineligible weeks
+    st = injured_league(on_ir=False)
+    board = AssetBoard(st, st.window())
+    row = {"mine": {"playoff_delta": 9.0}, "theirs": {"playoff_delta": 5.0}, "forced_drops": {"mine": [], "theirs": []}, "sends": [102], "receives": [299]}
+    bal = {"label": "balanced", "text": "Asset packages appear relatively balanced"}
+    inj = injury_flags(st, row["sends"] + row["receives"])
+    assert any(f["status"] == "nfl_ineligible" and not f["fantasy_ir_slot"] for f in inj)
+
+    tier, reasons = classify(row, bal, inj, "playoff", "standard")
+    # Normal bench slot with verified ineligible weeks is a concern, not speculative
+    assert tier == "concerns"
+    assert any("Earliest eligible return week 13" in r for r in reasons)
+
+
+def test_unconfirmed_return_and_missing_availability_are_speculative():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    # 1. ELIGIBLE_UNCONFIRMED on bench slot
+    st = injured_league(on_ir=False)
+    st.availability[299] = derive(espn_status="INJURY_RESERVE", on_ir=False, rows=etienne_rows(through=8),
+                                  team_games=list(range(1, 19)), weeks=WEEKS)
+    assert st.availability[299]["status"] == "eligible_return_unconfirmed"
+    row = {"mine": {"playoff_delta": 9.0}, "theirs": {"playoff_delta": 5.0}, "forced_drops": {"mine": [], "theirs": []}, "sends": [102], "receives": [299]}
+    bal = {"label": "balanced", "text": "Asset packages appear relatively balanced"}
+    inj = injury_flags(st, row["sends"] + row["receives"])
+    tier, reasons = classify(row, bal, inj, "playoff", "standard")
+    assert tier == "speculative"
+    assert any("his return is not established" in r for r in reasons)
+
+    # 2. UNKNOWN availability (ESPN only, no NFL roster history)
+    st2 = injured_league(on_ir=False)
+    st2.availability[299] = derive(espn_status="INJURY_RESERVE", on_ir=False, rows=[], team_games=None, weeks=WEEKS)
+    assert st2.availability[299]["status"] == "reserve_eligibility_unknown"
+    inj2 = injury_flags(st2, row["sends"] + row["receives"])
+    tier2, reasons2 = classify(row, bal, inj2, "playoff", "standard")
+    assert tier2 == "speculative"
+    assert any("earliest eligible week is unknown" in r for r in reasons2)
+
+
+def test_fantasy_ir_trade_failing_mutual_improvement_is_excluded_one_sided():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    st = injured_league(on_ir=True)
+    board = AssetBoard(st, st.window())
+    # In regular season (weeks 10-12), player 299 is ineligible, so Team 1 delta is negative
+    ts = TradeSearch(st, 1, ("1-for-1",), opponents=[2], positions=None)
+    cand = next(c for c in ts.cands if 299 in c[3])
+    row = ts.evaluate(cand)
+    assert row["mine"]["regular_season_delta"] < 0
+    bal = board.package(row["sends"], row["receives"])
+    inj = injury_flags(st, row["sends"] + row["receives"])
+    tier, reasons = classify(row, bal, inj, "regular", "standard")
+    # Must be excluded_one_sided, NOT speculative
+    assert tier == "excluded_one_sided"
+    assert "your lineup does not improve in this phase" in reasons
+
+
+def test_fantasy_ir_trade_with_lopsided_package_is_excluded_lopsided():
+    from app.analytics.trade_assets import AssetBoard
+    from app.analytics.trade_practical import classify, injury_flags
+
+    st = injured_league(on_ir=True)
+    board = AssetBoard(st, st.window())
+    # Fabricate a balance that is significantly against them
+    ts = TradeSearch(st, 1, ("1-for-1",), opponents=[2], positions=None)
+    cand = next(c for c in ts.cands if 299 in c[3])
+    row = ts.evaluate(cand)
+    fake_bal = {"label": "significant_they_give_more", "text": "Significant asset imbalance: they surrender far more"}
+    inj = injury_flags(st, row["sends"] + row["receives"])
+    tier, reasons = classify(row, fake_bal, inj, "playoff", "standard")
+    assert tier == "excluded_lopsided"
+    assert "Significant asset imbalance" in reasons[0]
+
+
+def test_tied_par_at_starter_cutoff_both_qualify_as_starter_caliber():
+    from app.analytics.trade_assets import AssetBoard
+
+    # 2 teams with slots ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'K', 'D/ST', 'FLEX']
+    # 2 RB fixed slots * 2 teams = 4 league starters at RB
+    st = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st.free_agents = []
+    st.rosters[1] = [P(101, "RB"), P(102, "RB"), P(103, "RB"), P(104, "RB"), P(105, "RB")]
+    st.rosters[2] = [P(201, "WR")]
+    # Player 104 and 105 have identical projections (thus identical PAR)
+    for pid, score in [(101, 20.0), (102, 15.0), (103, 12.0), (104, 10.0), (105, 10.0)]:
+        st.projections[pid] = {w: score for w in range(10, 14)}
+
+    board = AssetBoard(st, st.window())
+    pr104 = board.profiles[104]
+    pr105 = board.profiles[105]
+
+    # Both players must receive the exact same position_rank and starter_caliber status
+    assert pr104["par"] == pr105["par"]
+    assert pr104["position_rank"] == 4
+    assert pr105["position_rank"] == 4
+    assert pr104["starter_caliber"] is True
+    assert pr105["starter_caliber"] is True
+    # In total, 5 players qualify as starter-caliber at RB even though nominal starter count is 4
+    rb_starters = [pr for pr in board.profiles.values() if pr["position"] == "RB" and pr["starter_caliber"]]
+    assert len(rb_starters) == 5
+
+
+def test_starter_caliber_independent_of_espn_player_ids_and_reordering():
+    from app.analytics.trade_assets import AssetBoard
+
+    # League A: original IDs
+    st_a = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st_a.free_agents = [P(901, "RB")]
+    st_a.projections[901] = {w: 4.0 for w in range(10, 14)}
+    st_a.rosters[1] = [P(101, "RB"), P(102, "RB"), P(103, "RB"), P(104, "RB"), P(105, "RB")]
+    st_a.rosters[2] = [P(201, "WR"), P(202, "WR")]
+    for pid, score in [(101, 20.0), (102, 15.0), (103, 12.0), (104, 10.0), (105, 10.0), (201, 5.0), (202, 5.0)]:
+        st_a.projections[pid] = {w: score for w in range(10, 14)}
+
+    # League B: swap the IDs of the tied players (104 <-> 999)
+    st_b = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st_b.free_agents = [P(901, "RB")]
+    st_b.projections[901] = {w: 4.0 for w in range(10, 14)}
+    st_b.rosters[1] = [P(101, "RB"), P(102, "RB"), P(103, "RB"), P(999, "RB"), P(105, "RB")]
+    st_b.rosters[2] = [P(201, "WR"), P(202, "WR")]
+    for pid, score in [(101, 20.0), (102, 15.0), (103, 12.0), (999, 10.0), (105, 10.0), (201, 5.0), (202, 5.0)]:
+        st_b.projections[pid] = {w: score for w in range(10, 14)}
+
+    board_a = AssetBoard(st_a, st_a.window())
+    board_b = AssetBoard(st_b, st_b.window())
+
+    assert board_a.profiles[104]["position_rank"] == board_b.profiles[999]["position_rank"]
+    assert board_a.profiles[104]["starter_caliber"] == board_b.profiles[999]["starter_caliber"]
+    assert board_a.profiles[105]["position_rank"] == board_b.profiles[105]["position_rank"]
+    assert board_a.profiles[105]["starter_caliber"] == board_b.profiles[105]["starter_caliber"]
+
+    # Package label with tied players must also be identical
+    pkg_a = board_a.package([102], [104, 105])
+    pkg_b = board_b.package([102], [999, 105])
+    assert pkg_a["label"] == pkg_b["label"]
+    assert pkg_a["they_send_starter_caliber"] == pkg_b["they_send_starter_caliber"] == 2
+    assert pkg_a["label"] == "they_surrender_multiple_strong"
+
+
+def test_tied_group_spanning_cutoff_and_entirely_above_or_below():
+    from app.analytics.trade_assets import AssetBoard
+
+    # 2 teams, 1 TE fixed slot * 2 teams = 2 TE league starters
+    st = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st.free_agents = []
+
+    # Scenario A: Tie spans cutoff (Player 1 has rank 1, Players 2 and 3 tied at rank 2 <= 2)
+    st.rosters[1] = [P(301, "TE"), P(302, "TE"), P(303, "TE")]
+    st.rosters[2] = [P(401, "WR")]
+    for pid, score in [(301, 15.0), (302, 10.0), (303, 10.0), (401, 5.0)]:
+        st.projections[pid] = {w: score for w in range(10, 14)}
+    b_a = AssetBoard(st, st.window())
+    assert b_a.profiles[301]["position_rank"] == 1 and b_a.profiles[301]["starter_caliber"] is True
+    assert b_a.profiles[302]["position_rank"] == 2 and b_a.profiles[302]["starter_caliber"] is True
+    assert b_a.profiles[303]["position_rank"] == 2 and b_a.profiles[303]["starter_caliber"] is True
+
+    # Scenario B: Tie spanning multiple cutoff positions (all 3 tied at rank 1 <= 2)
+    for pid in (301, 302, 303):
+        st.projections[pid] = {w: 12.0 for w in range(10, 14)}
+    b_b = AssetBoard(st, st.window())
+    assert all(b_b.profiles[pid]["position_rank"] == 1 for pid in (301, 302, 303))
+    assert all(b_b.profiles[pid]["starter_caliber"] is True for pid in (301, 302, 303))
+
+    # Scenario C: Tied group entirely above cutoff (Cutoff = 2 TE starters. Both tied at rank 1 <= 2)
+    for pid, score in [(301, 15.0), (302, 15.0), (303, 8.0)]:
+        st.projections[pid] = {w: score for w in range(10, 14)}
+    b_c = AssetBoard(st, st.window())
+    assert b_c.profiles[301]["position_rank"] == 1 and b_c.profiles[301]["starter_caliber"] is True
+    assert b_c.profiles[302]["position_rank"] == 1 and b_c.profiles[302]["starter_caliber"] is True
+    assert b_c.profiles[303]["position_rank"] == 3 and b_c.profiles[303]["starter_caliber"] is False
+
+    # Scenario D: Tied group entirely below cutoff (Cutoff = 2 TE starters. Tied at rank 3 > 2)
+    st.rosters[1] = [P(301, "TE"), P(302, "TE"), P(303, "TE"), P(304, "TE")]
+    for pid, score in [(301, 18.0), (302, 14.0), (303, 8.0), (304, 8.0)]:
+        st.projections[pid] = {w: score for w in range(10, 14)}
+    b_d = AssetBoard(st, st.window())
+    assert b_d.profiles[301]["position_rank"] == 1 and b_d.profiles[301]["starter_caliber"] is True
+    assert b_d.profiles[302]["position_rank"] == 2 and b_d.profiles[302]["starter_caliber"] is True
+    assert b_d.profiles[303]["position_rank"] == 3 and b_d.profiles[303]["starter_caliber"] is False
+    assert b_d.profiles[304]["position_rank"] == 3 and b_d.profiles[304]["starter_caliber"] is False
+
+
+def test_par_difference_small_nonzero_not_tied():
+    from app.analytics.trade_assets import AssetBoard
+
+    st = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st.free_agents = []
+    # 2 TE starters across league
+    st.rosters[1] = [P(301, "TE"), P(302, "TE"), P(303, "TE")]
+    st.rosters[2] = [P(401, "WR")]
+    # Player 302 has tiny advantage over 303: 10.0001 vs 10.0 (full precision difference)
+    st.projections[301] = {w: 15.0 for w in range(10, 14)}
+    st.projections[302] = {w: 10.0001 for w in range(10, 14)}
+    st.projections[303] = {w: 10.0 for w in range(10, 14)}
+    st.projections[401] = {w: 5.0 for w in range(10, 14)}
+
+    board = AssetBoard(st, st.window())
+    assert board.profiles[302]["position_rank"] == 2
+    assert board.profiles[302]["starter_caliber"] is True
+    assert board.profiles[303]["position_rank"] == 3
+    assert board.profiles[303]["starter_caliber"] is False
+
+
+def test_incomplete_projections_par_unknown_and_insufficient_data():
+    from app.analytics.trade_assets import AssetBoard
+
+    st = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st.free_agents = []
+    st.rosters[1] = [P(301, "TE")]
+    st.rosters[2] = [P(401, "WR")]
+    # Player 301 is missing week 12 projection
+    st.projections[301] = {10: 15.0, 11: 15.0, 13: 15.0}
+    st.projections[401] = {w: 10.0 for w in range(10, 14)}
+
+    board = AssetBoard(st, st.window())
+    p301 = board.profiles[301]
+    assert p301["par"] is None
+    assert p301["position_rank"] is None
+    assert p301["starter_caliber"] is False
+
+    pkg = board.package([301], [401])
+    assert pkg["label"] == "insufficient_data"
+
+
+def test_package_labels_remain_consistent_with_tied_players():
+    from app.analytics.trade_assets import AssetBoard
+
+    st = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st.free_agents = [P(901, "RB")]
+    st.projections[901] = {w: 5.0 for w in range(10, 14)}
+    st.rosters[1] = [P(101, "RB"), P(102, "RB")]
+    st.rosters[2] = [P(201, "RB"), P(202, "RB"), P(203, "RB")]
+    # Equal valued RBs
+    for pid in (101, 102, 201, 202, 203):
+        st.projections[pid] = {w: 15.0 for w in range(10, 14)}
+
+    board = AssetBoard(st, st.window())
+    # 1-for-1 between any two tied players is balanced
+    pkg1 = board.package([101], [201])
+    pkg2 = board.package([101], [202])
+    assert pkg1["label"] == pkg2["label"] == "balanced"
+    assert pkg1["ratio"] == pkg2["ratio"] == 1.0
+
+    # Replacement level: projections lower than or equal to replacement baseline
+    st_low = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st_low.free_agents = []
+    st_low.rosters[1] = [P(101, "RB")]
+    st_low.rosters[2] = [P(201, "RB")]
+    st_low.projections[101] = {w: 0.5 for w in range(10, 14)}
+    st_low.projections[201] = {w: 0.5 for w in range(10, 14)}
+    board_low = AssetBoard(st_low, st_low.window())
+    pkg_low = board_low.package([101], [201])
+    assert pkg_low["label"] == "replacement_level"
+
+    # Significant imbalance
+    st_imb = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st_imb.free_agents = []
+    st_imb.rosters[1] = [P(101, "RB")]
+    st_imb.rosters[2] = [P(201, "RB")]
+    st_imb.projections[101] = {w: 2.0 for w in range(10, 14)}
+    st_imb.projections[201] = {w: 20.0 for w in range(10, 14)}
+    board_imb = AssetBoard(st_imb, st_imb.window())
+    pkg_imb = board_imb.package([101], [201])
+    assert pkg_imb["label"] == "significant_they_give_more"
+
+

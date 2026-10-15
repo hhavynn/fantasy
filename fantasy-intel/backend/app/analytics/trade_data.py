@@ -229,11 +229,12 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
     for t in teams:
         rosters.setdefault(t["team_id"], [])
     rostered = {p.espn_player_id for ps in rosters.values() for p in ps}
+    fa_rows = [f for f in fetch_dicts(con, f"""
+                   SELECT espn_player_id, full_name, position, pro_team, injury_status, availability_status
+                   FROM fantasy_players WHERE availability_status IN {FA_STATUSES} ORDER BY espn_player_id""")
+               if f["espn_player_id"] not in rostered]
     free_agents = [RosterPlayer(f["espn_player_id"], f["position"], f["pro_team"], f["full_name"], False, f["injury_status"])
-                   for f in fetch_dicts(con, f"""
-                       SELECT espn_player_id, full_name, position, pro_team, injury_status FROM fantasy_players
-                       WHERE availability_status IN {FA_STATUSES} ORDER BY espn_player_id""")
-                   if f["espn_player_id"] not in rostered]
+                   for f in fa_rows]
     proj: dict[int, dict[int, float]] = {}
     for p in fetch_dicts(con, """SELECT espn_player_id, scoring_period, projected_points FROM espn_player_weekly_points
                                  WHERE season = ? AND scoring_period BETWEEN ? AND ? AND projected_points IS NOT NULL""",
@@ -260,7 +261,8 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
         active_capacity=capacity, position_limits=_position_limits(settings),
         team_names={t["team_id"]: t["name"] for t in teams}, league_id=lg["league_id"], start_week_reason=start,
         undroppable_list_in_use=((settings.get("rosterSettings") or {}).get("isUsingUndroppableList")),
-        first_projection_week=window.current, availability=availability)
+        first_projection_week=window.current, availability=availability,
+        free_agent_status={f["espn_player_id"]: f["availability_status"] for f in fa_rows})
 
 
 # ---------------------------------------------------------------------- context (display) --
