@@ -10,6 +10,7 @@ and the schedule. No fantasy points, xFP, PPG or projections.
 
 from __future__ import annotations
 
+import re
 import sys
 from collections import defaultdict
 from statistics import mean, median
@@ -20,7 +21,7 @@ from ..numbers import render
 sys.path.insert(0, str(STUDIO_ROOT.parent / "backend"))
 from app.analytics.trends import compute_trend, composite_trend  # noqa: E402  (pure stdlib module)
 
-VERSION = 1
+VERSION = 2
 PLAYOFF_WEEKS = [15, 16, 17]
 
 # (metric column, label, trend threshold). Thresholds for offense_pct/target_share/backfield_rush_share
@@ -39,10 +40,11 @@ DEFENSE_RANK_LABEL = {"pass_epa_allowed": "EPA allowed per pass play",
                       "te_target_share_allowed": "target share allowed to tight ends",
                       "rush_epa_allowed": "EPA allowed per designed rush"}
 EXCLUDE_STATUSES = {"Out", "Doubtful"}
+# Metrics stable enough to carry a story. Air-yard share swings with a single deep ball (and goes negative on
+# screens), so it only ever supports.
+LEAD_METRICS = {"offense_pct", "target_share", "backfield_rush_share"}
 # Matchup bands as in backend analytics/context.py (rank 1 = most generous of 32 defenses).
 FAVORABLE_RANK, TOUGH_RANK = 10, 23
-# PROE is in percentage points; within ±2 we call a team close to neutral.
-PROE_LEAN = 2.0
 
 
 # --------------------------------------------------------------------------------------------- claims
@@ -105,13 +107,25 @@ def evaluate_claim(snap: dict, src: dict):
             return "bye"
         return g["away_team"] if g["home_team"] == src["team"] else g["home_team"]
     if kind == "proe_tendency":
-        proe = next(r for r in snap["tables"]["team_context"] if r["team"] == src["team"])["proe"]
-        return ("pass-leaning" if proe >= PROE_LEAN else "run-leaning" if proe <= -PROE_LEAN
-                else "close to neutral")
+        # Relative to the league, not the PROE sign: when most teams sit below expectation, a negative PROE
+        # can still be league-average, and calling the 16th-ranked team "run-leaning" misleads.
+        rank = _rank_desc(snap["tables"]["team_context"], "proe", "team", src["team"])
+        return ("one of the league's more pass-heavy offenses" if rank <= FAVORABLE_RANK
+                else "one of the league's more run-heavy offenses" if rank >= TOUGH_RANK
+                else "middle of the pack in pass tendency")
     if kind == "defense_band":
         rank = next(r for r in snap["tables"]["defense_context"] if r["defteam"] == src["team"])["ranks"][src["rank_key"]]
         return ("favorable" if rank <= FAVORABLE_RANK else "tough" if rank >= TOUGH_RANK
                 else "middle-of-the-pack")
+    if kind == "playoff_opponents":
+        return [evaluate_claim(snap, {"kind": "opponent", "team": src["team"], "week": w}) for w in src["weeks"]]
+    if kind == "playoff_summary":
+        grades = []
+        for w in src["weeks"]:
+            opp = evaluate_claim(snap, {"kind": "opponent", "team": src["team"], "week": w})
+            if opp != "bye":
+                grades.append(evaluate_claim(snap, {"kind": "defense_band", "team": opp, "rank_key": src["rank_key"]}))
+        return grade_summary(grades)
     if kind == "week_value":
         return src["week"]
     if kind == "episode_week":
@@ -119,6 +133,21 @@ def evaluate_claim(snap: dict, src: dict):
     if kind == "constant_weeks":
         return src["weeks"]
     raise ValueError(f"unknown claim source kind {kind!r}")
+
+
+def grade_summary(grades: list[str]) -> str:
+    """['favorable', 'tough', 'favorable'] -> 'two favorable matchups and one tough one'."""
+    from ..numbers import int_words
+    order = ["favorable", "middle-of-the-pack", "tough"]
+    counts = [(g, grades.count(g)) for g in order if grades.count(g)]
+    if not counts:
+        return "no games"
+    if len(counts) == 1:
+        g, n = counts[0]
+        return f"{int_words(n) if n > 1 else 'one'} {g} matchup{'s' if n > 1 else ''}"
+    parts = [f"{int_words(n)} {g} matchup{'s' if n > 1 else ''}" if i == 0 else f"{int_words(n)} {g} one{'s' if n > 1 else ''}"
+             for i, (g, n) in enumerate(counts)]
+    return ", ".join(parts[:-1]) + f" and {parts[-1]}" if len(parts) > 2 else f"{parts[0]} and {parts[1]}"
 
 
 class ClaimBook:
@@ -175,15 +204,18 @@ def _no_missed_games(rows: list[dict], snap: dict, weeks: list[int]) -> bool:
     return team_weeks <= played
 
 
-def _latest_game_confirms(rows: list[dict], trend, up: bool) -> bool:
-    """The most recent game on its own moved past the threshold versus the MEDIAN earlier game, so a single
-    injury-shortened game (in either window) cannot read as a role change."""
-    latest = next((r[trend.metric] for r in reversed(rows) if r[trend.metric] is not None), None)
+def _sustained(rows: list[dict], trend, up: bool) -> bool:
+    """EVERY game in the recent window moved past the threshold versus the MEDIAN earlier game.
+
+    One collapsed game (an in-game injury exit, an ejection, a blowout) is the commonest false "faller":
+    49/52/63/56% snaps then 14% is not a lost role. Requiring each recent game to show the move, against a
+    median that one odd earlier game cannot drag, keeps single-game noise out in both directions."""
     base = [r[trend.metric] for r in rows if r["week"] in trend.baseline_weeks and r[trend.metric] is not None]
-    if latest is None or not base:
+    recent = [r[trend.metric] for r in rows if r["week"] in trend.recent_weeks and r[trend.metric] is not None]
+    if not base or len(recent) < len(trend.recent_weeks):
         return False
-    change = latest - median(base)
-    return change >= trend.threshold if up else change <= -trend.threshold
+    mid = median(base)
+    return all((v - mid >= trend.threshold) if up else (v - mid <= -trend.threshold) for v in recent)
 
 
 def select_players(snap: dict, n_risers: int, n_fallers: int, max_per_position: int,
@@ -203,9 +235,13 @@ def select_players(snap: dict, n_risers: int, n_fallers: int, max_per_position: 
         if score is None or label not in ("UP", "DOWN"):
             continue
         usable = [t for t in trends if t.delta is not None]
-        lead = max(usable, key=lambda t: abs(t.delta / t.threshold))
+        leads = [t for t in usable if t.metric in LEAD_METRICS]
+        if not leads:
+            continue
+        lead = max(leads, key=lambda t: abs(t.delta / t.threshold))
         up = label == "UP"
-        if not _no_missed_games(rows, snap, lead.recent_weeks) or not _latest_game_confirms(rows, lead, up):
+        if (lead.delta > 0) != up or not _no_missed_games(rows, snap, lead.recent_weeks) \
+                or not _sustained(rows, lead, up):
             continue
         recent = {t.metric: t.recent_avg for t in trends}
         baseline = {t.metric: t.baseline_avg for t in trends}
@@ -261,8 +297,8 @@ def player_facts(book: ClaimBook, snap: dict, entry: dict, role: str) -> dict:
             "delta_over_threshold": t.delta / t.threshold,
             "series": [{"week": r["week"], "value": r[col]} for r in rows],
         })
-    # Lead with the metric that moved most relative to its threshold.
-    metrics.sort(key=lambda m: -abs(m["delta_over_threshold"]))
+    # Lead with the stable metric that moved most relative to its threshold (same rule as selection).
+    metrics.sort(key=lambda m: (m["column"] not in LEAD_METRICS, -abs(m["delta_over_threshold"])))
     volume_col = "targets" if pos != "RB" else "designed_rushes"
     games = _team_games(snap, team)
     last_week = recent_w[-1]
@@ -288,7 +324,7 @@ def player_facts(book: ClaimBook, snap: dict, entry: dict, role: str) -> dict:
                              {"kind": "team_context", "team": team, "column": "proe"}, team=team),
             "proe_rank": book.add("league rank in pass rate over expectation (first = most pass-heavy)", "ordinal",
                                   {"kind": "team_context_rank", "team": team, "column": "proe"}, team=team),
-            "pass_tendency": book.add("team tendency versus expectation (describes the PROE sign)", "text",
+            "pass_tendency": book.add("team pass tendency versus the league (from the PROE rank)", "text",
                                       {"kind": "proe_tendency", "team": team}, team=team),
             "neutral_pass_rate": book.add("neutral-situation pass rate", "pct",
                                           {"kind": "team_context", "team": team, "column": "neutral_pass_rate"}, team=team),
@@ -320,12 +356,24 @@ def player_facts(book: ClaimBook, snap: dict, entry: dict, role: str) -> dict:
                                         {"kind": "defense_band", "team": opp, "rank_key": rank_key}, team=opp)
         facts["schedule"].append(item)
     facts["defense_rank_label"] = DEFENSE_RANK_LABEL[rank_key]
+    facts["playoff"] = {
+        "opponents": book.add("fantasy-playoff opponents in order", "opponents",
+                              {"kind": "playoff_opponents", "team": team, "weeks": PLAYOFF_WEEKS}, team=team),
+        "summary": book.add("fantasy-playoff matchups by defense rank so far this season", "text",
+                            {"kind": "playoff_summary", "team": team, "weeks": PLAYOFF_WEEKS, "rank_key": rank_key},
+                            team=team),
+    }
     return facts
 
 
-def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str]) -> dict:
+def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str],
+                only: str | None = None) -> dict:
+    """Facts for the long-form episode, or (`only` = gsis_id) for one Short about that player."""
     risers, fallers = select_players(snap, cfg_selection["risers"], cfg_selection["fallers"],
                                      cfg_selection["max_per_position"], recent_featured)
+    if only:
+        risers = [e for e in risers if e["gsis_id"] == only]
+        fallers = [e for e in fallers if e["gsis_id"] == only]
     book = ClaimBook(snap)
     episode = {
         "week": book.add("episode week", "week", {"kind": "episode_week"}),
@@ -339,18 +387,48 @@ def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str]) -> d
             "claims": book.claims}
 
 
-def recent_featured_players(history_path, window: int, before_week: int, season: int) -> set[str]:
+def recent_featured_players(history_path, window: int, before_week: int, season: int,
+                            fmt: str = "long") -> set[str]:
     if not history_path.exists():
         return set()
     import json
     entries = [json.loads(l) for l in history_path.read_text().splitlines() if l.strip()]
-    entries = [e for e in entries if e["season"] == season and e["week"] < before_week and e["format"] == "long"]
-    entries.sort(key=lambda e: e["week"])
-    return {p for e in entries[-window:] for p in e["players"]}
+    entries = [e for e in entries if e["season"] == season and e["week"] < before_week and e["format"] == fmt]
+    weeks = sorted({e["week"] for e in entries})[-window:]
+    return {p for e in entries if e["week"] in weeks for p in e["players"]}
+
+
+ALL = {"risers": 99, "fallers": 99, "max_per_position": 99}
+
+
+def pick_stories(snap: dict, n_risers: int, n_fallers: int, recent_featured: set[str]) -> list[dict]:
+    """Shorts: the strongest sustained moves, one player per Short, at most one Short per team (two Bears
+    Shorts would repeat the same QB and schedule lines), recently featured players last."""
+    risers, fallers = select_players(snap, ALL["risers"], ALL["fallers"], ALL["max_per_position"], recent_featured)
+    stories, teams = [], set()
+    for pool, n, role in ((risers, n_risers, "riser"), (fallers, n_fallers, "faller")):
+        taken = 0
+        for e in pool:
+            if taken == n or e["team"] in teams:
+                continue
+            teams.add(e["team"])
+            taken += 1
+            slug = re.sub(r"[^a-z0-9]+", "-", e["name"].lower()).strip("-")
+            stories.append({"gsis_id": e["gsis_id"], "name": e["name"], "role": role, "team": e["team"],
+                            "slug": slug, "order": len(stories)})
+    return stories
 
 
 def _run(ep: Episode) -> None:
     snap = read_json(ep.path("snapshot.json"))
+    if ep.fmt == "short":
+        story = read_json(ep.path("story.json"))
+        facts = build_facts(snap, ALL, set(), only=story["gsis_id"])
+        if len(facts["players"]) != 1:
+            raise RuntimeError(f"{story['name']} no longer meets the selection rules")
+        write_json(ep.path("facts.json"), facts)
+        ep.log(f"  facts: {story['name']} ({story['role']}), {len(facts['claims'])} claims")
+        return
     recent = recent_featured_players(ep.cfg.episodes_dir / "history.jsonl",
                                      ep.cfg["selection"]["recent_episode_window"], ep.week, ep.season)
     facts = build_facts(snap, ep.cfg["selection"], recent)
@@ -364,5 +442,6 @@ def _run(ep: Episode) -> None:
 def run(ep: Episode) -> None:
     recent = recent_featured_players(ep.cfg.episodes_dir / "history.jsonl",
                                      ep.cfg["selection"]["recent_episode_window"], ep.week, ep.season)
+    inputs = ["snapshot.json"] + (["story.json"] if ep.fmt == "short" else [])
     run_stage(ep, "facts", VERSION, {"selection": ep.cfg["selection"], "recent_featured": sorted(recent)},
-              ["snapshot.json"], ["facts.json"], lambda: _run(ep))
+              inputs, ["facts.json"], lambda: _run(ep))

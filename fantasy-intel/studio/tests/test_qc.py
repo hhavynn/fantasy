@@ -130,11 +130,15 @@ def test_av_length_mismatch_fails(tmp_path):
 
 # --------------------------------------------------------------------------------- text and rights
 
-def test_subtitle_overflow_fails():
-    ok = {"cues": [{"start": 0, "end": 1.5, "text": "Snap share rose to 88%."}]}
+@pytest.mark.parametrize("geometry", [
+    {"font": "Inter-SemiBold.ttf", "font_size": 46, "max_width_px": 1500, "max_lines": 2},     # long form
+    {"font": "Inter-Black.ttf", "font_size": 64, "max_width_px": 860, "max_lines": 2},         # Shorts
+])
+def test_subtitle_overflow_fails(geometry):
+    ok = {**geometry, "cues": [{"start": 0, "end": 1.5, "text": "Snap share rose to 88%."}]}
     assert qc.gate_subtitles(ok).passed
     long = " ".join(["overflowing"] * 40)
-    assert "lines" in failures(qc.gate_subtitles({"cues": [{"start": 0, "end": 2, "text": long}]}))
+    assert "lines" in failures(qc.gate_subtitles({**geometry, "cues": [{"start": 0, "end": 2, "text": long}]}))
 
 
 def test_originality_fails_on_a_near_copy_and_a_recycled_cast():

@@ -40,10 +40,12 @@ def make_snapshot(week: int = 6) -> dict:
              + _rows("00-FALLER", "DAL", "WR", [0.90, 0.92, 0.90, 0.60, 0.55], [0.25, 0.27, 0.24, 0.10, 0.08])
              + _rows("00-FLAT", "NYJ", "WR", [0.80, 0.81, 0.79, 0.80, 0.82], [0.20, 0.21, 0.20, 0.21, 0.20])
              # One early injury exit (week 3), otherwise steady: must not read as a faller.
-             + _rows("00-EXIT", "SEA", "WR", [0.90, 0.92, 0.10, 0.91, 0.90], [0.25, 0.26, 0.02, 0.25, 0.24]))
+             + _rows("00-EXIT", "SEA", "WR", [0.90, 0.92, 0.10, 0.91, 0.90], [0.25, 0.26, 0.02, 0.25, 0.24])
+             # Normal role, then one collapsed latest game (an in-game exit): not a faller either.
+             + _rows("00-LATEEXIT", "NYJ", "TE", [0.70, 0.66, 0.86, 0.92, 0.16], [0.23, 0.20, 0.30, 0.24, 0.03]))
     players = [{"gsis_id": g, "display_name": n, "position": "WR"} for g, n in
                [("00-RISER", "Rising Receiver"), ("00-FALLER", "Falling Receiver"), ("00-FLAT", "Flat Receiver"),
-                ("00-EXIT", "Exit Receiver")]]
+                ("00-EXIT", "Exit Receiver"), ("00-LATEEXIT", "Late Exit")]]
     team_ctx = [{"team": t, "through_week": week - 1, "games": 5, "proe": p, "neutral_pass_rate": 0.55,
                  "dropbacks": 180} for t, p in zip(TEAMS, [-4.3, 3.1, 0.5, -1.0])]
     defense = [{"defteam": t, "through_week": week - 1, "games": 5, "pass_plays": 180, "pass_epa_allowed": 0.0,

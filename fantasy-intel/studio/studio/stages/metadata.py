@@ -44,7 +44,8 @@ def _run(ep: Episode) -> None:
     claims = {c["id"]: c for c in facts["claims"]}
     timings = read_json(ep.path("audio/timings.json"))
     durations = {s["id"]: s["duration"] for s in timings["segments"]}
-    chaps = chapters(script, durations, facts["players"])
+    short = ep.fmt == "short"
+    chaps = [] if short else chapters(script, durations, facts["players"])
     week = claims[facts["episode"]["week"]]["display"]
     risers = [p["name"] for p in facts["players"] if p["role"] == "riser"]
     fallers = [p["name"] for p in facts["players"] if p["role"] == "faller"]
@@ -53,23 +54,28 @@ def _run(ep: Episode) -> None:
     hook = (f"{hero['name']}'s {m['label']} went from {claims[m['baseline']]['display']} to "
             f"{claims[m['recent']]['display']}.")
     cta = script["cta"]
-    lines = [
-        hook,
-        f"The {week} usage report: the biggest NFL role changes by snap share, target share, air-yard share and "
-        "backfield rush share, with team pass tendency and each player's fantasy-playoff schedule. "
-        "No fantasy points, no projections.",
-        "",
-        *[f"{_ts(c['start'])} {c['title']}" for c in chaps],
-        "",
-        "Risers: " + ", ".join(risers),
-        "Fallers: " + ", ".join(fallers),
-        "",
-        AI_DISCLOSURE,
-        ATTRIBUTION,
-    ]
+    if short:
+        lines = [hook, f"Over his last {claims[hero['recent_games']]['display']} games versus the "
+                 f"{claims[hero['baseline_games']]['display']} before. Usage, not box scores.", "",
+                 AI_DISCLOSURE, ATTRIBUTION, "", "#shorts #fantasyfootball #nfl"]
+    else:
+        lines = [
+            hook,
+            f"The {week} usage report: the biggest NFL role changes by snap share, target share, air-yard share and "
+            "backfield rush share, with team pass tendency and each player's fantasy-playoff schedule. "
+            "No fantasy points, no projections.",
+            "",
+            *[f"{_ts(c['start'])} {c['title']}" for c in chaps],
+            "",
+            "Risers: " + ", ".join(risers),
+            "Fallers: " + ", ".join(fallers),
+            "",
+            AI_DISCLOSURE,
+            ATTRIBUTION,
+        ]
     if cta["url"]:
         lines += ["", f"Free usage tool: {cta['url']}"]
-    tags = ["fantasy football", "nfl usage", "snap share", "target share", "fantasy football waivers",
+    tags = (["shorts"] if short else []) + ["fantasy football", "nfl usage", "snap share", "target share", "fantasy football waivers",
             f"fantasy football {week.lower()}", *risers, *fallers]
     meta = {
         "episode_id": ep.id,
@@ -86,15 +92,22 @@ def _run(ep: Episode) -> None:
         "chapters": chaps,
         "files": {"video": "final.mp4", "thumbnail": "thumbnail.png", "captions": "captions.srt"},
     }
+    if short:
+        # What varies between Shorts, recorded so analytics can compare one variable at a time later.
+        meta["experiment"] = {**script["structure"], "duration_s": round(sum(durations.values()), 1),
+                              "player": hero["name"], "position": hero["position"]}
     write_json(ep.path("metadata.json"), meta)
 
     history = ep.cfg.episodes_dir / "history.jsonl"
     entries = [json.loads(line) for line in history.read_text().splitlines() if line.strip()] if history.exists() else []
     entries = [e for e in entries if e["episode_id"] != ep.id]
-    entries.append({"episode_id": ep.id, "season": ep.season, "week": ep.week, "format": ep.fmt,
-                    "players": [p["gsis_id"] for p in facts["players"]],
-                    "narration": [s["text_display"] for s in script["narration_segments"]]})
-    entries.sort(key=lambda e: (e["season"], e["week"], e["format"]))
+    entry = {"episode_id": ep.id, "season": ep.season, "week": ep.week, "format": ep.fmt,
+             "players": [p["gsis_id"] for p in facts["players"]],
+             "narration": [s["text_display"] for s in script["narration_segments"]]}
+    if short:
+        entry |= {"structure": script["structure"], "order": read_json(ep.path("story.json"))["order"]}
+    entries.append(entry)
+    entries.sort(key=lambda e: (e["season"], e["week"], e["format"], e.get("order", 0)))
     history.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in entries))
     ep.log(f"  metadata: {len(chaps)} chapters, title: {meta['title']!r}")
 

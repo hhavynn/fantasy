@@ -184,8 +184,8 @@ def _run(ep: Episode) -> None:
     for n, c in enumerate(cues, start=1):
         srt.append(f"{n}\n{srt_time(c['start'])} --> {srt_time(c['end'])}\n{c['text']}\n")
     ep.path("captions.srt").write_text("\n".join(srt))
-    write_json(ep.path("captions.json"), {"max_width_px": CAPTION_MAX_WIDTH, "max_lines": CAPTION_MAX_LINES,
-                                          "font_size": CAPTION_SIZE, "cues": cues})
+    write_json(ep.path("captions.json"), {"font": "Inter-SemiBold.ttf", "max_width_px": CAPTION_MAX_WIDTH,
+                                          "max_lines": CAPTION_MAX_LINES, "font_size": CAPTION_SIZE, "cues": cues})
 
     concat = ep.path("work/clips.ffconcat")
     concat.write_text("ffconcat version 1.0\n" + "".join(

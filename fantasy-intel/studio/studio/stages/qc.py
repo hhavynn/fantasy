@@ -17,11 +17,11 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-from PIL import Image
+from PIL import Image, ImageFont
 
-from ..core import Episode, read_json, sha256_path, utcnow, write_json
+from ..core import FONTS, Episode, read_json, sha256_path, utcnow, write_json
 from ..numbers import render
-from .assemble import CAPTION_MAX_LINES, CAPTION_MAX_WIDTH, caption_font, caption_lines
+from .assemble import _wrap_px
 from .facts import evaluate_claim
 from .script import BANNED, DIGIT, NUMBER_WORDS, PLACEHOLDER, fill
 
@@ -196,18 +196,20 @@ def gate_av_sync(video: Path) -> Gate:
 
 
 def gate_subtitles(captions: dict) -> Gate:
+    """Re-measure every caption with the font, size and box it was burned in with (from captions.json)."""
     failures = []
-    font = caption_font()
+    font = ImageFont.truetype(str(FONTS / captions.get("font", "Inter-SemiBold.ttf")), captions["font_size"])
+    max_w, max_lines = captions["max_width_px"], captions["max_lines"]
     for i, cue in enumerate(captions["cues"]):
-        lines = caption_lines(cue["text"])
-        if len(lines) > CAPTION_MAX_LINES:
+        lines = _wrap_px(cue["text"], font, max_w)
+        if len(lines) > max_lines:
             failures.append(f"cue {i + 1}: {len(lines)} lines: {cue['text'][:60]!r}")
         for line in lines:
-            if font.getlength(line) > CAPTION_MAX_WIDTH:
+            if font.getlength(line) > max_w:
                 failures.append(f"cue {i + 1}: line wider than the caption area: {line[:60]!r}")
         if cue["end"] <= cue["start"]:
             failures.append(f"cue {i + 1}: zero or negative duration")
-    return _gate("subtitles", failures, cues=len(captions["cues"]), max_lines=CAPTION_MAX_LINES)
+    return _gate("subtitles", failures, cues=len(captions["cues"]), max_lines=max_lines, max_width_px=max_w)
 
 
 def _shingles(texts: list[str], n: int = 5) -> set[tuple[str, ...]]:
@@ -215,10 +217,23 @@ def _shingles(texts: list[str], n: int = 5) -> set[tuple[str, ...]]:
     return {tuple(words[i:i + n]) for i in range(max(len(words) - n + 1, 0))}
 
 
-def gate_originality(episode_id: str, narration: list[str], players: list[str], history: list[dict]) -> Gate:
-    """Narration must not be a near copy of any earlier episode, and must not recycle its cast."""
+SAME_HOOK_RUN_MAX = 2      # a third Short in a row may not open with the same hook family
+
+
+def gate_originality(episode_id: str, narration: list[str], players: list[str], history: list[dict],
+                     structure: dict | None = None) -> Gate:
+    """Narration must not be a near copy of any earlier episode, must not recycle its cast, and (Shorts) must
+    not repeat the same opening structure three times running: different words in the same template still
+    look mass-produced."""
     mine = _shingles(narration)
     scores, failures = [], []
+    if structure:
+        prior = [e for e in history if e.get("structure") and e["episode_id"] != episode_id
+                 and (e["week"], e.get("order", 0)) < (structure["_week"], structure["_order"])]
+        prior.sort(key=lambda e: (e["week"], e.get("order", 0)))
+        last = [e["structure"]["hook"] for e in prior[-SAME_HOOK_RUN_MAX:]]
+        if len(last) == SAME_HOOK_RUN_MAX and all(h == structure["hook"] for h in last):
+            failures.append(f"hook '{structure['hook']}' would open {SAME_HOOK_RUN_MAX + 1} Shorts in a row")
     for e in history:
         if e["episode_id"] == episode_id:
             continue
@@ -251,7 +266,7 @@ def gate_licenses(cfg, installed: set[str]) -> Gate:
     return _gate("licenses", failures, allowed_models=ALLOWED_MODELS)
 
 
-def gate_metadata(meta: dict, thumbnail: Path) -> Gate:
+def gate_metadata(meta: dict, thumbnail: Path, fmt: str = "long") -> Gate:
     failures = []
     if meta["privacy_status"] != "private":
         failures.append(f"privacy_status is {meta['privacy_status']!r}, must be 'private'")
@@ -275,15 +290,21 @@ def gate_metadata(meta: dict, thumbnail: Path) -> Gate:
     if thumbnail.stat().st_size > 2 * 1024 * 1024:
         failures.append("thumbnail over 2 MB")
     chapters = meta.get("chapters", [])
-    if len(chapters) < 3 or chapters[0]["start"] != 0:
+    if fmt == "long" and (len(chapters) < 3 or chapters[0]["start"] != 0):
         failures.append("chapters must start at 0:00 and number at least 3")
+    if fmt == "short" and "#shorts" not in meta["description"].lower():
+        failures.append("Short lacks #shorts in the description")
     return _gate("metadata", failures, title=meta["title"])
+
+
+STAGES_BY_FORMAT = {"long": ("facts", "script", "tts", "charts", "assemble", "thumbnail", "metadata"),
+                    "short": ("facts", "script", "tts", "render", "thumbnail", "metadata")}
 
 
 def gate_integrity(ep: Episode) -> Gate:
     """Each stage's recorded inputs equal the files on disk now: no stale audio, stills or video."""
     failures = []
-    for name in ("facts", "script", "tts", "charts", "assemble", "thumbnail", "metadata"):
+    for name in STAGES_BY_FORMAT[ep.fmt]:
         path = ep.path(f".stages/{name}.json")
         if not path.exists():
             failures.append(f"{name}: no stage record")
@@ -306,6 +327,7 @@ def run_gates(ep: Episode) -> list[Gate]:
     history = [json.loads(l) for l in history_path.read_text().splitlines() if l.strip()] \
         if history_path.exists() else []
     narration = [s["text_display"] for s in script["narration_segments"] if s["section"] != "cta"]
+    history = [e for e in history if e["format"] == ep.fmt]      # Shorts are compared with Shorts
     return [
         gate_claims(snapshot, facts, script),
         gate_narration(script),
@@ -314,9 +336,11 @@ def run_gates(ep: Episode) -> list[Gate]:
         gate_video(video),
         gate_av_sync(video),
         gate_subtitles(read_json(ep.path("captions.json"))),
-        gate_originality(ep.id, narration, [p["gsis_id"] for p in facts["players"]], history),
+        gate_originality(ep.id, narration, [p["gsis_id"] for p in facts["players"]], history,
+                         {**script["structure"], "_week": ep.week,
+                          "_order": read_json(ep.path("story.json"))["order"]} if ep.fmt == "short" else None),
         gate_licenses(ep.cfg, installed_distributions()),
-        gate_metadata(read_json(ep.path("metadata.json")), ep.path("thumbnail.png")),
+        gate_metadata(read_json(ep.path("metadata.json")), ep.path("thumbnail.png"), ep.fmt),
         gate_integrity(ep),
     ]
 

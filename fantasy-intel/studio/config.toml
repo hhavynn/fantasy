@@ -50,3 +50,10 @@ long_min = 480
 long_max = 720
 short_min = 30
 short_max = 45
+
+[shorts]
+# Stories per week (about three is sustainable to review): the strongest sustained moves, one per team.
+risers = 2
+fallers = 1
+# From this week a "role first, schedule second" Weeks 15-17 beat joins each Short.
+playoff_runway_from_week = 11

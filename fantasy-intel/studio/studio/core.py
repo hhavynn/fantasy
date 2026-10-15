@@ -100,10 +100,12 @@ class Episode:
     cfg: Config
     force: set[str] = field(default_factory=set)
     log: Callable[[str], None] = print
+    slug: str | None = None      # one Short per player: 2026-w06-short-braelon-allen
 
     @property
     def id(self) -> str:
-        return f"{self.season}-w{self.week:02d}-{self.fmt}"
+        base = f"{self.season}-w{self.week:02d}-{self.fmt}"
+        return f"{base}-{self.slug}" if self.slug else base
 
     @property
     def dir(self) -> Path:

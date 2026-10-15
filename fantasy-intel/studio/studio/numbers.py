@@ -83,7 +83,10 @@ def fmt_signed_pct1(v: float) -> tuple[str, str]:
 
 
 def fmt_dec1(v: float) -> tuple[str, str]:
+    """One decimal, dropping a trailing .0: 19.0 -> ('19', 'nineteen'), 4.5 -> ('4.5', 'four point five')."""
     d = round_half_up(v, 1)
+    if d == d.to_integral_value():
+        d = d.quantize(Decimal(1))
     return f"{d}", decimal_words(d)
 
 
@@ -132,6 +135,13 @@ def fmt_team(v) -> tuple[str, str]:
     return name, "Niners" if v == "SF" else name
 
 
+def fmt_opponents(v: list) -> tuple[str, str]:
+    """['SEA', 'bye', 'SF'] -> ('the Seahawks, a bye and the 49ers', 'the Seahawks, a bye and the Niners')."""
+    display = [("a bye" if t == "bye" else f"the {fmt_team(t)[0]}") for t in v]
+    spoken = [("a bye" if t == "bye" else f"the {fmt_team(t)[1]}") for t in v]
+    return _join(display), _join(spoken)
+
+
 def _join(items: list) -> str:
     items = [str(i) for i in items]
     if len(items) <= 1:
@@ -143,7 +153,7 @@ def _join(items: list) -> str:
 
 FORMATTERS = {
     "pct": fmt_pct, "pp": fmt_pp, "signed_pct1": fmt_signed_pct1, "dec1": fmt_dec1, "int": fmt_int,
-    "ordinal": fmt_ordinal, "week": fmt_week, "team": fmt_team, "weeks_range": fmt_weeks_range, "text": fmt_text,
+    "ordinal": fmt_ordinal, "week": fmt_week, "team": fmt_team, "opponents": fmt_opponents, "weeks_range": fmt_weeks_range, "text": fmt_text,
 }
 
 
