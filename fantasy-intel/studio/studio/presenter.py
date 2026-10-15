@@ -15,7 +15,8 @@ player visual disappears; captions are redrawn from the same word timings, below
 Steps (each cached by the hash of its inputs):
   1. host portrait: assets/presenter/host.png, a fictional person generated locally with Z-Image-Turbo
      (Apache-2.0), see assets/presenter/host.json. The same image for every video keeps him consistent.
-  2. base clip: the portrait with slow procedural head motion, breathing and two blinks (25 fps frames)
+  2. base clip: the portrait with slow procedural head motion and breathing (25 fps frames); synthetic
+     blinks were tried and switched off
   3. lip sync: MuseTalk 1.5 (MIT) on PyTorch MPS in its own environment (studio/presenter_worker.py),
      driven by the existing segment WAV of each window
   4. composite: host shot with the scene card, captions and an "AI HOST" tag, cut into final.mp4's frames
@@ -55,6 +56,9 @@ CAPTION_TOP = M.CAPTION_Y - 165          # the caption layer's top edge
 CROSSFADE = 4                            # frames of dissolve at each cut in and out
 WARMUP = 3                               # MuseTalk's first frames (inside the dissolve), not judged by QC
 BLINK = [0.35, 0.8, 1.0, 0.75, 0.3]      # eye closure per frame at 25 fps (~0.2 s)
+# Synthetic blinks are OFF: warping the lid looked wrong in motion (owner review). On 2-6 s clips no blink beats
+# a broken one; a real idle clip with natural blinks is the proper fix.
+BLINKS_AT: list[float] = []
 
 LICENSES = {
     "portrait_model": "Tongyi-MAI/Z-Image-Turbo (Apache-2.0), run locally with mflux (MIT)",
@@ -137,7 +141,7 @@ def blink(img: Image.Image, eyes: dict, c: float) -> Image.Image:
 def base_frames(st: dict, lm: dict, seconds: float = 6.0) -> Path:
     """The idle clip MuseTalk animates: slow sway, breathing scale, two blinks. MuseTalk plays it forward then
     backward, so the motion loops smoothly."""
-    key = sha256_bytes(json.dumps([sha256_file(st["portrait"]), seconds, BLINK, VERSION]).encode())[:12]
+    key = sha256_bytes(json.dumps([sha256_file(st["portrait"]), seconds, BLINK, BLINKS_AT, VERSION]).encode())[:12]
     out = st["cache"] / f"base_{key}"
     if (out / "done").exists():
         return out
@@ -146,7 +150,7 @@ def base_frames(st: dict, lm: dict, seconds: float = 6.0) -> Path:
     W, H = src.size
     fx0, fy0, fx1, fy1 = lm["face_box"]
     fcx, fcy = (fx0 + fx1) / 2, (fy0 + fy1) / 2
-    blinks = [int(1.6 * FPS_HOST), int(4.4 * FPS_HOST)]
+    blinks = [int(s_ * FPS_HOST) for s_ in BLINKS_AT]
     for i in range(int(seconds * FPS_HOST)):
         t = i / FPS_HOST
         ang = math.radians(0.55 * math.sin(2 * math.pi * t / 6.1) + 0.25 * math.sin(2 * math.pi * t / 2.7))

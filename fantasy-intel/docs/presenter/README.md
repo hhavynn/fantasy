@@ -53,6 +53,7 @@ There are no paid APIs and no network calls at render time.
 
 ## The host
 
+- **Blinks:** synthetic blinks were tried and switched off after review (they looked wrong in motion).
 - **Portrait:** `studio/assets/presenter/host.png` (seed 37, prompt and model in `host.json`). A fictional man in his early thirties in a sports-studio set, chosen from four candidates. All four seeds produced nearly the same face, which is good for consistency.
 - **Consistency:** every video uses this exact file. Regenerating it would change him, so don't.
 - **Not a real person:** he's generated from a generic prompt with no reference image. I can't fully rule out an accidental resemblance to someone.
