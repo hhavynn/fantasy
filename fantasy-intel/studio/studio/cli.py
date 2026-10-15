@@ -18,12 +18,12 @@ import sys
 import time
 
 from .core import Config, Episode, read_json, sha256_file, write_json
-from .stages import (assemble, charts, facts, metadata, provenance, qc, render_short, review, script,
-                     short_script, snapshot, thumbnail, tts)
+from .stages import (assemble, charts, facts, metadata, provenance, qc, render_motion, review, script, snapshot,
+                     story, thumbnail, tts)
 
 LONG = [("snapshot", snapshot), ("facts", facts), ("script", script), ("tts", tts), ("charts", charts),
         ("assemble", assemble), ("thumbnail", thumbnail), ("metadata", metadata)]
-SHORT = [("facts", facts), ("script", short_script), ("tts", tts), ("render", render_short),
+SHORT = [("facts", facts), ("script", story), ("tts", tts), ("render", render_motion),
          ("thumbnail", thumbnail), ("metadata", metadata)]
 
 
@@ -34,14 +34,18 @@ def finish(ep: Episode) -> bool:
     return passed
 
 
-def run_stages(ep: Episode, stages) -> None:
+def run_stages(ep: Episode, stages, hook: str | None = None) -> None:
     for name, stage in stages:
         t0 = time.time()
-        stage.run(ep)
+        if stage is story:
+            stage.run(ep, hook=hook)
+        else:
+            stage.run(ep)
         ep.log(f"  [{name} {time.time() - t0:.1f}s]")
 
 
-def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str | None) -> int:
+def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str | None,
+                hook: str | None = None, slug_suffix: str = "") -> int:
     week_ep = Episode(season, week, "short", cfg, force=force)
     week_ep.dir.mkdir(parents=True, exist_ok=True)
     snapshot.run(week_ep)
@@ -57,15 +61,17 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
             return 2
     results = []
     for story in stories:
-        ep = Episode(season, week, "short", cfg, force=force, slug=story["slug"])
+        ep = Episode(season, week, "short", cfg, force=force, slug=story["slug"] + slug_suffix)
         ep.dir.mkdir(parents=True, exist_ok=True)
         print(f"\nshort {ep.id}: {story['name']} ({story['role']})")
         src, dst = week_ep.path("snapshot.json"), ep.path("snapshot.json")
         if not dst.exists() or sha256_file(dst) != sha256_file(src):
             shutil.copyfile(src, dst)
+        if slug_suffix:      # an A/B hook variant of the same story, not a new episode
+            story = {**story, "variant_of": f"{season}-w{week:02d}-short-{story['slug']}"}
         if not ep.path("story.json").exists() or read_json(ep.path("story.json")) != story:
             write_json(ep.path("story.json"), story)
-        run_stages(ep, SHORT)
+        run_stages(ep, SHORT, hook or cfg["shorts"].get("hook") or None)
         results.append((ep, story, finish(ep)))
     index = ["# Shorts for review", "", f"Week {week}, {season}. Watch each, read its review.md, then publish by hand.", ""]
     for ep, story, passed in results:
@@ -85,12 +91,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--season", type=int, help="defaults to config.toml season")
     ap.add_argument("--force", default="", help="comma-separated stages to rerun regardless of cache, or 'all'")
     ap.add_argument("--player", help="Shorts only: build just this story (its slug, e.g. braelon-allen)")
+    ap.add_argument("--hook", help="Shorts only: force a hook family (e.g. where, talk, warning) for A/B variants; "
+                                   "the variant is written to <slug>-hook-<name>")
     args = ap.parse_args(argv)
     cfg = Config.load()
     season = args.season or cfg.season
     force = {s.strip() for s in args.force.split(",") if s.strip()}
     if args.format == "short":
-        return make_shorts(cfg, season, args.week, force, args.player)
+        return make_shorts(cfg, season, args.week, force, args.player, args.hook,
+                           f"-hook-{args.hook}" if args.hook else "")
     ep = Episode(season, args.week, "long", cfg, force=force)
     ep.dir.mkdir(parents=True, exist_ok=True)
     print(f"episode {ep.id} -> {ep.dir}")

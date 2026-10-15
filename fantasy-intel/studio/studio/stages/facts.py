@@ -21,7 +21,7 @@ from ..numbers import render, round_half_up
 sys.path.insert(0, str(STUDIO_ROOT.parent / "backend"))
 from app.analytics.trends import compute_trend, composite_trend  # noqa: E402  (pure stdlib module)
 
-VERSION = 5
+VERSION = 6
 PLAYOFF_WEEKS = [15, 16, 17]
 
 # (metric column, label, trend threshold). Thresholds for offense_pct/target_share/backfield_rush_share
@@ -471,6 +471,54 @@ def teammate_facts(book: "ClaimBook", snap: dict, p: dict) -> dict | None:
     return out
 
 
+GAINER_MIN_PTS = 3          # a teammate's share must rise at least this many displayed points
+
+
+def gainer_facts(book: "ClaimBook", snap: dict, p: dict) -> list[dict]:
+    """Where a faller's targets went: teammates whose target share rose between the same two windows.
+
+    Only teammates who played every game of the recent window and at least one earlier game count; each
+    share is the mean over the games he played, and the rise is measured on the displayed percentages."""
+    if p["role"] != "faller" or p["metrics"][0]["column"] != "target_share":
+        return []
+    names = {x["gsis_id"]: x["display_name"] for x in snap["tables"]["nfl_players"]}
+    by_player: dict[str, dict[int, dict]] = defaultdict(dict)
+    for r in snap["tables"]["player_week_usage"]:
+        if r["team"] == p["team"] and r["gsis_id"] != p["gsis_id"]:
+            by_player[r["gsis_id"]][r["week"]] = r
+    found = []
+    for gid, weeks in by_player.items():
+        base = [w for w in p["baseline_weeks"] if w in weeks and weeks[w]["target_share"] is not None]
+        rec = [w for w in p["recent_weeks"] if w in weeks and weeks[w]["target_share"] is not None]
+        if not base or rec != p["recent_weeks"]:
+            continue
+        b = round_half_up(mean(weeks[w]["target_share"] for w in base) * 100)
+        r = round_half_up(mean(weeks[w]["target_share"] for w in rec) * 100)
+        if r - b >= GAINER_MIN_PTS:
+            found.append((int(r - b), gid, base, rec, weeks[rec[-1]]["position"]))
+    found.sort(key=lambda x: (-x[0], x[1]))
+    out = []
+    for gain, gid, base, rec, pos in found[:3]:
+        name = names.get(gid, gid)
+        out.append({"gsis_id": gid, "name": name, "position": pos, "gain_pts": gain,
+                    "baseline": book.add(f"{name}'s target share, earlier games", "pct",
+                                         {"kind": "usage_mean", "gsis_id": gid, "column": "target_share",
+                                          "weeks": base}, player=gid, team=p["team"]),
+                    "recent": book.add(f"{name}'s target share, recent games", "pct",
+                                       {"kind": "usage_mean", "gsis_id": gid, "column": "target_share",
+                                        "weeks": rec}, player=gid, team=p["team"])})
+    return out
+
+
+def week_values(book: "ClaimBook", p: dict) -> list[dict]:
+    """The lead metric in each recent game, as claims ("seven percent, then eleven")."""
+    m = p["metrics"][0]
+    return [{"week": w, "value": book.add(f"{m['label']}, week {w}", "pct",
+                                          {"kind": "usage_value", "gsis_id": p["gsis_id"], "column": m["column"],
+                                           "week": w}, player=p["gsis_id"])}
+            for w in p["recent_weeks"]]
+
+
 def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str],
                 only: str | None = None) -> dict:
     """Facts for the long-form episode, or (`only` = gsis_id) for one Short about that player."""
@@ -487,8 +535,12 @@ def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str],
     }
     players = ([player_facts(book, snap, e, "riser") for e in risers]
                + [player_facts(book, snap, e, "faller") for e in fallers])
+    jerseys = {j["gsis_id"]: j["jersey_number"] for j in snap["tables"].get("jerseys", [])}
     for p in players:
+        p["jersey"] = jerseys.get(p["gsis_id"])          # roster number, for the jersey graphic only
         p["teammate"] = teammate_facts(book, snap, p)
+        p["gainers"] = gainer_facts(book, snap, p)
+        p["recent_values"] = week_values(book, p)
     return {"season": snap["season"], "week": snap["week"], "data_through_week": snap["data_through_week"],
             "snapshot_sha256": snap["content_sha256"], "episode": episode, "players": players,
             "claims": book.claims}

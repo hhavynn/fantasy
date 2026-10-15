@@ -85,6 +85,9 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
                              from {nfl_injuries}
                              where season = ? and week <= ? and gsis_id in (select unnest(?))
                              order by gsis_id, week""", [season, week, ids])
+    jerseys = _rows(con, """select gsis_id, arg_max(jersey_number, week) as jersey_number from {nfl_rosters_weekly}
+                            where season = ? and week <= ? and gsis_id in (select unnest(?)) group by gsis_id
+                            order by gsis_id""", [season, week, ids])
     rosters = _rows(con, """select gsis_id, team, week, status from {nfl_rosters_weekly}
                             where season = ? and week <= ? and status <> 'ACT' and gsis_id in (select unnest(?))
                             order by gsis_id, week""", [season, week, ids])
@@ -96,7 +99,7 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
         "tables": {
             "player_week_usage": usage, "nfl_players": players, "nfl_schedules": schedules,
             "team_context": team_ctx, "defense_context": defense_ctx, "nfl_injuries": injuries,
-            "nfl_rosters_weekly": rosters,
+            "nfl_rosters_weekly": rosters, "jerseys": jerseys,
         },
     }
 

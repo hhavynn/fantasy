@@ -98,6 +98,9 @@ def _run(ep: Episode) -> None:
                               "player": hero["name"], "position": hero["position"]}
     write_json(ep.path("metadata.json"), meta)
 
+    if short and read_json(ep.path("story.json")).get("variant_of"):
+        ep.log(f"  metadata: {len(chaps)} chapters, title: {meta['title']!r} (hook variant: not added to history)")
+        return
     history = ep.cfg.episodes_dir / "history.jsonl"
     entries = [json.loads(line) for line in history.read_text().splitlines() if line.strip()] if history.exists() else []
     entries = [e for e in entries if e["episode_id"] != ep.id]

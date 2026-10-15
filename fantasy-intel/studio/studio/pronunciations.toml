@@ -1,3 +1,4 @@
-# Pronunciation overrides for Kokoro (misaki phonemes). Keys are matched as whole words.
-# Example: "Chism" = "kˈɪzəm"
+# Pronunciation overrides for Kokoro (misaki phonemes). Keys are matched as whole words; keep each key a
+# single word so word timestamps stay one-to-one with the script.
 [words]
+Kincaid = "kɪnkˈAd"

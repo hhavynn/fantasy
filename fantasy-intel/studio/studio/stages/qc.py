@@ -328,6 +328,9 @@ def run_gates(ep: Episode) -> list[Gate]:
         if history_path.exists() else []
     narration = [s["text_display"] for s in script["narration_segments"] if s["section"] != "cta"]
     history = [e for e in history if e["format"] == ep.fmt]      # Shorts are compared with Shorts
+    variant_of = read_json(ep.path("story.json")).get("variant_of") if ep.fmt == "short" else None
+    if variant_of:                                               # an A/B hook variant is meant to match its story
+        history = [e for e in history if e["episode_id"] != variant_of]
     return [
         gate_claims(snapshot, facts, script),
         gate_narration(script),

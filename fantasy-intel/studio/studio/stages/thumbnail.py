@@ -15,8 +15,8 @@ def _run(ep: Episode) -> None:
     script = read_json(ep.path("script.json"))
     facts = read_json(ep.path("facts.json"))
     claims = {c["id"]: c for c in facts["claims"]}
-    hero_shot = next(s for s in script["shots"] if s["type"] == "hero_stat")
-    p = next(p for p in facts["players"] if p["gsis_id"] == hero_shot["player"])
+    hero_shot = next((s for s in script["shots"] if s["type"] == "hero_stat"), {"metric": 0})
+    p = next((p for p in facts["players"] if p["gsis_id"] == hero_shot.get("player")), facts["players"][0])
     m = p["metrics"][hero_shot.get("metric", 0)]
     up = p["role"] == "riser"
     color = V.POSITIVE if up else V.NEGATIVE

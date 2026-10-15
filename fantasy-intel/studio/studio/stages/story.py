@@ -1,0 +1,320 @@
+"""Stage 3 (Shorts): find the football story in the data and write it like a person would say it.
+
+Not a statistics template. Python reads the facts and picks the strongest defensible storyline:
+
+  vanishing_targets  faller: target share fell while his snaps barely moved, and (if the data shows it)
+                     which teammates' shares rose. "He's still on the field. So where did his targets go?"
+  shrinking          any other faller
+  fill_in            riser whose role opened up because a teammate missed the recent games
+  held               riser whose teammate came back and the role stayed
+  displaced          faller whose teammate came back
+  takeover           riser led by backfield rush share
+  unresolved         riser: snaps up, targets have not followed yet
+  breakout           any other riser
+
+Each storyline is a short sequence of beats: one or two spoken sentences, a scene for the motion renderer,
+the words worth emphasising in captions, and a speaking speed. Every number, week, reason and status is a
+claim placeholder ({{c012}}), so QC proves the narration matches the data; names are plain text. The
+storyline ends on a question for the comments, which loops back to the hook.
+"""
+
+from __future__ import annotations
+
+import json
+
+from ..core import Episode, canonical_json, read_json, run_stage, sha256_bytes, write_json
+from .script import PLACEHOLDER, fill
+
+VERSION = 2
+WORDS_PER_SECOND = 2.9          # am_fenrir at ~1.1x, measured on the hook line
+
+SNAPS_BARELY_PTS = 5            # a snap-share change this small (displayed points) "barely moved"
+
+UNIT = {"offense_pct": "snaps", "target_share": "targets", "air_yards_share": "air yards",
+        "backfield_rush_share": "running back carries"}
+POS_WORD = {"TE": "tight end", "WR": "receiver", "RB": "running back"}
+
+HOOKS = {
+    "vanishing_targets": {
+        "where": ("{name} is still on the field. So where did his targets go?", ["where"]),
+        "talk": ("{name} managers... we need to talk about his targets.", ["talk"]),
+        "warning": ("Here's a {name} warning sign you might have missed.", ["warning"]),
+    },
+    "shrinking": {
+        "proof": ("{name}'s role is shrinking. Here's the proof.", ["shrinking"]),
+        "talk": ("{name} managers... we need to talk.", ["talk"]),
+    },
+    "fill_in": {
+        "catch": ("{name}'s role just jumped. But there's a catch.", ["catch"]),
+        "real": ("Is {name}'s new role real? It depends on one guy.", ["real"]),
+    },
+    "held": {
+        "stayed": ("{tm} came back. {name} kept the role anyway.", ["kept"]),
+    },
+    "displaced": {
+        "reason": ("{name}'s role shrank, and there's a reason.", ["reason"]),
+    },
+    "takeover": {
+        "took_over": ("{name} just took over the {team} backfield.", ["took", "over"]),
+    },
+    "unresolved": {
+        "yet": ("{name} is playing way more. The targets haven't followed. Yet.", ["yet"]),
+    },
+    "breakout": {
+        "growing": ("{name}'s role is growing, and the numbers back it up.", ["growing"]),
+    },
+}
+
+# The hook scene's on-screen headline, matched to what the narrator says (fixed text, no numbers).
+HEADLINES = {
+    ("vanishing_targets", "where"): ["WHERE ARE", "THE TARGETS?"],
+    ("vanishing_targets", "talk"): ["WE NEED", "TO TALK."],
+    ("vanishing_targets", "warning"): ["WARNING", "SIGN."],
+    ("shrinking", "proof"): ["ROLE", "SHRINKING."], ("shrinking", "talk"): ["WE NEED", "TO TALK."],
+    ("fill_in", "catch"): ["THERE'S A", "CATCH."], ("fill_in", "real"): ["REAL ROLE", "OR FILL-IN?"],
+    ("held", "stayed"): ["HE'S BACK.", "ROLE STAYED."], ("displaced", "reason"): ["ROLE", "SHRANK."],
+    ("takeover", "took_over"): ["BACKFIELD", "TAKEOVER."], ("unresolved", "yet"): ["MORE SNAPS.", "TARGETS NEXT?"],
+    ("breakout", "growing"): ["ROLE", "GROWING."],
+}
+
+TITLES = {
+    "vanishing_targets": ["Where Did {name}'s Targets Go?", "{name} Is Still Playing. The Targets Aren't.",
+                          "The {name} Warning Sign"],
+    "shrinking": ["{name}'s Role Is Shrinking", "The {Stat} Drop Behind {name}", "{name} Managers, Read This"],
+    "fill_in": ["Is {name}'s Role Real or a Fill-In?", "{name} Is Filling In for {tm}", "The Catch With {name}"],
+    "held": ["{name} Kept the Role With {tm} Back", "{name}'s Role Survived {tm}'s Return",
+             "The {Stat} Change Behind {name}"],
+    "displaced": ["{tm} Is Back. {name}'s Role Shrank.", "The Reason {name}'s Role Shrank",
+                  "{name}'s {Stat} Just Dropped"],
+    "takeover": ["{name} Took Over the Backfield", "The {Stat} Change Behind {name}", "{name}'s Role Just Changed"],
+    "unresolved": ["{name} Is Playing More. Targets Next?", "One Number I'm Watching on {name}",
+                   "The {Stat} Change Behind {name}"],
+    "breakout": ["{name}'s Role Is Growing", "The {Stat} Change Behind {name}", "{name} Is Gaining Real Usage"],
+}
+
+
+def ph(cid: str) -> str:
+    return "{{" + cid + "}}"
+
+
+def last(name: str) -> str:
+    parts = [p for p in name.split() if p not in ("Jr.", "Sr.", "II", "III", "IV")]
+    return parts[-1]
+
+
+def storyline(p: dict, claims: dict) -> str:
+    tm = p.get("teammate")
+    if tm and tm["kind"] == "vacated":
+        return "held" if tm["returned"] else "fill_in"
+    if tm and tm["kind"] == "returned":
+        return "displaced"
+    lead = p["metrics"][0]
+    if p["role"] == "faller":
+        snaps = next((m for m in p["metrics"] if m["column"] == "offense_pct"), None)
+        if lead["column"] == "target_share" and snaps is not None \
+                and abs(round(claims[snaps["change"]]["value"] * 100)) <= SNAPS_BARELY_PTS:
+            return "vanishing_targets"
+        return "shrinking"
+    if lead["column"] == "backfield_rush_share":
+        return "takeover"
+    if lead["column"] == "offense_pct":
+        ts = next((m for m in p["metrics"] if m["column"] == "target_share"), None)
+        return "breakout" if ts and ts["delta_over_threshold"] >= 1 else "unresolved"
+    return "breakout"
+
+
+def choose(options: list[str], used: list[str], seed: str) -> str:
+    """Least recently used option; ties go to the earlier-listed (preferred) option."""
+    def last_use(o):
+        return max((i for i, u in enumerate(used) if u == o), default=-1)
+    return min(options, key=lambda o: (last_use(o), options.index(o)))
+
+
+def beat(section: str, text: str, scene: dict, emphasis: list[str] | None = None, speed: float = 1.1) -> dict:
+    return {"section": section, "text_template": text, "scene": scene, "emphasis": emphasis or [], "speed": speed}
+
+
+def _then_list(values: list[dict]) -> str:
+    """'{{c1}}, then {{c2}}' for the per-game values."""
+    return ", then ".join(ph(v["value"]) for v in values)
+
+
+def _names(gainers: list[dict]) -> str:
+    """Last names keep the list quick; a same-position teammate is introduced in full, last."""
+    parts = [(f"fellow {POS_WORD.get(g['position'], 'teammate')} {g['name']}" if i == len(gainers) - 1 and
+              g.get("same_position") else last(g["name"])) for i, g in enumerate(gainers)]
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + f", and {parts[-1]}"
+
+
+def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str | None = None
+            ) -> tuple[list[dict], list[str], dict]:
+    p = facts["players"][0]
+    lead = p["metrics"][0]
+    tm = p.get("teammate")
+    story = storyline(p, claims)
+    hooks = HOOKS[story]
+    hook_key = hook_override if hook_override in hooks else choose(list(hooks), used.get("hook", []), seed)
+    team = claims[p["team_name"]]["display"]
+    who = {"name": p["name"], "last": last(p["name"]), "team": team, "tm": tm["name"] if tm else ""}
+    hook_text, hook_emph = hooks[hook_key]
+    beats = [beat("hook", hook_text.format(**who),
+                  {"type": "hook", "story": story, "headline": HEADLINES.get((story, hook_key))}, hook_emph, 1.14)]
+
+    reveal = (f"His {lead['label']} went from {ph(lead['baseline'])} to "
+              f"{'just ' if p['role'] == 'faller' else ''}{ph(lead['recent'])}.")
+    beats.append(beat("reveal", reveal, {"type": "big_compare", "metric": 0}, [], 1.08))
+
+    values = p.get("recent_values") or []
+    if story in ("vanishing_targets", "shrinking", "breakout", "takeover", "unresolved") and len(values) >= 2:
+        beats.append(beat("evidence", f"{ph(p['recent_games'])} straight games: {_then_list(values)}.",
+                          {"type": "bar_timeline", "metric": 0}, [], 1.1))
+
+    if story == "vanishing_targets":
+        snaps = next(m for m in p["metrics"] if m["column"] == "offense_pct")
+        beats.append(beat("twist", "Here's the weird part: his snap share barely moved.",
+                          {"type": "twist", "snaps": snaps["column"]}, ["barely", "moved"], 1.12))
+        gainers = p.get("gainers") or []
+        for g in gainers:
+            g["same_position"] = g["position"] == p["position"]
+        if gainers:
+            gainers = sorted(gainers, key=lambda g: g.get("same_position", False))   # fellow TE said last
+            line = f"The targets spread out. {_names(gainers)} are all up." if len(gainers) > 1 else \
+                f"Meanwhile, {gainers[0]['name']} went from {ph(gainers[0]['baseline'])} to {ph(gainers[0]['recent'])}."
+            beats.append(beat("payoff", line, {"type": "spread", "gainers": [g["gsis_id"] for g in gainers]},
+                              ["spread", "out"], 1.16))
+        beats.append(beat("takeaway", "He's on the field. The ball just isn't finding him like before.",
+                          {"type": "statement", "lines": ["STILL ON", "THE FIELD.", "FEWER", "TARGETS."]},
+                          ["isn't", "finding"], 1.12))
+        beats.append(beat("question", f"Are you still starting {who['last']}?",
+                          {"type": "decision", "question": ["STILL STARTING", who["last"].upper() + "?"]},
+                          ["still", "starting"], 1.0))
+
+    elif story == "shrinking":
+        m2 = p["metrics"][1] if len(p["metrics"]) > 1 else None
+        if m2:
+            beats.append(beat("support", f"His {m2['label']}: {ph(m2['baseline'])} to {ph(m2['recent'])}.",
+                              {"type": "twist", "snaps": m2["column"]}, [], 1.08))
+        beats.append(beat("takeaway", "It's a small sample. But this is the trend that matters.",
+                          {"type": "statement", "lines": ["SMALL SAMPLE.", "REAL TREND."]}, ["trend"], 1.08))
+        beats.append(beat("question", f"Are you still starting {who['last']}?",
+                          {"type": "decision", "question": ["STILL STARTING", who["last"].upper() + "?"]},
+                          ["still", "starting"], 1.0))
+
+    elif story in ("fill_in", "held", "displaced"):
+        reason = f" with {ph(tm['reason'])}" if "reason" in tm else ""
+        if story == "displaced":
+            beats.append(beat("why", f"{tm['name']} is back. He missed {ph(tm['missed'])}{reason}.",
+                              {"type": "teammate_out", "phase": 1}, ["back"], 1.08))
+            beats.append(beat("teammate_role", f"Since returning, he has {ph(tm['role'])} of the {team}' "
+                                               f"{tm['unit']}.", {"type": "teammate_out", "phase": 2}, [], 1.08))
+            beats.append(beat("question", f"Are you still starting {who['last']}?",
+                              {"type": "decision", "question": ["STILL STARTING", who["last"].upper() + "?"]},
+                              ["still", "starting"], 1.0))
+        else:
+            beats.append(beat("why", f"{tm['name']} missed {ph(tm['missed'])}{reason}.",
+                              {"type": "teammate_out", "phase": 1}, [], 1.08))
+            if story == "held":
+                beats.append(beat("held", f"{tm['name']} came back in {ph(tm['back_week'])}, and {who['last']} "
+                                          "kept the role.", {"type": "statement", "lines": ["HE CAME BACK.",
+                                                                                          "THE ROLE STAYED."]},
+                                  ["kept"], 1.08))
+                beats.append(beat("question", f"Are you buying {who['last']} now?",
+                                  {"type": "decision", "question": ["BUYING", who["last"].upper() + "?"]},
+                                  ["buying"], 1.0))
+            else:
+                beats.append(beat("teammate_role", f"Before that, {tm['name']} had {ph(tm['role'])} of the "
+                                                   f"{team}' {tm['unit']}.", {"type": "teammate_out", "phase": 2},
+                                  [], 1.08))
+                code, _, detail = claims[tm["status"]]["value"]
+                beats.append(beat("status", f"Right now, he's {ph(tm['status'])}.", {"type": "status_stamp"},
+                                  [], 1.05))
+                if code == "ir":
+                    take = f"So for now, this role is {who['last']}'s."
+                elif code == "none" or detail == "Full Participation in Practice":
+                    take = f"If {last(tm['name'])} plays this week, this role gets tested right away."
+                else:
+                    take = f"It's real while {last(tm['name'])} is out. When he's back, all bets are off."
+                beats.append(beat("takeaway", take, {"type": "statement", "lines": ["FILL-IN ROLE.",
+                                                                                   f"WATCH {last(tm['name']).upper()}."]},
+                                  ["while", "out"], 1.08))
+                beats.append(beat("question", f"Would you pick up {who['last']}, or wait?",
+                                  {"type": "decision", "question": ["PICK UP", who["last"].upper() + "?"],
+                                   "options": ["ADD", "WAIT"]}, ["or", "wait"], 1.0))
+
+    else:  # takeover, unresolved, breakout
+        m2 = p["metrics"][1] if len(p["metrics"]) > 1 else None
+        if story == "unresolved":
+            ts = next(m for m in p["metrics"] if m["column"] == "target_share")
+            beats.append(beat("support", f"But his target share is only {ph(ts['recent'])}.",
+                              {"type": "twist", "snaps": "target_share"}, ["only"], 1.08))
+            take = ("Playing time moves first. Watch whether the targets follow.",
+                    ["PLAYING TIME", "MOVES FIRST."])
+        else:
+            if m2:
+                beats.append(beat("support", f"And his {m2['label']} went from {ph(m2['baseline'])} to "
+                                             f"{ph(m2['recent'])}.", {"type": "twist", "snaps": m2["column"]}, [],
+                                  1.08))
+            take = (("The question now is whether it holds.", ["DOES IT", "HOLD?"]) if story == "takeover"
+                    else ("The box score catches up later. The role already got bigger.",
+                          ["THE ROLE", "GOT BIGGER."]))
+        beats.append(beat("takeaway", take[0], {"type": "statement", "lines": take[1]}, [], 1.08))
+        beats.append(beat("question", f"Is {who['last']} on your roster?",
+                          {"type": "decision", "question": [f"{who['last'].upper()}", "ON YOUR ROSTER?"],
+                           "options": ["YES", "NOT YET"]}, ["your", "roster"], 1.0))
+
+    titles = [t.format(name=p["name"], Stat=lead["label"].title(), tm=who["tm"]) for t in TITLES[story]]
+    for i, b in enumerate(beats):
+        b["id"] = f"s{i + 1:02d}"
+        b["player"] = p["gsis_id"]
+    structure = {"angle": story, "hook": hook_key, "primary_metric": lead["column"],
+                 "teammate": tm["name"] if tm else None, "beats": [b["section"] for b in beats]}
+    return beats, titles, structure
+
+
+def used_structures(ep: Episode) -> dict[str, list[str]]:
+    path = ep.cfg.episodes_dir / "history.jsonl"
+    if not path.exists():
+        return {}
+    order = read_json(ep.path("story.json")).get("order", 0)
+    entries = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    prior = [e for e in entries if e["format"] == "short" and e["season"] == ep.season and e.get("structure")
+             and (e["week"] < ep.week or (e["week"] == ep.week and e.get("order", 0) < order))]
+    prior.sort(key=lambda e: (e["week"], e.get("order", 0)))
+    return {"hook": [e["structure"]["hook"] for e in prior]}
+
+
+def _run(ep: Episode, used: dict, hook: str | None) -> None:
+    facts = read_json(ep.path("facts.json"))
+    claims = {c["id"]: c for c in facts["claims"]}
+    beats, titles, structure = compose(facts, claims, ep.id, used, hook)
+    shots = []
+    for b in beats:
+        b["text_display"] = fill(b["text_template"], claims, "display")
+        b["text_spoken"] = fill(b["text_template"], claims, "spoken")
+        b["claims_used"] = sorted(set(PLACEHOLDER.findall(b["text_template"])))
+        b["target_words"] = len(b["text_spoken"].split())
+        b["shot"] = f"shot_{b['id']}"
+        shots.append({"id": b["shot"], "segment": b["id"], **b["scene"]})
+    used_ids = sorted({c for b in beats for c in b["claims_used"]} |
+                      {c for t in titles for c in PLACEHOLDER.findall(t)})
+    words = sum(len(b["text_spoken"].split()) for b in beats)
+    script = {
+        "episode_id": ep.id, "season": ep.season, "week": ep.week, "format": ep.fmt,
+        "title_candidates": [fill(t, claims, "display") for t in titles], "title_templates": titles,
+        "claims": [claims[c] for c in used_ids], "narration_segments": beats, "shots": shots,
+        "structure": structure, "expected_duration_seconds": round(words / WORDS_PER_SECOND),
+        "made_for_kids": False, "synthetic_voice": True,
+        "cta": {"url": ep.cfg["cta"]["url"] or None, "text": beats[-1]["text_display"]},
+        "facts_sha256": sha256_bytes(canonical_json(facts).encode()),
+        "llm": {"provider": "none", "model": "deterministic story engine", "calls": [],
+                "note": "Shorts are composed from storyline rules and claims; no language model."},
+    }
+    write_json(ep.path("script.json"), script)
+    ep.log(f"  story: {structure['angle']} / hook {structure['hook']}, {len(beats)} beats, {words} words "
+           f"(~{script['expected_duration_seconds']}s)")
+
+
+def run(ep: Episode, hook: str | None = None) -> None:
+    used = used_structures(ep)
+    run_stage(ep, "script", VERSION, {"cta": ep.cfg["cta"], "used": used, "hook": hook},
+              ["facts.json", "story.json"], ["script.json"], lambda: _run(ep, used, hook))

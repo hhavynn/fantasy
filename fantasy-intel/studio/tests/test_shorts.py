@@ -3,32 +3,38 @@ from __future__ import annotations
 import re
 
 from studio.core import Episode, read_json, write_json
-from studio.stages import facts, qc, short_script
+from studio.stages import facts, qc, story
 from studio.stages.facts import pick_stories
-from studio.stages.render_short import caption_chunks_short
-from studio.stages.short_script import angle_for, choose
+from studio.stages.render_motion import align, phrases
+from studio.stages.story import choose, storyline
 
 from conftest import make_snapshot
 
 
-def _metric(column, dot):
-    return {"column": column, "label": column, "delta_over_threshold": dot, "baseline": "c001", "recent": "c002"}
+def _metric(column, dot, change=None):
+    return {"column": column, "label": column, "delta_over_threshold": dot, "baseline": "c001", "recent": "c002",
+            "change": change or "c009"}
 
 
-def test_angle_follows_the_data():
-    assert angle_for({"role": "faller", "metrics": [_metric("target_share", -3)]}) == "contraction"
-    assert angle_for({"role": "riser", "metrics": [_metric("backfield_rush_share", 5)]}) == "takeover"
-    assert angle_for({"role": "riser", "metrics": [_metric("target_share", 4)]}) == "expansion"
-    # Snaps up and targets followed -> expansion; snaps up, targets did not -> unresolved.
-    assert angle_for({"role": "riser", "metrics": [_metric("offense_pct", 6), _metric("target_share", 2)]}) == "expansion"
-    assert angle_for({"role": "riser", "metrics": [_metric("offense_pct", 6), _metric("target_share", 0.3)]}) == "unresolved"
+def test_storyline_follows_the_data():
+    claims = {"c009": {"value": -0.03}, "c010": {"value": -0.20}}
+    # Targets fell while snaps barely moved: the "where did his targets go?" story.
+    assert storyline({"role": "faller", "metrics": [_metric("target_share", -3), _metric("offense_pct", -0.4)]},
+                     claims) == "vanishing_targets"
+    assert storyline({"role": "faller", "metrics": [_metric("target_share", -3), _metric("offense_pct", -2, "c010")]},
+                     claims) == "shrinking"
+    assert storyline({"role": "riser", "metrics": [_metric("backfield_rush_share", 5)]}, claims) == "takeover"
+    assert storyline({"role": "riser", "metrics": [_metric("offense_pct", 6), _metric("target_share", 2)]},
+                     claims) == "breakout"
+    assert storyline({"role": "riser", "metrics": [_metric("offense_pct", 6), _metric("target_share", 0.3)]},
+                     claims) == "unresolved"
 
 
-def test_hook_rotation_is_least_recently_used():
+def test_hook_rotation_prefers_unused_then_listed_order():
     opts = ["a", "b", "c"]
+    assert choose(opts, [], "x") == "a"                       # the preferred (first-listed) hook by default
     assert choose(opts, ["a", "b"], "seed") == "c"            # never used wins
     assert choose(opts, ["c", "a", "b"], "seed") == "c"       # oldest use wins
-    assert choose(opts, [], "x") == choose(opts, [], "x")     # deterministic
 
 
 def test_structure_gate_blocks_a_third_identical_opening():
@@ -53,16 +59,18 @@ def test_stories_are_one_per_team():
     assert [s["order"] for s in stories] == list(range(len(stories)))
 
 
-def test_long_claims_split_across_caption_cards():
-    claims = {"c001": {"display": "two middle-of-the-pack matchups and one tough one",
-                       "spoken": "two middle-of-the-pack matchups and one tough one"},
-              "c002": {"display": "88%", "spoken": "eighty-eight percent"}}
-    template = "So far this season, that's {{c001}}. It wasn't one big week, either."
-    chunks = caption_chunks_short(template, claims)
-    assert all(len(c["display"].split()) <= 9 for c in chunks)
-    assert not any(c["display"] in ("either.",) for c in chunks)                  # no orphans
-    spoken = template.replace("{{c001}}", claims["c001"]["spoken"])
-    assert sum(c["spoken_words"] for c in chunks) == len(spoken.split())          # timing weight preserved
+def test_words_align_to_display_tokens_and_phrases():
+    claims = {"c001": {"display": "21%", "spoken": "twenty-one percent"},
+              "c002": {"display": "9%", "spoken": "nine percent"}}
+    seg = {"text_template": "His target share went from {{c001}} to just {{c002}}.", "emphasis": ["just"]}
+    spoken = "His target share went from twenty-one percent to just nine percent .".split()
+    words = [{"text": w, "start": i * 0.3, "end": i * 0.3 + 0.28} for i, w in enumerate(spoken)]
+    toks = align(seg, words, claims)
+    assert [t["text"] for t in toks] == ["His", "target", "share", "went", "from", "21%", "to", "just", "9%."]
+    nine = toks[-1]
+    assert nine["claim"] == "c002" and abs(nine["start"] - words[9]["start"]) < 1e-3   # lands on "nine"
+    assert toks[5]["emph"] and toks[7]["emph"] and not toks[0]["emph"]          # numbers and chosen words
+    assert all(len(p) <= 4 for p in phrases(toks))
 
 
 def test_short_script_end_to_end(tmp_path, monkeypatch):
@@ -73,14 +81,14 @@ def test_short_script_end_to_end(tmp_path, monkeypatch):
     ep.dir.mkdir(parents=True)
     snap = make_snapshot()
     write_json(ep.path("snapshot.json"), snap)
-    story = next(s for s in pick_stories(snap, 2, 1, set()) if s["gsis_id"] == "00-RISER")
-    write_json(ep.path("story.json"), story)
+    picked = next(s for s in pick_stories(snap, 2, 1, set()) if s["gsis_id"] == "00-RISER")
+    write_json(ep.path("story.json"), picked)
     facts.run(ep)
-    short_script.run(ep)
+    story.run(ep)
     s = read_json(ep.path("script.json"))
-    assert s["structure"]["angle"] in ("expansion", "unresolved")
-    assert [seg["section"] for seg in s["narration_segments"]] == [
-        "hook", "reveal", "evidence", "context", "volume", "verdict", "cta"]
+    assert s["structure"]["angle"] in ("breakout", "unresolved")
+    assert s["narration_segments"][-1]["section"] == "question"
+    assert all(seg["scene"]["type"] for seg in s["narration_segments"])
     assert s["narration_segments"][0]["text_display"].count("Rising Receiver") >= 1
     for seg in s["narration_segments"]:
         assert not re.search(r"\d", seg["text_spoken"])
@@ -124,19 +132,19 @@ def test_vacated_role_makes_a_fill_in_story():
     assert cl[tm["reason"]]["display"] == "a hamstring injury"
     assert cl[tm["role"]]["display"] == "30%"
     assert cl[tm["status"]]["display"] == "not practicing, per the Week 6 injury report"
-    assert angle_for(p) == "fill_in"
-    segs, titles, structure = short_script.compose(f, cl, "seed", {})
+    assert storyline(p, cl) == "fill_in"
+    segs, titles, structure = story.compose(f, cl, "seed", {})
     text = " ".join(s["text_template"] for s in segs)
     assert "Star Receiver missed" in text and structure["teammate"] == "Star Receiver"
     assert qc.gate_narration({"claims": f["claims"], "title_templates": titles, "title_candidates": [
-        short_script.fill(t, cl, "display") for t in titles], "narration_segments": [
-        {**s, "text_display": short_script.fill(s["text_template"], cl, "display"),
-         "text_spoken": short_script.fill(s["text_template"], cl, "spoken")} for s in segs]}).passed
+        story.fill(t, cl, "display") for t in titles], "narration_segments": [
+        {**s, "text_display": story.fill(s["text_template"], cl, "display"),
+         "text_spoken": story.fill(s["text_template"], cl, "spoken")} for s in segs]}).passed
 
 
 def test_teammate_back_in_the_latest_game_makes_a_held_story():
     f, p, cl = _riser(_with_teammate({4}))
-    assert p["teammate"]["returned"] and angle_for(p) == "held"
+    assert p["teammate"]["returned"] and storyline(p, cl) == "held"
     assert cl[p["teammate"]["back_week"]]["display"] == "Week 5"
 
 
@@ -147,7 +155,8 @@ def test_a_returning_teammate_explains_a_faller():
     snap["tables"]["nfl_players"].append({"gsis_id": "00-BACK", "display_name": "Back Receiver", "position": "WR"})
     f = build_facts(snap, ALL, set(), only="00-FALLER")
     p = f["players"][0]
-    assert p["teammate"]["kind"] == "returned" and angle_for(p) == "displaced"
+    cl = {c["id"]: c for c in f["claims"]}
+    assert p["teammate"]["kind"] == "returned" and storyline(p, cl) == "displaced"
 
 
 def test_status_reads_ir_then_designation_then_practice():
@@ -155,3 +164,23 @@ def test_status_reads_ir_then_designation_then_practice():
     assert evaluate_claim(snap, {"kind": "player_status", "gsis_id": "00-STAR", "week": 6}) == ["ir", 6, ""]
     assert fmt_status(["designation", 6, "Questionable"])[0] == "listed questionable for Week 6"
     assert fmt_status(["none", 6, ""])[1] == "not on the Week six injury report"
+
+
+def test_vanishing_targets_story_answers_its_hook():
+    """Faller whose snaps held: the story says where the targets went, from real teammate shares."""
+    snap = make_snapshot()
+    snap["tables"]["player_week_usage"] = [r for r in snap["tables"]["player_week_usage"] if r["gsis_id"] != "00-FALLER"]
+    snap["tables"]["player_week_usage"] += _rows("00-FALLER", "DAL", "TE", [0.70, 0.66, 0.67, 0.65, 0.66],
+                                                 [0.21, 0.29, 0.12, 0.07, 0.11])
+    snap["tables"]["player_week_usage"] += _rows("00-GAINER", "DAL", "WR", [0.8] * 5, [0.10, 0.10, 0.10, 0.20, 0.22])
+    snap["tables"]["nfl_players"].append({"gsis_id": "00-GAINER", "display_name": "Gaining Receiver", "position": "WR"})
+    f = build_facts(snap, ALL, set(), only="00-FALLER")
+    cl = {c["id"]: c for c in f["claims"]}
+    p = f["players"][0]
+    assert storyline(p, cl) == "vanishing_targets"
+    assert [g["name"] for g in p["gainers"]] == ["Gaining Receiver"]
+    beats, titles, st = story.compose(f, cl, "seed", {})
+    assert st["hook"] == "where" and beats[0]["text_template"].endswith("So where did his targets go?")
+    assert [b["section"] for b in beats] == ["hook", "reveal", "evidence", "twist", "payoff", "takeaway", "question"]
+    alt, _, st2 = story.compose(f, cl, "seed", {}, hook_override="warning")
+    assert st2["hook"] == "warning" and [b["section"] for b in alt][1:] == [b["section"] for b in beats][1:]
