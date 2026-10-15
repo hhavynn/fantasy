@@ -254,8 +254,14 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
                      + (" among mutual-improvement trades" if phase == "ros" else "")
                      + (" plus the heuristic larger-shape rows" if heur_search else ""))
     elif mode == "mutual":
-        rows, exact_search, heur_search = _pool(ts, phase_sort, mutual, opponent, max(limit, 1), heuristic)
-        pool_rule = f"exact smaller-side {phase} gain among mutual-improvement trades"
+        if phase == "ros":
+            rows, exact_search, heur_search = _pool(ts, phase_sort, mutual, opponent, max(limit, 1), heuristic)
+        else:
+            # Mutual in the selected phase: both phase deltas positive, i.e. a positive smaller-side phase
+            # gain. The exact top K by that sort, filtered to positive values, is the exact top K of them.
+            rows, exact_search, heur_search = _pool(ts, phase_sort, None, opponent, max(limit, 1), heuristic)
+            rows = [x for x in rows if (_phase_delta(x["mine"], phase) or 0) > 0 and (_phase_delta(x["theirs"], phase) or 0) > 0]
+        pool_rule = f"exact smaller-side {phase} gain among trades in which both lineups improve in that phase"
     elif mode == "upside":
         rows, exact_search, heur_search = _pool(ts, "my_gain", None, opponent, max(limit, 1), heuristic)
         pool_rule = "exact largest rest-of-season gain for you"

@@ -226,6 +226,26 @@ def test_eligibility_states_are_kept_distinct():
     assert healthy["status"] == "available" and healthy["warnings"] == []
 
 
+def test_partial_schedule_is_never_read_as_missing_games():
+    from app.analytics.player_availability import complete_schedules
+    full = {"NO": [w for w in range(1, 19) if w != 11], "ATL": list(range(1, 19))}
+    assert complete_schedules(full) == full
+    gappy = {"NO": [w for w in range(1, 19) if w not in (6, 7)], "ATL": list(range(1, 19))}
+    assert "NO" not in complete_schedules(gappy) and "ATL" in complete_schedules(gappy)
+    assert complete_schedules({"NO": list(range(1, 11))}) == {}           # only weeks 1-10 loaded
+    con = duckdb.connect()
+    con.execute("CREATE TABLE fantasy_players (espn_player_id BIGINT)")
+    con.execute("CREATE TABLE nfl_rosters_weekly (season INT, week INT, espn_id VARCHAR, status VARCHAR, "
+                "status_description_abbr VARCHAR, team VARCHAR)")
+    con.execute("INSERT INTO nfl_rosters_weekly VALUES (2026, 4, '299', 'ACT', 'A01', 'NO'), (2026, 15, '299', 'RES', 'R01', 'NO')")
+    con.execute("CREATE TABLE nfl_schedules (season INT, week INT, game_type VARCHAR, home_team VARCHAR, away_team VARCHAR)")
+    for w in range(1, 16):                                              # weeks 16-18 not loaded yet
+        con.execute("INSERT INTO nfl_schedules VALUES (2026, ?, 'REG', 'NO', 'ATL')", [w])
+    rec = load_availability(con, 2026, [P(299, "RB", team="NO")], (16, 17), {})[299]
+    assert rec["status"] != NO_WEEK_LEFT                                  # absent rows prove nothing
+    assert rec["earliest_eligible_week"] == 9 and rec["unavailable_weeks"] == []   # start 5 (gap) + 4 games
+
+
 def test_unavailable_known_zero_and_missing_are_three_different_things():
     zero, out, missing = P(1, "RB"), P(2, "RB", team="NO"), P(3, "RB")
     out = replace(out, unavailable_weeks=frozenset({10}))
@@ -441,6 +461,17 @@ def test_heuristic_shapes_are_exact_rows_with_non_exhaustive_coverage():
         assert detail(st, r)["consistent_with_manual_evaluator"], r["key"]
     exact = ts.top("min_side", limit=20)
     assert all(r["search_method"] == "exact" for r in exact["results"]) and exact["search"]["exhaustive"]
+
+
+@pytest.mark.parametrize("phase,key", [("regular", "regular_season_delta"), ("playoff", "playoff_delta")])
+def test_mutual_mode_uses_the_selected_phase(phase, key):
+    st = market_league()
+    ts = TradeSearch(st, 1, tuple(SHAPES))
+    rows = discover(ts, "mutual", phase=phase, limit=40)["sections"]["results"]
+    assert rows and all(r["mine"][key] > 0 and r["theirs"][key] > 0 for r in rows)
+    every = [x for x in ts.top("min_side_" + ("regular" if phase == "regular" else "playoff"), limit=200)["results"]
+             if x["mine"][key] > 0 and x["theirs"][key] > 0]
+    assert [r["key"] for r in rows] == [x["key"] for x in every][:40]
 
 
 def test_practical_rows_all_match_the_manual_analyzer_and_carry_no_probability():

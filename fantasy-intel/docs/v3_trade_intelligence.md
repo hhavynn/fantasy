@@ -135,7 +135,7 @@ what order, and with which evidence.
 | Mode | What it shows | Order |
 |---|---|---|
 | **Practical** (default) | Both lineups improve in the chosen phase. The asset packages are not lopsided against the other manager. Injured or incompletely projected packages are set apart. | the smaller side's canonical gain |
-| **Mutual improvement** | Every exact trade in which both lineups gain (complete projections). The asset diagnostic is shown, not filtered. | the smaller side's gain |
+| **Mutual improvement** | Every exact trade in which both lineups gain in the selected phase (complete projections). The asset diagnostic is shown, not filtered. | the smaller side's gain in that phase |
 | **Maximum upside** (exploratory) | Largest gain for you. Their losses and asset imbalances are labelled prominently. | your gain |
 | **All candidates** (advanced) | Any sort (`my_gain`, `their_gain`, `combined`, `min_side`, `playoff_gain`, `min_side_regular`, `min_side_playoff`) and any V2 category. | the chosen sort |
 
@@ -383,6 +383,9 @@ projections were the only input.
   earliest week no later than the true one, so the claimed ineligible weeks are a lower bound.
 * With the team schedule, the earliest week is the week of the 5th game from the start, so byes push it later.
   Without the schedule it is start + 4.
+* A team's schedule is used only when it is complete: the loaded regular season spans at least 17 weeks and the
+  team plays every week but one (its bye). A partially loaded schedule falls back to start + 4, because missing
+  rows are not games that don't exist, and treating them as such would delay or deny an eligible week.
 * A reserve code that is not in the mapping (for example a suspension or other list), or an ESPN-only
   `INJURY_RESERVE`, gives status `reserve_eligibility_unknown`, and no week is treated as ineligible.
 

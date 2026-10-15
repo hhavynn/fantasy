@@ -38,6 +38,7 @@ RULE_CODES = {
     "R05": ("NFI", "Reserve/Non-Football Injury"),
 }
 RESERVE_STATUSES = {"RES", "PUP", "NFI"}
+MIN_REG_WEEKS = 17          # every NFL regular season since 1990 has at least 17 weeks
 NOT_ON_RESERVE = {"ACT"}
 ESPN_RESERVE = {"INJURY_RESERVE"}
 
@@ -114,7 +115,7 @@ def derive(*, espn_status: str | None, on_ir: bool, rows: list[dict], team_games
             else:
                 earliest = start + MIN_GAMES
                 basis = (f"{label} since week {start}: at least {MIN_GAMES} games, so no earlier than week {earliest} "
-                         "(team schedule unavailable; a bye could delay this)")
+                         "(complete team schedule unavailable; a bye could delay this)")
             blocked = [w for w in weeks if earliest is None or w < earliest]
             rec.update(earliest_eligible_week=earliest, eligibility_basis=basis, unavailable_weeks=blocked)
             if earliest is None:
@@ -167,6 +168,18 @@ def derive(*, espn_status: str | None, on_ir: bool, rows: list[dict], team_games
     return rec
 
 
+def complete_schedules(games: dict[str, list[int]]) -> dict[str, list[int]]:
+    """Only teams whose regular-season schedule is fully loaded: the schedule spans at least
+    MIN_REG_WEEKS weeks and the team plays every week but at most one (its bye). A partial schedule
+    must not be read as games that do not exist (that would delay or deny an eligible week)."""
+    if not games:
+        return {}
+    last = max(w for ws in games.values() for w in ws)
+    if last < MIN_REG_WEEKS:
+        return {}
+    return {t: ws for t, ws in games.items() if len(set(range(1, last + 1)) - set(ws)) <= 1}
+
+
 def is_restricted(rec: dict | None) -> bool:
     return bool(rec) and rec["status"] in RESTRICTED
 
@@ -213,6 +226,7 @@ def load_availability(con, season: int, players: list, weeks: tuple[int, ...] | 
                                  [season]):
                 for t in (g["home_team"], g["away_team"]):
                     games.setdefault(t, []).append(int(g["week"]))
+            games = complete_schedules(games)
     out = {}
     for p in players:
         rows = rows_by.get(p.espn_player_id, [])
