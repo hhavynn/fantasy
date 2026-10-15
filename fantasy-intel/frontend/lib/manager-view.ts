@@ -53,6 +53,22 @@ export function compositionSeries(rows: readonly CompositionRow[], positions: re
   };
 }
 
+type Standable = { team_id: number; wins: number; losses: number; ties: number; points_for: number | null; playoff_seed: number | null };
+
+/**
+ * Teams in standing order, best first. The API lists teams by team_id, so order is derived: by ESPN's
+ * `playoff_seed` when every team has one, otherwise by win share (a tie counts half), then points
+ * for, then team_id so the order is stable.
+ */
+export function standingOrder<T extends Standable>(teams: readonly T[]): T[] {
+  const seeded = teams.length > 0 && teams.every((t) => t.playoff_seed !== null && t.playoff_seed !== undefined);
+  return [...teams].sort((a, b) => {
+    if (seeded) return (a.playoff_seed as number) - (b.playoff_seed as number) || a.team_id - b.team_id;
+    const wa = winShare(a), wb = winShare(b);
+    return (wb ?? -1) - (wa ?? -1) || (b.points_for ?? -1e9) - (a.points_for ?? -1e9) || a.team_id - b.team_id;
+  });
+}
+
 /** Win share for sorting only (a tie counts half); no games yet is missing. */
 export function winShare(t: { wins: number; losses: number; ties: number }): number | null {
   const g = t.wins + t.losses + t.ties;

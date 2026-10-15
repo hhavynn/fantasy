@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { when } from "@/lib/format";
 import {
-  LABEL_GLYPH, buildColumns, buildTimeline, countNextByLabel, nextWeekOf, primaryMetric, type TimelineCell,
+  LABEL_GLYPH, buildColumns, buildTimeline, countNextByLabel, nextWeekOf, phaseGroups, primaryMetric, type TimelineCell,
 } from "@/lib/schedule-timeline";
 import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/sort";
 import type { ScheduleIntelligence, SiLabel, SiMetric, SiPlayer, SiWeek } from "@/lib/types";
@@ -202,10 +202,9 @@ function CellView({ c }: { c: TimelineCell }) {
 
 function Timeline({ d, href, phase }: { d: ScheduleIntelligence; href: (pid?: number) => string; phase: string }) {
   const w = d.window;
-  const cols = buildColumns(w.weeks, w.playoff_weeks, w.matchup_periods).filter((c) => phase === "all" || (phase === "regular" ? c.phase === "regular" : c.phase === "playoffs"));
+  const cols = buildColumns(w.weeks, w.playoff_weeks, w.matchup_periods, w.regular_season_through).filter((c) => phase === "all" || (phase === "regular" ? c.phase === "regular" : c.phase === "playoffs"));
   const weeks = cols.map((c) => c.week);
-  const regularCount = cols.filter((c) => c.phase === "regular").length;
-  const playoffCount = cols.length - regularCount;
+  const groups = phaseGroups(cols);
   const firstActionable = w.first_actionable_week;
   return (
     <Section
@@ -225,8 +224,11 @@ function Timeline({ d, href, phase }: { d: ScheduleIntelligence; href: (pid?: nu
           <thead>
             <tr className={styles.phaseRow}>
               <th className={styles.corner} rowSpan={2} scope="col">Player</th>
-              {regularCount > 0 && <th colSpan={regularCount} scope="colgroup">Regular season</th>}
-              {playoffCount > 0 && <th colSpan={playoffCount} scope="colgroup" className={styles.playoffHead}>Fantasy playoffs</th>}
+              {groups.map((g, i) => (
+                <th key={`${g.phase}-${i}`} colSpan={g.count} scope="colgroup" className={g.phase === "playoffs" ? styles.playoffHead : undefined} title={g.phase === null ? "The league settings do not establish whether these weeks are regular season or playoffs" : undefined}>
+                  {g.label}
+                </th>
+              ))}
             </tr>
             <tr>
               {cols.map((c) => (
@@ -366,7 +368,7 @@ function Detail({ p }: { p: SiPlayer }) {
             {p.weeks.map((w) => (
               <tr key={w.week} className={w.actionable ? undefined : styles.dim}>
                 <td>{w.week}{!w.actionable && <span className={styles.note}>{w.window_note}</span>}</td>
-                <td className="faint">{w.phase ?? "?"}{w.matchup_period ? ` · m${w.matchup_period}` : ""}</td>
+                <td className="faint">{w.phase ?? "phase unknown"}{w.matchup_period ? ` · m${w.matchup_period}` : ""}</td>
                 <td>{w.status === "scheduled" ? `${w.home ? "vs" : "@"} ${w.opponent}` : w.status === "bye" ? "BYE" : <span className="faint">{w.reason}</span>}</td>
                 <td className={styles.evidence}>
                   <Badge value={`${LABEL_GLYPH[w.label]} ${w.label_text}`.trim()} tone={TONE[w.label]} />{" "}

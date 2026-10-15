@@ -4,7 +4,7 @@ import { Badge, PageHeader } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { label, num } from "@/lib/format";
-import { insufficientCount, standoutTendencies, winShare } from "@/lib/manager-view";
+import { insufficientCount, standingOrder, standoutTendencies, winShare } from "@/lib/manager-view";
 import { ConfDot, DIMENSION_TITLES } from "@/lib/managers";
 import { nextDir, parseSort, sortHref, sortRows, type SortState } from "@/lib/sort";
 import type { Classification, League, Metric, Team } from "@/lib/types";
@@ -41,13 +41,13 @@ export default async function ManagersPage({ searchParams }: PageProps<"/manager
   const { managers, league } = res.data;
   const sort = parseSort(sp, SORTS.map((s) => s.key), DEFAULT);
   const order = Object.keys(DIMENSION_TITLES);
-  const rows = sortRows(managers.map((m, i) => ({ m, standing: i + 1 })), ({ m, standing }) => {
+  const rows = sortRows(standingOrder(managers).map((m, i) => ({ m, standing: i + 1 })), ({ m, standing }) => {
     switch (sort.key) {
       case "record": return winShare(m);
       case "pf": return m.points_for;
       case "adds": return m.metrics.adds_total?.value;
       case "trades": return m.metrics.trade_count?.value;
-      default: return standing; // the API returns managers in standing order
+      default: return standing; // derived from playoff_seed / record, not the API's team_id order
     }
   }, sort.dir).map((r) => r.m);
   // Your card first, then the chosen order.

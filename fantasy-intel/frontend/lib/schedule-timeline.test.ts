@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildColumns, buildTimeline, countNextByLabel, describeWeek, nextWeekOf } from "./schedule-timeline.ts";
+import { buildColumns, buildTimeline, countNextByLabel, describeWeek, nextWeekOf, phaseGroups } from "./schedule-timeline.ts";
 import type { SiPlayer, SiWeek } from "./types.ts";
 
 const week = (over: Partial<SiWeek> & { week: number }): SiWeek => ({
@@ -16,7 +16,7 @@ const player = (weeks: SiWeek[]): SiPlayer => ({
 });
 
 test("buildColumns marks the first playoff week only", () => {
-  const cols = buildColumns([13, 14, 15, 16], [15, 16], { "15": 15 });
+  const cols = buildColumns([13, 14, 15, 16], [15, 16], { "15": 15 }, 14);
   assert.deepEqual(cols.map((c) => c.phase), ["regular", "regular", "playoffs", "playoffs"]);
   assert.deepEqual(cols.map((c) => c.startsPlayoffs), [false, false, true, false]);
   assert.equal(cols[2].matchupPeriod, 15);
@@ -25,6 +25,29 @@ test("buildColumns marks the first playoff week only", () => {
 
 test("buildColumns with no playoff weeks never starts playoffs", () => {
   assert.ok(buildColumns([1, 2], [], {}).every((c) => !c.startsPlayoffs));
+});
+
+test("buildColumns uses regular_season_through and leaves unestablished phases null", () => {
+  const cols = buildColumns([13, 14, 15, 16], [15, 16], {}, 14);
+  assert.deepEqual(cols.map((c) => c.phase), ["regular", "regular", "playoffs", "playoffs"]);
+  // The settings establish nothing: no boundary and no playoff weeks.
+  const unknown = buildColumns([6, 7, 8], [], {}, null);
+  assert.deepEqual(unknown.map((c) => c.phase), [null, null, null]);
+  // Playoff weeks listed but no regular-season boundary: only the listed weeks are claimed.
+  assert.deepEqual(buildColumns([13, 14, 15], [15], {}, null).map((c) => c.phase), [null, null, "playoffs"]);
+});
+
+test("phaseGroups groups consecutive phases and labels an unknown phase as such", () => {
+  const groups = phaseGroups(buildColumns([13, 14, 15, 16], [15, 16], {}, 14));
+  assert.deepEqual(groups.map((g) => [g.label, g.count]), [["Regular season", 2], ["Fantasy playoffs", 2]]);
+  const unknown = phaseGroups(buildColumns([6, 7, 8], [], {}, null));
+  assert.deepEqual(unknown.map((g) => [g.phase, g.label, g.count]), [[null, "Phase unknown", 3]]);
+});
+
+test("a null phase on a week passes through to its cell", () => {
+  const w = week({ week: 7, phase: null });
+  const cell = buildTimeline([7], player([w]))[0];
+  assert.equal(cell.phase, null);
 });
 
 test("buildTimeline covers bye, away, home and missing weeks", () => {

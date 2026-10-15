@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compositionSeries, insufficientCount, parseTab, standoutTendencies, winShare } from "./manager-view.ts";
+import { compositionSeries, insufficientCount, parseTab, standingOrder, standoutTendencies, winShare } from "./manager-view.ts";
 
 const cls = (dimension: string, label: string, confidence: string) => ({ dimension, label, confidence });
 
@@ -52,6 +52,25 @@ test("compositionSeries with no rows has no periods", () => {
   const s = compositionSeries([], ["QB"]);
   assert.deepEqual(s.periods, []);
   assert.deepEqual(s.series[0].points, []);
+});
+
+const team = (team_id: number, wins: number, losses: number, points_for: number | null, playoff_seed: number | null, ties = 0) =>
+  ({ team_id, wins, losses, ties, points_for, playoff_seed });
+
+test("standingOrder uses playoff_seed when every team has one, not team_id order", () => {
+  const out = standingOrder([team(1, 3, 2, 500, 7), team(2, 4, 1, 400, 2), team(3, 5, 0, 600, 1), team(4, 1, 4, 300, 12)]);
+  assert.deepEqual(out.map((t) => t.team_id), [3, 2, 1, 4]);
+});
+
+test("standingOrder falls back to win share then points for when a seed is missing", () => {
+  const out = standingOrder([team(1, 2, 3, 700, null), team(2, 4, 1, 400, 2), team(3, 4, 1, 450, null), team(4, 3, 2, 300, null, 0)]);
+  assert.deepEqual(out.map((t) => t.team_id), [3, 2, 4, 1]);
+});
+
+test("standingOrder counts a tie as half a win and breaks full ties by team_id; empty stays empty", () => {
+  const out = standingOrder([team(5, 1, 1, 100, null, 2), team(4, 2, 2, 100, null), team(2, 3, 1, 90, null)]);
+  assert.deepEqual(out.map((t) => t.team_id), [2, 4, 5]);
+  assert.deepEqual(standingOrder([]), []);
 });
 
 test("winShare counts a tie as half and is missing before any game", () => {

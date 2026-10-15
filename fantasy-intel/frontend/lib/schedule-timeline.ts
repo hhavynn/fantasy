@@ -23,7 +23,8 @@ export type TimelineCell = {
 
 export type TimelineColumn = {
   week: number;
-  phase: "regular" | "playoffs";
+  /** null when the league settings do not establish the phase. */
+  phase: "regular" | "playoffs" | null;
   /** The first fantasy-playoff column: drawn with a divider. */
   startsPlayoffs: boolean;
   matchupPeriod: number | null;
@@ -74,16 +75,41 @@ export function buildTimeline(columns: readonly number[], player: SiPlayer): Tim
   });
 }
 
-/** Column headers: the weeks in the window, each tagged regular season or fantasy playoffs. */
-export function buildColumns(weeks: readonly number[], playoffWeeks: readonly number[], matchupPeriods: Record<string, number | null>): TimelineColumn[] {
+/**
+ * Column headers: the weeks in the window, each tagged regular season, fantasy playoffs, or null
+ * when the league settings do not establish which (no phase is claimed). A week is a playoff week
+ * only if it is listed, and a regular-season week only if it is at or before `regularSeasonThrough`.
+ */
+export function buildColumns(
+  weeks: readonly number[],
+  playoffWeeks: readonly number[],
+  matchupPeriods: Record<string, number | null>,
+  regularSeasonThrough: number | null = null,
+): TimelineColumn[] {
   const playoffs = new Set(playoffWeeks);
   let seenPlayoffs = false;
   return weeks.map((week) => {
     const isPlayoff = playoffs.has(week);
     const startsPlayoffs = isPlayoff && !seenPlayoffs;
     if (isPlayoff) seenPlayoffs = true;
-    return { week, phase: isPlayoff ? "playoffs" : "regular", startsPlayoffs, matchupPeriod: matchupPeriods[String(week)] ?? null };
+    const phase = isPlayoff ? "playoffs" : regularSeasonThrough !== null && week <= regularSeasonThrough ? "regular" : null;
+    return { week, phase, startsPlayoffs, matchupPeriod: matchupPeriods[String(week)] ?? null };
   });
+}
+
+export type PhaseGroup = { phase: "regular" | "playoffs" | null; label: string; count: number };
+
+const PHASE_LABEL = { regular: "Regular season", playoffs: "Fantasy playoffs", unknown: "Phase unknown" } as const;
+
+/** Consecutive columns of the same phase, for the header's group row. An unknown phase says so. */
+export function phaseGroups(columns: readonly TimelineColumn[]): PhaseGroup[] {
+  const out: PhaseGroup[] = [];
+  for (const c of columns) {
+    const last = out[out.length - 1];
+    if (last && last.phase === c.phase) last.count += 1;
+    else out.push({ phase: c.phase, label: PHASE_LABEL[c.phase ?? "unknown"], count: 1 });
+  }
+  return out;
 }
 
 /** The player's first actionable week (the matchup that is still ahead). */
