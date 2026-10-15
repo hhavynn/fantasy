@@ -33,6 +33,18 @@ LOCK_UNKNOWN = "UNKNOWN"
 LOCK_BYE = "BYE"
 LOCK_TEAMLESS = "TEAMLESS"
 
+# Action types
+ACTION_SWAP = "SWAP"
+ACTION_COORDINATED_SWAP = "COORDINATED_SWAP"
+ACTION_NO_CHANGE = "NO_CHANGE"
+
+# Actionability categories
+ACTIONABILITY_ACTIONABLE = "ACTIONABLE"
+ACTIONABILITY_LOCKED = "LOCKED"
+ACTIONABILITY_UNCERTAIN = "UNCERTAIN"
+ACTIONABILITY_IR_BLOCKED = "IR_BLOCKED"
+ACTIONABILITY_NO_CHANGE = "NO_CHANGE"
+
 # Minimum regular season games required in nfl_schedules to confirm an NFL bye
 MIN_SCHEDULED_GAMES_FOR_BYE = 12
 
@@ -499,5 +511,169 @@ def optimize_lock_constrained_lineup(
         "is_complete": is_complete,
         "missing_projection_ids": sorted(missing_projections),
     }
+
+
+@dataclass(frozen=True)
+class StartSitDecision:
+    id: str
+    action: str                       # SWAP, COORDINATED_SWAP, NO_CHANGE
+    actionability: str                # ACTIONABLE, LOCKED, UNCERTAIN, IR_BLOCKED, NO_CHANGE
+    start_players: list[dict]
+    bench_players: list[dict]
+    target_slot: str | None           # e.g. "WR" or "FLEX" or "Multiple"
+    projected_net_gain: float | None
+    explanation: str
+    warnings: list[str]
+
+
+def generate_start_sit_decisions(
+    actual_starters: list[dict],
+    recommended_lineup: list[dict],
+    player_locks: dict[str | None, PlayerLock],
+    projections: dict[int, float | None],
+    actual_total: float | None,
+    recommended_total: float | None,
+    is_complete: bool,
+    ir_ids: set[int] | None = None,
+) -> list[StartSitDecision]:
+    """Compare actual starting lineup against recommended lineup.
+
+    Generates either a NO_CHANGE decision, a single 1-for-1 SWAP decision, or a
+    COORDINATED_SWAP decision for multi-player cascades.
+    """
+    ir_ids = ir_ids or set()
+    actual_pids = {p["espn_player_id"] for p in actual_starters if "espn_player_id" in p}
+    rec_pids = {a["player_id"] for a in recommended_lineup if a.get("player_id") is not None}
+
+    entering_ids = rec_pids - actual_pids
+    displaced_ids = actual_pids - rec_pids
+
+    net_gain = (
+        round(recommended_total - actual_total, 2)
+        if (recommended_total is not None and actual_total is not None)
+        else None
+    )
+
+    # 1. No changes: Lineup is already optimal
+    if not entering_ids and not displaced_ids:
+        return [
+            StartSitDecision(
+                id="decision_optimal",
+                action=ACTION_NO_CHANGE,
+                actionability=ACTIONABILITY_NO_CHANGE,
+                start_players=[],
+                bench_players=[],
+                target_slot=None,
+                projected_net_gain=0.0,
+                explanation="Your currently submitted lineup is already optimal under modeled constraints.",
+                warnings=[],
+            )
+        ]
+
+    # Helper to check actionability for a set of players
+    def evaluate_actionability(players: list[dict]) -> tuple[str, list[str]]:
+        warns: list[str] = []
+        is_locked = False
+        is_uncertain = False
+        is_ir = False
+
+        for p in players:
+            pid = p.get("espn_player_id")
+            if pid in ir_ids:
+                is_ir = True
+                warns.append(f"{p.get('full_name')} occupies a fantasy IR slot and cannot start without a roster move.")
+            pro_team = p.get("pro_team")
+            lock = player_locks.get(pro_team)
+            if lock and lock.status == LOCK_LOCKED:
+                is_locked = True
+                warns.append(f"{p.get('full_name')} ({pro_team}) has already kicked off and cannot be moved.")
+            elif not lock or lock.status == LOCK_UNKNOWN:
+                is_uncertain = True
+                warns.append(f"Kickoff status for {p.get('full_name')} ({pro_team}) could not be verified.")
+
+        if not is_complete:
+            is_uncertain = True
+            warns.append("Comparison projection coverage is incomplete.")
+
+        if is_ir:
+            return ACTIONABILITY_IR_BLOCKED, warns
+        if is_locked:
+            return ACTIONABILITY_LOCKED, warns
+        if is_uncertain:
+            return ACTIONABILITY_UNCERTAIN, warns
+        return ACTIONABILITY_ACTIONABLE, warns
+
+    # 2. Single 1-for-1 swap
+    if len(entering_ids) == 1 and len(displaced_ids) == 1:
+        entering_id = list(entering_ids)[0]
+        displaced_id = list(displaced_ids)[0]
+
+        rec_entry = next(a for a in recommended_lineup if a.get("player_id") == entering_id)
+        start_p = rec_entry.get("player") or {"espn_player_id": entering_id}
+        bench_p = next((p for p in actual_starters if p.get("espn_player_id") == displaced_id), {"espn_player_id": displaced_id})
+
+        target_slot = rec_entry.get("slot") or start_p.get("position")
+        actionability, warnings = evaluate_actionability([start_p, bench_p])
+
+        s_name = start_p.get("full_name") or f"Player {entering_id}"
+        s_proj = projections.get(entering_id)
+        s_proj_str = f" ({s_proj:.1f} pts)" if s_proj is not None else ""
+
+        b_name = bench_p.get("full_name") or f"Player {displaced_id}"
+        b_proj = projections.get(displaced_id)
+        b_proj_str = f" ({b_proj:.1f} pts)" if b_proj is not None else ""
+
+        gain_str = f"+{net_gain:.1f}" if net_gain is not None and net_gain > 0 else (f"{net_gain}" if net_gain is not None else "an unknown")
+        explanation = f"Start {s_name}{s_proj_str} over {b_name}{b_proj_str} in {target_slot} for a {gain_str} pt projected improvement."
+
+        return [
+            StartSitDecision(
+                id=f"swap_{entering_id}_{displaced_id}",
+                action=ACTION_SWAP,
+                actionability=actionability,
+                start_players=[start_p],
+                bench_players=[bench_p],
+                target_slot=target_slot,
+                projected_net_gain=net_gain,
+                explanation=explanation,
+                warnings=warnings,
+            )
+        ]
+
+    # 3. Coordinated multi-player change (FLEX cascade)
+    start_players = [a.get("player") or {"espn_player_id": a["player_id"]} for a in recommended_lineup if a.get("player_id") in entering_ids]
+    bench_players = [p for p in actual_starters if p.get("espn_player_id") in displaced_ids]
+
+    actionability, warnings = evaluate_actionability(start_players + bench_players)
+
+    starts_desc = ", ".join(
+        f"{p.get('full_name')} ({projections.get(p.get('espn_player_id'), 0):.1f} pts)"
+        for p in start_players
+    )
+    benches_desc = ", ".join(
+        f"{p.get('full_name')} ({projections.get(p.get('espn_player_id'), 0):.1f} pts)"
+        for p in bench_players
+    )
+    gain_str = f"+{net_gain:.1f}" if net_gain is not None and net_gain > 0 else (f"{net_gain}" if net_gain is not None else "an unknown")
+
+    explanation = (
+        f"Coordinated multi-player change: Starting {starts_desc} displaces {benches_desc} "
+        f"across starting slots for a {gain_str} pt net lineup gain."
+    )
+
+    return [
+        StartSitDecision(
+            id="coordinated_swap",
+            action=ACTION_COORDINATED_SWAP,
+            actionability=actionability,
+            start_players=start_players,
+            bench_players=bench_players,
+            target_slot="Multiple slots",
+            projected_net_gain=net_gain,
+            explanation=explanation,
+            warnings=warnings,
+        )
+    ]
+
 
 

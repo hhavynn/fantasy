@@ -272,3 +272,132 @@ def test_constrained_optimization_invariants():
     assert res["is_complete"] is True
 
 
+def test_decision_attribution_single_swap_and_already_optimal():
+    from app.analytics.start_sit import (
+        ACTION_NO_CHANGE,
+        ACTION_SWAP,
+        ACTIONABILITY_ACTIONABLE,
+        ACTIONABILITY_LOCKED,
+        ACTIONABILITY_NO_CHANGE,
+        generate_start_sit_decisions,
+    )
+
+    actual_starters = [
+        {"espn_player_id": 1, "full_name": "Patrick Mahomes", "position": "QB", "pro_team": "KC"},
+        {"espn_player_id": 2, "full_name": "Tyler Lockett", "position": "WR", "pro_team": "SEA"},
+    ]
+    recommended_lineup = [
+        {"slot_id": "QB_0", "slot": "QB", "player_id": 1, "player": actual_starters[0], "projected_points": 20.0},
+        {"slot_id": "WR_0", "slot": "WR", "player_id": 3, "player": {"espn_player_id": 3, "full_name": "Brian Thomas Jr.", "position": "WR", "pro_team": "JAX"}, "projected_points": 14.5},
+    ]
+
+    locks = {
+        "KC": PlayerLock(team="KC", status=LOCK_UNLOCKED),
+        "SEA": PlayerLock(team="SEA", status=LOCK_UNLOCKED),
+        "JAX": PlayerLock(team="JAX", status=LOCK_UNLOCKED),
+    }
+    projections = {1: 20.0, 2: 9.5, 3: 14.5}
+
+    # 1. Single swap: 3 enters WR_0, 2 is displaced to bench
+    decisions = generate_start_sit_decisions(
+        actual_starters=actual_starters,
+        recommended_lineup=recommended_lineup,
+        player_locks=locks,
+        projections=projections,
+        actual_total=29.5,
+        recommended_total=34.5,
+        is_complete=True,
+    )
+    assert len(decisions) == 1
+    d = decisions[0]
+    assert d.action == ACTION_SWAP
+    assert d.actionability == ACTIONABILITY_ACTIONABLE
+    assert d.start_players[0]["espn_player_id"] == 3
+    assert d.bench_players[0]["espn_player_id"] == 2
+    assert d.target_slot == "WR"
+    assert d.projected_net_gain == 5.0
+    assert "Brian Thomas Jr." in d.explanation
+    assert "Tyler Lockett" in d.explanation
+
+    # 2. If Tyler Lockett (SEA) was already locked: actionability is LOCKED
+    locks_locked = {**locks, "SEA": PlayerLock(team="SEA", status=LOCK_LOCKED)}
+    decisions_locked = generate_start_sit_decisions(
+        actual_starters=actual_starters,
+        recommended_lineup=recommended_lineup,
+        player_locks=locks_locked,
+        projections=projections,
+        actual_total=29.5,
+        recommended_total=34.5,
+        is_complete=True,
+    )
+    assert decisions_locked[0].actionability == ACTIONABILITY_LOCKED
+
+    # 3. Already optimal
+    optimal_rec = [
+        {"slot_id": "QB_0", "slot": "QB", "player_id": 1, "player": actual_starters[0], "projected_points": 20.0},
+        {"slot_id": "WR_0", "slot": "WR", "player_id": 2, "player": actual_starters[1], "projected_points": 9.5},
+    ]
+    decisions_optimal = generate_start_sit_decisions(
+        actual_starters=actual_starters,
+        recommended_lineup=optimal_rec,
+        player_locks=locks,
+        projections=projections,
+        actual_total=29.5,
+        recommended_total=29.5,
+        is_complete=True,
+    )
+    assert len(decisions_optimal) == 1
+    assert decisions_optimal[0].action == ACTION_NO_CHANGE
+    assert decisions_optimal[0].actionability == ACTIONABILITY_NO_CHANGE
+    assert decisions_optimal[0].projected_net_gain == 0.0
+
+
+def test_decision_attribution_coordinated_cascade_no_double_counting():
+    from app.analytics.start_sit import (
+        ACTION_COORDINATED_SWAP,
+        ACTIONABILITY_ACTIONABLE,
+        generate_start_sit_decisions,
+    )
+
+    actual_starters = [
+        {"espn_player_id": 1, "full_name": "RB1", "position": "RB", "pro_team": "KC"},
+        {"espn_player_id": 2, "full_name": "RB2 Starter", "position": "RB", "pro_team": "SF"},
+        {"espn_player_id": 3, "full_name": "WR1", "position": "WR", "pro_team": "MIN"},
+        {"espn_player_id": 4, "full_name": "WR2 Starter", "position": "WR", "pro_team": "DET"},
+        {"espn_player_id": 5, "full_name": "TE1 Starter (FLEX)", "position": "TE", "pro_team": "BUF"},
+    ]
+    # In recommended lineup:
+    # RB2 and TE1 displaced; Bench RB3 and Bench WR3 enter
+    recommended_lineup = [
+        {"slot_id": "RB_0", "slot": "RB", "player_id": 1, "player": actual_starters[0], "projected_points": 18.0},
+        {"slot_id": "RB_1", "slot": "RB", "player_id": 6, "player": {"espn_player_id": 6, "full_name": "Bench RB3", "position": "RB", "pro_team": "MIA"}, "projected_points": 16.0},
+        {"slot_id": "WR_0", "slot": "WR", "player_id": 3, "player": actual_starters[2], "projected_points": 15.0},
+        {"slot_id": "WR_1", "slot": "WR", "player_id": 7, "player": {"espn_player_id": 7, "full_name": "Bench WR3", "position": "WR", "pro_team": "JAX"}, "projected_points": 14.0},
+        {"slot_id": "FLEX_0", "slot": "FLEX", "player_id": 4, "player": actual_starters[3], "projected_points": 12.0}, # WR2 moved to FLEX
+    ]
+
+    locks = {t: PlayerLock(team=t, status=LOCK_UNLOCKED) for t in ("KC", "SF", "MIN", "DET", "BUF", "MIA", "JAX")}
+    projections = {1: 18.0, 2: 10.0, 3: 15.0, 4: 12.0, 5: 8.0, 6: 16.0, 7: 14.0}
+    # Actual total = 18 + 10 + 15 + 12 + 8 = 63.0
+    # Recommended total = 18 + 16 + 15 + 14 + 12 = 75.0
+    # True net gain = 75 - 63 = 12.0 (NOT 6.0 + 6.0 or any arbitrary sum!)
+    decisions = generate_start_sit_decisions(
+        actual_starters=actual_starters,
+        recommended_lineup=recommended_lineup,
+        player_locks=locks,
+        projections=projections,
+        actual_total=63.0,
+        recommended_total=75.0,
+        is_complete=True,
+    )
+    assert len(decisions) == 1
+    d = decisions[0]
+    assert d.action == ACTION_COORDINATED_SWAP
+    assert d.actionability == ACTIONABILITY_ACTIONABLE
+    assert len(d.start_players) == 2
+    assert len(d.bench_players) == 2
+    assert d.projected_net_gain == 12.0
+    assert "Coordinated multi-player change" in d.explanation
+
+
+
