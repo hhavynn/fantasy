@@ -92,9 +92,8 @@ def classify(row: dict, balance: dict, injuries: list[dict], phase: str, strictn
     against = AGAINST_THEM + (("they_give_more",) if strictness == "strict" else ())
     if strictness != "off" and lab in against:
         return "excluded_lopsided", [balance["text"]]
-    receives = set(row["receives"])
     unsure = [f for f in injuries if f["status"] in (UNKNOWN, ELIGIBLE_UNCONFIRMED)
-              or (f["fantasy_ir_slot"] and f["espn_player_id"] in receives)]
+              or (f["fantasy_ir_slot"] and not f.get("return_confirmed"))]
     if lab == "insufficient_data" or unsure:
         reasons += [balance["text"]] if lab == "insufficient_data" else []
         reasons += [w for f in unsure for w in f["warnings"][:1]]
