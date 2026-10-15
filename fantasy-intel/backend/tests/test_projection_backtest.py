@@ -31,9 +31,15 @@ def lab(con):
     return con
 
 
+def naive_utc(at):
+    """Store as the repository does (app.db.connection.utcnow): naive UTC. DuckDB would
+    otherwise convert a tz-aware value to the session's local time zone."""
+    return at.astimezone(UTC).replace(tzinfo=None) if at else at
+
+
 def player(con, pid=1, position="RB", actual=14.0, projected=10.0, hours=1):
     con.execute("INSERT INTO nfl_rosters_weekly VALUES (2026, 1, ?, ?, 'BUF', ?)", [str(pid), f"G{pid}", position])
-    con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, ?, 1, ?, 999, ?)", [pid, actual, KICKOFF + timedelta(days=2)])
+    con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, ?, 1, ?, 999, ?)", [pid, actual, naive_utc(KICKOFF + timedelta(days=2))])
     snapshot(con, pid, projected, KICKOFF - timedelta(hours=hours))
     path = archive_root(con) / 'test_run/cards_00.json'
     payload = json.loads(path.read_text())
@@ -49,7 +55,7 @@ def archive_root(con):
 
 def snapshot(con, pid, points, at):
     day = at.date() if at else KICKOFF.date()
-    con.execute("INSERT OR REPLACE INTO espn_projection_history VALUES (?, 2026, ?, 1, ?, ?)", [day, pid, points, at])
+    con.execute("INSERT OR REPLACE INTO espn_projection_history VALUES (?, 2026, ?, 1, ?, ?)", [day, pid, points, naive_utc(at)])
 
 
 def report(con, **kwargs):
