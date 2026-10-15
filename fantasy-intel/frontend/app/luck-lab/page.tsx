@@ -1,8 +1,15 @@
 import Link from "next/link";
-import { Badge, Callout, ErrorBox } from "@/components/ui";
+import type { CSSProperties } from "react";
+import { BackendProblem } from "@/components/BackendProblem";
+import { BarChart, LineChart, ScatterChart } from "@/components/charts";
+import { Badge, Delta, EmptyState, Method, Notice, PageHeader, Section, SortableTh, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";
+import { cx } from "@/lib/cx";
 import type { LlBrief, LlCounterfactual, LlLeader, LlRecord, LlResult, LlScheduleRow, LlTimeline, LuckLab } from "@/lib/luck-types";
+import { heatOf, luckBars, periodLabel, scatterPoints, signedText, timelineSeries } from "@/lib/luck-view";
+import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/sort";
 import { ScheduleSelector } from "./ScheduleSelector";
+import styles from "./luck.module.css";
 
 export const metadata = { title: "Luck lab" };
 
@@ -10,34 +17,26 @@ export const metadata = { title: "Luck lab" };
 // difficulty, notable results and counterfactual opponent schedules, over completed, fully observed
 // regular-season periods only. Historical and explanatory: no probabilities, no projections.
 
-const AHEAD = "#4a96ec";   // positive luck / my team / my score (validated on the dark panel surface)
-const BEHIND = "#d9762f";  // negative luck
-const NEUTRAL = "#6e7681"; // other teams / opponents
-
 const FLAG_TEXT: Record<string, string> = {
   top_band_loss: "top-band scorer lost", above_median_loss: "above-median loss", lost_to_top_scorer: "lost to the week's top scorer",
   bottom_band_win: "bottom-band scorer won", below_median_win: "below-median win",
 };
-// Narrow-safe grids (columns never wider than the screen).
-const GRID4 = { gridTemplateColumns: "repeat(auto-fit, minmax(min(160px, 100%), 1fr))" };
 const RESULT_TONE: Record<LlResult, string> = { W: "good", L: "bad", T: "warn" };
+const flagText = (flags: string[]) => flags.map((f) => FLAG_TEXT[f] ?? f).join(", ");
 
-function one(v: string | string[] | undefined): string | undefined {
-  return Array.isArray(v) ? v[0] : v;
-}
+const BOARD_SORTS = ["rank", "team", "actual", "expected", "luck", "allplay", "opp", "periods"] as const;
+const BOARD_DEFAULT: SortState = { key: "rank", dir: "asc" };
+const SCHED_SORTS = ["team", "periods", "actual", "hyp", "diff"] as const;
+const SCHED_DEFAULT: SortState = { key: "team", dir: "asc" };
+
+const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
 function rec(r: LlRecord | { wins: number | null; losses: number | null; ties: number | null } | undefined | null): string {
   if (!r || r.wins === null || r.losses === null) return "—";
   return `${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ""}`;
 }
 
-function signed(v: number | null | undefined, d = 2): string {
-  return v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(d)}`;
-}
-
-function wk(weeks: number[] | null, period: number): string {
-  return weeks && weeks.length ? (weeks.length > 1 ? `wk ${weeks[0]}–${weeks[weeks.length - 1]}` : `wk ${weeks[0]}`) : `period ${period}`;
-}
+const pctText = (v: number | null | undefined, digits = 0) => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(digits)}%`);
 
 export default async function LuckLabPage({ searchParams }: PageProps<"/luck-lab">) {
   const sp = await searchParams;
@@ -59,52 +58,72 @@ export default async function LuckLabPage({ searchParams }: PageProps<"/luck-lab
       cleared = true;
     }
   }
-  return (
-    <div className="stack">
-      <div className="page-head">
-        <h1>Luck vs. skill lab</h1>
-        <span className="sub">Scoring strength, head-to-head results and schedule advantage · historical, explanatory, not a prediction</span>
+  if (!res.ok) {
+    return (
+      <div className="stack">
+        <PageHeader title="Luck vs. skill lab" />
+        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
       </div>
-      {cleared && res.ok && <Callout>The schedule comparison was cleared: a team cannot be compared against its own schedule. Pick another manager&apos;s schedule.</Callout>}
-      {!res.ok ? <ErrorBox error={res.error} /> : <Body d={res.data} />}
-    </div>
-  );
+    );
+  }
+  return <Body d={res.data} cleared={cleared} sp={sp} />;
 }
 
-function Body({ d }: { d: LuckLab }) {
+function Body({ d, cleared, sp }: { d: LuckLab; cleared: boolean; sp: SearchParams }) {
   const name = (id: number | null | undefined) => d.teams.find((t) => t.team_id === id)?.name ?? `Team ${id}`;
   const cov = d.coverage;
   const pending = cov.excluded_periods.filter((e) => e.kind === "not_completed").map((e) => e.matchup_period);
   const gaps = cov.excluded_periods.filter((e) => e.kind !== "not_completed");
+  const s = d.spotlight;
+  const eligible = cov.eligible_periods.length > 0;
   return (
-    <>
-      <ScheduleSelector
-        key={`${d.focus_team_id}-${d.schedule_of ?? ""}`}
-        teams={d.teams}
-        focusTeamId={d.focus_team_id}
-        scheduleOf={d.schedule_of}
-      >
-        <span className="faint" style={{ marginLeft: "auto" }}>
-          <Link href="/playoff-race">Playoff race</Link> · <Link href="/">Standings</Link>
-        </span>
-      </ScheduleSelector>
-      <p className="faint" style={{ margin: 0 }}>
-        <b>{cov.eligible_periods.length}</b> completed, fully observed regular-season period(s) of {cov.teams} teams
-        {pending.length > 0 && <> · not completed yet: period{pending.length > 1 ? "s" : ""} {pending.join(", ")}</>}
-      </p>
-      {gaps.length > 0 && <Callout>Excluded for incomplete data (every team, so pools stay complete): {gaps.map((e) => `period ${e.matchup_period}: ${e.reasons.join("; ")} (${e.teams_with_final_scores}/${e.teams} teams with final scores)`).join(" · ")}</Callout>}
-      {cov.eligible_periods.length === 0 ? <Callout>No completed, fully observed regular-season period yet: expected wins and schedule luck need every team&apos;s final score in the same period. {cov.rule}</Callout> : <>
-        <Spotlight d={d} name={name} />
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(420px, 100%), 1fr))" }}>
-          <Leaderboard d={d} />
-          <Scatter d={d} />
-        </div>
-        <Timeline d={d} name={name} />
-        <Explorer d={d} name={name} />
-        <Matrix d={d} />
-      </>}
-      <details className="panel method">
-        <summary>How the numbers work</summary>
+    <div className="stack">
+      <PageHeader
+        title="Luck vs. skill lab"
+        meta={<>
+          {s.name}{s.is_mine ? " (your team)" : ""} · <b>{cov.eligible_periods.length}</b> completed, fully observed regular-season period(s) of {cov.teams} teams
+          {pending.length > 0 && <> · not completed yet: period{pending.length > 1 ? "s" : ""} {pending.join(", ")}</>}
+          {" "}· historical and explanatory, not a prediction
+        </>}
+        actions={
+          <ScheduleSelector
+            key={`${d.focus_team_id}-${d.schedule_of ?? ""}`}
+            teams={d.teams}
+            focusTeamId={d.focus_team_id}
+            scheduleOf={d.schedule_of}
+          >
+            <span className={styles.crosslinks}>
+              <Link href="/playoff-race">Playoff race</Link> · <Link href="/">Standings</Link>
+            </span>
+          </ScheduleSelector>
+        }
+      />
+
+      {cleared && <Notice tone="caution">The schedule comparison was cleared: a team cannot be compared against its own schedule. Pick another manager&apos;s schedule.</Notice>}
+      {gaps.length > 0 && (
+        <Notice tone="caution" title="Some periods are excluded for incomplete data">
+          Excluded for every team, so pools stay complete: {gaps.map((e) => `period ${e.matchup_period}: ${e.reasons.join("; ")} (${e.teams_with_final_scores}/${e.teams} teams with final scores)`).join(" · ")}
+        </Notice>
+      )}
+
+      {!eligible ? (
+        <Notice tone="caution">No completed, fully observed regular-season period yet: expected wins and schedule luck need every team&apos;s final score in the same period. {cov.rule}</Notice>
+      ) : (
+        <>
+          <Headline d={d} />
+          <div className="grid grid-2">
+            <ScatterSection d={d} />
+            <LuckBarsSection d={d} />
+          </div>
+          <Leaderboard d={d} sp={sp} />
+          <WeekByWeek d={d} name={name} />
+          <Notables d={d} name={name} />
+          <Explorer d={d} name={name} sp={sp} />
+          <Matrix d={d} />
+        </>
+      )}
+
+      <Method title="How the numbers work">
         <ul className="reasons">
           <li>{d.rules.expected}</li><li>{d.rules.luck}</li><li>{d.rules.eligible}</li><li>{d.rules.counterfactual}</li>
           <li>{d.rules.bands}</li><li>{d.rules.result_source}</li>
@@ -114,90 +133,127 @@ function Body({ d }: { d: LuckLab }) {
           {cov.data_notes.no_period.length > 0 && <li>Matchups without a matchup period are ignored: {cov.data_notes.no_period.length}.</li>}
           {cov.data_notes.playoff_rows > 0 && <li>{cov.data_notes.playoff_rows} playoff matchup(s) are never mixed with the regular season.</li>}
         </ul>
-      </details>
-    </>
+      </Method>
+    </div>
   );
 }
 
-// ---------------------------------------------------------------------- spotlight --
+// ---------------------------------------------------------------------- headline --
 
-function Result({ r }: { r: LlResult }) {
-  return <Badge value={r} tone={RESULT_TONE[r]} />;
-}
-
-function Notable({ b, kind, name }: { b: LlBrief | undefined; kind: string; name: (id: number) => string }) {
-  if (!b) return <span className="faint">none in eligible periods</span>;
-  return (
-    <span>{wk(b.weeks, b.matchup_period)}: <b>{b.score.toFixed(1)}</b> (#{b.rank} of {b.teams}) {kind} {b.opponent_score.toFixed(1)} vs {name(b.opponent_id)} (#{b.opponent_rank})
-      <span className="faint"> · {b.flags.map((f) => FLAG_TEXT[f] ?? f).join(", ")}</span></span>
-  );
-}
-
-function Spotlight({ d, name }: { d: LuckLab; name: (id: number) => string }) {
+function Headline({ d }: { d: LuckLab }) {
   const s = d.spotlight;
-  if (!s.periods) return <Callout>{s.name} has no eligible periods.</Callout>;
+  if (!s.periods) return <Notice tone="caution">{s.name} has no eligible periods.</Notice>;
   const luck = s.schedule_luck ?? 0;
   return (
-    <section className="panel" style={{ borderColor: AHEAD }}>
-      <h2>{s.name}{s.is_mine ? " (your team)" : ""}</h2>
-      <div className="grid" style={GRID4}>
-        <div className="stat"><div className="label">Record</div>
-          <div className="value">{rec(s.actual)}</div>
-          <span className="faint">ESPN {rec(s.espn_record)} · {s.periods} eligible period(s)</span></div>
-        <div className="stat"><div className="label">Expected record (all-play)</div>
-          <div className="value">{s.expected_wins?.toFixed(2)}–{s.expected_losses?.toFixed(2)}</div>
-          <span className="faint">all-play {rec(s.all_play)} ({((s.all_play?.pct ?? 0) * 100).toFixed(1)}%) · scoring rank #{s.scoring_rank} of {s.teams_ranked}</span></div>
-        <div className="stat"><div className="label">Schedule luck</div>
-          <div className="value" style={{ color: luck >= 0 ? AHEAD : BEHIND }}>{signed(luck)} wins</div>
-          <span className="faint">#{s.luck_rank} of {s.teams_ranked} (1 = most actual wins above expected)</span></div>
-        <div className="stat"><div className="label">Opponents faced</div>
-          <div className="value">{s.difficulty?.opponent_points_mean.toFixed(1)} pts</div>
-          <span className="faint">average opponent score · #{s.difficulty_rank} toughest of {s.teams_ranked}</span></div>
-      </div>
-      <ul className="reasons" style={{ marginTop: 10 }}>
-        <li>Biggest brutal loss: <Notable b={s.notable?.brutal_losses[0]} kind="lost to" name={name} /></li>
-        <li>Biggest fortunate win: <Notable b={s.notable?.fortunate_wins[0]} kind="beat" name={name} /></li>
-        <li>Scoring: mean {s.scoring?.mean.toFixed(1)} · median {s.scoring?.median.toFixed(1)} · range {s.scoring?.min.toFixed(1)}–{s.scoring?.max.toFixed(1)}
-          {s.scoring?.iqr !== null && <> · middle half {s.scoring?.q1?.toFixed(1)}–{s.scoring?.q3?.toFixed(1)} (IQR {s.scoring?.iqr?.toFixed(1)})</>}
-          {" "}· top half {((s.scoring?.top_half_pct ?? 0) * 100).toFixed(0)}% of periods · {s.scoring?.first_place} first-place and {s.scoring?.last_place} last-place weeks</li>
-        {s.difficulty && <li>Schedule: opponents averaged a {((s.difficulty.opponent_share_mean) * 100).toFixed(0)}% all-play share in the weeks you met them
-          {s.difficulty.opponent_season_share_mean !== null && <> versus {((s.difficulty.opponent_season_share_mean) * 100).toFixed(0)}% across their whole season (how strong those managers were overall)</>}
-          {" "}· {s.difficulty.opponents_top_band} opponent week(s) in the top band, {s.difficulty.opponents_bottom_band} in the bottom band</li>}
-      </ul>
-    </section>
+    <StatStrip>
+      <Stat
+        label="Expected wins (all-play)"
+        value={s.expected_wins?.toFixed(2)}
+        note={<>all-play {rec(s.all_play)} ({pctText(s.all_play?.pct, 1)}) · scoring rank #{s.scoring_rank} of {s.teams_ranked}</>}
+      />
+      <Stat
+        label="Actual wins"
+        value={s.actual?.win_equivalents.toFixed(1)}
+        note={<>{rec(s.actual)} over {s.periods} eligible period(s) · ESPN {rec(s.espn_record)}</>}
+      />
+      <Stat
+        label="Schedule luck"
+        value={`${signedText(luck)} wins`}
+        tone={luck > 0 ? "positive" : luck < 0 ? "negative" : undefined}
+        note={`#${s.luck_rank} of ${s.teams_ranked} (1 = most actual wins above expected)`}
+      />
+      <Stat
+        label="Schedule difficulty"
+        value={`#${s.difficulty_rank}`}
+        note={<>toughest of {s.teams_ranked} · opponents averaged {s.difficulty?.opponent_points_mean.toFixed(1)} pts</>}
+      />
+    </StatStrip>
+  );
+}
+
+// ------------------------------------------------------------------------ charts --
+
+function ScatterSection({ d }: { d: LuckLab }) {
+  return (
+    <Section
+      title="Actual vs expected wins"
+      footnote="Dashed diagonal: actual equals expected. Above it, a team has more wins than its scoring implies. Labelled: your team and teams at least one win off the diagonal. Hover any point for its numbers."
+    >
+      <ScatterChart
+        points={scatterPoints(d.leaderboard)}
+        xLabel="Expected wins"
+        yLabel="Actual wins"
+        diagonal
+        xFormat={(v) => v.toFixed(1)}
+        yFormat={(v) => v.toFixed(1)}
+        ariaLabel="Actual win equivalents against expected wins per team"
+      />
+    </Section>
+  );
+}
+
+function LuckBarsSection({ d }: { d: LuckLab }) {
+  const bars = luckBars(d.leaderboard);
+  return (
+    <Section
+      title="Schedule luck by team"
+      footnote="Wins above (+) or below (−) expected, over the same eligible periods. Positive means the schedule and results favoured the team."
+    >
+      <BarChart
+        data={bars}
+        orientation="horizontal"
+        valueFormat={(v) => signedText(v)}
+        ariaLabel="Schedule luck per team, in wins"
+      />
+    </Section>
   );
 }
 
 // -------------------------------------------------------------------- leaderboard --
 
-function LuckBar({ v, max }: { v: number; max: number }) {
-  const w = Math.max(1, (Math.abs(v) / max) * 50);
+function Leaderboard({ d, sp }: { d: LuckLab; sp: SearchParams }) {
+  const sort = parseSort(sp, BOARD_SORTS, BOARD_DEFAULT);
+  const rows = sortRows(d.leaderboard, (x: LlLeader) => {
+    switch (sort.key) {
+      case "team": return x.name;
+      case "actual": return x.actual.win_equivalents;
+      case "expected": return x.expected_wins;
+      case "luck": return x.schedule_luck;
+      case "allplay": return x.all_play.pct;
+      case "opp": return x.opponent_points_mean;
+      case "periods": return x.periods;
+      default: return x.luck_rank;
+    }
+  }, sort.dir);
   return (
-    <svg width={104} height={12} role="img" aria-label={`Schedule luck ${signed(v)}`}>
-      <line x1={52} x2={52} y1={0} y2={12} stroke="var(--border)" />
-      <rect x={v >= 0 ? 52 : 52 - w} y={2} width={w} height={8} rx={3} fill={v >= 0 ? AHEAD : BEHIND} />
-    </svg>
-  );
-}
-
-function Leaderboard({ d }: { d: LuckLab }) {
-  const max = Math.max(0.5, ...d.leaderboard.map((x) => Math.abs(x.schedule_luck)));
-  return (
-    <section className="panel">
-      <h2>League luck leaderboard</h2>
+    <Section
+      title="League luck leaderboard"
+      flush
+      footnote="Actual = win equivalents (a tie counts a half). Expected = all-play win equivalents. Luck = actual minus expected over the same periods. Opp. avg = average opponent score faced (#1 = toughest)."
+    >
       <div className="table-wrap">
         <table>
-          <thead><tr><th>#</th><th>Team</th><th className="num">Actual</th><th className="num">Expected</th><th>Schedule luck</th>
-            <th>All-play</th><th className="num">Opp. avg</th><th className="num">Periods</th></tr></thead>
+          <thead>
+            <tr>
+              <SortableTh sortKey="rank" label="#" align="right" defaultDir="asc" current={sort} searchParams={sp} title="Luck rank (1 = most actual wins above expected)" />
+              <SortableTh sortKey="team" label="Team" current={sort} searchParams={sp} />
+              <SortableTh sortKey="actual" label="Actual" align="right" current={sort} searchParams={sp} />
+              <SortableTh sortKey="expected" label="Expected" align="right" current={sort} searchParams={sp} />
+              <SortableTh sortKey="luck" label="Schedule luck" current={sort} searchParams={sp} />
+              <SortableTh sortKey="allplay" label="All-play" current={sort} searchParams={sp} />
+              <SortableTh sortKey="opp" label="Opp. avg" align="right" current={sort} searchParams={sp} />
+              <SortableTh sortKey="periods" label="Periods" align="right" current={sort} searchParams={sp} />
+            </tr>
+          </thead>
           <tbody>
-            {d.leaderboard.map((x: LlLeader) => (
+            {rows.map((x) => (
               <tr key={x.team_id} className={x.is_mine ? "mine" : ""}>
-                <td>{x.luck_rank}</td>
+                <td className="num faint">{x.luck_rank}</td>
                 <td><Link href={`/luck-lab?team=${x.team_id}`}>{x.name}</Link> <span className="faint">ESPN {rec(x.espn_record)}</span></td>
                 <td className="num">{x.actual.win_equivalents.toFixed(1)} <span className="faint">({rec(x.actual)})</span></td>
                 <td className="num">{x.expected_wins.toFixed(2)}</td>
-                <td><LuckBar v={x.schedule_luck} max={max} /> <b style={{ color: x.schedule_luck >= 0 ? AHEAD : BEHIND }}>{signed(x.schedule_luck)}</b></td>
-                <td>{rec(x.all_play)} <span className="faint">{((x.all_play.pct ?? 0) * 100).toFixed(0)}%</span></td>
+                <td><Delta value={x.schedule_luck} digits={2} /></td>
+                <td>{rec(x.all_play)} <span className="faint">{pctText(x.all_play.pct)}</span></td>
                 <td className="num">{x.opponent_points_mean.toFixed(1)} <span className="faint">#{x.difficulty_rank}</span></td>
                 <td className="num">{x.periods}</td>
               </tr>
@@ -205,133 +261,133 @@ function Leaderboard({ d }: { d: LuckLab }) {
           </tbody>
         </table>
       </div>
-      <p className="faint" style={{ marginTop: 6 }}>Actual = win equivalents (tie = ½). Expected = all-play win equivalents. Luck = actual − expected over the same periods. Opp. avg = average opponent score faced (#1 = toughest).</p>
-    </section>
+    </Section>
   );
 }
 
-function Scatter({ d }: { d: LuckLab }) {
-  const pts = d.leaderboard;
-  const n = d.coverage.eligible_periods.length;
-  const W = 300, H = 260, pad = 34;
-  const x = (v: number) => pad + (v / n) * (W - pad - 10);
-  const y = (v: number) => H - pad - (v / n) * (H - pad - 10);
-  return (
-    <section className="panel">
-      <h2>Actual vs expected wins</h2>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: 460 }} role="img" aria-label="Actual win equivalents against expected wins per team; above the diagonal = more actual wins than expected">
-        <line x1={x(0)} y1={y(0)} x2={x(n)} y2={y(n)} stroke="var(--border)" strokeDasharray="4 3" />
-        <line x1={x(0)} y1={y(0)} x2={x(n)} y2={y(0)} stroke="var(--border)" />
-        <line x1={x(0)} y1={y(0)} x2={x(0)} y2={y(n)} stroke="var(--border)" />
-        <text x={x(n)} y={y(0) + 14} textAnchor="end" fontSize={10} fill="var(--muted)">expected wins →</text>
-        <text x={x(0) + 4} y={y(n) + 2} fontSize={10} fill="var(--muted)">↑ actual wins</text>
-        <text x={x(n * 0.12)} y={y(n * 0.9)} fontSize={10} fill="var(--faint)">more wins than scoring implies</text>
-        <text x={x(n * 0.55)} y={y(n * 0.12)} fontSize={10} fill="var(--faint)">fewer</text>
-        {pts.map((p) => (
-          <g key={p.team_id}>
-            <title>{`${p.name}: actual ${p.actual.win_equivalents.toFixed(1)}, expected ${p.expected_wins.toFixed(2)}, luck ${signed(p.schedule_luck)}`}</title>
-            <circle cx={x(p.expected_wins)} cy={y(p.actual.win_equivalents)} r={p.is_mine ? 6 : 4.5}
-                    fill={p.is_mine ? AHEAD : NEUTRAL} stroke="var(--panel)" strokeWidth={2} />
-          </g>
-        ))}
-        {placeLabels(pts.filter((p) => p.is_mine || Math.abs(p.schedule_luck) >= 1).map((p) => ({
-          key: p.team_id, text: p.name.slice(0, 14), mine: p.is_mine, px: x(p.expected_wins), py: y(p.actual.win_equivalents),
-        })), W).map((l) => (
-          <text key={l.key} x={l.x} y={l.y} textAnchor={l.anchor} fontSize={10} fontWeight={l.mine ? 600 : 400} fill="var(--text)"
-                stroke="var(--panel)" strokeWidth={3} paintOrder="stroke">{l.text}</text>
-        ))}
-      </svg>
-      <p className="faint" style={{ marginTop: 6 }}>Diagonal = actual equals expected. Labelled: your team and teams at least one win off the diagonal. Hover any point for its numbers.</p>
-    </section>
-  );
+// -------------------------------------------------------------------- week by week --
+
+function Result({ r }: { r: LlResult }) {
+  return <Badge value={r} tone={RESULT_TONE[r]} />;
 }
 
-type Label = { key: number; text: string; mine: boolean; px: number; py: number };
-
-/** Greedy label placement: try a few offsets around each point and keep the first that collides with no placed label. */
-function placeLabels(labels: Label[], width: number) {
-  const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
-  const out: (Label & { x: number; y: number; anchor: "start" | "end" | "middle" })[] = [];
-  const order = [...labels].sort((a, b) => Number(b.mine) - Number(a.mine) || a.py - b.py);
-  for (const l of order) {
-    const w = l.text.length * 5.6;
-    const tries: [number, number, "start" | "end" | "middle"][] = l.mine
-      ? [[0, -10, "middle"], [0, 16, "middle"], [8, 4, "start"], [-8, 4, "end"]]
-      : [[8, 4, "start"], [8, -8, "start"], [8, 16, "start"], [-8, 4, "end"], [-8, -8, "end"], [-8, 16, "end"]];
-    let pick = tries[0];
-    for (const t of tries) {
-      const x0 = t[2] === "start" ? l.px + t[0] : t[2] === "end" ? l.px + t[0] - w : l.px - w / 2;
-      const box = { x0, x1: x0 + w, y0: l.py + t[1] - 9, y1: l.py + t[1] + 2 };
-      if (box.x0 < 0 || box.x1 > width) continue;
-      if (!placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0)) {
-        pick = t;
-        placed.push(box);
-        break;
-      }
-    }
-    out.push({ ...l, x: l.px + pick[0], y: l.py + pick[1], anchor: pick[2] });
-  }
-  return out;
-}
-
-// -------------------------------------------------------------------- timeline --
-
-function Timeline({ d, name }: { d: LuckLab; name: (id: number) => string }) {
+function WeekByWeek({ d, name }: { d: LuckLab; name: (id: number) => string }) {
   const t = d.timeline;
   if (t.length === 0) return null;
-  const maxPts = Math.max(1, ...t.map((x) => Math.max(x.score, x.opponent_score)));
-  const maxLuck = Math.max(1, ...t.map((x) => Math.max(Math.abs(x.cumulative_luck), Math.abs(x.luck))));
-  const colW = 56, H = 140, base = 120;
-  const lmid = 60, lscale = 48 / maxLuck;
-  const width = t.length * colW + 10;
+  const s = timelineSeries(t);
   return (
-    <section className="panel">
-      <h2>{d.spotlight.name}: week-by-week luck</h2>
-      <div className="table-wrap">
-        <svg viewBox={`0 0 ${width} ${H + 26}`} width="100%" style={{ minWidth: Math.min(width, 520), maxWidth: width * 1.5 }} role="img" aria-label="Team score and opponent score per period with the result">
-          <line x1={0} x2={width} y1={base} y2={base} stroke="var(--border)" />
-          {t.map((x, i) => {
-            const cx = 5 + i * colW;
-            const hs = Math.max(2, (x.score / maxPts) * 100), ho = Math.max(2, (x.opponent_score / maxPts) * 100);
-            return (
-              <g key={x.matchup_period}>
-                <title>{`${wk(x.weeks, x.matchup_period)}: ${x.score.toFixed(1)} vs ${x.opponent_score.toFixed(1)} (${x.opponent_name}) · ${x.result} · rank #${x.rank} of ${x.teams} · expected ${x.expected_wins.toFixed(2)} · luck ${signed(x.luck)}`}</title>
-                <rect x={cx + 8} width={18} y={base - hs} height={hs} rx={4} fill={AHEAD} />
-                <rect x={cx + 28} width={18} y={base - ho} height={ho} rx={4} fill={NEUTRAL} />
-                <text x={cx + colW / 2} y={base + 13} textAnchor="middle" fontSize={10} fill="var(--muted)">{x.weeks?.join("–") ?? x.matchup_period}</text>
-                <text x={cx + colW / 2} y={base + 25} textAnchor="middle" fontSize={11} fontWeight={600}
-                      fill={x.result === "W" ? "var(--good)" : x.result === "L" ? "var(--bad)" : "var(--warn)"}>{x.result}</text>
-              </g>
-            );
-          })}
-        </svg>
+    <Section title={`${d.spotlight.name}: week-by-week luck`}>
+      <div className={styles.charts3}>
+        <div>
+          <h3 className={styles.chartTitle}>Score vs opponent</h3>
+          <LineChart
+            series={[
+              { id: "me", label: d.spotlight.name, points: s.score },
+              { id: "opp", label: "Opponent", points: s.opponent, color: "var(--chart-6)" },
+            ]}
+            xLabels={s.labels}
+            markers
+            yFormat={(v) => v.toFixed(0)}
+            ariaLabel="Team score and opponent score per period"
+          />
+        </div>
+        <div>
+          <h3 className={styles.chartTitle}>Luck by period</h3>
+          <BarChart data={t.map((x, i) => ({ label: s.labels[i], value: x.luck }))} valueFormat={(v) => signedText(v)} ariaLabel="Luck per period, in wins" />
+        </div>
+        <div>
+          <h3 className={styles.chartTitle}>Cumulative schedule luck</h3>
+          <LineChart
+            series={[{ id: "cum", label: "Cumulative luck", points: s.cumulative }]}
+            xLabels={s.labels}
+            markers
+            refLine={{ y: 0, label: "0" }}
+            yFormat={(v) => signedText(v, 1)}
+            ariaLabel="Cumulative schedule luck, in wins"
+          />
+        </div>
       </div>
-      <p className="faint"><span style={{ color: AHEAD }}>■</span> your score · <span style={{ color: NEUTRAL }}>■</span> opponent&apos;s score · letter = actual result (also coloured).</p>
-      <div className="table-wrap">
-        <svg viewBox={`0 0 ${width} 130`} width="100%" style={{ minWidth: Math.min(width, 520), maxWidth: width * 1.5 }} role="img" aria-label="Luck per period (bars) and cumulative schedule luck (line), in wins">
-          <line x1={0} x2={width} y1={lmid} y2={lmid} stroke="var(--border)" />
-          {t.map((x, i) => {
-            const cx = 5 + i * colW + colW / 2;
-            const h = Math.max(1, Math.abs(x.luck) * lscale);
-            return (
-              <g key={x.matchup_period}>
-                <title>{`${wk(x.weeks, x.matchup_period)}: luck ${signed(x.luck)} (actual ${x.result === "W" ? 1 : x.result === "T" ? 0.5 : 0} − expected ${x.expected_wins.toFixed(2)}) · cumulative ${signed(x.cumulative_luck)}`}</title>
-                <rect x={cx - 9} width={18} y={x.luck >= 0 ? lmid - h : lmid} height={h} rx={3} fill={x.luck >= 0 ? AHEAD : BEHIND} opacity={0.75} />
-              </g>
-            );
-          })}
-          <polyline fill="none" stroke="var(--text)" strokeWidth={2}
-                    points={t.map((x, i) => `${5 + i * colW + colW / 2},${lmid - x.cumulative_luck * lscale}`).join(" ")} />
-          {t.map((x, i) => <circle key={x.matchup_period} cx={5 + i * colW + colW / 2} cy={lmid - x.cumulative_luck * lscale} r={4} fill="var(--text)" stroke="var(--panel)" strokeWidth={2} />)}
-          <text x={width - 4} y={12} textAnchor="end" fontSize={10} fill="var(--muted)">cumulative {signed(t[t.length - 1].cumulative_luck)}</text>
-        </svg>
+      <p className={styles.caption}>Weeks are on the horizontal axes. Luck is the actual result minus expected wins for that period; the cumulative line adds them up. Both are in wins, on the same scale.</p>
+
+      <div className={styles.tableBleed}>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Period</th><th>Result</th><th className="num">Score</th><th>Opponent</th><th className="num">Rank</th>
+                <th className="num">Expected</th><th>Luck</th><th className="num">Cumulative</th>
+              </tr>
+            </thead>
+            <tbody>
+              {t.map((x) => (
+                <tr key={x.matchup_period}>
+                  <td>{periodLabel(x.weeks, x.matchup_period)}</td>
+                  <td><Result r={x.result} /></td>
+                  <td className="num">{x.score.toFixed(1)}</td>
+                  <td>{x.opponent_name} <span className="faint">{x.opponent_score.toFixed(1)}</span></td>
+                  <td className="num">#{x.rank} <span className="faint">of {x.teams}</span></td>
+                  <td className="num">{x.expected_wins.toFixed(2)}</td>
+                  <td><Delta value={x.luck} digits={2} /></td>
+                  <td className="num">{signedText(x.cumulative_luck)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-      <p className="faint">Bars: luck that period (actual result − expected wins; <span style={{ color: AHEAD }}>■</span> positive, <span style={{ color: BEHIND }}>■</span> negative). Line: cumulative schedule luck. Both in wins, on one scale.</p>
-      <h3 style={{ marginTop: 8 }}>Weeks that moved the gap most</h3>
+
+      <h3 className={styles.listTitle}>Weeks that moved the gap most</h3>
       <ul className="reasons">{d.biggest_contributors.map((x: LlTimeline) => (
-        <li key={x.matchup_period}>{wk(x.weeks, x.matchup_period)}: <Result r={x.result} /> {x.score.toFixed(1)}–{x.opponent_score.toFixed(1)} vs {name(x.opponent_id)} · #{x.rank} of {x.teams} · expected {x.expected_wins.toFixed(2)} → luck <b>{signed(x.luck)}</b></li>
+        <li key={x.matchup_period}>{periodLabel(x.weeks, x.matchup_period)}: <Result r={x.result} /> {x.score.toFixed(1)}–{x.opponent_score.toFixed(1)} vs {name(x.opponent_id)} · #{x.rank} of {x.teams} · expected {x.expected_wins.toFixed(2)} → luck <b>{signedText(x.luck)}</b></li>
       ))}</ul>
-    </section>
+    </Section>
+  );
+}
+
+// ------------------------------------------------------------------------ notables --
+
+function BriefList({ items, kind, name, empty }: { items: LlBrief[]; kind: string; name: (id: number) => string; empty: string }) {
+  if (items.length === 0) return <p className={styles.none}>{empty}</p>;
+  return (
+    <ul className={styles.briefs}>
+      {items.map((b) => (
+        <li key={b.matchup_period}>
+          <span className={styles.briefHead}>{periodLabel(b.weeks, b.matchup_period)}: <b>{b.score.toFixed(1)}</b> (#{b.rank} of {b.teams}) {kind} {b.opponent_score.toFixed(1)} vs {name(b.opponent_id)} (#{b.opponent_rank})</span>
+          <span className={styles.briefFlags}>{flagText(b.flags)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Notables({ d, name }: { d: LuckLab; name: (id: number) => string }) {
+  const s = d.spotlight;
+  if (!s.periods) return null;
+  const sc = s.scoring;
+  const df = s.difficulty;
+  return (
+    <div className="grid grid-2">
+      <Section title="Brutal losses and fortunate wins" footnote="Flags are descriptive: a loss with a top-band score, a win with a bottom-band score, and so on. They are not predictions.">
+        <h3 className={styles.listTitle}>Brutal losses</h3>
+        <BriefList items={s.notable?.brutal_losses ?? []} kind="lost to" name={name} empty="None in eligible periods." />
+        <h3 className={styles.listTitle}>Fortunate wins</h3>
+        <BriefList items={s.notable?.fortunate_wins ?? []} kind="beat" name={name} empty="None in eligible periods." />
+      </Section>
+      <Section title="Scoring consistency" footnote={`Over ${s.periods} eligible period(s).`}>
+        {sc ? (
+          <dl className={styles.kv}>
+            <dt>Mean · median</dt><dd>{sc.mean.toFixed(1)} · {sc.median.toFixed(1)}</dd>
+            <dt>Range</dt><dd>{sc.min.toFixed(1)}–{sc.max.toFixed(1)}</dd>
+            <dt>Middle half</dt><dd>{sc.iqr !== null ? `${sc.q1?.toFixed(1)}–${sc.q3?.toFixed(1)} (IQR ${sc.iqr.toFixed(1)})` : <span className="missing" title="Too few periods for quartiles">—</span>}</dd>
+            <dt>Top half of the league</dt><dd>{pctText(sc.top_half_pct)} of periods</dd>
+            <dt>First / last place</dt><dd>{sc.first_place} first-place · {sc.last_place} last-place weeks</dd>
+            {df && <><dt>Opponent strength</dt><dd>opponents averaged a {pctText(df.opponent_share_mean)} all-play share in the weeks you met them
+              {df.opponent_season_share_mean !== null && <> versus {pctText(df.opponent_season_share_mean)} across their whole season</>}</dd>
+            <dt>Opponent weeks</dt><dd>{df.opponents_top_band} in the top band · {df.opponents_bottom_band} in the bottom band</dd></>}
+          </dl>
+        ) : <EmptyState title="No scoring summary" />}
+      </Section>
+    </div>
   );
 }
 
@@ -341,59 +397,84 @@ function CfTable({ c, name }: { c: LlCounterfactual; name: (id: number) => strin
   return (
     <div className="table-wrap">
       <table>
-        <thead><tr><th>Period</th><th className="num">Your score</th><th>Actual</th><th>Their opponent that week</th><th className="num">Margin</th><th>Hypothetical</th></tr></thead>
+        <thead><tr><th>Period</th><th className="num">Score</th><th>Actual</th><th>Their opponent that week</th><th className="num">Margin</th><th>Hypothetical</th></tr></thead>
         <tbody>{c.rows.map((x) => (
-          <tr key={x.matchup_period} style={x.changed ? { background: "var(--info-bg)" } : undefined}>
-            <td>{wk(x.weeks, x.matchup_period)}</td>
+          <tr key={x.matchup_period} className={x.changed ? styles.changed : undefined}>
+            <td>{periodLabel(x.weeks, x.matchup_period)}</td>
             <td className="num">{x.score.toFixed(1)}</td>
             <td><Result r={x.actual_result} /> <span className="faint">{x.actual_opponent_score.toFixed(1)} vs {name(x.actual_opponent_id)}</span></td>
             <td>{name(x.substituted_opponent_id)} <span className="faint">{x.substituted_opponent_score.toFixed(1)}</span></td>
-            <td className="num">{signed(x.margin, 1)}</td>
-            <td><Result r={x.counterfactual_result} />{x.changed && <b> changed</b>}</td>
+            <td className="num">{signedText(x.margin, 1)}</td>
+            <td><Result r={x.counterfactual_result} />{x.changed && <b className={styles.changedTag}> changed</b>}</td>
           </tr>))}</tbody>
       </table>
     </div>
   );
 }
 
-function Explorer({ d, name }: { d: LuckLab; name: (id: number) => string }) {
+function Explorer({ d, name, sp }: { d: LuckLab; name: (id: number) => string; sp: SearchParams }) {
   const c = d.counterfactual;
-  const rows = d.all_schedules;
-  const max = Math.max(0.5, ...rows.map((r) => Math.abs(r.win_equivalent_difference)));
+  const sort = parseSort(sp, SCHED_SORTS, SCHED_DEFAULT, "sched");
+  const rows = sortRows(d.all_schedules, (r: LlScheduleRow) => {
+    switch (sort.key) {
+      case "periods": return r.periods_compared.length;
+      case "actual": return r.actual.win_equivalents;
+      case "hyp": return r.counterfactual.win_equivalents;
+      case "diff": return r.win_equivalent_difference;
+      default: return r.name;
+    }
+  }, sort.dir);
   return (
-    <section className="panel">
-      <h2>Counterfactual schedule explorer</h2>
-      <p className="faint">{d.rules.counterfactual}</p>
-      {c ? <>
-        <div className="grid" style={GRID4}>
-          <div className="stat"><div className="label">Periods compared</div><div className="value">{c.periods_compared.length}</div>
-            <span className="faint">{c.excluded.length ? `${c.excluded.length} excluded: ${c.excluded.map((e) => e.reason).join("; ")}` : "none excluded"}</span></div>
-          <div className="stat"><div className="label">Actual (same periods)</div><div className="value">{rec(c.actual)}</div></div>
-          <div className="stat"><div className="label">With {name(c.schedule_of)}&apos;s opponents</div><div className="value">{rec(c.counterfactual)}</div></div>
-          <div className="stat"><div className="label">Difference</div>
-            <div className="value" style={{ color: c.win_equivalent_difference >= 0 ? AHEAD : BEHIND }}>{signed(c.win_equivalent_difference, 1)} wins</div>
-            <span className="faint">{c.flips.loss_to_win.length} L→W · {c.flips.win_to_loss.length} W→L{c.flips.other_changes.length ? ` · ${c.flips.other_changes.length} via ties` : ""}</span></div>
+    <Section title="Counterfactual schedule explorer" footnote={d.rules.counterfactual}>
+      {c ? (
+        <div className={styles.cfBlock}>
+          <StatStrip>
+            <Stat label="Periods compared" value={c.periods_compared.length} note={c.excluded.length ? `${c.excluded.length} excluded: ${c.excluded.map((e) => e.reason).join("; ")}` : "none excluded"} />
+            <Stat label="Actual (same periods)" value={rec(c.actual)} />
+            <Stat label={`With ${name(c.schedule_of)}'s opponents`} value={rec(c.counterfactual)} />
+            <Stat
+              label="Difference"
+              value={`${signedText(c.win_equivalent_difference, 1)} wins`}
+              tone={c.win_equivalent_difference > 0 ? "positive" : c.win_equivalent_difference < 0 ? "negative" : undefined}
+              note={`${c.flips.loss_to_win.length} L→W · ${c.flips.win_to_loss.length} W→L${c.flips.other_changes.length ? ` · ${c.flips.other_changes.length} via ties` : ""}`}
+            />
+          </StatStrip>
+          <div className={styles.cfTable}><CfTable c={c} name={name} /></div>
         </div>
-        <CfTable c={c} name={name} />
-      </> : <p className="faint">Pick a manager above (&ldquo;with the schedule of&rdquo;) to see {d.spotlight.name}&apos;s scores against that manager&apos;s opponents, week by week.</p>}
-      <h3 style={{ marginTop: 10 }}>{d.spotlight.name} under every other manager&apos;s schedule</h3>
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>Schedule of</th><th className="num">Periods</th><th className="num">Actual</th><th className="num">Hypothetical</th><th>Difference</th><th className="num">Win % actual → hypothetical</th><th /></tr></thead>
-          <tbody>{rows.map((r: LlScheduleRow) => (
-            <tr key={r.schedule_of}>
-              <td>{r.name}</td>
-              <td className="num" title={r.excluded.map((e) => `period ${e.matchup_period}: ${e.reason}`).join("\n")}>{r.periods_compared.length}{r.excluded.length ? <span className="faint"> (−{r.excluded.length})</span> : null}</td>
-              <td className="num">{rec(r.actual)}</td>
-              <td className="num">{rec(r.counterfactual)}</td>
-              <td><LuckBar v={r.win_equivalent_difference} max={max} /> {signed(r.win_equivalent_difference, 1)}</td>
-              <td className="num">{r.actual_pct !== null ? `${(r.actual_pct * 100).toFixed(0)}% → ${((r.counterfactual_pct ?? 0) * 100).toFixed(0)}%` : "—"}</td>
-              <td><Link href={`/luck-lab?team=${d.focus_team_id}&vs=${r.schedule_of}`}>weeks</Link></td>
-            </tr>))}</tbody>
-        </table>
+      ) : (
+        <p className={styles.none}>Pick a manager above (&ldquo;with the schedule of&rdquo;) to see {d.spotlight.name}&apos;s scores against that manager&apos;s opponents, week by week.</p>
+      )}
+
+      <h3 className={styles.listTitle}>{d.spotlight.name} under every other manager&apos;s schedule</h3>
+      <div className={styles.tableBleed}>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <SortableTh sortKey="team" label="Schedule of" current={sort} searchParams={sp} param="sched" />
+                <SortableTh sortKey="periods" label="Periods" align="right" current={sort} searchParams={sp} param="sched" title="Periods compared (weeks that manager played your team are excluded)" />
+                <SortableTh sortKey="actual" label="Actual" align="right" current={sort} searchParams={sp} param="sched" />
+                <SortableTh sortKey="hyp" label="Hypothetical" align="right" current={sort} searchParams={sp} param="sched" />
+                <SortableTh sortKey="diff" label="Difference" current={sort} searchParams={sp} param="sched" />
+                <th className="num">Win % actual → hypothetical</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.schedule_of}>
+                <td>{r.name}</td>
+                <td className="num" title={r.excluded.map((e) => `period ${e.matchup_period}: ${e.reason}`).join("\n")}>{r.periods_compared.length}{r.excluded.length ? <span className="faint"> (−{r.excluded.length})</span> : null}</td>
+                <td className="num">{rec(r.actual)}</td>
+                <td className="num">{rec(r.counterfactual)}</td>
+                <td><Delta value={r.win_equivalent_difference} digits={1} suffix=" wins" /></td>
+                <td className="num">{r.actual_pct !== null ? `${pctText(r.actual_pct)} → ${pctText(r.counterfactual_pct)}` : "—"}</td>
+                <td><Link href={`/luck-lab?team=${d.focus_team_id}&vs=${r.schedule_of}`}>Weeks</Link></td>
+              </tr>))}</tbody>
+          </table>
+        </div>
       </div>
-      <p className="faint">Each row compares actual and hypothetical results on its own periods: the weeks that manager played {d.spotlight.name} are excluded (−n), so rows can cover different periods and are listed by team, not ranked. The win % columns compare like with like within a row.</p>
-    </section>
+      <p className={styles.caption}>Each row compares actual and hypothetical results on its own periods: the weeks that manager played {d.spotlight.name} are excluded (−n), so rows can cover different periods and are listed by team, not ranked. The win % columns compare like with like within a row.</p>
+    </Section>
   );
 }
 
@@ -402,25 +483,31 @@ function Explorer({ d, name }: { d: LuckLab; name: (id: number) => string }) {
 function Matrix({ d }: { d: LuckLab }) {
   const m = d.matrix;
   return (
-    <section className="panel">
-      <h2>Weekly results matrix</h2>
+    <Section
+      title="Weekly results matrix"
+      flush
+      footnote="Each cell: weekly scoring rank (#1 = highest) and the actual result (W, L or T). Deeper blue means more of the league was outscored that week (all-play share); a flag marks a brutal loss or fortunate win. Hover for points and expected wins."
+    >
       <div className="table-wrap">
-        <table>
+        <table className={styles.matrix}>
           <thead><tr><th>Team</th>{m.periods.map((p) => <th key={p.matchup_period} className="num">{p.weeks?.join("–") ?? p.matchup_period}</th>)}</tr></thead>
           <tbody>{m.teams.map((t) => (
             <tr key={t.team_id} className={t.team_id === d.focus_team_id ? "mine" : ""}>
               <td>{t.name}</td>
               {t.cells.map((c) => (
-                <td key={c.matchup_period} className="num" title={`Period ${c.matchup_period}: ${c.score.toFixed(1)} pts · #${c.rank} · ${c.result} · expected ${c.expected_wins.toFixed(2)}${c.flags.length ? " · " + c.flags.map((f) => FLAG_TEXT[f] ?? f).join(", ") : ""}`}
-                    style={{ background: `rgba(74, 150, 236, ${(0.08 + 0.5 * c.expected_wins).toFixed(2)})` }}>
-                  #{c.rank} <b style={{ color: c.result === "W" ? "var(--good)" : c.result === "L" ? "var(--bad)" : "var(--warn)" }}>{c.result}</b>
-                  {c.flags.length > 0 && <span title={c.flags.map((f) => FLAG_TEXT[f] ?? f).join(", ")}> ⚑</span>}
+                <td
+                  key={c.matchup_period}
+                  className={cx("num", styles.heat)}
+                  style={{ "--heat": heatOf(c.expected_wins).toFixed(2) } as CSSProperties}
+                  title={`Period ${c.matchup_period}: ${c.score.toFixed(1)} pts · #${c.rank} · ${c.result} · expected ${c.expected_wins.toFixed(2)}${c.flags.length ? ` · ${flagText(c.flags)}` : ""}`}
+                >
+                  #{c.rank} <b className={styles[`r${c.result}`]}>{c.result}</b>
+                  {c.flags.length > 0 && <span title={flagText(c.flags)} aria-label={flagText(c.flags)}> ⚑</span>}
                 </td>
               ))}
             </tr>))}</tbody>
         </table>
       </div>
-      <p className="faint">Each cell: weekly scoring rank (#1 = highest) and the actual result; deeper blue = more of the league outscored that week (all-play share); ⚑ marks a brutal loss or fortunate win. Hover for points and expected wins.</p>
-    </section>
+    </Section>
   );
 }
