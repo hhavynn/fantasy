@@ -230,7 +230,9 @@ def test_weekly_pipeline_never_imports_into_consumers():
     import pathlib
     root = pathlib.Path(__file__).resolve().parents[1] / "app"
     for path in root.rglob("*.py"):
-        if path.name in ("weekly_learning.py", "challenger.py", "source_provenance.py"):
+        # opportunity_efficiency.py: research-only two-target model built on the challenger (never imported, see
+        # tests/test_opportunity_efficiency.py::test_research_module_is_never_imported_by_the_app)
+        if path.name in ("weekly_learning.py", "challenger.py", "source_provenance.py", "opportunity_efficiency.py"):
             continue
         text = path.read_text()
         assert "weekly_learning" not in text and "from .challenger" not in text, path
