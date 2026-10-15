@@ -1,0 +1,88 @@
+/* ---- Scoreboard ---- */
+.board { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 16px 24px; align-items: start; }
+.team { min-width: 0; }
+.opp { text-align: right; }
+.teamName { margin: 0; font-size: 16px; line-height: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.teamName a { color: var(--ink); }
+.teamName a:hover { color: var(--accent); }
+.teamMeta { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.total {
+  margin: 8px 0 0;
+  font-family: var(--font-display);
+  font-size: 56px;
+  line-height: 56px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.totalLabel { margin: 4px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.totalAside { margin: 0; color: var(--ink-faint); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.incomplete { margin: 4px 0 0; color: var(--caution); font-size: 12px; line-height: 18px; }
+.versus { align-self: center; color: var(--ink-faint); font-size: 12px; line-height: 16px; letter-spacing: .08em; text-transform: uppercase; }
+.summary { grid-column: 1 / -1; display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+.margin { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 12px; font-size: 14px; }
+.marginValue { font-family: var(--font-display); font-size: 24px; line-height: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.marginText { color: var(--ink-muted); font-size: 13px; }
+.marginNone { color: var(--ink-faint); font-size: 13px; text-align: center; margin: 0; }
+
+/* ---- Head-to-head lineup ---- */
+.h2h { table-layout: fixed; }
+.h2h td { white-space: normal; vertical-align: middle; }
+.h2h th { vertical-align: bottom; }
+.h2h .name { font-weight: 600; color: var(--ink); }
+.h2h .pts { width: 72px; text-align: right; font-variant-numeric: tabular-nums; }
+.h2h .slotCol { width: 72px; text-align: center; color: var(--ink-faint); font-size: 12px; }
+.h2h .rightCol { text-align: right; }
+.h2h tfoot td { font-weight: 600; border-bottom: 0; background: var(--surface-raised); }
+.h2h tfoot .slotCol { font-weight: 500; }
+.lead { font-weight: 600; background: var(--surface-hover); color: var(--ink); }
+.player { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.playerRight { justify-content: flex-end; }
+.team3 { color: var(--ink-faint); font-size: 12px; }
+.empty { color: var(--ink-faint); cursor: help; }
+.none { color: var(--ink-faint); }
+
+/* Phones: two stacked lists instead of five columns. */
+.lists { display: none; }
+.list { margin: 0; padding: 0; list-style: none; }
+.listHead { margin: 0; padding: 8px 16px; background: var(--surface-raised); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 600; }
+.row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.row .slotTag { color: var(--ink-faint); font-size: 12px; }
+.row .rowPts { font-variant-numeric: tabular-nums; text-align: right; }
+.noData { margin: 0; padding: 8px 16px; color: var(--ink-faint); }
+.listTotal { font-weight: 600; background: var(--surface-raised); border-bottom: 0; }
+@media (max-width: 720px) {
+  .h2hWrap { display: none; }
+  .lists { display: block; }
+  .board { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  .versus { display: none; }
+  .total { font-size: 44px; line-height: 44px; }
+}
+
+/* ---- Bench ---- */
+.benchGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.benchTitle { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.bench td { white-space: normal; vertical-align: middle; }
+.bench .pts { width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+.benchDetails > summary {
+  cursor: pointer;
+  color: var(--ink-muted);
+  padding: 4px 0 12px;
+}
+.benchDetails > summary:hover { color: var(--ink); }
+@media (max-width: 720px) {
+  .benchGrid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+}
+@media (min-width: 721px) {
+  /* Where the browser can show closed details content, the bench is simply open on wide screens. */
+  @supports selector(::details-content) {
+    .benchDetails > summary { display: none; }
+    .benchDetails::details-content { content-visibility: visible; display: block; }
+  }
+}
+
+/* ---- Notes, header ---- */
+.notes { margin: 4px 0 0; padding-left: 16px; }
+.notes li + li { margin-top: 4px; }
+.weekNav { display: flex; flex-wrap: wrap; gap: 8px; }
+.sectionBody { display: grid; gap: 12px; }
