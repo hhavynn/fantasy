@@ -182,3 +182,93 @@ def test_slot_preservation_and_locked_starters():
     assert remaining_types.count("WR") == 2
     assert len(remaining_slots) == 7
 
+
+def test_constrained_optimization_invariants():
+    from app.analytics.start_sit import (
+        SlotInstance,
+        build_slot_instances,
+        optimize_lock_constrained_lineup,
+    )
+
+    roster_slots = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1}
+    slots = build_slot_instances(roster_slots)
+
+    roster = [
+        {"espn_player_id": 1, "full_name": "Patrick Mahomes", "position": "QB", "pro_team": "KC"},
+        {"espn_player_id": 2, "full_name": "Christian McCaffrey", "position": "RB", "pro_team": "SF"},
+        {"espn_player_id": 3, "full_name": "Kyren Williams", "position": "RB", "pro_team": "LAR"},
+        {"espn_player_id": 4, "full_name": "Justin Jefferson", "position": "WR", "pro_team": "MIN"},
+        {"espn_player_id": 5, "full_name": "Amon-Ra St. Brown", "position": "WR", "pro_team": "DET"},
+        {"espn_player_id": 6, "full_name": "Travis Kelce", "position": "TE", "pro_team": "KC"},
+        {"espn_player_id": 7, "full_name": "Brian Thomas Jr.", "position": "WR", "pro_team": "JAX"},
+        {"espn_player_id": 10, "full_name": "Bench High-Projecting WR", "position": "WR", "pro_team": "BUF"},
+        {"espn_player_id": 11, "full_name": "Bench Locked RB", "position": "RB", "pro_team": "MIA"},
+        {"espn_player_id": 12, "full_name": "IR Star RB", "position": "RB", "pro_team": "CLE"},
+        {"espn_player_id": 13, "full_name": "Suspended / Ineligible WR", "position": "WR", "pro_team": "CIN"},
+    ]
+
+    projections = {
+        1: 20.0,
+        2: 18.0,
+        3: 15.0,  # Locked starter
+        4: 16.0,
+        5: 14.0,  # Unlocked starter with 14.0
+        6: 12.0,
+        7: 11.0,  # Unlocked starter with 11.0
+        10: 17.5, # Bench unlocked WR with 17.5 (should replace starter 7 in FLEX or WR)
+        11: 25.0, # Bench LOCKED RB (cannot enter even though projects 25.0!)
+        12: 30.0, # IR RB (cannot enter even though projects 30.0!)
+        13: 22.0, # NFL-ineligible (cannot enter!)
+    }
+
+    # Locked assignment: player 3 (Kyren Williams) is locked in slot RB_1
+    locked_starters = [
+        {"slot": SlotInstance(slot_id="RB_1", slot_type="RB", index=1, is_flex=False),
+         "player": roster[2], "player_id": 3}
+    ]
+    locked_bench_ids = {11}
+    unavailable_ids = {13}
+    ir_ids = {12}
+
+    actual_starters = [roster[0], roster[1], roster[2], roster[3], roster[4], roster[5], roster[6]]
+
+    res = optimize_lock_constrained_lineup(
+        roster_players=roster,
+        slot_instances=slots,
+        locked_starter_assignments=locked_starters,
+        locked_bench_ids=locked_bench_ids,
+        unavailable_ids=unavailable_ids,
+        ir_ids=ir_ids,
+        projections=projections,
+        actual_starters=actual_starters,
+    )
+
+    rec_lineup = res["recommended_lineup"]
+    rec_pids = {a["player_id"] for a in rec_lineup if a["player_id"] is not None}
+
+    # Invariants:
+    # 1. Locked starter (pid 3) must be in recommended lineup in RB_1!
+    rb1_assignment = next(a for a in rec_lineup if a["slot_id"] == "RB_1")
+    assert rb1_assignment["player_id"] == 3
+
+    # 2. Locked bench player (pid 11) must NOT be in recommended lineup
+    assert 11 not in rec_pids
+
+    # 3. IR player (pid 12) must NOT be in recommended lineup
+    assert 12 not in rec_pids
+
+    # 4. Ineligible player (pid 13) must NOT be in recommended lineup
+    assert 13 not in rec_pids
+
+    # 5. Unlocked high-projecting bench WR (pid 10) SHOULD be in recommended lineup
+    assert 10 in rec_pids
+
+    # 6. Actual starters total vs Recommended total:
+    # Actual starters: 20 + 18 + 15 + 16 + 14 + 12 + 11 = 106.0
+    # Recommended starters: 20 + 18 + 15 + 16 + 17.5 + 12 + 14 = 112.5 (10 replaces 7, net gain = 6.5)
+    assert res["actual_total"] == 106.0
+    assert res["recommended_total"] == 112.5
+    assert res["projected_gain"] == 6.5
+    assert res["is_complete"] is True
+
+

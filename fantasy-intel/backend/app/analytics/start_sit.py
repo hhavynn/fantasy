@@ -23,7 +23,7 @@ from typing import Any
 
 from ..db.connection import fetch_dicts, table_exists
 from ..espn.constants import BENCH_SLOT, IR_SLOT, NON_STARTER_SLOTS, SLOT_MAP
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, eligible
+from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible
 from .trade_data import kickoff_utc
 
 # Lock status categories
@@ -339,4 +339,165 @@ def load_actual_lineup(
             bench.append(r)
 
     return starters, bench, ir
+
+
+def _map_optimizer_output_to_slots(
+    assignments: list[dict],
+    slots: list[SlotInstance],
+    player_by_id: dict[int, dict],
+) -> list[dict]:
+    """Map pure assign_lineup output onto exact SlotInstance objects."""
+    out: list[dict] = []
+    slots_by_type: dict[str, list[SlotInstance]] = {}
+    for s in slots:
+        slots_by_type.setdefault(s.slot_type, []).append(s)
+
+    for row in assignments:
+        stype = row["slot"]
+        matching_slots = slots_by_type.get(stype, [])
+        slot_inst = matching_slots.pop(0) if matching_slots else SlotInstance(
+            slot_id=f"{stype}_anon", slot_type=stype, index=0, is_flex=row.get("is_flex", False)
+        )
+        pid = row.get("player_id")
+        p = player_by_id.get(pid) if pid is not None else None
+        out.append({
+            "slot_id": slot_inst.slot_id,
+            "slot": slot_inst.slot_type,
+            "player_id": pid,
+            "player": p,
+            "position": row.get("position"),
+            "projected_points": row.get("value") if pid is not None else None,
+            "is_flex": slot_inst.is_flex,
+            "is_locked": False,
+        })
+    return out
+
+
+def optimize_lock_constrained_lineup(
+    roster_players: list[dict],
+    slot_instances: list[SlotInstance],
+    locked_starter_assignments: list[dict],
+    locked_bench_ids: set[int],
+    unavailable_ids: set[int],
+    ir_ids: set[int],
+    projections: dict[int, float | None],
+    actual_starters: list[dict],
+) -> dict:
+    """Optimize lineup preserving locked starter assignments and excluding locked bench players.
+
+    Also calculates unconstrained optimum as a mathematical benchmark.
+    """
+    player_by_id: dict[int, dict] = {p["espn_player_id"]: p for p in roster_players if "espn_player_id" in p}
+    for item in locked_starter_assignments:
+        p = item.get("player")
+        if p and "espn_player_id" in p:
+            player_by_id[p["espn_player_id"]] = p
+
+    # 1. Benchmark: Unconstrained optimal lineup
+    unconstrained_candidates = [
+        {"espn_player_id": p["espn_player_id"], "position": p.get("position"), "value": float(projections[p["espn_player_id"]])}
+        for p in roster_players
+        if p["espn_player_id"] not in ir_ids
+        and p["espn_player_id"] not in unavailable_ids
+        and projections.get(p["espn_player_id"]) is not None
+    ]
+    all_slot_types = [s.slot_type for s in slot_instances]
+    unconstrained_raw = assign_lineup(unconstrained_candidates, all_slot_types)
+    unconstrained_lineup = _map_optimizer_output_to_slots(unconstrained_raw, slot_instances, player_by_id)
+
+    # 2. Lock-constrained recommended lineup
+    locked_slot_ids = {a["slot"].slot_id for a in locked_starter_assignments if a.get("slot")}
+    locked_starter_ids = {a["player_id"] for a in locked_starter_assignments if a.get("player_id") is not None}
+
+    remaining_slot_instances = [s for s in slot_instances if s.slot_id not in locked_slot_ids]
+    remaining_slot_types = [s.slot_type for s in remaining_slot_instances]
+
+    candidate_pool = [
+        {"espn_player_id": p["espn_player_id"], "position": p.get("position"), "value": float(projections[p["espn_player_id"]])}
+        for p in roster_players
+        if p["espn_player_id"] not in locked_starter_ids
+        and p["espn_player_id"] not in locked_bench_ids
+        and p["espn_player_id"] not in ir_ids
+        and p["espn_player_id"] not in unavailable_ids
+        and projections.get(p["espn_player_id"]) is not None
+    ]
+
+    new_assignments_raw = assign_lineup(candidate_pool, remaining_slot_types)
+    new_assignments = _map_optimizer_output_to_slots(new_assignments_raw, remaining_slot_instances, player_by_id)
+
+    # Format preserved locked starters
+    preserved_locked: list[dict] = []
+    for item in locked_starter_assignments:
+        slot_inst = item.get("slot")
+        p = item.get("player") or {}
+        pid = item.get("player_id") or p.get("espn_player_id")
+        proj_val = projections.get(pid) if pid is not None else None
+        preserved_locked.append({
+            "slot_id": slot_inst.slot_id if slot_inst else "LOCKED",
+            "slot": slot_inst.slot_type if slot_inst else p.get("position"),
+            "player_id": pid,
+            "player": p,
+            "position": p.get("position"),
+            "projected_points": proj_val,
+            "is_flex": slot_inst.is_flex if slot_inst else False,
+            "is_locked": True,
+        })
+
+    # Combine and sort into canonical slot_instances order
+    slot_order = {s.slot_id: i for i, s in enumerate(slot_instances)}
+    recommended_lineup = preserved_locked + new_assignments
+    recommended_lineup.sort(key=lambda x: slot_order.get(x["slot_id"], 999))
+
+    # Totals and completeness check
+    missing_projections: list[int] = []
+    actual_known_total = 0.0
+    actual_complete = True
+    for p in actual_starters:
+        pid = p.get("espn_player_id")
+        proj_val = projections.get(pid)
+        if proj_val is None:
+            if p.get("pro_team") not in TEAMLESS_ABBRS:
+                actual_complete = False
+                if pid is not None:
+                    missing_projections.append(pid)
+        else:
+            actual_known_total += proj_val
+
+    rec_known_total = 0.0
+    rec_complete = True
+    for a in recommended_lineup:
+        pts = a.get("projected_points")
+        if pts is None:
+            if a.get("player_id") is not None:
+                rec_complete = False
+        else:
+            rec_known_total += pts
+
+    unc_known_total = sum(a.get("projected_points") or 0.0 for a in unconstrained_lineup if a.get("projected_points") is not None)
+
+    is_complete = actual_complete and rec_complete
+
+    actual_total = round(actual_known_total, 2) if actual_complete else None
+    recommended_total = round(rec_known_total, 2) if rec_complete else None
+    unconstrained_total = round(unc_known_total, 2) if is_complete else None
+    projected_gain = (
+        round(recommended_total - actual_total, 2)
+        if (actual_total is not None and recommended_total is not None)
+        else None
+    )
+
+    return {
+        "recommended_lineup": recommended_lineup,
+        "unconstrained_lineup": unconstrained_lineup,
+        "actual_total": actual_total,
+        "recommended_total": recommended_total,
+        "unconstrained_total": unconstrained_total,
+        "known_actual_total": round(actual_known_total, 2),
+        "known_recommended_total": round(rec_known_total, 2),
+        "known_unconstrained_total": round(unc_known_total, 2),
+        "projected_gain": projected_gain,
+        "is_complete": is_complete,
+        "missing_projection_ids": sorted(missing_projections),
+    }
+
 
