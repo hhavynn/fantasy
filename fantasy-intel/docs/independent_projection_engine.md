@@ -549,22 +549,28 @@ The participation model is not retrained weekly here (`participation-fit` is unc
 
 `evaluate` labels every frozen forecast row with an explicit outcome status
 (`weekly_learning.label_outcomes`). Finality is decided **per player's own game**, never per week:
-a final Thursday or Sunday game says nothing about a Monday game.
+a final Thursday or Sunday game says nothing about a Monday game. nflverse schedules have no
+game-status field and do not say whether a score can be live, so a game is **presumed final** only
+under the rule `schedule_intelligence` already uses: both scores present AND the schedule fetched at
+least 8 h after kickoff (after a 1 h download margin), the fetch time being the start of the latest
+successful nflverse sync that wrote the season's schedule (`sync_runs`). An unknown fetch time never
+presumes a game final. The same rule gates training readiness (`weekly_learning.game_presumed_final`).
 
 | Status | Rule | Conditional | Unconditional |
 |---|---|---|---|
-| `appeared` | his team's game has a final score in `nfl_schedules`, the team's box scores AND snap counts for the week are synced, and he has a panel row (box score or offensive snaps > 0) | league points | league points |
+| `appeared` | his team's game is presumed final, the team's box scores AND snap counts for the week are synced, and he has a panel row (box score or offensive snaps > 0) | league points | league points |
 | `confirmed_absent` | same finality and completeness, no panel row (inactive, healthy scratch, did not play) | excluded | **0** |
-| `pending_game` | his team's game has no final score | excluded | excluded |
-| `missing_ingestion` | final score, but the team's box scores or snaps are not synced yet | excluded | excluded |
-| `bye` | his forecast team has no game scheduled that week | excluded | excluded |
+| `pending_game` | his team's game is not presumed final (no score, or a score that may be live) | excluded | excluded |
+| `missing_ingestion` | game final but the team's box scores or snaps are not synced yet, or the game the forecast saw (row kickoff) is missing from the current schedule | excluded | excluded |
+| `bye` | no game for his team, neither when the forecast was made nor now | excluded | excluded |
 | `unresolved_identity` | no `gsis_id`, an id on no roster or box score of the season, or his week box score / roster row is for a different team than the forecast | excluded | excluded |
 
 Only `appeared` and `confirmed_absent` carry a label; every other status has a null label, so an
 unfinished, unsynced or unmatched player can never become a zero-point outcome (asserted).
 
-A week is **prospective evidence** only when it is fully final: every scheduled game has a final
-score and every scheduled team's box scores and snaps are synced. `weeks`, the per-position
+A week is **prospective evidence** only when it is fully final: every scheduled game is presumed
+final, every scheduled team's box scores and snaps are synced, and every game the frozen forecasts saw
+is still in the schedule (an incomplete schedule download never turns teams into byes). `weeks`, the per-position
 metrics, the bootstrap CI, pair decisions and `shadow_status` use fully final weeks only, so a
 partly final week counts as **zero** prospective weeks toward `SHADOW_PROMOTION_CRITERIA`.
 Resolved players of partly final weeks are reported separately under `preliminary` (marked
