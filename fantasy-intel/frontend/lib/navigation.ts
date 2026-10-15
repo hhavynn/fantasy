@@ -19,6 +19,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "League",
     pages: [
       { href: "/schedule-intelligence", label: "Schedule" },
+      { href: "/weekly-recap", label: "Weekly recap" },
       { href: "/luck-lab", label: "Luck lab" },
       { href: "/playoff-race", label: "Playoff race" },
       { href: "/managers", label: "Managers" },
