@@ -49,11 +49,22 @@ from itertools import combinations
 
 from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total
 from .team_lineups import NDIGITS, RosterPlayer, lineup_relevant, r
-from .trades import (MAX_FORCED_DROPS, LeagueState, NoRemainingWeeksError, TradeError, evaluate_trade,
-                     legal_roster)
+from .trades import (EvaluationUnavailable, LeagueState, NoRemainingWeeksError, TradeError, choose_forced_drops,
+                     evaluate_trade, legal_roster)
 
+# Exact shapes: searched with provable upper bounds (stage A) and a proven best-first top K (stage B).
 SHAPES: dict[str, tuple[int, int]] = {"1-for-1": (1, 1), "2-for-1": (2, 1), "1-for-2": (1, 2)}   # anchor sends, receives
-SORTS = ("my_gain", "their_gain", "combined", "min_side", "playoff_gain")
+# Larger shapes: a bounded beam expansion (see _Beam). Every row is exact, but the list is NOT a
+# proven top K: the bounds above do not extend to these shapes without enumerating them.
+HEURISTIC_SHAPES: dict[str, tuple[int, int]] = {"2-for-2": (2, 2), "3-for-1": (3, 1), "1-for-3": (1, 3),
+                                                "3-for-2": (3, 2), "2-for-3": (2, 3), "3-for-3": (3, 3)}
+ALL_SHAPES = {**SHAPES, **HEURISTIC_SHAPES}
+SORTS = ("my_gain", "their_gain", "combined", "min_side", "playoff_gain", "min_side_regular", "min_side_playoff")
+SKILL_POSITIONS = ("QB", "RB", "WR", "TE")
+DEFAULT_POSITIONS = SKILL_POSITIONS          # K and D/ST only when asked for (docs: "D/ST and K policy")
+BEAM_SEEDS = 6                               # 1-for-1 seeds per opponent (by stage-A smaller-side bound)
+BEAM_WIDTH = 6                               # packages kept per expansion step
+BEAM_POOL = 4                                # players per side and signal offered to the expansion
 CATEGORIES = {
     "MUTUAL_PROJECTED_IMPROVEMENT": "Both starting lineups project to gain.",
     "IMPROVES_MINE_COSTS_THEIRS": "Your lineup gains; theirs projects to lose starting points.",
@@ -71,7 +82,8 @@ HALF_UNIT = 0.5 * 10 ** -NDIGITS   # a canonical delta is rounded, so it can exc
 # How far a displayed sort value can exceed the exact value its bound applies to: one rounding for a
 # single delta (and for min_side, a min of rounded deltas); combined = round(round(mine) + round(theirs)).
 ROUNDING_SLACK = {"my_gain": HALF_UNIT, "their_gain": HALF_UNIT, "playoff_gain": HALF_UNIT,
-                  "min_side": HALF_UNIT, "combined": 3 * HALF_UNIT}
+                  "min_side": HALF_UNIT, "combined": 3 * HALF_UNIT, "min_side_regular": HALF_UNIT,
+                  "min_side_playoff": HALF_UNIT}
 NOTE = ("Every candidate's impact is the exact weekly optimal-lineup simulation on ESPN's projections, the same "
         "computation as the manual evaluator. Categories and orderings describe projected starting-lineup results "
         "only; they do not estimate whether a manager would accept.")
@@ -86,7 +98,7 @@ class _Totals:
     exact assign_lineup itself."""
 
     def __init__(self, state: LeagueState, weeks: tuple[int, ...], pids: set[int], positions: dict[int, str | None],
-                 teams: dict[int, str | None]):
+                 teams: dict[int, str | None], blocked: dict[int, frozenset] | None = None):
         self.slots = state.slots
         fixed = [s for s in state.slots if s not in FLEX_ELIGIBILITY]
         self.fixed_groups = [(s, fixed.count(s)) for s in dict.fromkeys(fixed)]   # slot order (contiguous)
@@ -98,11 +110,15 @@ class _Totals:
         self.elig = set(FLEX_ELIGIBILITY[flex[0]]) if flex else set()
         self.flex_only = [p for p in sorted(self.elig) if p not in dict(self.fixed_groups)]
         self.pos = positions
+        blocked = blocked or {}
+        # A verified NFL-ineligible week (RosterPlayer.unavailable_weeks): he cannot start and his missing
+        # or present projection never matters, exactly as in team_lineups.project_week.
         self.val = [{p: (positions.get(p), float(state.projections[p][w])) for p in pids
-                     if state.projections.get(p, {}).get(w) is not None} for w in weeks]
+                     if state.projections.get(p, {}).get(w) is not None and w not in blocked.get(p, ())} for w in weeks]
         self.negative = any(v < 0 for row in self.val for _, v in row.values())
         relevant = {p for p in pids if lineup_relevant(positions.get(p), state.slots) and teams.get(p)}
-        self.missing = [frozenset(p for p in relevant if p not in row) for row in self.val]
+        self.missing = [frozenset(p for p in relevant if p not in row and w not in blocked.get(p, ()))
+                        for w, row in zip(weeks, self.val)]
         self.solves = 0
 
     def week(self, ids, i: int) -> float:
@@ -164,19 +180,22 @@ class TradeSearch:
     """Stage A runs once in the constructor; `top()` runs stages B (cached) for any sort/filter."""
 
     def __init__(self, state: LeagueState, anchor: int, shapes=tuple(SHAPES), opponents=None,
-                 max_exact: int = DEFAULT_MAX_EXACT):
+                 max_exact: int = DEFAULT_MAX_EXACT, positions=DEFAULT_POSITIONS):
         t0 = time.perf_counter()
         requested = set(shapes)
         if anchor not in state.rosters:
             raise TradeError(f"unknown team {anchor}")
-        if not requested or requested - set(SHAPES):
-            raise TradeError(f"shapes must be among {', '.join(SHAPES)}")
+        if not requested or requested - set(ALL_SHAPES):
+            raise TradeError(f"shapes must be among {', '.join(ALL_SHAPES)}")
         if state.start_week is None:
             reason = (state.start_week_reason or {}).get("reason") or "no actionable week"
             raise NoRemainingWeeksError(
                 f"No remaining fantasy scoring periods ({reason}); there are no trades to discover.")
         self.state, self.anchor, self.max_exact = state, anchor, max_exact
+        # Positions that may be traded (players elsewhere stay on rosters and can still be forced drops).
+        self.positions = None if positions is None else tuple(sorted(set(positions)))
         self.shapes = [s for s in SHAPES if s in requested]
+        self.heuristic_shapes = [s for s in HEURISTIC_SHAPES if s in requested]
         self.opponents = sorted(t for t in state.rosters if t != anchor and (opponents is None or t in set(opponents)))
         self.window = state.window()
         self.weeks = self.window.weeks
@@ -185,13 +204,21 @@ class TradeSearch:
         self.po = [i for i, w in enumerate(self.weeks) if self.window.phase(w) == "playoff"]
         self.players = {p.espn_player_id: p for t in [anchor, *self.opponents] for p in state.rosters[t]}
         self.T = _Totals(state, self.weeks, set(self.players),
-                         {p: x.position for p, x in self.players.items()}, {p: x.pro_team for p, x in self.players.items()})
+                         {p: x.position for p, x in self.players.items()}, {p: x.pro_team for p, x in self.players.items()},
+                         {p: x.unavailable_weeks for p, x in self.players.items() if x.unavailable_weeks})
         self.base = {t: self.T.vec(_active(state.rosters[t])) for t in [anchor, *self.opponents]}
         self.base_complete = {t: self.T.complete(_active(state.rosters[t])) for t in [anchor, *self.opponents]}
-        self.cands = self._screen()
         self.exact: dict[str, dict | None] = {}
         self.status: dict[str, str] = {}
+        self.pairs: dict[str, tuple] = {}            # heuristic exact evaluations (both sides), by key
+        self.cands = self._screen() if self.shapes else []
+        if not self.shapes:
+            self.screened_out = 0
+        self._beam: dict | None = None
         self.stage_a_seconds = round(time.perf_counter() - t0, 3)
+
+    def tradeable(self, players) -> list[int]:
+        return sorted(p.espn_player_id for p in players if self.positions is None or p.position in self.positions)
 
     # ---- stage A
     def _ub(self, after, base) -> tuple[float, float, float]:
@@ -203,7 +230,7 @@ class TradeSearch:
         mine = self.state.rosters[A]
         a_act = _active(mine)
         a_base = self.base[A]
-        m_ids = sorted(p.espn_player_id for p in mine)
+        m_ids = self.tradeable(mine)
         W = range(len(self.weeks))
         a_minus = {s: T.vec(_minus(a_act, s)) for s in m_ids}
         a_pair = {(s1, s2): T.vec(_minus(a_act, s1, s2)) for s1, s2 in combinations(m_ids, 2)} \
@@ -214,7 +241,7 @@ class TradeSearch:
             theirs = self.state.rosters[opp]
             o_act = _active(theirs)
             o_base = self.base[opp]
-            o_ids = sorted(p.espn_player_id for p in theirs)
+            o_ids = self.tradeable(theirs)
             o_minus = {t: T.vec(_minus(o_act, t)) for t in o_ids}
             o_pair = {(t1, t2): T.vec(_minus(o_act, t1, t2)) for t1, t2 in combinations(o_ids, 2)} \
                 if "1-for-2" in self.shapes else {}
@@ -272,23 +299,17 @@ class TradeSearch:
         return self._compare(self.base[team], self.base_complete[team], after, done_a, drops)
 
     def _forced_drops(self, after: list[RosterPlayer], before: list[RosterPlayer], incoming: set[int]) -> tuple:
-        """trades.resolve_roster's choice, on the same totals: the smallest number of drops that makes
-        the roster legal, keeping the largest remaining known starting total (ties: lowest ids);
-        an incoming player only when no legal drop without one exists."""
-        pool = sorted(after, key=lambda p: p.espn_player_id)
-        for k in range(1, MAX_FORCED_DROPS + 1):
-            best: dict[bool, tuple] = {}
-            for combo in combinations(pool, k):
-                rest = [p for p in after if p not in combo]
-                if not legal_roster(rest, self.state, before):
-                    continue
-                has_incoming = any(p.espn_player_id in incoming for p in combo)
-                key = (round(sum(self.T.vec(_active(rest))), 9), tuple(-p.espn_player_id for p in combo))
-                if has_incoming not in best or key > best[has_incoming][0]:
-                    best[has_incoming] = (key, combo)
-            if best:
-                return (best.get(False) or best[True])[1]
-        raise TradeError("no legal roster exists after this trade within the forced-drop limit")
+        """trades.resolve_roster's choice (the same shared trades.choose_forced_drops) on the same
+        bit-identical totals."""
+        memo: dict[tuple, float] = {}
+
+        def total(players):
+            key = tuple(sorted(_active(players)))
+            if key not in memo:
+                memo[key] = sum(self.T.vec(list(key)))
+            return memo[key]
+        res = choose_forced_drops(after, before, self.state, incoming, total, self.T.negative)
+        return (res["best"].get(False) or res["best"][True])[1]
 
     def _compare(self, before, done_b, after, done_a, drops) -> dict:
         d = [a - b for a, b in zip(after, before)]
@@ -326,6 +347,8 @@ class TradeSearch:
             elif mine["ros_delta"] > 0 or (mine["playoff_delta"] is not None and mine["playoff_delta"] > 0):
                 theirs = self._side(opp, receives, sends)
                 row, status = self._row(shape, opp, sends, receives, mine, theirs), "qualified"
+        except EvaluationUnavailable:
+            status = "excluded_evaluation_unavailable"
         except TradeError:
             status = "excluded_invalid_roster"
         self.exact[key], self.status[key] = row, status
@@ -335,6 +358,7 @@ class TradeSearch:
         m, t = mine["ros_delta"], theirs["ros_delta"]
         drops = {"mine": mine.pop("forced_drops"), "theirs": theirs.pop("forced_drops")}
         return {"key": _key(shape, opp, sends, receives), "shape": shape, "anchor_team_id": self.anchor,
+                "search_method": "heuristic_beam" if shape in HEURISTIC_SHAPES else "exact",
                 "opponent_team_id": opp, "opponent_name": self.state.team_names.get(opp),
                 "sends": list(sends), "receives": list(receives),
                 "mine": mine, "theirs": theirs,
@@ -356,6 +380,127 @@ class TradeSearch:
                 if sub and (category is None or category in sub["categories"]) and _same_effects(sub, row):
                     return sub
         return None
+
+    # ---- larger shapes: bounded beam expansion (heuristic coverage, exact rows)
+    def _pair(self, shape: str, opp: int, sends: tuple, receives: tuple):
+        """Exact both-side comparison of any package (cached); (mine, theirs, status)."""
+        key = _key(shape, opp, sends, receives)
+        if key not in self.pairs:
+            try:
+                self.pairs[key] = (self._side(self.anchor, sends, receives), self._side(opp, receives, sends), "evaluated")
+            except EvaluationUnavailable:
+                self.pairs[key] = (None, None, "excluded_evaluation_unavailable")
+            except TradeError:
+                self.pairs[key] = (None, None, "excluded_invalid_roster")
+        return self.pairs[key]
+
+    def beam(self) -> dict:
+        """Candidate generation for HEURISTIC_SHAPES, per opponent:
+
+          1. signals from exact lineup totals: what each player costs his own team (removal), what he
+             would add to the other team (addition), and his own known projected points;
+          2. pools: per side, the BEAM_POOL players best by "adds most to the other team" and by
+             "surplus" (own points minus own-team cost), both capped by the position filter;
+          3. seeds: the BEAM_SEEDS 1-for-1 pairs from the pools with the largest approximate
+             smaller-side gain (signals only), then evaluated exactly;
+          4. expansion: add one pool player to either side, evaluate every new package exactly
+             (the same _side as stage B, forced drops included), keep the BEAM_WIDTH best by exact
+             smaller-side rest-of-season gain, repeat up to the largest requested shape;
+          5. packages of a requested shape that qualify (your ROS or playoff delta > 0) become rows;
+             a package whose added player changes neither team's effects is padding and is skipped.
+
+        Every row is the exact canonical evaluation, but the list is not exhaustive and not a proven
+        top K: unexamined packages may be better. Coverage is reported per opponent."""
+        if self._beam is not None:
+            return self._beam
+        t0 = time.perf_counter()
+        T, A, W = self.T, self.anchor, range(len(self.weeks))
+        rows: list[dict] = []
+        per_opp = []
+        if not self.heuristic_shapes:
+            self._beam = {"rows": [], "per_opponent": [], "evaluated": 0, "seconds": 0.0}
+            return self._beam
+        max_s = max(HEURISTIC_SHAPES[x][0] for x in self.heuristic_shapes)
+        max_r = max(HEURISTIC_SHAPES[x][1] for x in self.heuristic_shapes)
+        mine_act = _active(self.state.rosters[A])
+        m_ids = self.tradeable(self.state.rosters[A])
+        base_me = sum(self.base[A])
+        own = {p: sum(T.value(p, i) for i in W) for p in self.players}
+        my_cost = {x: base_me - sum(T.vec(_minus(mine_act, x))) for x in m_ids}
+        total_evals = 0
+        for opp in self.opponents:
+            o_act = _active(self.state.rosters[opp])
+            o_ids = self.tradeable(self.state.rosters[opp])
+            if not m_ids or not o_ids:
+                per_opp.append({"opponent_team_id": opp, "seeds": 0, "evaluated": 0, "rows": 0})
+                continue
+            base_o = sum(self.base[opp])
+            their_cost = {t: base_o - sum(T.vec(_minus(o_act, t))) for t in o_ids}
+            adds_me = {t: sum(T.vec(mine_act + [t])) - base_me for t in o_ids}
+            adds_them = {x: sum(T.vec(o_act + [x])) - base_o for x in m_ids}
+
+            def top(ids, score):
+                return [i for i in sorted(ids, key=lambda i: (-score(i), i))[:BEAM_POOL]]
+            pool_t = sorted(set(top(o_ids, lambda t: adds_me[t])) | set(top(o_ids, lambda t: own[t] - their_cost[t])))
+            pool_m = sorted(set(top(m_ids, lambda x: adds_them[x])) | set(top(m_ids, lambda x: own[x] - my_cost[x])))
+            approx = sorted(((min(adds_me[t] - my_cost[x], adds_them[x] - their_cost[t]), (x,), (t,))
+                             for x in pool_m for t in pool_t), key=lambda z: (-z[0], z[1], z[2]))[:BEAM_SEEDS]
+            beam, seen, evals, made = [], set(), 0, 0
+            for _, x, t in approx:
+                mine, theirs, st = self._pair("1-for-1", opp, x, t)
+                evals += 1
+                seen.add((x, t))
+                if st == "evaluated":
+                    beam.append((x, t, mine, theirs))
+            for _ in range(max_s + max_r - 2):
+                nxt = []
+                for x, t, pm, pt in beam:
+                    grown = [(tuple(sorted(x + (a,))), t) for a in pool_m if a not in x and len(x) < max_s] + \
+                            [(x, tuple(sorted(t + (b,)))) for b in pool_t if b not in t and len(t) < max_r]
+                    for nx, nt in grown:
+                        if (nx, nt) in seen:
+                            continue
+                        seen.add((nx, nt))
+                        shape = f"{len(nx)}-for-{len(nt)}"
+                        mine, theirs, st = self._pair(shape, opp, nx, nt)
+                        evals += 1
+                        if st != "evaluated":
+                            continue
+                        padding = all(mine[k] == pm[k] and theirs[k] == pt[k] for k in EQUIVALENCE_KEYS) \
+                            and mine["forced_drops"] == pm["forced_drops"] and theirs["forced_drops"] == pt["forced_drops"]
+                        if padding:
+                            continue
+                        nxt.append((nx, nt, mine, theirs))
+                        if shape in self.heuristic_shapes and mine["ros_delta"] is not None and (
+                                mine["ros_delta"] > 0 or (mine["playoff_delta"] is not None and mine["playoff_delta"] > 0)):
+                            rows.append(self._row(shape, opp, nx, nt, dict(mine), dict(theirs)))
+                            made += 1
+                nxt.sort(key=lambda z: (z[3]["ros_delta"] is None or z[2]["ros_delta"] is None,
+                                        -min(z[2]["ros_delta"] or 0.0, z[3]["ros_delta"] or 0.0), z[0], z[1]))
+                beam = nxt[:BEAM_WIDTH]
+                if not beam:
+                    break
+            total_evals += evals
+            per_opp.append({"opponent_team_id": opp, "seeds": len(approx), "pool_mine": pool_m, "pool_theirs": pool_t,
+                            "evaluated": evals, "rows": made})
+        self._beam = {"rows": rows, "per_opponent": per_opp, "evaluated": total_evals,
+                      "seconds": round(time.perf_counter() - t0, 3)}
+        return self._beam
+
+    def heuristic_top(self, sort: str, category: str | None, opponent: int | None, limit: int) -> dict:
+        """Rows from the beam for the requested filters, ranked like top(); coverage is heuristic."""
+        b = self.beam()
+        rk = _rank_key(sort)
+        found = sorted((x for x in b["rows"] if (opponent is None or x["opponent_team_id"] == opponent)
+                        and (category is None or category in x["categories"])), key=rk)
+        return {"results": [{**x, "simpler_equivalent": None} for x in found[:max(1, min(int(limit), MAX_LIMIT))]],
+                "search": {"method": "heuristic_beam", "shapes": self.heuristic_shapes, "exhaustive": False,
+                           "packages_evaluated": b["evaluated"], "qualifying_rows": len(b["rows"]),
+                           "beam": {"seeds": BEAM_SEEDS, "width": BEAM_WIDTH, "pool_per_signal": BEAM_POOL},
+                           "per_opponent": b["per_opponent"], "seconds": b["seconds"],
+                           "note": "Exact evaluation of every listed package, but candidate generation is a bounded "
+                                   "beam: packages outside the pools and the beam were never evaluated, so this is "
+                                   "not a proven top list."}}
 
     # ---- ranking
     def top(self, sort: str = "my_gain", category: str | None = None, opponent: int | None = None,
@@ -483,20 +628,30 @@ def _key(shape, opp, sends, receives) -> str:
 
 
 def _bound(c: tuple, sort: str) -> float:
+    """Upper bound on a candidate's sort value. Per-phase bounds are sums of the same weekly bounds
+    over that phase's weeks, so they are upper bounds too."""
     me, them = c[4], c[5]
     return {"my_gain": me[0], "their_gain": them[0], "combined": me[0] + them[0],
-            "min_side": min(me[0], them[0]), "playoff_gain": me[2]}[sort]
+            "min_side": min(me[0], them[0]), "playoff_gain": me[2],
+            "min_side_regular": min(me[1], them[1]), "min_side_playoff": min(me[2], them[2])}[sort]
+
+
+def _min(a, b):
+    return None if a is None or b is None else min(a, b)
 
 
 def _sort_value(row: dict, sort: str):
-    return {"my_gain": row["mine"]["ros_delta"], "their_gain": row["theirs"]["ros_delta"],
+    m, t = row["mine"], row["theirs"]
+    return {"my_gain": m["ros_delta"], "their_gain": t["ros_delta"],
             "combined": row["combined_ros_delta"], "min_side": row["min_side_ros_delta"],
-            "playoff_gain": row["mine"]["playoff_delta"]}[sort]
+            "playoff_gain": m["playoff_delta"],
+            "min_side_regular": _min(m["regular_season_delta"], t["regular_season_delta"]),
+            "min_side_playoff": _min(m["playoff_delta"], t["playoff_delta"])}[sort]
 
 
 def _rank_key(sort: str):
     """Sort key descending (missing values last), then combined delta, shape, opponent, player ids."""
-    order = {s: i for i, s in enumerate(SHAPES)}
+    order = {s: i for i, s in enumerate(ALL_SHAPES)}
 
     def k(row):
         v, c = _sort_value(row, sort), row["combined_ros_delta"]
@@ -529,6 +684,18 @@ def _usage(items: list[dict]) -> list[dict]:
     return [{k: u[k] for k in ("espn_player_id", "name", "position", "weeks_started", "slots")} for u in items]
 
 
+def _empty_slots(side: dict) -> list[dict]:
+    """Starting slots the team could fill before the trade but not after (no eligible player)."""
+    out = []
+    for b, a in zip(side["lineups"]["before"], side["lineups"]["after"]):
+        had = [x["slot"] for x in b["assignment"] if x["player_id"] is not None]
+        for x in a["assignment"]:
+            if x["player_id"] is None and x["slot"] in had:
+                had.remove(x["slot"])
+                out.append({"week": a["week"], "slot": x["slot"]})
+    return out
+
+
 def _side_detail(side: dict) -> dict:
     ro = side["roster"]
     pts = ("ros_projected_starting_points", "regular_season_projected_starting_points",
@@ -545,6 +712,8 @@ def _side_detail(side: dict) -> dict:
         "open_active_roster_spots": ro["open_active_roster_spots"],
         "hypothetical_fa_fill": side["hypothetical_fa_fill"],
         "incomplete": side["incomplete"],
+        "empty_slots_after": _empty_slots(side),
+        "issues_before_drops": ro["issues_before_drops"],
         "ir_activation_sensitivity": side["ir_activation_sensitivity"],
         "weekly": [{"week": w["week"], "phase": w["phase"], "delta": w["delta"], "known_delta": w["known_delta"],
                     "entered": w["entered"], "exited": w["exited"]} for w in side["weekly"]],
@@ -559,7 +728,7 @@ def detail(state: LeagueState, row: dict) -> dict:
         and [d["espn_player_id"] for d in a["roster"]["forced_drops"]] == row["forced_drops"]["mine"] \
         and [d["espn_player_id"] for d in b["roster"]["forced_drops"]] == row["forced_drops"]["theirs"]
     players = [{**{k: p[k] for k in ("espn_player_id", "name", "position", "pro_team", "injury_status", "on_ir",
-                                     "from_team_id", "to_team_id")},
+                                     "from_team_id", "to_team_id", "availability")},
                 "marginal_value_on_current_team": p["marginal_value_on_current_team"]["roster_marginal_lineup_points"]}
                for p in res["players"]]
     return {**row, "consistent_with_manual_evaluator": consistent,
@@ -567,5 +736,6 @@ def detail(state: LeagueState, row: dict) -> dict:
             "playoff_label": res["result"]["playoff_label"], "players": players,
             "mine_detail": _side_detail(a), "theirs_detail": _side_detail(b),
             "ir_warning": res["ir_warning"], "ir_assumption": res["ir_assumption"],
+            "injury_warnings": res["injury_warnings"], "injury_scenarios": res["injury_scenarios"],
             "manual_evaluator_link": {"ta": row["anchor_team_id"], "tb": row["opponent_team_id"],
                                       "a": row["sends"], "b": row["receives"]}}

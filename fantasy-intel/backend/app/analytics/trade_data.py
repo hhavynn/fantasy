@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import json
 import zoneinfo
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta, timezone
 
 from ..db.connection import fetch_dicts, replace_where, table_columns, table_exists, utcnow
 from ..espn.constants import DEFAULT_POSITION_MAP, FANTASY_POSITIONS, IR_SLOT
 from .lineup import lineup_slots
+from .player_availability import AVAILABLE, load_availability
 from .projections import league_window
 from .team_lineups import FA_STATUSES, RosterPlayer, project_team, public_weeks
 from .trades import LeagueState, weeks_label
@@ -237,6 +239,20 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
                                  WHERE season = ? AND scoring_period BETWEEN ? AND ? AND projected_points IS NOT NULL""",
                          [season, window.current, window.final]):
         proj.setdefault(p["espn_player_id"], {})[p["scoring_period"]] = float(p["projected_points"])
+    # NFL availability (reserve-list eligibility) is applied once here, so every consumer of the
+    # league state (evaluator, discovery, team value, playoff race) uses the same weeks.
+    weeks = tuple(range(window.current, window.final + 1))
+    everyone = [p for ps in rosters.values() for p in ps] + free_agents
+    avail = load_availability(con, season, everyone, weeks, proj)
+
+    def apply(p: RosterPlayer) -> RosterPlayer:
+        rec = avail.get(p.espn_player_id)
+        return replace(p, unavailable_weeks=frozenset(rec["unavailable_weeks"])) if rec and rec["unavailable_weeks"] else p
+    rosters = {t: [apply(p) for p in ps] for t, ps in rosters.items()}
+    free_agents = [apply(p) for p in free_agents]
+    rostered_ids = {p.espn_player_id for ps in rosters.values() for p in ps}
+    availability = {pid: rec for pid, rec in avail.items()
+                    if pid in rostered_ids or rec["status"] != AVAILABLE or rec["nfl_designation"]}
     capacity = sum(int(v) for k, v in roster_slots.items() if k != "IR")
     return LeagueState(
         season=season, slots=lineup_slots(roster_slots), final_week=window.final, last_regular=window.last_regular,
@@ -244,7 +260,7 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
         active_capacity=capacity, position_limits=_position_limits(settings),
         team_names={t["team_id"]: t["name"] for t in teams}, league_id=lg["league_id"], start_week_reason=start,
         undroppable_list_in_use=((settings.get("rosterSettings") or {}).get("isUsingUndroppableList")),
-        first_projection_week=window.current)
+        first_projection_week=window.current, availability=availability)
 
 
 # ---------------------------------------------------------------------- context (display) --
@@ -310,6 +326,8 @@ def named_weeks(weeks: list[dict], names: dict[int, dict]) -> list[dict]:
         w["assignment"] = [{**a, "name": (names.get(a["player_id"]) or {}).get("full_name")} for a in w["assignment"]]
         w["bench"] = [{**b, "name": (names.get(b["player_id"]) or {}).get("full_name")} for b in w["bench"]]
         w["ir"] = [{**x, "name": (names.get(x["player_id"]) or {}).get("full_name")} for x in w.get("ir", [])]
+        w["unavailable"] = [{**x, "name": (names.get(x["player_id"]) or {}).get("full_name")}
+                            for x in w.get("unavailable", [])]
         out.append(w)
     return out
 

@@ -41,6 +41,7 @@ class Settings:
     my_team_id: int | None
     db_path: Path
     external_preferred_provider: str | None = None
+    trade_max_players_per_side: int = 6     # manual trade analyzer guard (TRADE_MAX_PLAYERS_PER_SIDE, 1-10)
 
     @property
     def has_espn_credentials(self) -> bool:
@@ -61,4 +62,5 @@ def get_settings() -> Settings:
         my_team_id=_int_or_none(os.getenv("ESPN_MY_TEAM_ID")),
         db_path=db_path,
         external_preferred_provider=(os.getenv("EXTERNAL_USAGE_PREFERRED_PROVIDER") or "").strip() or None,
+        trade_max_players_per_side=max(1, min(10, _int_or_none(os.getenv("TRADE_MAX_PLAYERS_PER_SIDE")) or 6)),
     )

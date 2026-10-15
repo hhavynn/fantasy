@@ -183,6 +183,10 @@ modification time, anchor, shapes and evaluation window, so changing the sort or
 
 ## Limitations
 
+V3 ([`v3_trade_intelligence.md`](v3_trade_intelligence.md)) adds practical modes, an asset-balance diagnostic,
+the K/D/ST default exclusion, NFL availability, and heuristic larger shapes (2-for-2 through 3-for-3); the
+limitations below describe the exact V2 search, which is unchanged.
+
 * 2-for-2 and three-team trades are not searched. 2-for-2 would add `C(m,2)*C(n,2)` candidates per opponent
   (~200k more in a 12-team league); the same bounds extend to it, but it is left out of the MVP.
 * Each team's current roster is assumed for every remaining week; future waiver moves are not modeled.

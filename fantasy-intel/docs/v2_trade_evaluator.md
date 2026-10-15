@@ -152,9 +152,10 @@ the canonical trade delta.
 
 ## Trade evaluation
 
-`evaluate_trade(state, team_a, team_b, a_sends, b_sends, start_week=None)` supports 1-for-1, 2-for-1, 1-for-2
-and 2-for-2. It validates that the teams differ, every player is on his sending team's current roster, no
-player appears twice, and each side sends 1 or 2. It never mutates the league state, `lineup_snapshots`,
+`evaluate_trade(state, team_a, team_b, a_sends, b_sends, start_week=None)` accepts any number of players
+per side from 1 up to a configurable limit (6 by default; V3, see [`v3_trade_intelligence.md`](v3_trade_intelligence.md)).
+It validates that the teams differ, every player is on his sending team's current roster, and no
+player appears twice. Forced drops are resolved exactly for any number of removals. It never mutates the league state, `lineup_snapshots`,
 rosters or anything at ESPN; the API endpoint is read-only.
 
 For both teams it returns before/after summaries, the week-by-week delta (with who entered and left the

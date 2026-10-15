@@ -16,6 +16,11 @@ Pure functions (no database). See docs/v2_trade_evaluator.md.
     canonical lineup and his projection (missing or not) never affects completeness, until a future
     sync shows ESPN moved him off IR. His ESPN projection is kept and reported; what he would add if
     activated for free is a separate, deliberately optimistic `ir_activation_sensitivity`.
+  * NFL availability is separate from the fantasy IR slot. A week in a player's `unavailable_weeks`
+    (verified NFL-ineligible: reserve list with the minimum-games rule not yet met, see
+    analytics/player_availability.py) is treated like an IR week for that week only: he cannot
+    start, his ESPN projection is kept and reported under `unavailable`, and it is never a measured
+    0 and never makes the week incomplete. Outside those weeks nothing is assumed about his health.
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ class RosterPlayer:
     name: str | None = None
     on_ir: bool = False                # sits in an IR slot (does not use an active roster spot)
     injury_status: str | None = None
+    unavailable_weeks: frozenset[int] = frozenset()   # verified NFL-ineligible weeks (not a fantasy slot)
 
 
 @dataclass(frozen=True)
@@ -77,17 +83,25 @@ def projection(proj: Projections, pid: int, week: int) -> float | None:
     return None if v is None else float(v)
 
 
+def can_play(p: RosterPlayer, week: int) -> bool:
+    """Not in a fantasy IR slot and not verified NFL-ineligible that week."""
+    return not p.on_ir and week not in p.unavailable_weeks
+
+
 # ------------------------------------------------------------------ one team-week --
 
 def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj: Projections,
                  phase: str | None = None) -> dict:
     """Optimal lineup for one week from ESPN projections. Only players with a projection can start;
-    current-IR players never start and are listed (with their projection) under `ir`."""
-    known, missing, teamless, ir = [], [], [], []
+    current-IR players never start and are listed (with their projection) under `ir`; players verified
+    NFL-ineligible this week are listed (with ESPN's projection, which is not counted) under `unavailable`."""
+    known, missing, teamless, ir, unavailable = [], [], [], [], []
     for p in players:
         v = projection(proj, p.espn_player_id, week)
         if p.on_ir:
             ir.append({"player_id": p.espn_player_id, "position": p.position, "points": v})
+        elif week in p.unavailable_weeks:
+            unavailable.append({"player_id": p.espn_player_id, "position": p.position, "points": v})
         elif v is not None:
             known.append({"espn_player_id": p.espn_player_id, "position": p.position, "value": v})
         elif not lineup_relevant(p.position, slots):
@@ -114,6 +128,7 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
                    if k["espn_player_id"] not in starters]
                   + [{"player_id": pid, "position": None, "points": None} for pid in sorted(missing + teamless)]),
         "ir": sorted(ir, key=lambda x: x["player_id"]),
+        "unavailable": sorted(unavailable, key=lambda x: x["player_id"]),
         "missing_projection_ids": sorted(missing),
         "teamless_unprojected_ids": sorted(teamless),
         "_total": total,             # unrounded known total, for exact comparisons
@@ -259,13 +274,16 @@ def ir_activation_sensitivity(players: list[RosterPlayer], pid: int, slots: list
     c = compare(base, act, window)
     started = [w["week"] for w in act["weeks"] if pid in starters(w)]
     weekly = {w: projection(proj, pid, w) for w in window.weeks}
+    me = next(p for p in players if p.espn_player_id == pid)
+    blocked = sorted(w for w in window.weeks if w in me.unavailable_weeks)
     has_open = None if open_active_roster_spots is None else open_active_roster_spots > 0
     return {
         "label": "IR activation sensitivity (hypothetical free activation; not canonical)",
         "assumption": IR_HOLD_NOTE,
         "espn_player_id": pid,
         "weekly_projection": weekly,
-        "projected_weeks": [w for w, v in weekly.items() if v is not None and v > 0],
+        "projected_weeks": [w for w, v in weekly.items() if v is not None and v > 0 and w not in blocked],
+        "nfl_ineligible_weeks": blocked,
         "unprojected_weeks": [w for w, v in weekly.items() if v is None],
         "weeks_would_start": started,
         "lineup_points_upside": c["ros_delta"], "known_lineup_points_upside": c["known_ros_delta"],
@@ -300,7 +318,7 @@ def replacement_market(free_agents: list[RosterPlayer], slots: list[str], window
     for w in window.weeks:
         per = {}
         for g, elig in groups:
-            pool = [p for p in free_agents if p.position in elig]
+            pool = [p for p in free_agents if p.position in elig and w not in p.unavailable_weeks]
             scored = sorted(((projection(proj, p.espn_player_id, w), p) for p in pool
                              if projection(proj, p.espn_player_id, w) is not None),
                             key=lambda t: (-t[0], t[1].espn_player_id))
@@ -325,7 +343,9 @@ def _pareto(cands: list[RosterPlayer], weeks: tuple[int, ...], proj: Projections
     out = []
     by_pos: dict[str | None, list] = {}
     for c in cands:
-        by_pos.setdefault(c.position, []).append((c, tuple(proj[c.espn_player_id][w] for w in weeks)))
+        # A verified NFL-ineligible week contributes nothing, exactly like a 0 (he cannot start).
+        by_pos.setdefault(c.position, []).append((c, tuple(0.0 if w in c.unavailable_weeks else proj[c.espn_player_id][w]
+                                                           for w in weeks)))
     for items in by_pos.values():
         items.sort(key=lambda t: (-sum(t[1]), t[0].espn_player_id))
         kept: list = []

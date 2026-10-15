@@ -3,10 +3,18 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, Callout, ErrorBox, Pos, TrendArrow } from "@/components/ui";
 import { api } from "@/lib/api";
 import { label, num, signed } from "@/lib/format";
-import type { IrActivation, LineupWeek, TradeOptions, TradeResult, TradeSide } from "@/lib/types";
+import { canEvaluate, initialSelection, selectionKey } from "@/lib/trade-builder";
+import type { InjuryScenarios, TradeOptionsV3, TradeResultV3, TradeSideV3 } from "@/lib/trade-types";
+import type { IrActivation, LineupWeek } from "@/lib/types";
+import { TradeBuilder } from "./TradeBuilder";
 
-// Manual Trade Evaluator. Projected points: ESPN (unmodified). Trade impact: our exact weekly
-// optimal-lineup simulation for both teams. No trade grade, no acceptance probability.
+// Manual Trade Analyzer. Projected points: ESPN (unmodified). Trade impact: our exact weekly
+// optimal-lineup simulation for both teams. Any player counts per side up to the configured limit.
+// No trade grade, no acceptance probability. Team and player selection is client-side (TradeBuilder);
+// the evaluation below is rendered on the server for the URL selection only.
+
+type TradeResult = TradeResultV3;
+type TradeSide = TradeSideV3;
 
 const RESULT_TEXT: Record<string, string> = {
   MUTUAL_PROJECTED_GAIN: "Both lineups project to gain",
@@ -20,6 +28,11 @@ function ids(v: string | string[] | undefined): number[] {
   return arr.map(Number).filter((n) => Number.isFinite(n));
 }
 
+function one(v: string | string[] | undefined): number | null {
+  const x = Array.isArray(v) ? v[0] : v;
+  return x === undefined || x === "" || !Number.isFinite(Number(x)) ? null : Number(x);
+}
+
 function resultText(code: string, a: string, b: string) {
   if (RESULT_TEXT[code]) return RESULT_TEXT[code];
   const m = code.match(/^TEAM_A_(\w+)_TEAM_B_(\w+)$/);
@@ -30,109 +43,56 @@ function tone(code: string) {
   return code === "MUTUAL_PROJECTED_GAIN" ? "good" : code === "BOTH_LOSE" ? "bad" : code === "INCOMPLETE_DATA" ? "warn" : "info";
 }
 
+const NARROW = { gridTemplateColumns: "repeat(auto-fit, minmax(min(420px, 100%), 1fr))" };
 const why = "Incomplete: a rostered player with an NFL team has no ESPN projection that week";
-const IR_WARNING = "Current IR players are excluded from canonical starting-lineup totals until activated. "
-  + "ESPN future projections are shown separately as activation upside.";
 const IR_HOLD_NOTE = "Current IR status is held constant for this hypothetical evaluation. This does not predict when a "
   + "player will return. Activation upside is shown separately and may require a roster move.";
 
 export default async function TradesPage({ searchParams }: PageProps<"/trades">) {
   const sp = await searchParams;
-  const opts = await api<TradeOptions>("/api/trades/options");
+  const opts = await api<TradeOptionsV3>("/api/trades/options");
   if (!opts.ok) return <ErrorBox error={opts.error} />;
   const { teams, evaluation } = opts.data;
   const firstWeek = evaluation.start_week;
   if (firstWeek === null || evaluation.remaining_weeks === false) {
     return (
       <div className="stack">
-        <div className="page-head"><h1>Trade evaluator</h1></div>
+        <div className="page-head"><h1>Trade analyzer</h1></div>
         <Callout>{evaluation.warning ?? "No remaining fantasy scoring periods."}</Callout>
         <p className="faint">{evaluation.start_week_reason.reason}</p>
       </div>
     );
   }
-  const mine = teams.find((t) => t.is_mine) ?? teams[0];
-  const ta = Number(sp.ta ?? mine?.team_id);
-  const tb = Number(sp.tb ?? teams.find((t) => t.team_id !== ta)?.team_id);
-  const teamA = teams.find((t) => t.team_id === ta);
-  const teamB = teams.find((t) => t.team_id === tb);
-  const sw = typeof sp.sw === "string" && sp.sw !== "" ? Number(sp.sw) : null;
-  // Keep only selections that belong to the currently chosen teams (a team change resets them).
-  const aSends = ids(sp.a).filter((id) => teamA?.roster.some((p) => p.espn_player_id === id));
-  const bSends = ids(sp.b).filter((id) => teamB?.roster.some((p) => p.espn_player_id === id));
-  const hasIr = [teamA, teamB].some((t) => t?.roster.some((p) => p.on_ir));
-  const ready = !!teamA && !!teamB && ta !== tb && aSends.length >= 1 && bSends.length >= 1;
-  const tooMany = aSends.length > 2 || bSends.length > 2;
-  const evaluated = ready && !tooMany && firstWeek !== null
-    ? await api<TradeResult>("/api/trades/evaluate", { team_a_id: ta, team_b_id: tb, team_a_sends: aSends,
-      team_b_sends: bSends, start_week: sw })
+  const maxPerSide = opts.data.max_players_per_side ?? 6;
+  const mine = teams.find((t) => t.is_mine)?.team_id ?? null;
+  // The URL is the evaluated selection (deep links from Discovery / My Team Value, or Evaluate).
+  const initial = initialSelection(teams, { ta: one(sp.ta), tb: one(sp.tb), a: ids(sp.a), b: ids(sp.b), sw: one(sp.sw) }, mine);
+  const ready = canEvaluate(initial, maxPerSide);
+  const evaluated = ready
+    ? await api<TradeResult>("/api/trades/evaluate", { team_a_id: initial.ta, team_b_id: initial.tb, team_a_sends: initial.a,
+      team_b_sends: initial.b, start_week: initial.sw })
     : null;
 
   return (
     <div className="stack">
       <div className="page-head">
-        <h1>Trade evaluator</h1>
+        <h1>Trade analyzer</h1>
         <span className="sub">
           Projected points source: <b>ESPN</b> · Trade impact: <b>our exact lineup simulation</b> · weeks {firstWeek}–{evaluation.final_week} ·{" "}
           <Link href="/trades/discover">discover trades</Link>
         </span>
       </div>
       <p className="faint">
-        Every remaining week, both teams&apos; optimal lineups are rebuilt before and after the trade with the league&apos;s real slots and FLEX rules.
-        Only starters count. Evaluation starts at week {firstWeek}: {evaluation.start_week_reason.reason}
+        Pick any number of players from each roster (up to {maxPerSide} per side). Every remaining week, both teams&apos; optimal lineups are
+        rebuilt before and after the trade with the league&apos;s real slots and FLEX rules; roster capacity and ESPN position limits are
+        enforced with exact forced drops. Only starters count. Evaluation starts at week {firstWeek}: {evaluation.start_week_reason.reason}
       </p>
       {evaluation.uncertain && evaluation.warning && <Callout>{evaluation.warning}</Callout>}
-
-      <form action="/trades" className="panel stack">
-        <div className="row-flex">
-          <label>Team A <select name="ta" defaultValue={ta}>
-            {teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
-          </select></label>
-          <label>Team B <select name="tb" defaultValue={tb}>
-            {teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
-          </select></label>
-          <label>Start week <select name="sw" defaultValue={sw ?? ""}>
-            <option value="">auto ({firstWeek})</option>
-            {/* Weeks that have already kicked off are not offered: the API rejects them. */}
-            {Array.from({ length: evaluation.final_week - firstWeek + 1 }, (_, i) => firstWeek + i)
-              .map((w) => <option key={w} value={w}>{w}</option>)}
-          </select></label>
-          <button type="submit">Evaluate</button>
-          <Link href="/trades">reset</Link>
-        </div>
-        <p className="faint" style={{ margin: 0 }}>Pick 1–2 players from each roster. After changing a team, press Evaluate to load its roster.</p>
-        <div className="grid grid-2">
-          {[{ team: teamA, name: "a", picked: aSends }, { team: teamB, name: "b", picked: bSends }].map(({ team, name, picked }) => team && (
-            <div key={name}>
-              <h2>{team.name} sends</h2>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th /><th>Player</th><th>NFL</th><th className="num" title="ESPN rest-of-season projection (sum of weekly projections)">ESPN ROS</th></tr></thead>
-                  <tbody>
-                    {team.roster.map((p) => (
-                      <tr key={p.espn_player_id}>
-                        <td><input type="checkbox" name={name} value={p.espn_player_id} defaultChecked={picked.includes(p.espn_player_id)} /></td>
-                        <td><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} />
-                          {p.on_ir && <> <Badge value="IR" tone="bad" /></>}
-                          {p.injury_status && !["ACTIVE", "NORMAL"].includes(p.injury_status) && !(p.on_ir && p.injury_status === "INJURY_RESERVE")
-                            && <> <Badge value={p.injury_status} /></>}</td>
-                        <td className="faint">{p.pro_team ?? "FA"}</td>
-                        <td className="num">{num(p.ros_projected_points, 1, "Incomplete ESPN coverage")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
-      </form>
-
-      {hasIr && !(evaluated?.ok) && <Callout>{IR_WARNING} {IR_HOLD_NOTE}</Callout>}
-      {ta === tb && <Callout>Choose two different teams.</Callout>}
-      {tooMany && <Callout>Each side can send at most 2 players (1-for-1, 2-for-1, 1-for-2, 2-for-2).</Callout>}
-      {evaluated && !evaluated.ok && <ErrorBox error={evaluated.error} />}
-      {evaluated?.ok && <Result r={evaluated.data} />}
+      <TradeBuilder teams={teams} initial={initial} evaluatedKey={evaluated ? selectionKey(initial) : null} maxPerSide={maxPerSide}
+        capacity={opts.data.active_capacity} limits={opts.data.position_limits} firstWeek={firstWeek} finalWeek={evaluation.final_week}>
+        {evaluated && !evaluated.ok && <ErrorBox error={evaluated.error} />}
+        {evaluated?.ok && <Result r={evaluated.data} />}
+      </TradeBuilder>
     </div>
   );
 }
@@ -147,8 +107,8 @@ function Result({ r }: { r: TradeResult }) {
   return (
     <>
       <section className="panel">
-        <h2>Trade · {r.trade.shape}</h2>
-        <div className="grid grid-2">
+        <h2>Trade · {r.trade.shape} <span className="faint" style={{ fontSize: 13 }}>({r.trade.team_a_sends_count} out, {r.trade.team_b_sends_count} in for {an})</span></h2>
+        <div className="grid" style={NARROW}>
           <div><b>{an}</b> sends {names(r, A.sends)}</div>
           <div><b>{bn}</b> sends {names(r, B.sends)}</div>
         </div>
@@ -162,6 +122,9 @@ function Result({ r }: { r: TradeResult }) {
         {r.evaluation.start_week_overridden && <p className="faint">Start week overridden: weeks {r.evaluation.weeks.join(", ")}. {r.evaluation.start_week_reason.reason}</p>}
         {r.evaluation.uncertain && r.evaluation.warning && <Callout>{r.evaluation.warning}</Callout>}
         {r.ir_warning && <Callout>{r.ir_warning} {r.ir_assumption ?? IR_HOLD_NOTE}</Callout>}
+        {r.injury_warnings.map((w) => (
+          <div key={w.espn_player_id} className="callout"><b>{w.name}</b>: {w.warnings.join(" ")}</div>
+        ))}
       </section>
 
       <section className="panel">
@@ -193,6 +156,10 @@ function Result({ r }: { r: TradeResult }) {
         ))}
       </section>
 
+      <RosterAndStarts r={r} />
+
+      <InjuryScenarioPanel r={r} />
+
       <section className="panel">
         <h2>Week by week</h2>
         <div className="table-wrap">
@@ -217,7 +184,7 @@ function Result({ r }: { r: TradeResult }) {
         </div>
       </section>
 
-      <div className="grid grid-2">
+      <div className="grid" style={NARROW}>
         {[A, B].map((s) => <SidePanel key={s.team_id} s={s} />)}
       </div>
 
@@ -246,7 +213,8 @@ function Result({ r }: { r: TradeResult }) {
                     <td><TrendArrow label={i?.role_trend} /> <span className="faint">{label(i?.role_trend)}</span></td>
                     <td><Badge value={i?.production_sustainability} /></td>
                     <td><Badge value={i?.market_signal} /></td>
-                    <td>{p.on_ir ? <Badge value="IR" tone="bad" /> : <Badge value={p.injury_status && !["ACTIVE", "NORMAL"].includes(p.injury_status) ? p.injury_status : null} title="Healthy / not reported" />}</td>
+                    <td className="wrap">{p.on_ir && <Badge value="fantasy IR slot" tone="bad" />} <Badge value={p.injury_status && !["ACTIVE", "NORMAL"].includes(p.injury_status) ? p.injury_status : null} title="ESPN designation" />
+                      {p.availability && p.availability.nfl_designation_label && <div className="faint">NFL: {p.availability.nfl_designation_label}{p.availability.earliest_eligible_week ? ` · eligible wk ${p.availability.earliest_eligible_week}` : ""}{p.availability.return_confirmed ? " · returned" : ""}</div>}</td>
                     <td className="faint wrap">{i?.context_labels ? [i.context_labels.role, i.context_labels.efficiency, i.context_labels.data_confidence].filter(Boolean).map((x) => label(x)).join(" · ") : "—"}</td>
                   </tr>
                 );
@@ -261,7 +229,7 @@ function Result({ r }: { r: TradeResult }) {
       <section className="panel">
         <h2>Hypothetical FA replacement (not in the trade delta)</h2>
         <p className="faint">If the player simply disappeared and his team added the best currently available player who can fill one of his slots. Waiver availability is not guaranteed.</p>
-        <table>
+        <div className="table-wrap"><table>
           <thead><tr><th>Outgoing</th><th>Best available replacement</th><th className="num">Lineup pts lost</th><th className="num">Recovered</th><th className="num">Residual loss</th></tr></thead>
           <tbody>
             {r.players.map((p) => {
@@ -277,10 +245,10 @@ function Result({ r }: { r: TradeResult }) {
               );
             })}
           </tbody>
-        </table>
+        </table></div>
       </section>
 
-      <div className="grid grid-2">
+      <div className="grid" style={NARROW}>
         <section className="panel">
           <h2>Manager context (secondary)</h2>
           {[A, B].map((s) => {
@@ -309,6 +277,79 @@ function Result({ r }: { r: TradeResult }) {
         </section>
       </div>
     </>
+  );
+}
+
+function RosterAndStarts({ r }: { r: TradeResult }) {
+  const n = r.evaluation.weeks.length;
+  return (
+    <section className="panel">
+      <h2>Roster limits and starting opportunities</h2>
+      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(420px, 100%), 1fr))" }}>
+        {[r.team_a, r.team_b].map((s) => {
+          const iss = s.roster.issues_before_drops;
+          const gained = s.incoming_usage.filter((u) => u.weeks_started.length > 0);
+          return (
+            <div key={s.team_id}>
+              <h3 style={{ margin: "4px 0" }}>{s.team_name}</h3>
+              <ul className="reasons">
+                <li>Active roster after the trade, before drops: {iss.active_before_drops} of {iss.active_capacity}
+                  {iss.over_capacity_by > 0 ? <> · <b>over capacity by {iss.over_capacity_by}</b></> : " · within capacity"}</li>
+                {iss.position_limits.map((x) => <li key={x.position}><b>{x.position}</b>: {x.count_before_drops} rostered, ESPN limit {x.limit} (over by {x.over_by})</li>)}
+                {s.roster.forced_drops.length > 0
+                  ? <li>Forced drops: {s.roster.forced_drops.map((d) => `${d.name ?? d.espn_player_id} (${d.position}${d.is_incoming ? ", incoming" : ""})`).join(", ")}
+                    {" "}<span className="faint">lineup cost {s.roster.forced_drop_lineup_cost === null ? `${s.roster.forced_drop_known_lineup_cost.toFixed(1)} known only` : s.roster.forced_drop_lineup_cost.toFixed(1)}
+                    {s.roster.forced_drop_search && <> · {s.roster.forced_drop_search.method}, {s.roster.forced_drop_search.candidate_sets.toLocaleString()} drop sets, {s.roster.forced_drop_search.lineup_solves} lineup solves</>}</span></li>
+                  : <li className="faint">No forced drop.</li>}
+                {gained.map((u) => <li key={u.espn_player_id}><span className="up">Becomes a starter</span>: {u.name} ({u.position}) starts {u.weeks_started.length} of {n} weeks</li>)}
+                {s.incoming_usage.filter((u) => u.weeks_started.length === 0).map((u) => <li key={u.espn_player_id}>{u.name} ({u.position}) <b>would not start</b> in any remaining week</li>)}
+                {s.outgoing_usage.filter((u) => u.weeks_started.length > 0).map((u) => <li key={u.espn_player_id}><span className="down">Starter leaves</span>: {u.name} ({u.position}) started {u.weeks_started.length} of {n} weeks</li>)}
+                {s.displaced.map((d) => <li key={d.espn_player_id}>{d.name} ({d.position}){d.starts_lost.length > 0 && <> <span className="down">loses {d.starts_lost.length} start(s)</span></>}{d.starts_gained.length > 0 && <> <span className="up">gains {d.starts_gained.length} start(s)</span></>}</li>)}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function scen(v: InjuryScenarios["scenarios"][number]["team_a"]) {
+  if (!v) return <span className="missing">—</span>;
+  return v.ros_delta === null ? <span title={why}>{signed(v.known_ros_delta)} known</span> : signed(v.ros_delta);
+}
+
+function InjuryScenarioPanel({ r }: { r: TradeResult }) {
+  if (r.injury_scenarios.length === 0) return null;
+  const an = r.team_a.team_name ?? "Team A", bn = r.team_b.team_name ?? "Team B";
+  return (
+    <section className="panel">
+      <h2>Injured players: return scenarios (not in the canonical delta unless marked)</h2>
+      <p className="faint">{r.availability_note}</p>
+      {r.injury_scenarios.map((p) => (
+        <div key={p.espn_player_id} style={{ marginBottom: 10 }}>
+          <b>{p.name}</b> <Pos value={p.position} /> <Badge value={p.status.replaceAll("_", " ")} tone="warn" />
+          <div className="faint">{p.eligibility_basis ? `${p.eligibility_basis}.` : "No NFL eligibility date is known."} {p.return_confirmed ? "Return confirmed." : "Actual return not confirmed."}</div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Scenario</th><th className="num">{an} ROS</th><th className="num">reg / playoffs</th><th className="num">{bn} ROS</th><th className="num">reg / playoffs</th></tr></thead>
+              <tbody>
+                {p.scenarios.map((x) => (
+                  <tr key={x.scenario}>
+                    <td className="wrap">{x.description}{x.canonical && <> <Badge value="canonical" tone="info" title="The scenario the deltas above use" /></>}{x.error && <span className="faint"> ({x.error})</span>}</td>
+                    <td className="num"><b>{scen(x.team_a)}</b></td>
+                    <td className="num faint">{signed(x.team_a?.regular_season_delta)} / {signed(x.team_a?.playoff_delta)}</td>
+                    <td className="num"><b>{scen(x.team_b)}</b></td>
+                    <td className="num faint">{signed(x.team_b?.regular_season_delta)} / {signed(x.team_b?.playoff_delta)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="faint" style={{ margin: 0 }}>{p.note}</p>
+        </div>
+      ))}
+    </section>
   );
 }
 
