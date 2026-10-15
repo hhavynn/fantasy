@@ -30,7 +30,7 @@ from statistics import median
 
 from .lineup import FIXED_SLOTS
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, UNKNOWN
-from .team_lineups import RosterPlayer, Window, lineup_relevant, project_team, projection, r
+from .team_lineups import RosterPlayer, Window, lineup_relevant, project_team, projection, r, slot_filled
 
 # Display thresholds (heuristic, documented; see module docstring and the V3 docs).
 BALANCED_RATIO = 2 / 3          # smaller package >= 2/3 of the larger: "relatively balanced"
@@ -209,7 +209,7 @@ def team_needs(state, window: Window, team_id: int, board: AssetBoard, team: dic
     for pos, k in counts.items():
         missing = any(pos_of.get(pid) == pos for w in team["weeks"] for pid in w["missing_projection_ids"])
         pts = sum(a["points"] or 0.0 for w in team["weeks"] for a in w["assignment"]
-                  if a["slot"] == pos and a["player_id"] is not None)
+                  if a["slot"] == pos and slot_filled(a))         # the K/D/ST waiver streamer counts too
         surplus = [p.espn_player_id for p in roster if p.position == pos and not p.on_ir
                    and board.profiles.get(p.espn_player_id, {}).get("starter_caliber") and starts[p.espn_player_id] * 2 <= n]
         out[pos] = {"slot_points_per_week": None if missing else r(pts / (n * k)), "_raw": None if missing else pts / (n * k),

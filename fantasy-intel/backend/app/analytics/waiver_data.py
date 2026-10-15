@@ -208,7 +208,9 @@ def streaming_evidence(c: dict, state: dict, ctx: dict, pool: list[dict]) -> dic
 def streaming_floor(pool: list[dict], ctx: dict, roster_slots: dict, rank: int = STREAM_RANK) -> dict:
     """K/D/ST streaming baseline for the forward comparisons (team_lineups.STREAM_NOTE): per position the
     league starts and per week after the upcoming one, the rank-th best ESPN projection among available
-    players at the position (the weakest projected one when fewer exist). The upcoming week is left out:
+    players at the position (the weakest projected one when fewer exist). A player on a covered NFL bye that
+    week never sets it, exactly as the forward lineups never start a player on his bye (bye_weeks).
+    The upcoming week is left out:
     that week's pickup is the streaming decision itself (streaming_evidence), so holding a K or D/ST is
     credited only for later weeks it beats the stream."""
     out: dict[str, dict[int, float]] = {}
@@ -217,7 +219,10 @@ def streaming_floor(pool: list[dict], ctx: dict, roster_slots: dict, rank: int =
             continue
         for w in ctx["weeks"][1:]:
             vals = sorted((v for p in pool if p["position"] == pos
-                           and (v := ctx["projections"].get(p["espn_player_id"], {}).get(w)) is not None), reverse=True)
+                           and not (w in ctx.get("covered", ()) and p.get("pro_team")
+                                   and (p["pro_team"], w) not in ctx.get("games", {}))
+                           and (v := ctx["projections"].get(p["espn_player_id"], {}).get(w)) is not None),
+                          reverse=True)
             if vals and vals[min(rank, len(vals)) - 1] > 0:
                 out.setdefault(pos, {})[w] = vals[min(rank, len(vals)) - 1]
     return out

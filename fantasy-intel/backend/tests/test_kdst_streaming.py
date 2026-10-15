@@ -9,6 +9,7 @@ import pytest
 
 from app.analytics.team_lineups import (STREAM_NOTE, STREAMER_NAMES, StreamingProjections, project_team,
                                         project_week, starters, stream_summary, streaming_baseline)
+from app.analytics.trade_assets import AssetBoard, team_needs
 from app.analytics.trade_discovery import SHAPES, TradeSearch, detail
 from app.analytics.trades import evaluate_trade, streaming_enabled, with_streaming
 from app.analytics.waiver_data import streaming_floor
@@ -144,6 +145,14 @@ def test_discovery_totals_equal_the_evaluator_with_streaming():
     assert elite["mine"]["ros_delta"] == 28.0 and streamed["mine"]["ros_delta"] == 20.0
 
 
+def test_team_needs_count_the_streamer_at_its_slot():
+    st = with_streaming(kdst_league())
+    needs = team_needs(st, st.window(), 1, AssetBoard(st, st.window()))
+    assert needs["D/ST"]["slot_points_per_week"] == 5.0              # the stream, not the benched 3 (nor 0)
+    raw = kdst_league()
+    assert team_needs(raw, raw.window(), 1, AssetBoard(raw, raw.window()))["D/ST"]["slot_points_per_week"] == 3.0
+
+
 # -------------------------------------------------------------------- waivers --
 
 def _p(pid, pos, pts):
@@ -171,3 +180,12 @@ def test_waiver_streaming_floor_skips_the_upcoming_week():
     floor = streaming_floor(pool, ctx, {"D/ST": 1, "K": 1})
     assert floor == {"D/ST": {11: 6, 12: 3}, "K": {11: 8}}
     assert streaming_floor(pool, ctx, {"D/ST": 1, "K": 0}) == {"D/ST": {11: 6, 12: 3}}
+
+
+def test_waiver_streaming_floor_ignores_players_on_a_covered_bye():
+    pool = [{"espn_player_id": i, "position": "D/ST", "pro_team": t} for i, t in ((1, "NYJ"), (2, "BUF"), (3, "KC"))]
+    ctx = {"weeks": [10, 11], "projections": {1: {11: 9}, 2: {11: 7}, 3: {11: 6}},
+           "covered": {10, 11}, "games": {("BUF", 11): ("MIA",), ("KC", 11): ("DEN",)}}
+    # NYJ has no week-11 game: its stored 9 never counts, so the #2 option is 6, not 7.
+    assert streaming_floor(pool, ctx, {"D/ST": 1}, rank=2) == {"D/ST": {11: 6}}
+    assert streaming_floor(pool, {**ctx, "covered": {10}}, {"D/ST": 1}, rank=2) == {"D/ST": {11: 7}}   # not covered
