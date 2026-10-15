@@ -63,3 +63,49 @@ export function resolveSort(sp: SearchParams | undefined, mode: string): SortSta
   if (key === fallback.key) return fallback;
   return { key, dir: isApiSort(key) ? "desc" : "asc" };
 }
+
+/**
+ * The backend query for a discovery page URL (`/trades/discover?team=&mode=&shape=…`). The same string goes to
+ * `/api/trades/discover/context`, `/summary` and (with a row `key`) `/evidence`, so all three describe one view.
+ */
+export function discoverQuery(sp: SearchParams): URLSearchParams {
+  const q = new URLSearchParams();
+  const pass = (k: string, apiKey = k) => { const v = first(sp[k]); if (v) q.set(apiKey, v); };
+  pass("team", "team_id");
+  pass("mode");
+  pass("phase");
+  pass("strictness");
+  pass("opponent");
+  pass("category");
+  pass("limit");
+  // The API only takes its own sort keys, and only "All candidates" uses them (to choose which rows survive the limit).
+  const sort = first(sp.sort);
+  if (isApiSort(sort)) q.set("sort", sort);
+  if (first(sp.kdst) === "1") q.set("include_kdst", "true");
+  if (first(sp.exact) === "1") q.set("heuristic", "false");
+  const shapes = sp.shape === undefined ? [] : Array.isArray(sp.shape) ? sp.shape : [sp.shape];
+  if (shapes.length) q.set("shapes", shapes.join(","));
+  return q;
+}
+
+/** Backend query parameters a row's evidence request may carry (everything `discoverQuery` sets, plus `key`). */
+const EVIDENCE_PARAMS = ["team_id", "mode", "phase", "strictness", "opponent", "category", "limit", "sort", "include_kdst",
+  "heuristic", "shapes", "key"] as const;
+
+/** Backend path for one row's evidence, from the browser's `/api/trade-evidence?…` query; `null` without a row key. */
+export function evidencePath(params: URLSearchParams): string | null {
+  if (!params.get("key")) return null;
+  const q = new URLSearchParams();
+  for (const k of EVIDENCE_PARAMS) {
+    const v = params.get(k);
+    if (v) q.set(k, v);
+  }
+  return `/api/trades/discover/evidence?${q.toString()}`;
+}
+
+/** Browser URL for a row's evidence: the view's backend query plus the row key. */
+export function evidenceSrc(query: string, key: string): string {
+  const q = new URLSearchParams(query);
+  q.set("key", key);
+  return `/api/trade-evidence?${q.toString()}`;
+}

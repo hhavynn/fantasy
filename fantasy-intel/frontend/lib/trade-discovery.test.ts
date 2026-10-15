@@ -2,7 +2,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sortRows } from "./sort.ts";
-import { API_SORTS, defaultSort, isApiSort, resolveSort, sortValue, type SortableTrade } from "./trade-discovery.ts";
+import {
+  API_SORTS, defaultSort, discoverQuery, evidencePath, evidenceSrc, isApiSort, resolveSort, sortValue, type SortableTrade,
+} from "./trade-discovery.ts";
 
 const D = (ros: number | null, reg: number | null = ros, po: number | null = ros) => ({ ros_delta: ros, regular_season_delta: reg, playoff_delta: po });
 const T = (over: Partial<SortableTrade> = {}): SortableTrade => ({
@@ -59,4 +61,24 @@ test("sorting keeps rows with missing values last in both directions", () => {
   const bySort = (dir: "asc" | "desc") => sortRows(rows.map((r, i) => ({ r, i })), (x) => sortValue(x.r, "my_gain", x.i), dir).map((x) => x.r.shape);
   assert.deepEqual(bySort("desc"), ["c", "a", "b"]);
   assert.deepEqual(bySort("asc"), ["a", "c", "b"]);
+});
+
+test("the page URL maps onto the backend query the context, summary and evidence endpoints share", () => {
+  assert.equal(discoverQuery({}).toString(), "");
+  assert.equal(
+    discoverQuery({ team: "3", mode: "all", sort: "min_side", dir: "asc", kdst: "1", exact: "1", shape: ["1-for-1", "2-for-1"], limit: "20" }).toString(),
+    "team_id=3&mode=all&limit=20&sort=min_side&include_kdst=true&heuristic=false&shapes=1-for-1%2C2-for-1",
+  );
+  // Table-only sorts and unknown keys never reach the API.
+  assert.equal(discoverQuery({ sort: "partner", kdst: "0", foo: "bar" }).toString(), "");
+});
+
+test("a row's evidence request keeps the view's query and only known parameters reach the backend", () => {
+  const src = evidenceSrc("team_id=3&mode=upside&shapes=1-for-1%2C2-for-1", "2|1-for-1|10|20");
+  const url = new URL(src, "http://x");
+  assert.equal(url.pathname, "/api/trade-evidence");
+  assert.equal(evidencePath(url.searchParams),
+    "/api/trades/discover/evidence?team_id=3&mode=upside&shapes=1-for-1%2C2-for-1&key=2%7C1-for-1%7C10%7C20");
+  assert.equal(evidencePath(new URLSearchParams("key=k&positions=K&evil=1")), "/api/trades/discover/evidence?key=k");
+  assert.equal(evidencePath(new URLSearchParams("mode=all")), null);
 });

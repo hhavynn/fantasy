@@ -3,9 +3,10 @@ or sent to ESPN). See analytics/trade_discovery.py and docs/v2_trade_discovery.m
 
 from __future__ import annotations
 
+import threading
 from collections import OrderedDict
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..analytics.manager_scouting import build_manager_scouting
 from ..analytics.trade_data import load_league_state
@@ -13,7 +14,7 @@ from ..analytics import trade_practical as practical
 from ..analytics.trade_alternatives import FreeAgencyBoard, for_evaluation as trade_vs_free_agency
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
 from ..analytics.trade_discovery import (ALL_SHAPES, CATEGORIES, HEURISTIC_SHAPES, NOTE, SHAPES, SKILL_POSITIONS, SORTS,
-                                         TradeSearch)
+                                         TradeSearch, evaluation)
 from ..analytics.trade_practical import MODES, PHASES, STRICTNESS
 from ..analytics.trades import ASSUMPTIONS, LIMITATIONS, NoRemainingWeeksError, TradeError
 from .deps import data_version, db, one, rows
@@ -24,6 +25,11 @@ router = APIRouter(prefix="/api/trades", tags=["trade discovery"])
 # so a few searches are kept in memory; any database write (or hosted publish) changes data_version and the key.
 _CACHE: OrderedDict = OrderedDict()
 _CACHE_SIZE = 4
+# The finished view (every row with its evidence) for the split page endpoints: the table summary and each
+# row's evidence come from the same computation, so the evidence a row shows is the one it was ranked with.
+_VIEWS: OrderedDict = OrderedDict()
+_VIEWS_SIZE = 8
+_VIEWS_LOCK = threading.Lock()       # rows' evidence requests arrive in parallel
 NEED_HIGH_BAND = 0.66      # the manager-scouting "high need" display band (analytics/manager_scouting.py)
 
 
@@ -99,100 +105,220 @@ def _free_agency_evidence(row: dict) -> None:
 
 DEFAULT_SHAPES = ("1-for-1", "2-for-1", "1-for-2", "2-for-2", "3-for-1", "1-for-3", "3-for-2", "2-for-3")
 
+# Row fields the results table shows; the rest of a row (lineup detail, free-agency comparison, asset tables,
+# manager context, notes) is its evidence, served one row at a time by /discover/evidence.
+SUMMARY_FIELDS = ("key", "shape", "search_method", "anchor_team_id", "opponent_team_id", "opponent_name", "sends",
+                  "receives", "mine", "theirs", "combined_ros_delta", "min_side_ros_delta", "categories", "tier",
+                  "consistent_with_manual_evaluator")
+SUMMARY_ASSET_FIELDS = ("label", "text", "note", "ratio", "you_send_par", "they_send_par")
+EVIDENCE_FIELDS = ("key", "search_method", "opponent_name", "anchor_team_id", "opponent_team_id", "sends", "receives",
+                   "trade_vs_free_agency", "injury_scenarios", "manager_context", "need_notes")
+
+
+class DiscoverParams:
+    """The query parameters shared by every discovery endpoint."""
+
+    def __init__(self, team_id: int | None = None,
+                 mode: str = Query("practical", description=" | ".join(MODES)),
+                 phase: str = Query("ros", description="ros | regular | playoff"),
+                 strictness: str = Query("standard", description=" | ".join(STRICTNESS)),
+                 include_kdst: bool = Query(False, description="also trade kickers and team defenses"),
+                 positions: str | None = Query(None, description="comma-separated tradeable positions (overrides include_kdst)"),
+                 shapes: str = Query(",".join(DEFAULT_SHAPES),
+                                     description="comma-separated; exact: 1-for-1,2-for-1,1-for-2; heuristic: "
+                                                 + ",".join(HEURISTIC_SHAPES)),
+                 sort: str = Query("my_gain", description="'all' mode only: " + " | ".join(SORTS)),
+                 category: str | None = Query(None, description="'all' mode only"),
+                 opponent: int | None = None,
+                 limit: int = Query(10, ge=1, le=50), heuristic: bool = True):
+        self.team_id, self.mode, self.phase, self.strictness = team_id, mode, phase, strictness
+        self.include_kdst, self.positions, self.shapes, self.sort = include_kdst, positions, shapes, sort
+        self.category, self.opponent, self.limit, self.heuristic = category, opponent, limit, heuristic
+
+
+class _Resolved:
+    """Validated parameters plus the league they apply to."""
+
+    def __init__(self, lg, teams, team_id, state, shape_list, pos):
+        self.lg, self.teams, self.team_id, self.state, self.shape_list, self.pos = lg, teams, team_id, state, shape_list, pos
+
+
+def _resolve(con, p: DiscoverParams) -> _Resolved:
+    lg = one(con, "SELECT league_id, season, name, current_week, final_scoring_period FROM leagues "
+                  "ORDER BY synced_at DESC LIMIT 1")
+    if not lg:
+        raise HTTPException(503, "ESPN league not synced yet. Run scripts/sync_espn.py.")
+    teams = rows(con, "SELECT team_id, name, abbrev, is_mine FROM fantasy_teams WHERE league_id=? AND season=? "
+                      "ORDER BY team_id", [lg["league_id"], lg["season"]])
+    team_id = p.team_id
+    if team_id is None:
+        mine = [t for t in teams if t["is_mine"]]
+        if not mine:
+            raise HTTPException(422, "No team is marked as yours (is_mine); pass team_id.")
+        team_id = mine[0]["team_id"]
+    if team_id not in {t["team_id"] for t in teams}:
+        raise HTTPException(404, "Unknown team")
+    if p.mode not in MODES or p.phase not in PHASES or p.strictness not in STRICTNESS:
+        raise HTTPException(422, f"mode must be one of {', '.join(MODES)}; phase one of {', '.join(PHASES)}; "
+                                 f"strictness one of {', '.join(STRICTNESS)}")
+    if p.sort not in SORTS:
+        raise HTTPException(422, f"sort must be one of {', '.join(SORTS)}")
+    state = load_league_state(con, lg["season"])
+    if state is None:
+        raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
+    shape_list = tuple(x for x in ALL_SHAPES if x in {y.strip() for y in p.shapes.split(",") if y.strip()})
+    if not shape_list or {y.strip() for y in p.shapes.split(",") if y.strip()} - set(ALL_SHAPES):
+        raise HTTPException(422, f"shapes must be among {', '.join(ALL_SHAPES)}")
+    pos = tuple(sorted({x.strip() for x in p.positions.split(",") if x.strip()})) if p.positions else \
+        tuple(SKILL_POSITIONS) + (("K", "D/ST") if p.include_kdst else ())
+    return _Resolved(lg, teams, team_id, state, shape_list, pos)
+
+
+def _context(r: _Resolved, p: DiscoverParams, ev: dict) -> dict:
+    """What the page header and filters need: the league, the teams, the window and the echoed query."""
+    return {
+        "league": r.lg, "anchor": next(t for t in r.teams if t["team_id"] == r.team_id), "teams": r.teams,
+        "evaluation": ev,
+        "query": {"team_id": r.team_id, "mode": p.mode, "phase": p.phase, "strictness": p.strictness,
+                  "positions": list(r.pos), "include_kdst": any(x in r.pos for x in ("K", "D/ST")),
+                  "shapes": list(r.shape_list), "sort": p.sort, "category": p.category, "opponent": p.opponent,
+                  "limit": p.limit, "heuristic": p.heuristic},
+        "mode_text": MODES[p.mode],
+        "modes": MODES, "phases": list(PHASES), "strictness_options": STRICTNESS,
+        "categories": CATEGORIES, "sorts": list(SORTS), "exact_shapes": list(SHAPES),
+        "heuristic_shapes": list(HEURISTIC_SHAPES),
+    }
+
+
+def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
+    state, team_id, pos = r.state, r.team_id, r.pos
+    board = FreeAgencyBoard(state, state.window())
+    try:
+        ts = _search(con, state, team_id, r.shape_list, pos)
+        out = practical.discover(ts, p.mode, p.phase, p.opponent, p.limit, p.strictness, p.sort, p.category or None,
+                                 p.heuristic, board=board)
+    except NoRemainingWeeksError as err:
+        raise HTTPException(409, str(err))
+    except (TradeError, ValueError) as err:
+        raise HTTPException(422, str(err))
+    names = {pl.espn_player_id: {"name": pl.name, "position": pl.position, "pro_team": pl.pro_team,
+                                 "on_ir": pl.on_ir, "injury_status": pl.injury_status,
+                                 "nfl_ineligible_weeks": sorted(pl.unavailable_weeks)}
+             for ps in state.rosters.values() for pl in ps}
+    shown = [x for items in out["sections"].values() for x in items]
+    ctx = {opp: _manager_context(con, opp) for opp in sorted({x["opponent_team_id"] for x in shown})}
+    for x in shown:
+        x["manager_context"] = ctx.get(x["opponent_team_id"])
+        x["need_notes"] = _need_notes(x, x["manager_context"], names)
+        x["trade_vs_free_agency"] = trade_vs_free_agency(
+            state, {"team_a": x["mine_detail"], "team_b": x["theirs_detail"]}, team_id, x["opponent_team_id"],
+            x["sends"], x["receives"], board=board, labels={team_id: "You"})
+        _free_agency_evidence(x)
+    search = dict(out["coverage"]["exact"] or {})
+    search["consistency_checked"] = out["consistency_checked"]
+    search["consistency_failures"] = out["consistency_failures"]
+    kdst = any(x in pos for x in ("K", "D/ST"))
+    return {
+        **_context(r, p, ts.evaluation()),
+        **{k: out[k] for k in ("mode_text", "sections", "tiers", "excluded", "pool_rule", "pool_size", "coverage",
+                               "opponents", "my_needs", "asset_note", "asset_thresholds")},
+        "results": shown, "search": search, "names": names,
+        "kdst_policy": ("Kickers and team defenses are left out of automatic discovery by default: ESPN's weekly "
+                        "D/ST and K projections swing with matchups, both positions are routinely streamed from "
+                        "free agents, and the lineup delta does not credit the other team with that streaming. "
+                        "They stay fully available in the manual analyzer."
+                        if not kdst else
+                        "Kickers and team defenses are included. Their asset value is measured above the best "
+                        "available free agent at the position each week (the streaming baseline)."),
+        "availability_note": AVAILABILITY_NOTE,
+        "note": NOTE, "assumptions": ASSUMPTIONS, "limitations": LIMITATIONS + [
+            "Exact discovery covers 1-for-1, 2-for-1 and 1-for-2 trades with one other team (proven top lists). "
+            "Larger shapes come from a bounded beam search: exact rows, not a proven top list. Multi-team trades "
+            "are not searched.",
+            "A roster need or asset balance is not a willingness to trade; nothing here estimates acceptance.",
+        ],
+    }
+
+
+def _view(con, r: _Resolved, p: DiscoverParams) -> dict:
+    """The full discovery payload, memoized per database version, evaluation window and query. Treat as read-only."""
+    reason = r.state.start_week_reason or {}
+    key = (data_version(con), r.team_id, r.shape_list, r.pos, r.state.start_week, bool(reason.get("uncertain")),
+           reason.get("reason"), reason.get("warning"), p.mode, p.phase, p.strictness, p.sort, p.category, p.opponent,
+           p.limit, p.heuristic)
+    with _VIEWS_LOCK:
+        if key in _VIEWS:
+            _VIEWS.move_to_end(key)
+            return _VIEWS[key]
+    view = _build(con, r, p)
+    with _VIEWS_LOCK:
+        _VIEWS[key] = view
+        while len(_VIEWS) > _VIEWS_SIZE:
+            _VIEWS.popitem(last=False)
+    return view
+
+
+def _summary_row(x: dict) -> dict:
+    mc = x.get("manager_context")
+    return {**{k: x[k] for k in SUMMARY_FIELDS},
+            "asset_balance": {k: x["asset_balance"][k] for k in SUMMARY_ASSET_FIELDS},
+            "rationale": {"trade_type": x["rationale"]["trade_type"], "concerns": x["rationale"]["concerns"]},
+            "manager_context": None if mc is None else {"trade_history": {
+                k: mc["trade_history"][k] for k in ("completed_trades", "confidence")}}}
+
+
+def _evidence(x: dict) -> dict:
+    ab, mine, theirs = x["asset_balance"], x["mine_detail"], x["theirs_detail"]
+    return {**{k: x[k] for k in EVIDENCE_FIELDS},
+            "rationale": {"points": x["rationale"]["points"], "concerns": x["rationale"]["concerns"]},
+            "asset_balance": {k: ab[k] for k in ("you_send", "they_send", "caveats")},
+            "mine_detail": {k: mine[k] for k in ("team_id", "team_name", "fit_notes")},
+            "theirs_detail": {k: theirs[k] for k in ("team_id", "team_name", "fit_notes")}}
+
 
 @router.get("/discover")
-def discover(team_id: int | None = None,
-             mode: str = Query("practical", description=" | ".join(MODES)),
-             phase: str = Query("ros", description="ros | regular | playoff"),
-             strictness: str = Query("standard", description=" | ".join(STRICTNESS)),
-             include_kdst: bool = Query(False, description="also trade kickers and team defenses"),
-             positions: str | None = Query(None, description="comma-separated tradeable positions (overrides include_kdst)"),
-             shapes: str = Query(",".join(DEFAULT_SHAPES),
-                                 description="comma-separated; exact: 1-for-1,2-for-1,1-for-2; heuristic: "
-                                             + ",".join(HEURISTIC_SHAPES)),
-             sort: str = Query("my_gain", description="'all' mode only: " + " | ".join(SORTS)),
-             category: str | None = Query(None, description="'all' mode only"),
-             opponent: int | None = None,
-             limit: int = Query(10, ge=1, le=50), heuristic: bool = True):
+def discover(p: DiscoverParams = Depends()):
     """Hypothetical trade opportunities for one team (default: yours). Every row is the exact lineup
     simulation for both teams; modes only decide which rows are shown and how they are explained."""
     with db() as con:
-        lg = one(con, "SELECT league_id, season, name, current_week, final_scoring_period FROM leagues "
-                      "ORDER BY synced_at DESC LIMIT 1")
-        if not lg:
-            raise HTTPException(503, "ESPN league not synced yet. Run scripts/sync_espn.py.")
-        teams = rows(con, "SELECT team_id, name, abbrev, is_mine FROM fantasy_teams WHERE league_id=? AND season=? "
-                          "ORDER BY team_id", [lg["league_id"], lg["season"]])
-        if team_id is None:
-            mine = [t for t in teams if t["is_mine"]]
-            if not mine:
-                raise HTTPException(422, "No team is marked as yours (is_mine); pass team_id.")
-            team_id = mine[0]["team_id"]
-        if team_id not in {t["team_id"] for t in teams}:
-            raise HTTPException(404, "Unknown team")
-        if mode not in MODES or phase not in PHASES or strictness not in STRICTNESS:
-            raise HTTPException(422, f"mode must be one of {', '.join(MODES)}; phase one of {', '.join(PHASES)}; "
-                                     f"strictness one of {', '.join(STRICTNESS)}")
-        if sort not in SORTS:
-            raise HTTPException(422, f"sort must be one of {', '.join(SORTS)}")
-        state = load_league_state(con, lg["season"])
-        if state is None:
-            raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
-        shape_list = tuple(x for x in ALL_SHAPES if x in {y.strip() for y in shapes.split(",") if y.strip()})
-        if not shape_list or {y.strip() for y in shapes.split(",") if y.strip()} - set(ALL_SHAPES):
-            raise HTTPException(422, f"shapes must be among {', '.join(ALL_SHAPES)}")
-        pos = tuple(sorted({x.strip() for x in positions.split(",") if x.strip()})) if positions else \
-            tuple(SKILL_POSITIONS) + (("K", "D/ST") if include_kdst else ())
-        board = FreeAgencyBoard(state, state.window())
-        try:
-            ts = _search(con, state, team_id, shape_list, pos)
-            out = practical.discover(ts, mode, phase, opponent, limit, strictness, sort, category or None, heuristic,
-                                     board=board)
-        except NoRemainingWeeksError as err:
-            raise HTTPException(409, str(err))
-        except (TradeError, ValueError) as err:
-            raise HTTPException(422, str(err))
-        names = {p.espn_player_id: {"name": p.name, "position": p.position, "pro_team": p.pro_team,
-                                    "on_ir": p.on_ir, "injury_status": p.injury_status,
-                                    "nfl_ineligible_weeks": sorted(p.unavailable_weeks)}
-                 for ps in state.rosters.values() for p in ps}
-        shown = [r for items in out["sections"].values() for r in items]
-        ctx = {opp: _manager_context(con, opp) for opp in sorted({r["opponent_team_id"] for r in shown})}
-        for r in shown:
-            r["manager_context"] = ctx.get(r["opponent_team_id"])
-            r["need_notes"] = _need_notes(r, r["manager_context"], names)
-            r["trade_vs_free_agency"] = trade_vs_free_agency(
-                state, {"team_a": r["mine_detail"], "team_b": r["theirs_detail"]}, team_id, r["opponent_team_id"],
-                r["sends"], r["receives"], board=board, labels={team_id: "You"})
-            _free_agency_evidence(r)
-        search = dict(out["coverage"]["exact"] or {})
-        search["consistency_checked"] = out["consistency_checked"]
-        search["consistency_failures"] = out["consistency_failures"]
-        kdst = any(p in pos for p in ("K", "D/ST"))
-        return {
-            "league": lg, "anchor": next(t for t in teams if t["team_id"] == team_id), "teams": teams,
-            "evaluation": ts.evaluation(),
-            "query": {"team_id": team_id, "mode": mode, "phase": phase, "strictness": strictness,
-                      "positions": list(pos), "include_kdst": kdst, "shapes": list(shape_list), "sort": sort,
-                      "category": category, "opponent": opponent, "limit": limit, "heuristic": heuristic},
-            **{k: out[k] for k in ("mode_text", "sections", "tiers", "excluded", "pool_rule", "pool_size", "coverage",
-                                   "opponents", "my_needs", "asset_note", "asset_thresholds")},
-            "results": shown, "search": search, "names": names,
-            "modes": MODES, "phases": list(PHASES), "strictness_options": STRICTNESS,
-            "categories": CATEGORIES, "sorts": list(SORTS), "exact_shapes": list(SHAPES),
-            "heuristic_shapes": list(HEURISTIC_SHAPES),
-            "kdst_policy": ("Kickers and team defenses are left out of automatic discovery by default: ESPN's weekly "
-                            "D/ST and K projections swing with matchups, both positions are routinely streamed from "
-                            "free agents, and the lineup delta does not credit the other team with that streaming. "
-                            "They stay fully available in the manual analyzer."
-                            if not kdst else
-                            "Kickers and team defenses are included. Their asset value is measured above the best "
-                            "available free agent at the position each week (the streaming baseline)."),
-            "availability_note": AVAILABILITY_NOTE,
-            "note": NOTE, "assumptions": ASSUMPTIONS, "limitations": LIMITATIONS + [
-                "Exact discovery covers 1-for-1, 2-for-1 and 1-for-2 trades with one other team (proven top lists). "
-                "Larger shapes come from a bounded beam search: exact rows, not a proven top list. Multi-team trades "
-                "are not searched.",
-                "A roster need or asset balance is not a willingness to trade; nothing here estimates acceptance.",
-            ],
-        }
+        r = _resolve(con, p)
+        return _build(con, r, p)
+
+
+@router.get("/discover/context")
+def discover_context(p: DiscoverParams = Depends()):
+    """The page header and filters for a discovery query, without running the search: league, teams, the
+    evaluation window and the validated query echo (the same fields /discover returns)."""
+    with db() as con:
+        r = _resolve(con, p)
+        if r.state.start_week is None:       # the same 409 the search raises (analytics/trade_discovery.py)
+            reason = (r.state.start_week_reason or {}).get("reason") or "no actionable week"
+            raise HTTPException(409, f"No remaining fantasy scoring periods ({reason}); there are no trades to discover.")
+        return _context(r, p, evaluation(r.state, r.state.window()))
+
+
+@router.get("/discover/summary")
+def discover_summary(p: DiscoverParams = Depends()):
+    """/discover with each row cut to what the results table shows. Every number, tier, concern and caveat is the
+    same computation; a row's evidence comes from /discover/evidence. `names` covers only the players shown."""
+    with db() as con:
+        r = _resolve(con, p)
+        view = _view(con, r, p)
+    sections = {k: [_summary_row(x) for x in items] for k, items in view["sections"].items()}
+    shown = {pid for items in view["sections"].values() for x in items for pid in x["sends"] + x["receives"]}
+    shown |= {pid for o in view["opponents"] if o["best"] for pid in o["best"]["sends"] + o["best"]["receives"]}
+    return {**{k: v for k, v in view.items() if k not in ("sections", "results", "names")},
+            "sections": sections, "names": {pid: n for pid, n in view["names"].items() if pid in shown}}
+
+
+@router.get("/discover/evidence")
+def discover_evidence(key: str, p: DiscoverParams = Depends()):
+    """The evidence for one row of a discovery view (same query parameters plus the row's `key`): why the trade
+    is listed, its concerns, the free-agency comparison, the asset table, lineup fit and manager context."""
+    with db() as con:
+        r = _resolve(con, p)
+        view = _view(con, r, p)
+    row = next((x for x in view["results"] if x["key"] == key), None)
+    if row is None:
+        raise HTTPException(404, "That trade is not in this discovery view")
+    return _evidence(row)

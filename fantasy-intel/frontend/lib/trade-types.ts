@@ -142,6 +142,31 @@ export type DiscoveryV3 = {
   kdst_policy: string; availability_note: string; note: string; assumptions: string[]; limitations: string[];
 };
 
+/** The page header and filters (`GET /api/trades/discover/context`): no search is run. */
+export type DiscoveryContext = Pick<DiscoveryV3, "league" | "anchor" | "teams" | "evaluation" | "query" | "mode_text" | "modes"
+  | "phases" | "strictness_options" | "categories" | "sorts" | "exact_shapes" | "heuristic_shapes">;
+
+/** One results-table row (`GET /api/trades/discover/summary`); the rest of the row is its `DEvidence`. */
+export type DSummaryRow = Pick<DRow, "key" | "shape" | "search_method" | "anchor_team_id" | "opponent_team_id" | "opponent_name"
+  | "sends" | "receives" | "mine" | "theirs" | "combined_ros_delta" | "min_side_ros_delta" | "categories"> & {
+  tier: string; consistent_with_manual_evaluator: boolean;
+  asset_balance: Pick<AssetBalance, "label" | "text" | "note" | "ratio" | "you_send_par" | "they_send_par">;
+  rationale: { trade_type: { kind: string; text: string }; concerns: string[] };
+  manager_context: { trade_history: Pick<ManagerContext["trade_history"], "completed_trades" | "confidence"> } | null;
+};
+
+/** `/discover` with each row cut to its table summary; `names` covers only the players shown. */
+export type DiscoverySummary = Omit<DiscoveryV3, "sections"> & { sections: Record<string, DSummaryRow[]> };
+
+/** One row's evidence (`GET /api/trades/discover/evidence`, proxied by `/api/trade-evidence`). */
+export type DEvidence = Pick<DResult, "key" | "search_method" | "opponent_name" | "anchor_team_id" | "opponent_team_id" | "sends"
+  | "receives" | "trade_vs_free_agency" | "injury_scenarios" | "manager_context" | "need_notes"> & {
+  rationale: { points: string[]; concerns: string[] };
+  asset_balance: Pick<AssetBalance, "you_send" | "they_send" | "caveats">;
+  mine_detail: Pick<DSide, "team_id" | "team_name" | "fit_notes">;
+  theirs_detail: Pick<DSide, "team_id" | "team_name" | "fit_notes">;
+};
+
 // ------------------------------------------------------- trade vs. free agency (V3.1) --
 // analytics/trade_alternatives.py: one hypothetical acquisition next to the canonical delta (never in it).
 

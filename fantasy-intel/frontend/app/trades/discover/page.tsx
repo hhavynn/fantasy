@@ -1,17 +1,19 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
-import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import {
-  Badge, Delta, EmptyState, Method, Notice, PageHeader, Pos, Section, SortableTh, Stat, StatStrip, Tabs, VisuallyHidden,
+  Badge, Delta, EmptyState, Method, Notice, PageHeader, Pos, Section, Skeleton, SkeletonStatStrip, SkeletonTable, SortableTh, Stat, StatStrip,
+  Tabs, VisuallyHidden,
 } from "@/components/ui";
-import { api } from "@/lib/api";
-import { num, signed } from "@/lib/format";
+import { api, type ApiResult } from "@/lib/api";
+import { signed } from "@/lib/format";
 import { nextDir, sortHref, sortRows } from "@/lib/sort";
-import { isApiSort, resolveSort, sortValue } from "@/lib/trade-discovery";
+import { discoverQuery, evidenceSrc, resolveSort, sortValue } from "@/lib/trade-discovery";
 import { signedText } from "@/lib/trade-format";
-import type { DResult, DiscoveryV3, NeedRow } from "@/lib/trade-types";
+import type { DSummaryRow, DiscoveryContext, DiscoverySummary, NeedRow } from "@/lib/trade-types";
 import type { TradeDeltas } from "@/lib/types";
+import { TradeEvidence } from "./TradeEvidence";
 import styles from "./discover.module.css";
 
 export const metadata = { title: "Discover trades" };
@@ -19,6 +21,9 @@ export const metadata = { title: "Discover trades" };
 // Trade Discovery. Every number is the exact weekly optimal-lineup simulation on ESPN's projections
 // (the manual analyzer's computation). Modes decide which exact trades are shown and how they are
 // explained; asset balance is a separate diagnostic. No trade grade, no acceptance probability.
+//
+// The page streams: the header and filters come from the light `/discover/context` call, the search result
+// (`/discover/summary`) streams in below them, and each row's evidence loads when its panel opens (TradeEvidence).
 
 const MODE_LABEL: Record<string, string> = {
   practical: "Practical trades", mutual: "Mutual improvement", upside: "Maximum upside", all: "All candidates",
@@ -40,35 +45,14 @@ const why = "Incomplete: a rostered player with an NFL team has no ESPN projecti
 
 type Params = Record<string, string | string[] | undefined>;
 
-function one(v: string | string[] | undefined): string | undefined {
-  return Array.isArray(v) ? v[0] : v;
-}
-
-function many(v: string | string[] | undefined): string[] {
-  return v === undefined ? [] : Array.isArray(v) ? v : [v];
-}
-
 const label = (k: string) => k.toLowerCase().replaceAll("_", " ").replace(/^\w/, (c) => c.toUpperCase());
 
 export default async function DiscoverPage({ searchParams }: PageProps<"/trades/discover">) {
   const sp = await searchParams;
-  const q = new URLSearchParams();
-  const pass = (k: string, apiKey = k) => { const v = one(sp[k]); if (v) q.set(apiKey, v); };
-  pass("team", "team_id");
-  pass("mode");
-  pass("phase");
-  pass("strictness");
-  pass("opponent");
-  pass("category");
-  pass("limit");
-  // The API only takes its own sort keys, and only "All candidates" uses them (to choose which rows survive the limit).
-  const sort = one(sp.sort);
-  if (isApiSort(sort)) q.set("sort", sort);
-  if (one(sp.kdst) === "1") q.set("include_kdst", "true");
-  if (one(sp.exact) === "1") q.set("heuristic", "false");
-  const shapes = many(sp.shape);
-  if (shapes.length) q.set("shapes", shapes.join(","));
-  const res = await api<DiscoveryV3>(`/api/trades/discover?${q.toString()}`);
+  const q = discoverQuery(sp).toString();
+  // Start the search now; the header only waits for the light context call, the results stream in below it.
+  const summary = api<DiscoverySummary>(`/api/trades/discover/summary?${q}`);
+  const res = await api<DiscoveryContext>(`/api/trades/discover/context?${q}`);
   return (
     <div className="stack">
       {!res.ok ? (
@@ -76,13 +60,13 @@ export default async function DiscoverPage({ searchParams }: PageProps<"/trades/
           <PageHeader title="Trade discovery" actions={<Link href="/trades">Trade analyzer</Link>} />
           <BackendProblem error={res.error} kind={res.kind} status={res.status} />
         </>
-      ) : <Body d={res.data} sp={sp} />}
+      ) : <Body c={res.data} summary={summary} q={q} sp={sp} />}
     </div>
   );
 }
 
 /** Link to this page with the current query overridden by `over` (undefined removes a key). Sorting is dropped. */
-function hrefFor(d: DiscoveryV3, over: Record<string, string | undefined>) {
+function hrefFor(d: Pick<DiscoveryContext, "query">, over: Record<string, string | undefined>) {
   const base: Record<string, string | undefined> = {
     team: String(d.query.team_id), mode: d.query.mode, phase: d.query.phase, strictness: d.query.strictness,
     opponent: d.query.opponent === null ? undefined : String(d.query.opponent),
@@ -95,19 +79,16 @@ function hrefFor(d: DiscoveryV3, over: Record<string, string | undefined>) {
   return `/trades/discover?${p.toString()}`;
 }
 
-function analyzerHref(r: DResult) {
+function analyzerHref(r: DSummaryRow) {
   const q = new URLSearchParams({ ta: String(r.anchor_team_id), tb: String(r.opponent_team_id) });
   r.sends.forEach((id) => q.append("a", String(id)));
   r.receives.forEach((id) => q.append("b", String(id)));
   return `/trades?${q.toString()}`;
 }
 
-function Body({ d, sp }: { d: DiscoveryV3; sp: Params }) {
+function Body({ c: d, summary, q, sp }: { c: DiscoveryContext; summary: Promise<ApiResult<DiscoverySummary>>; q: string; sp: Params }) {
   const ev = d.evaluation;
-  const rows = Object.entries(d.sections).flatMap(([tier, items]) => items.map((r) => ({ tier, r })));
-  const total = rows.length;
   const modeHref = (m: string) => hrefFor(d, { mode: m });
-  const excluded = d.excluded.lopsided + d.excluded.one_sided;
   return (
     <>
       <PageHeader
@@ -124,9 +105,41 @@ function Body({ d, sp }: { d: DiscoveryV3; sp: Params }) {
       {ev.uncertain && ev.warning && <Notice tone="caution">{ev.warning}</Notice>}
 
       <Filters d={d} />
+
+      <Suspense key={q} fallback={<ResultsSkeleton />}>
+        <Discovered summary={summary} q={q} sp={sp} />
+      </Suspense>
+    </>
+  );
+}
+
+/** Stands in for the coverage strip and the results table while the search runs (as in loading.tsx). */
+function ResultsSkeleton() {
+  return (
+    <div className="stack" role="status" aria-busy="true">
+      <VisuallyHidden>Searching for trades…</VisuallyHidden>
+      <SkeletonStatStrip n={4} />
+      <Section title={<Skeleton w={160} h={14} />} flush>
+        <SkeletonTable rows={8} cols={7} />
+      </Section>
+    </div>
+  );
+}
+
+/** Everything that needs the search: coverage, the trades, the per-manager view and the method notes. */
+async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<DiscoverySummary>>; q: string; sp: Params }) {
+  const res = await summary;
+  if (!res.ok) return <BackendProblem error={res.error} kind={res.kind} status={res.status} />;
+  const d = res.data;
+  const ev = d.evaluation;
+  const rows = Object.entries(d.sections).flatMap(([tier, items]) => items.map((r) => ({ tier, r })));
+  const total = rows.length;
+  const excluded = d.excluded.lopsided + d.excluded.one_sided;
+  return (
+    <>
       <Coverage d={d} />
 
-      <Results d={d} rows={rows} total={total} excluded={excluded} sp={sp} />
+      <Results d={d} rows={rows} total={total} excluded={excluded} q={q} sp={sp} />
 
       <Managers d={d} />
 
@@ -149,7 +162,7 @@ function Body({ d, sp }: { d: DiscoveryV3; sp: Params }) {
 
 // ---------------------------------------------------------------------------------- filters --
 
-function Filters({ d }: { d: DiscoveryV3 }) {
+function Filters({ d }: { d: DiscoveryContext }) {
   const qy = d.query;
   const allMode = qy.mode === "all";
   return (
@@ -244,7 +257,7 @@ function Filters({ d }: { d: DiscoveryV3 }) {
   );
 }
 
-function Coverage({ d }: { d: DiscoveryV3 }) {
+function Coverage({ d }: { d: DiscoverySummary }) {
   const ex = d.coverage.exact, he = d.coverage.heuristic;
   return (
     <StatStrip>
@@ -271,7 +284,7 @@ function Coverage({ d }: { d: DiscoveryV3 }) {
 
 // ----------------------------------------------------------------------------------- results --
 
-function Players({ ids, d }: { ids: number[]; d: DiscoveryV3 }) {
+function Players({ ids, d }: { ids: number[]; d: DiscoverySummary }) {
   return (
     <ul className={styles.players}>
       {ids.map((id) => {
@@ -302,8 +315,8 @@ function DeltaCell({ v }: { v: TradeDeltas }) {
   );
 }
 
-function Results({ d, rows, total, excluded, sp }: {
-  d: DiscoveryV3; rows: { tier: string; r: DResult }[]; total: number; excluded: number; sp: Params;
+function Results({ d, rows, total, excluded, q, sp }: {
+  d: DiscoverySummary; rows: { tier: string; r: DSummaryRow }[]; total: number; excluded: number; q: string; sp: Params;
 }) {
   const href = hrefFor;
   const sort = resolveSort(sp, d.query.mode);
@@ -367,7 +380,7 @@ function Results({ d, rows, total, excluded, sp }: {
                 <th scope="col"><VisuallyHidden>Open trade in analyzer</VisuallyHidden></th>
               </tr>
             </thead>
-            {sorted.map(({ tier, r }) => <TradeRows key={r.key} tier={tier} r={r} d={d} />)}
+            {sorted.map(({ tier, r }) => <TradeRows key={r.key} tier={tier} r={r} d={d} q={q} />)}
           </table>
         </div>
       )}
@@ -375,7 +388,7 @@ function Results({ d, rows, total, excluded, sp }: {
   );
 }
 
-function TradeRows({ tier, r, d }: { tier: string; r: DResult; d: DiscoveryV3 }) {
+function TradeRows({ tier, r, d, q }: { tier: string; r: DSummaryRow; d: DiscoverySummary; q: string }) {
   const b = r.asset_balance;
   const concerns = r.rationale.concerns;
   const mc = r.manager_context;
@@ -409,75 +422,10 @@ function TradeRows({ tier, r, d }: { tier: string; r: DResult; d: DiscoveryV3 })
       </tr>
       <tr className={styles.detailRow}>
         <td colSpan={10} className={styles.detailCell}>
-          <details className={styles.detail}>
-            <summary>Why this trade, concerns and evidence</summary>
-            <div className={styles.detailBody}>
-              <div className={styles.tags}>
-                <Badge value={r.search_method === "exact" ? "exact search" : "heuristic search"} tone={r.search_method === "exact" ? "info" : ""}
-                  title={r.search_method === "exact" ? "From the proven exact search" : "From the bounded beam search (the row itself is exact)"} />
-              </div>
-              {concerns.length > 0 && (
-                <Notice tone="caution" title="Concerns">
-                  <ul className={styles.list}>{concerns.map((c, i) => <li key={i}>{c}</li>)}</ul>
-                </Notice>
-              )}
-              {r.rationale.points.length > 0 && <ul className={styles.list}>{r.rationale.points.map((p, i) => <li key={i}>{p}</li>)}</ul>}
-              <TradeVsFreeAgency t={r.trade_vs_free_agency} only="team_a" />
-              <AssetTable r={r} />
-              <div className={styles.cols}>
-                {[{ s: r.mine_detail, t: `${r.mine_detail.team_name} (you)` }, { s: r.theirs_detail, t: r.theirs_detail.team_name ?? "Them" }].map(({ s, t }) => (
-                  <div key={s.team_id}>
-                    <h4>{t}</h4>
-                    <ul className={styles.list}>{s.fit_notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
-                  </div>
-                ))}
-              </div>
-              {r.injury_scenarios.length > 0 && (
-                <p className={styles.small}>Injury return scenarios (earliest return, delayed, none) are in the analyzer: <Link href={analyzerHref(r)}>open</Link>.</p>
-              )}
-              {r.manager_context && (
-                <p className={styles.mgrNote}>{r.opponent_name}: {r.manager_context.trade_history.completed_trades} completed trades
-                  ({r.manager_context.trade_history.confidence.toLowerCase()} confidence). {r.manager_context.note}</p>
-              )}
-              {r.need_notes.map((n, i) => <p key={i} className={styles.mgrNote}>{n}</p>)}
-            </div>
-          </details>
+          <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} />
         </td>
       </tr>
     </tbody>
-  );
-}
-
-function AssetTable({ r }: { r: DResult }) {
-  const rows = [...r.asset_balance.you_send.map((p) => ({ p, who: "you send" })), ...r.asset_balance.they_send.map((p) => ({ p, who: "they send" }))];
-  return (
-    <div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Player</th><th>Side</th>
-              <th className="num" title="ESPN points above the best available free agent at his position, over his NFL-eligible weeks">Pts above repl.</th>
-              <th className="num">Repl. / wk</th><th>Position rank</th><th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ p, who }) => (
-              <tr key={p.espn_player_id}>
-                <td>{p.name} <Pos value={p.position} /></td>
-                <td className="faint">{who}</td>
-                <td className="num">{p.par === null ? <span title="Missing projections">incomplete ({p.known_par.toFixed(0)} known)</span> : p.par.toFixed(1)}</td>
-                <td className="num faint">{num(p.replacement_per_week, 1)}</td>
-                <td>{p.position_rank ? <>{p.position}{p.position_rank} of {p.position_rank_of} {p.starter_caliber && <Badge value="starter-caliber" tone="info" title={`Within the league's ${p.league_starters_at_position} starters at ${p.position}`} />}</> : "—"}</td>
-                <td className="faint wrap">{[p.replacement_source.join("; "), p.nfl_ineligible_weeks.length ? `NFL-ineligible weeks ${p.nfl_ineligible_weeks.join(", ")} not counted` : "",
-                  p.eligibility_unknown ? "NFL eligibility unknown" : "", p.return_unconfirmed ? "return not confirmed" : ""].filter(Boolean).join(" · ")}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {r.asset_balance.caveats.length > 0 && <ul className={styles.list}>{r.asset_balance.caveats.map((c, i) => <li key={i} className="faint">{c}</li>)}</ul>}
-    </div>
   );
 }
 
@@ -490,7 +438,7 @@ function needText(needs: Record<string, NeedRow>) {
     + (unknown.length ? ` · unknown (missing projections): ${unknown.join(", ")}` : "");
 }
 
-function Managers({ d }: { d: DiscoveryV3 }) {
+function Managers({ d }: { d: DiscoverySummary }) {
   const nm = (ids: number[]) => ids.map((id) => d.names[id]?.name ?? `#${id}`).join(" + ");
   return (
     <Section title="By manager" flush
