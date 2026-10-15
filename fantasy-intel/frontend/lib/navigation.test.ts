@@ -22,6 +22,12 @@ test("nested trade routes: the longest match wins", () => {
   assert.equal(group("/trades/discover"), "Trades");
 });
 
+test("the weekly recap sits in League after Schedule, so the palette lists it", () => {
+  assert.equal(getActiveRoute("/weekly-recap").activeHref, "/weekly-recap");
+  assert.equal(group("/weekly-recap"), "League");
+  assert.deepEqual(NAV_GROUPS[3].pages.map((p) => p.href).slice(0, 2), ["/schedule-intelligence", "/weekly-recap"]);
+});
+
 test("detail pages activate their list page", () => {
   assert.equal(getActiveRoute("/managers/123").activeHref, "/managers");
   assert.equal(group("/managers/123"), "League");
@@ -47,7 +53,7 @@ test("every page appears once and every group has pages", () => {
   assert.deepEqual(NAV_GROUPS.map((g) => g.label), ["My team", "Players", "Trades", "League"]);
   assert.ok(NAV_GROUPS.every((g) => g.pages.length > 0));
   for (const href of ["/", "/matchup", "/start-sit", "/my-team/value", "/players", "/waivers", "/trades", "/trades/discover",
-    "/schedule-intelligence", "/luck-lab", "/playoff-race", "/managers"]) {
+    "/schedule-intelligence", "/weekly-recap", "/luck-lab", "/playoff-race", "/managers"]) {
     assert.ok(hrefs.includes(href), `${href} missing from navigation`);
   }
 });
