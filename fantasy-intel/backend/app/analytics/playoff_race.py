@@ -160,13 +160,18 @@ def _side(team: dict | None, weeks: list[int], names: dict[int, str]) -> dict:
             "_total": known if complete else None}
 
 
-def classify_matchups(data: RaceData, team_proj: dict[int, dict | None]) -> tuple[list[dict], list[dict]]:
-    """(regular-season matchups with status and projection, known playoff matchups)."""
+def classify_matchups(data: RaceData, team_proj: dict[int, dict | None]) -> tuple[list[dict], list[dict], list[int]]:
+    """(regular-season matchups with status and projection, known playoff matchups, ids of matchups
+    ESPN sent without a matchup period: they cannot be placed in the schedule, so they are left out
+    of every grouping and reported)."""
     lg, sched, start = data.league, data.schedule_settings, data.state.start_week
     names = {p.espn_player_id: p.name for ps in data.state.rosters.values() for p in ps}
     team_names = {t["team_id"]: t["name"] for t in data.teams}
-    regular, playoff = [], []
+    regular, playoff, no_period = [], [], []
     for m in data.matchups:
+        if m["matchup_period"] is None:
+            no_period.append(m["matchup_id"])
+            continue
         weeks = period_weeks(sched, m["matchup_period"])
         row = {"matchup_id": m["matchup_id"], "matchup_period": m["matchup_period"], "weeks": weeks,
                "home_team_id": m["home_team_id"], "away_team_id": m["away_team_id"],
@@ -211,7 +216,7 @@ def classify_matchups(data: RaceData, team_proj: dict[int, dict | None]) -> tupl
             for s in (hs, as_):
                 s.pop("_total")
         regular.append(row)
-    return regular, playoff
+    return regular, playoff, no_period
 
 
 # ------------------------------------------------------------------ records --
@@ -463,7 +468,7 @@ def build_playoff_race(data: RaceData, team_id: int | None = None, base: str = "
     window = state.window()
     team_proj = {tid: (project_team(state.rosters[tid], state.slots, window, state.projections)
                        if state.rosters.get(tid) else None) for tid in team_ids}
-    regular, playoff = classify_matchups(data, team_proj)
+    regular, playoff, no_period = classify_matchups(data, team_proj)
     by_id = {m["matchup_id"]: m for m in regular}
 
     overrides = overrides or {}
@@ -522,6 +527,10 @@ def build_playoff_race(data: RaceData, team_id: int | None = None, base: str = "
         warnings.append(f"{len(open_unresolved)} remaining regular-season game(s) are unresolved in this scenario "
                         "(under way, projection incomplete, equal projections, or unmapped). Standings count decided "
                         "games only; override them to see their effect.")
+    if no_period:
+        warnings.append(f"ESPN sent {len(no_period)} matchup(s) without a matchup period (ids "
+                        f"{', '.join(str(x) for x in sorted(no_period, key=str))}); they are left out of all-play, "
+                        "schedules and scenarios. ESPN's records still count any that are final.")
     coverage = _schedule_coverage(data, regular)
     if coverage.get("missing"):
         warnings.append(f"The ESPN schedule is missing regular-season matchups for {len(coverage['missing'])} team(s); "

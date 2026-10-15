@@ -232,6 +232,17 @@ def test_espn_seed_order_that_disagrees_with_record_is_flagged():
     assert any("seeds do not follow overall record order" in w for w in build_playoff_race(d)["warnings"])
 
 
+def test_matchup_without_a_period_is_left_out_and_reported():
+    d = sr.race(n_teams=4, reg_periods=6, start_week=4, final_week=8,
+                overrides_matchups=[{"matchup_id": 77, "matchup_period": None, "home_team_id": 1, "away_team_id": 2,
+                                     "home_points": 120.0, "away_points": 100.0, "winner": "HOME"}])
+    res = build_playoff_race(d)                                                   # no TypeError sorting None
+    assert 77 not in {m["matchup_id"] for m in res["matchups"]["regular"] + res["matchups"]["playoff_known"]}
+    assert team(res, 1)["all_play"]["periods"] == [1, 2, 3]
+    assert any("without a matchup period (ids 77)" in w for w in res["warnings"])
+    assert any("differs from the final matchups stored" in n for n in res["record_check"])   # ESPN still counts it
+
+
 def test_schedule_coverage_reports_missing_regular_season_matchups():
     d = sr.race(n_teams=4, reg_periods=6, start_week=4, final_week=8)
     d.matchups = [m for m in d.matchups if m["matchup_period"] != 6]          # ESPN schedule incomplete
