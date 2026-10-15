@@ -1,0 +1,67 @@
+/* Trade discovery: filter row, results table and per-trade evidence. */
+
+.modeNote { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; max-width: 100ch; }
+.windowNote { margin: 0; color: var(--ink-faint); font-size: 13px; line-height: 19px; }
+
+/* ---------- Filters ---------- */
+
+.filters { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 24px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-muted); min-width: 0; }
+.field select { min-width: 200px; max-width: 100%; font-weight: 400; }
+.fieldHint { font-weight: 400; color: var(--ink-faint); }
+.group { margin: 0; padding: 0; border: 0; min-width: 0; }
+.group legend { padding: 0; margin-bottom: 4px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-muted); }
+.shapes { display: flex; flex-wrap: wrap; gap: 4px; }
+.shape { position: relative; display: inline-flex; }
+.shape input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.shape span {
+  display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 6px;
+  border: 1px solid var(--line-control); color: var(--ink-muted); font-size: 13px; font-weight: 500; background: var(--surface-raised);
+}
+.shape:hover span { color: var(--ink); border-color: var(--ink-faint); }
+.shape input:checked + span { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.shape input:checked + span::before { content: "✓"; margin-right: 6px; color: var(--accent); }
+.shape input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.more { border-top: 1px solid var(--line); padding-top: 12px; }
+.moreBody { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.check { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-muted); }
+.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.footnote { margin: 0; color: var(--ink-faint); font-size: 12px; line-height: 18px; max-width: 100ch; }
+
+/* ---------- Results table ---------- */
+
+.table th, .table td { vertical-align: top; }
+.table .wrapCell { white-space: normal; min-width: 130px; }
+.table .assetCell { white-space: normal; min-width: 150px; max-width: 210px; }
+.table .typeCell { white-space: normal; min-width: 170px; max-width: 250px; }
+.players { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.players li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.subline { display: block; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--ink-faint); white-space: normal; }
+.nowrap { white-space: nowrap; }
+.assetCell :global(.badge) { white-space: normal; }
+.partner { font-weight: 500; min-width: 150px; }
+.partner a { color: var(--ink); }
+.partner a:hover { color: var(--accent); }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.mainRow td { border-bottom: 0; padding-bottom: 4px; }
+.detailRow td { padding-top: 0; white-space: normal; }
+.detailRow:hover td, .mainRow:hover td { background: transparent; }
+.detail summary { font-size: 13px; }
+.detailBody { padding: 8px 0 4px; display: flex; flex-direction: column; gap: 12px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 16px 24px; }
+.cols h4 { margin: 0 0 4px; font-size: 14px; line-height: 20px; }
+.list { margin: 4px 0 0; padding-left: 16px; color: var(--ink-muted); }
+.list li { margin: 2px 0; }
+.small { font-size: 13px; line-height: 19px; margin: 0; }
+.assetWrap { margin: 0 -16px; }
+.assetWrap table { width: 100%; }
+.mgrNote { margin: 0; color: var(--ink-faint); font-size: 13px; line-height: 19px; }
+.empty { padding: 16px; }
+
+@media (max-width: 720px) {
+  .field { flex: 1 1 100%; }
+  .field select { width: 100%; }
+  .actions { margin-left: 0; width: 100%; }
+}
