@@ -1,0 +1,99 @@
+/* Players search and player profile. Tokens only; see globals.css. */
+
+/* ---------- Search ---------- */
+.search { display: flex; gap: 8px; align-items: center; }
+.searchBar { width: 100%; }
+.searchBar .input { flex: 1 1 auto; min-width: 0; height: 44px; font-size: 16px; padding: 0 14px; }
+.searchBar .submit { height: 44px; padding: 0 20px; font-size: 14px; }
+.searchCompact .input { width: 240px; min-width: 0; }
+.search .input { min-width: 0; }
+.hint { margin: 8px 0 0; color: var(--ink-muted); font-size: 13px; }
+
+.results .team { white-space: nowrap; }
+.empty p { margin: 0 0 8px; }
+
+/* Wide tables: the first column stays put while the rest scrolls sideways. */
+.stickyFirst thead th:first-child,
+.stickyFirst tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  box-shadow: 1px 0 0 var(--line);
+}
+.stickyFirst thead th:first-child { z-index: 2; background: var(--surface-raised); }
+.stickyFirst tbody tr:hover td:first-child { background: var(--surface-hover); }
+
+/* ---------- Profile header ---------- */
+.metaLine { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+.facts li { display: block; }
+.factLabel { color: var(--ink-faint); }
+
+/* ---------- Two-up sections ---------- */
+.pair { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
+.pair > * { min-width: 0; }
+.badgeRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 12px; }
+.badgeRow .muted { color: var(--ink-muted); font-size: 12px; }
+.reasons { margin: 12px 0 0; padding-left: 18px; color: var(--ink-muted); }
+.reasons li { margin: 2px 0; }
+.note { margin: 12px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.noteTight { margin: 8px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
+.link { font-size: 13px; }
+
+/* ---------- Usage charts ---------- */
+.charts { display: grid; gap: 24px 32px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.chart { min-width: 0; }
+.chartTitle { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.chartNote { margin: 4px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
+
+/* ---------- Forward view ---------- */
+.forward { display: grid; gap: 0; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.forwardTable { border-right: 1px solid var(--line); min-width: 0; }
+.forwardChart { padding: 16px; min-width: 0; }
+.stripBlock { padding: 16px; border-bottom: 1px solid var(--line); }
+.phase { color: var(--ink-faint); font-size: 12px; }
+@media (max-width: 860px) {
+  .forward { grid-template-columns: minmax(0, 1fr); }
+  .forwardTable { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+
+/* ---------- Player context ---------- */
+.contextGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+.contextCol { padding: 16px; min-width: 0; border-left: 1px solid var(--line); }
+.contextCol:first-child { border-left: 0; }
+.contextTitle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.contextGrid .kv { font-size: 13px; }
+@media (max-width: 960px) {
+  .contextCol { border-left: 0; border-top: 1px solid var(--line); }
+  .contextCol:first-child { border-top: 0; }
+}
+.confidence { margin: 0; padding: 12px 16px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 13px; }
+.advanced { padding: 12px 16px; border-top: 1px solid var(--line); }
+.advanced p { margin: 8px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
+.routeGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 4px 32px; }
+.routeRow { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.routeRow dt { color: var(--ink-muted); }
+.routeRow dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* ---------- Game log ---------- */
+.log td, .log th { font-variant-numeric: tabular-nums; }
+.week { font-weight: 600; margin-right: 6px; }
+.opp { color: var(--ink-muted); }
+.source { color: var(--ink-faint); }
+.dataNotes p { margin: 0 0 8px; }
+.dataNotes p:last-child { margin-bottom: 0; }
+.logNotes { padding: 12px 16px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.logNotes p { margin: 0 0 8px; }
+.logNotesBare { margin-top: 12px; color: var(--ink-muted); font-size: 13px; }
+.contextGrid .kv > :global(.badge) { justify-self: start; }
