@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { NAV_GROUPS, getActiveRoute } from "@/lib/navigation";
+import type { ProjectionSource } from "@/lib/projection-source";
+import { ProjectionSwitch } from "./ProjectionSwitch";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { ScrollToActive } from "./ui/ScrollToActive";
 import { useDismiss } from "./useDismiss";
@@ -37,7 +39,7 @@ export function SubNav() {
 }
 
 /** Phones: the section row collapses into a menu button with every group's pages. */
-export function MobileNav() {
+export function MobileNav({ projection }: { projection?: ProjectionSource } = {}) {
   const pathname = usePathname();
   const { activeHref } = getActiveRoute(pathname);
   const [open, setOpen] = useState(false);
@@ -76,6 +78,12 @@ export function MobileNav() {
             <span className="mobile-nav-title">Theme</span>
             <ThemeSwitch labels />
           </div>
+          {projection && (
+            <div className="mobile-nav-theme">
+              <span className="mobile-nav-title">Weekly projections</span>
+              <ProjectionSwitch value={projection} labels />
+            </div>
+          )}
         </nav>
       )}
     </div>

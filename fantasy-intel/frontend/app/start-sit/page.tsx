@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
+import { OriginTag, ProjectionNotice } from "@/components/ProjectionNotice";
 import {
   Badge, Delta, Method, Notice, PageHeader, Pos, Section, SortableTh, Stat, StatStrip,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
+import { showingOurs, withSource } from "@/lib/projection-source";
+import { getProjectionSource } from "@/lib/projection-source.server";
 import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import {
   actionabilityBadge,
@@ -41,7 +44,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   if (teamId) qs.set("team_id", teamId);
   if (week) qs.set("week", week);
 
-  const res = await api<StartSitResponse>(`/api/start-sit?${qs.toString()}`);
+  const res = await api<StartSitResponse>(withSource(`/api/start-sit?${qs.toString()}`, await getProjectionSource()));
   if (!res.ok) {
     return (
       <div className="stack">
@@ -53,6 +56,8 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
   const d = res.data;
   const { league, team, summary, decisions, recommended_lineup, actual_lineup, unconstrained_lineup, current_bench } = d;
+  const ours = showingOurs(d.projection_source_detail);
+  const projLabel = ours ? "Fantasy Intel (research) projected points for the week" : "ESPN projected points for the week";
   const moves = decisions.filter((x) => x.action !== "NO_CHANGE");
   const actionable = moves.filter((x) => x.actionability === "ACTIONABLE").length;
   const hasLineup = summary.starters_count > 0;
@@ -89,6 +94,8 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
           />
         }
       />
+
+      <ProjectionNotice detail={d.projection_source_detail} />
 
       {/* Verdict band: the answer first, then the numbers behind it. */}
       <div className={styles.verdict}>
@@ -149,7 +156,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
           flush
         >
           <ul className={styles.moves}>
-            {moves.map((m) => <Move key={m.id} move={m} />)}
+            {moves.map((m) => <Move key={m.id} move={m} ours={ours} />)}
           </ul>
         </Section>
       )}
@@ -159,7 +166,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         footnote={`${summary.starters_count} starters · ${summary.bench_count} bench · ${summary.ir_count} IR. Kickoff locks use stored NFL schedule data and are conservative.`}
         flush
       >
-        <LineupTable recommended={recommended_lineup} actual={actual_lineup} />
+        <LineupTable recommended={recommended_lineup} actual={actual_lineup} ours={ours} projLabel={projLabel} />
       </Section>
 
       {d.injury_warnings.length > 0 || d.schedule_warnings.length > 0 ? (
@@ -194,7 +201,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         </Section>
       ) : null}
 
-      <BenchSection bench={current_bench} recommended={recommended_lineup} sp={sp} />
+      <BenchSection bench={current_bench} recommended={recommended_lineup} sp={sp} ours={ours} projLabel={projLabel} />
 
       <Benchmark
         summary={summary}
@@ -205,7 +212,9 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
       <Method title="How this is calculated">
         <p className={styles.prose}>
           Three lineups are compared for the week: your submitted ESPN lineup, the best lineup under kickoff locks (the one recommended here),
-          and an unconstrained optimum used only as a benchmark. Projections are unmodified ESPN weekly projections. Players whose games
+          and an unconstrained optimum used only as a benchmark. {ours
+            ? "Projections are Fantasy Intel's independent expected points (switch in the header); players marked ESPN keep ESPN's number."
+            : "Projections are unmodified ESPN weekly projections."} Players whose games
           have kicked off keep their slots, and fantasy IR or NFL-ineligible players are never promoted.
         </p>
         <p className={styles.prose}>
@@ -226,34 +235,34 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
 // ------------------------------------------------------------------- moves --
 
-function MovePlayer({ p }: { p: DecisionPlayer }) {
+function MovePlayer({ p, ours }: { p: DecisionPlayer; ours: boolean }) {
   const lock = p.lock_status !== "UNLOCKED" ? lockStatusBadge(p.lock_status, null) : null;
   return (
     <span className={styles.person}>
-      <PlayerLink id={p.id} name={p.name} /> <Pos value={p.position} /> <span className={styles.proj}>({num(p.projection, 1)})</span>
+      <PlayerLink id={p.id} name={p.name} /> <Pos value={p.position} /> <span className={styles.proj}>({num(p.projection, 1)})</span> <OriginTag origin={p.projection_origin} ours={ours} />
       {lock && <> <Badge value={lock.label} tone={lock.tone === "warn" ? "warn" : ""} /></>}
     </span>
   );
 }
 
-function PlayerList({ players }: { players: DecisionPlayer[] }) {
+function PlayerList({ players, ours }: { players: DecisionPlayer[]; ours: boolean }) {
   return (
     <>
       {players.map((p, i) => (
-        <span key={p.id}>{i > 0 ? ", " : ""}<MovePlayer p={p} /></span>
+        <span key={p.id}>{i > 0 ? ", " : ""}<MovePlayer p={p} ours={ours} /></span>
       ))}
     </>
   );
 }
 
-function Move({ move }: { move: StartSitDecision }) {
+function Move({ move, ours }: { move: StartSitDecision; ours: boolean }) {
   const badge = actionabilityBadge(move.actionability);
   return (
     <li className={styles.move}>
       <div>
         <p className={styles.sentence}>
-          <span className={styles.verb}>Start</span> <PlayerList players={move.start_players} />{" "}
-          <span className={styles.over}>over</span> <PlayerList players={move.bench_players} />
+          <span className={styles.verb}>Start</span> <PlayerList players={move.start_players} ours={ours} />{" "}
+          <span className={styles.over}>over</span> <PlayerList players={move.bench_players} ours={ours} />
         </p>
         <p className={styles.reason}>{move.explanation}</p>
         {move.warnings.length > 0 && (
@@ -288,7 +297,7 @@ function OppCell({ r }: { r: Pick<LineupPlayer, "opponent" | "is_home" | "lock_s
   );
 }
 
-function LineupTable({ recommended, actual }: { recommended: LineupPlayer[]; actual: LineupPlayer[] }) {
+function LineupTable({ recommended, actual, ours, projLabel }: { recommended: LineupPlayer[]; actual: LineupPlayer[]; ours: boolean; projLabel: string }) {
   const kept = new Set(recommended.map((r) => r.player_id).filter((id): id is number => id !== null));
   const leaving = actual.filter((a) => a.player_id !== null && !kept.has(a.player_id));
   return (
@@ -300,7 +309,7 @@ function LineupTable({ recommended, actual }: { recommended: LineupPlayer[]; act
             <th>Player</th>
             <th>Opponent</th>
             <th>Versus submitted</th>
-            <th className="num" title="ESPN projected points for the week">Proj</th>
+            <th className="num" title={projLabel}>Proj</th>
           </tr>
         </thead>
         <tbody>
@@ -325,7 +334,7 @@ function LineupTable({ recommended, actual }: { recommended: LineupPlayer[]; act
                     : change.kind === "empty" ? <span className={styles.empty} title="No eligible player is on the roster for this slot">{change.text}</span>
                     : change.text}
                 </td>
-                <td className="num"><b>{num(r.projected_points, 1)}</b></td>
+                <td className="num"><OriginTag origin={r.projection_origin} ours={ours} /> <b>{num(r.projected_points, 1)}</b></td>
               </tr>
             );
           })}
@@ -346,7 +355,7 @@ function LineupTable({ recommended, actual }: { recommended: LineupPlayer[]; act
                 </td>
                 <td><OppCell r={a} /></td>
                 <td>To bench</td>
-                <td className="num">{num(a.projected_points, 1)}</td>
+                <td className="num"><OriginTag origin={a.projection_origin} ours={ours} /> {num(a.projected_points, 1)}</td>
               </tr>
             ))}
           </tbody>
@@ -358,7 +367,7 @@ function LineupTable({ recommended, actual }: { recommended: LineupPlayer[]; act
 
 // ------------------------------------------------------------------- bench --
 
-function BenchSection({ bench, recommended, sp }: { bench: BenchPlayer[]; recommended: LineupPlayer[]; sp: SP }) {
+function BenchSection({ bench, recommended, sp, ours, projLabel }: { bench: BenchPlayer[]; recommended: LineupPlayer[]; sp: SP; ours: boolean; projLabel: string }) {
   if (bench.length === 0) return null;
   const sort = parseSort(sp, BENCH_SORTS, BENCH_DEFAULT);
   const promoted = new Set(recommended.map((r) => r.player_id));
@@ -372,7 +381,7 @@ function BenchSection({ bench, recommended, sp }: { bench: BenchPlayer[]; recomm
               <SortableTh sortKey="name" label="Player" current={sort} searchParams={sp} defaultDir="asc" />
               <th>Opponent</th>
               <th>Role</th>
-              <SortableTh sortKey="proj" label="Proj" align="right" current={sort} searchParams={sp} title="ESPN projected points for the week" />
+              <SortableTh sortKey="proj" label="Proj" align="right" current={sort} searchParams={sp} title={projLabel} />
             </tr>
           </thead>
           <tbody>
@@ -390,7 +399,7 @@ function BenchSection({ bench, recommended, sp }: { bench: BenchPlayer[]; recomm
                 </td>
                 <td><OppCell r={{ ...b, has_final_score: false, home_score: null, away_score: null }} /></td>
                 <td>{promoted.has(b.player_id) ? <span className={styles.promote}>Recommended starter</span> : "Bench reserve"}</td>
-                <td className="num">{num(b.projected_points, 1)}</td>
+                <td className="num"><OriginTag origin={b.projection_origin} ours={ours} /> {num(b.projected_points, 1)}</td>
               </tr>
             ))}
           </tbody>

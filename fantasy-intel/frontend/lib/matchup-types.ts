@@ -1,4 +1,5 @@
 // Shape returned by GET /api/matchup (see backend/app/api/matchup.py for the field contract).
+import type { ProjectionOrigin, ProjectionSourceDetail } from "./projection-source";
 
 export type MatchupStatus = "upcoming" | "in_progress" | "final" | "unknown";
 export type MatchupPhase = "regular" | "playoff";
@@ -14,6 +15,7 @@ export type LineupSlot = {
   is_flex: boolean;
   injury_status: string | null;
   on_bye: boolean | null;         // null = schedule unknown
+  projection_origin?: ProjectionOrigin | null;   // set only with source=independent
 };
 
 export type BenchPlayer = {
@@ -24,6 +26,7 @@ export type BenchPlayer = {
   points: number | null;          // null = no ESPN projection (unknown, not zero)
   injury_status: string | null;
   on_bye: boolean | null;
+  projection_origin?: ProjectionOrigin | null;
 };
 
 /** A player in the lineup ESPN holds (lineup_snapshots). `points` is null until the matchup has started. */
@@ -37,6 +40,7 @@ export type SetPlayer = {
   points: number | null;
   injury_status: string | null;
   on_bye: boolean | null;
+  projection_origin?: ProjectionOrigin | null;
 };
 
 export type TeamSide = {
@@ -69,4 +73,5 @@ export type Matchup = {
   opponent: TeamSide | null;
   status: MatchupStatus;
   notes: string[];
+  projection_source?: ProjectionSourceDetail;
 };
