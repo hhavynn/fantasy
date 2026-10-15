@@ -1,0 +1,4 @@
+.venv/
+# Rendered episodes are large and reproducible; only the history (for the similarity gate) is tracked.
+episodes/*
+!episodes/history.jsonl

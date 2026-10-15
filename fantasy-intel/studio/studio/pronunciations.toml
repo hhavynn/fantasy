@@ -1,0 +1,3 @@
+# Pronunciation overrides for Kokoro (misaki phonemes). Keys are matched as whole words.
+# Example: "Chism" = "kˈɪzəm"
+[words]
