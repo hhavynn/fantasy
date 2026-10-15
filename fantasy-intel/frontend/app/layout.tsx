@@ -4,8 +4,10 @@ import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
 import { MobileNav, NavGroups, SubNav } from "@/components/Nav";
 import { SyncPill } from "@/components/SyncPill";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { api } from "@/lib/api";
 import type { StatusPayload } from "@/lib/sync-status";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +25,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const status = await api<NonNullable<StatusPayload>>("/api/status");
   const s = status.data;
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    // suppressHydrationWarning: the inline script below sets data-theme on <html> before React hydrates.
+    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body>
         <header className="appbar">
           <div className="topbar">
@@ -38,6 +44,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 </span>
               )}
               <CommandPalette />
+              <ThemeSwitch className="topbar-theme" />
               <SyncPill status={s ?? null} />
               <MobileNav />
             </div>

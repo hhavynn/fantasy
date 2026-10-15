@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { NAV_GROUPS, getActiveRoute } from "@/lib/navigation";
+import { ThemeSwitch } from "./ThemeSwitch";
 import { useDismiss } from "./useDismiss";
 
 export function NavGroups() {
@@ -69,6 +70,10 @@ export function MobileNav() {
               ))}
             </div>
           ))}
+          <div className="mobile-nav-theme">
+            <span className="mobile-nav-title">Theme</span>
+            <ThemeSwitch labels />
+          </div>
         </nav>
       )}
     </div>
