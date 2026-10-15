@@ -26,7 +26,7 @@ const TONE_COLOR: Record<BarTone, string> = {
  * `--chart-positive` / `--chart-negative` and value labels carry a +/− sign, so direction is
  * never colour alone. Set `tone` on a datum to override.
  */
-export function BarChart({ data, orientation = "vertical", valueFormat, height, width = 480, showValues, ariaLabel = "Bar chart", className }: {
+export function BarChart({ data, orientation = "vertical", valueFormat, height, width = 480, showValues, divider, ariaLabel = "Bar chart", className }: {
   data: BarDatum[];
   orientation?: "vertical" | "horizontal";
   /** Formats value labels and tooltips. Defaults to a signed format for diverging data. */
@@ -36,6 +36,8 @@ export function BarChart({ data, orientation = "vertical", valueFormat, height, 
   width?: number;
   /** Print the value at the end of each bar. Default: true for up to 8 vertical bars, always for horizontal. */
   showValues?: boolean;
+  /** Horizontal charts only: a dashed line with a label after the first `after` rows (e.g. a cutline). */
+  divider?: { after: number; label: string };
   ariaLabel?: string;
   className?: string;
 }) {
@@ -74,11 +76,14 @@ export function BarChart({ data, orientation = "vertical", valueFormat, height, 
     const x1 = width - valueW;
     const xs = linearScale([nice.min, nice.max], [x0, x1]);
     const zero = xs(0);
-    const h = data.length * rowH + 8;
+    // A divider reserves its own gap between rows so its label never sits on a bar or a value.
+    const hasDivider = !!divider && divider.after >= 0 && divider.after < data.length;
+    const gap = hasDivider ? pf + 8 : 0;
+    const h = data.length * rowH + 8 + gap;
     return (
       <ChartFrame width={width} height={h} label={summary} className={className}>
         {data.map((d, i) => {
-          const cy = 4 + i * rowH + rowH / 2;
+          const cy = 4 + i * rowH + rowH / 2 + (hasDivider && i >= (divider?.after ?? 0) ? gap : 0);
           const v = d.value;
           const end = v === null ? zero : xs(v);
           return (
@@ -93,6 +98,12 @@ export function BarChart({ data, orientation = "vertical", valueFormat, height, 
           );
         })}
         <line x1={zero} x2={zero} y1={2} y2={h - 2} className={styles.axis} />
+        {hasDivider && divider && (
+          <g>
+            <line x1={0} x2={width} y1={4 + divider.after * rowH + gap - 2} y2={4 + divider.after * rowH + gap - 2} className={styles.ref} />
+            <text x={width - 2} y={4 + divider.after * rowH + gap - 5} textAnchor="end" className={`${styles.t} ${styles.strong} ${styles.halo}`}>{divider.label}</text>
+          </g>
+        )}
       </ChartFrame>
     );
   }
