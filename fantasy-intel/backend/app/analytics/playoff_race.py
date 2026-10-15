@@ -239,6 +239,14 @@ def derived_records(regular: list[dict], team_ids: list[int]) -> dict[int, list[
     return out
 
 
+def period_all_play(scores: dict[int, float]) -> dict[int, tuple[int, int, int]]:
+    """One period's all-play: each team's (wins, losses, ties) against every other team's score that
+    period. Shared by all_play here and by the Luck vs. Skill Lab."""
+    return {tid: (sum(1 for o, v in scores.items() if o != tid and pts > v),
+                  sum(1 for o, v in scores.items() if o != tid and pts < v),
+                  sum(1 for o, v in scores.items() if o != tid and pts == v)) for tid, pts in scores.items()}
+
+
 def all_play(regular: list[dict], team_ids: list[int]) -> dict[int, dict]:
     """Each final regular-season period: every team's score against every other team's score that
     period. Periods with fewer than two scored teams are skipped."""
@@ -254,14 +262,14 @@ def all_play(regular: list[dict], team_ids: list[int]) -> dict[int, dict]:
         scores = by_period[period]
         if len(scores) < 2:
             continue
-        for tid, pts in scores.items():
+        for tid, (w, l, t) in period_all_play(scores).items():
             if tid not in out:
                 continue
             o = out[tid]
             o["periods"].append(period)
-            for other, opts in scores.items():
-                if other != tid:
-                    o["wins" if pts > opts else "losses" if pts < opts else "ties"] += 1
+            o["wins"] += w
+            o["losses"] += l
+            o["ties"] += t
     for o in out.values():
         g = o["wins"] + o["losses"] + o["ties"]
         o["pct"] = round((o["wins"] + o["ties"] / 2) / g, 4) if g else None

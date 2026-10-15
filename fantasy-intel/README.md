@@ -94,6 +94,7 @@ fantasy-intel/
 | `/waivers`         | Available players ranked by local waiver score, with role trend, roster fit, league competition (LOW/MED/HIGH + likely competitors), recommendation, suggested drop. Filter by position / recommendation |
 | `/trades`          | Manual trade evaluator (1–2 players per side): both teams' optimal starting lineups rebuilt every remaining week before/after the trade on ESPN's projections; ROS / regular-season / playoff deltas, weekly table, starter changes, mandatory drop / open roster spot, hypothetical FA replacement, player context. No trade grade, no acceptance probability |
 | `/trades/discover` | Trade opportunity discovery: exact lineup impact for both teams across every 1-for-1 / 2-for-1 / 1-for-2 trade with every manager, sortable by projected gains, with categories, manager context and a link into the manual evaluator. No acceptance estimate |
+| `/luck-lab` | Luck vs. Skill Lab: expected wins from all-play, schedule luck (actual minus expected), schedule difficulty, brutal losses and fortunate wins, scoring consistency, and counterfactual records against other managers' opponents, over completed, fully observed regular-season periods. Historical and explanatory, read-only |
 | `/schedule-intelligence` | Schedule intelligence: each remaining week's opponent (bye, home/away, regular season vs fantasy playoffs from league settings) and what that defense allowed in games presumed complete before the week (EPA per eligible pass play / designed rush, rush success, position target shares) with samples, ranks and insufficient-data reasons. Descriptive only |
 | `/playoff-race` | Playoff Race Lab: actual standings, all-play and points; every remaining regular-season matchup with ESPN-projected optimal lineup totals (multi-week periods supported); a deterministic projected-standings scenario, the playoff cutline, bubble teams and high-leverage games; URL-backed winner overrides. No probabilities, tiebreaks, clinching or elimination claims. Read-only |
 | `/managers`        | One card per manager: record, roster construction, waiver aggression, positional add interest, streaming, trades, confidence |
@@ -334,6 +335,14 @@ manual evaluator's exact lineup simulation (each shown result is re-run through 
 upper bounds skip candidates that cannot help you, and a best-first search returns a provably exact top K.
 Manager scouting is shown as secondary context. No trade-value chart, no new projection, no acceptance
 estimate; read-only. Details: [`docs/v2_trade_discovery.md`](docs/v2_trade_discovery.md).
+
+## Luck vs. Skill Lab (V2, historical, read-only)
+
+`GET /api/luck-lab` (and `/luck-lab`) compares each team's weekly scoring rank with its head-to-head results
+over completed, fully observed regular-season periods: expected wins (all-play win equivalents, the same pairwise
+comparison as the Playoff Race Lab), schedule luck, opponent strength, notable results, consistency, and a
+counterfactual explorer that keeps a team's scores and swaps in another manager's opponents. Explanatory only,
+no probabilities. Details: [`docs/v2_luck_lab.md`](docs/v2_luck_lab.md).
 
 ## Schedule intelligence (V2, descriptive)
 
