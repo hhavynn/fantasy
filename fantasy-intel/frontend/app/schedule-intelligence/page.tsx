@@ -1,9 +1,16 @@
 import Link from "next/link";
+import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
-import { Badge, Callout, ErrorBox, Pos } from "@/components/ui";
+import { Badge, Method, Notice, PageHeader, Pos, Section, SortableTh, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";
+import { cx } from "@/lib/cx";
 import { when } from "@/lib/format";
+import {
+  LABEL_GLYPH, buildColumns, buildTimeline, countNextByLabel, nextWeekOf, primaryMetric, type TimelineCell,
+} from "@/lib/schedule-timeline";
+import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/sort";
 import type { ScheduleIntelligence, SiLabel, SiMetric, SiPlayer, SiWeek } from "@/lib/types";
+import styles from "./schedule.module.css";
 
 export const metadata = { title: "Schedule" };
 
@@ -14,44 +21,32 @@ const TONE: Record<SiLabel, string> = {
   permissive: "good", middle: "", tougher: "bad", insufficient: "warn", unavailable: "warn", bye: "info",
 };
 const SHORT: Record<SiLabel, string> = {
-  permissive: "permissive", middle: "middle", tougher: "tougher", insufficient: "insufficient", unavailable: "n/a", bye: "BYE",
+  permissive: "permissive", middle: "middle", tougher: "tougher", insufficient: "insufficient", unavailable: "n/a", bye: "bye",
 };
+const LABELS: SiLabel[] = ["permissive", "middle", "tougher", "insufficient", "unavailable", "bye"];
 
-function one(v: string | string[] | undefined): string | undefined {
-  return Array.isArray(v) ? v[0] : v;
-}
+const NEXT_SORTS = ["roster", "player", "week", "opp", "rank", "value", "plays", "games"] as const;
+const NEXT_DEFAULT: SortState = { key: "roster", dir: "asc" };
 
-function fmt(m: SiMetric) {
+const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
+
+function fmt(m: SiMetric): string | null {
   if (m.value === null) return null;
   return m.metric.endsWith("_per_play") ? `${m.value >= 0 ? "+" : ""}${m.value.toFixed(3)}` : `${(m.value * 100).toFixed(1)}%`;
 }
 
-function num(m: SiMetric) {
+function numerator(m: SiMetric): string {
   if (m.numerator === null) return "—";
   return m.metric.endsWith("_per_play") ? m.numerator.toFixed(2) : String(m.numerator);
 }
 
-function primary(w: SiWeek): SiMetric | undefined {
-  return w.evidence?.metrics.find((m) => m.metric === w.evidence?.primary_metric);
-}
-
-function Chip({ w, showWeek = true }: { w: SiWeek; showWeek?: boolean }) {
-  const where = w.status === "scheduled" ? `${w.home ? "vs" : "@"} ${w.opponent}` : w.status === "bye" ? "BYE" : "?";
-  const p = primary(w);
-  const title = w.evidence?.sentence ?? w.reason ?? w.label_text;
-  return (
-    <span title={`Week ${w.week}: ${title}`} style={{ display: "inline-block", marginRight: 4, marginBottom: 2 }}>
-      {showWeek && <span className="faint" style={{ fontSize: 11 }}>{w.week} </span>}
-      <Badge value={w.status === "scheduled" ? `${where}${p?.rank ? ` · ${p.rank}` : ""}` : where} tone={TONE[w.label]} />
-    </span>
-  );
-}
-
 function Counts({ c }: { c: Record<SiLabel, number> }) {
-  const parts = (["permissive", "middle", "tougher", "insufficient", "unavailable", "bye"] as SiLabel[])
-    .filter((k) => c[k] > 0).map((k) => `${c[k]} ${SHORT[k]}`);
+  const parts = LABELS.filter((k) => c[k] > 0).map((k) => `${c[k]} ${SHORT[k]}`);
   return <span className="faint">{parts.length ? parts.join(" · ") : "—"}</span>;
 }
+
+// Warnings that mean no defensive evidence can be shown at all.
+const UNKNOWN_INPUT = new Set(["schedule_refresh_unknown", "defense_refresh_unknown"]);
 
 export default async function ScheduleIntelligencePage({ searchParams }: PageProps<"/schedule-intelligence">) {
   const sp = await searchParams;
@@ -70,18 +65,18 @@ export default async function ScheduleIntelligencePage({ searchParams }: PagePro
       if (single.ok) detail = single.data.players[0];
     }
   }
-  return (
-    <div className="stack">
-      <div className="page-head">
-        <h1>Schedule intelligence</h1>
-        <span className="sub">Upcoming opponents and what each defense has <b>observed</b> allowing · descriptive, not a projection</span>
+  if (!res.ok) {
+    return (
+      <div className="stack">
+        <PageHeader title="Schedule intelligence" />
+        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
       </div>
-      {!res.ok ? <ErrorBox error={res.error} /> : <Body d={res.data} detail={detail} position={position} phase={phase} />}
-    </div>
-  );
+    );
+  }
+  return <Body d={res.data} detail={detail} position={position} phase={phase} sp={sp} />;
 }
 
-function Body({ d, detail, position, phase }: { d: ScheduleIntelligence; detail?: SiPlayer; position: string; phase: string }) {
+function Body({ d, detail, position, phase, sp }: { d: ScheduleIntelligence; detail?: SiPlayer; position: string; phase: string; sp: SearchParams }) {
   const w = d.window;
   const href = (pid?: number) => {
     const p = new URLSearchParams();
@@ -89,25 +84,28 @@ function Body({ d, detail, position, phase }: { d: ScheduleIntelligence; detail?
     p.set("position", position);
     p.set("phase", phase);
     if (pid !== undefined) p.set("player", String(pid));
-    return `/schedule-intelligence?${p.toString()}`;
+    return `/schedule-intelligence?${p.toString()}#player-detail`;
   };
-  return (
-    <>
-      <p className="faint" style={{ margin: 0 }}>
-        Weeks {w.weeks[0] ?? "—"}–{w.weeks[w.weeks.length - 1] ?? "—"}
-        {w.regular_season_through !== null && <> · regular season through week {w.regular_season_through} · fantasy playoffs {w.playoff_weeks.length ? `weeks ${w.playoff_weeks.join(", ")}` : "unknown"} (from league settings)</>}
-        {" "}· first actionable week {w.first_actionable_week ?? "none"}
-      </p>
-      <Freshness d={d} />
-      {!w.remaining_weeks && <Callout>No remaining fantasy scoring periods: every week through the final period has kicked off. Past weeks are shown for information only.</Callout>}
-      {w.uncertain && w.warning && <Callout>{w.warning}</Callout>}
-      {!d.schedule.available && <Callout>No NFL schedule is loaded, so no opponents can be assigned. Run the NFL sync.</Callout>}
-      {d.schedule.available && d.schedule.warnings.map((x) => (
-        UNKNOWN_INPUT.has(x.code) ? <Callout key={x.code}>{x.message}</Callout>
-          : <p key={x.code} className="faint" style={{ margin: 0 }}>{x.message}</p>))}
+  const range = `weeks ${w.weeks[0] ?? "—"}–${w.weeks[w.weeks.length - 1] ?? "—"}`;
+  const regular = w.regular_season_through !== null
+    ? ` · regular season through week ${w.regular_season_through} · fantasy playoffs ${w.playoff_weeks.length ? `weeks ${w.playoff_weeks.join(", ")}` : "unknown"} (from league settings)`
+    : "";
+  const next = countNextByLabel(d.players);
 
-      <form action="/schedule-intelligence" className="panel">
-        <div className="row-flex">
+  return (
+    <div className="stack">
+      <PageHeader
+        title="Schedule intelligence"
+        meta={<>
+          {d.team?.name ?? "Roster"} · {range}{regular} · first actionable week {w.first_actionable_week ?? "none"}.
+          {" "}Upcoming opponents and what each defense has <b>observed</b> allowing; descriptive, not a projection.
+        </>}
+      />
+
+      <Alerts d={d} />
+
+      <Section>
+        <form action="/schedule-intelligence" className={styles.controls}>
           <label>Team <select name="team" defaultValue={d.query.team_id ?? ""}>
             {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
           </select></label>
@@ -122,22 +120,31 @@ function Body({ d, detail, position, phase }: { d: ScheduleIntelligence; detail?
             {d.players.map((p) => <option key={p.espn_player_id} value={p.espn_player_id}>{p.name} ({p.position})</option>)}
           </select></label>
           <button type="submit">Show</button>
-          <Link href="/schedule-intelligence">reset</Link>
-        </div>
-      </form>
+          <Link href="/schedule-intelligence" className={styles.reset}>Reset</Link>
+        </form>
+      </Section>
 
-      <Legend d={d} />
+      {d.players.length === 0 ? (
+        <Notice tone="caution">No {position === "all" ? "QB/RB/WR/TE" : position} players on this roster.</Notice>
+      ) : (
+        <>
+          <StatStrip>
+            <Stat label="Players" value={d.players.length} note={`${d.team?.name ?? "roster"}, ${position === "all" ? "QB/RB/WR/TE" : position}`} />
+            <Stat label="Next week: more permissive" value={next.permissive} note="opponent defense observed allowing more" tone={next.permissive > 0 ? "positive" : undefined} />
+            <Stat label="Next week: tougher" value={next.tougher} note="opponent defense observed allowing less" tone={next.tougher > 0 ? "negative" : undefined} />
+            <Stat label="Next week: no evidence" value={next.insufficient + next.unavailable} note={`${next.bye} on a bye · ${next.middle} in the middle`} />
+          </StatStrip>
 
-      {d.players.length === 0
-        ? <Callout>No {position === "all" ? "QB/RB/WR/TE" : position} players on this roster.</Callout>
-        : <Overview d={d} href={href} />}
+          <Timeline d={d} href={href} phase={phase} />
+          <NextMatchups d={d} href={href} sp={sp} />
+        </>
+      )}
 
       {detail && <Detail p={detail} />}
-      {phase !== "regular" && d.players.length > 0 && w.playoff_weeks.length > 0 && <Playoffs d={d} href={href} />}
 
-      <details className="panel method">
-        <summary>What this is (and is not)</summary>
+      <Method title="What this is (and is not)">
         <ul className="reasons">{d.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+        <p>{d.label_rule}</p>
         <details>
           <summary>How games are presumed complete (and what that cannot rule out)</summary>
           <p>{d.schedule.completion_rule}</p>
@@ -151,153 +158,242 @@ function Body({ d, detail, position, phase }: { d: ScheduleIntelligence; detail?
             ))}
           </ul>
         </details>
-      </details>
-    </>
-  );
-}
-
-// Warnings that mean no defensive evidence can be shown at all.
-const UNKNOWN_INPUT = new Set(["schedule_refresh_unknown", "defense_refresh_unknown"]);
-
-// When each input was last refreshed by a successful sync for this season. A sync that refreshed
-// only other NFL tables is listed separately and is not evidence that these inputs are current.
-function Freshness({ d }: { d: ScheduleIntelligence }) {
-  const f = d.freshness;
-  const latest = f.latest_nfl_sync;
-  const skipped = latest ? [!latest.refreshed_nfl_schedules && "schedule", !latest.refreshed_nfl_defense_week && "defensive aggregates"].filter(Boolean) : [];
-  return (
-    <p className="faint" style={{ margin: 0 }}>
-      NFL schedule refreshed {f.nfl_schedules ? when(f.nfl_schedules.refreshed_at) : <b>never (unknown)</b>}
-      {" "}· defensive aggregates refreshed {f.nfl_defense_week ? when(f.nfl_defense_week.refreshed_at) : <b>never (unknown)</b>}
-      {f.defense_weeks_loaded.length > 0 && <> (weeks {Math.min(...f.defense_weeks_loaded)}–{Math.max(...f.defense_weeks_loaded)} loaded)</>}
-      {latest && skipped.length > 0 && <> · latest {f.season} NFL sync {when(latest.refreshed_at)} did not refresh the {skipped.join(" or ")}</>}
-      {d.schedule.completion_reference_time && <> · games presumed complete if kicked off ≥ 8 h before {when(d.schedule.completion_reference_time)}</>}
-    </p>
-  );
-}
-
-function Legend({ d }: { d: ScheduleIntelligence }) {
-  return (
-    <div className="row-flex">
-      {(["permissive", "middle", "tougher", "insufficient", "bye"] as SiLabel[]).map((k) => (
-        <Badge key={k} value={d.labels[k]} tone={TONE[k]} />
-      ))}
-      <span className="faint" title={d.label_rule}>
-        Chip number = rank of the opponent on the position&apos;s primary metric (1 = most permissive). Hover for the evidence. <u>Rule</u>
-      </span>
+      </Method>
     </div>
   );
 }
 
-function Overview({ d, href }: { d: ScheduleIntelligence; href: (pid?: number) => string }) {
+function Alerts({ d }: { d: ScheduleIntelligence }) {
+  const w = d.window;
+  const f = d.freshness;
+  const latest = f.latest_nfl_sync;
+  const skipped = latest ? [!latest.refreshed_nfl_schedules && "schedule", !latest.refreshed_nfl_defense_week && "defensive aggregates"].filter(Boolean) : [];
   return (
-    <section className="panel">
-      <h2>{d.team?.name ?? "Players"}: upcoming matchups</h2>
+    <>
+      {!w.remaining_weeks && <Notice tone="caution">No remaining fantasy scoring periods: every week through the final period has kicked off. Past weeks are shown for information only.</Notice>}
+      {w.uncertain && w.warning && <Notice tone="caution">{w.warning}</Notice>}
+      {!d.schedule.available && <Notice tone="caution">No NFL schedule is loaded, so no opponents can be assigned. Run the NFL sync.</Notice>}
+      {d.schedule.available && d.schedule.warnings.map((x) => (
+        UNKNOWN_INPUT.has(x.code) ? <Notice key={x.code} tone="caution">{x.message}</Notice> : <Notice key={x.code} tone="info">{x.message}</Notice>))}
+      <p className={styles.inline}>
+        NFL schedule refreshed {f.nfl_schedules ? when(f.nfl_schedules.refreshed_at) : <b>never (unknown)</b>}
+        {" "}· defensive aggregates refreshed {f.nfl_defense_week ? when(f.nfl_defense_week.refreshed_at) : <b>never (unknown)</b>}
+        {f.defense_weeks_loaded.length > 0 && <> (weeks {Math.min(...f.defense_weeks_loaded)}–{Math.max(...f.defense_weeks_loaded)} loaded)</>}
+        {latest && skipped.length > 0 && <> · latest {f.season} NFL sync {when(latest.refreshed_at)} did not refresh the {skipped.join(" or ")}</>}
+        {d.schedule.completion_reference_time && <> · games presumed complete if kicked off at least 8 h before {when(d.schedule.completion_reference_time)}</>}
+      </p>
+    </>
+  );
+}
+
+function CellView({ c }: { c: TimelineCell }) {
+  const glyph = LABEL_GLYPH[c.label];
+  const cls = cx(styles.cell, c.kind === "bye" ? styles.bye : c.kind === "none" ? styles.none : styles[c.label]);
+  if (c.kind === "bye") return <span className={cls} title={c.description}><b>BYE</b></span>;
+  if (c.kind === "none") return <span className={cls} title={c.description}><b>—</b></span>;
+  if (c.kind === "unknown") return <span className={cls} title={c.description}><b>?</b><span>no opponent</span></span>;
+  return (
+    <span className={cls} title={c.description}>
+      <b>{c.where} {c.opponent}</b>
+      <span>{c.rank ? `${glyph} #${c.rank}` : `${glyph} ${SHORT[c.label]}`}</span>
+    </span>
+  );
+}
+
+function Timeline({ d, href, phase }: { d: ScheduleIntelligence; href: (pid?: number) => string; phase: string }) {
+  const w = d.window;
+  const cols = buildColumns(w.weeks, w.playoff_weeks, w.matchup_periods).filter((c) => phase === "all" || (phase === "regular" ? c.phase === "regular" : c.phase === "playoffs"));
+  const weeks = cols.map((c) => c.week);
+  const regularCount = cols.filter((c) => c.phase === "regular").length;
+  const playoffCount = cols.length - regularCount;
+  const firstActionable = w.first_actionable_week;
+  return (
+    <Section
+      title={`${d.team?.name ?? "Roster"}: opponents by week`}
+      actions={
+        <ul className={styles.legend} aria-label="Legend">
+          {(["permissive", "middle", "tougher", "insufficient"] as SiLabel[]).map((k) => (
+            <li key={k}><Badge value={`${LABEL_GLYPH[k]} ${d.labels[k]}`} tone={TONE[k]} /></li>
+          ))}
+        </ul>
+      }
+      flush
+      footnote={<>Each cell is the opponent (vs = home, @ = away) and its rank on the position&apos;s primary metric (#1 = most permissive defense observed so far). Hover a cell for the evidence. Weeks before week {firstActionable ?? "—"} are not actionable.</>}
+    >
       <div className="table-wrap">
-        <table>
+        <table className={styles.timeline}>
           <thead>
-            <tr><th>Player</th><th>Next actionable week</th><th>Opponent evidence (primary metric)</th>
-              <th>Regular season</th><th>Fantasy playoffs</th><th>Coverage</th><th /></tr>
+            <tr className={styles.phaseRow}>
+              <th className={styles.corner} rowSpan={2} scope="col">Player</th>
+              {regularCount > 0 && <th colSpan={regularCount} scope="colgroup">Regular season</th>}
+              {playoffCount > 0 && <th colSpan={playoffCount} scope="colgroup" className={styles.playoffHead}>Fantasy playoffs</th>}
+            </tr>
+            <tr>
+              {cols.map((c) => (
+                <th key={c.week} scope="col" className={cx(styles.wk, c.startsPlayoffs && styles.playoffEdge)} title={c.matchupPeriod ? `Matchup period ${c.matchupPeriod}` : undefined}>
+                  Wk {c.week}
+                </th>
+              ))}
+            </tr>
           </thead>
           <tbody>
             {d.players.map((p) => {
-              const next = p.weeks.find((w) => w.actionable);
-              const pm = next ? primary(next) : undefined;
-              const reg = p.weeks.filter((w) => w.actionable && w.phase === "regular");
-              const po = p.weeks.filter((w) => w.actionable && w.phase === "playoffs");
-              const gaps = p.summary.all.counts.insufficient + p.summary.all.counts.unavailable;
+              const cells = buildTimeline(weeks, p);
               return (
                 <tr key={p.espn_player_id}>
-                  <td><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /> <span className="faint">{p.pro_team ?? "no team"}</span>
+                  <th scope="row" className={styles.who}>
+                    <Link href={href(p.espn_player_id)}>{p.name ?? `ESPN #${p.espn_player_id}`}</Link>{" "}
+                    <Pos value={p.position} /> <span className={styles.team}>{p.pro_team ?? "no team"}</span>
                     {p.on_ir && <> <Badge value="IR" tone="bad" /></>}
-                    {p.notes.length > 0 && <span className="faint" title={p.notes.join("\n")}> ⓘ</span>}</td>
-                  <td>{next ? <Chip w={next} /> : <span className="faint">none</span>}</td>
-                  <td className="wrap" style={{ maxWidth: 360 }}>
-                    {next?.evidence ? <>{pm && fmt(pm) !== null
-                      ? <><b>{fmt(pm)}</b> <span className="faint">{pm.label} · {pm.denominator} plays · {next.evidence.games} games{pm.rank ? ` · rank ${pm.rank}/${pm.ranked_defenses}` : ""}</span></>
-                      : <span className="faint">{pm?.missing_reason ?? "unavailable"}</span>}</>
-                      : <span className="faint">{next?.reason ?? "—"}</span>}
-                  </td>
-                  <td className="wrap">{reg.length ? reg.map((w) => <Chip key={w.week} w={w} />) : <span className="faint">—</span>}</td>
-                  <td className="wrap">{po.length ? po.map((w) => <Chip key={w.week} w={w} />) : <span className="faint">—</span>}</td>
-                  <td>{gaps > 0 ? <Badge value={`${gaps} wk without evidence`} tone="warn" /> : <span className="faint">all weeks</span>}</td>
-                  <td><Link href={href(p.espn_player_id)}>details</Link></td>
+                  </th>
+                  {cells.map((c, i) => (
+                    <td key={c.week} className={cx(cols[i].startsPlayoffs && styles.playoffEdge, !c.actionable && c.kind !== "none" && styles.past)}>
+                      <CellView c={c} />
+                    </td>
+                  ))}
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-    </section>
+    </Section>
   );
 }
 
-function Playoffs({ d, href }: { d: ScheduleIntelligence; href: (pid?: number) => string }) {
-  const weeks = d.window.playoff_weeks;
+type NextRow = { p: SiPlayer; order: number; next: SiWeek | undefined; pm: SiMetric | undefined };
+
+function NextMatchups({ d, href, sp }: { d: ScheduleIntelligence; href: (pid?: number) => string; sp: SearchParams }) {
+  const sort = parseSort(sp, NEXT_SORTS, NEXT_DEFAULT);
+  const base: NextRow[] = d.players.map((p, order) => {
+    const next = nextWeekOf(p);
+    return { p, order, next, pm: next ? primaryMetric(next) : undefined };
+  });
+  const rows = sortRows(base, (r) => {
+    switch (sort.key) {
+      case "player": return r.p.name;
+      case "week": return r.next?.week;
+      case "opp": return r.next?.opponent;
+      case "rank": return r.pm?.rank;
+      case "value": return r.pm?.value;
+      case "plays": return r.pm?.denominator;
+      case "games": return r.next?.evidence?.games;
+      default: return r.order;
+    }
+  }, sort.dir);
   return (
-    <section className="panel">
-      <h2>Fantasy playoffs · weeks {weeks.join(", ")}</h2>
-      <p className="faint">Playoff weeks from the league&apos;s settings. Labels describe each opponent&apos;s observed defense; they do not add or subtract fantasy points.</p>
+    <Section
+      title="Next actionable matchup: defense evidence"
+      flush
+      footnote="Rank 1 is the most permissive defense on the player's primary metric among defenses with at least 3 presumed-complete games before that week. Sample is the plays and games behind the number; an opponent with too little evidence says why instead of showing a rank."
+    >
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Player</th>{weeks.map((w) => <th key={w}>Week {w}{d.window.matchup_periods[String(w)] ? <span className="faint"> · matchup {d.window.matchup_periods[String(w)]}</span> : null}</th>)}<th>Summary</th></tr></thead>
+          <thead>
+            <tr>
+              <SortableTh sortKey="player" label="Player" current={sort} searchParams={sp} />
+              <SortableTh sortKey="week" label="Wk" align="right" defaultDir="asc" current={sort} searchParams={sp} />
+              <SortableTh sortKey="opp" label="Opponent" current={sort} searchParams={sp} />
+              <th>Label</th>
+              <SortableTh sortKey="rank" label="Rank" align="right" defaultDir="asc" current={sort} searchParams={sp} title="Rank of the opponent defense on the primary metric (1 = most permissive)" />
+              <SortableTh sortKey="value" label="Allowed" align="right" current={sort} searchParams={sp} title="Primary metric value: EPA per play, or a rate" />
+              <SortableTh sortKey="plays" label="Plays" align="right" current={sort} searchParams={sp} title="Plays behind the metric (denominator)" />
+              <SortableTh sortKey="games" label="Games" align="right" current={sort} searchParams={sp} title="Presumed-complete games sampled" />
+              <th>Evidence</th>
+              <th>Gaps</th>
+            </tr>
+          </thead>
           <tbody>
-            {d.players.map((p) => (
-              <tr key={p.espn_player_id}>
-                <td><Link href={href(p.espn_player_id)}>{p.name}</Link> <Pos value={p.position} /></td>
-                {weeks.map((wk) => {
-                  const w = p.weeks.find((x) => x.week === wk);
-                  return <td key={wk}>{w ? <Chip w={w} showWeek={false} /> : <span className="faint">—</span>}</td>;
-                })}
-                <td><Counts c={p.summary.playoffs.counts} /></td>
-              </tr>
-            ))}
+            {rows.map(({ p, next, pm }) => {
+              const gaps = p.summary.all.counts.insufficient + p.summary.all.counts.unavailable;
+              const reason = !next ? "No remaining weeks" : next.status === "bye" ? "Bye week" : next.evidence ? (pm && fmt(pm) === null ? (pm.missing_reason ?? "Metric unavailable") : null) : (next.reason ?? "Unavailable");
+              return (
+                <tr key={p.espn_player_id}>
+                  <td>
+                    <PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /> <span className={styles.team}>{p.pro_team ?? "no team"}</span>
+                    {p.on_ir && <> <Badge value="IR" tone="bad" /></>}
+                    {p.notes.length > 0 && <span className="faint" title={p.notes.join("\n")}> ⓘ</span>}
+                  </td>
+                  <td className="num">{next?.week ?? <span className="missing" title="No remaining week">—</span>}</td>
+                  <td>{next?.status === "scheduled" ? `${next.home ? "vs" : "@"} ${next.opponent}` : next?.status === "bye" ? "BYE" : <span className="missing" title={next?.reason ?? "No opponent"}>—</span>}</td>
+                  <td>{next && next.status !== "bye" ? <Badge value={`${LABEL_GLYPH[next.label]} ${next.label_text}`.trim()} tone={TONE[next.label]} /> : <span className="faint">—</span>}</td>
+                  <td className="num">{pm?.rank ? <>{pm.rank}<span className="faint"> / {pm.ranked_defenses}</span></> : <span className="missing" title={pm?.missing_reason ?? reason ?? "No rank"}>—</span>}</td>
+                  <td className="num">{pm && fmt(pm) !== null ? <b>{fmt(pm)}</b> : <span className="missing" title={pm?.missing_reason ?? reason ?? "No value"}>—</span>}</td>
+                  <td className="num">{pm?.denominator ?? <span className="missing" title="No sample">—</span>}</td>
+                  <td className="num">{next?.evidence ? next.evidence.games : <span className="missing" title="No sample">—</span>}</td>
+                  <td className={styles.evidence}>
+                    {reason ? <span className="faint">{reason}</span> : <>{pm?.label}</>}
+                    {next?.evidence && next.evidence.excluded_weeks.length > 0 && (
+                      <span className={styles.note}>Excluded (not presumed complete): wk {next.evidence.excluded_weeks.join(", ")}</span>
+                    )}
+                  </td>
+                  <td>
+                    {gaps > 0 ? <span className={styles.gap} title="Remaining weeks with insufficient or unavailable evidence">{gaps} wk without evidence</span> : <span className="faint">All weeks</span>}
+                    {" "}<Link href={href(p.espn_player_id)}>Details</Link>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
-    </section>
+    </Section>
   );
 }
 
 function Detail({ p }: { p: SiPlayer }) {
   return (
-    <section className="panel">
-      <h2>{p.name} ({p.position}, {p.pro_team ?? "no team"}): week by week</h2>
-      {p.notes.map((n, i) => <Callout key={i}>{n}</Callout>)}
-      <div className="row-flex" style={{ marginBottom: 8 }}>
-        {(["next", "regular", "playoffs", "all"] as const).map((k) => (
-          <span key={k}><b>{k === "all" ? "All remaining" : k === "next" ? "Next" : k === "regular" ? "Regular season" : "Playoffs"}:</b> <Counts c={p.summary[k].counts} /></span>
-        ))}
+    <Section id="player-detail" title={`${p.name} (${p.position}, ${p.pro_team ?? "no team"}): week by week`} flush>
+      <div className={styles.detailTop}>
+        {p.notes.map((n, i) => <Notice key={i} tone="caution">{n}</Notice>)}
+        <div className={styles.counts}>
+          {(["next", "regular", "playoffs", "all"] as const).map((k) => (
+            <span key={k} className={styles.countsItem}>
+              <b>{k === "all" ? "All remaining" : k === "next" ? "Next" : k === "regular" ? "Regular season" : "Playoffs"}:</b> <Counts c={p.summary[k].counts} />
+            </span>
+          ))}
+        </div>
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Wk</th><th>Phase</th><th>Opponent</th><th>Observed defense</th>
-            <th>Metrics (value · numerator / denominator · rank)</th><th>Sample</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Wk</th><th>Phase</th><th>Opponent</th><th>Observed defense</th>
+              <th>Metrics (value · numerator / denominator · rank)</th><th>Sample</th>
+            </tr>
+          </thead>
           <tbody>
             {p.weeks.map((w) => (
-              <tr key={w.week} style={w.actionable ? undefined : { opacity: 0.6 }}>
-                <td>{w.week}{!w.actionable && <div className="faint" style={{ fontSize: 11 }}>{w.window_note}</div>}</td>
+              <tr key={w.week} className={w.actionable ? undefined : styles.dim}>
+                <td>{w.week}{!w.actionable && <span className={styles.note}>{w.window_note}</span>}</td>
                 <td className="faint">{w.phase ?? "?"}{w.matchup_period ? ` · m${w.matchup_period}` : ""}</td>
                 <td>{w.status === "scheduled" ? `${w.home ? "vs" : "@"} ${w.opponent}` : w.status === "bye" ? "BYE" : <span className="faint">{w.reason}</span>}</td>
-                <td className="wrap" style={{ maxWidth: 420 }}><Badge value={w.label_text} tone={TONE[w.label]} />{" "}
-                  <span className="faint">{w.evidence?.sentence ?? w.reason}</span></td>
-                <td className="wrap">{w.evidence ? w.evidence.metrics.map((m) => (
-                  <div key={m.metric}>
-                    {m.label}: <b>{fmt(m) ?? "—"}</b>
-                    {m.value !== null && <span className="faint"> · {num(m)} / {m.denominator}{m.rank ? ` · rank ${m.rank}/${m.ranked_defenses}` : ""}</span>}
-                    {m.position_coverage !== undefined && m.position_coverage !== null && <span className="faint"> · positions identified for {(m.position_coverage * 100).toFixed(0)}% of targets</span>}
-                    {m.missing_reason && <span className="faint"> · {m.missing_reason}</span>}
-                  </div>
-                )) : <span className="faint">—</span>}</td>
+                <td className={styles.evidence}>
+                  <Badge value={`${LABEL_GLYPH[w.label]} ${w.label_text}`.trim()} tone={TONE[w.label]} />{" "}
+                  <span className="faint">{w.evidence?.sentence ?? w.reason}</span>
+                </td>
+                <td className="wrap">{w.evidence ? (
+                  <ul className={styles.metrics}>
+                    {w.evidence.metrics.map((m) => (
+                      <li key={m.metric}>
+                        {m.label}: <b>{fmt(m) ?? "—"}</b>
+                        {m.value !== null && <span className="faint"> · {numerator(m)} / {m.denominator}{m.rank ? ` · rank ${m.rank}/${m.ranked_defenses}` : ""}</span>}
+                        {m.position_coverage !== undefined && m.position_coverage !== null && <span className="faint"> · positions identified for {(m.position_coverage * 100).toFixed(0)}% of targets</span>}
+                        {m.missing_reason && <span className="faint"> · {m.missing_reason}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : <span className="faint">—</span>}</td>
                 <td className="faint">{w.evidence ? <>{w.evidence.games} games{w.evidence.through_week !== null ? `, through wk ${w.evidence.through_week}` : ""}
                   {w.evidence.excluded_weeks.length > 0 && (
-                    <div title={Object.entries(w.evidence.excluded_reasons).map(([wk, why]) => `wk ${wk}: ${why.reason}`).join("\n")}>
-                      excluded (not presumed complete): wk {w.evidence.excluded_weeks.join(", ")}</div>)}</> : "—"}</td>
+                    <span className={styles.note} title={Object.entries(w.evidence.excluded_reasons).map(([wk, why]) => `wk ${wk}: ${why.reason}`).join("\n")}>
+                      Excluded (not presumed complete): wk {w.evidence.excluded_weeks.join(", ")}
+                    </span>)}</> : "—"}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </section>
+    </Section>
   );
 }
