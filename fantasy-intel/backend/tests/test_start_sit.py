@@ -408,7 +408,7 @@ def test_api_start_sit_endpoint(tmp_path, monkeypatch):
     import json
     from fastapi.testclient import TestClient
     from app.config import Settings
-    from app.db.connection import connect
+    from app.db.connection import SCHEMA_VERSION, connect
     from app.main import app
 
     db_file = tmp_path / "fantasy.duckdb"
@@ -419,7 +419,7 @@ def test_api_start_sit_endpoint(tmp_path, monkeypatch):
         schema_path = tmp_path.parent / "schema.sql"
     with open("backend/app/db/schema.sql" if __import__("os").path.exists("backend/app/db/schema.sql") else "app/db/schema.sql") as f:
         con.execute(f.read())
-    con.execute("INSERT OR REPLACE INTO schema_meta VALUES ('schema_version', '6')")
+    con.execute("INSERT OR REPLACE INTO schema_meta VALUES ('schema_version', ?)", [str(SCHEMA_VERSION)])
 
     # Seed league
     con.execute("""
