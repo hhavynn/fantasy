@@ -64,3 +64,6 @@ fantasy-intel/data/imports/
 fantasy-intel/data/staging/
 *.vendor.csv
 *.vendor.json
+
+# Personal / league-specific notes (real manager names, scouting). Never commit.
+/local/

@@ -12,11 +12,14 @@ No accounts, no cloud, no LLM calls. All scores are deterministic and explainabl
 
 ## Quick start
 
-Prerequisites: [uv](https://docs.astral.sh/uv/) (Python manager) and Node.js 20+.
+Prerequisites: [uv](https://docs.astral.sh/uv/) (Python manager) and Node.js 22+.
+
+The app lives in the `fantasy-intel/` folder of this repository; every path below is
+relative to it unless it says "from the repository root".
 
 ```bash
-git clone <this repo> fantasy-intel
-cd fantasy-intel
+git clone <this repo> fantasy
+cd fantasy/fantasy-intel
 cp .env.example .env          # then edit .env (see "ESPN credentials" below)
 
 cd backend
@@ -28,10 +31,10 @@ uv run python ../scripts/sync_nfl.py    # import current-season nflverse data
 uv run uvicorn app.main:app --reload    # API on http://127.0.0.1:8000
 ```
 
-In a second terminal:
+In a second terminal (from the repository root):
 
 ```bash
-cd frontend
+cd fantasy-intel/frontend
 npm install
 npm run dev                   # dashboard on http://localhost:3000
 ```
@@ -428,7 +431,7 @@ Every push to `main` and pull request targeting `main` automatically triggers Gi
 ### What CI checks
 
 - **Backend job (`backend`)**: Runs on Ubuntu with Python 3.12 and `uv`. Installs pinned dependencies from `backend/uv.lock` and executes the full pytest suite.
-- **Frontend job (`frontend`)**: Runs on Ubuntu with Node.js 22 LTS. Installs pinned dependencies from `frontend/package-lock.json` with `npm ci`, runs ESLint, verifies TypeScript types (`npm run typecheck`), and compiles a production build (`npm run build`).
+- **Frontend job (`frontend`)**: Runs on Ubuntu with Node.js 22 LTS. Installs pinned dependencies from `frontend/package-lock.json` with `npm ci`, runs ESLint, verifies TypeScript types (`npm run typecheck`), runs the unit tests (`npm test`), and compiles a production build (`npm run build`).
 
 ### Reproducing checks locally
 
@@ -445,6 +448,7 @@ cd ../frontend
 npm ci
 npm run lint
 npm run typecheck
+npm test
 npm run build
 ```
 
@@ -454,7 +458,8 @@ npm run build
 2. If backend tests fail: re-run the failing test locally with `TZ=UTC uv run pytest tests/<test_file>.py -vv`. Note that tests expect UTC timezone semantics.
 3. If frontend lint fails: run `npm run lint` locally and resolve rule violations.
 4. If frontend typecheck fails: run `npm run typecheck` (which runs `next typegen` followed by `tsc --noEmit`).
-5. If frontend build fails: run `npm run build` locally and inspect Next.js build errors.
+5. If frontend unit tests fail: run `npm test` locally (Node 22.6+ is required for `--experimental-strip-types`).
+6. If frontend build fails: run `npm run build` locally and inspect Next.js build errors.
 
 ### Isolation and environment requirements
 
