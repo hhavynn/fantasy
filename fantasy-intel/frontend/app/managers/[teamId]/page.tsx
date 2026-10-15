@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { LineChart } from "@/components/charts";
 import { MovesTable } from "@/components/MovesTable";
@@ -14,7 +16,6 @@ import type { Classification, League, Metric, Move, Need, RosterPlayer, Team } f
 import { ScoutingEvidence, ScoutingSummary } from "./ScoutingReport";
 import styles from "./detail.module.css";
 
-export const metadata = { title: "Manager" };
 
 type Detail = {
   league: League; team: Team; metrics: Metric[]; classifications: Classification[]; roster: RosterPlayer[];
@@ -25,11 +26,20 @@ type Detail = {
 
 const POS = ["QB", "RB", "WR", "TE", "K", "D/ST"];
 
+// One fetch per request, shared by the page and its title.
+const getDetail = cache((teamId: string) => api<Detail>(`/api/managers/${teamId}`));
+
+export async function generateMetadata({ params }: PageProps<"/managers/[teamId]">): Promise<Metadata> {
+  const { teamId } = await params;
+  const res = await getDetail(teamId);
+  return { title: res.ok ? res.data.team.name : "Manager" };
+}
+
 export default async function ManagerDetail({ params, searchParams }: PageProps<"/managers/[teamId]">) {
   const [{ teamId }, sp] = await Promise.all([params, searchParams]);
   const tab = parseTab(sp.tab);
   const [res, scouting] = await Promise.all([
-    api<Detail>(`/api/managers/${teamId}`),
+    getDetail(teamId),
     // Transactions need no scouting data.
     tab === "transactions" ? Promise.resolve(null) : api<Report>(`/api/managers/${teamId}/scouting`),
   ]);

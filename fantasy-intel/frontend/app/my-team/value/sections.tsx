@@ -9,6 +9,7 @@ import {
 } from "@/lib/team-value-helpers";
 import type { TeamValue, TvMatchupEffect, TvPhase, TvPlayer } from "@/lib/types";
 import styles from "./value.module.css";
+import { plural } from "@/lib/plural";
 
 const HEALTHY = ["ACTIVE", "NORMAL"];
 
@@ -263,7 +264,7 @@ export function MarginalTable({ d, phase, sort, sp }: { d: TeamValue; phase: TvP
                 <tr key={p.espn_player_id}>
                   <td><span className={styles.person}><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /> <span className="faint">{p.pro_team ?? "FA"}</span></span></td>
                   <td className="num">
-                    {raw.points !== null ? num(raw.points, 1) : <span className="faint" title={`No ESPN projection for week(s) ${raw.missing_weeks.join(", ")}`}>known {num(raw.known_points, 1)}</span>}
+                    {raw.points !== null ? num(raw.points, 1) : <span className="faint" title={`No ESPN projection for ${plural(raw.missing_weeks.length, "week")} ${raw.missing_weeks.join(", ")}`}>known {num(raw.known_points, 1)}</span>}
                   </td>
                   <td className="num"><b><Points value={marginalFor(p, phase)} known={knownMarginalFor(p, phase)} /></b></td>
                   <td className="num faint">{num(p.marginal.regular, 1)}</td>
@@ -552,7 +553,7 @@ export function RaceContext({ d }: { d: TeamValue }) {
     <Section
       title="Playoff race context"
       actions={<Link href={`/playoff-race?team=${d.team.team_id}`}>Open the playoff race lab</Link>}
-      footnote={`${pr.rule} Each remaining matchup re-projects both sides' optimal lineups with the changed roster(s).`}
+      footnote={`${pr.rule} Each remaining matchup re-projects both sides' optimal lineups with the changed rosters.`}
     >
       <p>
         Now {recordText(pr.standing_now.record)}{pr.standing_now.rank ? ` (#${pr.standing_now.rank})` : ""} · projected {recordText(pr.standing_projected.record)}{" "}

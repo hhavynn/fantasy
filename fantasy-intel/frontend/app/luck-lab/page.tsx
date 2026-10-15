@@ -10,6 +10,7 @@ import { heatOf, luckBars, periodLabel, scatterPoints, signedText, timelineSerie
 import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/sort";
 import { ScheduleSelector } from "./ScheduleSelector";
 import styles from "./luck.module.css";
+import { plural } from "@/lib/plural";
 
 export const metadata = { title: "Luck lab" };
 
@@ -81,7 +82,7 @@ function Body({ d, cleared, sp }: { d: LuckLab; cleared: boolean; sp: SearchPara
       <PageHeader
         title="Luck vs. skill lab"
         meta={<>
-          {s.name}{s.is_mine ? " (your team)" : ""} · <b>{cov.eligible_periods.length}</b> completed, fully observed regular-season period(s) of {cov.teams} teams
+          {s.name}{s.is_mine ? " (your team)" : ""} · <b>{cov.eligible_periods.length}</b> completed, fully observed regular-season {plural(cov.eligible_periods.length, "period")} of {cov.teams} teams
           {pending.length > 0 && <> · not completed yet: period{pending.length > 1 ? "s" : ""} {pending.join(", ")}</>}
           {" "}· historical and explanatory, not a prediction
         </>}
@@ -131,7 +132,7 @@ function Body({ d, cleared, sp }: { d: LuckLab; cleared: boolean; sp: SearchPara
           {cov.data_notes.duplicate_ids_merged.length > 0 && <li>Identical duplicate matchup ids counted once: {cov.data_notes.duplicate_ids_merged.join(", ")}.</li>}
           {cov.data_notes.conflicting_ids.length > 0 && <li>Conflicting duplicate matchup ids (their periods excluded): {cov.data_notes.conflicting_ids.join(", ")}.</li>}
           {cov.data_notes.no_period.length > 0 && <li>Matchups without a matchup period are ignored: {cov.data_notes.no_period.length}.</li>}
-          {cov.data_notes.playoff_rows > 0 && <li>{cov.data_notes.playoff_rows} playoff matchup(s) are never mixed with the regular season.</li>}
+          {cov.data_notes.playoff_rows > 0 && <li>{cov.data_notes.playoff_rows} playoff {plural(cov.data_notes.playoff_rows, "matchup")} {cov.data_notes.playoff_rows === 1 ? "is" : "are"} never mixed with the regular season.</li>}
         </ul>
       </Method>
     </div>
@@ -154,7 +155,7 @@ function Headline({ d }: { d: LuckLab }) {
       <Stat
         label="Actual wins"
         value={s.actual?.win_equivalents.toFixed(1)}
-        note={<>{rec(s.actual)} over {s.periods} eligible period(s) · ESPN {rec(s.espn_record)}</>}
+        note={<>{rec(s.actual)} over {s.periods} eligible {plural(s.periods, "period")} · ESPN {rec(s.espn_record)}</>}
       />
       <Stat
         label="Schedule luck"
@@ -373,7 +374,7 @@ function Notables({ d, name }: { d: LuckLab; name: (id: number) => string }) {
         <h3 className={styles.listTitle}>Fortunate wins</h3>
         <BriefList items={s.notable?.fortunate_wins ?? []} kind="beat" name={name} empty="None in eligible periods." />
       </Section>
-      <Section title="Scoring consistency" footnote={`Over ${s.periods} eligible period(s).`}>
+      <Section title="Scoring consistency" footnote={`Over ${s.periods} eligible ${plural(s.periods, "period")}.`}>
         {sc ? (
           <dl className={styles.kv}>
             <dt>Mean · median</dt><dd>{sc.mean.toFixed(1)} · {sc.median.toFixed(1)}</dd>
