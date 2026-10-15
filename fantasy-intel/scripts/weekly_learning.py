@@ -167,7 +167,11 @@ def cmd_evaluate(args, src, **_) -> dict:
             "by_position": {pos: {"n": r["n"], "mae": {m: v["mae"] for m, v in r["metrics"].items()},
                                   "diff": r.get("challenger_minus_champion_mae")}
                             for pos, r in p.get("positions", {}).items()},
-            "shadow_status": p.get("shadow_status")}
+            "shadow_status": {pos: {"status": s["status"], "lifecycle": s["lifecycle"],
+                                    "criteria": [f"{c['name']}: {c['result']} (observed {c['observed']}, required "
+                                                 f"{c['required']})" for c in s["criteria"]]}
+                              for pos, s in (p.get("shadow_status") or {}).items()},
+            "promotion_blockers": p.get("promotion_blockers")}
 
 
 def cmd_cycle(args, **ctx) -> dict:

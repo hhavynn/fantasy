@@ -685,6 +685,46 @@ worse by > 0.15, starters-pool MAE not worse, interval coverage 75-85%. Meeting 
 `PROMOTION_CRITERIA` (>= 3% vs the best trailing baseline, ESPN rule) and your approval. The
 challenger is expected to fail the 3% bar: its confirmed gain is ~0.4%.
 
+**Fail-closed enforcement (`weekly_learning.shadow_status`).** Every condition is evaluated per
+position as `{name, observed, required, result, explanation}` with `result` in `pass`, `fail` or
+`insufficient_data`. Missing evidence is `insufficient_data`, **never a pass**. Thresholds come
+from `challenger.SHADOW_GATE`, which restates `SHADOW_PROMOTION_CRITERIA` (tested to agree; the
+pre-registered text is unchanged so challenger artifact ids are unchanged).
+
+| Criterion | Required | `insufficient_data` when | `fail` when |
+|---|---|---|---|
+| `frozen_pregame_evidence` | report kind `pregame` | - | retrospective (or any other) replays |
+| `prospective_weeks` | >= 8 fully final weeks | fewer | - |
+| `matched_appearances` | >= 400 per position (player appeared, both models forecast) | fewer | - |
+| `mae_vs_champion` | week-clustered 95% CI upper bound of challenger - champion MAE < 0, identical rows | no CI (< 2 weeks of paired rows) | CI upper >= 0 |
+| `bias_guard` | \|challenger bias\| <= \|champion bias\| + 0.15 | either bias missing | worse by more than 0.15 |
+| `starters_pool_mae` | challenger MAE <= champion MAE on the starters pool | pool empty or a MAE missing | challenger worse |
+| `interval_coverage` | challenger 80% coverage in [0.75, 0.85] | no challenger intervals | under- or overcoverage |
+
+The **starters pool** is one definition everywhere (`forecast_backtest.starters_pool_expr`): per
+(season, week, position) the top `PAIR_POOL` players (QB 24, RB 48, WR 60, TE 24) by the
+recent-average baseline A1, a pregame quantity identical for every model. The same pool drives the
+Start/Sit pair decisions and the challenger research cohorts. QB challenger intervals are withheld
+by policy (confirmation coverage 74.0%), so QB `interval_coverage` is `insufficient_data` with that
+explanation: QB cannot reach `eligible_for_review` until coverage evidence exists. This is a
+reported limitation, not an exemption.
+
+Status vocabulary (separate axes):
+
+| Field | Values | Meaning |
+|---|---|---|
+| `status` (readiness) | `insufficient_evidence` | a sample criterion (pregame evidence, weeks, appearances) has not passed, or any criterion lacks evidence |
+| | `failed_evaluation` | enough evidence and at least one criterion fails |
+| | `eligible_for_review` | every criterion passes; the most an evaluation can produce |
+| `lifecycle` | `research_shadow` | ifp-2.0.0 in every position: never read by lineups, Start/Sit, trades, waivers, matchups or the website |
+| | `approved_production` | only by explicit user approval plus a reviewed code change that wires a model into consumers; never set by evaluation |
+| `production_gate` | `not_evaluated` | `PROMOTION_CRITERIA` stays a separate gate the weekly evaluation does not evaluate |
+
+`evaluate` writes `shadow_status` (per position: `status`, `lifecycle`, `criteria`, `blocking`,
+`production_gate`) and `promotion_blockers`, which answers "what prevents ifp-2 from replacing
+ifp-1?" per position: every non-passing criterion's explanation plus the approval and production
+gate. The CLI summary prints one line per criterion.
+
 ### Runtime
 
 Feature store 2020-2026 (42.7k rows, with classification) 6.4 s; development grid of 20 specs x 8

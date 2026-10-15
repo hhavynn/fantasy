@@ -197,7 +197,8 @@ def test_evaluation_counts_only_pregame_rows_from_earlier_artifacts(tmp_path):
     assert rep["positions"]["ALL"]["metrics"]["challenger"]["mae"] < 100
     assert wl.frozen_rows(runs)["run_id"].unique().to_list() == [pre["run_id"]]
     assert wl.frozen_rows(runs, "retrospective")["run_id"].unique().to_list() == [retro["run_id"]]
-    assert all(s["status"] == "shadow" for s in rep["shadow_status"].values())     # 1 week << 8
+    assert all(s["status"] == "insufficient_evidence" and s["lifecycle"] == "research_shadow"
+               for s in rep["shadow_status"].values())                         # 1 week << 8
     con.close()
 
 
@@ -428,3 +429,23 @@ def test_reevaluation_after_the_last_game_is_final(final_env):
     pre, fin = before["preliminary"]["positions"]["ALL"], after["positions"]["ALL"]
     assert pre["unconditional"]["n"] < fin["unconditional"]["n"]
     assert len(run["rows"]) == sum(after["outcomes"]["evidence"].values())
+
+
+def test_evaluation_reports_criteria_and_starters_pool_on_identical_rows(final_env):
+    src, scoring, champ, chal, run = final_env
+    rep = wl.evaluate([run], src)
+    for pos in ("QB", "RB", "WR", "TE", "ALL"):
+        r = rep["positions"][pos]
+        assert r["metrics"]["champion"]["n"] == r["metrics"]["challenger"]["n"] == r["n"]
+        assert r["starters_pool"]["n"] <= r["n"] and (r["starters_pool"]["n"] > 0) == (r["n"] > 0)
+    # synthetic TE has no challenger model: no paired rows, so its starters guard is missing evidence
+    assert rep["positions"]["TE"]["n"] == 0
+    te = {c["name"]: c["result"] for c in rep["shadow_status"]["TE"]["criteria"]}
+    assert te["starters_pool_mae"] == te["mae_vs_champion"] == te["bias_guard"] == wl.INSUFFICIENT
+    st = rep["shadow_status"]["WR"]
+    assert {c["name"]: c["result"] for c in st["criteria"]}["prospective_weeks"] == wl.INSUFFICIENT
+    assert st["status"] == "insufficient_evidence" and rep["promotion_blockers"]["WR"]["blocking"]
+    retro = wl.predict(src, champ, chal, 2025, 10, AFTER_W10, artifact_ids={}, kind="retrospective")
+    rr = wl.evaluate([retro], src, "retrospective")
+    assert all(s["status"] != "eligible_for_review" for s in rr["shadow_status"].values())
+    assert all(s["criteria"][0]["result"] == wl.FAIL for s in rr["shadow_status"].values())
