@@ -1,0 +1,55 @@
+import { expect, test, type Page } from "@playwright/test";
+import { ALL_NAV_PAGES } from "../lib/navigation";
+import { THEME_KEY } from "../lib/theme";
+
+// Route smoke test for the PRODUCT.md quality bar: every page renders with HTTP 200, one h1, no
+// console errors, no backend or render error state and no horizontal page scroll, in both themes.
+// The viewport (1440 and 375) comes from the Playwright project. Ids are from the synthetic league
+// (scripts/build_e2e_db.py): team 1 is a rival manager, 201 is "Echo RB".
+const ROUTES = [
+  ...ALL_NAV_PAGES.map((p) => p.href),
+  "/managers/1",
+  "/players?id=201",
+  "/data",
+];
+
+const THEMES = ["light", "dark"] as const;
+
+// Titles of BackendProblem and the route error boundary: a page that shows one did not render its data.
+const FAILURE_TEXT = /Can't reach the backend|The backend returned an error|database schema is out of date|Something went wrong|This page couldn't be rendered/;
+
+function collectErrors(page: Page): string[] {
+  const errors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") errors.push(`console: ${msg.text()}`);
+  });
+  page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
+  return errors;
+}
+
+for (const route of ROUTES) {
+  for (const theme of THEMES) {
+    test(`${route} (${theme})`, async ({ page }) => {
+      await page.addInitScript(([key, value]) => {
+        window.localStorage.setItem(key, value);
+      }, [THEME_KEY, theme] as const);
+      const errors = collectErrors(page);
+
+      const res = await page.goto(route, { waitUntil: "load" });
+      expect(res?.status(), "HTTP status").toBe(200);
+      await page.waitForLoadState("networkidle");
+
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expect(page.locator("h1"), "exactly one h1").toHaveCount(1);
+      await expect(page.locator("main"), "no backend or render error").not.toContainText(FAILURE_TEXT);
+
+      const overflow = await page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        client: document.documentElement.clientWidth,
+      }));
+      expect(overflow.scroll, `horizontal scroll at ${overflow.client}px`).toBeLessThanOrEqual(overflow.client);
+
+      expect(errors, "console errors").toEqual([]);
+    });
+  }
+}

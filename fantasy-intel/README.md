@@ -516,6 +516,30 @@ streaming requiring starter turnover, trade-source union/dedup, target-share sum
 NGS NULLs, implied-total sign/arithmetic, team/defense aggregation keys,
 validation errors vs warnings, and an end-to-end API smoke test.
 
+### Browser smoke test (Playwright)
+
+`frontend/e2e/routes.spec.ts` loads every page in `frontend/lib/navigation.ts`, a manager detail page
+(`/managers/1`), a player profile (`/players?id=201`) and `/data` in Chromium, in the Light and Dark
+themes at 1440px and 375px wide. Each load must return HTTP 200 with exactly one `h1`, zero console
+errors, no backend or render error state and no horizontal page scroll (the PRODUCT.md quality bar).
+
+It needs no ESPN cookies or network: Playwright builds a synthetic DuckDB at `data/e2e.duckdb` with
+`scripts/build_e2e_db.py` (the ESPN fixture league from `backend/tests/espn_fixture.py` plus the
+synthetic NFL schedule from `backend/tests/synthetic_nfl.py`), serves it with uvicorn on port 8765,
+and runs `next start` on port 3100, so a dev server on 3000/8000 is left alone.
+
+```bash
+cd backend && uv sync                  # once
+cd ../frontend
+npx playwright install chromium        # once per Playwright version
+npm run build                          # the test runs the production build
+npm run e2e                            # add --ui or --headed to watch
+```
+
+A failure keeps a trace in `frontend/test-results/`; open it with
+`npx playwright show-trace <path>/trace.zip`. A page added to `lib/navigation.ts` is covered
+automatically; a new route outside the nav goes in the `ROUTES` list of the spec.
+
 ## Continuous Integration (CI)
 
 Every push to `main` and pull request targeting `main` automatically triggers GitHub Actions (`.github/workflows/ci.yml`).
@@ -524,6 +548,7 @@ Every push to `main` and pull request targeting `main` automatically triggers Gi
 
 - **Backend job (`backend`)**: Runs on Ubuntu with Python 3.12 and `uv`. Installs pinned dependencies from `backend/uv.lock` and executes the full pytest suite.
 - **Frontend job (`frontend`)**: Runs on Ubuntu with Node.js 22 LTS. Installs pinned dependencies from `frontend/package-lock.json` with `npm ci`, runs ESLint, verifies TypeScript types (`npm run typecheck`), runs the unit tests (`npm test`), and compiles a production build (`npm run build`).
+- **E2E job (`e2e`)**: Installs both, builds the frontend, and runs the Playwright route smoke test (`npm run e2e`, see [Browser smoke test](#browser-smoke-test-playwright)) against the backend serving the synthetic DuckDB. On failure it uploads the traces and HTML report as the `playwright-traces` artifact.
 
 ### Reproducing checks locally
 
@@ -542,6 +567,8 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npx playwright install chromium
+npm run e2e
 ```
 
 ### What to do when CI fails
@@ -552,6 +579,7 @@ npm run build
 4. If frontend typecheck fails: run `npm run typecheck` (which runs `next typegen` followed by `tsc --noEmit`).
 5. If frontend unit tests fail: run `npm test` locally (Node 22.6+ is required for `--experimental-strip-types`).
 6. If frontend build fails: run `npm run build` locally and inspect Next.js build errors.
+7. If the E2E smoke test fails: download the `playwright-traces` artifact and open the failing test's `trace.zip` with `npx playwright show-trace`, or run `npm run build && npm run e2e` locally. The test name says the route and theme; the project name (`desktop-1440` or `mobile-375`) says the width.
 
 ### Isolation and environment requirements
 
