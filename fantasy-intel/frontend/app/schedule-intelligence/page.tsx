@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
+import { PlayerPhoto } from "@/components/PlayerPhoto";
 import { Badge, Method, Notice, PageHeader, Pos, Section, SortableTh, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cx } from "@/lib/cx";
@@ -244,7 +245,7 @@ function Timeline({ d, href, phase }: { d: ScheduleIntelligence; href: (pid?: nu
               return (
                 <tr key={p.espn_player_id}>
                   <th scope="row" className={styles.who}>
-                    <Link href={href(p.espn_player_id)}>{p.name ?? `ESPN #${p.espn_player_id}`}</Link>{" "}
+                    <Link href={href(p.espn_player_id)}><PlayerPhoto id={p.espn_player_id} name={p.name} inline />{p.name ?? `ESPN #${p.espn_player_id}`}</Link>{" "}
                     <Pos value={p.position} /> <span className={styles.team}>{p.pro_team ?? "no team"}</span>
                     {p.on_ir && <> <Badge value="IR" tone="bad" /></>}
                   </th>

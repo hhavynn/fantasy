@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { PlayerLink } from "@/components/PlayerLink";
 import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { Badge, Notice, Pos } from "@/components/ui";
 import { num } from "@/lib/format";
@@ -98,7 +99,7 @@ function AssetTable({ e }: { e: DEvidence }) {
           <tbody>
             {rows.map(({ p, who }) => (
               <tr key={p.espn_player_id}>
-                <td>{p.name} <Pos value={p.position} /></td>
+                <td><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /></td>
                 <td className="faint">{who}</td>
                 <td className="num">{p.par === null ? <span title="Missing projections">incomplete ({p.known_par.toFixed(0)} known)</span> : p.par.toFixed(1)}</td>
                 <td className="num faint">{num(p.replacement_per_week, 1)}</td>

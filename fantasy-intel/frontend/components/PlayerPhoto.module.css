@@ -5,6 +5,8 @@
 }
 /* Team logos are transparent marks; keep them whole on a plain disc rather than cropped. */
 .logo { background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line); }
+/* Spacing before a name in running text; nudged up so the circle centres on the cap height. */
+.inline { margin: -2px 6px 0 0; }
 .initials { letter-spacing: 0.02em; user-select: none; }
 .img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .logo .img { object-fit: contain; padding: 12%; }
