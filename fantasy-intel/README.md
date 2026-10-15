@@ -420,7 +420,7 @@ uv sync --frozen
 TZ=UTC uv run pytest
 
 # Frontend checks
-cd fantasy-intel/frontend
+cd ../frontend
 npm ci
 npm run lint
 npm run typecheck
