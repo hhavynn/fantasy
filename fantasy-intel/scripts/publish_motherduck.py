@@ -1,6 +1,6 @@
 """Publish the local DuckDB file to MotherDuck so the hosted dashboard shows fresh data.
-Run it after the sync scripts. Needs a read/write MOTHERDUCK_TOKEN in .env (not the read-scaling
-token the hosted API uses).
+Run it after the sync scripts. Needs a MotherDuck access token in .env as MOTHERDUCK_TOKEN
+(read-scaling tokens are read-only and cannot publish).
 
     cd backend && uv run python ../scripts/publish_motherduck.py [--database fantasy_intel]
 """

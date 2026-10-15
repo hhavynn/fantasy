@@ -442,10 +442,13 @@ laptop: sync_espn.py / sync_nfl.py -> data/fantasy.duckdb -> publish_motherduck.
 Vercel: dashboard (SITE_PASSWORD) -> API (X-API-Key) -> md:fantasy_intel
 ```
 
-**1. MotherDuck.** Sign up and create two tokens under Settings -> Access Tokens: a normal
-read/write token for your laptop and a read-scaling (read-only) token for the API.
+**1. MotherDuck.** Sign up (the free Lite plan is enough) and create two access tokens under
+Settings -> Access Tokens: one for your laptop and one for the API, so either can be revoked on
+its own. Both are normal read/write tokens: read-only read-scaling tokens need MotherDuck's paid
+Business plan. The API never writes (it only runs SELECTs, with `saas_mode` on), and only the
+dashboard can call it (`FANTASY_API_KEY`); if you are on Business, a read-scaling token works too.
 
-**2. Publish from your laptop.** Add the read/write token to `.env` as `MOTHERDUCK_TOKEN`,
+**2. Publish from your laptop.** Add the laptop token to `.env` as `MOTHERDUCK_TOKEN`,
 then after any sync:
 
 ```bash
@@ -462,7 +465,7 @@ Environment variables:
 
 | variable              | value                                             |
 |-----------------------|---------------------------------------------------|
-| `MOTHERDUCK_TOKEN`    | the read-scaling token                            |
+| `MOTHERDUCK_TOKEN`    | the API's access token from step 1               |
 | `MOTHERDUCK_DATABASE` | `fantasy_intel`                                   |
 | `FANTASY_API_KEY`     | a long random string (`openssl rand -hex 32`)     |
 
