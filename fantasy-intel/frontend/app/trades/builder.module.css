@@ -67,7 +67,7 @@
 .bar {
   position: sticky; bottom: 0; z-index: 10;
   background: var(--surface-raised); border: 1px solid var(--line-control); border-radius: 10px;
-  box-shadow: 0 -6px 16px rgba(0, 0, 0, .35);
+  box-shadow: 0 -6px 16px var(--shadow-edge);
 }
 .barInner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; padding: 12px 16px; }
 .summary { display: flex; flex-direction: column; min-width: 0; }
@@ -82,7 +82,7 @@
 .evaluate { min-width: 104px; }
 
 @media (min-width: 721px) {
-  .bar { position: sticky; top: var(--appbar-h); bottom: auto; box-shadow: 0 6px 16px rgba(0, 0, 0, .35); }
+  .bar { position: sticky; top: var(--appbar-h); bottom: auto; box-shadow: 0 6px 16px var(--shadow-edge); }
   .list { max-height: 460px; overflow-y: auto; }
 }
 

@@ -8,8 +8,8 @@
 }
 .text { flex: 1 1 320px; min-width: 0; }
 .title { margin: 0; overflow-wrap: anywhere; }
-.meta { margin: 4px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
-.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.meta { margin: 4px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .extra { flex: 1 0 100%; min-width: 0; max-width: 100%; }
 
 @media (max-width: 720px) {

@@ -5,7 +5,8 @@
 .searchBar { width: 100%; }
 .searchBar .input { flex: 1 1 auto; min-width: 0; height: 44px; font-size: 16px; padding: 0 14px; }
 .searchBar .submit { height: 44px; padding: 0 20px; font-size: 14px; }
-.searchCompact .input { width: 240px; min-width: 0; }
+.searchCompact { min-width: 0; }
+.searchCompact .input { width: 240px; flex: 0 1 240px; min-width: 0; }
 .search .input { min-width: 0; }
 .hint { margin: 8px 0 0; color: var(--ink-muted); font-size: 13px; }
 

@@ -58,10 +58,6 @@
 @media (max-width: 900px) {
   .strips, .charts, .cols { grid-template-columns: minmax(0, 1fr); }
 }
-/* Two stats per row on phones (the strip's own auto-fit would give each stat a full row). */
-@media (max-width: 720px) {
-  .stats.stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @media (max-width: 720px) {
   .exchange { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .exchangeArrow { display: none; }

@@ -177,7 +177,7 @@ p { margin: 0 0 8px; }
 .nav-groups a { display: flex; align-items: center; padding: 0 12px; color: var(--ink-muted); font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; }
 .nav-groups a:hover { color: var(--ink); background: var(--surface-hover); text-decoration: none; }
 .nav-groups a[aria-current] { color: var(--ink); border-bottom-color: var(--accent); }
-.topbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.topbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; min-width: 0; white-space: nowrap; }
 .league-chip { font-size: 13px; color: var(--ink-muted); }
 .subnav { display: flex; gap: 4px; align-items: center; height: var(--subnav-h); padding: 0 24px; max-width: 1440px; margin: 0 auto; overflow-x: auto; scrollbar-width: none; border-top: 1px solid var(--line); }
 .subnav a { padding: 4px 12px; border-radius: 6px; color: var(--ink-muted); white-space: nowrap; }
@@ -185,8 +185,9 @@ p { margin: 0 0 8px; }
 .subnav a[aria-current] { color: var(--ink); background: var(--surface-raised); font-weight: 500; box-shadow: inset 0 0 0 1px var(--line); }
 
 /* Sync pill: one health dot; details in a popover. */
-.sync { position: relative; }
-.sync-pill { display: inline-flex; align-items: center; gap: 8px; padding: 3px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-raised); color: var(--ink-muted); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; }
+.sync { position: relative; min-width: 0; }
+.sync-pill { display: inline-flex; align-items: center; gap: 8px; padding: 3px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-raised); color: var(--ink-muted); font: inherit; font-size: 12px; line-height: 18px; max-width: 100%; cursor: pointer; }
+.sync-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sync-pill[aria-expanded="true"] { color: var(--ink); border-color: var(--line-control); }
 .sync-pill:hover { color: var(--ink); text-decoration: none; border-color: var(--line-control); }
 .sync-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--positive); }
@@ -220,6 +221,13 @@ p { margin: 0 0 8px; }
   .league-chip { display: none; }
 }
 
+/* Just above the phone breakpoint the four groups, search, theme switch and sync pill only fit with tighter padding. */
+@media (max-width: 800px) {
+  .topbar { gap: 12px; padding: 0 16px; }
+  .nav-groups a { padding: 0 8px; }
+  .subnav { padding: 0 16px; }
+}
+
 @media (max-width: 720px) {
   /* Brand, sync and the menu button on one row; the section groups move into the drawer. */
   :root { --topbar-h: 48px; --subnav-h: 44px; }
@@ -234,6 +242,13 @@ p { margin: 0 0 8px; }
   .menu-toggle { width: 40px; height: 40px; }
 }
 @media (max-width: 380px) { .mobile-nav-panel { grid-template-columns: minmax(0, 1fr); } }
+/* 320px phones: brand, search, sync pill and menu button share one row. */
+@media (max-width: 360px) {
+  .topbar { gap: 8px; padding: 0 12px; }
+  .topbar-end { gap: 6px; }
+  .brand { font-size: 19px; }
+  .sync-pill { gap: 6px; padding: 3px 8px; font-size: 11px; }
+}
 
 /* ---------- Page frame ---------- */
 main { padding: 24px 24px 64px; max-width: 1440px; margin: 0 auto; }
