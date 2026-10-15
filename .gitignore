@@ -15,7 +15,7 @@ Thumbs.db
 !.env.example
 
 # Python
-.venv/
+.venv
 venv/
 ENV/
 __pycache__/

@@ -17,3 +17,6 @@ data/imports/
 data/staging/
 *.vendor.csv
 *.vendor.json
+
+# Independent projection research artifacts (model JSON, reports, history DB). Never commit.
+data/models/
