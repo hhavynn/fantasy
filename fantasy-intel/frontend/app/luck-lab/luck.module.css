@@ -26,9 +26,9 @@
 .kv dt { color: var(--ink-muted); }
 .kv dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
 
-.matrix td.heat { background: color-mix(in srgb, var(--chart-1) calc(var(--heat) * 55%), transparent); }
+.matrix td.heat { background: color-mix(in srgb, var(--chart-1) calc(var(--heat) * var(--heat-max)), transparent); }
 .rW { color: var(--positive); }
 .rL { color: var(--negative); }
 .rT { color: var(--caution); }
-.matrix tbody tr:hover td.heat { background: color-mix(in srgb, var(--chart-1) calc(var(--heat) * 55%), var(--surface-hover)); }
+.matrix tbody tr:hover td.heat { background: color-mix(in srgb, var(--chart-1) calc(var(--heat) * var(--heat-max)), var(--surface-hover)); }
 .matrix td.heat b { margin-left: 2px; }

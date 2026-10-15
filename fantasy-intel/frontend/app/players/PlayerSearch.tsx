@@ -46,7 +46,7 @@ export function ResultsTable({ rows, q, limit }: { rows: PlayerListRow[]; q: str
       flush
     >
       <div className="table-wrap">
-        <table className={styles.stickyFirst}>
+        <table>
           <thead>
             <tr>
               <th>Player</th><th>NFL</th><th>Fantasy team</th><th>Status</th>

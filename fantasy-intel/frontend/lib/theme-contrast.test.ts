@@ -129,7 +129,7 @@ test("light theme: the explicit and prefers-color-scheme blocks define the same 
 });
 
 test("light theme redefines every colour token the dark theme sets (nothing falls through)", () => {
-  const colourTokens = Object.keys(darkRaw).filter((k) => !k.startsWith("--font-") && !/^--(ease-out|dur|dur-fast|dur-slow)$/.test(k) && k !== "color-scheme");
+  const colourTokens = Object.keys(darkRaw).filter((k) => /^(#[0-9a-f]+|rgba?\(|0 \d)/i.test(darkRaw[k]));
   const missing = colourTokens.filter((k) => !(k in lightRaw) && !/^var\(/.test(darkRaw[k]) && !k.startsWith("--appbar"));
   assert.deepEqual(missing, []);
 });

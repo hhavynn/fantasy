@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
 import { MobileNav, NavGroups, SubNav } from "@/components/Nav";
 import { SyncPill } from "@/components/SyncPill";
+import { TableScroll } from "@/components/TableScroll";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { api } from "@/lib/api";
 import type { StatusPayload } from "@/lib/sync-status";
@@ -52,6 +53,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <SubNav />
         </header>
         <main>{children}</main>
+        <TableScroll />
       </body>
     </html>
   );

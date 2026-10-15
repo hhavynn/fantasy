@@ -7,7 +7,7 @@
 .overrides { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); font-size: 12px; line-height: 18px; }
 
-.spotlight { display: grid; gap: 16px; }
+.spotlight { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .subhead { margin: 0 0 8px; font-size: 13px; color: var(--ink-muted); font-weight: 600; }
 .flushTable { margin: 0 -16px; }
 .flushTable th:first-child, .flushTable td:first-child { padding-left: 16px; }

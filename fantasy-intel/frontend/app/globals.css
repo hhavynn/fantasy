@@ -40,9 +40,16 @@
   --chart-5: #eedb5a;
   --chart-6: #c0c8d4;
   --chart-grid: #232b36;
+  --heat-max: 50%; /* strongest heat-matrix tint: keeps the W/L text above 4.5:1 on the darkest cell */
   --chart-axis: var(--ink-faint);
   --chart-positive: var(--positive);
   --chart-negative: var(--negative);
+
+  /* App bar geometry: one source for the bar itself and every sticky offset beneath it (trade action bar,
+     scroll-padding). The phone values are set in the max-width: 720px block below. */
+  --topbar-h: 52px;
+  --subnav-h: 40px;
+  --appbar-h: calc(var(--topbar-h) + var(--subnav-h) + 1px);
 
   --font-display: var(--font-barlow-condensed), "Arial Narrow", system-ui, sans-serif;
   --font-sans: var(--font-plex-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -101,6 +108,7 @@
   --chart-5: #6b5a00;
   --chart-6: #3d4757;
   --chart-grid: #dfe5ee;
+  --heat-max: 38%;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
@@ -135,13 +143,14 @@
     --chart-5: #6b5a00;
     --chart-6: #3d4757;
     --chart-grid: #dfe5ee;
+  --heat-max: 38%;
     color-scheme: light;
   }
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
-html { scrollbar-gutter: stable; }
+html { scrollbar-gutter: stable; scroll-padding-top: calc(var(--appbar-h) + 8px); }
 body {
   background: var(--bg);
   color: var(--ink);
@@ -160,7 +169,7 @@ p { margin: 0 0 8px; }
 
 /* ---------- App bar: grouped nav + sub-nav ---------- */
 .appbar { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line); }
-.topbar { display: flex; align-items: stretch; gap: 24px; height: 52px; padding: 0 24px; max-width: 1440px; margin: 0 auto; }
+.topbar { display: flex; align-items: stretch; gap: 24px; height: var(--topbar-h); padding: 0 24px; max-width: 1440px; margin: 0 auto; }
 .brand { display: flex; align-items: center; font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: .02em; color: var(--ink); white-space: nowrap; }
 .brand:hover { text-decoration: none; }
 .brand span { color: var(--accent); }
@@ -170,7 +179,7 @@ p { margin: 0 0 8px; }
 .nav-groups a[aria-current] { color: var(--ink); border-bottom-color: var(--accent); }
 .topbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; white-space: nowrap; }
 .league-chip { font-size: 13px; color: var(--ink-muted); }
-.subnav { display: flex; gap: 4px; align-items: center; height: 40px; padding: 0 24px; max-width: 1440px; margin: 0 auto; overflow-x: auto; scrollbar-width: none; border-top: 1px solid var(--line); }
+.subnav { display: flex; gap: 4px; align-items: center; height: var(--subnav-h); padding: 0 24px; max-width: 1440px; margin: 0 auto; overflow-x: auto; scrollbar-width: none; border-top: 1px solid var(--line); }
 .subnav a { padding: 4px 12px; border-radius: 6px; color: var(--ink-muted); white-space: nowrap; }
 .subnav a:hover { color: var(--ink); background: var(--surface-hover); text-decoration: none; }
 .subnav a[aria-current] { color: var(--ink); background: var(--surface-raised); font-weight: 500; box-shadow: inset 0 0 0 1px var(--line); }
@@ -196,7 +205,7 @@ p { margin: 0 0 8px; }
 .mobile-nav { display: none; }
 .menu-toggle { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--ink-muted); cursor: pointer; }
 .menu-toggle:hover, .menu-toggle[aria-expanded="true"] { color: var(--ink); border-color: var(--line-control); }
-.mobile-nav-panel { position: absolute; left: 0; right: 0; top: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; max-height: calc(100dvh - 100px); overflow-y: auto; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-pop); }
+.mobile-nav-panel { position: absolute; left: 0; right: 0; top: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; max-height: calc(100dvh - var(--appbar-h) - 8px); overflow-y: auto; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-pop); }
 .mobile-nav-group { display: flex; flex-direction: column; gap: 2px; }
 .mobile-nav-title { padding: 0 10px 4px; font-size: 12px; font-weight: 600; color: var(--ink-faint); }
 .mobile-nav-theme { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -206,13 +215,16 @@ p { margin: 0 0 8px; }
 
 @media (max-width: 720px) {
   /* Brand, sync and the menu button on one row; the section groups move into the drawer. */
-  .topbar { height: 48px; gap: 12px; padding: 0 16px; }
+  :root { --topbar-h: 48px; --subnav-h: 44px; }
+  .topbar { gap: 12px; padding: 0 16px; }
   .topbar-end { gap: 8px; }
   .nav-groups { display: none; }
   .topbar-end .topbar-theme { display: none; }
   .mobile-nav { display: block; }
   .subnav { padding: 0 16px; }
+  .subnav a { display: inline-flex; align-items: center; min-height: 40px; }
   .league-chip { display: none; }
+  .menu-toggle { width: 40px; height: 40px; }
 }
 @media (max-width: 380px) { .mobile-nav-panel { grid-template-columns: minmax(0, 1fr); } }
 
@@ -278,7 +290,7 @@ details.method p, details.method li { color: var(--ink-muted); max-width: 100ch;
 .panel .grid:has(> .stat):not(:has(> :not(.stat))) { background: var(--surface-raised); }
 
 /* ---------- Tables ---------- */
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; overscroll-behavior-x: contain; --cell-bg: var(--surface); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
 th, td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
 th { color: var(--ink-muted); font-weight: 500; font-size: 12px; line-height: 18px; text-align: left; position: sticky; top: 0; background: var(--surface-raised); }
@@ -289,6 +301,22 @@ tr.mine td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
 tr.group td { padding-top: 6px; padding-bottom: 6px; background: var(--bg); color: var(--ink-faint); font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 tr.group:hover td { background: var(--bg); }
 .slot { color: var(--ink-faint); font-size: 12px; }
+
+/* Wide tables scroll sideways inside .table-wrap with the first column (player, team, slot) pinned.
+   Cells need an opaque background to cover what scrolls under them; :where() keeps that default at the
+   lowest specificity so row hover, group rows and the own-team tint still win. A client island
+   (components/TableScroll.tsx) sets data-scrolled once the table has moved, which adds the edge shadow.
+   Opt out with .table-wrap.flat (tables that restack into cards on phones). */
+.table-wrap:not(.flat) > table :is(th, td):first-child { position: sticky; left: 0; z-index: 1; }
+.table-wrap:not(.flat) > table th:first-child { z-index: 3; }
+:where(.table-wrap:not(.flat) > table) td:first-child { background-color: var(--cell-bg); }
+.table-wrap:not(.flat) tr.mine td:first-child { background-color: var(--cell-bg); background-image: linear-gradient(var(--accent-soft), var(--accent-soft)); }
+.table-wrap[data-scrolled]:not(.flat) > table :is(th, td):first-child { box-shadow: 1px 0 0 var(--line), 8px 0 8px -6px var(--shadow-edge); }
+.table-wrap[data-scrolled]:not(.flat) tr.mine td:first-child { box-shadow: inset 2px 0 0 var(--accent), 8px 0 8px -6px var(--shadow-edge); }
+@media (max-width: 720px) {
+  /* A long name wraps instead of taking the whole screen; the rest of the row scrolls beside it. */
+  .table-wrap:not(.flat) > table :is(th, td):first-child { min-width: 112px; max-width: 44vw; white-space: normal; overflow-wrap: break-word; }
+}
 
 /* Player names are the scan anchor: ink, not link blue. */
 .player-link { color: var(--ink); font-weight: 500; }
@@ -340,6 +368,12 @@ button {
 button:hover { filter: brightness(1.08); }
 button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
 label { color: var(--ink-muted); }
+
+/* Phones: 40px touch targets for chips and the page's own form controls (module classes still win). */
+@media (max-width: 720px) {
+  .chip { display: inline-flex; align-items: center; min-height: 40px; padding-top: 0; padding-bottom: 0; }
+  :where(main) :is(input[type="search"], input[type="text"], input[type="number"], select, button) { height: 40px; }
+}
 
 details summary { cursor: pointer; color: var(--ink-muted); }
 details summary:hover { color: var(--ink); }

@@ -12,18 +12,6 @@
 .results .team { white-space: nowrap; }
 .empty p { margin: 0 0 8px; }
 
-/* Wide tables: the first column stays put while the rest scrolls sideways. */
-.stickyFirst thead th:first-child,
-.stickyFirst tbody td:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  background: var(--surface);
-  box-shadow: 1px 0 0 var(--line);
-}
-.stickyFirst thead th:first-child { z-index: 2; background: var(--surface-raised); }
-.stickyFirst tbody tr:hover td:first-child { background: var(--surface-hover); }
-
 /* ---------- Profile header ---------- */
 .metaLine { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .facts {

@@ -98,7 +98,7 @@ export function GameLog({ d, all, id }: { d: Detail; all: boolean; id: string })
       flush
     >
       <div className="table-wrap">
-        <table className={`${styles.stickyFirst} ${styles.log}`}>
+        <table className={styles.log}>
           <thead>
             <tr>
               <th scope="col">Wk</th>
@@ -135,7 +135,7 @@ function LeagueLog({ d, notes }: { d: Detail; notes: ReactNode }) {
   return (
     <Section title="Game log" flush>
       <div className="table-wrap">
-        <table className={styles.stickyFirst}>
+        <table>
           <thead>
             <tr><th scope="col">Wk</th><th scope="col" className="num">League pts</th><th scope="col" className="num">ESPN proj</th></tr>
           </thead>

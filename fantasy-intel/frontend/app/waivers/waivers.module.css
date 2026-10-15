@@ -30,16 +30,6 @@
 /* ---------- Decision table ---------- */
 .count { margin-left: 8px; color: var(--ink-muted); font-size: 12px; font-weight: 400; }
 .table th, .table td { vertical-align: middle; }
-.table thead th:first-child,
-.table tbody tr.main td:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  background: var(--surface);
-  box-shadow: 1px 0 0 var(--line);
-}
-.table thead th:first-child { z-index: 2; background: var(--surface-raised); }
-.table tbody tr.main:hover td:first-child { background: var(--surface-hover); }
 .player > tr.main td { border-bottom: 0; }
 .who { white-space: normal; min-width: 150px; max-width: 200px; }
 .sub { display: block; margin-top: 2px; color: var(--ink-muted); font-size: 12px; line-height: 17px; white-space: normal; }
