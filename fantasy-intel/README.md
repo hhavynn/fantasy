@@ -562,6 +562,60 @@ from reading it (`Operation not permitted` in `launchd.err.log`, with no refresh
 Full Disk Access to `uv` and to the Python in `backend/.venv` (System Settings → Privacy &
 Security), or keep the checkout somewhere else.
 
+## Weekly learning cycle (macOS launchd)
+
+The independent projection engine's research cycle (champion `ifp-1.0.0` refit + shadow
+challenger `ifp-2.0.0`, frozen pregame forecasts, prospective evaluation) runs separately from the
+refresh: `scripts/learning_cycle.py run` locks, checks its dependencies, runs `sync_nfl.py` and the
+play-by-play injury sync, picks the next week that has not kicked off, checks that every earlier
+game is final with box scores, snaps and nflverse expected points, evaluates earlier frozen
+forecasts, trains (reusing the previous artifacts when the training data, configuration and scoring
+are unchanged) and freezes pregame forecasts. It reads the production `ifp-1.0.0` files and never
+writes them, the live projection tables, ESPN or MotherDuck; nothing a page or lineup reads
+changes. Details: docs/independent_projection_engine.md, "Automated weekly cycle".
+
+It needs the writable `data/fantasy.duckdb`, `data/nfl_history.duckdb` and the git-ignored
+`data/models/` (production `selection.json`, `heldout_report.json`; outputs in
+`data/models/weekly/`), which only exist on your Mac: GitHub Actions and Vercel cannot run it.
+
+```bash
+cd backend
+uv run python ../scripts/learning_cycle.py run                # one cycle (what launchd runs)
+uv run python ../scripts/learning_cycle.py run --skip-sync    # data already synced
+uv run python ../scripts/learning_cycle.py status             # latest report, lock, missed weeks
+uv run python ../scripts/learning_cycle.py run --force-retrain   # refit after a stat correction
+uv run python ../scripts/weekly_learning.py evaluate          # prospective evaluation only
+```
+
+Exit codes: 0 frozen or already up to date, 3 data not ready (retry before kickoff), 4 another
+cycle is running, 5 missing dependency (the report says what to do), 1 a stage failed.
+
+`scripts/launchd/com.fantasy-intel.weekly-learning.plist` is a template; nothing installs it for
+you. It runs **Tuesday, Wednesday and Thursday at 7am** (Mac local time; the times assume
+Pacific, edit them otherwise), an hour before the Tuesday refresh (if both fire together when a
+sleeping Mac wakes, the cycle's sync step fails on the DuckDB write lock and the next attempt
+retries); a later attempt only redoes what the earlier one could not finish. Install from
+`fantasy-intel/`:
+
+```bash
+mkdir -p data/logs ~/Library/LaunchAgents
+sed -e "s|__FANTASY_INTEL_DIR__|$PWD|g" -e "s|__UV__|$(command -v uv)|g" scripts/launchd/com.fantasy-intel.weekly-learning.plist > ~/Library/LaunchAgents/com.fantasy-intel.weekly-learning.plist
+plutil -lint ~/Library/LaunchAgents/com.fantasy-intel.weekly-learning.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.fantasy-intel.weekly-learning.plist
+launchctl kickstart gui/$(id -u)/com.fantasy-intel.weekly-learning     # optional: run once now
+```
+
+Check: `uv run python ../scripts/learning_cycle.py status` (from `backend/`), or
+`data/models/weekly/status/latest-cycle.json`; `data/logs/weekly-learning.err.log` for uv errors.
+Uninstall: `launchctl bootout gui/$(id -u)/com.fantasy-intel.weekly-learning` and delete the plist.
+
+A sleeping Mac runs the missed attempt on wake; a Mac that is shut down skips it. For unattended
+runs keep it plugged in and optionally schedule a wake a few minutes before the attempts, e.g.
+`sudo pmset repeat wakeorpoweron TWR 06:55:00` (one `repeat` schedule per Mac; this replaces any
+existing one, so check `pmset -g sched` first). If every attempt fails before a week's first
+kickoff, that week has no pregame forecast: the next cycle records it under
+`data/models/weekly/missed/` and nothing is backfilled.
+
 ## Tests
 
 ```bash
