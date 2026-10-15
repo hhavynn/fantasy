@@ -11,6 +11,7 @@ from .lineup import assign_lineup, lineup_slots
 from .availability import ESPN_STATUS, availability
 from .projections import load_schedule
 from .waiver_roster import object_value, roster_constraints, projected_players
+from .team_lineups import STREAM_POSITIONS, STREAM_RANK
 
 # 15 from each independent evidence lane, deduplicated, max 60 per position.
 # Ownership only supplies coverage for players without other evidence, never an entry threshold.
@@ -202,3 +203,21 @@ def streaming_evidence(c: dict, state: dict, ctx: dict, pool: list[dict]) -> dic
             "opponent_offense": ctx["offenses"].get(opp), "defense_performance": ctx["defenses"].get(c.get("pro_team")),
             "projection_source": "Stored ESPN league-scoring projections",
             "projection_synced_at": ctx["projection_synced"].get(c["espn_player_id"])}
+
+
+def streaming_floor(pool: list[dict], ctx: dict, roster_slots: dict, rank: int = STREAM_RANK) -> dict:
+    """K/D/ST streaming baseline for the forward comparisons (team_lineups.STREAM_NOTE): per position the
+    league starts and per week after the upcoming one, the rank-th best ESPN projection among available
+    players at the position (the weakest projected one when fewer exist). The upcoming week is left out:
+    that week's pickup is the streaming decision itself (streaming_evidence), so holding a K or D/ST is
+    credited only for later weeks it beats the stream."""
+    out: dict[str, dict[int, float]] = {}
+    for pos in STREAM_POSITIONS:
+        if not int((roster_slots or {}).get(pos, 0)):
+            continue
+        for w in ctx["weeks"][1:]:
+            vals = sorted((v for p in pool if p["position"] == pos
+                           and (v := ctx["projections"].get(p["espn_player_id"], {}).get(w)) is not None), reverse=True)
+            if vals and vals[min(rank, len(vals)) - 1] > 0:
+                out.setdefault(pos, {})[w] = vals[min(rank, len(vals)) - 1]
+    return out

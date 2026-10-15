@@ -271,6 +271,9 @@ No projection was scaled.
 * The manual analyzer always accepts K and D/ST.
 * V3.1 adds the replacement-aware comparison this section lacked: every trade now shows how much of its gain one
   available free agent (often a D/ST) already provides. See [`v3_1_trade_vs_free_agency.md`](v3_1_trade_vs_free_agency.md).
+* Cause 4 is now addressed in the canonical delta itself (opt-in, on by default for trades, discovery, team value
+  and waivers): every lineup can stream K and D/ST at a weekly baseline, the 3rd-best available player's
+  projection. See [`kdst_streaming_baseline.md`](kdst_streaming_baseline.md).
 
 ## 8. Expanded search methodology
 

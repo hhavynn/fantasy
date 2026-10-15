@@ -6,6 +6,7 @@ from collections import Counter
 
 from ..espn.constants import DEFAULT_POSITION_MAP, IR_SLOT
 from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_total
+from .team_lineups import STREAMER_IDS
 
 
 def object_value(value) -> dict:
@@ -42,7 +43,17 @@ def projected_players(players: list[dict], week: int) -> list[dict]:
              and p.get("lineup_slot_id") != IR_SLOT} for p in players]
 
 
-def forward_effect(before: list[dict], after: list[dict], slots: list[str], weeks: list[int]) -> dict:
+def _streamers(stream: dict | None, slots: list[str], week: int) -> list[dict]:
+    """The K/D/ST waiver streamer for this week (team_lineups.STREAM_NOTE): a slot filler both rosters share."""
+    return [{"espn_player_id": STREAMER_IDS[pos], "position": pos, "value": per[week], "available": True}
+            for pos, per in (stream or {}).items() if pos in slots and per.get(week) is not None]
+
+
+def forward_effect(before: list[dict], after: list[dict], slots: list[str], weeks: list[int],
+                   stream: dict | None = None) -> dict:
+    """Projected starting-lineup gain of `after` over `before`, week by week. `stream` (position -> week ->
+    baseline) lets either lineup stream K/D/ST in those weeks, so holding one is worth only what it adds
+    above streaming there."""
     gains, missing = [], []
     for w in weeks:
         relevant = [p for p in before + after if any(eligible(s, p.get("position")) for s in slots)
@@ -50,8 +61,9 @@ def forward_effect(before: list[dict], after: list[dict], slots: list[str], week
         if any(p.get("projections", {}).get(w) is None for p in relevant):
             missing.append(w)
             continue
-        a = assign_lineup(projected_players(before, w), slots)
-        b = assign_lineup(projected_players(after, w), slots)
+        extra = _streamers(stream, slots, w)
+        a = assign_lineup(projected_players(before, w) + extra, slots)
+        b = assign_lineup(projected_players(after, w) + extra, slots)
         gains.append({"week": w, "gain": round(lineup_total(b) - lineup_total(a), 3),
                       "holes_before": sum(x["player_id"] is None for x in a),
                       "holes_after": sum(x["player_id"] is None for x in b)})
@@ -116,7 +128,7 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
         possible += 1
         remaining = [q for q in players if q["espn_player_id"] != pid]
         after = remaining + [candidate]
-        forward = forward_effect(players, after, slots, weeks)
+        forward = forward_effect(players, after, slots, weeks, state.get("stream"))
         projected_improvement = forward["total_gain"] is not None and forward["total_gain"] > 0
         short_term = False
         if candidate["position"] in ("K", "D/ST") and p["position"] == candidate["position"] and weeks:

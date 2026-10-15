@@ -16,7 +16,7 @@ from ..analytics.trade_data import (load_league_state, manager_context, named_we
                                     player_names)
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
 from ..analytics.trade_alternatives import for_evaluation as trade_vs_free_agency
-from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade
+from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade, with_streaming
 from ..config import get_settings
 from ..db.connection import schema_version, table_exists
 from .deps import db, one, rows
@@ -607,6 +607,7 @@ class TradeRequest(BaseModel):
     team_a_sends: list[int]
     team_b_sends: list[int]
     start_week: int | None = None
+    kdst_streaming: bool = True       # value K and D/ST against weekly free-agent streaming (team_lineups)
 
 
 @router.post("/trades/evaluate")
@@ -615,6 +616,8 @@ def trades_evaluate(body: TradeRequest):
     with db() as con:
         lg = _league(con)
         state = _state(con)
+        if body.kdst_streaming:
+            state = with_streaming(state)
         try:
             res = evaluate_trade(state, body.team_a_id, body.team_b_id, body.team_a_sends, body.team_b_sends,
                                  body.start_week, max_per_side=get_settings().trade_max_players_per_side)

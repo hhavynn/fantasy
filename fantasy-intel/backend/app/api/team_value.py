@@ -12,13 +12,14 @@ router = APIRouter(prefix="/api", tags=["team value"])
 
 
 @router.get("/my-team/value")
-def my_team_value(team_id: int | None = None, trades: bool = True):
+def my_team_value(team_id: int | None = None, trades: bool = True, kdst_streaming: bool = True):
     """Roster strength vs the league, player marginal values, depth, bench usage, upgrades and the
-    playoff-race context for one team (default: yours). `trades=false` skips the trade preview."""
+    playoff-race context for one team (default: yours). `trades=false` skips the trade preview;
+    `kdst_streaming=false` holds each team's current K and D/ST all season instead of streaming them."""
     with db() as con:
         try:
             race, extras = load_team_value_inputs(con)
-            return build_team_value(race, extras, team_id=team_id, trades=trades)
+            return build_team_value(race, extras, team_id=team_id, trades=trades, kdst_streaming=kdst_streaming)
         except NotSynced as err:
             raise HTTPException(503, str(err))
         except NotFound as err:

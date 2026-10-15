@@ -21,6 +21,15 @@ Pure functions (no database). See docs/v2_trade_evaluator.md.
     analytics/player_availability.py) is treated like an IR week for that week only: he cannot
     start, his ESPN projection is kept and reported under `unavailable`, and it is never a measured
     0 and never makes the week incomplete. Outside those weeks nothing is assumed about his health.
+  * K / D/ST streaming baseline (opt-in, see StreamingProjections). Kickers and team defenses are
+    streamed from free agents week to week, so holding one rostered K or D/ST all season is not the
+    real alternative. When the projections carry a streaming baseline, each week a "waiver
+    streamer" can fill the K and D/ST slots at that week's baseline: the STREAM_RANK-th best
+    available free agent's ESPN projection at the position. A rostered K/D/ST starts only when he
+    projects at least that much, so acquiring one is worth only what he adds above streaming and
+    losing one costs only the gap down to it. The streamer uses no roster spot, is never a bench
+    player and never a starter id (assignment row: player_id None, "streamer": True). Plain dict
+    projections (the default) leave every result exactly as before.
 """
 
 from __future__ import annotations
@@ -88,6 +97,86 @@ def can_play(p: RosterPlayer, week: int) -> bool:
     return not p.on_ir and week not in p.unavailable_weeks
 
 
+# ------------------------------------------------------------ K / D/ST streaming baseline --
+
+STREAM_POSITIONS = ("K", "D/ST")
+# The baseline is the 3rd-best available free agent, not the best: other managers stream too, waiver
+# order decides who gets the top option, and nobody knows every future matchup projection in advance.
+STREAM_RANK = 3
+# Synthetic ids for the per-week streamer inside the optimizer only. Far above any ESPN id, so a real
+# player wins every tie (assign_lineup breaks ties by ascending id). Never returned as a starter id.
+STREAMER_IDS = {"K": 10**12 + 1, "D/ST": 10**12 + 2}
+STREAMER_NAMES = {"K": "Waiver streamer (K)", "D/ST": "Waiver streamer (D/ST)"}
+STREAM_NOTE = ("K and D/ST are valued against weekly streaming: each week either slot can be filled from free agents "
+               f"at that week's streaming baseline (the #{STREAM_RANK} available player's ESPN projection at the "
+               "position). A rostered kicker or defense counts only in weeks he projects at least that much, so trading "
+               "for or adding one is worth what he adds above streaming, and losing one costs only the gap down to it. "
+               "The streamer is a weekly add/drop: it uses no extra roster spot in this model.")
+
+
+class StreamingProjections(dict):
+    """ESPN projections (unchanged, the same mapping) that also carry a per-week K/D/ST streaming baseline.
+
+    `stream[position][week]` is the baseline in points; `stream_reference` names the free agent who sets it.
+    Every function taking `proj` reads the baseline through stream_levels(), so one opt-in at the state
+    level (trades.with_streaming) changes the trade evaluator, discovery and team value consistently."""
+
+    def __init__(self, base: Projections, levels: dict[str, dict[int, float]], reference: dict, rank: int):
+        super().__init__(base)
+        self.stream = levels
+        self.stream_reference = reference
+        self.stream_rank = rank
+
+
+def stream_levels(proj: Projections) -> dict[str, dict[int, float]]:
+    return getattr(proj, "stream", None) or {}
+
+
+def streaming_baseline(free_agents: list[RosterPlayer], slots: list[str], weeks, proj: Projections,
+                       rank: int = STREAM_RANK) -> tuple[dict, dict]:
+    """Per position the league starts (K, D/ST) and per week: the rank-th best ESPN projection among
+    available players who can play that week (the weakest one when fewer are projected). No level when
+    nobody is projected or the level is not positive: a missing projection is never a 0 streamer."""
+    levels: dict[str, dict[int, float]] = {}
+    reference: dict[str, dict[int, dict]] = {}
+    for pos in STREAM_POSITIONS:
+        if pos not in slots:
+            continue
+        for w in weeks:
+            scored = sorted(((v, p) for p in free_agents if p.position == pos and w not in p.unavailable_weeks
+                             and (v := projection(proj, p.espn_player_id, w)) is not None),
+                            key=lambda t: (-t[0], t[1].espn_player_id))
+            if not scored:
+                continue
+            k = min(rank, len(scored))
+            v, p = scored[k - 1]
+            if v <= 0:
+                continue
+            levels.setdefault(pos, {})[w] = v
+            reference.setdefault(pos, {})[w] = {"espn_player_id": p.espn_player_id, "name": p.name,
+                                                "pro_team": p.pro_team, "points": v, "rank": k,
+                                                "available_projected": len(scored)}
+    return levels, reference
+
+
+def with_stream(proj: Projections, free_agents: list[RosterPlayer], slots: list[str], weeks,
+                rank: int = STREAM_RANK) -> StreamingProjections:
+    base = dict(proj)          # never stack a baseline on a baseline
+    levels, reference = streaming_baseline(free_agents, slots, weeks, base, rank)
+    return StreamingProjections(base, levels, reference, rank)
+
+
+def stream_summary(proj: Projections, window: Window) -> dict:
+    """What the API reports about the baseline in use (enabled False = raw ESPN lineups)."""
+    if not isinstance(proj, StreamingProjections):
+        return {"enabled": False, "positions": []}
+    ref = proj.stream_reference
+    return {"enabled": True, "rank": proj.stream_rank, "note": STREAM_NOTE,
+            "positions": [{"position": pos, "weeks": [{"week": w, "phase": window.phase(w), **ref[pos][w]}
+                                                      for w in window.weeks if w in ref.get(pos, {})]}
+                          for pos in STREAM_POSITIONS if pos in ref]}
+
+
 # ------------------------------------------------------------------ one team-week --
 
 def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj: Projections,
@@ -110,7 +199,11 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
             missing.append(p.espn_player_id)
         else:
             teamless.append(p.espn_player_id)
-    assignment = assign_lineup(known, slots)
+    streamers = {STREAMER_IDS[pos]: pos for pos, per in stream_levels(proj).items()
+                 if pos in slots and per.get(week) is not None}
+    pool = known + [{"espn_player_id": sid, "position": pos, "value": stream_levels(proj)[pos][week]}
+                    for sid, pos in streamers.items()]
+    assignment = assign_lineup(pool, slots)
     starters = {a["player_id"] for a in assignment if a["player_id"] is not None}
     total = sum(a["value"] for a in assignment if a["player_id"] is not None)
     complete = not missing
@@ -120,9 +213,7 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
         "projection_complete": complete,
         "known_lineup_points": r(total),
         "projected_lineup_points": r(total) if complete else None,
-        "assignment": [{"slot": a["slot"], "player_id": a["player_id"], "position": a["position"],
-                        "points": a["value"] if a["player_id"] is not None else None, "is_flex": a["is_flex"]}
-                       for a in assignment],
+        "assignment": [_assignment_row(a, streamers) for a in assignment],
         "bench": ([{"player_id": k["espn_player_id"], "position": k["position"], "points": k["value"]}
                    for k in sorted(known, key=lambda k: (-k["value"], k["espn_player_id"]))
                    if k["espn_player_id"] not in starters]
@@ -133,6 +224,19 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
         "teamless_unprojected_ids": sorted(teamless),
         "_total": total,             # unrounded known total, for exact comparisons
     }
+
+
+def _assignment_row(a: dict, streamers: dict[int, str]) -> dict:
+    if a["player_id"] in streamers:
+        return {"slot": a["slot"], "player_id": None, "position": a["position"], "points": a["value"],
+                "is_flex": a["is_flex"], "streamer": True, "name": STREAMER_NAMES[streamers[a["player_id"]]]}
+    return {"slot": a["slot"], "player_id": a["player_id"], "position": a["position"],
+            "points": a["value"] if a["player_id"] is not None else None, "is_flex": a["is_flex"]}
+
+
+def slot_filled(a: dict) -> bool:
+    """An assignment row holds a rostered player or the K/D/ST waiver streamer (not an empty slot)."""
+    return a["player_id"] is not None or bool(a.get("streamer"))
 
 
 def starters(week: dict) -> set[int]:
