@@ -59,6 +59,8 @@
   --topbar-h: 52px;
   --subnav-h: 40px;
   --appbar-h: calc(var(--topbar-h) + var(--subnav-h) + 1px);
+  /* Phone tab bar height (0 where it is hidden): bottom-sticky UI sits above it. Set in the 720px block. */
+  --tabbar-h: 0px;
 
   --font-display: var(--font-barlow-condensed), "Arial Narrow", system-ui, sans-serif;
   --font-sans: var(--font-plex-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -258,7 +260,7 @@ p { margin: 0 0 8px; }
   .tabbar a[aria-current] { color: var(--accent); }
   .tabbar a[aria-current] svg { background: var(--accent-soft); }
   .tabbar svg { width: 44px; height: 26px; padding: 4px 13px; border-radius: 999px; }
-  body { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+  body { padding-bottom: var(--tabbar-h); }
 }
 
 /* Narrow desktops and tablets: the league name (also in each page header) makes room for search and the theme switch. */
@@ -277,7 +279,7 @@ p { margin: 0 0 8px; }
 
 @media (max-width: 720px) {
   /* Brand, sync and the menu button on one row; the section groups move into the drawer. */
-  :root { --topbar-h: 48px; --subnav-h: 44px; }
+  :root { --topbar-h: 48px; --subnav-h: 44px; --tabbar-h: calc(57px + env(safe-area-inset-bottom)); }
   .topbar { gap: 12px; padding: 0 16px; }
   .topbar-end { gap: 8px; }
   .nav-groups { display: none; }

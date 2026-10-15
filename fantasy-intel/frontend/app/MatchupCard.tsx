@@ -47,7 +47,7 @@ export function MatchupCard({ result }: { result: ApiResult<Matchup> }) {
           <p className={styles.cardNone}>
             {m.is_bye_week ? `${m.me.name} has a bye this week.` : "No opponent is scheduled in the synced ESPN schedule."}
           </p>
-          {mine.value !== null ? <div className={styles.board}><Side side={m.me} h={mine} status={m.status} mine leads={false} /></div> : null}
+          {mine.value !== null ? <div className={`${styles.board} ${styles.boardSolo}`}><Side side={m.me} h={mine} status={m.status} mine leads={false} /></div> : null}
         </div>
       </Section>
     );

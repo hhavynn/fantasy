@@ -73,7 +73,7 @@
 /* ---------- Action bar ---------- */
 
 .bar {
-  position: sticky; bottom: 0; z-index: 10;
+  position: sticky; bottom: var(--tabbar-h); z-index: 10;
   background: var(--surface-raised); border: 1px solid var(--line-control); border-radius: 10px;
   box-shadow: 0 -6px 16px var(--shadow-edge);
 }
@@ -97,7 +97,7 @@
 @media (max-width: 720px) {
   .sides { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .swap { justify-self: center; margin: 0; transform: rotate(90deg); }
-  .bar { margin-left: -16px; margin-right: -16px; border-radius: 10px 10px 0 0; border-left: 0; border-right: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .bar { margin-left: -16px; margin-right: -16px; border-radius: 10px 10px 0 0; border-left: 0; border-right: 0; }
   .barInner { padding: 8px 16px; }
   .controls { width: 100%; flex-wrap: nowrap; gap: 8px; }
   .evaluate { flex: 1; min-width: 0; }
