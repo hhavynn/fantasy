@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ALL_NAV_PAGES, NAV_GROUPS } from "./navigation.ts";
 import {
-  QUICK_ACTIONS, RECENT_LIMIT, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent,
+  FUZZY_SCORE, QUICK_ACTIONS, RECENT_LIMIT, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent,
   rankItems, scoreItem, wrapIndex,
 } from "./palette.ts";
 
@@ -48,6 +48,33 @@ test("scoreItem: keywords and hint find an item when the label does not", () => 
 test("rankItems orders by score", () => {
   const ranked = rankItems("wa", [...QUICK_ACTIONS, ...pages]).map((i) => i.href);
   assert.equal(ranked[0], "/waivers");
+});
+
+test("rankItems: a subsequence-only match is returned only when nothing matches better", () => {
+  const dataCheck = QUICK_ACTIONS.find((a) => a.href === "/data")!;
+  const chase = { id: "p:1", kind: "player" as const, label: "Chase Brown", href: "/players?id=1" };
+  assert.equal(scoreItem("chase", dataCheck), FUZZY_SCORE);
+  assert.deepEqual(rankItems("chase", [dataCheck, chase]).map((i) => i.id), ["p:1"]);
+  assert.deepEqual(rankItems("chase", [dataCheck]).map((i) => i.id), [dataCheck.id]);
+});
+
+test("a name that only fuzzy-matches a page puts the players first and drops the weak page match", () => {
+  const chase = [playerItem({ id: 3, name: "Ja'Marr Chase", position: "WR", team: "CIN", owner: "los changitos" })];
+  const sections = buildSections("chase", pages, chase, []);
+  assert.deepEqual(sections.map((s) => s.key), ["players"]);
+  assert.equal(flattenSections(sections)[0].label, "Ja'Marr Chase");
+});
+
+test("while players are still loading, a weak page match is not offered (Enter must not open it)", () => {
+  assert.deepEqual(buildSections("chase", pages, [], [], true), []);
+  // Once the search settles with no player, the weak match is the best remaining answer.
+  assert.deepEqual(flattenSections(buildSections("chase", pages, [], [], false)).map((i) => i.href), ["/data"]);
+});
+
+test("a strong page match is unaffected by pending players or players that also matched", () => {
+  assert.equal(flattenSections(buildSections("wai", pages, [], [], true))[0].href, "/waivers");
+  const sections = buildSections("wai", pages, players, [], false);
+  assert.deepEqual(sections.map((s) => s.key), ["pages", "players"]);
 });
 
 test("empty query: recents, then actions, then pages, with recents not repeated", () => {

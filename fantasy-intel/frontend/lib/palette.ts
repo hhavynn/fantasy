@@ -57,6 +57,9 @@ function wordStart(hay: string, needle: string): boolean {
   return hay.split(/[\s/\-_.]+/).some((w) => w.startsWith(needle));
 }
 
+/** The score of a subsequence-only match: the weakest thing that still counts as a match. */
+export const FUZZY_SCORE = 15;
+
 /** How well `query` matches `item`; 0 means no match. Exact > prefix > word start > substring > keyword > fuzzy. */
 export function scoreItem(query: string, item: PaletteItem): number {
   const q = normalize(query);
@@ -69,15 +72,20 @@ export function scoreItem(query: string, item: PaletteItem): number {
   const words = [...(item.keywords ?? []), item.hint ?? ""].map(normalize);
   if (words.some((w) => w.startsWith(q) || wordStart(w, q))) return 40;
   if (words.some((w) => w.includes(q))) return 30;
-  if (q.length >= 2 && isSubsequence(q.replace(/ /g, ""), label.replace(/ /g, ""))) return 15;
+  if (q.length >= 2 && isSubsequence(q.replace(/ /g, ""), label.replace(/ /g, ""))) return FUZZY_SCORE;
   return 0;
 }
 
-/** Items that match `query`, best first; ties keep their original order. */
+/**
+ * Items that match `query`, best first; ties keep their original order. Subsequence-only matches
+ * ("chase" inside "Check data freshness") are returned only when nothing matches better.
+ */
 export function rankItems(query: string, items: readonly PaletteItem[]): PaletteItem[] {
-  return items
+  const scored = items
     .map((item, i) => ({ item, i, score: scoreItem(query, item) }))
-    .filter((r) => r.score > 0)
+    .filter((r) => r.score > 0);
+  const real = scored.filter((r) => r.score > FUZZY_SCORE);
+  return (real.length > 0 ? real : scored)
     .sort((a, b) => b.score - a.score || a.i - b.i)
     .map((r) => r.item);
 }
@@ -89,10 +97,13 @@ const PLAYER_LIMIT = 8;
  * The sections to show. Without a query: recent selections, quick actions, pages. With one:
  * matching actions and pages merged (best match first) and the player results the backend
  * returned. Players lead only when no action or page matches the text at least as a word start,
- * so "wai" finds Waivers first and "lloyd" finds the player first.
+ * so "wai" finds Waivers first and "lloyd" finds the player first. A subsequence-only page match
+ * is a last resort: it is hidden while players exist or are still being searched, so a name such
+ * as "chase" never lands on "Check data freshness" ahead of Ja'Marr Chase.
  */
 export function buildSections(
   query: string, pages: readonly PaletteItem[], players: readonly PaletteItem[], recents: readonly PaletteItem[],
+  playersPending = false,
 ): PaletteSection[] {
   const q = query.trim();
   if (!q) {
@@ -105,7 +116,9 @@ export function buildSections(
     ];
     return sections.filter((s) => s.items.length > 0);
   }
-  const matched = rankItems(q, [...QUICK_ACTIONS, ...pages]);
+  let matched = rankItems(q, [...QUICK_ACTIONS, ...pages]);
+  const weakOnly = matched.length > 0 && scoreItem(q, matched[0]) <= FUZZY_SCORE;
+  if (weakOnly && (players.length > 0 || playersPending)) matched = [];
   const strongLocal = matched.length > 0 && scoreItem(q, matched[0]) >= 70;
   const local: PaletteSection = { key: "pages", title: "Go to", items: matched.slice(0, LOCAL_LIMIT) };
   const found: PaletteSection = { key: "players", title: "Players", items: players.slice(0, PLAYER_LIMIT) };
