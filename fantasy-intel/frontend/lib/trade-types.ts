@@ -103,7 +103,8 @@ export type DResult = DRow & {
   manager_context: ManagerContext | null; need_notes: string[];
 };
 
-export type NeedRow = { slot_points_per_week: number | null; slots: number; surplus: number[]; league_rank: number; teams: number; short: boolean };
+export type NeedRow = { slot_points_per_week: number | null; slots: number; surplus: number[]; league_rank: number | null;
+  teams: number; short: boolean; incomplete: boolean };
 
 export type DiscoveryV3 = {
   league: { league_id: number; season: number; name: string; current_week: number; final_scoring_period: number };

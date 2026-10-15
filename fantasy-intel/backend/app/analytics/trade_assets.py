@@ -26,6 +26,7 @@ manual analyzer.
 from __future__ import annotations
 
 from collections import Counter
+from statistics import median
 
 from .lineup import FIXED_SLOTS
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, UNKNOWN
@@ -181,29 +182,38 @@ class AssetBoard:
 
 def team_needs(state, window: Window, team_id: int, board: AssetBoard, team: dict | None = None) -> dict:
     """Per position: the team's fixed starters' average projected points per slot-week (canonical
-    optimal lineups), its rank among the league's teams, whether it is in the bottom half ("short"),
-    and its starter-caliber players who start at most half the weeks ("surplus")."""
+    optimal lineups) and its starter-caliber players who start at most half the weeks ("surplus").
+    The average is unknown (None) when a rostered player at the position lacks an ESPN projection in
+    any week: an empty or partial slot is never scored as a measured 0."""
     roster = state.rosters[team_id]
     team = team or project_team(roster, state.slots, window, state.projections)
     counts = _fixed_counts(state.slots)
     n = max(1, len(window.weeks))
+    pos_of = {p.espn_player_id: p.position for p in roster}
     starts = Counter(a["player_id"] for w in team["weeks"] for a in w["assignment"] if a["player_id"] is not None)
     out = {}
     for pos, k in counts.items():
+        missing = any(pos_of.get(pid) == pos for w in team["weeks"] for pid in w["missing_projection_ids"])
         pts = sum(a["points"] or 0.0 for w in team["weeks"] for a in w["assignment"]
                   if a["slot"] == pos and a["player_id"] is not None)
         surplus = [p.espn_player_id for p in roster if p.position == pos and not p.on_ir
                    and board.profiles.get(p.espn_player_id, {}).get("starter_caliber") and starts[p.espn_player_id] * 2 <= n]
-        out[pos] = {"slot_points_per_week": r(pts / (n * k)), "slots": k, "surplus": surplus}
+        out[pos] = {"slot_points_per_week": None if missing else r(pts / (n * k)), "_raw": None if missing else pts / (n * k),
+                    "slots": k, "surplus": surplus, "incomplete": missing}
     return out
 
 
 def league_needs(state, window: Window, board: AssetBoard) -> dict[int, dict]:
+    """Ranks are tie-aware (1 + teams strictly better, among teams with a known value); "short" means
+    strictly below the league median of the known values, so equal teams are never split by id."""
     teams = {t: team_needs(state, window, t, board) for t in sorted(state.rosters)}
     for pos in _fixed_counts(state.slots):
-        order = sorted(teams, key=lambda t: (-(teams[t][pos]["slot_points_per_week"] or 0.0), t))
-        for i, t in enumerate(order):
-            teams[t][pos]["league_rank"] = i + 1
-            teams[t][pos]["teams"] = len(order)
-            teams[t][pos]["short"] = i + 1 > len(order) / 2
+        known = {t: teams[t][pos]["_raw"] for t in teams if teams[t][pos]["_raw"] is not None}
+        med = median(known.values()) if known else None
+        for t in teams:
+            row = teams[t][pos]
+            v = row.pop("_raw")
+            row["teams"] = len(known)
+            row["league_rank"] = None if v is None else 1 + sum(1 for x in known.values() if x > v + 1e-9)
+            row["short"] = v is not None and med is not None and v < med - 1e-9
     return teams

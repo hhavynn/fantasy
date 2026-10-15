@@ -213,7 +213,10 @@ change a canonical delta and never hide a trade from the manual analyzer.
 
 * **Roster needs** come from the canonical lineups (`trade_assets.league_needs`). For each position, the measure is
   the team's fixed starters' projected points per slot-week and its rank in the league.
-  * **Short** means the bottom half.
+  * Ranks are tie-aware (equal values share a rank). **Short** means strictly below the league median, so
+    equal teams are never split by team id.
+  * A position where a rostered player lacks an ESPN projection in some week is **unknown** (no value, no
+    rank, never "short"): an empty or partial slot is not scored as zero.
   * **Surplus** means a starter-caliber player who starts at most half the remaining weeks.
 * The stored manager-scouting evidence (needs, roster construction, trade history and confidence) is still attached
   as secondary context.

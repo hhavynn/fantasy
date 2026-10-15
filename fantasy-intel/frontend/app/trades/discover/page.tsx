@@ -332,7 +332,9 @@ function AssetTable({ r }: { r: DResult }) {
 
 function needText(needs: Record<string, NeedRow>) {
   const short = Object.entries(needs).filter(([, n]) => n.short).map(([p, n]) => `${p} (${n.league_rank}/${n.teams})`);
-  return short.length ? short.join(", ") : "none in the bottom half";
+  const unknown = Object.entries(needs).filter(([, n]) => n.incomplete).map(([p]) => p);
+  return (short.length ? short.join(", ") : "none below the league median")
+    + (unknown.length ? ` · unknown (missing projections): ${unknown.join(", ")}` : "");
 }
 
 function Managers({ d }: { d: DiscoveryV3 }) {
@@ -340,7 +342,7 @@ function Managers({ d }: { d: DiscoveryV3 }) {
   return (
     <section className="panel">
       <h2>By manager</h2>
-      <p className="faint">Your weaker starting positions (bottom half of the league by projected points per slot): <b>{needText(d.my_needs)}</b>.
+      <p className="faint">Your weaker starting positions (below the league median of projected points per slot): <b>{needText(d.my_needs)}</b>.
         A position need is a roster fact, not a willingness to trade.</p>
       <div className="table-wrap">
         <table>

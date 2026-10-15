@@ -409,6 +409,17 @@ def test_losing_an_essential_starter_or_leaving_a_hole_is_a_concern():
     assert "Team 3 would have an empty TE slot" in joined
 
 
+def test_needs_ranks_are_tie_aware_and_unknown_when_projections_are_missing():
+    from app.analytics.trade_assets import league_needs
+    st = league({t: filler(t, 100 * t) for t in (1, 2, 3, 4)})      # identical rosters: nobody is short
+    needs = league_needs(st, st.window(), AssetBoard(st, st.window()))
+    assert all(needs[t]["RB"]["league_rank"] == 1 and not needs[t]["RB"]["short"] for t in needs)
+    st.projections.pop(408)                                          # team 4's only TE: no projection
+    needs = league_needs(st, st.window(), AssetBoard(st, st.window()))
+    assert needs[4]["TE"]["slot_points_per_week"] is None and needs[4]["TE"]["league_rank"] is None
+    assert needs[4]["TE"]["incomplete"] and not needs[4]["TE"]["short"] and needs[1]["TE"]["teams"] == 3
+
+
 def test_incomplete_projections_never_get_a_balanced_label():
     st = market_league()
     st.projections[302].pop(11)
