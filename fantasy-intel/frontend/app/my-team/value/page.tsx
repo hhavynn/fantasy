@@ -217,7 +217,14 @@ function Positions({ d, phase }: { d: TeamValue; phase: TvPhase }) {
           <tbody>
             {slots.map((s) => {
               const st = s.strength[phase];
-              const loss = s.largest_single_loss;
+              const loss = s.removal_scenarios?.length
+                ? [...s.removal_scenarios].sort((a, b) => {
+                    const va = a.lineup_points_lost_by_phase[phase] ?? a.known_lineup_points_lost_by_phase[phase] ?? -Infinity;
+                    const vb = b.lineup_points_lost_by_phase[phase] ?? b.known_lineup_points_lost_by_phase[phase] ?? -Infinity;
+                    if (vb !== va) return vb - va;
+                    return a.espn_player_id - b.espn_player_id;
+                  })[0]
+                : s.largest_single_loss;
               return (
                 <tr key={s.slot}>
                   <td><b>{s.slot}</b>{s.count > 1 ? <span className="faint"> ×{s.count}</span> : null}</td>
@@ -252,8 +259,9 @@ function Strip({ p, weeks }: { p: TvPlayer; weeks: number[] }) {
   const started = new Set(p.weeks_started);
   const bench = new Map(p.bench.map((b) => [b.week, b]));
   const weekly = new Map(p.weekly.map((x) => [x.week, x]));
+  const startedCount = weeks.filter((w) => started.has(w)).length;
   return (
-    <svg width={weeks.length * 9} height={12} role="img" aria-label={`Started ${p.weeks_started.length} of ${weeks.length} weeks`}>
+    <svg width={weeks.length * 9} height={12} role="img" aria-label={`Started ${startedCount} of ${weeks.length} weeks`}>
       {weeks.map((w, i) => {
         const b = bench.get(w);
         const fill = started.has(w) ? AHEAD : b?.code === "ir" ? "var(--warn)" : b?.code === "no_projection" ? "none" : NEUTRAL;
@@ -272,7 +280,8 @@ function Strip({ p, weeks }: { p: TvPlayer; weeks: number[] }) {
 
 function Marginals({ d, phase }: { d: TeamValue; phase: TvPhase }) {
   const rows = [...d.players!].sort((a, b) => (marginal(b, phase) ?? knownMarginal(b, phase) ?? 0) - (marginal(a, phase) ?? knownMarginal(a, phase) ?? 0) || a.espn_player_id - b.espn_player_id);
-  const weeks = d.window.weeks;
+  const phaseWeeks = d.overview?.phases?.[phase]?.weeks ?? d.window.weeks;
+  const phaseWeekSet = new Set(phaseWeeks);
   return (
     <section className="panel">
       <h2>Who actually moves your lineup · {PHASE_TEXT[phase]}</h2>
@@ -285,14 +294,16 @@ function Marginals({ d, phase }: { d: TeamValue; phase: TvPhase }) {
             {rows.map((p) => {
               const raw = p.espn_projected[phase];
               const m = marginal(p, phase);
+              const starts = p.weeks_started.filter((w) => phaseWeekSet.has(w)).length;
+              const bench = p.weeks_benched.filter((w) => phaseWeekSet.has(w)).length;
               return (
                 <tr key={p.espn_player_id}>
                   <td><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /> <span className="faint">{p.pro_team ?? "FA"}</span></td>
                   <td className="num">{raw.points !== null ? pts(raw.points) : <span className="faint" title={`No ESPN projection for week(s) ${raw.missing_weeks.join(", ")}`}>known {pts(raw.known_points)}</span>}</td>
                   <td className="num"><b>{m !== null ? pts(m) : <span title="Incomplete weeks in this window">known {pts(knownMarginal(p, phase))}</span>}</b></td>
                   <td className="num faint">{pts(p.marginal.regular)} / {pts(p.marginal.playoff)}</td>
-                  <td><Strip p={p} weeks={weeks} /></td>
-                  <td className="num">{p.weeks_started.length} / {p.weeks_benched.length}</td>
+                  <td><Strip p={p} weeks={phaseWeeks} /></td>
+                  <td className="num">{starts} / {bench}</td>
                   <td className="wrap" style={{ minWidth: 200 }}>
                     {p.on_ir && <Badge value="IR" tone="bad" title="Inactive in the canonical lineup until ESPN shows him off IR" />}
                     {p.injury_status && !["ACTIVE", "NORMAL"].includes(p.injury_status) && !p.on_ir && <Badge value={p.injury_status} />}
@@ -330,7 +341,7 @@ function BenchSection({ d }: { d: TeamValue }) {
                 <tr key={p.espn_player_id}>
                   <td><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} />{cand.has(p.espn_player_id) && <> <Badge value="consolidation candidate" tone="warn" title="Large unused projection: may be worth more to another roster. Not a sell recommendation." /></>}</td>
                   <td className="num">{pts(p.unused_projected_points)}</td>
-                  <td className="num">{pts(p.marginal ?? p.known_marginal)}</td>
+                  <td className="num"><Delta value={p.marginal} known={p.known_marginal} /></td>
                   <td className="wrap">{Object.entries(p.bench_reason_counts).map(([k, n]) => `${REASON_TEXT[k] ?? k} (${n} wk)`).join(" · ")}</td>
                   <td className="wrap faint">{c ? c.covers.map((x) => `${x.for} at ${x.slot} (${x.weeks.length} wk)`).join("; ") : "—"}</td>
                   <td><Link href={`/trades/discover`}>trade ideas</Link></td>

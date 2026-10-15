@@ -353,6 +353,19 @@ def test_playoff_race_context_and_deterministic_matchup_effects():
         assert all(e["margin_after"] is not None for e in trade["matchups"])
 
 
+def test_trade_preview_matchup_effects_activates_incoming_ir_players():
+    d = sv.value_race(fa_count=10)
+    target_id = 1034
+    assert next(p for p in d.state.rosters[2] if p.espn_player_id == target_id).on_ir is True
+    res = build_team_value(d, EXTRAS, trades=True)
+    eff = res["playoff_race"]["upgrade_effects"]["trade"]
+    assert eff is not None and target_id in eff["receives"]
+    w11 = next(m for m in eff["matchups"] if m["matchup_period"] == 11)
+    assert w11["margin_after"] > w11["margin_before"]
+    assert w11["flips"] is True
+
+
+
 # ------------------------------------------------------ determinism, errors --
 
 def test_deterministic_inputs_unchanged_and_errors():

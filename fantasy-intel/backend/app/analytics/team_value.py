@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from dataclasses import replace
 from datetime import datetime
 
 from ..db.connection import fetch_dicts, table_exists
@@ -552,9 +553,9 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
     if top_trade:
         opp = top_trade["opponent_team_id"]
         mine_after = [p for p in roster if p.espn_player_id not in top_trade["sends"]] + \
-            [p for p in state.rosters[opp] if p.espn_player_id in top_trade["receives"]]
+            [replace(p, on_ir=False) for p in state.rosters[opp] if p.espn_player_id in top_trade["receives"]]
         opp_after = [p for p in state.rosters[opp] if p.espn_player_id not in top_trade["receives"]] + \
-            [p for p in roster if p.espn_player_id in top_trade["sends"]]
+            [replace(p, on_ir=False) for p in roster if p.espn_player_id in top_trade["sends"]]
         forced = top_trade["forced_drops"]
         mine_after = without(mine_after, forced.get("mine", []))
         opp_after = without(opp_after, forced.get("theirs", []))
