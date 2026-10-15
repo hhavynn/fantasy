@@ -3,7 +3,7 @@ leakage guards only, never evidence of forecasting accuracy)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 
 import polars as pl
@@ -20,6 +20,21 @@ SEASONS = [2024, 2025]
 UTC = timezone.utc
 BEFORE_W10 = datetime(2025, 9, 9, 12, tzinfo=UTC)      # synthetic week W kicks off 2025-09-W 17:00 UTC
 AFTER_W10 = datetime(2025, 9, 10, 18, tzinfo=UTC)
+# Synthetic data has no sync record: tests state when the nflverse schedule was fetched. Every synthetic
+# game kicked off well before this, so a scored game is presumed final (wl.game_presumed_final).
+FETCHED = datetime(2025, 12, 1, tzinfo=UTC)
+
+
+def _ready(*a, fetched_at=FETCHED):
+    return wl.readiness(*a, fetched_at=fetched_at)
+
+
+def _evaluate(*a, fetched_at=FETCHED, **k):
+    return wl.evaluate(*a, fetched_at={2025: fetched_at}, **k)
+
+
+def _label(*a, fetched_at=FETCHED):
+    return wl.label_outcomes(*a, fetched_at={2025: fetched_at})
 
 
 def _db(path, unfinished):
@@ -59,29 +74,29 @@ def _train(src, scoring, week=10, created="2025-09-27T12:00:00+00:00", retrospec
 
 def test_readiness_ok_before_kickoff_and_not_pregame_after(env):
     _, src, _ = env
-    r = wl.readiness(src, 2025, 10, BEFORE_W10)
+    r = _ready(src, 2025, 10, BEFORE_W10)
     assert r["ok"], r["errors"]
     assert r["pregame"] and r["completed_weeks"][9]["teams_with_box_scores"] == 8
-    assert not wl.readiness(src, 2025, 10, AFTER_W10)["pregame"]
+    assert not _ready(src, 2025, 10, AFTER_W10)["pregame"]
 
 
 def test_update_before_and_after_a_week_becomes_final(env, tmp_path):
     """Week 10 is unfinished: a week-11 model must refuse; once week 10 is final it trains, and a
     week whose games are only partly final never enters training."""
     _, src, _ = env
-    r = wl.readiness(src, 2025, 11, BEFORE_W10)
+    r = _ready(src, 2025, 11, BEFORE_W10)
     assert not r["ok"] and any("not final" in e for e in r["errors"])
     assert wl.training_store(src, 2025, 11)["key"].max() == 202509       # week 10 is not a training week
 
     con = _db(tmp_path / "later.duckdb", {2025: 11})
     later, _ = _src(con)
-    assert wl.readiness(later, 2025, 11, datetime(2025, 9, 10, tzinfo=UTC))["ok"]
+    assert _ready(later, 2025, 11, datetime(2025, 9, 10, tzinfo=UTC))["ok"]
     assert wl.training_store(later, 2025, 11)["key"].max() == 202510
     # one week-10 game not final -> readiness error and week 10 excluded entirely
     con.execute("UPDATE nfl_schedules SET home_score = NULL, away_score = NULL WHERE season = 2025 AND week = 10 "
                 "AND game_id = (SELECT min(game_id) FROM nfl_schedules WHERE season = 2025 AND week = 10)")
     partial, _ = _src(con)
-    assert not wl.readiness(partial, 2025, 11, datetime(2025, 9, 10, tzinfo=UTC))["ok"]
+    assert not _ready(partial, 2025, 11, datetime(2025, 9, 10, tzinfo=UTC))["ok"]
     assert wl.training_store(partial, 2025, 11)["key"].max() == 202509
     con.close()
 
@@ -90,11 +105,11 @@ def test_missing_box_scores_or_xfp_block_training(env):
     _, src, _ = env
     no_stats = type(src)(src.panel.filter(~((pl.col("week") == 9) & (pl.col("team") == "AAA") & (pl.col("season") == 2025))),
                          src.games, src.defense, src.rosters, src.injuries)
-    assert any("box scores" in e for e in wl.readiness(no_stats, 2025, 10, BEFORE_W10)["errors"])
+    assert any("box scores" in e for e in _ready(no_stats, 2025, 10, BEFORE_W10)["errors"])
     no_xfp = type(src)(src.panel.with_columns(pl.when((pl.col("season") == 2025) & (pl.col("week") == 9))
                                               .then(None).otherwise(pl.col("xfpl")).alias("xfpl")),
                        src.games, src.defense, src.rosters, src.injuries)
-    assert any("expected points" in e for e in wl.readiness(no_xfp, 2025, 10, BEFORE_W10)["errors"])
+    assert any("expected points" in e for e in _ready(no_xfp, 2025, 10, BEFORE_W10)["errors"])
 
 
 # ----------------------------------------------------------------------------- training
@@ -192,7 +207,7 @@ def test_evaluation_counts_only_pregame_rows_from_earlier_artifacts(tmp_path):
     for run in (pre, late, retro):
         wl.write_run(run, tmp_path / "ledger_root")
     runs = wl.load_ledger(tmp_path / "ledger_root")
-    rep = wl.evaluate(runs, src)
+    rep = _evaluate(runs, src)
     assert rep["weeks"] == [(2025, 10)]
     assert rep["positions"]["ALL"]["metrics"]["challenger"]["mae"] < 100
     assert wl.frozen_rows(runs)["run_id"].unique().to_list() == [pre["run_id"]]
@@ -205,7 +220,7 @@ def test_evaluation_waits_for_final_games(env, tmp_path):
     _, src, scoring = env
     champ, chal = _train(src, scoring)
     wl.write_run(wl.predict(src, champ, chal, 2025, 10, BEFORE_W10, artifact_ids={}), tmp_path)
-    rep = wl.evaluate(wl.load_ledger(tmp_path), src)
+    rep = _evaluate(wl.load_ledger(tmp_path), src)
     assert rep["weeks"] == [] and rep["positions"] == {}
 
 
@@ -219,3 +234,258 @@ def test_weekly_pipeline_never_imports_into_consumers():
         text = path.read_text()
         assert "weekly_learning" not in text and "from .challenger" not in text, path
     assert json.loads(json.dumps(ch.SHADOW_PROMOTION_CRITERIA))["min_prospective_weeks"] == 8
+
+
+# ----------------------------------------------------------------------------- outcome finality (partial weeks)
+#
+# Week 10 of the synthetic 2025 season is fully final in `final_env`. Each test derives a Sources
+# view in which some week-10 games have not finished yet (no score, no box scores, no snaps), as
+# when Thursday or Sunday games are final and later games are still pending.
+
+
+def _expected(run: dict, factor: float = 0.9) -> dict:
+    """Give every row an unconditional expected score (as a participation artifact would)."""
+    for r in run["rows"]:
+        for m in ("champion", "challenger"):
+            pts = r[m]["points"]
+            r[m]["expected_points"] = None if pts is None else round(pts * factor, 2)
+    return run
+
+
+@pytest.fixture(scope="module")
+def final_env(tmp_path_factory):
+    con = _db(tmp_path_factory.mktemp("fin") / "f.duckdb", {2025: 11})
+    src, scoring = _src(con)
+    champ, chal = _train(src, scoring)
+    run = _expected(wl.predict(src, champ, chal, 2025, 10, BEFORE_W10, artifact_ids={}))
+    yield src, scoring, champ, chal, run
+    con.close()
+
+
+def _week10_games(src) -> list[tuple[str, str]]:
+    g = src.games.filter((pl.col("season") == 2025) & (pl.col("week") == 10) & pl.col("is_home"))
+    return sorted((r["team"], r["opponent"]) for r in g.iter_rows(named=True))
+
+
+def _pending(src, teams: set[str]):
+    """Week-10 games of `teams` not final: no score, and nflverse has not published their stats."""
+    from dataclasses import replace
+    wk = (pl.col("season") == 2025) & (pl.col("week") == 10) & pl.col("team").is_in(sorted(teams))
+    games = src.games.with_columns([pl.when(wk).then(None).otherwise(pl.col(c)).alias(c)
+                                    for c in ("points_for", "points_against")])
+    return replace(src, games=games, panel=src.panel.filter(~wk))
+
+
+def _teams(games) -> set[str]:
+    return {t for g in games for t in g}
+
+
+def _assert_never_zero_filled(rows: pl.DataFrame) -> None:
+    unresolved = rows.filter(~pl.col("outcome_status").is_in(wl.RESOLVED))
+    assert unresolved["label"].null_count() == unresolved.height, "an unresolved outcome received a label"
+    absent = rows.filter(pl.col("outcome_status") == wl.CONFIRMED_ABSENT)
+    assert (absent["label"] == 0.0).all()
+
+
+def test_thursday_final_rest_pending_is_not_evidence(final_env):
+    src, *_, run = final_env
+    games = _week10_games(src)
+    thursday, rest = games[:1], games[1:]
+    part = _pending(src, _teams(rest))
+    rows = _label(wl.frozen_rows([run]), part)
+    _assert_never_zero_filled(rows)
+    by_team = {t: set(rows.filter(pl.col("team") == t)["outcome_status"].to_list()) for t in _teams(games)}
+    assert all(by_team[t] <= set(wl.RESOLVED) for t in _teams(thursday))
+    assert all(by_team[t] == {wl.PENDING_GAME} for t in _teams(rest))
+
+    rep = _evaluate([run], part)
+    assert rep["weeks"] == [] and rep["positions"] == {}
+    assert not rep["finality"]["2025-10"]["fully_final"]
+    assert rep["finality"]["2025-10"]["pending_teams"] == sorted(_teams(rest))
+    pre = rep["preliminary"]
+    n_thu = rows.filter(pl.col("team").is_in(sorted(_teams(thursday)))).height
+    assert pre["weeks"] == [(2025, 10)] and pre["n_resolved"] == n_thu
+    assert pre["n_unresolved"] == rows.height - n_thu
+    # The old evaluator zero-filled every pending player into the unconditional metrics.
+    assert pre["positions"]["ALL"]["unconditional"]["n"] < rows.height
+    assert pre["positions"]["ALL"]["unconditional"]["n"] == rows.filter(
+        pl.col("outcome_status").is_in(wl.RESOLVED) & pl.col("exp_champion").is_not_null()
+        & pl.col("exp_challenger").is_not_null()).height
+    # promotion: an incomplete week counts as zero prospective weeks
+    assert rep["outcomes"]["evidence"] == {s: 0 for s in wl.OUTCOME_STATUSES}
+    for st in rep["shadow_status"].values():
+        assert st["status"] != "eligible_for_review"
+        assert any(r.startswith("0 prospective weeks") for r in st["reasons"])
+
+
+def test_sunday_final_monday_pending(final_env):
+    src, *_, run = final_env
+    games = _week10_games(src)
+    monday = games[-1:]
+    part = _pending(src, _teams(monday))
+    rep = _evaluate([run], part)
+    assert rep["weeks"] == [] and rep["preliminary"]["weeks"] == [(2025, 10)]
+    assert rep["outcomes"]["not_yet_evidence"][wl.PENDING_GAME] == sum(
+        r["team"] in _teams(monday) for r in run["rows"])
+    rows = _label(wl.frozen_rows([run]), part)
+    _assert_never_zero_filled(rows)
+    # a player whose own game is final is resolved even though another team's game is not
+    sunday_player = rows.filter(pl.col("team") == games[0][0]).row(0, named=True)
+    monday_player = rows.filter(pl.col("team") == monday[0][0]).row(0, named=True)
+    assert sunday_player["outcome_status"] in wl.RESOLVED and sunday_player["label"] is not None
+    assert monday_player["outcome_status"] == wl.PENDING_GAME and monday_player["label"] is None
+
+
+def test_fully_completed_week_is_evidence(final_env):
+    src, *_, run = final_env
+    rep = _evaluate([run], src)
+    assert rep["weeks"] == [(2025, 10)] and "preliminary" not in rep
+    assert rep["finality"]["2025-10"] == {"scheduled_teams": 8, "final_teams": 8, "complete_teams": 8,
+                                          "pending_teams": [], "missing_ingestion_teams": [],
+                                          "forecast_teams_missing_from_schedule": [], "fully_final": True}
+    ev = rep["outcomes"]["evidence"]
+    assert ev[wl.APPEARED] + ev[wl.CONFIRMED_ABSENT] == len(run["rows"])
+    assert rep["positions"]["ALL"]["n"] == ev[wl.APPEARED] - sum(
+        r["champion"]["points"] is None or r["challenger"]["points"] is None for r in run["rows"]
+        if r["gsis_id"] in set(src.panel.filter((pl.col("season") == 2025) & (pl.col("week") == 10))["gsis_id"]))
+
+
+def test_confirmed_inactive_player_in_final_game_is_zero(final_env):
+    src, *_, run = final_env
+    rows = _label(wl.frozen_rows([run]), src)
+    ina = set(src.rosters.filter((pl.col("season") == 2025) & (pl.col("week") == 10)
+                                 & (pl.col("status") == "INA"))["gsis_id"].to_list())
+    absent = rows.filter(pl.col("outcome_status") == wl.CONFIRMED_ABSENT)
+    assert ina and ina <= set(absent["gsis_id"].to_list())
+    assert (absent["label"] == 0.0).all()
+    # unconditional includes the confirmed zeros, conditional does not
+    rep = _evaluate([run], src)["positions"]["ALL"]
+    with_exp = rows.filter(pl.col("exp_champion").is_not_null() & pl.col("exp_challenger").is_not_null())
+    assert rep["unconditional"]["n"] == with_exp.height
+    assert rep["n"] <= rows.filter(pl.col("outcome_status") == wl.APPEARED).height
+
+
+def test_final_schedule_without_player_stats_is_missing_ingestion(final_env):
+    from dataclasses import replace
+    src, *_, run = final_env
+    team = _week10_games(src)[0][0]
+    wk = (pl.col("season") == 2025) & (pl.col("week") == 10) & (pl.col("team") == team)
+    no_box = replace(src, panel=src.panel.filter(~wk))                         # score final, stats not synced
+    no_snaps = replace(src, panel=src.panel.with_columns(
+        pl.when(wk).then(None).otherwise(pl.col("offense_pct")).alias("offense_pct")))
+    for view in (no_box, no_snaps):
+        rows = _label(wl.frozen_rows([run]), view)
+        _assert_never_zero_filled(rows)
+        assert set(rows.filter(pl.col("team") == team)["outcome_status"].to_list()) == {wl.MISSING_INGESTION}
+        rep = _evaluate([run], view)
+        assert rep["weeks"] == [] and rep["finality"]["2025-10"]["missing_ingestion_teams"] == [team]
+
+
+def test_bye_week_player_is_excluded_not_zero(final_env):
+    """A forecast row with no game (no kickoff at forecast time) for a team the schedule does not list."""
+    import copy
+    from dataclasses import replace
+    src, *_, run = final_env
+    home, away = _week10_games(src)[0]
+    run = copy.deepcopy(run)
+    for r in run["rows"]:
+        if r["team"] in (home, away):
+            r["kickoff"] = None                                   # no game when the forecast was made
+    wk = (pl.col("season") == 2025) & (pl.col("week") == 10) & pl.col("team").is_in([home, away])
+    bye = replace(src, games=src.games.filter(~wk), panel=src.panel.filter(~wk))   # and none now
+    rows = _label(wl.frozen_rows([run]), bye)
+    _assert_never_zero_filled(rows)
+    assert set(rows.filter(pl.col("team").is_in([home, away]))["outcome_status"].to_list()) == {wl.BYE}
+    rep = _evaluate([run], bye)
+    assert rep["weeks"] == [(2025, 10)]                       # the remaining games are all final
+    assert rep["outcomes"]["evidence"][wl.BYE] == rows.filter(pl.col("team").is_in([home, away])).height
+    assert rep["positions"]["ALL"]["unconditional"]["n"] == rows.filter(
+        pl.col("outcome_status").is_in(wl.RESOLVED) & pl.col("exp_champion").is_not_null()
+        & pl.col("exp_challenger").is_not_null()).height
+
+
+def test_game_dropped_from_the_schedule_keeps_the_week_open(final_env):
+    """The forecasts saw a scheduled game (kickoff) that the current schedule no longer lists (an
+    incomplete schedule download): its players are missing data, never byes, and the week is not
+    evidence even though every listed game is final."""
+    from dataclasses import replace
+    src, *_, run = final_env
+    home, away = _week10_games(src)[0]
+    wk = (pl.col("season") == 2025) & (pl.col("week") == 10) & pl.col("team").is_in([home, away])
+    partial_schedule = replace(src, games=src.games.filter(~wk))
+    rows = _label(wl.frozen_rows([run]), partial_schedule)
+    _assert_never_zero_filled(rows)
+    assert set(rows.filter(pl.col("team").is_in([home, away]))["outcome_status"].to_list()) == {wl.MISSING_INGESTION}
+    rep = _evaluate([run], partial_schedule)
+    assert rep["weeks"] == [] and rep["preliminary"]["weeks"] == [(2025, 10)]
+    assert rep["finality"]["2025-10"]["forecast_teams_missing_from_schedule"] == sorted([home, away])
+    assert all(st["status"] != "eligible_for_review" and any(r.startswith("0 prospective weeks") for r in st["reasons"])
+               for st in rep["shadow_status"].values())
+
+
+def test_live_score_is_not_presumed_final(final_env):
+    """nflverse has no game-status field and a score may be live: a score fetched soon after kickoff,
+    or at an unknown time, never makes a game final (schedule_intelligence's rule)."""
+    src, *_, run = final_env
+    kick = datetime(2025, 9, 10, 17, tzinfo=UTC)                 # every synthetic week-10 game
+    assert wl.game_presumed_final(21, 17, kick, kick + timedelta(hours=9, minutes=1)) == (True, None)
+    for fetched in (kick + timedelta(hours=3), None):
+        ok, why = wl.game_presumed_final(21, 17, kick, fetched)
+        assert not ok and why
+        rows = _label(wl.frozen_rows([run]), src, fetched_at=fetched)
+        _assert_never_zero_filled(rows)
+        assert set(rows["outcome_status"].to_list()) == {wl.PENDING_GAME}
+        rep = _evaluate([run], src, fetched_at=fetched)
+        assert rep["weeks"] == [] and rep["outcomes"]["evidence"] == {s: 0 for s in wl.OUTCOME_STATUSES}
+    # the same rule gates training: a week-9 score fetched mid-game blocks a week-10 model
+    r = _ready(src, 2025, 10, BEFORE_W10, fetched_at=datetime(2025, 9, 9, 19, tzinfo=UTC))
+    assert not r["ok"] and any("cannot be presumed final" in e for e in r["errors"])
+    assert not _ready(src, 2025, 10, BEFORE_W10, fetched_at=None)["ok"]
+
+
+def test_unresolved_identity_is_excluded_not_zero(final_env):
+    import copy
+    src, *_, run = final_env
+    run = copy.deepcopy(run)
+    games = _week10_games(src)
+    rows = [r for r in run["rows"] if r["team"] == games[0][0]]
+    rows[0]["gsis_id"] = "00-NOT-A-PLAYER"                       # id not on any roster or box score
+    rows[1]["team"] = games[1][0]                                # forecast says another (final) team
+    out = _label(wl.frozen_rows([run]), src)
+    _assert_never_zero_filled(out)
+    bad = out.filter(pl.col("gsis_id").is_in([rows[0]["gsis_id"], rows[1]["gsis_id"]]))
+    assert set(bad["outcome_status"].to_list()) == {wl.UNRESOLVED_IDENTITY}
+
+
+def test_latest_pregame_snapshot_per_player_and_retrospective_excluded(final_env):
+    import copy
+    src, scoring, champ, chal, run = final_env
+    early = copy.deepcopy(run)
+    later = _expected(wl.predict(src, champ, chal, 2025, 10, datetime(2025, 9, 10, 9, tzinfo=UTC), artifact_ids={}))
+    for r in later["rows"]:                                      # e.g. a late injury report changed the forecast
+        if r["challenger"]["points"] is not None:
+            r["challenger"]["points"] += 1.0
+    retro = wl.predict(src, champ, chal, 2025, 10, AFTER_W10, artifact_ids={}, kind="retrospective")
+    for r in retro["rows"]:
+        r["challenger"]["points"] = 999.0
+    runs = [later, early, retro]                                 # order does not matter
+    fr = wl.frozen_rows(runs)
+    assert fr["run_id"].unique().to_list() == [later["run_id"]]
+    rep = _evaluate(runs, src)
+    alone = _evaluate([later], src)
+    assert rep["positions"] == alone["positions"] and rep["weeks"] == [(2025, 10)]
+    assert _evaluate([retro], src, "pregame")["weeks"] == []     # retrospective is never pregame evidence
+    assert _evaluate(runs, src, "retrospective")["kind"] == "retrospective"
+
+
+def test_reevaluation_after_the_last_game_is_final(final_env):
+    src, *_, run = final_env
+    monday = _teams(_week10_games(src)[-1:])
+    before = _evaluate([run], _pending(src, monday))
+    after = _evaluate([run], src)
+    again = _evaluate([run], src)
+    assert before["weeks"] == [] and after["weeks"] == [(2025, 10)]
+    assert after == again                                        # deterministic, ledger untouched
+    pre, fin = before["preliminary"]["positions"]["ALL"], after["positions"]["ALL"]
+    assert pre["unconditional"]["n"] < fin["unconditional"]["n"]
+    assert len(run["rows"]) == sum(after["outcomes"]["evidence"].values())
