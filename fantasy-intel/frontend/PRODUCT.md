@@ -18,6 +18,10 @@ Factual, compact, cautious. Separate current conditions from historical tendenci
 - Prioritize fast scanning with compact tables and progressive disclosure of detailed evidence.
 - Keep unknown data explicit and use text alongside color.
 - Support narrow screens, keyboard navigation and readable contrast.
+- Decision first, evidence second, method last: a page opens with the answer, then the table or chart behind it, then a collapsible `Method` with the assumptions.
+- Honest data: a muted `—` with a `title` reason means missing, `0` is a measured zero, and the UI never invents a number. No trade grades, acceptance or win probabilities, or clinching and elimination claims; the UI may sort, filter, sum and compare numbers the backend computed. Sample sizes and caveats stay next to the claims they limit.
+- Dense but calm: compact tables, restrained surfaces, hierarchy from type scale and spacing rather than boxes.
+- Copy is sentence case and factual: no exclamation marks, no emoji, no "(s)" plural hedges (use `plural()` from `lib/plural.ts`), and no engine identifiers in prose (`tidyReason()` in `lib/reason-text.ts` formats the engine's reason sentences for display).
 
 ## Anti-references
 
@@ -31,9 +35,20 @@ Build pages from the shared primitives instead of one-off markup. UI primitives 
 - Data: `SortableTh` with `lib/sort.ts` (`parseSort`, `sortRows`) for URL-backed server-side sorting, `Delta` (signed change with glyph), `Badge`, `Pos`, `Score`, `TrendArrow`, `Sparkline`.
 - States: `Notice` (info, caution, negative, positive), `EmptyState`, `Skeleton`, `SkeletonTable`, `SkeletonStatStrip`, `BackendProblem` (backend offline, stale schema, HTTP error). `app/loading.tsx`, `app/error.tsx` and `app/not-found.tsx` cover the route states.
 - Charts: `LineChart`, `BarChart`, `ScatterChart`, coloured by the `--chart-1` to `--chart-6` tokens.
-- Helpers: `cx()` in `lib/cx.ts`.
+- Helpers: `cx()` in `lib/cx.ts`, `plural()` in `lib/plural.ts`, number formatting in `lib/format.tsx` (`num`, `pct`, `signed`, `Missing`).
+- Also exported: `ToneIcon`, `VisuallyHidden`, `Callout` and `ErrorBox` (legacy wrappers over `Notice`).
 
 Rules: no new inline `style={{...}}` except computed geometry (chart coordinates, meter widths, colours that come from data); page-specific CSS goes in a CSS module beside the page; if the kit lacks a primitive, add it to the kit additively rather than building a parallel one-off.
+
+## Loading and streaming
+
+- Every route has a `loading.tsx` skeleton (the root one is the fallback) and the root `error.tsx` and `not-found.tsx`.
+- A page that awaits one slow source beside fast ones starts the slow request without awaiting it, and renders the slow part inside `<Suspense>` with a skeleton of the same footprint, so the header and first section stream at once. Examples: the Overview week band (`app/WeekBand.tsx`) and the Trade analyzer result (`app/trades/EvaluatedTrade.tsx`). Do this only where the wait is real; a section that needs the same payload as the page header cannot stream.
+- Fonts come from `next/font` (self-hosted, size-adjusted fallbacks), so loading them does not shift the layout. The pages use no images (only the generated app icons), so there is nothing to reserve space for.
+
+## Quality bar
+
+Before a page ships: no horizontal page scroll from 320 to 1600px in both themes; one `h1`; every text pair at least WCAG AA (`lib/theme-contrast.test.ts` guards the tokens); status never by colour alone; long names wrap or ellipsise with a `title`; no `style={{...}}` except computed geometry; no raw colours outside the token blocks in `globals.css`; zero console errors.
 
 ## Global UX (M7)
 
