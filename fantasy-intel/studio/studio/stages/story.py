@@ -25,7 +25,7 @@ import json
 from ..core import Episode, canonical_json, read_json, run_stage, sha256_bytes, write_json
 from .script import PLACEHOLDER, fill
 
-VERSION = 2
+VERSION = 4
 WORDS_PER_SECOND = 2.9          # am_fenrir at ~1.1x, measured on the hook line
 
 SNAPS_BARELY_PTS = 5            # a snap-share change this small (displayed points) "barely moved"
@@ -35,10 +35,11 @@ UNIT = {"offense_pct": "snaps", "target_share": "targets", "air_yards_share": "a
 POS_WORD = {"TE": "tight end", "WR": "receiver", "RB": "running back"}
 
 HOOKS = {
+    # The opening scene follows the hook: mystery -> player card, comparison -> split screen, warning -> lineup.
     "vanishing_targets": {
-        "where": ("{name} is still on the field. So where did his targets go?", ["where"]),
-        "talk": ("{name} managers... we need to talk about his targets.", ["talk"]),
-        "warning": ("Here's a {name} warning sign you might have missed.", ["warning"]),
+        "mystery": ("{name} is still on the field. So why did his targets dry up?", ["dry", "up"]),
+        "comparison": ("Same snaps. Way fewer targets. That's {name} right now.", ["same", "fewer"]),
+        "warning": ("Starting {name} this week? Look at this first.", ["starting"]),
     },
     "shrinking": {
         "proof": ("{name}'s role is shrinking. Here's the proof.", ["shrinking"]),
@@ -67,9 +68,8 @@ HOOKS = {
 
 # The hook scene's on-screen headline, matched to what the narrator says (fixed text, no numbers).
 HEADLINES = {
-    ("vanishing_targets", "where"): ["WHERE ARE", "THE TARGETS?"],
-    ("vanishing_targets", "talk"): ["WE NEED", "TO TALK."],
-    ("vanishing_targets", "warning"): ["WARNING", "SIGN."],
+    ("vanishing_targets", "mystery"): None, ("vanishing_targets", "comparison"): None,
+    ("vanishing_targets", "warning"): None,
     ("shrinking", "proof"): ["ROLE", "SHRINKING."], ("shrinking", "talk"): ["WE NEED", "TO TALK."],
     ("fill_in", "catch"): ["THERE'S A", "CATCH."], ("fill_in", "real"): ["REAL ROLE", "OR FILL-IN?"],
     ("held", "stayed"): ["HE'S BACK.", "ROLE STAYED."], ("displaced", "reason"): ["ROLE", "SHRANK."],
@@ -78,8 +78,8 @@ HEADLINES = {
 }
 
 TITLES = {
-    "vanishing_targets": ["Where Did {name}'s Targets Go?", "{name} Is Still Playing. The Targets Aren't.",
-                          "The {name} Warning Sign"],
+    "vanishing_targets": ["Why Did {name}'s Targets Dry Up?", "{name} Is Still Playing. The Targets Aren't.",
+                          "Starting {name}? Look at This First"],
     "shrinking": ["{name}'s Role Is Shrinking", "The {Stat} Drop Behind {name}", "{name} Managers, Read This"],
     "fill_in": ["Is {name}'s Role Real or a Fill-In?", "{name} Is Filling In for {tm}", "The Catch With {name}"],
     "held": ["{name} Kept the Role With {tm} Back", "{name}'s Role Survived {tm}'s Return",
@@ -157,12 +157,20 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
     team = claims[p["team_name"]]["display"]
     who = {"name": p["name"], "last": last(p["name"]), "team": team, "tm": tm["name"] if tm else ""}
     hook_text, hook_emph = hooks[hook_key]
-    beats = [beat("hook", hook_text.format(**who),
-                  {"type": "hook", "story": story, "headline": HEADLINES.get((story, hook_key))}, hook_emph, 1.14)]
+    hook_scene = {"type": "hook", "story": story, "headline": HEADLINES.get((story, hook_key))}
+    if story in ("vanishing_targets", "fill_in"):
+        hook_scene = {"type": {"comparison": "split", "warning": "lineup"}.get(hook_key, "player_card"),
+                      "story": story, "role": "hook"}
+    beats = [beat("hook", hook_text.format(**who), hook_scene, hook_emph, 1.14)]
+    if story == "vanishing_targets":
+        beats += vanishing_beats(p, claims, who, hook_key)
+        return finish(beats, p, lead, story, hook_key, tm, who)
 
     reveal = (f"His {lead['label']} went from {ph(lead['baseline'])} to "
               f"{'just ' if p['role'] == 'faller' else ''}{ph(lead['recent'])}.")
-    beats.append(beat("reveal", reveal, {"type": "big_compare", "metric": 0}, [], 1.08))
+    # Show playing time as playing time: a snap-share move gets the on-the-field view.
+    reveal_scene = {"type": "presence"} if lead["column"] == "offense_pct" else {"type": "big_compare", "metric": 0}
+    beats.append(beat("reveal", reveal, reveal_scene, [], 1.08))
 
     values = p.get("recent_values") or []
     if story in ("vanishing_targets", "shrinking", "breakout", "takeover", "unresolved") and len(values) >= 2:
@@ -234,8 +242,8 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
                     take = f"If {last(tm['name'])} plays this week, this role gets tested right away."
                 else:
                     take = f"It's real while {last(tm['name'])} is out. When he's back, all bets are off."
-                beats.append(beat("takeaway", take, {"type": "statement", "lines": ["FILL-IN ROLE.",
-                                                                                   f"WATCH {last(tm['name']).upper()}."]},
+                beats.append(beat("takeaway", take, {"type": "lineup", "role": "takeaway",
+                                                     "watch": f"FILL-IN ROLE · WATCH {last(tm['name']).upper()}"},
                                   ["while", "out"], 1.08))
                 beats.append(beat("question", f"Would you pick up {who['last']}, or wait?",
                                   {"type": "decision", "question": ["PICK UP", who["last"].upper() + "?"],
@@ -262,6 +270,63 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
                           {"type": "decision", "question": [f"{who['last'].upper()}", "ON YOUR ROSTER?"],
                            "options": ["YES", "NOT YET"]}, ["your", "roster"], 1.0))
 
+    return finish(beats, p, lead, story, hook_key, tm, who)
+
+
+def decline_split(values: list[int]) -> int | None:
+    """Where a per-game count fell off: the earliest k>=1 such that every later game is at most half the
+    average of the games before it (and at least two games follow). None when there is no clean break."""
+    for k in range(1, len(values) - 1):
+        before = sum(values[:k]) / k
+        if before > 0 and all(v <= before / 2 for v in values[k:]):
+            return k
+    return None
+
+
+def vanishing_beats(p: dict, claims: dict, who: dict, hook_key: str = "") -> list[dict]:
+    """Targets dried up while he stayed on the field: counts, then playing time, then (when the team's own
+    volume fell) the share, then a qualified takeaway. No teammate attribution: two games of other players'
+    shares cannot say where his targets went."""
+    lead = p["metrics"][0]
+    snaps = next(m for m in p["metrics"] if m["column"] == "offense_pct")
+    games = p["counts"]["games"]
+    vals = [claims[g["value"]]["value"] for g in games]
+    out = []
+    k = decline_split(vals)
+    if k is not None:
+        out.append(beat("evidence", _counts_sentence(games, k), {"type": "target_balls", "split": k}, ["since"], 1.16))
+    if hook_key != "comparison":         # that hook already said "same snaps"
+        out.append(beat("twist", f"His snaps? {ph(snaps['recent'])}. About the same as before.",
+                        {"type": "split", "role": "twist"}, ["same"], 1.15))
+    team = [g for g in games if g.get("team_targets")]
+    if len(team) >= 3:
+        tt = [claims[g["team_targets"]]["value"] for g in team]
+        latest, earlier = tt[-1], sum(tt[:-1]) / (len(tt) - 1)
+        if latest <= 0.75 * earlier:
+            out.append(beat("volume", f"Part of it: just {ph(team[-1]['team_targets'])} {who['team']} targets in "
+                                      f"{ph(p['recent_values'][-1]['week_claim'])}. But his share still fell, "
+                                      f"{ph(lead['baseline'])} to {ph(lead['recent'])}.",
+                            {"type": "volume"}, ["still", "fell"], 1.16))
+        else:
+            out.append(beat("volume", f"As a share of the targets, that's {ph(lead['baseline'])} down to "
+                                      f"{ph(lead['recent'])}.", {"type": "volume"}, [], 1.12))
+    out.append(beat("takeaway", f"{ph(p['recent_games'])} games isn't panic time. Just watch: does his share get "
+                                f"back toward {ph(lead['baseline'])}?", {"type": "lineup", "role": "takeaway"},
+                    ["watch"], 1.14))
+    out.append(beat("question", "Riding it out, or benching him?",
+                    {"type": "decision", "question": ["RIDING IT OUT", "OR BENCHING HIM?"],
+                     "options": ["RIDE IT OUT", "BENCH HIM"]}, ["riding", "benching"], 1.05))
+    return out
+
+
+def _counts_sentence(games: list[dict], k: int) -> str:
+    early = [ph(g["value"]) for g in games[:k]][-3:]
+    late = [ph(g["value"]) for g in games[k:]]
+    head = early[0] + " targets" + "".join(f", then {e}" for e in early[1:])
+    return f"{head}. Since then: {', '.join(late)}."
+
+
+def finish(beats, p, lead, story, hook_key, tm, who):
     titles = [t.format(name=p["name"], Stat=lead["label"].title(), tm=who["tm"]) for t in TITLES[story]]
     for i, b in enumerate(beats):
         b["id"] = f"s{i + 1:02d}"

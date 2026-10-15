@@ -21,7 +21,7 @@ from ..numbers import render, round_half_up
 sys.path.insert(0, str(STUDIO_ROOT.parent / "backend"))
 from app.analytics.trends import compute_trend, composite_trend  # noqa: E402  (pure stdlib module)
 
-VERSION = 6
+VERSION = 7
 PLAYOFF_WEEKS = [15, 16, 17]
 
 # (metric column, label, trend threshold). Thresholds for offense_pct/target_share/backfield_rush_share
@@ -129,6 +129,9 @@ def evaluate_claim(snap: dict, src: dict):
             if opp != "bye":
                 grades.append(evaluate_claim(snap, {"kind": "defense_band", "team": opp, "rank_key": src["rank_key"]}))
         return grade_summary(grades)
+    if kind == "team_targets":
+        return next(r["team_targets"] for r in snap["tables"]["nfl_team_week"]
+                    if r["team"] == src["team"] and r["week"] == src["week"])
     if kind == "absent_weeks":
         played = {r["week"] for r in snap["tables"]["player_week_usage"] if r["gsis_id"] == src["gsis_id"]}
         games = _team_games(snap, src["team"])
@@ -515,8 +518,27 @@ def week_values(book: "ClaimBook", p: dict) -> list[dict]:
     m = p["metrics"][0]
     return [{"week": w, "value": book.add(f"{m['label']}, week {w}", "pct",
                                           {"kind": "usage_value", "gsis_id": p["gsis_id"], "column": m["column"],
-                                           "week": w}, player=p["gsis_id"])}
+                                           "week": w}, player=p["gsis_id"]),
+             "week_claim": book.add("game week", "week", {"kind": "week_value", "week": w})}
             for w in p["recent_weeks"]]
+
+
+def game_counts(book: "ClaimBook", snap: dict, p: dict) -> dict:
+    """Per-game volume (targets, or designed runs for backs) for every game he played, plus his team's
+    targets per game: the countable version of a share story ("six, eight, then three, two, two")."""
+    col = "targets" if p["position"] != "RB" else "designed_rushes"
+    rows = sorted((r for r in snap["tables"]["player_week_usage"] if r["gsis_id"] == p["gsis_id"]),
+                  key=lambda r: r["week"])
+    team = {r["week"]: r for r in snap["tables"].get("nfl_team_week", []) if r["team"] == p["team"]}
+    return {"column": col,
+            "games": [{"week": r["week"],
+                       "value": book.add(f"{col.replace('_', ' ')}, week {r['week']}", "int",
+                                         {"kind": "usage_value", "gsis_id": p["gsis_id"], "column": col,
+                                          "week": r["week"]}, player=p["gsis_id"]),
+                       "team_targets": book.add(f"{p['team']} targets, week {r['week']}", "int",
+                                                {"kind": "team_targets", "team": p["team"], "week": r["week"]},
+                                                team=p["team"]) if r["week"] in team else None}
+                      for r in rows]}
 
 
 def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str],
@@ -541,6 +563,7 @@ def build_facts(snap: dict, cfg_selection: dict, recent_featured: set[str],
         p["teammate"] = teammate_facts(book, snap, p)
         p["gainers"] = gainer_facts(book, snap, p)
         p["recent_values"] = week_values(book, p)
+        p["counts"] = game_counts(book, snap, p)
     return {"season": snap["season"], "week": snap["week"], "data_through_week": snap["data_through_week"],
             "snapshot_sha256": snap["content_sha256"], "episode": episode, "players": players,
             "claims": book.claims}

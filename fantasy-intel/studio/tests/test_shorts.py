@@ -180,7 +180,21 @@ def test_vanishing_targets_story_answers_its_hook():
     assert storyline(p, cl) == "vanishing_targets"
     assert [g["name"] for g in p["gainers"]] == ["Gaining Receiver"]
     beats, titles, st = story.compose(f, cl, "seed", {})
-    assert st["hook"] == "where" and beats[0]["text_template"].endswith("So where did his targets go?")
-    assert [b["section"] for b in beats] == ["hook", "reveal", "evidence", "twist", "payoff", "takeaway", "question"]
-    alt, _, st2 = story.compose(f, cl, "seed", {}, hook_override="warning")
-    assert st2["hook"] == "warning" and [b["section"] for b in alt][1:] == [b["section"] for b in beats][1:]
+    assert st["hook"] == "mystery" and beats[0]["text_template"].endswith("So why did his targets dry up?")
+    assert beats[0]["scene"]["type"] == "player_card"                 # identity and conflict on frame 0
+    assert [b["section"] for b in beats] == ["hook", "evidence", "twist", "takeaway", "question"]
+    # Per-game counts, split where they fell off: "7 targets, then 10. Since then: 4, 2, 4."
+    assert "Since then:" in story.fill(beats[1]["text_template"], cl, "display")
+    # No teammate attribution in the narration: two games of other players' shares cannot show causation.
+    assert not any("Gaining Receiver" in b["text_template"] for b in beats)
+    alt, _, st2 = story.compose(f, cl, "seed", {}, hook_override="comparison")
+    assert st2["hook"] == "comparison" and "twist" not in [b["section"] for b in alt]   # hook already said it
+    assert alt[0]["scene"]["type"] == "split"
+
+
+def test_decline_split_finds_the_drop_off():
+    from studio.stages.story import decline_split
+    assert decline_split([6, 8, 3, 2, 2]) == 2           # 6, then 8. Since then: 3, 2, 2
+    assert decline_split([6, 6, 6, 6]) is None           # no drop-off
+    assert decline_split([6, 3, 3]) == 1
+    assert decline_split([6, 2]) is None                 # needs at least two games after the break

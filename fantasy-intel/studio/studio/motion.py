@@ -212,6 +212,14 @@ def background(kind: str, team: str, accent: tuple, t: float) -> Image.Image:
         return strip.crop((0, H - off, W, 2 * H - off))
     if kind == "team":
         return team_backdrop(primary, secondary).copy()
+    if kind == "split":
+        # Studio on top (the passing game), turf below (time on the field).
+        img = studio_backdrop(accent).copy()
+        strip = field_strip(primary)
+        off = int((t * 60) % H)
+        img.paste(strip.crop((0, H - off + 700, W, 2 * H - off)), (0, 700))
+        ImageDraw.Draw(img).rectangle((0, 696, W, 704), fill=(255, 255, 255))
+        return img
     return studio_backdrop(accent).copy()
 
 
@@ -250,9 +258,9 @@ def jersey(team: str, number: str, last_name: str, width: int = 720) -> Image.Im
 
 # ----------------------------------------------------------------------------------------- captions
 
-CAPTION_FONT = ("black", 78)
+CAPTION_FONT = ("black", 66)
 CAPTION_MAX_W = 860
-CAPTION_Y = 1450
+CAPTION_Y = 1490
 
 
 def caption_frame(words: list[dict], active: int, keyword_color, t_in: float) -> Image.Image:

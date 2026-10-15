@@ -30,6 +30,13 @@ uv run make-episode --week 7 --format long
 
 ## Shorts (the main product)
 
+Rendered by `stages/story.py` (storyline + beats) and `stages/render_motion.py` (scenes in
+`studio/scenes.py` and `stages/render_motion.py`, audio in `studio/audio_design.py`). Story components
+show what the narrator says: a player card with the premise on frame 0, targets as footballs per game,
+"getting the ball" vs "on the field" (snap share as dots), team volume, a fantasy lineup slot, a decision.
+Try other openings with `--hook` (e.g. `--hook comparison`); variants render to `<slug>-hook-<name>/` and
+stay out of the channel history.
+
 One player, one protagonist stat, 30-45 s, 1080x1920. Built on the strategy in
 [`../docs/research/shorts-strategy-report.md`](../docs/research/shorts-strategy-report.md):
 

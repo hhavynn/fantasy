@@ -33,7 +33,7 @@ DEFENSE_CONTEXT_COLUMNS = (
 
 # Allow-list: the snapshot may only read these tables.
 TABLES = ("player_week_usage", "nfl_players", "nfl_schedules", "team_context", "defense_context",
-          "nfl_injuries", "nfl_rosters_weekly", "sync_runs")
+          "nfl_injuries", "nfl_rosters_weekly", "nfl_team_week", "sync_runs")
 
 
 class StaleDataError(RuntimeError):
@@ -85,6 +85,8 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
                              from {nfl_injuries}
                              where season = ? and week <= ? and gsis_id in (select unnest(?))
                              order by gsis_id, week""", [season, week, ids])
+    team_weeks = _rows(con, """select team, week, team_targets from {nfl_team_week}
+                               where season = ? and week < ? order by team, week""", [season, week])
     jerseys = _rows(con, """select gsis_id, arg_max(jersey_number, week) as jersey_number from {nfl_rosters_weekly}
                             where season = ? and week <= ? and gsis_id in (select unnest(?)) group by gsis_id
                             order by gsis_id""", [season, week, ids])
@@ -99,7 +101,7 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
         "tables": {
             "player_week_usage": usage, "nfl_players": players, "nfl_schedules": schedules,
             "team_context": team_ctx, "defense_context": defense_ctx, "nfl_injuries": injuries,
-            "nfl_rosters_weekly": rosters, "jerseys": jerseys,
+            "nfl_rosters_weekly": rosters, "jerseys": jerseys, "nfl_team_week": team_weeks,
         },
     }
 

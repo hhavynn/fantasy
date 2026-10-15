@@ -23,13 +23,14 @@ from PIL import Image, ImageDraw
 
 from .. import audio_design as A
 from .. import motion as M
+from .. import scenes as S
 from ..core import Episode, read_json, run_stage, write_json
 from ..numbers import TEAM_NAMES, render
 from .assemble import srt_time
 from .script import PLACEHOLDER, fill
 from .story import last
 
-VERSION = 5
+VERSION = 9
 TRANSITION = 0.2
 CAPTION = {"font": "Inter-Black.ttf", "font_size": M.CAPTION_FONT[1], "max_width_px": M.CAPTION_MAX_W,
            "max_lines": 2}
@@ -104,6 +105,7 @@ class Ctx:
         self.accent = accent
         self.story = story
         self.primary, self.secondary = M.team_colors(self.team)
+        self.primary_vivid = M.vivid(self.primary)
         self.tokens: list[dict] = []
 
     def d(self, cid: str) -> str:
@@ -370,6 +372,8 @@ SCENES = {"hook": ("field", scene_hook), "big_compare": ("team", scene_big_compa
           "decision": ("studio", scene_decision), "teammate_out": ("studio", scene_teammate_out),
           "status_stamp": ("team", scene_status_stamp)}
 
+SCENES.update(S.STORY_SCENES)
+
 # Sound design per scene: (local time source, kind, gain dB)
 def sound_events(scene: dict, start: float, dur: float, c: Ctx) -> list[tuple[float, str, float]]:
     kind = scene["type"]
@@ -393,14 +397,15 @@ def sound_events(scene: dict, start: float, dur: float, c: Ctx) -> list[tuple[fl
         ev.append((start + 0.25, "impact", -2))
     if kind == "decision":
         ev.append((start - 0.4, "rise", -6))
+    ev += S.sounds(scene, start, dur, c)
     return [e for e in ev if e[0] < start + dur + 1]
 
 
 # ------------------------------------------------------------------------------------------- render
 
-def _camera(frame: Image.Image, k: float) -> Image.Image:
-    """Slow push-in over a scene (up to 3.5%)."""
-    s = 1 + 0.035 * k
+def _camera(frame: Image.Image, k: float, punch: float = 0.0) -> Image.Image:
+    """Slow push-in over a scene (up to 3.5%), plus a quick punch-in on a reveal that settles back."""
+    s = 1 + 0.035 * k + punch
     if s <= 1.001:
         return frame
     cw, ch = M.W / s, M.H / s
@@ -412,7 +417,8 @@ def draw_scene(scene: dict, t: float, dur: float, c: Ctx) -> Image.Image:
     bg_kind, fn = SCENES[scene["type"]]
     img = M.background(bg_kind, c.team, c.accent, t + scene.get("_start", 0))
     fn(img, t, dur, scene, c)
-    return _camera(img, min(t / max(dur, 0.1), 1))
+    punch = sum(0.045 * math.exp(-(t - tp) / 0.16) for tp in S.punches(scene, c, dur) if t >= tp)
+    return _camera(img, min(t / max(dur, 0.1), 1), punch)
 
 
 def _run(ep: Episode) -> None:
@@ -479,12 +485,16 @@ def _run(ep: Episode) -> None:
         tl = t - sc["_start"]
         frame = draw_scene(sc, tl, sc["_dur"], ctx)
         if prev_last is not None and tl < TRANSITION:
+            # Push with a short motion blur: the incoming scene slides up over the outgoing one.
             k = M.ease_out(tl / TRANSITION)
-            out = prev_last.copy()
-            out = Image.blend(out, Image.new("RGB", out.size, M.DARK), 0.4 * k)
-            shifted = Image.new("RGB", frame.size, M.DARK)
-            shifted.paste(frame, (0, int((1 - k) * 260)))
-            frame = Image.blend(out, shifted, M.clamp(k * 1.3))
+            out = Image.blend(prev_last, Image.new("RGB", prev_last.size, M.DARK), 0.45 * k)
+            off = (1 - k) * 300
+            blur = None
+            for j, o in enumerate((off, off + 40 * (1 - k), off + 80 * (1 - k))):
+                shifted = Image.new("RGB", frame.size, M.DARK)
+                shifted.paste(frame, (0, int(o)))
+                blur = shifted if blur is None else Image.blend(blur, shifted, 1 / (j + 1))
+            frame = Image.blend(out, blur, M.clamp(k * 1.3))
         while ci + 1 < len(cues) and cues[ci + 1]["start"] <= t:
             ci += 1
         cue = cues[ci]
