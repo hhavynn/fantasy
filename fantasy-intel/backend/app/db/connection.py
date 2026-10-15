@@ -8,6 +8,8 @@ API opens short-lived read-only connections, so the two rarely collide.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import time
 import uuid
 from contextlib import contextmanager
@@ -42,6 +44,24 @@ def connect(db_path: Path, read_only: bool = False, retries: int = 20) -> duckdb
 
 class DatabaseBusy(RuntimeError):
     pass
+
+
+def motherduck_dsn(database: str) -> str:
+    """Connection string for one hosted MotherDuck database. The token comes from MOTHERDUCK_TOKEN;
+    attach_mode=single keeps the rest of the MotherDuck workspace out of information_schema, and
+    saas_mode=true stops the hosted API from touching its local filesystem through SQL."""
+    return f"md:{database}?attach_mode=single&saas_mode=true"
+
+
+def connect_motherduck(database: str) -> duckdb.DuckDBPyConnection:
+    """Open the hosted database. On Vercel the only writable directory is /tmp, so the motherduck
+    extension is downloaded there on a cold start (home_directory is not honoured for md: URLs)."""
+    if not (os.getenv("MOTHERDUCK_TOKEN") or os.getenv("motherduck_token")):
+        # Without a token the extension falls back to an interactive browser login and blocks ~1 min.
+        raise duckdb.InvalidInputException("MOTHERDUCK_TOKEN is not set")
+    config = {"extension_directory": os.path.join(tempfile.gettempdir(), "duckdb_extensions")} \
+        if os.getenv("VERCEL") else {}
+    return duckdb.connect(motherduck_dsn(database), config=config)
 
 
 SCHEMA_VERSION = 7

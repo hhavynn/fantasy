@@ -16,23 +16,20 @@ from ..analytics.trade_discovery import (ALL_SHAPES, CATEGORIES, HEURISTIC_SHAPE
                                          TradeSearch)
 from ..analytics.trade_practical import MODES, PHASES, STRICTNESS
 from ..analytics.trades import ASSUMPTIONS, LIMITATIONS, NoRemainingWeeksError, TradeError
-from ..config import get_settings
-from .deps import db, one, rows
+from .deps import data_version, db, one, rows
 
 router = APIRouter(prefix="/api/trades", tags=["trade discovery"])
 
 # Stage A depends only on the database contents, the anchor, the shapes and the evaluation window,
-# so a few searches are kept in memory; any database write changes the file's mtime and the key.
+# so a few searches are kept in memory; any database write (or hosted publish) changes data_version and the key.
 _CACHE: OrderedDict = OrderedDict()
 _CACHE_SIZE = 4
 NEED_HIGH_BAND = 0.66      # the manager-scouting "high need" display band (analytics/manager_scouting.py)
 
 
-def _search(state, anchor: int, shapes: tuple[str, ...], positions: tuple[str, ...]) -> TradeSearch:
-    path = get_settings().db_path
+def _search(con, state, anchor: int, shapes: tuple[str, ...], positions: tuple[str, ...]) -> TradeSearch:
     reason = state.start_week_reason or {}
-    key = (str(path), path.stat().st_mtime_ns, anchor, shapes, positions, state.start_week,
-           bool(reason.get("uncertain")))
+    key = (data_version(con), anchor, shapes, positions, state.start_week, bool(reason.get("uncertain")))
     if key in _CACHE:
         _CACHE.move_to_end(key)
         return _CACHE[key]
@@ -148,7 +145,7 @@ def discover(team_id: int | None = None,
             tuple(SKILL_POSITIONS) + (("K", "D/ST") if include_kdst else ())
         board = FreeAgencyBoard(state, state.window())
         try:
-            ts = _search(state, team_id, shape_list, pos)
+            ts = _search(con, state, team_id, shape_list, pos)
             out = practical.discover(ts, mode, phase, opponent, limit, strictness, sort, category or None, heuristic,
                                      board=board)
         except NoRemainingWeeksError as err:

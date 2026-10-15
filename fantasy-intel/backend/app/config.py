@@ -42,6 +42,8 @@ class Settings:
     db_path: Path
     external_preferred_provider: str | None = None
     trade_max_players_per_side: int = 6     # manual trade analyzer guard (TRADE_MAX_PLAYERS_PER_SIDE, 1-10)
+    motherduck_database: str | None = None  # hosted mode: the API reads md:<name> instead of db_path
+    api_key: str | None = None              # hosted mode: required `X-API-Key` header on every request
 
     @property
     def has_espn_credentials(self) -> bool:
@@ -63,4 +65,6 @@ def get_settings() -> Settings:
         db_path=db_path,
         external_preferred_provider=(os.getenv("EXTERNAL_USAGE_PREFERRED_PROVIDER") or "").strip() or None,
         trade_max_players_per_side=max(1, min(10, _int_or_none(os.getenv("TRADE_MAX_PLAYERS_PER_SIDE")) or 6)),
+        motherduck_database=(os.getenv("MOTHERDUCK_DATABASE") or "").strip() or None,
+        api_key=(os.getenv("FANTASY_API_KEY") or "").strip() or None,
     )

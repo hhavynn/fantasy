@@ -10,6 +10,9 @@ import nflreadpy as nfl
 import polars as pl
 
 from ..db.connection import SyncRun, replace_frame_partition, replace_where, upsert_rows
+# FTN `read_thrown` semantics live in ftn.py so the API can describe them without importing polars.
+from .ftn import (FTN_ASSUMED_PRIMARY_READ_CODE, FTN_NUMERIC_CODES, FTN_READ_SEMANTICS_STATUS,  # noqa: F401
+                  FTN_SEMANTICS_REFERENCE)
 
 log = logging.getLogger("nfl.sync")
 
@@ -105,16 +108,6 @@ def curate_players(players: pl.DataFrame) -> list[dict]:
             "draft_pick": _int(r.get("draft_pick")),
         })
     return rows
-
-
-# FTN `read_thrown`: the nflreadr dictionary documents "0" = primary read, but observed
-# 2023-2026 data conflicts (code "1" covers ~50-60% of targets; "0" mostly tags non-pass
-# plays). Upstream clarification pending: https://github.com/nflverse/nflreadr/issues/325
-# We store raw per-code counts and do NOT treat any numeric code as the primary read.
-FTN_READ_SEMANTICS_STATUS = "UNVERIFIED"
-FTN_ASSUMED_PRIMARY_READ_CODE = "1"   # display-only assumption; never used in scoring
-FTN_SEMANTICS_REFERENCE = "https://github.com/nflverse/nflreadr/issues/325"
-FTN_NUMERIC_CODES = ("0", "1", "2")
 
 
 def _flag(col: str) -> pl.Expr:

@@ -139,7 +139,7 @@ def describe_ftn_read_codes(code_counts: dict[str, int]) -> list[Issue]:
     """Descriptive only. FTN `read_thrown` numeric semantics are unresolved upstream
     (nflverse/nflreadr#325), so we report the observed distribution on targets without
     concluding which code is the primary read and never fail the run."""
-    from ..nfl.sync import FTN_ASSUMED_PRIMARY_READ_CODE, FTN_READ_SEMANTICS_STATUS, FTN_SEMANTICS_REFERENCE
+    from ..nfl.ftn import FTN_ASSUMED_PRIMARY_READ_CODE, FTN_READ_SEMANTICS_STATUS, FTN_SEMANTICS_REFERENCE
     total = sum(code_counts.values())
     if not total:
         return []
