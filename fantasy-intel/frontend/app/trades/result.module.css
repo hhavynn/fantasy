@@ -41,7 +41,6 @@
 .facts dd { margin: 0; min-width: 0; }
 .facts dd > * + * { margin-left: 8px; }
 .sub { display: block; color: var(--ink-faint); font-size: 12px; line-height: 16px; margin-top: 2px; }
-.stack8 > * + * { margin-top: 8px; }
 .details { margin-top: 12px; }
 .lineupWeek { margin-top: 8px; }
 .lineupWeek table { margin-top: 4px; }
@@ -57,10 +56,6 @@
 
 @media (max-width: 900px) {
   .strips, .charts, .cols { grid-template-columns: minmax(0, 1fr); }
-}
-/* Two stats per row on phones (the strip's own auto-fit would give each stat a full row). */
-@media (max-width: 720px) {
-  .stats.stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
   .exchange { grid-template-columns: minmax(0, 1fr); gap: 12px; }

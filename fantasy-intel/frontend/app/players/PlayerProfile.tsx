@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge, Notice, PageHeader, Pos, Score, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
 import { label, num, pct, signed } from "@/lib/format";
+import { metricLabel, tidyReason } from "@/lib/reason-text";
 import { BASIS_LABEL } from "@/lib/types";
 import { ForwardView } from "./ForwardView";
 import { GameLog } from "./GameLog";
@@ -35,7 +36,7 @@ export function PlayerProfile({ d, q, cols }: { d: Detail; q: string; cols: "all
             <Badge value={d.waiver.recommendation} />
             <span>Waiver score {d.waiver.waiver_score.toFixed(2)}</span>
           </div>
-          <ul className={styles.reasons}>{d.waiver.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+          <ul className={styles.reasons}>{d.waiver.reasons.map((r, i) => <li key={i}>{tidyReason(r)}</li>)}</ul>
         </Section>
       )}
 
@@ -91,7 +92,7 @@ function ProfileHeader({ d, q }: { d: Detail; q: string }) {
           <li><span className={styles.factLabel}>Practice wk {latestInj.week}</span> {latestInj.practice_status}</li>
         ) : null}
         <li>
-          <span className={styles.factLabel}>ID map</span> <span className="mono">{p.match_method ?? "none"}</span>
+          <span className={styles.factLabel} title="How this ESPN player was matched to nflverse data; coverage is on the Data quality page">ID map</span> <span className="mono">{p.match_method ?? "none"}</span>
           {p.match_confidence && !["high", "n/a"].includes(p.match_confidence) && (
             <Badge value={`${label(p.match_confidence)} confidence`} tone="warn" title="Matched by name rather than by an ID; verify before relying on the usage numbers" />
           )}
@@ -163,7 +164,7 @@ function ValueAndTrends({ d }: { d: Detail }) {
           <span className="k">Actual − expected</span><span>{signed(p.fp_minus_xfp)}</span>
           <span className="k">Value score</span><Score value={p.value_score} />
         </div>
-        <ul className={styles.reasons}>{score.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+        <ul className={styles.reasons}>{score.reasons.map((r, i) => <li key={i}>{tidyReason(r)}</li>)}</ul>
         <p className={styles.note}>
           Opportunity basis: {BASIS_LABEL[score.components.opportunity_basis] ?? score.components.opportunity_basis}, weeks {score.components.recent_weeks.join(", ")}. {score.components.value_formula}.
         </p>
@@ -184,7 +185,7 @@ function ValueAndTrends({ d }: { d: Detail }) {
                 const fmt = (v: number | null) => (isPct ? pct(v) : num(v));
                 return (
                   <tr key={t.metric}>
-                    <td>{label(t.metric)}</td>
+                    <td>{metricLabel(t.metric)}</td>
                     <td className="num">{fmt(t.baseline_avg)} <span className="faint">{t.baseline_weeks.length ? `wk ${t.baseline_weeks.join(",")}` : ""}</span></td>
                     <td className="num">{fmt(t.recent_avg)} <span className="faint">{t.recent_weeks.length ? `wk ${t.recent_weeks.join(",")}` : ""}</span></td>
                     <td className="num">{t.delta === null ? <span className="missing" title="Not enough games">—</span> : isPct ? signed(t.delta * 100, 0) : signed(t.delta)}</td>

@@ -102,7 +102,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
   const q = query.trim();
   const pending = q !== "" && result.q !== q;
   const players = result.q === q ? result.players : NO_PLAYERS;
-  const sections = useMemo(() => buildSections(q, PAGES, players, recents), [q, players, recents]);
+  const sections = useMemo(() => buildSections(q, PAGES, players, recents, pending), [q, players, recents, pending]);
   const flat = useMemo(() => flattenSections(sections), [sections]);
   const activeIndex = Math.max(0, flat.findIndex((i) => i.id === activeId));
   const active = flat[activeIndex] ?? null;

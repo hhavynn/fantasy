@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { Method, Notice, PageHeader } from "@/components/ui";
 import { api } from "@/lib/api";
 import { canEvaluate, initialSelection, selectionKey } from "@/lib/trade-builder";
 import type { TradeOptionsV3, TradeResultV3 } from "@/lib/trade-types";
+import { EvaluatedTrade, EvaluatedTradeSkeleton } from "./EvaluatedTrade";
 import { TradeBuilder } from "./TradeBuilder";
-import { TradeResultView } from "./TradeResult";
 
 export const metadata = { title: "Trade analyzer" };
 
@@ -53,8 +54,9 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
   // The URL is the evaluated selection (deep links from Discovery / My Team Value, or Evaluate).
   const initial = initialSelection(teams, { ta: one(sp.ta), tb: one(sp.tb), a: ids(sp.a), b: ids(sp.b), sw: one(sp.sw) }, mine);
   const ready = canEvaluate(initial, maxPerSide);
+  // Not awaited: the lineup simulation is the slow part, so the builder renders now and the result streams in.
   const evaluated = ready
-    ? await api<TradeResultV3>("/api/trades/evaluate", { team_a_id: initial.ta, team_b_id: initial.tb, team_a_sends: initial.a,
+    ? api<TradeResultV3>("/api/trades/evaluate", { team_a_id: initial.ta, team_b_id: initial.tb, team_a_sends: initial.a,
       team_b_sends: initial.b, start_week: initial.sw })
     : null;
 
@@ -75,8 +77,11 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
       </Method>
       <TradeBuilder teams={teams} initial={initial} evaluatedKey={evaluated ? selectionKey(initial) : null} maxPerSide={maxPerSide}
         capacity={opts.data.active_capacity} limits={opts.data.position_limits} firstWeek={firstWeek} finalWeek={evaluation.final_week}>
-        {evaluated && !evaluated.ok && <BackendProblem error={evaluated.error} kind={evaluated.kind} status={evaluated.status} />}
-        {evaluated?.ok && <TradeResultView r={evaluated.data} />}
+        {evaluated && (
+          <Suspense fallback={<EvaluatedTradeSkeleton />}>
+            <EvaluatedTrade result={evaluated} />
+          </Suspense>
+        )}
       </TradeBuilder>
     </div>
   );

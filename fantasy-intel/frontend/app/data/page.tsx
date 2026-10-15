@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { feedHealth, mappingCoverage, validationCounts } from "@/lib/data-health";
 import { num, when } from "@/lib/format";
+import { plural } from "@/lib/plural";
 import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/sort";
 import type { PromotionResponse } from "@/lib/promotion";
 import { ago } from "@/lib/sync-status";
@@ -392,7 +393,7 @@ function ProjectionSection({ p }: { p: Projections }) {
             {" "}· weeks requested {f.weeks_requested.length ? `${f.weeks_requested[0]}–${f.weeks_requested[f.weeks_requested.length - 1]}` : "none"}
             {" "}(league current {f.current_week}, final {f.final_scoring_period ?? "?"}
             {p.window?.last_regular ? `, regular season ends wk ${p.window.last_regular}` : ""})
-            {" "}· {f.projection_rows} projection rows · history {p.history?.rows ?? 0} rows over {p.history?.days ?? 0} day(s)
+            {" "}· {f.projection_rows} projection rows · history {p.history?.rows ?? 0} rows over {p.history?.days ?? 0} {plural(p.history?.days ?? 0, "day")}
           </p>
           {failed.length > 0 && (
             <div className={styles.padded}>

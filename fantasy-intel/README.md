@@ -94,7 +94,9 @@ fantasy-intel/
 
 | Route              | What it shows |
 |--------------------|---------------|
-| `/`                | League, your record/standing, current roster with usage + classification, injuries (ESPN + NFL report), positional needs, standings, recent league transactions |
+| `/`                | The weekly command center: your record and standing, this week's matchup card and prioritized action items (start/sit swaps, injured starters, top waiver claim), current roster with usage + classification, injuries (ESPN + NFL report), positional needs, standings, recent league transactions |
+| `/matchup`         | This week's head-to-head (any week through the switcher): both teams' best projected lineups slot by slot, and the lineups as set in ESPN, with projected totals, margin and point share (a share of projected points, not a win probability) |
+| `/start-sit`       | Your submitted lineup vs the best projected lineup that respects kickoff locks, each swap with its projected gain, availability alerts, bench and reserves; next week as a preview. ESPN projections, no invented numbers |
 | `/players`         | Search; per-player profile: underlying value vs box score, usage trend table, weekly snaps/targets/shares/aDOT/RZ/GL/xFP |
 | `/waivers`         | Available players ranked by local waiver score, with role trend, roster fit, league competition (LOW/MED/HIGH + likely competitors), recommendation, suggested drop. Filter by position / recommendation |
 | `/trades`          | Manual trade analyzer (any player counts up to 6 per side; teams switch instantly, Evaluate runs the URL-backed selection): both teams' optimal starting lineups rebuilt every remaining week before/after the trade on ESPN's projections; ROS / regular-season / playoff deltas, weekly table, starter changes, mandatory drop / open roster spot, hypothetical FA replacement, player context. No trade grade, no acceptance probability |
@@ -109,6 +111,13 @@ fantasy-intel/
 
 Every page shows last-sync timestamps in the header. A muted **—** always means
 *missing* (hover for the reason). **0** is always a measured zero.
+
+**Navigating.** `Ctrl+K` / `⌘K` (or `/` outside a text field) opens a command palette: quick
+actions ("Decide who to start"), every page, and player search against the backend; the app bar
+button does the same. The app bar groups pages (My team, Players, Trades, League) with a sub-nav
+for the active group, and collapses into a menu on phones. Choose **System**, **Light** or **Dark**
+in the app bar (System follows the OS); the choice is stored in the browser. Wide tables scroll
+sideways inside their panel with the first column pinned, so they stay readable at 375px.
 
 ---
 

@@ -5,12 +5,11 @@
 .searchBar { width: 100%; }
 .searchBar .input { flex: 1 1 auto; min-width: 0; height: 44px; font-size: 16px; padding: 0 14px; }
 .searchBar .submit { height: 44px; padding: 0 20px; font-size: 14px; }
-.searchCompact .input { width: 240px; min-width: 0; }
+.searchCompact { min-width: 0; }
+.searchCompact .input { width: 240px; flex: 0 1 240px; min-width: 0; }
 .search .input { min-width: 0; }
 .hint { margin: 8px 0 0; color: var(--ink-muted); font-size: 13px; }
 
-.results .team { white-space: nowrap; }
-.empty p { margin: 0 0 8px; }
 
 /* ---------- Profile header ---------- */
 .metaLine { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
@@ -32,12 +31,10 @@
 .pair { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
 .pair > * { min-width: 0; }
 .badgeRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 12px; }
-.badgeRow .muted { color: var(--ink-muted); font-size: 12px; }
 .reasons { margin: 12px 0 0; padding-left: 18px; color: var(--ink-muted); }
 .reasons li { margin: 2px 0; }
 .note { margin: 12px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
 .noteTight { margin: 8px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
-.link { font-size: 13px; }
 
 /* ---------- Usage charts ---------- */
 .charts { display: grid; gap: 24px 32px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
@@ -61,7 +58,6 @@
 .contextCol { padding: 16px; min-width: 0; border-left: 1px solid var(--line); }
 .contextCol:first-child { border-left: 0; }
 .contextTitle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 10px; font-size: 13px; font-weight: 600; }
-.contextGrid .kv { font-size: 13px; }
 @media (max-width: 960px) {
   .contextCol { border-left: 0; border-top: 1px solid var(--line); }
   .contextCol:first-child { border-top: 0; }
@@ -84,4 +80,3 @@
 .logNotes { padding: 12px 16px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 13px; line-height: 19px; }
 .logNotes p { margin: 0 0 8px; }
 .logNotesBare { margin-top: 12px; color: var(--ink-muted); font-size: 13px; }
-.contextGrid .kv > :global(.badge) { justify-self: start; }

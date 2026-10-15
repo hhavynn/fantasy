@@ -8,6 +8,7 @@ import { resultText, resultTone, signedText } from "@/lib/trade-format";
 import type { InjuryScenarios, TradeResultV3, TradeSideV3 } from "@/lib/trade-types";
 import type { IrActivation, LineupWeek } from "@/lib/types";
 import styles from "./result.module.css";
+import { plural } from "@/lib/plural";
 
 // Server-rendered evaluation of the URL selection. Order: verdict (lineup-point deltas for both teams),
 // mandatory-drop and roster notices, weekly delta charts, starter changes, hypothetical FA replacement,
@@ -76,7 +77,7 @@ function TeamStrip({ r, s }: { r: TradeResult; s: TradeSide }) {
         <Link href={`/managers/${s.team_id}`}>{s.team_name}</Link>
         <span>receives {s.receives.length === 0 ? "nobody" : names(r, s.receives)}</span>
       </h3>
-      <StatStrip className={styles.stats}>
+      <StatStrip>
         <Stat label="Rest of season" value={<Delta value={d.ros_delta} />}
           note={d.ros_delta === null ? incomplete : <>{num(s.before.ros_projected_starting_points, 1, why)} → {num(s.after.ros_projected_starting_points, 1, why)} pts</>} />
         <Stat label="Regular season" value={<Delta value={d.regular_season_delta} />}
@@ -171,7 +172,7 @@ function RosterNotices({ r }: { r: TradeResult }) {
       ))}
       {sides.filter((s) => s.incomplete.missing_weeks.length > 0).map((s) => (
         <Notice key={`inc-${s.team_id}`} tone="caution" title={`${s.team_name}: incomplete projections`}>
-          No ESPN projection for {names(r, s.incomplete.missing_players)} in week(s) {s.incomplete.missing_weeks.join(", ")}.
+          No ESPN projection for {names(r, s.incomplete.missing_players)} in {plural(s.incomplete.missing_weeks.length, "week")} {s.incomplete.missing_weeks.join(", ")}.
           Those weeks have no canonical total; missing is never treated as 0.
         </Notice>
       ))}

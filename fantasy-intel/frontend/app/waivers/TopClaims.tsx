@@ -31,15 +31,18 @@ export function TopClaims({ top, position }: { top: Top<WaiverRow>; position: st
         </EmptyState>
       ) : (
         <ol className={styles.claims}>
-          {top.rows.map((w, i) => <ClaimCard key={w.espn_player_id} row={w} rank={i + 1} />)}
+          {top.rows.map((w, i) => <ClaimCard key={w.espn_player_id} row={w} rank={i + 1} informational={top.mode !== "actionable"} />)}
         </ol>
       )}
     </section>
   );
 }
 
-function ClaimCard({ row: w, rank }: { row: WaiverRow; rank: number }) {
+function ClaimCard({ row: w, rank, informational }: { row: WaiverRow; rank: number; informational: boolean }) {
   const d = w.components.decision;
+  // In the "nothing to claim" band no add is recommended, so "no drop found" is not a failed action:
+  // the Give up row appears only when the analysis did name a player to drop.
+  const showGiveUp = !informational || Boolean(d?.roster_move.drop);
   const summary = d ? d.streaming?.summary ?? d.utility.summary : null;
   const names = w.competitors.map((c) => c.name);
   return (
@@ -73,7 +76,7 @@ function ClaimCard({ row: w, rank }: { row: WaiverRow; rank: number }) {
             </span>
           )}
         </dd>
-        <dt>Give up</dt><dd><GiveUp row={w} /></dd>
+        {showGiveUp && <><dt>Give up</dt><dd><GiveUp row={w} /></dd></>}
       </dl>
     </li>
   );

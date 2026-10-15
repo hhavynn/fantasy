@@ -27,7 +27,6 @@
 .depth small { display: block; color: var(--ink-faint); font-size: 12px; line-height: 16px; }
 .context { white-space: normal; min-width: 220px; }
 .slotName { font-weight: 600; }
-.right { text-align: right; }
 .muted { color: var(--ink-muted); }
 .strong { font-weight: 600; }
 

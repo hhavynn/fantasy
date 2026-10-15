@@ -10,6 +10,7 @@ import {
 } from "@/lib/playoff-view";
 import type { PlayoffRace, PrLeverage, PrMatchup, PrOutcome, PrPlace, PrRecord, PrStatus, PrTeam } from "@/lib/types";
 import styles from "./playoff.module.css";
+import { plural } from "@/lib/plural";
 
 export const metadata = { title: "Playoff race" };
 
@@ -139,7 +140,7 @@ function ScenarioBar({ d, q, name }: { d: PlayoffRace; q: Q; name: Name }) {
     <Section title="Scenario">
       <div className={styles.scenario}>
         <Tabs label="Scenario baseline" items={baseItems} current={raceHref(q)} />
-        <p className={styles.scenarioNote}>{s.decided_open_games} remaining game(s) decided in this scenario, {s.unresolved_open_games} unresolved.</p>
+        <p className={styles.scenarioNote}>{s.decided_open_games} remaining {plural(s.decided_open_games, "game")} decided in this scenario, {s.unresolved_open_games} unresolved.</p>
       </div>
       {s.overrides.length > 0 ? (
         <div className={styles.overrides}>
@@ -180,7 +181,7 @@ function Spotlight({ d, t, q, name }: { d: PlayoffRace; t: PrTeam; q: Q; name: N
         {hasText && (
           <ul className="reasons">
             {fewest && fewest.wins_needed !== null && (
-              <li>Fewest wins among the {fewest.of_games} open game(s) that put {t.name} inside the cutline, every other result as in this
+              <li>Fewest wins among the {fewest.of_games} open {plural(fewest.of_games, "game")} that put {t.name} inside the cutline, every other result as in this
                 scenario: <b>{fewest.wins_needed}</b>{fewest.games.length > 0 && <> (for example {fewest.games.map((id) => {
                   const g = lev.find((x) => x.matchup_id === id);
                   return g ? `${weeksText(g.weeks, g.matchup_period)} vs ${name(g.opponent_id)}` : id;
@@ -266,7 +267,7 @@ function Standings({ d, name }: { d: PlayoffRace; name: Name }) {
       flush
       footnote={<>&ldquo;=&rdquo; marks a shared rank (equal winning percentage; no tiebreak applied). &ldquo;+n?&rdquo; counts games still unresolved in this scenario. Bubble teams have a remaining game whose result changes their cutline status. {after === null
         ? (spots === null ? "Playoff spots are unknown, so no playoff line is drawn." : "No team has a decided game in this scenario yet, so no playoff line position is drawn.")
-        : <>The playoff line is after {spots} spots{tie ? `; a tied group straddles it, so it is drawn above them and they share ${tie.spots_left} spot(s)` : ""}.</>}</>}
+        : <>The playoff line is after {spots} spots{tie ? `; a tied group straddles it, so it is drawn above them and they share ${tie.spots_left} ${plural(tie.spots_left, "spot")}` : ""}.</>}</>}
     >
       <div className="table-wrap">
         <table>
@@ -276,7 +277,7 @@ function Standings({ d, name }: { d: PlayoffRace; name: Name }) {
               if (it.kind === "cutline") {
                 return (
                   <tr key="cutline" className={styles.cutline}>
-                    <td colSpan={7} title={tie ? `${tie.spots_left} spot(s) shared by the tied teams below` : `${spots} playoff spots`}>
+                    <td colSpan={7} title={tie ? `${tie.spots_left} ${plural(tie.spots_left, "spot")} shared by the tied teams below` : `${spots} playoff spots`}>
                       Playoff line · {spots} spots{tie ? ` · ${tie.spots_left} shared by the tied teams below` : ""}
                     </td>
                   </tr>
@@ -370,7 +371,7 @@ function Race({ d, q, name }: { d: PlayoffRace; q: Q; name: Name }) {
       <p className={cx(styles.raceLine, cut.bubble.length > 0 && styles.padded)}>
         {cut.cutline_tie ? <>
           Tied at the cutline: <b>{cut.cutline_tie.team_ids.map((id) => name(id)).join(", ")}</b> share {cut.cutline_tie.spots_left} remaining
-          spot(s) <Badge value="Unresolved: no tiebreak applied" tone="warn" />
+          {plural(cut.cutline_tie.spots_left, "spot")} <Badge value="Unresolved: no tiebreak applied" tone="warn" />
         </> : <>
           Last in: <b>{group(cut.last_inside, name)}</b> · first out: <b>{group(cut.first_outside, name)}</b>
         </>}
@@ -586,7 +587,7 @@ function MethodNotes({ d }: { d: PlayoffRace }) {
           ? Object.entries(d.rules.espn_rules_reported).map(([k, v]) => `${k} = ${JSON.stringify(v)}`).join("; ") + ". "
           : ""}{d.rules.espn_rules_note}</li>
         <li>Schedule coverage: {cov.checked ? (cov.complete ? `every team has a matchup in all ${cov.regular_season_periods} regular-season periods`
-          : `missing regular-season matchups for ${cov.missing.length} team(s)`) : cov.reason}{cov.unmapped_periods && cov.unmapped_periods.length > 0 ? `; periods without known weeks: ${cov.unmapped_periods.join(", ")}` : ""}.</li>
+          : `missing regular-season matchups for ${cov.missing.length} ${plural(cov.missing.length, "team")}`) : cov.reason}{cov.unmapped_periods && cov.unmapped_periods.length > 0 ? `; periods without known weeks: ${cov.unmapped_periods.join(", ")}` : ""}.</li>
         {d.record_check.map((n, i) => <li key={`rc${i}`}>{n}</li>)}
         {d.window.reason && <li>Projection window: {d.window.reason}</li>}
       </ul>

@@ -1,7 +1,6 @@
 /* Trade discovery: filter row, results table and per-trade evidence. */
 
 .modeNote { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; max-width: 100ch; }
-.windowNote { margin: 0; color: var(--ink-faint); font-size: 13px; line-height: 19px; }
 
 /* ---------- Filters ---------- */
 
@@ -55,10 +54,7 @@
 .list { margin: 4px 0 0; padding-left: 16px; color: var(--ink-muted); }
 .list li { margin: 2px 0; }
 .small { font-size: 13px; line-height: 19px; margin: 0; }
-.assetWrap { margin: 0 -16px; }
-.assetWrap table { width: 100%; }
 .mgrNote { margin: 0; color: var(--ink-faint); font-size: 13px; line-height: 19px; }
-.empty { padding: 16px; }
 
 .phoneSort { display: none; }
 .action { white-space: nowrap; }

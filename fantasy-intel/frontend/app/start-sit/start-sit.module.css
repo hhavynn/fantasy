@@ -31,13 +31,11 @@
 
 /* ---------- Tables ---------- */
 .slotName { font-weight: 600; }
-.sub { color: var(--ink-faint); font-size: 12px; line-height: 16px; }
 .person2 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .empty { color: var(--ink-faint); }
 .out td { color: var(--ink-muted); }
 .change { white-space: normal; min-width: 150px; }
 .promote { color: var(--positive); font-weight: 600; }
-.right { text-align: right; }
 
 /* ---------- Benchmark ---------- */
 .figures { display: flex; flex-wrap: wrap; gap: 8px 32px; margin: 0 0 12px; }
