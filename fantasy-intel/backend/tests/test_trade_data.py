@@ -213,6 +213,8 @@ def test_league_state_uses_current_rosters_and_only_fa_waiver_players(tmp_path):
         {t: {pid for pid, _ in e} for t, e in ROSTERS.items()}
     assert {p.espn_player_id for p in st.free_agents} == set(FREE_AGENTS)   # FREEAGENT + WAIVERS only
     assert not {p.espn_player_id for p in st.free_agents} & ROSTERED
+    # ESPN's acquisition type is kept per free agent (trade vs. free agency separates waiver claims).
+    assert set(st.free_agent_status) == set(FREE_AGENTS) and set(st.free_agent_status.values()) <= {"FREEAGENT", "WAIVERS"}
     assert st.active_capacity == 12                              # 9 starters + 3 bench; IR separate
     assert next(p for p in st.rosters[2] if p.espn_player_id == 207).on_ir
     m = replacement_market(st.free_agents, st.slots, st.window(), st.projections)
