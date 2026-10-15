@@ -222,7 +222,7 @@ def training_fingerprint(args, store, scoring) -> str:
                  "target": [args.season, args.week]})
 
 
-def stage_train(args, src, scoring) -> dict:
+def stage_train(args, src, scoring, live=None) -> dict:
     """Train both models unless an earlier cycle trained on exactly these inputs (same training
     rows and features, configuration, production selection and scoring). Then reuse its artifacts.
     `--force-retrain` always refits; content addressing keeps every earlier artifact."""
@@ -238,7 +238,7 @@ def stage_train(args, src, scoring) -> dict:
     if (state and state.get("fingerprint") == fp and not args.force_retrain
             and all(Path(a["path"]).exists() for a in state["artifacts"].values())):
         return {"reused": True, "fingerprint": fp, **state}
-    res = cli.cmd_train(args, src=src, scoring=scoring, store=store)
+    res = cli.cmd_train(args, src=src, scoring=scoring, store=store, live=live)
     arts = {v: {k: res[v][k] for k in ("id", "path", "new", "latest_included_week", "data_hash", "config_hash")}
             for v in (wl.MODEL_VERSION, ch.CHALLENGER_VERSION)}
     state = {"fingerprint": fp, "artifacts": arts, "trained_at": datetime.now(timezone.utc).isoformat(),
@@ -332,22 +332,23 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         args.week = target
         report["target_week"], report["target_first_kickoff"] = target, kick[target].isoformat()
         report["target_first_kickoff_eastern"] = kick[target].astimezone(EASTERN).isoformat()
-        rd = stage("readiness", wl.readiness, src, args.season, target, now)
+        rd = stage("readiness", wl.readiness, src, args.season, target, now, cli._fetched_at(live, args.season))
         report["data"].update(readiness_ok=rd["ok"], warnings=rd["warnings"], pbp_exits_through_week=rd[
             "pbp_exits_through_week"], completed_weeks=len(rd["completed_weeks"]))
         if target > 1:
-            report["data"]["previous_week_finality"] = wl.week_finality(src, args.season, target - 1)
+            report["data"]["previous_week_finality"] = wl.week_finality(src, args.season, target - 1,
+                                                                       cli._fetched_at(live, args.season))
         report["espn_pregame_benchmark"] = espn_benchmark(live, args.season, target)
         if not rd["ok"]:
             report["stages"][-1]["status"] = "not_ready"
             raise CycleStop("waiting_for_data", EXIT_NOT_READY, "; ".join(rd["errors"]),
                             ["rerun after nflverse publishes the missing data, before "
                              f"{kick[target].astimezone(EASTERN):%a %Y-%m-%d %H:%M %Z}"])
-        ev = stage("evaluate", cli.cmd_evaluate, args, src=src)
+        ev = stage("evaluate", cli.cmd_evaluate, args, src=src, live=live)
         report["evaluation"] = {"report": ev["report"], "prospective_weeks": len(ev["pregame_weeks"] or []),
                                 "preliminary_weeks": ev.get("preliminary_weeks_not_evidence"),
                                 "status_by_position": {p: s["status"] for p, s in (ev["shadow_status"] or {}).items()}}
-        tr = stage("train", stage_train, args, src, scoring)
+        tr = stage("train", stage_train, args, src, scoring, live)
         report["training"] = {"reused": tr["reused"], "fingerprint": tr["fingerprint"],
                               "latest_included_week": tr["artifacts"][wl.MODEL_VERSION]["latest_included_week"],
                               "artifacts": {v: {"id": a["id"], "created": bool(a["new"]) and not tr["reused"],
