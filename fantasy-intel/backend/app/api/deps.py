@@ -53,6 +53,12 @@ def db() -> Iterator[Any]:
         except DatabaseBusy:
             raise HTTPException(503, "Database is busy (a sync is probably running). Retry in a few seconds.")
     try:
+        if settings.motherduck_database:
+            # One snapshot per request: a publish (scripts/publish_motherduck.py) can commit while a
+            # request runs, and every query in the request must see the same version, including the
+            # data_version stamp that keys the trade-search cache. The local file needs no such
+            # guard: the API's read-only connection holds DuckDB's file lock, so no sync can commit.
+            con.execute("BEGIN TRANSACTION")
         version = schema_version(con)
         if version is not None and version < SCHEMA_VERSION or (version is None and _has_tables(con)):
             raise HTTPException(503, f"Database schema v{version or 1} is older than v{SCHEMA_VERSION}. Run "
@@ -64,6 +70,11 @@ def db() -> Iterator[Any]:
                 _MD_CONS.pop(settings.motherduck_database, None)
         raise
     finally:
+        if settings.motherduck_database:
+            try:
+                con.execute("ROLLBACK")  # read-only request: nothing to commit
+            except duckdb.Error:
+                pass
         con.close()
 
 

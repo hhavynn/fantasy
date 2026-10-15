@@ -215,3 +215,26 @@ def test_replace_tables_rolls_back_on_failure(api_db, tmp_path, monkeypatch):
         pub.replace_tables(con, "src", "hosted", "second")
     assert con.execute("SELECT value FROM hosted.schema_meta WHERE key='published_at'").fetchone() == ("first",)
     con.close()
+
+
+def test_hosted_request_reads_one_snapshot(api_db, monkeypatch):
+    """A publish that commits mid-request must not mix versions within the request."""
+    import duckdb
+    from app.api import deps
+
+    con = connect(api_db)
+    con.execute("INSERT INTO schema_meta VALUES ('published_at', 'v1')")
+    con.close()
+    shared = duckdb.connect(str(api_db))          # stands in for the process-wide MotherDuck connection
+    monkeypatch.setattr(deps, "connect_motherduck", lambda database: shared)
+    monkeypatch.setattr(deps, "_MD_CONS", {})
+    monkeypatch.setenv("MOTHERDUCK_DATABASE", "fantasy_intel")
+    with deps.db() as cur:
+        assert deps.data_version(cur) == "md:fantasy_intel:v1"
+        publisher = shared.cursor()               # a publish committing while the request runs
+        publisher.execute("UPDATE schema_meta SET value = 'v2' WHERE key = 'published_at'")
+        publisher.close()
+        assert deps.data_version(cur) == "md:fantasy_intel:v1"
+    with deps.db() as cur:
+        assert deps.data_version(cur) == "md:fantasy_intel:v2"
+    shared.close()
