@@ -710,7 +710,11 @@ pre-registered text is unchanged so challenger artifact ids are unchanged).
 The **starters pool** is one definition everywhere (`forecast_backtest.starters_pool_expr`): per
 (season, week, position) the top `PAIR_POOL` players (QB 24, RB 48, WR 60, TE 24) by the
 recent-average baseline A1, a pregame quantity identical for every model. The same pool drives the
-Start/Sit pair decisions and the challenger research cohorts. QB challenger intervals are withheld
+Start/Sit pair decisions and the challenger research cohorts. In the prospective evaluation the rank
+runs over **every frozen pregame forecast** of the week, before anyone knows who appears; MAE is then
+measured on the pool members who appeared, so an inactive top player leaves a gap instead of being
+backfilled. (Backtest stores hold appearances only, so there the same rank runs over appearing players.)
+QB challenger intervals are withheld
 by policy (confirmation coverage 74.0%), so QB `interval_coverage` is `insufficient_data` with that
 explanation: QB cannot reach `eligible_for_review` until coverage evidence exists. This is a
 reported limitation, not an exemption.

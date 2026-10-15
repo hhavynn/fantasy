@@ -494,7 +494,7 @@ def test_reevaluation_after_the_last_game_is_final(final_env):
 
 def test_evaluation_reports_criteria_and_starters_pool_on_identical_rows(final_env):
     src, scoring, champ, chal, run = final_env
-    rep = wl.evaluate([run], src)
+    rep = _evaluate([run], src)
     for pos in ("QB", "RB", "WR", "TE", "ALL"):
         r = rep["positions"][pos]
         assert r["metrics"]["champion"]["n"] == r["metrics"]["challenger"]["n"] == r["n"]
@@ -507,6 +507,24 @@ def test_evaluation_reports_criteria_and_starters_pool_on_identical_rows(final_e
     assert {c["name"]: c["result"] for c in st["criteria"]}["prospective_weeks"] == wl.INSUFFICIENT
     assert st["status"] == "insufficient_evidence" and rep["promotion_blockers"]["WR"]["blocking"]
     retro = wl.predict(src, champ, chal, 2025, 10, AFTER_W10, artifact_ids={}, kind="retrospective")
-    rr = wl.evaluate([retro], src, "retrospective")
+    rr = _evaluate([retro], src, "retrospective")
     assert all(s["status"] != "eligible_for_review" for s in rr["shadow_status"].values())
     assert all(s["criteria"][0]["result"] == wl.FAIL for s in rr["shadow_status"].values())
+
+
+def test_starters_pool_is_ranked_before_appearance_is_known(monkeypatch):
+    """The pool is the pregame top-N by A1: an inactive top player leaves a hole, he is never
+    replaced by the next-ranked player who happened to appear."""
+    from app.analytics import forecast_backtest as fb
+    monkeypatch.setitem(fb.PAIR_POOL, "WR", 2)
+    rows = pl.DataFrame({
+        "season": [2025] * 3, "week": [10] * 3, "key": [202510] * 3, "gsis_id": ["a", "b", "c"], "position": ["WR"] * 3,
+        "outcome_status": [wl.CONFIRMED_ABSENT, wl.APPEARED, wl.APPEARED], "label": [0.0, 12.0, 8.0],
+        "pred_A1": [20.0, 15.0, 10.0], "pred_A2": [20.0, 15.0, 10.0], "pred_champion": [18.0, 14.0, 9.0],
+        "pred_challenger": [17.0, 13.0, 9.5], "low_champion": [None] * 3, "high_champion": [None] * 3,
+        "low_challenger": [None] * 3, "high_challenger": [None] * 3, "exp_champion": [None] * 3,
+        "exp_challenger": [None] * 3, "last_injury_exit": [0, 0, 0]},
+        schema_overrides={c: pl.Float64 for c in ("low_champion", "high_champion", "low_challenger", "high_challenger",
+                                                   "exp_champion", "exp_challenger")})
+    sp = wl._position_reports(rows, 1, bootstrap=False)["WR"]["starters_pool"]
+    assert sp["n"] == 1 and sp["mae"] == {"champion": 2.0, "challenger": 1.0}      # only "b", never "c"

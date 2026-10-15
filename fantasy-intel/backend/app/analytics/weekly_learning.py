@@ -498,7 +498,10 @@ def _status_counts(df: pl.DataFrame) -> dict:
 
 def _position_reports(j: pl.DataFrame, seed: int, *, bootstrap: bool = True) -> dict:
     """Conditional (APPEARED) and unconditional (APPEARED + CONFIRMED_ABSENT) metrics per position.
-    `j` must come from label_outcomes; unresolved rows are dropped here, never zero-filled."""
+    `j` must come from label_outcomes; unresolved rows are dropped here, never zero-filled. The
+    starters pool is ranked over ALL frozen pregame rows of a week (who appears is not known
+    pregame), so an inactive top player is never backfilled by a lower-ranked one."""
+    j = j.with_columns(starters_pool_expr().alias("_starter"))
     cond = j.filter(pl.col("outcome_status") == APPEARED)
     resolved = j.filter(pl.col("outcome_status").is_in(RESOLVED))
     assert resolved["label"].null_count() == 0, "a resolved outcome without a label"
@@ -517,8 +520,10 @@ def _position_reports(j: pl.DataFrame, seed: int, *, bootstrap: bool = True) -> 
             if iv.height:
                 hit = iv.filter((pl.col("label") >= pl.col(f"low_{m}")) & (pl.col("label") <= pl.col(f"high_{m}"))).height
                 rep.setdefault("interval80_coverage", {})[m] = round(hit / iv.height, 4)
-        sp = g.filter(starters_pool_expr())
+        sp = g.filter(pl.col("_starter"))
         rep["starters_pool"] = {"n": sp.height, "definition": STARTERS_POOL_DEFINITION,
+                                "ranked_among": "every frozen pregame forecast of the week, before appearance "
+                                                "is known; MAE on the pool members who appeared",
                                 "mae": {m: metrics(_arr(sp, "label"), _arr(sp, f"pred_{m}"))["mae"]
                                         for m in ("champion", "challenger")}}
         ie = g.filter(pl.col("last_injury_exit") == 1)
