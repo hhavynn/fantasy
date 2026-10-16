@@ -79,7 +79,8 @@ export type PerformanceReport = {
   preliminary: { weeks: number[]; note: string | null; by_position: Record<string, { n: number; ours: ErrorStats; espn: ErrorStats }> };
   model_versions: {
     production: string; fallback: string;
-    served_now: { week: number; served_version: string | null; fallback: boolean; note: string | null }[];
+    served_now: { week: number; served_version: string | null; fallback: boolean; note: string | null;
+      forecast_horizon?: number | null; horizon_note?: string | null }[];
     pregame_by_week: Record<string, { week: number; paired_pregame_forecasts: number; scored: number }[]>;
     comparison: VersionComparison;
   };

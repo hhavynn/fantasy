@@ -230,7 +230,14 @@ export function ModelVersions({ r }: { r: PerformanceReport }) {
                   <tr key={w}>
                     <td>{w}{r.weeks.upcoming.includes(w) ? <span className={cx("faint", styles.small)}>upcoming</span>
                       : r.weeks.partial.includes(w) ? <span className={cx("faint", styles.small)}>not final</span> : null}</td>
-                    <td>{s?.served_version ? <>{s.served_version}{s.fallback ? <> <Badge value="Fallback" tone="warn" /></> : null}</> : <span className="faint" title={s?.note ?? undefined}>ESPN</span>}</td>
+                    <td>
+                      {s?.served_version ? <>{s.served_version}{s.fallback ? <> <Badge value="Fallback" tone="warn" /></> : null}</> : <span className="faint" title={s?.note ?? undefined}>ESPN</span>}
+                      {s?.forecast_horizon ? (
+                        <span className={cx("faint", styles.small)} title={s.horizon_note ?? undefined}>
+                          rest-of-season forecast, {s.forecast_horizon} {plural(s.forecast_horizon, "week")} ahead (not scored)
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="num">{at(first, w)?.paired_pregame_forecasts ?? 0}</td>
                     <td className="num">{at(first, w)?.scored ?? 0}</td>
                     <td className="num">{at(second, w)?.paired_pregame_forecasts ?? 0}</td>

@@ -83,11 +83,31 @@ The scorecard's own content hash (`benchmark.content_sha256`) is recorded, so a 
   model each projected every player in it before kickoff.
 * The owner override that made ifp-2.0.0 production is not statistical validation; the page says so.
 
+## Forecast horizon (rest-of-season runs)
+
+Since the rest-of-season cycle (#80) stores a run for every remaining week, a week can have runs at several forecast
+horizons (`forecast_horizon` = target week - the week the cycle ran for; NULL reads 0). Only horizon 0, the week's own
+pregame forecast, is evidence: `production_forecasts.pregame_forecasts` (and both legacy readers) exclude every
+horizon > 0 run with the reason "rest-of-season forecast (horizon k), not evidence", so the scorecard, its paired
+observations, coverage, lead times and verdict gates never include one; such runs appear only in the excluded-runs
+list. Longer-horizon accuracy is not reported. The consumer view (`select_run`) may still serve a rest-of-season run
+for a week without a newer one; the model-version table says so per week (`forecast_horizon`, "not scored").
+
 ## Start/Sit: production forecasts in decision sets
 
 `scripts/start_sit_evaluation.py` now attaches the production forecasts of BOTH versions to each recorded decision
-set: `ifp2_production` (the production model) and `ifp1_production` (the fallback), each read by
-`production_forecasts.pregame_forecasts` under its own version, and `DEFAULT_MODEL_SETS` gains `ifp2_production`.
+set, and `DEFAULT_MODEL_SETS` gains `ifp2_production`:
+
+* `ifp2_production` (the production model) is exactly the run the site served for the week
+  (`projection_source.select_run`, the consumer rule), credited only when that run is ifp-2.0.0 at horizon 0 and an
+  eligible evidence run (`production_forecasts.eligible_run_ids`). A served rest-of-season run, the ifp-1 fallback or
+  ESPN gives no value, so those decisions are never credited to the production model
+  (`served_production_rows`; the reason is kept in the set's `meta.attached.ifp2_production_exclusions`).
+* `ifp1_production` (the fallback model) is its own horizon-0 pregame forecasts (`pregame_forecasts`), evaluated as a
+  separate model set, never pooled with ifp-2.
+* A retrospective `report` on roster snapshots asks `select_run` what it serves NOW; a run made after a player's
+  kickoff is refused per player, so a later rerun can hide an earlier served forecast there. Recorded decision sets
+  (what the page uses) capture the served run before kickoff.
 Before this change only ifp-1 production and the research ledger were recorded, so the model the site actually
 serves could never have been evaluated on real decisions. Sets recorded before the change simply lack the
 `ifp2_production` model (unavailable, never backfilled).

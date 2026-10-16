@@ -1313,42 +1313,56 @@
    "served_now": [
     {
      "fallback": false,
+     "forecast_horizon": null,
+     "horizon_note": null,
      "note": "ESPN shown: no eligible independent run",
      "served_version": null,
      "week": 1
     },
     {
      "fallback": false,
+     "forecast_horizon": null,
+     "horizon_note": null,
      "note": "ESPN shown: no eligible independent run",
      "served_version": null,
      "week": 2
     },
     {
      "fallback": false,
+     "forecast_horizon": null,
+     "horizon_note": null,
      "note": "ESPN shown: no eligible independent run",
      "served_version": null,
      "week": 3
     },
     {
      "fallback": false,
+     "forecast_horizon": null,
+     "horizon_note": null,
      "note": "ESPN shown: no eligible independent run",
      "served_version": null,
      "week": 4
     },
     {
      "fallback": false,
+     "forecast_horizon": null,
+     "horizon_note": null,
      "note": "ESPN shown: no eligible independent run",
      "served_version": null,
      "week": 5
     },
     {
      "fallback": false,
+     "forecast_horizon": null,
+     "horizon_note": null,
      "note": "ESPN shown: no eligible independent run",
      "served_version": null,
      "week": 6
     },
     {
      "fallback": false,
+     "forecast_horizon": null,
+     "horizon_note": null,
      "note": "ESPN shown: no eligible independent run",
      "served_version": null,
      "week": 7
@@ -1358,6 +1372,7 @@
   "notes": [
    "Only forecasts made before each player's own kickoff count, from the immutable run store; a forecast made or rerun after kickoff is never scored, and nothing is reconstructed after the fact.",
    "Only fully final NFL weeks are evidence. Player-weeks of weeks still in progress are listed as preliminary, without a verdict.",
+   "Only each week's own pregame forecast (horizon 0) is scored. Rest-of-season forecasts made weeks earlier (horizon 1 or more) are never mixed in, even when the site shows one for a week without a newer run.",
    "Unconditional comparison (the headline): every resolved player-week the model projected; a player who did not play scores 0, as in a real lineup. The conditional comparison (players who appeared) is reported separately.",
    "Paired: ESPN and the model are scored on exactly the same player-weeks. Players the model could not project show ESPN's number on the site; those fallback rows are counted but never credited to the model.",
    "MAE difference = MAE(ours) - MAE(ESPN): negative means our projections were closer. The interval resamples whole NFL weeks, because player-weeks of one week are correlated; an interval that includes 0 means no established difference.",
@@ -2050,7 +2065,7 @@
    ]
   }
  },
- "report_sha256": "518c6cb403cd2adcf5f5d3f0cba681e2c8affeb8bf9e53bc8e7171dd12108e31",
+ "report_sha256": "a3d69ed7467eaa4975fb84417348b36421597ac88fddbe3fde3500c229f88ea1",
  "schema_version": "projection-performance-api/v1",
  "season": 2026,
  "stale": false,

@@ -54,6 +54,8 @@ METHODOLOGY = [
     "rerun after kickoff is never scored, and nothing is reconstructed after the fact.",
     "Only fully final NFL weeks are evidence. Player-weeks of weeks still in progress are listed as preliminary, "
     "without a verdict.",
+    "Only each week's own pregame forecast (horizon 0) is scored. Rest-of-season forecasts made weeks earlier "
+    "(horizon 1 or more) are never mixed in, even when the site shows one for a week without a newer run.",
     "Unconditional comparison (the headline): every resolved player-week the model projected; a player who did not "
     "play scores 0, as in a real lineup. The conditional comparison (players who appeared) is reported separately.",
     "Paired: ESPN and the model are scored on exactly the same player-weeks. Players the model could not project "
@@ -140,6 +142,9 @@ def served_by_week(con, season: int, weeks: list[int]) -> list[dict]:
             continue
         run = sel["run"]
         out.append({"week": w, "served_version": run["model_version"] if run else None, "fallback": sel["fallback"],
+                    # the consumer may serve a rest-of-season run (horizon k > 0); it is never accuracy evidence
+                    "forecast_horizon": pf.horizon_of(run) if run else None,
+                    "horizon_note": pf.horizon_note(run) if run else None,
                     "note": None if run else "ESPN shown: no eligible independent run"})
     return out
 

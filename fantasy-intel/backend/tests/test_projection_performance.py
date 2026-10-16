@@ -588,3 +588,80 @@ def test_frontend_fixture_is_the_builders_output(tmp_path, monkeypatch):
 def test_statements_cover_every_verdict():
     assert set(pr.VERDICTS) == set(eb.VERDICTS) == set(pr.STATEMENTS)
     assert set(pr.DECISION_VERDICTS) == set(sse.VERDICTS) == set(pr.DECISION_STATEMENTS)
+
+
+# ----------------------------------------------------------------------------- forecast horizon (rest-of-season runs)
+
+
+from test_espn_benchmark import FP, W5_PRE_A, W5_PRE_B, v8_world, with_participation  # noqa: E402
+from test_independent_projections import live  # noqa: E402,F401  (fixture: schema-v8 database with a week-5 history)
+from test_production_forecasts import store as _store  # noqa: E402
+
+
+def _run_w5(con, src, created, values, *, horizon=0, version=PROD, sha="a" * 64):
+    meta = {"model_version": version}
+    if horizon:
+        meta.update(forecast_horizon=horizon, projected_from_week=5 - horizon)
+    run, _, _ = _store(con, src, created, week=5, sha=sha, mutate=with_participation(values), meta_over=meta)
+    return run
+
+
+def test_rest_of_season_runs_never_enter_the_scorecard(live, tmp_path):  # noqa: F811
+    """A horizon-1 run for week 5 (made by last week's cycle, still before kickoff) changes nothing in the report: the
+    paired observations, errors, coverage, lead times and verdicts come from the week's own horizon-0 run only, and
+    the rest-of-season run is listed as excluded with #80's reason. With only a rest-of-season run, nothing is scored."""
+    import shutil
+
+    import duckdb
+
+    con, src = v8_world(live)
+    ros_only = _run_w5(con, src, W5_PRE_A, {1: 50.0, 6: 50.0, 11: 50.0}, horizon=1)
+    p = build(con)
+    assert all(s["paired_n"] == 0 for s in p["positions"].values()) and p["weekly"] == []
+    assert {"run_id": ros_only["run_id"], "week": 5,
+            "reason": "rest-of-season forecast (horizon 1), not evidence"} in p["coverage"]["excluded_runs"]
+
+    _run_w5(con, src, W5_PRE_A - timedelta(hours=1), {1: 20.0})            # the week's pregame run (horizon 0)
+    con.execute("CHECKPOINT")
+    base_path = tmp_path / "base.duckdb"
+    shutil.copy(live[0].execute("PRAGMA database_list").fetchall()[0][2], base_path)
+    base = build(duckdb.connect(str(base_path)))
+    later_ros = _run_w5(con, src, W5_PRE_B, {1: 99.0, 6: 99.0, 11: 99.0}, horizon=2)   # newer, still pregame
+    p = build(con)
+    assert sum(s["paired_n"] for s in p["positions"].values()) > 0
+    for key in ("positions", "weekly", "comparisons", "preliminary"):
+        assert p[key] == base[key], key
+    reasons = {e["run_id"]: e["reason"] for e in p["coverage"]["excluded_runs"]}
+    assert reasons[later_ros["run_id"]] == "rest-of-season forecast (horizon 2), not evidence"
+    # the site shows the newest run of any horizon, labelled as such; the scorecard still scores horizon 0 only
+    [served] = [w for w in p["model_versions"]["served_now"] if w["week"] == 5]
+    assert served["served_version"] == PROD and served["forecast_horizon"] == 2 and "horizon 2" in served["horizon_note"]
+
+
+def test_start_sit_credits_the_served_run_only_at_horizon_0(live):  # noqa: F811
+    """ifp2_production in a decision set is exactly the run the site served for the week (projection_source.select_run)
+    and only when that run is the week's own horizon-0 evidence run; a served rest-of-season run gives no value."""
+    con, src = v8_world(live)
+    served = pp.ssx.served_production_rows
+    rows, ex = served(con, 2026, [5], FP)
+    assert rows == [] and ex == [{"run_id": None, "week": 5, "reason": "no independent run served (ESPN shown)"}]
+    h0 = _run_w5(con, src, W5_PRE_A, {1: 20.0})
+    rows, ex = served(con, 2026, [5], FP)
+    assert ex == [] and rows and {r["week"] for r in rows} == {5}
+    assert next(r for r in rows if r["espn_player_id"] == 1)["expected_points"] == 20.0
+    assert {r["run_created_at"] for r in rows} == {W5_PRE_A.replace(tzinfo=UTC)}
+    # a newer rest-of-season run is what the site now serves for week 5: not evidence, so nothing is credited
+    ros = _run_w5(con, src, W5_PRE_B, {1: 99.0}, horizon=1)
+    rows, ex = served(con, 2026, [5], FP)
+    assert rows == [] and ex == [{"run_id": ros["run_id"], "week": 5,
+                                  "reason": "rest-of-season forecast (horizon 1), not evidence"}]
+    assert h0["run_id"] != ros["run_id"]
+
+
+def test_start_sit_never_credits_a_served_fallback_to_the_production_model(live):  # noqa: F811
+    from app.analytics import production_pin
+
+    con, src = v8_world(live)
+    fb = _run_w5(con, src, W5_PRE_A, {1: 20.0}, version=FALLBACK, sha=production_pin.APPROVED_ARTIFACT_SHA256)
+    rows, ex = pp.ssx.served_production_rows(con, 2026, [5], FP)
+    assert rows == [] and ex == [{"run_id": fb["run_id"], "week": 5, "reason": f"the site served the fallback {FALLBACK}"}]

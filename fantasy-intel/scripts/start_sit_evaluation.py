@@ -150,6 +150,39 @@ def ledger_lookup(ledger_dir: Path | None) -> dict:
     return out
 
 
+def served_production_rows(con, season: int, weeks, scoring_fingerprint: str) -> tuple[list[dict], list[dict]]:
+    """(rows, exclusions) of the production model as the site served it: per week the run projection_source.select_run
+    shows (the consumer rule, any forecast horizon), kept only when it is the production model at forecast horizon 0
+    and an eligible evidence run (production_forecasts.eligible_run_ids: approved artifact fitted before the week's
+    first kickoff, integrity). A served rest-of-season run (horizon k > 0), the ifp-1 fallback or ESPN gives no value:
+    the decision is not credited to the production model. Each row's capture time is its run's creation time, so a
+    run created at or after a player's kickoff is still refused per player by the decision layer."""
+    from app.analytics import production_forecasts as pf
+    from app.analytics import projection_source as ps
+
+    eligible, _ = pf.eligible_run_ids(con, season, PRODUCTION_VERSION, scoring_fingerprint, weeks)
+    rows: list[dict] = []
+    excluded: list[dict] = []
+    for week in weeks:
+        sel = ps.select_run(con, season, week)
+        run = sel["run"]
+        if run is None:
+            reason = "no independent run served (ESPN shown)"
+        elif run["model_version"] != PRODUCTION_VERSION:
+            reason = f"the site served the fallback {run['model_version']}"
+        elif pf.horizon_of(run) > 0:
+            reason = pf.NOT_EVIDENCE.format(k=pf.horizon_of(run))
+        elif run["run_id"] not in eligible:
+            reason = "the served run is not an eligible evidence run (artifact fitted after the first kickoff, or unapproved)"
+        else:
+            created = sse.aware(run["created_at"])
+            rows += [{"week": week, "espn_player_id": int(r["espn_player_id"]), "expected_points": r["expected_points"],
+                      "run_created_at": created} for r in sel["rows"]]
+            continue
+        excluded.append({"run_id": run["run_id"] if run else None, "week": week, "reason": reason})
+    return rows, excluded
+
+
 def attach_predictions(cands: list[dict], live, src: Sources, scoring, season: int, *, ledger_dir: Path | None,
                        forecast_reader=None, as_of: datetime | None = None) -> dict:
     """Set preds[...] for every model on the candidates (a model with nothing stays absent). Returns counts."""
@@ -163,10 +196,15 @@ def attach_predictions(cands: list[dict], live, src: Sources, scoring, season: i
         counts[name] = sse.attach_model(cands, name, lookup, gkey)
     reader, source = (forecast_reader, "injected reader") if forecast_reader is not None else sse.forecast_reader_for(live)
     counts["production_source"] = source
+    weeks = sorted({c["week"] for c in cands})
     for name, version in PRODUCTION_MODELS.items():
-        rows, excluded = ([], []) if reader is None else reader(
-            live, season, sorted({c["week"] for c in cands}) or None, model_version=version,
-            scoring_fingerprint=scoring.fingerprint)
+        if name == "ifp2_production" and forecast_reader is None and source == sse.PRODUCTION_SOURCE:
+            # the production model: exactly the run the site served for the week (projection_source.select_run),
+            # credited only when that run is horizon 0 and an eligible evidence run (served_production_rows)
+            rows, excluded = served_production_rows(live, season, weeks, scoring.fingerprint)
+        else:
+            rows, excluded = ([], []) if reader is None else reader(
+                live, season, weeks or None, model_version=version, scoring_fingerprint=scoring.fingerprint)
         # rows without expected points abstain (the consumer shows ESPN there): no value, never credited to the model
         counts[name] = sse.attach_model(cands, name, sse.production_lookup(rows),
                                         lambda c: (c["week"], c["espn_player_id"]))
