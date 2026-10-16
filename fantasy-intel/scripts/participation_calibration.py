@@ -54,8 +54,17 @@ def _frame_hash(df: pl.DataFrame) -> str:
                           + ",".join(sorted(flat.columns)).encode()).hexdigest()[:16]
 
 
+def fully_final_weeks(src, weeks: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Only weeks whose every scheduled game has a final score. A partly played week would label the
+    rostered players of games not yet played as non-participants."""
+    open_ = {(int(s), int(w)) for s, w in src.games.filter(pl.col("points_for").is_null())
+             .select("season", "week").unique().iter_rows()}
+    return [sw for sw in weeks if sw not in open_]
+
+
 def oos_predictions(src, protocol, ifp_sel: dict, psel: dict, cache_dir: Path) -> tuple[pl.DataFrame, str]:
-    weeks = completed_weeks(src, list(range(protocol.train_start_season, max(protocol.heldout_seasons) + 1)))
+    weeks = fully_final_weeks(src, completed_weeks(src, list(range(protocol.train_start_season,
+                                                                     max(protocol.heldout_seasons) + 1))))
     cond_store, store = bip.build_store(src, weeks), pm.build_store(src, weeks)
     data_hash = hashlib.sha256(store.sort("key", "gsis_id").select("key", "gsis_id", "played", "label")
                                .write_csv().encode()).hexdigest()[:16]
@@ -97,6 +106,8 @@ def cmd_run(args) -> dict:
         for name, sel in (("participation_selection.json", psel), ("selection.json", ifp_sel)):
             if sel.get("scoring_fingerprint") != scoring.fingerprint:
                 raise SystemExit(f"{name} was made under different league scoring")
+        if psel.get("ifp_selection_sha") != bip._sha(models / "selection.json"):
+            raise SystemExit("participation_selection.json was made from a different selection.json")
         src = bip._sources(live, hist, scoring.require_supported())
     finally:
         for c in (live, hist):
