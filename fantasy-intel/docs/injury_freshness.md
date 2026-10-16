@@ -43,6 +43,17 @@ later `retrieved_at` (it proves the feed still said the same thing); rows are ne
 any code (a test scans the module). Growth: one feed row plus one row per team-week (~600) per nflverse
 sync and ~32 per ESPN sync. Failed downloads record nothing (the sync already warns about them).
 
+ESPN completeness: the `team_current` rows are written only when the pro-player base (`pro_players`)
+was fetched. If that fetch fails, the synced player set is just the FA pool and current rosters, so most
+of a team's statuses were never refreshed; the sync then logs nothing for ESPN and adds a warning
+(`injury status retrieval not logged ...`). An incomplete snapshot therefore never proves freshness: the
+team falls back to its last complete ESPN retrieval, or to `missing`/`stale`.
+
+Time zones: `nfl_injuries.date_modified` is `TIMESTAMP WITH TIME ZONE` after a real nflverse sync. The
+module converts it to naive UTC in SQL (`timezone('UTC', date_modified)`, chosen from
+`information_schema`), never in Python (pytz is not installed) and never with `::TIMESTAMP` (which
+follows the session TimeZone), so the kickoff comparison is independent of the session TimeZone.
+
 ## 3. Freshness (`team_freshness`, `diagnostics`)
 
 Per scheduled team (`nfl_schedules` REG, kickoff from `projection_backtest._kickoff`, Eastern to UTC,
@@ -50,7 +61,8 @@ None when ambiguous):
 
 * Source that would be used, mirroring the ESPN fallback without importing or changing it: `nflverse`
   when the team has a week-W `report_status` designation not modified at/after its kickoff; else
-  `espn_status` when an ESPN retrieval exists; else `none`.
+  `espn_status` when an ESPN retrieval exists (counted mapped players exclude `player_id_map.notes`
+  containing 'conflict', like `independent_projection_store`); else `none`.
 * `status`: `fresh`; `stale` (evidence retrieved more than `stale_after_hours` = 24 before the reference
   time and kickoff within `window_hours` = 72 or unknown; the reference is now, or kickoff once the game
   started); `missing` (no report and no ESPN retrieval: NEVER healthy); `post_kickoff_only` (game started
@@ -78,8 +90,11 @@ uv run python ../scripts/injury_freshness.py refresh --season 2026 --week 7 --ex
 kickoff (stale or missing, not started), the sources (nflverse always; also `espn_status` when the team
 has no nflverse designation), and teams already kicked off, which are never refreshable. `--execute`
 only calls `run_nfl_sync` / `run_espn_sync` (no new feed, no paid source), refuses (exit 2) when nothing
-is refreshable, and labels each team by comparing the refresh's completion time with its kickoff
-(`pregame`, `post_kickoff`, or `unknown_kickoff`). It does not recompute analytics; run
+is refreshable, and is refused (exit 2, with a message) when combined with `--now` (`--now` only
+simulates a time; real syncs and their pregame labels use the actual clock). The two syncs run
+independently: if one raises, the other still runs, the failure is reported per source under `errors`
+(exit 1), and the affected teams are labeled `refresh_failed`, never `pregame`. Other teams are labeled by
+comparing the refresh's completion time with their kickoff (`pregame`, `post_kickoff`, or `unknown_kickoff`). It does not recompute analytics; run
 `compute_analytics.py` afterwards as `sync_nfl.py` does. A retrieval is never relabeled: `pregame` means
 `retrieved_at < kickoff` strictly.
 

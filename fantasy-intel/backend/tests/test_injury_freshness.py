@@ -212,6 +212,49 @@ def test_failed_injury_download_records_nothing(tmp_path, monkeypatch):
     assert stats["injury_retrievals"] is None
 
 
+def test_real_nflverse_sync_output_is_readable_by_team_freshness(tmp_path, monkeypatch):
+    """The sync stores the UTC polars Datetime as TIMESTAMP WITH TIME ZONE; fetching that into Python needs
+    pytz (not installed). The module must read it as naive UTC in SQL instead."""
+    from app.nfl import sync
+
+    payload, _, t1 = _payload()
+    monkeypatch.setattr(sync, "fetch_all", lambda season: payload)
+    sync.run_nfl_sync(_factory(tmp_path / "tz.duckdb"), 2026)
+    con = connect(tmp_path / "tz.duckdb")
+    assert con.execute("SELECT data_type FROM information_schema.columns WHERE table_name = 'nfl_injuries' "
+                       "AND column_name = 'date_modified'").fetchone()[0] == "TIMESTAMP WITH TIME ZONE"
+    rows = {r["team"]: r for r in inj.team_freshness(con, 2026, 7, WED_NOON, kickoffs=KICKOFFS)}
+    assert rows["BUF"]["source_used"] == "nflverse" and rows["BUF"]["nflverse_designation_synced"]
+    assert rows["BUF"]["status"] == inj.FRESH and rows["KC"]["source_used"] == "nflverse"
+    assert inj.diagnostics(con, 2026, 7, WED_NOON, kickoffs=KICKOFFS)["summary"]["by_source"]["nflverse"] == 2
+    assert inj.plan_refresh(con, 2026, 7, WED_NOON, kickoffs=KICKOFFS)["season"] == 2026
+    con.close()
+
+
+def test_date_modified_after_kickoff_is_post_kickoff_under_a_non_utc_session_timezone(tmp_path, monkeypatch):
+    from app.nfl import sync
+    from app.nfl.sync import NflPayloads
+
+    t0, t1 = datetime(2026, 10, 21, 15, 59, 20), datetime(2026, 10, 21, 15, 59, 40)
+    # BUF modified 3h AFTER its UTC kickoff (a Los Angeles-local reading, UTC-7, would put it 4h before);
+    # KC modified 3h BEFORE its UTC kickoff (a local reading would still be before: control).
+    df = pl.DataFrame({"season": [2026] * 2, "game_type": ["REG"] * 2, "team": ["BUF", "KC"], "week": [7, 7],
+                       "gsis_id": ["g1", "g3"], "report_status": ["Out", "Questionable"],
+                       "date_modified": [THU + timedelta(hours=3), SUN - timedelta(hours=3)]},
+                      schema_overrides={"date_modified": pl.Datetime("us", "UTC")})
+    payload = NflPayloads(season=2026, frames={"nfl_injuries": df}, fetch_times={"nfl_injuries": (t0, t1)})
+    monkeypatch.setattr(sync, "fetch_all", lambda season: payload)
+    sync.run_nfl_sync(_factory(tmp_path / "la.duckdb"), 2026)
+    con = connect(tmp_path / "la.duckdb")
+    for zone in ("UTC", "America/Los_Angeles", "Asia/Tokyo"):
+        con.execute(f"SET TimeZone = '{zone}'")
+        rows = {r["team"]: r for r in inj.team_freshness(con, 2026, 7, THU + timedelta(hours=4), kickoffs=KICKOFFS)}
+        assert rows["BUF"]["nflverse_report"]["post_kickoff_designations"] == 1, zone
+        assert rows["BUF"]["nflverse_report"]["designations"] == 0 and not rows["BUF"]["nflverse_designation_synced"], zone
+        assert rows["KC"]["nflverse_report"]["designations"] == 1 and rows["KC"]["source_used"] == "nflverse", zone
+    con.close()
+
+
 def test_espn_sync_records_per_team_status_with_null_publication(db):
     from app.espn.sync import fetch_all, record_injury_status_retrieval, write_all
     from espn_fixture import MY_SWID, FakeEspnClient
@@ -229,6 +272,32 @@ def test_espn_sync_records_per_team_status_with_null_publication(db):
     teams = {x[0] for x in db.execute("SELECT DISTINCT pro_team FROM fantasy_players "
                                       "WHERE pro_team IS NOT NULL").fetchall()}
     assert {r[3] for r in rows} == teams and teams
+
+
+def test_incomplete_espn_snapshot_is_not_logged_and_never_proves_freshness(db):
+    """When the pro_players fetch fails, `players` holds only the FA pool and roster rows. Logging a
+    per-team retrieval for that would let a team look fresh although most statuses were never fetched."""
+    from app.espn.sync import fetch_all, record_injury_status_retrieval, write_all
+    from espn_fixture import MY_SWID, FakeEspnClient
+
+    class NoProPlayers(FakeEspnClient):
+        def pro_players(self):
+            raise RuntimeError("pro players endpoint down")
+
+    payloads = fetch_all(NoProPlayers())
+    assert not payloads.pro_players and any("pro players" in w for w in payloads.warnings)
+    stats = write_all(db, payloads, swid=MY_SWID, my_team_id=None)
+    assert any("injury status retrieval not logged" in w for w in stats["warnings"])
+    assert record_injury_status_retrieval(db, payloads, "espn-run") is None
+    assert db.execute("SELECT count(*) FROM injury_retrievals").fetchone()[0] == 0
+    team = db.execute("SELECT pro_team FROM fantasy_players WHERE pro_team IS NOT NULL LIMIT 1").fetchone()[0]
+    row = next(r for r in inj.team_freshness(db, 2026, 7, WED_NOON, kickoffs={team: SUN}) if r["team"] == team)
+    assert row["source_used"] == inj.SOURCE_NONE and row["status"] == inj.MISSING
+
+    # control: the same fetch with the pro-player base logs one retrieval per team
+    full = fetch_all(FakeEspnClient())
+    write_all(db, full, swid=MY_SWID, my_team_id=None)
+    assert record_injury_status_retrieval(db, full, "espn-run")["inserted"] >= 1
 
 
 def test_espn_write_all_alone_logs_nothing(db):
@@ -304,6 +373,15 @@ def test_espn_fallback_counts_mapped_designations(db):
     put(db, obs(inj.SOURCE_ESPN, team="MIA", retrieved=WED_NOON))
     row = status_of(db, WED_NOON, "MIA")
     assert row["espn_designated_players"] == 1 and row["fallback_adds_no_designations"] is False
+
+
+def test_espn_designations_exclude_conflicting_crosswalks(db):
+    db.execute("INSERT INTO fantasy_players (espn_player_id, pro_team, injury_status) VALUES (1, 'MIA', 'OUT'), "
+               "(2, 'MIA', 'OUT'), (3, 'MIA', 'QUESTIONABLE')")
+    db.execute("INSERT INTO player_id_map (espn_player_id, gsis_id, match_confidence, notes) VALUES "
+               "(1, 'g1', 'high', 'Conflicting crosswalks'), (2, 'g2', 'high', NULL), (3, 'g3', 'high', 'name match')")
+    put(db, obs(inj.SOURCE_ESPN, team="MIA", retrieved=WED_NOON))
+    assert status_of(db, WED_NOON, "MIA")["espn_designated_players"] == 2
 
 
 def test_published_before_kickoff_but_retrieved_after_is_post_kickoff_only(db):
@@ -434,6 +512,27 @@ def test_execute_refresh_calls_only_planned_syncs_and_refuses_when_nothing_to_do
     assert "x" not in calls
 
 
+def test_execute_refresh_runs_each_source_independently_and_reports_errors(db):
+    calls = []
+
+    def nfl_boom():
+        calls.append("nfl")
+        raise RuntimeError("nflverse down")
+
+    plan = inj.plan_refresh(db, 2026, 7, WED_NOON, kickoffs={"MIA": THU})        # missing: nflverse + espn
+    assert plan["sources"] == ["espn_status", "nflverse"]
+    clock = iter([WED_NOON, WED_NOON + timedelta(minutes=2)])
+    out = inj.execute_refresh(plan, sync_nfl=nfl_boom, sync_espn=lambda: calls.append("espn"),
+                              now_fn=lambda: next(clock))
+    assert calls == ["nfl", "espn"]                                              # ESPN still ran
+    assert out["ran"] == {"nflverse": "error", "espn_status": "ran"}
+    assert out["errors"] == {"nflverse": "RuntimeError: nflverse down"}
+    assert out["labels"] == {"MIA": "refresh_failed"}                            # never pregame without the source
+    calls.clear()
+    out = inj.execute_refresh(plan, sync_nfl=lambda: calls.append("nfl"), sync_espn=lambda: 1 / 0)
+    assert calls == ["nfl"] and out["errors"] == {"espn_status": "ZeroDivisionError: division by zero"}
+
+
 # ----------------------------------------------------------------------------- CLI
 
 
@@ -484,19 +583,50 @@ def test_cli_execute_calls_only_the_existing_sync_functions(cli, cli_db, capsys,
     calls = []
     monkeypatch.setattr("app.nfl.sync.run_nfl_sync", lambda factory, season: calls.append(("nfl", season)))
     monkeypatch.setattr("app.espn.sync.run_espn_sync", lambda factory, settings: calls.append(("espn",)))
-    now = "2026-10-21T16:00:00+00:00"
-    assert cli.main(["refresh", "--execute", "--season", "2026", "--week", "7", "--db", str(cli_db), "--now", now]) == 0
+    clock = [datetime(2026, 10, 21, 16, 0, tzinfo=UTC)]       # --now is refused with --execute: pin the clock
+    monkeypatch.setattr(cli, "_now", lambda args: clock[0])
+    assert cli.main(["refresh", "--execute", "--season", "2026", "--week", "7", "--db", str(cli_db)]) == 0
     assert ("nfl", 2026) in calls and ("espn",) in calls
     # after every kickoff nothing is refreshable and --execute refuses
     calls.clear()
     c = connect(cli_db)
     c.execute("UPDATE nfl_schedules SET gametime = '16:25' WHERE gametime IS NULL")     # no unknown kickoffs left
     c.close()
-    assert cli.main(["refresh", "--execute", "--season", "2026", "--week", "7", "--db", str(cli_db),
-                     "--now", "2026-10-26T12:00:00+00:00"]) == 2
+    clock[0] = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
+    assert cli.main(["refresh", "--execute", "--season", "2026", "--week", "7", "--db", str(cli_db)]) == 2
     assert calls == []
 
 
 def test_cli_missing_database_exits_with_a_message(cli, tmp_path):
     with pytest.raises(SystemExit):
         cli.main(["report", "--week", "7", "--db", str(tmp_path / "nope.duckdb")])
+
+
+def test_cli_execute_refuses_now_and_runs_nothing(cli, cli_db, capsys, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("a sync was called")
+
+    monkeypatch.setattr("app.nfl.sync.run_nfl_sync", boom)
+    monkeypatch.setattr("app.espn.sync.run_espn_sync", boom)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["refresh", "--execute", "--season", "2026", "--week", "7", "--db", str(cli_db),
+                  "--now", "2026-10-21T16:00:00+00:00"])
+    assert exc.value.code == 2
+    assert "--execute cannot be combined with --now" in capsys.readouterr().err
+
+
+def test_cli_execute_reports_per_source_errors_and_still_runs_the_other_sync(cli, cli_db, capsys, monkeypatch):
+    calls = []
+
+    def nfl_boom(factory, season):
+        calls.append("nfl")
+        raise RuntimeError("nflverse down")
+
+    monkeypatch.setattr("app.nfl.sync.run_nfl_sync", nfl_boom)
+    monkeypatch.setattr("app.espn.sync.run_espn_sync", lambda factory, settings: calls.append("espn"))
+    # kickoffs are real-time relative: pin the clock the plan and the labels use
+    monkeypatch.setattr(cli, "_now", lambda args: datetime(2026, 10, 21, 16, 0, tzinfo=UTC))
+    rc = cli.main(["refresh", "--execute", "--season", "2026", "--week", "7", "--db", str(cli_db)])
+    captured = capsys.readouterr()
+    assert rc == 1 and calls == ["nfl", "espn"]
+    assert "nflverse down" in captured.err and '"errors"' in captured.out

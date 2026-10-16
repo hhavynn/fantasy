@@ -198,9 +198,17 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
             con.execute("DELETE FROM fantasy_players")
         stats["players"] = upsert_rows(con, "fantasy_players", players, ["espn_player_id"])
         # In memory only (recorded after COMMIT by run_espn_sync): the status rows this fetch returned.
+        # Only a complete universe (the pro-player base) proves a team's statuses were refreshed; without
+        # it `players` holds just the FA pool and current rosters, so logging a per-team snapshot would
+        # let injury_freshness call a team fresh although most of its statuses were never fetched.
         p.injury_status_season = season
-        p.injury_status_rows = [{"espn_player_id": r.get("espn_player_id"), "pro_team": r.get("pro_team"),
-                                 "injury_status": r.get("injury_status")} for r in players]
+        if base:
+            p.injury_status_rows = [{"espn_player_id": r.get("espn_player_id"), "pro_team": r.get("pro_team"),
+                                     "injury_status": r.get("injury_status")} for r in players]
+        else:
+            p.injury_status_rows = None
+            stats["warnings"].append("injury status retrieval not logged: pro-player fetch returned nothing, "
+                                     "so the ESPN snapshot is incomplete")
         stats["free_agent_pool"] = len(pool)
         today = date.today()
         upsert_rows(con, "player_ownership_history", [{
@@ -390,7 +398,8 @@ def _count(rows: list[dict], key: str) -> dict:
 def record_injury_status_retrieval(con, p: EspnPayloads, sync_run_id: str | None = None) -> dict | None:
     """Append this fetch's per-team ESPN injury-status snapshot to the write-once retrieval log.
     ESPN supplies no publication time, so it is recorded as NULL. Nothing is logged unless the fetch
-    finished and write_all captured its player rows."""
+    finished and write_all captured its player rows, and write_all captures them only when the complete
+    pro-player base was fetched (an incomplete snapshot never proves a team's statuses are fresh)."""
     if p.fetched_at is None or p.injury_status_rows is None or p.injury_status_season is None:
         return None
     obs = injury_freshness.espn_status_observations(

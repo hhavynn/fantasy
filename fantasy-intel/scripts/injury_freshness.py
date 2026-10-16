@@ -9,7 +9,8 @@
 kickoff and why; with --execute it only calls the existing nflverse / ESPN syncs (no new feed, no paid
 source), which record their own retrievals. Teams already kicked off are never refreshable, and a
 retrieval finishing at or after kickoff is never labeled pregame. Exit codes: report 0; refresh dry
-run 0; refresh --execute 0 done, 2 nothing to refresh.
+run 0; refresh --execute 0 done, 1 a sync failed (per-source errors printed; the other source
+still ran), 2 nothing to refresh or invalid arguments (--execute with --now is refused).
 """
 
 from __future__ import annotations
@@ -128,6 +129,9 @@ def cmd_refresh(args) -> int:
         print(f"refused: {err}")
         return 2
     print(json.dumps(out, indent=1, default=str))
+    if out["errors"]:
+        print("sync errors: " + "; ".join(f"{k}: {v}" for k, v in out["errors"].items()), file=sys.stderr)
+        return 1
     return 0
 
 
@@ -151,6 +155,9 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     if getattr(args, "dry_run", False) and getattr(args, "execute", False):
         ap.error("--dry-run and --execute are mutually exclusive")
+    if getattr(args, "execute", False) and args.now:
+        ap.error("--execute cannot be combined with --now: --now only simulates a time, but --execute runs real "
+                 "syncs whose pregame labels use the actual clock. Drop --now, or omit --execute for a dry run.")
     return args.fn(args)
 
 

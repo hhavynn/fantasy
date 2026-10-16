@@ -237,6 +237,18 @@ def _latest(rows: list[dict] | None, before: datetime | None = None) -> dict | N
     return ok[-1] if ok else None
 
 
+def _naive_utc_column(con, table: str, column: str) -> str:
+    """SQL expression returning `column` as a naive-UTC TIMESTAMP. The nflverse sync stores a UTC polars
+    Datetime as TIMESTAMP WITH TIME ZONE; fetching that into Python needs pytz (not installed) and would
+    otherwise follow the session TimeZone. `timezone('UTC', x)` converts in SQL, independent of the
+    session TimeZone. (`::TIMESTAMP` would convert in the session TimeZone, so it is not used.)"""
+    row = con.execute("SELECT data_type FROM information_schema.columns WHERE table_name = ? AND column_name = ?",
+                      [table, column]).fetchone()
+    if row and "WITH TIME ZONE" in str(row[0]).upper():
+        return f"timezone('UTC', {column})"
+    return column
+
+
 def _nflverse_reports(con, season: int, week: int, kickoffs: Mapping[str, Any]) -> dict[str, dict]:
     """Per team, what the nflverse week-W injury table holds, counted exactly like the model's loader:
     REG rows with a gsis_id; a designation (report_status) counts only if the row was not modified at
@@ -247,7 +259,7 @@ def _nflverse_reports(con, season: int, week: int, kickoffs: Mapping[str, Any]) 
     if not {"season", "week", "team", "gsis_id", "report_status"} <= cols:
         return {}
     gt = "AND game_type = 'REG'" if "game_type" in cols else ""
-    dm = "date_modified" if "date_modified" in cols else "NULL"
+    dm = _naive_utc_column(con, "nfl_injuries", "date_modified") if "date_modified" in cols else "NULL"
     out: dict[str, dict] = {}
     for team, status, practice, modified in con.execute(
             f"SELECT team, report_status, {'practice_status' if 'practice_status' in cols else 'NULL'}, {dm} "
@@ -266,13 +278,15 @@ def _nflverse_reports(con, season: int, week: int, kickoffs: Mapping[str, Any]) 
 
 
 def _espn_designated(con) -> dict[str, int]:
-    """Players per ESPN pro team with an OUT/DOUBTFUL/QUESTIONABLE status and a high-confidence id
-    mapping (the rows the fallback would turn into designations). Current table state."""
+    """Players per ESPN pro team with an OUT/DOUBTFUL/QUESTIONABLE status and a high-confidence,
+    non-conflicting id mapping (`notes` without 'conflict', as the projection store does): the rows
+    the fallback would turn into designations. Current table state."""
     if not all(table_exists(con, t) for t in ("fantasy_players", "player_id_map")):
         return {}
     cur = con.execute("""
         SELECT fp.pro_team, count(*) FROM fantasy_players fp JOIN player_id_map m USING (espn_player_id)
         WHERE m.match_confidence = 'high' AND m.gsis_id IS NOT NULL
+          AND lower(coalesce(m.notes, '')) NOT LIKE '%conflict%'
           AND upper(fp.injury_status) IN ('OUT', 'DOUBTFUL', 'QUESTIONABLE') GROUP BY 1""")
     return {t: int(n) for t, n in cur.fetchall() if t}
 
@@ -429,20 +443,28 @@ def plan_refresh(con, season: int, week: int, now: datetime, *, kickoffs: Mappin
 def execute_refresh(plan: dict, *, sync_nfl: Callable[[], Any], sync_espn: Callable[[], Any],
                     now_fn: Callable[[], datetime] = utcnow) -> dict:
     """Run the existing syncs the plan asks for. Refuses when no team can still be refreshed pregame.
-    Afterwards each team is labeled by comparing the refresh's completion time with its kickoff, so a
+    Each source's sync runs independently and failures are reported per source in `errors` (the other
+    source still runs). Afterwards each team is labeled by comparing the refresh's completion time with its kickoff, so a
     refresh that overran a kickoff is reported as post_kickoff, not pregame."""
     if not plan["refreshable"]:
         raise RefreshRefused("no team needs a pregame refresh (all up to date, or already kicked off)")
     started = naive_utc(now_fn())
     results: dict[str, Any] = {}
-    if SOURCE_NFLVERSE in plan["sources"]:
-        sync_nfl()
-        results[SOURCE_NFLVERSE] = "ran"
-    if SOURCE_ESPN in plan["sources"]:
-        sync_espn()
-        results[SOURCE_ESPN] = "ran"
+    errors: dict[str, str] = {}
+    # Each source runs independently: one failing sync must not stop the other from refreshing.
+    for source, fn in ((SOURCE_NFLVERSE, sync_nfl), (SOURCE_ESPN, sync_espn)):
+        if source not in plan["sources"]:
+            continue
+        try:
+            fn()
+            results[source] = "ran"
+        except Exception as err:
+            results[source] = "error"
+            errors[source] = f"{type(err).__name__}: {err}"
     finished = naive_utc(now_fn())
-    labels = {r["team"]: label_pregame(finished, r["kickoff"]) for r in plan["refreshable"]}
+    # A team whose planned source failed has no new retrieval from it: never labeled pregame.
+    labels = {r["team"]: "refresh_failed" if any(src in errors for src in r["sources"])
+              else label_pregame(finished, r["kickoff"]) for r in plan["refreshable"]}
     return {"started_at": started.isoformat(), "finished_at": finished.isoformat(), "ran": results,
-            "labels": labels, "note": "evidence is only pregame for teams labeled 'pregame'; "
+            "errors": errors, "labels": labels, "note": "evidence is only pregame for teams labeled 'pregame'; "
                                       "re-run `report` to see the recorded retrievals"}
