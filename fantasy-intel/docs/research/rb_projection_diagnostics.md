@@ -444,3 +444,8 @@ low-volume backs be useful to the Start/Sit page at all, given it changes no pai
 `prepare`, `diagnose`, `develop`, `confirm`, `posthoc`. The development and confirmation reports are
 `diagnostics.json`, `develop.json`, `frozen.json`, `confirmation_report.json`, `posthoc.json` under `--out`
 (git-ignored, not committed). The history, 2026 and play-by-play inputs live outside the repository.
+The frozen configuration is bound to the input frames *and* to the production feature/model code
+(`code_fingerprint`), so reproducing on a later commit means running the whole sequence into a fresh
+`--out` directory (the nflverse inputs are deterministic for a given release; the numbers above come from
+the code at the commits before main `0314d40` was merged in, which changed `forecast_backtest.py` only by
+adding optional unrounded-metric flags). Run on 2026-10-16 with nflverse as published that day.
