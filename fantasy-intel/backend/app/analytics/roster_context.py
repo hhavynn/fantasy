@@ -31,7 +31,7 @@ import polars as pl
 from ..db.connection import table_columns, table_exists
 from .forecast_features import Sources, key
 
-CONTEXT_VERSION = "ctx-0.1.0"
+CONTEXT_VERSION = "ctx-0.1.1"   # 0.1.1: prior-season QBs need current-season roster evidence
 
 # Fixed before any backtest; derivations in docs/research/qb_teammate_context.md.
 QB_LOOKBACK_SEASONS = 2       # QB profile: current season + this many previous seasons
@@ -306,9 +306,15 @@ def expected_starters(sources: Sources, ctx: ContextSources, season: int, week: 
     pq = sources.panel.filter((pl.col("season") * 100 + pl.col("week") < cutoff) & (pl.col("season") >= season - 1)
                               & (pl.col("position") == "QB"))
     team_qbs: dict[str, set] = defaultdict(set)
-    for g, t in pq.select("gsis_id", "team").iter_rows():
-        if st.last_team.get(g) == t:
-            team_qbs[t].add(g)
+    latest = pq.sort(["season", "week"], descending=True).unique("gsis_id", keep="first")
+    for g, t, s in latest.select("gsis_id", "team", "season").iter_rows():
+        if st.last_team.get(g) != t:
+            continue
+        # a QB last seen for the team in a PREVIOUS season (offseason departure, release, retirement) needs
+        # current-season roster evidence; a missing roster row is not evidence he is still there
+        if s < season and not (st.roster.get(g, ("", ""))[0] == t and st.roster[g][1] in ACTIVE_ROSTER):
+            continue
+        team_qbs[t].add(g)
     if sources.rosters is not None:   # QBs on a team's roster before W who never appeared (a new signing)
         r = sources.rosters.filter((pl.col("season") == season) & (pl.col("week") < week) & (pl.col("position") == "QB"))
         for g in set(r["gsis_id"].to_list()):

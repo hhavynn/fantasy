@@ -22,7 +22,7 @@ from .forecast_features import POSITIONS, key
 from .independent_projections import MIN_TRAIN_ROWS, RidgeModel
 from .roster_context import CONTEXT_DOCS, UNAVAILABLE
 
-CTX_VERSION = "ifp-ctx-0.1.0"
+CTX_VERSION = "ifp-ctx-0.1.1"   # 0.1.0 frozen before the review fixes; kept, never overwritten
 CTX_STATUS = "research_only"
 WINDOWS = {"development": (2021, 2022), "confirmation": (2023, 2024), "exploratory": (2025, 2026)}
 

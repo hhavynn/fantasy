@@ -201,6 +201,32 @@ def test_returning_incumbent_needs_pregame_evidence():
     assert q["expected_qb_id"] == KEENUM                                         # on reserve: not back
 
 
+def test_prior_season_qb_needs_current_season_roster_evidence():
+    old = "00-OLDQB"
+    extra = [{"season": S - 1, "week": w, "gsis_id": old, "team": "CHI", "attempts": 35.0, "sacks": 2.0, "epa": 2.0,
+              "cpoe": 1.0} for w in range(1, 18)]
+
+    def with_old_qb(roster_status=None):
+        src, ctx = world(injuries=[inj(CALEB, "Out")], extra_qb=extra)
+        old_panel = pl.DataFrame([prow(S - 1, 17, old, "QB", "CHI", 0, 3)]).cast(_panel_schema(), strict=False).select(
+            PANEL_COLUMNS)
+        ros = src.rosters
+        if roster_status:
+            ros = pl.concat([ros, pl.DataFrame([{"season": S, "week": 5, "gsis_id": old, "team": "CHI",
+                                                 "position": "QB", "status": roster_status}], schema=ROSTER_SCHEMA)])
+        return Sources(pl.concat([old_panel, src.panel]), src.games, src.defense, ros, src.injuries), ctx
+
+    # left in the offseason (no current-season roster row): never a candidate, despite 629 old team dropbacks
+    src, ctx = with_old_qb()
+    assert rc.expected_starters(src, ctx, S, W, ["CHI"])["CHI"]["expected_qb_id"] == KEENUM
+    # still on the active roster this season: a legitimate candidate, ranked on his team dropbacks
+    src, ctx = with_old_qb("ACT")
+    assert rc.expected_starters(src, ctx, S, W, ["CHI"])["CHI"]["expected_qb_id"] == old
+    # on reserve this season: not available
+    src, ctx = with_old_qb("RES")
+    assert rc.expected_starters(src, ctx, S, W, ["CHI"])["CHI"]["expected_qb_id"] == KEENUM
+
+
 def test_missing_starter_id_is_unknown_with_null_features():
     src, ctx = world(starters={("CHI", 5): None})
     r = ctx_rows(src, ctx)[BURDEN]

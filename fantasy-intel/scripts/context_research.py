@@ -220,16 +220,21 @@ def verdict(r: dict, p: pl.DataFrame, chosen: dict) -> dict:
     sub = {pos: r[pos] for pos in adopted}
     rows = p.filter(pl.col("label").is_not_null() & pl.col("position").is_in(adopted)
                     & pl.col("pred_ctx").is_not_null() & pl.col("pred_ifp2").is_not_null())
+    # c1, c3 and c6 are pooled over the ADOPTED positions' rows only: unchanged positions have identical
+    # predictions and would dilute a loss. c2, c4 and c5 are checked per adopted position (stricter).
     pooled = week_bootstrap_mae_diff(rows, "pred_ctx", "pred_ifp2", 1000, SEED, exact=True)
+    a = _arr(rows, "label")
+    rmse = {m: metrics(a, _arr(rows, f"pred_{m}"), exact=True)["rmse"] for m in ("ctx", "ifp2")}
+    pairs = pair_decisions(rows, ["pred_ctx", "pred_ifp2"], exact=True)["all"]
     checks = {
         "c1_pooled_mae": pooled["diff"] < 0 and pooled["ci95"][1] < 0,
         "c2_no_position_significantly_worse": all(s["minus_ifp2"]["ctx"]["ci95"][0] <= 0 for s in sub.values()),
-        "c3_rmse": all(s["metrics"]["ctx"]["rmse"] <= s["metrics"]["ifp2"]["rmse"] * 1.005 for s in sub.values()),
+        "c3_rmse": rmse["ctx"] <= rmse["ifp2"] * 1.005,
         "c4_bias": all(abs(s["metrics"]["ctx"]["bias"]) <= abs(s["metrics"]["ifp2"]["bias"]) + cc.BIAS_TOLERANCE
                        for s in sub.values()),
         "c5_starters_pool": all(s["cohorts"]["starters_pool"]["ctx"]["mae"]
                                 <= s["cohorts"]["starters_pool"]["ifp2"]["mae"] * 1.01 for s in sub.values()),
-        "c6_pairs": r["pairs"]["all"]["pred_ctx"]["accuracy"] >= r["pairs"]["all"]["pred_ifp2"]["accuracy"] - 0.005,
+        "c6_pairs": pairs["pred_ctx"]["accuracy"] >= pairs["pred_ifp2"]["accuracy"] - 0.005,
     }
     mech = {}
     for pos in adopted:
@@ -239,7 +244,8 @@ def verdict(r: dict, p: pl.DataFrame, chosen: dict) -> dict:
                 if co.get("n"):
                     mech[f"{pos}:{c}"] = co["ctx"]["mae"] - co["ifp2"]["mae"]
     checks["c7_mechanism"] = bool(mech) and all(v < 0 for v in mech.values())
-    return {"adopted_positions": adopted, "pooled_adopted": pooled, "checks": checks, "mechanism_diffs": mech,
+    return {"adopted_positions": adopted, "pooled_adopted": pooled, "pooled_adopted_rmse": rmse,
+            "pairs_adopted": {m: pairs[f"pred_{m}"] for m in ("ctx", "ifp2")}, "checks": checks, "mechanism_diffs": mech,
             "outcome": "prospective_shadow" if all(checks.values()) else "retain_baseline"}
 
 
@@ -298,7 +304,6 @@ def cmd_predict(args) -> dict:
     from app.analytics.participation import live_population
     from app.analytics.weekly_learning import team_kickoffs
 
-    now = datetime.now(timezone.utc)
     store, prov = build(args)
     cfg = ch.ChallengerConfig.load()
     frozen = _prospective_frozen(args, cfg, prov["scoring_fingerprint"])
@@ -310,6 +315,7 @@ def cmd_predict(args) -> dict:
     src, _ = hr._sources(args)
     ctx = ctx_sources(args)
     kick = team_kickoffs(src, season, week)
+    now = datetime.now(timezone.utc)          # after the slow build: never select on a stale clock
     open_teams = sorted(t for t, ko in kick.items() if now < ko)
     if not open_teams:
         raise SystemExit(f"every week-{week} game has kicked off: no pregame forecast possible")
@@ -357,10 +363,17 @@ def cmd_predict(args) -> dict:
                          "ifp2_points": e["baseline_points"] if e else None,
                          "ctx_points": e["challenger_points"] if e else None,
                          "explanation": e, **{c: rec.get(c) for c in CONTEXT_COLUMNS}})
+    # fitting and feature building take time: re-check every kickoff at write time and drop any team whose
+    # game has started since, so no row in a "pregame" ledger is ever written after its kickoff
+    written_at = datetime.now(timezone.utc)
+    still_open = {t for t in open_teams if written_at < kick[t]}
+    rows = [r for r in rows if r["team"] in still_open]
+    if not still_open:
+        raise SystemExit(f"every remaining week-{week} game kicked off while forecasting: nothing written")
     ledger = {"schema": "ifp-ctx-research-ledger/v1", "version": cc.PROSPECTIVE_VERSION, "kind": "pregame",
-              "season": season, "week": week, "created_at": now.isoformat(), "config_hash": frozen["config_hash"],
-              "artifact": apath.name, "training_cutoff_key": cutoff,
-              "teams_excluded_already_started": sorted(set(kick) - set(open_teams)),
+              "season": season, "week": week, "created_at": written_at.isoformat(),
+              "config_hash": frozen["config_hash"], "artifact": apath.name, "training_cutoff_key": cutoff,
+              "teams_excluded_already_started": sorted(set(kick) - still_open),
               "sources": {"injury_report_rows": None if inj is None else inj.height,
                           "injury_report_sha": _frame_sha(inj), "injury_report_timestamped": False,
                           "rosters_sha": _frame_sha(src.rosters), "panel_sha": _frame_sha(src.panel),
@@ -368,7 +381,7 @@ def cmd_predict(args) -> dict:
               "rows": rows}
     written = hr._write_once(lpath, ledger)
     return {"ledger": str(lpath), "written": written, "rows": len(rows),
-            "forecast_rows": sum(r["ctx_points"] is not None for r in rows), "open_teams": len(open_teams)}
+            "forecast_rows": sum(r["ctx_points"] is not None for r in rows), "open_teams": len(still_open)}
 
 
 def cmd_prospective(args) -> dict:
