@@ -1,0 +1,1063 @@
+{
+  "contract": "projection-movers/v1",
+  "season": 2026,
+  "source": "espn",
+  "view": "ros",
+  "position": null,
+  "available": true,
+  "reason": null,
+  "label": "ESPN projections",
+  "experimental": false,
+  "notes": [
+    "ESPN publishes one stored forecast per day. Movement between two of them can include ESPN's own updates as well as news."
+  ],
+  "governance": null,
+  "baselines": [
+    {
+      "id": "2026-10-13",
+      "label": "Oct 13 (before week 6)",
+      "taken_at": "2026-10-13T10:00:00+00:00",
+      "cycle_week": 6
+    },
+    {
+      "id": "2026-10-14",
+      "label": "Oct 14 (before week 6)",
+      "taken_at": "2026-10-14T10:00:00+00:00",
+      "cycle_week": 6
+    }
+  ],
+  "baseline": {
+    "id": "2026-10-14",
+    "label": "Oct 14 (before week 6)",
+    "taken_at": "2026-10-14T10:00:00+00:00",
+    "cycle_week": 6,
+    "model_version": null,
+    "run_ids": null
+  },
+  "current": {
+    "id": "2026-10-15",
+    "label": "Oct 15 (before week 6)",
+    "taken_at": "2026-10-15T10:00:00+00:00",
+    "cycle_week": 6,
+    "model_version": null,
+    "run_ids": null
+  },
+  "window": {
+    "weeks": [
+      7,
+      8,
+      9
+    ],
+    "excluded_weeks": [
+      {
+        "week": 6,
+        "reason": "kicked off before the latest snapshot"
+      }
+    ],
+    "scoring_verified": false,
+    "scoring_note": "ESPN does not store the league scoring with each snapshot, so a scoring change between the two snapshots would show up as movement."
+  },
+  "summary": {
+    "compared": 8,
+    "risers": 4,
+    "fallers": 3,
+    "unchanged": 1,
+    "not_comparable": 3,
+    "not_comparable_reasons": {
+      "no ESPN projection for week 9 in the earlier snapshot": 2,
+      "no ESPN projection for week 7 in the latest snapshot": 1
+    }
+  },
+  "skipped": [],
+  "excluded_runs": [],
+  "risers": [
+    {
+      "espn_player_id": 900002,
+      "name": "Test Player B",
+      "position": "RB",
+      "nfl_team": "BUF",
+      "gsis_id": "00-SYN0002",
+      "before": 24.6,
+      "after": 32.1,
+      "delta": 7.5,
+      "pct": 0.30487800000000004,
+      "per_week_before": 8.2,
+      "per_week_after": 10.7,
+      "rank_before": 22,
+      "rank_after": 12,
+      "rank_change": 10,
+      "direction": "up",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 8,
+          "after": 10.9,
+          "delta": 2.9,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 7.5,
+          "after": 10.2,
+          "delta": 2.7,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 9.1,
+          "after": 11,
+          "delta": 1.9,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": {
+        "headline": "Carries 14.5 per game in week 6, up from 9.7 in weeks 3-5",
+        "signals": [
+          {
+            "kind": "usage",
+            "key": "carries",
+            "label": "Carries per game",
+            "before": 9.7,
+            "after": 14.5,
+            "unit": "count",
+            "weeks_before": [
+              3,
+              4,
+              5
+            ],
+            "weeks_after": [
+              6
+            ],
+            "source": "nflverse player week usage",
+            "detail": "Rushing attempts."
+          },
+          {
+            "kind": "role",
+            "key": "depth_rank",
+            "label": "Depth chart rank",
+            "before": 2,
+            "after": 1,
+            "unit": "count",
+            "weeks_before": [],
+            "weeks_after": [],
+            "source": "NFL depth charts",
+            "detail": "Position rank on the team's depth chart."
+          }
+        ],
+        "missing": [],
+        "information_window": {
+          "from": "2026-10-14T00:00:00+00:00",
+          "to": "2026-10-15T00:00:00+00:00",
+          "games": [
+            {
+              "week": 6,
+              "team": "BUF",
+              "kickoff": "2026-10-13T20:20:00+00:00"
+            }
+          ]
+        },
+        "note": "Observed over the same period as the change. Not shown to be the cause."
+      }
+    },
+    {
+      "espn_player_id": 900001,
+      "name": "Test Player A",
+      "position": "WR",
+      "nfl_team": "KC",
+      "gsis_id": "00-SYN0001",
+      "before": 31,
+      "after": 37.5,
+      "delta": 6.5,
+      "pct": 0.209677,
+      "per_week_before": 10.33,
+      "per_week_after": 12.5,
+      "rank_before": 14,
+      "rank_after": 9,
+      "rank_change": 5,
+      "direction": "up",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 10.2,
+          "after": 12.4,
+          "delta": 2.2,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 11,
+          "after": 13.1,
+          "delta": 2.1,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 9.8,
+          "after": 12,
+          "delta": 2.2,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": {
+        "headline": "Snap share 81% in week 6, up from 62% in weeks 3-5",
+        "signals": [
+          {
+            "kind": "usage",
+            "key": "snap_share",
+            "label": "Snap share",
+            "before": 0.62,
+            "after": 0.81,
+            "unit": "share",
+            "weeks_before": [
+              3,
+              4,
+              5
+            ],
+            "weeks_after": [
+              6
+            ],
+            "source": "nflverse snap counts",
+            "detail": "Offensive snaps as a share of team snaps."
+          },
+          {
+            "kind": "usage",
+            "key": "target_share",
+            "label": "Target share",
+            "before": 0.19,
+            "after": 0.27,
+            "unit": "share",
+            "weeks_before": [
+              3,
+              4,
+              5
+            ],
+            "weeks_after": [
+              6
+            ],
+            "source": "nflverse player week usage",
+            "detail": "Targets as a share of team targets."
+          },
+          {
+            "kind": "availability",
+            "key": "injury_designation",
+            "label": "Injury designation",
+            "before": "None listed",
+            "after": "Questionable (limited practice)",
+            "unit": "text",
+            "weeks_before": [
+              5
+            ],
+            "weeks_after": [
+              6
+            ],
+            "source": "NFL injury reports",
+            "detail": "The designation as reported, not a diagnosis."
+          }
+        ],
+        "missing": [
+          "No depth chart change recorded between the two snapshots"
+        ],
+        "information_window": {
+          "from": "2026-10-14T00:00:00+00:00",
+          "to": "2026-10-15T00:00:00+00:00",
+          "games": [
+            {
+              "week": 6,
+              "team": "KC",
+              "kickoff": "2026-10-14T00:15:00+00:00"
+            }
+          ]
+        },
+        "note": "Observed over the same period as the change. Not shown to be the cause."
+      }
+    },
+    {
+      "espn_player_id": 900003,
+      "name": "Test Player C",
+      "position": "TE",
+      "nfl_team": "SF",
+      "gsis_id": null,
+      "before": 15.7,
+      "after": 19.3,
+      "delta": 3.6,
+      "pct": 0.22929899999999998,
+      "per_week_before": 5.23,
+      "per_week_after": 6.43,
+      "rank_before": 18,
+      "rank_after": 13,
+      "rank_change": 5,
+      "direction": "up",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 5.1,
+          "after": 6.4,
+          "delta": 1.3,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 5.6,
+          "after": 6.9,
+          "delta": 1.3,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 5,
+          "after": 6,
+          "delta": 1,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": {
+        "headline": null,
+        "signals": [],
+        "missing": [
+          "No usage change passed the threshold for week 6",
+          "No injury or roster status change recorded"
+        ],
+        "information_window": {
+          "from": "2026-10-14T00:00:00+00:00",
+          "to": "2026-10-15T00:00:00+00:00",
+          "games": []
+        },
+        "note": "Observed over the same period as the change. Not shown to be the cause."
+      }
+    }
+  ],
+  "fallers": [
+    {
+      "espn_player_id": 900004,
+      "name": "Test Player D",
+      "position": "WR",
+      "nfl_team": "DAL",
+      "gsis_id": "00-SYN0004",
+      "before": 38.3,
+      "after": 29.5,
+      "delta": -8.8,
+      "pct": -0.229765,
+      "per_week_before": 12.77,
+      "per_week_after": 9.83,
+      "rank_before": 6,
+      "rank_after": 17,
+      "rank_change": -11,
+      "direction": "down",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 13,
+          "after": 9.9,
+          "delta": -3.1,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 12.5,
+          "after": 10.1,
+          "delta": -2.4,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 12.8,
+          "after": 9.5,
+          "delta": -3.3,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": {
+        "headline": "Snap share 58% in week 6, down from 79% in weeks 3-5",
+        "signals": [
+          {
+            "kind": "usage",
+            "key": "snap_share",
+            "label": "Snap share",
+            "before": 0.79,
+            "after": 0.58,
+            "unit": "share",
+            "weeks_before": [
+              3,
+              4,
+              5
+            ],
+            "weeks_after": [
+              6
+            ],
+            "source": "nflverse snap counts",
+            "detail": "Offensive snaps as a share of team snaps."
+          },
+          {
+            "kind": "availability",
+            "key": "roster_status",
+            "label": "Roster status",
+            "before": "Active",
+            "after": "Active",
+            "unit": "text",
+            "weeks_before": [
+              5
+            ],
+            "weeks_after": [
+              6
+            ],
+            "source": "NFL weekly rosters",
+            "detail": "Listed active in both samples."
+          }
+        ],
+        "missing": [],
+        "information_window": {
+          "from": "2026-10-14T00:00:00+00:00",
+          "to": "2026-10-15T00:00:00+00:00",
+          "games": [
+            {
+              "week": 6,
+              "team": "DAL",
+              "kickoff": "2026-10-13T17:00:00+00:00"
+            }
+          ]
+        },
+        "note": "Observed over the same period as the change. Not shown to be the cause."
+      }
+    },
+    {
+      "espn_player_id": 900005,
+      "name": "Test Player E",
+      "position": "QB",
+      "nfl_team": "MIA",
+      "gsis_id": "00-SYN0005",
+      "before": 55.1,
+      "after": 48.3,
+      "delta": -6.8,
+      "pct": -0.123412,
+      "per_week_before": 18.37,
+      "per_week_after": 16.1,
+      "rank_before": 5,
+      "rank_after": 9,
+      "rank_change": -4,
+      "direction": "down",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 18.4,
+          "after": 16.1,
+          "delta": -2.3,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 17.9,
+          "after": 15.8,
+          "delta": -2.1,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 18.8,
+          "after": 16.4,
+          "delta": -2.4,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": {
+        "headline": null,
+        "signals": [],
+        "missing": [
+          "No usage change passed the threshold for week 6",
+          "No injury or roster status change recorded"
+        ],
+        "information_window": {
+          "from": "2026-10-14T00:00:00+00:00",
+          "to": "2026-10-15T00:00:00+00:00",
+          "games": []
+        },
+        "note": "Observed over the same period as the change. Not shown to be the cause."
+      }
+    },
+    {
+      "espn_player_id": 900006,
+      "name": "Test Player F",
+      "position": "RB",
+      "nfl_team": "NYJ",
+      "gsis_id": "00-SYN0006",
+      "before": 27.1,
+      "after": 22.3,
+      "delta": -4.8,
+      "pct": -0.177122,
+      "per_week_before": 9.03,
+      "per_week_after": 7.43,
+      "rank_before": 15,
+      "rank_after": 24,
+      "rank_change": -9,
+      "direction": "down",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 9.5,
+          "after": 7.4,
+          "delta": -2.1,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 9,
+          "after": 7.8,
+          "delta": -1.2,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 8.6,
+          "after": 7.1,
+          "delta": -1.5,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": {
+        "headline": null,
+        "signals": [],
+        "missing": [
+          "No usage change passed the threshold for week 6",
+          "No injury or roster status change recorded"
+        ],
+        "information_window": {
+          "from": "2026-10-14T00:00:00+00:00",
+          "to": "2026-10-15T00:00:00+00:00",
+          "games": []
+        },
+        "note": "Observed over the same period as the change. Not shown to be the cause."
+      }
+    }
+  ],
+  "players": [
+    {
+      "espn_player_id": 900004,
+      "name": "Test Player D",
+      "position": "WR",
+      "nfl_team": "DAL",
+      "gsis_id": "00-SYN0004",
+      "before": 38.3,
+      "after": 29.5,
+      "delta": -8.8,
+      "pct": -0.229765,
+      "per_week_before": 12.77,
+      "per_week_after": 9.83,
+      "rank_before": 6,
+      "rank_after": 17,
+      "rank_change": -11,
+      "direction": "down",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 13,
+          "after": 9.9,
+          "delta": -3.1,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 12.5,
+          "after": 10.1,
+          "delta": -2.4,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 12.8,
+          "after": 9.5,
+          "delta": -3.3,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": null
+    },
+    {
+      "espn_player_id": 900002,
+      "name": "Test Player B",
+      "position": "RB",
+      "nfl_team": "BUF",
+      "gsis_id": "00-SYN0002",
+      "before": 24.6,
+      "after": 32.1,
+      "delta": 7.5,
+      "pct": 0.30487800000000004,
+      "per_week_before": 8.2,
+      "per_week_after": 10.7,
+      "rank_before": 22,
+      "rank_after": 12,
+      "rank_change": 10,
+      "direction": "up",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 8,
+          "after": 10.9,
+          "delta": 2.9,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 7.5,
+          "after": 10.2,
+          "delta": 2.7,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 9.1,
+          "after": 11,
+          "delta": 1.9,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": null
+    },
+    {
+      "espn_player_id": 900005,
+      "name": "Test Player E",
+      "position": "QB",
+      "nfl_team": "MIA",
+      "gsis_id": "00-SYN0005",
+      "before": 55.1,
+      "after": 48.3,
+      "delta": -6.8,
+      "pct": -0.123412,
+      "per_week_before": 18.37,
+      "per_week_after": 16.1,
+      "rank_before": 5,
+      "rank_after": 9,
+      "rank_change": -4,
+      "direction": "down",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 18.4,
+          "after": 16.1,
+          "delta": -2.3,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 17.9,
+          "after": 15.8,
+          "delta": -2.1,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 18.8,
+          "after": 16.4,
+          "delta": -2.4,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": null
+    },
+    {
+      "espn_player_id": 900001,
+      "name": "Test Player A",
+      "position": "WR",
+      "nfl_team": "KC",
+      "gsis_id": "00-SYN0001",
+      "before": 31,
+      "after": 37.5,
+      "delta": 6.5,
+      "pct": 0.209677,
+      "per_week_before": 10.33,
+      "per_week_after": 12.5,
+      "rank_before": 14,
+      "rank_after": 9,
+      "rank_change": 5,
+      "direction": "up",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 10.2,
+          "after": 12.4,
+          "delta": 2.2,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 11,
+          "after": 13.1,
+          "delta": 2.1,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 9.8,
+          "after": 12,
+          "delta": 2.2,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": null
+    },
+    {
+      "espn_player_id": 900006,
+      "name": "Test Player F",
+      "position": "RB",
+      "nfl_team": "NYJ",
+      "gsis_id": "00-SYN0006",
+      "before": 27.1,
+      "after": 22.3,
+      "delta": -4.8,
+      "pct": -0.177122,
+      "per_week_before": 9.03,
+      "per_week_after": 7.43,
+      "rank_before": 15,
+      "rank_after": 24,
+      "rank_change": -9,
+      "direction": "down",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 9.5,
+          "after": 7.4,
+          "delta": -2.1,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 9,
+          "after": 7.8,
+          "delta": -1.2,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 8.6,
+          "after": 7.1,
+          "delta": -1.5,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": null
+    },
+    {
+      "espn_player_id": 900003,
+      "name": "Test Player C",
+      "position": "TE",
+      "nfl_team": "SF",
+      "gsis_id": null,
+      "before": 15.7,
+      "after": 19.3,
+      "delta": 3.6,
+      "pct": 0.22929899999999998,
+      "per_week_before": 5.23,
+      "per_week_after": 6.43,
+      "rank_before": 18,
+      "rank_after": 13,
+      "rank_change": 5,
+      "direction": "up",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 5.1,
+          "after": 6.4,
+          "delta": 1.3,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 5.6,
+          "after": 6.9,
+          "delta": 1.3,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 5,
+          "after": 6,
+          "delta": 1,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": null
+    },
+    {
+      "espn_player_id": 900008,
+      "name": "Test Player H",
+      "position": "TE",
+      "nfl_team": "CLE",
+      "gsis_id": "00-SYN0008",
+      "before": 3.7,
+      "after": 4,
+      "delta": 0.3,
+      "pct": 0.081081,
+      "per_week_before": 1.23,
+      "per_week_after": 1.33,
+      "rank_before": 40,
+      "rank_after": 37,
+      "rank_change": 3,
+      "direction": "up",
+      "relevant": false,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 1.2,
+          "after": 1.5,
+          "delta": 0.3,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 1.4,
+          "after": 1.4,
+          "delta": 0,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 1.1,
+          "after": 1.1,
+          "delta": 0,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": null
+    },
+    {
+      "espn_player_id": 900007,
+      "name": "Test Player G",
+      "position": "WR",
+      "nfl_team": "SEA",
+      "gsis_id": "00-SYN0007",
+      "before": 23.1,
+      "after": 23.14,
+      "delta": 0.04,
+      "pct": 0.001732,
+      "per_week_before": 7.7,
+      "per_week_after": 7.71,
+      "rank_before": 40,
+      "rank_after": 40,
+      "rank_change": 0,
+      "direction": "flat",
+      "relevant": true,
+      "weeks": [
+        {
+          "week": 7,
+          "before": 7.7,
+          "after": 7.7,
+          "delta": 0,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 8,
+          "before": 7.7,
+          "after": 7.74,
+          "delta": 0.04,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        },
+        {
+          "week": 9,
+          "before": 7.7,
+          "after": 7.7,
+          "delta": 0,
+          "bye": false,
+          "status_before": "projected",
+          "status_after": "projected",
+          "horizon_before": null,
+          "horizon_after": null
+        }
+      ],
+      "components": null,
+      "evidence": null
+    }
+  ],
+  "thresholds": {
+    "min_delta": 0.5,
+    "relevant_per_week": 3,
+    "pct_floor": 1,
+    "flat": 0.05
+  }
+}
