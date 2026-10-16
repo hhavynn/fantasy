@@ -239,8 +239,9 @@ def test_candidates_abstain_exactly_where_c_abstains_and_are_finite(synth, synth
 
 
 def test_candidates_are_point_in_time(synth, synth_refs):
-    """Corrupting the label and every outcome column of the test week and later, and the test week's
-    teammate/outcome features, must not change a single forecast: training rows are strictly earlier."""
+    """Corrupting the label and the outcome columns (o_carries, o_td_points) of the test week and later must
+    not change a single forecast: training rows are strictly earlier. The teammate features are not
+    corrupted here; their point-in-time behaviour is tested in test_teammate_out_is_point_in_time."""
     src, store = synth
     weeks, ref = synth_refs
     k = 202312
@@ -453,6 +454,48 @@ def test_check_frozen_refuses_changed_text_data_or_grid():
         rb.check_frozen(rb.frozen_config(off, "hash1", "fp1"), "hash1", "fp1")
     with pytest.raises(ValueError, match="exactly"):
         rb.check_frozen(rb.frozen_config({"vol_shrink": selected["vol_shrink"]}, "hash1", "fp1"), "hash1", "fp1")
+
+
+def test_modified_candidate_code_changes_the_frozen_fingerprint_and_check_frozen_refuses(monkeypatch):
+    selected = {n: {"param": next(iter(g)), "value": next(iter(g.values()))[0]} for n, g in rb.CANDIDATE_GRIDS.items()}
+    cfg = rb.frozen_config(selected, "hash1", "fp1")
+    assert cfg["candidate_code_sha256"] == rb.candidate_code_fingerprint() and len(cfg["candidate_code_sha256"]) == 64
+    rb.check_frozen(cfg, "hash1", "fp1")
+
+    def shrink_changed(c, a2, opp_pg, tau):                       # a "tweaked" vol_shrink
+        return c
+    monkeypatch.setattr(rb, "shrink_toward_season_average", shrink_changed)
+    assert rb.candidate_code_fingerprint() != cfg["candidate_code_sha256"]
+    assert rb.frozen_config(selected, "hash1", "fp1")["candidate_code_sha256"] != cfg["candidate_code_sha256"]
+    with pytest.raises(ValueError, match="candidate code"):
+        rb.check_frozen(cfg, "hash1", "fp1")
+    monkeypatch.undo()
+    rb.check_frozen(cfg, "hash1", "fp1")
+    # a changed candidate constant is caught too, and an old configuration without the binding is refused
+    monkeypatch.setattr(rb, "HURDLE_RIDGE_LAM", rb.HURDLE_RIDGE_LAM * 2)
+    with pytest.raises(ValueError, match="candidate code"):
+        rb.check_frozen(cfg, "hash1", "fp1")
+    monkeypatch.undo()
+    # the hurdle's logistic dependencies in participation.py are bound too
+    from app.analytics import participation as part
+
+    def sigmoid_changed(x):
+        return x
+    monkeypatch.setattr(part, "_sigmoid", sigmoid_changed)
+    assert rb.candidate_code_fingerprint() != cfg["candidate_code_sha256"]
+    monkeypatch.undo()
+    assert rb.candidate_code_fingerprint() == cfg["candidate_code_sha256"]
+
+    def predict_changed(self, df):
+        return self.logits(df)
+    monkeypatch.setattr(part.LogitModel, "predict", predict_changed)
+    assert rb.candidate_code_fingerprint() != cfg["candidate_code_sha256"]
+    with pytest.raises(ValueError, match="candidate code"):
+        rb.check_frozen(cfg, "hash1", "fp1")
+    monkeypatch.undo()
+    legacy = {k: v for k, v in cfg.items() if k != "candidate_code_sha256"}
+    with pytest.raises(ValueError, match="candidate code"):
+        rb.check_frozen(legacy, "hash1", "fp1")
 
 
 def test_frame_hash_and_fingerprint_cover_every_value(tmp_path):

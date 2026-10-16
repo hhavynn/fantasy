@@ -428,6 +428,44 @@ projections reach lineups, start/sit, trades or waivers. The isolation test in
 the projection tables. The hosted API bundle ships without polars, so there the endpoint answers
 `available: false` instead of a copy of the criteria.
 
+## Weekly evidence routine (automated)
+
+`scripts/refresh_all.py` (launchd: Thu 15:00, Sun 08:00, Mon 15:00, Tue 08:00 Pacific) now also runs
+the prospective-evidence capture, so no step above depends on remembering to run a script. After the
+ESPN sync, nflverse sync and analytics have finished and the pregame snapshot check has printed, an
+**evidence stage** runs three existing scripts, each as its own process:
+
+| Step | When | Week |
+| --- | --- | --- |
+| `injury_freshness.py report` | every run | the upcoming week |
+| `start_sit_evaluation.py record` | every run with an upcoming week | the upcoming week |
+| `espn_benchmark.py record` | when a fully final week exists | the latest fully final week |
+
+* **Upcoming week** = the earliest regular-season week with a game still to kick off (nflverse
+  schedule, US Eastern kickoffs). Thursday, Sunday and Monday runs therefore all target the week in
+  progress, and Tuesday's run targets the next week. `record` is write-once and refuses players whose
+  game has kicked off, so each run captures exactly the players still pregame; this is intended.
+* **Fully final week** = `weekly_learning.week_finality` (every game final, box scores and snaps
+  synced), the rule the benchmark itself counts weeks by. The Tuesday run normally finds the week
+  just played; if nflverse has not caught up it logs why and tries again on the next run, and the
+  benchmark is never recorded for a week that is not final. Recording is content-addressed, so a
+  repeat with identical inputs writes nothing.
+* **Safety.** The stage starts only after every write connection has closed (each sync runs in its own
+  process), opens the database read-only, runs no sync, writes no live table, never touches
+  MotherDuck and changes no model. Outputs go to the existing git-ignored defaults
+  (`data/models/start_sit`, `data/models/espn_benchmark`).
+* **Failures never fail the refresh.** A step that exits non-zero (for example `start_sit_evaluation`
+  `espn_benchmark` exit 3 when not ready, or a DuckDB lock held by the learning cycle) or cannot
+  start is logged as `WARNING: Evidence: ...` in `data/logs/refresh-<UTC stamp>.log`, and
+  `refresh_all.py` keeps its exit code. `start_sit_evaluation` exit 2 (no player is still pregame)
+  is an `INFO` line. Each evidence step has a 15 minute deadline (`REFRESH_EVIDENCE_TIMEOUT_S`
+  overrides, in seconds): a step still running then is killed with its process group and logged as
+  `timed out`, so a stuck step cannot block the next scheduled refresh. The sync steps have no
+  deadline. The injury report is printed into the same log. After a failed sync or analytics step
+  the stage does not run; after a failed MotherDuck publish alone it does (the local data is fresh,
+  and a skipped start/sit record cannot be redone once games kick off), and the refresh still exits 1.
+* `--skip-evidence` skips the stage; `--check-only` implies it.
+
 ## Projection switch (opt-in weekly view)
 
 The switch reads the production model `ifp-2.0.0` (`projection_source.MODEL_VERSION`); for a week

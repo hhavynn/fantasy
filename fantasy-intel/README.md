@@ -526,7 +526,10 @@ in your local `.env`, so it has to run on your Mac (not in GitHub Actions).
 the first failure stops the chain and the script exits 1. Every run writes
 `data/logs/refresh-<UTC stamp>.log`. At the end it checks that the current week's ESPN
 projections were snapshotted before that week's first kickoff and prints a `WARNING:` line if
-not (`/data` shows the same check under "Independent projections: path to promotion").
+not (`/data` shows the same check under "Independent projections: path to promotion"). It then
+runs a read-only evidence stage (injury freshness report, start/sit decision set, ESPN benchmark;
+see `docs/independent_projection_engine.md`, "Weekly evidence routine (automated)") whose problems
+are `WARNING:` lines and never change the exit code; `--skip-evidence` skips it.
 
 ```bash
 cd backend
