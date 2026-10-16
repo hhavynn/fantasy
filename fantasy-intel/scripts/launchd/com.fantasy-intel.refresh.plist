@@ -14,8 +14,9 @@
   After the syncs, every run also does the read-only evidence capture (injury freshness report,
   start/sit decision set for the week in progress, ESPN benchmark for the latest fully final week);
   this is why Thu, Sun and Mon each matter: a start/sit set only holds players still pregame.
-  Add --skip-evidence to ProgramArguments to turn it off. Problems are WARNING lines in the log and
-  never change the exit code.
+  Add the skip-evidence flag to ProgramArguments to turn it off (named without its leading hyphens:
+  two hyphens are invalid inside an XML comment). Problems are WARNING lines in the log and never
+  change the exit code.
   A run missed while the Mac sleeps fires on wake; one missed while it is powered off is skipped.
 -->
 <plist version="1.0">
