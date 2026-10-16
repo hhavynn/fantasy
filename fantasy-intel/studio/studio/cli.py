@@ -4,6 +4,7 @@
     uv run make-episode --week 6 --format short --player braelon-allen
     uv run make-episode --week 6 --format long
     uv run make-episode --week 6 --format long --force script,tts
+    uv run make-episode --week 6 --format short --style premium   # also render a graphic style (pixel, broadcast, auto)
 
 Stages skip themselves when their inputs are unchanged, so a rerun only redoes what changed. QC gates run
 last; the command exits non-zero, and upload stays blocked, if any gate fails. Each episode gets a
@@ -33,6 +34,24 @@ def finish(ep: Episode) -> bool:
     provenance.run(ep)
     review.run(ep)
     return passed
+
+
+def render_style(ep: Episode, style: str) -> bool | None:
+    from . import graphics
+    from .graphics import render as GR
+    if style == "auto":
+        types = [s["type"] for s in read_json(ep.path("script.json"))["shots"]]
+        style = graphics.choose(ep.cfg, read_json(ep.path("script.json"))["structure"]["angle"], types)
+        ep.log(f"  style: auto chose {style}")
+        if style == "original":
+            return None
+    try:
+        ok = GR.run(ep, style)
+    except GR.Unsupported as e:
+        ep.log(f"  style {style}: skipped, {e}")
+        return None
+    ep.log(f"  style {style}: QC {'passed' if ok else 'FAILED'}, {ep.path(f'styles/{style}/final.mp4')}")
+    return ok
 
 
 def run_stages(ep: Episode, stages, hook: str | None = None) -> None:
@@ -65,7 +84,8 @@ def editorial_pick(cfg: Config, snap: dict, season: int, week: int, recent: set[
 
 
 def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str | None,
-                hook: str | None = None, slug_suffix: str = "", presenter_mode: str = "off") -> int:
+                hook: str | None = None, slug_suffix: str = "", presenter_mode: str = "off",
+                style: str = "original") -> int:
     week_ep = Episode(season, week, "short", cfg, force=force)
     week_ep.dir.mkdir(parents=True, exist_ok=True)
     snapshot.run(week_ep)
@@ -93,6 +113,8 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
             write_json(ep.path("story.json"), story)
         run_stages(ep, SHORT, hook or cfg["shorts"].get("hook") or None)
         passed = finish(ep)
+        if style != "original":      # a graphic style, next to final.mp4 (styles/<style>/final.mp4)
+            render_style(ep, style)
         if passed and presenter_mode != "off":       # optional AI host layer; never touches final.mp4
             from . import presenter
             presenter.present(ep, presenter_mode)
@@ -122,6 +144,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--presenter", choices=["off", "hook", "hybrid"],
                     help="Shorts only, EXPERIMENTAL: also write final_presenter_<mode>.mp4 with the AI host "
                          "(default: config.toml [presenter] mode, which is off)")
+    from .graphics import CHOICES
+    ap.add_argument("--style", choices=CHOICES,
+                    help="Shorts only: also render this graphic style to styles/<style>/final.mp4 (default: "
+                         "config.toml [graphics] style; 'original' renders only the classic final.mp4)")
     args = ap.parse_args(argv)
     cfg = Config.load()
     presenter_mode = args.presenter or (cfg.raw.get("presenter") or {}).get("mode", "off")
@@ -131,7 +157,8 @@ def main(argv: list[str] | None = None) -> int:
     force = {s.strip() for s in args.force.split(",") if s.strip()}
     if args.format == "short":
         suffix = (f"-hook-{args.hook}" if args.hook else "") + (f"-voice-{args.voice}" if args.voice else "")
-        return make_shorts(cfg, season, args.week, force, args.player, args.hook, suffix, presenter_mode)
+        style = args.style or (cfg.raw.get("graphics") or {}).get("style", "original")
+        return make_shorts(cfg, season, args.week, force, args.player, args.hook, suffix, presenter_mode, style)
     ep = Episode(season, args.week, "long", cfg, force=force)
     ep.dir.mkdir(parents=True, exist_ok=True)
     print(f"episode {ep.id} -> {ep.dir}")

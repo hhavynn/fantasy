@@ -88,3 +88,15 @@ portrait = "assets/presenter/host.png"
 # The host's own voice (picked by audition: episodes/presenter-audition). Different from [shorts] voice, so host
 # versions are re-rendered as <slug>-host with this voice; the regular Shorts keep theirs.
 voice = "am_adam"
+
+[graphics]
+# Graphic style for Shorts (studio/graphics, tokens in assets/styles/*.toml): original | premium | pixel |
+# broadcast | auto. 'original' renders only final.mp4, exactly as before. Any other value ALSO renders
+# styles/<style>/final.mp4 with its own QC; final.mp4 is never replaced.
+style = "original"
+# auto: preferred style per story angle (mystery and opportunity formats fall back to original for now).
+auto_default = "original"
+
+[graphics.auto]
+vanishing_targets = "premium"
+fill_in = "broadcast"

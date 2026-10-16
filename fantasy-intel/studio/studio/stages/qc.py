@@ -198,14 +198,23 @@ def gate_av_sync(video: Path) -> Gate:
 def gate_subtitles(captions: dict) -> Gate:
     """Re-measure every caption with the font, size and box it was burned in with (from captions.json)."""
     failures = []
-    font = ImageFont.truetype(str(FONTS / captions.get("font", "Inter-SemiBold.ttf")), captions["font_size"])
     max_w, max_lines = captions["max_width_px"], captions["max_lines"]
+    if captions.get("font") == "pixel5x7":           # the pixel style's bitmap font (studio/graphics/pixel.py)
+        from ..graphics import pixel
+        scale = captions["font_size"]
+        width = lambda s: pixel.text_width(s, scale)        # noqa: E731
+        wrap = lambda s: pixel.wrap(s, max_w, scale)        # noqa: E731
+    else:
+        font = ImageFont.truetype(str(FONTS / captions.get("font", "Inter-SemiBold.ttf")), captions["font_size"])
+        width = font.getlength
+        wrap = lambda s: _wrap_px(s, font, max_w)           # noqa: E731
     for i, cue in enumerate(captions["cues"]):
-        lines = _wrap_px(cue["text"], font, max_w)
+        text = cue["text"].upper() if captions.get("case") == "upper" else cue["text"]
+        lines = wrap(text)
         if len(lines) > max_lines:
             failures.append(f"cue {i + 1}: {len(lines)} lines: {cue['text'][:60]!r}")
         for line in lines:
-            if font.getlength(line) > max_w:
+            if width(line) > max_w:
                 failures.append(f"cue {i + 1}: line wider than the caption area: {line[:60]!r}")
         if cue["end"] <= cue["start"]:
             failures.append(f"cue {i + 1}: zero or negative duration")
@@ -409,6 +418,29 @@ def run_gates(ep: Episode) -> list[Gate]:
         gate_metadata(read_json(ep.path("metadata.json")), ep.path("thumbnail.png"), ep.fmt),
         gate_integrity(ep),
     ]
+
+
+def run_style(ep: Episode, style: str) -> bool:
+    """QC for a styled render in styles/<style>/: the data and script gates, the technical video, audio and
+    subtitle gates on that video, and the visual QA gates (studio/graphics/vqa.py). Writes its own qc.json."""
+    from ..graphics import vqa
+    d = ep.path(f"styles/{style}")
+    snapshot, facts, script = (read_json(ep.path(f)) for f in ("snapshot.json", "facts.json", "script.json"))
+    video = d / "final.mp4"
+    lo, hi = ep.cfg["duration"]["short_min"], ep.cfg["duration"]["short_max"]
+    gates = [gate_claims(snapshot, facts, script), gate_narration(script), gate_duration(video, lo, hi),
+             gate_audio(video, sorted(ep.path("audio").glob("*.wav"))), gate_video(video), gate_av_sync(video),
+             gate_subtitles(read_json(d / "captions.json"))]
+    claims = {c["id"]: c for c in facts["claims"]}
+    gates += [_gate(name, failures, **details) for name, failures, details in
+              vqa.gates(read_json(d / "vqa.json"), claims, d / "frames")]
+    passed = all(g.passed for g in gates)
+    write_json(d / "qc.json", {"episode_id": ep.id, "style": style, "passed": passed, "checked_at": utcnow(),
+                               "qc_version": VERSION, "files": {"final.mp4": sha256_path(video)},
+                               "gates": [asdict(g) for g in gates]})
+    for g in gates:
+        ep.log(f"  qc[{style}] {'PASS' if g.passed else 'FAIL'} {g.name}" + ("" if g.passed else f": {g.failures[:3]}"))
+    return passed
 
 
 def run(ep: Episode) -> bool:

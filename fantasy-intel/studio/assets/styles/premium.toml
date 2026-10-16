@@ -1,0 +1,75 @@
+# Style A: Premium Sports Analytics. Editorial data journalism: dark, restrained, one data accent at a time.
+name = "premium"
+title = "Premium Sports Analytics"
+
+[palette]
+bg = "#0C0F13"
+bg_top = "#11161C"
+panel = "#151B22"
+panel_line = "#26303B"
+grid = "#1D252E"
+ink = "#F1F3F6"
+ink_muted = "#98A2AF"
+ink_faint = "#838E9C"
+up = "#46C98A"
+down = "#F2685B"
+highlight = "#F3C350"     # the single emphasis colour for 'look here', never decoration
+neutral_bar = "#3A4552"
+
+[type]                    # Inter (OFL): weights regular | semibold | bold | black
+kicker = ["semibold", 32, 0.14]      # [weight, px, tracking in em]
+label = ["semibold", 40, 0.02]
+body = ["regular", 40, 0.0]
+title = ["bold", 84, -0.015]
+display = ["bold", 132, -0.025]
+number_xl = ["bold", 230, -0.03]
+number_l = ["bold", 150, -0.025]
+number_m = ["bold", 84, -0.015]
+number_s = ["semibold", 52, 0.0]
+case = "title"            # titles in sentence/title case, kickers uppercase
+
+[space]                   # 8 px grid
+unit = 8
+scale = [8, 16, 24, 32, 48, 64, 96, 128]
+margin_x = 96
+margin_right = 16        # inside the safe zone's right edge (x = 950)
+content_top = 260
+content_bottom = 1360
+
+[stroke]
+hairline = 2
+rule = 3
+reference = 3
+
+[radius]
+panel = 18
+bar = 6
+chip = 999
+
+[motion]                  # cubic-bezier control points
+enter = [0.16, 1.0, 0.3, 1.0]       # quick start, long settle (no overshoot)
+move = [0.65, 0.0, 0.35, 1.0]
+enter_dur = 0.5
+stagger = 0.06
+transition = "slide_fade"
+transition_dur = 0.32
+camera_push = 0.0               # no global zoom: type and hairlines stay pixel-sharp
+punch = 0.0
+
+[caption]
+weight = "bold"
+size = 58
+case = "as_spoken"
+color = "#F1F3F6"
+active = "#F3C350"
+band = 0.72               # opacity of the dark band behind captions
+
+[chart]
+bar_gap = 0.28            # of the column pitch
+value_size = 44
+axis_size = 28
+gridlines = 4
+
+[rules]
+icons = "none; numbers and marks carry the story"
+illustration = "player cut-out only, no badges, no glints, no stamps"
