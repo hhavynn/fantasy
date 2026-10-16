@@ -238,3 +238,81 @@ def test_backfill_covers_existing_runs_so_the_first_cycle_after_the_upgrade_keep
     assert {r["run_id"] for r in rows} == {run["run_id"]}
     assert [(e["run_id"], e["reason"]) for e in excluded] == [(hand["run_id"], NOT_REGISTERED)]
     assert ps.weekly(con, 2026, 6, "independent")["run"]["artifact_verified"] is True
+
+
+# ----------------------------------------------------------------------------- review fixes
+
+
+def test_a_weekly_artifact_also_covers_the_rest_of_the_season_runs_that_reuse_it(live):  # noqa: F811
+    """Week W's artifact (data cutoff W-1) makes the week-W run and, reused, the W+1..18 rest-of-season runs. It
+    cannot make a run of a week at or before its cutoff, nor of another season."""
+    con, src, _ = live
+    register_approved_artifact(con, model_version=PROD, artifact_sha256="a" * 64, target_season=2026, target_week=6,
+                               training_cutoff_key=202605, source="learning_cycle")
+    gate = artifact_gate(con, PROD)
+
+    def at(season, week, sha_="a" * 64):
+        return gate({"artifact_id": sha_, "season": season, "week": week})
+
+    assert [at(2026, w)[0] for w in (6, 7, 11, 18)] == ["verified"] * 4              # W, W+1, W+5, the end
+    assert at(2026, 5)[0] == "rejected" and at(2026, 1)[0] == "rejected"             # key <= cutoff: it saw that week
+    status, reason = at(2027, 8)                                                      # a different season
+    assert status == "rejected" and reason.startswith(NOT_REGISTERED)
+    assert at(2026, 7, "f" * 64) == ("rejected", NOT_REGISTERED)                     # an unregistered artifact
+    # through the readers: the week-7 run of the week-6 artifact is served
+    w7, _, _ = store(con, src, BEFORE_ALL, sha="a" * 64, week=7, meta_over={"model_version": PROD})
+    assert latest_run(con, 2026, 7, model_version=PROD)["run_id"] == w7["run_id"]
+    # no recorded cutoff: only the exact target week; no recorded target: any week
+    register_approved_artifact(con, model_version=PROD, artifact_sha256="b" * 64, target_season=2026, target_week=6,
+                               source="manual_pin")
+    register_approved_artifact(con, model_version=PROD, artifact_sha256="c" * 64, target_season=None, target_week=None,
+                               source="manual_pin")
+    gate = artifact_gate(con, PROD)
+    assert at(2026, 6, "b" * 64)[0] == "verified" and at(2026, 7, "b" * 64)[0] == "rejected"
+    assert at(2031, 3, "c" * 64)[0] == "verified"
+    # write-once: the same artifact cannot be re-registered for another week (it already covers them)
+    assert register_approved_artifact(con, model_version=PROD, artifact_sha256="a" * 64, target_season=2026,
+                                      target_week=7, training_cutoff_key=202605, source="manual_pin") is False
+
+
+def test_a_rejected_production_run_is_explained_as_not_approved_not_as_missing(live):  # noqa: F811
+    con, src, _ = live
+    register_approved_artifact(con, model_version=PROD, artifact_sha256="a" * 64, target_season=2026, target_week=6,
+                               training_cutoff_key=202605, source="learning_cycle")
+    store(con, src, BEFORE_ALL, sha="b" * 64, meta_over={"model_version": PROD})      # unregistered ifp-2 run
+    store(con, src, BEFORE_ALL, sha="c" * 64)                                           # ifp-1.0.0 run
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["run"]["model_version"] == "ifp-1.0.0"
+    assert "not approved" in w["reason"] and "No ifp-2.0.0 run is stored" not in w["reason"]
+    con.execute("DELETE FROM independent_projection_runs WHERE model_version = 'ifp-1.0.0'")
+    con.execute("DELETE FROM independent_projection_rows "
+                "WHERE run_id NOT IN (SELECT run_id FROM independent_projection_runs)")
+    w = ps.weekly(con, 2026, 6, "independent")                       # nothing approved left: ESPN, and it says why
+    assert w["available"] is False and "not approved" in w["reason"] and "ESPN projections are shown" in w["reason"]
+    assert "is stored for week" not in w["reason"]                    # not the "no run is stored" wording
+
+
+def test_the_two_unverified_notes_are_distinguished(live):  # noqa: F811
+    con, src, _ = live
+    store(con, src, BEFORE_ALL, sha="b" * 64, meta_over={"model_version": PROD})
+    assert "no approved artifacts registered for this model yet" in ps.weekly(con, 2026, 6, "independent")["reason"]
+    con.execute("DROP TABLE approved_artifacts")
+    note = ps.weekly(con, 2026, 6, "independent")["reason"]
+    assert "no approved_artifacts table yet" in note and "registered for this model" not in note
+
+
+def test_register_saved_artifact_refuses_a_retrospective_replay(live, tmp_path):  # noqa: F811
+    con, src, _ = live
+    art = weekly_artifact(src)
+    art.config["provenance"]["retrospective"] = True
+    _, path, _ = wl.save_artifact(art, tmp_path)
+    with pytest.raises(wl.NotReady, match="retrospective"):
+        wl.register_saved_artifact(con, art, path, tmp_path)
+    assert rows_in(con) == []
+
+
+def test_backfill_leaves_the_skipped_file_to_the_caller(live, tmp_path):  # noqa: F811
+    con, src, _ = live
+    saved = [wl.save_artifact(weekly_artifact(src, w), tmp_path) for w in (5, 6)]
+    res = wl.backfill_store_artifacts(con, tmp_path, PROD, skip=(saved[1][1],))
+    assert res["registered"] == 1 and {r[3] for r in rows_in(con)} == {5}

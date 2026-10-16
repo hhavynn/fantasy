@@ -43,7 +43,7 @@ The consumer view and the evidence readers apply one rule per model version
 | Model | Rule | Today |
 |---|---|---|
 | `ifp-1.0.0` (fallback, rollback target) | one immutable file: runs must match `production_pin.APPROVED_ARTIFACT_SHA256`; `None` = unpinned, every run counts as before | `None` |
-| `ifp-2.0.0` (production, retrained weekly) | each artifact is approved by a row in the **write-once `approved_artifacts` table**: the run's `artifact_id` must be registered for the model (and the target week, when recorded) | enforced |
+| `ifp-2.0.0` (production, retrained weekly) | each artifact is approved by a row in the **write-once `approved_artifacts` table**: the run's `artifact_id` must be registered for the model, and the run's week must lie after the artifact's recorded data cutoff in the artifact's target season (so one weekly artifact also covers the rest-of-season runs that reuse it) | enforced |
 | anything else | no rule | n/a |
 
 The rule covers the projection switch (`projection_source.weekly`, so Start/Sit, Matchup and Home with
@@ -95,6 +95,14 @@ content-addressed name; anything else is skipped and listed in the command's `ar
 nothing outside the store is read. It is idempotent. So runs that were made from store artifacts keep being served
 after the first cycle; a run whose artifact file is not in the store (hand-written, or deleted) stays excluded
 once enforcement has started.
+
+**What "approved" means.** A run is approved when its `artifact_id` names a registered sha and the run's week
+is covered by that registration: no recorded target means any week; a recorded data cutoff (`training_cutoff_key`,
+taken from the artifact's provenance) means the same season and a week key strictly after the cutoff (the artifact
+trained on nothing from that week on, so a week-W artifact approves the W..18 runs that reuse it, and never a
+week at or before its cutoff or another season); a recorded target without a cutoff means that exact week. It does
+not prove the run was made by that artifact (a local writer could copy a registered sha onto a hand-written run).
+Because the table is write-once, registering the same artifact again, for any week, is a no-op.
 
 **ifp-1.0.0 single-sha pin.** The pin lives in two places that must agree, because the hosted app never reads
 the registry:

@@ -83,7 +83,9 @@ def latest_run(con, season: int, fingerprint: str | None) -> dict | None:
 
 def _run_missing_reason(con, season: int, fingerprint: str | None) -> str:
     project = ("From backend/, run `uv run python ../scripts/backtest_independent_projections.py project --week N` "
-               "(it needs the fitted artifacts in data/models; see the runbook in docs/independent_projection_engine.md).")
+               "(for a manual ifp-2.0.0 run add `--model ifp-2.0.0 --register-artifact manual_pin` so its artifact is "
+               "approved; it needs the fitted artifacts in data/models; see the runbook in "
+               "docs/independent_projection_engine.md).")
     if fingerprint is None:
         return "League scoring is not supported by the independent model, so no held-out status applies."
     other = fetch_dicts(con, "SELECT count(*) AS n FROM independent_projection_runs WHERE season = ?",

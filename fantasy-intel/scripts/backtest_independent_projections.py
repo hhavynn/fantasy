@@ -273,10 +273,21 @@ def cmd_project(args, hist, scoring) -> dict:
                 raise ValueError("--register-artifact applies to the weekly-trained model (ifp-2.0.0) only; ifp-1.0.0 "
                                  "is pinned in the registry and production_pin.py")
             from app.analytics import weekly_learning as wl
+            # FIRST every other artifact already in the write-once store (the first run after the upgrade covers the
+            # runs those artifacts made; files that are not the store's own are skipped), THEN this run's artifact:
+            # the first registration starts enforcement, so it must not precede the backfill.
+            try:
+                backfill = wl.backfill_store_artifacts(con, args.weekly_dir, art.version, scoring.fingerprint,
+                                                       skip=(art_path,))
+            except Exception as err:      # noqa: BLE001 - reported, never swallowed
+                backfill = {"error": f"{type(err).__name__}: {err}"}
+                print(f"WARNING: backfill of the weekly artifact store failed: {backfill['error']}", file=sys.stderr)
+                if con.execute("SELECT count(*) FROM approved_artifacts WHERE model_version = ?",
+                               [art.version]).fetchone()[0] == 0:
+                    raise ValueError("the store backfill failed and no artifact is registered yet, so the current "
+                                     "artifact is not registered alone (that would start enforcement with the older "
+                                     f"store artifacts unregistered): {backfill['error']}") from err
             registered = wl.register_saved_artifact(con, art, art_path, args.weekly_dir, args.register_artifact)
-            # then every other artifact already in the write-once store (the first run after the upgrade covers the
-            # runs those artifacts made); files that are not the store's own are skipped
-            backfill = wl.backfill_store_artifacts(con, args.weekly_dir, art.version, scoring.fingerprint)
         meta, rows = build_live(con, src, art, args.season, args.week, participation=part, artifact_sha256=art_sha)
         stored = write_run(con, meta, rows)   # append-only: an identical retry returns the existing run
     by = {}

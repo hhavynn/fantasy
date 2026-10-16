@@ -53,6 +53,8 @@ HASHED_META = META_INT + META_STR + META_JSON
 
 NOT_APPROVED_ARTIFACT = "artifact not the approved production artifact"     # ifp-1.0.0 sha pin
 NOT_REGISTERED = "artifact not registered as approved"                      # ifp-2.0.0 approved_artifacts
+NO_TABLE = "no approved_artifacts table yet"                                 # why a run is "unverified"
+NO_ROWS = "no approved artifacts registered for this model yet"
 APPROVED = "approved_artifacts"
 _PIN = object()     # "use the production rule" for the model version (production_pin), as opposed to an explicit sha
 
@@ -89,23 +91,49 @@ def artifact_gate(con, model_version: str | None, artifact_id=_PIN):
     if model_version != production_pin.REGISTERED_MODEL_VERSION:
         return _unchecked
     if not table_exists(con, APPROVED):
-        return lambda run: ("unverified", None)
+        return lambda run: ("unverified", NO_TABLE)
     targets: dict[str, list[tuple]] = {}
-    for r in fetch_dicts(con, f"SELECT artifact_sha256, target_season, target_week FROM {APPROVED} "
+    for r in fetch_dicts(con, f"SELECT artifact_sha256, target_season, target_week, training_cutoff_key FROM {APPROVED} "
                               "WHERE model_version = ?", [model_version]):
-        targets.setdefault(r["artifact_sha256"], []).append((r["target_season"], r["target_week"]))
+        targets.setdefault(r["artifact_sha256"], []).append(
+            (r["target_season"], r["target_week"], r["training_cutoff_key"]))
 
     if not targets:
-        return lambda run: ("unverified", None)
+        return lambda run: ("unverified", NO_ROWS)
+
+    def covers(run, season, week, cutoff) -> bool:
+        """May this registered artifact make `run`? No target recorded: any week. A recorded data cutoff: the
+        run's season is the artifact's target season and the run's week lies strictly after the cutoff (the
+        artifact trained on nothing from that week on), so one weekly artifact also covers the rest-of-season
+        runs that reuse it. Without a cutoff, only the exact target week."""
+        if season is None or week is None:
+            return True
+        if cutoff is None:
+            return (season, week) == (run.get("season"), run.get("week"))
+        return run.get("season") == season and run.get("season") * 100 + run.get("week") > cutoff
 
     def check(run):
         t = targets.get(run.get("artifact_id"))
         if t is None:
             return "rejected", NOT_REGISTERED
-        if any(s is None or w is None or (s, w) == (run.get("season"), run.get("week")) for s, w in t):
+        if any(covers(run, *x) for x in t):
             return "verified", None
         return "rejected", f"{NOT_REGISTERED} for this target week"
     return check
+
+
+def unapproved_runs(con, season: int, week: int, model_version: str, scoring_fingerprint: str | None) -> int:
+    """How many stored runs of `model_version` for the week the artifact rule rejects (they exist, but their
+    artifact is not approved), so a reader can say that instead of "no run is stored"."""
+    if not table_exists(con, RUNS):
+        return 0
+    gate = artifact_gate(con, model_version)
+    where, params = ["season = ?", "week = ?", "model_version = ?"], [season, week, model_version]
+    if scoring_fingerprint is not None:
+        where.append("scoring_fingerprint = ?")
+        params.append(scoring_fingerprint)
+    return sum(gate(r)[0] == "rejected"
+               for r in fetch_dicts(con, f"SELECT * FROM {RUNS} WHERE {' AND '.join(where)}", params))
 
 
 def gate_active(con, model_version: str | None) -> bool:
@@ -284,7 +312,7 @@ def latest_run(con, season: int, week: int, *, model_version: str | None = None,
     A run whose rows are missing (destroyed by the pre-v8 overwrite) is skipped, not shown as an empty
     forecast. With only the legacy table (unmigrated copy) it is the newest run, as before.
     Runs the artifact rule rejects (artifact_gate) are skipped; the returned run carries `artifact_check`
-    ("unchecked" | "verified" | "unverified")."""
+    ("unchecked" | "verified" | "unverified") and, when unverified, `artifact_note` (why)."""
     if not table_exists(con, RUNS) or rows_source(con) is None:
         return None
     where, params = ["season = ?", "week = ?"], [season, week]
@@ -299,13 +327,13 @@ def latest_run(con, season: int, week: int, *, model_version: str | None = None,
                        params)
     has_rows = table_exists(con, ROWS)
     for run in runs:
-        status, _ = gate(run)
+        status, why = gate(run)
         if status == "rejected":
             continue
         n = run.get("row_count")
         if not has_rows or (n and con.execute(f"SELECT count(*) FROM {ROWS} WHERE run_id = ?",
                                               [run["run_id"]]).fetchone()[0] == n):
-            return {**run, "artifact_check": status}
+            return {**run, "artifact_check": status, "artifact_note": why}
     return None
 
 

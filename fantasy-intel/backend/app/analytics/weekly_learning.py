@@ -317,6 +317,8 @@ def register_saved_artifact(con, art: Artifact, path: Path, root: Path, source: 
     from .independent_projection_store import register_approved_artifact
 
     path = Path(path)
+    if (art.config.get("provenance") or {}).get("retrospective"):
+        raise NotReady(f"{path.name} is a retrospective replay; only pregame artifacts can be approved")
     s, w = art.config["provenance"]["target"]
     expected = Path(root) / "artifacts" / art.version / f"s{s}w{w:02d}-{artifact_id(art)}.json"
     if path.resolve() != expected.resolve() or not path.is_file():
@@ -331,24 +333,25 @@ def register_saved_artifact(con, art: Artifact, path: Path, root: Path, source: 
 
 
 def backfill_store_artifacts(con, root: Path, version: str, scoring_fp: str | None = None,
-                             source: str = "learning_cycle_backfill") -> dict:
+                             source: str = "learning_cycle_backfill", skip: tuple = ()) -> dict:
     """Register every artifact of `version` already present in the local write-once store
     (`root/artifacts/<version>/s<season>w<week>-<artifact_id>.json`), so the first cycle after the approved_artifacts
     table appears covers the runs those artifacts already made. Only store files qualify: the file must load
     and pass the artifact checks (schema, scoring when given, data cutoff before its target week, not a
     retrospective replay), be of `version`, and be exactly the content-addressed store file of the artifact it
     holds (register_saved_artifact). Anything else is skipped and listed, never registered. Idempotent.
+    `skip`: store files the caller registers itself (with its own source).
     Returns {registered, existing, skipped: [(file name, why)]}."""
     out = {"registered": 0, "existing": 0, "skipped": []}
     for f in sorted((Path(root) / "artifacts" / version).glob("s*w*-*.json")):
+        if f.resolve() in {Path(p).resolve() for p in skip}:
+            continue
         try:
             art = load_artifact(f)
             prov = art.config.get("provenance") or {}
             s, w = prov["target"]
             if art.version != version:
                 raise NotReady(f"holds a {art.version} artifact")
-            if prov.get("retrospective"):
-                raise NotReady("retrospective replay")
             check_artifact(art, int(s), int(w), scoring_fp if scoring_fp is not None else art.scoring_fingerprint)
             _, created = register_saved_artifact(con, art, f, root, source)
         except (NotReady, ValueError, KeyError, TypeError) as err:
