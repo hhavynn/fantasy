@@ -16,7 +16,9 @@ from ..analytics.team_lineups import project_team, public_weeks, replacement_mar
 from ..analytics.trade_data import (load_league_state, manager_context, named_weeks, player_intelligence,
                                     player_names)
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
-from ..analytics.trade_alternatives import for_evaluation as trade_vs_free_agency
+from ..analytics import trade_dual_value
+from ..analytics.trade_alternatives import FreeAgencyBoard, for_evaluation as trade_vs_free_agency
+from ..analytics.trade_discovery import _side_detail
 from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade, with_streaming
 from ..config import get_settings
 from ..db.connection import schema_version, table_columns, table_exists
@@ -675,6 +677,21 @@ class TradeRequest(BaseModel):
     kdst_streaming: bool = True       # value K and D/ST against weekly free-agent streaming (team_lineups)
 
 
+def _dual_value(con, lg: dict, state, res: dict, body: "TradeRequest") -> dict:
+    """The dual-value assessment (docs/trade_discovery_dual_value.md) of an evaluated trade: the same
+    trade_dual_value.for_evaluation call, over the same window and side views, that Trade Discovery makes,
+    so the analyzer and discovery assess a trade identically. Read-only; adds a field, changes none."""
+    window = state.window(body.start_week)
+    mine = {t["team_id"] for t in rows(con, "SELECT team_id FROM fantasy_teams WHERE league_id=? AND season=? "
+                                            "AND is_mine", [lg["league_id"], lg["season"]])}
+    name = lambda t: state.team_names.get(t) or f"Team {t}"   # noqa: E731
+    labels = ("You", name(body.team_b_id)) if body.team_a_id in mine else (name(body.team_a_id), name(body.team_b_id))
+    return trade_dual_value.for_evaluation(
+        state, window, body.team_a_id, list(res["trade"]["team_a_sends"]), list(res["trade"]["team_b_sends"]),
+        _side_detail(res["team_a"]), _side_detail(res["team_b"]), phase="ros",
+        fa_board=FreeAgencyBoard(state, window) if state.free_agents else None, labels=labels)
+
+
 @router.post("/trades/evaluate")
 def trades_evaluate(body: TradeRequest):
     """Hypothetical exact before/after lineup simulation for both teams. Read-only."""
@@ -690,6 +707,7 @@ def trades_evaluate(body: TradeRequest):
             raise HTTPException(409, str(err))
         except TradeError as err:
             raise HTTPException(422, str(err))
+        res["dual_value"] = _dual_value(con, lg, state, res, body)
         ids = set(body.team_a_sends) | set(body.team_b_sends)
         for side in (res["team_a"], res["team_b"]):
             for key in ("before", "after"):

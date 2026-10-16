@@ -32,15 +32,16 @@
 /* ---------- Results table ---------- */
 
 .table th, .table td { vertical-align: top; }
-.table .wrapCell { white-space: normal; min-width: 130px; }
+.table .wrapCell { white-space: normal; min-width: 120px; }
 .table .assetCell { white-space: normal; min-width: 150px; max-width: 210px; }
-.table .typeCell { white-space: normal; min-width: 170px; max-width: 250px; }
+.table .typeCell { white-space: normal; min-width: 210px; max-width: 280px; }
+.table .changeCell { white-space: normal; min-width: 180px; max-width: 240px; font-size: 13px; line-height: 19px; }
 .players { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .players li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .subline { display: block; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--ink-faint); white-space: normal; }
 .nowrap { white-space: nowrap; }
 .assetCell :global(.badge) { white-space: normal; }
-.partner { font-weight: 500; min-width: 150px; }
+.partner { font-weight: 500; min-width: 130px; }
 .partner a { color: var(--ink); }
 .partner a:hover { color: var(--accent); }
 .tags { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -56,6 +57,42 @@
 .small { font-size: 13px; line-height: 19px; margin: 0; }
 .mgrNote { margin: 0; color: var(--ink-faint); font-size: 13px; line-height: 19px; }
 
+/* Verdict group headers (the backend's sections) */
+.groupBody { border-top: 1px solid var(--line); }
+.groupRow th {
+  position: static; white-space: normal; text-transform: none; letter-spacing: 0; font-size: 13px; line-height: 19px;
+  padding: 10px 10px 8px; background: var(--bg); color: var(--ink-muted); border-bottom: 1px solid var(--line);
+}
+.groupTitle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--ink); font-weight: 600; }
+.groupText { display: block; margin-top: 2px; font-weight: 400; max-width: 100ch; }
+
+/* Verdict cell: the downside / fairness concern and the six check chips */
+.concern { margin: 6px 0 0; font-size: 13px; line-height: 19px; color: var(--ink); white-space: normal; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: var(--radius-xs); font-size: 11px; line-height: 18px;
+  font-weight: 600; background: var(--neutral-soft); color: var(--ink-muted); white-space: nowrap; cursor: help;
+}
+.chipGlyph { font-weight: 700; }
+.chip_good { background: var(--positive-soft); color: var(--positive); }
+.chip_warn { background: var(--caution-soft); color: var(--caution); }
+.chip_bad { background: var(--negative-soft); color: var(--negative); }
+
+/* Evidence: dual-value blocks */
+.block { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.block h4 { margin: 0; font-size: 14px; line-height: 20px; }
+.checkList { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.checkList li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.checkList .chip { min-width: 84px; justify-content: flex-start; cursor: default; }
+.checkText { flex: 1 1 280px; min-width: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 4px 24px; }
+.evTable td, .evTable th { white-space: normal; }
+.evTable .wrapText { min-width: 160px; }
+.weeks { margin: 0 0 8px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.weeks li { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 19px; }
+.weekHead { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.weekMoves { display: flex; flex-wrap: wrap; gap: 2px 16px; color: var(--ink-muted); }
+
 .phoneSort { display: none; }
 .action { white-space: nowrap; }
 
@@ -68,21 +105,30 @@
   .phoneSort a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 12px; border: 1px solid var(--line-control); border-radius: 999px; color: var(--ink-muted); }
   .phoneSort a[aria-current] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); font-weight: 600; }
   .phoneSort a:hover { text-decoration: none; color: var(--ink); }
-  .table, .table thead, .table tbody, .table td { display: block; }
-  .table thead { height: 0; overflow: hidden; }
-  .table tbody {
+  .table, .table > thead, .table > tbody, .table > tbody > tr > td { display: block; }
+  .table > thead { height: 0; overflow: hidden; }
+  .table > tbody {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding: 16px;
     border-bottom: 1px solid var(--line);
   }
-  .table tr { display: contents; }
-  .table td, .table .mainRow td, .table .detailRow td { padding: 0; border: 0; min-width: 0; max-width: none; text-align: left; white-space: normal; }
-  .table td[data-label]::before {
+  .table > tbody > tr { display: contents; }
+  .table > tbody > tr > td, .table > tbody > .mainRow > td, .table > tbody > .detailRow > td { padding: 0; border: 0; min-width: 0; max-width: none; text-align: left; white-space: normal; }
+  .table > tbody > tr > td[data-label]::before {
     content: attr(data-label); display: block; margin-bottom: 2px; font-size: 11px; line-height: 14px; font-weight: 600;
     letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint);
   }
-  .table td.typeCell, .table td.action, .table td.detailCell { grid-column: 1 / -1; }
+  .table > tbody > tr > td.typeCell, .table > tbody > tr > td.action, .table > tbody > tr > td.detailCell, .table > tbody > tr > td.wide { grid-column: 1 / -1; }
+  .table > tbody.groupBody { display: block; padding: 0; border-bottom: 0; }
+  .groupRow th { display: block; padding: 12px 16px 8px; }
   .table tbody:last-of-type { border-bottom: 0; }
-  .table tbody:hover td { background: transparent; }
+  .table > tbody:hover td { background: transparent; }
+  /* Evidence tables restack: one block per row, labelled cells. */
+  .evTable, .evTable thead, .evTable tbody, .evTable tr, .evTable td { display: block; }
+  .evTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .evTable tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .evTable td { padding: 2px 0; border: 0; text-align: left; }
+  .evTable td:empty { display: none; }
+  .evTable td[data-label]::before { content: attr(data-label) ": "; font-weight: 600; font-size: 12px; color: var(--ink-faint); }
   .field { flex: 1 1 100%; }
   .field select { width: 100%; }
   .actions { margin-left: 0; width: 100%; }
