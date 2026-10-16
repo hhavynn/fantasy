@@ -1,0 +1,9 @@
+/* A compact "Compare" pill: a quiet outline link that reads as an action, not a heading. */
+.link {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px;
+  border: 1px solid var(--line-control); color: var(--ink-muted); font-size: 12px; line-height: 18px; font-weight: 600;
+  white-space: nowrap; vertical-align: middle;
+}
+.link:hover { text-decoration: none; color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.icon { flex: none; }
+@media (max-width: 720px) { .link { min-height: 32px; padding: 0 12px; } }
