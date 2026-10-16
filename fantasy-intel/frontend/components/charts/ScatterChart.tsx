@@ -13,6 +13,8 @@ export type ScatterPoint = {
   label?: string;
   /** Emphasised point (e.g. your team): larger, accent coloured, labelled first. */
   highlight?: boolean;
+  /** Any CSS colour for the dot (e.g. a `--chart-n` series token); defaults to accent when highlighted, else muted. */
+  color?: string;
   /** Tooltip text; defaults to the label with both values. */
   title?: string;
 };
@@ -112,7 +114,7 @@ export function ScatterChart({ points, xLabel, yLabel, xFormat = defaultFormat, 
       )}
       {points.map((p) => (
         <circle key={p.id} cx={xs(p.x)} cy={ys(p.y)} r={p.highlight ? 6 : 4.5} className={styles.dot}
-                fill={p.highlight ? "var(--accent)" : "var(--ink-muted)"}>
+                fill={p.color ?? (p.highlight ? "var(--accent)" : "var(--ink-muted)")}>
           <title>{p.title ?? `${p.label ? `${p.label}: ` : ""}${xLabel} ${xFormat(p.x)}, ${yLabel} ${yFormat(p.y)}`}</title>
         </circle>
       ))}

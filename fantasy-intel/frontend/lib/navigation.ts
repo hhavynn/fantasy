@@ -17,6 +17,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Players",
     pages: [
       { href: "/players", label: "Players" },
+      { href: "/compare", label: "Compare" },
       { href: "/research", label: "Research lab" },
       { href: "/projection-performance", label: "Projection accuracy" },
       { href: "/waivers", label: "Waivers" },
