@@ -6,6 +6,7 @@ export { Method } from "./Method";
 export { Callout, ErrorBox, Icon as ToneIcon, Notice, type NoticeTone } from "./Notice";
 export { PageHeader } from "./PageHeader";
 export { Pos } from "./Pos";
+export { Rating } from "./Rating";
 export { Score } from "./Score";
 export { Section } from "./Section";
 export { Skeleton, SkeletonStatStrip, SkeletonTable } from "./Skeleton";

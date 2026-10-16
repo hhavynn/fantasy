@@ -162,7 +162,9 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
                             for q in players if any(eligible(s, q.get("position")) for s in slots))]
         future_starts = sum(any(a["player_id"] == pid for a in assign_lineup(projected_players(players, w), slots))
                             for w in comparable_weeks)
-        sacrifice = [f"Give up {p.get('full_name') or pid}: historical value {raw:.1f}/10.",
+        raw100 = p.get("raw_value_100")
+        value_text = f"{raw100:.1f}/100" if raw100 is not None else f"{raw:.1f}/10"
+        sacrifice = [f"Give up {p.get('full_name') or pid}: historical value {value_text}.",
                      f"Coverage: {', '.join(coverage) or 'no configured starting slot'}; {len(same)} other available {p['position']}s remain.",
                      f"Removal alone costs {removal_loss:.1f} current lineup value."]
         if weeks:

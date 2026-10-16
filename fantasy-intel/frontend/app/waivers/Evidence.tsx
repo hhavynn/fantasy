@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { PlayerLink } from "@/components/PlayerLink";
-import { Pos } from "@/components/ui";
+import { Pos, Rating } from "@/components/ui";
 import { label, num, when } from "@/lib/format";
+import { ratingFor } from "@/lib/ratings";
 import type { Decision, WaiverRow } from "./types";
 import styles from "./waivers.module.css";
 
@@ -30,8 +31,9 @@ export function Evidence({ row, decision: d }: { row: WaiverRow; decision: Decis
       )}
 
       <p>
-        <b>Player quality.</b> {row.components.player.basis_description ?? row.components.player.basis}; opportunity {num(row.opportunity_score)}/10,
-        historical value {num(row.components.player.value)}/10. These are heuristics, not claim-success probabilities.
+        <b>Player quality.</b> {row.components.player.basis_description ?? row.components.player.basis}; opportunity <Rating rating={ratingFor({ opportunity_score_100: row.opportunity_score_100, opportunity_score: row.opportunity_score }, "opportunity")} kind="opportunity" variant="text" />,
+        historical value <Rating rating={ratingFor({ value_score_100: row.components.player.value_100, value_score: row.components.player.value }, "value")} kind="value" variant="text" />.
+        Ratings are relative ranks, and these are heuristics, not claim-success probabilities.
       </p>
       <ul>{row.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
 

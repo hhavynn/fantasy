@@ -19,21 +19,32 @@ from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
 from ..analytics.trade_alternatives import for_evaluation as trade_vs_free_agency
 from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade, with_streaming
 from ..config import get_settings
-from ..db.connection import schema_version, table_exists
+from ..db.connection import schema_version, table_columns, table_exists
 from .deps import db, one, rows
 from .perspective import league_teams, resolve_team, waiver_table
 
 router = APIRouter(prefix="/api")
 
-PLAYER_COLS = """
+_PLAYER_COLS = """
     fp.espn_player_id, fp.full_name, fp.position, fp.pro_team, fp.injury_status, fp.availability_status,
     fp.on_team_id, fp.percent_owned, fp.percent_change, fp.season_points, fp.season_avg_points,
     m.gsis_id, m.match_method, m.match_confidence,
     s.games, s.opportunity_basis, s.opportunity_tier, s.role_trend, s.market_signal,
     s.opportunity_score, s.production_score, s.usage_trend_score, s.trend_label,
     s.fp_per_game, s.xfp_per_game, s.fp_minus_xfp, s.value_gap_label, s.classification, s.value_score,
+    {ratings},
     s.components->>'production_sustainability' AS production_sustainability
 """
+# 0-100 ratings (ratings-100.v1): ALTERed into player_scores, so a hosted/older copy may not have them yet.
+_RATING_COLS = ("opportunity_score_100", "production_score_100", "value_score_100", "rating_scale_version")
+
+
+def _player_cols(con) -> str:
+    have = set(table_columns(con, "player_scores"))
+    return _PLAYER_COLS.format(ratings=",\n    ".join(
+        f"s.{c}" if c in have else f"NULL AS {c}" for c in _RATING_COLS))
+
+
 PLAYER_JOINS = """
     LEFT JOIN player_id_map m ON m.espn_player_id = fp.espn_player_id
     LEFT JOIN player_scores s ON s.gsis_id = m.gsis_id AND s.season = $season
@@ -96,7 +107,7 @@ def status():
 def _roster(con, league_id: int, season: int, week: int, team_id: int) -> list[dict]:
     roster = rows(con, f"""
         SELECT l.lineup_slot, l.lineup_slot_id, l.is_starter, l.acquisition_type, l.acquisition_date,
-               l.points AS week_points, l.projected_points AS week_projection, {PLAYER_COLS}
+               l.points AS week_points, l.projected_points AS week_projection, {_player_cols(con)}
         FROM lineup_snapshots l JOIN fantasy_players fp ON fp.espn_player_id = l.espn_player_id
         {_pj(season)}
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ? AND l.team_id = ?
@@ -202,7 +213,7 @@ def search_players(q: str = "", limit: int = Query(30, le=100)):
         teams = {r["team_id"]: r["name"] for r in rows(con, "SELECT team_id, name FROM fantasy_teams WHERE league_id=? AND season=?",
                                                        [lg["league_id"], lg["season"]])}
         out = rows(con, f"""
-            SELECT {PLAYER_COLS} FROM fantasy_players fp {_pj(lg["season"])}
+            SELECT {_player_cols(con)} FROM fantasy_players fp {_pj(lg["season"])}
             WHERE fp.position IN ('QB','RB','WR','TE','K','D/ST')
               AND (? = '' OR strip_accents(lower(fp.full_name)) LIKE '%' || strip_accents(lower(?)) || '%')
             ORDER BY fp.percent_owned DESC NULLS LAST LIMIT ?
@@ -217,7 +228,7 @@ def player_detail(espn_player_id: int):
     with db() as con:
         lg = _league(con)
         season = lg["season"]
-        p = one(con, f"SELECT {PLAYER_COLS}, m.notes AS mapping_notes, m.nfl_name, m.nfl_team "
+        p = one(con, f"SELECT {_player_cols(con)}, m.notes AS mapping_notes, m.nfl_name, m.nfl_team "
                      f"FROM fantasy_players fp {_pj(season)} WHERE fp.espn_player_id = ?", [espn_player_id])
         if not p:
             raise HTTPException(404, "Unknown ESPN player id")
