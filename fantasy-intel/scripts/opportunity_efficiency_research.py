@@ -250,7 +250,9 @@ def cmd_run(args) -> dict:
                "2025-2026": diag.filter(pl.col("season").is_in(list(oe.DIAGNOSTIC[1])))}
     diag_rep = {w: oe.compare(d, models) for w, d in windows.items()}
     diag_rep["pooled"] = oe.compare(diag, models)
-    decisions = {c.name: oe.decision(dev_rep, diag_rep["pooled"], c.name) for c in oe.CANDIDATES}
+    # the pre-registered gates are applied to unrounded values (rounding is for reporting only)
+    gate_dev, gate_diag = oe.compare(dev, models, exact=True), oe.compare(diag, models, exact=True)
+    decisions = {c.name: oe.decision(gate_dev, gate_diag, c.name) for c in oe.CANDIDATES}
 
     validity = {}
     for name, frame in (("development", dev), ("diagnostic_pooled", diag)):

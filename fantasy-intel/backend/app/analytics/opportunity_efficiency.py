@@ -231,11 +231,12 @@ def cohorts(df: pl.DataFrame) -> dict[str, pl.Expr]:
 
 
 def compare(preds: pl.DataFrame, models: dict[str, str], baseline: str = "ifp2", seed: int = 20261015,
-            resamples: int = 1000) -> dict:
+            resamples: int = 1000, exact: bool = False) -> dict:
     """Coverage of every model on the full labeled population, then identical-row metrics (every
     model non-null): per position and pooled, week-clustered CIs vs baseline, cohorts, pairs."""
     lab = preds.filter(pl.col("label").is_not_null())
-    cov = {n: round(float(lab[c].is_not_null().mean()), 4) if lab.height else None for n, c in models.items()}
+    cov = {n: (lambda v: v if exact else round(v, 4))(float(lab[c].is_not_null().mean())) if lab.height else None
+           for n, c in models.items()}
     p = lab.with_columns([pl.col(c).alias(f"pred_{n}") for n, c in models.items() if c != f"pred_{n}"])
     cols = [f"pred_{n}" for n in models]
     p = p.filter(pl.all_horizontal([pl.col(c).is_not_null() for c in cols]))
@@ -244,21 +245,21 @@ def compare(preds: pl.DataFrame, models: dict[str, str], baseline: str = "ifp2",
     for pos in [*POSITIONS, "ALL"]:
         g = p if pos == "ALL" else p.filter(pl.col("position") == pos)
         a = _arr(g, "label")
-        rep = {"n": g.height, "metrics": {n: metrics(a, _arr(g, f"pred_{n}")) for n in models},
-               "minus_baseline_mae": {n: week_bootstrap_mae_diff(g, f"pred_{n}", f"pred_{baseline}", resamples, seed)
+        rep = {"n": g.height, "metrics": {n: metrics(a, _arr(g, f"pred_{n}"), exact) for n in models},
+               "minus_baseline_mae": {n: week_bootstrap_mae_diff(g, f"pred_{n}", f"pred_{baseline}", resamples, seed, exact)
                                       for n in models if n != baseline}}
         if pos == "ALL":
             rep["cohorts"] = {}
             for cname, expr in flt.items():
                 c = g.filter(expr.fill_null(False))
                 ac = _arr(c, "label")
-                rep["cohorts"][cname] = {"n": c.height, **{n: metrics(ac, _arr(c, f"pred_{n}")) for n in models}}
+                rep["cohorts"][cname] = {"n": c.height, **{n: metrics(ac, _arr(c, f"pred_{n}"), exact) for n in models}}
                 if c.height >= 30:
                     rep["cohorts"][cname]["minus_baseline_mae"] = {
-                        n: week_bootstrap_mae_diff(c, f"pred_{n}", f"pred_{baseline}", resamples, seed)
+                        n: week_bootstrap_mae_diff(c, f"pred_{n}", f"pred_{baseline}", resamples, seed, exact)
                         for n in models if n != baseline}
         out[pos] = rep
-    out["pairs"] = pair_decisions(p, cols)
+    out["pairs"] = pair_decisions(p, cols, exact=exact)
     return out
 
 

@@ -233,3 +233,26 @@ def test_naive_opportunity_baselines_share_the_models_rows():
     assert r["model_mae_naive_rows"] == pytest.approx(0.5)
     assert r["naive_xfpl_eb_mae"] == pytest.approx(1.5)
     assert r["naive_xfpl_recent_mae"] == pytest.approx(1.0)
+
+
+def test_exact_mode_skips_reporting_rounding_only():
+    from app.analytics import forecast_backtest as fb
+    a = np.array([1.0, 2.0, 3.0, 4.0])
+    p = a + 0.0004                                  # a regression far below the 3-decimal rounding step
+    assert fb.metrics(a, p)["mae"] == 0.0           # reported (rounded) value unchanged
+    assert fb.metrics(a, p, exact=True)["mae"] == pytest.approx(0.0004)
+    df = pl.DataFrame({"key": [1, 1, 2, 2], "label": a, "x": p, "y": a})
+    assert fb.week_bootstrap_mae_diff(df, "x", "y", 50, 0)["diff"] == 0.0
+    assert fb.week_bootstrap_mae_diff(df, "x", "y", 50, 0, exact=True)["diff"] == pytest.approx(0.0004)
+
+
+def test_a_sub_rounding_pooled_regression_still_rejects():
+    m = {"n": 100, "mae": 4.0, "rmse": 6.0, "bias": 0.0}
+    rep = lambda diff: {"ALL": {"metrics": {"X": dict(m), "ifp2": dict(m)},   # noqa: E731
+                                "minus_baseline_mae": {"X": {"diff": diff, "ci95": [-0.02, -0.001]}}},
+                        "pairs": {"all": {"pred_X": {"accuracy": 0.65, "mean_regret": 2.0},
+                                          "pred_ifp2": {"accuracy": 0.65, "mean_regret": 2.0}}},
+                        "population": {"coverage": {"X": 1.0, "ifp2": 1.0}}}
+    assert oe.decision(rep(-0.01), rep(-0.0001), "X")["outcome"] == "continue_research"
+    worse = oe.decision(rep(-0.01), rep(0.0003), "X")      # rounds to 0.000 but is a regression
+    assert worse["rejections"]["pooled_mae_worse"] and worse["outcome"] == "negative"

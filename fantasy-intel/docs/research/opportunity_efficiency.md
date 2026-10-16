@@ -51,6 +51,7 @@ Common to all candidates:
 * QB is decomposed too.
 * Recency weighting follows ifp-2's per-position settings.
 * Penalties are tuned per position on a grid, using 2021-22 only and the unrounded development MAE.
+* The decision rules are applied to unrounded values; the tables show them rounded.
 * Only fully final, fully ingested weeks are used (every week in the current data is).
 * Fitting uses squared loss throughout (mean semantics; no median-seeking loss).
 * Components are unfloored; only the summed forecast is floored at 0, exactly as the direct model
