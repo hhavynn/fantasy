@@ -1,32 +1,34 @@
-# Style A: Premium Sports Analytics. Editorial data journalism: dark, restrained, one data accent at a time.
+# Style A: Premium Sports Analytics, in the Fantasy Intel website's design system (Night theme, accent blue,
+# Barlow Condensed and IBM Plex Sans), so the channel and the site read as one brand.
 name = "premium"
 title = "Premium Sports Analytics"
 
-[palette]
-bg = "#0C0F13"
-bg_top = "#11161C"
-panel = "#151B22"
-panel_line = "#26303B"
-grid = "#1D252E"
-ink = "#F1F3F6"
-ink_muted = "#98A2AF"
-ink_faint = "#838E9C"
-up = "#46C98A"
-down = "#F2685B"
-highlight = "#F3C350"     # the single emphasis colour for 'look here', never decoration
-neutral_bar = "#3A4552"
+[palette]                 # the Fantasy Intel website's Night theme (frontend/app/globals.css)
+bg = "#070B12"            # --bg
+bg_top = "#0D131C"        # --surface (the top of the frame lifts toward it)
+panel = "#0D131C"         # --surface
+panel_line = "#222C3A"    # --line
+grid = "#1F2835"          # --chart-grid
+ink = "#E9EEF4"           # --ink
+ink_muted = "#A3ADBA"     # --ink-muted
+ink_faint = "#8A95A5"     # --ink-faint
+up = "#5AD394"            # --positive
+down = "#FF8173"          # --negative
+highlight = "#6AAEFF"     # --accent: the single 'look here' colour, never decoration
+neutral_bar = "#2E3A4B"   # between --line and --line-control, so data bars sit back
+caution = "#F2BD52"       # --caution
 
-[type]                    # Inter (OFL): weights regular | semibold | bold | black
-kicker = ["semibold", 32, 0.14]      # [weight, px, tracking in em]
-label = ["semibold", 40, 0.02]
-body = ["regular", 40, 0.0]
-title = ["bold", 84, -0.015]
-display = ["bold", 132, -0.025]
-number_xl = ["bold", 230, -0.03]
-number_l = ["bold", 150, -0.025]
-number_m = ["bold", 84, -0.015]
-number_s = ["semibold", 52, 0.0]
-case = "title"            # titles in sentence/title case, kickers uppercase
+[type]                    # the site's faces: Barlow Condensed (display, numbers) and IBM Plex Sans (text)
+kicker = ["plex-semibold", 30, 0.08]     # [face, px, tracking in em]; the site's .eyebrow
+label = ["plex-semibold", 40, 0.0]
+body = ["plex", 40, 0.0]
+title = ["barlow", 90, 0.005]            # the site's h1
+display = ["barlow", 140, 0.0]
+number_xl = ["barlow", 236, 0.0]
+number_l = ["barlow", 152, 0.0]
+number_m = ["barlow", 86, 0.0]
+number_s = ["plex-semibold", 50, 0.0]
+case = "title"            # titles in sentence case, kickers uppercase
 
 [space]                   # 8 px grid
 unit = 8
@@ -41,13 +43,13 @@ hairline = 2
 rule = 3
 reference = 3
 
-[radius]
-panel = 18
-bar = 6
+[radius]                  # the site's radius family
+panel = 14                # --radius-lg
+bar = 4                   # --radius-xs
 chip = 999
 
 [motion]                  # cubic-bezier control points
-enter = [0.16, 1.0, 0.3, 1.0]       # quick start, long settle (no overshoot)
+enter = [0.2, 0.7, 0.2, 1.0]        # the site's --ease-out, stretched to video length (no overshoot)
 move = [0.65, 0.0, 0.35, 1.0]
 enter_dur = 0.5
 stagger = 0.06
@@ -57,11 +59,11 @@ camera_push = 0.0               # no global zoom: type and hairlines stay pixel-
 punch = 0.0
 
 [caption]
-weight = "bold"
-size = 58
+weight = "barlow"
+size = 72
 case = "as_spoken"
-color = "#F1F3F6"
-active = "#F3C350"
+color = "#E9EEF4"
+active = "#6AAEFF"
 band = 0.72               # opacity of the dark band behind captions
 
 [chart]

@@ -206,6 +206,8 @@ def gate_subtitles(captions: dict) -> Gate:
         wrap = lambda s: pixel.wrap(s, max_w, scale)        # noqa: E731
     else:
         font = ImageFont.truetype(str(FONTS / captions.get("font", "Inter-SemiBold.ttf")), captions["font_size"])
+        if captions.get("font_axis") is not None:            # a variable font, at the weight it was burned in at
+            font.set_variation_by_axes([captions["font_axis"]])
         width = font.getlength
         wrap = lambda s: _wrap_px(s, font, max_w)           # noqa: E731
     for i, cue in enumerate(captions["cues"]):

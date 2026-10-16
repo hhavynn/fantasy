@@ -4,7 +4,7 @@ Three designed looks for the Shorts, built on one component library, rendered ne
 
 | Style | Token file | Idea |
 |---|---|---|
-| **Premium analytics** (`premium`) | `studio/assets/styles/premium.toml` | Editorial data journalism. Dark, quiet, one data colour at a time, real charts (column chart, slope chart, scaled tracks), sentence-case type with a clear hierarchy. |
+| **Premium analytics** (`premium`) | `studio/assets/styles/premium.toml` | Editorial data journalism in the Fantasy Intel website's own design system: the Night theme colours, the accent blue as the one "look here" colour, Barlow Condensed for titles and numbers, IBM Plex Sans for text, and the site's "fi" tile and two-colour wordmark in the header. Real charts (column chart, slope chart, scaled tracks), sentence-case type with a clear hierarchy. |
 | **Retro pixel football** (`pixel`) | `studio/assets/styles/pixel.toml` | A 16-bit sports game. Everything is drawn on a 216x384 art grid and scaled x5 with no smoothing: an original 5x7 pixel font, a player sprite in team colours with his number, footballs stacked one per target, 5%-per-segment meters, menu windows and a dialog box for captions. |
 | **Modern broadcast** (`broadcast`) | `studio/assets/styles/broadcast.toml` | An original studio-show identity. Navy set with faint team bands, slanted team-colour slabs, a score bug, a lower third, scoreboard-style before/after modules, capitals with broadcast italics, a slab wipe between scenes. |
 
@@ -152,7 +152,7 @@ Same four Shorts, same narration, music, sound effects, timing and captions. Mea
 | Render time per Short (all 4 players) | 15–20 s | 6–8 s | 4–6 s | 13–15 s |
 | File size (Kincaid) | 7.8 MB | 2.4 MB | 2.3 MB | 7.3 MB |
 | Backgrounds per video | 3–5 different | 1 | 1 | 1 |
-| Typefaces and weights | Inter Black almost everywhere | Inter, 4 weights by role | original 5x7 bitmap font | Inter Black and Bold, italic display |
+| Typefaces and weights | Inter Black almost everywhere | the site's Barlow Condensed and IBM Plex Sans, by role | original 5x7 bitmap font | Inter Black and Bold, italic display |
 | New dependencies | — | none | none | none |
 
 Render times are on the M5 Pro, single process. Broadcast is slower because of its camera push (a full-frame resize per frame). Premium has none on purpose, so type and hairlines stay pixel-sharp.

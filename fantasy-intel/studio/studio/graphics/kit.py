@@ -90,9 +90,24 @@ def mix(c1, c2, k):
 
 # --------------------------------------------------------------------------------------------- type
 
+# Type families a style can name in its tokens. Inter (regular..black) is the studio's own; Barlow Condensed and
+# IBM Plex Sans are the Fantasy Intel website's display and text faces (the basic-Latin subsets the site ships,
+# OFL-1.1). Plex is a variable font: the number is its weight axis.
+FONT_FILES = {**{w: (f, None) for w, f in WEIGHTS.items()},
+              "barlow": ("BarlowCondensed-SemiBold-latin.woff2", None),
+              "plex": ("IBMPlexSans-SemiBold-latin.woff2", 400),
+              "plex-medium": ("IBMPlexSans-SemiBold-latin.woff2", 500),
+              "plex-semibold": ("IBMPlexSans-SemiBold-latin.woff2", 600),
+              "plex-bold": ("IBMPlexSans-SemiBold-latin.woff2", 700)}
+
+
 @lru_cache(maxsize=None)
 def font(weight: str, px: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(FONTS / WEIGHTS[weight]), px)
+    file, axis = FONT_FILES[weight]
+    f = ImageFont.truetype(str(FONTS / file), px)
+    if axis is not None:
+        f.set_variation_by_axes([axis])
+    return f
 
 
 def measure(text: str, weight: str, px: int, track: float = 0.0, tabular: bool = False) -> float:

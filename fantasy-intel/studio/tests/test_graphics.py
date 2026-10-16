@@ -24,7 +24,7 @@ def test_tokens_define_every_style():
         tk = kit.tokens(name)
         for key in ("kicker", "label", "title", "display", "number_l", "number_m", "number_s"):
             weight, px, track = getattr(tk.type, key)
-            assert weight in ("regular", "semibold", "bold", "black") and px >= 28
+            assert weight in kit.FONT_FILES and px >= 28
         assert len(tk.motion.enter) == 4 and tk.motion.transition_dur <= 0.4
         assert kit.SAFE[2] - tk.space.margin_right <= kit.W - vector.look(name).mr
     px = kit.tokens("pixel")

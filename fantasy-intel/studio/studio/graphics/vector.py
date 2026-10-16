@@ -192,10 +192,19 @@ def chrome(F: Frame, L: Look, c, t: float, scene: dict, dur: float):
     week = c.d(c.facts["episode"]["week"])
     show = SHOW.get(FS.FORMAT_SCENES.get(scene["type"], ("usage",))[0], SHOW["usage"])
     if not L.broadcast:
-        y = 248
-        L.text(F, show[0], L.mx, y, "kicker", L.muted, role="kicker")
-        L.text(F, week, W - L.mr, y, "kicker", L.muted, anchor="r", role="kicker", src=c.facts["episode"]["week"])
-        F.line((L.mx, y + 40, W - L.mr, y + 40), L.line, 2)
+        # the website's top bar: the "fi" tile and the two-colour wordmark; the week on the right
+        y = 240
+        tile = _brand_tile(46)
+        F.img.paste(tile, (int(L.mx), y), tile)
+        x = L.mx + 46 + 14
+        f = ["barlow", 38, 0.03]
+        x = F.text("FANTASY", x, y + 9, f, L.ink, role="kicker")[2] + 38 * 0.22
+        F.text("INTELLIGENCE", x, y + 9, f, L.hi, role="kicker")
+        right = f"{show[1]} · {week}"                     # the show, when it fits beside the wordmark
+        if K.measure(right.upper(), *L.ty("kicker")[:2], L.ty("kicker")[2]) > W - L.mr - x - 330:
+            right = week
+        L.text(F, right, W - L.mr, y + 12, "kicker", L.muted, anchor="r", role="kicker", src=c.facts["episode"]["week"])
+        F.line((L.mx, y + 64, W - L.mr, y + 64), L.line, 2)
         return
     p, s = L.team(c)
     # score bug, top left
@@ -226,6 +235,20 @@ def chrome(F: Frame, L: Look, c, t: float, scene: dict, dur: float):
     F.text(sub, xs + 24, y + 31, ["bold", 30, 0.04], _on(s if K.contrast(s, p) > 1.5 else L.ink), role="label", alpha=k)
 
 
+@lru_cache(maxsize=4)
+def _brand_tile(size: int) -> Image.Image:
+    """The site's icon: the "fi" monogram on its rounded tile (frontend/app/icon.svg)."""
+    from ..brand import ICON_BG, LINE, monogram
+    S = size * 4
+    tile = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    ImageDraw.Draw(tile).rounded_rectangle((0, 0, S - 1, S - 1), radius=S * 7 // 32, fill=ICON_BG + (255,),
+                                           outline=LINE + (255,), width=4)
+    tile = tile.resize((size, size), Image.LANCZOS)
+    m = monogram(size)
+    tile.alpha_composite(m)
+    return tile
+
+
 LOWER_THIRD = {"target_balls", "split", "presence", "teammate_out", "status_stamp", "zoom_out", "volume_balls"}
 # The show's name in the chrome, by format: the usage report, or the format scenes' own (format_scenes.py).
 SHOW = {"usage": ("THE USAGE REPORT", "USAGE REPORT"), "casefile": ("THE CASE FILE", "CASE FILE"),
@@ -240,7 +263,7 @@ def _on(bg) -> tuple:
 def source_line(F: Frame, L: Look, c, alpha: float, y: int = 1318):
     weeks = sorted({s["week"] for m in c.p["metrics"] for s in m["series"]})
     txt = f"Data: nflverse play-by-play and snap counts, {K.weeks_label(weeks)}"
-    F.text(txt if not L.broadcast else txt.upper(), L.mx, y, ["regular" if not L.broadcast else "bold", 26, 0.02],
+    F.text(txt if not L.broadcast else txt.upper(), L.mx, y, [L.ty("body")[0] if not L.broadcast else "bold", 26, 0.02],
            L.faint if not L.broadcast else L.muted, alpha=alpha, role="source", src="data:weeks")
 
 
@@ -799,8 +822,8 @@ def _band(opacity: float) -> Image.Image:
 
 def caption_spec(name: str) -> dict:
     tk = look(name).tk.caption
-    from .. import visual
-    return {"font": visual.WEIGHTS[tk.weight], "font_size": tk.size, "max_width_px": CAPTION_MAX_W, "max_lines": 2,
+    file, axis = K.FONT_FILES[tk.weight]
+    return {"font": file, "font_axis": axis, "font_size": tk.size, "max_width_px": CAPTION_MAX_W, "max_lines": 2,
             "case": tk.case}
 
 
