@@ -57,9 +57,13 @@ risers = 2
 fallers = 1
 # From this week a "role first, schedule second" Weeks 15-17 beat joins each Short.
 playoff_runway_from_week = 11
-# Short-form delivery: the most expressive Kokoro male voice by measured pitch range (am_fenrir 11.5
-# semitones p10-p90 vs am_michael 8.0 on the same line), Kokoro's own clip padding trimmed, tight gaps.
-voice = "am_fenrir"
+# Short-form delivery: a Kokoro blend, 70% am_puck + 30% af_heart, at 1.25x, re-voiced with the owner's enrolled
+# voice (voice_clone below), chosen by the channel owner from a side-by-side listening test (2026-10-16). It
+# replaces am_adam, which stays the AI host's voice ([presenter] voice). Kokoro's own clip padding trimmed.
+voice = "am_puck:0.7+af_heart:0.3"
+# Multiplies every line's speed, including script per-line speeds. The flame/praise series divides it back out of
+# its own per-format speeds (stages/showrunner.FORMATS), which are already tuned for short-form pace.
+speed_scale = 1.25
 trim_silence = true
 segment_tail_silence = 0.12
 # Original procedural music bed and sound design (no third-party audio). Set music = false for voice only.
@@ -71,7 +75,7 @@ music_db = -28.0
 sfx_db = -12.0
 # The channel owner's enrolled voice (see voices/RECORDING.md). Empty = Kokoro's own voice.
 # Kokoro still performs; OpenVoice V2 re-voices it. QC blocks publishing without a valid consent record.
-voice_clone = ""
+voice_clone = "havyn"
 # Default hook per storyline; empty = rotate least recently used.
 hook = ""
 
@@ -85,18 +89,26 @@ engine = "~/models/musetalk-mac"
 cache = "~/models/presenter"
 # the fictional host, generated once with Z-Image-Turbo (Apache-2.0); see assets/presenter/host.json
 portrait = "assets/presenter/host.png"
-# The host's own voice (picked by audition: episodes/presenter-audition). Different from [shorts] voice, so host
-# versions are re-rendered as <slug>-host with this voice; the regular Shorts keep theirs.
+# The host's own voice (picked by audition: episodes/presenter-audition). Host versions are re-rendered as
+# <slug>-host with this voice. The Shorts now use the owner's blend + enrolled voice ([shorts]), so the two differ
+# again and host versions are re-rendered separately (presenter.py).
 voice = "am_adam"
 # Realism pass 2 (A/B in episodes/presenter-review, docs/presenter/README.md). engine_mode "hq" = lossless
 # native-fps MuseTalk loop with skin-detail restore, approved by the owner from the montages (2026-10-15).
-# Motion stays procedural until the new library clips are reviewed; motion "library" = audited Wan2.2
-# natural-motion clips of the same host (falls back to procedural if none pass).
+# motion "library" = audited Wan2.2 natural-motion clips of the same host (falls back to procedural if none
+# pass), approved by the owner from the pass-2 montages (variant D, 2026-10-15).
 engine_mode = "hq"
-motion = "procedural"
+motion = "library"
 library = "~/models/presenter/motion/library"
 detail = 1.0
 detail_sigma = 3.5
+
+[editorial_media]
+# EXPERIMENTAL re-edit of each Short with real photography, B-roll and its own graphics (stages/editorial_media.py,
+# docs/editorial-media/README.md). off | preview | render. preview writes the storyboard only; render also writes
+# <slug>-editorial/final.mp4. The original Short is never changed. Media comes from assets/media/manifest.json;
+# a video using media no person has approved yet fails the publish check.
+mode = "off"
 
 [graphics]
 # Graphic style for Shorts (studio/graphics, tokens in assets/styles/*.toml): original | premium | pixel |

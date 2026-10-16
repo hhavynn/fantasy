@@ -51,12 +51,19 @@ def _run(ep: Episode) -> None:
     risers = [p["name"] for p in facts["players"] if p["role"] == "riser"]
     fallers = [p["name"] for p in facts["players"] if p["role"] == "faller"]
     hero = facts["players"][0]
-    m = hero["metrics"][0]
+    m = hero.get("metrics", [None])[0]
     hook = (f"{hero['name']}'s {m['label']} went from {claims[m['baseline']]['display']} to "
-            f"{claims[m['recent']]['display']}.")
+            f"{claims[m['recent']]['display']}.") if m else ""
     cta = script["cta"]
     disclosure = AI_DISCLOSURE_CLONE if (short and ep.cfg["shorts"].get("voice_clone")) else AI_DISCLOSURE
-    if short:
+    if hero.get("flame"):                   # flame / praise: one game against the season (stages/flame.py)
+        from .flame import description_lines
+        series = script["structure"].get("series")
+        attribution = (ATTRIBUTION if not series else
+                       "Data: nflverse (CC BY 4.0): game stats, play-by-play and schedules, through the game shown.")
+        lines = [*description_lines(hero, claims, script["structure"]), "", disclosure, attribution, "",
+                 "#shorts #nfl #football" if series else "#shorts #fantasyfootball #nfl"]
+    elif short:
         lines = [hook, f"Over his last {claims[hero['recent_games']]['display']} games versus the "
                  f"{claims[hero['baseline_games']]['display']} before. Usage, not box scores.", "",
                  disclosure, ATTRIBUTION, "", "#shorts #fantasyfootball #nfl"]
@@ -77,7 +84,11 @@ def _run(ep: Episode) -> None:
         ]
     if cta["url"]:
         lines += ["", f"Free usage tool: {cta['url']}"]
-    tags = (["shorts"] if short else []) + ["fantasy football", "nfl usage", "snap share", "target share", "fantasy football waivers",
+    if hero.get("flame") and script["structure"].get("series"):     # NFL entertainment: football tags, not waivers
+        from .showrunner import tags as series_tags
+        tags = series_tags(hero, claims)
+    else:
+        tags = (["shorts"] if short else []) + ["fantasy football", "nfl usage", "snap share", "target share", "fantasy football waivers",
             f"fantasy football {week.lower()}", *risers, *fallers]
     meta = {
         "episode_id": ep.id,
@@ -94,6 +105,11 @@ def _run(ep: Episode) -> None:
         "chapters": chaps,
         "files": {"video": "final.mp4", "thumbnail": "thumbnail.png", "captions": "captions.srt"},
     }
+    if script["structure"].get("series"):   # soundboard clips (sfx_palette registry): the ones that could draw a claim
+        from ..sfx_palette import PALETTE
+        meta["contains_soundboard_audio"] = sorted(
+            {c["sfx"] for seg in script["narration_segments"] for c in seg["scene"].get("cues", [])
+             if c.get("sfx") and PALETTE.get(c["sfx"], {}).get("registry")})
     if short:
         # What varies between Shorts, recorded so analytics can compare one variable at a time later.
         meta["experiment"] = {**script["structure"], "duration_s": round(sum(durations.values()), 1),

@@ -8,3 +8,8 @@ voices/*
 !voices/script.txt
 # Third-party player headshots (studio/headshots.py): cached locally, never committed.
 assets/headshots/
+# Meme soundboard clips (assets/sfx/registry.toml): fetched locally by `python -m studio.sfx_fetch`, never committed.
+assets/sfx/meme/
+# Catalog media files (studio/media_library.py): the manifest is tracked, the files are cached and never committed.
+assets/media/cache/
+assets/media/.bin/

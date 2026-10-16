@@ -11,7 +11,10 @@ from studio.stages import provenance, snapshot, tts
 
 def _ep(tmp_path, monkeypatch, fmt="short"):
     monkeypatch.setenv("STUDIO_EPISODES", str(tmp_path / "episodes"))
-    ep = Episode(2026, 6, fmt, Config.load(), log=lambda *_: None, slug="someone" if fmt == "short" else None)
+    cfg = Config.load()
+    # the owner's enrolled voice is local and git-ignored (as in conftest's episode fixture); test_voice covers cloning
+    cfg.raw["shorts"] = {**cfg.raw["shorts"], "voice_clone": ""}
+    ep = Episode(2026, 6, fmt, cfg, log=lambda *_: None, slug="someone" if fmt == "short" else None)
     ep.dir.mkdir(parents=True)
     return ep
 

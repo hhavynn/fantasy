@@ -404,7 +404,8 @@ def finish(beats, p, lead, story, hook_key, tm, who, titles=None, ending=None):
                   "visual_device": SH.VISUAL.get(family, "template scenes"),
                   "question": SH.QUESTIONS.get(family, SH.QUESTIONS["template"]),
                   "situation": story, "player": p["gsis_id"],
-                  "metrics": sorted({m["column"] for m in p["metrics"] for b in beats
+                  # flame / praise players carry game stat lines, not usage metrics: none to fingerprint
+                  "metrics": sorted({m["column"] for m in p.get("metrics", []) for b in beats
                                      for c in b["scene"].get("claims", []) if c in (m["baseline"], m["recent"])})}
     return beats, titles, structure
 

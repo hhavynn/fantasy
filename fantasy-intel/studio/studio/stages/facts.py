@@ -194,6 +194,9 @@ def evaluate_claim(snap: dict, src: dict):
         return snap["week"]
     if kind == "constant_weeks":
         return src["weeks"]
+    if kind.startswith("fp_"):                  # the flame / praise Shorts' claims (stages/flame.py)
+        from . import flame
+        return flame.evaluate(snap, src)
     raise ValueError(f"unknown claim source kind {kind!r}")
 
 

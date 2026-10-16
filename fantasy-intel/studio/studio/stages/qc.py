@@ -273,6 +273,56 @@ def gate_originality(episode_id: str, narration: list[str], players: list[str], 
     return _gate("originality", failures, compared=scores)
 
 
+def gate_pacing(ep: Episode, script: dict, history: list[dict]) -> Gate:
+    """Series pacing and comedy timing (studio/pacing.py), measured on the render: dead air, a late hook or payoff,
+    a sound effect off its word, the same sound set as a recent video. Writes pacing.json and pacing.md."""
+    from ..pacing import audit, markdown, measure
+    m = measure(ep.dir)
+    prior = [e["structure"].get("sfx", []) for e in history if (e.get("structure") or {}).get("series")
+             and e["episode_id"] != ep.id]
+    findings = audit(m, script["structure"], prior)
+    write_json(ep.path("pacing.json"), {"measured": m, "findings": findings})
+    ep.path("pacing.md").write_text(markdown(m, findings))
+    return _gate("pacing", findings["fail"], warnings=findings["warn"],
+                 **{k: m[k] for k in ("duration_s", "first_hook_s", "first_payoff_s", "longest_voice_gap_s",
+                                      "sfx_events", "max_sync_error_s")})
+
+
+SERIES_MIN_S = 10
+SERIES_FORMAT_RUN_MAX = 2             # a third series video in a row may not use the same format
+
+
+def gate_series(script: dict, brief_path: Path, history: list[dict]) -> Gate:
+    """Flame / praise series: the stored brief passed the entertainment test, the script is the brief's format,
+    parody formats say so on every frame, the ending is not a fantasy lineup question, and the format does not
+    open a third series video in a row."""
+    from .showrunner import FORMATS, fantasy_ending
+    failures = []
+    st = script["structure"]
+    brief = read_json(brief_path) if brief_path.exists() else None
+    if not brief:
+        failures.append("no brief.json: the script is not reproducible from a creative brief")
+    else:
+        if not brief["entertainment_test"]["pass"]:
+            failures.append(f"entertainment test failed: {brief['entertainment_test']['why']}")
+        if brief["format"] != st.get("format_family"):
+            failures.append(f"script format {st.get('format_family')} is not the brief's {brief['format']}")
+    fam = st.get("format_family")
+    if fam in FORMATS and FORMATS[fam].get("parody"):
+        unlabeled = [s.get("id", s["type"]) for s in script["shots"] if not s["type"].startswith(("court_", "cx_"))]   # both draw the PARODY badge
+        if unlabeled:
+            failures.append(f"parody format with scenes that do not carry the parody label: {unlabeled}")
+    last = script["narration_segments"][-1]["text_display"]
+    if fantasy_ending(last):
+        failures.append(f"ends on a fantasy question: {last!r}")
+    prior = [e["structure"] for e in history if (e.get("structure") or {}).get("series") == st.get("series")
+             and e["episode_id"] != script["episode_id"]]
+    run = [x.get("format_family") for x in prior[-SERIES_FORMAT_RUN_MAX:]]
+    if len(run) == SERIES_FORMAT_RUN_MAX and all(f == fam for f in run):
+        failures.append(f"format {fam} would be the third series video in a row")
+    return _gate("series", failures, format=fam, ending=st.get("ending"), visual=st.get("visual_style"))
+
+
 def gate_creative(ep: Episode, script: dict, history: list[dict]) -> Gate:
     """Structural repetition against the recent Shorts (studio/creative.py), and the mechanical creative checks.
     Writes creative_review.md with the questions only a person can answer."""
@@ -415,6 +465,9 @@ def run_gates(ep: Episode) -> list[Gate]:
     video = ep.path("final.mp4")
     dur = ep.cfg["duration"]
     lo, hi = (dur["long_min"], dur["long_max"]) if ep.fmt == "long" else (dur["short_min"], dur["short_max"])
+    if script["structure"].get("duration_range"):        # a series format sets its own length (within Shorts')
+        lo, hi = (max(SERIES_MIN_S, script["structure"]["duration_range"][0] - 2),
+                  min(dur["short_max"] + 15, script["structure"]["duration_range"][1] + 4))
     history_path = ep.cfg.episodes_dir / "history.jsonl"
     history = [json.loads(l) for l in history_path.read_text().splitlines() if l.strip()] \
         if history_path.exists() else []
@@ -435,6 +488,8 @@ def run_gates(ep: Episode) -> list[Gate]:
                          {**script["structure"], "_week": ep.week,
                           "_order": read_json(ep.path("story.json"))["order"]} if ep.fmt == "short" else None),
         gate_timeliness(script, facts),
+        *([gate_series(script, ep.path("brief.json"), history), gate_pacing(ep, script, history)]
+          if script["structure"].get("series") else []),
         *([gate_creative(ep, script, history)] if ep.fmt == "short" and script["structure"].get("family") else []),
         gate_licenses(ep.cfg, installed_distributions()),
         gate_metadata(read_json(ep.path("metadata.json")), ep.path("thumbnail.png"), ep.fmt),

@@ -10,7 +10,7 @@ An optional, fully local AI host that delivers the opening line (`hook`), or the
 
 ## Realism pass 2: audit, fixes and A/B (2026-10-15)
 
-Current defaults: `mode = "off"`, `engine_mode = "hq"` (approved from the montages on 2026-10-15), `motion = "procedural"`. Nothing reaches a publishable file while `mode` is off; `engine_mode = "musetalk"` is still the fallback.
+Current defaults: `mode = "off"`, `engine_mode = "hq"` and `motion = "library"` (variant D, approved from the montages on 2026-10-15). Nothing reaches a publishable file while `mode` is off; `engine_mode = "musetalk"` and `motion = "procedural"` remain the fallbacks.
 
 ### Root causes (measured, not guessed)
 
@@ -66,7 +66,7 @@ Measurements for the verdict window (s05, 6.1 s):
 
 How to read these:
 - **Detail** is the clear win: hq triples it, and stubble is visible again in the zoom.
-- **Motion** is real but small: only idle_03's first 2 s passes the audit, so the 6.1 s line loops that stretch forward and back.
+- **Motion** (library pass 1, in this table) is real but small: only idle_03's first 2 s passed the audit, so the 6.1 s line looped that stretch forward and back. See "Library pass 2" below for the re-render with the fuller library.
 - **Jitter and identity drift** rise a little with real motion, which is expected: these are a description, not a pass mark.
 - **The teeth gap index** doesn't separate the variants, and neither do your eyes: the gap is in all four. It stays uncalibrated until a render without the gap exists.
 - **The loop-seam ratio** (recorded too) only catches jumps, not the velocity reversal of a ping-pong loop, so it isn't a useful gate yet.
@@ -86,15 +86,34 @@ All variants pass the existing presenter QC; no gate was loosened. The Gadsden l
 
 | Step | Time |
 |---|---|
-| Wan2.2 library clip (81 frames, 704×1280, 30 steps) | about 20 min to denoise and 9–17 min to decode, once per clip |
+| Wan2.2 library clip (81 frames, 704×1280, 30 steps) | about 20 min to denoise and 8–17 min to decode, once per clip (pass 2: 1153–1285 s and 453–518 s) |
 | Decode | each clip in its own process (VAE only), with decoded tiles moved to the CPU, otherwise 48 GB runs out |
 | hq lip sync | about 1.2–2× the time of the original MuseTalk path, per the table above |
+
+### Library pass 2 (idle_04–06)
+
+The pass-2 prompts asked for eye contact throughout and one quick blink, plus negatives for closed eyes, squinting and looking away. All three clips pass the audit end to end (3.4 s each):
+- gaze stays within 0.02 of the portrait
+- idle_06 has one quick blink and a slight head turn
+
+The library now has about 12 usable seconds instead of 2. B and D were re-rendered: the verdict line now uses a pass-2 clip, while the hook still draws idle_03's audited stretch (the pick is a stable hash of episode and line).
+
+Verdict window (s05), after the re-render:
+
+| | B | D |
+|---|---|---|
+| Lower-face detail vs base | 0.09 | 0.30 |
+| Head motion range (% of face width) | 2.6 | 2.7 |
+| Landmark jitter | 1.09 | 1.56 |
+| Identity geometry drift (%) | 3.4 | 4.7 |
+
+The new clips are calmer than idle_01's sideways drift: there's less raw motion, but it's natural, non-rigid movement that keeps eye contact.
 
 ### Recommendation
 
 - **The hq mouth (C or D):** ready to approve. It's a clear, low-risk improvement.
-- **Library motion:** the approach is right, but the library is too thin today (2 usable seconds). Regenerate idle_04–06 with the pass-2 prompts (eye contact, one quick blink; already in `presenter_motion.py`), then re-run the audit and review D again.
-- **Keep `mode = "off"`** until a D render with a fuller library passes your review. The teeth gap remains the most visible tell.
+- **Library motion:** with pass 2 the library is usable (about 12 s that pass the audit). D, the hq mouth plus library motion, is the candidate to approve: switch `motion = "library"` after you review the updated montages.
+- **Keep `mode = "off"`** until D passes your review. The teeth gap remains the most visible tell.
 
 ## Update: the host's own voice
 

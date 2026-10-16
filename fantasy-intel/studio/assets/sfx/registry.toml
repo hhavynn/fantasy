@@ -1,0 +1,309 @@
+# The flame / praise series' meme sounds: real soundboard clips people recognise (myinstants.com trending, Oct
+# 2026). The audio is NOT in git (soundboard clips carry no license we hold): `uv run python -m studio.sfx_fetch`
+# downloads each `source` into assets/sfx/meme/. The channel owner chose to use them knowing a Content ID claim or a
+# muted clip is the realistic risk; videos that use them are flagged in metadata (contains_soundboard_audio).
+#
+# trim: seconds kept from the file. hit: seconds from the trim start to where it gets loud (measured: the first
+# point at a third of its peak), the moment that lands on the word.
+# level_db: loudness against the narration (0 = as loud as the voice). contexts: the jokes it is for; a cue asks for a
+# context and gets the sound made for it. fallback: the procedural sound used when the file is missing.
+
+[fahhh]
+name = "FAHHH"
+source = "https://www.myinstants.com/media/sounds/fahhhhhhhhhhhhhh.mp3"
+evidence = "Myinstants US trending #1 (Oct 2026); Taileons, viral on TikTok since Aug 2025 (knowyourmeme.com/memes/fahh)"
+category = "roast"
+contexts = ["stat_ruins_it", "bad_play"]
+purpose = ["punchline", "roast_impact", "stat_reveal"]
+tone = "flame"
+class = "reaction"
+trim = [0.06, 1.91]
+hit = 0.185
+level_db = 3
+fallback = "boom"
+reviewed = "2026-10-16"
+
+[get_out]
+name = "GET OUT"
+source = "https://www.myinstants.com/media/sounds/tuco-get-out.mp3"
+evidence = "Myinstants trending; GTA roleplay scream popularised April 2024 (knowyourmeme.com/memes/tuco-get-out-scream)"
+category = "roast"
+contexts = ["throw_out"]
+purpose = ["final_payoff", "punchline", "verdict"]
+tone = "flame"
+class = "reaction"
+trim = [0.05, 1.03]
+hit = 0.029
+level_db = 3
+fallback = "record_scratch"
+reviewed = "2026-10-16"
+
+[bruh]
+name = "BRUH"
+source = "https://www.myinstants.com/media/sounds/movie_1.mp3"
+evidence = "Myinstants trending"
+category = "roast"
+contexts = ["setup_aside"]
+purpose = ["punchline", "joke_setup"]
+tone = "any"
+class = "reaction"
+trim = [0.0, 0.6]
+hit = 0.121
+level_db = 1
+fallback = "bonk"
+reviewed = "2026-10-16"
+
+[emotional_damage]
+name = "EMOTIONAL DAMAGE"
+source = "https://www.myinstants.com/media/sounds/emotional-damage-meme.mp3"
+evidence = "Myinstants trending"
+category = "roast"
+contexts = ["fans_hurt"]
+purpose = ["roast_impact", "punchline", "exhibit"]
+tone = "flame"
+class = "reaction"
+trim = [0.4, 3.31]
+hit = 0.212
+level_db = 2
+fallback = "boom"
+reviewed = "2026-10-16"
+
+[metal_pipe]
+name = "Metal pipe"
+source = "https://www.myinstants.com/media/sounds/metal-pipe-clang.mp3"
+evidence = "Myinstants trending"
+category = "roast"
+contexts = ["deadpan_hit"]
+purpose = ["final_payoff", "roast_impact"]
+tone = "flame"
+class = "reaction"
+trim = [0.15, 2.76]
+hit = 0.031
+level_db = 2
+fallback = "pipe_clang"
+reviewed = "2026-10-16"
+
+[oh_hell_nah]
+name = "oh my god bro, oh hell nah man"
+source = "https://www.myinstants.com/media/sounds/oh-my-god-bro-oh-hell-nah-man.mp3"
+evidence = "Myinstants trending; listed among current TikTok meme sounds (dubbingai.io, 2026)"
+category = "roast"
+contexts = ["stat_gets_worse"]
+purpose = ["roast_impact"]
+tone = "flame"
+class = "reaction"
+trim = [0.2, 3.0]
+hit = 0.558
+level_db = 1
+fallback = "boom"
+reviewed = "2026-10-16"
+
+[sad_violin]
+name = "Sad violin"
+source = "https://www.myinstants.com/media/sounds/tf_nemesis.mp3"
+evidence = "Myinstants trending"
+category = "roast"
+contexts = ["mock_pity"]
+purpose = ["final_payoff"]
+tone = "flame"
+class = "bed"
+trim = [0.0, 4.3]
+hit = 0.002
+level_db = -3
+fallback = "sad_trombone"
+reviewed = "2026-10-16"
+
+[crickets]
+name = "Awkward crickets"
+source = "https://www.myinstants.com/media/sounds/awkward-cricket-sound-effect.mp3"
+evidence = "Myinstants trending"
+category = "reversal"
+contexts = ["dead_silence"]
+purpose = ["awkward_pause", "stat_reveal"]
+tone = "any"
+class = "bed"
+trim = [0.4, 3.0]
+hit = 0.145
+level_db = -6
+fallback = "music_cut"
+reviewed = "2026-10-16"
+
+[mj_heehee]
+name = "MJ 'hee hee'"
+source = "https://www.myinstants.com/media/sounds/michael-jackson-hee-hee.mp3"
+evidence = "Myinstants trending"
+category = "reversal"
+contexts = ["goofy_button"]
+purpose = ["punchline"]
+tone = "any"
+class = "reaction"
+trim = [0.48, 1.35]
+hit = 0.04
+level_db = 0
+fallback = "boing"
+reviewed = "2026-10-16"
+
+[taco_bell]
+name = "Taco Bell bong"
+source = "https://www.myinstants.com/media/sounds/taco-bell-bong-sfx.mp3"
+evidence = "Myinstants trending"
+category = "reversal"
+contexts = ["reversal"]
+purpose = ["dramatic_reversal"]
+tone = "any"
+class = "reaction"
+trim = [0.07, 1.54]
+hit = 0.02
+level_db = 1
+fallback = "record_scratch"
+reviewed = "2026-10-16"
+
+[among_us]
+name = "Among Us role reveal"
+source = "https://www.myinstants.com/media/sounds/among-us-role-reveal-sound.mp3"
+evidence = "Myinstants trending"
+category = "reversal"
+contexts = ["culprit_revealed"]
+purpose = ["dramatic_reversal", "exhibit"]
+tone = "any"
+class = "reaction"
+trim = [0.5, 3.6]
+hit = 0.624
+level_db = -1
+fallback = "record_scratch"
+reviewed = "2026-10-16"
+
+[vine_boom]
+name = "Vine boom"
+source = "https://www.myinstants.com/media/sounds/vine-boom.mp3"
+evidence = "Myinstants trending #2"
+category = "absurd"
+contexts = ["most_absurd_number"]
+purpose = ["stat_reveal", "roast_impact", "hype_peak"]
+tone = "any"
+class = "reaction"
+trim = [0.07, 1.23]
+hit = 0.02
+level_db = 2
+fallback = "boom"
+reviewed = "2026-10-16"
+
+[shocked]
+name = "Shocked"
+source = "https://www.myinstants.com/media/sounds/shocked-sound-effect.mp3"
+evidence = "Myinstants trending"
+category = "absurd"
+contexts = ["absurd_comparison"]
+purpose = ["punchline", "stat_reveal"]
+tone = "any"
+class = "reaction"
+trim = [0.08, 1.21]
+hit = 0.024
+level_db = 1
+fallback = "boom"
+reviewed = "2026-10-16"
+
+[anime_wow]
+name = "Anime Wow"
+source = "https://www.myinstants.com/media/sounds/anime-wow-sound-effect.mp3"
+evidence = "Myinstants trending"
+category = "absurd"
+contexts = ["absurd_comparison", "real_awe"]
+purpose = ["punchline", "hype_peak", "stat_reveal"]
+tone = "praise"
+class = "reaction"
+trim = [0.15, 2.4]
+hit = 0.048
+level_db = 0
+fallback = "slide_up"
+reviewed = "2026-10-16"
+
+[chicken_scream]
+name = "Chicken on tree screaming"
+source = "https://www.myinstants.com/media/sounds/chicken-on-tree-screaming.mp3"
+evidence = "Myinstants trending"
+category = "chaos"
+contexts = ["chaos"]
+purpose = ["roast_impact"]
+tone = "any"
+class = "reaction"
+trim = [0.35, 2.6]
+hit = 0.067
+level_db = 0
+fallback = "boom"
+reviewed = "2026-10-16"
+
+[rizz]
+name = "rizz"
+source = "https://www.myinstants.com/media/sounds/rizz-sound-effect.mp3"
+evidence = "Myinstants trending"
+category = "glazing"
+contexts = ["smooth_play"]
+purpose = ["hype_peak", "punchline"]
+tone = "praise"
+class = "reaction"
+trim = [0.18, 1.3]
+hit = 0.041
+level_db = 0
+fallback = "slide_up"
+reviewed = "2026-10-16"
+
+[heavenly]
+name = "Heavenly music"
+source = "https://www.myinstants.com/media/sounds/heavenly-music-gaming-sound-effect-hd-mp3cut.mp3"
+evidence = "Myinstants trending"
+category = "glazing"
+contexts = ["glaze_peak"]
+purpose = ["hype_peak", "final_payoff"]
+tone = "praise"
+class = "bed"
+trim = [0.9, 4.6]
+hit = 0.589
+level_db = -4
+fallback = "choir"
+reviewed = "2026-10-16"
+
+[undertaker]
+name = "Undertaker bell"
+source = "https://www.myinstants.com/media/sounds/undertakers-bell_2UwFCIe.mp3"
+evidence = "Myinstants trending"
+category = "glazing"
+contexts = ["arrival"]
+purpose = ["hype_peak", "stat_reveal"]
+tone = "praise"
+class = "reaction"
+trim = [0.14, 3.57]
+hit = 0.13
+level_db = 0
+fallback = "cinematic_hit"
+reviewed = "2026-10-16"
+
+[yippee]
+name = "YIPPEE"
+source = "https://www.myinstants.com/media/sounds/yippeeeeeeeeeeeeee.mp3"
+evidence = "Myinstants trending"
+category = "glazing"
+contexts = ["tiny_celebration"]
+purpose = ["final_payoff", "hype_peak"]
+tone = "any"
+class = "reaction"
+trim = [0.42, 2.2]
+hit = 0.081
+level_db = 0
+fallback = "crowd_cheer"
+reviewed = "2026-10-16"
+
+[mlg_airhorn]
+name = "MLG air horn"
+source = "https://www.myinstants.com/media/sounds/mlg-airhorn.mp3"
+evidence = "Myinstants trending"
+category = "chaos"
+contexts = ["meltdown"]
+purpose = ["hype_peak", "final_payoff"]
+tone = "praise"
+class = "reaction"
+trim = [0.0, 2.73]
+hit = 0.017
+level_db = 0
+fallback = "air_horn"
+reviewed = "2026-10-16"

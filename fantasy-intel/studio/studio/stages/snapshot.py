@@ -25,6 +25,17 @@ SCHEDULE_COLUMNS = (
     "game_id", "week", "game_type", "gameday", "gametime", "away_team", "home_team", "away_score", "home_score",
     "away_qb_name", "home_qb_name", "away_coach", "home_coach",
 )
+# Quarterbacks' passing per game, for the flame / praise Shorts (stages/flame.py). Allow-listed columns only: the
+# source table also carries fantasy points, which never enter a snapshot.
+PASSING_COLUMNS = (
+    "week", "player_id", "team", "opponent_team", "attempts", "completions", "passing_yards", "passing_air_yards",
+    "passing_yards_after_catch", "passing_epa", "sacks_suffered", "passing_tds", "passing_interceptions",
+)
+# Everyone's box score per game (catches, yards, touchdowns), for the flame / praise series' football lines.
+BOX_COLUMNS = (
+    "week", "player_id", "team", "position", "receptions", "receiving_yards", "receiving_tds", "carries",
+    "rushing_yards", "rushing_tds",
+)
 TEAM_CONTEXT_COLUMNS = ("team", "through_week", "games", "proe", "neutral_pass_rate", "dropbacks")
 DEFENSE_CONTEXT_COLUMNS = (
     "defteam", "through_week", "games", "pass_plays", "pass_epa_allowed", "rush_plays", "rush_epa_allowed",
@@ -33,7 +44,7 @@ DEFENSE_CONTEXT_COLUMNS = (
 
 # Allow-list: the snapshot may only read these tables.
 TABLES = ("player_week_usage", "nfl_players", "nfl_schedules", "team_context", "defense_context",
-          "nfl_injuries", "nfl_rosters_weekly", "nfl_team_week", "sync_runs")
+          "nfl_injuries", "nfl_rosters_weekly", "nfl_team_week", "nfl_weekly_stats", "sync_runs")
 
 
 class StaleDataError(RuntimeError):
@@ -65,7 +76,18 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
         raise StaleDataError(
             f"usage data runs through week {data_week}, but a week {week} episode needs week {week - 1}. "
             "Run `uv run python ../scripts/sync_nfl.py` in fantasy-intel/backend first.")
-    ids = sorted({r["gsis_id"] for r in usage})
+    passing = _round(_rows(con, f"""
+        select {", ".join(PASSING_COLUMNS)} from {{nfl_weekly_stats}}
+        where season = ? and week < ? and season_type = 'REG' and position = 'QB' and attempts > 0
+        order by week, player_id""", [season, week]))
+    passing = [{("gsis_id" if k == "player_id" else "opponent" if k == "opponent_team" else k): v
+                for k, v in r.items()} for r in passing]
+    box = _round(_rows(con, f"""
+        select {", ".join(BOX_COLUMNS)} from {{nfl_weekly_stats}}
+        where season = ? and week < ? and season_type = 'REG' and position in ('QB', 'RB', 'WR', 'TE')
+        order by week, player_id""", [season, week]))
+    box = [{("gsis_id" if k == "player_id" else k): v for k, v in r.items()} for r in box]
+    ids = sorted({r["gsis_id"] for r in usage} | {r["gsis_id"] for r in passing})
     players = _rows(con, """select gsis_id, display_name, position, espn_id, draft_round, years_of_experience
                             from {nfl_players}
                             where gsis_id in (select unnest(?)) order by gsis_id""", [ids])
@@ -103,6 +125,7 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
             "player_week_usage": usage, "nfl_players": players, "nfl_schedules": schedules,
             "team_context": team_ctx, "defense_context": defense_ctx, "nfl_injuries": injuries,
             "nfl_rosters_weekly": rosters, "jerseys": jerseys, "nfl_team_week": team_weeks,
+            "qb_week_passing": passing, "player_week_box": box,
         },
     }
 

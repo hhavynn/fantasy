@@ -22,6 +22,7 @@ import soundfile as sf
 from PIL import Image, ImageDraw, ImageFilter
 
 from .. import audio_design as A
+from .. import flame_scenes as FPS
 from .. import format_scenes as FS
 from .. import headshots
 from .. import motion as M
@@ -395,6 +396,7 @@ SCENES = {"hook": ("field", scene_hook), "big_compare": ("team", scene_big_compa
 
 SCENES.update(S.STORY_SCENES)
 SCENES.update(FS.FORMAT_SCENES)
+SCENES.update(FPS.SCENES)
 MOOD = {"mystery": "tense", "opportunity": "bright", "red_flag": "tense", "heist": "bright", "myth": "drive"}
 
 # Sound design per scene: (local time source, kind, gain dB)
@@ -422,6 +424,7 @@ def sound_events(scene: dict, start: float, dur: float, c: Ctx) -> list[tuple[fl
         ev.append((start - 0.4, "rise", -6))
     ev += S.sounds(scene, start, dur, c)
     ev += FS.sounds(scene, start, dur, c)
+    ev += FPS.sounds(scene, start, dur, c)
     return [e for e in ev if e[0] < start + dur + 1]
 
 
@@ -445,12 +448,14 @@ def draw_scene(scene: dict, t: float, dur: float, c: Ctx) -> Image.Image:
         from ..graphics import vector
         return vector.draw("premium", scene, t, dur, c).img
     bg_kind, fn = SCENES[scene["type"]]
-    if bg_kind in ("casefile", "alert"):
+    if scene.get("fp"):                       # a flame / praise Short keeps its own look throughout
+        img = FPS.background(FPS.backdrop_for(scene), c, t + scene.get("_start", 0))
+    elif bg_kind in ("casefile", "alert"):
         img = FS.background(bg_kind, c, t + scene.get("_start", 0))
     else:
         img = M.background(bg_kind, c.team, c.accent, t + scene.get("_start", 0))
     fn(img, t, dur, scene, c)
-    hits = S.punches(scene, c, dur) + FS.punches(scene, c, dur)
+    hits = S.punches(scene, c, dur) + FS.punches(scene, c, dur) + FPS.punches(scene, c, dur)
     strength = 0.06 if scene.get("camera") == "still" else 0.045
     punch = sum(strength * math.exp(-(t - tp) / 0.16) for tp in hits if t >= tp)
     return _camera(img, min(t / max(dur, 0.1), 1), punch, scene.get("camera", "push"))
@@ -467,7 +472,7 @@ def plan(ep: Episode, work=None) -> dict:
     fps = ep.cfg["video"]["fps"]
     story = script["structure"]["angle"]
     p = facts["players"][0]
-    accent = M.GOLD if story in ("fill_in", "mystery", "opportunity") else (M.DOWN if p["role"] == "faller" else M.UP)
+    accent = FPS.ACCENT[story] if story in FPS.ACCENT else M.GOLD if story in ("fill_in", "mystery", "opportunity") else (M.DOWN if p["role"] == "faller" else M.UP)
     ctx = Ctx(facts, claims, accent, story)
     ctx.headshot = headshots.for_player(ep.cfg, p)
     ctx.headshots_on = headshots.enabled(ep.cfg)
@@ -500,8 +505,12 @@ def plan(ep: Episode, work=None) -> dict:
         events += sound_events(sc, sc["_start"], sc["_dur"], ctx)
 
     sh = ep.cfg["shorts"]
-    mixed = A.mix(A.upsample(np.concatenate(voice), sr), events, sh.get("music", True), sh.get("music_db", -22),
-                  sh.get("sfx_db", -12), MOOD.get(story, "drive"))
+    if script["structure"].get("series"):       # the flame / praise series: its format's mood, silences, sounds
+        from .. import series_audio as SA
+        mixed = SA.mix(A.upsample(np.concatenate(voice), sr), events, script["structure"], scenes, sh)
+    else:
+        mixed = A.mix(A.upsample(np.concatenate(voice), sr), events, sh.get("music", True), sh.get("music_db", -22),
+                      sh.get("sfx_db", -12), MOOD.get(story, FPS.MOOD.get(story, "drive")))
     work = work or ep.path("work")
     work.mkdir(parents=True, exist_ok=True)
     sf.write(work / "mix.wav", mixed, A.SR, subtype="PCM_16")
@@ -602,7 +611,10 @@ def run(ep: Episode) -> None:
     shot = headshots.record(ep.cfg, read_json(ep.path("facts.json"))["players"][0])
     from pathlib import Path
     from ..core import sha256_file
-    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A)}
+    from .. import edit_kit as EK, edit_scenes as ES, series_audio as SA, series_scenes as SS, sfx_palette as SP
+    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A, FPS, SS, SA, SP, EK, ES)}
+    if SP.REGISTRY_PATH.exists():          # the meme sounds' trims, hit points and levels
+        code["sfx_registry"] = sha256_file(SP.REGISTRY_PATH)
     run_stage(ep, "render", VERSION, {"video": ep.cfg["video"], "shorts": ep.cfg["shorts"], "caption": CAPTION,
                                       "code": code,
                                       "headshot": shot and shot["sha256"]},

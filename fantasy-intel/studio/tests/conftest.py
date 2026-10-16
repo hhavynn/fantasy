@@ -65,6 +65,8 @@ def episode(tmp_path, monkeypatch) -> Episode:
     cfg = Config.load()
     cfg.raw["llm"] = {**cfg.raw["llm"], "provider": "fake"}
     cfg.raw["selection"] = {**cfg.raw["selection"], "risers": 2, "fallers": 2}
+    # the owner's enrolled voice is local and git-ignored, so a fresh clone has none; test_voice covers cloning
+    cfg.raw["shorts"] = {**cfg.raw["shorts"], "voice_clone": ""}
     ep = Episode(2026, 6, "long", cfg, log=lambda *_: None)
     ep.dir.mkdir(parents=True)
     write_json(ep.path("snapshot.json"), make_snapshot())

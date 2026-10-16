@@ -54,8 +54,9 @@ def git_state() -> dict:
 
 def kokoro_files(repo: str, voice: str) -> dict:
     from huggingface_hub import try_to_load_from_cache
+    from .tts import parse_voice
     out = {}
-    for name in (*KOKORO_FILES, f"voices/{voice}.pt"):
+    for name in (*KOKORO_FILES, *(f"voices/{v}.pt" for v, _ in parse_voice(voice))):
         path = try_to_load_from_cache(repo, name)
         if isinstance(path, str):
             out[name] = {"sha256": cached_sha256(Path(path)), "revision": Path(path).parts[-2 - name.count("/")]}
@@ -123,8 +124,9 @@ def build(ep: Episode) -> dict:
             "tts": {
                 "engine": "Kokoro-82M", "repo": cfg["tts"]["repo"], "code_license": "Apache-2.0",
                 "weights_license": cfg["tts"]["license"], "voice": voice,
-                "voice_origin": "built-in Kokoro voice (not a clone of any person)",
-                "speed": tts_cfg["speed"], "files": kokoro_files(cfg["tts"]["repo"], voice),
+                "voice_origin": "built-in Kokoro voice or a weighted mix of them (not a clone of any person)",
+                "speed": tts_cfg["speed"], "speed_scale": tts_cfg.get("speed_scale", 1.0),
+                "files": kokoro_files(cfg["tts"]["repo"], voice),
                 "g2p": {"misaki": "Apache-2.0",
                         "espeak-ng fallback": "GPL-3.0; run locally, never distributed; its output audio is "
                                               "not covered by the GPL",

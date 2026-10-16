@@ -55,3 +55,28 @@ def test_enroll_requires_the_speakers_declaration(tmp_path, monkeypatch):
         assert "--i-am-the-speaker" in str(exc)
     else:
         raise AssertionError("enrollment without a declaration must fail")
+
+
+def test_voice_specs_name_one_voice_or_a_weighted_blend():
+    from studio.stages.tts import parse_voice
+    assert parse_voice("am_adam") == [("am_adam", 1.0)]
+    assert parse_voice("am_puck:0.7+af_heart:0.3") == [("am_puck", 0.7), ("af_heart", 0.3)]
+    assert parse_voice("am_puck:7 + af_heart:3") == [("am_puck", 0.7), ("af_heart", 0.3)]
+    for bad in ("", "puck", "am_puck:0", "am_puck:-1+af_heart:2"):
+        try:
+            parse_voice(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"{bad!r} should be rejected")
+
+
+def test_blend_mixes_the_voice_tensors_and_a_single_voice_stays_a_name():
+    import torch
+    from studio.stages.tts import kokoro_voice
+
+    class Pipe:
+        def load_single_voice(self, name):
+            return {"am_puck": torch.ones(2), "af_heart": torch.zeros(2)}[name]
+
+    assert kokoro_voice(Pipe(), "am_puck") == "am_puck"
+    assert torch.allclose(kokoro_voice(Pipe(), "am_puck:0.7+af_heart:0.3"), torch.full((2,), 0.7))
