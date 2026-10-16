@@ -307,6 +307,7 @@ def team_freshness(con, season: int, week: int, now: datetime, *, kickoffs: Mapp
     t_now = naive_utc(now)
     if t_now is None:
         raise ValueError("now is required")
+    writer = nfl_table_writer(con, season)
     nfl = _retrievals(con, SOURCE_NFLVERSE, season, SCOPE_TEAM_WEEK, week)
     espn = _retrievals(con, SOURCE_ESPN, season, SCOPE_TEAM_CURRENT)
     feed = _latest(_retrievals(con, SOURCE_NFLVERSE, season, SCOPE_FEED).get(None))
@@ -318,8 +319,14 @@ def team_freshness(con, season: int, week: int, now: datetime, *, kickoffs: Mapp
         started = ko is not None and t_now >= ko
         cutoff = ko if started else None          # once started only retrievals before kickoff count
         rep = reports.get(team, {"rows": 0, "designations": 0, "post_kickoff_designations": 0, "practice_only": 0})
-        nfl_all, espn_all = _latest(nfl.get(team)), _latest(espn.get(team))
-        nfl_ev, espn_ev = _latest(nfl.get(team), cutoff), _latest(espn.get(team), cutoff)
+        nfl_rows = nfl.get(team)
+        if not started:
+            # The table holds the latest sync's content, so before kickoff only that sync's own retrievals
+            # can vouch for it (an older retrieval would make newer, unlogged content look fresh). Once a
+            # game started the question is what we had BEFORE kickoff, which any earlier retrieval answers.
+            nfl_rows = [r for r in nfl_rows or [] if writer["verified"] and r["sync_run_id"] == writer["run_id"]]
+        nfl_all, espn_all = _latest(nfl_rows), _latest(espn.get(team))
+        nfl_ev, espn_ev = _latest(nfl_rows, cutoff), _latest(espn.get(team), cutoff)
         synced = rep["designations"] > 0
         if synced:
             source, ev = SOURCE_NFLVERSE, nfl_ev
@@ -402,7 +409,8 @@ def diagnostics(con, season: int, week: int, now: datetime, *, kickoffs: Mapping
               for t in teams if t["status"] in (STALE, MISSING) and not t["game_started"]]
     return {"season": season, "week": week, "now": naive_utc(now).replace(tzinfo=timezone.utc).isoformat(),
             "thresholds": {"stale_after_hours": thresholds.stale_after_hours, "window_hours": thresholds.window_hours},
-            "log_present": table_exists(con, TABLE), "summary": summarize(teams), "teams": teams,
+            "log_present": table_exists(con, TABLE), "nflverse_writer": nfl_table_writer(con, season),
+            "summary": summarize(teams), "teams": teams,
             "upcoming_issues": issues}
 
 
@@ -449,7 +457,7 @@ def manifest_view(con, season: int, week: int, captured_at: Any, *,
             return view
         ko = dict(kickoffs) if kickoffs is not None else scheduled_kickoffs(con, season, week)
         nfl = _retrievals(con, SOURCE_NFLVERSE, season, SCOPE_TEAM_WEEK, week)
-        run = latest_nfl_sync_run(con)
+        run = latest_nfl_sync_run(con, season)
     except Exception:
         return view
     view["log"] = "present"
@@ -474,26 +482,34 @@ def manifest_view(con, season: int, week: int, captured_at: Any, *,
     return view
 
 
-def latest_nfl_sync_run(con) -> dict | None:
-    """The latest successful nflverse sync (the one that wrote the current nfl_* tables), or None."""
+_RUN_SEASON = "TRY_CAST(json_extract_string(stats, '$.season') AS INTEGER)"
+
+
+def latest_nfl_sync_run(con, season: int) -> dict | None:
+    """The latest successful nflverse sync OF `season` (the one that wrote that season's nfl_* partition), or
+    None. `run_nfl_sync` replaces only its own season, so a newer sync of another season is not the writer;
+    the season is read from the run's recorded stats (a run without one is never taken as the writer)."""
     if not table_exists(con, "sync_runs"):
         return None
-    row = con.execute("SELECT run_id, finished_at, started_at FROM sync_runs WHERE source = 'nfl' AND status = 'ok' "
-                      "ORDER BY finished_at DESC NULLS LAST, started_at DESC LIMIT 1").fetchone()
+    row = con.execute(
+        "SELECT run_id, finished_at, started_at FROM sync_runs WHERE source = 'nfl' AND status = 'ok' "
+        f"AND {_RUN_SEASON} = ? ORDER BY finished_at DESC NULLS LAST, started_at DESC LIMIT 1", [season]).fetchone()
     return None if row is None else {"run_id": row[0], "finished_at": naive_utc(row[1]),
                                      "started_at": naive_utc(row[2])}
 
 
 def unverifiable_after(con, season: int, run: dict) -> str | None:
-    """Why the table content may be newer than `run` (the latest 'ok' nfl sync), or None. See manifest_view.
-    No upper bound: the table is what it is now, so a crashed committed sync that started after a backdated
-    capture time still makes the view unverifiable."""
+    """Why the table content may be newer than `run` (the latest 'ok' nfl sync of `season`), or None. See
+    manifest_view. No upper bound: the table is what it is now, so a crashed committed sync that started after a
+    backdated capture time still makes the view unverifiable. An unfinished sync whose season is unknown (no
+    stats yet) is treated as possibly this season (fail closed)."""
     started = run["started_at"]
     if started is None:
         return f"start time of {run['run_id']} unknown"
     bad = con.execute("SELECT run_id, status FROM sync_runs WHERE source = 'nfl' AND run_id <> ? AND started_at > ? "
                       "AND (status IS NULL OR status NOT IN ('ok', 'error')) "
-                      "ORDER BY started_at LIMIT 1", [run["run_id"], started]).fetchone()
+                      f"AND ({_RUN_SEASON} IS NULL OR {_RUN_SEASON} = ?) "
+                      "ORDER BY started_at LIMIT 1", [run["run_id"], started, season]).fetchone()
     if bad:
         return f"unfinished nfl sync {bad[0]} (status {bad[1]}) after {run['run_id']}"
     if not table_exists(con, TABLE):
@@ -505,6 +521,21 @@ def unverifiable_after(con, season: int, run: dict) -> str | None:
     if orphan:
         return f"nfl retrieval of sync {orphan[0]}, which has no recorded status, after {run['run_id']}"
     return None
+
+
+def nfl_table_writer(con, season: int) -> dict:
+    """Which sync wrote the current `season` nfl_injuries content, for tying it to a logged retrieval:
+    {run_id | None, verified (bool), reason (None when verified)}. Verified means a successful nfl sync of the
+    season exists and nothing unfinished or unrecorded came after it; only that run's own retrievals describe
+    the table. Shared by manifest_view (snapshots) and team_freshness (readiness)."""
+    try:
+        run = latest_nfl_sync_run(con, season)
+        if run is None:
+            return {"run_id": None, "verified": False, "reason": f"no successful nfl sync of {season} recorded"}
+        why = unverifiable_after(con, season, run)
+    except Exception as err:
+        return {"run_id": None, "verified": False, "reason": f"cannot read sync history ({type(err).__name__})"}
+    return {"run_id": run["run_id"], "verified": why is None, "reason": why}
 
 
 def readiness_notes(con, season: int, week: int, now: datetime) -> dict:
@@ -529,6 +560,11 @@ def readiness_notes(con, season: int, week: int, now: datetime) -> dict:
     out["upcoming_issues"] = diag["upcoming_issues"]
     out["post_kickoff_only"] = sorted(t["team"] for t in diag["teams"] if t["status"] == POST_KICKOFF_ONLY)
     out["fallback_adds_no_designations"] = diag["summary"]["espn_fallback_without_designations"]
+    out["nflverse_writer"] = diag["nflverse_writer"]
+    if not diag["nflverse_writer"]["verified"]:
+        out["warnings"].append("nflverse injury table cannot be tied to a logged retrieval "
+                               f"({diag['nflverse_writer']['reason']}); its evidence is treated as unverified, never "
+                               "fresh; informational only")
     for status, label in ((MISSING, "no injury evidence retrieved"), (STALE, "stale injury evidence")):
         hit = [i for i in diag["upcoming_issues"] if i["status"] == status]
         if hit:

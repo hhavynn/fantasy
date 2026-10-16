@@ -127,7 +127,18 @@ readiness status or exit code changes.
    (`error` is only set after a rollback), or a nflverse retrieval after it belongs to a sync with no
    recorded status (a crash from before this marker existed), no team gets an entry and `log` reads
    `unverifiable: ...`. `weekly_learning.py` then also reports the injuries part's sync-level `retrieved_at`
-   as unknown, so `known_by` falls back to `captured_at`. `log: "unavailable"` means an old database without the table. The field
+   as unknown, so `known_by` falls back to `captured_at`.
+   The writer is the latest successful nfl sync **of the requested season** (read from the run's recorded
+   `stats.season`; `run_nfl_sync` replaces only its own season, so a newer sync of another season is not the
+   writer). `start()` records the season in the marker; an unfinished marker whose season is unknown is
+   treated as possibly this season's (fail closed). `SyncRun.finish` replaces the marker with a single
+   `UPDATE`, never DELETE then INSERT, so a failure while finishing cannot erase it.
+   The same rule gates readiness (section 3): before kickoff a team's nflverse evidence counts as retrieved
+   only through the writer sync's own retrievals. If the newest sync's log write failed, or the table is
+   unverifiable (no successful sync of the season, an unfinished one after it), an older logged retrieval does
+   not make the current content look fresh: the team is `stale`
+   (`nflverse_report_without_verified_retrieval`) and the readiness report adds a warning ("nflverse injury
+   table cannot be tied to a logged retrieval"). Informational only, as everything in this section. `log: "unavailable"` means an old database without the table. The field
    is part of the content-addressed manifest id, so a new retrieval gives a new manifest and, as for any
    changed input, a new ledger run; an unchanged log is a no-op rerun. The first capture after this is
    deployed also gets a new manifest id (its body gains `injury_retrievals`), which freezes one extra run for

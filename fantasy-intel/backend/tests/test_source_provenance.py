@@ -359,12 +359,13 @@ from app.analytics import injury_freshness as inj  # noqa: E402
 H = timedelta(hours=1)
 
 
-def _sync(env, run, finished, status="ok"):
+def _sync(env, run, finished, status="ok", season=2025):
     """A sync_runs row for an nflverse sync (the sync that wrote the table content), finished at `finished`."""
     con = connect(env / "live.duckdb")
     done = None if status == "running" else finished.replace(tzinfo=None)      # a running sync has no finish time
-    con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status) VALUES (?, 'nfl', ?, ?, ?)",
-                [run, (finished - 5 * H / 60).replace(tzinfo=None), done, status])
+    con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status, stats) "
+                "VALUES (?, 'nfl', ?, ?, ?, ?)",
+                [run, (finished - 5 * H / 60).replace(tzinfo=None), done, status, json.dumps({"season": season})])
     con.close()
 
 
@@ -670,3 +671,22 @@ def test_real_sync_crash_after_commit_is_unverifiable_even_for_a_backdated_captu
         m = _capture(env, captured)
         assert m["injury_retrievals"]["teams"] == {}, captured
         assert m["injury_retrievals"]["log"].startswith("unverifiable: unfinished nfl sync nfl-")
+
+
+def test_a_newer_sync_of_another_season_does_not_hide_this_seasons_provenance(env):
+    """run_nfl_sync replaces only its own season, so a more recent ok sync of season 2024 did not write the
+    2025 table and must not be taken as the writer."""
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    _sync(env, "syncPrevSeason", KICK10 - 5 * H, season=2024)
+    m = _capture(env, KICK10 - 2 * H)
+    assert m["injury_retrievals"]["log"] == "present"
+    assert m["injury_retrievals"]["teams"]["AAA"]["retrieved_at"] == (KICK10 - 20 * H).isoformat()
+    # an unfinished sync of the other season does not block either ...
+    _sync(env, "deadPrevSeason", KICK10 - 4 * H, status="running", season=2024)
+    assert "AAA" in _capture(env, KICK10 - 1 * H)["injury_retrievals"]["teams"]
+    # ... but a marker whose season is unknown (no stats) may be this season's: fail closed
+    _sql(env, "INSERT INTO sync_runs (run_id, source, started_at, finished_at, status) "
+              "VALUES ('deadUnknown', 'nfl', TIMESTAMP '2025-09-10 14:00:00', NULL, 'running')")
+    blocked = _capture(env, KICK10 - timedelta(minutes=30))
+    assert blocked["injury_retrievals"]["teams"] == {}
+    assert blocked["injury_retrievals"]["log"].startswith("unverifiable: unfinished nfl sync deadUnknown")

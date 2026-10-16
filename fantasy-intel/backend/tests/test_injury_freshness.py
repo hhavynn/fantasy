@@ -39,6 +39,15 @@ def obs(source=inj.SOURCE_NFLVERSE, team="BUF", week=7, retrieved=WED_NOON, sha=
 
 
 def put(db, *observations):
+    """Log observations, registering the successful nfl sync that wrote each nflverse one (as run_nfl_sync does)."""
+    for o in observations:
+        if o.source == inj.SOURCE_NFLVERSE and o.sync_run_id and not db.execute(
+                "SELECT count(*) FROM sync_runs WHERE run_id = ?", [o.sync_run_id]).fetchone()[0]:
+            at = naive(inj.naive_utc(o.retrieved_at))
+            db.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status, stats) "
+                       "VALUES (?, 'nfl', ?, ?, 'ok', ?)",
+                       [o.sync_run_id, at - timedelta(minutes=1), at + timedelta(minutes=10),
+                        json.dumps({"season": o.season})])
     return inj.record_observations(db, list(observations))
 
 
@@ -661,9 +670,10 @@ def test_cli_execute_reports_per_source_errors_and_still_runs_the_other_sync(cli
 # ----------------------------------------------------------------------------- manifest view / readiness notes
 
 
-def sync_run(db, run, finished, status="ok"):
-    db.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status) VALUES (?, 'nfl', ?, ?, ?)",
-               [run, naive(finished) - timedelta(minutes=5), naive(finished), status])
+def sync_run(db, run, finished, status="ok", season=2026):
+    db.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status, stats) "
+               "VALUES (?, 'nfl', ?, ?, ?, ?)",
+               [run, naive(finished) - timedelta(minutes=5), naive(finished), status, json.dumps({"season": season})])
 
 
 def test_manifest_view_records_only_pregame_retrievals_of_the_latest_sync_before_the_capture(db):
@@ -672,8 +682,6 @@ def test_manifest_view_records_only_pregame_retrievals_of_the_latest_sync_before
         obs(team="KC", retrieved=WED_NOON, sha="3" * 64, run="r2"),
         obs(team="DEN", retrieved=WED_NOON, sha="4" * 64, run="r2"),
         obs(team="MIA", retrieved=WED_NOON - timedelta(hours=5), sha="5" * 64, run="r1"))   # r2 did not list MIA
-    sync_run(db, "r1", WED_NOON - timedelta(hours=5) + timedelta(minutes=10))
-    sync_run(db, "r2", WED_NOON + timedelta(minutes=10))
     ko = {**KICKOFFS, "KC": WED_NOON, "DEN": None}                   # KC kicks off exactly at the retrieval
     view = inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(minutes=30), kickoffs=ko)
     assert view["log"] == "present" and set(view["teams"]) == {"BUF"}   # not KC (at kickoff), DEN (unknown), MIA (old sync)
@@ -726,3 +734,38 @@ def test_readiness_notes_absent_table_or_no_connection(db):
         notes = inj.readiness_notes(con, 2026, 7, WED_NOON)
         assert notes["log_available"] is False and notes["upcoming_issues"] == []
         assert notes["warnings"] and notes["warnings"][0].startswith("injury retrieval log unavailable")
+
+
+def test_newer_sync_without_log_rows_makes_older_retrieval_not_fresh_and_warns(db):
+    db.execute("CREATE TABLE IF NOT EXISTS nfl_schedules (season INTEGER, week INTEGER, game_type VARCHAR, "
+               "gameday VARCHAR, gametime VARCHAR, home_team VARCHAR, away_team VARCHAR)")
+    db.execute("INSERT INTO nfl_schedules VALUES (2026, 7, 'REG', '2026-10-25', '13:00', 'KC', 'DEN')")
+    synced_nflverse(db, "KC", WED_NOON - timedelta(hours=2))                  # sync A: designation + logged retrieval
+    assert status_of(db, WED_NOON, "KC")["status"] == inj.FRESH
+    # sync B (newer, ok) rewrote nfl_injuries but its log write failed: no retrievals at all
+    sync_run(db, "rB", WED_NOON - timedelta(hours=1))
+    row = status_of(db, WED_NOON, "KC")
+    assert row["status"] == inj.STALE and row["reason"] == "nflverse_report_without_verified_retrieval"
+    assert row["evidence_retrieved_at"] is None
+    notes = inj.readiness_notes(db, 2026, 7, WED_NOON)
+    assert notes["nflverse_writer"] == {"run_id": "rB", "verified": True, "reason": None}   # B is the writer ...
+    assert any("stale injury evidence" in w for w in notes["warnings"])                      # ... with no retrievals
+    # a newer sync of ANOTHER season is not the writer: A's retrieval still vouches for the table
+    db.execute("DELETE FROM sync_runs WHERE run_id = 'rB'")
+    sync_run(db, "rOther", WED_NOON - timedelta(hours=1), season=2025)
+    assert status_of(db, WED_NOON, "KC")["status"] == inj.FRESH
+    # an unfinished sync after the writer makes the table unverifiable: never fresh, and the warning says why
+    sync_run(db, "rDead", WED_NOON - timedelta(hours=1), status="running")
+    row = status_of(db, WED_NOON, "KC")
+    assert row["status"] == inj.STALE
+    notes = inj.readiness_notes(db, 2026, 7, WED_NOON)
+    assert not notes["nflverse_writer"]["verified"]
+    assert any("cannot be tied to a logged retrieval" in w and "rDead" in w for w in notes["warnings"])
+
+
+def test_no_successful_sync_of_the_season_is_never_fresh(db):
+    injuries(db, [("KC", 7, "k1", "Out", None, None)])
+    put(db, obs(team="KC", retrieved=WED_NOON - timedelta(hours=1), run="r1"))
+    db.execute("DELETE FROM sync_runs")
+    assert status_of(db, WED_NOON, "KC")["status"] == inj.STALE
+    assert not inj.nfl_table_writer(db, 2026)["verified"]
