@@ -6,9 +6,10 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { LineChart } from "@/components/charts";
 import { MovesTable } from "@/components/MovesTable";
 import { PlayerLink } from "@/components/PlayerLink";
-import { Badge, EmptyState, Method, Notice, PageHeader, Pos, Score, Section, Stat, StatStrip, Tabs } from "@/components/ui";
+import { Badge, EmptyState, Method, Notice, PageHeader, Pos, Rating, Score, Section, Stat, StatStrip, Tabs } from "@/components/ui";
 import { api, type ApiResult } from "@/lib/api";
 import { date, num } from "@/lib/format";
+import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
 import { compositionSeries, parseTab } from "@/lib/manager-view";
 import { ConfDot, DIMENSION_TITLES, formatMetric, labelTone } from "@/lib/managers";
 import type { ScoutingReport as Report } from "@/lib/manager-scouting";
@@ -175,7 +176,7 @@ function Overview({ d, scouting }: { d: Detail; scouting: ScoutingResult }) {
         <Section title="Positional needs (current roster)" flush>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Pos</th><th>Need</th><th className="num">Healthy</th><th className="num">Out</th><th className="num">Starter value</th></tr></thead>
+              <thead><tr><th>Pos</th><th title="Positional need, 0–10 scale (not a player rating)">Need</th><th className="num">Healthy</th><th className="num">Out</th><th className="num" title="Internal 0–10 starter value (not the 0–100 value rating)">Starter value</th></tr></thead>
               <tbody>
                 {d.needs.filter((n) => n.starters_required > 0).map((n) => (
                   <tr key={n.position}>
@@ -192,7 +193,7 @@ function Overview({ d, scouting }: { d: Detail; scouting: ScoutingResult }) {
         <Section title="Current roster" flush>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Slot</th><th>Player</th><th>Status</th><th>Signal</th><th className="num">Value</th></tr></thead>
+              <thead><tr><th>Slot</th><th>Player</th><th>Status</th><th>Signal</th><th className="num" title={`Value rating, 0–100: ${RATING_DESCRIPTION.value}. ${RATING_CAVEAT}`}>Value</th></tr></thead>
               <tbody>
                 {d.roster.map((p) => (
                   <tr key={p.espn_player_id}>
@@ -200,7 +201,7 @@ function Overview({ d, scouting }: { d: Detail; scouting: ScoutingResult }) {
                     <td><PlayerLink id={p.espn_player_id} name={p.full_name} /> <Pos value={p.position} /></td>
                     <td>{p.injury_status && !["ACTIVE", "NORMAL"].includes(p.injury_status) ? <Badge value={p.injury_status} /> : ""}</td>
                     <td><Badge value={p.market_signal} /></td>
-                    <td className="num">{num(p.value_score)}</td>
+                    <td className="num"><Rating rating={ratingFor(p, "value")} kind="value" variant="text" /></td>
                   </tr>
                 ))}
               </tbody>
