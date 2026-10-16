@@ -32,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import time
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
@@ -42,8 +43,8 @@ from . import motion as M
 from .core import STUDIO_ROOT, Config, Episode, read_json, sha256_bytes, sha256_file, utcnow, write_json
 
 MODES = ("off", "hook", "hybrid")
-VERSION = 1
-FPS_HOST = 25
+VERSION = 2
+FPS_HOST = 25                            # the baseline MuseTalk path; the hq path runs at the video's fps
 WORKER = Path(__file__).with_name("presenter_worker.py")
 
 # Layout of the host shot (1080x1920): the scene card on top, his face below it, captions under his chin.
@@ -76,9 +77,23 @@ class PresenterError(RuntimeError):
 
 def settings(cfg: Config) -> dict:
     p = dict(getattr(cfg, "raw", {}).get("presenter") or {})
-    return {"mode": p.get("mode", "off"), "engine": Path(p.get("engine", "~/models/musetalk-mac")).expanduser(),
-            "cache": Path(p.get("cache", "~/models/presenter")).expanduser(),
-            "portrait": STUDIO_ROOT / p.get("portrait", "assets/presenter/host.png")}
+    st = {"mode": p.get("mode", "off"), "engine": Path(p.get("engine", "~/models/musetalk-mac")).expanduser(),
+          "cache": Path(p.get("cache", "~/models/presenter")).expanduser(),
+          "portrait": STUDIO_ROOT / p.get("portrait", "assets/presenter/host.png"),
+          # "hq": MuseTalk in our own loop (native fps, lossless, skin-detail restore); "musetalk": the original
+          # inference script at 25 fps (the fallback, and the A/B baseline)
+          "engine_mode": p.get("engine_mode", "musetalk"),
+          "fps": int(p.get("fps", cfg["video"]["fps"] if "video" in getattr(cfg, "raw", {}) else 30)),
+          "detail": float(p.get("detail", 1.0)), "detail_sigma": float(p.get("detail_sigma", 3.5)),
+          "ref_image": p.get("ref_image", ""),
+          # "procedural": affine sway on the still portrait; "library": natural-motion clips of the same host
+          # generated once with an image-to-video model (see presenter_motion.py)
+          "motion": p.get("motion", "procedural"),
+          "library": Path(p.get("library", "~/models/presenter/motion/library")).expanduser()}
+    if st["ref_image"]:
+        st["ref_image"] = str((STUDIO_ROOT / st["ref_image"]) if not Path(st["ref_image"]).expanduser().is_absolute()
+                              else Path(st["ref_image"]).expanduser())
+    return st
 
 
 # ------------------------------------------------------------------------------------------- windows
@@ -103,10 +118,11 @@ def _worker(st: dict, args: list[str]) -> None:
         raise PresenterError(f"presenter worker failed: {(proc.stderr or proc.stdout)[-1200:]}")
 
 
-def landmarks(st: dict) -> dict:
-    out = st["cache"] / f"host_{sha256_file(st['portrait'])[:12]}_landmarks.json"
+def landmarks(st: dict, image: Path | None = None) -> dict:
+    image = image or st["portrait"]
+    out = st["cache"] / f"host_{sha256_file(image)[:12]}_landmarks.json"
     if not out.exists():
-        _worker(st, ["landmarks", "--image", str(st["portrait"]), "--out", str(out)])
+        _worker(st, ["landmarks", "--image", str(image), "--out", str(out)])
     return json.loads(out.read_text())
 
 
@@ -138,10 +154,11 @@ def blink(img: Image.Image, eyes: dict, c: float) -> Image.Image:
     return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
 
 
-def base_frames(st: dict, lm: dict, seconds: float = 6.0) -> Path:
-    """The idle clip MuseTalk animates: slow sway, breathing scale, two blinks. MuseTalk plays it forward then
-    backward, so the motion loops smoothly."""
-    key = sha256_bytes(json.dumps([sha256_file(st["portrait"]), seconds, BLINK, BLINKS_AT, VERSION]).encode())[:12]
+def base_frames(st: dict, lm: dict, seconds: float = 6.0, fps: int = FPS_HOST) -> Path:
+    """The procedural idle clip MuseTalk animates: slow sway and breathing scale on the still portrait.
+    MuseTalk plays it forward then backward, so the motion loops smoothly."""
+    key = sha256_bytes(json.dumps([sha256_file(st["portrait"]), seconds, BLINK, BLINKS_AT, 1] +
+                                  ([fps] if fps != FPS_HOST else [])).encode())[:12]
     out = st["cache"] / f"base_{key}"
     if (out / "done").exists():
         return out
@@ -150,9 +167,9 @@ def base_frames(st: dict, lm: dict, seconds: float = 6.0) -> Path:
     W, H = src.size
     fx0, fy0, fx1, fy1 = lm["face_box"]
     fcx, fcy = (fx0 + fx1) / 2, (fy0 + fy1) / 2
-    blinks = [int(s_ * FPS_HOST) for s_ in BLINKS_AT]
-    for i in range(int(seconds * FPS_HOST)):
-        t = i / FPS_HOST
+    blinks = [int(s_ * fps) for s_ in BLINKS_AT]
+    for i in range(int(seconds * fps)):
+        t = i / fps
         ang = math.radians(0.55 * math.sin(2 * math.pi * t / 6.1) + 0.25 * math.sin(2 * math.pi * t / 2.7))
         s = 1 + 0.006 * math.sin(2 * math.pi * t / 3.9)
         dx = 3.0 * math.sin(2 * math.pi * t / 5.3) + 1.2 * math.sin(2 * math.pi * t / 2.1)
@@ -170,19 +187,138 @@ def base_frames(st: dict, lm: dict, seconds: float = 6.0) -> Path:
     return out
 
 
+def library_clips(st: dict) -> list[Path]:
+    return sorted(st["library"].glob("*.mp4")) if st["library"].exists() else []
+
+
+def motion_frames(st: dict, clip: Path, fps: int, start: float = 0.0, seconds: float = 4.0) -> Path:
+    """A stretch of a natural-motion library clip (start and seconds in clip time) as PNG frames (cached).
+    Frames map 1:1 onto the output frame rate: no resampling, so no repeated frames (the 24 fps library plays
+    1.25x faster at 30 fps, which keeps idle motion natural; dropping or doubling frames visibly stutters)."""
+    key = sha256_bytes(json.dumps([sha256_file(clip), "1:1", round(start, 2), seconds]).encode())[:12]
+    out = st["cache"] / f"motion_{key}"
+    if (out / "done").exists():
+        return out
+    out.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{seconds:.3f}", "-i", str(clip),
+                    "-fps_mode", "passthrough", "-start_number", "0", str(out / "%08d.png")], check=True)
+    (out / "done").write_text(utcnow())
+    return out
+
+
+BLINK_MAX_S = 0.4          # upper end of a spontaneous blink (about 100-400 ms); a longer lid drop reads as sleepy
+LIBRARY_MIN_SPAN_S = 1.5   # shorter usable stretches loop too visibly
+GAZE_MAX = 0.025           # iris shift across the eye vs the portrait; calibrated on idle_01: 0.021 still reads
+                           # as at the camera, 0.035 clearly looks away (docs/presenter/README.md)
+
+
+def eye_spans(eyes: list, fps: float, gaze: list | None = None) -> list[tuple[int, int]]:
+    """Frame ranges [a, b) of a library clip where the host looks at the viewer: no lid drop longer than a
+    blink, and no look away. A frame is "lowered" when the eye opening is under 80% of the clip's median; a
+    lowered run longer than BLINK_MAX_S (a slow close, a squint, eyes drifting shut) is cut out with a
+    one-frame margin. With `gaze`, open-eyed frames whose gaze is more than GAZE_MAX off the first frame (the
+    canonical portrait, which looks into the camera) are cut out too. Missing faces are cut out."""
+    vals = [v for v in eyes if v is not None]
+    if not vals:
+        return []
+    ref = float(np.median(vals))
+    bad = [v is None for v in eyes]
+    if gaze and gaze[0] is not None:
+        for k, (e, g) in enumerate(zip(eyes, gaze)):
+            if e is not None and e >= 0.8 * ref and g is not None and abs(g - gaze[0]) > GAZE_MAX:
+                bad[k] = True
+    i, n = 0, len(eyes)
+    while i < n:
+        if eyes[i] is not None and eyes[i] < 0.8 * ref:
+            j = i
+            while j < n and eyes[j] is not None and eyes[j] < 0.8 * ref:
+                j += 1
+            if (j - i) / fps > BLINK_MAX_S:
+                for k in range(max(0, i - 1), min(n, j + 1)):
+                    bad[k] = True
+            i = j
+        else:
+            i += 1
+    spans, a = [], None
+    for k in range(n + 1):
+        if k < n and not bad[k]:
+            a = k if a is None else a
+        elif a is not None:
+            spans.append((a, k))
+            a = None
+    return spans
+
+
+def library_audit(st: dict, clip: Path) -> dict:
+    """Per-clip eye audit (cached): the usable stretches of a natural-motion clip, in seconds."""
+    key = sha256_file(clip)[:12]
+    out = st["cache"] / f"audit2_{key}.json"
+    if out.exists():
+        return read_json(out)
+    series = st["cache"] / f"audit2_{key}.mouth.json"
+    _worker(st, ["mouth", "--video", str(clip), "--out", str(series)])
+    data = json.loads(series.read_text())
+    eyes = data["eyes"]
+    fps = float(Fraction(subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate", "-of",
+         "csv=p=0", str(clip)], capture_output=True, text=True, check=True).stdout.strip()))
+    spans = [(round(a / fps, 3), round(b / fps, 3)) for a, b in eye_spans(eyes, fps, data.get("gaze"))]
+    rec = {"clip": clip.name, "fps": fps, "frames": len(eyes), "usable_s": spans,
+           "rule": f"no lid drop below 80% of median longer than {BLINK_MAX_S}s; gaze within {GAZE_MAX} of frame 0"}
+    write_json(out, rec)
+    return rec
+
+
+def base_for(st: dict, window: dict, episode_id: str) -> tuple[Path, dict]:
+    """The idle footage for one window and the host landmarks in it. With a motion library, the clip and the
+    start point are picked by a hash of the episode and line, so windows differ but re-renders don't. Only
+    the stretches of each clip that pass the eye audit are used."""
+    fps = st["fps"] if st["engine_mode"] == "hq" else FPS_HOST
+    spans = []
+    if st["motion"] == "library":
+        for clip in library_clips(st):
+            spans += [(clip, a, b) for a, b in library_audit(st, clip)["usable_s"] if b - a >= LIBRARY_MIN_SPAN_S]
+    if not spans:
+        lm = landmarks(st)
+        return base_frames(st, lm, fps=fps), lm
+    h = int(sha256_bytes(f"{episode_id}:{window['segment']}".encode())[:8], 16)
+    clip, a, b = spans[h % len(spans)]
+    seconds = min(4.0, b - a)
+    start = a + ((h >> 8) % 100) / 100 * (b - a - seconds)
+    frames = motion_frames(st, clip, fps, start, seconds)
+    return frames, landmarks(st, frames / "00000000.png")
+
+
 # ------------------------------------------------------------------------------------------- lip sync
 
+def engine_params(st: dict) -> dict:
+    if st["engine_mode"] != "hq":
+        return {"engine_mode": "musetalk", "fps": FPS_HOST}
+    return {"engine_mode": "hq", "fps": st["fps"], "detail": st["detail"], "detail_sigma": st["detail_sigma"],
+            "ref_image": sha256_file(Path(st["ref_image"])) if st["ref_image"] else ""}
+
+
 def lipsync(st: dict, frames: Path, audio: Path) -> tuple[Path, dict]:
-    key = sha256_bytes(json.dumps([frames.name, sha256_file(audio), VERSION]).encode())[:16]
-    out = st["cache"] / "clips" / f"{key}.mp4"
+    """Lip-sync one window. The cache key covers the idle footage, the audio and every engine setting, so a
+    change to any of them re-renders."""
+    params = engine_params(st)
+    key = sha256_bytes(json.dumps([frames.name, sha256_file(audio), params, VERSION]).encode())[:16]
+    out = st["cache"] / "clips" / (f"{key}.mkv" if params["engine_mode"] == "hq" else f"{key}.mp4")
     report = out.with_suffix(".json")
     if out.exists() and report.exists():
         return out, {**json.loads(report.read_text()), "cached": True}
     out.parent.mkdir(parents=True, exist_ok=True)
-    _worker(st, ["lipsync", "--upstream", str(st["engine"] / "upstream"), "--frames", str(frames),
-                 "--audio", str(audio), "--out", str(out), "--report", str(report),
-                 "--work", str(st["cache"] / "musetalk_work" / frames.name)])
-    return out, json.loads(report.read_text())
+    common = ["--upstream", str(st["engine"] / "upstream"), "--frames", str(frames), "--audio", str(audio),
+              "--out", str(out), "--report", str(report), "--work", str(st["cache"] / "musetalk_work" / frames.name)]
+    if params["engine_mode"] == "hq":
+        extra = ["--fps", str(params["fps"]), "--detail", str(params["detail"]),
+                 "--detail_sigma", str(params["detail_sigma"])]
+        if st["ref_image"]:
+            extra += ["--ref_image", st["ref_image"]]
+        _worker(st, ["lipsync_hq", *common, *extra])
+    else:
+        _worker(st, ["lipsync", *common])
+    return out, {**json.loads(report.read_text()), "fps": params["fps"]}
 
 
 def read_frames(video: Path, size: tuple[int, int] | None = None) -> np.ndarray:
@@ -305,7 +441,7 @@ def caption_at(cues: list[dict], t: float, accent) -> Image.Image | None:
     return M.caption_frame(cue["words"], active, accent, t - cue["start"])
 
 
-def _composite(ep: Episode, clips: list[dict], place, out: Path) -> None:
+def _composite(ep: Episode, clips: list[dict], out: Path) -> None:
     fps = ep.cfg["video"]["fps"]
     original = read_frames(ep.path("final.mp4"), (M.W, M.H))
     cues, accent = caption_cues(ep)
@@ -320,8 +456,9 @@ def _composite(ep: Episode, clips: list[dict], place, out: Path) -> None:
         for c in clips:
             first, last = int(math.ceil(c["start"] * fps)), int(math.ceil(c["end"] * fps)) - 1
             if first <= n <= last:
-                k = min(int((t - c["start"]) * FPS_HOST), len(c["frames"]) - 1)
-                comp = np.asarray(compose(Image.fromarray(arr), Image.fromarray(c["frames"][k]), place,
+                # at the hq path the clip runs at the video's own fps, so this is 1:1 (no repeated frames)
+                k = min(int(round((t - c["start"]) * c["fps"])), len(c["frames"]) - 1)
+                comp = np.asarray(compose(Image.fromarray(arr), Image.fromarray(c["frames"][k]), c["place"],
                                           caption_at(cues, t, accent)))
                 tail = last - n if last < len(original) - 1 else CROSSFADE   # no fade-out when he closes the video
                 a = M.clamp((min(n - first, tail) + 1) / CROSSFADE)
@@ -336,14 +473,15 @@ def _composite(ep: Episode, clips: list[dict], place, out: Path) -> None:
 # ------------------------------------------------------------------------------------------------ QC
 
 def mouth_series(st: dict, clip_path: Path) -> dict:
-    out = clip_path.with_suffix(".mouth.json")
+    out = clip_path.with_suffix(".mouth.v2.json")      # v2: also records stable landmark positions
     if not out.exists():
         _worker(st, ["mouth", "--video", str(clip_path), "--out", str(out)])
     return json.loads(out.read_text())
 
 
-def clip_qc(clip: np.ndarray, audio: Path, lm: dict, frames_expected: int, mouth_open: dict) -> dict:
-    """Checks on the lip-synced clip itself (host resolution, 25 fps)."""
+def clip_qc(clip: np.ndarray, audio: Path, lm: dict, frames_expected: int, mouth_open: dict,
+            fps: int = FPS_HOST) -> dict:
+    """Checks on the lip-synced clip itself (host resolution, at the clip's fps)."""
     n = len(clip)
     out = {"exists": {"pass": n >= frames_expected * 0.95, "frames": n, "expected": frames_expected}}
     flat = clip.reshape(n, -1)
@@ -368,7 +506,7 @@ def clip_qc(clip: np.ndarray, audio: Path, lm: dict, frames_expected: int, mouth
     dark = np.array(series + [series[-1]] * (n - len(series)), np.float32)
     a, sr = sf.read(audio, dtype="float32")
     a = a if a.ndim == 1 else a.mean(1)
-    hop = sr / FPS_HOST
+    hop = sr / fps
     env = np.array([np.sqrt(np.mean(a[int(i * hop):int((i + 1) * hop)] ** 2) + 1e-12) for i in range(n)])
     voiced, silent = env > 0.25 * env.max(), env < 0.05 * env.max()
     # MuseTalk's first frames are a warm-up (audio padding); they sit inside the cross-fade, so skip them
@@ -386,6 +524,81 @@ def clip_qc(clip: np.ndarray, audio: Path, lm: dict, frames_expected: int, mouth
     lum = clip[:, fy0:fy1, fx0:fx1].astype(np.float32).mean((1, 2, 3))
     jump = np.abs(np.diff(lum))
     out["no_flicker"] = {"pass": bool(jump.max() < 6), "max_luma_jump": round(float(jump.max()), 2)}
+    return out
+
+
+def _lap(gray: np.ndarray) -> float:
+    g = gray.astype(np.float32)
+    lap = g[1:-1, 1:-1] * 4 - g[:-2, 1:-1] - g[2:, 1:-1] - g[1:-1, :-2] - g[1:-1, 2:]
+    return float(lap.var())
+
+
+def realism_metrics(clip: np.ndarray, mouth: dict, lm: dict, base: Path, fps: int) -> dict:
+    """Objective measurements of the failure modes seen in review. They describe a render and compare it with
+    others; they are not a realism score. Units: px are at the host clip's resolution; face-relative values
+    are divided by the face width."""
+    pts = mouth.get("points") or []
+    ids = mouth.get("point_ids") or []
+    n = len(clip)
+    out: dict = {}
+    fx0, fy0, fx1, fy1 = lm["face_box"]
+    face_w = fx1 - fx0
+    valid = [p for p in pts if p is not None]
+    if len(valid) >= 5 and ids:
+        P_ = np.array(valid, np.float32)                       # frames x points x 2
+        rigid = [ids.index(i) for i in (33, 133, 362, 263, 1) if i in ids]
+        r = P_[:, rigid]
+        accel = np.abs(np.diff(r, 2, axis=0)).mean()           # second difference: shake, not motion
+        out["landmark_jitter"] = round(float(accel / face_w * 1000), 2)   # per-mille of face width per frame²
+        nose = P_[:, ids.index(1)]
+        out["head_motion_range"] = round(float(np.ptp(nose, axis=0).max() / face_w * 100), 2)  # % of face width
+        if all(i in ids for i in (33, 263, 1, 152)):
+            iod = np.linalg.norm(P_[:, ids.index(33)] - P_[:, ids.index(263)], axis=1)
+            nc = np.linalg.norm(P_[:, ids.index(1)] - P_[:, ids.index(152)], axis=1)
+            ratio = iod / np.maximum(nc, 1)
+            out["identity_geometry_drift"] = round(float(np.ptp(ratio) / np.median(ratio) * 100), 2)   # %
+    # lower-face detail relative to the upper face, compared with the same ratio in the base footage
+    ym = int(lm["mouth"]["upper"][1])
+    eye_y = lm["eyes"]["left"]["lower"][1] if "left" in lm.get("eyes", {}) else fy0 + 0.45 * (fy1 - fy0)
+    up = (int(fx0 + 40), int(fy0 + 60), int(fx1 - 40), int(eye_y + 30))
+    lo = (int(fx0 + 40), ym - 50, int(fx1 - 40), int(fy1 - 10))
+    def ratio_of(img):
+        g = img.mean(-1)
+        return _lap(g[lo[1]:lo[3], lo[0]:lo[2]]) / max(_lap(g[up[1]:up[3], up[0]:up[2]]), 1e-6)
+    gen_ratio = float(np.median([ratio_of(f) for f in clip[::max(1, n // 20)]]))
+    base_imgs = sorted(base.glob("*.png"))[::10][:10]
+    base_ratio = float(np.median([ratio_of(np.asarray(Image.open(p).convert("RGB"))) for p in base_imgs])) if base_imgs else 0.0
+    out["lower_face_detail_vs_base"] = round(gen_ratio / base_ratio, 3) if base_ratio else None
+    # colour jumps in the face, frame to frame
+    face = clip[:, int(fy0):int(fy1), int(fx0):int(fx1)].astype(np.float32).mean((1, 2))
+    out["max_face_colour_jump"] = round(float(np.abs(np.diff(face, axis=0)).max()), 2)
+    # loop seam: the frame change where the base footage turns around, vs the typical frame change
+    nb = len(list(base.glob("*.png")))
+    diffs = np.abs(np.diff(clip.astype(np.int16), axis=0)).mean((1, 2, 3))
+    turns = [i for i in (nb - 1, 2 * nb - 1, 3 * nb - 1) if 0 < i < len(diffs)]
+    if turns and np.median(diffs) > 0:
+        out["loop_seam_ratio"] = round(float(max(diffs[i] for i in turns) / np.median(diffs)), 2)
+    # teeth: on clearly open frames, a dark slit in the middle of the upper-teeth band (the "gap" artifact)
+    if len(valid) >= 5 and 13 in ids and 14 in ids and 61 in ids and 291 in ids:
+        scores = []
+        for f, p, o in zip(clip, pts, mouth.get("open", [])):
+            if p is None or o is None or o < 0.035:
+                continue
+            u, l = p[ids.index(13)], p[ids.index(14)]
+            left, right = p[ids.index(61)], p[ids.index(291)]
+            cx = (u[0] + l[0]) / 2
+            half = abs(right[0] - left[0]) * 0.22
+            y0, y1 = int(u[1] + 1), int(u[1] + (l[1] - u[1]) * 0.45) + 1
+            if y1 - y0 < 3 or half < 8:
+                continue
+            band = f[y0:y1, int(cx - half):int(cx + half)].astype(np.float32).mean(-1).mean(0)
+            k = len(band)
+            centre = band[int(k * 0.42):int(k * 0.58)].min()
+            flanks = np.median(np.concatenate([band[:int(k * 0.35)], band[int(k * 0.65):]]))
+            scores.append(max(0.0, (flanks - centre) / max(flanks, 1)))
+        if scores:
+            out["teeth_gap_index"] = round(float(np.mean(scores)), 3)
+            out["teeth_open_frames"] = len(scores)
     return out
 
 
@@ -409,40 +622,47 @@ def _audio_sha(video: Path) -> str:
 
 # ---------------------------------------------------------------------------------------------- apply
 
-def apply(ep: Episode, mode: str) -> Path | None:
-    """Make final_presenter_<mode>.mp4, or return None (reason logged and recorded) if anything fails."""
+def apply(ep: Episode, mode: str, tag: str = "", overrides: dict | None = None) -> Path | None:
+    """Make final_presenter_<mode>.mp4, or return None (reason logged and recorded) if anything fails.
+    `tag` writes final_presenter_<mode>-<tag>.mp4 instead (A/B renders), with `overrides` on the settings;
+    tagged renders never write publishing metadata."""
     if mode == "off":
         return None
     if mode not in MODES:
         raise ValueError(f"presenter mode must be one of {MODES}")
-    st = settings(ep.cfg)
+    st = {**settings(ep.cfg), **(overrides or {})}
     st["cache"].mkdir(parents=True, exist_ok=True)
-    out = ep.path(f"final_presenter_{mode}.mp4")
-    rec = {"episode_id": ep.id, "mode": mode, "version": VERSION, "experimental": True, "started_at": utcnow(),
-           "licenses": LICENSES, "timings": {}}
+    suffix = f"{mode}-{tag}" if tag else mode
+    out = ep.path(f"final_presenter_{suffix}.mp4")
+    rec = {"episode_id": ep.id, "mode": mode, "tag": tag, "version": VERSION, "experimental": True,
+           "started_at": utcnow(), "licenses": LICENSES, "timings": {},
+           "settings": {k: str(v) for k, v in st.items() if k not in ("cache", "engine")}}
     t0 = time.time()
     try:
         if not st["portrait"].exists():
             raise PresenterError(f"host portrait missing: {st['portrait']}")
-        lm = landmarks(st)
         rec["portrait_sha256"] = sha256_file(st["portrait"])
-        frames = base_frames(st, lm)
-        rec["timings"]["base_clip_s"] = round(time.time() - t0, 1)
-        clips, gates = [], {"layout": layout_qc(lm)}
+        clips, gates = [], {}
         for w in windows(ep, mode):
             t1 = time.time()
+            frames, lm = base_for(st, w, ep.id)
+            gates[f"layout_{w['segment']}"] = layout_qc(lm)
             path, report = lipsync(st, frames, Path(w["audio"]))
+            fps = report.get("fps", FPS_HOST)
             clip = read_frames(path)
             dur = sf.info(w["audio"]).duration
-            g = clip_qc(clip, Path(w["audio"]), lm, int(dur * FPS_HOST) - 1, mouth_series(st, path))
+            g = clip_qc(clip, Path(w["audio"]), lm, int(dur * fps) - 1, mouth_series(st, path), fps)
             g["no_banned_modules"] = {"pass": not report.get("banned_modules_loaded"),
                                       "loaded": report.get("banned_modules_loaded")}
             gates[w["segment"]] = g
+            rec.setdefault("measurements", {})[w["segment"]] = realism_metrics(
+                clip, mouth_series(st, path), lm, frames, fps)
             rec["timings"][f"lipsync_{w['segment']}_s"] = round(time.time() - t1, 1)
             rec["timings"][f"lipsync_{w['segment']}_engine_s"] = report.get("seconds")
-            clips.append({**w, "frames": clip, "audio_s": round(dur, 3), "cached": report.get("cached", False)})
+            clips.append({**w, "frames": clip, "audio_s": round(dur, 3), "cached": report.get("cached", False),
+                          "fps": fps, "place": host_placement(lm), "base": frames.name})
         t2 = time.time()
-        _composite(ep, clips, host_placement(lm), out)
+        _composite(ep, clips, out)
         rec["timings"]["composite_s"] = round(time.time() - t2, 1)
         o_frames, v_frames = _frame_count(ep.path("final.mp4")), _frame_count(out)
         gates["invariants"] = {
@@ -451,7 +671,7 @@ def apply(ep: Episode, mode: str) -> Path | None:
             "timing_identical": {"pass": o_frames == v_frames, "frames": [o_frames, v_frames]},
             "resolution": {"pass": _probe_size(out) == (M.W, M.H), "size": list(_probe_size(out))},
         }
-        rec["windows"] = [{k: v for k, v in c.items() if k != "frames"} for c in clips]
+        rec["windows"] = [{k: v for k, v in c.items() if k not in ("frames", "place")} for c in clips]
         rec["gates"] = gates
         failed = [f"{g}.{k}" for g, checks in gates.items() for k, v in checks.items() if not v["pass"]]
         rec["passed"], rec["failures"] = not failed, failed
@@ -461,8 +681,9 @@ def apply(ep: Episode, mode: str) -> Path | None:
             rec["rejected_file"] = rejected.name
             ep.log(f"  presenter {mode}: QC failed {failed}; kept final.mp4, variant saved as {rejected.name}")
             return None
-        _metadata(ep, mode)
-        ep.log(f"  presenter {mode}: {out.name} ({time.time() - t0:.0f}s), QC passed")
+        if not tag:
+            _metadata(ep, mode)
+        ep.log(f"  presenter {suffix}: {out.name} ({time.time() - t0:.0f}s), QC passed")
         return out
     except Exception as e:                       # fail safe: the original video path is never affected
         rec["passed"], rec["error"] = False, f"{type(e).__name__}: {e}"
@@ -471,7 +692,7 @@ def apply(ep: Episode, mode: str) -> Path | None:
     finally:
         rec["finished_at"] = utcnow()
         rec["timings"]["total_s"] = round(time.time() - t0, 1)
-        write_json(ep.path(f"presenter_{mode}.json"), rec)
+        write_json(ep.path(f"presenter_{suffix}.json"), rec)
 
 
 def present(ep: Episode, mode: str) -> Path | None:

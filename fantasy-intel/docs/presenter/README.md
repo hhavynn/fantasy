@@ -8,6 +8,94 @@ An optional, fully local AI host that delivers the opening line (`hook`), or the
 
 **Verdict: it works end to end, but it isn't production-ready.** It looks like a competent AI avatar, not a person (see "How good it looks").
 
+## Realism pass 2: audit, fixes and A/B (2026-10-15)
+
+Current defaults: `mode = "off"`, `engine_mode = "hq"` (approved from the montages on 2026-10-15), `motion = "procedural"`. Nothing reaches a publishable file while `mode` is off; `engine_mode = "musetalk"` is still the fallback.
+
+### Root causes (measured, not guessed)
+
+| Artifact | Cause | Evidence |
+|---|---|---|
+| Soft, "beauty-filtered" lower face | MuseTalk generates the face at 256 px, pastes it back about 1.5× upscaled, and re-encodes it lossily | Lower/upper-face Laplacian ratio 0.05 in a generated frame, against 0.55 in the base frame |
+| Gap between the front teeth | At 256 px each tooth is a few pixels, and the closed-mouth portrait gives the model nothing to copy, so it invents teeth | Present in all four variants below. A teeth-visible reference portrait (experiment A, `~/models/presenter/teeth/full_teeth_37.png`) changed the tooth shapes but not the gap |
+| Rigid "photo with a moving mouth" look | Idle motion was an affine sway of one still image: no cheeks, brows, neck, shoulders or blinks | Head-motion range 1.6–2.6% of face width, all rigid |
+| Stutter | 25 fps MuseTalk clips mapped onto 30 fps video by nearest frame, so every fifth frame repeats | `_composite` frame mapping |
+
+### What changed
+
+- **Mouth (`engine_mode = "hq"`, experiment B):** our own MuseTalk loop (`presenter_worker.py lipsync_hq`) that:
+  - runs at the video's fps (30), so frames map 1:1 onto the video
+  - writes lossless FFV1 and resizes with LANCZOS4
+  - restores skin detail: the base frame's high-pass is warped onto the generated face by optical flow and added only where detail was lost, never on the lips, feathered at the edges
+- **Motion (`motion = "library"`):** idle clips of the same portrait made once with **Wan2.2-TI2V-5B** (Apache-2.0; see `models.md`) by `studio/presenter_motion.py`. Each clip starts from `host.png`, so identity is anchored to it.
+- **Library audit (new, in `presenter.py`):** pass 1 of the library showed the model's failure modes, so every clip is audited (Mediapipe) and only its good stretches are used:
+  - **Lid drops:** a run of frames with the eyes under 80% of the clip's median opening that lasts longer than 0.4 s (the upper end of a spontaneous blink) reads as sleepy, and is cut. idle_02 shut its eyes for about 1.6 s; idle_03 for 0.6 s plus a slow reopen.
+  - **Gaze:** the iris position across the eye is compared with frame 0 (the portrait, which looks into the lens). Calibrated on idle_01: 0.021 off still reads as eye contact, 0.035 clearly looks away, so the cutoff is 0.025. idle_01 looks away after 0.67 s.
+  - Stretches shorter than 1.5 s aren't used. If no clip passes, the host falls back to procedural motion.
+  - Library frames also map 1:1 (24 fps source played at 30 fps, so 1.25× speed) instead of repeating frames.
+- **Review tooling:**
+  - Tagged renders: `apply(..., tag=...)` writes `final_presenter_<mode>-<tag>.mp4` and never writes metadata.
+  - `studio/presenter_review.py` builds the side-by-side montages.
+  - `realism_metrics()` records measurements per window in `presenter_<mode>.json`.
+
+### A/B on the Allen host Short (hybrid: hook + verdict)
+
+Everything is in `studio/episodes/presenter-review/`:
+
+| Folder | What it is |
+|---|---|
+| `A_baseline` | the committed baseline (`8f7e69d`) |
+| `A_rerun` | the same path re-run to get its measurements |
+| `B_motion` | library motion + MuseTalk |
+| `C_mouth` | procedural motion + hq mouth |
+| `D_combined` | library motion + hq mouth |
+| `phone_grid.mp4` | all four side by side at phone size, with audio |
+| `face_zoom.mp4` | the host windows only, faces enlarged |
+
+Measurements for the verdict window (s05, 6.1 s):
+
+| | A | B | C | D |
+|---|---|---|---|---|
+| Lower-face detail vs base frame (1 = as sharp as the base) | 0.09 | 0.12 | 0.25 | **0.32** |
+| Head motion range (% of face width) | 2.6 | 3.0 | 3.1 | 3.4 |
+| Landmark jitter (‰ of face width per frame²) | 1.37 | 1.28 | 1.99 | 1.65 |
+| Identity geometry drift (%) | 4.4 | 6.2 | 5.1 | 6.4 |
+| Max face colour jump | 1.08 | 1.18 | 0.97 | 1.20 |
+| Teeth gap index | 0.28 | 0.29 | 0.27 | 0.31 |
+| Render time, whole video | 118 s | 73 s | 145 s | 79 s |
+
+How to read these:
+- **Detail** is the clear win: hq triples it, and stubble is visible again in the zoom.
+- **Motion** is real but small: only idle_03's first 2 s passes the audit, so the 6.1 s line loops that stretch forward and back.
+- **Jitter and identity drift** rise a little with real motion, which is expected: these are a description, not a pass mark.
+- **The teeth gap index** doesn't separate the variants, and neither do your eyes: the gap is in all four. It stays uncalibrated until a render without the gap exists.
+- **The loop-seam ratio** (recorded too) only catches jumps, not the velocity reversal of a ping-pong loop, so it isn't a useful gate yet.
+
+All variants pass the existing presenter QC; no gate was loosened. The Gadsden lip-sync gate is untouched.
+
+### Teeth: still unsolved
+
+- **Experiment A (teeth-visible portrait):** didn't remove the gap.
+- **Experiment B (inference and blending):** made the mouth area sharper, and the gap with it.
+- **Experiment C (LatentSync 1.6, 512 px):**
+  - The integration works. `studio/presenter_latentsync.py` patches it to use Mediapipe instead of InsightFace, MPS instead of CUDA, and no decord; tests check that InsightFace is never loaded.
+  - It isn't practical on this Mac: at 512 px with guidance it peaked at about 57 GB and swapped at about 7 minutes per denoising step (more than a day for one line). The run was stopped.
+  - What would make it practical: guidance 1.0 (half the batch) plus chunked attention, which is a patch to its UNet, or a CUDA machine.
+
+### Performance (M5 Pro, 48 GB)
+
+| Step | Time |
+|---|---|
+| Wan2.2 library clip (81 frames, 704×1280, 30 steps) | about 20 min to denoise and 9–17 min to decode, once per clip |
+| Decode | each clip in its own process (VAE only), with decoded tiles moved to the CPU, otherwise 48 GB runs out |
+| hq lip sync | about 1.2–2× the time of the original MuseTalk path, per the table above |
+
+### Recommendation
+
+- **The hq mouth (C or D):** ready to approve. It's a clear, low-risk improvement.
+- **Library motion:** the approach is right, but the library is too thin today (2 usable seconds). Regenerate idle_04–06 with the pass-2 prompts (eye contact, one quick blink; already in `presenter_motion.py`), then re-run the audit and review D again.
+- **Keep `mode = "off"`** until a D render with a fuller library passes your review. The teeth gap remains the most visible tell.
+
 ## Update: the host's own voice
 
 You picked **`am_adam`** (voice 7) from the 8-voice audition (`studio/episodes/presenter-audition/voice_audition.mp4`), set as `[presenter] voice` in `config.toml`.
