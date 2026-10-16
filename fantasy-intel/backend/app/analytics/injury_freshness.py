@@ -422,13 +422,16 @@ def manifest_view(con, season: int, week: int, captured_at: Any, *,
     """What the source snapshot manifest records about WHEN each team's week-W nflverse injury rows were
     retrieved (our clock), from the append-only log. Pure SELECT; never writes, never imputes.
 
-    Per team, the latest verified `team_week` retrieval strictly before `captured_at`, kept only if it is
-    also strictly before that team's kickoff. A team is left out (no entry, never a guessed time) when
-      * its kickoff is unknown, or the latest retrieval before the capture is at/after the kickoff (the
-        snapshot content may then include post-kickoff rows, so an older pregame time would overstate
-        how early it was known), or
-      * a later nflverse feed download (before the capture) no longer listed the team: the rows in the
-        table came from that later download, which the older team entry does not describe.
+    The log row must describe the table content actually captured. The nflverse sync REPLACES the season
+    on every run, so the content is that of the latest successful nfl sync (`sync_runs`, source 'nfl',
+    status 'ok'), and only that run's own retrievals can describe it. Hence:
+      * no table, no successful nfl sync run, or that run finished at/after `captured_at` (a backdated
+        capture, or content newer than the capture): no team gets an entry;
+      * otherwise a team gets its retrieval written by THAT run (`sync_run_id` equal to the run id), and
+        only if it was retrieved strictly before `captured_at` and strictly before the team's kickoff.
+        A run whose log write failed, or that did not list the team, leaves the team without an entry,
+        and `known_by` then falls back to the sync-level time (conservative).
+    A team with an unknown kickoff never gets an entry. Nothing is guessed.
     `log`: 'present' or 'unavailable' (old database without the table, or an unreadable log)."""
     cut = naive_utc(captured_at)
     if cut is None:
@@ -439,20 +442,31 @@ def manifest_view(con, season: int, week: int, captured_at: Any, *,
             return view
         ko = dict(kickoffs) if kickoffs is not None else scheduled_kickoffs(con, season, week)
         nfl = _retrievals(con, SOURCE_NFLVERSE, season, SCOPE_TEAM_WEEK, week)
-        feed = _latest(_retrievals(con, SOURCE_NFLVERSE, season, SCOPE_FEED).get(None), cut)
+        run = latest_nfl_sync_run(con)
     except Exception:
         return view
     view["log"] = "present"
+    if run is None or run["finished_at"] is None or run["finished_at"] >= cut:
+        return view
     for team in sorted(ko):
-        kick, hit = naive_utc(ko[team]), _latest(nfl.get(team), cut)
+        kick = naive_utc(ko[team])
+        mine = [r for r in nfl.get(team, []) if r["sync_run_id"] == run["run_id"]]
+        hit = _latest(mine, cut)
         if hit is None or kick is None or hit["retrieved_at"] >= kick:
-            continue
-        if feed is not None and feed["retrieved_at"] > hit["retrieved_at"]:
             continue
         view["teams"][team] = {"source": SOURCE_NFLVERSE, "retrieved_at": _utc_iso(hit["retrieved_at"]),
                                "provider_published_at": _utc_iso(hit["provider_published_at"]),
                                "content_sha": hit["content_sha"], "retrieval_id": hit["retrieval_id"]}
     return view
+
+
+def latest_nfl_sync_run(con) -> dict | None:
+    """The latest successful nflverse sync (the one that wrote the current nfl_* tables), or None."""
+    if not table_exists(con, "sync_runs"):
+        return None
+    row = con.execute("SELECT run_id, finished_at FROM sync_runs WHERE source = 'nfl' AND status = 'ok' "
+                      "ORDER BY finished_at DESC NULLS LAST, started_at DESC LIMIT 1").fetchone()
+    return None if row is None else {"run_id": row[0], "finished_at": naive_utc(row[1])}
 
 
 def readiness_notes(con, season: int, week: int, now: datetime) -> dict:

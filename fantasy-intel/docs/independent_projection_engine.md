@@ -725,8 +725,11 @@ injury rows, `known_by` prefers the verified per-team retrieval time recorded in
 
 **Per-team injury retrievals.** New manifests add `injury_retrievals` (schema `injury-retrievals/v1`):
 per team the latest verified entry of the append-only `injury_retrievals` log (source, retrieved_at,
-provider_published_at, content_sha, retrieval_id), only if retrieved strictly before both the capture
-and that team's kickoff. A team with no qualifying entry has none, and nothing is guessed. Manifests
+provider_published_at, content_sha, retrieval_id) written by the latest successful nfl sync (the one that
+wrote the captured table), only if retrieved strictly before both the capture and that team's kickoff.
+A team with no qualifying entry (log write failed, backdated capture, sync after the capture) has none,
+and nothing is guessed. The first capture after deployment gets a new manifest id and so one extra
+frozen run. Manifests
 made before the field existed load and reconstruct unchanged, and an existing manifest is never
 rewritten. Readiness and the cycle report also list injury-freshness warnings (missing, stale or
 post-kickoff-only evidence, ESPN fallback adding no designations, or "injury retrieval log

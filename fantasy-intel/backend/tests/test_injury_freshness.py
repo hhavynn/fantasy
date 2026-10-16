@@ -635,21 +635,36 @@ def test_cli_execute_reports_per_source_errors_and_still_runs_the_other_sync(cli
 # ----------------------------------------------------------------------------- manifest view / readiness notes
 
 
-def test_manifest_view_records_only_pregame_retrievals_before_the_capture(db):
+def sync_run(db, run, finished, status="ok"):
+    db.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status) VALUES (?, 'nfl', ?, ?, ?)",
+               [run, naive(finished) - timedelta(minutes=5), naive(finished), status])
+
+
+def test_manifest_view_records_only_pregame_retrievals_of_the_latest_sync_before_the_capture(db):
     put(db, obs(team="BUF", retrieved=WED_NOON - timedelta(hours=5), sha="1" * 64, run="r1"),
         obs(team="BUF", retrieved=WED_NOON, sha="2" * 64, run="r2", pub=WED_NOON - timedelta(hours=2)),
-        obs(team="KC", retrieved=SUN, sha="3" * 64, run="r3"),                       # at kickoff: not pregame
-        obs(team="DEN", retrieved=WED_NOON + timedelta(hours=1), sha="4" * 64, run="r4"))   # after the capture
-    view = inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(minutes=30), kickoffs=KICKOFFS)
-    assert view["log"] == "present" and set(view["teams"]) == {"BUF"}
+        obs(team="KC", retrieved=WED_NOON, sha="3" * 64, run="r2"),
+        obs(team="DEN", retrieved=WED_NOON, sha="4" * 64, run="r2"),
+        obs(team="MIA", retrieved=WED_NOON - timedelta(hours=5), sha="5" * 64, run="r1"))   # r2 did not list MIA
+    sync_run(db, "r1", WED_NOON - timedelta(hours=5) + timedelta(minutes=10))
+    sync_run(db, "r2", WED_NOON + timedelta(minutes=10))
+    ko = {**KICKOFFS, "KC": WED_NOON, "DEN": None}                   # KC kicks off exactly at the retrieval
+    view = inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(minutes=30), kickoffs=ko)
+    assert view["log"] == "present" and set(view["teams"]) == {"BUF"}   # not KC (at kickoff), DEN (unknown), MIA (old sync)
     e = view["teams"]["BUF"]
     assert (e["source"], e["content_sha"]) == ("nflverse", "2" * 64) and e["retrieved_at"] == WED_NOON.isoformat()
     assert e["provider_published_at"] == (WED_NOON - timedelta(hours=2)).isoformat()
     assert e["retrieval_id"] == db.execute("SELECT retrieval_id FROM injury_retrievals WHERE content_sha = ?",
                                            ["2" * 64]).fetchone()[0]
-    # the capture instant itself is excluded (strictly before), and an unknown kickoff never gets a time
-    assert inj.manifest_view(db, 2026, 7, WED_NOON, kickoffs=KICKOFFS)["teams"]["BUF"]["content_sha"] == "1" * 64
-    assert inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(minutes=30), kickoffs={"BUF": None})["teams"] == {}
+    # a capture before the latest sync finished cannot contain its content: nothing is embedded (not r1's rows)
+    assert inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(minutes=5), kickoffs=KICKOFFS)["teams"] == {}
+    # a failed sync does not count as the one that wrote the table; r2 stays the latest successful one
+    sync_run(db, "r3", WED_NOON + timedelta(hours=1), status="error")
+    assert set(inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(hours=2), kickoffs=KICKOFFS)["teams"]) == \
+        {"BUF", "KC", "DEN"}
+    # a newer successful sync whose log write failed (no rows): no older retrieval is attached to its content
+    sync_run(db, "r4", WED_NOON + timedelta(hours=3))
+    assert inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(hours=4), kickoffs=KICKOFFS)["teams"] == {}
 
 
 def test_manifest_view_is_read_only_and_marks_an_absent_table(db):

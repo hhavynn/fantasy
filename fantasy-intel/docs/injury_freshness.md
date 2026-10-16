@@ -108,14 +108,19 @@ readiness status or exit code changes.
    learning cycle pass the live DB). New manifests carry a top-level `injury_retrievals` field built by
    `injury_freshness.manifest_view`: `{"schema": "injury-retrievals/v1", "log": "present" | "unavailable",
    "teams": {team: {source, retrieved_at, provider_published_at, content_sha, retrieval_id}}}`.
-   Per team it is the latest verified `team_week` retrieval for that season and week strictly before the
-   capture time, kept only if it is also strictly before the team's kickoff. A team gets no entry (no time is
-   guessed) when its kickoff is unknown, when its latest retrieval before the capture is at or after kickoff
-   (the snapshot content may then include post-kickoff rows, so an older pregame time would overstate how
-   early it was known), or when a later nflverse `feed` download no longer listed the team. `log:
-   "unavailable"` means an old database without the table. The field is part of the content-addressed
-   manifest id, so a new retrieval gives a new manifest and, as for any changed input, a new ledger run; an
-   unchanged log is a no-op rerun. Manifests are write-once and an existing manifest or part is never
+   The nflverse sync replaces the whole season on every run, so the captured table content is that of the
+   latest successful nfl sync (`sync_runs`, source `nfl`, status `ok`), and only that sync's own retrievals
+   can describe it. Per team the entry is the `team_week` retrieval whose `sync_run_id` equals that sync's
+   run id, kept only if it is strictly before the capture time and strictly before the team's kickoff.
+   No team gets an entry (nothing is guessed, and `known_by` falls back to the sync-level time) when there
+   is no successful nfl sync, when that sync finished at or after `captured_at` (a backdated `--now`
+   capture), when its log write failed (the sync only warns) or it did not list the team, when the kickoff
+   is unknown, or when the retrieval is at or after kickoff. An older logged retrieval is therefore never
+   attached to newer table content. `log: "unavailable"` means an old database without the table. The field
+   is part of the content-addressed manifest id, so a new retrieval gives a new manifest and, as for any
+   changed input, a new ledger run; an unchanged log is a no-op rerun. The first capture after this is
+   deployed also gets a new manifest id (its body gains `injury_retrievals`), which freezes one extra run for
+   that week; this is harmless. Manifests are write-once and an existing manifest or part is never
    rewritten. Manifests made before this field existed have no such key; they load, reconstruct and
    rebuild identically (a capture without `con` also still produces the old shape). The schema string stays
    `source-snapshot/v1`: the field is additive and readers use `.get`.

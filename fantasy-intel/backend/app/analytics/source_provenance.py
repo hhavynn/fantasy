@@ -153,7 +153,7 @@ def capture(root: Path, sources: Sources, season: int, week: int, *, captured_at
     if con is not None:       # additive field: absent in older manifests, which still load and reconstruct
         from .injury_freshness import manifest_view
         body["injury_retrievals"] = manifest_view(con, season, week, captured_at)
-    mid =hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    mid = hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
     path = Path(root) / "snapshots" / "manifests" / f"s{season}w{week:02d}" / f"{mid}.json"
     if path.exists():
         return load_manifest(root, season, week, mid)
@@ -224,6 +224,9 @@ def injuries_as_of(root: Path, season: int, week: int, kickoffs: dict[str, datet
     caps = [m for m in manifests(root, season) if (m["parts"].get(part) or {}).get("status") == "captured"]
     rows, used, missing = [], {}, []
     for team, ko in sorted(kickoffs.items()):
+        # Applying week W's per-team retrieval time here is valid because every nflverse sync downloads and
+        # replaces the whole season feed, so the snapshot's season-wide injuries part was written by that
+        # same download for every team (manifest_view only records a time the writing sync itself logged).
         before = [(t, m) for t, m in ((known_by(m, part, team), m) for m in caps) if t is not None and t < ko]
         if not before:
             missing.append(team)

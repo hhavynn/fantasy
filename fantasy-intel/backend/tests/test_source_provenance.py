@@ -350,16 +350,36 @@ def test_ledger_rows_carry_injury_evidence(cli, env):
 
 
 # ----------------------------------------------------------------------------- injury retrieval provenance
-# Week 10 of the synthetic world: every team kicks off at KICK10 (17:00 UTC). The injury_retrievals log is
-# filled by hand here (the real syncs write it); nothing below touches a network or the production files.
+# Week 10 of the synthetic world: every team kicks off at KICK10 (17:00 UTC) unless a test moves a game. The
+# injury_retrievals log and the sync_runs row of each logged sync are filled by hand here (the real syncs write
+# both); nothing below touches a network or the production files.
 
 from app.analytics import injury_freshness as inj  # noqa: E402
 
 H = timedelta(hours=1)
 
 
-def _log(env, team, retrieved, *, scope=inj.SCOPE_TEAM_WEEK, sha=None, pub=None, run="r1"):
-    """One nflverse observation (team-week or feed) of the synthetic live DB, as the sync would log it."""
+def _sync(env, run, finished, status="ok"):
+    """A sync_runs row for an nflverse sync (the sync that wrote the table content), finished at `finished`."""
+    con = connect(env / "live.duckdb")
+    con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status) VALUES (?, 'nfl', ?, ?, ?)",
+                [run, (finished - 5 * H / 60).replace(tzinfo=None), finished.replace(tzinfo=None), status])
+    con.close()
+
+
+def _log(env, team, retrieved, *, scope=inj.SCOPE_TEAM_WEEK, sha=None, pub=None, run=None):
+    """One nflverse observation of the synthetic live DB, as the sync would log it. Observations at the same
+    instant share one sync (`run`), which is registered in sync_runs, finishing 10 minutes after the download.
+    The fixture's own sync ('synthetic-nfl') is dropped unless it is the run used: the latest successful sync
+    decides which log rows can describe the table."""
+    run = run or f"run@{retrieved.isoformat()}"
+    con = connect(env / "live.duckdb")
+    if run != "synthetic-nfl":
+        con.execute("DELETE FROM sync_runs WHERE run_id = 'synthetic-nfl'")
+    known = con.execute("SELECT count(*) FROM sync_runs WHERE run_id = ?", [run]).fetchone()[0]
+    con.close()
+    if not known:
+        _sync(env, run, retrieved + 10 * H / 60)
     con = connect(env / "live.duckdb")
     feed = scope == inj.SCOPE_FEED
     inj.record_observations(con, [inj.Observation(
@@ -389,9 +409,9 @@ def _entry(env, team, retrieved):
 
 def test_capture_embeds_the_latest_verified_retrieval_per_team(env):
     pub = KICK10 - 30 * H
-    _log(env, "AAA", KICK10 - 40 * H)
-    _log(env, "AAA", KICK10 - 20 * H, pub=pub)           # the latest before the capture is the one recorded
-    _log(env, "BBB", KICK10 - 10 * H)
+    _log(env, "AAA", KICK10 - 40 * H)                    # an older sync
+    _log(env, "AAA", KICK10 - 20 * H, pub=pub)           # the sync that wrote the table: its retrieval is recorded
+    _log(env, "BBB", KICK10 - 20 * H)
     m = _capture(env, KICK10 - 2 * H)
     view = m["injury_retrievals"]
     assert view["schema"] == "injury-retrievals/v1" and view["log"] == "present"
@@ -405,19 +425,20 @@ def test_capture_embeds_the_latest_verified_retrieval_per_team(env):
 
 
 def test_retrieval_at_or_after_kickoff_or_after_capture_is_not_embedded(env):
-    _log(env, "AAA", KICK10)                                     # exactly at kickoff
-    _log(env, "BBB", KICK10 + H)                                 # after kickoff
-    _log(env, "CCC", KICK10 - 1 * H)                             # after the capture below
-    _log(env, "DDD", KICK10 - 30 * H)                            # older pregame retrieval ...
-    _log(env, "DDD", KICK10 - 1 * H)                             # ... and a newer one after the capture
-    m = _capture(env, KICK10 - timedelta(minutes=90))
-    teams = m["injury_retrievals"]["teams"]
-    assert set(teams) == {"DDD"} and teams["DDD"]["retrieved_at"] == (KICK10 - 30 * H).isoformat()
-    # a capture after kickoff: AAA/BBB's latest retrieval is at/after kickoff, so the snapshot content may include
-    # it and an older pregame time would overstate how early it was known; DDD's latest is still pregame
-    late = _capture(env, KICK10 + 12 * H)
-    assert set(late["injury_retrievals"]["teams"]) == {"CCC", "DDD"}
-    assert late["injury_retrievals"]["teams"]["DDD"]["retrieved_at"] == (KICK10 - 1 * H).isoformat()
+    # one sync (retrieved at KICK10 - 3h) logged every team; two games kick off at/before that instant
+    t = KICK10 - 3 * H
+    _sql(env, "UPDATE nfl_schedules SET gametime = '08:00' WHERE season = 2025 AND week = 10 AND home_team = 'FFF'",
+         "UPDATE nfl_schedules SET gametime = '10:00' WHERE season = 2025 AND week = 10 AND home_team = 'BBB'")
+    for team in "AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH":
+        _log(env, team, t)
+    m = _capture(env, KICK10 - 2 * H)
+    teams = set(m["injury_retrievals"]["teams"])
+    # FFF kicked off 12:00 UTC (after-kickoff retrieval), BBB at 14:00 UTC exactly the retrieval time, and their
+    # opponents (AAA, CCC) share those kickoffs
+    assert teams == {"DDD", "EEE", "GGG", "HHH"}, teams
+    # a capture taken before that sync finished cannot contain its content: nothing is embedded
+    early = _capture(env, t + timedelta(minutes=5))
+    assert early["injury_retrievals"]["teams"] == {} and early["injury_retrievals"]["log"] == "present"
 
 
 def test_a_later_post_kickoff_retrieval_blocks_the_older_pregame_entry(env):
@@ -426,12 +447,12 @@ def test_a_later_post_kickoff_retrieval_blocks_the_older_pregame_entry(env):
     assert "EEE" not in _capture(env, KICK10 + 12 * H)["injury_retrievals"]["teams"]
 
 
-def test_a_later_feed_download_that_dropped_the_team_blocks_the_older_entry(env):
+def test_a_later_sync_that_dropped_the_team_blocks_the_older_entry(env):
     _log(env, "AAA", KICK10 - 30 * H)
     _log(env, "BBB", KICK10 - 30 * H)
-    _log(env, None, KICK10 - 30 * H, scope=inj.SCOPE_FEED, run="r1")
-    _log(env, "BBB", KICK10 - 10 * H, run="r2")
-    _log(env, None, KICK10 - 10 * H, scope=inj.SCOPE_FEED, run="r2")     # r2 listed BBB but not AAA
+    _log(env, None, KICK10 - 30 * H, scope=inj.SCOPE_FEED)
+    _log(env, "BBB", KICK10 - 10 * H)
+    _log(env, None, KICK10 - 10 * H, scope=inj.SCOPE_FEED)               # the newer sync listed BBB but not AAA
     teams = _capture(env, KICK10 - 2 * H)["injury_retrievals"]["teams"]
     assert set(teams) == {"BBB"} and teams["BBB"]["retrieved_at"] == (KICK10 - 10 * H).isoformat()
 
@@ -492,6 +513,48 @@ def test_known_by_uses_the_verified_time_and_is_never_later_than_captured_at(env
     assert tight["no_pregame_snapshot"] == ["AAA"] and set(tight["teams"]) == {"BBB"}
 
 
+def test_unlogged_post_kickoff_sync_is_not_attributed_to_an_older_pregame_retrieval(env):
+    """The newest nfl sync rewrote nfl_injuries but its injury_retrievals write failed (sync.py only warns).
+    The older logged retrieval must not be attached to the newer content."""
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")                     # sync A, pregame, logged
+    m0 = _capture(env, KICK10 - 19 * H, retrieved_at={"injuries": {2025: KICK10 - 20 * H}})
+    assert m0["injury_retrievals"]["teams"]["AAA"]["retrieved_at"] == (KICK10 - 20 * H).isoformat()
+    # sync B at KICK10 + 1h rewrites nfl_injuries (a post-kickoff row for AAA); its log write failed -> no rows
+    _sync(env, "syncB", KICK10 + 1 * H)
+    _sql(env, "INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, report_status) "
+              "VALUES (2025, 'REG', 'AAA', 10, 'POSTKICK', 'Out')")
+    m1 = _capture(env, KICK10 + 2 * H, retrieved_at={"injuries": {2025: KICK10 + 1 * H}})
+    assert "AAA" not in m1["injury_retrievals"]["teams"]
+    assert sp.known_by(m1, "injuries/s2025", "AAA") == sp.known_by(m1, "injuries/s2025") == KICK10 + 1 * H
+    rows, rep = sp.injuries_as_of(env / "out", 2025, 10, {"AAA": KICK10})
+    assert rep["teams"]["AAA"]["manifest_id"] == m0["manifest_id"]       # the pregame manifest, not m1
+    assert rep["teams"]["AAA"]["known_by"] == (KICK10 - 20 * H).isoformat()
+    assert "POSTKICK" not in rows["gsis_id"].to_list()
+
+
+def test_backdated_capture_gets_no_retrieval_older_than_the_table_content(env):
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    _sql(env, "INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, report_status) "
+              "VALUES (2025, 'REG', 'AAA', 10, 'LATER', 'Out')")
+    _log(env, "AAA", KICK10 + 1 * H, run="syncB")                        # the sync that wrote LATER, post-kickoff
+    m = _capture(env, KICK10 - 10 * H)                                   # --now in the past (audit/replay)
+    assert m["injury_retrievals"]["teams"] == {} and m["injury_retrievals"]["log"] == "present"
+    assert sp.known_by(m, "injuries/s2025", "AAA") == sp.known_by(m, "injuries/s2025")
+
+
+def test_retrieval_is_embedded_only_when_it_belongs_to_the_latest_successful_sync(env):
+    _log(env, "AAA", KICK10 - 30 * H, run="syncA")
+    _log(env, "AAA", KICK10 - 20 * H, run="syncB")
+    _log(env, "BBB", KICK10 - 25 * H, run="syncOld")                     # a different sync, not the latest
+    assert _capture(env, KICK10 - 2 * H)["injury_retrievals"]["teams"]["AAA"]["retrieved_at"] == \
+        (KICK10 - 20 * H).isoformat()
+    _sync(env, "syncFailed", KICK10 - 10 * H, status="error")            # a failed sync did not write the table
+    m = _capture(env, KICK10 - 1 * H)
+    assert set(m["injury_retrievals"]["teams"]) == {"AAA"}
+    _sql(env, "DELETE FROM sync_runs")                                   # no successful sync at all: nothing verified
+    assert _capture(env, KICK10 - H)["injury_retrievals"]["teams"] == {}
+
+
 def test_predict_embeds_retrievals_and_frozen_runs_are_unaffected(cli, env, monkeypatch):
     # an earlier run made by the code before this field existed: no `con` reaches capture
     real = sp.capture
@@ -500,7 +563,8 @@ def test_predict_embeds_retrievals_and_frozen_runs_are_unaffected(cli, env, monk
     monkeypatch.undo()
     assert "injury_retrievals" not in sp.load_manifest(env / "out", 2025, 10, legacy["sources"]["manifest_id"])
     ledger, snaps = _digest(env / "out" / "ledger"), _digest(env / "out" / "snapshots")
-    _log(env, "AAA", datetime(2025, 9, 10, 3, tzinfo=UTC))        # logged after the legacy run was frozen
+    # logged by the fixture's own sync ('synthetic-nfl', the latest successful nfl sync)
+    _log(env, "AAA", datetime(2025, 9, 10, 3, tzinfo=UTC), run="synthetic-nfl")
     run = _forecast(cli, env, now="2025-09-10T09:00:00+00:00")
     m = sp.load_manifest(env / "out", 2025, 10, run["sources"]["manifest_id"])
     assert set(m["injury_retrievals"]["teams"]) == {"AAA"} and run["run_id"] != legacy["run_id"]
