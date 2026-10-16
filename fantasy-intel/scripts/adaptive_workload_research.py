@@ -92,6 +92,18 @@ def full_store(args, src, scoring_fingerprint: str) -> pl.DataFrame:
     return store
 
 
+def store_fingerprint(args) -> str:
+    """Fingerprint of the store full_store just validated or built."""
+    return json.loads((_out(args) / "store_aw.meta.json").read_text())["fingerprint"]
+
+
+def _require_current(args, artifact: dict, what: str) -> None:
+    """Outputs of an earlier `run` may only be combined with the store they were computed from."""
+    if artifact.get("store_fingerprint") != store_fingerprint(args):
+        raise SystemExit(f"{what} was produced from different inputs (store fingerprint "
+                         f"{artifact.get('store_fingerprint')} != {store_fingerprint(args)}): re-run `run` first")
+
+
 def _cand_run(payload):
     store_path, weeks, cand, lams, ifp2_path = payload
     store = pl.read_parquet(store_path)
@@ -186,6 +198,7 @@ def cmd_run(args) -> dict:
     research_cfg = aw.research_config(next(c for c in aw.CANDIDATES if c.name == chosen), best[chosen], cfg,
                                       status=decisions[chosen]["outcome"])
     report = {"schema": "adaptive-workload-report/v1", "version": aw.AW_VERSION,
+              "store_fingerprint": store_fingerprint(args),
               "created_at": datetime.now(timezone.utc).isoformat(), "scoring_fingerprint": scoring.fingerprint,
               "ifp2_config_hash": cfg.hash(), "rules": aw.AW_DECISION_RULES,
               "development": {"seasons": aw.DEVELOPMENT, "weeks": len(dev_weeks), "best_lambda": best,
@@ -276,6 +289,7 @@ def cmd_cases(args) -> dict:
     src, scoring = _sources(args)
     store = full_store(args, src, scoring.fingerprint)
     rep = json.loads((_out(args) / "report.json").read_text())
+    _require_current(args, rep, "report.json / diagnostic_preds.parquet")
     best, chosen = rep["development"]["best_lambda"], rep["development"]["selected"]
     cfg = ch.ChallengerConfig.load()
     live = duckdb.connect(str(args.live_db), read_only=True)
