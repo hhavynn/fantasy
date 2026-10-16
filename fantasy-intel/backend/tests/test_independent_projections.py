@@ -284,6 +284,16 @@ def test_api_shows_the_latest_run_and_reads_unmigrated_databases(live, monkeypat
     con.close()
     legacy = _client(monkeypatch, path).get("/api/projections/independent", params={"week": 6}).json()
     assert legacy["available"] and legacy["run"]["run_id"] == second["run_id"] and wr1(legacy) == 41.0
+    # ... including a whole v7 database (e.g. a hosted copy published before the laptop migrated)
+    con = duckdb.connect(str(path))
+    for c in ("artifact_id", "content_sha256", "row_count", "migrated_from_legacy"):
+        con.execute(f"ALTER TABLE independent_projection_runs DROP COLUMN {c}")
+    con.execute("UPDATE schema_meta SET value = '7' WHERE key = 'schema_version'")
+    con.close()
+    client = _client(monkeypatch, path)
+    v7 = client.get("/api/projections/independent", params={"week": 6}).json()
+    assert v7["available"] and v7["run"]["run_id"] == second["run_id"] and wr1(v7) == 41.0
+    assert client.get("/api/data-quality").status_code == 200
 
 
 def _participation_artifact(intercept=2.0):
