@@ -403,7 +403,8 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     # read-only views that must show the SAME run and governance as the switch (they never feed a lineup)
     readers = {"api/independent_projections.py", "analytics/promotion_tracker.py", "api/projection_promotion.py",
                "analytics/model_registry.py",   # research-only rollback dry run (simulates the selection)
-               "analytics/performance_report.py"}   # the accuracy page's governance (constants only, no run read)
+               "analytics/performance_report.py",   # the accuracy page's governance (constants only, no run read)
+               "analytics/rankings.py"}   # opt-in Rankings (source=independent): the switch's selection via forward_ours
     assert switch <= users <= switch | readers
     assert {f for f in users if re.search(r"\bweekly\(", (APP / f).read_text())} == switch
 

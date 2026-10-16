@@ -1,0 +1,72 @@
+/* Rankings: controls, source line, desktop table, phone cards. Tokens only; see globals.css. */
+
+/* ---------- Controls ---------- */
+.controls { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.chipRows { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; min-width: 0; max-width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.chipRows :global(.filters) { margin-bottom: 0; min-width: 0; max-width: 100%; }
+.chipLabel { color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-right: 2px; }
+.search { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: auto; }
+.searchLabel { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.search .input { width: 220px; min-width: 0; }
+.submit { flex: none; }
+
+/* ---------- Source line ---------- */
+.sourceLine { min-width: 0; color: var(--ink); font-size: 13px; line-height: 19px; }
+.sourceLine p { margin: 0 0 4px; max-width: 120ch; }
+.notes { margin: 4px 0 0; padding-left: 18px; color: var(--ink-muted); font-size: 12px; line-height: 18px; }
+.count { margin-left: 8px; color: var(--ink-muted); font-size: 12px; font-weight: 400; }
+
+/* ---------- Desktop table / phone cards: both render, CSS picks one ---------- */
+.tableView { display: block; }
+.cardView { display: none; }
+
+.table th, .table td { vertical-align: middle; }
+.rankCol { width: 76px; min-width: 76px; max-width: 76px; }
+.rankCell { white-space: normal; }
+.rankCell strong { display: block; color: var(--ink); font-variant-numeric: tabular-nums; }
+.overall { display: block; color: var(--ink-faint); font-size: 11px; line-height: 14px; font-variant-numeric: tabular-nums; }
+.unranked { color: var(--ink-muted); font-weight: 500; }
+/* The player column is pinned beside the rank when the table scrolls sideways (the rank column is pinned by globals.css). */
+.playerCol { min-width: 230px; max-width: 280px; white-space: normal; position: sticky; left: 76px; z-index: 1; }
+th.playerCol { z-index: 3; }
+/* Opaque, so what scrolls beneath stays hidden; zero specificity keeps the row hover tint working. */
+:where(.table td.playerCol) { background-color: var(--cell-bg); }
+.table tr:global(.mine) td.playerCol { background-color: var(--cell-bg); background-image: linear-gradient(var(--accent-soft), var(--accent-soft)); }
+.why { display: block; max-width: 260px; margin: 2px 0 0 40px; color: var(--ink-muted); font-size: 12px; line-height: 16px; white-space: normal; }
+
+.rating { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ratingValue { min-width: 34px; text-align: right; }
+.track { position: relative; display: inline-block; width: 44px; height: 6px; border-radius: 3px; background: var(--neutral-soft); overflow: hidden; }
+.fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent); }
+
+/* ---------- Pager and method ---------- */
+.pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.method { max-width: 80ch; }
+.method p { margin: 0 0 10px; }
+
+/* ---------- Phones ---------- */
+@media (max-width: 720px) {
+  .tableView { display: none; }
+  .cardView { display: grid; gap: 10px; margin: 0; padding: 12px; list-style: none; }
+
+  /* Each chip row scrolls sideways instead of wrapping into a tall control panel. */
+  .chipRows { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px; }
+  .chipRows :global(.filters) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .chipRows :global(.chip) { flex: none; }
+  .search { margin-left: 0; width: 100%; }
+  .search .input { flex: 1 1 auto; width: auto; }
+}
+
+.card { min-width: 0; padding: 12px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius); }
+.card.mine { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.cardHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.cardRank { display: inline-flex; align-items: baseline; gap: 8px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px 12px; margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--line); }
+.facts > div { min-width: 0; }
+.facts dt { color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+.facts dd { margin: 2px 0 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+.keyFact { font-size: 17px; font-weight: 600; color: var(--ink); }
+.ratingFact { grid-column: span 2; }
+.trendWord { color: var(--ink-muted); font-size: 13px; }
+.warning { margin: 8px 0 0; color: var(--caution); font-size: 13px; font-weight: 600; }
+.card .why { max-width: none; margin: 8px 0 0; }
