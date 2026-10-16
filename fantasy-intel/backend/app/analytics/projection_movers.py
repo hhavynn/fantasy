@@ -45,6 +45,7 @@ from datetime import date, datetime, timezone
 from ..db.connection import fetch_dicts, table_exists
 from . import production_forecasts as pf
 from . import projection_source as ps
+from .legacy_league import latest_league
 from .projection_backtest import _utc
 from .projections import load_schedule
 
@@ -230,9 +231,8 @@ def _load_ours(con, snap: dict) -> tuple[dict, list[dict]]:
 def _espn_context(con, season: int, baseline: str | None) -> dict:
     ctx = {"label": ESPN_LABEL, "listed": [], "current": None, "baseline": None, "reason": None, "skipped": [],
            "excluded_runs": [], "notes": [], "kind": None, "final": None}
-    league = fetch_dicts(con, "SELECT final_scoring_period FROM leagues WHERE season = ? "
-                              "ORDER BY synced_at DESC LIMIT 1", [season]) if table_exists(con, "leagues") else []
-    ctx["final"] = int(league[0]["final_scoring_period"]) if league and league[0]["final_scoring_period"] else None
+    league = latest_league(con, ["final_scoring_period"], season=season)
+    ctx["final"] = int(league["final_scoring_period"]) if league and league["final_scoring_period"] else None
     snaps = _espn_snapshots(con, season)
     cur = snaps[0] if snaps else None
     ctx["listed"] = [_listed(s) for s in snaps[1:]]
