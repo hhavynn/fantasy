@@ -60,7 +60,7 @@ export function showingOurs(d: ProjectionSourceDetail | null | undefined): boole
 }
 
 export const SWITCH_SCOPE =
-  "Weekly projections on Home, Matchup and Start/Sit, and the week-by-week forward view on a player's page (experimental beyond next week). Trades, waivers, team value and the playoff race stay on ESPN.";
+  "Weekly projections on Home, Matchup and Start/Sit, and the week-by-week forward view on a player's page and Rankings (experimental beyond next week). Trades, waivers, team value and the playoff race stay on ESPN.";
 
 /** One sentence on what the shown model is and is not, from the backend's governance (never stronger). */
 export function modelStatusLine(d: ProjectionSourceDetail): string {
