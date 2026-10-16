@@ -56,6 +56,7 @@ export default async function ManagersPage({ searchParams }: PageProps<"/manager
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="League"
         title="Manager tendencies"
         meta={
           <>

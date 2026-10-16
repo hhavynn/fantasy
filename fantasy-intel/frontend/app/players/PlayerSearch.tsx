@@ -1,5 +1,5 @@
-import { PlayerLink } from "@/components/PlayerLink";
-import { Badge, EmptyState, Pos, Section, TrendArrow } from "@/components/ui";
+import { PlayerIdentity } from "@/components/PlayerIdentity";
+import { Badge, Delta, EmptyState, Meter, Section, TrendArrow } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { int, num } from "@/lib/format";
 import { hasInjuryDesignation, ownerBadge } from "./helpers";
@@ -46,16 +46,17 @@ export function ResultsTable({ rows, q, limit }: { rows: PlayerListRow[]; q: str
       flush
     >
       <div className="table-wrap">
-        <table>
+        <table className={styles.results}>
           <thead>
             <tr>
-              <th>Player</th><th>NFL</th><th>Fantasy team</th><th>Status</th>
+              <th>Player</th><th>Fantasy team</th>
               <th className="num" title="Percent of ESPN leagues that roster the player">% own</th>
               <th className="num" title="NFL games with a usage record this season">G</th>
               <th className="num" title="PPR points per game (nflverse)">PPR/g</th>
-              <th className="num" title="Expected PPR points per game from role (nflverse xFP)">xFP/g</th>
+              <th className="num" title="Expected PPR points per game from role (nflverse xFP): what an average player would score with this workload">xFP/g</th>
+              <th className="num" title="PPR per game minus expected PPR per game. Above zero: producing more than the role implies">+/− xFP</th>
               <th title="Usage trend">Trend</th><th title="Market signal">Signal</th>
-              <th className="num" title={OPP_TITLE}>Opp</th>
+              <th className="num" title={OPP_TITLE}>Opportunity</th>
             </tr>
           </thead>
           <tbody>
@@ -63,17 +64,19 @@ export function ResultsTable({ rows, q, limit }: { rows: PlayerListRow[]; q: str
               const owner = ownerBadge(p.fantasy_team, p.availability_status);
               return (
                 <tr key={p.espn_player_id}>
-                  <td><PlayerLink id={p.espn_player_id} name={p.full_name} /> <Pos value={p.position} /></td>
-                  <td>{p.pro_team ?? "FA"}</td>
+                  <td>
+                    <PlayerIdentity id={p.espn_player_id} name={p.full_name} position={p.position} team={p.pro_team}
+                                    meta={hasInjuryDesignation(p.injury_status) ? <Badge value={p.injury_status} /> : null} />
+                  </td>
                   <td><Badge value={owner.text} tone={owner.tone} /></td>
-                  <td>{hasInjuryDesignation(p.injury_status) ? <Badge value={p.injury_status} /> : null}</td>
-                  <td className="num">{num(p.percent_owned, 1)}</td>
-                  <td className="num">{int(p.games, "No games / no NFL id")}</td>
-                  <td className="num">{num(p.fp_per_game, 1, "No games / no NFL id")}</td>
+                  <td className="num dim">{num(p.percent_owned, 1)}</td>
+                  <td className="num dim">{int(p.games, "No games / no NFL id")}</td>
+                  <td className="num key">{num(p.fp_per_game, 1, "No games / no NFL id")}</td>
                   <td className="num">{num(p.xfp_per_game, 1, "No games / no NFL id")}</td>
+                  <td className="num"><Delta value={p.fp_minus_xfp} /></td>
                   <td><TrendArrow label={p.trend_label} /></td>
                   <td><Badge value={p.market_signal} /></td>
-                  <td className="num">{num(p.opportunity_score, 1, "No usage data")}</td>
+                  <td className="num"><Meter value={p.opportunity_score} label="Opportunity score" why="No usage data" /></td>
                 </tr>
               );
             })}

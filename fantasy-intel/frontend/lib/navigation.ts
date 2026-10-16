@@ -13,7 +13,14 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/my-team/value", label: "Team value" },
     ],
   },
-  { label: "Players", pages: [{ href: "/players", label: "Players" }, { href: "/waivers", label: "Waivers" }] },
+  {
+    label: "Players",
+    pages: [
+      { href: "/players", label: "Players" },
+      { href: "/research", label: "Research lab" },
+      { href: "/waivers", label: "Waivers" },
+    ],
+  },
   { label: "Trades", pages: [{ href: "/trades", label: "Analyzer" }, { href: "/trades/discover", label: "Discover" }] },
   {
     label: "League",

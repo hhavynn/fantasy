@@ -87,7 +87,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
 
   return (
     <div className="stack">
-      <PageHeader title="Waivers" meta={<>Moves for your roster · computed {when(computed_at)}</>} />
+      <PageHeader eyebrow="Players" title="Waivers" meta={<>Moves for your roster · computed {when(computed_at)}</>} />
 
       <div className={styles.filters}>
         <Tabs label="Waiver decision views" items={viewItems} current={currentView} />
@@ -106,6 +106,12 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
                 href={chipHref({ rec: r === "ALL" ? null : r })}>{REC_LABEL[r]}</Link>
             ))}
           </nav>
+          {(pos !== "ALL" || rec !== "ALL") && (
+            <p className={styles.reset}>
+              <span>{[pos !== "ALL" ? pos : null, rec !== "ALL" ? REC_LABEL[rec] : null].filter(Boolean).join(" · ")}</span>
+              <Link className="chip reset" href={chipHref({ pos: null, rec: null })}>Reset filters</Link>
+            </p>
+          )}
         </div>
       </div>
 
