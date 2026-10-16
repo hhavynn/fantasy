@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app.analytics import trade_dual_value as tdv
 from app.analytics.team_lineups import known_total, project_team
 from app.analytics.trade_alternatives import FreeAgencyBoard
-from app.analytics.trade_assets import AssetBoard
+from app.analytics.trade_assets import BALANCED_RATIO, AssetBoard
 from app.analytics.trade_discovery import (ALL_SHAPES, SHAPES, TradeSearch, _key, _rank_key, _side_detail, detail)
 from app.analytics.trades import evaluate_trade, with_streaming
 from app.db.connection import connect
@@ -776,3 +776,18 @@ def test_fronts_are_computed_within_a_verdict():
     ranked = tdv.rank(rows, lambda x: x["primary"], lambda x: x["key"])
     # s1 and s2 do not dominate each other, so they share front 0 and the view's measure decides: s1 first
     assert [x["key"] for x in ranked][:2] == ["s1", "s2"]
+
+
+def test_multiple_strong_assets_within_the_balanced_ratio_is_a_moderate_imbalance():
+    """Two starter-caliber assets for one is significant only when the packages are also far apart."""
+    st = market_league()
+    board = AssetBoard(st, st.window())
+    seen = set()
+    for opp, sends, receives in ((2, [105], [204, 209]), (3, [106, 107], [303]), (2, [106, 108], [202])):
+        res = evaluate_trade(st, 1, opp, sends, receives)
+        asset = tdv.asset_block(board, _side_detail(res["team_a"]), _side_detail(res["team_b"]), sends, receives,
+                                ("You", "They"))
+        assert asset["label"].endswith("surrender_multiple_strong")
+        assert asset["imbalance"] == ("significant" if asset["ratio"] < BALANCED_RATIO else "moderate")
+        seen.add(asset["imbalance"])
+    assert seen == {"significant", "moderate"}

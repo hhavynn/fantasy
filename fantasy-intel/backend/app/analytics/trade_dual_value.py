@@ -22,7 +22,7 @@ score. Nothing here is an acceptance estimate.
 
 from __future__ import annotations
 
-from .trade_assets import AssetBoard
+from .trade_assets import BALANCED_RATIO, AssetBoard
 
 PHASE_KEYS = {"ros": "ros_delta", "regular": "regular_season_delta", "playoff": "playoff_delta"}
 PASS, CONCERN, FAIL, UNKNOWN, NOT_APPLICABLE = "pass", "concern", "fail", "unknown", "not_applicable"
@@ -71,6 +71,11 @@ def _starts(u: dict) -> int:
 
 def possessive(label: str) -> str:
     return {"You": "your", "They": "their"}.get(label, f"{label}'s")
+
+
+def _sentence(text: str) -> str:
+    """Capitalize a sentence that opens with "your"/"their", never a team or player name."""
+    return text[0].upper() + text[1:] if text.startswith(("your ", "their ")) else text
 
 
 def _name(x: dict | None, pid: int | None = None) -> str:
@@ -122,6 +127,11 @@ def asset_block(board: AssetBoard, mine: dict, theirs: dict, sends: list[int], r
 
     lab = pkg["label"]
     imbalance = IMBALANCE.get(lab)
+    # "Multiple strong assets for fewer" is significant only when the packages are also far apart in PAR; a 2-for-1
+    # whose packages are within the balanced ratio is a moderate imbalance (the label itself is trade_assets').
+    if lab in ("they_surrender_multiple_strong", "you_surrender_multiple_strong") and pkg["ratio"] is not None \
+            and pkg["ratio"] >= BALANCED_RATIO:
+        imbalance = "moderate"
     favours = None
     if imbalance in ("moderate", "significant"):
         favours = you if lab.startswith(("they_", "significant_they_")) else them
@@ -206,7 +216,7 @@ def _key_change(side: dict, label: str, n: int) -> str:
         return text + "."
     if out and _starts(out[0]):
         u = out[0]
-        return f"{whose[:1].upper()}{whose[1:]} lineup loses {_name(u)} ({u['position']}), who started {_starts(u)} of {n} weeks; " \
+        return f"{_sentence(whose + ' ')}lineup loses {_name(u)} ({u['position']}), who started {_starts(u)} of {n} weeks; " \
                f"no incoming player starts."
     return f"No incoming player starts in {whose} lineup; the change is depth only."
 
@@ -239,7 +249,7 @@ def checks(mine: dict, theirs: dict, asset: dict, injuries: list[dict], phase: s
     else:
         losers = [lab for lab, v in ((you, m), (them, t)) if v <= 0]
         text = " and ".join(possessive(x) for x in losers) + f" starting lineup does not improve ({span}: {m:+.1f} / {t:+.1f})."
-        out.append(_check("lineup_gain", FAIL, text[0].upper() + text[1:]))
+        out.append(_check("lineup_gain", FAIL, _sentence(text)))
 
     imb = asset["imbalance"]
     if imb is None:
@@ -268,11 +278,11 @@ def checks(mine: dict, theirs: dict, asset: dict, injuries: list[dict], phase: s
         for d in dep["forced_drops"]:
             who = f"{lab} must drop {_name(d)} ({d['position']})"
             if d["starter_caliber"]:
-                big.append(f"{who}, a starter-caliber player ({d['par']:.0f} above replacement)")
+                big.append(f"{who}, a starter-caliber player ({d['par']:.1f} above replacement)")
             elif d["par"] is None:
                 unknown.append(f"{who} (asset value unknown)")
             elif d["par"] > 0:
-                small.append(f"{who} ({d['par']:.0f} above replacement)")
+                small.append(f"{who} ({d['par']:.1f} above replacement)")
         if dep["empty_slots_after"]:
             weeks = sorted({h["week"] for h in dep["empty_slots_after"]})
             big.append(f"{lab} would have an empty starting slot in week(s) {', '.join(map(str, weeks))}")

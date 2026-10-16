@@ -166,13 +166,13 @@ Team 1 turns RB depth and a weak WR2 into one star WR (Ember); Team 2, deep at W
 | `lineup_gain` | pass | Both starting lineups improve (rest of season: You +16.0, Team 2 +12.0). |
 | `asset_balance` | pass | Asset packages appear relatively balanced. |
 | `positional_fit` | pass | Each side receives a player who starts at least half the remaining weeks. |
-| `depth_cost` | concern | Team 2 must drop RB 203 (RB) (4 above replacement). |
+| `depth_cost` | concern | Team 2 must drop RB 203 (RB) (4.0 above replacement). |
 | `free_agent_alternative` | pass | Even after the best free-agent move, the trade still adds +16.0 for you. |
 | `uncertainty` | pass | No injury, eligibility or projection gaps on the traded players. |
 
 **Verdict:** `sensible_with_concerns`. Both starting lineups improve, with concerns to weigh.
 
-**Main concern:** Team 2 must drop RB 203 (RB) (4 above replacement).
+**Main concern:** Team 2 must drop RB 203 (RB) (4.0 above replacement).
 
 Rank axes (never summed): lineup gain of the smaller side +12.0, asset ratio 1.0, certainty 0.
 

@@ -6,6 +6,8 @@ temporary databases); nothing here says anything about real outcomes."""
 import json
 
 import pytest
+
+from app.analytics.trade_assets import BALANCED_RATIO
 from fastapi.testclient import TestClient
 
 from app.analytics import trade_practical as practical
@@ -127,12 +129,14 @@ def test_fair_contains_no_significantly_imbalanced_package(market):
     rows = shown(out)
     assert rows and out["excluded"]["not_fair"] > 0
     board = practical.AssetBoard(market.state, market.window)
-    significant = {"significant_they_give_more", "significant_you_give_more", "they_surrender_multiple_strong",
-                   "you_surrender_multiple_strong"}
+    significant = {"significant_they_give_more", "significant_you_give_more"}
+    multiple = {"they_surrender_multiple_strong", "you_surrender_multiple_strong"}
     for x in rows:
         assert x["dual_value"]["asset"]["imbalance"] in ("none", "moderate")
-        assert board.package(x["sends"], x["receives"])["label"] not in significant        # independent recomputation
-        assert x["asset_balance"]["label"] not in significant
+        pkg = board.package(x["sends"], x["receives"])                                     # independent recomputation
+        assert pkg["label"] not in significant and x["asset_balance"]["label"] not in significant
+        # multiple strong assets for fewer is only moderate while the packages stay within the balanced ratio
+        assert pkg["label"] not in multiple or pkg["ratio"] >= BALANCED_RATIO
     ratios = [x["dual_value"]["asset"]["ratio"] for x in out["sections"]["fair_no_lineup_gain"]]
     assert ratios and all(r is not None for r in ratios)
     # fair_no_lineup_gain is an asset-fair exchange whose starting lineups do not both improve
