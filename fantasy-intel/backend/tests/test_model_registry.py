@@ -57,9 +57,12 @@ def _heldout() -> dict:
                                                 for p in reg.POSITIONS}}}
 
 
-def _cand_artifact(**extra) -> dict:
+def _cand_artifact(root: pathlib.Path, **extra) -> dict:
+    """The candidate artifact as fit_final would write it, citing the exact held-out report."""
     held = _heldout()["positions"]
+    sha = hashlib.sha256((root / "reports" / "heldout.json").read_bytes()).hexdigest()
     return {"version": CAND, "scoring_fingerprint": FP, **extra,
+            "config": {"provenance": {"heldout_report_sha256": sha}},
             "evaluation": {p: {k: deepcopy(held[p][k]) for k in reg.BOUND_HELDOUT_KEYS} for p in reg.POSITIONS}}
 
 
@@ -71,9 +74,9 @@ def env(tmp_path):
     champ_sha = _write(root, "independent_projections_ifp-1.0.0.json",
                        {"schema": "independent-projections-artifact/v1", "version": MODEL_VERSION,
                         "scoring_fingerprint": FP})
-    cand_sha = _write(root, f"candidates/{CAND}.json", _cand_artifact())
     pro_sha = _write(root, "reports/prospective.json", _prospective())
     held_sha = _write(root, "reports/heldout.json", _heldout())
+    cand_sha = _write(root, f"candidates/{CAND}.json", _cand_artifact(root))
     ledger = root / "weekly" / "ledger" / "s2026w08"
     ledger.mkdir(parents=True)
     (ledger / "pregame-run.json").write_text('{"run_id": "frozen"}')
@@ -273,9 +276,9 @@ def test_tampered_artifact_rejected(env):
 def test_latest_artifact_is_not_approved(env):
     """A newer file next to the approved one changes nothing; replacing the approved one is rejected."""
     root, _, _ = env
-    _write(root, f"candidates/{CAND}-newer.json", _cand_artifact())
+    _write(root, f"candidates/{CAND}-newer.json", _cand_artifact(root))
     assert _gate(env)["activatable"]
-    _write(root, f"candidates/{CAND}.json", _cand_artifact(retrained=True))
+    _write(root, f"candidates/{CAND}.json", _cand_artifact(root, retrained=True))
     assert not _gate(env)["activatable"]
 
 
@@ -286,7 +289,7 @@ def test_wrong_scoring_fingerprint_rejected(env):
     # the artifact itself trained under other scoring, though the manifest claims the league's
     bad = deepcopy(new)
     reg.entry(bad, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json",
-                                                         {**_cand_artifact(), "scoring_fingerprint": "other"})
+                                                         {**_cand_artifact(root), "scoring_fingerprint": "other"})
     rep = _gate(env, bad)
     assert not rep["activatable"] and _results(rep)["scoring_fingerprint"] == reg.FAIL
 
@@ -571,13 +574,13 @@ def test_hand_authored_rollback_must_target_the_restorable_previous_model(env):
 def test_artifact_report_binding_covers_gate_fields(env):
     """An artifact embedding a FAILING bootstrap CI cannot be paired with a report showing a passing one."""
     root, _, new = env
-    art = _cand_artifact()
+    art = _cand_artifact(root)
     art["evaluation"]["WR"]["primary_minus_best_baseline_mae"] = {"ci95": [-0.2, 0.3]}
     reg.entry(new, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json", art)
     rep = _gate(env, new)
     assert not rep["activatable"] and "WR.primary_minus_best_baseline_mae" in str(
         next(c for c in rep["checks"] if c["name"] == "artifact_report_binding")["observed"])
-    art = _cand_artifact()
+    art = _cand_artifact(root)
     del art["evaluation"]["TE"]["primary_minus_best_baseline_mae"]
     reg.entry(new, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json", art)
     assert _results(_gate(env, new))["artifact_report_binding"] == reg.FAIL
@@ -614,3 +617,43 @@ def test_malformed_production_value_fails_closed(env, value):
     bad = deepcopy(new)
     bad["history"].append("promotion")
     assert any("history event must be an object" in p for p in reg.validate_manifest(bad))
+
+
+def test_artifact_must_cite_the_exact_heldout_report(env):
+    """Field-by-field binding is not enough: the artifact names the sha256 of the report it was fitted
+    from, so a repinned report with different per-position ESPN numbers (same aggregate) is rejected."""
+    root, _, new = env
+    reg.entry(new, CAND)["approval"]["start_sit_ready"] = True
+    _repin(new, reg.HELDOUT, _rewrite(root, "reports/heldout.json", lambda o: o["espn_comparison"]["by_position"]
+                                      ["QB"].update(n=999, primary={"mae": 1.0})))
+    rep = _gate(env, new)
+    assert not rep["activatable"] and _results(rep)["artifact_heldout_report_sha"] == reg.FAIL
+    art = _cand_artifact(root)
+    del art["config"]
+    reg.entry(new, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json", art)
+    assert _results(_gate(env, new))["artifact_heldout_report_sha"] == reg.INSUFFICIENT
+
+
+@pytest.mark.parametrize("content", [b"not json", b"[1]", json.dumps({"version": "ifp-0.1.0", "scoring_fingerprint": FP}),
+                                     json.dumps({"version": MODEL_VERSION, "scoring_fingerprint": "other"})])
+def test_rollback_artifact_must_be_the_target_model(env, content):
+    """A pinned hash only proves the bytes; they must also be the rollback target under the league scoring."""
+    root, old, new = env
+    p = root / "independent_projections_ifp-1.0.0.json"
+    p.write_bytes(content if isinstance(content, bytes) else content.encode())
+    sha = hashlib.sha256(p.read_bytes()).hexdigest()
+    for m in (old, new):
+        reg.entry(m, MODEL_VERSION)["artifact"]["sha256"] = sha
+    rep = _gate(env)
+    assert not rep["activatable"] and _results(rep)["rollback_artifact_integrity"] == reg.FAIL
+    with pytest.raises(reg.RegistryError, match="cannot roll back"):
+        reg.plan_rollback(new, reason="r", by="o", at=AT, model_root=root, live_scoring_fp=FP)
+
+
+@pytest.mark.parametrize("version", [["ifp"], {"v": 1}, "", None, 3])
+def test_non_string_model_version_fails_closed(env, version):
+    _, old, new = env
+    bad = deepcopy(new)
+    bad["models"][1]["version"] = version
+    assert any("non-empty string" in p for p in reg.validate_manifest(bad))
+    assert not _gate(env, bad)["activatable"]

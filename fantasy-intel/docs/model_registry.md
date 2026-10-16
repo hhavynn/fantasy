@@ -77,13 +77,13 @@ explanation}`; `insufficient_data` is never a pass, and `activates` is always `f
 | `scoring_fingerprint` | manifest, artifact and live league agree, and the artifact names the registered version |
 | `training_cutoff` | recorded |
 | `prospective_shadow_evaluation_report` | exactly one, pinned and verified (a `historical_research` report never substitutes) |
-| `prospective_report_subject`, `heldout_report_subject`, `artifact_report_binding` | the prospective report's `subject` names this candidate, the model it replaces and the scoring (`scripts/weekly_learning.py evaluate` writes it); the held-out report's `model_version` and `scoring_fingerprint` are the candidate's; the artifact embeds that held-out result (`fit_final` copies it; every embedded field, including the bootstrap CI and ESPN matched count, must match). A strong report about another model never counts |
+| `prospective_report_subject`, `heldout_report_subject`, `artifact_report_binding` | the prospective report's `subject` names this candidate, the model it replaces and the scoring (`scripts/weekly_learning.py evaluate` writes it); the held-out report's `model_version` and `scoring_fingerprint` are the candidate's; the artifact records the sha256 of exactly that held-out report (`config.provenance.heldout_report_sha256`) and its embedded result (`fit_final` copies it) matches field by field. A strong report about another model never counts |
 | `pregame_provenance` | the report's evidence kind is `pregame` (retrospective replays are never evidence) |
 | `finalized_evaluation` | every counted week is fully final and none is preliminary |
 | `<POS>:*` | `weekly_learning.shadow_criteria`, **recomputed** from the report's metrics per position: >= 8 prospective weeks, >= 400 matched appearances, champion-relative MAE CI upper < 0, bias guard, starters-pool non-inferiority, 80% interval coverage 75-85% |
 | `<POS>:production_baseline` | the held-out report meets `PROMOTION_CRITERIA` (n >= 400, >= 3% better than the best trailing baseline, CI upper < 0) |
 | `<POS>:espn_rule` | required when the approval sets `start_sit_ready`: >= 300 matched pregame ESPN observations and MAE <= ESPN; otherwise `not_applicable` and the consumer keeps "not validated against ESPN" |
-| `rollback_reference`, `rollback_artifact_integrity`, `rollback_scoring` | `rollback_to` is the model being replaced, whose artifact is pinned, present and scored like the league |
+| `rollback_reference`, `rollback_artifact_integrity`, `rollback_scoring` | `rollback_to` is the model being replaced, whose artifact is pinned, present, and whose bytes are a JSON artifact naming that version under the league's scoring |
 | `lifecycle_state`, `human_approval` | the new production entry is `approved_production` with an `owner_approval` naming who and when, citing the sha256 of the exact prospective and held-out reports verified above |
 
 ## Future promotion process (not executed)
@@ -126,6 +126,11 @@ Applying it is the same reviewed change as a promotion: manifest plus consumer w
 Historical forecast ledgers stay immutable throughout; they record which model made each forecast.
 
 ## Known limitations
+
+* `scripts/backtest_independent_projections.py fit` does not yet record `heldout_report_sha256` in the
+  artifact (it was left unchanged so the ifp-1.0.0 artifact format is untouched). A future
+  candidate's fit must record it, or the gate reports `artifact_heldout_report_sha` as
+  `insufficient_data`.
 
 * The participation artifact (`ipm-1.0.0`) that turns conditional points into expected points is not
   a separate registry entry; a promotion that changes it must pin it in the same reviewed change.

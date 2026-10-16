@@ -112,6 +112,9 @@ def validate_manifest(m) -> list[str]:
             out.append("a model entry is not an object")
             continue
         v = e.get("version")
+        if not isinstance(v, str) or not v.strip():
+            out.append(f"a model version must be a non-empty string, not {v!r}")
+            continue
         missing = [f for f in MODEL_FIELDS if f not in e]
         if missing:
             out.append(f"{v}: missing {', '.join(missing)}")
@@ -222,6 +225,22 @@ def verify_file(root: Path, ref: dict, what: str) -> tuple[dict, bytes | None]:
     return _crit(f"{what}_integrity", PASS, f"{what} {ref['path']} matches its pinned sha256", got, sha), data
 
 
+def artifact_identity_problem(data: bytes, version: str, live_fp: str | None) -> str | None:
+    """None when verified artifact bytes are a JSON object naming `version` under the league's
+    scoring; otherwise why not (a hash pins bytes, not what they contain)."""
+    try:
+        art = json.loads(data)
+    except ValueError:
+        return "the artifact is not valid JSON"
+    if not isinstance(art, dict):
+        return "the artifact is not an object"
+    if art.get("version") != version:
+        return f"the artifact names version {art.get('version')!r}, not {version!r}"
+    if live_fp is None or art.get("scoring_fingerprint") != live_fp:
+        return f"the artifact was trained under scoring {art.get('scoring_fingerprint')!r}, the league scores {live_fp}"
+    return None
+
+
 def _json_bytes(data: bytes, what: str):
     try:
         return json.loads(data)
@@ -271,7 +290,7 @@ def _artifact_checks(e: dict, root: Path, live_fp: str | None) -> tuple[list[dic
 
 
 def report_identity_checks(e: dict, replaces: str, pros: dict | None, held: dict | None,
-                           art: dict | None) -> list[dict]:
+                           art: dict | None, held_sha: str | None = None) -> list[dict]:
     """Evidence must be about THIS candidate: a hash-verified report of another model (or another
     scoring) never counts. The prospective report's `subject` names the challenger, the champion it
     was compared with and the scoring; the held-out report names its model_version and scoring, and
@@ -295,6 +314,15 @@ def report_identity_checks(e: dict, replaces: str, pros: dict | None, held: dict
         out.append(_crit("heldout_report_subject", PASS if got == want else FAIL,
                          "the held-out report evaluates this candidate" if got == want else
                          f"the held-out report evaluates {got}, not {want}", got, want))
+        cfg = art.get("config") if isinstance(art, dict) else None
+        cited = ((cfg or {}).get("provenance") or {}).get("heldout_report_sha256") if isinstance(cfg, dict) else None
+        out.append(_crit("artifact_heldout_report_sha", PASS if held_sha and cited == held_sha else
+                         (INSUFFICIENT if cited is None else FAIL),
+                         "the artifact records the sha256 of exactly this held-out report" if held_sha and cited ==
+                         held_sha else ("the artifact does not record which held-out report it was fitted from "
+                                        "(config.provenance.heldout_report_sha256)" if cited is None else
+                                        "the artifact was fitted from a different held-out report"),
+                         cited, held_sha))
         ev = art.get("evaluation") if isinstance(art, dict) else None
         if not isinstance(ev, dict):
             out.append(_crit("artifact_report_binding", INSUFFICIENT, "the artifact does not embed the held-out "
@@ -467,7 +495,11 @@ def rollback_reference_checks(m: dict, e: dict, root: Path, live_fp: str | None,
     if target != replaces or prev is None:
         return [_crit("rollback_reference", FAIL, f"rollback_to {target!r} must name the model being replaced "
                       f"({replaces})", target, replaces)]
-    c, _ = verify_file(root, prev.get("artifact") or {}, "rollback_artifact")
+    c, data = verify_file(root, prev.get("artifact") or {}, "rollback_artifact")
+    if data is not None:
+        why = artifact_identity_problem(data, target, live_fp)
+        if why:
+            c = _crit("rollback_artifact_integrity", FAIL, why)
     fp_ok = live_fp is not None and prev.get("scoring_fingerprint") == live_fp
     return [_crit("rollback_reference", PASS, f"replaces {replaces}, which becomes the rollback target", target,
                   replaces), c,
@@ -490,7 +522,7 @@ def _evidence(m: dict, e: dict, root: Path, live_fp: str | None, replaces: str) 
     checks += pros_c + _guarded("prospective_evidence", prospective_checks, pros)
     checks += held_c + _guarded("production_baseline", heldout_checks, held)
     checks += _guarded("espn_rule", espn_checks, held, bool(ap.get("start_sit_ready")))
-    checks += _guarded("report_identity", report_identity_checks, e, replaces, pros, held, art)
+    checks += _guarded("report_identity", report_identity_checks, e, replaces, pros, held, art, shas[HELDOUT])
     checks += rollback_reference_checks(m, e, root, live_fp, replaces)
     return checks, shas
 
@@ -606,9 +638,12 @@ def plan_rollback(m: dict, *, reason: str, by: str, at: datetime, model_root: Pa
         raise RegistryError(f"{cur['version']} has no registered rollback target")
     if target.get("state") != RETIRED or not _was_approved(m, target["version"]):
         raise RegistryError(f"rollback target {target['version']} was never an approved production model")
-    c, _ = verify_file(Path(model_root), target.get("artifact") or {}, "rollback_artifact")
+    c, data = verify_file(Path(model_root), target.get("artifact") or {}, "rollback_artifact")
     if c["result"] != PASS:
         raise RegistryError(f"cannot roll back to {target['version']}: {c['explanation']}")
+    why = artifact_identity_problem(data, target["version"], live_scoring_fp)
+    if why:
+        raise RegistryError(f"cannot roll back to {target['version']}: {why}")
     if live_scoring_fp is None or target.get("scoring_fingerprint") != live_scoring_fp:
         raise RegistryError(f"cannot roll back to {target['version']}: it was trained under scoring "
                             f"{target.get('scoring_fingerprint')}, the league scores {live_scoring_fp}")
