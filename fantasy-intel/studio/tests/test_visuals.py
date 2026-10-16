@@ -98,3 +98,22 @@ def test_the_visual_audit_counts_compositions_and_holds(tmp_path):
     assert m["empty_share"] > 0.9                  # flat colour is empty space
     sheet = VA.contact_sheet(ep / "final.mp4", tmp_path / "sheet.jpg", n=6, title="t")
     assert Image.open(sheet).size[0] > 1000
+
+
+def test_dark_team_colours_fall_back_to_bright_ones_for_text_and_rims():
+    from studio import motion as M
+    for team in ("DEN", "ATL", "TEN", "LA"):
+        for col in K.team_rgb(team):
+            assert M.luminance(col) > 90, (team, col)
+
+
+def test_the_conspiracy_board_pins_the_cohort_not_the_rank():
+    _, facts, claims = qb_facts()
+    p = facts["players"][0]
+    a = next(x for x in p["angles"] if x["id"] == "short_throws")
+    brief = SR.choose(p, [], "courtroom")
+    beats, _ = SR.compose(facts, claims, brief)
+    board = [b["scene"] for b in beats if b["scene"].get("big") == a["season"]]
+    assert board and board[0]["index"] == 1                       # exhibit B: the conspiracy board
+    for sc in board:
+        assert [cid for _, cid, _ in sc["note"]] == [a["season_rank"], a["season_count"]]

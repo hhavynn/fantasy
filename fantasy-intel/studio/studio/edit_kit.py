@@ -84,7 +84,7 @@ def player(c, height: int, **kw) -> Image.Image:
 
 def team_rgb(team: str) -> tuple[tuple, tuple]:
     p, s = M.team_colors(team)
-    return M.vivid(p, p), M.vivid(s, s)
+    return M.vivid(p, M.GOLD), M.vivid(s, (255, 255, 255))      # a dark team colour falls back to a bright one
 
 
 # ------------------------------------------------------------------------------------------ backdrops
@@ -122,7 +122,7 @@ def _two_tone(a: tuple, b: tuple, angle: float) -> Image.Image:
 def backdrop(kind: str, team: str, t: float, accent: tuple | None = None) -> Image.Image:
     """hype: team two-tone + rotating light rays + halftone; roast: dark, desaturated, red-tinted; court: deep wood
     red with spotlight; versus: hard diagonal split. All carry a little film grain (moving) so the frame breathes."""
-    p, s = team_rgb(team)
+    p, s = M.team_colors(team)                                      # the real colours: backgrounds are darkened anyway
     if kind == "hype":
         img = _two_tone(tuple(int(v * 0.55) for v in p), tuple(int(v * 0.35) for v in s), 1.1).copy()
         q = 4                                                       # rays drawn and softened at 1/4 size: ~1 ms

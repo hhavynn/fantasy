@@ -383,12 +383,13 @@ def scene_cx_exhibit(img, t, dur, spec, c):
             d.ellipse((x, y, x + 4, y + 4), fill=(120, 84, 46, 120))
         pins = [(300, 640), (800, 560), (760, 1060), (300, 1120)]
         M.paste(img, _polaroid(c, 330, 4), *pins[0], 1.0, 1.0)
-        if "rank" in spec:                                          # e.g. 3RD-WORST / OF 412 QB GAMES
+        if "note" in spec:                                          # the builder says what the second note reads
+            second = [f"{pre}{c.d(cid).upper() if cid else ''}{suf}" for pre, cid, suf in spec["note"]]
+        elif "rank" in spec:                                        # e.g. 3RD WORST / 412 QB GAMES
             second = [c.d(spec["games"]) + " QB GAMES", (c.d(spec["rank"]).upper() + " " + spec["worst"])
                       if spec["rank_value"] > 1 else "THE " + spec["worst"]]
-        else:
-            others = [cid for cid in spec.get("claims", []) if cid != spec["big"]]
-            second = ["OUT OF", c.d(others[0])] if others else ["", ""]
+        else:                                                       # nothing verified to pin: a blank note
+            second = ["", ""]
         lines = [(pins[1], [c.d(spec["big"]), _wrap(spec["label"], 14)[0]]), (pins[2], second)]
         for (x, y), txt in lines:
             nd = Image.new("RGBA", (420, 300), (0, 0, 0, 0))
@@ -533,7 +534,8 @@ def scene_hx_vs(img, t, dur, spec, c):
     pr, sc = K.team_rgb(c.team)
     from .numbers import TEAM_NAMES
     opp_code = next((k for k, v in TEAM_NAMES.items() if v == c.d(p["opponent"])), c.team)
-    op, os_ = K.team_rgb(opp_code)
+    op, _ = M.team_colors(opp_code)                                  # their panel: the real colour, darkened
+    _, os_ = K.team_rgb(opp_code)
     img.paste(K.backdrop("hype", c.team, t, accent=sc))
     over = Image.new("RGBA", (M.W, M.H), (0, 0, 0, 0))
     dd = ImageDraw.Draw(over)

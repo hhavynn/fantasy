@@ -420,7 +420,11 @@ def build_courtroom(ctx):
     box, g, lead = p["box"], p["game"], p["lead"]
     court = {"camera": "still", "transition": "cut"}
     exhibits = []
+    # what the conspiracy board pins up beside the number: lines of (prefix, claim or None, suffix)
+    notes = {}
     if a["id"] == "short_throws":
+        notes[a["season"]] = {"note": [["", a["season_rank"], " SHORTEST"], ["OF ", a["season_count"], " QBS"]]}
+        notes[a["air_yards_completed"]] = {"note": [["OUT OF ", box["passing_yards"], ""], ["", None, "PASSING YARDS"]]}
         exhibits.append((f"his average throw:‖ {ph(a['x'])} yards.", a["x"], "YARDS PER THROW", [a["x"], a["league"]],
                          a["x"]))
         if a["season_rank_value"] == 1:
@@ -435,7 +439,6 @@ def build_courtroom(ctx):
             exhibits.append(("about half his yards came after the catch.", a["yac_share"],
                              "OF HIS YARDS: AFTER THE CATCH", [a["yac_share"]], None))
         verdict, charge = "loitering near the line of scrimmage", "LOITERING NEAR THE LINE OF SCRIMMAGE"
-    notes = {}                                         # what the conspiracy board pins up beside the number
     if a["id"] != "short_throws":
         worst = {"lowest": "worst", "fewest": "fewest"}.get(lead["sup"], lead["sup"])
         notes[lead["value"]] = {"rank": lead["rank"], "rank_value": lead["rank_value"], "games": lead["games"],
