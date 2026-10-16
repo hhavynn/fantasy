@@ -140,8 +140,8 @@ change in one commit; done for `ifp-1.0.0` on 2026-10-16):
    uv run python ../scripts/model_registry.py pin-artifact --version ifp-1.0.0 --by NAME --reason "..." --out pinned.json
    ```
 
-   It refuses unless the file's sha256 equals the `artifact_id` the newest stored production run of that version
-   recorded (see "Pinning an artifact" below), and writes the proposed manifest to a NEW file; its output's
+   It refuses unless the file's sha256 equals the `artifact_id` the newest eligible production run of that version
+   recorded (live league scoring and season, rows verified; see "Pinning an artifact" below), and writes the proposed manifest to a NEW file; its output's
    `consumer_pin` names the value for `production_pin.py`.
 2. Copy the proposal into `model_registry.json` and put the same 64-character digest in
    `APPROVED_ARTIFACT_SHA256` in `production_pin.py`.
@@ -252,9 +252,12 @@ the manifest that pins `version`'s artifact, and the CLI writes it only to a **n
 * the file exists and loads with the production loader, naming `version` under the league's scoring. A
   missing file is never reconstructed, refit or renamed into place: the pin refuses and the rollback dry
   run reports the artifact as missing;
-* the NEWEST stored production run of `version` that recorded an `artifact_id` recorded exactly this
-  file's sha256, so the pin names the bytes users were shown, not whatever file is on disk now
-  (other recorded artifact ids are listed);
+* the NEWEST eligible production run of `version` recorded exactly this file's sha256, so the pin names the
+  bytes users were shown, not whatever file is on disk now (other recorded artifact ids are listed). Evidence
+  is chosen the way consumers choose runs (`recorded_runs_for_pin`): runs of the live season under the live
+  league scoring whose stored rows verify against their content hash (`production_forecasts.verified_runs`;
+  the artifact gate is not applied, since the pin is that gate). A newer run under another scoring, or a
+  damaged run, can neither block the pin nor serve as its evidence; the report counts them in `ignored_runs`;
 * the training cutoff is read from the artifact (end of every position's `train_window`, all equal).
 
 A `heldout_backtest` report referenced with a null sha256 is pinned in the same step only when it binds to

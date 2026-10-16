@@ -892,6 +892,12 @@ def _pin_env(tmp_path, *, evaluation=None, heldout=None):
     return root, sha, reg.load_manifest(PRE_PIN)
 
 
+def _rec(run_id, created_at, artifact_id, fp=FP, verified=True):
+    """One pin-evidence record as recorded_runs_for_pin returns it."""
+    return {"run_id": run_id, "created_at": created_at, "artifact_id": artifact_id, "scoring_fingerprint": fp,
+            "verified": verified}
+
+
 def _pin(m, root, runs, version=MODEL_VERSION):
     return reg.pin_artifact(m, version, model_root=root, live_scoring_fp=FP, recorded_runs=runs, by="fixture-owner",
                             at=AT, reason="pin the served artifact")
@@ -900,8 +906,8 @@ def _pin(m, root, runs, version=MODEL_VERSION):
 def test_pin_artifact_pins_the_served_bytes_and_cutoff(tmp_path):
     root, sha, m = _pin_env(tmp_path)
     before = _tree(root)
-    runs = [{"run_id": "old", "created_at": "2026-10-01", "artifact_id": None},
-            {"run_id": "served", "created_at": "2026-10-10", "artifact_id": sha}]
+    runs = [_rec("old", "2026-10-01", None),
+            _rec("served", "2026-10-10", sha)]
     new, rep = _pin(m, root, runs)
     e = reg.entry(new, MODEL_VERSION)
     assert e["artifact"]["sha256"] == sha and e["training_cutoff"] == {"season": 2026, "week": 16}   # train_window end
@@ -918,14 +924,62 @@ def test_pin_artifact_pins_the_served_bytes_and_cutoff(tmp_path):
 
 def test_pin_artifact_refuses_unproven_or_replaced_bytes(tmp_path):
     root, sha, m = _pin_env(tmp_path)
-    with pytest.raises(reg.RegistryError, match="no stored production run recorded"):
-        _pin(m, root, [{"run_id": "legacy", "created_at": "2026-10-01", "artifact_id": None}])
+    with pytest.raises(reg.RegistryError, match="no stored production run under the league's scoring"):
+        _pin(m, root, [_rec("legacy", "2026-10-01", None)])
     # the file on disk is not what the newest production run used: never pinned as "the" artifact
     with pytest.raises(reg.RegistryError, match="was replaced"):
-        _pin(m, root, [{"run_id": "a", "created_at": "2026-10-01", "artifact_id": sha},
-                       {"run_id": "b", "created_at": "2026-10-09", "artifact_id": "e" * 64}])
+        _pin(m, root, [_rec("a", "2026-10-01", sha),
+                       _rec("b", "2026-10-09", "e" * 64)])
     with pytest.raises(reg.RegistryError, match="per-run artifact"):
-        _pin(m, root, [{"run_id": "a", "created_at": "2026-10-01", "artifact_id": sha}], version=ps.MODEL_VERSION)
+        _pin(m, root, [_rec("a", "2026-10-01", sha)], version=ps.MODEL_VERSION)
+
+
+def test_pin_evidence_is_the_live_scorings_verified_runs_only(tmp_path):
+    """Codex review (PR #79): a NEWER run of the version under another scoring, or one whose rows do not verify,
+    with a different artifact, must neither block the pin nor be taken as its evidence."""
+    root, sha, m = _pin_env(tmp_path)
+    runs = [_rec("served", "2026-10-10", sha),
+            _rec("other-league", "2026-10-12", "e" * 64, fp="0000000000000000"),
+            _rec("damaged", "2026-10-13", "f" * 64, verified=False)]
+    new, rep = _pin(m, root, runs)
+    assert reg.entry(new, MODEL_VERSION)["artifact"]["sha256"] == sha and rep["served_by_runs"] == ["served"]
+    assert rep["ignored_runs"] == {"other_scoring": 1, "not_verified": 1, "no_artifact_id": 0}
+    assert rep["other_recorded_artifacts"] == []             # ignored runs are not evidence of anything
+    # the refusal stays: an eligible newer run of the live scoring that used other bytes still blocks the pin
+    with pytest.raises(reg.RegistryError, match="was replaced"):
+        _pin(m, root, runs + [_rec("live-refit", "2026-10-14", "d" * 64)])
+    # only other-scoring or damaged evidence: nothing proves the bytes
+    with pytest.raises(reg.RegistryError, match="no stored production run under the league's scoring"):
+        _pin(m, root, runs[1:] + [_rec("x", "2026-10-01", sha, fp="0000000000000000")])
+
+
+def test_recorded_runs_for_pin_reads_scoring_and_integrity_from_the_database(live, tmp_path):  # noqa: F811
+    """End to end on a real run store, read-only: the newest run under another scoring (other artifact) and a
+    newer tampered run are recorded but ignored, and the run under the live scoring is the evidence."""
+    from test_independent_projections import _artifact
+    from app.analytics.independent_projection_store import build_live, write_run
+
+    con, src, _ = live
+    root, sha, m = _pin_env(tmp_path)
+
+    def run(created, fp, aid):
+        meta, rows = build_live(con, src, _artifact(src), 2026, 6)
+        meta.update(created_at=created, scoring_fingerprint=fp, artifact_id=aid)
+        return write_run(con, meta, rows)["run_id"]
+
+    served = run(datetime(2026, 10, 10), FP, sha)
+    run(datetime(2026, 10, 12), "0000000000000000", "e" * 64)
+    tampered = run(datetime(2026, 10, 13), FP, "f" * 64)
+    con.execute("UPDATE independent_projection_rows SET projected_points = 99 WHERE run_id = ? AND espn_player_id = 1",
+                [tampered])
+    before = con.execute("SELECT * FROM independent_projection_runs ORDER BY ALL").fetchall()
+    recs = {r["run_id"]: r for r in reg.recorded_runs_for_pin(con, MODEL_VERSION, 2026, FP)}
+    assert len(recs) == 3 and recs[served]["verified"] is True and recs[tampered]["verified"] is False
+    new, rep = _pin(m, root, list(recs.values()))
+    assert rep["served_by_runs"] == [served] and reg.entry(new, MODEL_VERSION)["artifact"]["sha256"] == sha
+    assert rep["ignored_runs"] == {"other_scoring": 1, "not_verified": 1, "no_artifact_id": 0}
+    assert reg.recorded_runs_for_pin(con, MODEL_VERSION, 2025, FP) == []            # another season: not live
+    assert con.execute("SELECT * FROM independent_projection_runs ORDER BY ALL").fetchall() == before
 
 
 def test_missing_rollback_artifact_is_never_invented(tmp_path):
@@ -933,7 +987,7 @@ def test_missing_rollback_artifact_is_never_invented(tmp_path):
     root, sha, m = _pin_env(tmp_path)
     (root / "independent_projections_ifp-1.0.0.json").unlink()
     with pytest.raises(reg.RegistryError, match="missing or unreadable.*must not be reconstructed"):
-        _pin(m, root, [{"run_id": "a", "created_at": "2026-10-01", "artifact_id": sha}])
+        _pin(m, root, [_rec("a", "2026-10-01", sha)])
     rep = reg.rollback_dry_run(reg.load_manifest(), model_root=root, live_scoring_fp=FP, now=AT)
     assert rep["dry_run"] is True and rep["applies"] is False and rep["restorable"] is False
     assert any("ifp-1.0.0 artifact" in x and "missing" in x for x in rep["missing"])
@@ -943,7 +997,7 @@ def test_missing_rollback_artifact_is_never_invented(tmp_path):
 
 def test_pin_leaves_a_report_that_does_not_bind_unpinned(tmp_path):
     root, sha, m = _pin_env(tmp_path, heldout={"model_version": "ifp-0.9.0", "scoring_fingerprint": FP, "positions": {}})
-    new, rep = _pin(m, root, [{"run_id": "a", "created_at": "2026-10-01", "artifact_id": sha}])
+    new, rep = _pin(m, root, [_rec("a", "2026-10-01", sha)])
     assert rep["reports"][0]["pinned"] is False and "ifp-0.9.0" in rep["reports"][0]["reason"]
     assert reg.entry(new, MODEL_VERSION)["validation_reports"][0]["sha256"] is None
 

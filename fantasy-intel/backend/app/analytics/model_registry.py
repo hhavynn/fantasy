@@ -948,9 +948,12 @@ def pin_artifact(m: dict, version: str, *, model_root: Path, live_scoring_fp: st
 
     Refuses unless: the entry's artifact path is set and its sha256 is still null (a pin never changes); the
     file loads with the production loader and names `version` under the league's scoring; and the NEWEST
-    stored production run of `version` that recorded an artifact_id (`recorded_runs`: [{run_id, created_at,
-    artifact_id}] from independent_projection_runs) recorded exactly this file's sha256, so the pin names the
-    bytes users were shown, not merely the file that happens to be on disk now. The training cutoff is read
+    eligible production run of `version` recorded exactly this file's sha256, so the pin names the bytes users
+    were shown, not merely the file that happens to be on disk now. `recorded_runs` ([{run_id, created_at,
+    artifact_id, scoring_fingerprint, verified}], see recorded_runs_for_pin) are chosen the way consumers choose
+    runs: only runs under the live league scoring (`live_scoring_fp`) whose stored rows verified against their
+    content hash (`verified` True) are evidence. A newer run under another scoring, or a damaged one, can neither
+    block the pin nor stand in as its evidence; the report counts what was ignored. The training cutoff is read
     from the artifact; an already recorded, different cutoff refuses. A held-out report referenced with a null
     sha256 is pinned too when it binds to the artifact (_heldout_binding_problem); otherwise it stays unpinned
     and the report says why. Appends an `artifact_pinned` history event (production does not change)."""
@@ -981,11 +984,22 @@ def pin_artifact(m: dict, version: str, *, model_root: Path, live_scoring_fp: st
     why = artifact_identity_problem(data, version, live_scoring_fp, e.get("family"))
     if why:
         raise RegistryError(f"cannot pin {version}: {why}")
-    recorded = sorted((r for r in recorded_runs if _sha_ok(r.get("artifact_id"))),
-                      key=lambda r: (str(r.get("created_at")), str(r.get("run_id"))))
+    ignored = {"other_scoring": 0, "not_verified": 0, "no_artifact_id": 0}
+    eligible = []
+    for r in recorded_runs:
+        if r.get("scoring_fingerprint") != live_scoring_fp:
+            ignored["other_scoring"] += 1
+        elif r.get("verified") is not True:
+            ignored["not_verified"] += 1
+        elif not _sha_ok(r.get("artifact_id")):
+            ignored["no_artifact_id"] += 1
+        else:
+            eligible.append(r)
+    recorded = sorted(eligible, key=lambda r: (str(r.get("created_at")), str(r.get("run_id"))))
     if not recorded:
-        raise RegistryError(f"cannot pin {version}: no stored production run recorded an artifact sha256, so nothing "
-                            "proves these bytes are what production served")
+        raise RegistryError(f"cannot pin {version}: no stored production run under the league's scoring with verified "
+                            f"rows recorded an artifact sha256 (ignored: {ignored}), so nothing proves these bytes are "
+                            "what production served")
     newest = recorded[-1]
     if newest["artifact_id"] != sha:
         raise RegistryError(f"cannot pin {version}: the newest production run {newest['run_id']} recorded artifact "
@@ -1039,10 +1053,34 @@ def pin_artifact(m: dict, version: str, *, model_root: Path, live_scoring_fp: st
                 "matches": production_pin.APPROVED_ARTIFACT_SHA256 == sha}
     return new, {"dry_run": True, "applies": False, "version": version, "artifact": ne["artifact"],
                  "training_cutoff": cutoff, "served_by_runs": ne["pin"]["served_by_runs"],
-                 "other_recorded_artifacts": others, "reports": reports,
+                 "other_recorded_artifacts": others, "ignored_runs": ignored, "reports": reports,
                  "consumer_pin": consumer if version == production_pin.PINNED_MODEL_VERSION else None,
                  "note": "proposal only: copy it into model_registry.json AND set production_pin.APPROVED_ARTIFACT_SHA256 "
                          "to the same sha in one reviewed change (the consumer copy of the registry pin, tested equal)"}
+
+
+def recorded_runs_for_pin(con, version: str, season: int, scoring_fp: str | None) -> list[dict]:
+    """Pin evidence for pin_artifact, read-only: every stored run of `version` for the live `season`, with its
+    scoring fingerprint and whether its stored rows verify against its content hash
+    (production_forecasts.verified_runs; the artifact gate is NOT applied, because the pin being established is
+    that gate). Runs of other scorings are returned too, so pin_artifact can report them as ignored."""
+    from . import production_forecasts as pf
+    from ..db.connection import fetch_dicts, table_exists
+
+    if not table_exists(con, pf.RUNS):
+        return []
+    out = []
+    weeks = [r["week"] for r in fetch_dicts(con, f"SELECT DISTINCT week FROM {pf.RUNS} WHERE season = ? AND "
+                                                 "model_version = ? ORDER BY week", [season, version])]
+    if not table_exists(con, pf.ROWS):      # legacy rows cannot be verified: no run is evidence
+        return [{**r, "verified": False} for r in fetch_dicts(
+            con, f"SELECT run_id, created_at, artifact_id, scoring_fingerprint FROM {pf.RUNS} "
+                 "WHERE season = ? AND model_version = ?", [season, version])]
+    for w in weeks:
+        for run, _, problem in pf.verified_runs(con, season, w, model_version=version, artifact_id=None):
+            out.append({"run_id": run["run_id"], "created_at": run["created_at"], "artifact_id": run.get("artifact_id"),
+                        "scoring_fingerprint": run.get("scoring_fingerprint"), "verified": problem is None})
+    return out
 
 
 # ----------------------------------------------------------------------------- rollback dry run (read-only)
@@ -1166,5 +1204,5 @@ def write_manifest(m: dict, path: Path) -> Path:
 
 __all__ = ["SCHEMA", "MANIFEST_PATH", "STATES", "load_manifest", "validate_manifest", "production", "entry",
            "review_candidate", "evaluate_promotion", "production_status", "dry_run_report", "plan_rollback", "verify_transition",
-           "pin_artifact", "training_cutoff_of", "rollback_dry_run",
+           "pin_artifact", "recorded_runs_for_pin", "training_cutoff_of", "rollback_dry_run",
            "write_manifest", "write_once", "sha256_file", "RegistryError"]

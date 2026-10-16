@@ -13,7 +13,8 @@ reviews every other registered model against the promotion checks. `evaluate` ju
 manifest (a future promotion) against the committed one. `plan-rollback` writes the manifest a
 rollback would produce to a NEW file (write-once) for review; applying it is a reviewed code change.
 `pin-artifact` writes the manifest that pins a model's artifact to the exact bytes production served (the
-file's sha256 must equal the artifact_id the newest stored production run of that version recorded) to a NEW
+file's sha256 must equal the artifact_id the newest stored run of that version recorded under the live league
+scoring and season, among runs whose rows verify against their content hash) to a NEW
 file; copying it into model_registry.json is the reviewed change. `rollback-dry-run` reports what a rollback
 of the current production model would restore, what is missing, and which run every consumer would see per
 week before and after. The live database is only ever opened read-only.
@@ -60,17 +61,15 @@ def _ro(db: Path):
     return duckdb.connect(str(db), read_only=True) if db.exists() else None
 
 
-def _recorded_runs(db: Path, version: str) -> list[dict]:
+def _recorded_runs(db: Path, version: str, season: int, fp: str | None) -> list[dict]:
+    """Pin evidence (model_registry.recorded_runs_for_pin), read from the live DB opened read-only."""
     con = _ro(db)
     if con is None:
         return []
     try:
-        cols = ["run_id", "created_at", "artifact_id"]
-        rows = con.execute("SELECT run_id, created_at, artifact_id FROM independent_projection_runs "
-                           "WHERE model_version = ? ORDER BY created_at, run_id", [version]).fetchall()
+        return reg.recorded_runs_for_pin(con, version, season, fp)
     finally:
         con.close()
-    return [dict(zip(cols, r)) for r in rows]
 
 
 def _rollback_dry_run(m: dict, args, fp: str | None) -> dict:
@@ -120,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr)
                 return 2
             new, result = reg.pin_artifact(m, args.version, model_root=args.models, live_scoring_fp=fp,
-                                           recorded_runs=_recorded_runs(args.live_db, args.version),
+                                           recorded_runs=_recorded_runs(args.live_db, args.version, args.season, fp),
                                            by=args.by or "", at=datetime.now(timezone.utc), reason=args.reason or "")
             result = {**result, "proposal": str(reg.write_manifest(new, args.out))}
             args.out = None
