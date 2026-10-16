@@ -9,13 +9,16 @@ which only changes the weekly numbers on Home, Matchup and Start/Sit.
 **Production model: `ifp-2.0.0` (owner approval 2026-10-16, recorded as an override in
 `model_registry.json`: it has NOT met `SHADOW_PROMOTION_CRITERIA` or `PROMOTION_CRITERIA`).** The
 projection switch reads the newest `ifp-2.0.0` run for the week and falls back, labeled, to the newest
-`ifp-1.0.0` run when a week has none. Weekly routine (laptop, before the week's first kickoff):
+`ifp-1.0.0` run when a week has none. Weekly routine (laptop, before the week's first kickoff), automated
+by the launchd jobs in `scripts/launchd/`:
 
 ```bash
-uv run python ../scripts/learning_cycle.py run                                     # sync-exits + train ifp-2 for week W
-uv run python ../scripts/backtest_independent_projections.py project --week W     # store the ifp-2.0.0 run
-uv run python ../scripts/publish_motherduck.py                                    # hosted copy
+uv run python ../scripts/learning_cycle.py run    # sync, train and freeze ifp-2 for week W, then store its run (`project`)
+uv run python ../scripts/refresh_all.py           # ... which the next refresh publishes to MotherDuck
 ```
+
+`learning_cycle.py run --no-project` skips storing the run; `backtest_independent_projections.py project
+--week W` stores it by hand.
 
 **`ifp-1.0.0` status (previous production; held-out evaluation on real data, see "Results"):**
 
