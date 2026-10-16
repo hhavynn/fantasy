@@ -9,7 +9,7 @@
     uv run python ../scripts/backtest_independent_projections.py participation-evaluate  # frozen -> held-out
     uv run python ../scripts/backtest_independent_projections.py participation-fit       # participation artifact
     uv run python ../scripts/backtest_independent_projections.py snap-ablation           # validation only
-    uv run python ../scripts/backtest_independent_projections.py project --week 7   # writes live tables
+    uv run python ../scripts/backtest_independent_projections.py project --week 7   # appends one immutable run
 
 Inputs: the live DB (FANTASY_DB_PATH, opened read-only except by `project`) and the optional
 history DB from scripts/sync_nfl_history.py (NFL_HISTORY_DB_PATH, default data/nfl_history.duckdb).
@@ -224,21 +224,25 @@ def cmd_snap_ablation(args, live, hist, scoring, protocol) -> dict:
 
 
 def cmd_project(args, hist, scoring) -> dict:
-    from app.analytics.independent_projection_store import build_live, write_live
+    from app.analytics.independent_projection_store import build_live, write_run
     from app.db.connection import open_db
 
-    art = Artifact.from_dict(json.loads((args.out / f"independent_projections_{MODEL_VERSION}.json").read_text()))
+    art_bytes = (args.out / f"independent_projections_{MODEL_VERSION}.json").read_bytes()
+    art = Artifact.from_dict(json.loads(art_bytes))
+    # Run provenance: sha256 of the artifact FILE bytes (the digest model_registry.json pins).
+    art_sha = hashlib.sha256(art_bytes).hexdigest()
     ppath = args.out / f"participation_{pm.PARTICIPATION_VERSION}.json"
     part = pm.ParticipationArtifact.from_dict(json.loads(ppath.read_text())) if ppath.exists() else None
     with open_db(args.live_db) as con:
         src = _sources(con, hist, scoring.require_supported())
         t = time.time()
-        meta, rows = build_live(con, src, art, args.season, args.week, participation=part)
-        n = write_live(con, meta, rows)
+        meta, rows = build_live(con, src, art, args.season, args.week, participation=part, artifact_sha256=art_sha)
+        stored = write_run(con, meta, rows)   # append-only: an identical retry returns the existing run
     by = {}
     for r in rows:
         by[r["coverage_status"]] = by.get(r["coverage_status"], 0) + 1
-    return {"run_id": meta["run_id"], "rows": n, "coverage": by, "runtime_seconds": round(time.time() - t, 2),
+    return {"run_id": stored["run_id"], "created": stored["created"], "rows": stored["row_count"],
+            "artifact_id": art_sha, "content_sha256": stored["content_sha256"], "coverage": by, "runtime_seconds": round(time.time() - t, 2),
             "participation": meta["participation_version"],
             "with_expected_points": sum(r["expected_points"] is not None for r in rows),
             "data_through": [meta["data_through_season"], meta["data_through_week"]]}

@@ -1,6 +1,13 @@
 """Live week-W independent projections: build targets from the live DB, apply a frozen artifact,
 persist rows for the read-only API. Never trains; never touches ESPN projection storage.
 
+Storage is append-only (docs/independent_projection_engine.md, "Live runs and abstention"): `write_run`
+stores a run and its rows under their own run_id in `independent_projection_runs` /
+`independent_projection_rows`, never deletes or updates a committed run, returns the existing run for an
+identical retry, and raises if a run_id would receive different content. Each run records
+`artifact_id` (sha256 of the artifact FILE bytes, the same digest model_registry.json pins), a
+`content_sha256` over its canonicalised meta and rows, and its `row_count`.
+
 Guards (each produces an explicit coverage_status and a NULL projection, never a zero):
   unsupported_scoring    league offensive scoring differs from the artifact's training scoring
   unsupported_position   K and D/ST (no credible independent model in V1)
@@ -20,17 +27,19 @@ projected_points stays the estimate CONDITIONAL on appearing.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 
 import polars as pl
 
-from ..db.connection import fetch_dicts, replace_where, table_exists, upsert_rows, utcnow
+from ..db.connection import fetch_dicts, insert_rows, table_exists, utcnow
 from ..espn.constants import IR_SLOT
 from .forecast_features import POSITIONS, Sources, features_for_week, key
 from .independent_projections import Artifact, flags_for, missing_inputs, predict_frame
 from .league_scoring import resolve_skill_scoring
 from .player_availability import RESTRICTED, derive
+from .production_forecasts import ROWS, RUNS, ImmutableRunError, annotate, content_sha256, team_kickoffs
 
 WITHHELD_ESPN = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
 ACTIVE_ROSTER = {"ACT", "INA"}     # nflverse weekly roster: active 53 (INA = game-day inactive that week)
@@ -119,11 +128,19 @@ def espn_designation_fallback(con, sources: Sources, season: int, week: int) -> 
             {teams[g] for g in add})
 
 
+def artifact_digest(artifact: Artifact) -> str:
+    """Fallback artifact id when the caller has no artifact file: sha256 of the canonical artifact JSON,
+    prefixed so it can never be mistaken for a file digest (the registry pins sha256 of file bytes)."""
+    return "dict:" + hashlib.sha256(json.dumps(artifact.to_dict(), sort_keys=True, default=str).encode()).hexdigest()
+
+
 def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int,
-               participation=None) -> tuple[dict, list[dict]]:
+               participation=None, artifact_sha256: str | None = None) -> tuple[dict, list[dict]]:
     """Run metadata + one row per candidate. `sources` must contain the live season (and
     ideally the previous season from the history DB). `participation`: optional
-    ParticipationArtifact; without it p_play and expected_points stay null."""
+    ParticipationArtifact; without it p_play and expected_points stay null. `artifact_sha256`: sha256 of
+    the artifact file the caller loaded (scripts/backtest_independent_projections.py project), stored as
+    the run's artifact_id so it can be compared with model_registry.json's pinned sha."""
     _, scoring = league_scoring(con, season)
     scoring_ok = scoring.supported and scoring.fingerprint == artifact.scoring_fingerprint
     games = sources.games.filter((pl.col("season") == season) & (pl.col("week") == week))
@@ -227,7 +244,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
         if table_exists(con, "sync_runs") else [{"t": None}]
     meta = {"run_id": f"ifp-{season}w{week}-{utcnow():%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}", "season": season,
             "week": week, "model_version": artifact.version, "scoring_fingerprint": scoring.fingerprint if scoring.supported else None,
-            "artifact_created_at": artifact.created_at, "data_through_season": last[0], "data_through_week": last[1],
+            "artifact_id": artifact_sha256 or artifact_digest(artifact), "artifact_created_at": artifact.created_at, "data_through_season": last[0], "data_through_week": last[1],
             "nfl_synced_at": synced[0]["t"], "model_status": artifact.status, "evaluation": artifact.evaluation,
             "participation_version": participation.version if participation is not None else None,
             "participation_status": participation.status if participation is not None else None,
@@ -238,14 +255,53 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     return meta, rows
 
 
-def write_live(con, meta: dict, rows: list[dict]) -> int:
+def write_run(con, meta: dict, rows: list[dict]) -> dict:
+    """Store one run, append-only. Returns {run_id, created, row_count, content_sha256}.
+
+    * `meta["run_id"]` already stored with the same content -> that run, nothing written;
+    * `meta["run_id"]` already stored with different content -> ImmutableRunError (history is never rewritten);
+    * another run of the same (season, week, model_version, scoring_fingerprint, artifact_id) with the same
+      content_sha256 -> that run's id, nothing written (an idempotent retry);
+    * anything else (including a source correction that changes the forecasts) -> a NEW run.
+    Stored rows are re-read inside the transaction and must reproduce the digest, else nothing is committed."""
+    if not rows:
+        raise ValueError("refusing to store a run with no rows")
+    run_id, digest = meta["run_id"], content_sha256(meta, rows)
     con.execute("BEGIN TRANSACTION")
     try:
-        upsert_rows(con, "independent_projection_runs", [meta], ["run_id"])
-        n = replace_where(con, "independent_player_projections", rows, "season = ? AND week = ?",
-                          [meta["season"], meta["week"]])
+        same = fetch_dicts(con, f"SELECT run_id, content_sha256, row_count FROM {RUNS} WHERE run_id = ?", [run_id])
+        if same:
+            if same[0]["content_sha256"] != digest or same[0]["row_count"] != len(rows):
+                raise ImmutableRunError(f"run {run_id} is already stored with different content; "
+                                        "committed runs are write-once")
+            result = {"run_id": run_id, "created": False}
+        else:
+            twin = fetch_dicts(con, f"""
+                SELECT run_id FROM {RUNS} WHERE season = ? AND week = ? AND model_version = ?
+                  AND scoring_fingerprint IS NOT DISTINCT FROM ? AND artifact_id IS NOT DISTINCT FROM ?
+                  AND content_sha256 = ? ORDER BY created_at, run_id LIMIT 1""",
+                               [meta["season"], meta["week"], meta["model_version"], meta.get("scoring_fingerprint"),
+                                meta.get("artifact_id"), digest])
+            if twin:
+                result = {"run_id": twin[0]["run_id"], "created": False}
+            else:
+                kickoffs = team_kickoffs(con, meta["season"], meta["week"])
+                stamped = annotate([{**r, "run_id": run_id} for r in rows], meta["season"], meta["week"],
+                                   meta.get("created_at") or utcnow(), kickoffs)
+                insert_rows(con, RUNS, [{**meta, "content_sha256": digest, "row_count": len(rows),
+                                         "migrated_from_legacy": False}])
+                insert_rows(con, ROWS, stamped)
+                back = fetch_dicts(con, f"SELECT * FROM {ROWS} WHERE run_id = ?", [run_id])
+                if len(back) != len(rows) or content_sha256(meta, back) != digest:
+                    raise RuntimeError(f"run {run_id}: stored rows do not reproduce the content digest")
+                result = {"run_id": run_id, "created": True}
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")
         raise
-    return n
+    return {**result, "row_count": len(rows), "content_sha256": digest}
+
+
+def write_live(con, meta: dict, rows: list[dict]) -> int:
+    """Compatibility wrapper around `write_run`; returns the number of rows in the run."""
+    return write_run(con, meta, rows)["row_count"]

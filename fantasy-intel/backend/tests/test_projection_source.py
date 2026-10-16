@@ -1,11 +1,14 @@
 """Projection source switch (app.analytics.projection_source): ESPN by default, the independent
 model only when asked, with every number's origin labeled."""
 
+from datetime import timedelta
+
 import pytest
 
 from app.analytics import projection_source as ps
 from app.analytics.independent_projection_store import build_live, write_live
 from app.analytics.start_sit import load_start_sit_evaluation
+from app.db.connection import table_columns
 
 from test_independent_projections import _artifact, live  # noqa: F401  (live is a fixture)
 from test_matchup_api import CURRENT_WEEK, league, serve  # noqa: F401  (fixtures)
@@ -19,9 +22,10 @@ def stored(live):  # noqa: F811
     """A week-6 run of the synthetic league; expected points set as if participation had run."""
     con, src, path = live
     meta, rows = build_live(con, src, _artifact(src), 2026, 6)
+    for r in rows:
+        if r["coverage_status"] == "projected":
+            r["expected_points"] = round(r["projected_points"] * 0.9, 2)
     write_live(con, meta, rows)
-    con.execute("UPDATE independent_player_projections SET expected_points = round(projected_points * 0.9, 2) "
-                "WHERE coverage_status = 'projected'")
     return con
 
 
@@ -47,7 +51,7 @@ def test_independent_values_and_origins(stored):
     w = ps.weekly(stored, 2026, 6, "independent")
     assert w["available"] and w["run"]["model_version"] == ps.MODEL_VERSION
     rows = {r[0]: r[1:] for r in stored.execute(
-        "SELECT espn_player_id, coverage_status, expected_points FROM independent_player_projections").fetchall()}
+        "SELECT espn_player_id, coverage_status, expected_points FROM independent_projection_rows").fetchall()}
     espn = dict(stored.execute("SELECT espn_player_id, projected_points FROM espn_player_weekly_points").fetchall())
     assert w["values"][1] == rows[1][1] and w["origin"][1] == "ours"            # projected WR
     assert w["values"][4] == 0.0 and w["origin"][4] == "ours_zero"              # ESPN OUT: withheld
@@ -61,6 +65,40 @@ def test_independent_values_and_origins(stored):
 def test_a_run_of_another_model_or_scoring_is_not_used(stored, column, value):
     stored.execute(f"UPDATE independent_projection_runs SET {column} = ?", [value])
     assert ps.weekly(stored, 2026, 6, "independent")["available"] is False
+
+
+def test_latest_run_is_shown_and_the_earlier_run_survives(live):  # noqa: F811
+    con, src, _ = live
+    art = _artifact(src)
+    first, rows1 = build_live(con, src, art, 2026, 6)
+    write_live(con, first, rows1)
+    second, rows2 = build_live(con, src, art, 2026, 6)
+    next(r for r in rows2 if r["espn_player_id"] == 1)["projected_points"] = 31.0
+    next(r for r in rows2 if r["espn_player_id"] == 1)["expected_points"] = 31.0
+    second["created_at"] = first["created_at"] + timedelta(minutes=5)
+    write_live(con, second, rows2)
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["run"]["run_id"] == second["run_id"] and w["values"][1] == 31.0 and w["origin"][1] == "ours"
+    assert con.execute("SELECT count(*) FROM independent_projection_rows WHERE run_id = ?",
+                       [first["run_id"]]).fetchone()[0] == len(rows1)
+    # a newer run whose rows were lost is skipped, not shown as an all-ESPN forecast
+    con.execute("DELETE FROM independent_projection_rows WHERE run_id = ?", [second["run_id"]])
+    assert ps.weekly(con, 2026, 6, "independent")["run"]["run_id"] == first["run_id"]
+    espn = ps.weekly(con, 2026, 6, "espn")
+    assert espn["run"] is None and set(espn["origin"].values()) == {"espn"}      # ESPN stays the default
+
+
+def test_unmigrated_database_is_read_from_the_legacy_table(stored):
+    """A database or hosted copy that predates schema v8 has only the legacy table: read it, read-only."""
+    con = stored
+    ids = [r[0] for r in con.execute("SELECT run_id FROM independent_projection_runs").fetchall()]
+    expected = ps.weekly(con, 2026, 6, "independent")
+    cols = ", ".join(table_columns(con, "independent_player_projections"))
+    con.execute(f"INSERT INTO independent_player_projections ({cols}) SELECT {cols} FROM independent_projection_rows")
+    con.execute("DROP TABLE independent_projection_rows")
+    legacy = ps.weekly(con, 2026, 6, "independent")
+    assert legacy["available"] and legacy["run"]["run_id"] == ids[0]
+    assert legacy["values"] == expected["values"] and legacy["origin"] == expected["origin"]
 
 
 # ----------------------------------------------------------------------------- consumers

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from ..analytics import production_forecasts as pf
 from ..db.connection import table_exists
 from .deps import db, one, rows
 
@@ -103,12 +104,12 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
         raise ValueError(f"position must be one of {', '.join(POSITIONS)}")
     base = {"schema_version": SCHEMA_VERSION, "league": {"id": lg["league_id"], "season": lg["season"]},
             "week": week, "notes": NOTES}
-    if not (table_exists(con, "independent_projection_runs") and table_exists(con, "independent_player_projections")):
+    rows_table = pf.rows_source(con)
+    if not (table_exists(con, "independent_projection_runs") and rows_table):
         return {**base, "available": False, "unavailable_reason": "Independent projections have not been computed "
                 "(run scripts/backtest_independent_projections.py project).", "run": None, "model_status": None,
                 "players": []}
-    run = one(con, "SELECT * FROM independent_projection_runs WHERE season = ? AND week = ? "
-                   "ORDER BY created_at DESC LIMIT 1", [lg["season"], week])
+    run = pf.latest_run(con, lg["season"], week)   # newest run that still has its rows; runs are immutable
     if run is None:
         return {**base, "available": False, "unavailable_reason": f"No independent projection run for week {week}.",
                 "run": None, "model_status": None, "players": []}
@@ -126,7 +127,7 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
     players = rows(con, f"""
         SELECT p.*, fp.full_name, fp.on_team_id, fp.injury_status,
                e.projected_points AS espn_projected_points, e.synced_at AS espn_synced_at
-        FROM independent_player_projections p
+        FROM {rows_table} p
         LEFT JOIN fantasy_players fp ON fp.espn_player_id = p.espn_player_id
         LEFT JOIN espn_player_weekly_points e ON e.espn_player_id = p.espn_player_id
              AND e.season = p.season AND e.scoring_period = p.week
@@ -140,6 +141,7 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
             "run": {"run_id": run["run_id"], "model_version": run["model_version"],
                     "artifact_created_at": run["artifact_created_at"], "created_at": str(run["created_at"]),
                     "scoring_fingerprint": run["scoring_fingerprint"],
+                    "artifact_id": run.get("artifact_id"), "content_sha256": run.get("content_sha256"),
                     "feature_cutoff": {"data_through_season": run["data_through_season"],
                                        "data_through_week": run["data_through_week"],
                                        "rule": "only NFL games completed before the target week"},

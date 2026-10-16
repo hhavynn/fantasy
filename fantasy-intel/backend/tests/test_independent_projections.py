@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import duckdb
+
 import numpy as np
 import polars as pl
 import pytest
@@ -14,6 +16,7 @@ from app.analytics.independent_projection_store import build_live, write_live
 from app.analytics.independent_projections import (Artifact, RidgeModel, explain_row, fit_final, fit_ridge,
                                                    interval_for)
 from app.analytics.league_scoring import resolve_skill_scoring
+from app.db.connection import table_columns
 
 from synthetic_forecast import SCORING_ITEMS, add_league, database, gsis
 
@@ -77,7 +80,7 @@ def test_interval_bands():
 # ----------------------------------------------------------------------------- live run
 
 
-def _artifact(src, fingerprint=None, drop=()):
+def _artifact(src, fingerprint=None, drop=(), created_at="2026-10-14T00:00:00+00:00"):
     store = build_store(src, completed_weeks(src, [2025, 2026]))
     sel = {"protocol": {}, "positions": {p: {"primary": "C", "lambda": {"B": 0.1, "C": 0.1}, "intervals": {}}
                                          for p in ("QB", "RB", "WR", "TE") if p not in drop}}
@@ -86,7 +89,7 @@ def _artifact(src, fingerprint=None, drop=()):
     desc = SCORING.describe()
     if fingerprint:
         desc["fingerprint"] = fingerprint
-    return fit_final(store, sel, ev, desc, "2026-10-14T00:00:00+00:00", 2025)
+    return fit_final(store, sel, ev, desc, created_at, 2025)
 
 
 PLAYERS = {  # espn id -> (name, position, gsis, confidence, injury)
@@ -253,6 +256,36 @@ def test_api_contract_is_stable(live, monkeypatch):
     assert client.get("/api/projections/independent", params={"week": 7}).json()["available"] is False
 
 
+def test_api_shows_the_latest_run_and_reads_unmigrated_databases(live, monkeypatch):
+    from datetime import timedelta
+
+    con, src, path = live
+    art = _artifact(src)
+    first, rows1 = build_live(con, src, art, 2026, 6)
+    write_live(con, first, rows1)
+    second, rows2 = build_live(con, src, art, 2026, 6)
+    second["created_at"] = first["created_at"] + timedelta(minutes=1)
+    next(r for r in rows2 if r["espn_player_id"] == 1)["projected_points"] = 41.0
+    write_live(con, second, rows2)
+    cols = ", ".join(c for c in table_columns(con, "independent_player_projections"))
+    con.close()
+
+    def wr1(body):
+        return next(p for p in body["players"] if p["espn_player_id"] == 1)["independent"]["projected_points"]
+
+    client = _client(monkeypatch, path)
+    body = client.get("/api/projections/independent", params={"week": 6}).json()
+    assert body["run"]["run_id"] == second["run_id"] and wr1(body) == 41.0 and body["run"]["artifact_id"]
+    # an unmigrated copy (legacy table only) is still served, read-only
+    con = duckdb.connect(str(path))
+    con.execute(f"INSERT INTO independent_player_projections ({cols}) SELECT {cols} FROM independent_projection_rows "
+                "WHERE run_id = ?", [second["run_id"]])
+    con.execute("DROP TABLE independent_projection_rows")
+    con.close()
+    legacy = _client(monkeypatch, path).get("/api/projections/independent", params={"week": 6}).json()
+    assert legacy["available"] and legacy["run"]["run_id"] == second["run_id"] and wr1(legacy) == 41.0
+
+
 def _participation_artifact(intercept=2.0):
     from app.analytics.participation import LogitModel, ParticipationArtifact
     models = {p: LogitModel(p, ["snap_pct"], ["snap_pct"], [0.5], [1.0], [0.0], intercept, 0.01, 0, [])
@@ -302,6 +335,7 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
     The only path to it is the opt-in projection switch (analytics/projection_source.py, ESPN by
     default), which only Start/Sit and Matchup import (test below)."""
     allowed = {"projection_source.py",   # opt-in weekly source switch; SQL only, ESPN unless asked
+               "production_forecasts.py",   # immutable run-keyed forecast store (SQL only); readers of the runs
                "independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
                "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",
                "connection.py",   # connection.py: schema-version rebuild list only (like schema.sql)

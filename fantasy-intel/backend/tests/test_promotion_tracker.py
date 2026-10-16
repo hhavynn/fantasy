@@ -1,6 +1,7 @@
 """Promotion tracker (app.analytics.promotion_tracker): read-only, frozen criteria, pregame-only ESPN."""
 
 import json
+from datetime import datetime
 
 import numpy as np
 import polars as pl
@@ -30,10 +31,10 @@ def tracked(live):  # noqa: F811
     WR 11 only after kickoff (must not count). The synthetic artifact has no TE model, so TE 9 has
     a pregame ESPN snapshot and a completed game but no independent projection."""
     con, src, path = live
-    meta, rows = build_live(con, src, _artifact(src), 2026, 5)
-    write_live(con, meta, rows)
     # As if the artifact had been fitted before week 5 (the synthetic one is stamped 2026-10-14).
-    con.execute("UPDATE independent_projection_runs SET artifact_created_at = ?", [FIT_BEFORE_W5])
+    meta, rows = build_live(con, src, _artifact(src, created_at=FIT_BEFORE_W5), 2026, 5)
+    meta["created_at"] = datetime(2026, 9, 5, 12, 0)   # the run itself was made before week 5 kicked off
+    write_live(con, meta, rows)
     for pid, pts in ((1, 14.0), (6, 3.0), (9, 8.0)):
         _snapshot(con, pid, 5, pts, PRE_W5)
     _snapshot(con, 11, 5, 9.0, POST_W5)
@@ -43,7 +44,7 @@ def tracked(live):  # noqa: F811
 def _manual(con, ids: list[int]) -> tuple[float, float]:
     panel = load_panel(con, SCORING, [2026]).filter(pl.col("week") == 5)
     label = {r["gsis_id"]: r["league_points"] for r in panel.iter_rows(named=True)}
-    ours = dict(con.execute("SELECT espn_player_id, projected_points FROM independent_player_projections "
+    ours = dict(con.execute("SELECT espn_player_id, projected_points FROM independent_projection_rows "
                             "WHERE week = 5").fetchall())
     espn = dict(con.execute("SELECT espn_player_id, projected_points FROM espn_projection_history "
                             "WHERE scoring_period = 5").fetchall())
@@ -133,6 +134,30 @@ def test_other_league_scoring_does_not_count(tracked):
     assert t["espn"]["excluded_runs"][0]["reason"] == "made under different league scoring"
 
 
+def test_a_run_made_after_kickoff_is_not_pregame_evidence(tracked):
+    """The week-5 run is stored; a run created after week 5 kicked off must not count, even though its
+    artifact was fitted earlier (the evidence is the forecast the player had BEFORE his game)."""
+    con, _, _ = tracked
+    con.execute("UPDATE independent_projection_rows SET kickoff = ?, pregame = false", ["2026-09-05 17:00:00"])
+    con.execute("UPDATE independent_projection_runs SET created_at = ?", ["2026-09-05 18:00:00"])
+    t = build_tracker(con)
+    assert t["espn"]["matched_observations"] == 0
+    [ex] = t["espn"]["excluded_runs"]
+    assert ex["week"] == 5 and ex["reason"].startswith("post-kickoff")
+
+
+def test_lost_rows_or_a_missing_table_do_not_break_the_tracker(tracked):
+    con, _, _ = tracked
+    con.execute("DELETE FROM independent_projection_rows WHERE espn_player_id = 1")
+    t = build_tracker(con)
+    assert t["espn"]["matched_observations"] == 0 and "integrity" in t["espn"]["excluded_runs"][0]["reason"]
+    cols = "season, week, espn_player_id, gsis_id, position, run_id, projected_points, coverage_status"
+    con.execute(f"INSERT INTO independent_player_projections ({cols}) SELECT {cols} FROM independent_projection_rows")
+    con.execute("DROP TABLE independent_projection_rows")
+    t = build_tracker(con)                       # unmigrated copy: legacy table, run-level eligibility only
+    assert t["available"] is True and t["espn"]["matched_observations"] == 1 and t["espn"]["excluded_runs"] == []
+
+
 def test_no_run_means_no_status_but_espn_pool_is_still_counted(live):  # noqa: F811
     con, _, _ = live
     _snapshot(con, 1, 5, 14.0, PRE_W5)
@@ -157,7 +182,7 @@ def test_current_week_pregame_snapshot(live):  # noqa: F811
 
 def test_api_is_read_only(tracked, monkeypatch):
     con, _, path = tracked
-    tables = ("independent_player_projections", "independent_projection_runs", "espn_projection_history")
+    tables = ("independent_projection_rows", "independent_projection_runs", "espn_projection_history")
     before = {t: con.execute(f"SELECT * FROM {t} ORDER BY ALL").fetchall() for t in tables}
     con.close()
     monkeypatch.setenv("FANTASY_DB_PATH", str(path))

@@ -801,8 +801,19 @@ CREATE TABLE IF NOT EXISTS independent_projection_runs (
     participation_version    VARCHAR, -- participation model (P(appears)); NULL when not applied
     participation_status     JSON,    -- position -> {participation, expected_points, reasons}
     participation_evaluation JSON,    -- held-out participation aggregates
-    created_at           TIMESTAMP
+    created_at           TIMESTAMP,
+    -- Provenance and integrity (schema v8). Runs are write-once: a committed run and its rows are never
+    -- updated or deleted. NULL on pre-v8 runs until the v8 backfill (production_forecasts.migrate_legacy).
+    artifact_id          VARCHAR,     -- sha256 of the artifact FILE bytes the `project` path loaded
+    content_sha256       VARCHAR,     -- sha256 of the canonicalised run meta + rows (excludes run_id, created_at)
+    row_count            INTEGER,     -- rows stored under this run_id; NULL/0 = forecast rows missing
+    migrated_from_legacy BOOLEAN      -- TRUE: backfilled from independent_player_projections (v7 layout)
 );
+-- Non-destructive upgrade of an existing v7 table (CREATE TABLE IF NOT EXISTS above is a no-op there).
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS artifact_id VARCHAR;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS content_sha256 VARCHAR;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS row_count INTEGER;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS migrated_from_legacy BOOLEAN;
 
 CREATE TABLE IF NOT EXISTS independent_player_projections (
     season               INTEGER,
@@ -829,4 +840,41 @@ CREATE TABLE IF NOT EXISTS independent_player_projections (
     expected_points      DOUBLE,      -- p_play * projected_points (unconditional); NULL if either is NULL
     participation        JSON,        -- {p_play, status, depth_rank, explanation, flags, ...}
     PRIMARY KEY (season, week, espn_player_id)
+);
+
+-- LEGACY (schema v7): one row per (season, week, player), replaced by the next run of the same week, which is
+-- how an earlier run's forecasts were lost. Kept read-only for old readers and as the source of the v8 backfill;
+-- never written, dropped or modified by v8. New code writes independent_projection_rows instead.
+
+-- Immutable production forecasts (schema v8). Append-only and run-keyed: every `project` run keeps its own rows.
+-- NEVER add this table to a connection._REBUILD entry (that list DROPS tables). The writer
+-- (independent_projection_store.write_run) never deletes or updates a committed run; kickoff/pregame are
+-- annotations derived at write time from nfl_schedules (naive UTC) and are not part of the content hash.
+CREATE TABLE IF NOT EXISTS independent_projection_rows (
+    run_id               VARCHAR NOT NULL,
+    season               INTEGER,
+    week                 INTEGER,
+    espn_player_id       BIGINT NOT NULL,
+    gsis_id              VARCHAR,
+    position             VARCHAR,
+    nfl_team             VARCHAR,
+    opponent             VARCHAR,
+    is_home              BOOLEAN,
+    projected_points     DOUBLE,
+    interval_low         DOUBLE,
+    interval_high        DOUBLE,
+    model                VARCHAR,
+    coverage_status      VARCHAR,
+    games_used           INTEGER,
+    latest_usage_season  INTEGER,
+    latest_usage_week    INTEGER,
+    missing_inputs       JSON,
+    flags                JSON,
+    explanation          JSON,
+    p_play               DOUBLE,
+    expected_points      DOUBLE,
+    participation        JSON,
+    kickoff              TIMESTAMP,   -- the player's own team kickoff (naive UTC); NULL = unknown
+    pregame              BOOLEAN,     -- run created_at < kickoff; unknown kickoff = FALSE
+    PRIMARY KEY (run_id, espn_player_id)
 );
