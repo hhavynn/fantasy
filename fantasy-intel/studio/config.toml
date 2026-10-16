@@ -90,10 +90,10 @@ portrait = "assets/presenter/host.png"
 voice = "am_adam"
 # Realism pass 2 (A/B in episodes/presenter-review, docs/presenter/README.md). engine_mode "hq" = lossless
 # native-fps MuseTalk loop with skin-detail restore, approved by the owner from the montages (2026-10-15).
-# Motion stays procedural until the new library clips are reviewed; motion "library" = audited Wan2.2
-# natural-motion clips of the same host (falls back to procedural if none pass).
+# motion "library" = audited Wan2.2 natural-motion clips of the same host (falls back to procedural if none
+# pass), approved by the owner from the pass-2 montages (variant D, 2026-10-15).
 engine_mode = "hq"
-motion = "procedural"
+motion = "library"
 library = "~/models/presenter/motion/library"
 detail = 1.0
 detail_sigma = 3.5

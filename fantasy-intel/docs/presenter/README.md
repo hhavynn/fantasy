@@ -10,7 +10,7 @@ An optional, fully local AI host that delivers the opening line (`hook`), or the
 
 ## Realism pass 2: audit, fixes and A/B (2026-10-15)
 
-Current defaults: `mode = "off"`, `engine_mode = "hq"` (approved from the montages on 2026-10-15), `motion = "procedural"`. Nothing reaches a publishable file while `mode` is off; `engine_mode = "musetalk"` is still the fallback.
+Current defaults: `mode = "off"`, `engine_mode = "hq"` and `motion = "library"` (variant D, approved from the montages on 2026-10-15). Nothing reaches a publishable file while `mode` is off; `engine_mode = "musetalk"` and `motion = "procedural"` remain the fallbacks.
 
 ### Root causes (measured, not guessed)
 
