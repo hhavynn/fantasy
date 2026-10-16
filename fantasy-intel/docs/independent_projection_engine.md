@@ -811,6 +811,12 @@ availability risk after an exit is missing the next game, which `participation.p
 `inj_exits_recent` as an input, so partial-game risk stays in the conditional mean rather than being
 assumed away.
 
+Follow-up research (`docs/research/adaptive_workload.md`, research only, rejected): an exposure-weighted
+established workload (an injury-shortened game counts as the fraction of a game the player was on the
+field) and an adaptive recent-vs-established blend (`ifp-aw-0.1.0`) were within +/-0.003 MAE of ifp-2
+on every window, so `xfpl_eb` stays as frozen. The blend helps persistent usage declines and hurts
+upward streaks, which regress; a decline-only variant would need a fresh, prospective pre-registration.
+
 ### Intervals
 
 The challenger reuses the empirical tercile bands, built from development-window residuals (no
@@ -896,6 +902,16 @@ changes a consumer; the hosted app does not import it.
 Feature store 2020-2026 (42.7k rows, with classification) 6.4 s; development grid of 20 specs x 8
 penalties 16 s (parallel); confirmation 2.8 s; weekly `train` ~10 s; `predict` ~1 s; play-by-play
 sync ~0.5 s per season (nflverse cache). Artifacts ~30 KB each, ledger runs ~0.7 MB per week (436 players in week 6).
+
+## Point distributions (research, ifpd-0.1.0)
+
+`docs/research/fantasy_point_distributions.md`: calibrated P10/P50/P90, P(points >= 10/15/20) and
+unconditional mixtures around the unchanged ifp-1.0.0 mean (`app/analytics/point_distributions.py`,
+`scripts/point_distribution_research.py`; never imported by the app). Conditional ranges pass the
+pre-registered bar at every position on 2023-24 and beat the existing tercile bands on CRPS for
+RB/WR/TE; unconditional ranges are publishable in research terms for WR/TE only (QB/RB participation
+is experimental). The existing `interval_80` and its QB withholding are unchanged; nothing is wired
+into the API, Start/Sit or the website.
 
 ## Known biases and unsupported populations
 
