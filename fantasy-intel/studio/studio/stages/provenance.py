@@ -54,8 +54,9 @@ def git_state() -> dict:
 
 def kokoro_files(repo: str, voice: str) -> dict:
     from huggingface_hub import try_to_load_from_cache
+    from .tts import parse_voice
     out = {}
-    for name in (*KOKORO_FILES, f"voices/{voice}.pt"):
+    for name in (*KOKORO_FILES, *(f"voices/{v}.pt" for v, _ in parse_voice(voice))):
         path = try_to_load_from_cache(repo, name)
         if isinstance(path, str):
             out[name] = {"sha256": cached_sha256(Path(path)), "revision": Path(path).parts[-2 - name.count("/")]}
@@ -95,6 +96,8 @@ def build(ep: Episode) -> dict:
     prompts = {p.name: p.read_text() for p in sorted(ep.path("prompts").glob("*.txt"))}
     gguf = cfg.model_file()
     facts_players = read_json(ep.path("facts.json"))["players"] if ep.path("facts.json").exists() else []
+    from .tts import tts_config
+    tts = tts_config(ep)          # what actually narrated this episode (a Short uses the [shorts] voice)
     return {
         "episode_id": ep.id,
         "generated_at": utcnow(),
@@ -113,9 +116,10 @@ def build(ep: Episode) -> dict:
             },
             "tts": {
                 "engine": "Kokoro-82M", "repo": cfg["tts"]["repo"], "code_license": "Apache-2.0",
-                "weights_license": cfg["tts"]["license"], "voice": cfg["tts"]["voice"],
-                "voice_origin": "built-in Kokoro voice (not a clone of any person)",
-                "speed": cfg["tts"]["speed"], "files": kokoro_files(cfg["tts"]["repo"], cfg["tts"]["voice"]),
+                "weights_license": cfg["tts"]["license"], "voice": tts["voice"],
+                "voice_origin": "built-in Kokoro voice or a weighted mix of them (not a clone of any person)",
+                "speed": tts["speed"], "speed_scale": tts.get("speed_scale", 1.0),
+                "files": kokoro_files(cfg["tts"]["repo"], tts["voice"]),
                 "g2p": {"misaki": "Apache-2.0",
                         "espeak-ng fallback": "GPL-3.0; run locally, never distributed; its output audio is "
                                               "not covered by the GPL",

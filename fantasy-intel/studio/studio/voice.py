@@ -126,14 +126,17 @@ def consent_problems(name: str) -> list[str]:
 
 @lru_cache(maxsize=8)
 def kokoro_source_se(kokoro_voice: str, speed: float = 1.1):
-    """The conversion's source timbre: Kokoro's voice fingerprinted from a fixed passage (cached on disk)."""
+    """The conversion's source timbre: Kokoro's voice (or blend) fingerprinted from a fixed passage, cached."""
+    import re
     import torch
-    cache = VOICES / "_kokoro" / f"{kokoro_voice}.pt"
+    cache = VOICES / "_kokoro" / f"{re.sub(r'[^\w.]+', '_', kokoro_voice)}.pt"
     if cache.exists():
         return torch.load(cache)
     from kokoro import KPipeline
+    from .stages.tts import kokoro_voice as voice_arg
     pipe = KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M")
-    audio = np.concatenate([r.audio.numpy() for r in pipe(KOKORO_REFERENCE, voice=kokoro_voice, speed=speed)])
+    audio = np.concatenate([r.audio.numpy() for r in pipe(KOKORO_REFERENCE, voice=voice_arg(pipe, kokoro_voice),
+                                                          speed=speed)])
     cache.parent.mkdir(parents=True, exist_ok=True)
     wav = cache.with_suffix(".wav")
     sf.write(wav, audio, 24000)

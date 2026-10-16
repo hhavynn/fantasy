@@ -39,6 +39,27 @@ def make_pipeline(cfg: dict):
     return KPipeline(lang_code="a", repo_id=cfg["repo"])
 
 
+def parse_voice(spec: str) -> list[tuple[str, float]]:
+    """`am_puck` or a weighted blend `am_puck:0.7+af_heart:0.3` -> [(voice, weight)], weights normalised to 1."""
+    parts = []
+    for item in spec.split("+"):
+        name, _, weight = item.strip().partition(":")
+        w = float(weight) if weight else 1.0
+        if not re.fullmatch(r"[a-z]{2}_\w+", name) or w <= 0:
+            raise ValueError(f"bad Kokoro voice spec {spec!r}")
+        parts.append((name, w))
+    total = sum(w for _, w in parts)
+    return [(n, w / total) for n, w in parts]
+
+
+def kokoro_voice(pipe, spec: str):
+    """What Kokoro's pipeline takes as `voice`: the name itself, or the weighted mix of the voice tensors."""
+    parts = parse_voice(spec)
+    if len(parts) == 1:
+        return parts[0][0]
+    return sum(w * pipe.load_single_voice(n) for n, w in parts)
+
+
 def lexicon_misses(text: str) -> list[str]:
     """Words misaki cannot phonemize from its own lexicon (they go to the espeak-ng fallback)."""
     from misaki import en
@@ -50,7 +71,8 @@ def lexicon_misses(text: str) -> list[str]:
 def synthesize(pipe, text: str, cfg: dict, speed: float | None = None) -> tuple[np.ndarray, list[dict], list[str]]:
     sr = cfg["sample_rate"]
     chunks, words, unknown, offset = [], [], [], 0.0
-    for result in pipe(text, voice=cfg["voice"], speed=speed or cfg["speed"], split_pattern=r"\n+"):
+    speed = (speed or cfg["speed"]) * cfg.get("speed_scale", 1.0)
+    for result in pipe(text, voice=kokoro_voice(pipe, cfg["voice"]), speed=speed, split_pattern=r"\n+"):
         audio = result.audio.detach().cpu().numpy() if hasattr(result.audio, "detach") else np.asarray(result.audio)
         for tok in result.tokens or []:
             if re.search(r"[A-Za-z]", tok.text) and not tok.phonemes:
@@ -135,8 +157,10 @@ def tts_config(ep: Episode) -> dict:
     cfg = dict(ep.cfg["tts"])
     if ep.fmt == "short":
         sh = ep.cfg["shorts"]
+        # speed_scale multiplies every line's speed, including the per-line speeds a script sets
         cfg.update(segment_tail_silence=sh["segment_tail_silence"], voice=sh.get("voice", cfg["voice"]),
-                   trim=sh.get("trim_silence", False), clone=sh.get("voice_clone") or None)
+                   trim=sh.get("trim_silence", False), clone=sh.get("voice_clone") or None,
+                   speed_scale=sh.get("speed_scale", 1.0))
     return cfg
 
 
