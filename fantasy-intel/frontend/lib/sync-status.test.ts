@@ -8,6 +8,16 @@ const status = (sync: SyncInfo, nfl_latest_week: number | null = 5) =>
   ({ league: { name: "Test League", current_week: 5 }, nfl_latest_week, sync });
 const ok = (source: string, finished_at: string) => ({ source, status: "ok", message: null, finished_at });
 
+test("an interrupted sync run is neither running nor a failure in the pill", () => {
+  const r = computeSyncSummary(status({
+    last_success: { espn: "2026-10-14T12:00:00Z", nfl: "2026-10-14T11:05:00Z", analytics: "2026-10-14T12:10:00Z" },
+    latest_runs: [ok("espn", "2026-10-14T12:00:00Z"), ok("analytics", "2026-10-14T12:10:00Z"),
+      { source: "nfl", status: "interrupted", message: null, finished_at: null }, ok("nfl", "2026-10-14T11:05:00Z")],
+  }), NOW);
+  assert.equal(r.state, "ok");
+  assert.equal(r.activeFailures.length, 0);
+});
+
 test("backend unreachable (null input) is offline", () => {
   const r = computeSyncSummary(null, NOW);
   assert.equal(r.state, "offline");

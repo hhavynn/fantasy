@@ -63,7 +63,7 @@ export function computeSyncSummary(data: StatusPayload, now: number = Date.now()
 
   const latest = new Map<string, (typeof runs)[number]>();
   for (const run of runs) {
-    if (!run?.source) continue;
+    if (!run?.source || (run.status ?? "").toLowerCase() === "interrupted") continue;   // neither running nor failed
     const prev = latest.get(run.source);
     if (!prev || (parseTimestamp(run.finished_at) ?? 0) >= (parseTimestamp(prev.finished_at) ?? 0)) latest.set(run.source, run);
   }

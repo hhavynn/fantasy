@@ -362,6 +362,40 @@ def test_sync_subprocess_uses_the_cycles_database_and_season(lc, env, monkeypatc
     assert seen["env"]["NFL_SEASON"] == "2025"
 
 
+# ----------------------------------------------------------------------------- injury retrieval warnings
+
+
+def test_cycle_report_carries_injury_warnings_but_status_and_exit_are_unchanged(lc, env):
+    """The synthetic database has an empty retrieval log: every week-10 team is `missing`. That is a
+    warning in the report and nothing else: same stages, same exit code, same frozen forecast."""
+    code, rep = _run(lc, env)
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert _stages(rep) == [("sync_nfl", "skipped"), ("sync_exits", "skipped"), ("load_sources", "ok"),
+                            ("readiness", "ok"), ("evaluate", "ok"), ("train", "ok"), ("predict", "ok"),
+                            ("project", "skipped")]
+    assert any("no injury evidence retrieved" in w for w in rep["warnings"]), rep["warnings"]
+    assert rep["warnings"] == rep["data"]["warnings"] and rep["errors"] == []
+    info = rep["injury_freshness"]
+    assert info["log_available"] and len(info["upcoming_issues"]) == 8
+
+
+def test_cycle_handles_an_absent_injury_retrieval_log(lc, env):
+    _sql(env, "DROP TABLE injury_retrievals")
+    code, rep = _run(lc, env)
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert any(w.startswith("injury retrieval log unavailable") for w in rep["warnings"])
+    assert rep["injury_freshness"]["log_available"] is False
+    assert not any("stale" in w or "no injury evidence" in w for w in rep["warnings"])
+
+
+def test_injury_warnings_do_not_turn_a_not_ready_cycle_into_anything_else(lc, env):
+    _sql(env, "DELETE FROM nfl_snap_counts WHERE season = 2025 AND week = 9 AND team = 'AAA'")
+    code, rep = _run(lc, env)
+    assert code == lc.EXIT_NOT_READY and rep["status"] == "waiting_for_data"
+    assert rep["warnings"] and any("no injury evidence retrieved" in w for w in rep["warnings"])
+    assert all("injury" not in e for e in rep["errors"])
+
+
 def _espn_players(env):
     """ESPN side of the synthetic league: every ACT skill player of the last roster week, with a confident id
     mapping (the cycle's synthetic database has no ESPN players otherwise, so `project` would store nothing)."""

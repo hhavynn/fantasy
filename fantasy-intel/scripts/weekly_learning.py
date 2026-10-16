@@ -98,11 +98,11 @@ def _fetched_at(live, season: int):
 
 
 def cmd_status(args, src, live=None, **_) -> dict:
-    return wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season))
+    return wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season), con=live)
 
 
 def _require_ready(args, src, live=None) -> dict:
-    rep = wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season))
+    rep = wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season), con=live)
     if not rep["ok"]:
         raise wl.NotReady("; ".join(rep["errors"]))
     if not rep["pregame"] and not args.retrospective:
@@ -149,6 +149,12 @@ def _retrieved_at(args, live) -> dict:
         try:
             row = live.execute("SELECT max(finished_at) FROM sync_runs WHERE source = 'nfl' AND status = 'ok'").fetchone()
             synced = row[0] if row else None
+            # A sync that started after the last ok one and never finished may have committed newer content
+            # (run_nfl_sync commits before it finishes): then the ok run's time no longer bounds the download.
+            from app.analytics import injury_freshness as inj
+            run = inj.latest_nfl_sync_run(live, args.season)
+            if synced is not None and run is not None and inj.unverifiable_after(live, args.season, run):
+                synced = None
         except duckdb.Error:
             synced = None
     out = {fam: {args.season: synced} for fam in ("panel", "games", "defense", "rosters", "injuries")}
@@ -170,7 +176,8 @@ def capture_sources(args, live, hist, src, participation_sources) -> dict:
             (pl.col("season") == args.season) & (pl.col("week") == args.week))
     try:
         return sp.capture(args.out, src, args.season, args.week, captured_at=_now(args),
-                          retrieved_at=_retrieved_at(args, live), meta=sp.source_meta(cov, fallback), extra=extra)
+                          retrieved_at=_retrieved_at(args, live), meta=sp.source_meta(cov, fallback), extra=extra,
+                          con=live)
     except Exception as err:
         raise wl.NotReady(f"could not snapshot the forecast's sources ({err.__class__.__name__}: {err}); no forecast "
                           "was frozen") from err

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from app.analytics.pipeline import run_analytics
-from app.db.connection import connect, open_db
+from app.db.connection import connect, init_db, open_db
 from app.espn.sync import run_espn_sync
 
 from espn_fixture import MY_SWID, SEASON, FakeEspnClient
@@ -64,3 +64,28 @@ def test_api_endpoints(tmp_path, monkeypatch):
     from app.db.connection import SCHEMA_VERSION
     assert "validation_issues" in dq and dq["schema_version"] == SCHEMA_VERSION
     assert client.get("/api/players/123456789").status_code == 404
+
+
+def test_interrupted_sync_is_reported_as_interrupted_and_not_as_the_latest_run(tmp_path, monkeypatch):
+    """An nfl sync that died after SyncRun.start() leaves a 'running' row with no finish time. The API calls it
+    'interrupted', keeps it in the data-quality list, and /api/status still shows the previous finished run."""
+    db_path = tmp_path / "interrupted.duckdb"
+    con = connect(db_path)
+    init_db(con)
+    for run_id, source, started, finished, status in [
+            ("nfl-ok", "nfl", "2025-09-09 06:00:00", "2025-09-09 06:05:00", "ok"),
+            ("espn-ok", "espn", "2025-09-09 06:00:00", "2025-09-09 06:01:00", "ok"),
+            ("nfl-dead", "nfl", "2025-09-09 07:00:00", None, "running")]:
+        con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status) VALUES (?, ?, ?, ?, ?)",
+                    [run_id, source, started, finished, status])
+    con.close()
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db_path))
+    from app.main import app
+    client = TestClient(app)
+
+    latest = {r["source"]: r for r in client.get("/api/status").json()["sync"]["latest_runs"]}
+    assert latest["nfl"]["status"] == "ok" and latest["nfl"]["finished_at"].startswith("2025-09-09T06:05")
+    assert latest["espn"]["status"] == "ok"
+    listed = {r["run_id"]: r["status"] for r in client.get("/api/data-quality").json()["sync_runs"]}
+    assert listed == {"nfl-ok": "ok", "espn-ok": "ok", "nfl-dead": "interrupted"}
+    assert {r["source"]: r["status"] for r in client.get("/api/data-quality").json()["sync"]["latest_runs"]}["nfl"] == "ok"
