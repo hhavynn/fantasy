@@ -242,6 +242,7 @@ def test_weekly_pipeline_never_imports_into_consumers():
         # tests/test_usage_signals.py::test_research_module_is_never_imported_by_the_app)
         if path.name in ("weekly_learning.py", "challenger.py", "source_provenance.py", "adaptive_workload.py",
                          "hgb_research.py", "opportunity_efficiency.py",
+                         "espn_benchmark.py",   # research-only ESPN benchmark; reads label_outcomes (never imported)
                          "model_registry.py", "usage_signals.py"):
             continue
         text = path.read_text()
