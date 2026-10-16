@@ -54,9 +54,41 @@ _INT = {"season", "week", "espn_player_id", "games_used", "latest_usage_season",
 _BOOL = {"is_home"}
 
 META_JSON = ("model_status", "evaluation", "participation_status", "participation_evaluation")
-META_INT = ("season", "week", "data_through_season", "data_through_week")
+META_INT = ("season", "week", "data_through_season", "data_through_week", "forecast_horizon", "projected_from_week")
 META_STR = ("model_version", "scoring_fingerprint", "artifact_id", "artifact_created_at", "participation_version")
 HASHED_META = META_INT + META_STR + META_JSON
+# Rest-of-season runs (docs/independent_projection_engine.md "Rest-of-season projections"): forecast_horizon =
+# target week - projected_from_week; NULL (legacy) means 0. Both are in HASHED_META, but only a run with a horizon
+# above 0 contributes them to its digest, so every horizon-0 run (stored before or after this change) keeps the
+# digest it was sealed with and an unchanged rerun stays idempotent across the upgrade.
+HORIZON_META = ("forecast_horizon", "projected_from_week")
+HORIZON_NOTE = "rest-of-season forecast (horizon {k}): experimental, not validated beyond the next week"
+# Marker of the flag a horizon >= 1 row carries for an ESPN OUT / DOUBTFUL / QUESTIONABLE status (next game only, not
+# applied to the target week). Informational: a horizon-k run's digest ignores it, so a status flip does not make
+# every future week's run "different" and store a new copy of all of them.
+NEXT_GAME_ONLY = "describes the next game only"
+NOT_EVIDENCE = "rest-of-season forecast (horizon {k}), not evidence"
+
+
+def horizon_of(run: dict | None) -> int:
+    """forecast_horizon of a stored run; NULL (a run stored before rest-of-season projections) is horizon 0."""
+    v = None if run is None else run.get("forecast_horizon")
+    return 0 if v is None else int(v)
+
+
+def evidence_horizon_sql(con, alias: str = "") -> str:
+    """` AND coalesce(forecast_horizon, 0) = 0` for a reader that selects runs itself (evidence only counts the
+    validated horizon 0; NULL, a run stored before rest-of-season projections, is horizon 0). Empty when the
+    column does not exist yet (a read-only copy that predates it: no run there has a horizon)."""
+    if "forecast_horizon" not in table_columns(con, RUNS):
+        return ""
+    return f" AND coalesce({alias}forecast_horizon, 0) = 0"
+
+
+def horizon_note(run: dict | None) -> str | None:
+    """Run-level experimental label for a rest-of-season run (horizon > 0); None for the validated horizon 0."""
+    k = horizon_of(run)
+    return HORIZON_NOTE.format(k=k) if k > 0 else None
 
 
 NOT_APPROVED_ARTIFACT = "artifact not the approved production artifact"     # ifp-1.0.0 sha pin
@@ -188,9 +220,17 @@ def _canon(col: str, v):
 def content_sha256(meta: dict, rows: Iterable[dict]) -> str:
     """Digest of the run's canonicalised meta and rows. Independent of run_id, created_at, nfl_synced_at,
     row order, and of whether values come from Python objects or back from DuckDB."""
-    payload = {"meta": {k: _canon(k, meta.get(k)) for k in HASHED_META},
-               "rows": [[_canon(c, r.get(c)) for c in ROW_COLUMNS]
-                        for r in sorted(rows, key=lambda r: int(r["espn_player_id"]))]}
+    skip = () if horizon_of(meta) > 0 else HORIZON_META
+    drop_flags = horizon_of(meta) > 0
+
+    def cell(c, r):
+        v = _canon(c, r.get(c))
+        if drop_flags and c == "flags" and isinstance(v, list):
+            v = [f for f in v if not (isinstance(f, str) and NEXT_GAME_ONLY in f)]
+        return v
+
+    payload = {"meta": {k: _canon(k, meta.get(k)) for k in HASHED_META if k not in skip},
+               "rows": [[cell(c, r) for c in ROW_COLUMNS] for r in sorted(rows, key=lambda r: int(r["espn_player_id"]))]}
     text = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -354,7 +394,8 @@ def verified_runs(con, season: int, week: int, *, model_version: str | None = No
     for run in fetch_dicts(con, f"SELECT * FROM {RUNS} WHERE {' AND '.join(where)} "
                                 "ORDER BY created_at DESC NULLS LAST, run_id DESC", params):
         status, why = gate(run)
-        run = {**run, "artifact_check": status, "artifact_note": why}
+        run = {**run, "artifact_check": status, "artifact_note": why, "horizon": horizon_of(run),
+               "horizon_note": horizon_note(run)}
         if status == "rejected":
             yield run, [], why
             continue
@@ -369,7 +410,13 @@ def latest_run(con, season: int, week: int, *, model_version: str | None = None,
     (even with the row count unchanged) or never sealed is skipped, never shown. The returned run carries
     `artifact_check` ("unchecked" | "verified" | "unverified") and, when unverified, `artifact_note` (why).
     Without the run-keyed table (a database not migrated to schema v8) nothing can be verified, so nothing is
-    returned. projection_source.select_run is the consumer policy built on verified_runs."""
+    returned. projection_source.select_run is the consumer policy built on verified_runs.
+
+    CONSUMER selection, deliberately of ANY forecast horizon: the newest verified run for the requested week wins
+    whether it is the week's pregame run (horizon 0) or a rest-of-season run made by an earlier cycle (horizon k > 0),
+    so a later, better-informed run is never hidden behind an older one. The returned run carries `horizon`
+    (forecast_horizon, NULL read as 0) and `horizon_note` (the experimental label, None at horizon 0). Evidence
+    readers (pregame_forecasts, eligible_run_ids, the promotion tracker) do the opposite and use horizon 0 only."""
     for run, _, problem in verified_runs(con, season, week, model_version=model_version,
                                          scoring_fingerprint=scoring_fingerprint, artifact_id=artifact_id):
         if problem is None:
@@ -398,8 +445,11 @@ def is_pregame(created, kickoff) -> bool:
 
 
 def _assess(con, season: int, weeks: set[int] | None, model_version: str, scoring_fingerprint: str,
-            artifact_id=_PIN) -> tuple[list[dict], list[dict]]:
-    """Classify every run of the season: (accepted [{run, rows}], exclusions [{run_id, week, reason}])."""
+            artifact_id=_PIN, include_future_horizons: bool = False) -> tuple[list[dict], list[dict]]:
+    """Classify every run of the season: (accepted [{run, rows}], exclusions [{run_id, week, reason}]).
+    A rest-of-season run (forecast_horizon > 0) is never evidence: it is excluded first, with the reason
+    "rest-of-season forecast (horizon k), not evidence", even when the week's horizon-0 run is missing.
+    `include_future_horizons` (False for every evidence reader) exists for audits that list all runs."""
     gate = artifact_gate(con, model_version, artifact_id)
     kick_first = first_kickoffs(con, season)
     sql = f"SELECT * FROM {RUNS} WHERE season = ?"
@@ -421,7 +471,9 @@ def _assess(con, season: int, weeks: set[int] | None, model_version: str, scorin
     for run in runs:
         fitted, first = _aware(run.get("artifact_created_at")), kick_first.get(run["week"])
         rows = stored.get(run["run_id"], [])
-        if run["model_version"] != model_version:
+        if horizon_of(run) > 0 and not include_future_horizons:
+            reason = NOT_EVIDENCE.format(k=horizon_of(run))
+        elif run["model_version"] != model_version:
             reason = f"model {run['model_version']}, not {model_version}"
         elif run["scoring_fingerprint"] != scoring_fingerprint:
             reason = "made under different league scoring"

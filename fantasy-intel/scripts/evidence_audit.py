@@ -553,7 +553,9 @@ def unverified_snapshot_stamps(con, season: int, slack_s: float = 120.0) -> list
 
 
 def production_runs(con, season: int) -> dict[int, list[dict]]:
-    """Every stored production-forecast run per week, with its stored row count (integrity at a glance)."""
+    """Every stored production-forecast run per week, with its stored row count (integrity at a glance). Horizon 0
+    only: a rest-of-season run (forecast_horizon > 0) is not pregame evidence, so it neither extends the audited
+    weeks nor stands in for the week's missing pregame run."""
     from app.analytics import production_forecasts as pf
 
     if not table_exists(con, pf.RUNS):
@@ -564,7 +566,8 @@ def production_runs(con, season: int) -> dict[int, list[dict]]:
             con, f"SELECT run_id, count(*) AS n FROM {pf.ROWS} WHERE season = ? GROUP BY 1", [season])}
     out: dict[int, list[dict]] = defaultdict(list)
     for r in fetch_dicts(con, f"""SELECT run_id, week, model_version, created_at, artifact_created_at, row_count,
-                                         content_sha256 FROM {pf.RUNS} WHERE season = ? ORDER BY week, created_at""",
+                                         content_sha256 FROM {pf.RUNS} WHERE season = ?{pf.evidence_horizon_sql(con)}
+                                  ORDER BY week, created_at""",
                          [season]):
         out[int(r["week"])].append({"run_id": r["run_id"], "model_version": r["model_version"],
                                     "created_at": _iso(utc(r["created_at"])),

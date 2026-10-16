@@ -1,5 +1,5 @@
 import { Badge, Notice } from "@/components/ui";
-import { modelStatusLine, showingOurs, type ProjectionOrigin, type ProjectionSourceDetail } from "@/lib/projection-source";
+import { horizonCaution, modelStatusLine, showingOurs, type ProjectionOrigin, type ProjectionSourceDetail } from "@/lib/projection-source";
 
 /** What the page's projections are when the switch is on "Ours"; nothing for the ESPN default. */
 export function ProjectionNotice({ detail, className }: { detail: ProjectionSourceDetail | null | undefined; className?: string }) {
@@ -17,6 +17,7 @@ export function ProjectionNotice({ detail, className }: { detail: ProjectionSour
       can&apos;t project.
       {c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable), {c.espn} from ESPN.</>}
       {detail.reason && <> {detail.reason}</>}
+      {horizonCaution(detail) && <> <strong>Caution: {horizonCaution(detail)}</strong></>}
     </Notice>
   );
 }

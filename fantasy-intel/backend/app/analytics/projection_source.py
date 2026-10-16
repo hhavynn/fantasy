@@ -220,7 +220,11 @@ def weekly(con, season: int, week: int, source: str) -> dict:
     for o in origin.values():
         counts[o] += 1
     reason = _fallback_reason(week, run, sel["skipped"]) if sel["fallback"] else None
-    run_info = {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"])}
+    # forecast_horizon k = week - projected_from_week (NULL on a run stored before rest-of-season projections reads 0);
+    # horizon_note is the experimental label of a rest-of-season run (None at horizon 0, the validated next-week forecast)
+    run_info = {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"]),
+                "forecast_horizon": pf.horizon_of(run), "projected_from_week": run.get("projected_from_week"),
+                "horizon_note": pf.horizon_note(run)}
     check = run.get("artifact_check")
     if check == "verified":     # artifact_verified only appears when verification ran (the response shape is otherwise unchanged)
         run_info["artifact_verified"] = True

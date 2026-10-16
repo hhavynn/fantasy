@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from app.analytics import production_forecasts as pf
 from app.analytics import production_pin
 from app.analytics import projection_source as ps
 from app.analytics.independent_projection_store import build_live, register_approved_artifact, write_live
@@ -163,7 +164,10 @@ def test_unpinned_fallback_model_serves_the_newest_run_and_the_shape_is_unchange
     _, newer = _runs(con, src, ps.FALLBACK_VERSION, [(SHA_A, 21.0, 0), (SHA_B, 31.0, 5)])
     w = ps.weekly(con, 2026, 6, "independent")
     assert w["available"] and w["run"]["run_id"] == newer["run_id"] and w["values"][1] == 31.0
-    assert set(w["run"]) == {"run_id", "model_version", "created_at"}               # no artifact_verified: unchanged
+    # no artifact_verified; the horizon fields are the only addition to the independent run object
+    assert set(w["run"]) == {"run_id", "model_version", "created_at", "forecast_horizon", "projected_from_week",
+                             "horizon_note"}
+    assert w["run"]["forecast_horizon"] == 0 and w["run"]["horizon_note"] is None
 
 
 def test_a_pinned_fallback_artifact_serves_only_its_own_runs(live, monkeypatch):  # noqa: F811
@@ -460,3 +464,50 @@ def test_hosted_selection_needs_no_research_packages():
             "assert body['governance']['espn_superiority_established'] is False\n"
             "assert 'owner override' in body['unavailable_reason']\n")
     subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], check=True)
+
+
+# ----------------------------------------------------------------------------- rest-of-season runs in the views
+
+
+def _fake_selection(monkeypatch, con, *, horizon, from_week, week):
+    """Make select_run return a verified run of the given horizon with an ours value for every ESPN-projected player."""
+    from datetime import datetime
+
+    season = con.execute("SELECT max(season) FROM leagues").fetchone()[0]
+    espn = ps._espn(con, season, week)
+    run = {"run_id": f"ros-{horizon}", "season": season, "week": week, "model_version": ps.MODEL_VERSION,
+           "created_at": datetime(2026, 9, 1), "model_status": {}, "artifact_check": "verified",
+           "artifact_note": None, "forecast_horizon": horizon, "projected_from_week": from_week,
+           "horizon": horizon, "horizon_note": pf.horizon_note({"forecast_horizon": horizon})}
+    rows = [{"espn_player_id": pid, "coverage_status": "projected", "expected_points": (v or 0.0) + BUMP, "nfl_team": None}
+            for pid, v in espn.items()]
+    sel = {"run": run, "rows": rows, "fallback": False, "scoring_fingerprint": "fp", "skipped": [],
+           "unavailable_reason": None}
+    monkeypatch.setattr(ps, "select_run", lambda con_, season_, week_, **kw: sel)
+    return run
+
+
+@pytest.mark.parametrize("horizon", [0, 3])
+def test_the_run_a_view_reports_carries_its_horizon_and_experimental_note(league, serve, monkeypatch, horizon):  # noqa: F811
+    _, con, _ = league
+    season = con.execute("SELECT max(season) FROM leagues").fetchone()[0]
+    _fake_selection(monkeypatch, con, horizon=horizon, from_week=CURRENT_WEEK - horizon, week=CURRENT_WEEK)
+    note = f"rest-of-season forecast (horizon {horizon}): experimental, not validated beyond the next week"
+    w = ps.weekly(con, season, CURRENT_WEEK, "independent")
+    expected = {"forecast_horizon": horizon, "projected_from_week": CURRENT_WEEK - horizon,
+                "horizon_note": note if horizon else None}
+    assert {k: w["run"][k] for k in expected} == expected
+    assert {k: ps.describe(w)["run"][k] for k in expected} == expected
+    client = serve(league)
+    for path in ("/api/matchup", "/api/start-sit"):
+        body = client.get(path, params={"source": "independent"}).json()
+        detail = body.get("projection_source") if path == "/api/matchup" else body["projection_source_detail"]
+        assert detail["available"] and {k: detail["run"][k] for k in expected} == expected, path
+
+
+def test_the_espn_response_is_unchanged_by_the_horizon_fields(league, serve):  # noqa: F811
+    client = serve(league)
+    for path, key in (("/api/matchup", "projection_source"), ("/api/start-sit", "projection_source_detail")):
+        detail = client.get(path).json()[key]
+        assert detail["source"] == "espn" and detail["run"] is None
+        assert "forecast_horizon" not in detail and "horizon_note" not in detail
