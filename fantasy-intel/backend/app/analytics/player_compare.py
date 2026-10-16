@@ -25,6 +25,7 @@ from statistics import mean, stdev
 
 from ..db.connection import fetch_dicts, table_columns, table_exists, utcnow
 from . import forward_ours
+from .legacy_league import latest_league
 from .availability import ESPN_STATUS, NFL_REPORT_STATUS, SEVERITY, injury_order_sql
 from .player_scores import played
 from .projection_backtest import _kickoff, _utc
@@ -329,13 +330,13 @@ def _json(v):
 
 
 def load_league(con) -> dict:
-    rows = fetch_dicts(con, """SELECT league_id, season, name, scoring_type, reception_points, current_week,
-                               final_scoring_period, scoring_items FROM leagues ORDER BY synced_at DESC LIMIT 1""")
-    if not rows:
+    lg = latest_league(con, ["league_id", "season", "name", "scoring_type", "reception_points", "current_week",
+                             "final_scoring_period", "scoring_items"])
+    if lg is None:
         raise LeagueUnavailable("ESPN league not synced yet. Run scripts/sync_espn.py.")
-    if not rows[0]["current_week"]:
+    if not lg["current_week"]:
         raise LeagueUnavailable("League current week unknown. Run scripts/sync_espn.py.")
-    return rows[0]
+    return lg
 
 
 def _player_row(con, season: int, pid: int) -> dict | None:
