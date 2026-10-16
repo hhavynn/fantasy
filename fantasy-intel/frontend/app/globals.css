@@ -1,3 +1,9 @@
+/* Metric-matched fallbacks for the self-hosted fonts in app/layout.tsx (shown until the web font swaps in).
+   Values are the ones next/font/google generated for these families, so load-time layout is unchanged. */
+@font-face { font-family: "Barlow Condensed Fallback"; src: local("Arial"); ascent-override: 130.73%; descent-override: 26.15%; line-gap-override: 0%; size-adjust: 76.49%; }
+@font-face { font-family: "IBM Plex Sans Fallback"; src: local("Arial"); ascent-override: 101.32%; descent-override: 27.18%; line-gap-override: 0%; size-adjust: 101.17%; }
+@font-face { font-family: "IBM Plex Mono Fallback"; src: local("Arial"); ascent-override: 76.16%; descent-override: 20.43%; line-gap-override: 0%; size-adjust: 134.59%; }
+
 /* Design tokens: Fantasy Intel design system (Night theme). */
 :root {
   --bg: #070b12;
@@ -63,7 +69,7 @@
   --tabbar-h: 0px;
 
   --font-display: var(--font-barlow-condensed), "Arial Narrow", system-ui, sans-serif;
-  --font-sans: var(--font-plex-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: var(--font-plex-sans), var(--font-plex-sans-greek), "IBM Plex Sans Fallback", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Legacy aliases: existing class names and inline styles keep working. */
