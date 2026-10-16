@@ -13,8 +13,19 @@ rows are shown, in what order, and with which evidence:
              and asset imbalances are labelled prominently.
   all        advanced: any sort and category over the full candidate set.
 
-Ordering is always by canonical deltas (no hidden bonus points for names, positions or player
-counts), and no row carries an acceptance probability.
+and the Trade Discovery 2.0 lenses (docs/trade_discovery_dual_value.md, "Lenses"):
+
+  mutual_upgrades  both lineups improve (or a phase total is unknown); fair, consolidation and
+  fair             playoff draw their own labelled candidate pool from the exact search, assess
+  consolidation    every pool row with trade_dual_value (the full evaluator, cached per row on the
+  playoff          TradeSearch) and rank it by verdict, Pareto front and the lens's own measure.
+                   A lens only orders and filters a pool: the ranking is never fed back into the
+                   best-first search, so the exact search's guarantees are untouched.
+
+Every assessed row in every mode also carries `dual_value` as additional evidence; the legacy modes keep
+their rows, sections and order exactly. Ordering is always by canonical deltas or the stated policy
+(no hidden bonus points for names, positions or player counts), and no row carries an acceptance
+probability.
 """
 
 from __future__ import annotations
@@ -23,6 +34,7 @@ from dataclasses import replace
 
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, UNKNOWN
 from .team_lineups import compare
+from . import trade_dual_value as dual
 from .trade_assets import AGAINST_THEM, NOTE as ASSET_NOTE, AssetBoard, league_needs
 from .trade_discovery import TradeSearch, _rank_key, detail
 from .trades import TradeError
@@ -33,7 +45,37 @@ MODES = {
     "mutual": "Mutual improvement: both projected starting lineups gain (complete projections).",
     "upside": "Maximum upside (exploratory): largest gain for you; their losses are labelled.",
     "all": "All candidates (advanced): any sort or category over the whole search.",
+    "mutual_upgrades": "Best mutual upgrades: both starting lineups improve; ordered by verdict, then Pareto front, then "
+                       "the smaller side's gain.",
+    "fair": "Fairer asset exchanges: no significant asset imbalance; ordered by verdict, then Pareto front, then the "
+            "asset-package ratio.",
+    "consolidation": "Consolidation deals: the side receiving fewer players upgrades its lineup; both sides are "
+                     "assessed.",
+    "playoff": "Playoff-focused trades: your fantasy-playoff lineup improves; ordered by verdict, then Pareto front, "
+               "then the smaller side's playoff gain.",
 }
+# The discovery lenses. `sections`: verdicts shown, in order; `excluded`: the stable keys of rows the lens filters
+# out (plus similar_variants); `measure`: the within-front ordering (trade_dual_value.rank's `primary`).
+SENSIBLE = ("sensible", "sensible_with_concerns")
+LENSES = {
+    "mutual_upgrades": {"label": "Best mutual upgrades", "sections": (*SENSIBLE, "unlikely_mutual", "incomplete"),
+                        "excluded": ("one_sided",), "measure": "lineup_min_side"},
+    "fair": {"label": "Fairer asset exchanges", "sections": (*SENSIBLE, "fair_no_lineup_gain"),
+             "excluded": ("not_fair", "asset_unknown", "one_sided", "incomplete"), "measure": "asset_ratio"},
+    "consolidation": {"label": "Consolidation deals",
+                      "sections": (*SENSIBLE, "unlikely_mutual", "one_sided", "incomplete"),
+                      "excluded": ("no_consolidating_gain", "fair_no_lineup_gain"), "measure": "lineup_min_side"},
+    "playoff": {"label": "Playoff-focused trades", "sections": (*SENSIBLE, "unlikely_mutual", "one_sided", "incomplete"),
+                "excluded": ("no_playoff_gain", "fair_no_lineup_gain"), "measure": "lineup_min_side"},
+}
+LENS_LABELS = {"practical": "Practical trades", "mutual": "Mutual improvement", "upside": "Maximum upside",
+               "all": "All candidates", **{k: v["label"] for k, v in LENSES.items()}}
+SECTION_TEXT = {v: t.format(who="one side's") for v, t in dual.VERDICTS.items()}
+PROJECTION_SOURCE = {
+    "used": "espn", "experimental_comparison": None,
+    "note": "ESPN is the only canonical projection source for trade evaluation. The independent model (ifp-2) is not "
+            "wired into the trade state for long horizons and is unvalidated there, so it is never mixed into a "
+            "scenario and never the default; no comparison is shown."}
 PHASES = {"ros": ("min_side", "ros_delta"), "regular": ("min_side_regular", "regular_season_delta"),
           "playoff": ("min_side_playoff", "playoff_delta")}
 STRICTNESS = {
@@ -274,11 +316,68 @@ def _pool(ts: TradeSearch, sort: str, category: str | None, opponent: int | None
     return rows, exact["search"], heur["search"] if heur else None
 
 
+def _detail(ts: TradeSearch, row: dict) -> dict:
+    """discovery.detail (the full manual evaluator) for one POOL row, cached per row key on the TradeSearch
+    so repeated views reuse it. Returns a shallow copy: the caller may add keys, never the nested views."""
+    cache = getattr(ts, "_detail_cache", None)
+    if cache is None:
+        cache = {}
+        setattr(ts, "_detail_cache", cache)
+    if row["key"] not in cache:
+        cache[row["key"]] = detail(ts.state, row)
+    return dict(cache[row["key"]])
+
+
+def _phase_pair(x: dict, phase: str) -> tuple:
+    return _phase_delta(x["mine"], phase), _phase_delta(x["theirs"], phase)
+
+
+def _lens_exclusion(mode: str, x: dict, phase: str) -> str | None:
+    """The `excluded` key when the lens's own filter drops this assessed row, else None (the verdict filter
+    follows: a verdict that is not one of the lens's sections is counted under its own name)."""
+    m, t = _phase_pair(x, phase)
+    imbalance = x["dual_value"]["asset"]["imbalance"]
+    if mode == "mutual_upgrades":
+        # both phase deltas positive, or unknown (an unknown total is never read as 0); a known loss is out
+        return "one_sided" if (m is not None and m <= 0) or (t is not None and t <= 0) else None
+    if mode == "fair":
+        return "asset_unknown" if imbalance is None else "not_fair" if imbalance == "significant" else None
+    if mode == "consolidation":
+        sent, got = len(x["sends"]), len(x["receives"])
+        gain = m if got < sent else t if got > sent else None        # the side receiving fewer players
+        return None if gain is not None and gain > 0 else "no_consolidating_gain"
+    if mode == "playoff":
+        return None if m is not None and m > 0 else "no_playoff_gain"
+    return None
+
+
+def _lens_sections(mode: str, ranked: list[dict], limit: int, excluded: dict) -> dict[str, list]:
+    """Cut the ranked rows into the lens's sections: `limit` for the two sensible sections (with the practical
+    tier's PER_IDEA / PER_MANAGER diversity rule, counting what it removes), max(3, limit // 2) for the rest."""
+    names = LENSES[mode]["sections"]
+    out: dict[str, list] = {v: [] for v in names}
+    ideas: dict[str, dict] = {v: {} for v in SENSIBLE}
+    managers: dict[str, dict] = {v: {} for v in SENSIBLE}
+    for x in ranked:
+        v = x["dual_value"]["plausibility"]["verdict"]
+        if v in SENSIBLE:
+            idea = (x["opponent_team_id"], tuple(x["receives"]))
+            if ideas[v].get(idea, 0) >= PER_IDEA or managers[v].get(x["opponent_team_id"], 0) >= PER_MANAGER:
+                excluded["similar_variants"] += 1
+                continue
+            ideas[v][idea] = ideas[v].get(idea, 0) + 1
+            managers[v][x["opponent_team_id"]] = managers[v].get(x["opponent_team_id"], 0) + 1
+        out[v].append(x)
+    return {v: items[:limit if v in SENSIBLE else max(3, limit // 2)] for v, items in out.items()}
+
+
 def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", opponent: int | None = None,
              limit: int = 10, strictness: str = "standard", sort: str | None = None, category: str | None = None,
              heuristic: bool = True, board: FreeAgencyBoard | None = None) -> dict:
     """Rows for one mode, assessed and explained. Every shown row is re-run through the manual
-    evaluator (detail) and carries consistent_with_manual_evaluator."""
+    evaluator (detail) and carries consistent_with_manual_evaluator and its `dual_value`. The lenses
+    assess their whole candidate pool with the full evaluator first; the legacy modes only assess the
+    rows they show."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {', '.join(MODES)}")
     if phase not in PHASES:
@@ -290,14 +389,35 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
     needs = league_needs(state, window, asset_board)
     names = {p.espn_player_id: {"name": p.name, "position": p.position} for ps in state.rosters.values() for p in ps}
     n = len(window.weeks)
+    lens = LENSES.get(mode)
+    if mode == "playoff":
+        phase = "playoff"                        # this lens is the playoff phase, whatever phase was requested
     phase_sort = PHASES[phase][0]
     mutual = "MUTUAL_PROJECTED_IMPROVEMENT"
+    lens_note = None
+    heur_text = lambda h: " plus the heuristic larger-shape rows" if h else ""   # noqa: E731
     if mode == "practical":
         rows, exact_search, heur_search = _pool(ts, phase_sort, mutual if phase == "ros" else None, opponent,
                                                 PRACTICAL_POOL, heuristic)
         pool_rule = (f"the exact top {PRACTICAL_POOL} by smaller-side {phase} gain"
-                     + (" among mutual-improvement trades" if phase == "ros" else "")
-                     + (" plus the heuristic larger-shape rows" if heur_search else ""))
+                     + (" among mutual-improvement trades" if phase == "ros" else "") + heur_text(heur_search))
+    elif lens:
+        pool_category = {"mutual_upgrades": mutual if phase == "ros" else None, "consolidation": "CONSOLIDATION"}.get(mode)
+        pool_rule = (f"the exact top {PRACTICAL_POOL} by smaller-side {phase} gain"
+                     + {"mutual_upgrades": " among mutual-improvement trades" if phase == "ros" else "",
+                        "consolidation": " among consolidation trades"}.get(mode, ""))
+        no_playoff = mode == "playoff" and (not ts.split or not ts.po)
+        if no_playoff:
+            rows, exact_search, heur_search = [], None, None
+            lens_note = ("This league has no fantasy-playoff split, so there is no playoff lens." if not ts.split else
+                         "No fantasy-playoff week remains in the evaluation window, so there is no playoff lens.")
+        else:
+            rows, exact_search, heur_search = _pool(ts, phase_sort, pool_category, opponent, PRACTICAL_POOL, heuristic)
+        pool_rule += heur_text(heur_search) + {
+            "mutual_upgrades": f"; kept when both {phase} lineup deltas are positive or unknown",
+            "fair": "; kept when the asset imbalance is none or moderate",
+            "consolidation": f"; kept when the side receiving fewer players gains in the {phase} phase",
+            "playoff": "; kept when your playoff delta is positive"}[mode]
     elif mode == "mutual":
         if phase == "ros":
             rows, exact_search, heur_search = _pool(ts, phase_sort, mutual, opponent, max(limit, 1), heuristic)
@@ -318,25 +438,50 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
     if fa_board is None and getattr(state, "free_agents", None):
         from .trade_alternatives import FreeAgencyBoard
         fa_board = FreeAgencyBoard(state, window)
+    ctx = dual.anchor_fa_context(fa_board, state, ts.anchor)          # the anchor's best free agent, once per view
+    dual_value = lambda d: dual.for_evaluation(   # noqa: E731
+        state, window, ts.anchor, d["sends"], d["receives"], d["mine_detail"], d["theirs_detail"], phase=phase,
+        asset_board=asset_board, fa_board=fa_board, fa_context=ctx, labels=("You", d["opponent_name"] or "They"))
 
-    alt_anchor = fa_board.best_acquisition(ts.anchor, state.rosters[ts.anchor], kinds=("free_agent",)) if fa_board else {}
-    fa_anchor = next((p for p in fa_board.pool if p.espn_player_id == alt_anchor["player"]["espn_player_id"]), None) \
-        if fa_board and alt_anchor.get("player") else None
-    player_map = {p.espn_player_id: p for ps in state.rosters.values() for p in ps} if fa_board else {}
-    before_anchor = fa_board.team(state.rosters[ts.anchor]) if fa_board else {}
-
-    assessed = []
+    assessed, raw = [], {}
     for row in rows:
         bal = asset_board.package(row["sends"], row["receives"])
         inj = injury_flags(state, row["sends"] + row["receives"])
-        opp_cost = _anchor_opportunity_cost(fa_board, ts.anchor, row, alt_anchor, fa_anchor, before_anchor,
-                                           player_map, window) if fa_board else None
+        if lens:
+            # The verdict needs both sides' full evaluator views, so the whole pool is evaluated (cached per row).
+            d = _detail(ts, row)
+            d.update(asset_balance=bal, injury_flags=inj, opp_cost_advantage=None)
+            d["dual_value"] = dual_value(d)
+            v = d["dual_value"]["plausibility"]
+            d.update(tier=v["verdict"], tier_reasons=[v["verdict_text"]])
+            assessed.append(d)
+            continue
+        opp_cost = _anchor_opportunity_cost(fa_board, ts.anchor, row, ctx["alt"], ctx["fa_player"], ctx["before"],
+                                           ctx["players"], window) if ctx is not None else None
         tier, reasons = classify(row, bal, inj, phase, strictness, opp_cost=opp_cost)
+        raw[row["key"]] = row
         assessed.append({**row, "asset_balance": bal, "injury_flags": inj, "tier": tier, "tier_reasons": reasons,
                          "opp_cost_advantage": opp_cost.get("trade_advantage") if opp_cost else None})
     excluded = {"one_sided": 0, "lopsided": 0, "similar_variants": 0}
     sections: dict[str, list] = {}
-    if mode == "practical":
+    if lens:
+        excluded = {k: 0 for k in (*lens["excluded"], "similar_variants")}
+        kept = []
+        for x in assessed:
+            why = _lens_exclusion(mode, x, phase) or (x["tier"] if x["tier"] not in lens["sections"] else None)
+            if why:
+                excluded[why] = excluded.get(why, 0) + 1
+            else:
+                kept.append(x)
+        measure = {"lineup_min_side": lambda x: x["dual_value"]["rank_axes"]["lineup_min_side"],
+                   "asset_ratio": lambda x: x["dual_value"]["asset"]["ratio"]}[lens["measure"]]
+        # Verdict tier first; the Pareto fronts are computed WITHIN a verdict, so a row's front never depends on
+        # trades with a different verdict; then the lens's measure, then the exact search order.
+        assessed = []
+        for v in dual.VERDICTS:
+            assessed += dual.rank([x for x in kept if x["tier"] == v], measure, _rank_key(phase_sort))
+        sections = _lens_sections(mode, assessed, limit, excluded)
+    elif mode == "practical":
         def _practical_sort_key(x):
             # trade_advantage is a rest-of-season figure: only comparable with the ros phase.
             adv = x.get("opp_cost_advantage") if phase == "ros" else None
@@ -372,8 +517,11 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
     for k, items in sections.items():
         full = []
         for x in items:
-            d = detail(state, x)
-            d.update({k2: x[k2] for k2 in ("asset_balance", "injury_flags", "tier", "tier_reasons", "search_method")})
+            if lens:
+                d = x                              # already the full evaluation, with its dual_value
+            else:
+                d = {**_detail(ts, raw[x["key"]]), **x}
+                d["dual_value"] = dual_value(d)
             d["rationale"] = rationale(d, needs, asset_board, names, n)
             full.append(d)
         sections[k] = full
@@ -390,11 +538,18 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
                                   for p, nd in needs[opp].items()}})
     return {
         "mode": mode, "mode_text": MODES[mode], "phase": phase, "strictness": strictness,
-        "sections": sections, "tiers": TIERS if mode == "practical" else {"results": MODES[mode]},
+        "lens": {"mode": mode, "label": LENS_LABELS[mode], "pool_rule": pool_rule}, "lens_note": lens_note,
+        "sections": sections,
+        "tiers": TIERS if mode == "practical" else {v: SECTION_TEXT[v] for v in lens["sections"]} if lens
+        else {"results": MODES[mode]},
         "excluded": excluded, "pool_rule": pool_rule, "pool_size": len(rows),
         "diversity_rule": (f"Practical tier: at most {PER_IDEA} variants per manager and set of players received, and "
                            f"{PER_MANAGER} per manager; similar variants are counted, not re-ranked.")
-        if mode == "practical" else None,
+        if mode == "practical" else
+        (f"Sensible sections: at most {PER_IDEA} variants per manager and set of players received, and {PER_MANAGER} "
+         "per manager in each; similar variants are counted, not re-ranked.") if lens else None,
+        "ranking_policy": dual.RANKING_POLICY, "verdicts": dual.VERDICTS, "criteria": dual.CRITERIA,
+        "projection_source": PROJECTION_SOURCE,
         "coverage": {"exact": exact_search, "heuristic": heur_search,
                      "exact_shapes": ts.shapes, "heuristic_shapes": ts.heuristic_shapes,
                      "positions": list(ts.positions) if ts.positions else None},
