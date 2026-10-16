@@ -129,7 +129,8 @@ def kokoro_source_se(kokoro_voice: str, speed: float = 1.1):
     """The conversion's source timbre: Kokoro's voice (or blend) fingerprinted from a fixed passage, cached."""
     import re
     import torch
-    cache = VOICES / "_kokoro" / f"{re.sub(r'[^\w.]+', '_', kokoro_voice)}.pt"
+    safe = re.sub(r"[^\w.]+", "_", kokoro_voice)
+    cache = VOICES / "_kokoro" / f"{safe}.pt"
     if cache.exists():
         return torch.load(cache)
     from kokoro import KPipeline
