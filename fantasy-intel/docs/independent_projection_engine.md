@@ -482,6 +482,9 @@ ESPN sync, nflverse sync and analytics have finished and the pregame snapshot ch
   the stage does not run; after a failed MotherDuck publish alone it does (the local data is fresh,
   and a skipped start/sit record cannot be redone once games kick off), and the refresh still exits 1.
 * `--skip-evidence` skips the stage; `--check-only` implies it.
+* **Checking that it really ran.** `scripts/evidence_health.py` (docs/evidence_health.md) parses every
+  refresh log step by step and checks the files each step should have written. So "the refresh exited 0" and
+  "this week's pregame evidence was captured" are reported separately, with the cause of anything missing.
 
 ## Projection switch (opt-in weekly view)
 

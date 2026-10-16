@@ -1,0 +1,18 @@
+{
+ "name": "host",
+ "fictional": true,
+ "generated_with": {
+  "model": "Tongyi-MAI/Z-Image-Turbo",
+  "license": "Apache-2.0",
+  "runner": "mflux 0.22.0 (MIT), local, quantize 8",
+  "steps": 9,
+  "seed": 37,
+  "size": [
+   832,
+   1216
+  ]
+ },
+ "prompt": "Photorealistic vertical photo of a fictional sports analyst presenter, a man in his early thirties, short dark curly hair neatly faded on the sides, light stubble, warm medium-brown skin, friendly confident expression, mouth closed with a slight smile, looking straight into the camera, wearing a fitted charcoal crewneck sweater over a white t-shirt, head and upper chest in frame, centered, eye level, modern sports broadcast studio behind him softly out of focus with teal and green accent lights, soft key light, natural skin texture, sharp focus on the eyes, 85mm lens, shallow depth of field",
+ "note": "A generated, fictional person. Reuse this exact file for every video so the host stays the same.",
+ "sha256": "5b1c5517073e7de6e872e6722e1a97eb2ce647187fa5a2a04caa00680c77a081"
+}

@@ -1,0 +1,59 @@
+[project]
+name = "fantasy-intel-studio"
+version = "0.1.0"
+description = "Local YouTube episode pipeline built on fantasy-intel NFL usage data"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "duckdb>=1.2",
+    "httpx>=0.27",
+    "jsonschema>=4.21",
+    "matplotlib>=3.9",
+    "numpy>=1.26",
+    "pillow>=10.4",
+    "soundfile>=0.12",
+    # Kokoro-82M TTS (Apache-2.0 code + weights). misaki G2P runs with fallback=None, so the
+    # GPL espeak-ng fallback is never installed or used.
+    "kokoro>=0.9.4",
+    # OpenVoice V2 tone-colour converter (MIT code and weights): re-voices Kokoro narration in the channel
+    # owner's own voice. Pinned to a commit; its old pins are relaxed or dropped below (only the converter
+    # is used: no Whisper, no Gradio, no MeloTTS).
+    "myshell-openvoice @ git+https://github.com/myshell-ai/OpenVoice@74a1d147b17a8c3092dd5430504bd83ef6c7eb23",
+    "librosa>=0.10",
+    "wavmark>=0.0.3",
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+]
+
+[project.scripts]
+make-episode = "studio.cli:main"
+enroll-voice = "studio.voice:main"
+make-presenter = "studio.presenter:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.uv]
+package = true
+override-dependencies = [
+    "numpy>=1.26",
+    "librosa>=0.10",
+    "inflect>=7",
+    "unidecode>=1.3",
+    "pydub>=0.25",
+    "faster-whisper ; sys_platform == 'never'",
+    "whisper-timestamped ; sys_platform == 'never'",
+    "gradio ; sys_platform == 'never'",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["studio"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
