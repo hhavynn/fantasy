@@ -34,6 +34,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import tempfile
@@ -225,15 +226,49 @@ def verify_file(root: Path, ref: dict, what: str) -> tuple[dict, bytes | None]:
     return _crit(f"{what}_integrity", PASS, f"{what} {ref['path']} matches its pinned sha256", got, sha), data
 
 
-def artifact_identity_problem(data: bytes, version: str, live_fp: str | None) -> str | None:
-    """None when verified artifact bytes are a JSON object naming `version` under the league's
-    scoring; otherwise why not (a hash pins bytes, not what they contain)."""
+def _reject_constant(name: str):
+    raise ValueError(f"non-finite number {name}")
+
+
+def strict_json(data: bytes):
+    """JSON without NaN/Infinity (Python's parser accepts them; evidence must be finite)."""
+    return json.loads(data, parse_constant=_reject_constant)
+
+
+def load_family_artifact(family: str, data: bytes) -> dict:
+    """Deserialize verified bytes with the family's PRODUCTION loader and check that every
+    position has a well-formed model; returns the artifact as a dict. Raises RegistryError."""
     try:
-        art = json.loads(data)
-    except ValueError:
-        return "the artifact is not valid JSON"
-    if not isinstance(art, dict):
-        return "the artifact is not an object"
+        raw = strict_json(data)
+    except ValueError as err:
+        raise RegistryError(f"the artifact is not valid finite JSON ({err})") from err
+    if family != "ifp":
+        raise RegistryError(f"no production loader for model family {family!r}")
+    from .independent_projections import Artifact
+
+    try:
+        art = Artifact.from_dict(raw)
+    except (TypeError, ValueError, KeyError, AttributeError) as err:
+        raise RegistryError(f"the production loader rejects the artifact ({err.__class__.__name__}: {err})") from err
+    for pos in POSITIONS:
+        m = art.models.get(pos)
+        if m is None:
+            raise RegistryError(f"the artifact has no {pos} model")
+        n = len(m.columns)
+        if not n or not (len(m.means) == len(m.stds) == len(m.coef) == n) or m.position != pos:
+            raise RegistryError(f"the artifact's {pos} model is malformed")
+        if not all(_num(v) for v in [*m.means, *m.stds, *m.coef, m.intercept, m.lam]) or any(v <= 0 for v in m.stds):
+            raise RegistryError(f"the artifact's {pos} model has non-finite or invalid parameters")
+    return raw
+
+
+def artifact_identity_problem(data: bytes, version: str, live_fp: str | None, family: str = "ifp") -> str | None:
+    """None when verified artifact bytes load with the production loader and name `version` under
+    the league's scoring; otherwise why not (a hash pins bytes, not what they contain)."""
+    try:
+        art = load_family_artifact(family, data)
+    except RegistryError as err:
+        return str(err)
     if art.get("version") != version:
         return f"the artifact names version {art.get('version')!r}, not {version!r}"
     if live_fp is None or art.get("scoring_fingerprint") != live_fp:
@@ -243,9 +278,9 @@ def artifact_identity_problem(data: bytes, version: str, live_fp: str | None) ->
 
 def _json_bytes(data: bytes, what: str):
     try:
-        return json.loads(data)
+        return strict_json(data)
     except ValueError as err:
-        raise RegistryError(f"{what} is not valid JSON") from err
+        raise RegistryError(f"{what} is not valid finite JSON ({err})") from err
 
 
 # ----------------------------------------------------------------------------- promotion checks
@@ -267,9 +302,11 @@ def _artifact_checks(e: dict, root: Path, live_fp: str | None) -> tuple[list[dic
                          "from an unverified file", fp, live_fp))
     else:
         try:
-            art = _json_bytes(data, "artifact")
+            art = load_family_artifact(e.get("family"), data)
         except RegistryError as err:
-            out.append(_crit("scoring_fingerprint", FAIL, str(err), fp, live_fp))
+            out.append(_crit("artifact_loads", FAIL, str(err)))
+        else:
+            out.append(_crit("artifact_loads", PASS, "the production loader accepts the artifact"))
         if art is not None and not isinstance(art, dict):
             art = None
             out.append(_crit("scoring_fingerprint", FAIL, "artifact is not an object", fp, live_fp))
@@ -391,9 +428,12 @@ def prospective_checks(report: dict | None) -> list[dict]:
     elif not all(isinstance(x, list) and len(x) == 2 and all(type(i) is int for i in x) for x in weeks):
         out.append(_crit("finalized_evaluation", FAIL, "counted weeks are not [season, week] pairs"))
     else:
+        dup = len({tuple(x) for x in weeks}) != len(weeks)
         bad = [f"{s}-{w:02d}" for s, w in weeks if not (fin.get(f"{s}-{w:02d}") or {}).get("fully_final")]
         prelim = set(map(tuple, (pre.get("preliminary") or {}).get("weeks") or []))
         overlap = [f"{s}-{w:02d}" for s, w in weeks if (s, w) in prelim]
+        if dup:
+            bad.append("duplicate weeks")
         ok = bool(weeks) and not bad and not overlap
         out.append(_crit("finalized_evaluation", PASS if ok else (INSUFFICIENT if not weeks else FAIL),
                          "every counted week is fully final" if ok else
@@ -497,7 +537,7 @@ def rollback_reference_checks(m: dict, e: dict, root: Path, live_fp: str | None,
                       f"({replaces})", target, replaces)]
     c, data = verify_file(root, prev.get("artifact") or {}, "rollback_artifact")
     if data is not None:
-        why = artifact_identity_problem(data, target, live_fp)
+        why = artifact_identity_problem(data, target, live_fp, prev.get("family"))
         if why:
             c = _crit("rollback_artifact_integrity", FAIL, why)
     fp_ok = live_fp is not None and prev.get("scoring_fingerprint") == live_fp
@@ -536,7 +576,7 @@ def _guarded(name: str, fn, *args) -> list[dict]:
 
 
 def _num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
 def _blocking(checks: list[dict]) -> list[str]:
@@ -641,7 +681,7 @@ def plan_rollback(m: dict, *, reason: str, by: str, at: datetime, model_root: Pa
     c, data = verify_file(Path(model_root), target.get("artifact") or {}, "rollback_artifact")
     if c["result"] != PASS:
         raise RegistryError(f"cannot roll back to {target['version']}: {c['explanation']}")
-    why = artifact_identity_problem(data, target["version"], live_scoring_fp)
+    why = artifact_identity_problem(data, target["version"], live_scoring_fp, target.get("family"))
     if why:
         raise RegistryError(f"cannot roll back to {target['version']}: {why}")
     if live_scoring_fp is None or target.get("scoring_fingerprint") != live_scoring_fp:

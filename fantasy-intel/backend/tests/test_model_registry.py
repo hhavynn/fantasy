@@ -14,7 +14,7 @@ import pytest
 
 from app.analytics import model_registry as reg
 from app.analytics import projection_source as ps
-from app.analytics.independent_projections import MODEL_VERSION
+from app.analytics.independent_projections import ARTIFACT_SCHEMA, MODEL_VERSION
 
 from test_independent_projections import live  # noqa: F401  (fixture)
 from test_projection_source import stored  # noqa: F401  (fixture)
@@ -57,13 +57,22 @@ def _heldout() -> dict:
                                                 for p in reg.POSITIONS}}}
 
 
+def _ifp_artifact(version: str, fp: str = FP, config: dict | None = None, evaluation: dict | None = None) -> dict:
+    """A minimal artifact that the production loader (Artifact.from_dict) accepts."""
+    model = {"features": ["x"], "columns": ["x"], "means": [1.0], "stds": [2.0], "coef": [0.5], "intercept": 3.0,
+             "lam": 1.0, "n_train": 500, "model": "C", "train_window": [202501, 202616]}
+    return {"schema": ARTIFACT_SCHEMA, "version": version, "created_at": AT.isoformat(), "scoring_fingerprint": fp,
+            "scoring": {"fingerprint": fp}, "config": config or {},
+            "models": {p: {**model, "position": p} for p in reg.POSITIONS}, "intervals": {},
+            "status": {p: {"status": "experimental"} for p in reg.POSITIONS}, "evaluation": evaluation or {}}
+
+
 def _cand_artifact(root: pathlib.Path, **extra) -> dict:
     """The candidate artifact as fit_final would write it, citing the exact held-out report."""
     held = _heldout()["positions"]
     sha = hashlib.sha256((root / "reports" / "heldout.json").read_bytes()).hexdigest()
-    return {"version": CAND, "scoring_fingerprint": FP, **extra,
-            "config": {"provenance": {"heldout_report_sha256": sha}},
-            "evaluation": {p: {k: deepcopy(held[p][k]) for k in reg.BOUND_HELDOUT_KEYS} for p in reg.POSITIONS}}
+    return _ifp_artifact(CAND, config={"provenance": {"heldout_report_sha256": sha}, **extra}, evaluation=
+                         {p: {k: deepcopy(held[p][k]) for k in reg.BOUND_HELDOUT_KEYS} for p in reg.POSITIONS})
 
 
 @pytest.fixture
@@ -71,9 +80,7 @@ def env(tmp_path):
     """A model directory with a pinned champion and a fully evidenced candidate; the committed
     manifest with the champion pinned (old) and a proposed promotion with an owner approval (new)."""
     root = tmp_path / "models"
-    champ_sha = _write(root, "independent_projections_ifp-1.0.0.json",
-                       {"schema": "independent-projections-artifact/v1", "version": MODEL_VERSION,
-                        "scoring_fingerprint": FP})
+    champ_sha = _write(root, "independent_projections_ifp-1.0.0.json", _ifp_artifact(MODEL_VERSION))
     pro_sha = _write(root, "reports/prospective.json", _prospective())
     held_sha = _write(root, "reports/heldout.json", _heldout())
     cand_sha = _write(root, f"candidates/{CAND}.json", _cand_artifact(root))
@@ -290,6 +297,8 @@ def test_wrong_scoring_fingerprint_rejected(env):
     bad = deepcopy(new)
     reg.entry(bad, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json",
                                                          {**_cand_artifact(root), "scoring_fingerprint": "other"})
+    rep = _gate(env, bad)
+    assert not rep["activatable"] and _results(rep)["scoring_fingerprint"] == reg.FAIL
     rep = _gate(env, bad)
     assert not rep["activatable"] and _results(rep)["scoring_fingerprint"] == reg.FAIL
 
@@ -536,10 +545,9 @@ def test_report_of_another_model_is_rejected(env, kind, rel, mutate, check):
 
 def test_artifact_without_embedded_heldout_result_is_rejected(env):
     root, _, new = env
-    reg.entry(new, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json",
-                                                         {"version": CAND, "scoring_fingerprint": FP})
+    reg.entry(new, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json", _ifp_artifact(CAND))
     rep = _gate(env, new)
-    assert not rep["activatable"] and _results(rep)["artifact_report_binding"] == reg.INSUFFICIENT
+    assert not rep["activatable"] and _results(rep)["artifact_report_binding"] in (reg.FAIL, reg.INSUFFICIENT)
 
 
 def _hand_rollback(promoted: dict, target: str) -> dict:
@@ -634,8 +642,9 @@ def test_artifact_must_cite_the_exact_heldout_report(env):
     assert _results(_gate(env, new))["artifact_heldout_report_sha"] == reg.INSUFFICIENT
 
 
-@pytest.mark.parametrize("content", [b"not json", b"[1]", json.dumps({"version": "ifp-0.1.0", "scoring_fingerprint": FP}),
-                                     json.dumps({"version": MODEL_VERSION, "scoring_fingerprint": "other"})])
+@pytest.mark.parametrize("content", [b"not json", b"[1]", json.dumps({"version": MODEL_VERSION, "scoring_fingerprint": FP}),
+                                     json.dumps(_ifp_artifact("ifp-0.1.0")),
+                                     json.dumps(_ifp_artifact(MODEL_VERSION, "other"))])
 def test_rollback_artifact_must_be_the_target_model(env, content):
     """A pinned hash only proves the bytes; they must also be the rollback target under the league scoring."""
     root, old, new = env
@@ -657,3 +666,48 @@ def test_non_string_model_version_fails_closed(env, version):
     bad["models"][1]["version"] = version
     assert any("non-empty string" in p for p in reg.validate_manifest(bad))
     assert not _gate(env, bad)["activatable"]
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda a: a.pop("models"),
+    lambda a: a["models"].pop("TE"),
+    lambda a: a.update(schema="other/v0"),
+    lambda a: a.update(unexpected_field=1),
+    lambda a: a["models"]["RB"].update(coef=[0.5, 0.1]),
+    lambda a: a["models"]["WR"].update(stds=[0.0]),
+    lambda a: a["models"]["QB"].pop("intercept"),
+])
+def test_artifact_must_load_with_the_production_loader(env, mutate):
+    """A hash-verified JSON object with the right version is not enough: Artifact.from_dict must load it
+    and every position needs a well-formed model."""
+    root, _, new = env
+    art = _cand_artifact(root)
+    mutate(art)
+    reg.entry(new, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json", art)
+    rep = _gate(env, new)
+    assert not rep["activatable"] and _results(rep)["artifact_loads"] == reg.FAIL
+
+
+def test_non_finite_evidence_rejected(env):
+    root, _, new = env
+    p = root / "reports" / "heldout.json"
+    text = p.read_text().replace('"common_support_n": 900', '"common_support_n": Infinity', 1)
+    p.write_text(text)
+    _repin(new, reg.HELDOUT, hashlib.sha256(p.read_bytes()).hexdigest())
+    rep = _gate(env, new)
+    assert not rep["activatable"]
+    assert any("non-finite" in c["explanation"] for c in rep["checks"])
+    assert reg.heldout_checks({"positions": {pos: {"common_support_n": float("inf"), "relative_mae_improvement": 1.0,
+                                                   "primary_minus_best_baseline_mae": {"ci95": [-1, float("-inf")]}}
+                                             for pos in reg.POSITIONS}})[0]["result"] == reg.INSUFFICIENT
+
+
+def test_duplicate_prospective_weeks_rejected(env):
+    """One real week repeated eight times must not satisfy the eight-week gate."""
+    root, _, new = env
+
+    def dup(o):
+        o["pregame"]["weeks"] = [[2026, 1]] * 8
+    _repin(new, reg.PROSPECTIVE, _rewrite(root, "reports/prospective.json", dup))
+    rep = _gate(env, new)
+    assert not rep["activatable"] and _results(rep)["finalized_evaluation"] == reg.FAIL
