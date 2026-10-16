@@ -21,6 +21,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 from . import motion as M
+from . import edit_scenes as ES
 from . import series_scenes as SS
 from .format_scenes import PAPER, PAPER_INK, brand, stamp
 
@@ -61,6 +62,8 @@ SPARKS = _particles(26, 5)
 
 
 def background(kind: str, c, t: float) -> Image.Image:
+    if kind == "none":                                      # the scene paints the whole frame itself
+        return Image.new("RGB", (M.W, M.H))
     style, _, level = kind.partition(":")
     if style in SS.STYLES:                                  # the series formats' own looks (series_scenes.py)
         return SS.background(style, c, t, {"level": int(level)} if level else None)
@@ -376,9 +379,12 @@ def scene_fp_receipt(img, t, dur, spec, c):
 SCENES = {"fp_hook": (None, scene_fp_hook), "fp_strip": (None, scene_fp_strip), "fp_own": (None, scene_fp_own),
           "fp_receipt": (None, scene_fp_receipt)}
 SCENES.update({k: (None, fn) for k, fn in SS.SCENES.items()})
+SCENES.update({k: (None, fn) for k, fn in ES.SCENES.items()})   # edit-style scenes draw their own backdrop
 
 
 def backdrop_for(scene: dict) -> str:
+    if scene["type"] in ES.SCENES:
+        return "none"
     style = scene.get("style")
     if style in SS.STYLES:
         level = scene.get("level", 0 if scene["type"] == "melt_calm" else 5) if style == "meme" else None
@@ -403,7 +409,7 @@ def punches(scene: dict, c, dur: float) -> list[float]:
 
 def sounds(scene: dict, start: float, dur: float, c) -> list[tuple[float, str, float]]:
     kind = scene["type"]
-    if kind in SS.SCENES:
+    if kind in SS.SCENES or kind in ES.SCENES:
         return SS.sounds(scene, start, dur, c)
     ev = []
     if kind == "fp_hook":

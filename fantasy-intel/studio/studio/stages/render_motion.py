@@ -597,8 +597,8 @@ def run(ep: Episode) -> None:
     shot = headshots.record(ep.cfg, read_json(ep.path("facts.json"))["players"][0])
     from pathlib import Path
     from ..core import sha256_file
-    from .. import series_audio as SA, series_scenes as SS, sfx_palette as SP
-    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A, FPS, SS, SA, SP)}
+    from .. import edit_kit as EK, edit_scenes as ES, series_audio as SA, series_scenes as SS, sfx_palette as SP
+    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A, FPS, SS, SA, SP, EK, ES)}
     if SP.REGISTRY_PATH.exists():          # the meme sounds' trims, hit points and levels
         code["sfx_registry"] = sha256_file(SP.REGISTRY_PATH)
     run_stage(ep, "render", VERSION, {"video": ep.cfg["video"], "shorts": ep.cfg["shorts"], "caption": CAPTION,
