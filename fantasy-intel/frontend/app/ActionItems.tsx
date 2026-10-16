@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/TeamLink";
 import { EmptyState, Notice, Section, ToneIcon } from "@/components/ui";
 import type { ActionList } from "@/lib/action-items";
 import styles from "./home.module.css";

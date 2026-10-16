@@ -1,21 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { NAV_GROUPS, getActiveRoute } from "@/lib/navigation";
 import type { ProjectionSource } from "@/lib/projection-source";
+import { teamParamFrom, withTeam } from "@/lib/team-perspective";
 import { ProjectionSwitch } from "./ProjectionSwitch";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { ScrollToActive } from "./ui/ScrollToActive";
 import { useDismiss } from "./useDismiss";
 
+/** The selected team (`?team=`), carried to every team-scoped page the nav links to. */
+function useTeam(): string | null {
+  return teamParamFrom(useSearchParams());
+}
+
 export function NavGroups() {
   const { activeGroup } = getActiveRoute(usePathname());
+  const team = useTeam();
   return (
     <nav className="nav-groups" aria-label="Sections">
       {NAV_GROUPS.map((g) => (
-        <Link key={g.label} href={g.pages[0].href} aria-current={g === activeGroup ? "true" : undefined}>
+        <Link key={g.label} href={withTeam(g.pages[0].href, team)} aria-current={g === activeGroup ? "true" : undefined}>
           {g.label}
         </Link>
       ))}
@@ -25,13 +32,14 @@ export function NavGroups() {
 
 export function SubNav() {
   const { activeHref, activeGroup } = getActiveRoute(usePathname());
+  const team = useTeam();
   if (!activeGroup) return null;
   return (
     <div className="subnav-wrap">
       <nav className="subnav" aria-label={`${activeGroup.label} pages`}>
         <span className="subnav-label" aria-hidden="true">{activeGroup.label}</span>
         {activeGroup.pages.map((p) => (
-          <Link key={p.href} href={p.href} aria-current={p.href === activeHref ? "page" : undefined}>
+          <Link key={p.href} href={withTeam(p.href, team)} aria-current={p.href === activeHref ? "page" : undefined}>
             {p.label}
           </Link>
         ))}
@@ -52,10 +60,11 @@ const GROUP_ICONS: Record<string, ReactNode> = {
 /** Phones: one tap to any section. Each tab opens the section's first page; the sub-nav lists the rest. */
 export function TabBar() {
   const { activeGroup } = getActiveRoute(usePathname());
+  const team = useTeam();
   return (
     <nav className="tabbar" aria-label="Sections" style={{ "--tabs": NAV_GROUPS.length } as CSSProperties}>
       {NAV_GROUPS.map((g) => (
-        <Link key={g.label} href={g.pages[0].href} aria-current={g === activeGroup ? "true" : undefined}>
+        <Link key={g.label} href={withTeam(g.pages[0].href, team)} aria-current={g === activeGroup ? "true" : undefined}>
           <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             {GROUP_ICONS[g.label] ?? <circle cx="9" cy="9" r="3" />}
           </svg>
@@ -80,6 +89,7 @@ export function BrandMark({ size = 22 }: { size?: number }) {
 export function MobileNav({ projection }: { projection?: ProjectionSource } = {}) {
   const pathname = usePathname();
   const { activeHref } = getActiveRoute(pathname);
+  const team = useTeam();
   const [open, setOpen] = useState(false);
   const [shownFor, setShownFor] = useState(pathname);
   if (shownFor !== pathname) {          // the layout persists across navigation: close on route change
@@ -106,7 +116,7 @@ export function MobileNav({ projection }: { projection?: ProjectionSource } = {}
             <div key={g.label} className="mobile-nav-group">
               <span className="mobile-nav-title">{g.label}</span>
               {g.pages.map((p) => (
-                <Link key={p.href} href={p.href} aria-current={p.href === activeHref ? "page" : undefined} onClick={close}>
+                <Link key={p.href} href={withTeam(p.href, team)} aria-current={p.href === activeHref ? "page" : undefined} onClick={close}>
                   {p.label}
                 </Link>
               ))}

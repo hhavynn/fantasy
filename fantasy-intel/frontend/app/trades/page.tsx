@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
+import { UnknownTeam } from "@/components/TeamPerspective";
 import { Method, Notice, PageHeader } from "@/components/ui";
 import { api } from "@/lib/api";
 import { canEvaluate, initialSelection, selectionKey } from "@/lib/trade-builder";
+import { readTeamSelection } from "@/lib/team-perspective";
 import type { TradeOptionsV3, TradeResultV3 } from "@/lib/trade-types";
 import { EvaluatedTrade, EvaluatedTradeSkeleton } from "./EvaluatedTrade";
 import { TradeBuilder } from "./TradeBuilder";
@@ -50,7 +52,17 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
     );
   }
   const maxPerSide = opts.data.max_players_per_side ?? 6;
-  const mine = teams.find((t) => t.is_mine)?.team_id ?? null;
+  // Team A defaults to the selected team (`?team=`, carried from other pages), else the owner's team.
+  const sel = readTeamSelection(sp);
+  if (sel.kind === "invalid" || (sel.kind === "team" && !teams.some((t) => t.team_id === sel.id))) {
+    return (
+      <div className="stack">
+        <PageHeader title="Trade analyzer" />
+        <UnknownTeam path="/trades" sel={sel} />
+      </div>
+    );
+  }
+  const mine = sel.kind === "team" ? sel.id : teams.find((t) => t.is_mine)?.team_id ?? null;
   // The URL is the evaluated selection (deep links from Discovery / My Team Value, or Evaluate).
   const initial = initialSelection(teams, { ta: one(sp.ta), tb: one(sp.tb), a: ids(sp.a), b: ids(sp.b), sw: one(sp.sw) }, mine);
   const ready = canEvaluate(initial, maxPerSide);

@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
+import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { Method, Notice, PageHeader, Section, Tabs } from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { parseSort, sortRows, type SearchParams } from "@/lib/sort";
+import { isUnknownTeam, readTeamSelection, selectedTeamId, withTeamId } from "@/lib/team-perspective";
 import { WAIVER_SORT_KEYS, competitionRank, pickTopClaims, trendRank, withParams } from "@/lib/waivers";
 import { POSITIONS, PAGE_SIZE, RECS, REC_LABEL, VIEWS } from "./helpers";
 import { TopClaims } from "./TopClaims";
@@ -36,6 +38,15 @@ function sortValue(row: WaiverRow, key: string): number | null {
 
 export default async function WaiversPage({ searchParams }: PageProps<"/waivers">) {
   const sp = (await searchParams) as SearchParams;
+  const sel = readTeamSelection(sp);
+  if (sel.kind === "invalid") {
+    return (
+      <div className="stack">
+        <PageHeader title="Waivers" actions={<TeamPerspective path="/waivers" sp={sp} current={null} />} />
+        <UnknownTeam path="/waivers" sel={sel} />
+      </div>
+    );
+  }
   const posParam = first(sp.pos);
   const pos = posParam && (POSITIONS as readonly string[]).includes(posParam) ? posParam : "ALL";
   const viewParam = first(sp.view);
@@ -49,24 +60,32 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
     const qs = new URLSearchParams({ view: v, limit: String(limit) });
     if (pos !== "ALL") qs.set("position", pos);
     if (rec !== "ALL") qs.set("recommendation", rec);
-    return `/api/waivers?${qs}`;
+    return withTeamId(`/api/waivers?${qs}`, sel);
   };
   const bandQs = new URLSearchParams({ view: "ALL", limit: String(BAND_LIMIT) });
   if (pos !== "ALL") bandQs.set("position", pos);
 
   const [res, band] = await Promise.all([
     api<WaiversResponse>(query(view, FETCH_LIMIT)),
-    api<WaiversResponse>(`/api/waivers?${bandQs}`),
+    api<WaiversResponse>(withTeamId(`/api/waivers?${bandQs}`, sel)),
   ]);
+  if (isUnknownTeam(res, sel)) {
+    return (
+      <div className="stack">
+        <PageHeader title="Waivers" actions={<TeamPerspective path="/waivers" sp={sp} current={null} />} />
+        <UnknownTeam path="/waivers" sel={sel} detail={res.error} />
+      </div>
+    );
+  }
   if (!res.ok) {
     return (
       <div className="stack">
-        <PageHeader title="Waivers" />
+        <PageHeader title="Waivers" actions={<TeamPerspective path="/waivers" sp={sp} current={selectedTeamId(sel)} />} />
         <BackendProblem error={res.error} kind={res.kind} status={res.status} />
       </div>
     );
   }
-  const { players, computed_at, coverage, total } = res.data;
+  const { players, computed_at, coverage, total, perspective } = res.data;
 
   // Ranked order is the backend's. A sort key re-orders the whole view, then it is paged.
   const ordered = sort.key === "rank" && sort.dir === "asc"
@@ -87,7 +106,18 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
 
   return (
     <div className="stack">
-      <PageHeader eyebrow="Players" title="Waivers" meta={<>Moves for your roster · computed {when(computed_at)}</>} />
+      <PageHeader
+        eyebrow="Players"
+        title="Waivers"
+        meta={<>Moves for {perspective ? <b>{perspective.name}</b> : "the default team"} · computed {when(computed_at)}</>}
+        actions={<TeamPerspective path="/waivers" sp={sp} current={perspective?.team_id ?? null} />}
+      />
+      {res.data.roster_newer_than_analysis && (
+        <Notice tone="caution" title="This roster changed after the waiver analysis ran">
+          ESPN rosters were re-synced after these suggestions were computed, so a suggested drop may already be gone and a fit may have changed.
+          Rerun the analytics refresh before acting.
+        </Notice>
+      )}
 
       <div className={styles.filters}>
         <Tabs label="Waiver decision views" items={viewItems} current={currentView} />
@@ -125,7 +155,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         footnote={coverage
           ? <>
             {coverage.evaluated} of {coverage.eligible} eligible players in the stored pool evaluated · {coverage.excluded_by_limit} excluded by the per-position evaluation limit. {coverage.limitation}{" "}
-            Historical value and xFP are PPR-based heuristics; forward ESPN projections use your league scoring. Advice reflects stored snapshots; verify transaction locks and current availability in ESPN.
+            Historical value and xFP are PPR-based heuristics; forward ESPN projections use the league&apos;s scoring. Advice reflects stored snapshots; verify transaction locks and current availability in ESPN.
           </>
           : "Decision coverage is unavailable. Run the analytics refresh to generate decision diagnostics."}
       >
@@ -158,12 +188,12 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
             1 ESPN point per week, and for a stash a value of at least 6 with a same-position depth gain of at least 1 plus a real need or a rising role. Strong but unproven value stays at Monitor.
           </p>
           <p>
-            Kickers and defenses are compared forward against your weakest required starter. A gain of at least 1 upcoming point is a short-term stream; gains in two of the next three matchups make a multiweek hold.
+            Kickers and defenses are compared forward against the team&apos;s weakest required starter. A gain of at least 1 upcoming point is a short-term stream; gains in two of the next three matchups make a multiweek hold.
             Lines and opponent context are shown as facts and never converted into invented fantasy points.
           </p>
           <p>
             Competition is a coarse bucket from managers&apos; past adds and positional needs. It does not predict bids. Candidate coverage is the locally stored ESPN pool, up to 60 players per position
-            chosen from four lanes (forward projection, depth-chart role, historical value, ownership); it is not the whole NFL. Each pickup is a separate scenario against your current roster, not a combined claim queue.
+            chosen from four lanes (forward projection, depth-chart role, historical value, ownership); it is not the whole NFL. Each pickup is a separate scenario against the team&apos;s current roster, not a combined claim queue.
           </p>
         </div>
       </Method>

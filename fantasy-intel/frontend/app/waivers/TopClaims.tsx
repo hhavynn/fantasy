@@ -18,7 +18,7 @@ export function TopClaims({ top, position }: { top: Top<WaiverRow>; position: st
     <section className={styles.band} aria-labelledby="top-claims-heading">
       <h2 id="top-claims-heading" className={styles.bandTitle}>{heading}</h2>
       {top.mode === "actionable" && (
-        <p className={styles.bandNote}>Moves the analysis calls actionable for your roster, best first.</p>
+        <p className={styles.bandNote}>Moves the analysis calls actionable for this roster, best first.</p>
       )}
       {top.mode === "watch" && (
         <p className={styles.bandNote}>
@@ -27,7 +27,7 @@ export function TopClaims({ top, position }: { top: Top<WaiverRow>; position: st
       )}
       {top.mode === "none" ? (
         <EmptyState title="Nothing worth watching">
-          Every evaluated player{scope} is a pass for your roster. Refresh ESPN and NFL data if the snapshot looks stale.
+          Every evaluated player{scope} is a pass for this roster. Refresh ESPN and NFL data if the snapshot looks stale.
         </EmptyState>
       ) : (
         <ol className={styles.claims}>

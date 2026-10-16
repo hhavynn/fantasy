@@ -121,10 +121,10 @@ export function recordText(r: { wins: number; losses: number; ties: number }): s
 }
 
 /** Query string for /matchup links, keeping only the parameters that are set. */
-export function matchupHref(params: { week?: number | null; team_id?: string | null; lineup?: string | null }): string {
+export function matchupHref(params: { week?: number | null; team?: string | null; lineup?: string | null }): string {
   const qs = new URLSearchParams();
   if (params.week) qs.set("week", String(params.week));
-  if (params.team_id) qs.set("team_id", params.team_id);
+  if (params.team) qs.set("team", params.team);
   if (params.lineup) qs.set("lineup", params.lineup);
   const s = qs.toString();
   return s ? `/matchup?${s}` : "/matchup";

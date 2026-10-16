@@ -682,6 +682,29 @@ CREATE TABLE IF NOT EXISTS waiver_recommendations (
     PRIMARY KEY (league_id, season, espn_player_id)
 );
 
+-- The same recommendations evaluated from every team's roster (league-wide team perspective). Create-only: no
+-- schema version bump; the API falls back to waiver_recommendations for the owner's team when this table is missing.
+CREATE TABLE IF NOT EXISTS team_waiver_recommendations (
+    league_id              BIGINT,
+    season                 INTEGER,
+    team_id                INTEGER,
+    espn_player_id         BIGINT,
+    position               VARCHAR,
+    availability_status    VARCHAR,
+    opportunity_score      DOUBLE,
+    roster_fit_score       DOUBLE,
+    league_interest        VARCHAR,
+    interest_score         DOUBLE,
+    waiver_score           DOUBLE,
+    recommendation         VARCHAR,
+    suggested_drop_id      BIGINT,
+    components             JSON,
+    reasons                JSON,
+    competitors            JSON,
+    computed_at            TIMESTAMP,
+    PRIMARY KEY (league_id, season, team_id, espn_player_id)
+);
+
 CREATE TABLE IF NOT EXISTS player_context (
     season          INTEGER,
     gsis_id         VARCHAR,

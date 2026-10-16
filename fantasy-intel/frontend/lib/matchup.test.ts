@@ -110,7 +110,7 @@ test("switcherWeeks includes the viewed week once, sorted", () => {
 test("matchupHref keeps only set parameters", () => {
   assert.equal(matchupHref({}), "/matchup");
   assert.equal(matchupHref({ week: 4 }), "/matchup?week=4");
-  assert.equal(matchupHref({ week: 4, team_id: "3", lineup: "set" }), "/matchup?week=4&team_id=3&lineup=set");
+  assert.equal(matchupHref({ week: 4, team: "3", lineup: "set" }), "/matchup?week=4&team=3&lineup=set");
 });
 
 test("ordinal handles the teens and the usual suffixes", () => {
