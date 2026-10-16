@@ -1,131 +1,147 @@
-"""Channel identity for Fantasy Intelligence: the mark, the profile picture and the YouTube banner.
+"""Channel identity for Fantasy Intelligence, matching the Fantasy Intel website.
 
     uv run python -m studio.brand            # writes assets/brand/*.png
 
-The mark is a football drawn as a lens with three rising bars for laces: the ball and the usage trend in one
-shape. It is drawn from code in the premium style's palette and Inter (OFL), at 4x and downsampled, so it is
-original and reproducible. No team marks, no NFL marks.
+Everything comes from the site's design system (frontend/app/globals.css, Night theme): the "fi" monogram
+from frontend/app/icon.svg in the accent blue, the FANTASY / INTEL two-colour wordmark in Barlow Condensed
+SemiBold, IBM Plex Sans for supporting type, and the Night surface, line and chart-grid colours. The two
+fonts are the basic-Latin subsets the site already ships (OFL-1.1, licences in assets/fonts). Drawn at 4x and
+downsampled.
 """
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 
-from .core import ASSETS
+from .core import ASSETS, FONTS
 from .graphics import kit
 
 OUT = ASSETS / "brand"
-NAME = "FANTASY INTELLIGENCE"
 TAGLINE = "Usage, not box scores."
-BG = kit.hexrgb("#0C0F13")
-PANEL = kit.hexrgb("#151B22")
-GOLD = kit.hexrgb("#F3C350")
-INK = kit.hexrgb("#F1F3F6")
-MUTED = kit.hexrgb("#98A2AF")
-SS = 4                                                # supersampling
+# Night theme tokens (frontend/app/globals.css)
+BG = kit.hexrgb("#070b12")
+SURFACE = kit.hexrgb("#0d131c")
+LINE = kit.hexrgb("#222c3a")
+GRID = kit.hexrgb("#1f2835")
+INK = kit.hexrgb("#e9eef4")
+MUTED = kit.hexrgb("#a3adba")
+ACCENT = kit.hexrgb("#6aaeff")
+ICON_BG = kit.hexrgb("#0a0d12")                   # icon.svg's own tile colour
+SS = 4
 
 
-def _lens(cx: float, cy: float, w: float, h: float, n: int = 160) -> list[tuple[float, float]]:
-    """A football outline: two arcs meeting in points, a little fuller than a plain ellipse."""
-    a, b = w / 2, h / 2
-    xs = np.linspace(-a, a, n)
-    top = [(cx + x, cy - b * (1 - (x / a) ** 2) ** 0.72) for x in xs]
-    bot = [(cx + x, cy + b * (1 - (x / a) ** 2) ** 0.72) for x in xs[::-1]]
-    return top + bot
+def display(px: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(str(FONTS / "BarlowCondensed-SemiBold-latin.woff2"), px)
 
 
-def mark(size: int, ball=GOLD, bars=INK) -> Image.Image:
-    """The mark on a transparent square: a tilted football outline with three rising bars for laces."""
+def sans(px: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(str(FONTS / "IBMPlexSans-SemiBold-latin.woff2"), px)
+
+
+def _bezier(p0, p1, p2, p3, n=48):
+    t = np.linspace(0, 1, n)[:, None]
+    pts = ((1 - t) ** 3) * p0 + 3 * ((1 - t) ** 2) * t * p1 + 3 * (1 - t) * t * t * p2 + t ** 3 * p3
+    return [tuple(p) for p in pts]
+
+
+def _stroke(d: ImageDraw.ImageDraw, pts, width: float, fill):
+    """A polyline with round caps and joins (SVG stroke-linecap/linejoin="round")."""
+    r = width / 2
+    d.line(pts, fill=fill, width=int(round(width)))
+    for x, y in pts:
+        d.ellipse((x - r, y - r, x + r, y + r), fill=fill)
+
+
+def monogram(size: int, color=ACCENT) -> Image.Image:
+    """The site's "fi" mark (frontend/app/icon.svg, a 32-unit grid) on a transparent square."""
     S = size * SS
+    k = S / 32
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    cx, cy, w, h = S / 2, S / 2, S * 0.92, S * 0.56
-    stroke = S * 0.075
-    outer = _lens(cx, cy, w, h)
-    inner = _lens(cx, cy, w - stroke * 2.6, h - stroke * 2)
-    d.polygon(outer, fill=ball)
-    d.polygon(inner, fill=(0, 0, 0, 0))
-    # three bars rising left to right, the lace line along their base
-    bw, gap = S * 0.085, S * 0.05
-    base = cy + h * 0.17
-    heights = [h * 0.20, h * 0.32, h * 0.46]
-    x0 = cx - (3 * bw + 2 * gap) / 2
-    for i, bh in enumerate(heights):
-        x = x0 + i * (bw + gap)
-        d.rounded_rectangle((x, base - bh, x + bw, base), radius=bw * 0.18, fill=bars)
-    d.rounded_rectangle((x0 - gap * 0.9, base + S * 0.02, x0 + 3 * bw + 2 * gap + gap * 0.9, base + S * 0.02 + stroke * 0.55),
-                        radius=stroke * 0.27, fill=bars)
-    img = img.rotate(-24, resample=Image.BICUBIC, center=(cx, cy))
+    P = lambda x, y: np.array([x * k, y * k])                      # noqa: E731
+    w = 3.6 * k
+    # f: the stem M11.4 24.6 V13.4, then the hook c0-3.4 2-5 5.6-4.7
+    stem = [tuple(P(11.4, 24.6)), tuple(P(11.4, 13.4))]
+    hook = _bezier(P(11.4, 13.4), P(11.4, 10.0), P(13.4, 8.4), P(17.0, 8.7))
+    _stroke(d, stem + hook[1:], w, color)
+    _stroke(d, [tuple(P(8, 14.2)), tuple(P(16.2, 14.2))], w, color)             # crossbar
+    _stroke(d, [tuple(P(22.4, 14.2)), tuple(P(22.4, 24.6))], w, color)          # i
+    cx, cy, r = 22.4 * k, 8.9 * k, 2.3 * k
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=color)                     # the dot
     return img.resize((size, size), Image.LANCZOS)
 
 
-def _glow_bg(w: int, h: int, cx: float, cy: float) -> Image.Image:
-    """The premium set: near-black with one soft key light, no texture."""
+def _backdrop(w: int, h: int, cx: float, cy: float, glow: float = 0.10) -> Image.Image:
+    """Night background with one soft accent light, the way the site's hero surfaces read."""
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     r = np.sqrt(((xx - cx) / max(w, h)) ** 2 + ((yy - cy) / max(w, h)) ** 2)
-    base = np.array(BG, np.float32)[None, None] + (np.clip(1 - r * 2.2, 0, 1) ** 2)[..., None] * 18
+    light = (np.clip(1 - r * 2.0, 0, 1) ** 2)[..., None]
+    base = np.array(BG, np.float32)[None, None] * (1 - light * 0.5) + np.array(ACCENT, np.float32) * light * glow
     return Image.fromarray(np.clip(base, 0, 255).astype(np.uint8), "RGB")
 
 
 def profile(size: int = 800) -> Image.Image:
-    """Profile picture: the mark alone, large, inside the circle every platform crops to."""
-    img = _glow_bg(size, size, size * 0.42, size * 0.38)
-    m = mark(int(size * 0.74))
-    img.paste(m, ((size - m.width) // 2, (size - m.height) // 2), m)
+    """Profile picture: the monogram large on the Night background, inside the circle platforms crop to."""
+    img = _backdrop(size, size, size * 0.5, size * 0.42, 0.14)
+    m = monogram(int(size * 0.80))
+    img.paste(m, ((size - m.width) // 2, (size - m.height) // 2 + int(size * 0.02)), m)
     return img
 
 
-def _tracked(d: ImageDraw.ImageDraw, xy, text: str, f, fill, track: float):
-    x, y = xy
+def _tracked(d, x, y, text, f, fill, track):
     for ch in text:
         d.text((x, y), ch, font=f, fill=fill)
         x += f.getlength(ch) + track
+    return x
 
 
-def _tracked_width(text: str, f, track: float) -> float:
+def _width(text, f, track):
     return sum(f.getlength(ch) + track for ch in text) - track
 
 
 def banner(w: int = 2560, h: int = 1440) -> Image.Image:
-    """YouTube banner. Everything that matters sits in the 1546x423 centre that shows on every device."""
-    img = _glow_bg(w, h, w * 0.5, h * 0.5)
+    """YouTube banner: the monogram on its tile plus the two-colour wordmark, centred in the 1546x423 area
+    every device shows; the site's chart grid runs across the full width for TVs and desktop."""
+    img = _backdrop(w, h, w * 0.5, h * 0.5, 0.08)
     d = ImageDraw.Draw(img, "RGBA")
-    # faint chart grid across the full width (what TVs show), quiet enough to sit behind the wordmark
-    for y in range(int(h * 0.5) - 420, int(h * 0.5) + 421, 70):
-        d.line((0, y, w, y), fill=(255, 255, 255, 7), width=2)
+    for y in range(int(h / 2) - 560, int(h / 2) + 561, 80):
+        d.line((0, y, w, y), fill=GRID + (150,), width=2)
     safe_w, safe_h = 1546, 423
     sx, sy = (w - safe_w) / 2, (h - safe_h) / 2
-    m = mark(300)
-    f = kit.font("black", 96)
-    track = 96 * 0.04
-    words = NAME.split()
-    group = m.width + 40 + max(_tracked_width(wd, f, track) for wd in words)
-    gx = sx + (safe_w - group) / 2                       # the mark and wordmark, centred as one group
-    img.paste(m, (int(gx), int(sy + (safe_h - m.height) / 2)), m)
-    tx = gx + m.width + 40
-    _tracked(d, (tx, sy + 92), words[0], f, INK, track)
-    _tracked(d, (tx, sy + 92 + 104), words[1], f, GOLD, track)
-    d.text((tx + 4, sy + 92 + 104 + 128), TAGLINE.upper(), font=kit.font("semibold", 34), fill=MUTED)
-    # keep the wordmark inside the safe area
-    assert tx + max(_tracked_width(wd, f, track) for wd in words) < sx + safe_w, "wordmark wider than the safe area"
+    tile = 250
+    first, second = "FANTASY", "INTELLIGENCE"
+    px = 176
+    while True:                                          # the largest size that fits beside the tile
+        f, track = display(px), px * 0.03                # .brand letter-spacing: .03em
+        word_w = _width(first, f, track) + track * 3 + _width(second, f, track)
+        if tile + 56 + word_w <= safe_w - 40:
+            break
+        px -= 4
+    group = tile + 56 + word_w
+    gx = sx + (safe_w - group) / 2
+    ty = sy + (safe_h - tile) / 2
+    d.rounded_rectangle((gx, ty, gx + tile, ty + tile), radius=int(tile * 7 / 32), fill=ICON_BG + (255,),
+                        outline=LINE + (255,), width=3)
+    m = monogram(tile)
+    img.paste(m, (int(gx), int(ty)), m)
+    tx = gx + tile + 56
+    cap_top = f.getbbox("H")[1]
+    wy = ty + 20 - cap_top
+    x = _tracked(d, tx, wy, first, f, INK, track)
+    _tracked(d, x + track * 3, wy, second, f, ACCENT, track)
+    d.text((tx + 4, ty + tile - 58), TAGLINE.upper(), font=sans(40), fill=MUTED)
+    assert tx + word_w < sx + safe_w, "wordmark wider than the banner's safe area"
     return img
 
 
 def write() -> list:
     OUT.mkdir(parents=True, exist_ok=True)
+    out = {"profile-800.png": profile(800), "banner-youtube-2560x1440.png": banner(), "mark-1024.png": monogram(1024)}
     files = []
-    p = OUT / "profile-800.png"
-    profile(800).save(p, optimize=True)
-    files.append(p)
-    p = OUT / "banner-youtube-2560x1440.png"
-    banner().save(p, optimize=True)
-    files.append(p)
-    p = OUT / "mark-1024.png"
-    mark(1024).save(p, optimize=True)
-    files.append(p)
+    for name, im in out.items():
+        im.save(OUT / name, optimize=True)
+        files.append(OUT / name)
     return files
 
 
