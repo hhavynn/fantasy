@@ -407,7 +407,7 @@ def test_module_imports_without_polars_or_numpy():
             "print(pf.pregame_forecasts.__name__, ps.MODEL_VERSION)")
     out = subprocess.run([sys.executable, "-c", code], cwd=backend, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
-    assert out.stdout.split() == ["pregame_forecasts", "ifp-1.0.0"]
+    assert out.stdout.split() == ["pregame_forecasts", "ifp-2.0.0"]   # the production model (projection_source)
 
 
 def test_publish_copies_the_run_tables_as_is_and_cannot_touch_local_history(live, tmp_path):  # noqa: F811
