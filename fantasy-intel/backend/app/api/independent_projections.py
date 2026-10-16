@@ -114,7 +114,7 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
     if position and position not in POSITIONS:
         raise ValueError(f"position must be one of {', '.join(POSITIONS)}")
     base = {"schema_version": SCHEMA_VERSION, "league": {"id": lg["league_id"], "season": lg["season"]},
-            "week": week, "notes": NOTES, "governance": ps.governance(None)}
+            "week": week, "notes": NOTES, "governance": ps.governance(None), "kicker_run": None}
     if not (table_exists(con, pf.RUNS) and pf.rows_source(con)):
         return {**base, "available": False, "unavailable_reason": "Independent projections have not been computed "
                 "(run scripts/backtest_independent_projections.py project).", "run": None, "model_status": None,
@@ -155,7 +155,9 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
         players = [p for p in players if p["on_team_id"] == team_id]
     players.sort(key=lambda p: (p["projected_points"] is None, -(p["projected_points"] or 0), p["espn_player_id"]))
     status = ps.consumer_status(run)
-    return {**base, "available": True, "unavailable_reason": None,
+    out_players = [_player(p, run, status) for p in players]
+    kicker_run = _kicker_overlay(con, lg["season"], week, out_players)
+    return {**base, "available": True, "unavailable_reason": None, "kicker_run": kicker_run,
             "governance": ps.governance(run["model_version"]),
             "run": {"run_id": run["run_id"], "model_version": run["model_version"], "is_fallback": sel["fallback"],
                     "fallback_reason": (f"No eligible {ps.MODEL_VERSION} run for week {week}; the retired previous "
@@ -178,7 +180,44 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
                                        "status": run.get("participation_status"),
                                        "heldout_evaluation": run.get("participation_evaluation")}
                                       if run.get("participation_version") else None)},
-            "model_status": _status_detail(run, status), "players": [_player(p, run, status) for p in players]}
+            "model_status": _status_detail(run, status), "players": out_players}
+
+
+def _kicker_overlay(con, season: int, week: int, players: list[dict]) -> dict | None:
+    """K players (unsupported by the skill-position run) take the verified kicker run's row (kicker_store.select_run):
+    the `independent` block then describes the kicker model, never the ifp run. Returns the kicker run's identity."""
+    from ..analytics import kicker_store as ks
+    from .kicker_projections import player as kicker_player
+
+    if not any(p["position"] == "K" for p in players):
+        return None
+    sel = ks.select_run(con, season, week)
+    if sel["run"] is None:
+        return {"available": False, "reason": sel["unavailable_reason"]}
+    rows = {r["espn_player_id"]: r for r in sel["rows"]}
+    for p in players:
+        r = rows.get(p["espn_player_id"])
+        if p["position"] != "K" or r is None:
+            continue
+        k = kicker_player(r, {}, {})["independent"]
+        p["independent"] = {**p["independent"], "projected_points": k["projected_points"],
+                            "expected_points": k["expected_points"], "interval_80": k["interval_80"],
+                            "model": "kicker_opportunity_conversion", "model_version": ks.MODEL_VERSION,
+                            "model_status": "kicker_model", "coverage_status": k["coverage_status"],
+                            "flags": k["flags"], "missing_inputs": k["missing_inputs"], "explanation": k["explanation"],
+                            "pregame": k["pregame"], "games_used": None, "latest_usage": None,
+                            "participation": {"p_play": k["p_play"], "model_version": ks.MODEL_VERSION,
+                                              "model_status": "empirical designation table", "explanation": [],
+                                              "flags": [], "note": None, "expected_points_status": None,
+                                              "depth_rank": None},
+                            "stat_line": k["stat_line"], "kicking_context": k["context"]}
+        espn = p["espn"]["projected_points"]
+        exp = k["expected_points"]
+        p["comparison"]["expected_minus_espn"] = round(exp - espn, 2) if exp is not None and espn is not None else None
+        p["comparison"]["expected_comparable"] = p["comparison"]["expected_minus_espn"] is not None
+    run = sel["run"]
+    return {"available": True, "run_id": run["run_id"], "model_version": run["model_version"],
+            "created_at": str(run["created_at"]), "artifact_verified": run.get("artifact_check") == "verified"}
 
 
 def _status_detail(run: dict, status: dict) -> dict:

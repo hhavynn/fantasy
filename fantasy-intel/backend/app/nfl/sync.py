@@ -12,6 +12,7 @@ import polars as pl
 from ..analytics import injury_freshness
 from ..db.connection import SyncRun, replace_frame_partition, replace_where, upsert_rows, utcnow
 # FTN `read_thrown` semantics live in ftn.py so the API can describe them without importing polars.
+from .kicking_pbp import derive_kicks, derive_team_drives
 from .ftn import (FTN_ASSUMED_PRIMARY_READ_CODE, FTN_NUMERIC_CODES, FTN_READ_SEMANTICS_STATUS,  # noqa: F401
                   FTN_SEMANTICS_REFERENCE)
 
@@ -301,6 +302,10 @@ def write_all(con, p: NflPayloads) -> dict:
             stats["nfl_pbp_player_week"] = replace_where(con, "nfl_pbp_player_week", player_rows, "season = ?", [p.season])
             stats["nfl_team_week"] = replace_where(con, "nfl_team_week", team_rows, "season = ?", [p.season])
             stats["nfl_defense_week"] = replace_where(con, "nfl_defense_week", defense_rows, "season = ?", [p.season])
+            stats["nfl_kick_attempts"] = replace_where(con, "nfl_kick_attempts", derive_kicks(p.pbp, p.season),
+                                                       "season = ?", [p.season])
+            stats["nfl_team_game_drives"] = replace_where(con, "nfl_team_game_drives",
+                                                          derive_team_drives(p.pbp, p.season), "season = ?", [p.season])
             stats["pbp_max_week"] = p.pbp["week"].max()
             stats["ftn_games_charted"] = p.ftn["nflverse_game_id"].n_unique() if p.ftn is not None else 0
         con.execute("COMMIT")

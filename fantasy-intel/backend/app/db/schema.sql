@@ -947,3 +947,108 @@ CREATE TABLE IF NOT EXISTS projection_performance_reports (
     generated_at         TIMESTAMP NOT NULL,    -- naive UTC, also inside the payload
     payload              VARCHAR NOT NULL       -- canonical JSON (sorted keys, no NaN)
 );
+
+-- Kicker projection inputs derived from nflverse play-by-play (app/nfl/kicking_pbp.py). Create-only (no version
+-- bump); rebuilt per season by the live sync, the history sync and scripts/sync_kicking_pbp.py.
+-- temp / wind / roof are nflverse's OBSERVED game conditions: never a pregame forecast.
+CREATE TABLE IF NOT EXISTS nfl_kick_attempts (
+    season INTEGER, week INTEGER, game_id VARCHAR, play_id DOUBLE, posteam VARCHAR, defteam VARCHAR,
+    home_team VARCHAR, away_team VARCHAR, kicker_player_id VARCHAR, kicker_player_name VARCHAR,
+    kick_type VARCHAR,               -- FG | PAT
+    kick_distance DOUBLE,
+    result VARCHAR,                  -- made | missed | blocked (| aborted for a PAT snap that was never kicked)
+    qtr DOUBLE, half_seconds_remaining DOUBLE, score_differential DOUBLE,
+    roof VARCHAR, surface VARCHAR, temp DOUBLE, wind DOUBLE, stadium_id VARCHAR, location VARCHAR,
+    PRIMARY KEY (game_id, play_id)
+);
+
+-- One row per (game, offense): drive outcomes and kicking opportunities (nflverse fixed_drive segmentation).
+CREATE TABLE IF NOT EXISTS nfl_team_game_drives (
+    season INTEGER, week INTEGER, game_id VARCHAR, team VARCHAR, opponent VARCHAR, is_home BOOLEAN,
+    location VARCHAR, roof VARCHAR, surface VARCHAR, temp DOUBLE, wind DOUBLE, stadium_id VARCHAR,
+    drives INTEGER, td_drives INTEGER, fg_drives INTEGER, punt_drives INTEGER, turnover_drives INTEGER,
+    downs_drives INTEGER, end_half_drives INTEGER,
+    fg_range_drives INTEGER,         -- drives with a scrimmage snap at or inside the opponent 35
+    rz_drives INTEGER, rz_td_drives INTEGER, rz_fg_drives INTEGER, avg_start_yardline DOUBLE,
+    fg_att INTEGER, fg_made INTEGER, fg_att_50 INTEGER, pat_att INTEGER, pat_made INTEGER, two_pt_att INTEGER,
+    fourth_go_in_range INTEGER, fourth_in_range INTEGER, plays INTEGER, epa_per_play DOUBLE, success_rate DOUBLE,
+    turnovers INTEGER, points DOUBLE,
+    kicker_id VARCHAR,               -- most FG/PAT tries this game
+    kickoff_kicker_id VARCHAR,       -- most kickoffs this game
+    game_kicker_id VARCHAR,          -- kicker_id, else kickoff_kicker_id (a kicker who dressed but never tried a kick)
+    PRIMARY KEY (game_id, team)
+);
+
+-- Write-once weather forecast snapshots (app/analytics/kicker_weather.py). One row per retrieval; a later
+-- retrieval for the same game is a new row, never an update. NWS (api.weather.gov) only: US public domain data.
+CREATE TABLE IF NOT EXISTS weather_forecasts (
+    forecast_id      VARCHAR PRIMARY KEY,   -- sha256 of (provider, game, venue, kickoff, retrieved_at, nonce)
+    provider         VARCHAR,               -- nws
+    provider_model   VARCHAR,               -- e.g. nws:forecastHourly + gridpoints
+    game_id          VARCHAR,
+    venue_id         VARCHAR,
+    latitude         DOUBLE,
+    longitude        DOUBLE,
+    kickoff_utc      TIMESTAMP,
+    window_start_utc TIMESTAMP,
+    window_end_utc   TIMESTAMP,
+    retrieved_at     TIMESTAMP,             -- our clock, naive UTC
+    issued_at        TIMESTAMP,             -- provider updateTime, naive UTC (NULL if not given)
+    status           VARCHAR,               -- ok | unavailable | error
+    error            VARCHAR,
+    forecast_values  JSON,                  -- window aggregates (see kicker_weather.SUMMARY_FIELDS)
+    units            JSON
+);
+
+-- Kicker projection runs (kfp-*), parallel to independent_projection_runs/rows and deliberately NOT stored there:
+-- the skill-position tables are read by several evidence readers that select runs by season only, and a kicker
+-- run is made under a different (kicker) scoring fingerprint. Same contract: append-only, write-once, sealed by
+-- content_sha256 over the canonical meta + rows (app/analytics/kicker_store.py), verified by every reader.
+-- Never list these tables in a connection._REBUILD entry.
+CREATE TABLE IF NOT EXISTS kicker_projection_runs (
+    run_id               VARCHAR PRIMARY KEY,
+    season               INTEGER,
+    week                 INTEGER,
+    model_version        VARCHAR,
+    scoring_fingerprint  VARCHAR,           -- kicker_scoring fingerprint ('k:...')
+    scoring              JSON,              -- resolved kicker rules + reconciliation summary
+    artifact_id          VARCHAR,           -- sha256 of the artifact file bytes
+    artifact_created_at  VARCHAR,
+    data_through_season  INTEGER,
+    data_through_week    INTEGER,
+    nfl_synced_at        TIMESTAMP,
+    model_status         JSON,
+    evaluation           JSON,
+    weather_summary      JSON,
+    forecast_horizon     INTEGER,
+    projected_from_week  INTEGER,
+    created_at           TIMESTAMP,
+    content_sha256       VARCHAR,
+    row_count            INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS kicker_projection_rows (
+    run_id               VARCHAR,
+    season               INTEGER,
+    week                 INTEGER,
+    espn_player_id       BIGINT,
+    gsis_id              VARCHAR,
+    nfl_team             VARCHAR,
+    opponent             VARCHAR,
+    is_home              BOOLEAN,
+    venue_id             VARCHAR,
+    coverage_status      VARCHAR,           -- projected | bye | withheld_unavailable | not_expected_kicker | ...
+    projected_points     DOUBLE,            -- conditional on kicking in the game
+    interval_low         DOUBLE,
+    interval_high        DOUBLE,
+    p_play               DOUBLE,
+    expected_points      DOUBLE,            -- p_play * projected_points
+    stat_line            JSON,              -- expected FG tries / makes by distance, PAT tries / makes
+    context              JSON,              -- model inputs actually used (team, opponent, venue, weather)
+    explanation          JSON,
+    flags                JSON,
+    missing_inputs       JSON,
+    kickoff              TIMESTAMP,         -- annotations (not hashed)
+    pregame              BOOLEAN,
+    PRIMARY KEY (run_id, espn_player_id)
+);

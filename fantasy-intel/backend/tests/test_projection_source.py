@@ -511,3 +511,57 @@ def test_the_espn_response_is_unchanged_by_the_horizon_fields(league, serve):  #
         detail = client.get(path).json()[key]
         assert detail["source"] == "espn" and detail["run"] is None
         assert "forecast_horizon" not in detail and "horizon_note" not in detail
+
+
+# ----------------------------------------------------------------------------- kicker overlay (kfp)
+
+
+def _kicker_run(con, pid: int, status: str = "projected", expected: float | None = 7.3):
+    import json as _json
+
+    from app.analytics import kicker_store as ks
+    from app.analytics.kicker_scoring import resolve_kicker_scoring
+
+    items = _json.loads(con.execute("SELECT scoring_items FROM leagues ORDER BY synced_at DESC LIMIT 1").fetchone()[0])
+    items += [{"statId": 80, "points": 3.0}, {"statId": 77, "points": 4.0}, {"statId": 198, "points": 5.0},
+              {"statId": 201, "points": 6.0}, {"statId": 85, "points": -1.0}, {"statId": 86, "points": 1.0}]
+    con.execute("UPDATE leagues SET scoring_items = ?", [_json.dumps(items)])
+    meta = {"run_id": "kfp-test", "season": 2026, "week": 6, "model_version": "kfp-1.0.0",
+            "scoring_fingerprint": resolve_kicker_scoring(items).fingerprint, "artifact_id": "c" * 64,
+            "forecast_horizon": 0, "created_at": datetime(2026, 10, 10)}
+    row = {"season": 2026, "week": 6, "espn_player_id": pid, "gsis_id": "K", "nfl_team": "AAA", "coverage_status": status,
+           "projected_points": expected, "p_play": 1.0 if expected is not None else None, "expected_points": expected}
+    ks.write_run(con, meta, [row])
+    return items
+
+
+def test_kicker_overlay_fills_only_kickers_and_leaves_the_skill_run_untouched(stored):
+    before = ps.weekly(stored, 2026, 6, "independent")
+    assert before["origin"][5] == "espn" and before["kicker_run"] is None
+    run = stored.execute("SELECT run_id, content_sha256 FROM independent_projection_runs").fetchall()
+    _kicker_run(stored, 5)
+    after = ps.weekly(stored, 2026, 6, "independent")
+    assert after["origin"][5] == "ours" and after["values"][5] == 7.3
+    assert after["kicker_run"]["run_id"] == "kfp-test" and after["kicker_run"]["model_version"] == "kfp-1.0.0"
+    others = {k: v for k, v in after["values"].items() if k != 5}
+    assert others == {k: v for k, v in before["values"].items() if k != 5}          # every skill value unchanged
+    assert {k: v for k, v in after["origin"].items() if k != 5} == {k: v for k, v in before["origin"].items() if k != 5}
+    assert after["run"] == before["run"]
+    assert stored.execute("SELECT run_id, content_sha256 FROM independent_projection_runs").fetchall() == run
+    assert pf.latest_run(stored, 2026, 6) is not None                                 # the ifp run still verifies
+    assert ps.weekly(stored, 2026, 6, "espn")["origin"][5] == "espn"                  # ESPN mode never overlays
+    assert "kicker_run" in ps.describe(after)
+
+
+def test_kicker_overlay_never_replaces_a_skill_estimate_and_needs_kicker_scoring(stored):
+    before = ps.weekly(stored, 2026, 6, "independent")
+    _kicker_run(stored, 1, expected=99.0)            # a kfp row for a player the skill run projects
+    assert ps.weekly(stored, 2026, 6, "independent")["values"][1] == before["values"][1]
+    from app.analytics import kicker_store as ks
+
+    items = [i for i in __import__("json").loads(stored.execute("SELECT scoring_items FROM leagues").fetchone()[0])
+             if i["statId"] not in (80, 77, 198, 201, 85, 86)]
+    stored.execute("UPDATE leagues SET scoring_items = ?", [__import__("json").dumps(items)])   # no kicker rules
+    w = ps.weekly(stored, 2026, 6, "independent")
+    assert w["available"] and w["kicker_run"] is None and w["origin"][5] == "espn"
+    assert "kicker scoring" in ks.select_run(stored, 2026, 6)["unavailable_reason"]

@@ -21,6 +21,7 @@ from .api.projection_promotion import router as projection_promotion_router
 from .api.projection_performance import router as projection_performance_router
 from .api.weekly_recap import router as weekly_recap_router
 from .api.research import router as research_router
+from .api.kicker_projections import router as kicker_projections_router
 
 app = FastAPI(title="fantasy-intel", version="0.1.0")
 app.add_middleware(
@@ -56,6 +57,7 @@ app.include_router(projection_promotion_router)
 app.include_router(projection_performance_router)
 app.include_router(weekly_recap_router)
 app.include_router(research_router)
+app.include_router(kicker_projections_router)
 
 
 @app.get("/health")

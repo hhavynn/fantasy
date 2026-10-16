@@ -30,6 +30,8 @@ from . import production_forecasts as pf
 from . import projection_source as ps
 
 PRIMARY = ps.MODEL_VERSION
+KICKER_VERSION = "kfp-1.0.0"       # copy of kicker_store.MODEL_VERSION (tested)
+KICKER_HORIZON_NOTE = "rest-of-season kicker forecast: experimental, not validated beyond the next week"
 OURS_ORIGINS = (ps.OURS, ps.OURS_ZERO)
 BYE = "bye"
 LABEL_TAIL = "experimental beyond next week"
@@ -124,6 +126,7 @@ def player_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dict
                                          WHERE season = ? AND espn_player_id = ?
                                            AND scoring_period IN (SELECT unnest(?))""", [season, pid, weeks])}
     selected, unavailable = _select_batch(con, season, weeks)
+    kicker = _kicker_weeks(con, season, pid, weeks)
     out = {}
     for week in weeks:
         sel = selected.get(week) or {"run": None, "rows": None, "skipped": [], "fallback": False}
@@ -133,8 +136,30 @@ def player_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dict
             value, origin = float(r["expected_points"]), ps.OURS
         elif r and r["coverage_status"] in ps.ZERO_STATUSES:
             value, origin = 0.0, ps.OURS_ZERO
+        k = kicker.get(week)
+        if run is not None and origin == ps.ESPN and k is not None:      # projection_source._kicker_overlay
+            value, origin = k["value"], k["origin"]
         out[week] = {"value": value, "origin": origin, "run": run, "skipped": sel["skipped"],
-                     "reason": _week_reason(week, sel) if run else None, "unavailable_reason": unavailable}
+                     "reason": _week_reason(week, sel) if run else None, "unavailable_reason": unavailable,
+                     "kicker_run": k["run"] if k else None}
+    return out
+
+
+def _kicker_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dict]:
+    """week -> {value, origin, run} from the verified kicker run (kicker_store.overlay), only for weeks where this
+    player has a kicker row at all (one query for everyone else)."""
+    from . import kicker_store
+
+    if not table_exists(con, kicker_store.ROWS):
+        return {}
+    have = {r["week"] for r in fetch_dicts(con, f"""SELECT DISTINCT week FROM {kicker_store.ROWS}
+                                                   WHERE season = ? AND espn_player_id = ?
+                                                     AND week IN (SELECT unnest(?))""", [season, pid, weeks])}
+    out = {}
+    for week in sorted(have):
+        k = kicker_store.overlay(con, season, week)
+        if pid in k["values"]:
+            out[week] = {"value": k["values"][pid], "origin": k["origin"][pid], "run": k["run"]}
     return out
 
 
@@ -170,6 +195,18 @@ def ours_forward(con, season: int, pid: int, weeks: list[dict], *, source: str) 
         if origin == ps.ESPN and on_bye:       # a schedule bye is not an ESPN projection and not a gap to fill
             origin, value = BYE, None
         horizon = run["horizon"] if run else None     # production_forecasts.horizon_of: NULL on a legacy run = 0
+        if got.get("kicker_run") and origin in OURS_ORIGINS:      # a kicker's week comes from the kicker model's run
+            kr = got["kicker_run"]
+            entries.append({"week": w["week"], "value": value, "origin": origin, "on_bye": on_bye,
+                            "run_id": kr["run_id"], "model_version": kr["model_version"],
+                            "run_created_at": kr["created_at"], "horizon": kr["forecast_horizon"],
+                            "forecast_horizon": kr["forecast_horizon"], "projected_from_week": None,
+                            "horizon_note": KICKER_HORIZON_NOTE if kr["forecast_horizon"] else None,
+                            "experimental": bool(kr["forecast_horizon"]),
+                            "artifact_verified": kr["artifact_verified"]})
+            if got["reason"] and got["reason"] not in reasons:
+                reasons.append(got["reason"])
+            continue
         entries.append({
             "week": w["week"], "value": value, "origin": origin, "on_bye": on_bye,
             "run_id": run["run_id"] if run else None, "model_version": run["model_version"] if run else None,
@@ -200,25 +237,27 @@ def ours_forward(con, season: int, pid: int, weeks: list[dict], *, source: str) 
                       "(they are written by the rest-of-season learning cycle), so ESPN projections are shown.",
                       last_regular)
     versions = sorted({e["model_version"] for e in entries if e["model_version"]})
+    # a kicker's weeks come from the kicker model: it is that player's primary model (never mixed with ifp in a total)
+    primary = KICKER_VERSION if versions and all(v.startswith("kfp-") for v in versions) else PRIMARY
     required = [e for e in entries if e["on_bye"] is not True]
-    counted = [e for e in required if e["origin"] in OURS_ORIGINS and e["model_version"] == PRIMARY]
+    counted = [e for e in required if e["origin"] in OURS_ORIGINS and e["model_version"] == primary]
     fallback = [e["week"] for e in entries if e["origin"] == ps.ESPN]
-    other = [e["week"] for e in entries if e["model_version"] not in (None, PRIMARY)]
+    other = [e["week"] for e in entries if e["model_version"] not in (None, primary)]
     missing = [e["week"] for e in required if e not in counted]
     complete = not missing
-    total = round(sum(e["value"] for e in entries if e["origin"] in OURS_ORIGINS and e["model_version"] == PRIMARY
+    total = round(sum(e["value"] for e in entries if e["origin"] in OURS_ORIGINS and e["model_version"] == primary
                       and e["value"] is not None), 2) if complete else None
     if other:
-        reasons.append(f"Mixed models: the rest-of-season total counts {PRIMARY} weeks only, so it is hidden while "
+        reasons.append(f"Mixed models: the rest-of-season total counts {primary} weeks only, so it is hidden while "
                        f"week(s) {', '.join(map(str, other))} use another model." if len(versions) > 1 else
-                       f"The rest-of-season total counts {PRIMARY} weeks only, so it is hidden.")
+                       f"The rest-of-season total counts {primary} weeks only, so it is hidden.")
     elif fallback:
         reasons.append(f"ESPN's number is shown for week(s) {', '.join(map(str, fallback))}: no independent "
                        "estimate yet.")
     created = [e["run_created_at"] for e in entries if e["run_created_at"]]
     return {
         "available": True, "reason": " ".join(reasons) or None,
-        "label": label_for(versions), "model_version": PRIMARY, "model_versions": versions,
+        "label": label_for(versions), "model_version": primary, "model_versions": versions,
         "mixed_models": len(versions) > 1, "weeks": entries,
         "ros_projected_points": total, "ros_weeks_expected": len(required),
         "ros_weeks_available": len(counted), "ros_complete": complete,

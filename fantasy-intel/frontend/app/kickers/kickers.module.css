@@ -1,0 +1,7 @@
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sub { display: block; color: var(--text-faint, var(--muted)); font-size: 0.82em; line-height: 1.35; }
+.why { max-width: 34rem; }
+.why ul { margin: 4px 0 0; padding-left: 1.1em; }
+.why li { margin: 1px 0; }
+.cond { white-space: nowrap; }
+.weekForm { display: flex; gap: 8px; align-items: center; }
