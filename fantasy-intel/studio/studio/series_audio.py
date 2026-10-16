@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from pathlib import Path
+
 from . import audio_design as A
 
 SR = A.SR
@@ -72,6 +74,29 @@ def sfx(kind: str, seed: int = 5) -> np.ndarray:
     return A.sfx(kind)
 
 
+def write_nosfx(ep) -> Path:
+    """final_nosfx.mp4: the same picture with every meme cue left out of the mix, for an A/B listen."""
+    import json
+    import subprocess
+
+    import soundfile as sf
+    script = json.loads(ep.path("script.json").read_text())
+    tl = json.loads(ep.path("work/timeline.json").read_text())
+    voice, sr = [], None
+    for seg in script["narration_segments"]:
+        data, sr = sf.read(ep.path(f"audio/{seg['id']}.wav"), dtype="float32")
+        voice.append(data)
+    mixed = mix(A.upsample(np.concatenate(voice), sr), [tuple(e) for e in tl["sound_events"]], script["structure"],
+                tl["scenes"], ep.cfg["shorts"], with_meme=False)
+    wav = ep.path("work/mix_nosfx.wav")
+    sf.write(wav, mixed, SR, subtype="PCM_16")
+    out = ep.path("final_nosfx.mp4")
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(ep.path("final.mp4")), "-i", str(wav),
+                    "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:a", "aac",
+                    "-b:a", "192k", "-ar", "48000", "-ac", "2", "-shortest", str(out)], check=True)
+    return out
+
+
 def drop_windows(scenes: list[dict]) -> list[tuple[float, float]]:
     """Silence the bed from just before a `music_drop` scene until its first words have landed."""
     out = []
@@ -82,39 +107,76 @@ def drop_windows(scenes: list[dict]) -> list[tuple[float, float]]:
     return out
 
 
+def _ramp_gate(n: int, windows: list[tuple[float, float]], floor: float, ramp_s: float = 0.04) -> np.ndarray:
+    """1.0 everywhere except the windows, where it ramps down to `floor` (and back up after)."""
+    gain = np.ones(n, np.float32)
+    ramp = max(1, int(ramp_s * SR))
+    for a, b in windows:
+        i, j = max(0, int(a * SR)), min(n, int(b * SR))
+        if j <= i:
+            continue
+        gain[i:j] = np.minimum(gain[i:j], floor)
+        lo = max(0, i - ramp)
+        gain[lo:i] = np.minimum(gain[lo:i], np.linspace(1, floor, i - lo))
+        hi = min(n, j + ramp)
+        gain[j:hi] = np.minimum(gain[j:hi], np.linspace(floor, 1, hi - j))
+    return gain
+
+
+def parse_meme(kind: str) -> tuple[str, float, str] | None:
+    """'meme:boom:-1:stat_reveal' -> ('boom', -1.0, 'stat_reveal')."""
+    if not kind.startswith("meme:"):
+        return None
+    _, sfx_id, variant, event = kind.split(":", 3)
+    return sfx_id, float(variant), event
+
+
 def mix(voice: np.ndarray, events: list[tuple[float, str, float]], structure: dict, scenes: list[dict],
-        shorts_cfg: dict) -> np.ndarray:
-    """Like audio_design.mix, with the format's mood (or no music), its music level, and its drops."""
+        shorts_cfg: dict, with_meme: bool = True) -> np.ndarray:
+    """Voice + the format's music (or none) + its sounds. Meme cues (sfx_palette) duck the music for the hit, a
+    `music_cut` cue silences it for a beat, long crowd/choir effects duck under the voice so they never mask a word,
+    and `with_meme=False` leaves every meme cue out (the comparison mix)."""
+    from . import sfx_palette as P
     n = len(voice)
     v = voice / (np.max(np.abs(voice)) + 1e-9) * A.db(-3)
+    speech = A.envelope(v)
+    speech = np.pad(speech, (0, max(0, n - len(speech))), mode="edge")[:n]
+    talking = np.clip(speech / (np.percentile(speech, 90) + 1e-9), 0, 1)
+    memes = [(at, *parse_meme(kind), g) for at, kind, g in events if parse_meme(kind)]
+    plain = [(at, kind, g) for at, kind, g in events if not parse_meme(kind)]
+    if not with_meme:
+        memes = []
     bed = np.zeros(n, np.float32)
     mood = structure.get("music_mood")
     if structure.get("music", True) and mood and mood != "none" and shorts_cfg.get("music", True):
         m = A.music(n / SR, mood=mood)
         bed = np.pad(m, (0, max(0, n - len(m))))[:n] * A.db(structure.get("music_db", shorts_cfg.get("music_db", -26)))
-        speech = A.envelope(v)
-        duck = 1 - 0.55 * np.clip(speech / (np.percentile(speech, 90) + 1e-9), 0, 1)
-        bed = bed * np.pad(duck, (0, max(0, n - len(duck))), mode="edge")[:n]
-        gain = np.ones(n, np.float32)
-        ramp = int(0.04 * SR)
-        for a, b in drop_windows(scenes):
-            i, j = int(a * SR), min(n, int(b * SR))
-            if j <= i:
-                continue
-            gain[i:j] = 0.0
-            gain[max(0, i - ramp):i] = np.minimum(gain[max(0, i - ramp):i], np.linspace(1, 0, i - max(0, i - ramp)))
-            k = min(n, j + ramp)
-            gain[j:k] = np.minimum(gain[j:k], np.linspace(0, 1, k - j))
-        bed = bed * gain
+        bed = bed * (1 - 0.55 * talking)
+        bed *= _ramp_gate(n, drop_windows(scenes), 0.0)
+        hits = [(at - 0.08, at + min(0.6, len(P.render(sid, var)) / SR)) for at, sid, var, _, _ in memes
+                if P.PALETTE[sid]["class"] in ("impact", "cartoon", "sting")]
+        bed *= _ramp_gate(n, hits, A.db(-10), 0.03)                  # make room for the hit
+        cuts = [(at, at + 0.9) for at, sid, _, _, _ in memes if sid == "music_cut"]
+        bed *= _ramp_gate(n, cuts, 0.0, 0.01)                         # the deadpan cut: music just stops
     fx = np.zeros(n, np.float32)
-    for at, kind, gain_db in events:
+    for at, kind, gain_db in plain:
         sig = sfx(kind) * A.db(shorts_cfg.get("sfx_db", -12) + gain_db)
         i = int(at * SR)
         if 0 <= i < n:
             j = min(n, i + len(sig))
             fx[i:j] += sig[: j - i]
-    out = v + bed + fx
-    fade_in, fade_out = int(0.015 * SR), int(0.2 * SR)
+    long_fx = np.zeros(n, np.float32)
+    for at, sid, var, _, gain_db in memes:
+        if sid == "music_cut":
+            continue
+        sig = P.render(sid, var) * A.db(gain_db)
+        i = int(at * SR)
+        if 0 <= i < n:
+            j = min(n, i + len(sig))
+            (long_fx if P.PALETTE[sid]["class"] == "crowd" else fx)[i:j] += sig[: j - i]
+    long_fx *= 1 - 0.7 * talking                                       # a crowd never talks over the narrator
+    out = v + bed + fx + long_fx
+    fade_in, fade_out = int(0.015 * SR), int(0.12 * SR)
     out[:fade_in] *= np.linspace(0, 1, fade_in)
     out[-fade_out:] *= np.linspace(1, 0, fade_out)
     peak = np.max(np.abs(out))

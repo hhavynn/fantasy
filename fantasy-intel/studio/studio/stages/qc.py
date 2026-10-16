@@ -262,6 +262,21 @@ def gate_originality(episode_id: str, narration: list[str], players: list[str], 
     return _gate("originality", failures, compared=scores)
 
 
+def gate_pacing(ep: Episode, script: dict, history: list[dict]) -> Gate:
+    """Series pacing and comedy timing (studio/pacing.py), measured on the render: dead air, a late hook or payoff,
+    a sound effect off its word, the same sound set as a recent video. Writes pacing.json and pacing.md."""
+    from ..pacing import audit, markdown, measure
+    m = measure(ep.dir)
+    prior = [e["structure"].get("sfx", []) for e in history if (e.get("structure") or {}).get("series")
+             and e["episode_id"] != ep.id]
+    findings = audit(m, script["structure"], prior)
+    write_json(ep.path("pacing.json"), {"measured": m, "findings": findings})
+    ep.path("pacing.md").write_text(markdown(m, findings))
+    return _gate("pacing", findings["fail"], warnings=findings["warn"],
+                 **{k: m[k] for k in ("duration_s", "first_hook_s", "first_payoff_s", "longest_voice_gap_s",
+                                      "sfx_events", "max_sync_error_s")})
+
+
 SERIES_MIN_S = 10
 SERIES_FORMAT_RUN_MAX = 2             # a third series video in a row may not use the same format
 
@@ -443,7 +458,8 @@ def run_gates(ep: Episode) -> list[Gate]:
                          {**script["structure"], "_week": ep.week,
                           "_order": read_json(ep.path("story.json"))["order"]} if ep.fmt == "short" else None),
         gate_timeliness(script, facts),
-        *([gate_series(script, ep.path("brief.json"), history)] if script["structure"].get("series") else []),
+        *([gate_series(script, ep.path("brief.json"), history), gate_pacing(ep, script, history)]
+          if script["structure"].get("series") else []),
         gate_licenses(ep.cfg, installed_distributions()),
         gate_metadata(read_json(ep.path("metadata.json")), ep.path("thumbnail.png"), ep.fmt),
         gate_integrity(ep),

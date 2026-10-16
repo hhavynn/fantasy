@@ -597,8 +597,8 @@ def run(ep: Episode) -> None:
     shot = headshots.record(ep.cfg, read_json(ep.path("facts.json"))["players"][0])
     from pathlib import Path
     from ..core import sha256_file
-    from .. import series_audio as SA, series_scenes as SS
-    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A, FPS, SS, SA)}
+    from .. import series_audio as SA, series_scenes as SS, sfx_palette as SP
+    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A, FPS, SS, SA, SP)}
     run_stage(ep, "render", VERSION, {"video": ep.cfg["video"], "shorts": ep.cfg["shorts"], "caption": CAPTION,
                                       "code": code,
                                       "headshot": shot and shot["sha256"]},

@@ -200,6 +200,9 @@ def evaluate(snap: dict, src: dict):
         return 1 + _beyond(list(rates.values()), mine, src["direction"])
     if k == "fp_constant":
         return CONSTANTS[src["name"]]
+    if k == "fp_completed_air":             # passing yards that happened in the air: yards minus yards after catch
+        r = _row(snap, "qb", src["gsis_id"], src["week"])
+        return r["passing_yards"] - r["passing_yards_after_catch"]
     if k in ("fp_points", "fp_result"):
         g = next(g for g in snap["tables"]["nfl_schedules"] if g["week"] == src["week"]
                  and src["team"] in (g["home_team"], g["away_team"]))
@@ -249,6 +252,8 @@ def describe(src: dict) -> str:
         return f"season {num}/{den} per {src['position']} with {src['min_den']}+ {den}, weeks 1-{src['through']}: {what}"
     if k == "fp_constant":
         return f"selection constant {src['name']}"
+    if k == "fp_completed_air":
+        return f"qb_week_passing passing_yards - passing_yards_after_catch, week {src['week']}"
     if k in ("fp_points", "fp_result"):
         return f"nfl_schedules final score ({src['team']}, week {src['week']})"
     if k == "fp_teams_fewer_targets":
@@ -648,7 +653,10 @@ def _finish_beats(beats: list[dict], claims: dict) -> list[dict]:
     from .story import PAUSE
     shots = []
     for b in beats:
-        chunks = re.split(f"({PAUSE}|{BEAT})", b["text_template"])
+        # `‖` is a breath Kokoro takes from the punctuation itself (one call, natural prosody); only the comic
+        # beat `⏸` splits the line into separately spoken parts with a measured silence between them
+        text = b["text_template"].replace(PAUSE, "") if b["scene"].get("series") else b["text_template"]
+        chunks = re.split(f"({PAUSE}|{BEAT})", text)
         parts, gaps = chunks[0::2], [BEAT_PAUSE if m == BEAT else PART_PAUSE for m in chunks[1::2]]
         b["text_template"] = "".join(parts)
         if len(parts) > 1:
@@ -712,6 +720,10 @@ def _script_run(ep: Episode, used: dict, hook: str | None) -> None:
     if not brief["entertainment_test"]["pass"] and not story.get("force"):
         raise NotEntertaining(f"{p['name']}: {brief['entertainment_test']['why']}")
     beats, titles = SR.compose(facts, claims, brief)
+    SR.assign_sfx(beats, brief, recent, ep.id)
+    scale = ep.cfg["shorts"].get("speed_scale", 1.0)       # tts multiplies every line by it; the formats' speeds
+    for b in beats:                                         # are already the delivered pace, so divide it back out
+        b["speed"] = round(b["speed"] / scale, 4)
     from .story import finish
     beats, titles, _ = finish(beats, p, {"column": brief["angle"]}, brief["kind"], brief["format"], None, {"tm": ""},
                               titles=titles)

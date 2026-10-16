@@ -21,6 +21,7 @@ Every number drawn is a claim's display string (c.d). Backdrops stay above the Q
 from __future__ import annotations
 
 import math
+import re
 from functools import lru_cache
 
 import numpy as np
@@ -48,7 +49,7 @@ def _short(name: str) -> str:
     return parts[-1]
 
 
-def _typed(text: str, t: float, start: float, cps: float = 34) -> str:
+def _typed(text: str, t: float, start: float, cps: float = 70) -> str:
     n = int(max(0.0, t - start) * cps)
     return text[:n]
 
@@ -210,7 +211,7 @@ def scene_dp_line(img, t, dur, spec, c):
         shown = _typed(line, t, start)
         M.put_text(img, shown or " ", M.SAFE_LEFT, 640 + i * 120, size=M.fit_size(line, "black", 84, 860),
                    fill=M.INK if i == 0 else (230, 230, 236), anchor="l")
-        start += len(line) / 34 + 0.15
+        start += len(line) / 70 + 0.05
     if spec.get("foot"):
         foot = fill(c, spec["foot"], spec.get("fill", {}))
         M.put_text(img, foot, M.SAFE_LEFT, 900, weight="bold", size=34, fill=M.MUTED, alpha=M.clamp((t - start) * 3),
@@ -226,9 +227,9 @@ def scene_dp_end(img, t, dur, spec, c):
         cue = c.tokens[parts[0] + 1]["start"] if parts[0] + 1 < len(c.tokens) else cue
     start = cue - 0.05
     for i, line in enumerate(spec.get("lines", [])):
-        shown = _typed(line, t, start, cps=30)
+        shown = _typed(line, t, start, cps=60)
         M.put_text(img, shown or " ", M.SAFE_LEFT, 640 + i * 130, size=M.fit_size(line, "black", 96, 860), anchor="l")
-        start += len(line) / 30 + 0.1
+        start += len(line) / 60 + 0.04
     brand(img, t, dur, y=1180)
 
 
@@ -290,13 +291,13 @@ def scene_court_exhibit(img, t, dur, spec, c):
         ImageDraw.Draw(tab).text((130, 45), f"EXHIBIT {'ABC'[j]}", font=M.font("black", 36), fill=PAPER_INK,
                                  anchor="mm")
         M.paste(img, tab, M.SAFE_LEFT + 160 + j * 290, 300, 1.0, 0.9)
-    k = M.back_out(M.progress(t, 0.0, 0.3))
+    k = M.back_out(M.progress(t + 0.12, 0.0, 0.18))
     card = _paper(860, 760, MANILA)
     d = ImageDraw.Draw(card)
     d.text((430, 90), f"EXHIBIT {spec['letter']}", font=M.font("black", 72), fill=PAPER_INK, anchor="mm")
     d.line((60, 150, 800, 150), fill=PAPER_INK, width=3)
     big = c.d(spec["big"])
-    kb = M.ease_out(M.progress(t, c.at(claim=spec["big"], default=0.4) - 0.1, 0.25))
+    kb = M.ease_out(M.progress(t, c.at(claim=spec["big"], default=0.15) - 0.05, 0.12))
     lay = M.text_layer(big, "black", M.fit_size(big, "black", 260, 760), PAPER_INK, shadow=False).copy()
     lay.putalpha(lay.getchannel("A").point(lambda v: int(v * kb)))
     card.alpha_composite(lay, (int(430 - lay.width / 2), int(380 - lay.height / 2)))
@@ -304,7 +305,9 @@ def scene_court_exhibit(img, t, dur, spec, c):
     d.text((430, 600), label, font=M.font("bold", M.fit_size(label, "bold", 48, 760)), fill=PAPER_INK, anchor="mm")
     M.paste(img, card.rotate((-1) ** i * 2, expand=True, resample=Image.BICUBIC), M.CENTER_X, 830, 0.85 + 0.15 * k,
             M.clamp(k * 2))
-    ks = M.back_out(M.progress(t, c.at(claim=spec["big"], default=0.4) + 0.25, 0.25))
+    hit = c.at(claim=spec.get("stamp_on"), default=c.at(word="half", default=0.4)) if spec.get("stamp_on") else \
+        c.at(word="half", default=0.4)
+    ks = M.back_out(M.progress(t, hit, 0.14))
     stamp(img, "ENTERED INTO EVIDENCE", M.CENTER_X + 60, 1180, COURT_RED, ks, size=56, angle=-7)
     _parody(img, t)
 
@@ -356,14 +359,20 @@ def scene_cmp_field(img, t, dur, spec, c):
     d.line((M.SAFE_LEFT, los, M.SAFE_RIGHT, los), fill=(70, 140, 255, 255), width=8)
     M.put_text(img, "LINE OF SCRIMMAGE", M.CENTER_X, los + 50, weight="bold", size=32, fill=M.INK)
     M.paste(img, c.art(150), M.SAFE_LEFT + 85, los - 85, 1.0, 1.0)      # the passer, at the line
-    order = ["tease", "league", "him", "season", "safety"]
+    order = ["tease", "league", "him", "air", "season", "safety"]
     at = order.index(stage)
-    if stage == "tease":                                          # a tiny ruler for a tiny throw
-        k = M.back_out(M.progress(t, c.at(word="smaller", default=dur * 0.6) - 0.1, 0.3))
-        rx, ry = M.CENTER_X - 120, los - 260
-        d.rounded_rectangle((rx, ry, rx + 240 * k + 1, ry + 60), radius=6, fill=(250, 214, 90, 255))
-        for i in range(0, int(240 * k), 20):
-            d.line((rx + i, ry, rx + i, ry + (30 if i % 60 == 0 else 16)), fill=(40, 30, 10, 255), width=3)
+    if stage == "tease":                                          # a full ruler that shrinks to a tiny one
+        tok = next((x for x in c.tokens if x["text"].lower().startswith("ruler")), None)
+        hit = tok["end"] if tok else dur * 0.8
+        shrink = M.back_out(M.progress(t, hit - 0.25, 0.25))      # done exactly as the word (and the boing) lands
+        w = 720 - 640 * shrink
+        rx, ry = M.CENTER_X - w / 2, los - 330
+        d.rounded_rectangle((rx, ry, rx + w, ry + 70), radius=8, fill=(250, 214, 90, 255))
+        for i in range(0, int(w), max(6, int(w / 36))):
+            d.line((rx + i, ry, rx + i, ry + (34 if (i // max(6, int(w / 36))) % 4 == 0 else 18)),
+                   fill=(40, 30, 10, 255), width=3)
+        label = "TINY RULER" if shrink > 0.5 else "STANDARD RULER"
+        M.put_text(img, label, M.CENTER_X, ry + 120, weight="bold", size=44, fill=M.INK, stroke=3)
         M.put_text(img, f"MEASURING {c.p['name'].upper()}'S PASSES", M.CENTER_X, 300,
                    size=M.fit_size(f"MEASURING {c.p['name'].upper()}'S PASSES", "black", 54, 880), stroke=4)
         return
@@ -382,6 +391,17 @@ def scene_cmp_field(img, t, dur, spec, c):
         if k >= 0.99:
             M.put_text(img, f"{label}: {c.d(cid)} YDS", x, y - 70, size=M.fit_size(f"{label}: {c.d(cid)} YDS", "black",
                                                                                    44, 420), fill=col, stroke=3)
+    if stage == "air":                                            # his yards, and how few of them flew
+        air, yds = c.claims[spec["air"]]["value"], c.claims[spec["yds"]]["value"]
+        k = M.ease_out(M.progress(t, c.at(claim=spec["air"], default=dur * 0.6) - 0.05, 0.2))
+        x0, x1, y = M.SAFE_LEFT + 20, M.SAFE_RIGHT - 20, 420
+        d.rounded_rectangle((x0, y, x1, y + 70), radius=14, fill=(255, 255, 255, 60))
+        d.rounded_rectangle((x0, y, x0 + (x1 - x0) * air / max(yds, 1) * k + 2, y + 70), radius=14,
+                            fill=(255, 140, 40, 255))
+        M.put_text(img, f"{c.d(spec['air'])} OF {c.d(spec['yds'])} YARDS IN THE AIR", M.CENTER_X, y - 60,
+                   size=M.fit_size(f"{c.d(spec['air'])} OF {c.d(spec['yds'])} YARDS IN THE AIR", "black", 60, 880),
+                   fill=(255, 210, 90), alpha=M.clamp(k * 2), stroke=4)
+        M.put_text(img, "THE REST: AFTER THE CATCH", M.CENTER_X, y + 120, weight="bold", size=40, alpha=k)
     if stage == "season":
         ks = M.ease_out(M.progress(t, c.at(word="nobody", default=dur * 0.6) - 0.1, 0.3))
         M.put_text(img, "SHORTEST AVERAGE THROW IN THE NFL", M.CENTER_X, 300,
@@ -398,7 +418,7 @@ def scene_cmp_field(img, t, dur, spec, c):
         M.put_text(img, "z z z", M.CENTER_X + 280, y - 50 - 10 * math.sin(t * 3), weight="bold", size=48, alpha=k)
         M.put_text(img, "THE DEEP SAFETY", M.CENTER_X + 170, y + 70, weight="bold", size=34, alpha=k)
     title = {"league": "HOW FAR THE AVERAGE NFL PASS GOES", "him": f"{c.p['name'].upper()} VS THE "
-             f"{c.d(c.p['opponent']).upper()}", "season": "", "safety": ""}[stage]
+             f"{c.d(c.p['opponent']).upper()}", "season": "", "safety": "", "air": ""}[stage]
     if title:
         M.put_text(img, title, M.CENTER_X, 300, size=M.fit_size(title, "black", 54, 880), stroke=4)
 
@@ -448,6 +468,19 @@ def scene_cine_title(img, t, dur, spec, c):
 def scene_cine_slam(img, t, dur, spec, c):
     slams, words = spec["slams"], spec["words"]
     times = [c.at(claim=cid, default=0.3 + i * 0.8) for i, cid in enumerate(slams)]
+    if spec.get("open"):                                   # the absurd number IS the opening frame
+        times = [-0.3] + times[1:]
+        sub = f"{c.p['name'].upper()} · VS {c.d(c.p['opponent']).upper()} · {c.d(c.p['week_claim']).upper()}"
+        M.put_text(img, sub, M.CENTER_X, 300, weight="bold", size=M.fit_size(sub, "bold", 40, 880), fill=(255, 214, 120))
+        k = M.back_out(M.progress(t + 0.3, 0.0, 0.25))
+        M.put_text(img, c.d(slams[0]), M.CENTER_X, 620, size=420, fill=M.INK, scale=(0.8 + 0.2 * k) * (1 + 0.02 * t),
+                   stroke=8)
+        M.put_text(img, words[0], M.CENTER_X, 860, size=110, fill=(255, 214, 120), stroke=5)
+        M.paste(img, c.art(420), M.CENTER_X, 1150, 1.0 + 0.03 * t, 1.0)
+        flash = math.exp(-t / 0.06)
+        if flash > 0.02:
+            img.paste(Image.blend(img, Image.new("RGB", img.size, (255, 255, 255)), 0.5 * flash))
+        return
     M.paste(img, c.art(520), M.SAFE_RIGHT - 170, 1180, 1.0, 0.85)
     for i, (cid, word, at) in enumerate(zip(slams, words, times)):
         k = M.back_out(M.progress(t, at - 0.06, 0.22))
@@ -466,14 +499,16 @@ def scene_cine_slam(img, t, dur, spec, c):
 
 
 def scene_cine_contrast(img, t, dur, spec, c):
-    them = spec.get("them")
+    them = spec.get("them") if spec.get("stage", "them") == "them" else None
     if them:
-        k = M.ease_out(M.progress(t, c.at(claim=them, default=0.5) - 0.2, 0.4))
+        k = M.ease_out(M.progress(t, c.at(claim=them, default=0.5) - 0.06, 0.15))
         M.put_text(img, f"THE ENTIRE {c.d(c.p['opponent']).upper()} OFFENSE", M.CENTER_X, 420, weight="bold", size=50,
                    alpha=M.clamp(t * 5))
         M.put_text(img, c.d(them), M.CENTER_X, 600, size=220, fill=M.MUTED, alpha=k)
         M.put_text(img, "TARGETS", M.CENTER_X, 740, weight="bold", size=48, fill=M.MUTED, alpha=k)
-    k2 = M.ease_out(M.progress(t, c.at(word="no", default=c.at(word="that", default=dur * 0.55)) - 0.1, 0.4))
+    if spec.get("stage") == "them":
+        return
+    k2 = M.ease_out(M.progress(t, 0.0, 0.25))
     pos = c.p["position"]
     lines = ([f"MOST TARGETS IN ANY OF", f"{c.d(spec['games'])} {pos} GAMES THIS SEASON"] if spec.get("rank1")
              else [f"{c.d(spec['rank']).upper()}-MOST OF {c.d(spec['games'])}", f"{pos} GAMES THIS SEASON"])
@@ -546,6 +581,11 @@ SCENES = {"dp_toggle": scene_dp_toggle, "dp_stat": scene_dp_stat, "dp_line": sce
 
 def punches(scene: dict, c, dur: float) -> list[float]:
     kind = scene["type"]
+    if scene.get("cues") is not None:          # the series: the camera punches in on the same hits as the sound
+        from . import sfx_palette as P
+        hits = [anchor_time(q, c.tokens) for q in scene["cues"]
+                if q.get("sfx") and P.PALETTE[q["sfx"]]["class"] in ("impact", "cartoon", "sting")]
+        return [h for h in hits if h is not None]
     if kind == "court_verdict":
         return [c.at(word="guilty", default=dur * 0.5)]
     if kind == "cine_slam":
@@ -559,39 +599,30 @@ def punches(scene: dict, c, dur: float) -> list[float]:
     return []                                                   # deadpan, court paper, the field: a still camera
 
 
+def anchor_time(cue: dict, tokens: list[dict]) -> float | None:
+    """Where in the beat (seconds) a cue's moment is: the start or end of a spoken word, or of a number as it is
+    said. None when the anchor is not in the line (the cue is then dropped, never moved somewhere arbitrary)."""
+    hits = []
+    if cue.get("claim"):
+        hits = [t for t in tokens if t["claim"] == cue["claim"]]
+    elif cue.get("word"):
+        w = cue["word"].lower()
+        i = next((j for j, t in enumerate(tokens) if re.sub(r"[^a-z0-9']", "", t["text"].lower()).startswith(w)), None)
+        hits = [tokens[i]] if i is not None else []
+    if not hits:
+        return None
+    return hits[0]["start"] if cue.get("at", "start") == "start" else hits[-1]["end"]
+
+
 def sounds(scene: dict, start: float, dur: float, c) -> list[tuple[float, str, float]]:
-    kind, ev = scene["type"], []
-    cue = scene.get("sfx_cue")
-    if cue and kind not in ("court_verdict", "dp_end"):
-        ev.append((start, cue, -4 if cue != "boom" else -2))
-    if kind == "dp_toggle":
-        ev.append((start + c.at(word="airplane", default=dur * 0.5), "tick", -6))
-    if kind in ("dp_line", "dp_end"):
-        for i in range(6):
-            ev.append((start + 0.12 + i * 0.09 + (c.at(word="the", default=0) if kind == "dp_end" else 0), "type", -12))
-    if kind == "dp_end":
-        ev.append((start - 0.05, "scratch", -6))
-    if kind == "court_exhibit":
-        ev.append((start + c.at(claim=scene["big"], default=0.4) + 0.25, "stamp", -4))
-    if kind == "court_verdict":
-        at = start + c.at(word="guilty", default=dur * 0.5)
-        ev += [(at - 0.05, "gavel", -1), (at + 0.05, "stamp", -5)]
-    if kind == "cmp_field":
-        for cid in (scene["league"], scene["x"]):
-            ev.append((start + c.at(claim=cid, default=99) - 0.6, "whoosh", -10))
-    if kind == "cmp_tally":
-        ev.append((start + 0.2, "tick", -10))
-        if scene.get("stage") == "end":
-            ev.append((start + 0.3, "stamp", -4))
-    if kind == "cine_slam":
-        for cid in scene["slams"]:
-            ev.append((start + c.at(claim=cid, default=99) - 0.04, "boom", -4))
-    if kind == "cine_contrast":
-        ev.append((start + 0.05, "whoosh", -10))
-    if kind == "melt_stat":
-        lvl = scene.get("level", 1)
-        ev.append((start + c.at(claim=scene["big"], default=0.05) - 0.04, "impact", -8 + 2 * lvl))
-    if kind == "melt_scream":
-        ev.append((start, "swell", -2))
-        ev.append((start, "boom", -1))
-    return [e for e in ev if e[0] < start + dur + 0.5]
+    """Only the beat's cues: each effect placed so its hit (not its file start) lands on its word or number."""
+    from . import sfx_palette as P
+    ev = []
+    for cue in scene.get("cues", []):
+        sfx = cue.get("sfx")
+        at = anchor_time(cue, c.tokens) if sfx else None
+        if at is None:
+            continue
+        t = start + at + P.SYNC_OFFSET_S - P.PALETTE[sfx]["attack"]
+        ev.append((max(0.0, t), f"meme:{sfx}:{cue.get('variant', 0)}:{cue['event']}", cue.get("gain", -6)))
+    return ev

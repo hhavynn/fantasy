@@ -83,7 +83,11 @@ one (praise). It is now an NFL entertainment series: `stages/showrunner.py` pick
 formats (roast monologue, courtroom parody, comparison, main character, fan meltdown) per story and recent history,
 writes `brief.md`, and `--storyboard` previews it before any render; see
 [`../docs/flame-praise-series/README.md`](../docs/flame-praise-series/README.md). `--treatment classic` renders the
-first template below. Trash talk about the stat line, never about the person. Code: `stages/flame.py` (selection, claims,
+first template below. Pacing and sound: each format has a short-form target length and speed, every joke beat
+is a cue that a CC0 or original meme-style effect lands on to the word, and QC's `pacing` gate measures dead air,
+late payoffs and effect sync in the render; see
+[`../docs/flame-praise-series/pacing-and-sound.md`](../docs/flame-praise-series/pacing-and-sound.md).
+`--compare-mix` also writes `final_nosfx.mp4`; `--frozen-snapshot` re-makes an earlier week from its archived data. Trash talk about the stat line, never about the person. Code: `stages/flame.py` (selection, claims,
 script) and `studio/flame_scenes.py` (ember / spotlight looks; hook card, a strip of every position game, his
 season game by game, a stat receipt), ending on the shared `decision` scene.
 
