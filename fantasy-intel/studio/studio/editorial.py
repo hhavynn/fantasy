@@ -29,6 +29,15 @@ VOLUME_DROP = 0.8              # team targets this far below the game before: "t
 OPPORTUNITY_PTS = 30           # a vacated backfield role this big (displayed points) is a story on its own
 
 
+# The shows in studio/shows.py: how strong a hook and how actionable each kind of story is.
+SHOW_HOOKS = {"red_flag": (4, "a warning: the role held, the targets did not"),
+              "heist": (4, "an opportunity with a reason and a catch"),
+              "myth": (4, "the obvious reading of his usage is wrong")}
+SHOW_ACTION = {"red_flag": (4, "a start/sit warning with the condition that changes it"),
+               "heist": (5, "a waiver claim while the window is open"),
+               "myth": (3, "a start/sit rule, no transaction")}
+
+
 def _v(claims: dict, cid):
     return claims[cid]["value"] if cid else None
 
@@ -144,6 +153,8 @@ def score(p: dict, claims: dict, fmt: str, recent: list[dict]) -> dict:
     elif fmt == "opportunity":
         pts = round(_v(claims, lead["change"]) * 100)
         s["hook"], why["hook"] = (5 if pts >= 50 else 4), f"backfield share up {pts} pts with the starter out"
+    elif fmt in SHOW_HOOKS:
+        s["hook"], why["hook"] = SHOW_HOOKS[fmt]
     else:
         s["hook"], why["hook"] = 2, "a usage change without a twist"
     s["surprise"] = 5 if dot >= 8 else 4 if dot >= 5 else 3 if dot >= 3 else 2 if dot >= 1.5 else 1
@@ -170,6 +181,8 @@ def score(p: dict, claims: dict, fmt: str, recent: list[dict]) -> dict:
         s["actionability"], why["actionability"] = 5, f"start/sit while the starter is out (status: {code})"
     elif fmt == "mystery":
         s["actionability"], why["actionability"] = 3, "hold/start decision; no waiver call"
+    elif fmt in SHOW_ACTION:
+        s["actionability"], why["actionability"] = SHOW_ACTION[fmt]
     else:
         s["actionability"], why["actionability"] = 3 if p["role"] == "riser" else 2, "general usage note"
 
@@ -182,7 +195,7 @@ def score(p: dict, claims: dict, fmt: str, recent: list[dict]) -> dict:
             tnotes.append(f"decision hinges on this week's report ({code}); expires at kickoff")
     s["timeliness"], why["timeliness"] = min(5, time_), "; ".join(tnotes)
 
-    if fmt in ("mystery", "opportunity"):
+    if fmt in ("mystery", "opportunity") or fmt in SHOW_HOOKS:
         s["visual"], why["visual"] = 5, "format has its own story-specific scenes (counts, faces, a reveal)"
     else:
         s["visual"], why["visual"] = 2, "generic template scenes (card, chart, lineup)"

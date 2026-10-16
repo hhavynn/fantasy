@@ -88,6 +88,15 @@ portrait = "assets/presenter/host.png"
 # The host's own voice (picked by audition: episodes/presenter-audition). Different from [shorts] voice, so host
 # versions are re-rendered as <slug>-host with this voice; the regular Shorts keep theirs.
 voice = "am_adam"
+# Realism pass 2 (A/B in episodes/presenter-review, docs/presenter/README.md). engine_mode "hq" = lossless
+# native-fps MuseTalk loop with skin-detail restore, approved by the owner from the montages (2026-10-15).
+# Motion stays procedural until the new library clips are reviewed; motion "library" = audited Wan2.2
+# natural-motion clips of the same host (falls back to procedural if none pass).
+engine_mode = "hq"
+motion = "procedural"
+library = "~/models/presenter/motion/library"
+detail = 1.0
+detail_sigma = 3.5
 
 [graphics]
 # Graphic style for Shorts (studio/graphics, tokens in assets/styles/*.toml): original | premium | pixel |

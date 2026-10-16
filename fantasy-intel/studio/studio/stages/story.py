@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 
 from .. import editorial as E
+from .. import shows as SH
 from ..core import Episode, canonical_json, read_json, run_stage, sha256_bytes, write_json
 from . import formats as F
 from .script import PLACEHOLDER, fill
@@ -171,12 +172,19 @@ def _names(gainers: list[dict]) -> str:
     return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + f", and {parts[-1]}"
 
 
-def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str | None = None
-            ) -> tuple[list[dict], list[str], dict]:
+def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str | None = None,
+            show: str | None = None) -> tuple[list[dict], list[str], dict]:
     p = facts["players"][0]
     lead = p["metrics"][0]
     tm = p.get("teammate")
-    fmt = E.choose_format(p, claims)
+    if show in ("red_flag", "heist", "myth"):     # a show assigned by the batch editor (studio/shows.py)
+        beats, titles, hook_key, variants, extra = SH.build(show, p, claims, used, hook_override)
+        beats, titles, structure = finish(beats, p, lead, show, hook_key, tm, {"tm": tm["name"] if tm else ""},
+                                          titles=titles, ending=extra["ending"])
+        structure["hook_variants"] = variants
+        return beats, titles, structure
+    # a planned detective or contingency is made as planned, not re-chosen (the board and the video must agree)
+    fmt = {"detective": "mystery", "contingency": "opportunity"}.get(show) or E.choose_format(p, claims)
     if fmt in ("mystery", "opportunity"):
         build = F.mystery if fmt == "mystery" else F.opportunity
         beats, titles, hook_key, variants = build(p, claims, used, hook_override)
@@ -375,7 +383,7 @@ def _counts_sentence(games: list[dict], k: int) -> str:
     return f"{head}. Since then: {', '.join(late)}."
 
 
-def finish(beats, p, lead, story, hook_key, tm, who, titles=None):
+def finish(beats, p, lead, story, hook_key, tm, who, titles=None, ending=None):
     titles = titles or [t.format(name=p["name"], Stat=lead["label"].title(), tm=who["tm"]) for t in TITLES[story]]
     for i, b in enumerate(beats):
         b["id"] = f"s{i + 1:02d}"
@@ -388,6 +396,16 @@ def finish(beats, p, lead, story, hook_key, tm, who, titles=None):
                  "transitions": [b["scene"].get("transition", "push") for b in beats[1:]],
                  "rhythm": [b.get("pause") for b in beats],
                  "ending": beats[-1]["scene"]["type"] + ":" + str(beats[-1]["scene"].get("stage", ""))}
+    # the creative fingerprint the similarity checks compare (studio/creative.py)
+    family = SH.LEGACY.get(structure["format"], story if story in SH.FAMILIES else "template:" + story)
+    structure["format"] = story if story in SH.FAMILIES else structure["format"]
+    structure |= {"family": family, "hook_mechanism": SH.HOOK_MECHANISM.get(hook_key, hook_key),
+                  "ending_mechanism": ending or SH.ENDING_OF_SCENE.get(beats[-1]["scene"]["type"], beats[-1]["scene"]["type"]),
+                  "visual_device": SH.VISUAL.get(family, "template scenes"),
+                  "question": SH.QUESTIONS.get(family, SH.QUESTIONS["template"]),
+                  "situation": story, "player": p["gsis_id"],
+                  "metrics": sorted({m["column"] for m in p["metrics"] for b in beats
+                                     for c in b["scene"].get("claims", []) if c in (m["baseline"], m["recent"])})}
     return beats, titles, structure
 
 
@@ -400,13 +418,16 @@ def used_structures(ep: Episode) -> dict[str, list[str]]:
     prior = [e for e in entries if e["format"] == "short" and e["season"] == ep.season and e.get("structure")
              and (e["week"] < ep.week or (e["week"] == ep.week and e.get("order", 0) < order))]
     prior.sort(key=lambda e: (e["week"], e.get("order", 0)))
-    return {"hook": [e["structure"]["hook"] for e in prior]}
+    return {"hook": [e["structure"]["hook"] for e in prior],
+            "hook_mechanism": [e["structure"].get("hook_mechanism", SH.HOOK_MECHANISM.get(e["structure"]["hook"], ""))
+                               for e in prior]}
 
 
 def _run(ep: Episode, used: dict, hook: str | None) -> None:
     facts = read_json(ep.path("facts.json"))
     claims = {c["id"]: c for c in facts["claims"]}
-    beats, titles, structure = compose(facts, claims, ep.id, used, hook)
+    show = read_json(ep.path("story.json")).get("show")
+    beats, titles, structure = compose(facts, claims, ep.id, used, hook, show)
     shots = []
     for b in beats:
         parts = b["text_template"].split(PAUSE)
@@ -440,6 +461,7 @@ def _run(ep: Episode, used: dict, hook: str | None) -> None:
     recent = E.history(ep.cfg.episodes_dir, ep.season, exclude=ep.id)
     p = dict(facts["players"][0], _episode_week=ep.week)
     ed = E.score(p, claims, structure["format"], recent)
+    ed["show"] = structure["family"]
     ed["checks"] = E.checks(ed, words)
     if not ed["checks"]["fits_20s"]["pass"]:
         ed["verdict"], ed["reject_reasons"] = "reject", ed["reject_reasons"] + ["too long to tell in ~20 s"]
@@ -451,6 +473,6 @@ def _run(ep: Episode, used: dict, hook: str | None) -> None:
 def run(ep: Episode, hook: str | None = None) -> None:
     used = used_structures(ep)
     from pathlib import Path
-    code = {f: sha256_bytes(Path(m.__file__).read_bytes()) for f, m in (("formats", F), ("editorial", E))}
+    code = {f: sha256_bytes(Path(m.__file__).read_bytes()) for f, m in (("formats", F), ("editorial", E), ("shows", SH))}
     run_stage(ep, "script", VERSION, {"cta": ep.cfg["cta"], "used": used, "hook": hook, "code": code},
               ["facts.json", "story.json"], ["script.json", "editorial.json"], lambda: _run(ep, used, hook))

@@ -18,7 +18,7 @@ import shutil
 import sys
 import time
 
-from . import editorial
+from . import editorial, shows
 from .core import Config, Episode, read_json, sha256_file, write_json
 from .stages import (assemble, charts, facts, metadata, provenance, qc, render_motion, review, script, snapshot,
                      story, thumbnail, tts)
@@ -70,14 +70,30 @@ def editorial_pick(cfg: Config, snap: dict, season: int, week: int, recent: set[
     the weekly quota. The board, with every score's reason, is written to editorial.md for review."""
     candidates = facts.pick_stories(snap, 99, 99, recent)
     hist = editorial.history(cfg.episodes_dir, season, before_week=week)
-    rows = []
+    rows, show_rows = [], []
     for s in candidates:
         f = facts.build_facts(snap, facts.ALL, set(), only=s["gsis_id"])
         if not f["players"]:
             continue
         claims = {c["id"]: c for c in f["claims"]}
         p = dict(f["players"][0], _episode_week=week)
-        rows.append((s, editorial.score(p, claims, editorial.choose_format(p, claims), hist)))
+        cs = shows.cases(p, claims)
+        best = max(cs, key=lambda k: cs[k]["fit"]) if cs else None
+        fmt = {"detective": "mystery", "contingency": "opportunity"}.get(best, best) if best else \
+            editorial.choose_format(p, claims)
+        row = editorial.score(p, claims, fmt, hist)
+        rows.append((s, row))
+        show_rows.append({"slug": s["slug"], "player": p["name"], "total": row["total"], "cases": cs})
+    # one show per story, each show once a week; a story that would repeat a stronger one is deferred
+    plan = {d["slug"]: d for d in shows.plan_batch(show_rows, hist)}
+    week_ep.path("shows.md").write_text(shows.board_markdown(list(plan.values())))
+    write_json(week_ep.path("shows.json"), list(plan.values()))
+    for s, row in rows:
+        d = plan.get(s["slug"])
+        if d and d["verdict"] == "defer":
+            row["verdict"], row["reject_reasons"] = "reject", row["reject_reasons"] + d["reasons"][-1:]
+        if d and d["show"]:                     # the planned show is the one made (the formats included)
+            s["show"] = d["show"]
     week_ep.path("editorial.md").write_text(editorial.board_markdown([r for _, r in rows]))
     quota = cfg["shorts"]["risers"] + cfg["shorts"]["fallers"]
     keep = [s for s, r in sorted(rows, key=lambda x: -x[1]["total"]) if r["verdict"] == "make"][:quota]
@@ -86,7 +102,7 @@ def editorial_pick(cfg: Config, snap: dict, season: int, week: int, recent: set[
 
 def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str | None,
                 hook: str | None = None, slug_suffix: str = "", presenter_mode: str = "off",
-                style: str = "original") -> int:
+                style: str = "original", show: str | None = None) -> int:
     week_ep = Episode(season, week, "short", cfg, force=force)
     week_ep.dir.mkdir(parents=True, exist_ok=True)
     snapshot.run(week_ep)
@@ -97,6 +113,9 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
     write_json(week_ep.path("stories.json"), stories)
     if only:      # an explicitly requested player isn't limited by the weekly quota, only by the selection rules
         stories = facts.pick_stories(snap, 0, 0, recent, only=only)[:1]
+        planned = {d["slug"]: d["show"] for d in read_json(week_ep.path("shows.json"))}
+        if stories and planned.get(stories[0]["slug"]):
+            stories[0]["show"] = planned[stories[0]["slug"]]
         if not stories:
             print(f"no story for {only!r}; this week's: {[s['slug'] for s in read_json(week_ep.path('stories.json'))]}")
             return 2
@@ -110,6 +129,8 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
             shutil.copyfile(src, dst)
         if slug_suffix:      # an A/B hook variant of the same story, not a new episode
             story = {**story, "variant_of": f"{season}-w{week:02d}-short-{story['slug']}"}
+        if show:             # an experiment: this story as a given show
+            story = {**story, "show": show}
         if not ep.path("story.json").exists() or read_json(ep.path("story.json")) != story:
             write_json(ep.path("story.json"), story)
         run_stages(ep, SHORT, hook or cfg["shorts"].get("hook") or None)
@@ -148,6 +169,9 @@ def main(argv: list[str] | None = None) -> int:
                                     "shorts.voice_clone); written to <slug>-voice-<name>")
     ap.add_argument("--hook", help="Shorts only: force a hook family (e.g. where, talk, warning) for A/B variants; "
                                    "the variant is written to <slug>-hook-<name>")
+    ap.add_argument("--show", choices=["red_flag", "heist", "myth"],
+                    help="Shorts only, for creative experiments: tell --player's story as this show, written to "
+                         "<slug>-show-<name> (a variant: production history is not rewritten)")
     ap.add_argument("--presenter", choices=["off", "hook", "hybrid"],
                     help="Shorts only, EXPERIMENTAL: also write final_presenter_<mode>.mp4 with the AI host "
                          "(default: config.toml [presenter] mode, which is off)")
@@ -163,9 +187,11 @@ def main(argv: list[str] | None = None) -> int:
     season = args.season or cfg.season
     force = {s.strip() for s in args.force.split(",") if s.strip()}
     if args.format == "short":
-        suffix = (f"-hook-{args.hook}" if args.hook else "") + (f"-voice-{args.voice}" if args.voice else "")
+        suffix = ((f"-hook-{args.hook}" if args.hook else "") + (f"-voice-{args.voice}" if args.voice else "")
+                  + (f"-show-{args.show}" if args.show else ""))
         style = args.style or (cfg.raw.get("graphics") or {}).get("style", "original")
-        return make_shorts(cfg, season, args.week, force, args.player, args.hook, suffix, presenter_mode, style)
+        return make_shorts(cfg, season, args.week, force, args.player, args.hook, suffix, presenter_mode, style,
+                           args.show)
     ep = Episode(season, args.week, "long", cfg, force=force)
     ep.dir.mkdir(parents=True, exist_ok=True)
     print(f"episode {ep.id} -> {ep.dir}")

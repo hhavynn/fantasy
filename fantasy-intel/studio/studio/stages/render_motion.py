@@ -395,7 +395,7 @@ SCENES = {"hook": ("field", scene_hook), "big_compare": ("team", scene_big_compa
 
 SCENES.update(S.STORY_SCENES)
 SCENES.update(FS.FORMAT_SCENES)
-MOOD = {"mystery": "tense", "opportunity": "bright"}
+MOOD = {"mystery": "tense", "opportunity": "bright", "red_flag": "tense", "heist": "bright", "myth": "drive"}
 
 # Sound design per scene: (local time source, kind, gain dB)
 def sound_events(scene: dict, start: float, dur: float, c: Ctx) -> list[tuple[float, str, float]]:
@@ -441,6 +441,9 @@ def _camera(frame: Image.Image, k: float, punch: float = 0.0, mode: str = "push"
 
 
 def draw_scene(scene: dict, t: float, dur: float, c: Ctx) -> Image.Image:
+    if scene["type"] not in SCENES:    # a show scene (studio/shows.py) is designed in the channel's premium look only
+        from ..graphics import vector
+        return vector.draw("premium", scene, t, dur, c).img
     bg_kind, fn = SCENES[scene["type"]]
     if bg_kind in ("casefile", "alert"):
         img = FS.background(bg_kind, c, t + scene.get("_start", 0))

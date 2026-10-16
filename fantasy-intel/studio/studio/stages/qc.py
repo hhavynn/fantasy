@@ -273,6 +273,25 @@ def gate_originality(episode_id: str, narration: list[str], players: list[str], 
     return _gate("originality", failures, compared=scores)
 
 
+def gate_creative(ep: Episode, script: dict, history: list[dict]) -> Gate:
+    """Structural repetition against the recent Shorts (studio/creative.py), and the mechanical creative checks.
+    Writes creative_review.md with the questions only a person can answer."""
+    from .. import creative as C
+    st = script["structure"]
+    order = read_json(ep.path("story.json")).get("order", 0)
+    prior = sorted([e for e in history if e.get("structure") and e["episode_id"] != ep.id
+                    and (e["week"], e.get("order", 0)) < (ep.week, order)], key=lambda e: (e["week"], e.get("order", 0)))
+    comps = C.compare(st, prior)
+    failures = [f"repeats {c['episode_id']}: same {', '.join(c['shared'])}" for c in comps if c["repeat"]]
+    timings = ep.path("audio/timings.json")
+    durations = ({s_["id"]: s_["duration"] for s_ in read_json(timings)["segments"]} if timings.exists() else None)
+    for name, ok, why in C.checks(script, durations):
+        if not ok:
+            failures.append(f"{name}: {why}")
+    ep.path("creative_review.md").write_text(C.review_notes(script, comps))
+    return _gate("creative", failures, compared=comps)
+
+
 def opening_skeleton(line: str) -> str:
     """'Darius Cooper's role just jumped.' -> "_ _'s role just jumped." (names, numbers and weeks blanked)."""
     words = line.split()
@@ -416,6 +435,7 @@ def run_gates(ep: Episode) -> list[Gate]:
                          {**script["structure"], "_week": ep.week,
                           "_order": read_json(ep.path("story.json"))["order"]} if ep.fmt == "short" else None),
         gate_timeliness(script, facts),
+        *([gate_creative(ep, script, history)] if ep.fmt == "short" and script["structure"].get("family") else []),
         gate_licenses(ep.cfg, installed_distributions()),
         gate_metadata(read_json(ep.path("metadata.json")), ep.path("thumbnail.png"), ep.fmt),
         gate_integrity(ep),

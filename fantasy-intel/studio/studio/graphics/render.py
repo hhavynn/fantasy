@@ -176,8 +176,8 @@ def run(ep: Episode, style: str) -> bool:
     or the style's tokens change. Research, facts, script and narration are never redone for a style."""
     from ..core import run_stage, sha256_file as h
     from ..stages import qc
-    from . import kit, pixel, pixel_formats, vector_formats, vqa
-    code = {m.__name__: h(Path(m.__file__)) for m in (vector, vector_formats, pixelart, pixel_formats, pixel, kit, RM,
+    from . import kit, pixel, pixel_formats, vector_formats, vector_shows, vqa
+    code = {m.__name__: h(Path(m.__file__)) for m in (vector, vector_formats, vector_shows, pixelart, pixel_formats, pixel, kit, RM,
                                                       S, FS, vqa)}
     out = ep.path(f"styles/{style}")
     rel = f"styles/{style}"
