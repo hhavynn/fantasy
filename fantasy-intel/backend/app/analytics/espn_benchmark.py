@@ -74,7 +74,7 @@ EXCLUSIONS = (
     "no_espn_snapshot", "espn_not_pregame", "no_independent_forecast_for_week", "independent_not_pregame",
     "independent_model_mismatch", "independent_scoring_mismatch", "independent_artifact_time_unknown",
     "independent_artifact_after_first_kickoff", "independent_id_mismatch", "outcome_pending_game",
-    "outcome_missing_ingestion", "outcome_bye", "outcome_unresolved_identity")
+    "outcome_missing_ingestion", "outcome_bye", "outcome_unresolved_identity", "week_not_fully_final")
 
 NOTES = [
     "Read-only. Nothing here promotes a model or changes a projection; ESPN stays the default source.",
@@ -86,6 +86,10 @@ NOTES = [
     "The 95% interval resamples whole NFL weeks (player-weeks of a week are correlated), seeded.",
     "A verdict other than insufficient_evidence needs enough model-covered rows and distinct weeks; "
     "fallback rows (ESPN shown) are never counted as model evidence.",
+    "Only fully final NFL weeks count (weekly_learning.week_finality). Resolved rows of partial weeks are "
+    "excluded as week_not_fully_final and reported separately under `preliminary`, without a verdict.",
+    "The comparison verdict summarises the per-position verdicts; the pooled ALL row carries a "
+    "descriptive_verdict only.",
 ]
 
 
@@ -372,12 +376,19 @@ def evaluation_rows(con, season: int, weeks: Iterable[int] | None = None, *,
         for r in labelled.iter_rows(named=True):
             rec = recs[r["_i"]]
             rec["outcome_status"], rec["actual_points"] = r["outcome_status"], r["label"]
+    # Only a fully final NFL week is evidence (weekly_learning.week_finality, as weekly_learning.evaluate): a player
+    # resolved early in a partial week is kept as a preliminary row, never in a verdict, bootstrap or week count.
+    final_weeks = {w: wl.week_finality(sources, season, w, fetched.get(season))["fully_final"] for w in week_list}
+    meta["fully_final_weeks"] = [w for w in week_list if final_weeks[w]]
+    meta["partial_weeks"] = [w for w in week_list if not final_weeks[w]]
     for rec in recs:
         rec.pop("_fc_kickoff", None)
         if rec["exclusion_reason"] is None:
             status = rec["outcome_status"]
             if status not in wl.RESOLVED:
                 rec["exclusion_reason"] = f"outcome_{status}"
+            elif not final_weeks[rec["week"]]:
+                rec["exclusion_reason"] = "week_not_fully_final"
         if rec["exclusion_reason"] is None and rec["ours_origin"] == ESPN:
             rec["ours_consumer_pred"] = rec["espn_pred"]     # the consumer sees ESPN's number: no model credit
         if rec["outcome_status"] not in wl.RESOLVED:
@@ -415,7 +426,8 @@ def population(rows: list[dict], name: str, cfg: BenchmarkConfig) -> tuple[list[
         return [r for r in s if r["outcome_status"] == wl.APPEARED and r["ours_origin"] == OURS
                 and r["ours_conditional_pred"] is not None], "ours_conditional_pred"
     if name == "unconditional":
-        return [r for r in s if r["ours_origin"] == OURS], "ours_independent_pred"
+        return [r for r in s if r["ours_origin"] == OURS and r["ours_conditional_pred"] is not None], \
+            "ours_independent_pred"
     if name == "horizon_matched":
         pure, col = population(rows, "pure_independent", cfg)
         return [r for r in pure if r["ours_horizon_h"] is not None and r["espn_horizon_h"] is not None
@@ -429,8 +441,8 @@ DEFINITIONS = {
     "consumer_visible": "What the opt-in projection switch shows (projection_source.weekly) vs ESPN, every eligible "
                         "resolved row. Fallback rows show ESPN's number: zero difference, no model credit.",
     "conditional": "APPEARED only, origin ours: points-if-he-plays (projected_points) vs ESPN.",
-    "unconditional": "APPEARED + CONFIRMED_ABSENT (absent = 0), origin ours: expected points vs ESPN. Same "
-                     "players as `conditional` plus the confirmed absences.",
+    "unconditional": "APPEARED + CONFIRMED_ABSENT (absent = 0), origin ours with a points-if-he-plays estimate: "
+                     "expected points vs ESPN. Exactly the conditional rows plus the confirmed absences.",
     "horizon_matched": "pure_independent rows whose two forecast horizons differ by at most the window "
                        "(horizon_window_h): both forecasts saw almost the same information time.",
 }
@@ -454,9 +466,11 @@ def _group_stats(g: list[dict], col: str, cfg: BenchmarkConfig, need_n: int, con
         e = np.array([r["espn_pred"] for r in g], dtype=float)
         out["ours"], out["espn"] = metrics(a, o), metrics(a, e)
         df = pl.DataFrame({"label": a, "ours": o, "espn": e, "key": [r["season"] * 100 + r["week"] for r in g]})
-        b = week_bootstrap_mae_diff(df, "ours", "espn", cfg.resamples, cfg.seed)
-        out["mae_diff"], out["ci95"] = b["diff"], b["ci95"]
-    out["verdict"], out["verdict_reason"] = verdict(out["n_model"], weeks, out["ci95"], need_n, cfg.min_weeks)
+        b = week_bootstrap_mae_diff(df, "ours", "espn", cfg.resamples, cfg.seed, exact=True)
+        out["mae_diff"], out["ci95"] = round(b["diff"], 3), [round(x, 3) for x in b["ci95"]]
+        ci_exact = b["ci95"]       # the verdict uses the unrounded bounds; rounding is for display only
+    out["verdict"], out["verdict_reason"] = verdict(out["n_model"], weeks, ci_exact if g else None, need_n,
+                                                    cfg.min_weeks)
     return out
 
 
@@ -476,6 +490,19 @@ def verdict(n_model: int, weeks: int, ci95, need_n: int, need_weeks: int) -> tup
     return "no_significant_difference", "95% week-clustered CI of MAE(ours) - MAE(ESPN) includes 0"
 
 
+def headline(by: dict) -> tuple[str, str]:
+    """Per-position summary: insufficient_evidence unless at least one position clears the gate; ours_better /
+    espn_better only when every position that clears it agrees; otherwise no_significant_difference."""
+    got = {p: by[p]["verdict"] for p in POSITIONS if by[p]["verdict"] != "insufficient_evidence"}
+    if not got:
+        return "insufficient_evidence", "no position has enough model-covered rows and weeks"
+    kinds = set(got.values())
+    listed = ", ".join(f"{p} {v}" for p, v in got.items())
+    if kinds == {"ours_better"} or kinds == {"espn_better"}:
+        return kinds.pop(), f"every position that clears the gate agrees ({listed})"
+    return "no_significant_difference", f"positions that clear the gate: {listed}"
+
+
 def compare(rows: list[dict], name: str, cfg: BenchmarkConfig = BenchmarkConfig()) -> dict:
     need_n = PROMOTION_CRITERIA["espn_min_matched_per_position"]
     pop, col = population(rows, name, cfg)
@@ -484,10 +511,15 @@ def compare(rows: list[dict], name: str, cfg: BenchmarkConfig = BenchmarkConfig(
     by = {pos: _group_stats([r for r in pop if r["position"] == pos], col, cfg, need_n, consumer)
           for pos in POSITIONS}
     allg = _group_stats(pop, col, cfg, need_n, consumer)
+    # pooled numbers stay (descriptive), but the pooled rows are not judged against a per-position bar
+    allg["descriptive_verdict"], allg["descriptive_verdict_reason"] = allg.pop("verdict"), allg.pop("verdict_reason")
     by["ALL"] = allg
+    head, head_reason = headline(by)
     out = {"name": name, "definition": DEFINITIONS[name], "ours_column": col, "population_n": len(pop),
            "n": allg["n"], "n_model": allg["n_model"], "weeks_covered": allg["weeks_covered"],
-           "verdict": allg["verdict"], "verdict_reason": allg["verdict_reason"], "by_position": by}
+           "verdict": head, "verdict_reason": head_reason,
+           "position_verdicts": {p: by[p]["verdict"] for p in POSITIONS},
+           "descriptive_verdict": allg["descriptive_verdict"], "by_position": by}
     if consumer:
         out["fallback_share"] = allg["fallback_share"]
     if name == "horizon_matched":
@@ -531,6 +563,13 @@ def coverage(rows: list[dict]) -> dict:
 # ----------------------------------------------------------------------------- scorecard
 
 
+def _descriptive(c: dict) -> dict:
+    """A comparison without any verdict, for the preliminary block."""
+    drop = {"verdict", "verdict_reason", "position_verdicts", "descriptive_verdict", "descriptive_verdict_reason",
+            "required_n", "required_weeks"}
+    return {k: (_descriptive(v) if isinstance(v, dict) else v) for k, v in c.items() if k not in drop}
+
+
 def scorecard(con, season: int, weeks: Iterable[int] | None = None, *, forecast_reader: ForecastReader | None = None,
               config: BenchmarkConfig | None = None, model_version: str = MODEL_VERSION, scoring=None,
               sources: Sources | None = None, fetched_at: datetime | dict | None = None) -> dict:
@@ -545,8 +584,15 @@ def scorecard(con, season: int, weeks: Iterable[int] | None = None, *, forecast_
         return {**base, "available": False, "unavailable_reason": str(err), "weeks": [], "comparisons": {},
                 "coverage": None, "reader_exclusions": []}
     base["params"]["scoring_fingerprint"] = meta["scoring_fingerprint"]
+    early = [dict(r, exclusion_reason=None) for r in rows if r["exclusion_reason"] == "week_not_fully_final"]
+    preliminary = {"weeks": sorted({r["week"] for r in early}),
+                   "note": "Resolved player-weeks of NFL weeks that are not fully final. Descriptive only: no "
+                           "verdict, never counted in weeks_covered, the bootstrap or the evidence gate.",
+                   "comparisons": {name: _descriptive(compare(early, name, cfg)) for name in COMPARISONS}}
     return {**base, "available": True, "unavailable_reason": None, "weeks": meta["weeks"],
+            "fully_final_weeks": meta["fully_final_weeks"], "partial_weeks": meta["partial_weeks"],
             "comparisons": {name: compare(rows, name, cfg) for name in COMPARISONS},
+            "preliminary": preliminary,
             "coverage": coverage(rows), "reader_exclusions": meta["reader_exclusions"]}
 
 

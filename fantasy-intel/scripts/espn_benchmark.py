@@ -53,15 +53,20 @@ def _table(card: dict) -> str:
         return f"Benchmark unavailable: {card['unavailable_reason']}"
     lines = [f"ESPN benchmark, season {card['season']}, weeks {card['weeks']}, model {card['model_version']}"]
     need = card["params"]["espn_min_matched_per_position"]
-    lines.append(f"evidence gate: >= {need} model-covered rows and >= {card['params']['min_weeks']} weeks; "
-                 "MAE diff = ours - ESPN (negative: ours closer)")
+    lines.append(f"evidence gate (per position): >= {need} model-covered rows and >= {card['params']['min_weeks']} "
+                 f"fully final weeks (counted: {card['fully_final_weeks']}); MAE diff = ours - ESPN (negative: ours closer)")
     for name, c in card["comparisons"].items():
         extra = f", fallback share {c['fallback_share']}" if "fallback_share" in c else ""
         lines.append(f"\n{name}: {c['verdict']} ({c['verdict_reason']}){extra}")
+        lines.append(f"  per-position verdicts: {json.dumps(c['position_verdicts'])}; pooled ALL (descriptive): "
+                     f"{c['descriptive_verdict']}")
         lines.append(f"  {'pos':4} {'n':>6} {'weeks':>5} {'MAE ours':>9} {'MAE espn':>9} {'diff':>7}  95% CI")
         for pos, g in c["by_position"].items():
             lines.append(f"  {pos:4} {g['n']:>6} {g['weeks_covered']:>5} {g['ours']['mae']!s:>9} "
-                         f"{g['espn']['mae']!s:>9} {g['mae_diff']!s:>7}  {g['ci95']}  [{g['verdict']}]")
+                         f"{g['espn']['mae']!s:>9} {g['mae_diff']!s:>7}  {g['ci95']}  [{g.get('verdict') or g['descriptive_verdict'] + ', descriptive'}]")
+    pre = card["preliminary"]
+    if pre["weeks"]:
+        lines.append(f"\npreliminary (not fully final weeks {pre['weeks']}; descriptive, no verdict, not counted above)")
     cov = card["coverage"]
     lines.append(f"\nrows {cov['rows']}, scored {cov['scored']}")
     lines.append("exclusions: " + json.dumps(cov["by_exclusion_reason"]))

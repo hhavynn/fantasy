@@ -159,7 +159,10 @@ def test_missing_ingestion_is_never_scored(tmp_path):
     assert {r["exclusion_reason"] for r in ccc} == {"outcome_missing_ingestion"}
     assert all(r["actual_points"] is None for r in ccc)
     card = eb.scorecard(con, 2026, scoring=SCORING)
-    assert card["comparisons"]["pure_independent"]["n"] == 56 * 6 - 7
+    # a week with a team still missing its data is not fully final: the whole week is preliminary, not evidence
+    assert card["comparisons"]["pure_independent"]["n"] == 56 * 5
+    assert {r["exclusion_reason"] for r in rows if r["week"] == 2 and r["team"] != "CCC"} == {"week_not_fully_final"}
+    assert card["partial_weeks"] == [2, 7] and card["fully_final_weeks"] == [1, 3, 4, 5, 6]
 
 
 # ----------------------------------------------------------------------------- temporal eligibility
@@ -499,7 +502,8 @@ def test_verdict_is_insufficient_below_the_thresholds(monkeypatch):
     monkeypatch.setitem(PROMOTION_CRITERIA, "espn_min_matched_per_position", 48)      # read at call time
     assert eb.compare(rows, "pure_independent", eb.BenchmarkConfig())["by_position"]["WR"]["required_n"] == 48
     few_weeks = eb.compare(rows, "pure_independent", eb.BenchmarkConfig(min_weeks=7))
-    assert few_weeks["verdict"] == "insufficient_evidence" and "6 distinct weeks < 7" in few_weeks["verdict_reason"]
+    assert few_weeks["verdict"] == "insufficient_evidence"
+    assert "6 distinct weeks < 7" in few_weeks["by_position"]["WR"]["verdict_reason"]
     assert eb.compare(rows, "pure_independent", eb.BenchmarkConfig(min_weeks=6))["verdict"] != "insufficient_evidence"
     assert eb.compare([], "pure_independent", eb.BenchmarkConfig())["verdict"] == "insufficient_evidence"
 
@@ -518,9 +522,12 @@ def test_scorecard_verdicts_on_the_synthetic_world(world, monkeypatch):
     card = eb.scorecard(world, 2026, scoring=SCORING)
     assert card["available"] and card["weeks"] == list(ALL_WEEKS)
     pure = card["comparisons"]["pure_independent"]
-    # default bar: 48 rows per position, 6 weeks -> every position insufficient; pooled 336 rows are enough
+    # default bar: 48 rows per position, 6 weeks -> every position, hence the headline, is insufficient even though
+    # the pooled 336 rows would clear a per-position bar (the pooled verdict is descriptive only)
     assert all(pure["by_position"][p]["verdict"] == "insufficient_evidence" for p in ("QB", "RB", "WR", "TE"))
-    assert pure["by_position"]["ALL"]["n"] == 336 and pure["verdict"] == "ours_better"
+    assert pure["verdict"] == "insufficient_evidence" and set(pure["position_verdicts"].values()) == {"insufficient_evidence"}
+    assert pure["by_position"]["ALL"]["n"] == 336 and pure["descriptive_verdict"] == "ours_better"
+    assert "verdict" not in pure["by_position"]["ALL"]
     assert pure["by_position"]["ALL"]["ours"]["mae"] == pytest.approx(1.0) and pure["by_position"]["ALL"]["espn"]["mae"] == pytest.approx(4.0)
     assert pure["by_position"]["ALL"]["mae_diff"] == pytest.approx(-3.0)
     monkeypatch.setitem(PROMOTION_CRITERIA, "espn_min_matched_per_position", 1)
@@ -538,13 +545,15 @@ def test_coverage_diagnostics_count_every_dropped_row(tmp_path):
     card = eb.scorecard(con, 2026, scoring=SCORING)
     cov = card["coverage"]
     assert cov["rows"] == 392 and sum(cov["by_exclusion_reason"].values()) + cov["scored"] == 392
-    assert cov["by_exclusion_reason"] == {"uncertain_id_mapping": 7, "outcome_missing_ingestion": 7,
-                                          "outcome_pending_game": 55}      # AAA WR1 weeks 1-7, CCC week 2, week 7 rest
+    assert cov["by_exclusion_reason"] == {"uncertain_id_mapping": 7, "outcome_pending_game": 55,
+                                          "outcome_missing_ingestion": 7, "week_not_fully_final": 48}
+    # AAA WR1 weeks 1-7, week 7 rest, CCC week 2, the other 48 week-2 rows (week 2 is not fully final)
     assert cov["by_outcome_status"][wl.PENDING_GAME] == 55 and cov["by_outcome_status"][wl.MISSING_INGESTION] == 7
     assert cov["by_outcome_status"][wl.UNRESOLVED_IDENTITY] == 7
     cell = next(c for c in cov["by_week_position"] if c["week"] == 2 and c["position"] == "WR")
-    assert cell["rows"] == 24 and cell["scored"] == 24 - 3 - 1 and cell["exclusions"]["outcome_missing_ingestion"] == 3
-    assert cov["scored_by_origin"] == {"ours": cov["scored"]}
+    assert cell["rows"] == 24 and cell["scored"] == 0 and cell["exclusions"]["outcome_missing_ingestion"] == 3
+    assert cell["exclusions"]["week_not_fully_final"] == 24 - 3 - 1
+    assert cov["scored"] == 275 and cov["scored_by_origin"] == {"ours": 275}
 
 
 # ----------------------------------------------------------------------------- recording and the CLI
@@ -642,3 +651,79 @@ def test_origin_semantics_match_the_projection_switch():
     assert (eb.OURS, eb.OURS_ZERO, eb.ESPN) == (ps.OURS, ps.OURS_ZERO, ps.ESPN)
     assert eb.ZERO_STATUSES == ps.ZERO_STATUSES
     assert eb.MODEL_VERSION == ps.MODEL_VERSION
+
+
+def test_a_partial_nfl_week_does_not_count_toward_the_evidence_gate(tmp_path, monkeypatch):
+    """Only 1 of 4 week-4 games is final: week 4 must not satisfy min_weeks, the bootstrap or the verdict."""
+    monkeypatch.setitem(PROMOTION_CRITERIA, "espn_min_matched_per_position", 1)
+    con = make_world(tmp_path / "p.duckdb")
+    others = con.execute("SELECT home_team, away_team FROM nfl_schedules WHERE season = 2026 AND week = 4 "
+                         "AND 'AAA' NOT IN (home_team, away_team)").fetchall()
+    for h, a in others:
+        con.execute("UPDATE nfl_schedules SET home_score = NULL, away_score = NULL, result = NULL "
+                    "WHERE week = 4 AND home_team = ?", [h])
+        for tm in (h, a):
+            con.execute("DELETE FROM nfl_weekly_stats WHERE week = 4 AND team = ?", [tm])
+            con.execute("DELETE FROM nfl_snap_counts WHERE week = 4 AND team = ?", [tm])
+    cfg = eb.BenchmarkConfig(min_weeks=4)
+    three = eb.scorecard(con, 2026, [1, 2, 3], scoring=SCORING, config=cfg)
+    four = eb.scorecard(con, 2026, [1, 2, 3, 4], scoring=SCORING, config=cfg)
+    assert three["comparisons"]["pure_independent"]["weeks_covered"] == 3
+    c = four["comparisons"]["pure_independent"]
+    assert c["weeks_covered"] == 3 and c["verdict"] == "insufficient_evidence" and c["n"] == three["comparisons"]["pure_independent"]["n"]
+    assert c["by_position"]["ALL"]["descriptive_verdict"] == "insufficient_evidence"
+    assert "3 distinct weeks < 4" in c["by_position"]["WR"]["verdict_reason"]
+    assert four["partial_weeks"] == [4] and four["fully_final_weeks"] == [1, 2, 3]
+    rows, _ = rows_of(con, weeks=[1, 2, 3, 4])
+    early = [r for r in rows if r["week"] == 4 and r["exclusion_reason"] == "week_not_fully_final"]
+    assert early and all(r["outcome_status"] in wl.RESOLVED and r["actual_points"] is not None for r in early)
+    # the resolved rows of the partial week are reported, descriptively, without any verdict
+    pre = four["preliminary"]
+    assert pre["weeks"] == [4] and pre["comparisons"]["pure_independent"]["n"] == len(early) - sum(
+        1 for r in early if r["ours_origin"] == "espn")
+    assert "verdict" not in json.dumps(pre["comparisons"]["pure_independent"])
+    # once every game is final the week counts and the gate opens
+    assert eb.scorecard(con, 2026, [1, 2, 3], scoring=SCORING, config=eb.BenchmarkConfig(min_weeks=3))[
+        "comparisons"]["pure_independent"]["verdict"] == "ours_better"
+
+
+def test_headline_is_the_per_position_summary():
+    ok = lambda v: {"verdict": v}  # noqa: E731
+    by = lambda **k: {p: ok(k.get(p, "insufficient_evidence")) for p in ("QB", "RB", "WR", "TE")}  # noqa: E731
+    assert eb.headline(by())[0] == "insufficient_evidence"
+    assert eb.headline(by(WR="ours_better"))[0] == "ours_better"
+    assert eb.headline(by(WR="ours_better", RB="ours_better"))[0] == "ours_better"
+    assert eb.headline(by(WR="ours_better", RB="espn_better"))[0] == "no_significant_difference"
+    assert eb.headline(by(WR="ours_better", RB="no_significant_difference"))[0] == "no_significant_difference"
+    assert eb.headline(by(TE="espn_better"))[0] == "espn_better"
+
+
+def test_the_verdict_uses_unrounded_ci_bounds(monkeypatch, easy_gate):
+    def fake(df, a, b, resamples, seed, exact=False):
+        assert exact
+        return {"diff": -0.0002, "ci95": [-0.0004, -0.0001]}
+    monkeypatch.setattr(eb, "week_bootstrap_mae_diff", fake)
+    rows = [_fake(w, "WR", 10.0, 11.0, 14.0) for w in range(1, 6) for _ in range(3)]
+    c = eb.compare(rows, "pure_independent", eb.BenchmarkConfig())
+    assert c["by_position"]["WR"]["ci95"] == [-0.0, -0.0] and c["by_position"]["WR"]["verdict"] == "ours_better"
+
+
+def test_unconditional_is_exactly_the_conditional_rows_plus_confirmed_absences(tmp_path):
+    con = make_world(tmp_path / "u.duckdb", absent=[(3, G_WR)])
+    con.execute("UPDATE independent_player_projections SET projected_points = NULL WHERE espn_player_id = ? AND week = 4",
+                [ESPN_ID[gsis("BBB", "WR1")]])       # expected points but no points-if-he-plays estimate
+    rows, _ = rows_of(con)
+    cfg = eb.BenchmarkConfig()
+    cond = {(r["week"], r["espn_player_id"]) for r in eb.population(rows, "conditional", cfg)[0]}
+    uncond = {(r["week"], r["espn_player_id"]) for r in eb.population(rows, "unconditional", cfg)[0]}
+    absent = {(r["week"], r["espn_player_id"]) for r in rows if r["outcome_status"] == wl.CONFIRMED_ABSENT
+              and r["exclusion_reason"] is None}
+    assert uncond == cond | absent and not cond & absent and (4, ESPN_ID[gsis("BBB", "WR1")]) not in uncond
+
+
+def test_app_modules_never_reference_the_benchmark():
+    """Research-only: nothing in app/ other than the module itself may import or mention it."""
+    app = BACKEND / "app"
+    offenders = [p.relative_to(app).as_posix() for p in app.rglob("*") if p.suffix in (".py", ".sql")
+                 and p.name != "espn_benchmark.py" and "espn_benchmark" in p.read_text()]
+    assert offenders == []

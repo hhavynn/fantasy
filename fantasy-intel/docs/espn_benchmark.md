@@ -46,6 +46,7 @@ Every row that must not be scored has one `exclusion_reason`; the first failing 
 | `independent_artifact_time_unknown`, `independent_artifact_after_first_kickoff` | artifact fit time unknown / not strictly before the week's FIRST kickoff (`promotion_tracker.eligible_runs` rule) |
 | `independent_id_mismatch` | the forecast row names another GSIS id than the crosswalk |
 | `outcome_pending_game`, `outcome_missing_ingestion`, `outcome_bye`, `outcome_unresolved_identity` | `weekly_learning.label_outcomes` status; never scored, never a zero |
+| `week_not_fully_final` | the row is resolved, but its NFL week is not fully final (`weekly_learning.week_finality`: every scheduled game final and every team's box scores and snaps synced). Reported under `preliminary`, never evidence |
 
 Time rules: all stored timestamps are naive UTC. A forecast is pregame only if its information time is strictly
 before the kickoff of the player's OWN game (`projection_backtest._kickoff`, Eastern to UTC); Thursday and
@@ -74,7 +75,7 @@ Both predictions and the actual exist for every scored row; `assert_equal_popula
 | `pure_independent` | origin `ours`/`ours_zero`, APPEARED + CONFIRMED_ABSENT (absent = 0). Fallback rows are excluded and counted | `ours_independent_pred` |
 | `consumer_visible` | every eligible resolved row, fallback included (zero difference, no credit); reports `fallback_share` | `ours_consumer_pred` |
 | `conditional` | APPEARED only, origin `ours` | `ours_conditional_pred` |
-| `unconditional` | APPEARED + CONFIRMED_ABSENT, origin `ours` (the `conditional` players plus the confirmed absences) | `ours_independent_pred` |
+| `unconditional` | APPEARED + CONFIRMED_ABSENT, origin `ours` with a points-if-he-plays estimate: exactly the `conditional` rows plus the confirmed absences | `ours_independent_pred` |
 | `horizon_matched` | `pure_independent` rows with abs(ours horizon - ESPN horizon) <= window; reports how much of `pure_independent` it keeps | `ours_independent_pred` |
 
 Metrics per position and `ALL`: `n`, `n_model` (rows that are not fallback), `weeks_covered`, MAE / RMSE / bias
@@ -85,12 +86,22 @@ would be too narrow).
 
 ## Evidence gate
 
-`verdict` in `{insufficient_evidence, no_significant_difference, ours_better, espn_better}` for each position
-and for `ALL` (the comparison-level `verdict` is the `ALL` one). It is `insufficient_evidence` unless the
-model-covered rows reach `PROMOTION_CRITERIA["espn_min_matched_per_position"]` (read at call time, 300 today)
-AND the rows span at least `min_weeks` distinct weeks (default 4). `ours_better` / `espn_better` only when the
-CI excludes 0. Fallback rows never count toward sufficiency. The promotion-relevant verdicts are the
-per-position ones; `ALL` pools positions and is descriptive.
+Only FULLY FINAL NFL weeks count (`weekly_learning.week_finality`, the rule `weekly_learning.evaluate` uses):
+`weeks_covered`, the bootstrap and every verdict ignore partial weeks. Their resolved rows are excluded as
+`week_not_fully_final` and reported in the scorecard's `preliminary` block, descriptive only, with no verdict.
+`fully_final_weeks` / `partial_weeks` list them.
+
+Each position gets a `verdict` in `{insufficient_evidence, no_significant_difference, ours_better, espn_better}`.
+It is `insufficient_evidence` unless the model-covered rows reach
+`PROMOTION_CRITERIA["espn_min_matched_per_position"]` (read at call time, 300 today) AND span at least
+`min_weeks` distinct fully final weeks (default 4). `ours_better` / `espn_better` only when the 95% week-clustered
+CI of MAE(ours) - MAE(ESPN) excludes 0; the decision uses the unrounded bounds (displayed values are rounded).
+Fallback rows never count toward sufficiency.
+
+The comparison-level `verdict` summarises the per-position verdicts (`position_verdicts`): `insufficient_evidence`
+unless at least one position clears the gate; `ours_better` / `espn_better` only when every position that
+clears it agrees; otherwise `no_significant_difference`. The pooled `ALL` row keeps its numbers but carries only a
+`descriptive_verdict`: pooling positions is not judged against a per-position bar.
 
 ## Diagnostics
 
