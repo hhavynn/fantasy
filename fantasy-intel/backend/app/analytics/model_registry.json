@@ -1,12 +1,12 @@
 {
  "schema": "model-registry/v1",
- "note": "Reviewed approval manifest (app/analytics/model_registry.py). Paths are relative to INDEPENDENT_MODEL_DIR (data/models). Read by research tooling only; the hosted app never reads it, and the projection switch keeps reading projection_source.MODEL_VERSION. Changing production is a separate, explicitly approved change to this file AND the consumer wiring (docs/independent_projection_engine.md, 'Model registry and promotion').",
- "production": {"family": "ifp", "version": "ifp-1.0.0"},
+ "note": "Reviewed approval manifest (app/analytics/model_registry.py). Paths are relative to INDEPENDENT_MODEL_DIR (data/models). Read by research tooling only; the hosted app never reads it, and the projection switch reads projection_source.MODEL_VERSION, which must name the production model here. Changing production is a separate, explicitly approved change to this file AND the consumer wiring (docs/independent_projection_engine.md, 'Model registry and promotion').",
+ "production": {"family": "ifp", "version": "ifp-2.0.0"},
  "models": [
   {
    "family": "ifp",
    "version": "ifp-1.0.0",
-   "state": "approved_production",
+   "state": "deprecated_or_rolled_back",
    "artifact": {"path": "independent_projections_ifp-1.0.0.json", "sha256": null},
    "scoring_fingerprint": "e165b59686110c7d",
    "training_cutoff": null,
@@ -20,19 +20,28 @@
     {"kind": "heldout_backtest", "path": "heldout_report.json", "sha256": null}
    ],
    "rollback_to": null,
-   "reason": "Current champion: ridge conditional model with the ipm-1.0.0 participation artifact for expected points. Production status is unchanged by the registry. Its artifact hash, training cutoff and held-out report hash are not pinned yet (the files are local and git-ignored); pin them in a reviewed manifest change before any promotion so a rollback can restore the exact bytes."
+   "reason": "Current champion: ridge conditional model with the ipm-1.0.0 participation artifact for expected points. Production status is unchanged by the registry. Its artifact hash, training cutoff and held-out report hash are not pinned yet (the files are local and git-ignored); pin them in a reviewed manifest change before any promotion so a rollback can restore the exact bytes.",
+   "retired": {"at": "2026-10-16T04:12:51+00:00", "by": "hhavynn", "kind": "superseded", "reason": "Replaced by ifp-2.0.0 (owner decision). Still read by the projection switch for a week without an ifp-2.0.0 run, and the rollback target."}
   },
   {
    "family": "ifp",
    "version": "ifp-2.0.0",
-   "state": "prospective_shadow",
+   "state": "approved_production",
    "artifact": {"path": null, "sha256": null},
    "scoring_fingerprint": "e165b59686110c7d",
    "training_cutoff": null,
-   "approval": null,
+   "approval": {
+    "kind": "owner_approval",
+    "approved_by": "hhavynn",
+    "approved_at": "2026-10-16T04:12:51+00:00",
+    "start_sit_ready": false,
+    "evidence_sha256": {},
+    "override": true,
+    "reason": "Owner decision: the projection switch reads ifp-2.0.0. Recorded as an owner override: SHADOW_PROMOTION_CRITERIA (>= 8 fully final prospective weeks, >= 400 matched appearances per position) and PROMOTION_CRITERIA (>= 3% vs the best trailing baseline) are NOT met, and no prospective or held-out report is cited. ifp-1.0.0 stays the rollback target and the fallback for a week without an ifp-2.0.0 run."
+   },
    "validation_reports": [],
    "rollback_to": "ifp-1.0.0",
-   "reason": "Weekly-retrained shadow challenger (challenger.py, weekly_learning.py). Forecasts go to the frozen pregame ledger only; SHADOW_PROMOTION_CRITERIA are not met (fewer than 8 fully final prospective weeks). Its artifacts are per-target-week; a promotion would have to name one immutable artifact by sha256."
+   "reason": "Production since the owner approval above. Weekly-retrained (challenger.py, weekly_learning.py): each week's run (backtest_independent_projections.py project) uses the newest content-addressed artifact for that target week, trained on games before it, and records its file sha256 as the run's artifact_id, so artifact.path and sha256 stay null here. Forecasts keep going to the frozen pregame ledger for the prospective evaluation."
   },
   {
    "family": "ifp",
@@ -56,6 +65,14 @@
    "production": "ifp-1.0.0",
    "by": null,
    "reason": "Registry created with the incumbent champion as production. No model was promoted, activated or rolled back."
+  },
+  {
+   "at": "2026-10-16T04:12:51+00:00",
+   "event": "promotion",
+   "from": "ifp-1.0.0",
+   "production": "ifp-2.0.0",
+   "by": "hhavynn",
+   "reason": "Owner decision: the projection switch reads ifp-2.0.0. Recorded as an owner override: SHADOW_PROMOTION_CRITERIA (>= 8 fully final prospective weeks, >= 400 matched appearances per position) and PROMOTION_CRITERIA (>= 3% vs the best trailing baseline) are NOT met, and no prospective or held-out report is cited. ifp-1.0.0 stays the rollback target and the fallback for a week without an ifp-2.0.0 run."
   }
  ]
 }

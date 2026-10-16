@@ -378,9 +378,12 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     import inspect
 
     from app.analytics import matchup, projection_source, start_sit
+    from app.analytics.challenger import CHALLENGER_VERSION
     from app.analytics.independent_projections import MODEL_VERSION
 
-    assert projection_source.MODEL_VERSION == MODEL_VERSION
+    # production is ifp-2.0.0 (model_registry.json); ifp-1.0.0 is read only for a week without an ifp-2 run
+    assert projection_source.MODEL_VERSION == CHALLENGER_VERSION == "ifp-2.0.0"
+    assert projection_source.FALLBACK_VERSION == MODEL_VERSION == "ifp-1.0.0"
     assert inspect.signature(start_sit.load_start_sit_evaluation).parameters["source"].default == "espn"
     assert inspect.signature(matchup.load_matchup).parameters["source"].default == "espn"
     import re

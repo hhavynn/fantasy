@@ -1,9 +1,14 @@
 # Approved production model registry and the future promotion process
 
-**Status: preparation only. The approved production model is `ifp-1.0.0` and stays `ifp-1.0.0`.**
-The registry promotes nothing, activates nothing and is read by research tooling only. Every
-consumer value is unchanged: the projection switch keeps reading `projection_source.MODEL_VERSION`
-(`ifp-1.0.0`), and the hosted app never imports the registry.
+**Status: the approved production model is `ifp-2.0.0`** (promotion event of 2026-10-16, an
+`owner_approval` by the repository owner recorded with `override: true`: it cites no prospective or
+held-out report, and `evaluate_promotion` correctly reports the transition as not activatable on
+evidence). `ifp-1.0.0` is retired (`superseded`), is `ifp-2.0.0`'s `rollback_to`, and is still read
+by the projection switch for a week with no `ifp-2.0.0` run. Its artifact hash is still unpinned, so
+`plan_rollback` refuses until it is pinned. The projection switch reads
+`projection_source.MODEL_VERSION` (`ifp-2.0.0`); the hosted app never imports the registry.
+The pre-promotion manifest is kept as `backend/tests/fixtures/model_registry_pre_ifp2.json`; the
+sections below describe the gate as designed.
 
 | File | Role |
 |---|---|

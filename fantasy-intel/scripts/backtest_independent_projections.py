@@ -10,6 +10,7 @@
     uv run python ../scripts/backtest_independent_projections.py participation-fit       # participation artifact
     uv run python ../scripts/backtest_independent_projections.py snap-ablation           # validation only
     uv run python ../scripts/backtest_independent_projections.py project --week 7   # appends one immutable run
+    uv run python ../scripts/backtest_independent_projections.py project --week 7 --model ifp-1.0.0   # previous model
 
 Inputs: the live DB (FANTASY_DB_PATH, opened read-only except by `project`) and the optional
 history DB from scripts/sync_nfl_history.py (NFL_HISTORY_DB_PATH, default data/nfl_history.duckdb).
@@ -17,6 +18,11 @@ Outputs go to data/models/ (git-ignored): selection.json, heldout_report.json, a
 the participation model participation_selection.json, participation_heldout_report.json and its artifact.
 `evaluate` refuses a selection made on other seasons; `fit` refuses an evaluation of another selection;
 the participation commands refuse a participation selection made with another conditional selection.
+
+`project` runs the production model (projection_source.MODEL_VERSION, ifp-2.0.0) by default: the newest
+weekly-learning artifact for the target week (scripts/weekly_learning.py sync-exits + train --week W,
+--weekly-dir, default data/models/weekly) with its play-by-play injury evidence. `--model ifp-1.0.0`
+runs the previous model's frozen artifact from --out.
 """
 
 from __future__ import annotations
@@ -40,6 +46,7 @@ from app.analytics.forecast_features import Sources, load_sources
 from app.analytics import participation as pm
 from app.analytics.independent_projections import MODEL_VERSION, Artifact, fit_final
 from app.analytics.league_scoring import reconcile_with_espn
+from app.analytics.projection_source import MODEL_VERSION as CONSUMER_VERSION
 from app.config import REPO_ROOT, get_settings
 
 
@@ -223,18 +230,41 @@ def cmd_snap_ablation(args, live, hist, scoring, protocol) -> dict:
     return snap_split_ablation(build_store(src, weeks), ifp, protocol)
 
 
+def _project_artifact(args, scoring) -> tuple[Artifact, bytes, pl.DataFrame | None]:
+    """(artifact, its file bytes, play-by-play exits) for `project --model`. ifp-1.0.0: the frozen artifact in
+    --out. ifp-2.0.0: the newest weekly-learning artifact for the target week, which weekly_learning.latest_artifact
+    checks was trained under the league's scoring on games before the week, plus the exits it was trained with."""
+    if args.model == MODEL_VERSION:
+        data = (args.out / f"independent_projections_{MODEL_VERSION}.json").read_bytes()
+        return Artifact.from_dict(json.loads(data)), data, None
+    from app.analytics import weekly_learning as wl
+    from app.nfl import pbp_exits
+    try:
+        art, _, path = wl.latest_artifact(args.weekly_dir, args.model, args.season, args.week, scoring.fingerprint)
+    except wl.NotReady as err:
+        raise ValueError(f"{err} (scripts/weekly_learning.py train --week {args.week})") from err
+    if art.config["provenance"].get("retrospective"):
+        raise ValueError(f"the newest {args.model} artifact for week {args.week} ({path.name}) is a retrospective "
+                         "replay; train a pregame artifact (scripts/weekly_learning.py train --week "
+                         f"{args.week}) before kickoff")
+    exits = pbp_exits.load_dir(args.weekly_dir / "pbp_exits")
+    if exits is None and art.config["provenance"].get("pbp_exits_through_week") is not None:
+        raise ValueError(f"{path.name} was trained with play-by-play injury evidence, but {args.weekly_dir / 'pbp_exits'} "
+                         "has none (scripts/weekly_learning.py sync-exits)")
+    return art, path.read_bytes(), exits
+
+
 def cmd_project(args, hist, scoring) -> dict:
     from app.analytics.independent_projection_store import build_live, write_run
     from app.db.connection import open_db
 
-    art_bytes = (args.out / f"independent_projections_{MODEL_VERSION}.json").read_bytes()
-    art = Artifact.from_dict(json.loads(art_bytes))
+    art, art_bytes, exits = _project_artifact(args, scoring.require_supported())
     # Run provenance: sha256 of the artifact FILE bytes (the digest model_registry.json pins).
     art_sha = hashlib.sha256(art_bytes).hexdigest()
     ppath = args.out / f"participation_{pm.PARTICIPATION_VERSION}.json"
     part = pm.ParticipationArtifact.from_dict(json.loads(ppath.read_text())) if ppath.exists() else None
     with open_db(args.live_db) as con:
-        src = _sources(con, hist, scoring.require_supported())
+        src = _sources(con, hist, scoring).with_exits(exits)
         t = time.time()
         meta, rows = build_live(con, src, art, args.season, args.week, participation=part, artifact_sha256=art_sha)
         stored = write_run(con, meta, rows)   # append-only: an identical retry returns the existing run
@@ -242,7 +272,7 @@ def cmd_project(args, hist, scoring) -> dict:
     for r in rows:
         by[r["coverage_status"]] = by.get(r["coverage_status"], 0) + 1
     return {"run_id": stored["run_id"], "created": stored["created"], "rows": stored["row_count"],
-            "artifact_id": art_sha, "content_sha256": stored["content_sha256"], "coverage": by, "runtime_seconds": round(time.time() - t, 2),
+            "model_version": art.version, "artifact_id": art_sha, "content_sha256": stored["content_sha256"], "coverage": by, "runtime_seconds": round(time.time() - t, 2),
             "participation": meta["participation_version"],
             "with_expected_points": sum(r["expected_points"] is not None for r in rows),
             "data_through": [meta["data_through_season"], meta["data_through_week"]]}
@@ -258,6 +288,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=_path("INDEPENDENT_MODEL_DIR", "data/models"))
     parser.add_argument("--season", type=int, default=settings.nfl_season, help="live season")
     parser.add_argument("--week", type=int, help="target NFL week (project)")
+    parser.add_argument("--model", choices=[CONSUMER_VERSION, MODEL_VERSION], default=CONSUMER_VERSION,
+                        help="model `project` runs (default: the production model the projection switch reads)")
+    parser.add_argument("--weekly-dir", type=Path, default=_path("WEEKLY_MODEL_DIR", "data/models/weekly"),
+                        help="weekly-learning output (ifp-2 artifacts and pbp_exits), as in weekly_learning.py --out")
     parser.add_argument("--synthetic-label", action="store_true", help="mark reports as synthetic-data runs")
     args = parser.parse_args(argv)
     protocol = Protocol(heldout_seasons=(2025, args.season) if args.season > 2025 else (2025,))

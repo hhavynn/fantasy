@@ -358,3 +358,40 @@ def test_sync_subprocess_uses_the_cycles_database_and_season(lc, env, monkeypatc
     assert code == lc.EXIT_OK and seen["cmd"][-1].endswith("sync_nfl.py")
     assert seen["env"]["FANTASY_DB_PATH"] == str((env / "live.duckdb").resolve())
     assert seen["env"]["NFL_SEASON"] == "2025"
+
+
+def test_project_stores_the_production_ifp2_run_from_the_cycles_artifact(lc, env):
+    """`backtest_independent_projections.py project` (default --model: the production model) runs the ifp-2.0.0
+    artifact the cycle trained for the target week and appends a run the projection switch reads."""
+    from app.analytics import projection_source as ps
+
+    code, rep = _run(lc, env)
+    assert code == lc.EXIT_OK, rep["errors"]
+    # ESPN side of the synthetic league: every ACT skill player of the last roster week, with a confident id mapping
+    con = connect(env / "live.duckdb")
+    players = con.execute("SELECT DISTINCT gsis_id, position, team FROM nfl_rosters_weekly WHERE season = 2025 "
+                          "AND week = 9 AND status = 'ACT' AND position IN ('QB', 'RB', 'WR', 'TE') ORDER BY 1").fetchall()
+    for pid, (g, pos, team) in enumerate(players, start=1):
+        con.execute("INSERT INTO fantasy_players (espn_player_id, full_name, position, pro_team, on_team_id) "
+                    "VALUES (?, ?, ?, ?, 1)", [pid, g, pos, team])
+        con.execute("INSERT INTO player_id_map (espn_player_id, gsis_id, match_method, match_confidence) "
+                    "VALUES (?, ?, 'espn_id:nfl_players', 'high')", [pid, g])
+    con.close()
+    spec = importlib.util.spec_from_file_location("backtest_cli", SCRIPTS / "backtest_independent_projections.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    args = ["project", "--season", "2025", "--week", "10", "--live-db", str(env / "live.duckdb"),
+            "--history-db", str(env / "history.duckdb"), "--out", str(env / "models"), "--weekly-dir", str(env / "out")]
+    assert cli.main(args) == 0
+    con = connect(env / "live.duckdb")
+    runs = con.execute("SELECT model_version, artifact_id, row_count FROM independent_projection_runs").fetchall()
+    assert len(runs) == 1 and runs[0][0] == ps.MODEL_VERSION == "ifp-2.0.0" and runs[0][2] > 0
+    art = rep["training"]["artifacts"]["ifp-2.0.0"]["path"]
+    assert runs[0][1] == hashlib.sha256(Path(art).read_bytes()).hexdigest()       # the exact artifact file
+    models = {r[0] for r in con.execute("SELECT DISTINCT model FROM independent_projection_rows "
+                                        "WHERE coverage_status = 'projected'").fetchall()}
+    assert models == {"ifp2_ridge"}
+    assert ps.weekly(con, 2025, 10, "independent")["run"]["model_version"] == ps.MODEL_VERSION
+    con.close()
+    # the previous model is still selectable, and a week without an ifp-2 artifact is refused with the fix
+    assert cli.main([*args[:4], "11", *args[5:]]) == 2
