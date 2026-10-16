@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
+from ..analytics import injury_freshness
 from ..analytics.projections import build_ros_projections
 from ..config import DATA_DIR
 from ..db.connection import SyncRun, merge_columns, replace_where, upsert_rows, utcnow
@@ -34,6 +35,12 @@ class EspnPayloads:
     projections: dict[int, dict] = field(default_factory=dict)      # week -> raw kona_player_info
     projection_failures: dict[int, str] = field(default_factory=dict)  # week -> error
     warnings: list[str] = field(default_factory=list)
+    # Our clock around the whole download (naive UTC); the injury retrieval log records these. The
+    # player status rows reach `injury_status_rows` in write_all (in memory only).
+    fetch_started_at: Any = None
+    fetched_at: Any = None
+    injury_status_rows: list[dict] | None = None
+    injury_status_season: int | None = None
 
 
 def _try(warnings: list[str], label: str, fn: Callable[[], Any]) -> Any:
@@ -69,8 +76,10 @@ def fetch_projections(client, p: EspnPayloads, weeks: list[int]) -> None:
 
 def fetch_all(client, *, max_activity_pages: int = 40) -> EspnPayloads:
     """Network phase. `client` is an EspnClient (or a fake with the same methods)."""
+    started = utcnow()
     league = client.league()  # fatal on failure (bad credentials / league id)
     p = EspnPayloads(league=league)
+    p.fetch_started_at = started
     current = min(league.get("scoringPeriodId") or 1, league.get("status", {}).get("finalScoringPeriod") or 99)
 
     p.pro_players = _try(p.warnings, "pro players", client.pro_players)
@@ -115,6 +124,7 @@ def fetch_all(client, *, max_activity_pages: int = 40) -> EspnPayloads:
         card = _try(p.warnings, f"player cards {i}", lambda: client.player_cards(batch, final_period))
         if card:
             p.cards.append(card)
+    p.fetched_at = utcnow()
     return p
 
 
@@ -187,6 +197,10 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
             # Complete universe fetched: replace so stale availability can't linger.
             con.execute("DELETE FROM fantasy_players")
         stats["players"] = upsert_rows(con, "fantasy_players", players, ["espn_player_id"])
+        # In memory only (recorded after COMMIT by run_espn_sync): the status rows this fetch returned.
+        p.injury_status_season = season
+        p.injury_status_rows = [{"espn_player_id": r.get("espn_player_id"), "pro_team": r.get("pro_team"),
+                                 "injury_status": r.get("injury_status")} for r in players]
         stats["free_agent_pool"] = len(pool)
         today = date.today()
         upsert_rows(con, "player_ownership_history", [{
@@ -373,6 +387,18 @@ def _count(rows: list[dict], key: str) -> dict:
     return out
 
 
+def record_injury_status_retrieval(con, p: EspnPayloads, sync_run_id: str | None = None) -> dict | None:
+    """Append this fetch's per-team ESPN injury-status snapshot to the write-once retrieval log.
+    ESPN supplies no publication time, so it is recorded as NULL. Nothing is logged unless the fetch
+    finished and write_all captured its player rows."""
+    if p.fetched_at is None or p.injury_status_rows is None or p.injury_status_season is None:
+        return None
+    obs = injury_freshness.espn_status_observations(
+        p.injury_status_rows, p.injury_status_season, retrieved_at=p.fetched_at,
+        fetch_started_at=p.fetch_started_at, sync_run_id=sync_run_id)
+    return injury_freshness.record_observations(con, obs)
+
+
 def run_espn_sync(con_factory, settings, client=None, save_raw_payloads: bool = True) -> dict:
     """Fetch then write. `con_factory` opens a read-write connection (context manager)."""
     from .client import EspnClient
@@ -394,5 +420,11 @@ def run_espn_sync(con_factory, settings, client=None, save_raw_payloads: bool = 
         except Exception as err:
             run.finish("error", f"{type(err).__name__}: {err}")
             raise
+        try:   # audit log only; the synced data above is already committed
+            stats["injury_retrievals"] = record_injury_status_retrieval(con, payloads, run.run_id)
+        except Exception as err:
+            msg = f"injury retrieval log failed: {type(err).__name__}: {err}"
+            log.warning(msg)
+            stats["warnings"].append(msg)
         run.finish("ok", "warnings: %d" % len(stats["warnings"]), stats)
     return stats
