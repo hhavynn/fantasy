@@ -105,6 +105,11 @@ def _run(ep: Episode) -> None:
         "chapters": chaps,
         "files": {"video": "final.mp4", "thumbnail": "thumbnail.png", "captions": "captions.srt"},
     }
+    if script["structure"].get("series"):   # soundboard clips (sfx_palette registry): the ones that could draw a claim
+        from ..sfx_palette import PALETTE
+        meta["contains_soundboard_audio"] = sorted(
+            {c["sfx"] for seg in script["narration_segments"] for c in seg["scene"].get("cues", [])
+             if c.get("sfx") and PALETTE.get(c["sfx"], {}).get("registry")})
     if short:
         # What varies between Shorts, recorded so analytics can compare one variable at a time later.
         meta["experiment"] = {**script["structure"], "duration_s": round(sum(durations.values()), 1),

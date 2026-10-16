@@ -19,7 +19,7 @@ from test_series import qb_facts, receiver
 
 # ---------------------------------------------------------------------------------------------- palette
 
-@pytest.mark.parametrize("sfx_id", [k for k, v in P.PALETTE.items() if v["make"] is not None])
+@pytest.mark.parametrize("sfx_id", [k for k, v in P.PALETTE.items() if v["make"] is not None and not v.get("registry")])
 def test_every_effect_renders_clean(sfx_id):
     x = P.render(sfx_id, 0)
     assert x.dtype == np.float32 and np.isfinite(x).all()
@@ -52,7 +52,13 @@ def _cues(*events):
     return [{"event": e, "word": "x", "at": "start", "prefer": []} for e in events]
 
 
-def test_selection_fits_the_beat_and_the_format_and_never_repeats_in_a_video():
+@pytest.fixture
+def every_file(monkeypatch):
+    """Selection logic as if every meme file were fetched (no audio is rendered by these tests)."""
+    monkeypatch.setattr(P, "available", lambda s: True)
+
+
+def test_selection_fits_the_beat_and_the_format_and_never_repeats_in_a_video(every_file):
     out = P.select(_cues("punchline", "stat_reveal", "roast_impact", "final_payoff"), "comparison", "flame", [], "s")
     ids = [c["sfx"] for c in out]
     assert all(i in P.FORMAT_SFX["comparison"] for i in ids)
@@ -62,14 +68,14 @@ def test_selection_fits_the_beat_and_the_format_and_never_repeats_in_a_video():
         assert P.PALETTE[c["sfx"]]["tone"] in ("any", "flame")
 
 
-def test_repeatable_cues_may_reuse_with_rotating_variants():
-    cues = [{"event": "exhibit", "claim": f"c{i}", "at": "start", "prefer": ["evidence_stamp"], "repeatable": True}
-            for i in range(3)]
-    out = P.select(cues, "courtroom", "flame", [], "seed")
-    assert [c["sfx"] for c in out] == ["evidence_stamp"] * 3
+def test_repeatable_cues_may_reuse(every_file):
+    cues = [{"event": "punchline", "claim": f"c{i}", "at": "start", "prefer": ["bruh"], "context": "setup_aside",
+             "repeatable": True} for i in range(3)]
+    out = P.select(cues, "comparison", "flame", [], "seed")
+    assert [c["sfx"] for c in out] == ["bruh"] * 3
 
 
-def test_recent_videos_steer_the_choice_and_selection_is_deterministic():
+def test_recent_videos_steer_the_choice_and_selection_is_deterministic(every_file):
     cue = _cues("roast_impact")
     a = P.select(cue, "courtroom", "flame", [], "s")[0]["sfx"]
     b = P.select(cue, "courtroom", "flame", [[a], [a]], "s")[0]["sfx"]
@@ -204,3 +210,94 @@ def test_format_targets_are_short_form():
     lengths = {f: s["length"] for f, s in SR.FORMATS.items()}
     assert lengths["roast_monologue"] == (11, 16) and lengths["courtroom"] == (17, 23)
     assert all(hi <= 23 for _, hi in lengths.values())
+
+
+# ------------------------------------------------------------------------------------------ the meme registry
+
+def test_the_registry_is_complete_and_its_audio_never_enters_git():
+    assert len(P.REGISTRY) >= 15
+    for sid, e in P.REGISTRY.items():
+        for key in ("name", "source", "contexts", "purpose", "tone", "class", "trim", "hit", "level_db", "fallback",
+                    "reviewed"):
+            assert key in e, (sid, key)
+        assert e["fallback"] in P.PALETTE and not P.PALETTE[e["fallback"]].get("registry"), sid
+        assert e["trim"][1] > e["trim"][0] and 0 <= e["hit"] < e["trim"][1] - e["trim"][0]
+    ignore = (P.SFX_DIR.parents[1] / ".gitignore").read_text().splitlines()
+    assert "assets/sfx/meme/" in ignore                            # the meme folder is never committed
+
+
+@pytest.mark.parametrize("sid", sorted(P.REGISTRY))
+def test_registry_sounds_load_at_unit_loudness(sid):
+    if not P.available(sid):
+        pytest.skip("meme file not fetched (python -m studio.sfx_fetch)")
+    x = P.render(sid, 0)
+    assert np.isfinite(x).all() and P.active_rms(x) == pytest.approx(1.0, rel=0.05)
+    assert abs(x[-1]) < 0.05 * np.abs(x).max()                     # faded out
+
+
+@pytest.mark.parametrize("context,expected", [("throw_out", "get_out"), ("stat_ruins_it", "fahhh"),
+                                              ("setup_aside", "bruh")])
+def test_the_joke_picks_the_sound(context, expected, monkeypatch):
+    monkeypatch.setattr(P, "available", lambda s: True)
+    event = {"throw_out": "final_payoff", "stat_ruins_it": "roast_impact", "setup_aside": "punchline"}[context]
+    out = P.select([{"event": event, "word": "x", "at": "end", "prefer": [], "context": context}],
+                   "comparison", "flame", [], "s")
+    assert out[0]["sfx"] == expected
+
+
+def test_praise_gets_praise_sounds(monkeypatch):
+    monkeypatch.setattr(P, "available", lambda s: True)
+    arrival = P.select([{"event": "hype_peak", "claim": "c", "at": "start", "prefer": [], "context": "arrival"}],
+                       "main_character", "praise", [], "s")[0]["sfx"]
+    peak = P.select([{"event": "hype_peak", "word": "more", "at": "end", "prefer": [], "context": "glaze_peak"}],
+                    "main_character", "praise", [], "s")[0]["sfx"]
+    assert arrival == "undertaker" and peak == "heavenly"
+
+
+def test_a_missing_meme_file_falls_back_and_says_so(monkeypatch):
+    monkeypatch.setattr(P, "available", lambda s: not P.PALETTE[s].get("registry"))
+    out = P.select([{"event": "final_payoff", "word": "x", "at": "end", "prefer": [], "context": "throw_out"}],
+                   "comparison", "flame", [], "s")[0]
+    assert out["sfx"] == P.REGISTRY["get_out"]["fallback"] and out["fallback_used"] and "missing" in out["why"]
+
+
+def test_a_beat_can_ask_for_nothing():
+    out = P.select([{"event": "punchline", "word": "x", "at": "end", "prefer": [], "context": "none"}],
+                   "comparison", "flame", [], "s")[0]
+    assert out["sfx"] is None
+
+
+def test_the_hard_stop_silences_the_music_for_good():
+    st = {"music_mood": "court", "music": True}
+    v = np.zeros(int(4 * SA.SR), np.float32)
+    v[-2400:] = 0.3
+    x = SA.mix(v, [(1.0, "meme:music_stop:0:hard_stop", 0)], st, [], {"music": True, "music_db": -20})[:, 0]
+    assert np.abs(x[int(1.05 * SA.SR):int(3.8 * SA.SR)]).max() < 1e-3
+    assert np.abs(x[int(0.2 * SA.SR):int(0.9 * SA.SR)]).max() > 0.01
+
+
+@pytest.mark.skipif(not P.available("fahhh"), reason="meme file not fetched")
+def test_a_reaction_sits_at_its_level_against_the_narration():
+    t = np.arange(int(3 * SA.SR)) / SA.SR
+    v = (0.3 * np.sin(2 * np.pi * 180 * t) * (t < 1.0)).astype(np.float32)
+    st = {"music_mood": None, "music": False}
+    x = SA.mix(v, [(1.5, "meme:fahhh:0:roast_impact", 0)], st, [], {"music": False})[:, 0]
+    voice, react = P.active_rms(x[: int(1.0 * SA.SR)]), P.active_rms(x[int(1.5 * SA.SR):int(2.9 * SA.SR)])
+    assert 20 * np.log10(react / voice) == pytest.approx(P.REGISTRY["fahhh"]["level_db"], abs=1.5)
+
+
+def test_every_demo_format_uses_two_or_three_reactions_and_one_hard_stop():
+    _, facts, claims = qb_facts()                          # real availability: fetched files or their fallbacks
+    p = facts["players"][0]
+    rp, rclaims = receiver()
+    for person, cl, fmt in ((p, claims, "comparison"), (p, claims, "courtroom"), (rp, rclaims, "main_character"),
+                            (p, claims, "roast_monologue")):
+        brief = SR.choose(person, [], fmt)
+        beats, _ = SR.compose({"players": [person]}, cl, brief)
+        SR.assign_sfx(beats, brief, [], "seed")
+        chosen = [c["sfx"] for b in beats for c in b["scene"]["cues"] if c.get("sfx")]
+        reactions = [c["sfx"] for b in beats for c in b["scene"]["cues"]
+                     if c.get("sfx") and (P.PALETTE[c["sfx"]].get("registry") or c.get("fallback_used"))]
+        assert 1 <= len(reactions) <= 3, (fmt, chosen)
+        stops = chosen.count("music_stop")
+        assert stops == (0 if fmt == "roast_monologue" else 1), (fmt, chosen)

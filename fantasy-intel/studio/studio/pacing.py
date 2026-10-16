@@ -27,6 +27,7 @@ import re
 import subprocess
 from pathlib import Path
 
+SILENCES = ("music_cut", "music_stop")        # cues that take sound away: placed and listed, never "heard"
 PAYOFF_EVENTS = ("punchline", "stat_reveal", "roast_impact", "hype_peak", "verdict", "final_payoff", "exhibit")
 SYNC_TOLERANCE_S = 0.06
 
@@ -101,14 +102,20 @@ def measure(ep_dir: Path) -> dict:
 
     heard = heard_onsets(ep_dir, hits)
     for h, onset in zip(hits, heard):
-        if onset is not None:                 # where the effect actually starts in the rendered audio, + its attack
-            h["heard_s"] = round(onset + P.PALETTE[h["sfx"]]["attack"], 3)
+        if onset is not None:                 # where the effect is heard in the rendered audio
+            # a registry clip's hit IS its loud onset (measured the same way); a procedural one's hit is `attack`
+            # after its start
+            spec = P.PALETTE[h["sfx"]]
+            h["heard_s"] = round(onset + (0 if spec.get("registry") else spec["attack"]), 3)
             h["heard_error_s"] = round(h["heard_s"] - h.get("anchor_s", h["time_s"]), 3)
     payoff_hits = [h["time_s"] for h in hits if h["event"] in PAYOFF_EVENTS]
-    if payoff_hits:
-        first_payoff, basis = min(payoff_hits), "first meme cue on a payoff beat"
-    else:
-        first_payoff, basis = (claims[0]["start"] if claims else first_sentence), "first number said (no cues)"
+    # the first payoff: a sound on a payoff beat, or the first number said (a stat lands on its own), whichever is
+    # earlier: fewer sounds must not read as a later joke
+    first_number = claims[0]["start"] if claims else None
+    options = [(t, "a meme sound on a payoff beat") for t in payoff_hits]
+    if first_number is not None:
+        options.append((first_number, "the first number said"))
+    first_payoff, basis = min(options) if options else (first_sentence, "the first sentence")
 
     sil = _ff(["-i", str(video), "-vn", "-af", "silencedetect=n=-35dB:d=0.25", "-f", "null", "-"])
     silences = [float(x) for x in re.findall(r"silence_duration: ([\d.]+)", sil)]
@@ -131,13 +138,14 @@ def measure(ep_dir: Path) -> dict:
         "visual_changes": len(changes), "scenes": len(timeline["scenes"]),
         "mean_event_spacing_s": round(sum(spacing) / len(spacing), 2) if spacing else None,
         "static_pct": round(100 * frozen / dur, 1),
-        "sfx_events": len(hits), "sfx": hits,
+        "sfx_events": sum(1 for h in hits if h["sfx"] not in SILENCES), "sfx": hits,
         "max_sync_error_s": max((abs(h.get("sync_error_s", 0)) for h in hits), default=0.0),
         # swells (crowd, choir) fade in: they have no single hit to time, so they are listed but not scored here
         "max_heard_error_s": max((abs(h["heard_error_s"]) for h in hits if "heard_error_s" in h
-                                  and P.PALETTE[h["sfx"]]["class"] != "crowd"), default=None),
+                                  and P.PALETTE[h["sfx"]]["class"] not in ("crowd", "bed")), default=None),
         "mp4_audio_lag_s": mp4_lag(ep_dir),
-        "sfx_over_speech": [h["sfx"] for h in hits if h["over_speech"] and h["sfx"] != "music_cut"],
+        "sfx_over_speech": [h["sfx"] for h in hits if h["over_speech"] and h["sfx"] not in SILENCES],
+        "silences": [h["time_s"] for h in hits if h["sfx"] in SILENCES],
     }
 
 
@@ -191,10 +199,11 @@ def heard_onsets(ep_dir: Path, hits: list[dict]) -> list[float | None]:
     out = []
     from . import sfx_palette as P
     for h in hits:
-        if h["sfx"] == "music_cut":
+        if h["sfx"] in SILENCES:
             out.append(None)
             continue
-        start = h["time_s"] - P.PALETTE[h["sfx"]]["attack"]
+        spec = P.PALETTE[h["sfx"]]
+        start = h["time_s"] - (0 if spec.get("registry") else spec["attack"])   # where the loud part should begin
         i0, i1 = max(0, int((start - 0.25) * 48000)), min(n, int((start + 0.35) * 48000))
         seg = env[i0:i1]
         if len(seg) == 0 or seg.max() <= 1e-4:

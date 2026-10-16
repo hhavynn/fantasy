@@ -370,11 +370,11 @@ def build_roast_monologue(ctx):
         beats = [
             _beat(ctx, "open", f"{name} played the {ctx['opp']} on airplane mode.",
                   {**still, "type": "dp_toggle", "label": "AIRPLANE MODE", "claims": [p["opponent"]]},
-                  [_cue("ui", word="airplane", prefer=["toggle_click"]),
-                   _cue("punchline", word="mode", at="end", prefer=["error_ding"])], ["airplane"]),
+                  [_cue("ui", word="airplane", prefer=["toggle_click"])], ["airplane"]),
             _beat(ctx, "stat", f"Average throw:‖ {ph(a['x'])} yards.{BEAT} League average:‖ {ph(a['league'])}.",
                   {**still, "type": "dp_stat", "big": a["x"], "unit": "YARDS PER THROW", "small": a["league"],
-                   "small_label": "LEAGUE AVERAGE", "claims": [a["x"], a["league"]]}),
+                   "small_label": "LEAGUE AVERAGE", "claims": [a["x"], a["league"]]},
+                  [_cue("awkward_pause", claim=a["league"], at="end", context="dead_silence")]),
         ]
         if a["airless"]:
             beats.append(_beat(ctx, "escalate", f"{ph(a['air_yards_completed'])} of his {ph(box['passing_yards'])} "
@@ -392,7 +392,7 @@ def build_roast_monologue(ctx):
                                              "wants his afternoon back.",
                            {**still, "type": "dp_end", "lines": ["THE DEEP SAFETY", "WANTS HIS", "AFTERNOON BACK."],
                             "claims": [g["result"], g["points"], g["opp_points"]]},
-                           [_cue("final_payoff", word="back", at="end", prefer=["pipe_clang"])], pause=LAST_GAP))
+                           [_cue("final_payoff", word="back", at="end", context="deadpan_hit")], pause=LAST_GAP))
         titles = [f"{p['name']} Played the {ph(p['opponent'])} on Airplane Mode",
                   f"What Was {p['name']} Doing Against the {ph(p['opponent'])}?"]
         return beats, titles
@@ -400,14 +400,14 @@ def build_roast_monologue(ctx):
     beats = [
         _beat(ctx, "open", f"{name} against the {ctx['opp']}?{BEAT} Group project.‖ Nobody started it.",
               {**still, "type": "dp_line", "lines": ["GROUP PROJECT.", "NOBODY STARTED IT."], "claims": [p["opponent"]]},
-              [_cue("punchline", word="started", at="end", prefer=["record_scratch"])]),
+              [_cue("punchline", word="started", at="end", context="setup_aside")]),
         _beat(ctx, "stat", f"{ph(box['sacks_suffered'])} sacks.‖ {ph(box['passing_interceptions'])} interception{s}."
                            f"‖ {ph(g['points'])} points.",
               {**still, "type": "dp_stat", "big": g["points"], "unit": "POINTS", "small": box["sacks_suffered"],
                "small_label": "SACKS", "claims": [box["sacks_suffered"], box["passing_interceptions"], g["points"]]}),
         _beat(ctx, "punchline", f"{'At home.' if g['home'] else 'On the road.'}{BEAT} The film room needs snacks.",
               {**still, "type": "dp_end", "lines": ["THE FILM ROOM", "NEEDS SNACKS."], "claims": [g["venue"]]},
-              [_cue("final_payoff", word="snacks", at="end", prefer=["pipe_clang"])], pause=LAST_GAP),
+              [_cue("final_payoff", word="snacks", at="end", context="deadpan_hit")], pause=LAST_GAP),
     ]
     titles = [f"This {p['name']} Performance Needs an Explanation",
               f"{p['name']} vs the {ph(p['opponent'])} Was a Group Project"]
@@ -454,18 +454,19 @@ def build_courtroom(ctx):
                    [_cue("joke_setup", word="order", prefer=["gavel_single"])], ["order"])]
     for i, (text, big, label, cl, stamp_on) in enumerate(exhibits[:3]):
         letter = "ABC"[i]
-        cues = [_cue("exhibit", claim=stamp_on, prefer=["evidence_stamp"], repeatable=True)] if stamp_on else \
-            [_cue("exhibit", word="half", prefer=["evidence_stamp"], repeatable=True)]
+        cues = [_cue("roast_impact", claim=stamp_on, at="end", context="stat_ruins_it")] if i == 1 and stamp_on \
+            else []
         last = i == len(exhibits[:3]) - 1
         if last and "At home." in text:
-            cues.append(_cue("roast_impact", word="home", at="end", prefer=["boom"]))
+            cues.append(_cue("roast_impact", word="home", at="end", context="fans_hurt"))
         beats.append(_beat(ctx, f"exhibit_{letter.lower()}", f"Exhibit {letter}:‖ {text}",
                            {**court, "type": "court_exhibit", "letter": letter, "big": big, "label": label,
                             "claims": cl, "index": i, "stamp_on": stamp_on}, cues))
     beats.append(_beat(ctx, "verdict", f"Verdict:{BEAT} guilty of {verdict}.",
                        {**court, "type": "court_verdict", "stamp": "GUILTY", "charge": charge, "transition": "zoom",
                         "music_drop": True, "claims": []},
-                       [_cue("verdict", word="guilty", prefer=["gavel"])], ["guilty"], pause=LAST_GAP))
+                       [_cue("verdict", word="guilty", prefer=["gavel"]), _cue("hard_stop", word="guilty")],
+                       ["guilty"], pause=LAST_GAP))
     titles = [f"The NFL v. {p['name']}, {ph(p['week_claim'])}", f"{p['name']} Has Been Charged (Parody)"]
     return beats, titles
 
@@ -480,31 +481,32 @@ def build_comparison(ctx):
         beats = [
             _beat(ctx, "tease", f"Measuring {name}'s passes against the {ctx['opp']}?{BEAT} Grab a smaller ruler.",
                   {**field, "stage": "tease", "claims": [p["opponent"]]},
-                  [_cue("punchline", word="ruler", at="end", prefer=["boing", "bonk"])], ["smaller"]),
+                  [_cue("punchline", word="ruler", at="end", context="setup_aside")], ["smaller"]),
             _beat(ctx, "reveal", f"Average NFL throw:‖ {ph(a['league'])} yards.‖ His?{BEAT} {ph(a['x'])}.",
                   {**field, "stage": "him", "music_drop": True, "transition": "cut",
                    "claims": [a["league"], a["x"], p["opponent"]]},
-                  [_cue("stat_reveal", claim=a["x"], prefer=["slide_down"])]),
+                  [] if a["airless"] else [_cue("stat_reveal", claim=a["x"], at="end", context="stat_ruins_it")]),
         ]
         if a["airless"]:
             beats.append(_beat(ctx, "air", f"Of his {ph(box['passing_yards'])} passing yards?{BEAT} "
                                            f"{ph(a['air_yards_completed'])} came in the air.",
                                {**field, "stage": "air", "transition": "cut", "air": a["air_yards_completed"], "yds": box["passing_yards"],
                                 "claims": [a["league"], a["x"], a["air_yards_completed"], box["passing_yards"]]},
-                               [_cue("roast_impact", claim=a["air_yards_completed"], prefer=["boom"])], ["air"]))
+                               [_cue("roast_impact", word="air", at="end", context="stat_ruins_it")], ["air"]))
         elif a["season_rank_value"] == 1:
             beats.append(_beat(ctx, "season", f"All season,‖ nobody with {ph(a['min_attempts'])}-plus attempts throws "
                                               "it shorter.",
                                {**field, "stage": "season", "transition": "cut", "claims": [a["league"], a["x"], a["season"],
                                                                        a["min_attempts"], a["season_rank"],
                                                                        a["season_count"]]},
-                               [_cue("roast_impact", word="shorter", prefer=["boom"])], ["nobody"]))
+                               [], ["nobody"]))
         hi_lo = (g["points"], g["opp_points"]) if _won(ctx) else (g["opp_points"], g["points"])
         beats.append(_beat(ctx, "callback", f"The {ctx['team']} {ph(g['result'])} anyway,‖ {ph(hi_lo[0])} to "
                                             f"{ph(hi_lo[1])}.{BEAT} Tell the deep safety he can go home.",
                            {**field, "stage": "safety", "transition": "cut", "claims": [a["league"], a["x"], g["points"], g["opp_points"],
                                                                    g["result"]]},
-                           [_cue("final_payoff", word="home", at="end")], ["home"], pause=LAST_GAP))
+                           [_cue("final_payoff", word="home", at="end", context="throw_out"),
+                            _cue("hard_stop", word="home", at="end")], ["home"], pause=LAST_GAP))
         titles = [f"{p['name']}'s Passes Didn't Go Anywhere", f"The Shortest Throws in the NFL Belong to {p['name']}"]
         return beats, titles
     opp = ctx["opp"]
@@ -512,24 +514,27 @@ def build_comparison(ctx):
              "transition": "none"}
     beats = [_beat(ctx, "setup", f"{name}:‖ {ph(box['targets'])} targets against the {opp}.",
                    {**tally, "stage": "him", "claims": [box["targets"], p["opponent"]]},
-                   [_cue("stat_reveal", claim=box["targets"], prefer=["slide_up"])])]
+                   [])]
     if a["beats_opponent"]:
         beats.append(_beat(ctx, "versus", f"The entire {opp} offense?{BEAT} {ph(a['opp_targets'])}.",
                            {**tally, "stage": "them", "music_drop": True,
                             "claims": [box["targets"], a["opp_targets"], p["opponent"]]},
-                           [_cue("punchline", claim=a["opp_targets"], prefer=["boom"])], ["entire"]))
+                           [_cue("punchline", claim=a["opp_targets"], at="end", context="absurd_comparison")],
+                           ["entire"]))
         punch = "One receiver out-targeted a whole NFL offense."
     else:
         beats.append(_beat(ctx, "versus", f"{ph(a['teams_fewer'])} entire NFL offenses got fewer that week.",
                            {**tally, "stage": "teams", "claims": [box["targets"], a["teams_fewer"]]},
-                           [_cue("punchline", claim=a["teams_fewer"], prefer=["boom"])], ["entire"]))
+                           [_cue("punchline", claim=a["teams_fewer"], at="end", context="absurd_comparison")],
+                           ["entire"]))
         punch = "Whole offenses, fewer targets than one receiver."
     hi_lo = (g["points"], g["opp_points"]) if _won(ctx) else (g["opp_points"], g["points"])
     beats.append(_beat(ctx, "callback", f"{punch}{BEAT} The {ctx['team']} {ph(g['result'])}, {ph(hi_lo[0])} to "
                                         f"{ph(hi_lo[1])}.‖ That stat line still won the group chat.",
                        {**tally, "stage": "end", "claims": [box["targets"], a["opp_targets"], g["result"], g["points"],
                                                             g["opp_points"]]},
-                       [_cue("final_payoff", word="chat", at="end", prefer=["crowd_cheer"])], ["group"],
+                       [_cue("final_payoff", word="chat", at="end", context="tiny_celebration"),
+                        _cue("hard_stop", word="chat", at="end")], ["group"],
                        pause=LAST_GAP))
     titles = [f"{p['name']} Out-Targeted the Entire {ph(p['opponent'])} Offense",
               f"{ph(box['targets'])} Targets: {p['name']} Is Actually Ridiculous"]
@@ -558,13 +563,14 @@ def build_main_character(ctx):
     beats = [_beat(ctx, "open", f"{ph(lead_c)} {lead_w}.‖ {name} against the {ctx['opp']}.",
                    {"type": "cine_slam", "camera": "push", "transition": "none", "slams": [lead_c],
                     "words": [lead_w.upper()], "open": True, "claims": [lead_c, p["opponent"], p["week_claim"]]},
-                   [_cue("hype_peak", claim=lead_c, prefer=["cinematic_hit"])])]
+                   [_cue("hype_peak", claim=lead_c, at="end", context="arrival")])]
     if a["id"] == "target_hog" and a["beats_opponent"]:
         beats.append(_beat(ctx, "contrast", f"The entire {ctx['opp']} offense?{BEAT} {ph(a['opp_targets'])}.",
                            {"type": "cine_contrast", "camera": "push", "transition": "cut", "them": a["opp_targets"],
                             "games": a["games"], "rank": a["rank"], "rank1": a["rank_value"] == 1, "stage": "them",
                             "music_drop": True, "claims": [a["opp_targets"], p["opponent"]]},
-                           [_cue("punchline", claim=a["opp_targets"], prefer=["boom"])], ["entire"]))
+                           [_cue("punchline", claim=a["opp_targets"], at="end", context="absurd_comparison")],
+                           ["entire"]))
     rest = slams[1:]
     if rest:
         beats.append(_beat(ctx, "slams", ",‖ ".join(f"{ph(c)} {w}" for c, w in rest) + ".",
@@ -577,7 +583,7 @@ def build_main_character(ctx):
         beats.append(_beat(ctx, "rank", line, {"type": "cine_contrast", "camera": "push", "transition": "cut",
                                                "games": a["games"], "rank": a["rank"], "rank1": a["rank_value"] == 1,
                                                "stage": "rank", "claims": [a["rank"], a["games"]]},
-                           [_cue("hype_peak", word="more", at="end", prefer=["choir"])] if a["rank_value"] == 1 else [],
+                           [_cue("hype_peak", word="more", at="end", context="glaze_peak")] if a["rank_value"] == 1 else [],
                            ["nobody"]))
     pts = lambda cid: ctx["claims"][cid]["value"]
     shootout = " a shootout" if min(pts(g["points"]), pts(g["opp_points"])) >= SHOOTOUT_POINTS else ""
@@ -593,8 +599,8 @@ def build_main_character(ctx):
                                             "tagline": tag, "credits": [[c, abbr.get(w, w.upper())] for c, w in slams],
                                             "claims": [g["points"], g["opp_points"], g["result"]]
                                             + [c for c, _ in slams]},
-                       [_cue("final_payoff", word=("not" if g["result_value"] == "lost" else "movie"), at="end",
-                             prefer=["crowd_cheer"])], ["did", "whole"], pause=LAST_GAP))
+                       [_cue("hard_stop", word=("not" if g["result_value"] == "lost" else "movie"), at="end")],
+                       ["did", "whole"], pause=LAST_GAP))
     titles = [f"{p['name']} Was the Main Character Against the {ph(p['opponent'])}",
               f"Nobody Was Stopping {p['name']}"]
     return beats, titles
@@ -607,19 +613,19 @@ def build_fan_meltdown(ctx):
     beats = [_beat(ctx, "calm", f"Okay.‖ Stay calm.‖ It's just {name}.",
                    {"type": "melt_calm", "camera": "still", "transition": "none", "claims": []}, [], ["calm"])]
     for i, (c, w) in enumerate(slams[:3]):
-        cues = [_cue("stat_reveal" if i < 2 else "hype_peak", claim=c, prefer=["boom"] if i == 0 else [])]
+        cues = [_cue("stat_reveal", claim=c, at="end", context="absurd_comparison")]
         beats.append(_beat(ctx, f"stat_{i + 1}", f"{ph(c)} {w}!", {"type": "melt_stat", "camera": "still", "level": i + 1,
                                                                   "big": c, "word": w.upper(), "transition": "cut",
-                                                                  "claims": [c]}, cues if i in (0, 2) else []))
+                                                                  "claims": [c]}, cues if i == 0 else []))
     if a["id"] == "target_hog" and a["beats_opponent"]:
         beats.append(_beat(ctx, "detail", f"The whole {ctx['opp']} team got {ph(a['opp_targets'])}!",
                            {"type": "melt_stat", "camera": "still", "level": 4, "big": a["opp_targets"],
                             "word": "THE WHOLE OTHER TEAM", "transition": "cut",
                             "claims": [a["opp_targets"], p["opponent"]]},
-                           [_cue("punchline", claim=a["opp_targets"], prefer=["air_horn"])]))
+                           [_cue("hype_peak", claim=a["opp_targets"], at="end", context="meltdown")]))
     beats.append(_beat(ctx, "scream", "We are not calm.‖ We will never be calm again.",
                        {"type": "melt_scream", "camera": "still", "transition": "cut", "claims": []},
-                       [_cue("final_payoff", word="again", at="end", prefer=["crowd_cheer"])], ["never"],
+                       [_cue("hard_stop", word="again", at="end")], ["never"],
                        pause=LAST_GAP))
     titles = [f"Stay Calm About {p['name']}? Impossible", f"{p['name']} Is Actually Ridiculous"]
     return beats, titles
@@ -637,11 +643,20 @@ def assign_sfx(beats: list[dict], brief: dict, recent: list[dict], seed: str) ->
     chosen = iter(P.select(cues, brief["format"], brief["kind"], [r.get("sfx", []) for r in recent], seed))
     for b in beats:
         b["scene"]["cues"] = [next(chosen) for _ in b["scene"].get("cues", [])]
-    # the last beat leaves room for its payoff sound to finish (a crowd, a trombone), then cuts
-    tail = {"crowd": 1.1, "sting": 0.9, "impact": 0.75, "cartoon": 0.45, "ui": 0.3, "cut": 0.5}
-    last = [P.PALETTE[c["sfx"]]["class"] for c in beats[-1]["scene"]["cues"] if c.get("sfx")]
-    if last:
-        beats[-1]["pause"] = max(beats[-1].get("pause") or 0, max(tail[k] for k in last))
+    # the last beat leaves room for its payoff sound to finish (a scream, a crowd), then cuts
+    tail = {"crowd": 1.1, "bed": 1.2, "sting": 0.9, "impact": 0.75, "cartoon": 0.45, "ui": 0.3, "cut": 0.5,
+            "stop": 0.45, "reaction": 0.9}
+    need = []
+    for c in beats[-1]["scene"]["cues"]:
+        if not c.get("sfx"):
+            continue
+        spec = P.PALETTE[c["sfx"]]
+        if spec.get("registry") and P.available(c["sfx"]):   # a reaction plays out in full, capped
+            need.append(min(1.8, len(P.render(c["sfx"])) / P.SR - spec["attack"] + 0.1))
+        else:
+            need.append(tail[spec["class"]])
+    if need:
+        beats[-1]["pause"] = max(beats[-1].get("pause") or 0, max(need))
 
 
 def structure(brief: dict, beats: list[dict]) -> dict:

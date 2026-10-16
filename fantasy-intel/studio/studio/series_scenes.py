@@ -624,5 +624,6 @@ def sounds(scene: dict, start: float, dur: float, c) -> list[tuple[float, str, f
         if at is None:
             continue
         t = start + at + P.SYNC_OFFSET_S - P.PALETTE[sfx]["attack"]
-        ev.append((max(0.0, t), f"meme:{sfx}:{cue.get('variant', 0)}:{cue['event']}", cue.get("gain", -6)))
+        # before 0 is allowed: the mix trims the sound's head so its hit still lands on the word
+        ev.append((t, f"meme:{sfx}:{cue.get('variant', 0)}:{cue['event']}", cue.get("gain", -6)))
     return ev

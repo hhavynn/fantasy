@@ -144,8 +144,9 @@ def mix(voice: np.ndarray, events: list[tuple[float, str, float]], structure: di
     talking = np.clip(speech / (np.percentile(speech, 90) + 1e-9), 0, 1)
     memes = [(at, *parse_meme(kind), g) for at, kind, g in events if parse_meme(kind)]
     plain = [(at, kind, g) for at, kind, g in events if not parse_meme(kind)]
-    if not with_meme:
-        memes = []
+    # the comparison mix (with_meme=False) keeps every edit (music stops, dips for the hits) and loses only the
+    # sounds, so the two differ by the effects alone
+    sounding = memes if with_meme else []
     bed = np.zeros(n, np.float32)
     mood = structure.get("music_mood")
     if structure.get("music", True) and mood and mood != "none" and shorts_cfg.get("music", True):
@@ -154,10 +155,11 @@ def mix(voice: np.ndarray, events: list[tuple[float, str, float]], structure: di
         bed = bed * (1 - 0.55 * talking)
         bed *= _ramp_gate(n, drop_windows(scenes), 0.0)
         hits = [(at - 0.08, at + min(0.6, len(P.render(sid, var)) / SR)) for at, sid, var, _, _ in memes
-                if P.PALETTE[sid]["class"] in ("impact", "cartoon", "sting")]
+                if P.PALETTE[sid]["class"] in ("impact", "cartoon", "sting", "reaction")]
         bed *= _ramp_gate(n, hits, A.db(-10), 0.03)                  # make room for the hit
         cuts = [(at, at + 0.9) for at, sid, _, _, _ in memes if sid == "music_cut"]
-        bed *= _ramp_gate(n, cuts, 0.0, 0.01)                         # the deadpan cut: music just stops
+        cuts += [(at, n / SR + 1) for at, sid, _, _, _ in memes if sid == "music_stop"]   # the hard stop: for good
+        bed *= _ramp_gate(n, cuts, 0.0, 0.01)                         # the music just stops
     fx = np.zeros(n, np.float32)
     for at, kind, gain_db in plain:
         sig = sfx(kind) * A.db(shorts_cfg.get("sfx_db", -12) + gain_db)
@@ -166,14 +168,20 @@ def mix(voice: np.ndarray, events: list[tuple[float, str, float]], structure: di
             j = min(n, i + len(sig))
             fx[i:j] += sig[: j - i]
     long_fx = np.zeros(n, np.float32)
-    for at, sid, var, _, gain_db in memes:
-        if sid == "music_cut":
+    ref = P.active_rms(v)                                              # the narration's loudness, for meme levels
+    for at, sid, var, _, gain_db in sounding:
+        if sid in ("music_cut", "music_stop"):
             continue
+        spec = P.PALETTE[sid]
         sig = P.render(sid, var) * A.db(gain_db)
+        if spec.get("registry"):                # a reaction sits `level_db` above (or below) the voice
+            sig = sig * ref * A.db(spec["level_db"])
         i = int(at * SR)
+        if i < 0:                               # starts before the video does: drop its head, keep the hit in place
+            sig, i = sig[-i:], 0
         if 0 <= i < n:
             j = min(n, i + len(sig))
-            (long_fx if P.PALETTE[sid]["class"] == "crowd" else fx)[i:j] += sig[: j - i]
+            (long_fx if P.PALETTE[sid]["class"] in ("crowd", "bed") else fx)[i:j] += sig[: j - i]
     long_fx *= 1 - 0.7 * talking                                       # a crowd never talks over the narrator
     out = v + bed + fx + long_fx
     fade_in, fade_out = int(0.015 * SR), int(0.12 * SR)

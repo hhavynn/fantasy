@@ -87,7 +87,9 @@ first template below. Pacing and sound: each format has a short-form target leng
 is a cue that a CC0 or original meme-style effect lands on to the word, and QC's `pacing` gate measures dead air,
 late payoffs and effect sync in the render; see
 [`../docs/flame-praise-series/pacing-and-sound.md`](../docs/flame-praise-series/pacing-and-sound.md).
-`--compare-mix` also writes `final_nosfx.mp4`; `--frozen-snapshot` re-makes an earlier week from its archived data. Trash talk about the stat line, never about the person. Code: `stages/flame.py` (selection, claims,
+`--compare-mix` also writes `final_nosfx.mp4`; `--frozen-snapshot` re-makes an earlier week from its archived data.
+The meme sounds (`assets/sfx/registry.toml`) are not in git: run `uv run python -m studio.sfx_fetch` once per clone
+(without them the series falls back to its procedural sounds). Audition candidates with `python -m studio.sfx_audition`. Trash talk about the stat line, never about the person. Code: `stages/flame.py` (selection, claims,
 script) and `studio/flame_scenes.py` (ember / spotlight looks; hook card, a strip of every position game, his
 season game by game, a stat receipt), ending on the shared `decision` scene.
 

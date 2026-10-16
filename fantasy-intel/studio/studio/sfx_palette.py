@@ -349,12 +349,77 @@ PALETTE = {
                   "attack": 0.0, "gain": 0, "variants": (0,)},
 }
 # Each format's sound personality, in order of preference. Courtroom never sounds like the deadpan monologue.
+# ------------------------------------------------------------------------------------------ the meme registry
+# Real soundboard clips (assets/sfx/registry.toml), the series' default: the reactions young NFL fans recognise.
+# The audio lives in assets/sfx/meme/ (gitignored, `python -m studio.sfx_fetch`); a missing file falls back to the
+# entry's procedural `fallback`, and the cue says so.
+MEME_DIR = SFX_DIR / "meme"
+REGISTRY_PATH = SFX_DIR / "registry.toml"
+
+
+def _registry() -> dict:
+    import tomllib
+    return tomllib.loads(REGISTRY_PATH.read_text()) if REGISTRY_PATH.exists() else {}
+
+
+REGISTRY = _registry()
+
+
+def meme_file(sid: str) -> Path:
+    return MEME_DIR / REGISTRY[sid]["source"].rsplit("/", 1)[-1]
+
+
+def _decode(path: Path) -> np.ndarray:
+    import subprocess
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
+                         capture_output=True, check=True).stdout
+    return np.frombuffer(raw, np.float32).copy()
+
+
+def active_rms(x: np.ndarray) -> float:
+    """RMS over the sounding part only (10 ms blocks within 30 dB of the loudest), so silence doesn't dilute it."""
+    x = x if x.ndim == 1 else x.mean(1)
+    blk = x[: len(x) // 480 * 480].reshape(-1, 480)
+    if not len(blk):
+        return 1e-9
+    r = np.sqrt((blk ** 2).mean(1))
+    keep = r > r.max() * 10 ** (-30 / 20)
+    return float(np.sqrt((r[keep] ** 2).mean())) if keep.any() else 1e-9
+
+
+def _meme(sid: str) -> np.ndarray:
+    """A registry clip, trimmed and faded, normalised to unit active RMS: the mix levels it against the narration."""
+    e = REGISTRY[sid]
+    a, b = e["trim"]
+    x = _decode(meme_file(sid))[int(a * SR):int(b * SR)]
+    n = min(len(x), int(0.04 * SR))
+    x[-n:] *= np.linspace(1, 0, n)
+    return (x / active_rms(x)).astype(np.float32)
+
+
+for _sid, _e in REGISTRY.items():
+    PALETTE[_sid] = {"make": (lambda s=_sid: _meme(s)), "purpose": tuple(_e["purpose"]), "tone": _e["tone"],
+                     "class": _e["class"], "attack": _e["hit"], "gain": 0, "level_db": _e["level_db"],
+                     "variants": (0,), "contexts": tuple(_e["contexts"]), "registry": True,
+                     "fallback": _e.get("fallback")}
+# Not sounds: `music_stop` silences the music from the cue to the end (the hard stop); `music_cut` for a beat.
+PALETTE["music_stop"] = {"make": None, "purpose": ("hard_stop",), "tone": "any", "class": "stop", "attack": 0.0,
+                         "gain": 0, "variants": (0,)}
+
+
+def available(sid: str) -> bool:
+    return not PALETTE[sid].get("registry") or meme_file(sid).exists()
+
+
+# Each format's sound personality, in order of preference: real reactions first, a few diegetic foley sounds where
+# the scene calls for them (a courtroom gavel, a phone toggle), and the hard stop.
 FORMAT_SFX = {
-    "roast_monologue": ("toggle_click", "error_ding", "pipe_clang", "record_scratch", "sad_trombone", "music_cut"),
-    "courtroom": ("gavel_single", "evidence_stamp", "boom", "record_scratch", "gavel", "pipe_clang"),
-    "comparison": ("boing", "bonk", "slide_down", "slide_up", "boom", "sad_trombone", "crowd_cheer", "pipe_clang"),
-    "main_character": ("cinematic_hit", "boom", "slide_up", "choir", "crowd_cheer", "applause"),
-    "fan_meltdown": ("boom", "air_horn", "crowd_cheer", "choir", "boing"),
+    "roast_monologue": ("toggle_click", "crickets", "metal_pipe", "bruh", "fahhh", "music_stop"),
+    "courtroom": ("gavel_single", "gavel", "fahhh", "emotional_damage", "get_out", "among_us", "music_stop"),
+    "comparison": ("bruh", "fahhh", "get_out", "vine_boom", "mj_heehee", "anime_wow", "shocked", "yippee",
+                   "music_stop"),
+    "main_character": ("undertaker", "anime_wow", "heavenly", "shocked", "rizz", "crowd_cheer", "music_stop"),
+    "fan_meltdown": ("anime_wow", "shocked", "mlg_airhorn", "yippee", "vine_boom", "crowd_cheer", "music_stop"),
 }
 
 
@@ -363,39 +428,58 @@ def render(sfx_id: str, variant: float = 0) -> np.ndarray:
     spec = PALETTE[sfx_id]
     if spec["make"] is None:
         return np.zeros(1, np.float32)
-    return _fade_end(_pitch(spec["make"](), variant), 0.03).astype(np.float32)
+    x = spec["make"]()
+    if spec.get("registry"):                   # unit-RMS: the mix sets the level against the narration
+        return _pitch(x, variant).astype(np.float32)
+    return _fade_end(_pitch(x, variant), 0.03).astype(np.float32)
 
 
 def select(cues: list[dict], fmt: str, kind: str, recent: list[list[str]], seed: str) -> list[dict]:
-    """Choose an effect for every cue: one the beat's purpose calls for, in the format's personality, not used
-    earlier in this video, and preferably not in the last two series videos. Deterministic (no randomness), so the
-    cue sheet is reproducible; the pitch variant rotates with the seed."""
+    """Choose a sound for every cue. A cue asks for a moment (event) and, for meme sounds, a context (the joke it
+    is: stat_ruins_it, throw_out, arrival...); the sound must fit the event, the format's personality and the tone.
+    The context match matters most, then the builder's preference, then not repeating this video or the last two.
+    A cue may also ask for nothing (`"none"`). A missing meme file falls back to its procedural stand-in.
+    Deterministic, so the cue sheet is reproducible."""
     used_recently = {s for r in recent[-2:] for s in r}
     used: list[str] = []
     out = []
     for i, cue in enumerate(cues):
+        if cue.get("context") == "none":
+            out.append({**cue, "sfx": None, "why": "this beat is funnier with nothing"})
+            continue
         allowed = FORMAT_SFX.get(fmt, tuple(PALETTE))
         want = cue.get("prefer") or ()
         cands = [s for s in allowed if cue["event"] in PALETTE[s]["purpose"]
                  and PALETTE[s]["tone"] in ("any", kind)]
         if not cands:
-            out.append({**cue, "sfx": None, "why": "no effect fits this beat in this format"})
+            out.append({**cue, "sfx": None, "why": "no sound fits this beat in this format"})
             continue
 
         def score(s):
             sc = -allowed.index(s) * 0.4
+            sc += 5 if cue.get("context") and cue["context"] in PALETTE[s].get("contexts", ()) else 0
             sc += 3 if s in want else 0
             sc -= 4 if s in used and not cue.get("repeatable") else 0
             sc -= 1.5 if s in used_recently else 0
             return sc
         best = max(cands, key=lambda s: (score(s), -allowed.index(s)))
+        note = ""
+        if not available(best):
+            fb = PALETTE[best].get("fallback")
+            note = f"; {best} file missing (run python -m studio.sfx_fetch), using {fb}"
+            best = fb if fb in PALETTE else None
+            if best is None:
+                out.append({**cue, "sfx": None, "why": "meme file missing and no fallback" + note})
+                continue
         variants = PALETTE[best]["variants"]
         h = int(hashlib.sha256(f"{seed}:{i}:{best}".encode()).hexdigest()[:8], 16)
         used.append(best)
         out.append({**cue, "sfx": best, "variant": variants[h % len(variants)],
                     "gain": PALETTE[best]["gain"] + cue.get("gain_adjust", 0),
-                    "why": f"{cue['event']} in {fmt}; " + ("recently used, but the best fit" if best in used_recently
-                                                          else "not used in the last two videos")})
+                    "fallback_used": bool(note),
+                    "why": f"{cue['event']}" + (f" / {cue['context']}" if cue.get("context") else "") + f" in {fmt}; "
+                    + ("recently used, but the best fit" if best in used_recently else "not used in the last two videos")
+                    + note})
     return out
 
 

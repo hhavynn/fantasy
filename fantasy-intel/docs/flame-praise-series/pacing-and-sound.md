@@ -198,3 +198,53 @@ through Week 6 only.
    manifest.
 3. Add motion inside beats (number count-ups, a moving ball flight) to cut the frozen share below 40%.
 4. Once anything is published, compare retention per format and per effect before tuning further.
+
+## 10. Sound direction v2: real meme reactions (owner-approved, 2026-10-16)
+
+The synthesized cartoon palette above missed the brief. The series now uses **real soundboard reactions** that young
+NFL fans recognize. The rule is **2–3 reactions per video, each one the reaction a viewer would have, placed right on the
+word, plus one hard silent stop** (the music just ends). The draft A/B/C auditions are in
+`studio/episodes/sfx-auditions/`.
+
+- **Registry** (`studio/assets/sfx/registry.toml`, committed). 20 sounds from Myinstants' trending list (Oct 2026):
+  - FAHHH, GET OUT, BRUH, EMOTIONAL DAMAGE, metal pipe, "oh hell nah", sad violin
+  - crickets, MJ "hee hee", Taco Bell bong, Among Us reveal
+  - vine boom, shocked, Anime Wow, chicken scream
+  - rizz, heavenly, Undertaker bell, YIPPEE, MLG air horn
+
+  Each entry records:
+  - the source URL and the evidence it's current;
+  - the comedic contexts it's for;
+  - trim, hit point (measured: where it gets loud) and level against the narration;
+  - a procedural fallback.
+- **Audio stays out of git.** `assets/sfx/meme/` is gitignored, and `uv run python -m studio.sfx_fetch` fills it. These
+  clips carry no license; the owner chose to use them, and the realistic risk is a Content ID claim or a muted clip.
+  Every video lists its soundboard sounds in `metadata.json` (`contains_soundboard_audio`). On a fresh clone without
+  the files, each cue falls back to its procedural sound and its cue record says so.
+- **Selection by joke, not at random.** Builders tag each cue with a context:
+  - `stat_ruins_it` → FAHHH
+  - `throw_out` → GET OUT
+  - `setup_aside` → BRUH
+  - `fans_hurt` → EMOTIONAL DAMAGE
+  - `deadpan_hit` → metal pipe
+  - `dead_silence` → crickets
+  - `arrival` → Undertaker bell
+  - `absurd_comparison` → Anime Wow
+  - `glaze_peak` → heavenly
+  - `meltdown` → MLG air horn
+
+  A cue can also ask for nothing. The format's palette, the tone and the last two videos' sounds still apply.
+- **Levels**: each reaction sits `level_db` above or below the narration's own loudness, whatever the upload's
+  level. The music dips for each hit, and `music_stop` silences it until the end.
+
+| Demo (episodes/…) | Length | Sounds (heard in the mix, within 1 ms of the word) |
+|---|---|---|
+| `2026-w06-short-flame-bo-nix-meme` | 18.4 s | BRUH "ruler", FAHHH "4.3", GET OUT "home" + stop |
+| `2026-w07-short-flame-bo-nix-seahawks-meme` | 18.2 s | BRUH "ruler", FAHHH "in the air", GET OUT "home" + stop |
+| `2026-w06-short-flame-cam-ward-meme` | 16.8 s | gavel "Order!", FAHHH on the 3rd-worst rank, EMOTIONAL DAMAGE "at home", gavel "guilty" + stop |
+| `2026-w06-short-praise-puka-nacua-meme` | 16.7 s | Undertaker bell on "24", Anime Wow on "18", heavenly "nobody's seen more" + stop |
+| `2026-w06-short-flame-bo-nix-meme-monologue` | 15.7 s | toggle "airplane", crickets after "7.9", metal pipe "back" |
+
+All but the Seahawks cut pass every QC gate; that one is blocked by the existing rule against featuring the same
+player in back-to-back weeks. The courtroom's verdict gavel knocks twice: the second knock lands on "guilty", and the
+check reports the first one, 0.25 s earlier.
