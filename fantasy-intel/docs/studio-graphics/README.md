@@ -33,11 +33,11 @@ The source videos stay where they are: the styled renders live in each episode f
 uv run make-episode --week 6 --format short --style premium
 ```
 
-`--style` takes `original` (default), `premium`, `pixel`, `broadcast` or `auto`. Any value other than `original` renders the normal Short as before, then also renders `styles/<style>/final.mp4` with its own `qc.json`. The default lives in `config.toml`:
+`--style` takes `original`, `premium`, `pixel`, `broadcast` or `auto` (the configured default since 2026-10-15). Any value other than `original` renders the normal Short as before, then also renders `styles/<style>/final.mp4` with its own `qc.json`. The default lives in `config.toml`:
 
 ```toml
 [graphics]
-style = "original"           # original | premium | pixel | broadcast | auto
+style = "auto"               # original | premium | pixel | broadcast | auto
 auto_default = "original"
 
 [graphics.auto]              # auto: a preference per story angle, not a rule
@@ -146,7 +146,7 @@ Render times are on the M5 Pro, single process. Broadcast is slower because of i
 | Reusability | per-scene code | shared components | shared structure, own drawing | shared components |
 | Production efficiency | baseline | fastest vector style | fastest overall | slowest new style, still under 20 s |
 
-My recommendation, for you to confirm by watching: **premium** for usage deep dives (the `vanishing_targets` stories), **broadcast** for weekly reports and fill-in or injury stories, and **pixel** as an occasional change-up for head-to-head or fun stories rather than the default, since its novelty is its strength. The `auto` mapping in `config.toml` follows this and is off until you choose.
+My recommendation, for you to confirm by watching: **premium** for usage deep dives (the `vanishing_targets` stories), **broadcast** for weekly reports and fill-in or injury stories, and **pixel** as an occasional change-up for head-to-head or fun stories rather than the default, since its novelty is its strength. The `auto` mapping in `config.toml` follows this and is now the default: usage deep dives render in premium, fill-in stories in broadcast, and everything else (including the mystery and opportunity formats) stays original. The weekly `review.md` index lists each Short's styled video and its QC next to `final.mp4`. `final.mp4` is still rendered, and metadata, thumbnail and upload still point at it, so when publishing a styled Short, upload `styles/<style>/final.mp4` by hand.
 
 ## Limitations and known issues
 

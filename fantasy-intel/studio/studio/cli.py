@@ -36,7 +36,8 @@ def finish(ep: Episode) -> bool:
     return passed
 
 
-def render_style(ep: Episode, style: str) -> bool | None:
+def render_style(ep: Episode, style: str) -> tuple[str, bool] | None:
+    """Render a graphic style next to final.mp4; (style rendered, its QC result), or None when none was."""
     from . import graphics
     from .graphics import render as GR
     if style == "auto":
@@ -51,7 +52,7 @@ def render_style(ep: Episode, style: str) -> bool | None:
         ep.log(f"  style {style}: skipped, {e}")
         return None
     ep.log(f"  style {style}: QC {'passed' if ok else 'FAILED'}, {ep.path(f'styles/{style}/final.mp4')}")
-    return ok
+    return style, ok
 
 
 def run_stages(ep: Episode, stages, hook: str | None = None) -> None:
@@ -113,19 +114,25 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
             write_json(ep.path("story.json"), story)
         run_stages(ep, SHORT, hook or cfg["shorts"].get("hook") or None)
         passed = finish(ep)
-        if style != "original":      # a graphic style, next to final.mp4 (styles/<style>/final.mp4)
-            render_style(ep, style)
+        styled = render_style(ep, style) if style != "original" else None   # next to final.mp4, never over it
         if passed and presenter_mode != "off":       # optional AI host layer; never touches final.mp4
             from . import presenter
             presenter.present(ep, presenter_mode)
-        results.append((ep, story, passed))
+        results.append((ep, story, passed, styled))
     index = ["# Shorts for review", "", f"Week {week}, {season}. Watch each, read its review.md, then publish by hand.", ""]
-    for ep, story, passed in results:
+    for ep, story, passed, styled in results:
         meta = read_json(ep.path("metadata.json"))
-        index.append(f"- **{story['name']}** ({story['role']}): {meta['title']}. QC {'passed' if passed else 'FAILED'}. "
-                     f"`{ep.id}/final.mp4`, `{ep.id}/review.md`")
+        line = (f"- **{story['name']}** ({story['role']}): {meta['title']}. QC {'passed' if passed else 'FAILED'}. "
+                f"`{ep.id}/final.mp4`, `{ep.id}/review.md`")
+        if styled:
+            line += (f". Styled ({styled[0]}): QC {'passed' if styled[1] else 'FAILED'}, "
+                     f"`{ep.id}/styles/{styled[0]}/final.mp4`")
+        index.append(line)
     week_ep.path("review.md").write_text("\n".join(index) + "\n")
-    failed = [ep.id for ep, _, ok in results if not ok]
+    failed = [ep.id for ep, _, ok, _ in results if not ok]
+    styled_failed = [ep.id for ep, _, _, st in results if st and not st[1]]
+    if styled_failed:
+        print(f"styled render QC failed (original final.mp4 unaffected): {styled_failed}")
     print(f"\n{len(results) - len(failed)}/{len(results)} Shorts passed QC. Index: {week_ep.path('review.md')}")
     return 1 if failed else 0
 

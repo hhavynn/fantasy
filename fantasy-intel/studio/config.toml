@@ -93,7 +93,7 @@ voice = "am_adam"
 # Graphic style for Shorts (studio/graphics, tokens in assets/styles/*.toml): original | premium | pixel |
 # broadcast | auto. 'original' renders only final.mp4, exactly as before. Any other value ALSO renders
 # styles/<style>/final.mp4 with its own QC; final.mp4 is never replaced.
-style = "original"
+style = "auto"
 # auto: preferred style per story angle (mystery and opportunity formats fall back to original for now).
 auto_default = "original"
 
