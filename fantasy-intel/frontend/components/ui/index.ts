@@ -15,3 +15,4 @@ export { Stat, StatStrip, type StatTone } from "./StatStrip";
 export { Tabs, type TabItem } from "./Tabs";
 export { TrendArrow } from "./TrendArrow";
 export { VisuallyHidden } from "./VisuallyHidden";
+export { Meter } from "./Meter";

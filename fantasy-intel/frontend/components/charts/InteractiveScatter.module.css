@@ -1,0 +1,53 @@
+/* Interactive scatter: real-pixel SVG (the component measures its container), tokens only. */
+.root { min-width: 0; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 12px; }
+.toolbarLabel { color: var(--ink-faint); margin-right: 2px; }
+.toggle {
+  height: 28px; padding: 0 10px; border-radius: 999px; font-weight: 500; font-size: 12px;
+  background: transparent; color: var(--ink-muted); border: 1px solid var(--line-control);
+}
+.toggle:hover { filter: none; color: var(--ink); background: var(--surface-hover); }
+.toggle[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); border-color: var(--accent); }
+
+.wrap { position: relative; width: 100%; min-width: 0; touch-action: manipulation; }
+.svg { display: block; width: 100%; height: auto; overflow: visible; user-select: none; -webkit-user-select: none; }
+.empty {
+  display: flex; align-items: center; justify-content: center; min-height: 240px; padding: 24px;
+  color: var(--ink-faint); font-size: 13px; text-align: center; border: 1px dashed var(--line); border-radius: 8px;
+}
+
+.tick { font-family: var(--font-sans); font-size: 11px; fill: var(--chart-axis); font-variant-numeric: tabular-nums; }
+.axisLabel { font-family: var(--font-sans); font-size: 12px; font-weight: 500; fill: var(--ink-muted); }
+.grid { stroke: var(--chart-grid); stroke-width: 1; }
+.axis { stroke: var(--line-control); stroke-width: 1; }
+.ref { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 5 4; }
+.refStrong { stroke: var(--ink-muted); stroke-width: 1.25; }
+.refLabel { font-family: var(--font-sans); font-size: 11px; fill: var(--ink-faint); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+.corner { font-family: var(--font-sans); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; fill: var(--ink-faint); opacity: .85; }
+
+.marker { stroke: var(--surface); stroke-width: 1.5; transition: fill-opacity var(--dur-fast) var(--ease-out); }
+.markerGroup[data-active] .marker { fill-opacity: 1; stroke: var(--ink); stroke-width: 2; }
+.ringSelected { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+.ringCompare { fill: none; stroke: var(--chart-4); stroke-width: 2.5; stroke-dasharray: 4 3; }
+.ringMatch { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.label {
+  font-family: var(--font-sans); font-size: 11px; fill: var(--ink-muted);
+  paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; pointer-events: none;
+}
+.labelStrong { fill: var(--ink); font-weight: 600; }
+.focus { fill: transparent; cursor: pointer; outline: none; }
+.focus:focus-visible { stroke: var(--focus); stroke-width: 2.5; }
+
+.tooltip {
+  position: absolute; z-index: 4; box-sizing: border-box; padding: 8px 10px; pointer-events: none;
+  background: var(--surface-raised); border: 1px solid var(--line-control); border-radius: 8px; box-shadow: var(--shadow-pop);
+  font-size: 12px; line-height: 17px; color: var(--ink);
+}
+.tooltip:not([aria-hidden]) { pointer-events: auto; }
+.tipName { margin: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tipMeta { margin: 0 0 6px; color: var(--ink-faint); font-size: 11px; }
+.tipRows { margin: 0; display: grid; gap: 2px; }
+.tipRows > div { display: flex; justify-content: space-between; gap: 12px; }
+.tipRows dt { color: var(--ink-muted); }
+.tipRows dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 500; }
+.tipLink { display: inline-block; margin-top: 8px; font-weight: 600; }

@@ -19,6 +19,7 @@ from .api.start_sit import router as start_sit_router
 from .api.matchup import router as matchup_router
 from .api.projection_promotion import router as projection_promotion_router
 from .api.weekly_recap import router as weekly_recap_router
+from .api.research import router as research_router
 
 app = FastAPI(title="fantasy-intel", version="0.1.0")
 app.add_middleware(
@@ -52,6 +53,7 @@ app.include_router(start_sit_router)
 app.include_router(matchup_router)
 app.include_router(projection_promotion_router)
 app.include_router(weekly_recap_router)
+app.include_router(research_router)
 
 
 @app.get("/health")

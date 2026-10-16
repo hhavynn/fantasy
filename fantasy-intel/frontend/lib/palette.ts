@@ -25,6 +25,7 @@ export const QUICK_ACTIONS: PaletteItem[] = [
   { id: "action:trade", kind: "action", label: "Evaluate a trade", hint: "Trade analyzer", href: "/trades", keywords: ["trade", "analyzer", "offer"] },
   { id: "action:discover", kind: "action", label: "Find trade targets", hint: "Trade discovery", href: "/trades/discover", keywords: ["trade", "discover", "targets", "partners"] },
   { id: "action:waivers", kind: "action", label: "Find waiver pickups", hint: "Waivers", href: "/waivers", keywords: ["waiver", "waivers", "free agents", "claims", "pickups"] },
+  { id: "action:research", kind: "action", label: "Research player opportunity", hint: "Research lab", href: "/research", keywords: ["research", "xfp", "fpoe", "opportunity", "breakout", "targets", "usage", "wr", "rb", "te"] },
   { id: "action:players", kind: "action", label: "Look up a player", hint: "Players", href: "/players", keywords: ["players", "search", "profile"] },
   { id: "action:data", kind: "action", label: "Check data freshness", hint: "Data quality", href: "/data", keywords: ["data", "quality", "sync", "stale", "health"] },
 ];
