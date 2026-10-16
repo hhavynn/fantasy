@@ -31,7 +31,8 @@ export function lastSuccessfulRun(runs: readonly SyncRunRow[], source: string): 
 
 /** True when the newest run for `source` did not succeed (a failure no later success has cleared). */
 export function latestFailed(runs: readonly SyncRunRow[], source: string): boolean {
-  const r = latestRun(runs, source);
+  // An interrupted run (a sync that died and left no finish) is neither a success nor a new failure.
+  const r = latestRun(runs.filter((x) => x.status.toLowerCase() !== "interrupted"), source);
   return r !== null && !isOk(r.status);
 }
 

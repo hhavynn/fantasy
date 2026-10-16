@@ -50,14 +50,22 @@ def _pj(season: int) -> str:
     return PLAYER_JOINS.replace("$season", str(int(season)))
 
 
+# A 'running' row with no finish time is left behind by a sync that died (SyncRun.start writes it, finish()
+# replaces it); a live sync holds the DuckDB lock, so the API cannot even read during one. Report it as
+# 'interrupted', and keep it out of the "latest run" per source so it neither shows as running nor as failed.
+_INTERRUPTED = "(status = 'running' AND finished_at IS NULL)"
+_RUN_STATUS = f"CASE WHEN {_INTERRUPTED} THEN 'interrupted' ELSE status END"
+
+
 def _sync_status(con) -> dict:
     out = {}
     for r in rows(con, """
         SELECT source, max(finished_at) AS last_ok FROM sync_runs WHERE status = 'ok' GROUP BY 1"""):
         out[r["source"]] = r["last_ok"]
-    last = rows(con, """
+    last = rows(con, f"""
         SELECT source, status, message, finished_at FROM (
-          SELECT *, row_number() OVER (PARTITION BY source ORDER BY started_at DESC) rn FROM sync_runs) WHERE rn = 1""")
+          SELECT *, row_number() OVER (PARTITION BY source ORDER BY started_at DESC) rn FROM sync_runs
+          WHERE NOT {_INTERRUPTED}) WHERE rn = 1""")
     return {"last_success": out, "latest_runs": last}
 
 
@@ -432,7 +440,8 @@ def data_quality():
         medium = rows(con, """SELECT m.*, fp.percent_owned FROM player_id_map m JOIN fantasy_players fp USING (espn_player_id)
                               WHERE m.match_confidence = 'medium' ORDER BY fp.percent_owned DESC NULLS LAST LIMIT 100""")
         conflicts = rows(con, "SELECT * FROM player_id_map WHERE notes LIKE 'Conflicting%' LIMIT 100")
-        runs = rows(con, "SELECT run_id, source, started_at, finished_at, status, message FROM sync_runs ORDER BY started_at DESC LIMIT 30")
+        runs = rows(con, f"SELECT run_id, source, started_at, finished_at, {_RUN_STATUS} AS status, message FROM sync_runs "
+                    "ORDER BY started_at DESC LIMIT 30")
         issues = rows(con, "SELECT * FROM validation_issues ORDER BY severity, check_name") \
             if table_exists(con, "validation_issues") else []
         external = _external_quality(con)

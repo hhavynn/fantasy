@@ -19,6 +19,18 @@ test("latestRun picks the newest run per source regardless of status", () => {
   assert.equal(latestRun(runs, "sleeper"), null);
 });
 
+test("an interrupted run is neither a failure nor the latest run", () => {
+  const withInterrupted = [
+    run("n1", "nfl", "2026-10-15T05:00:00", "2026-10-15T05:05:00"),
+    run("n2", "nfl", "2026-10-15T07:00:00", null, "interrupted"),
+  ];
+  assert.equal(latestFailed(withInterrupted, "nfl"), false);
+  const h = feedHealth(withInterrupted, "nfl", Date.parse("2026-10-15T09:05:00Z"));
+  assert.equal(h.failed, false);
+  assert.equal(h.finishedAt, "2026-10-15T05:05:00");
+  assert.equal(latestFailed([...withInterrupted, run("n3", "nfl", "2026-10-15T08:00:00", "2026-10-15T08:01:00", "failed")], "nfl"), true);
+});
+
 test("lastSuccessfulRun skips failed and unfinished runs", () => {
   assert.equal(lastSuccessfulRun(runs, "espn")?.run_id, "a1");
   assert.equal(lastSuccessfulRun(runs, "analytics"), null);
