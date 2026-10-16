@@ -7,6 +7,8 @@ import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { Badge, Notice, Pos } from "@/components/ui";
 import { num } from "@/lib/format";
 import type { DEvidence } from "@/lib/trade-types";
+import { AssetEvidence, DepthEvidence, PlausibilityChecks, RatingsEvidence, WeeklyEvidence } from "./DualValueEvidence";
+import { VerdictBadge } from "./DualValueParts";
 import styles from "./discover.module.css";
 
 type Load = { status: "idle" | "loading" | "error" } | { status: "ready"; e: DEvidence };
@@ -49,12 +51,20 @@ export function TradeEvidence({ src, analyzer }: { src: string; analyzer: string
 
 function Evidence({ e, analyzer }: { e: DEvidence; analyzer: string }) {
   const concerns = e.rationale.concerns;
+  const dv = e.dual_value ?? null;      // absent on an older backend: the classic evidence below still renders
+  const names = e.names ?? null;
   return (
     <>
       <div className={styles.tags}>
+        {dv && <VerdictBadge verdict={dv.plausibility.verdict} text={dv.plausibility.verdict_text} />}
         <Badge value={e.search_method === "exact" ? "exact search" : "heuristic search"} tone={e.search_method === "exact" ? "info" : ""}
           title={e.search_method === "exact" ? "From the proven exact search" : "From the bounded beam search (the row itself is exact)"} />
+        {dv?.rank?.front !== null && dv?.rank?.front !== undefined && (
+          <Badge value={`Pareto front ${dv.rank.front + 1}`} tone="" title={`${dv.rank.policy}. Front 1 is not dominated by another trade on smaller-side gain, asset ratio or certainty; fronts are an ordering, not a score.`} />
+        )}
       </div>
+      {dv && <p className={styles.small}>{dv.plausibility.verdict_text}</p>}
+      {dv && <PlausibilityChecks dv={dv} />}
       {concerns.length > 0 && (
         <Notice tone="caution" title="Concerns">
           <ul className={styles.list}>{concerns.map((c, i) => <li key={i}>{c}</li>)}</ul>
@@ -62,7 +72,10 @@ function Evidence({ e, analyzer }: { e: DEvidence; analyzer: string }) {
       )}
       {e.rationale.points.length > 0 && <ul className={styles.list}>{e.rationale.points.map((p, i) => <li key={i}>{p}</li>)}</ul>}
       <TradeVsFreeAgency t={e.trade_vs_free_agency} only="team_a" />
-      <AssetTable e={e} />
+      {dv ? <AssetEvidence dv={dv} /> : <AssetTable e={e} />}
+      {dv && <DepthEvidence dv={dv} />}
+      {dv && <RatingsEvidence ratings={e.ratings} sends={e.sends} receives={e.receives} names={names ?? namesFromAssets(dv)} />}
+      {dv && <WeeklyEvidence dv={dv} names={names} />}
       <div className={styles.cols}>
         {[{ s: e.mine_detail, t: e.mine_detail.team_name ?? "Analyzed team" }, { s: e.theirs_detail, t: e.theirs_detail.team_name ?? "Partner" }].map(({ s, t }) => (
           <div key={s.team_id}>
@@ -83,6 +96,12 @@ function Evidence({ e, analyzer }: { e: DEvidence; analyzer: string }) {
   );
 }
 
+/** Names of the traded players from the asset block, for an evidence payload that has no `names` map. */
+function namesFromAssets(dv: NonNullable<DEvidence["dual_value"]>): Record<string, { name: string | null; position: string | null }> {
+  return Object.fromEntries([...dv.asset.you_send, ...dv.asset.you_receive].map((p) => [String(p.espn_player_id), { name: p.name, position: p.position }]));
+}
+
+/** The classic asset table (no dual-value block in the payload). */
 function AssetTable({ e }: { e: DEvidence }) {
   const rows = [...e.asset_balance.you_send.map((p) => ({ p, who: "gives" })), ...e.asset_balance.they_send.map((p) => ({ p, who: "receives" }))];
   return (

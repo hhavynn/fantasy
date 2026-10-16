@@ -11,12 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from ..analytics.manager_scouting import build_manager_scouting
 from ..analytics.trade_data import load_league_state
 from ..analytics import trade_practical as practical
+from ..analytics import trade_ratings
 from ..analytics.trade_alternatives import FreeAgencyBoard, for_evaluation as trade_vs_free_agency
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
 from ..analytics.trade_discovery import (ALL_SHAPES, CATEGORIES, HEURISTIC_SHAPES, NOTE, SHAPES, SKILL_POSITIONS, SORTS,
                                          TradeSearch, evaluation)
 from ..analytics.trade_practical import MODES, PHASES, STRICTNESS
-from ..analytics.team_lineups import stream_summary
+from ..analytics.team_lineups import STREAMER_IDS, stream_summary
 from ..analytics.trades import (LIMITATIONS, NoRemainingWeeksError, TradeError, assumptions, streaming_enabled,
                                 with_streaming)
 from .deps import data_version, db, one, rows
@@ -115,6 +116,8 @@ SUMMARY_FIELDS = ("key", "shape", "search_method", "anchor_team_id", "opponent_t
                   "receives", "mine", "theirs", "combined_ros_delta", "min_side_ros_delta", "categories", "tier",
                   "consistent_with_manual_evaluator")
 SUMMARY_ASSET_FIELDS = ("label", "text", "note", "ratio", "you_send_par", "they_send_par")
+DUAL_ASSET_FIELDS = ("label", "text", "ratio", "imbalance", "favours", "you_send_par", "they_send_par")
+DUAL_LINEUP_FIELDS = ("before", "after", "delta", "average_weekly_delta")
 EVIDENCE_FIELDS = ("key", "search_method", "opponent_name", "anchor_team_id", "opponent_team_id", "sends", "receives",
                    "trade_vs_free_agency", "injury_scenarios", "manager_context", "need_notes")
 
@@ -218,8 +221,10 @@ def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
     board = FreeAgencyBoard(state, state.window())
     try:
         ts = _search(con, state, team_id, r.shape_list, pos)
+        anchor = next(t for t in r.teams if t["team_id"] == team_id)
+        anchor_label = "You" if anchor.get("is_mine") else (anchor.get("name") or f"Team {team_id}")
         out = practical.discover(ts, p.mode, p.phase, p.opponent, p.limit, p.strictness, p.sort, p.category or None,
-                                 p.heuristic, board=board)
+                                 p.heuristic, board=board, anchor_label=anchor_label)
     except NoRemainingWeeksError as err:
         raise HTTPException(409, str(err))
     except (TradeError, ValueError) as err:
@@ -244,7 +249,8 @@ def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
     return {
         **_context(r, p, ts.evaluation()),
         **{k: out[k] for k in ("mode_text", "sections", "tiers", "excluded", "pool_rule", "pool_size", "coverage",
-                               "opponents", "my_needs", "asset_note", "asset_thresholds")},
+                               "opponents", "my_needs", "asset_note", "asset_thresholds", "lens", "lens_note",
+                               "ranking_policy", "verdicts", "criteria", "projection_source")},
         "results": shown, "search": search, "names": names,
         "kdst_policy": _kdst_policy(kdst, streaming_enabled(state)),
         "kdst_streaming": stream_summary(state.projections, state.window()),
@@ -254,6 +260,8 @@ def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
             "Larger shapes come from a bounded beam search: exact rows, not a proven top list. Multi-team trades "
             "are not searched.",
             "A roster need or asset balance is not a willingness to trade; nothing here estimates acceptance.",
+            "Lenses rank a labelled candidate pool drawn from the exact search; the ranking does not change which "
+            "trades the exact search proves.",
         ],
     }
 
@@ -276,18 +284,49 @@ def _view(con, r: _Resolved, p: DiscoverParams) -> dict:
     return view
 
 
+def _dual_value_summary(dv: dict) -> dict:
+    """The table's cut of a row's dual_value (docs/trade_discovery_dual_value.md, "API payload")."""
+    pl, a, lu = dv["plausibility"], dv["asset"], dv["lineup"]
+    return {"verdict": pl["verdict"], "verdict_text": pl["verdict_text"], "main_concern": pl["main_concern"],
+            "front": (dv.get("rank") or {}).get("front"),
+            "you_change": lu["you"]["key_change"], "them_change": lu["them"]["key_change"],
+            "asset": {k: a[k] for k in DUAL_ASSET_FIELDS},
+            "lineup": {side: {k: lu[side][k] for k in DUAL_LINEUP_FIELDS} for side in ("you", "them")},
+            "checks": [{"criterion": c["criterion"], "status": c["status"]} for c in pl["checks"]]}
+
+
+def _weekly_names(dv: dict, names: dict[int, dict], traded: tuple = ()) -> dict[int, dict]:
+    """{id: {name, position}} for every traded player (bench assets included, which the ratings table names)
+    and every player who enters or leaves a starting lineup in dual_value's weekly changes, so the page can name
+    them (the K / D/ST streamer placeholders included)."""
+    streamers = {pid: pos for pos, pid in STREAMER_IDS.items()}
+    out = {pid: {"name": (names.get(pid) or {}).get("name"), "position": (names.get(pid) or {}).get("position")}
+           for pid in traded}
+    for side in ("you", "them"):
+        for w in dv["lineup"][side]["weekly"]:
+            for pid in (*w["entered"], *w["exited"]):
+                if pid in streamers:
+                    out[pid] = {"name": f"{streamers[pid]} streamer (free agent)", "position": streamers[pid]}
+                else:
+                    n = names.get(pid) or {}
+                    out[pid] = {"name": n.get("name"), "position": n.get("position")}
+    return out
+
+
 def _summary_row(x: dict) -> dict:
     mc = x.get("manager_context")
-    return {**{k: x[k] for k in SUMMARY_FIELDS},
+    return {**{k: x[k] for k in SUMMARY_FIELDS}, "dual_value_summary": _dual_value_summary(x["dual_value"]),
             "asset_balance": {k: x["asset_balance"][k] for k in SUMMARY_ASSET_FIELDS},
             "rationale": {"trade_type": x["rationale"]["trade_type"], "concerns": x["rationale"]["concerns"]},
             "manager_context": None if mc is None else {"trade_history": {
                 k: mc["trade_history"][k] for k in ("completed_trades", "confidence")}}}
 
 
-def _evidence(x: dict) -> dict:
+def _evidence(x: dict, ratings: dict, names: dict[int, dict]) -> dict:
     ab, mine, theirs = x["asset_balance"], x["mine_detail"], x["theirs_detail"]
     return {**{k: x[k] for k in EVIDENCE_FIELDS},
+            "dual_value": x["dual_value"], "ratings": trade_ratings.evidence(ratings, x["sends"], x["receives"]),
+            "names": _weekly_names(x["dual_value"], names, (*x["sends"], *x["receives"])),
             "rationale": {"points": x["rationale"]["points"], "concerns": x["rationale"]["concerns"]},
             "asset_balance": {k: ab[k] for k in ("you_send", "they_send", "caveats")},
             "mine_detail": {k: mine[k] for k in ("team_id", "team_name", "fit_notes")},
@@ -332,11 +371,13 @@ def discover_summary(p: DiscoverParams = Depends()):
 @router.get("/discover/evidence")
 def discover_evidence(key: str, p: DiscoverParams = Depends()):
     """The evidence for one row of a discovery view (same query parameters plus the row's `key`): why the trade
-    is listed, its concerns, the free-agency comparison, the asset table, lineup fit and manager context."""
+    is listed, its concerns, the free-agency comparison, the asset table, lineup fit and manager context, the full
+    dual-value assessment, the 0-100 ratings (display only) and the names of the players in its weekly changes."""
     with db() as con:
         r = _resolve(con, p)
         view = _view(con, r, p)
-    row = next((x for x in view["results"] if x["key"] == key), None)
-    if row is None:
-        raise HTTPException(404, "That trade is not in this discovery view")
-    return _evidence(row)
+        row = next((x for x in view["results"] if x["key"] == key), None)
+        if row is None:
+            raise HTTPException(404, "That trade is not in this discovery view")
+        ratings = trade_ratings.load_ratings(con, r.lg["season"], row["sends"] + row["receives"])
+    return _evidence(row, ratings, view["names"])

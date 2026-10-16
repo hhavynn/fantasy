@@ -69,8 +69,9 @@ CATEGORIES = {
     "MUTUAL_PROJECTED_IMPROVEMENT": "Both starting lineups project to gain.",
     "IMPROVES_MINE_COSTS_THEIRS": "Your lineup gains; theirs projects to lose starting points.",
     "IMPROVES_MINE_THEIRS_UNCHANGED": "Your lineup gains; theirs is projected unchanged.",
-    "CONSOLIDATION": "Two-for-one in which the side receiving one player upgrades its starting lineup; "
-                     "the other side's depth, displacement and forced drops are shown.",
+    "CONSOLIDATION": "Uneven trade (2-for-1, 3-for-1, 3-for-2 and the reverse) in which the side receiving fewer "
+                     "players upgrades its starting lineup; the other side's depth, displacement and forced drops are "
+                     "shown.",
     "PLAYOFF_FOCUSED": "Your playoff delta is positive while your regular-season delta is not.",
     "REGULAR_SEASON_FOCUSED": "Your regular-season delta is positive while your playoff delta is not.",
 }
@@ -679,7 +680,12 @@ def _categories(shape: str, mine: dict, theirs: dict) -> list[str]:
     if m is not None and m > 0 and t is not None:
         out.append("MUTUAL_PROJECTED_IMPROVEMENT" if t > 0 else "IMPROVES_MINE_COSTS_THEIRS" if t < 0
                    else "IMPROVES_MINE_THEIRS_UNCHANGED")
-    consolidator = mine if shape == "2-for-1" else theirs if shape == "1-for-2" else None
+    # The side receiving FEWER players consolidates (shape "a-for-b": the anchor sends a, receives b): the
+    # anchor when b < a, the opponent when b > a. Exact 2-for-1 / 1-for-2 behave as before; the uneven
+    # heuristic shapes (3-for-1, 1-for-3, 3-for-2, 2-for-3) now qualify too. Only the row's category:
+    # `_may_match` and the stage-A bounds never see it.
+    sent, got = (int(x) for x in shape.split("-for-"))
+    consolidator = mine if got < sent else theirs if got > sent else None
     if consolidator is not None and consolidator["ros_delta"] is not None and consolidator["ros_delta"] > 0:
         out.append("CONSOLIDATION")
     reg, po = mine["regular_season_delta"], mine["playoff_delta"]
