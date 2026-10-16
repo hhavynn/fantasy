@@ -37,7 +37,7 @@ test("luckBars sorts by luck descending and marks your team", () => {
     leader({ team_id: 2, name: "B", schedule_luck: 2, is_mine: true }),
     leader({ team_id: 3, name: "C", schedule_luck: 0.5 }),
   ]);
-  assert.deepEqual(bars.map((b) => b.label), ["B (you)", "C", "A"]);
+  assert.deepEqual(bars.map((b) => b.label), ["B (default)", "C", "A"]);
   assert.deepEqual(bars.map((b) => b.value), [2, 0.5, -1]);
 });
 

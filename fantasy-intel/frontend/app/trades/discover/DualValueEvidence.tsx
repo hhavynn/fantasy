@@ -278,8 +278,8 @@ export function WeeklyEvidence({ dv, names }: { dv: DualValue; names: Names }) {
       <h4>Weekly lineup changes</h4>
       <p className={`${styles.small} faint`}>{basis}</p>
       <div className={styles.cols}>
-        <SideWeekly side={you} names={names} title={`${you.team_name ?? "Your team"} (you)`} />
-        <SideWeekly side={them} names={names} title={them.team_name ?? "Their team"} />
+        <SideWeekly side={you} names={names} title={you.team_name ?? "Team"} />
+        <SideWeekly side={them} names={names} title={them.team_name ?? "Partner"} />
       </div>
     </section>
   );

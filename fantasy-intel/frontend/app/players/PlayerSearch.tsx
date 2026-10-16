@@ -1,7 +1,8 @@
 import { PlayerIdentity } from "@/components/PlayerIdentity";
-import { Badge, Delta, EmptyState, Meter, Section, TrendArrow } from "@/components/ui";
+import { Badge, Delta, EmptyState, Rating, Section, TrendArrow } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { int, num } from "@/lib/format";
+import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
 import { hasInjuryDesignation, ownerBadge } from "./helpers";
 import styles from "./players.module.css";
 import type { PlayerListRow } from "./types";
@@ -24,7 +25,7 @@ export function SearchForm({ q, compact = false, autoFocus = false }: { q: strin
   );
 }
 
-const OPP_TITLE = "Opportunity score, 0–10: recent expected fantasy points (xFP) percentile at the position";
+const OPP_TITLE = `Opportunity rating, 0–100: ${RATING_DESCRIPTION.opportunity}. ${RATING_CAVEAT}`;
 
 export function ResultsTable({ rows, q, limit }: { rows: PlayerListRow[]; q: string; limit: number }) {
   if (rows.length === 0) {
@@ -40,9 +41,9 @@ export function ResultsTable({ rows, q, limit }: { rows: PlayerListRow[]; q: str
     <Section
       title={q ? `Results for “${q}”` : "Most-owned players"}
       actions={<span className="faint">{rows.length} {rows.length === 1 ? "player" : "players"}</span>}
-      footnote={q
+      footnote={`${q
         ? (rows.length >= limit ? `Showing the first ${limit} matches, most-owned first. Add more of the name to narrow them.` : "Most-owned first.")
-        : `The ${limit} most-owned players across ESPN. Search above to find anyone else.`}
+        : `The ${limit} most-owned players across ESPN. Search above to find anyone else.`} Opportunity is a 0–100 relative rank within position, not a projection.`}
       flush
     >
       <div className="table-wrap">
@@ -76,7 +77,7 @@ export function ResultsTable({ rows, q, limit }: { rows: PlayerListRow[]; q: str
                   <td className="num"><Delta value={p.fp_minus_xfp} /></td>
                   <td><TrendArrow label={p.trend_label} /></td>
                   <td><Badge value={p.market_signal} /></td>
-                  <td className="num"><Meter value={p.opportunity_score} label="Opportunity score" why="No usage data" /></td>
+                  <td className="num"><Rating rating={ratingFor(p, "opportunity")} kind="opportunity" variant="bar" why="No usage data" /></td>
                 </tr>
               );
             })}

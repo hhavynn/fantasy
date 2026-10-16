@@ -71,17 +71,33 @@ def load_extras(con, race: RaceData) -> dict:
             b = json.loads(b) if isinstance(b, str) else b
             if b is not None:
                 byes[row["espn_player_id"]] = [int(x) for x in b]
+    # Each team's own stored waiver recommendations (team_waiver_recommendations). A database built before that
+    # table existed only has the owner's rows (waiver_recommendations); they are then attributed to the owner alone,
+    # never shown for another team.
+    waivers_by_team: dict[int, list[dict]] = {}
+    if table_exists(con, "team_waiver_recommendations"):
+        for w in fetch_dicts(con, """SELECT team_id, espn_player_id, position, recommendation, waiver_score, suggested_drop_id
+                                     FROM (SELECT *, row_number() OVER (PARTITION BY team_id
+                                                   ORDER BY waiver_score DESC NULLS LAST, espn_player_id) AS rn
+                                           FROM team_waiver_recommendations WHERE league_id = ? AND season = ?
+                                             AND recommendation IN ('CLAIM', 'WAIT'))
+                                     WHERE rn <= ? ORDER BY team_id, rn""", [st.league_id, season, WAIVER_ROWS]):
+            waivers_by_team.setdefault(w.pop("team_id"), []).append(w)
     waivers = fetch_dicts(con, """SELECT espn_player_id, position, recommendation, waiver_score, suggested_drop_id
                                   FROM waiver_recommendations WHERE league_id = ? AND season = ?
                                     AND recommendation IN ('CLAIM', 'WAIT')
                                   ORDER BY waiver_score DESC NULLS LAST, espn_player_id LIMIT ?""",
                           [st.league_id, season, WAIVER_ROWS]) if table_exists(con, "waiver_recommendations") else []
+    if not waivers_by_team:
+        owner = next((t["team_id"] for t in race.teams if t["is_mine"]), None)
+        if owner is not None:
+            waivers_by_team[owner] = waivers
     league_synced = fetch_dicts(con, "SELECT synced_at FROM leagues WHERE league_id = ? AND season = ?",
                                 [st.league_id, season])
     proj_synced = fetch_dicts(con, """SELECT max(synced_at) AS t FROM espn_player_weekly_points
                                       WHERE season = ? AND projected_points IS NOT NULL""", [season]) \
         if table_exists(con, "espn_player_weekly_points") else []
-    return {"bye_weeks": byes, "waivers": waivers,
+    return {"bye_weeks": byes, "waivers": waivers, "waivers_by_team": waivers_by_team,
             "league_synced_at": league_synced[0]["synced_at"] if league_synced else None,
             "projections_synced_at": proj_synced[0]["t"] if proj_synced else None}
 
@@ -513,8 +529,11 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
     add_drop.sort(key=lambda x: (-(x["known_ros_delta"] or 0), x["drop_marginal"] or 0, x["drop"]["espn_player_id"],
                                  x["add"]["espn_player_id"]))
     waiver_checks = []
-    if teams_meta[tid]["is_mine"]:
-        for w in extras.get("waivers", []):
+    by_team = extras.get("waivers_by_team")
+    team_waivers = by_team.get(tid, []) if by_team is not None else \
+        (extras.get("waivers", []) if teams_meta[tid]["is_mine"] else [])
+    if team_waivers:
+        for w in team_waivers:
             add = fa_by_id.get(w["espn_player_id"])
             drop = next((p for p in roster if p.espn_player_id == w["suggested_drop_id"]), None)
             row = {"add_id": w["espn_player_id"], "add_name": names.get(w["espn_player_id"]), "position": w["position"],

@@ -24,7 +24,7 @@ export function signedText(v: number | null | undefined, digits = 2): string {
 export function luckBars(rows: readonly LlLeader[]): BarDatum[] {
   return [...rows]
     .sort((a, b) => b.schedule_luck - a.schedule_luck)
-    .map((r) => ({ label: r.is_mine ? `${r.name} (you)` : r.name, value: r.schedule_luck }));
+    .map((r) => ({ label: r.is_mine ? `${r.name} (default)` : r.name, value: r.schedule_luck }));
 }
 
 /**

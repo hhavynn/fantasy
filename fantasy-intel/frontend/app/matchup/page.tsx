@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
+import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { ProjectionNotice } from "@/components/ProjectionNotice";
 import { EmptyState, Method, Notice, PageHeader, Tabs } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -10,6 +11,7 @@ import {
   availableViews, chooseView, matchupHref, parseWeekParam, statusLabel, switcherWeeks, type LineupView,
 } from "@/lib/matchup";
 import type { Matchup } from "@/lib/matchup-types";
+import { isUnknownTeam, readTeamSelection, withTeamId } from "@/lib/team-perspective";
 import { Bench } from "./Bench";
 import { Lineups, SoloLineup } from "./Lineups";
 import { Scoreboard } from "./Scoreboard";
@@ -32,14 +34,22 @@ function Shell({ title, children }: { title: string; children: ReactNode }) {
 export default async function MatchupPage({ searchParams }: PageProps<"/matchup">) {
   const sp = await searchParams;
   const wk = parseWeekParam(sp.week);
-  const teamParam = typeof sp.team_id === "string" && sp.team_id !== "" ? sp.team_id : null;
+  const sel = readTeamSelection(sp);
+  const teamParam = sel.kind === "team" ? String(sel.id) : null;
 
-  if (wk.kind === "invalid" || (teamParam !== null && !/^\d{1,6}$/.test(teamParam))) {
+  if (sel.kind === "invalid") {
     return (
       <Shell title="Matchup">
-        <Notice tone="caution" title={wk.kind === "invalid" ? `“${wk.raw}” is not a week` : "That team id is not valid"}>
-          {wk.kind === "invalid" ? "Weeks are whole numbers, like ?week=6." : "Team ids are whole numbers."}{" "}
-          <Link href="/matchup">Go to this week&apos;s matchup</Link>
+        <UnknownTeam path="/matchup" sel={sel} />
+      </Shell>
+    );
+  }
+  if (wk.kind === "invalid") {
+    return (
+      <Shell title="Matchup">
+        <Notice tone="caution" title={`“${wk.raw}” is not a week`}>
+          Weeks are whole numbers, like ?week=6.{" "}
+          <Link href={matchupHref({ team: teamParam })}>Go to this week&apos;s matchup</Link>
         </Notice>
       </Shell>
     );
@@ -47,16 +57,22 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
 
   const qs = new URLSearchParams();
   if (wk.kind === "ok") qs.set("week", String(wk.week));
-  if (teamParam) qs.set("team_id", teamParam);
-  const res = await api<Matchup>(withSource(`/api/matchup${qs.size ? `?${qs}` : ""}`, await getProjectionSource()));
+  const res = await api<Matchup>(withTeamId(withSource(`/api/matchup${qs.size ? `?${qs}` : ""}`, await getProjectionSource()), sel));
 
   if (!res.ok) {
+    if (isUnknownTeam(res, sel)) {
+      return (
+        <Shell title="Matchup">
+          <UnknownTeam path="/matchup" sel={sel} detail={res.error} />
+        </Shell>
+      );
+    }
     if (res.kind === "http" && (res.status === 422 || res.status === 404)) {
       return (
         <Shell title="Matchup">
           <Notice tone="caution" title={res.status === 404 ? "No such team" : "That week is outside the season"}>
             {res.error}{" "}
-            <Link href={matchupHref({ team_id: res.status === 422 ? teamParam : null })}>Go to {res.status === 422 ? "the current week" : "your matchup"}</Link>
+            <Link href={matchupHref({ team: res.status === 422 ? teamParam : null })}>Go to {res.status === 422 ? "the current week" : "the default matchup"}</Link>
           </Notice>
         </Shell>
       );
@@ -72,7 +88,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
   const opp = m.opponent;
   const view = chooseView(sp.lineup, m);
   const views = availableViews(m);
-  const keep = { team_id: teamParam };
+  const keep = { team: teamParam };
   const weeks = switcherWeeks(m.weeks_available, m.week);
   const prev = weeks.filter((w) => w < m.week).at(-1);
   const next = weeks.find((w) => w > m.week);
@@ -85,18 +101,20 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
   return (
     <div className="stack">
       <PageHeader
-        eyebrow="My team"
+        eyebrow={m.me.name}
         title={`Week ${m.week} matchup`}
         meta={[
           m.league.name, phase, opp ? statusLabel(m.status) : null, m.week === here ? "current week" : null,
           m.period_weeks ? `Matchup period ${m.matchup_period} spans weeks ${m.period_weeks[0]}–${m.period_weeks[m.period_weeks.length - 1]}` : null,
         ].filter(Boolean).join(" · ")}
         actions={
-          <div className={styles.weekNav}>
-            {prev ? <Link className="chip" href={matchupHref({ week: prev, ...keep })}>← Week {prev}</Link> : null}
-            {m.week !== here ? <Link className="chip" href={matchupHref(keep)}>This week</Link> : null}
-            {next ? <Link className="chip" href={matchupHref({ week: next, ...keep })}>Week {next} →</Link> : null}
-          </div>
+          <TeamPerspective path="/matchup" sp={sp} current={m.me.team_id}>
+            <div className={styles.weekNav}>
+              {prev ? <Link className="chip" href={matchupHref({ week: prev, ...keep })}>← Week {prev}</Link> : null}
+              {m.week !== here ? <Link className="chip" href={matchupHref(keep)}>This week</Link> : null}
+              {next ? <Link className="chip" href={matchupHref({ week: next, ...keep })}>Week {next} →</Link> : null}
+            </div>
+          </TeamPerspective>
         }
       >
         <Tabs

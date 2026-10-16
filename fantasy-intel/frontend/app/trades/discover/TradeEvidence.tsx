@@ -77,7 +77,7 @@ function Evidence({ e, analyzer }: { e: DEvidence; analyzer: string }) {
       {dv && <RatingsEvidence ratings={e.ratings} sends={e.sends} receives={e.receives} names={names ?? namesFromAssets(dv)} />}
       {dv && <WeeklyEvidence dv={dv} names={names} />}
       <div className={styles.cols}>
-        {[{ s: e.mine_detail, t: `${e.mine_detail.team_name} (you)` }, { s: e.theirs_detail, t: e.theirs_detail.team_name ?? "Them" }].map(({ s, t }) => (
+        {[{ s: e.mine_detail, t: e.mine_detail.team_name ?? "Analyzed team" }, { s: e.theirs_detail, t: e.theirs_detail.team_name ?? "Partner" }].map(({ s, t }) => (
           <div key={s.team_id}>
             <h4>{t}</h4>
             <ul className={styles.list}>{s.fit_notes.map((n, i) => <li key={i}>{n}</li>)}</ul>

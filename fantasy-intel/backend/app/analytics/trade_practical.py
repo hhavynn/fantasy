@@ -374,8 +374,9 @@ def _lens_sections(mode: str, ranked: list[dict], limit: int, excluded: dict) ->
 
 def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", opponent: int | None = None,
              limit: int = 10, strictness: str = "standard", sort: str | None = None, category: str | None = None,
-             heuristic: bool = True, board: FreeAgencyBoard | None = None) -> dict:
-    """Rows for one mode, assessed and explained. Every shown row is re-run through the manual
+             heuristic: bool = True, board: FreeAgencyBoard | None = None, anchor_label: str = "You") -> dict:
+    """Rows for one mode, assessed and explained. `anchor_label` names the anchor team in dual-value text: "You"
+    only for the owner's team, its name when another team is being analyzed (league-wide perspective). Every shown row is re-run through the manual
     evaluator (detail) and carries consistent_with_manual_evaluator and its `dual_value`. The lenses
     assess their whole candidate pool with the full evaluator first; the legacy modes only assess the
     rows they show."""
@@ -442,7 +443,7 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
     ctx = dual.anchor_fa_context(fa_board, state, ts.anchor)          # the anchor's best free agent, once per view
     dual_value = lambda d: dual.for_evaluation(   # noqa: E731
         state, window, ts.anchor, d["sends"], d["receives"], d["mine_detail"], d["theirs_detail"], phase=phase,
-        asset_board=asset_board, fa_board=fa_board, fa_context=ctx, labels=("You", d["opponent_name"] or "They"))
+        asset_board=asset_board, fa_board=fa_board, fa_context=ctx, labels=(anchor_label, d["opponent_name"] or "They"))
 
     assessed, raw = [], {}
     for row in rows:

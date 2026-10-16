@@ -596,7 +596,11 @@ def test_api_different_team_selection_anchors_on_that_team_in_each_new_mode(api)
         key = rows[0]["key"]
         ev = api.get("/api/trades/discover/evidence", params={"mode": mode, "team_id": other, "key": key}).json()
         assert ev["anchor_team_id"] == other and ev["dual_value"]["lineup"]["you"]["team_id"] == other
+        assert ev["dual_value"]["lineup"]["you"]["label"] == body["anchor"]["name"] != "You"     # not the owner
         mine = api.get("/api/trades/discover/summary", params={"mode": mode}).json()
+        mine_ev = api.get("/api/trades/discover/evidence",
+                          params={"mode": mode, "key": next(x for v in mine["sections"].values() for x in v)["key"]}).json()
+        assert mine_ev["dual_value"]["lineup"]["you"]["label"] == "You"
         assert mine["anchor"]["team_id"] == default
         assert {x["key"] for v in mine["sections"].values() for x in v} != {x["key"] for x in rows}
 

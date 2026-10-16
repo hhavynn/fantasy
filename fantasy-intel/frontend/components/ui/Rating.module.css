@@ -1,0 +1,2 @@
+.legacy { color: var(--ink-muted); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: help; }
+.text { font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -213,7 +213,7 @@ function Filters({ d }: { d: DiscoveryContext }) {
           <div className={styles.row}>
             <label className={styles.field}>Team
               <select name="team" defaultValue={qy.team_id}>
-                {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
+                {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (default)" : ""}</option>)}
               </select>
             </label>
             {modeUsesPhase(qy.mode) && (
@@ -257,7 +257,7 @@ function Filters({ d }: { d: DiscoveryContext }) {
           </fieldset>
           <p className={styles.footnote}>
             * Larger shapes come from a bounded beam search: every listed trade is evaluated exactly, but the list is not a proven top list.
-            Shapes are from {d.anchor.name}&apos;s side: 3-for-1 = you send three, receive one.
+            Shapes are from {d.anchor.name}&apos;s side: 3-for-1 = {d.anchor.name} sends three, receives one.
           </p>
         </div>
       </details>
@@ -401,8 +401,8 @@ function Results({ d, rows, total, excluded, q, sp }: {
                 <th scope="col" title="What the team sends, and what the partner gets">Gives</th>
                 <th scope="col" title="What the team receives, and what the partner gives">Gets</th>
                 {th("asset", "Asset balance", { title: "Smaller package as a share of the larger, in points above replacement; who the imbalance favours" })}
-                {th("my_gain", "Team Δ", { align: "right", title: "Change in the team's projected starting points, rest of season" })}
-                {th("their_gain", "Partner Δ", { align: "right", title: "Change in the partner's projected starting points, rest of season" })}
+                {th("my_gain", "Team Δ", { align: "right", title: "Change in the analyzed team's projected starting points, rest of season" })}
+                {th("their_gain", "Partner Δ", { align: "right", title: "Change in the trade partner's projected starting points, rest of season" })}
                 {th("min_side", "Smaller side", { align: "right", title: "The smaller of the two rest-of-season deltas" })}
                 <th scope="col" title="The most important change to each starting lineup">Lineup change</th>
                 {th("verdict", "Verdict & checks", { title: "Sorted in the backend's verdict order, best first", defaultDir: "asc" })}
@@ -482,7 +482,7 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
           {dv?.you_change
             ? <>
               {dv.you_change}
-              {dv.them_change && <span className={styles.subline}><b>Them:</b> {dv.them_change}</span>}
+              {dv.them_change && <span className={styles.subline}><b>Partner:</b> {dv.them_change}</span>}
             </>
             : <span className="missing" title="No lineup-change summary for this trade (older backend or classic view)">—</span>}
         </td>
@@ -550,7 +550,7 @@ function Managers({ d }: { d: DiscoverySummary }) {
             <tr>
               <th>Manager</th><th>Their weaker positions</th>
               <th>Best {d.query.mode === "practical" ? "practical " : ""}trade in this view</th>
-              <th className="num">Team / partner</th><th><VisuallyHidden>Filter to this manager</VisuallyHidden></th>
+              <th className="num" title="Rest-of-season change: analyzed team / partner">Team / partner</th><th><VisuallyHidden>Filter to this manager</VisuallyHidden></th>
             </tr>
           </thead>
           <tbody>
