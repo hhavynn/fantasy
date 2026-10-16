@@ -36,7 +36,7 @@ def _run(ep: Episode) -> None:
         color = V.POSITIVE
     elif fmt in ("flame", "praise"):      # the stat line itself, and where it ranks
         from . import flame
-        kicker, stat, label = flame.thumbnail_text(p, claims)
+        kicker, stat, label = flame.thumbnail_text(p, claims, script.get("structure"))
         color = V.NEGATIVE if fmt == "flame" else V.POSITIVE
     else:
         kicker = stat = label = None

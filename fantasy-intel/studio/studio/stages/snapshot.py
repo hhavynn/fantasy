@@ -29,7 +29,12 @@ SCHEDULE_COLUMNS = (
 # source table also carries fantasy points, which never enter a snapshot.
 PASSING_COLUMNS = (
     "week", "player_id", "team", "opponent_team", "attempts", "completions", "passing_yards", "passing_air_yards",
-    "passing_yards_after_catch", "passing_epa", "sacks_suffered",
+    "passing_yards_after_catch", "passing_epa", "sacks_suffered", "passing_tds", "passing_interceptions",
+)
+# Everyone's box score per game (catches, yards, touchdowns), for the flame / praise series' football lines.
+BOX_COLUMNS = (
+    "week", "player_id", "team", "position", "receptions", "receiving_yards", "receiving_tds", "carries",
+    "rushing_yards", "rushing_tds",
 )
 TEAM_CONTEXT_COLUMNS = ("team", "through_week", "games", "proe", "neutral_pass_rate", "dropbacks")
 DEFENSE_CONTEXT_COLUMNS = (
@@ -77,6 +82,11 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
         order by week, player_id""", [season, week]))
     passing = [{("gsis_id" if k == "player_id" else "opponent" if k == "opponent_team" else k): v
                 for k, v in r.items()} for r in passing]
+    box = _round(_rows(con, f"""
+        select {", ".join(BOX_COLUMNS)} from {{nfl_weekly_stats}}
+        where season = ? and week < ? and season_type = 'REG' and position in ('QB', 'RB', 'WR', 'TE')
+        order by week, player_id""", [season, week]))
+    box = [{("gsis_id" if k == "player_id" else k): v for k, v in r.items()} for r in box]
     ids = sorted({r["gsis_id"] for r in usage} | {r["gsis_id"] for r in passing})
     players = _rows(con, """select gsis_id, display_name, position, espn_id, draft_round, years_of_experience
                             from {nfl_players}
@@ -115,7 +125,7 @@ def build_snapshot(con: duckdb.DuckDBPyConnection, season: int, week: int) -> di
             "player_week_usage": usage, "nfl_players": players, "nfl_schedules": schedules,
             "team_context": team_ctx, "defense_context": defense_ctx, "nfl_injuries": injuries,
             "nfl_rosters_weekly": rosters, "jerseys": jerseys, "nfl_team_week": team_weeks,
-            "qb_week_passing": passing,
+            "qb_week_passing": passing, "player_week_box": box,
         },
     }
 

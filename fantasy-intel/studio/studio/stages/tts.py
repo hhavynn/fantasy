@@ -95,7 +95,8 @@ def _run(ep: Episode) -> None:
         for i, part in enumerate(parts):
             # each part trimmed to its speech, then the planned silence: within a line, part_pause; after it,
             # the line's own pause
-            gap = seg.get("part_pause", 0.3) if i < len(parts) - 1 else tail
+            gap = (seg["part_pauses"][i] if "part_pauses" in seg else seg.get("part_pause", 0.3)) \
+                if i < len(parts) - 1 else tail
             a, w, m = synthesize(pipe, apply_pronunciations(part, lexicon), {**cfg, "segment_tail_silence": gap},
                                  seg.get("speed"))
             off = 0.0 if audio is None else len(audio) / cfg["sample_rate"]

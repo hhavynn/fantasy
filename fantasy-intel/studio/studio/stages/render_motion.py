@@ -499,8 +499,12 @@ def _run(ep: Episode) -> None:
         events += sound_events(sc, sc["_start"], sc["_dur"], ctx)
 
     sh = ep.cfg["shorts"]
-    mixed = A.mix(A.upsample(np.concatenate(voice), sr), events, sh.get("music", True), sh.get("music_db", -22),
-                  sh.get("sfx_db", -12), MOOD.get(story, FPS.MOOD.get(story, "drive")))
+    if script["structure"].get("series"):       # the flame / praise series: its format's mood, silences, sounds
+        from .. import series_audio as SA
+        mixed = SA.mix(A.upsample(np.concatenate(voice), sr), events, script["structure"], scenes, sh)
+    else:
+        mixed = A.mix(A.upsample(np.concatenate(voice), sr), events, sh.get("music", True), sh.get("music_db", -22),
+                      sh.get("sfx_db", -12), MOOD.get(story, FPS.MOOD.get(story, "drive")))
     work = ep.path("work")
     work.mkdir(parents=True, exist_ok=True)
     sf.write(work / "mix.wav", mixed, A.SR, subtype="PCM_16")
@@ -593,7 +597,8 @@ def run(ep: Episode) -> None:
     shot = headshots.record(ep.cfg, read_json(ep.path("facts.json"))["players"][0])
     from pathlib import Path
     from ..core import sha256_file
-    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A, FPS)}
+    from .. import series_audio as SA, series_scenes as SS
+    code = {m.__name__: sha256_file(Path(m.__file__)) for m in (FS, S, M, A, FPS, SS, SA)}
     run_stage(ep, "render", VERSION, {"video": ep.cfg["video"], "shorts": ep.cfg["shorts"], "caption": CAPTION,
                                       "code": code,
                                       "headshot": shot and shot["sha256"]},

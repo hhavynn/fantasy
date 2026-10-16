@@ -79,7 +79,11 @@ uv run make-episode --week 6 --flame-praise --player bo-nix  # one player's stro
 ```
 
 A punchy one-player, one-game Short: roast a historically bad usage or efficiency line (flame) or hype a monster
-one (praise). Trash talk about the stat line, never about the person. Code: `stages/flame.py` (selection, claims,
+one (praise). It is now an NFL entertainment series: `stages/showrunner.py` picks a football angle and one of five
+formats (roast monologue, courtroom parody, comparison, main character, fan meltdown) per story and recent history,
+writes `brief.md`, and `--storyboard` previews it before any render; see
+[`../docs/flame-praise-series/README.md`](../docs/flame-praise-series/README.md). `--treatment classic` renders the
+first template below. Trash talk about the stat line, never about the person. Code: `stages/flame.py` (selection, claims,
 script) and `studio/flame_scenes.py` (ember / spotlight looks; hook card, a strip of every position game, his
 season game by game, a stat receipt), ending on the shared `decision` scene.
 

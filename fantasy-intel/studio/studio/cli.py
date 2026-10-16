@@ -6,6 +6,7 @@
     uv run make-episode --week 6 --format long --force script,tts
     uv run make-episode --week 6 --flame-praise           # the latest game's flame and praise Shorts
     uv run make-episode --week 6 --flame-praise --player bo-nix
+    uv run make-episode --week 6 --flame-praise --player bo-nix --treatment courtroom --storyboard
 
 Stages skip themselves when their inputs are unchanged, so a rerun only redoes what changed. QC gates run
 last; the command exits non-zero, and upload stays blocked, if any gate fails. Each episode gets a
@@ -111,10 +112,13 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
 
 
 def make_flame_praise(cfg: Config, season: int, week: int, force: set[str], only: str | None,
-                      hook: str | None = None) -> int:
+                      hook: str | None = None, treatment: str | None = None, storyboard: bool = False,
+                      variant: str | None = None) -> int:
     """The latest game's strongest flame (a historically bad usage or efficiency line) and praise (a monster one),
-    chosen by stages/flame.py; the full candidate board, with every number behind each pick, goes to
-    flame_praise.md in the week's folder."""
+    chosen by stages/flame.py and told by stages/showrunner.py in the format that fits the story; the candidate
+    board goes to flame_praise.md in the week's folder. --storyboard stops after the brief and script and writes
+    storyboard.png (no narration, no render). --variant writes <slug>-<variant> as an experiment beside the
+    original, kept out of the channel history."""
     week_ep = Episode(season, week, "short", cfg, force=force)
     week_ep.dir.mkdir(parents=True, exist_ok=True)
     snapshot.run(week_ep)
@@ -124,24 +128,40 @@ def make_flame_praise(cfg: Config, season: int, week: int, force: set[str], only
     if not picks:
         print(f"no flame or praise case{' for ' + repr(only) if only else ''}; see {week_ep.path('flame_praise.md')}")
         return 2
-    results = []
+    results, recent = [], []
     for c in picks:
-        ep = Episode(season, week, "short", cfg, force=force, slug=c["slug"])
+        slug = c["slug"] + (f"-{variant}" if variant else "")
+        ep = Episode(season, week, "short", cfg, force=force, slug=slug)
         ep.dir.mkdir(parents=True, exist_ok=True)
         print(f"\nshort {ep.id}: {c['name']} ({c['kind']}, {c['lead']['metric']})")
         src, dst = week_ep.path("snapshot.json"), ep.path("snapshot.json")
         if not dst.exists() or sha256_file(dst) != sha256_file(src):
             shutil.copyfile(src, dst)
         story_json = {"gsis_id": c["gsis_id"], "name": c["name"], "role": c["kind"], "team": c["team"],
-                      "slug": c["slug"], "order": c["order"], "format": "flame_praise"}
+                      "slug": slug, "order": c["order"], "format": "flame_praise", "treatment": treatment,
+                      "recent_series": recent}
+        if variant:                                # an experiment beside the original, not a new episode
+            story_json["variant_of"] = f"{season}-w{week:02d}-short-{c['slug']}"
         if not ep.path("story.json").exists() or read_json(ep.path("story.json")) != story_json:
             write_json(ep.path("story.json"), story_json)
-        for name, run in (("facts", flame.facts_run), ("script", lambda e: flame.script_run(e, hook)),
-                          ("tts", tts.run), ("render", render_motion.run), ("thumbnail", thumbnail.run),
-                          ("metadata", metadata.run)):
-            t0 = time.time()
-            run(ep)
-            ep.log(f"  [{name} {time.time() - t0:.1f}s]")
+        stages = [("facts", flame.facts_run), ("script", lambda e: flame.script_run(e, hook))]
+        if not storyboard:
+            stages += [("tts", tts.run), ("render", render_motion.run), ("thumbnail", thumbnail.run),
+                       ("metadata", metadata.run)]
+        try:
+            for name, run in stages:
+                t0 = time.time()
+                run(ep)
+                ep.log(f"  [{name} {time.time() - t0:.1f}s]")
+        except flame.NotEntertaining as exc:
+            print(f"  skipped: fails the entertainment test ({exc}); see {ep.path('brief.md')}")
+            continue
+        if read_json(ep.path("brief.json")).get("series"):
+            recent.append(read_json(ep.path("script.json"))["structure"])
+        if storyboard:
+            from .stages import showrunner
+            print(f"  storyboard: {showrunner.storyboard(ep)}")
+            continue
         results.append((ep, c, finish(ep)))
     failed = [ep.id for ep, _, ok in results if not ok]
     for ep, c, ok in results:
@@ -163,6 +183,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--flame-praise", action="store_true",
                     help="Shorts only: the latest game's flame (historically bad line) and praise (monster line) "
                          "Shorts instead of the usage stories; with --player, that player's strongest case")
+    ap.add_argument("--treatment", help="flame/praise only: force a format (roast_monologue, courtroom, comparison, "
+                                       "main_character, fan_meltdown; classic = the first template)")
+    ap.add_argument("--variant", help="flame/praise only: write <slug>-<variant> beside the original, out of history")
+    ap.add_argument("--storyboard", action="store_true",
+                    help="flame/praise only: brief, script and storyboard.png, no narration or render")
     ap.add_argument("--presenter", choices=["off", "hook", "hybrid"],
                     help="Shorts only, EXPERIMENTAL: also write final_presenter_<mode>.mp4 with the AI host "
                          "(default: config.toml [presenter] mode, which is off)")
@@ -174,7 +199,8 @@ def main(argv: list[str] | None = None) -> int:
     season = args.season or cfg.season
     force = {s.strip() for s in args.force.split(",") if s.strip()}
     if args.flame_praise:
-        return make_flame_praise(cfg, season, args.week, force, args.player, args.hook)
+        return make_flame_praise(cfg, season, args.week, force, args.player, args.hook, args.treatment,
+                                 args.storyboard, args.variant)
     if args.format == "short":
         suffix = (f"-hook-{args.hook}" if args.hook else "") + (f"-voice-{args.voice}" if args.voice else "")
         return make_shorts(cfg, season, args.week, force, args.player, args.hook, suffix, presenter_mode)

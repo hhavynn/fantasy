@@ -91,8 +91,15 @@ SNAPS = ("offense_pct", "snap share", "SNAP SHARE")
 
 # --------------------------------------------------------------------------------------- data access
 
+TABLES = {"qb": "qb_week_passing", "usage": "player_week_usage", "box": "player_week_box"}
+# Rates told as one number (num / den over the rows): a game, his season pooled, or the league's pooled.
+RATES = {"adot": ("qb", "passing_air_yards", "attempts"), "ypa": ("qb", "passing_yards", "attempts"),
+         "yac_share": ("qb", "passing_yards_after_catch", "passing_yards")}
+CONSTANTS = {"season_min_attempts": 100}     # "quarterbacks with 100+ attempts this season"
+
+
 def _table(snap: dict, name: str) -> list[dict]:
-    return snap["tables"].get("qb_week_passing" if name == "qb" else "player_week_usage", [])
+    return snap["tables"].get(TABLES[name], [])
 
 
 def _pos_rows(snap: dict, pos: str) -> list[dict]:
@@ -168,6 +175,42 @@ def evaluate(snap: dict, src: dict):
         return QUALIFY[src["position"]][1]
     if k == "fp_team":
         return _row(snap, src["table"], src["gsis_id"], src["week"])["team"]
+    if k == "fp_rate":                       # a rate over named weeks of his games, pooled (one week = that game)
+        table, num, den = RATES[src["rate"]]
+        rows = [_row(snap, table, src["gsis_id"], w) for w in src["weeks"]]
+        return sum(r[num] for r in rows) / sum(r[den] for r in rows)
+    if k == "fp_league_rate":                # every qualifying game at the position through the week, pooled
+        table, num, den = RATES[src["rate"]]
+        rows = [r for r in _pos_rows(snap, src["position"]) if r["week"] <= src["through"]
+                and qualifies(src["position"], r)]
+        return sum(r[num] for r in rows) / sum(r[den] for r in rows)
+    if k in ("fp_season_rate_rank", "fp_season_rate_count"):
+        # his season-pooled rate against every player at the position with at least min_den of the denominator
+        table, num, den = RATES[src["rate"]]
+        tot: dict[str, list[float]] = {}
+        for r in _pos_rows(snap, src["position"]):
+            if r["week"] <= src["through"]:
+                t = tot.setdefault(r["gsis_id"], [0.0, 0.0])
+                t[0] += r[num] or 0
+                t[1] += r[den] or 0
+        rates = {g: n / d for g, (n, d) in tot.items() if d >= src["min_den"]}
+        if k == "fp_season_rate_count":
+            return len(rates)
+        mine = rates[src["gsis_id"]]
+        return 1 + _beyond(list(rates.values()), mine, src["direction"])
+    if k == "fp_constant":
+        return CONSTANTS[src["name"]]
+    if k in ("fp_points", "fp_result"):
+        g = next(g for g in snap["tables"]["nfl_schedules"] if g["week"] == src["week"]
+                 and src["team"] in (g["home_team"], g["away_team"]))
+        home = g["home_team"] == src["team"]
+        mine, theirs = (g["home_score"], g["away_score"]) if home else (g["away_score"], g["home_score"])
+        if k == "fp_points":
+            return theirs if src.get("side") == "opponent" else mine
+        return "won" if mine > theirs else "lost" if mine < theirs else "tied"
+    if k == "fp_teams_fewer_targets":       # NFL teams whose whole offense drew fewer targets that week than he did
+        mine = _row(snap, "usage", src["gsis_id"], src["week"])["targets"]
+        return sum(1 for r in snap["tables"]["nfl_team_week"] if r["week"] == src["week"] and r["team_targets"] < mine)
     raise ValueError(f"unknown flame claim kind {k!r}")
 
 
@@ -193,6 +236,23 @@ def describe(src: dict) -> str:
         return f"volume floor for a {src['position']} game to count ({QUALIFY[src['position']][0]})"
     if k == "fp_team":
         return f"{src['table']} team, week {src['week']}"
+    if k == "fp_rate":
+        _, num, den = RATES[src["rate"]]
+        return f"sum {num} / sum {den}, his weeks {src['weeks']}"
+    if k == "fp_league_rate":
+        _, num, den = RATES[src["rate"]]
+        return f"sum {num} / sum {den} over every qualifying {src['position']} game, weeks 1-{src['through']}"
+    if k in ("fp_season_rate_rank", "fp_season_rate_count"):
+        _, num, den = RATES[src["rate"]]
+        what = "rank (1 = lowest)" if src.get("direction") == "flame" else \
+            "rank (1 = highest)" if k.endswith("rank") else "number of players"
+        return f"season {num}/{den} per {src['position']} with {src['min_den']}+ {den}, weeks 1-{src['through']}: {what}"
+    if k == "fp_constant":
+        return f"selection constant {src['name']}"
+    if k in ("fp_points", "fp_result"):
+        return f"nfl_schedules final score ({src['team']}, week {src['week']})"
+    if k == "fp_teams_fewer_targets":
+        return f"nfl_team_week.team_targets below his week {src['week']} targets"
     return k
 
 
@@ -383,6 +443,8 @@ def build_facts(snap: dict, story: dict) -> dict:
          "selection": {k: case[k] for k in ("strength", "prior_weeks")} | {"lead": lead}}
     if pos != "QB":
         p["snaps"] = val("offense_pct", week, f"snap share, week {week}", "pct")
+    from .showrunner import enrich
+    enrich(book, snap, p)                  # the game, the box score and the story angles (showrunner.py)
     return {"season": snap["season"], "week": snap["week"], "data_through_week": snap["data_through_week"],
             "snapshot_sha256": snap["content_sha256"],
             "episode": {"week": book.add("episode week", "week", {"kind": "episode_week"})},
@@ -579,19 +641,21 @@ def editorial_row(p: dict, words: int) -> dict:
     return row
 
 
-def _script_run(ep: Episode, used: dict, hook: str | None) -> None:
+def _finish_beats(beats: list[dict], claims: dict) -> list[dict]:
+    """Pause markers to spoken parts: `‖` a short breath, `⏸` the longer beat before a punchline."""
     from .script import PLACEHOLDER, fill
-    from .story import PAUSE, PAUSE_SECONDS, WORDS_PER_SECOND
-    facts = read_json(ep.path("facts.json"))
-    claims = {c["id"]: c for c in facts["claims"]}
-    beats, titles, structure = compose(facts, claims, used, hook)
+    from .showrunner import BEAT, BEAT_PAUSE, PART_PAUSE
+    from .story import PAUSE
     shots = []
     for b in beats:
-        parts = b["text_template"].split(PAUSE)
+        chunks = re.split(f"({PAUSE}|{BEAT})", b["text_template"])
+        parts, gaps = chunks[0::2], [BEAT_PAUSE if m == BEAT else PART_PAUSE for m in chunks[1::2]]
         b["text_template"] = "".join(parts)
         if len(parts) > 1:
-            b["spoken_parts"] = [fill(x.strip(), claims, "spoken") for x in parts if x.strip()]
-            b["part_pause"] = PAUSE_SECONDS
+            keep = [i for i, x in enumerate(parts) if x.strip()]
+            b["spoken_parts"] = [fill(parts[i].strip(), claims, "spoken") for i in keep]
+            b["part_pauses"] = [gaps[i] if i < len(gaps) else PART_PAUSE for i in keep]
+            b["part_pause"] = PART_PAUSE
         b["text_display"] = fill(b["text_template"], claims, "display")
         b["text_spoken"] = fill(b["text_template"], claims, "spoken")
         b["claims_used"] = sorted(set(PLACEHOLDER.findall(b["text_template"])))
@@ -599,6 +663,14 @@ def _script_run(ep: Episode, used: dict, hook: str | None) -> None:
         b["target_words"] = len(b["text_spoken"].split())
         b["shot"] = f"shot_{b['id']}"
         shots.append({"id": b["shot"], "segment": b["id"], **b["scene"]})
+    return shots
+
+
+def _write_script(ep: Episode, facts: dict, claims: dict, beats: list[dict], titles: list[str], structure: dict,
+                  note: str) -> int:
+    from .script import PLACEHOLDER, fill
+    from .story import WORDS_PER_SECOND
+    shots = _finish_beats(beats, claims)
     used_ids = sorted({c for b in beats for c in b["claims_used"] + b["claims_on_screen"]} |
                       {c for t in titles for c in PLACEHOLDER.findall(t)})
     words = sum(len(b["text_spoken"].split()) for b in beats)
@@ -610,32 +682,74 @@ def _script_run(ep: Episode, used: dict, hook: str | None) -> None:
         "made_for_kids": False, "synthetic_voice": True,
         "cta": {"url": ep.cfg["cta"]["url"] or None, "text": beats[-1]["text_display"]},
         "facts_sha256": sha256_bytes(canonical_json(facts).encode()),
-        "llm": {"provider": "none", "model": "deterministic story engine", "calls": [],
-                "note": "Flame / praise Shorts are composed from selection rules and claims; no language model."},
+        "llm": {"provider": "none", "model": "deterministic story engine", "calls": [], "note": note},
     })
-    write_json(ep.path("editorial.json"), editorial_row(facts["players"][0], words))
-    ep.log(f"  story: {structure['angle']} / hook {structure['hook']}, {len(beats)} beats, {words} words")
+    return words
+
+
+class NotEntertaining(RuntimeError):
+    """The brief failed the entertainment test: not made for this series."""
+
+
+def _script_run(ep: Episode, used: dict, hook: str | None) -> None:
+    from . import showrunner as SR
+    facts = read_json(ep.path("facts.json"))
+    claims = {c["id"]: c for c in facts["claims"]}
+    story = read_json(ep.path("story.json"))
+    p = facts["players"][0]
+    if story.get("treatment") == "classic":            # the first flame / praise template, kept for comparison
+        beats, titles, structure = compose(facts, claims, used, hook)
+        words = _write_script(ep, facts, claims, beats, titles, structure,
+                              "Flame / praise Shorts are composed from selection rules and claims; no language model.")
+        write_json(ep.path("editorial.json"), editorial_row(p, words))
+        write_json(ep.path("brief.json"), {"series": None, "treatment": "classic"})
+        ep.log(f"  story: {structure['angle']} (classic) / hook {structure['hook']}, {len(beats)} beats, {words} words")
+        return
+    recent = SR.series_history(ep.cfg.episodes_dir, ep.season) + story.get("recent_series", [])
+    brief = SR.choose(p, recent, story.get("treatment"))
+    write_json(ep.path("brief.json"), brief)
+    ep.path("brief.md").write_text(SR.describe(ep, brief))
+    if not brief["entertainment_test"]["pass"] and not story.get("force"):
+        raise NotEntertaining(f"{p['name']}: {brief['entertainment_test']['why']}")
+    beats, titles = SR.compose(facts, claims, brief)
+    from .story import finish
+    beats, titles, _ = finish(beats, p, {"column": brief["angle"]}, brief["kind"], brief["format"], None, {"tm": ""},
+                              titles=titles)
+    structure = SR.structure(brief, beats)
+    words = _write_script(ep, facts, claims, beats, titles, structure,
+                          "Composed from the stored creative brief (brief.json) and resolved claims; no language model.")
+    write_json(ep.path("editorial.json"), SR.editorial_row(p, brief, words))
+    ep.log(f"  story: {brief['kind']} / {brief['format']} on {brief['angle']}, {len(beats)} beats, {words} words")
 
 
 def script_run(ep: Episode, hook: str | None = None) -> None:
+    from . import showrunner as SR
     from .story import used_structures
     used = used_structures(ep)
-    code = sha256_bytes(Path(__file__).read_bytes())
-    run_stage(ep, "script", VERSION, {"cta": ep.cfg["cta"], "used": used, "hook": hook, "code": code},
-              ["facts.json", "story.json"], ["script.json", "editorial.json"], lambda: _script_run(ep, used, hook))
+    code = {"flame": sha256_bytes(Path(__file__).read_bytes()), "showrunner": sha256_bytes(Path(SR.__file__).read_bytes())}
+    run_stage(ep, "script", VERSION, {"cta": ep.cfg["cta"], "used": used, "hook": hook, "code": code,
+                                      "series": SR.series_history(ep.cfg.episodes_dir, ep.season)},
+              ["facts.json", "story.json"], ["script.json", "editorial.json", "brief.json"],
+              lambda: _script_run(ep, used, hook))
 
 
 # ----------------------------------------------------------------------------- thumbnail and metadata
 
-def thumbnail_text(p: dict, claims: dict) -> tuple[str, str, str]:
-    lead = p["lead"]
+def thumbnail_text(p: dict, claims: dict, structure: dict | None = None) -> tuple[str, str, str]:
     d = lambda cid: claims[cid]["display"]
+    if (structure or {}).get("series"):
+        from .showrunner import thumbnail
+        return thumbnail(p, claims, structure)
+    lead = p["lead"]
     rank = "THE " + lead["sup"].upper() if lead["rank_value"] == 1 else f"{d(lead['rank']).upper()}-{lead['sup'].upper()}"
     kicker = f"{rank} OF {d(lead['games'])} {POS_SCREEN[p['position']]} GAMES"
     return kicker, d(lead["value"]), lead["screen"]
 
 
-def description_lines(p: dict, claims: dict) -> list[str]:
+def description_lines(p: dict, claims: dict, structure: dict | None = None) -> list[str]:
+    if (structure or {}).get("series"):
+        from .showrunner import description
+        return description(p, claims, structure)
     lead = p["lead"]
     d = lambda cid: claims[cid]["display"]
     rank = "the " + lead["sup"] if lead["rank_value"] == 1 else f"the {d(lead['rank'])}-{lead['sup']}"

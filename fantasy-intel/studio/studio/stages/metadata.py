@@ -58,7 +58,11 @@ def _run(ep: Episode) -> None:
     disclosure = AI_DISCLOSURE_CLONE if (short and ep.cfg["shorts"].get("voice_clone")) else AI_DISCLOSURE
     if hero.get("flame"):                   # flame / praise: one game against the season (stages/flame.py)
         from .flame import description_lines
-        lines = [*description_lines(hero, claims), "", disclosure, ATTRIBUTION, "", "#shorts #fantasyfootball #nfl"]
+        series = script["structure"].get("series")
+        attribution = (ATTRIBUTION if not series else
+                       "Data: nflverse (CC BY 4.0): game stats, play-by-play and schedules, through the game shown.")
+        lines = [*description_lines(hero, claims, script["structure"]), "", disclosure, attribution, "",
+                 "#shorts #nfl #football" if series else "#shorts #fantasyfootball #nfl"]
     elif short:
         lines = [hook, f"Over his last {claims[hero['recent_games']]['display']} games versus the "
                  f"{claims[hero['baseline_games']]['display']} before. Usage, not box scores.", "",
@@ -80,7 +84,11 @@ def _run(ep: Episode) -> None:
         ]
     if cta["url"]:
         lines += ["", f"Free usage tool: {cta['url']}"]
-    tags = (["shorts"] if short else []) + ["fantasy football", "nfl usage", "snap share", "target share", "fantasy football waivers",
+    if hero.get("flame") and script["structure"].get("series"):     # NFL entertainment: football tags, not waivers
+        from .showrunner import tags as series_tags
+        tags = series_tags(hero, claims)
+    else:
+        tags = (["shorts"] if short else []) + ["fantasy football", "nfl usage", "snap share", "target share", "fantasy football waivers",
             f"fantasy football {week.lower()}", *risers, *fallers]
     meta = {
         "episode_id": ep.id,

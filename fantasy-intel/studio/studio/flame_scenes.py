@@ -21,6 +21,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 from . import motion as M
+from . import series_scenes as SS
 from .format_scenes import PAPER, PAPER_INK, brand, stamp
 
 FLAME = (255, 104, 38)
@@ -60,6 +61,9 @@ SPARKS = _particles(26, 5)
 
 
 def background(kind: str, c, t: float) -> Image.Image:
+    style, _, level = kind.partition(":")
+    if style in SS.STYLES:                                  # the series formats' own looks (series_scenes.py)
+        return SS.background(style, c, t, {"level": int(level)} if level else None)
     if kind == "ember":
         img = ember_backdrop().copy()
         d = ImageDraw.Draw(img, "RGBA")
@@ -371,14 +375,21 @@ def scene_fp_receipt(img, t, dur, spec, c):
 
 SCENES = {"fp_hook": (None, scene_fp_hook), "fp_strip": (None, scene_fp_strip), "fp_own": (None, scene_fp_own),
           "fp_receipt": (None, scene_fp_receipt)}
+SCENES.update({k: (None, fn) for k, fn in SS.SCENES.items()})
 
 
 def backdrop_for(scene: dict) -> str:
+    style = scene.get("style")
+    if style in SS.STYLES:
+        level = scene.get("level", 0 if scene["type"] == "melt_calm" else 5) if style == "meme" else None
+        return style if level is None else f"{style}:{level}"
     return "ember" if scene.get("fp") == "flame" else "spotlight"
 
 
 def punches(scene: dict, c, dur: float) -> list[float]:
     kind = scene["type"]
+    if kind in SS.SCENES:
+        return SS.punches(scene, c, dur)
     if kind == "fp_hook":
         return [0.0]
     if kind == "fp_strip":
@@ -392,6 +403,8 @@ def punches(scene: dict, c, dur: float) -> list[float]:
 
 def sounds(scene: dict, start: float, dur: float, c) -> list[tuple[float, str, float]]:
     kind = scene["type"]
+    if kind in SS.SCENES:
+        return SS.sounds(scene, start, dur, c)
     ev = []
     if kind == "fp_hook":
         ev.append((start, "impact", -1))

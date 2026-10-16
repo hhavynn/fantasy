@@ -18,7 +18,7 @@ NAMES = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel
 def _qb(gid: str, team: str, week: int, att: int, air: float, epa: float, yds: int) -> dict:
     return {"week": week, "gsis_id": gid, "team": team, "opponent": "XXX", "attempts": att, "completions": att // 2,
             "passing_yards": yds, "passing_air_yards": air, "passing_yards_after_catch": yds // 2,
-            "passing_epa": epa, "sacks_suffered": 1}
+            "passing_epa": epa, "sacks_suffered": 1, "passing_tds": 1, "passing_interceptions": 0}
 
 
 def snapshot_with_qbs(latest_air: float = 40.0, latest_att: int = 30, latest_epa: float = -14.0,
