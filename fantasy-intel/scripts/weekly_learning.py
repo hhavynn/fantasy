@@ -149,6 +149,13 @@ def _retrieved_at(args, live) -> dict:
         try:
             row = live.execute("SELECT max(finished_at) FROM sync_runs WHERE source = 'nfl' AND status = 'ok'").fetchone()
             synced = row[0] if row else None
+            # A sync that started after the last ok one and never finished may have committed newer content
+            # (run_nfl_sync commits before it finishes): then the ok run's time no longer bounds the download.
+            from app.analytics import injury_freshness as inj
+            run = inj.latest_nfl_sync_run(live)
+            if synced is not None and run is not None and inj.unverifiable_after(
+                    live, args.season, run, datetime(2200, 1, 1)):
+                synced = None
         except duckdb.Error:
             synced = None
     out = {fam: {args.season: synced} for fam in ("panel", "games", "defense", "rosters", "injuries")}

@@ -116,7 +116,14 @@ readiness status or exit code changes.
    is no successful nfl sync, when that sync finished at or after `captured_at` (a backdated `--now`
    capture), when its log write failed (the sync only warns) or it did not list the team, when the kickoff
    is unknown, or when the retrieval is at or after kickoff. An older logged retrieval is therefore never
-   attached to newer table content. `log: "unavailable"` means an old database without the table. The field
+   attached to newer table content. `run_nfl_sync` commits the new content before it logs the retrievals and
+   calls `finish('ok')`, so it now persists a `running` `sync_runs` row first (`SyncRun.start`, replaced by
+   `finish`; every reader of `sync_runs` filters on `status = 'ok'`). If a sync started after the latest `ok`
+   one is still `running` (the process died after the commit) or has any status other than `ok`/`error`
+   (`error` is only set after a rollback), or a nflverse retrieval after it belongs to a sync with no
+   recorded status (a crash from before this marker existed), no team gets an entry and `log` reads
+   `unverifiable: ...`. `weekly_learning.py` then also reports the injuries part's sync-level `retrieved_at`
+   as unknown, so `known_by` falls back to `captured_at`. `log: "unavailable"` means an old database without the table. The field
    is part of the content-addressed manifest id, so a new retrieval gives a new manifest and, as for any
    changed input, a new ledger run; an unchanged log is a no-op rerun. The first capture after this is
    deployed also gets a new manifest id (its body gains `injury_retrievals`), which freezes one extra run for

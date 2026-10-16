@@ -362,8 +362,9 @@ H = timedelta(hours=1)
 def _sync(env, run, finished, status="ok"):
     """A sync_runs row for an nflverse sync (the sync that wrote the table content), finished at `finished`."""
     con = connect(env / "live.duckdb")
+    done = None if status == "running" else finished.replace(tzinfo=None)      # a running sync has no finish time
     con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status) VALUES (?, 'nfl', ?, ?, ?)",
-                [run, (finished - 5 * H / 60).replace(tzinfo=None), finished.replace(tzinfo=None), status])
+                [run, (finished - 5 * H / 60).replace(tzinfo=None), done, status])
     con.close()
 
 
@@ -553,6 +554,60 @@ def test_retrieval_is_embedded_only_when_it_belongs_to_the_latest_successful_syn
     assert set(m["injury_retrievals"]["teams"]) == {"AAA"}
     _sql(env, "DELETE FROM sync_runs")                                   # no successful sync at all: nothing verified
     assert _capture(env, KICK10 - H)["injury_retrievals"]["teams"] == {}
+
+
+def cli_retrieved(env, live):
+    """weekly_learning.py's sync-level retrieved_at bounds, computed on the fixture's database."""
+    import types
+    spec = importlib.util.spec_from_file_location("weekly_learning_cli2", SCRIPTS / "weekly_learning.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod._retrieved_at(types.SimpleNamespace(season=2025, out=env / "out"), live)
+
+
+def test_sync_that_died_after_its_commit_blocks_every_older_entry(env):
+    """run_nfl_sync COMMITs the new content before recording retrievals and finishing 'ok'. A crash in between
+    leaves the table newer than the latest 'ok' run: no older retrieval may be attached to it."""
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    part = "injuries/s2025"
+    sync_a = KICK10 - 20 * H + 10 * H / 60
+    ok = _capture(env, KICK10 - 15 * H, retrieved_at={"injuries": {2025: sync_a}})
+    assert set(ok["injury_retrievals"]["teams"]) == {"AAA"}
+    live = connect(env / "live.duckdb", read_only=True)
+    assert cli_retrieved(env, live)["injuries"][2025] is not None        # no unfinished sync yet
+    live.close()
+    _sync(env, "syncB", KICK10 + 1 * H, status="running")               # B committed post-kickoff rows, then died
+    _sql(env, "INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, report_status) "
+              "VALUES (2025, 'REG', 'AAA', 10, 'POSTKICK', 'Out')")
+    live = connect(env / "live.duckdb", read_only=True)
+    sync_level = cli_retrieved(env, live)                  # what weekly_learning.py would pass for the injuries part
+    live.close()
+    assert sync_level["injuries"][2025] is None             # an unfinished sync after the last ok one: time unknown
+    m = _capture(env, KICK10 + 2 * H, retrieved_at=sync_level)
+    assert m["injury_retrievals"]["teams"] == {}
+    assert m["injury_retrievals"]["log"].startswith("unverifiable: unfinished nfl sync syncB (status running)")
+    assert sp.known_by(m, part, "AAA") == sp.known_by(m, part) == datetime.fromisoformat(m["captured_at"])
+    _, rep = sp.injuries_as_of(env / "out", 2025, 10, {"AAA": KICK10})
+    assert rep["teams"]["AAA"]["manifest_id"] == ok["manifest_id"]
+
+
+def test_sync_that_failed_and_rolled_back_does_not_block_the_entries(env):
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    _sync(env, "syncB", KICK10 - 10 * H, status="error")                # rolled back: the table is still A's
+    m = _capture(env, KICK10 - 2 * H)
+    assert m["injury_retrievals"]["log"] == "present"
+    assert m["injury_retrievals"]["teams"]["AAA"]["retrieved_at"] == (KICK10 - 20 * H).isoformat()
+
+
+def test_retrieval_of_a_sync_with_no_recorded_status_blocks_the_entries(env):
+    """A crash before the 'running' marker existed: only its injury_retrievals rows remain."""
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    con = connect(env / "live.duckdb")
+    inj.record_observations(con, [inj.Observation(inj.SOURCE_NFLVERSE, inj.SCOPE_FEED, 2025, None, None,
+                                                  KICK10 - 10 * H, "f" * 64, 3, 0, None, None, "syncGhost")])
+    con.close()
+    m = _capture(env, KICK10 - 2 * H)
+    assert m["injury_retrievals"]["teams"] == {} and m["injury_retrievals"]["log"].startswith("unverifiable:")
 
 
 def test_predict_embeds_retrievals_and_frozen_runs_are_unaffected(cli, env, monkeypatch):

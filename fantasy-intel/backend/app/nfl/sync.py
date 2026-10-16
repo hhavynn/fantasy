@@ -327,6 +327,7 @@ def run_nfl_sync(con_factory, season: int) -> dict:
     payloads = fetch_all(season)
     with con_factory() as con:
         run = SyncRun(con, "nfl")
+        run.start()      # a crash after write_all's COMMIT leaves this 'running' row (see injury_freshness)
         try:
             stats = write_all(con, payloads)
         except Exception as err:

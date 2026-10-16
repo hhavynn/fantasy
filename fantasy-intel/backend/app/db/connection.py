@@ -280,6 +280,15 @@ class SyncRun:
         self.run_id = f"{source}-{utcnow():%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
         self.started_at = utcnow()
 
+    def start(self, message: str = "") -> None:
+        """Optional: persist a 'running' row now (finished_at NULL), replaced by finish(). A process that dies
+        in between leaves it behind, so an unfinished run is detectable (injury_freshness.manifest_view).
+        Every reader of sync_runs that matters filters on status = 'ok'."""
+        upsert_rows(self.con, "sync_runs", [{
+            "run_id": self.run_id, "source": self.source, "started_at": self.started_at, "finished_at": None,
+            "status": "running", "message": message, "stats": {},
+        }], ["run_id"])
+
     def finish(self, status: str, message: str = "", stats: dict | None = None) -> None:
         upsert_rows(self.con, "sync_runs", [{
             "run_id": self.run_id,

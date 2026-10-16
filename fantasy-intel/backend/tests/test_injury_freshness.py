@@ -201,6 +201,32 @@ def test_a_log_failure_never_fails_the_sync(tmp_path, monkeypatch):
     con.close()
 
 
+def test_a_sync_that_dies_after_its_commit_leaves_a_running_row_and_the_view_fails_closed(tmp_path, monkeypatch):
+    from app.nfl import sync
+
+    payload, t0, t1 = _payload()
+    monkeypatch.setattr(sync, "fetch_all", lambda season: payload)
+    factory = _factory(tmp_path / "e.duckdb")
+    sync.run_nfl_sync(factory, 2026)                                         # run A: ok, logged
+    capture, kick = datetime(2030, 1, 1, tzinfo=UTC), {"BUF": datetime(2031, 1, 1, tzinfo=UTC)}
+    con = connect(tmp_path / "e.duckdb")
+    assert set(inj.manifest_view(con, 2026, 7, capture, kickoffs=kick)["teams"]) == {"BUF"}
+    con.close()
+
+    def die(*a, **k):
+        raise KeyboardInterrupt          # the process dies after write_all committed; finish('ok') never runs
+
+    monkeypatch.setattr(sync, "record_injury_retrievals", die)
+    with pytest.raises(KeyboardInterrupt):
+        sync.run_nfl_sync(factory, 2026)                                     # run B
+    con = connect(tmp_path / "e.duckdb")
+    assert sorted(r[0] for r in con.execute("SELECT status FROM sync_runs WHERE source = 'nfl'").fetchall()) == \
+        ["ok", "running"]
+    view = inj.manifest_view(con, 2026, 7, capture, kickoffs=kick)
+    assert view["teams"] == {} and view["log"].startswith("unverifiable: unfinished nfl sync nfl-")
+    con.close()
+
+
 def test_failed_injury_download_records_nothing(tmp_path, monkeypatch):
     from app.nfl import sync
 

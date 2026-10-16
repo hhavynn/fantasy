@@ -431,8 +431,15 @@ def manifest_view(con, season: int, week: int, captured_at: Any, *,
         only if it was retrieved strictly before `captured_at` and strictly before the team's kickoff.
         A run whose log write failed, or that did not list the team, leaves the team without an entry,
         and `known_by` then falls back to the sync-level time (conservative).
+    Fail closed on an unverifiable newer sync: `run_nfl_sync` COMMITs the new content before it records the
+    retrievals and calls `finish('ok')`. If the process died in between, the table holds NEWER content than
+    the latest 'ok' run describes. So when any nfl sync started after that run (and before the capture) has a
+    status other than 'ok'/'error' ('running' left by a crash, anything unknown; 'error' is only set after a
+    rollback), or when a logged nflverse retrieval after it belongs to a sync that never recorded a status
+    (a crash from before the 'running' marker existed), no team gets an entry.
     A team with an unknown kickoff never gets an entry. Nothing is guessed.
-    `log`: 'present' or 'unavailable' (old database without the table, or an unreadable log)."""
+    `log`: 'present', 'unavailable' (old database without the table, or an unreadable log) or
+    'unverifiable: ...' (the reason no entry was recorded)."""
     cut = naive_utc(captured_at)
     if cut is None:
         raise ValueError("captured_at is required")
@@ -447,6 +454,13 @@ def manifest_view(con, season: int, week: int, captured_at: Any, *,
         return view
     view["log"] = "present"
     if run is None or run["finished_at"] is None or run["finished_at"] >= cut:
+        return view
+    try:
+        why = unverifiable_after(con, season, run, cut)
+    except Exception:
+        why = f"cannot read sync history after {run['run_id']}"
+    if why:
+        view["log"] = f"unverifiable: {why}"
         return view
     for team in sorted(ko):
         kick = naive_utc(ko[team])
@@ -464,9 +478,31 @@ def latest_nfl_sync_run(con) -> dict | None:
     """The latest successful nflverse sync (the one that wrote the current nfl_* tables), or None."""
     if not table_exists(con, "sync_runs"):
         return None
-    row = con.execute("SELECT run_id, finished_at FROM sync_runs WHERE source = 'nfl' AND status = 'ok' "
+    row = con.execute("SELECT run_id, finished_at, started_at FROM sync_runs WHERE source = 'nfl' AND status = 'ok' "
                       "ORDER BY finished_at DESC NULLS LAST, started_at DESC LIMIT 1").fetchone()
-    return None if row is None else {"run_id": row[0], "finished_at": naive_utc(row[1])}
+    return None if row is None else {"run_id": row[0], "finished_at": naive_utc(row[1]),
+                                     "started_at": naive_utc(row[2])}
+
+
+def unverifiable_after(con, season: int, run: dict, cut: datetime) -> str | None:
+    """Why the table content may be newer than `run` (the latest 'ok' nfl sync), or None. See manifest_view."""
+    started = run["started_at"]
+    if started is None:
+        return f"start time of {run['run_id']} unknown"
+    bad = con.execute("SELECT run_id, status FROM sync_runs WHERE source = 'nfl' AND run_id <> ? AND started_at > ? "
+                      "AND started_at < ? AND (status IS NULL OR status NOT IN ('ok', 'error')) "
+                      "ORDER BY started_at LIMIT 1", [run["run_id"], started, cut]).fetchone()
+    if bad:
+        return f"unfinished nfl sync {bad[0]} (status {bad[1]}) after {run['run_id']}"
+    if not table_exists(con, TABLE):
+        return None
+    orphan = con.execute(
+        f"SELECT sync_run_id FROM {TABLE} WHERE source = ? AND season = ? AND retrieved_at >= ? AND retrieved_at < ? "
+        "AND sync_run_id IS NOT NULL AND sync_run_id <> ? AND sync_run_id NOT IN (SELECT run_id FROM sync_runs) "
+        "LIMIT 1", [SOURCE_NFLVERSE, season, started, cut, run["run_id"]]).fetchone()
+    if orphan:
+        return f"nfl retrieval of sync {orphan[0]}, which has no recorded status, after {run['run_id']}"
+    return None
 
 
 def readiness_notes(con, season: int, week: int, now: datetime) -> dict:
