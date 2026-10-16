@@ -1,10 +1,14 @@
 """Promotion tracker for the independent projection engine (read-only).
 
-How far each position (QB/RB/WR/TE) is from the frozen PROMOTION_CRITERIA in
-forecast_backtest. Nothing here decides or changes a status:
+How far each position (QB/RB/WR/TE) of the PRODUCTION model (projection_source.MODEL_VERSION, ifp-2.0.0) is
+from the frozen PROMOTION_CRITERIA in forecast_backtest. ifp-2.0.0 is production by an owner override, not
+because it met these criteria (the registry manifest); this page measures the evidence the override did not
+have. Nothing here decides or changes a status:
 
-* Model status and the held-out baseline comparison come from the evaluation stored with the
-  latest live run (independent_projection_runs: the artifact's status and held-out summary).
+* Model status: for the production model, `owner_override` (projection_source.consumer_status; the status
+  stored in its runs was frozen at training time and still says "shadow"). The held-out baseline
+  comparison is copied from the evaluation stored with the latest verified run; ifp-2.0.0 runs store no
+  per-position held-out evaluation, so those fields are empty rather than borrowed from ifp-1.0.0.
 * The ESPN evidence reuses forecast_backtest.espn_pregame (ESPN projection captured strictly
   before the player's kickoff) and forecast_backtest.espn_comparison (the frozen >= N matched
   observations and MAE <= ESPN rule). "Ours" is the stored weekly-run projection of the primary
@@ -14,8 +18,8 @@ forecast_backtest. Nothing here decides or changes a status:
   before his own kickoff, from a run whose stored rows reproduce its content hash. Databases not yet
   migrated to schema v8 fall back to the legacy one-row-per-week table (no per-player kickoff check).
 
-Promotion still needs a rerun of `evaluate` and the user's approval; independent projections
-are not read by lineups, start/sit, trades or waivers.
+Independent projections reach Start/Sit, Matchup and Home only through the opt-in projection switch (ESPN
+is the default); trades, waivers, team value and the playoff race never read them.
 """
 
 from __future__ import annotations
@@ -25,21 +29,28 @@ from datetime import datetime
 
 import polars as pl
 
-from ..db.connection import fetch_dicts, table_columns, table_exists
+from ..db.connection import fetch_dicts, table_exists
 from .forecast_backtest import PROMOTION_CRITERIA, espn_comparison, espn_pregame
 from .forecast_features import POSITIONS, load_panel
 from .independent_projection_store import league_scoring
-from .independent_projections import MODEL_VERSION
 from . import production_forecasts as pf
+from . import projection_source as ps
 from .production_forecasts import ROWS, eligible_run_ids, pregame_forecasts
 from .production_forecasts import first_kickoffs as _first_kickoffs
 from .projection_backtest import _kickoff, _utc
 
+MODEL_VERSION = ps.MODEL_VERSION     # the production model the projection switch reads
+
 SCHEMA_VERSION = "independent-promotion/v1"
 NOTES = [
-    "Read-only progress toward the frozen PROMOTION_CRITERIA (forecast_backtest.py). Nothing on this page "
-    "promotes a model: promotion needs a rerun of evaluate and your approval.",
-    "Independent projections are research output. They are not used in lineups, start/sit, trades or waivers.",
+    f"Read-only progress of the production model {MODEL_VERSION} toward the frozen PROMOTION_CRITERIA "
+    "(forecast_backtest.py). Nothing on this page promotes, approves or rolls back a model.",
+    f"{MODEL_VERSION} is production by an owner override, not because it met these criteria: its research "
+    "validation is historical only, the approval cites no prospective or held-out report, and it is not shown "
+    "to be better than ESPN. No position is Start/Sit-ready.",
+    "Independent projections reach Start/Sit, Matchup and Home only when the projection switch is set to the "
+    "independent source (ESPN is the default); trades, waivers, team value and the playoff race stay on ESPN. "
+    f"A week without an eligible {MODEL_VERSION} run shows the {ps.FALLBACK_VERSION} fallback, labeled.",
     "Matched = a player-week with an ESPN projection captured strictly before the player's kickoff, a completed "
     "appearance (league points from nflverse box scores) and a stored independent projection of the current model "
     "under the current league scoring, from an artifact fitted before that week's first kickoff.",
@@ -62,23 +73,23 @@ def _json(v):
 
 
 def latest_run(con, season: int, fingerprint: str | None) -> dict | None:
-    """Newest run of the current model under the league's current scoring. A run of another model
-    version or scoring carries another model's held-out status, so it is never shown here."""
-    if fingerprint is None or not table_exists(con, "independent_projection_runs"):
+    """Newest run of the production model under the league's current scoring that the artifact rule
+    (production_forecasts.artifact_gate) does not reject and whose stored rows verify against its content hash
+    (the consumer rule). A run of another model version or scoring carries another model's held-out status, so
+    it is never shown here."""
+    if fingerprint is None or not (table_exists(con, "independent_projection_runs") and table_exists(con, ROWS)):
         return None
-    gate = pf.artifact_gate(con, MODEL_VERSION)                # the artifact rule of production_pin for this model
-    has_artifact = "artifact_id" in table_columns(con, "independent_projection_runs")
-    rows = fetch_dicts(con, f"""SELECT run_id, week, model_version, created_at, model_status, evaluation
-                                {", artifact_id" if has_artifact else ""}
-                                FROM independent_projection_runs
-                                WHERE season = ? AND model_version = ? AND scoring_fingerprint = ?
-                                ORDER BY created_at DESC""", [season, MODEL_VERSION, fingerprint])
-    rows = [r for r in rows if gate(r)[0] != "rejected"]
-    if not rows:
-        return None
-    run = rows[0]
-    run["model_status"], run["evaluation"] = _json(run["model_status"]) or {}, _json(run["evaluation"]) or {}
-    return run
+    gate = pf.artifact_gate(con, MODEL_VERSION)
+    for run in fetch_dicts(con, """SELECT * FROM independent_projection_runs
+                                   WHERE season = ? AND model_version = ? AND scoring_fingerprint = ?
+                                   ORDER BY created_at DESC, run_id DESC""", [season, MODEL_VERSION, fingerprint]):
+        if gate(run)[0] == "rejected":
+            continue
+        rows = fetch_dicts(con, f"SELECT * FROM {ROWS} WHERE run_id = ?", [run["run_id"]])
+        if pf.integrity_problem(run, rows) is None:
+            run["model_status"], run["evaluation"] = _json(run["model_status"]) or {}, _json(run["evaluation"]) or {}
+            return run
+    return None
 
 
 def _run_missing_reason(con, season: int, fingerprint: str | None) -> str:
@@ -92,8 +103,9 @@ def _run_missing_reason(con, season: int, fingerprint: str | None) -> str:
                         [season])[0]["n"] if table_exists(con, "independent_projection_runs") else 0
     if other:
         pin = " or artifact (not an approved one)" if pf.gate_active(con, MODEL_VERSION) else ""
-        return (f"Stored runs are from another model version{pin} or league scoring, so the held-out status of "
-                f"{MODEL_VERSION} under the current scoring is not shown. {project}")
+        return (f"No verified {MODEL_VERSION} run under the current league scoring is stored (stored runs are from "
+                f"another model version{pin} or scoring, or failed the integrity check), so its status is "
+                f"not shown. {project}")
     return f"No independent projection run is stored for this season, so the held-out status is not shown. {project}"
 
 
@@ -107,6 +119,9 @@ def model_evidence(run: dict | None, position: str) -> dict:
     ev = run["evaluation"].get(position) or {}
     metrics = ev.get("metrics") or {}
     base = ev.get("best_trailing_baseline")
+    if run.get("model_version") == ps.MODEL_VERSION:     # production by override: never the frozen "shadow" text
+        st = {"status": ps.OVERRIDE_STATUS, "start_sit_ready": False,
+              "reasons": [ps.GOVERNANCE[ps.MODEL_VERSION]["status_note"]]}
     return {"status": st.get("status"), "start_sit_ready": st.get("start_sit_ready"),
             "reasons": st.get("reasons") or [], "heldout_n": ev.get("common_support_n"),
             "relative_mae_improvement": ev.get("relative_mae_improvement"), "best_trailing_baseline": base,
@@ -262,7 +277,7 @@ def build_tracker(con) -> dict:
                  for pos in POSITIONS]
     return {"schema_version": SCHEMA_VERSION, "available": True, "unavailable_reason": None,
             "season": season, "current_week": week, "notes": NOTES,
-            "criteria": criteria, "model_version": MODEL_VERSION,
+            "criteria": criteria, "model_version": MODEL_VERSION, "governance": ps.governance(MODEL_VERSION),
             "run": None if run is None else {"run_id": run["run_id"], "week": run["week"],
                                               "model_version": run["model_version"],
                                               "created_at": str(run["created_at"])},

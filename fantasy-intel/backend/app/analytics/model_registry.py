@@ -721,7 +721,9 @@ def _evaluate_promotion(old: dict, new: dict, *, model_root: Path, live_scoring_
         return {**base, "version": cand, "activatable": False, "blocking": ["production does not change"],
                 "checks": [_crit("transition", FAIL, "production does not change")]}
     e = entry(new, cand)
-    last = new["history"][-1]
+    moves = [h for h in new["history"][len(old["history"]):] if isinstance(h, dict)
+             and h.get("event") in ("promotion", "rollback")]
+    last = moves[-1] if moves else None
     if not isinstance(last, dict) or last.get("event") != "promotion":
         return {**base, "version": cand, "activatable": False, "blocking": ["the last history event is not a promotion"],
                 "checks": [_crit("transition", FAIL, "the last history event is not a promotion")]}
@@ -735,22 +737,37 @@ def _evaluate_promotion(old: dict, new: dict, *, model_root: Path, live_scoring_
 
 def production_status(m: dict, *, model_root: Path, live_scoring_fp: str | None, consumer_version: str,
                       consumer_artifact_sha256: str | None = None, consumer_pinned_version: str | None = None) -> dict:
-    """The approved production model and whether the runtime switch reads exactly it (version, and the
-    artifact pin: the single-sha pin production_pin.APPROVED_ARTIFACT_SHA256 must equal the registry's artifact
-    sha256 of `consumer_pinned_version`, the version it belongs to; weekly ifp-2 artifacts are approved in the database)."""
+    """The approved production model, whether the runtime switch reads exactly it (version, and the artifact pin:
+    the single-sha pin production_pin.APPROVED_ARTIFACT_SHA256 must equal the registry's artifact sha256 of
+    `consumer_pinned_version`, the version it belongs to; weekly ifp-2 artifacts are approved in the database),
+    and its rollback target."""
     p = production(m)
     c, _ = verify_file(Path(model_root), p["artifact"], "artifact")
     pinned = _sha_ok(p["artifact"].get("sha256"))
     pin_entry = (entry(m, consumer_pinned_version) if consumer_pinned_version else p) or {"artifact": {}}
+    per_run = p["artifact"].get("path") is None
+    if pinned:
+        note = None
+    elif per_run:
+        note = (f"{p['version']} has no single artifact: each weekly artifact is approved in the database "
+                "(approved_artifacts, by the sha256 of its file, which runs record as artifact_id); there is nothing "
+                "to pin here")
+    else:
+        note = ("the production artifact hash is not pinned yet: pin it (pin-artifact, a reviewed manifest change) "
+                "so a rollback can restore its exact bytes")
+    target = entry(m, p.get("rollback_to")) if p.get("rollback_to") else None
+    rb = None if target is None else {
+        "version": target["version"], "artifact_pinned": _sha_ok((target.get("artifact") or {}).get("sha256")),
+        "artifact_check": verify_file(Path(model_root), target.get("artifact") or {}, "rollback_artifact")[0],
+        "training_cutoff": target.get("training_cutoff")}
     return {"family": p["family"], "version": p["version"], "approval_kind": p["approval"]["kind"],
+            "override": bool(p["approval"].get("override")),
             "consumer_version": consumer_version, "consumers_match": consumer_version == p["version"],
             "scoring_matches_league": live_scoring_fp is not None and p["scoring_fingerprint"] == live_scoring_fp,
-            "artifact_pinned": pinned, "consumer_artifact_sha256": consumer_artifact_sha256,
-            "consumer_pinned_version": consumer_pinned_version,
+            "artifact_pinned": pinned, "artifact_per_run": per_run and not pinned,
+            "consumer_artifact_sha256": consumer_artifact_sha256, "consumer_pinned_version": consumer_pinned_version,
             "consumer_pin_matches": consumer_artifact_sha256 == pin_entry["artifact"].get("sha256"),
-            "artifact_check": c,
-            "note": None if pinned else ("the incumbent's artifact hash is not pinned yet: pin it (a reviewed manifest "
-                                         "change) before any promotion, so a rollback can restore its exact bytes")}
+            "artifact_check": c, "rollback_target": rb, "note": note}
 
 
 def dry_run_report(m: dict, *, model_root: Path, live_scoring_fp: str | None, consumer_version: str,
@@ -838,6 +855,8 @@ def verify_transition(old: dict, new: dict) -> list[str]:
             out.append(f"{e['version']}: artifact path changed")
         if e["scoring_fingerprint"] != n["scoring_fingerprint"]:
             out.append(f"{e['version']}: scoring fingerprint changed")
+        if e.get("training_cutoff") is not None and n.get("training_cutoff") != e["training_cutoff"]:
+            out.append(f"{e['version']}: recorded training cutoff changed")
         pinned = {(r["kind"], r["path"]): r["sha256"] for r in e["validation_reports"] if r.get("sha256")}
         now = {(r["kind"], r["path"]): r["sha256"] for r in n["validation_reports"]}
         if any(now.get(k) != v for k, v in pinned.items()):
@@ -853,7 +872,9 @@ def verify_transition(old: dict, new: dict) -> list[str]:
         if not ev:
             out.append("production changed without a promotion or rollback history event")
         kind = (p.get("approval") or {}).get("kind")
-        last = added[-1] if added and isinstance(added[-1], dict) else {}
+        # the last production-changing event (a later bookkeeping event such as an artifact pin does not count)
+        moves = [h for h in added if isinstance(h, dict) and h.get("event") in ("promotion", "rollback")]
+        last = moves[-1] if moves else {}
         if kind not in (OWNER_APPROVAL, ROLLBACK_RESTORE):
             out.append(f"production changed to {p['version']} without an owner approval or rollback record")
         elif kind == OWNER_APPROVAL:
@@ -881,6 +902,235 @@ def verify_transition(old: dict, new: dict) -> list[str]:
         prev = entry(new, old["production"]["version"])
         if prev["state"] != RETIRED:
             out.append(f"previous production {prev['version']} must be retired, not {prev['state']}")
+    return out
+
+
+# ----------------------------------------------------------------------------- artifact pinning (proposed, reviewed)
+
+PIN_EVENT = "artifact_pinned"
+
+
+def training_cutoff_of(art: dict) -> dict | None:
+    """{season, week} of the last week the artifact trained on, read from the artifact itself: the end of every
+    position model's train_window (YYYYWW). None when the positions disagree or the window is missing."""
+    ends = set()
+    for m in (art.get("models") or {}).values():
+        win = m.get("train_window") if isinstance(m, dict) else None
+        if not (isinstance(win, list) and len(win) == 2 and type(win[1]) is int):
+            return None
+        ends.add(divmod(win[1], 100))
+    if len(ends) != 1:
+        return None
+    season, week = ends.pop()
+    return {"season": season, "week": week} if 1 <= week <= 22 else None
+
+
+def _heldout_binding_problem(art: dict, report: dict) -> str | None:
+    """None when the held-out report is the one embedded in the artifact: same model and scoring, and every field
+    the gate reads equal per position (the artifact does not record the report's sha, see Known limitations)."""
+    if report.get("model_version") != art.get("version"):
+        return f"report model_version {report.get('model_version')!r} is not {art.get('version')!r}"
+    if report.get("scoring_fingerprint") != art.get("scoring_fingerprint"):
+        return "report and artifact scoring fingerprints differ"
+    for pos in POSITIONS:
+        got = ((report.get("positions") or {}).get(pos) or {})
+        emb = ((art.get("evaluation") or {}).get(pos) or {})
+        bad = [k for k in BOUND_HELDOUT_KEYS if k not in got or got.get(k) != emb.get(k)]
+        if bad:
+            return f"{pos}: report {', '.join(bad)} differ from the artifact's embedded held-out result"
+    return None
+
+
+def pin_artifact(m: dict, version: str, *, model_root: Path, live_scoring_fp: str | None,
+                 recorded_runs: list[dict], by: str, at: datetime, reason: str) -> tuple[dict, dict]:
+    """The manifest that pins `version`'s artifact to the exact bytes production served, plus a report.
+    Pure: returns a new manifest and touches no file; applying it is a reviewed change of model_registry.json.
+
+    Refuses unless: the entry's artifact path is set and its sha256 is still null (a pin never changes); the
+    file loads with the production loader and names `version` under the league's scoring; and the NEWEST
+    stored production run of `version` that recorded an artifact_id (`recorded_runs`: [{run_id, created_at,
+    artifact_id}] from independent_projection_runs) recorded exactly this file's sha256, so the pin names the
+    bytes users were shown, not merely the file that happens to be on disk now. The training cutoff is read
+    from the artifact; an already recorded, different cutoff refuses. A held-out report referenced with a null
+    sha256 is pinned too when it binds to the artifact (_heldout_binding_problem); otherwise it stays unpinned
+    and the report says why. Appends an `artifact_pinned` history event (production does not change)."""
+    if not (isinstance(reason, str) and reason.strip()) or not (isinstance(by, str) and by.strip()):
+        raise RegistryError("a pin needs a reason and who requested it")
+    if at.tzinfo is None:
+        raise RegistryError("pin time must be timezone-aware")
+    problems = validate_manifest(m)
+    if problems:
+        raise RegistryError("; ".join(problems))
+    e = entry(m, version)
+    if e is None:
+        raise RegistryError(f"{version} is not registered")
+    ref = e.get("artifact") or {}
+    if ref.get("sha256") is not None:
+        raise RegistryError(f"{version}'s artifact is already pinned ({ref['sha256'][:16]}...); a pin never changes")
+    path = _resolve(Path(model_root), ref.get("path"))
+    if path is None:
+        raise RegistryError(f"{version} has no artifact path inside the model directory to pin (a per-run "
+                            "artifact model is approved per artifact in the database: approved_artifacts, "
+                            "`project --register-artifact manual_pin`)")
+    try:
+        data = path.read_bytes()
+    except OSError as err:
+        raise RegistryError(f"{version} artifact {ref['path']} is missing or unreadable ({err.__class__.__name__}); "
+                            "its identity cannot be pinned and must not be reconstructed") from err
+    sha = hashlib.sha256(data).hexdigest()
+    why = artifact_identity_problem(data, version, live_scoring_fp, e.get("family"))
+    if why:
+        raise RegistryError(f"cannot pin {version}: {why}")
+    recorded = sorted((r for r in recorded_runs if _sha_ok(r.get("artifact_id"))),
+                      key=lambda r: (str(r.get("created_at")), str(r.get("run_id"))))
+    if not recorded:
+        raise RegistryError(f"cannot pin {version}: no stored production run recorded an artifact sha256, so nothing "
+                            "proves these bytes are what production served")
+    newest = recorded[-1]
+    if newest["artifact_id"] != sha:
+        raise RegistryError(f"cannot pin {version}: the newest production run {newest['run_id']} recorded artifact "
+                            f"{newest['artifact_id'][:16]}..., but {ref['path']} hashes to {sha[:16]}... (the file "
+                            "was replaced; the served artifact is not on disk)")
+    art = load_family_artifact(e.get("family"), data)
+    cutoff = training_cutoff_of(art)
+    if cutoff is None:
+        raise RegistryError(f"cannot pin {version}: the artifact's training cutoff cannot be read from its models")
+    if e.get("training_cutoff") is not None and e["training_cutoff"] != cutoff:
+        raise RegistryError(f"cannot pin {version}: recorded training cutoff {e['training_cutoff']} != the "
+                            f"artifact's {cutoff}")
+    new = deepcopy(m)
+    ne = entry(new, version)
+    when = at.isoformat()
+    ne["artifact"] = {"path": ref["path"], "sha256": sha}
+    ne["training_cutoff"] = cutoff
+    reports = []
+    for r in ne["validation_reports"]:
+        if r.get("kind") != HELDOUT or r.get("sha256") is not None:
+            continue
+        rp = _resolve(Path(model_root), r.get("path"))
+        try:
+            rep = _json_bytes(rp.read_bytes(), "held-out report") if rp is not None else None
+        except (OSError, RegistryError) as err:
+            reports.append({"path": r.get("path"), "pinned": False, "reason": f"unreadable ({err})"})
+            continue
+        bind = "the path is not inside the model directory" if rep is None else (
+            "report is not an object" if not isinstance(rep, dict) else _heldout_binding_problem(art, rep))
+        if bind:
+            reports.append({"path": r["path"], "pinned": False, "reason": bind})
+            continue
+        r["sha256"] = sha256_file(rp)
+        reports.append({"path": r["path"], "pinned": True, "sha256": r["sha256"],
+                        "reason": "binds to the artifact's embedded held-out result field by field"})
+    others = sorted({r["artifact_id"] for r in recorded if r["artifact_id"] != sha})
+    ne["pin"] = {"at": when, "by": by, "reason": reason, "artifact_sha256": sha,
+                 "training_cutoff_source": "end of every position model's train_window in the artifact",
+                 "served_by_runs": [r["run_id"] for r in recorded if r["artifact_id"] == sha],
+                 "other_recorded_artifacts": others}
+    new["history"].append({"at": when, "event": PIN_EVENT, "production": m["production"]["version"],
+                           "version": version, "artifact_sha256": sha, "by": by, "reason": reason})
+    bad = verify_transition(m, new)
+    if bad:
+        raise RegistryError("the pin is not a valid transition: " + "; ".join(bad))
+    from . import production_pin
+
+    consumer = {"file": "backend/app/analytics/production_pin.py", "APPROVED_ARTIFACT_SHA256": sha,
+                "applies_to": production_pin.PINNED_MODEL_VERSION,
+                "currently": production_pin.APPROVED_ARTIFACT_SHA256,
+                "matches": production_pin.APPROVED_ARTIFACT_SHA256 == sha}
+    return new, {"dry_run": True, "applies": False, "version": version, "artifact": ne["artifact"],
+                 "training_cutoff": cutoff, "served_by_runs": ne["pin"]["served_by_runs"],
+                 "other_recorded_artifacts": others, "reports": reports,
+                 "consumer_pin": consumer if version == production_pin.PINNED_MODEL_VERSION else None,
+                 "note": "proposal only: copy it into model_registry.json AND set production_pin.APPROVED_ARTIFACT_SHA256 "
+                         "to the same sha in one reviewed change (the consumer copy of the registry pin, tested equal)"}
+
+
+# ----------------------------------------------------------------------------- rollback dry run (read-only)
+
+# The participation artifact `project` loads next to the ifp artifact (participation.PARTICIPATION_VERSION).
+PARTICIPATION_FILE = "participation_ipm-1.0.0.json"
+
+
+def _served(sel: dict) -> dict:
+    run = sel.get("run")
+    if run is None:
+        return {"run_id": None, "model_version": None, "fallback": False, "reason": sel.get("unavailable_reason"),
+                "skipped": sel.get("skipped") or []}
+    return {"run_id": run["run_id"], "model_version": run["model_version"], "artifact_id": run.get("artifact_id"),
+            "fallback": sel.get("fallback", False), "skipped": sel.get("skipped") or []}
+
+
+def rollback_dry_run(m: dict, *, model_root: Path, live_scoring_fp: str | None, con=None,
+                     season: int | None = None, weeks=(), now: datetime | None = None) -> dict:
+    """What a rollback of the current production model would restore, what is missing, and how the run every
+    consumer sees would change per week. Read-only: no manifest, artifact, ledger or database is written
+    (`con` is only read), and `applies` is always False."""
+    from . import projection_source as ps
+
+    now = now or datetime.now(timezone.utc)
+    cur = production(m)
+    target = entry(m, cur.get("rollback_to")) if cur.get("rollback_to") else None
+    out = {"schema": "rollback-dry-run/v1", "created_at": now.isoformat(), "dry_run": True, "applies": False,
+           "from": cur["version"], "to": target["version"] if target else None, "restorable": False,
+           "checks": [], "restorable_items": [], "missing": [], "consumer_change": [], "steps_to_apply": []}
+    if target is None:
+        out["missing"].append(f"{cur['version']} has no registered rollback target")
+        return out
+    root = Path(model_root)
+    c, data = verify_file(root, target.get("artifact") or {}, "rollback_artifact")
+    out["checks"].append(c)
+    if data is not None:
+        why = artifact_identity_problem(data, target["version"], live_scoring_fp, target.get("family"))
+        out["checks"].append(_crit("rollback_artifact_loads", FAIL if why else PASS,
+                                   why or "the production loader accepts it; version and league scoring match"))
+        if not why:
+            out["restorable_items"].append({"item": f"{target['version']} artifact", "path": target["artifact"]["path"],
+                                            "sha256": target["artifact"]["sha256"],
+                                            "training_cutoff": target.get("training_cutoff")})
+    else:
+        out["missing"].append(f"{target['version']} artifact: {c['explanation']}")
+    for r in target.get("validation_reports") or []:
+        rc, _ = verify_file(root, r, f"{r.get('kind')}_report")
+        out["checks"].append(rc)
+        if rc["result"] == PASS:
+            out["restorable_items"].append({"item": f"{r.get('kind')} report", "path": r.get("path"),
+                                            "sha256": r.get("sha256")})
+        else:
+            out["missing"].append(f"{r.get('kind')} report {r.get('path')}: {rc['explanation']}")
+    part = root / PARTICIPATION_FILE
+    out["missing"].append(
+        "participation artifact ipm-1.0.0 (turns conditional points into the expected points consumers see) is not "
+        "registered or pinned, and runs record only its version, so a rollback cannot prove it restores the same "
+        f"participation bytes ({'present on disk, sha256 ' + sha256_file(part) if part.exists() else 'not on disk'})")
+    try:
+        plan_rollback(m, reason="rollback dry run", by="dry-run", at=now, model_root=root,
+                      live_scoring_fp=live_scoring_fp)
+    except RegistryError as err:
+        out["checks"].append(_crit("plan_rollback", FAIL, str(err)))
+        out["missing"].append(f"plan_rollback refuses: {err}")
+    else:
+        out["checks"].append(_crit("plan_rollback", PASS, f"a valid {cur['version']} -> {target['version']} "
+                                   "rollback manifest can be planned"))
+    out["restorable"] = all(ch["result"] == PASS for ch in out["checks"] if ch["name"] in
+                            ("rollback_artifact_integrity", "rollback_artifact_loads", "plan_rollback"))
+    if con is not None and season is not None:
+        for w in sorted({int(x) for x in weeks}):
+            before = ps.select_run(con, season, w)
+            after = ps.select_run(con, season, w, versions=(target["version"],))
+            change = {"week": w, "before": _served(before), "after": _served(after)}
+            if after["run"] is None:
+                change["action"] = (f"no servable {target['version']} run: after the rollback consumers would show "
+                                    f"ESPN for week {w} until `backtest_independent_projections.py project --week {w} "
+                                    f"--model {target['version']}` stores one from the pinned artifact")
+            out["consumer_change"].append(change)
+    out["steps_to_apply"] = [
+        "NOT done here. A rollback is an explicitly authorized, reviewed change:",
+        "1. `scripts/model_registry.py plan-rollback --reason ... --by ... --out proposal.json` (write-once proposal)",
+        f"2. in one PR: copy the proposal into model_registry.json AND change projection_source.MODEL_VERSION to "
+        f"{target['version']} (and its fallback, GOVERNANCE, NOTE), the production_pin constants (which version is "
+        "pinned and which is registered weekly), and the `project` default model",
+        f"3. `project --model {target['version']} --week W` for each week consumers need, from the pinned artifact",
+        "4. stored runs and ledgers stay immutable: nothing is deleted or rewritten"]
     return out
 
 
@@ -916,4 +1166,5 @@ def write_manifest(m: dict, path: Path) -> Path:
 
 __all__ = ["SCHEMA", "MANIFEST_PATH", "STATES", "load_manifest", "validate_manifest", "production", "entry",
            "review_candidate", "evaluate_promotion", "production_status", "dry_run_report", "plan_rollback", "verify_transition",
+           "pin_artifact", "training_cutoff_of", "rollback_dry_run",
            "write_manifest", "write_once", "sha256_file", "RegistryError"]

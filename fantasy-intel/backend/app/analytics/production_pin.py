@@ -19,7 +19,7 @@ store and the promotion tracker) read this at call time, so the evidence readers
 switch module.
 """
 
-APPROVED_ARTIFACT_SHA256: str | None = None
+APPROVED_ARTIFACT_SHA256: str | None = "a1fe1bc3f3c54143789bb4562695162df90535a1ff85f927841ef562ab699881"
 # The versions the two rules belong to: copies of projection_source.FALLBACK_VERSION and MODEL_VERSION (tested).
 PINNED_MODEL_VERSION = "ifp-1.0.0"
 REGISTERED_MODEL_VERSION = "ifp-2.0.0"

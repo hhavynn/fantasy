@@ -5,11 +5,18 @@ rolls back a model, never writes the committed registry, artifacts or ledgers.
     uv run python ../scripts/model_registry.py status                      # production + every candidate
     uv run python ../scripts/model_registry.py evaluate --proposed new.json  # gate a proposed manifest
     uv run python ../scripts/model_registry.py plan-rollback --reason "..." --by NAME --out proposal.json
+    uv run python ../scripts/model_registry.py pin-artifact --version ifp-1.0.0 --reason "..." --by NAME --out pinned.json
+    uv run python ../scripts/model_registry.py rollback-dry-run           # what a rollback restores, per week
 
 `status` checks the approved production model (and that the projection switch reads exactly it) and
 reviews every other registered model against the promotion checks. `evaluate` judges a proposed
 manifest (a future promotion) against the committed one. `plan-rollback` writes the manifest a
 rollback would produce to a NEW file (write-once) for review; applying it is a reviewed code change.
+`pin-artifact` writes the manifest that pins a model's artifact to the exact bytes production served (the
+file's sha256 must equal the artifact_id the newest stored production run of that version recorded) to a NEW
+file; copying it into model_registry.json is the reviewed change. `rollback-dry-run` reports what a rollback
+of the current production model would restore, what is missing, and which run every consumer would see per
+week before and after. The live database is only ever opened read-only.
 """
 
 from __future__ import annotations
@@ -49,17 +56,53 @@ def _live_fingerprint(db: Path, season: int) -> str | None:
     return scoring.fingerprint if scoring.supported else None
 
 
+def _ro(db: Path):
+    return duckdb.connect(str(db), read_only=True) if db.exists() else None
+
+
+def _recorded_runs(db: Path, version: str) -> list[dict]:
+    con = _ro(db)
+    if con is None:
+        return []
+    try:
+        cols = ["run_id", "created_at", "artifact_id"]
+        rows = con.execute("SELECT run_id, created_at, artifact_id FROM independent_projection_runs "
+                           "WHERE model_version = ? ORDER BY created_at, run_id", [version]).fetchall()
+    finally:
+        con.close()
+    return [dict(zip(cols, r)) for r in rows]
+
+
+def _rollback_dry_run(m: dict, args, fp: str | None) -> dict:
+    con = _ro(args.live_db)
+    try:
+        weeks = set(args.weeks or [])
+        if con is not None and not weeks:
+            weeks = {r[0] for r in con.execute("SELECT DISTINCT week FROM independent_projection_runs WHERE season = ?",
+                                               [args.season]).fetchall()}
+            weeks |= {r[0] for r in con.execute("SELECT current_week FROM leagues WHERE season = ? "
+                                                "ORDER BY synced_at DESC LIMIT 1", [args.season]).fetchall()}
+        return reg.rollback_dry_run(m, model_root=args.models, live_scoring_fp=fp, con=con, season=args.season,
+                                    weeks=weeks)
+    finally:
+        if con is not None:
+            con.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["status", "evaluate", "plan-rollback"])
+    ap.add_argument("command", choices=["status", "evaluate", "plan-rollback", "pin-artifact", "rollback-dry-run"])
     ap.add_argument("--manifest", type=Path, default=reg.MANIFEST_PATH, help="the committed registry")
     ap.add_argument("--proposed", type=Path, help="evaluate: the proposed manifest")
     ap.add_argument("--models", type=Path, default=_path("INDEPENDENT_MODEL_DIR", "data/models"))
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
     ap.add_argument("--season", type=int, default=settings.nfl_season)
-    ap.add_argument("--reason", help="plan-rollback: why")
-    ap.add_argument("--by", help="plan-rollback: who requests it")
+    ap.add_argument("--reason", help="plan-rollback / pin-artifact: why")
+    ap.add_argument("--by", help="plan-rollback / pin-artifact: who requests it")
+    ap.add_argument("--version", help="pin-artifact: the registered model whose artifact to pin")
+    ap.add_argument("--weeks", type=int, nargs="*", help="rollback-dry-run: weeks to simulate (default: every week "
+                                                         "with a stored run, plus the current week)")
     ap.add_argument("--out", type=Path, help="write the result to this NEW file (never overwritten)")
     args = ap.parse_args(argv)
     try:
@@ -69,6 +112,18 @@ def main(argv: list[str] | None = None) -> int:
             result = reg.dry_run_report(m, model_root=args.models, live_scoring_fp=fp, consumer_version=CONSUMER_VERSION,
                                         consumer_artifact_sha256=CONSUMER_PIN,
                                         consumer_pinned_version=CONSUMER_PINNED_VERSION)
+        elif args.command == "rollback-dry-run":
+            result = _rollback_dry_run(m, args, fp)
+        elif args.command == "pin-artifact":
+            if not (args.version and args.out):
+                print("--version and --out are required (a proposal is written to a new file for review)",
+                      file=sys.stderr)
+                return 2
+            new, result = reg.pin_artifact(m, args.version, model_root=args.models, live_scoring_fp=fp,
+                                           recorded_runs=_recorded_runs(args.live_db, args.version),
+                                           by=args.by or "", at=datetime.now(timezone.utc), reason=args.reason or "")
+            result = {**result, "proposal": str(reg.write_manifest(new, args.out))}
+            args.out = None
         elif args.command == "evaluate":
             if not args.proposed:
                 print("--proposed is required", file=sys.stderr)
@@ -86,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
             args.out = None
         if args.out:
             reg.write_once(args.out, result)
-    except (reg.RegistryError, OSError, ValueError, TypeError, AttributeError, KeyError) as err:
+    except (reg.RegistryError, duckdb.Error, OSError, ValueError, TypeError, AttributeError, KeyError) as err:
         print(str(err), file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2, default=str))

@@ -28,6 +28,7 @@ AT = datetime(2027, 1, 5, 12, tzinfo=timezone.utc)
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
 APP = BACKEND / "app"
 PRE_IFP2 = pathlib.Path(__file__).resolve().parent / "fixtures" / "model_registry_pre_ifp2.json"
+PRE_PIN = pathlib.Path(__file__).resolve().parent / "fixtures" / "model_registry_pre_pin.json"
 
 
 def _pre() -> dict:
@@ -164,7 +165,7 @@ def test_committed_production_is_ifp_2_by_owner_approval():
     assert ap["start_sit_ready"] is False and ap["evidence_sha256"] == {}     # no evidence is claimed
     assert [e["version"] for e in m["models"] if e["state"] == reg.APPROVED] == ["ifp-2.0.0"]
     assert reg.entry(m, MODEL_VERSION)["state"] == reg.RETIRED
-    assert [h["event"] for h in m["history"]] == ["registry_initialized", "promotion"]
+    assert [h["event"] for h in m["history"]] == ["registry_initialized", "promotion", reg.PIN_EVENT]
     # a valid, append-only transition from the pre-promotion manifest
     assert reg.verify_transition(_pre(), m) == []
 
@@ -173,7 +174,11 @@ def test_dry_run_report_on_the_committed_manifest(tmp_path):
     m = reg.load_manifest()
     rep = reg.dry_run_report(m, model_root=tmp_path, live_scoring_fp=FP, consumer_version=ps.MODEL_VERSION)
     assert rep["production"]["version"] == ps.MODEL_VERSION and rep["production"]["consumers_match"]
-    assert rep["production"]["artifact_pinned"] is False and rep["production"]["note"]
+    assert rep["production"]["artifact_pinned"] is False and rep["production"]["artifact_per_run"] is True
+    assert "approved_artifacts" in rep["production"]["note"] and rep["production"]["override"] is True
+    rb = rep["production"]["rollback_target"]
+    assert rb["version"] == ps.FALLBACK_VERSION and rb["artifact_pinned"] is True
+    assert rb["artifact_check"]["result"] == reg.FAIL          # pinned, but the file is not in this empty directory
     assert {c["version"] for c in rep["candidates"]} == {MODEL_VERSION, "ifp-hgb-0.1.0"}
     # the owner override does not pass the evidence gate: the approval cites no report
     gate = reg.evaluate_promotion(_pre(), m, model_root=tmp_path, live_scoring_fp=FP)
@@ -474,8 +479,8 @@ def test_rollback_refuses_incompatible_scoring_or_tampered_target(env):
         reg.plan_rollback(promoted, live_scoring_fp=FP, **kw)
     with pytest.raises(reg.RegistryError, match="no registered rollback target"):
         reg.plan_rollback(_pre(), live_scoring_fp=FP, **kw)
-    # the committed rollback target (ifp-1.0.0) is registered but its artifact hash is not pinned yet
-    with pytest.raises(reg.RegistryError, match=f"cannot roll back to {MODEL_VERSION}"):
+    # the committed rollback target (ifp-1.0.0) is pinned to the real laptop file, not to this fixture's bytes
+    with pytest.raises(reg.RegistryError, match=f"cannot roll back to {MODEL_VERSION}: "):
         reg.plan_rollback(reg.load_manifest(), live_scoring_fp=FP, **kw)
 
 
@@ -822,3 +827,168 @@ def test_prospective_subject_comes_from_the_ledger_runs():
     legacy = wl.report_subject([{"kind": "pregame"}], "pregame", FP)
     assert legacy["champion_version"] is None and legacy["challenger_version"] is None
     assert wl.report_subject([], "pregame", FP)["challenger_version"] is None
+
+
+# ----------------------------------------------------------------------------- ifp-1 artifact pin (Workstream B)
+
+
+def test_committed_pin_of_the_rollback_target_is_a_valid_transition():
+    """The committed manifest pins ifp-1.0.0's artifact (the exact bytes production served, from pin-artifact on the
+    owner's laptop), its training cutoff and held-out report. Production is unchanged; the consumer serves fallback
+    runs only of exactly these bytes."""
+    pre, m = reg.load_manifest(PRE_PIN), reg.load_manifest()
+    assert reg.verify_transition(pre, m) == []
+    assert reg.production(m)["version"] == reg.production(pre)["version"] == ps.MODEL_VERSION
+    e = reg.entry(m, ps.FALLBACK_VERSION)
+    assert e["state"] == reg.RETIRED and e["artifact"]["path"] == "independent_projections_ifp-1.0.0.json"
+    assert e["artifact"]["sha256"] == production_pin.APPROVED_ARTIFACT_SHA256
+    assert e["training_cutoff"] == {"season": 2026, "week": 5}
+    assert e["pin"]["artifact_sha256"] == e["artifact"]["sha256"] and e["pin"]["served_by_runs"]
+    assert [r["sha256"] for r in e["validation_reports"] if r["kind"] == reg.HELDOUT] == \
+        ["d75ca79b232c086d28e2f14d574811352ca833738879c26b530d306d2241cd5d"]
+    last = m["history"][-1]
+    assert last["event"] == reg.PIN_EVENT and last["version"] == ps.FALLBACK_VERSION
+    assert last["artifact_sha256"] == production_pin.APPROVED_ARTIFACT_SHA256 and last["production"] == ps.MODEL_VERSION
+    # ifp-2.0.0 keeps per-run artifact identity: nothing pretends it has one permanent artifact
+    assert reg.entry(m, ps.MODEL_VERSION)["artifact"] == {"path": None, "sha256": None}
+    # a pin never changes once made
+    moved = deepcopy(m)
+    reg.entry(moved, ps.FALLBACK_VERSION)["artifact"]["sha256"] = "0" * 64
+    assert any("pinned artifact reference changed" in p for p in reg.verify_transition(m, moved))
+    moved = deepcopy(m)
+    reg.entry(moved, ps.FALLBACK_VERSION)["training_cutoff"] = {"season": 2026, "week": 6}
+    assert any("training cutoff changed" in p for p in reg.verify_transition(m, moved))
+
+
+def test_registry_and_consumer_versions_agree():
+    """One answer to "which model do users see": the registry, the switch, the API, the tracker and the benchmark."""
+    from app.analytics import espn_benchmark as eb
+    from app.analytics import promotion_tracker as pt
+
+    m = reg.load_manifest()
+    prod = reg.production(m)
+    assert prod["version"] == ps.MODEL_VERSION == pt.MODEL_VERSION == eb.MODEL_VERSION
+    assert prod["rollback_to"] == ps.FALLBACK_VERSION and ps.CONSUMER_VERSIONS == (ps.MODEL_VERSION, ps.FALLBACK_VERSION)
+    assert reg.entry(m, ps.FALLBACK_VERSION)["artifact"]["sha256"] == production_pin.APPROVED_ARTIFACT_SHA256
+    assert prod["approval"]["override"] is True and ps.GOVERNANCE[ps.MODEL_VERSION]["approval"] == "owner_override"
+    assert ps.GOVERNANCE[ps.MODEL_VERSION]["start_sit_ready"] is prod["approval"]["start_sit_ready"] is False
+    assert ps.GOVERNANCE[ps.FALLBACK_VERSION]["start_sit_ready"] is False
+    assert prod["approval"]["evidence_sha256"] == {} and prod["validation_reports"] == []
+    g = ps.governance(ps.MODEL_VERSION)
+    assert g["espn_superiority_established"] is False and g["start_sit_ready"] is False
+    assert set(ps.GOVERNANCE) == set(ps.CONSUMER_VERSIONS)
+    # nothing approved for consumers may be research-only or unregistered
+    assert {e["version"] for e in m["models"] if e["state"] in (reg.APPROVED, reg.RETIRED)} >= set(ps.CONSUMER_VERSIONS)
+
+
+def _pin_env(tmp_path, *, evaluation=None, heldout=None):
+    root = tmp_path / "models"
+    held = {p: {"common_support_n": 900, "relative_mae_improvement": 0.01,
+                "primary_minus_best_baseline_mae": {"ci95": [-0.1, 0.2]}} for p in reg.POSITIONS}
+    art = _ifp_artifact(MODEL_VERSION, evaluation=deepcopy(held) if evaluation is None else evaluation)
+    sha = _write(root, "independent_projections_ifp-1.0.0.json", art)
+    _write(root, "heldout_report.json", heldout or {"model_version": MODEL_VERSION, "scoring_fingerprint": FP,
+                                                     "positions": held})
+    return root, sha, reg.load_manifest(PRE_PIN)
+
+
+def _pin(m, root, runs, version=MODEL_VERSION):
+    return reg.pin_artifact(m, version, model_root=root, live_scoring_fp=FP, recorded_runs=runs, by="fixture-owner",
+                            at=AT, reason="pin the served artifact")
+
+
+def test_pin_artifact_pins_the_served_bytes_and_cutoff(tmp_path):
+    root, sha, m = _pin_env(tmp_path)
+    before = _tree(root)
+    runs = [{"run_id": "old", "created_at": "2026-10-01", "artifact_id": None},
+            {"run_id": "served", "created_at": "2026-10-10", "artifact_id": sha}]
+    new, rep = _pin(m, root, runs)
+    e = reg.entry(new, MODEL_VERSION)
+    assert e["artifact"]["sha256"] == sha and e["training_cutoff"] == {"season": 2026, "week": 16}   # train_window end
+    assert rep["reports"][0]["pinned"] is True and e["validation_reports"][0]["sha256"]
+    assert e["pin"]["served_by_runs"] == ["served"] and new["history"][-1]["event"] == reg.PIN_EVENT
+    # one pin: the registry is the source, production_pin.py its tested consumer copy, set in the same change
+    assert rep["consumer_pin"]["APPROVED_ARTIFACT_SHA256"] == sha and rep["consumer_pin"]["matches"] is False
+    assert rep["consumer_pin"]["applies_to"] == production_pin.PINNED_MODEL_VERSION == MODEL_VERSION
+    assert reg.verify_transition(m, new) == [] and reg.production(new) == reg.production(m)
+    assert _tree(root) == before and reg.entry(m, MODEL_VERSION)["artifact"]["sha256"] is None     # pure
+    with pytest.raises(reg.RegistryError, match="already pinned"):
+        _pin(new, root, runs)
+
+
+def test_pin_artifact_refuses_unproven_or_replaced_bytes(tmp_path):
+    root, sha, m = _pin_env(tmp_path)
+    with pytest.raises(reg.RegistryError, match="no stored production run recorded"):
+        _pin(m, root, [{"run_id": "legacy", "created_at": "2026-10-01", "artifact_id": None}])
+    # the file on disk is not what the newest production run used: never pinned as "the" artifact
+    with pytest.raises(reg.RegistryError, match="was replaced"):
+        _pin(m, root, [{"run_id": "a", "created_at": "2026-10-01", "artifact_id": sha},
+                       {"run_id": "b", "created_at": "2026-10-09", "artifact_id": "e" * 64}])
+    with pytest.raises(reg.RegistryError, match="per-run artifact"):
+        _pin(m, root, [{"run_id": "a", "created_at": "2026-10-01", "artifact_id": sha}], version=ps.MODEL_VERSION)
+
+
+def test_missing_rollback_artifact_is_never_invented(tmp_path):
+    """A missing ifp-1 file cannot be pinned, regenerated or reported as restorable."""
+    root, sha, m = _pin_env(tmp_path)
+    (root / "independent_projections_ifp-1.0.0.json").unlink()
+    with pytest.raises(reg.RegistryError, match="missing or unreadable.*must not be reconstructed"):
+        _pin(m, root, [{"run_id": "a", "created_at": "2026-10-01", "artifact_id": sha}])
+    rep = reg.rollback_dry_run(reg.load_manifest(), model_root=root, live_scoring_fp=FP, now=AT)
+    assert rep["dry_run"] is True and rep["applies"] is False and rep["restorable"] is False
+    assert any("ifp-1.0.0 artifact" in x and "missing" in x for x in rep["missing"])
+    assert any(c["name"] == "plan_rollback" and c["result"] == reg.FAIL for c in rep["checks"])
+    assert not (root / "independent_projections_ifp-1.0.0.json").exists()
+
+
+def test_pin_leaves_a_report_that_does_not_bind_unpinned(tmp_path):
+    root, sha, m = _pin_env(tmp_path, heldout={"model_version": "ifp-0.9.0", "scoring_fingerprint": FP, "positions": {}})
+    new, rep = _pin(m, root, [{"run_id": "a", "created_at": "2026-10-01", "artifact_id": sha}])
+    assert rep["reports"][0]["pinned"] is False and "ifp-0.9.0" in rep["reports"][0]["reason"]
+    assert reg.entry(new, MODEL_VERSION)["validation_reports"][0]["sha256"] is None
+
+
+def test_rollback_dry_run_reports_consumer_change_and_writes_nothing(stored, tmp_path):  # noqa: F811
+    """Read-only: per week, the run consumers see now and after a rollback (only pinned ifp-1 runs qualify)."""
+    con = stored
+    root = tmp_path / "models"
+    committed = reg.MANIFEST_PATH.read_bytes()
+    m = reg.load_manifest()
+    # the committed pin names the real laptop file; here a fixture manifest pins a fixture artifact
+    sha = _write(root, "independent_projections_ifp-1.0.0.json", _ifp_artifact(MODEL_VERSION))
+    fx = deepcopy(m)
+    reg.entry(fx, MODEL_VERSION)["artifact"]["sha256"] = sha
+    reg.entry(fx, MODEL_VERSION)["validation_reports"] = []
+    before_db = {t: con.execute(f"SELECT * FROM {t} ORDER BY ALL").fetchall()
+                 for t in ("independent_projection_runs", "independent_projection_rows")}
+    before_files = _tree(root)
+    rep = reg.rollback_dry_run(fx, model_root=root, live_scoring_fp=FP, con=con, season=2026, weeks=[6, 7], now=AT)
+    assert rep["restorable"] is True and rep["applies"] is False and rep["to"] == MODEL_VERSION
+    assert any("participation artifact ipm-1.0.0" in x for x in rep["missing"])
+    w6, w7 = rep["consumer_change"]
+    assert w6["before"]["model_version"] == ps.FALLBACK_VERSION and w6["before"]["fallback"] is True
+    assert w6["after"]["run_id"] == w6["before"]["run_id"] and w6["after"]["fallback"] is False
+    assert w7["after"]["run_id"] is None and "project --week 7 --model ifp-1.0.0" in w7["action"]
+    assert {t: con.execute(f"SELECT * FROM {t} ORDER BY ALL").fetchall() for t in before_db} == before_db
+    assert _tree(root) == before_files and reg.MANIFEST_PATH.read_bytes() == committed
+
+
+def test_cli_pin_and_rollback_dry_run_are_read_only(tmp_path):
+    import importlib.util
+
+    scripts = BACKEND.parent / "scripts"
+    sys.path.insert(0, str(scripts))
+    spec = importlib.util.spec_from_file_location("model_registry_cli_pin", scripts / "model_registry.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    committed = reg.MANIFEST_PATH.read_bytes()
+    none = str(tmp_path / "none.duckdb")
+    out = tmp_path / "dry.json"
+    assert cli.main(["rollback-dry-run", "--models", str(tmp_path), "--live-db", none, "--out", str(out)]) == 0
+    rep = json.loads(out.read_text())
+    assert rep["dry_run"] is True and rep["applies"] is False and rep["restorable"] is False   # no file here
+    # pin-artifact on the committed manifest: ifp-1 is already pinned, ifp-2 has per-run artifacts
+    assert cli.main(["pin-artifact", "--version", MODEL_VERSION, "--by", "o", "--reason", "r", "--models",
+                     str(tmp_path), "--live-db", none, "--out", str(tmp_path / "p.json")]) == 2
+    assert not (tmp_path / "p.json").exists()
+    assert reg.MANIFEST_PATH.read_bytes() == committed
