@@ -412,11 +412,12 @@ def _espn_players(env):
 
 def test_cycle_stores_the_production_ifp2_run_the_switch_reads(lc, env):
     """The `project` stage runs backtest_independent_projections.py project on the artifact the cycle just
-    trained: an ifp-2.0.0 run in the live DB, identified by that artifact file's sha256; a rerun is a no-op."""
+    trained: an ifp-2.0.0 run in the live DB, identified by that artifact file's sha256; a rerun is a no-op.
+    (The same stage also stores the rest-of-season runs: test_cycle_projects_every_remaining_week...)"""
     from app.analytics import projection_source as ps
 
     _espn_players(env)
-    code, rep = lc.run_cycle(_args(lc, env, project=True))
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True))
     assert code == lc.EXIT_OK, rep["errors"]
     assert _stages(rep)[-2:] == [("predict", "ok"), ("project", "ok")]
     art = rep["training"]["artifacts"]["ifp-2.0.0"]["path"]
@@ -430,9 +431,151 @@ def test_cycle_stores_the_production_ifp2_run_the_switch_reads(lc, env):
     assert models == {"ifp2_ridge"}
     assert ps.weekly(con, 2025, 10, "independent")["run"]["run_id"] == runs[0][0]
     con.close()
-    code, again = lc.run_cycle(_args(lc, env, project=True))
+    code, again = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True))
     assert code == lc.EXIT_OK and again["status"] == "up_to_date"
     assert again["projection"]["run_id"] == runs[0][0] and again["projection"]["created"] is False
+
+
+LAST_WEEK = 17      # the synthetic season's last regular-season week
+
+
+def _runs(env):
+    con = connect(env / "live.duckdb")
+    try:
+        return con.execute("SELECT week, forecast_horizon, projected_from_week, artifact_id, run_id, row_count "
+                           "FROM independent_projection_runs ORDER BY week").fetchall()
+    finally:
+        con.close()
+
+
+def test_cycle_projects_every_remaining_week_from_the_target_weeks_artifact(lc, env):
+    """Target week W = 10: runs for weeks 10..17, every one by W's artifact (one sha), horizons 0..7, projected
+    from week 10; a week-12 bye is a bye row; an unchanged cycle writes nothing; the approved-artifact gate accepts
+    W's artifact for the later weeks; evidence readers see only the horizon-0 run."""
+    from app.analytics import production_forecasts as pf
+    from app.analytics import projection_source as ps
+    from app.analytics.independent_projection_store import league_scoring
+
+    _espn_players(env)
+    _sql(env, "DELETE FROM nfl_schedules WHERE season = 2025 AND week = 12 AND (home_team = 'AAA' OR away_team = 'AAA')")
+    code, rep = lc.run_cycle(_args(lc, env, project=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    assert rep["last_regular_season_week"] == LAST_WEEK
+    art_sha = hashlib.sha256(Path(rep["training"]["artifacts"]["ifp-2.0.0"]["path"]).read_bytes()).hexdigest()
+    runs = _runs(env)
+    assert [r[0] for r in runs] == list(range(10, LAST_WEEK + 1))
+    assert [r[1] for r in runs] == list(range(0, LAST_WEEK - 10 + 1))
+    assert {r[2] for r in runs} == {10} and {r[3] for r in runs} == {art_sha} and all(r[5] > 0 for r in runs)
+    ros = rep["projection"]["rest_of_season"]
+    assert [r["week"] for r in ros] == list(range(11, LAST_WEEK + 1)) and all(r["created"] for r in ros)
+    assert rep["projection"]["rest_of_season_summary"]["failed"] == []
+    assert not any("rest-of-season" in w for w in rep["warnings"])
+    assert rep["status"] == "forecast_frozen"
+
+    con = connect(env / "live.duckdb")
+    bye = con.execute("SELECT count(*) FROM independent_projection_rows r JOIN independent_projection_runs u USING (run_id) "
+                      "WHERE u.week = 12 AND r.nfl_team = 'AAA' AND r.coverage_status = 'bye'").fetchone()[0]
+    assert bye > 0
+    flags = con.execute("SELECT flags FROM independent_projection_rows r JOIN independent_projection_runs u USING (run_id) "
+                        "WHERE u.week = 13 AND r.coverage_status = 'projected' LIMIT 1").fetchone()[0]
+    assert "future week: no injury report yet" in flags and any("horizon 3" in f for f in json.loads(flags))
+    # the gate: W's artifact is registered once (target week 10, cutoff before week 10) and covers every later week
+    fp = league_scoring(con, 2025)[1].fingerprint
+    for week in (10, 13, LAST_WEEK):
+        run = pf.latest_run(con, 2025, week, model_version="ifp-2.0.0", scoring_fingerprint=fp)
+        assert run is not None and run["artifact_check"] == "verified" and run["horizon"] == week - 10
+    assert con.execute("SELECT count(*) FROM approved_artifacts WHERE model_version = 'ifp-2.0.0'").fetchone()[0] == 1
+    assert ps.weekly(con, 2025, 14, "independent")["run"]["run_id"] == next(r[4] for r in runs if r[0] == 14)
+    # evidence: horizon 0 only, the rest excluded with the reason
+    forecasts, excluded = pf.pregame_forecasts(con, 2025, None, model_version="ifp-2.0.0", scoring_fingerprint=fp)
+    assert {f["week"] for f in forecasts} <= {10}
+    assert {e["week"] for e in excluded if e["reason"].startswith("rest-of-season forecast")} == \
+        set(range(11, LAST_WEEK + 1))
+    con.close()
+
+    # an unchanged cycle writes nothing: same runs, same ids
+    code, again = lc.run_cycle(_args(lc, env, project=True))
+    assert code == lc.EXIT_OK and again["status"] == "up_to_date"
+    assert _runs(env) == runs
+    assert not any(r["created"] for r in again["projection"]["rest_of_season"]) and not again["projection"]["created"]
+
+
+def _cli():
+    spec = importlib.util.spec_from_file_location("backtest_cli3", SCRIPTS / "backtest_independent_projections.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    return cli
+
+
+def test_a_failed_future_week_is_reported_and_the_other_weeks_are_still_projected(lc, env, monkeypatch):
+    import argparse
+
+    from app.analytics import independent_projection_store as store
+
+    _espn_players(env)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True))   # trains + registers W=10
+    assert code == lc.EXIT_OK, rep["errors"]
+    cli = _cli()
+    real = store.build_live
+
+    def flaky(con, src, art, season, week, **kw):
+        if week == 13:
+            raise RuntimeError("boom")
+        return real(con, src, art, season, week, **kw)
+
+    monkeypatch.setattr(store, "build_live", flaky)
+    args = argparse.Namespace(live_db=env / "live.duckdb", history_db=env / "history.duckdb", out=env / "models",
+                              weekly_dir=env / "out", season=2025, week=10, through_week=15, artifact_week=None,
+                              model="ifp-2.0.0", register_artifact="learning_cycle")
+    hist = cli._ro(args.history_db)
+    live = cli._ro(args.live_db)
+    scoring = cli._scoring(live, 2025)
+    live.close()
+    out = cli.cmd_project(args, hist, scoring)
+    hist.close()
+    assert out["week"] == 10 and out["forecast_horizon"] == 0
+    assert out["rest_of_season_failed"] == [13]
+    by_week = {r["week"]: r for r in out["rest_of_season"]}
+    assert by_week[13]["error"] == "RuntimeError: boom"
+    assert {w for w, r in by_week.items() if "error" not in r} == {11, 12, 14, 15}
+    assert [r[0] for r in _runs(env)] == [10, 11, 12, 14, 15]
+
+
+def test_the_cycle_report_lists_a_failed_future_week_without_failing_the_cycle(lc, env, monkeypatch):
+    _espn_players(env)
+
+    def fake_project(args, conns, log_path):
+        for con in conns:
+            con.close()
+        conns.clear()
+        return {"run_id": "r10", "created": True, "rows": 5, "model_version": "ifp-2.0.0", "artifact_id": "a" * 64,
+                "rest_of_season": [{"week": 11, "forecast_horizon": 1, "run_id": "r11", "created": True, "rows": 5},
+                                   {"week": 12, "forecast_horizon": 2, "error": "RuntimeError: boom"}]}
+
+    monkeypatch.setattr(lc, "stage_project", fake_project)
+    code, rep = lc.run_cycle(_args(lc, env, project=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen"
+    assert rep["projection"]["rest_of_season_summary"] == {
+        "weeks": [11], "created": 1, "unchanged": 0, "failed": [{"week": 12, "error": "RuntimeError: boom"}]}
+    assert any("week 12 failed: RuntimeError: boom" in w for w in rep["warnings"])
+
+
+def test_project_cli_with_artifact_week_projects_a_later_week_from_that_artifact(lc, env):
+    _espn_players(env)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    spec = importlib.util.spec_from_file_location("backtest_cli2", SCRIPTS / "backtest_independent_projections.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    base = ["project", "--season", "2025", "--live-db", str(env / "live.duckdb"), "--history-db",
+            str(env / "history.duckdb"), "--out", str(env / "models"), "--weekly-dir", str(env / "out")]
+    assert cli.main([*base, "--week", "13", "--artifact-week", "10", "--register-artifact", "learning_cycle"]) == 0
+    runs = _runs(env)
+    assert [(r[0], r[1], r[2]) for r in runs] == [(10, 0, 10), (13, 3, 10)] and len({r[3] for r in runs}) == 1
+    assert cli.main([*base, "--week", "13", "--artifact-week", "10"]) == 0       # identical retry: no new run
+    assert len(_runs(env)) == 2
+    assert cli.main([*base, "--week", "9", "--artifact-week", "10"]) == 2        # an artifact cannot project the past
+    assert cli.main([*base, "--week", "13", "--artifact-week", "12"]) == 2       # no week-12 artifact was trained
 
 
 def test_project_cli_refuses_a_week_without_an_ifp2_artifact(lc, env):

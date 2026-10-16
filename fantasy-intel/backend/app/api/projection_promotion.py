@@ -5,7 +5,8 @@ GET /api/projections/independent/promotion
 Per position: the stored held-out status vs the frozen PROMOTION_CRITERIA and the matched
 pregame-ESPN evidence so far (app.analytics.promotion_tracker). No training, no syncs, no writes.
 The tracker reuses the research modules (polars); the hosted API bundle ships without them, so
-there it answers available: false instead of a copy of the criteria.
+there it answers available: false instead of a copy of the criteria, still with the production model's
+governance (projection_source.governance, SQL-free constants) so the hosted site never implies validation.
 """
 
 from __future__ import annotations
@@ -25,9 +26,13 @@ def projection_promotion():
     try:
         from ..analytics.promotion_tracker import build_tracker
     except ImportError as err:
-        return {"schema_version": SCHEMA_VERSION, "available": False,
+        from ..analytics.projection_source import MODEL_VERSION, governance
+        return {"schema_version": SCHEMA_VERSION, "available": False, "model_version": MODEL_VERSION,
+                "governance": governance(MODEL_VERSION),
                 "unavailable_reason": f"The promotion tracker needs the research packages ({err.name}), which this "
-                                      "API deployment does not include. Open the Data quality page on a local backend."}
+                                      f"API deployment does not include, so evidence progress is not shown here. "
+                                      f"{MODEL_VERSION} is production by owner override and is not shown to be "
+                                      "better than ESPN. Open the Data quality page on a local backend."}
     with db() as con:
         try:
             return build_tracker(con)

@@ -375,15 +375,26 @@ def load_artifact(path: Path) -> Artifact:
     return Artifact.from_dict(_read_json(path))
 
 
-def latest_artifact(root: Path, version: str, season: int, week: int, scoring_fp: str) -> tuple[Artifact, str, Path]:
+def latest_artifact(root: Path, version: str, season: int, week: int, scoring_fp: str, *,
+                    artifact_week: int | None = None) -> tuple[Artifact, str, Path]:
     """The most recently created artifact for (version, season, week); refuses a scoring mismatch
-    or an artifact whose data cutoff is not strictly before the target week."""
-    files = sorted((Path(root) / "artifacts" / version).glob(f"s{season}w{week:02d}-*.json"))
+    or an artifact whose data cutoff is not strictly before the target week.
+
+    `artifact_week` (rest-of-season projections): the week W whose artifact makes a LATER target week T = `week`.
+    The files searched are W's (s{season}wWW-*.json); the cutoff rule is checked against T and also against W
+    itself (the artifact must be one W's own training could have produced). The default (None) is the artifact
+    of the target week, as before."""
+    src_week = week if artifact_week is None else artifact_week
+    if src_week > week:
+        raise NotReady(f"the artifact of week {src_week} cannot project the earlier week {week}")
+    files = sorted((Path(root) / "artifacts" / version).glob(f"s{season}w{src_week:02d}-*.json"))
     if not files:
-        raise NotReady(f"no {version} artifact for {season} week {week}; run train --week {week} first")
+        raise NotReady(f"no {version} artifact for {season} week {src_week}; run train --week {src_week} first")
     arts = [(load_artifact(f), f) for f in files]
     art, path = max(arts, key=lambda t: t[0].created_at)
     check_artifact(art, season, week, scoring_fp)
+    if src_week != week:
+        check_artifact(art, season, src_week, scoring_fp)
     return art, path.stem.split("-", 1)[1], path
 
 

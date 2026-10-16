@@ -46,49 +46,63 @@ def label_for(versions: list[str]) -> str:
     return f"Fantasy Intel projections ({', '.join(versions or [PRIMARY])}); {LABEL_TAIL}"
 
 
-def _stored_runs(con, season: int, weeks: list[int]) -> tuple[dict[int, dict], set[tuple[int, str]]]:
-    """({week: run}, {(week, version) with a run the artifact rule rejected}) as `projection_source.weekly` would
-    pick them, in ONE query: the newest run (created_at, run_id) of the production model, else of the previous
-    model, under the league's current scoring, that the artifact gate accepts and that still has all of its rows
-    (production_forecasts.latest_run's rule). The gate is production_forecasts.artifact_gate itself, built once per
-    version; each chosen run carries `artifact_check` / `artifact_note` like latest_run's."""
-    fp = ps._scoring_fingerprint(con, season)
-    if fp is None or not table_exists(con, pf.RUNS) or pf.rows_source(con) is None:
-        return {}, set()
-    gates = {v: pf.artifact_gate(con, v) for v in (ps.MODEL_VERSION, ps.FALLBACK_VERSION)}
-    runs = fetch_dicts(con, f"""SELECT * FROM {pf.RUNS} WHERE season = ? AND week IN (SELECT unnest(?))
-                                AND scoring_fingerprint = ? AND model_version IN (?, ?)
-                                ORDER BY created_at DESC, run_id DESC""",
-                       [season, weeks, fp, ps.MODEL_VERSION, ps.FALLBACK_VERSION])
-    checked = [(r, *gates[r["model_version"]](r)) for r in runs]
-    rejected = {(r["week"], r["model_version"]) for r, status, _ in checked if status == "rejected"}
-    accepted = [(r, status, why) for r, status, why in checked if status != "rejected"]
-    intact = {r["run_id"] for r, _, _ in accepted}
-    if accepted and table_exists(con, pf.ROWS):
-        have = dict(con.execute(f"SELECT run_id, count(*) FROM {pf.ROWS} WHERE run_id IN (SELECT unnest(?)) "
-                                "GROUP BY run_id", [sorted(intact)]).fetchall())
-        intact = {r["run_id"] for r, _, _ in accepted if r.get("row_count") and have.get(r["run_id"]) == r["row_count"]}
-    chosen: dict[int, dict] = {}
+def _select_batch(con, season: int, weeks: list[int]) -> dict[int, dict]:
+    """week -> {run, rows, skipped, fallback} exactly as `projection_source.select_run` picks them, for several
+    weeks at once. The policy is the switch's own: the production model first, else the previous model; within a
+    model the newest run (created_at DESC NULLS LAST, run_id DESC) of ANY horizon that production_forecasts'
+    artifact gate does not reject and whose stored rows pass `integrity_problem`. Reused, not re-implemented:
+    `artifact_gate` (built once per version), `integrity_problem`, `horizon_of` / `horizon_note`, `_scoring`.
+
+    Queries: the league scoring (once), the gates (once), ONE runs query for every week, ONE rows query for the
+    first candidate of every (week, model), then one rows query per further candidate, only when the one before
+    it was rejected or failed verification. Integrity needs ALL of a run's rows, so rows are not filtered by player
+    here; the caller picks its player out of the verified rows."""
+    fp, _ = ps._scoring(con, season)
+    if fp is None or not table_exists(con, pf.RUNS) or not table_exists(con, pf.ROWS):
+        return {}
+    versions = ps.CONSUMER_VERSIONS
+    gates = {v: pf.artifact_gate(con, v) for v in versions}
+    cand: dict[tuple[int, str], list[dict]] = {}
+    for run in fetch_dicts(con, f"""SELECT * FROM {pf.RUNS} WHERE season = ? AND week IN (SELECT unnest(?))
+                                    AND scoring_fingerprint = ? AND model_version IN (SELECT unnest(?))
+                                    ORDER BY created_at DESC NULLS LAST, run_id DESC""",
+                           [season, weeks, fp, list(versions)]):
+        status, why = gates[run["model_version"]](run)
+        cand.setdefault((run["week"], run["model_version"]), []).append(
+            {**run, "artifact_check": status, "artifact_note": why, "horizon": pf.horizon_of(run),
+             "horizon_note": pf.horizon_note(run)})
+    firsts = sorted({lst[0]["run_id"] for lst in cand.values() if lst[0]["artifact_check"] != "rejected"})
+    preread: dict[str, list[dict]] = {rid: [] for rid in firsts}
+    if firsts:
+        for r in fetch_dicts(con, f"SELECT * FROM {pf.ROWS} WHERE run_id IN (SELECT unnest(?))", [firsts]):
+            preread[r["run_id"]].append(r)
+    out = {}
     for week in weeks:
-        for version in (ps.MODEL_VERSION, ps.FALLBACK_VERSION):
-            hit = next(((r, status, why) for r, status, why in accepted if r["week"] == week
-                        and r["model_version"] == version and r["run_id"] in intact), None)
-            if hit is not None:
-                chosen[week] = {**hit[0], "artifact_check": hit[1], "artifact_note": hit[2]}
+        sel = {"run": None, "rows": None, "skipped": [], "fallback": False}
+        for version in versions:
+            for run in cand.get((week, version), []):
+                if run["artifact_check"] == "rejected":
+                    rows, problem = [], run["artifact_note"]
+                else:
+                    rows = preread[run["run_id"]] if run["run_id"] in preread else fetch_dicts(
+                        con, f"SELECT * FROM {pf.ROWS} WHERE run_id = ?", [run["run_id"]])
+                    problem = pf.integrity_problem(run, rows)
+                if problem is None:
+                    sel.update(run=run, rows=rows, fallback=version != versions[0])
+                    break
+                sel["skipped"].append({"run_id": run["run_id"], "model_version": run["model_version"],
+                                       "created_at": str(run["created_at"]), "reason": problem})
+            if sel["run"] is not None:
                 break
-    return chosen, rejected
+        out[week] = sel
+    return out
 
 
-def _week_reason(week: int, run: dict, rejected: set[tuple[int, str]]) -> str | None:
-    """`projection_source.weekly`'s reason for a week that has a run (same wording; the equality test pins it)."""
-    if run["model_version"] == PRIMARY:
-        reason = None
-    elif (week, PRIMARY) in rejected:
-        reason = (f"The {PRIMARY} run for week {week} was made by an artifact that is not approved, so the "
-                  f"previous model {run['model_version']} is shown.")
-    else:
-        reason = (f"No {PRIMARY} run is stored for week {week} yet, so the previous model "
-                  f"{run['model_version']} is shown.")
+def _week_reason(week: int, sel: dict) -> str | None:
+    """`projection_source.weekly`'s reason for a week that has a run (its own fallback text; the equality test pins
+    the wording, including the unverified-artifact note)."""
+    run = sel["run"]
+    reason = ps._fallback_reason(week, run, sel["skipped"]) if sel["fallback"] else None
     if run.get("artifact_check") == "unverified":
         note = (f"The approval of this run's artifact could not be verified ({run.get('artifact_note') or 'unknown'}), "
                 "so the latest run is shown unverified.")
@@ -97,30 +111,25 @@ def _week_reason(week: int, run: dict, rejected: set[tuple[int, str]]) -> str | 
 
 
 def player_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dict]:
-    """week -> {value, origin, run, reason} for ONE player, equal to `projection_source.weekly(...)` per week
-    (values[pid], origin[pid], run, reason) but in a handful of queries: independent of the number of weeks."""
+    """week -> {value, origin, run, reason, skipped} for ONE player, equal to `projection_source.weekly(...)` per
+    week (values[pid], origin[pid], run, reason, skipped) with a number of queries that grows with the number of
+    rejected or unverifiable candidate runs, not with the number of weeks."""
     espn = {r["scoring_period"]: None if r["projected_points"] is None else float(r["projected_points"])
             for r in fetch_dicts(con, """SELECT scoring_period, projected_points FROM espn_player_weekly_points
                                          WHERE season = ? AND espn_player_id = ?
                                            AND scoring_period IN (SELECT unnest(?))""", [season, pid, weeks])}
-    runs, rejected = _stored_runs(con, season, weeks)
-    rows = {}
-    if runs:
-        rows = {(r["run_id"]): r for r in fetch_dicts(
-            con, f"""SELECT run_id, coverage_status, expected_points FROM {pf.rows_source(con)}
-                     WHERE espn_player_id = ? AND run_id IN (SELECT unnest(?))""",
-            [pid, sorted({r["run_id"] for r in runs.values()})])}
+    selected = _select_batch(con, season, weeks)
     out = {}
     for week in weeks:
-        run, value, origin = runs.get(week), espn.get(week), ps.ESPN
-        r = rows.get(run["run_id"]) if run else None
+        sel = selected.get(week) or {"run": None, "rows": None, "skipped": [], "fallback": False}
+        run, value, origin = sel["run"], espn.get(week), ps.ESPN
+        r = next((x for x in sel["rows"] or [] if x["espn_player_id"] == pid), None)
         if r and r["coverage_status"] == "projected" and r["expected_points"] is not None:
             value, origin = float(r["expected_points"]), ps.OURS
         elif r and r["coverage_status"] in ps.ZERO_STATUSES:
             value, origin = 0.0, ps.OURS_ZERO
-        out[week] = {"value": value, "origin": origin, "run": run,
-                     "reason": _week_reason(week, run, rejected) if run else None,
-                     "any_rejected": any(w == week for w, _ in rejected)}
+        out[week] = {"value": value, "origin": origin, "run": run, "skipped": sel["skipped"],
+                     "reason": _week_reason(week, sel) if run else None}
     return out
 
 
@@ -155,23 +164,27 @@ def ours_forward(con, season: int, pid: int, weeks: list[dict], *, source: str) 
         run, origin, value, on_bye = got["run"], got["origin"], got["value"], w["on_bye"]
         if origin == ps.ESPN and on_bye:       # a schedule bye is not an ESPN projection and not a gap to fill
             origin, value = BYE, None
-        horizon = (run.get("forecast_horizon") or 0) if run else None     # NULL on legacy runs = 0
+        horizon = run["horizon"] if run else None     # production_forecasts.horizon_of: NULL on a legacy run = 0
         entries.append({
             "week": w["week"], "value": value, "origin": origin, "on_bye": on_bye,
             "run_id": run["run_id"] if run else None, "model_version": run["model_version"] if run else None,
             "run_created_at": str(run["created_at"]) if run else None,
             "horizon": horizon, "projected_from_week": run.get("projected_from_week") if run else None,
-            "experimental": horizon is not None and horizon > 0,
+            "experimental": bool(run and run.get("horizon_note")),
             # True: the run's artifact is registered / pinned; False: could not be verified (fail open); None: no rule
             "artifact_verified": {"verified": True, "unverified": False}.get(run.get("artifact_check")) if run else None,
         })
         if got["reason"] and got["reason"] not in reasons:
             reasons.append(got["reason"])
     if not any(e["run_id"] for e in entries):
-        if any(stored[w["week"]]["any_rejected"] for w in regular):
+        skipped = [x for w in regular for x in stored[w["week"]]["skipped"]]
+        if any(ps._gate_rejected(x) for x in skipped):
             return _empty(f"No {PRIMARY} projection run with an approved artifact is available for the remaining "
                           "regular-season weeks (a stored run was made by an artifact that is not approved and is "
                           "never shown), so ESPN projections are shown.", last_regular)
+        if skipped:
+            return _empty("No stored independent projection run for the remaining regular-season weeks passed the "
+                          "integrity checks, so ESPN projections are shown.", last_regular)
         return _empty(f"No {PRIMARY} projection run is stored for any remaining regular-season week yet "
                       "(they are written by the rest-of-season learning cycle), so ESPN projections are shown.",
                       last_regular)

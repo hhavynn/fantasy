@@ -9,13 +9,16 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from app.analytics import production_forecasts as pf
+from app.analytics import production_pin
 from app.analytics import projection_source as ps
 from app.analytics.forward_ours import LABEL, ours_forward, player_weeks
 from app.analytics.projections import forward_weeks, league_window, load_schedule, player_forward, summarize
-from app.db.connection import connect, init_db
+from app.db.connection import connect, fetch_dicts, init_db
 
 SEASON, CURRENT, FINAL, LAST_REG = 2026, 6, 17, 14
 KC_BYE = 9
+QUERY_BOUND = 15      # per player for 9 weeks, with no rejected / unverifiable candidates (measured: see the test)
 CREATED = datetime(2026, 10, 14, 12, 0)
 APPROVED = "sha-approved"
 PLAYERS = {1: ("Ace WR", "WR", "KC"), 2: ("Kicker K", "K", "KC"), 3: ("Zed RB", "RB", "BUF")}
@@ -53,9 +56,12 @@ def populate(con, *, run_weeks=range(CURRENT, LAST_REG + 1), horizon_col=True, s
         add_run(con, w, skip=(skip or {}).get(w), horizon_col=horizon_col)
 
 
-def add_run(con, week, *, version=ps.MODEL_VERSION, created=CREATED, skip=None, horizon_col=True, artifact=APPROVED):
+def add_run(con, week, *, version=ps.MODEL_VERSION, created=CREATED, skip=None, horizon_col=True, artifact=None,
+            horizon=None, sealed=True):
     """One run for `week` with a row per player: WR 1 projected (or bye on KC's bye week), K 2 unsupported,
     RB 3 projected. `skip`: player ids left out of the run's rows."""
+    if artifact is None:     # the registered ifp-2.0.0 artifact, or the pinned ifp-1.0.0 one
+        artifact = APPROVED if version == ps.MODEL_VERSION else production_pin.APPROVED_ARTIFACT_SHA256
     rows = []
     for pid, (_, pos, team) in PLAYERS.items():
         if pid in (skip or ()):
@@ -66,8 +72,8 @@ def add_run(con, week, *, version=ps.MODEL_VERSION, created=CREATED, skip=None, 
             rows.append((pid, "bye", None))
         else:
             rows.append((pid, "projected", ours_value(week, pid)))
-    run_id = f"run-{version}-{week}-{created:%H%M}-{artifact}"
-    horizon = week - CURRENT
+    run_id = f"run-{version}-{week}-{created:%H%M}-{artifact}-h{week - CURRENT if horizon is None else horizon}"
+    horizon = week - CURRENT if horizon is None else horizon
     cols = "run_id, season, week, model_version, scoring_fingerprint, model_status, created_at, row_count, artifact_id"
     vals = [run_id, SEASON, week, version, "fp", json.dumps({"WR": {"status": "experimental"}}), created, len(rows), artifact]
     if horizon_col:
@@ -77,12 +83,22 @@ def add_run(con, week, *, version=ps.MODEL_VERSION, created=CREATED, skip=None, 
     for pid, status, exp in rows:
         con.execute("INSERT INTO independent_projection_rows (run_id, season, week, espn_player_id, coverage_status, "
                     "expected_points) VALUES (?, ?, ?, ?, ?, ?)", [run_id, SEASON, week, pid, status, exp])
+    if sealed:
+        seal(con, run_id)
     return run_id
+
+
+def seal(con, run_id):
+    """Record the run's content hash (what the store's write_run does), so integrity_problem can verify it."""
+    run = fetch_dicts(con, "SELECT * FROM independent_projection_runs WHERE run_id = ?", [run_id])[0]
+    rows = fetch_dicts(con, "SELECT * FROM independent_projection_rows WHERE run_id = ?", [run_id])
+    con.execute("UPDATE independent_projection_runs SET content_sha256 = ? WHERE run_id = ?",
+                [pf.content_sha256(run, rows), run_id])
 
 
 @pytest.fixture(autouse=True)
 def fingerprint(monkeypatch):
-    monkeypatch.setattr(ps, "_scoring_fingerprint", lambda con, season: "fp")
+    monkeypatch.setattr(ps, "_scoring", lambda con, season: ("fp", None))
 
 
 def ours_for(con, pid=1, source="independent"):
@@ -195,9 +211,10 @@ def test_mixed_model_weeks_are_labeled_and_hide_the_total(con):
 
 def test_newest_run_of_a_week_wins(con):
     populate(con)
-    add_run(con, 8, created=CREATED + timedelta(hours=1))   # a later cycle re-ran week 8
-    con.execute("UPDATE independent_projection_rows SET expected_points = 99.0 WHERE week = 8 AND espn_player_id = 1 "
-                "AND run_id LIKE '%1300%'")
+    rid = add_run(con, 8, created=CREATED + timedelta(hours=1))   # a later cycle re-ran week 8
+    con.execute("UPDATE independent_projection_rows SET expected_points = 99.0 WHERE run_id = ? AND espn_player_id = 1",
+                [rid])
+    seal(con, rid)
     o = ours_for(con)["ours"]
     assert by_week(o)[8]["value"] == 99.0 and o["run_created_at"] == str(CREATED + timedelta(hours=1))
 
@@ -239,7 +256,7 @@ def check_equal_to_the_switch(con, pids=(1, 2, 3)):
     weeks = list(range(CURRENT, LAST_REG + 1))
     counting = Counting(con)
     got = {pid: player_weeks(counting, SEASON, pid, weeks) for pid in pids}
-    assert counting.n <= len(pids) * 15, counting.n
+    assert counting.n <= len(pids) * QUERY_BOUND, counting.n
     for week in weeks:
         ref = ps.weekly(con, SEASON, week, "independent")
         for pid in pids:
@@ -247,6 +264,7 @@ def check_equal_to_the_switch(con, pids=(1, 2, 3)):
             assert g["origin"] == ref["origin"].get(pid, ps.ESPN) and g["value"] == ref["values"].get(pid), (pid, week)
             assert (g["run"] or {}).get("run_id") == (ref["run"] or {}).get("run_id"), (pid, week)
             assert g["reason"] == (ref["reason"] if ref["available"] else None), (pid, week, g["reason"], ref["reason"])
+            assert g["skipped"] == ref["skipped"], (pid, week)
             if g["run"]:
                 verified = {"verified": True, "unverified": False}.get(g["run"]["artifact_check"])
                 assert ref["run"].get("artifact_verified") == verified, (pid, week)
@@ -262,9 +280,61 @@ def test_queries_are_bounded_and_equal_the_per_week_switch(con):
     con.execute("DELETE FROM independent_projection_rows WHERE run_id = ?", [lost])
     got = check_equal_to_the_switch(con)
     assert got[1][12]["run"]["artifact_check"] == "verified"        # a week-12 run served by the week-6 artifact
-    one = Counting(con)
-    ours_forward(one, SEASON, 1, espn_baseline(con)["weeks"], source="independent")
-    assert one.n < 15, one.n                      # was ~12 per week before batching
+    assert got[1][12]["skipped"] and "stored rows" in got[1][12]["skipped"][0]["reason"]
+
+
+def test_query_count_does_not_grow_with_the_number_of_weeks(con):
+    """Clean data: scoring (1-2), gates (2-3), existence checks, ONE runs query, ONE first-candidate rows query,
+    ESPN: about a dozen, whether 3 or 9 weeks are projected."""
+    populate(con)
+    base = espn_baseline(con)["weeks"]
+
+    def count(n):
+        counting = Counting(con)
+        ours_forward(counting, SEASON, 1, base[:n], source="independent")
+        return counting.n
+    few, many = count(3), count(len(base))
+    assert many == few and many <= 15, (few, many)
+
+
+def test_a_newest_run_with_an_edited_row_is_skipped_for_the_next_verified_run(con):
+    populate(con)
+    newer = add_run(con, 8, created=CREATED + timedelta(hours=1))
+    con.execute("UPDATE independent_projection_rows SET expected_points = 99.0 WHERE run_id = ? AND espn_player_id = 1",
+                [newer])                                         # edited after sealing; the row count is unchanged
+    got = check_equal_to_the_switch(con)
+    assert got[1][8]["value"] == ours_value(8) and got[1][8]["run"]["run_id"] != newer
+    assert "content_sha256" in got[1][8]["skipped"][0]["reason"] and got[1][8]["skipped"][0]["run_id"] == newer
+    o = ours_for(con)["ours"]
+    assert by_week(o)[8]["value"] == ours_value(8) and o["ros_complete"]
+
+
+def test_an_unsealed_run_is_skipped(con):
+    populate(con, run_weeks=[w for w in range(CURRENT, LAST_REG + 1) if w != 8])
+    unsealed = add_run(con, 8, sealed=False)
+    got = check_equal_to_the_switch(con)
+    assert got[1][8]["run"] is None and "unsealed" in got[1][8]["skipped"][0]["reason"]
+    o = ours_for(con)["ours"]
+    assert by_week(o)[8]["origin"] == "espn" and o["fallback_weeks"] == [8] and o["ros_projected_points"] is None
+    seal(con, unsealed)                                          # once sealed it is served
+    assert check_equal_to_the_switch(con)[1][8]["run"]["run_id"] == unsealed
+
+
+def test_horizon_zero_and_horizon_k_runs_of_a_week_coexist_and_the_newest_wins(con):
+    populate(con, run_weeks=[w for w in range(CURRENT, LAST_REG + 1) if w != 9])
+    h0 = add_run(con, 9, horizon=0, created=CREATED)                     # the week's own pregame run
+    hk = add_run(con, 9, horizon=3, created=CREATED + timedelta(hours=1))  # a later rest-of-season run
+    got = check_equal_to_the_switch(con)
+    assert got[1][9]["run"]["run_id"] == hk and got[1][9]["run"]["horizon_note"]
+    e = by_week(ours_for(con)["ours"])[9]
+    assert e["run_id"] == hk and e["horizon"] == 3 and e["experimental"] is True
+    # the other way round: a newer horizon-0 run is not hidden behind an older rest-of-season run
+    h0b = add_run(con, 9, horizon=0, created=CREATED + timedelta(hours=2), artifact=APPROVED)
+    got = check_equal_to_the_switch(con)
+    assert got[1][9]["run"]["run_id"] == h0b and got[1][9]["run"]["horizon_note"] is None
+    e = by_week(ours_for(con)["ours"])[9]
+    assert e["run_id"] == h0b and e["horizon"] == 0 and e["experimental"] is False
+    assert {h0, hk} <= {r[0] for r in con.execute("SELECT run_id FROM independent_projection_runs").fetchall()}
 
 
 def test_unregistered_ifp2_artifact_falls_back_like_the_switch(con):

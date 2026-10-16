@@ -2,7 +2,7 @@
 model only when asked, with every number's origin labeled."""
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -16,6 +16,10 @@ from test_independent_projections import _artifact, live  # noqa: F401  (live is
 from test_matchup_api import CURRENT_WEEK, league, serve  # noqa: F401  (fixtures)
 
 
+PINNED = production_pin.APPROVED_ARTIFACT_SHA256   # the registry-pinned ifp-1.0.0 artifact a fallback run must use
+WEEKLY_SHA = "b" * 64                     # an ifp-2.0.0 run's weekly artifact file digest (registered by _store)
+
+
 # ----------------------------------------------------------------------------- weekly()
 
 
@@ -23,7 +27,7 @@ from test_matchup_api import CURRENT_WEEK, league, serve  # noqa: F401  (fixture
 def stored(live):  # noqa: F811
     """A week-6 run of the synthetic league; expected points set as if participation had run."""
     con, src, path = live
-    meta, rows = build_live(con, src, _artifact(src), 2026, 6)
+    meta, rows = build_live(con, src, _artifact(src), 2026, 6, artifact_sha256=PINNED)
     for r in rows:
         if r["coverage_status"] == "projected":
             r["expected_points"] = round(r["projected_points"] * 0.9, 2)
@@ -86,7 +90,7 @@ def test_production_run_is_preferred_over_a_newer_fallback_run(live):  # noqa: F
     write_live(con, meta2, rows2)
     register_approved_artifact(con, model_version=ps.MODEL_VERSION, artifact_sha256="d" * 64, target_season=2026,
                                target_week=6, source="learning_cycle")
-    meta1, rows1 = build_live(con, src, art, 2026, 6)
+    meta1, rows1 = build_live(con, src, art, 2026, 6, artifact_sha256=PINNED)
     meta1["created_at"] = meta2["created_at"] + timedelta(minutes=5)
     write_live(con, meta1, rows1)
     w = ps.weekly(con, 2026, 6, "independent")
@@ -97,9 +101,9 @@ def test_production_run_is_preferred_over_a_newer_fallback_run(live):  # noqa: F
 def test_latest_run_is_shown_and_the_earlier_run_survives(live):  # noqa: F811
     con, src, _ = live
     art = _artifact(src)
-    first, rows1 = build_live(con, src, art, 2026, 6)
+    first, rows1 = build_live(con, src, art, 2026, 6, artifact_sha256=PINNED)
     write_live(con, first, rows1)
-    second, rows2 = build_live(con, src, art, 2026, 6)
+    second, rows2 = build_live(con, src, art, 2026, 6, artifact_sha256=PINNED)
     next(r for r in rows2 if r["espn_player_id"] == 1)["projected_points"] = 31.0
     next(r for r in rows2 if r["espn_player_id"] == 1)["expected_points"] = 31.0
     second["created_at"] = first["created_at"] + timedelta(minutes=5)
@@ -115,17 +119,17 @@ def test_latest_run_is_shown_and_the_earlier_run_survives(live):  # noqa: F811
     assert espn["run"] is None and set(espn["origin"].values()) == {"espn"}      # ESPN stays the default
 
 
-def test_unmigrated_database_is_read_from_the_legacy_table(stored):
-    """A database or hosted copy that predates schema v8 has only the legacy table: read it, read-only."""
+def test_unmigrated_database_fails_closed(stored):
+    """A database or copy that predates schema v8 has only the legacy table, whose rows cannot be checked against
+    a content hash: nothing is shown as an independent projection, and the reason says so."""
     con = stored
-    ids = [r[0] for r in con.execute("SELECT run_id FROM independent_projection_runs").fetchall()]
-    expected = ps.weekly(con, 2026, 6, "independent")
+    assert ps.weekly(con, 2026, 6, "independent")["available"]
     cols = ", ".join(table_columns(con, "independent_player_projections"))
     con.execute(f"INSERT INTO independent_player_projections ({cols}) SELECT {cols} FROM independent_projection_rows")
     con.execute("DROP TABLE independent_projection_rows")
     legacy = ps.weekly(con, 2026, 6, "independent")
-    assert legacy["available"] and legacy["run"]["run_id"] == ids[0]
-    assert legacy["values"] == expected["values"] and legacy["origin"] == expected["origin"]
+    assert legacy["available"] is False and "schema v8" in legacy["reason"]
+    assert set(legacy["origin"].values()) == {"espn"}
 
 
 # ----------------------------------------------------------------------------- approved artifacts
@@ -153,9 +157,9 @@ def _approve(con, meta, source="learning_cycle", week=...):
                                source=source)
 
 
-def test_unpinned_fallback_model_serves_the_newest_run_and_the_shape_is_unchanged(live):  # noqa: F811
+def test_unpinned_fallback_model_serves_the_newest_run_and_the_shape_is_unchanged(live, monkeypatch):  # noqa: F811
     con, src, _ = live
-    assert production_pin.APPROVED_ARTIFACT_SHA256 is None
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", None)    # the committed pin is set; unset it here
     _, newer = _runs(con, src, ps.FALLBACK_VERSION, [(SHA_A, 21.0, 0), (SHA_B, 31.0, 5)])
     w = ps.weekly(con, 2026, 6, "independent")
     assert w["available"] and w["run"]["run_id"] == newer["run_id"] and w["values"][1] == 31.0
@@ -201,7 +205,7 @@ def test_a_registered_production_artifact_is_served_and_an_unregistered_newer_on
 
 def test_an_unregistered_production_artifact_falls_back_per_the_existing_rules(live):  # noqa: F811
     con, src, _ = live
-    [fallback] = _runs(con, src, ps.FALLBACK_VERSION, [(SHA_B, 11.0, 0)])
+    [fallback] = _runs(con, src, ps.FALLBACK_VERSION, [(PINNED, 11.0, 0)])
     [hand_made] = _runs(con, src, ps.MODEL_VERSION, [(SHA_A, 99.0, 5)])
     register_approved_artifact(con, model_version=ps.MODEL_VERSION, artifact_sha256=SHA_C, target_season=2026,
                                target_week=6, source="learning_cycle")        # enforcement starts with a first row
@@ -211,7 +215,9 @@ def test_an_unregistered_production_artifact_falls_back_per_the_existing_rules(l
     con.execute("DELETE FROM independent_projection_rows WHERE run_id = ?", [fallback["run_id"]])
     w = ps.weekly(con, 2026, 6, "independent")                 # nothing approved is left: ESPN, with a reason
     assert w["available"] is False and w["run"] is None and "not approved" in w["reason"]
-    assert hand_made["run_id"] not in str(w)
+    # never shown: it appears only in the list of skipped runs, with the approval reason
+    assert w["values"][1] != 99.0 and [k["reason"] for k in w["skipped"] if k["run_id"] == hand_made["run_id"]] == \
+        ["artifact not registered as approved"]
 
 
 def test_an_artifact_registered_for_another_week_is_not_approved_for_this_one(live):  # noqa: F811
@@ -301,3 +307,156 @@ def test_bad_source_is_a_422(league, serve):  # noqa: F811
     client = serve(league)
     assert client.get("/api/matchup", params={"source": "vegas"}).status_code == 422
     assert client.get("/api/start-sit", params={"source": "vegas"}).status_code == 422
+
+
+# ----------------------------------------------------------------------------- consumer selection: integrity,
+# approval, fallback, live vs evidence (projection_source.select_run)
+
+ESPN_KEYS = {"source", "available", "reason", "values", "origin", "run", "model_status", "counts"}
+
+
+def _ifp2(src, fit="2026-10-14T00:00:00+00:00"):
+    art = _artifact(src, created_at=fit)
+    return replace(art, version=ps.MODEL_VERSION, models={p: replace(m, model="ifp2") for p, m in art.models.items()})
+
+
+def _store(con, src, art, *, sha, created=None, points=None, register=True):
+    """Store a week-6 run; a production (ifp-2.0.0) run's artifact is registered as the learning cycle would."""
+    meta, rows = build_live(con, src, art, 2026, 6, artifact_sha256=sha)
+    if register and art.version == ps.MODEL_VERSION:
+        register_approved_artifact(con, model_version=art.version, artifact_sha256=meta["artifact_id"],
+                                   target_season=2026, target_week=6, source="learning_cycle")
+    if created is not None:
+        meta["created_at"] = created
+    for r in rows:
+        if r["coverage_status"] == "projected":
+            r["expected_points"] = round(r["projected_points"] * 0.9, 2)
+    if points is not None:
+        one = next(r for r in rows if r["espn_player_id"] == 1)
+        one["projected_points"] = one["expected_points"] = points
+    write_live(con, meta, rows)
+    return meta
+
+
+def test_espn_default_is_unchanged_in_shape_and_values(live):  # noqa: F811
+    con, src, _ = live
+    _store(con, src, _ifp2(src), sha=WEEKLY_SHA)
+    w = ps.weekly(con, 2026, 6, "espn")
+    assert set(w) == ESPN_KEYS and w["run"] is None and set(w["origin"].values()) == {"espn"}
+    assert ps.describe(w) == {k: w[k] for k in ("source", "available", "reason", "run", "model_status", "counts")}
+    assert ps.normalize(None) == "espn"
+
+
+def test_valid_production_run_carries_honest_governance(live):  # noqa: F811
+    con, src, _ = live
+    meta = _store(con, src, _ifp2(src), sha=WEEKLY_SHA)
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] and w["run"]["run_id"] == meta["run_id"] and w["reason"] is None
+    g = w["governance"]
+    assert g["served_version"] == ps.MODEL_VERSION and g["is_fallback"] is False
+    assert g["production_approval"] == "owner_override" and g["espn_superiority_established"] is False
+    assert g["start_sit_ready"] is False and "Historical research only" in g["production_evidence"]
+    # the run's stored status was frozen at training time; consumers see the override, never "validated"/"shadow"
+    assert w["model_status"] == {p: ps.OVERRIDE_STATUS for p in ("QB", "RB", "WR", "TE")}
+    assert "owner override" in ps.NOTE and "not shown to be better than ESPN" in ps.NOTE
+
+
+def test_valid_fallback_is_labeled_and_needs_the_pinned_artifact(live):  # noqa: F811
+    con, src, _ = live
+    _store(con, src, _artifact(src), sha="d" * 64, points=21.0)           # ifp-1 label, but other (refit) bytes
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] is False and "artifact not the approved production artifact" in w["reason"]
+    assert w["skipped"][0]["model_version"] == ps.FALLBACK_VERSION
+    ok = _store(con, src, _artifact(src), sha=PINNED, created=datetime(2026, 9, 1), points=22.0)
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] and w["run"]["run_id"] == ok["run_id"] and w["values"][1] == 22.0
+    assert w["governance"]["is_fallback"] is True and "fallback" in w["reason"] and "not the production model" in w["reason"]
+
+
+@pytest.mark.parametrize("sha", [None, "e" * 64])
+def test_production_run_of_an_unregistered_artifact_is_not_shown(live, sha):  # noqa: F811
+    """Once approved_artifacts has a row for ifp-2.0.0, a run whose artifact is not registered (None: build_live
+    stamps an in-memory "dict:" digest) is skipped with the approval reason, never shown."""
+    con, src, _ = live
+    register_approved_artifact(con, model_version=ps.MODEL_VERSION, artifact_sha256=WEEKLY_SHA, target_season=2026,
+                               target_week=6, source="learning_cycle")
+    _store(con, src, _ifp2(src), sha=sha, register=False)
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] is False and w["skipped"][0]["reason"].startswith("artifact not registered as approved")
+    assert "not approved" in w["reason"]
+
+
+def test_same_row_count_tampering_is_skipped_by_consumers(live):  # noqa: F811
+    con, src, _ = live
+    early = _store(con, src, _ifp2(src), sha=WEEKLY_SHA, created=datetime(2026, 9, 1), points=10.0)
+    late = _store(con, src, _ifp2(src), sha=WEEKLY_SHA, created=datetime(2026, 9, 2), points=11.0)
+    con.execute("UPDATE independent_projection_rows SET expected_points = 99 WHERE run_id = ? AND espn_player_id = 1",
+                [late["run_id"]])
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["run"]["run_id"] == early["run_id"] and w["values"][1] == 10.0
+    assert w["skipped"] == [{"run_id": late["run_id"], "model_version": ps.MODEL_VERSION, "created_at": str(late["created_at"]),
+                             "reason": "integrity: stored rows do not match the run's content_sha256"}]
+
+
+@pytest.mark.parametrize("damage,needle", [
+    ("UPDATE independent_projection_runs SET content_sha256 = NULL", "no content hash"),
+    ("DELETE FROM independent_projection_rows WHERE espn_player_id = 1", "row_count"),
+    ("DELETE FROM independent_projection_rows", "forecast rows missing"),
+])
+def test_unsealed_short_or_empty_runs_are_never_shown(live, damage, needle):  # noqa: F811
+    con, src, _ = live
+    _store(con, src, _ifp2(src), sha=WEEKLY_SHA)
+    con.execute(damage)
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] is False and needle in w["reason"] and set(w["origin"].values()) == {"espn"}
+
+
+def test_unsupported_scoring_shows_espn_and_says_why(live, monkeypatch):  # noqa: F811
+    con, src, _ = live
+    _store(con, src, _ifp2(src), sha=WEEKLY_SHA)
+    monkeypatch.setattr(ps, "_scoring", lambda con, season: (None, "the league's scoring is not supported by the "
+                                                                   "independent model"))
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] is False and "not supported" in w["reason"]
+
+
+def test_late_update_is_live_but_never_rewrites_or_becomes_pregame_evidence(live):  # noqa: F811
+    """Mixed kickoffs: AAA plays Thursday, everyone else Sunday. A run made between them is the live view for
+    everyone, but only its Sunday rows can be evidence; the Thursday player's frozen pregame row stays the
+    earlier run's, byte for byte."""
+    from test_production_forecasts import BEFORE_ALL, BETWEEN, FIT, thursday
+    from app.analytics.production_forecasts import pregame_forecasts
+
+    con, src, _ = live
+    thursday(con)
+    early = _store(con, src, _ifp2(src, FIT), sha=WEEKLY_SHA, created=BEFORE_ALL, points=10.0)
+    frozen = con.execute("SELECT * FROM independent_projection_rows WHERE run_id = ? ORDER BY ALL",
+                         [early["run_id"]]).fetchall()
+    late = _store(con, src, _ifp2(src, FIT), sha=WEEKLY_SHA, created=BETWEEN, points=12.0)
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["run"]["run_id"] == late["run_id"] and w["values"][1] == 12.0          # live view: newest verified run
+    assert w["timing"]["rows_not_pregame"] >= 1 and w["timing"]["rows_pregame"] >= 1
+    rows, _ = pregame_forecasts(con, 2026, [6], model_version=ps.MODEL_VERSION,
+                                scoring_fingerprint=ps._scoring_fingerprint(con, 2026))
+    by = {r["espn_player_id"]: r for r in rows}
+    assert by[1]["run_id"] == early["run_id"] and by[1]["projected_points"] == 10.0  # Thursday: the pregame forecast
+    assert by[6]["run_id"] == late["run_id"]                                        # Sunday: the later pregame run
+    assert con.execute("SELECT * FROM independent_projection_rows WHERE run_id = ? ORDER BY ALL",
+                       [early["run_id"]]).fetchall() == frozen
+
+
+def test_hosted_selection_needs_no_research_packages():
+    """The consumer selection, the independent API and the promotion endpoint import with polars, numpy, sklearn
+    and scipy unavailable (Vercel's bundle), and the endpoint still reports governance there."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    code = ("import sys\nfor m in ('polars', 'numpy', 'sklearn', 'scipy'):\n    sys.modules[m] = None\n"
+            "from app.analytics import projection_source as ps\nimport app.api.independent_projections\n"
+            "from app.api.projection_promotion import projection_promotion\n"
+            "body = projection_promotion()\n"
+            "assert body['available'] is False and body['governance']['production_approval'] == 'owner_override'\n"
+            "assert body['governance']['espn_superiority_established'] is False\n"
+            "assert 'owner override' in body['unavailable_reason']\n")
+    subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], check=True)

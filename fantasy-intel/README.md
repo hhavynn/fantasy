@@ -570,7 +570,10 @@ launchctl bootout gui/$(id -u)/com.fantasy-intel.refresh
 rm ~/Library/LaunchAgents/com.fantasy-intel.refresh.plist
 ```
 
-After editing the template, uninstall and install again. If the repository lives under
+`uv run python ../scripts/evidence_health.py launchd install` (from `backend/`) prints the same steps as an
+idempotent plan: it does nothing for a job that is already installed as templated and loaded, and backs up a
+hand-edited plist before replacing it; `--apply` performs it. After editing the template, uninstall and install
+again (or run that command with `--apply`). If the repository lives under
 `~/Documents`, `~/Desktop` or `~/Downloads`, macOS privacy protection can block a launchd job
 from reading it (`Operation not permitted` in `launchd.err.log`, with no refresh log). Grant
 Full Disk Access to `uv` and to the Python in `backend/.venv` (System Settings → Privacy &
@@ -629,6 +632,32 @@ runs keep it plugged in and optionally schedule a wake a few minutes before the 
 existing one, so check `pmset -g sched` first). If every attempt fails before a week's first
 kickoff, that week has no pregame forecast: the next cycle records it under
 `data/models/weekly/missed/` and nothing is backfilled.
+
+## Evidence health (is real evidence being collected?)
+
+A refresh that exits 0 has synced ESPN and nflverse; it does **not** prove that the week's pregame evidence
+(ESPN snapshot before each kickoff, Start/Sit decision set, production forecast, frozen research forecast,
+ESPN benchmark) was captured, because evidence failures are only `WARNING:` lines. One read-only command checks
+all of it on this Mac:
+
+```bash
+cd backend
+uv run python ../scripts/evidence_health.py                 # summary + what to fix before the next kickoff
+uv run python ../scripts/evidence_health.py status --json   # machine-readable; exit 0 ok, 2 warnings, 1 failures
+uv run python ../scripts/evidence_health.py launchd verify  # jobs installed as templated, loaded, running?
+uv run python ../scripts/evidence_health.py launchd install  # idempotent install plan; add --apply to perform it
+```
+
+It reports per week (from the first prospective week) the scheduled capture windows and which ran, ESPN
+snapshot times per kickoff, valid ifp-2 pregame rows by position, whether the projection switch serves ifp-2 or
+the ifp-1 fallback, research ledgers, Start/Sit sets, finality, matched benchmark observations, and every missing
+piece with its cause. Missed captures are reported, never regenerated.
+
+The fixed refresh times miss London/Germany Sunday-morning games, Thanksgiving's afternoon games, and
+Friday/Saturday games. The optional **pregame guard** (`com.fantasy-intel.pregame-guard.plist`, installed with
+`launchd install --jobs pregame-guard --apply`) checks the real kickoff times every 30 minutes. It runs
+`refresh_all.py` only when a kickoff is within 6 hours and has no fresh capture, at most 3 times per kickoff,
+and it posts one macOS notification per new problem. Details: [docs/evidence_health.md](docs/evidence_health.md).
 
 ## Tests
 

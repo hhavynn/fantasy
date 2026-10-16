@@ -1,6 +1,7 @@
 """Promotion tracker (app.analytics.promotion_tracker): read-only, frozen criteria, pregame-only ESPN."""
 
 import json
+from dataclasses import replace
 from datetime import datetime
 
 import numpy as np
@@ -12,6 +13,7 @@ from app.analytics import production_pin
 from app.analytics.forecast_backtest import PROMOTION_CRITERIA
 from app.analytics.forecast_features import load_panel
 from app.analytics.independent_projection_store import build_live, write_live
+from app.analytics import projection_source as ps
 from app.analytics.promotion_tracker import build_tracker, model_evidence, pregame_snapshot
 
 from test_independent_projections import SCORING, _artifact, live  # noqa: F401  (live is a fixture)
@@ -28,12 +30,13 @@ def _snapshot(con, espn_id: int, week: int, points: float, synced_at: str) -> No
 
 @pytest.fixture
 def tracked(live):  # noqa: F811
-    """Stored week-5 run (week 5 is final) plus ESPN snapshots: WR 1, WR 6 and TE 9 pregame;
-    WR 11 only after kickoff (must not count). The synthetic artifact has no TE model, so TE 9 has
+    """Stored week-5 run of the production model (week 5 is final) plus ESPN snapshots: WR 1, WR 6 and TE 9
+    pregame; WR 11 only after kickoff (must not count). The synthetic artifact has no TE model, so TE 9 has
     a pregame ESPN snapshot and a completed game but no independent projection."""
     con, src, path = live
     # As if the artifact had been fitted before week 5 (the synthetic one is stamped 2026-10-14).
-    meta, rows = build_live(con, src, _artifact(src, created_at=FIT_BEFORE_W5), 2026, 5)
+    art = replace(_artifact(src, created_at=FIT_BEFORE_W5), version=ps.MODEL_VERSION)
+    meta, rows = build_live(con, src, art, 2026, 5, artifact_sha256="c" * 64)
     meta["created_at"] = datetime(2026, 9, 5, 12, 0)   # the run itself was made before week 5 kicked off
     write_live(con, meta, rows)
     for pid, pts in ((1, 14.0), (6, 3.0), (9, 8.0)):
@@ -82,16 +85,23 @@ def test_criteria_come_from_the_frozen_constant(tracked, monkeypatch):
     assert wr["required"] == 1 and wr["criterion_met"] == (wr["mae_independent"] <= wr["mae_espn"])
 
 
-def test_stored_status_is_copied_not_recomputed(tracked):
+def test_production_status_is_the_owner_override_not_the_frozen_artifact_text(tracked):
+    """The tracker follows the production model. Its stored per-run status was frozen at training time; the
+    tracker reports the owner override instead and never claims Start/Sit readiness or ESPN superiority."""
     con, _, _ = tracked
     t = build_tracker(con)
-    assert t["run"]["week"] == 5 and t["run_missing_reason"] is None
-    stored = json.loads(con.execute("SELECT model_status FROM independent_projection_runs").fetchone()[0])
-    assert {s["status"] for s in stored.values()} == {"experimental", "insufficient_data"}   # synthetic artifact
+    assert t["model_version"] == ps.MODEL_VERSION == "ifp-2.0.0"
+    assert t["run"]["week"] == 5 and t["run"]["model_version"] == ps.MODEL_VERSION and t["run_missing_reason"] is None
+    assert t["governance"]["production_approval"] == "owner_override"
+    assert t["governance"]["espn_superiority_established"] is False and t["governance"]["start_sit_ready"] is False
     for p in t["positions"]:
-        st = stored[p["position"]]
-        assert (p["model"]["status"], p["model"]["reasons"]) == (st["status"], st["reasons"])
-        assert p["model"]["start_sit_ready"] is False
+        assert p["model"]["status"] == ps.OVERRIDE_STATUS and p["model"]["start_sit_ready"] is False
+        assert "owner override" in p["model"]["reasons"][0]
+    assert any("owner override" in n for n in t["notes"])
+    assert not any("not used in lineups" in n for n in t["notes"])
+
+
+def test_stored_status_is_copied_not_recomputed():
     run = {"model_status": {"QB": {"status": "validated", "start_sit_ready": False, "reasons": ["x"]}},
            "evaluation": {"QB": {"common_support_n": 834, "relative_mae_improvement": 0.0578,
                                  "best_trailing_baseline": "recent_avg",
@@ -115,32 +125,45 @@ def test_other_model_versions_do_not_count(tracked):
     assert t["espn"]["excluded_runs"][0]["reason"].startswith("model ifp-0.0.0")
 
 
-def test_pinned_artifact_gates_the_tracker(tracked, monkeypatch):
+def test_artifact_approval_gates_the_tracker(tracked, monkeypatch):
+    """The tracker tracks the production model, so its gate is ifp-2.0.0's approved_artifacts rule (#77); the
+    ifp-1.0.0 single-sha pin does not apply to it."""
+    from app.analytics.independent_projection_store import register_approved_artifact
+
     con, _, _ = tracked
     sha = con.execute("SELECT artifact_id FROM independent_projection_runs").fetchone()[0]
-    assert production_pin.APPROVED_ARTIFACT_SHA256 is None
-    unpinned = build_tracker(con)
-    # the tracker tracks ifp-1.0.0's gate, which the single-sha pin belongs to
-    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", sha)    # the stored run's own artifact
-    assert build_tracker(con) == unpinned
-    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "f" * 64)
+    unverified = build_tracker(con)                 # nothing registered yet: fail open, counted
+    assert unverified["espn"]["matched_observations"] == 2 and unverified["run"] is not None
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "f" * 64)     # the ifp-1 pin: not this model's
+    assert build_tracker(con) == unverified
+    register_approved_artifact(con, model_version=ps.MODEL_VERSION, artifact_sha256=sha, target_season=2026,
+                               target_week=5, source="learning_cycle")
+    assert build_tracker(con) == unverified          # the stored run's own artifact: verified, same evidence
+    con.execute("DELETE FROM approved_artifacts")    # (test only: the table is write-once in the app)
+    register_approved_artifact(con, model_version=ps.MODEL_VERSION, artifact_sha256="e" * 64, target_season=2026,
+                               target_week=5, source="learning_cycle")
     t = build_tracker(con)
     assert t["espn"]["matched_observations"] == 0 and t["run"] is None
     assert "not an approved one" in t["run_missing_reason"]
     assert all(p["model"]["status"] is None for p in t["positions"])
     [ex] = t["espn"]["excluded_runs"]
-    assert ex["reason"] == "artifact not the approved production artifact"
-    # unmigrated database: the run-level legacy rule applies the same pin
+    assert ex["reason"] == "artifact not registered as approved"
+    # unmigrated database: the run-level legacy rule applies the same gate
     con.execute("DROP TABLE independent_projection_rows")
     [ex] = build_tracker(con)["espn"]["excluded_runs"]
-    assert ex["reason"] == "artifact not the approved production artifact"
+    assert ex["reason"] == "artifact not registered as approved"
 
 
 def test_artifact_fitted_after_the_week_does_not_count(tracked):
     """`fit` trains on every completed week: an artifact fitted after week 5 kicked off may have
     seen week 5's results, so its week-5 projections are not evidence."""
-    con, _, _ = tracked
-    con.execute("UPDATE independent_projection_runs SET artifact_created_at = ?", ["2026-09-05T17:00:00+00:00"])
+    con, src, _ = tracked
+    con.execute("DELETE FROM independent_projection_rows")
+    con.execute("DELETE FROM independent_projection_runs")
+    art = replace(_artifact(src, created_at="2026-09-05T17:00:00+00:00"), version=ps.MODEL_VERSION)
+    meta, rows = build_live(con, src, art, 2026, 5, artifact_sha256="c" * 64)
+    meta["created_at"] = datetime(2026, 9, 5, 12, 0)
+    write_live(con, meta, rows)
     t = build_tracker(con)
     assert t["espn"]["matched_observations"] == 0
     [ex] = t["espn"]["excluded_runs"]

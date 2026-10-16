@@ -1,8 +1,9 @@
 # Prospective ESPN benchmark
 
 Read-only research tooling that answers one question: on exactly the same completed player-weeks, is the
-production independent model (`ifp-1.0.0`) closer to the league points than ESPN's own pregame projection?
-It never promotes a model, changes a projection, writes the database, trains, or syncs. ESPN stays the default
+production independent model (`ifp-2.0.0`, production by owner override, `projection_source.MODEL_VERSION`)
+closer to the league points than ESPN's own pregame projection? Until it answers `ours_better`, nothing may
+claim that it is. It never promotes a model, changes a projection, writes the database, trains, or syncs. ESPN stays the default
 source. Nothing imports it (`app/analytics/espn_benchmark.py`, `scripts/espn_benchmark.py`,
 `tests/test_espn_benchmark.py`).
 
