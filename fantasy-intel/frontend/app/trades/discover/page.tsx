@@ -10,25 +10,27 @@ import { api, type ApiResult } from "@/lib/api";
 import { signed } from "@/lib/format";
 import { nextDir, sortHref, sortRows } from "@/lib/sort";
 import { discoverQuery, evidenceSrc, resolveSort, sortValue } from "@/lib/trade-discovery";
+import {
+  beforeAfterText, favoursText, excludedText, lensTabText, lensTabs, modeUsesPhase, modeUsesStrictness, sectionsAreVerdicts,
+} from "@/lib/trade-dual-value";
 import { signedText } from "@/lib/trade-format";
-import type { DSummaryRow, DiscoveryContext, DiscoverySummary, NeedRow } from "@/lib/trade-types";
+import type { DSummaryRow, DVSideSummary, DiscoveryContext, DiscoverySummary, NeedRow } from "@/lib/trade-types";
 import type { TradeDeltas } from "@/lib/types";
+import { CheckChips, MainConcern, VerdictBadge } from "./DualValueParts";
 import { TradeEvidence } from "./TradeEvidence";
 import styles from "./discover.module.css";
 
 export const metadata = { title: "Discover trades" };
 
-// Trade Discovery. Every number is the exact weekly optimal-lineup simulation on ESPN's projections
-// (the manual analyzer's computation). Modes decide which exact trades are shown and how they are
-// explained; asset balance is a separate diagnostic. No trade grade, no acceptance probability.
+// Trade Discovery 2.0. Every number is the exact weekly optimal-lineup simulation on ESPN's projections
+// (the manual analyzer's computation). A lens (mode) decides which exact trades are shown; each trade is judged
+// on two things kept apart, asset quality (points above replacement) and lineup benefit (starters only), plus
+// plausibility checks and a verdict that describes how they fit (docs/trade_discovery_dual_value.md).
+// No trade grade, no acceptance probability.
 //
 // The page streams: the header and filters come from the light `/discover/context` call, the search result
 // (`/discover/summary`) streams in below them, and each row's evidence loads when its panel opens (TradeEvidence).
 
-const MODE_LABEL: Record<string, string> = {
-  practical: "Practical trades", mutual: "Mutual improvement", upside: "Maximum upside", all: "All candidates",
-};
-const MODE_HINT: Record<string, string> = { practical: " (default)", upside: " · exploratory", all: " · advanced" };
 const PHASE_LABEL: Record<string, string> = { ros: "Rest of season", regular: "Regular season", playoff: "Fantasy playoffs" };
 const ASSET_TONE: Record<string, string> = {
   balanced: "good", replacement_level: "", they_give_more: "warn", you_give_more: "warn",
@@ -39,7 +41,8 @@ const TIER_TONE: Record<string, string> = { practical: "good", concerns: "warn",
 const TIER_SHORT: Record<string, string> = { practical: "Practical", concerns: "Concerns", speculative: "Speculative" };
 /** Sort links shown instead of the column headers on phones, where each trade is a card. */
 const PHONE_SORTS: [string, string][] = [
-  ["my_gain", "Your Δ"], ["their_gain", "Their Δ"], ["min_side", "Smaller side"], ["asset", "Asset balance"], ["partner", "Partner"], ["shape", "Shape"],
+  ["verdict", "Verdict"], ["my_gain", "Your Δ"], ["their_gain", "Their Δ"], ["min_side", "Smaller side"], ["asset", "Asset balance"],
+  ["partner", "Partner"], ["shape", "Shape"],
 ];
 const why = "Incomplete: a rostered player with an NFL team has no ESPN projection in some week (never treated as 0)";
 
@@ -89,6 +92,7 @@ function analyzerHref(r: DSummaryRow) {
 function Body({ c: d, summary, q, sp }: { c: DiscoveryContext; summary: Promise<ApiResult<DiscoverySummary>>; q: string; sp: Params }) {
   const ev = d.evaluation;
   const modeHref = (m: string) => hrefFor(d, { mode: m });
+  const tabs = lensTabs(d.query.mode);
   return (
     <>
       <PageHeader
@@ -98,8 +102,8 @@ function Body({ c: d, summary, q, sp }: { c: DiscoveryContext; summary: Promise<
           {ev.last_regular_season_week !== null && <> (regular season through {ev.last_regular_season_week})</>}</>}
         actions={<Link href="/trades">Trade analyzer</Link>}
       >
-        <Tabs label="Discovery mode" current={modeHref(d.query.mode)}
-          items={Object.keys(d.modes).map((m) => ({ href: modeHref(m), label: `${MODE_LABEL[m] ?? m}${MODE_HINT[m] ?? ""}` }))} />
+        <Tabs label="Discovery lens" current={modeHref(d.query.mode)}
+          items={tabs.map((t) => ({ href: modeHref(t.mode), label: lensTabText(t) }))} />
       </PageHeader>
 
       <p className={styles.modeNote}>{d.mode_text}</p>
@@ -135,10 +139,12 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
   const ev = d.evaluation;
   const rows = Object.entries(d.sections).flatMap(([tier, items]) => items.map((r) => ({ tier, r })));
   const total = rows.length;
-  const excluded = d.excluded.lopsided + d.excluded.one_sided;
+  const excluded = (d.excluded.lopsided ?? 0) + (d.excluded.one_sided ?? 0);
   return (
     <>
       <Coverage d={d} />
+
+      {d.lens_note && <Notice tone="info">{d.lens_note}</Notice>}
 
       <Results d={d} rows={rows} total={total} excluded={excluded} q={q} sp={sp} />
 
@@ -154,6 +160,7 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
         </p>
         <p>{d.kdst_policy}</p>
         <p>{d.availability_note}</p>
+        <MethodDualValue d={d} />
         <ul className={styles.list}>{d.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>
         <ul className={styles.list}>{d.limitations.map((a, i) => <li key={i} className="faint">{a}</li>)}</ul>
       </Method>
@@ -209,14 +216,14 @@ function Filters({ d }: { d: DiscoveryContext }) {
                 {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
               </select>
             </label>
-            {qy.mode !== "upside" && qy.mode !== "all" && (
+            {modeUsesPhase(qy.mode) && (
               <label className={styles.field}>Phase
                 <select name="phase" defaultValue={qy.phase}>
                   {d.phases.map((p) => <option key={p} value={p}>{PHASE_LABEL[p] ?? p}</option>)}
                 </select>
               </label>
             )}
-            {qy.mode === "practical" && (
+            {modeUsesStrictness(qy.mode) && (
               <label className={styles.field} title="How strictly asset imbalance against the other manager filters practical results">Asset-balance filter
                 <select name="strictness" defaultValue={qy.strictness}>
                   {Object.entries(d.strictness_options).map(([k, v]) => <option key={k} value={k} title={v}>{k}</option>)}
@@ -302,16 +309,26 @@ function Players({ ids, d }: { ids: number[]; d: DiscoverySummary }) {
   );
 }
 
-function DeltaCell({ v }: { v: TradeDeltas }) {
+/** The same players seen from the opponent's side: plain names under the list, so the row says it once without repeating the badges. */
+function SeenFromThem({ label, ids, d }: { label: string; ids: number[]; d: DiscoverySummary }) {
+  return <span className={styles.subline}><b>{label}</b> {ids.map((id) => d.names[id]?.name ?? `#${id}`).join(", ")}</span>;
+}
+
+function DeltaCell({ v, side }: { v: TradeDeltas; side?: DVSideSummary }) {
   return (
     <>
       {v.ros_delta === null
         ? <span title={why}>incomplete ({signedText(v.known_ros_delta)} known)</span>
         : <Delta value={v.ros_delta} />}
-      <span className={`${styles.subline} ${styles.nowrap}`}>
+      <span className={styles.subline}>
         reg {v.regular_season_delta === null ? <span className="missing" title={why}>—</span> : signed(v.regular_season_delta)}
         {" · "}playoffs {v.playoff_delta === null ? <span className="missing" title={why}>—</span> : signed(v.playoff_delta)}
       </span>
+      {side && (
+        <span className={styles.subline} title="Projected rest-of-season starting points before → after the trade (starters only)">
+          starters {beforeAfterText(side.before.ros, side.after.ros)}
+        </span>
+      )}
     </>
   );
 }
@@ -323,12 +340,17 @@ function Results({ d, rows, total, excluded, q, sp }: {
   const sort = resolveSort(sp, d.query.mode);
   const indexed = rows.map((x, i) => ({ ...x, rank: i }));
   const sorted = sortRows(indexed, (x) => sortValue(x.r, sort.key, x.rank), sort.dir);
+  const verdictGroups = sectionsAreVerdicts(Object.keys(d.sections), d.verdicts);
+  // The verdict groups are the backend's own section order; any other sort mixes them, so each row then carries its verdict.
+  const grouped = verdictGroups && sort.key === "rank" && sort.dir === "asc";
+  const counts = new Map<string, number>(Object.entries(d.sections).map(([k, items]) => [k, items.length]));
   const th = (key: string, text: string, opts: { align?: "left" | "right"; title?: string; defaultDir?: "asc" | "desc" } = {}) => (
     <SortableTh sortKey={key} label={text} current={sort} searchParams={sp} align={opts.align} title={opts.title} defaultDir={opts.defaultDir} />
   );
   const sortNote = d.query.mode === "all"
     ? "Sorting by a gain column in All candidates mode chooses which trades are returned first, then orders them."
     : "Sorting reorders the trades shown; it does not search for others.";
+  const left = excludedText(d.excluded);
 
   return (
     <Section
@@ -337,10 +359,14 @@ function Results({ d, rows, total, excluded, q, sp }: {
       flush={total > 0}
       footnote={total > 0 ? <>
         {sortNote}
+        {verdictGroups && !grouped && <> The verdict groups are shown in the default order; here every trade carries its own verdict.</>}
         {d.query.mode === "practical" && excluded > 0 && <>
           {" "}Left out of practical results: {d.excluded.lopsided} with a lopsided asset package against the other manager and {d.excluded.one_sided} where
           one lineup does not improve. They remain in <Link href={href(d, { mode: "upside" })}>Maximum upside</Link> and{" "}
           <Link href={href(d, { mode: "all" })}>All candidates</Link>, and any trade can be opened in the analyzer.
+        </>}
+        {d.query.mode !== "practical" && left && <>
+          {" "}Left out of this view: {left}. Any trade can still be opened in the analyzer.
         </>}
       </> : undefined}
     >
@@ -350,6 +376,7 @@ function Results({ d, rows, total, excluded, q, sp }: {
           No trade matches these settings{d.query.opponent !== null ? " with this manager" : ""}.
           {d.query.mode === "practical" && excluded > 0 && <>
             {" "}{d.excluded.lopsided} lopsided and {d.excluded.one_sided} one-sided candidates were left out.</>}
+          {d.query.mode !== "practical" && left && <>{" "}Left out of this view: {left}.</>}
           {" "}Nothing is manufactured to fill the list.
         </EmptyState>
       ) : (
@@ -358,7 +385,7 @@ function Results({ d, rows, total, excluded, q, sp }: {
             <span>Sort by</span>
             {PHONE_SORTS.map(([key, text]) => {
               const active = sort.key === key;
-              const dir = nextDir(sort, key, key === "shape" || key === "partner" ? "asc" : "desc");
+              const dir = nextDir(sort, key, key === "shape" || key === "partner" || key === "verdict" ? "asc" : "desc");
               return (
                 <Link key={key} href={sortHref(sp, key, dir)} scroll={false} prefetch={false} aria-current={active ? "true" : undefined}>
                   {text}{active ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
@@ -371,17 +398,20 @@ function Results({ d, rows, total, excluded, q, sp }: {
               <tr>
                 {th("shape", "Shape")}
                 {th("partner", "Partner")}
-                <th scope="col">You give</th>
-                <th scope="col">You get</th>
+                <th scope="col" title="What you send, and what they get">You send</th>
+                <th scope="col" title="What you receive, and what they give">You receive</th>
+                {th("asset", "Asset balance", { title: "Smaller package as a share of the larger, in points above replacement; who the imbalance favours" })}
                 {th("my_gain", "Your Δ", { align: "right", title: "Change in your projected starting points, rest of season" })}
                 {th("their_gain", "Their Δ", { align: "right", title: "Change in their projected starting points, rest of season" })}
                 {th("min_side", "Smaller side", { align: "right", title: "The smaller of the two rest-of-season deltas" })}
-                {th("asset", "Asset balance", { title: "Smaller package as a share of the larger, in points above replacement" })}
-                <th scope="col">Type</th>
-                <th scope="col"><VisuallyHidden>Open trade in analyzer</VisuallyHidden></th>
+                <th scope="col" title="The most important change to each starting lineup">Lineup change</th>
+                {th("verdict", "Verdict & checks", { title: "Sorted in the backend's verdict order, best first", defaultDir: "asc" })}
               </tr>
             </thead>
-            {sorted.map(({ tier, r }) => <TradeRows key={r.key} tier={tier} r={r} d={d} q={q} />)}
+            {sorted.map(({ tier, r }, i) => (
+              <TradeGroup key={r.key} header={grouped && (i === 0 || sorted[i - 1].tier !== tier) ? { tier, count: counts.get(tier) ?? 0 } : null}
+                tier={tier} r={r} d={d} q={q} verdictGroups={verdictGroups} />
+            ))}
           </table>
         </div>
       )}
@@ -389,10 +419,38 @@ function Results({ d, rows, total, excluded, q, sp }: {
   );
 }
 
-function TradeRows({ tier, r, d, q }: { tier: string; r: DSummaryRow; d: DiscoverySummary; q: string }) {
+/** An optional verdict-group header (the backend's section and its description) followed by one trade's rows. */
+function TradeGroup({ header, tier, r, d, q, verdictGroups }: {
+  header: { tier: string; count: number } | null; tier: string; r: DSummaryRow; d: DiscoverySummary; q: string; verdictGroups: boolean;
+}) {
+  const text = header ? d.verdicts?.[header.tier] ?? d.tiers?.[header.tier] : undefined;
+  return (
+    <>
+      {header && (
+        <tbody className={styles.groupBody}>
+          <tr className={styles.groupRow}>
+            <th scope="colgroup" colSpan={10}>
+              <span className={styles.groupTitle}>
+                <VerdictBadge verdict={header.tier} text={text} />
+                <span className="faint">{header.count} {header.count === 1 ? "trade" : "trades"}</span>
+              </span>
+              {text && <span className={styles.groupText}>{text}</span>}
+            </th>
+          </tr>
+        </tbody>
+      )}
+      <TradeRows tier={tier} r={r} d={d} q={q} verdictGroups={verdictGroups} />
+    </>
+  );
+}
+
+function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummaryRow; d: DiscoverySummary; q: string; verdictGroups: boolean }) {
   const b = r.asset_balance;
   const concerns = r.rationale.concerns;
   const mc = r.manager_context;
+  const dv = r.dual_value_summary ?? null;      // absent on an older backend or a legacy row: the classic cells still render
+  const fav = favoursText(dv?.asset.favours);
+  const nm = (ids: number[]) => ids.map((id) => d.names[id]?.name ?? `#${id}`).join(" + ");
   return (
     <tbody>
       <tr className={styles.mainRow}>
@@ -400,26 +458,46 @@ function TradeRows({ tier, r, d, q }: { tier: string; r: DSummaryRow; d: Discove
         <td className={styles.partner} data-label="Partner">
           <Link href={`/managers/${r.opponent_team_id}`}>{r.opponent_name}</Link>
           {mc && <span className={styles.subline}>{mc.trade_history.completed_trades} completed trades · {mc.trade_history.confidence.toLowerCase()} confidence</span>}
+          <span className={styles.subline}><Link href={analyzerHref(r)} aria-label={`Analyze ${nm(r.sends)} for ${nm(r.receives)} in the trade analyzer`}>Analyze →</Link></span>
         </td>
-        <td className={styles.wrapCell} data-label="You give"><Players ids={r.sends} d={d} /></td>
-        <td className={styles.wrapCell} data-label="You get"><Players ids={r.receives} d={d} /></td>
-        <td className="num" data-label="Your Δ"><DeltaCell v={r.mine} /></td>
-        <td className="num" data-label="Their Δ"><DeltaCell v={r.theirs} /></td>
-        <td className="num" data-label="Smaller side">{r.min_side_ros_delta === null ? <span className="missing" title={why}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
-        <td className={styles.assetCell} data-label="Asset balance">
+        <td className={styles.wrapCell} data-label="You send">
+          <Players ids={r.sends} d={d} />
+          <SeenFromThem label="They get:" ids={r.sends} d={d} />
+        </td>
+        <td className={styles.wrapCell} data-label="You receive">
+          <Players ids={r.receives} d={d} />
+          <SeenFromThem label="They give:" ids={r.receives} d={d} />
+        </td>
+        <td className={`${styles.assetCell} ${styles.wide}`} data-label="Asset balance">
           <span title={b.note}><Badge value={b.text} tone={ASSET_TONE[b.label]} /></span>
-          {b.you_send_par !== null && <span className={styles.subline}>you give {b.you_send_par.toFixed(0)} · they give {b.they_send_par?.toFixed(0)} pts above replacement</span>}
+          {b.you_send_par !== null && b.they_send_par !== null
+            ? <span className={styles.subline}>you send {b.you_send_par.toFixed(0)} · they send {b.they_send_par.toFixed(0)} pts above replacement</span>
+            : <span className={styles.subline}><span className="missing" title="A player's points above replacement are unknown (missing projections), so no total is shown">—</span> points above replacement incomplete</span>}
+          {fav && <span className={styles.subline}><b>{fav}</b></span>}
         </td>
-        <td className={styles.typeCell} data-label="Type">
+        <td className="num" data-label="Your Δ"><DeltaCell v={r.mine} side={dv?.lineup.you} /></td>
+        <td className="num" data-label="Their Δ"><DeltaCell v={r.theirs} side={dv?.lineup.them} /></td>
+        <td className="num" data-label="Smaller side">{r.min_side_ros_delta === null ? <span className="missing" title={why}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
+        <td className={`${styles.changeCell} ${styles.wide}`} data-label="Lineup change">
+          {dv?.you_change
+            ? <>
+              {dv.you_change}
+              {dv.them_change && <span className={styles.subline}><b>Them:</b> {dv.them_change}</span>}
+            </>
+            : <span className="missing" title="No lineup-change summary for this trade (older backend or classic view)">—</span>}
+        </td>
+        <td className={`${styles.typeCell} ${styles.wide}`} data-label="Verdict & checks">
           <div className={styles.tags}>
-            {TIER_SHORT[tier] && <Badge value={TIER_SHORT[tier]} tone={TIER_TONE[tier] ?? ""} title={d.tiers[tier]} />}
-            {concerns.length > 0 && <Badge value={`${concerns.length} concern${concerns.length === 1 ? "" : "s"}`} tone="warn" />}
+            {dv && <VerdictBadge verdict={dv.verdict} text={dv.verdict_text} />}
+            {!verdictGroups && TIER_SHORT[tier] && <Badge value={TIER_SHORT[tier]} tone={TIER_TONE[tier] ?? ""} title={d.tiers[tier]} />}
+            {!verdictGroups && concerns.length > 0 && <Badge value={`${concerns.length} concern${concerns.length === 1 ? "" : "s"}`} tone="warn" />}
             {r.categories.map((c) => <Badge key={c} value={label(c)} tone="" title={d.categories[c]} />)}
             {!r.consistent_with_manual_evaluator && <Badge value="analyzer mismatch" tone="bad" />}
           </div>
+          {dv && <MainConcern text={dv.main_concern} checks={dv.checks} />}
+          {dv && <CheckChips checks={dv.checks} criteria={d.criteria} />}
           <span className={styles.subline}>{r.rationale.trade_type.text}</span>
         </td>
-        <td className={styles.action}><Link href={analyzerHref(r)}>Analyze →</Link></td>
       </tr>
       <tr className={styles.detailRow}>
         <td colSpan={10} className={styles.detailCell}>
@@ -427,6 +505,28 @@ function TradeRows({ tier, r, d, q }: { tier: string; r: DSummaryRow; d: Discove
         </td>
       </tr>
     </tbody>
+  );
+}
+
+/** The dual-value method notes: the lens's pool, the ranking policy, the projection source and what is not estimated. */
+function MethodDualValue({ d }: { d: DiscoverySummary }) {
+  const pool = (d.lens?.pool_rule ?? d.pool_rule).replace(/\.$/, "");
+  return (
+    <>
+      <p>
+        <b>{d.lens?.label ?? "This view"}: candidate pool.</b> The pool is drawn from the exact search ({pool}); trades are then assessed and ordered.
+        The new ordering is never fed back into the search.
+      </p>
+      {d.ranking_policy && <p><b>Ranking.</b> {d.ranking_policy}</p>}
+      {d.projection_source && <p><b>Projection source.</b> {d.projection_source.note}</p>}
+      <p>
+        <b>No acceptance estimate.</b> No acceptance probability, grade or chance is estimated. Verdicts and checks describe what the projections and asset
+        values show for each manager; nothing here has been calibrated against real accepted or rejected offers.
+      </p>
+      {d.criteria && (
+        <ul className={styles.list}>{Object.entries(d.criteria).map(([k, t]) => <li key={k}><b>{k.replaceAll("_", " ")}:</b> {t}</li>)}</ul>
+      )}
+    </>
   );
 }
 
