@@ -58,6 +58,7 @@ from 2026 week 6 onward count as evidence for it.
 | `backend/app/nfl/pbp_exits.py` | Play-by-play in-game injury evidence per player-game (research input) |
 | `backend/app/analytics/challenger.py`, `challenger_config.json` | ifp-2 challenger: weighted/robust linear fits, walk-forward specs, cohorts, frozen config, confirmation and shadow criteria |
 | `backend/app/analytics/weekly_learning.py`, `scripts/weekly_learning.py` | Weekly cycle: readiness gate, versioned artifacts, write-once forecast ledger, prospective evaluation |
+| `backend/app/analytics/model_registry.py`, `model_registry.json`, `scripts/model_registry.py` | Approval manifest, integrity checks, dry-run promotion gate and rollback planner (research only; `docs/model_registry.md`) |
 | `scripts/challenger_research.py` | `store`, `develop`, `freeze`, `confirm`, `exploratory`, `exits-audit`, `cases` |
 
 Added dependency: **numpy** (closed-form ridge, bootstrap). No scikit-learn, no gradient boosting,
@@ -879,6 +880,16 @@ penalty and rows match, and no separate penalty or feature split beats ifp-2 on 
 (efficiency residual out-of-sample R^2 <= 0.007). Absent nflverse xFP for a zero-opportunity
 appearance in a covered team-week is a measured zero; treating it as missing biases any xFP-target
 model by about -0.9 points.
+
+### Model registry (approval manifest, research only)
+
+`docs/model_registry.md`: `backend/app/analytics/model_registry.json` records the approved
+production model (`ifp-1.0.0`, unchanged, an `incumbent` record, not an owner approval) and every
+other model's lifecycle state (`ifp-2.0.0` prospective shadow, `ifp-hgb-0.1.0` experimental).
+`scripts/model_registry.py status` is a dry-run promotion gate: artifact sha256 integrity, scoring
+fingerprint, finalized pregame prospective evidence recomputed per position, `PROMOTION_CRITERIA`,
+the ESPN rule where claimed, a restorable rollback target and an explicit owner approval. It never
+changes a consumer; the hosted app does not import it.
 
 ### Runtime
 

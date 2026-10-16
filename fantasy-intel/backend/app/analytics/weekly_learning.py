@@ -455,6 +455,20 @@ def load_ledger(root: Path) -> list[dict]:
 # ----------------------------------------------------------------------------- prospective evaluation
 
 
+def report_subject(runs: list[dict], kind: str, scoring_fp: str | None) -> dict:
+    """Which champion and challenger versions the `kind` runs of the ledger actually used, read
+    from each run's recorded artifacts (never from the current constants). A ledger mixing
+    versions, or a run without artifact identities, gives versions None (the promotion gate then
+    refuses the report as evidence for any candidate)."""
+    used = [r for r in runs if r.get("kind") == kind]
+    out = {"kind": kind, "scoring_fingerprint": scoring_fp, "runs": len(used)}
+    for role in ("champion", "challenger"):
+        vs = sorted({str(((r.get("artifacts") or {}).get(role) or {}).get("version")) for r in used})
+        out[f"{role}_versions_seen"] = vs
+        out[f"{role}_version"] = vs[0] if len(vs) == 1 and vs[0] != "None" else None
+    return out
+
+
 def frozen_rows(runs: list[dict], kind: str = "pregame") -> pl.DataFrame:
     """Per player-week, the latest row created strictly before his kickoff by a run of `kind`
     (pregame runs only count rows flagged pregame at creation)."""
@@ -794,6 +808,6 @@ def promotion_blockers(status: dict) -> dict:
             for pos, s in status.items()}
 
 
-__all__ = ["readiness", "train", "save_artifact", "load_artifact", "write_once", "latest_artifact", "predict",
+__all__ = ["report_subject", "readiness", "train", "save_artifact", "load_artifact", "write_once", "latest_artifact", "predict",
            "write_run", "load_ledger", "rebuild_run", "evaluate", "label_outcomes", "team_game_finality", "week_finality", "shadow_status",
            "shadow_criteria", "promotion_blockers", "NotReady", "MODEL_VERSION", "interval_for"]
