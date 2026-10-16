@@ -20,6 +20,9 @@ ODD_GAME_SNAPS = 0.30
 
 def describe_source(src: dict) -> str:
     k = src["kind"]
+    if k.startswith("fp_"):
+        from .flame import describe
+        return describe(src)
     weeks = src.get("weeks") or src.get("recent_weeks")
     wk = f"weeks {', '.join(map(str, weeks))}" if weeks else ""
     if k == "usage_mean":
@@ -90,6 +93,8 @@ def storyboard(ep: Episode, script: dict) -> list[str]:
 def flags(facts: dict, claims: dict, fallback_words: list[str], text: str) -> list[str]:
     out = []
     for p in facts["players"]:
+        if p.get("flame"):                   # one game: nothing windowed to flag
+            continue
         qbs = claims[p["context"]["qbs_recent"]]["value"]
         if len(qbs) > 1:
             out.append(f"{p['name']}: QB change in the recent window ({', '.join(qbs)}). Is the role tied to the QB?")
@@ -157,6 +162,15 @@ def build(ep: Episode) -> str:
                       "current until then. Re-check the final injury report first.", ""]
     lines += ["## Weekly data behind the story", ""]
     for p in facts["players"]:
+        if p.get("flame"):
+            lead = p["lead"]
+            lines += [f"**{p['name']}** ({p['position']}, {claims[p['team_name']]['display']}), {p['role']} on "
+                      f"{lead['label']}: rank {lead['rank_value']} of {lead['games_value']} position games, "
+                      f"z {lead['z_pos']:.2f} vs the position, {lead['z_own']:.2f} vs his own games", "",
+                      "| week | " + lead["label"] + " |", "|---|---|"]
+            lines += [f"| {claims[s['week_claim']]['display']} | {claims[s['value']]['display']} |" for s in lead["series"]]
+            lines.append("")
+            continue
         weeks = [s["week"] for s in p["metrics"][0]["series"]]
         lines.append(f"**{p['name']}** ({p['position']}, {claims[p['team_name']]['display']}), recent window weeks "
                      f"{p['recent_weeks']}, earlier window weeks {p['baseline_weeks']}")

@@ -51,12 +51,15 @@ def _run(ep: Episode) -> None:
     risers = [p["name"] for p in facts["players"] if p["role"] == "riser"]
     fallers = [p["name"] for p in facts["players"] if p["role"] == "faller"]
     hero = facts["players"][0]
-    m = hero["metrics"][0]
+    m = hero.get("metrics", [None])[0]
     hook = (f"{hero['name']}'s {m['label']} went from {claims[m['baseline']]['display']} to "
-            f"{claims[m['recent']]['display']}.")
+            f"{claims[m['recent']]['display']}.") if m else ""
     cta = script["cta"]
     disclosure = AI_DISCLOSURE_CLONE if (short and ep.cfg["shorts"].get("voice_clone")) else AI_DISCLOSURE
-    if short:
+    if hero.get("flame"):                   # flame / praise: one game against the season (stages/flame.py)
+        from .flame import description_lines
+        lines = [*description_lines(hero, claims), "", disclosure, ATTRIBUTION, "", "#shorts #fantasyfootball #nfl"]
+    elif short:
         lines = [hook, f"Over his last {claims[hero['recent_games']]['display']} games versus the "
                  f"{claims[hero['baseline_games']]['display']} before. Usage, not box scores.", "",
                  disclosure, ATTRIBUTION, "", "#shorts #fantasyfootball #nfl"]

@@ -20,8 +20,8 @@ def _run(ep: Episode) -> None:
     claims = {c["id"]: c for c in facts["claims"]}
     hero_shot = next((s for s in script["shots"] if s["type"] == "hero_stat"), {"metric": 0})
     p = next((p for p in facts["players"] if p["gsis_id"] == hero_shot.get("player")), facts["players"][0])
-    m = p["metrics"][hero_shot.get("metric", 0)]
-    up = p["role"] == "riser"
+    m = p["metrics"][hero_shot.get("metric", 0)] if "metrics" in p else None
+    up = p["role"] in ("riser", "praise")
     color = V.POSITIVE if up else V.NEGATIVE
     fmt = script.get("structure", {}).get("format")
     d = lambda cid: claims[cid]["display"]
@@ -34,6 +34,10 @@ def _run(ep: Episode) -> None:
         car = p["details"]["carries"]
         kicker, stat, label = f"WITH {p['teammate']['name'].split()[-1].upper()} OUT", f"{d(car['own_recent'])} OF {d(car['team_recent'])}", "RB CARRIES"
         color = V.POSITIVE
+    elif fmt in ("flame", "praise"):      # the stat line itself, and where it ranks
+        from . import flame
+        kicker, stat, label = flame.thumbnail_text(p, claims)
+        color = V.NEGATIVE if fmt == "flame" else V.POSITIVE
     else:
         kicker = stat = label = None
 

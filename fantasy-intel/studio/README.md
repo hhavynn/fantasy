@@ -71,6 +71,39 @@ Outputs land in `episodes/<season>-wNN-long/`: `final.mp4`, `thumbnail.png`, `me
 intermediate (`snapshot.json`, `facts.json`, `script.json`, `audio/`, `shots/`). Rerunning skips any
 stage whose inputs did not change; `--force script,tts` reruns specific stages.
 
+## Flame / praise Shorts
+
+```bash
+uv run make-episode --week 6 --flame-praise                  # the latest game's strongest flame and praise
+uv run make-episode --week 6 --flame-praise --player bo-nix  # one player's strongest case, if he has one
+```
+
+A punchy one-player, one-game Short: roast a historically bad usage or efficiency line (flame) or hype a monster
+one (praise). Trash talk about the stat line, never about the person. Code: `stages/flame.py` (selection, claims,
+script) and `studio/flame_scenes.py` (ember / spotlight looks; hook card, a strip of every position game, his
+season game by game, a stat receipt), ending on the shared `decision` scene.
+
+How candidates are chosen (deterministic; constants at the top of `stages/flame.py`):
+
+- **The game**: the latest week in the data. Metrics are usage/efficiency only: QB passing air yards, air yards per
+  attempt (flame only), passing EPA and yards per attempt (nflverse weekly stats, an allow-listed
+  `qb_week_passing` slice of the snapshot with no fantasy columns); WR/TE target share, air yards and targets;
+  RB share of the running-back carries and snap share (`player_week_usage`).
+- **Volume floors**: a game counts only with 20+ attempts (QB) or 50%+ (WR/TE) / 30%+ (RB) of the snaps, for him
+  and for the position's distribution, so an early exit is never roasted. A flame also needs an established role
+  in his earlier games (20+ attempts; 15%/12% target share for WR/TE; 45% of RB carries).
+- **Against the position**: the game must rank in the extreme 10% of every qualifying game at his position this
+  season (at worst 3rd), e.g. "the 8th-lowest of 152 quarterback games".
+- **Against himself**: at least two earlier qualifying games; a flame must be below his own norm, a praise above it
+  (rates pooled, counts averaged).
+- **Strength** = position z-score + half his own z-score (capped at 3) + 0.5 for the season's single most extreme
+  game + 0.25 for his own season low/high. The strongest metric leads; others in the extreme third become the
+  receipts. The week's picks are the strongest flame and praise from different teams.
+
+Every number is an `fp_` claim that `facts.evaluate_claim` re-derives from the snapshot, so the data-claims,
+narration, banned-phrase and originality gates apply unchanged. The full board, with each candidate's numbers,
+is written to `episodes/<season>-wNN-short/flame_praise.md`.
+
 ## QC and provenance
 
 `make-episode` finishes with QC gates and exits non-zero if any fails (upload is blocked):
