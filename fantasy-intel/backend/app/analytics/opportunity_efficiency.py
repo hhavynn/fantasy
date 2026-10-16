@@ -262,6 +262,16 @@ def compare(preds: pl.DataFrame, models: dict[str, str], baseline: str = "ifp2",
     return out
 
 
+def _naive_opportunity(d: pl.DataFrame, opp: str) -> dict:
+    """Naive opportunity forecasts (the established and recent xFP features) against the model, all on
+    the rows where both naive features exist (players without covered xFP history have none)."""
+    s = d.filter(pl.col("xfpl_eb").is_not_null() & pl.col("xfpl_recent").is_not_null())
+    t = s["t_opp"].to_numpy()
+    return {"naive_n": s.height, "model_mae_naive_rows": metrics(t, _arr(s, opp))["mae"],
+            "naive_xfpl_eb_mae": metrics(t, _arr(s, "xfpl_eb"))["mae"],
+            "naive_xfpl_recent_mae": metrics(t, _arr(s, "xfpl_recent"))["mae"]}
+
+
 def component_validity(df: pl.DataFrame, opp: str, eff: str, direct: str) -> dict:
     """On rows with a known target xFP: component errors, bias, correlation of the component errors
     and whether summing them amplifies error. `direct` is the direct model's points column."""
@@ -282,8 +292,7 @@ def component_validity(df: pl.DataFrame, opp: str, eff: str, direct: str) -> dic
         "n": d.height,
         "opportunity": {"mae": round(float(np.abs(eo).mean()), 3), "bias": round(float(eo.mean()), 3),
                         "r2": r2(eo, d["t_opp"].to_numpy()),
-                        "naive_xfpl_eb_mae": metrics(d["t_opp"].to_numpy(), _arr(d, "xfpl_eb"))["mae"],
-                        "naive_xfpl_recent_mae": metrics(d["t_opp"].to_numpy(), _arr(d, "xfpl_recent"))["mae"]},
+                        **_naive_opportunity(d, opp)},
         "efficiency": {"mae": round(float(np.abs(ee).mean()), 3), "bias": round(float(ee.mean()), 3),
                        "r2": r2(ee, teff), "zero_mae": round(float(np.abs(teff).mean()), 3),
                        "sd_target": round(float(np.std(teff)), 3), "sd_prediction": round(float(np.std(d[eff].to_numpy())), 3)},
@@ -363,6 +372,8 @@ class ResearchArtifact:
             sub = rows[idx]
             out[idx] = np.maximum(raw_predict(RidgeModel.from_dict(comps["opp"]), sub)
                                   + raw_predict(RidgeModel.from_dict(comps["eff"]), sub), 0.0)
+        if "games_recent" in rows.columns:    # the backtest's abstention rule: no recent game, no forecast
+            out[~(rows["games_recent"].fill_null(0).to_numpy() > 0)] = np.nan
         return out
 
     def hash(self) -> str:

@@ -111,11 +111,14 @@ comparisons use identical rows.
 ## 3. Component validity
 
 These numbers are out-of-sample on the same rows as the points comparison. "Naive" means using
-`xfpl_eb` directly as the opportunity forecast.
+`xfpl_eb` or `xfpl_recent` directly as the opportunity forecast. Some rows lack a value for one of
+these, so the naive comparison uses only rows where both are present, and the model is re-scored on
+those same rows: 12,656 rows in development and 20,563 in 2023-26.
 
 | | Dev OE_C | Dev OE_D | Dev OE_E | 2023-26 OE_D |
 |---|---|---|---|---|
-| Opportunity MAE (naive `xfpl_eb`) | 3.308 (4.087) | 3.308 | 3.347 | 3.136 (3.895) |
+| Opportunity MAE, all rows | 3.308 | 3.308 | 3.347 | 3.136 |
+| Opportunity MAE on the naive rows: model / `xfpl_eb` / `xfpl_recent` | 3.427 / 4.091 / 4.296 | 3.427 / 4.091 / 4.296 | 3.465 / 4.091 / 4.296 | 3.277 / 3.890 / 4.098 |
 | Opportunity R² / bias | 0.593 / −0.17 | 0.593 / −0.17 | 0.585 / −0.22 | 0.602 / −0.03 |
 | Efficiency MAE (predicting 0) | 2.575 (2.516) | 2.528 (2.516) | 2.527 | 2.440 (2.428) |
 | Efficiency R² / bias | −0.003 / −0.03 | 0.004 / −0.02 | 0.007 / −0.01 | 0.003 / +0.07 |
@@ -125,8 +128,8 @@ These numbers are out-of-sample on the same rows as the points comparison. "Naiv
 
 What the table shows:
 
-* **Opportunity is predictable.** R² is about 0.6, and the model beats the naive estimators by about
-  0.8 points of MAE.
+* **Opportunity is predictable.** R² is about 0.6. On the same rows, the model beats `xfpl_eb` by
+  0.6–0.7 points of MAE and `xfpl_recent` by about 0.8.
 * **Efficiency is not predictable.** No efficiency model beats a constant: R² ≤ 0.007, and MAE is
   worse than predicting zero, because the residual distribution is skewed.
 * **Combining the components does not amplify error.** Errors are slightly negatively correlated,

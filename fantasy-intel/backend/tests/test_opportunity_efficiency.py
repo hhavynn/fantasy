@@ -199,6 +199,8 @@ def test_research_artifact_is_never_a_production_model(monkeypatch):
     assert np.isfinite(p).all()
     qb = rows.with_columns(pl.lit("QB").alias("position"))
     assert np.isnan(back.predict(qb)).all()                    # no fitted QB components -> abstain
+    no_history = rows.with_columns(pl.lit(0).alias("games_recent"))
+    assert np.isnan(back.predict(no_history)).all()           # same abstention rule as the backtest
 
 
 # ----------------------------------------------------------------------------- isolation
@@ -220,3 +222,14 @@ def test_candidates_are_preregistered_and_distinct():
     cfg = ch.ChallengerConfig.load()
     e = oe.component_features(oe.CANDIDATES[2], "RB", cfg)
     assert not set(oe.PRODUCTION) & set(e["opp"]) and len(e["eff"]) < len(e["opp"])
+
+
+def test_naive_opportunity_baselines_share_the_models_rows():
+    d = pl.DataFrame({"t_opp": [10.0, 4.0, 6.0, 8.0], "opp": [9.0, 5.0, 6.0, 0.0],
+                      "xfpl_eb": [10.0, None, 3.0, 8.0], "xfpl_recent": [12.0, 4.0, 6.0, None]})
+    r = oe._naive_opportunity(d, "opp")
+    # only rows 0 and 2 have both naive features: every MAE is measured on exactly those rows
+    assert r["naive_n"] == 2
+    assert r["model_mae_naive_rows"] == pytest.approx(0.5)
+    assert r["naive_xfpl_eb_mae"] == pytest.approx(1.5)
+    assert r["naive_xfpl_recent_mae"] == pytest.approx(1.0)

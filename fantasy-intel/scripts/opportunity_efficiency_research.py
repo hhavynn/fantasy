@@ -53,14 +53,24 @@ def _frame_hash(df: pl.DataFrame | None) -> str | None:
     return hashlib.sha256(np.sort(df.hash_rows(seed=0).to_numpy()).tobytes()).hexdigest()[:16]
 
 
+def code_hash() -> str:
+    """Hash of every module that can shape a cached result: all of app/ and every script (this one
+    and the store builders it imports). Deliberately broader than today's import graph, so a change
+    to any helper the store is built with invalidates the cache."""
+    root = Path(ch.__file__).resolve().parents[3]
+    files = sorted((root / "backend" / "app").rglob("*.py")) + sorted((root / "scripts").glob("*.py"))
+    h = hashlib.sha256()
+    for f in files:
+        h.update(str(f.relative_to(root)).encode() + b"\0" + f.read_bytes())
+    return h.hexdigest()[:16]
+
+
 def input_fingerprint(args, src, scoring_fingerprint: str, weeks) -> str:
     """Everything the cached store depends on: source data, weeks, scoring and the code that builds
     it. Any change rebuilds the cache."""
-    mods = ["app.analytics.challenger", "app.analytics.forecast_features", "app.analytics.forecast_backtest", "app.analytics.opportunity_efficiency"]
-    code = b"".join(Path(sys.modules[m].__file__).read_bytes() for m in mods)
     parts = {"season": args.season, "weeks": weeks, "scoring": scoring_fingerprint, "polars": pl.__version__,
-             "code": hashlib.sha256(code).hexdigest()[:16],
-             **{n: _frame_hash(getattr(src, n)) for n in ("panel", "games", "injuries", "exits", "rosters")}}
+             "code": code_hash(),
+             **{n: _frame_hash(getattr(src, n)) for n in ("panel", "games", "injuries", "exits", "rosters", "defense")}}
     return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
