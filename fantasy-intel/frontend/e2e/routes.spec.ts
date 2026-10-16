@@ -11,6 +11,13 @@ const ROUTES = [
   "/managers/1",
   "/players?id=201",
   "/data",
+  // Research lab (synthetic pool from backend/tests/synthetic_research.py): each position and chart view,
+  // a selected player with a comparison, and a filter that empties the pool.
+  "/research/wr",
+  "/research/rb?view=workload&window=last5",
+  "/research/te?view=momentum",
+  "/research/rb?sel=00-SYNRB01&cmp=00-SYNRB02&window=last3",
+  "/research/wr?vol=40",
 ];
 
 const THEMES = ["light", "dark"] as const;
