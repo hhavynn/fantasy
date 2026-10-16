@@ -1,0 +1,111 @@
+# fantasy-intel studio configuration. Paths are relative to this file unless absolute.
+# Environment overrides: STUDIO_DB (database path), STUDIO_EPISODES (output directory).
+
+season = 2026
+db_path = "../data/fantasy.duckdb"
+episodes_dir = "episodes"
+
+[cta]
+# Empty until the public site ships; the CTA then points viewers at this URL.
+url = ""
+channel_line = "Subscribe for the usage report every week. Our free usage tool is coming soon."
+
+[llm]
+provider = "llamacpp"                      # llamacpp | fake
+base_url = "http://127.0.0.1:8080/v1"
+model = "Qwen3-30B-A3B-Instruct-2507-Q4_K_M"
+model_repo = "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF"
+model_file = "~/models/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"
+model_license = "Apache-2.0"
+temperature = 0.7
+max_tokens = 2000
+max_retries = 4
+presence_penalty = 0.5
+repeat_penalty = 1.05
+
+[tts]
+engine = "kokoro"
+repo = "hexgrad/Kokoro-82M"
+license = "Apache-2.0"
+voice = "am_michael"
+speed = 1.12
+sample_rate = 24000
+segment_tail_silence = 0.35
+
+[video]
+fps = 30
+long_size = [1920, 1080]
+short_size = [1080, 1920]
+
+[selection]
+# Players need this many games before the week to have a trend (backend trends.MIN_GAMES_FOR_TREND).
+risers = 5
+fallers = 4
+max_per_position = 3
+# Featured players from the most recent N episodes are de-prioritised.
+recent_episode_window = 2
+
+[duration]
+long_min = 480
+long_max = 720
+short_min = 15
+short_max = 45
+
+[shorts]
+# Stories per week (about three is sustainable to review): the strongest sustained moves, one per team.
+risers = 2
+fallers = 1
+# From this week a "role first, schedule second" Weeks 15-17 beat joins each Short.
+playoff_runway_from_week = 11
+# Short-form delivery: the most expressive Kokoro male voice by measured pitch range (am_fenrir 11.5
+# semitones p10-p90 vs am_michael 8.0 on the same line), Kokoro's own clip padding trimmed, tight gaps.
+voice = "am_fenrir"
+trim_silence = true
+segment_tail_silence = 0.12
+# Original procedural music bed and sound design (no third-party audio). Set music = false for voice only.
+music = true
+# ESPN player headshots in place of the jersey graphic. Not licensed to the channel (see studio/headshots.py):
+# set false to go back to the jersey everywhere if copyright claims start.
+headshots = true
+music_db = -28.0
+sfx_db = -12.0
+# The channel owner's enrolled voice (see voices/RECORDING.md). Empty = Kokoro's own voice.
+# Kokoro still performs; OpenVoice V2 re-voices it. QC blocks publishing without a valid consent record.
+voice_clone = ""
+# Default hook per storyline; empty = rotate least recently used.
+hook = ""
+
+[presenter]
+# EXPERIMENTAL AI host layer (studio/presenter.py). off | hook | hybrid. Off keeps the pipeline exactly as before;
+# hook/hybrid also write final_presenter_<mode>.mp4 next to final.mp4, which is never changed.
+mode = "off"
+# MuseTalk 1.5 (musetalk-mac) install with its own .venv and weights; see docs/presenter/README.md
+engine = "~/models/musetalk-mac"
+# base clips, lip-sync clips and landmark caches (large, outside the repo)
+cache = "~/models/presenter"
+# the fictional host, generated once with Z-Image-Turbo (Apache-2.0); see assets/presenter/host.json
+portrait = "assets/presenter/host.png"
+# The host's own voice (picked by audition: episodes/presenter-audition). Different from [shorts] voice, so host
+# versions are re-rendered as <slug>-host with this voice; the regular Shorts keep theirs.
+voice = "am_adam"
+# Realism pass 2 (A/B in episodes/presenter-review, docs/presenter/README.md). engine_mode "hq" = lossless
+# native-fps MuseTalk loop with skin-detail restore, approved by the owner from the montages (2026-10-15).
+# Motion stays procedural until the new library clips are reviewed; motion "library" = audited Wan2.2
+# natural-motion clips of the same host (falls back to procedural if none pass).
+engine_mode = "hq"
+motion = "procedural"
+library = "~/models/presenter/motion/library"
+detail = 1.0
+detail_sigma = 3.5
+
+[graphics]
+# Graphic style for Shorts (studio/graphics, tokens in assets/styles/*.toml): original | premium | pixel |
+# broadcast | auto. 'original' renders only final.mp4, exactly as before. Any other value ALSO renders
+# styles/<style>/final.mp4 with its own QC; final.mp4 is never replaced.
+style = "auto"
+# auto: [graphics.auto] per-angle overrides first, then auto_default; a story with a scene the style has no
+# design for falls back to original.
+auto_default = "premium"          # the website's look for every story it has a design for
+
+[graphics.auto]
+# Per-angle overrides, e.g. fill_in = "broadcast" or comparison = "pixel". Empty: premium everywhere.

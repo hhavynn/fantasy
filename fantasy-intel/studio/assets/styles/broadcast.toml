@@ -1,0 +1,78 @@
+# Style C: Modern NFL Broadcast (original identity). Team colour slabs, angled panels, scoreboard modules.
+name = "broadcast"
+title = "Modern NFL Broadcast"
+
+[palette]
+bg = "#070A12"
+bg_top = "#0E1424"
+panel = "#17213B"
+panel_line = "#2C3854"
+grid = "#18213A"
+ink = "#FFFFFF"
+ink_muted = "#AEB8CC"
+ink_faint = "#8F9BB3"
+up = "#2FD47E"
+down = "#FF4B4B"
+highlight = "#FFD23F"
+neutral_bar = "#33405C"
+slab_dark = "#0A0F1C"
+
+[type]
+kicker = ["black", 34, 0.08]
+label = ["bold", 40, 0.02]
+body = ["semibold", 38, 0.0]
+title = ["black", 92, -0.02]
+display = ["black", 156, -0.035]
+number_xl = ["black", 250, -0.04]
+number_l = ["black", 156, -0.035]
+number_m = ["black", 88, -0.02]
+number_s = ["bold", 54, 0.0]
+case = "upper"
+italic = 0.18             # shear for display type (broadcast italics)
+
+[space]
+unit = 8
+scale = [8, 16, 24, 32, 48, 64, 96, 128]
+margin_x = 80
+margin_right = 8        # inside the safe zone's right edge (x = 950)
+content_top = 300
+content_bottom = 1290
+
+[stroke]
+hairline = 3
+rule = 6
+reference = 4
+
+[radius]
+panel = 0
+bar = 0
+chip = 0
+skew = 0.21               # parallelogram slant of panels (dx per px of height)
+
+[motion]
+enter = [0.2, 0.9, 0.1, 1.0]
+move = [0.7, 0.0, 0.1, 1.0]
+enter_dur = 0.34
+stagger = 0.05
+transition = "slab_wipe"
+transition_dur = 0.36
+camera_push = 0.02
+punch = 0.03
+
+[caption]
+weight = "black"
+size = 56
+case = "upper"
+color = "#0A0F1C"
+active = "team"           # the team colour block behind the spoken word
+band = 0.0
+
+[chart]
+bar_gap = 0.22
+value_size = 50
+axis_size = 30
+gridlines = 0
+
+[rules]
+icons = "flat, geometric, team colours"
+illustration = "player cut-out on a team-colour slab; persistent lower third and score bug"
