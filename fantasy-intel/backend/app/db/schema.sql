@@ -693,6 +693,31 @@ CREATE TABLE IF NOT EXISTS waiver_recommendations (
 );
 ALTER TABLE waiver_recommendations ADD COLUMN IF NOT EXISTS opportunity_score_100 DOUBLE;
 
+-- The same recommendations evaluated from every team's roster (league-wide team perspective). Create-only: no
+-- schema version bump; the API falls back to waiver_recommendations for the owner's team when this table is missing.
+CREATE TABLE IF NOT EXISTS team_waiver_recommendations (
+    league_id              BIGINT,
+    season                 INTEGER,
+    team_id                INTEGER,
+    espn_player_id         BIGINT,
+    position               VARCHAR,
+    availability_status    VARCHAR,
+    opportunity_score      DOUBLE,
+    opportunity_score_100  DOUBLE,    -- 0-100.0 (1 dp), as in waiver_recommendations (ratings-100.v1); display only
+    roster_fit_score       DOUBLE,
+    league_interest        VARCHAR,
+    interest_score         DOUBLE,
+    waiver_score           DOUBLE,
+    recommendation         VARCHAR,
+    suggested_drop_id      BIGINT,
+    components             JSON,
+    reasons                JSON,
+    competitors            JSON,
+    computed_at            TIMESTAMP,
+    PRIMARY KEY (league_id, season, team_id, espn_player_id)
+);
+ALTER TABLE team_waiver_recommendations ADD COLUMN IF NOT EXISTS opportunity_score_100 DOUBLE;
+
 CREATE TABLE IF NOT EXISTS player_context (
     season          INTEGER,
     gsis_id         VARCHAR,

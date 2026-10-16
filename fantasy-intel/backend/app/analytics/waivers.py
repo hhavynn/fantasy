@@ -493,21 +493,22 @@ def load_profiles(con, league_id: int, season: int, teams: list[dict], is_faab: 
 
 
 def build_waivers(con, kdst_streaming: bool = True) -> dict:
-    """Waiver recommendations for your team. `kdst_streaming` credits holding a K or D/ST only for future weeks
-    it beats the weekly streaming baseline (waiver_data.streaming_floor)."""
+    """Waiver recommendations for every team in the league. Each team is evaluated from its own roster, needs and
+    lineup (no state is shared between teams), into team_waiver_recommendations; the owner's team (is_mine) is also
+    written to waiver_recommendations, the table older readers use. `kdst_streaming` credits holding a K or D/ST only
+    for future weeks it beats the weekly streaming baseline (waiver_data.streaming_floor)."""
     lg = fetch_dicts(con, "SELECT * FROM leagues ORDER BY synced_at DESC LIMIT 1")
     if not lg:
         return {"skipped": "no ESPN league synced"}
     lg = lg[0]
     league_id, season, week = lg["league_id"], lg["season"], lg["current_week"] or 1
-    decision_ctx = load_waiver_context(con, lg)
-    decision_ctx["move_cache"] = {}  # per analytics build, fixed roster/settings; never shared across requests
+    base_ctx = load_waiver_context(con, lg)
     slots = json.loads(lg["roster_slots"]) if isinstance(lg["roster_slots"], str) else (lg["roster_slots"] or {})
-    teams = fetch_dicts(con, "SELECT * FROM fantasy_teams WHERE league_id=? AND season=?", [league_id, season])
+    teams = fetch_dicts(con, "SELECT * FROM fantasy_teams WHERE league_id=? AND season=? ORDER BY team_id",
+                        [league_id, season])
+    if not teams:
+        return {"skipped": "no fantasy teams synced"}
     mine = [t["team_id"] for t in teams if t["is_mine"]]
-    if not mine:
-        return {"skipped": "your team is not identified (set ESPN_MY_TEAM_ID)"}
-    my_team_id = mine[0]
     team_names = {t["team_id"]: t["name"] for t in teams}
 
     values = load_values(con, season, week)
@@ -525,11 +526,6 @@ def build_waivers(con, kdst_streaming: bool = True) -> dict:
         r["nfl_report_status"] = reports.get(r["gsis_id"])
         rosters[r["team_id"]].append(r)
     states = {tid: team_state(rosters.get(tid, []), values, slots) for tid in team_names}
-    attach_roster_evidence(states[my_team_id], rosters.get(my_team_id, []), decision_ctx)
-    decision_ctx["constraints"]["snapshot_complete"] = bool(rosters.get(my_team_id)) and all(
-        not stale_snapshot(r["roster_synced_at"], decision_ctx["now"]) for r in rosters[my_team_id])
-    if not decision_ctx["constraints"]["snapshot_complete"]:
-        decision_ctx["warnings"].append("Roster snapshot is missing, undated or older than 72 hours; active capacity cannot be confirmed.")
     lsa = league_starter_averages(states, slots)
     needs = {tid: team_needs(states[tid], slots, lsa) for tid in team_names}
     now = utcnow()
@@ -546,49 +542,71 @@ def build_waivers(con, kdst_streaming: bool = True) -> dict:
     rostered_ids = {r["espn_player_id"] for r in roster_rows}
     pool = [c for c in cands if c["espn_player_id"] not in rostered_ids]
     rostered_conflicts = len(cands) - len(pool)
-    if kdst_streaming:
-        states[my_team_id]["stream"] = streaming_floor(pool, decision_ctx, slots)
+    stream = streaming_floor(pool, base_ctx, slots) if kdst_streaming else None
     depth = _latest_depth(con, season)
-    cands, coverage = select_candidates(pool, values, decision_ctx["projections"], depth, decision_ctx["weeks"])
+    cands, coverage = select_candidates(pool, values, base_ctx["projections"], depth, base_ctx["weeks"])
     candidates_by_id = {p["espn_player_id"]: p for p in cands}
     coverage["excluded_rostered_conflicts"] = rostered_conflicts
-    scarcity = {pos: sum(1 for c in cands if c["position"] == pos and c["espn_player_id"] in values
-                         and (values[c["espn_player_id"]].value or 0) >= (lsa.get(pos) or 99))
+    scarcity = {pos: sum(1 for c in cands if c["espn_player_id"] in values
+                         and c["position"] == pos and (values[c["espn_player_id"]].value or 0) >= (lsa.get(pos) or 99))
                 for pos in FANTASY_POSITIONS}
     contexts = load_player_contexts(con, season)
-    out = []
+    # Team-independent candidate evidence, computed once.
+    prepared = []
     for c in cands:
         c["nfl_report_status"] = reports.get(c.get("gsis_id"))
         cv = values.get(c["espn_player_id"]) or PlayerValue(c["espn_player_id"], c["position"], None, None, None,
                                                             None, None, "unavailable")
         if cv.gsis_id and cv.gsis_id in depth:
             cv.extras = {**cv.extras, "depth_chart": depth[cv.gsis_id]}
-        synced = c.get("detail_synced_at")
-        stale = stale_snapshot(synced, decision_ctx["now"])
-        pos = c["position"]
         # A comparable freely available option makes preserving rolling priority concrete.
         alternatives = []
-        for alternative in comparable_free_agents(c, values, cands, decision_ctx, reports):
+        for alternative in comparable_free_agents(c, values, cands, base_ctx, reports):
             alt_row = candidates_by_id[alternative["espn_player_id"]]
             alt_value = values.get(alt_row["espn_player_id"])
             raw = alt_value.value if alt_value else None
             alt_cand = {**alt_row, "raw_value": raw, "value": raw, "available": True, "lineup_slot_id": None,
                         "rising": bool(alt_value and alt_value.trend_label == "UP"),
-                        "bye_weeks": [w for w in decision_ctx["weeks"] if w in decision_ctx["covered"] and alt_row.get("pro_team") and (alt_row["pro_team"], w) not in decision_ctx["games"]],
-                        "projections": decision_ctx["projections"].get(alt_row["espn_player_id"], {})}
+                        "bye_weeks": [w for w in base_ctx["weeks"] if w in base_ctx["covered"] and alt_row.get("pro_team") and (alt_row["pro_team"], w) not in base_ctx["games"]],
+                        "projections": base_ctx["projections"].get(alt_row["espn_player_id"], {})}
             alternatives.append({"player": alt_cand, "resource": alternative})
-        per = {**decision_ctx, "coverage": coverage, "team": next(t for t in teams if t["team_id"] == my_team_id),
-               "stale": stale, "alternatives": alternatives,
-               "candidate_byes": [w for w in decision_ctx["weeks"] if w in decision_ctx["covered"] and c.get("pro_team") and (c["pro_team"], w) not in decision_ctx["games"]]}
-        if pos in ("K", "D/ST"):
-            per["streaming"] = streaming_evidence(c, states[my_team_id], decision_ctx, pool)
-        row = evaluate_candidate(c, cv, my_team_id=my_team_id, needs=needs, my_state=states[my_team_id],
-                                 profiles=profiles, league_pos_share=league_share, team_names=team_names,
-                                 scarcity=scarcity, context_reasons=context_reasons(contexts.get(cv.gsis_id)), decision_context=per)
-        row.update(league_id=league_id, season=season, computed_at=now)
-        out.append(row)
-    replace_where(con, "waiver_recommendations", out, "league_id=? AND season=?", [league_id, season])
-    return {"candidates": len(out), "claims": sum(1 for r in out if r["recommendation"] == "CLAIM"), "coverage": coverage}
+        prepared.append((c, cv, alternatives,
+                         [w for w in base_ctx["weeks"] if w in base_ctx["covered"] and c.get("pro_team") and (c["pro_team"], w) not in base_ctx["games"]],
+                         context_reasons(contexts.get(cv.gsis_id))))
+
+    per_team: list[dict] = []
+    for team in teams:
+        tid = team["team_id"]
+        # Each team gets its own context: the move cache is keyed by candidate only (valid for one roster), and the
+        # snapshot check and warnings describe that team's roster.
+        ctx = {**base_ctx, "move_cache": {}, "constraints": dict(base_ctx["constraints"]),
+               "warnings": list(base_ctx["warnings"])}
+        state = states[tid]
+        attach_roster_evidence(state, rosters.get(tid, []), ctx)
+        ctx["constraints"]["snapshot_complete"] = bool(rosters.get(tid)) and all(
+            not stale_snapshot(r["roster_synced_at"], ctx["now"]) for r in rosters[tid])
+        if not ctx["constraints"]["snapshot_complete"]:
+            ctx["warnings"].append("Roster snapshot is missing, undated or older than 72 hours; active capacity cannot be confirmed.")
+        if stream is not None:
+            state["stream"] = stream
+        for c, cv, alternatives, byes, why in prepared:
+            per = {**ctx, "coverage": coverage, "team": team, "stale": stale_snapshot(c.get("detail_synced_at"), ctx["now"]),
+                   "alternatives": alternatives, "candidate_byes": byes}
+            if c["position"] in ("K", "D/ST"):
+                per["streaming"] = streaming_evidence(c, state, ctx, pool)
+            row = evaluate_candidate(c, cv, my_team_id=tid, needs=needs, my_state=state,
+                                     profiles=profiles, league_pos_share=league_share, team_names=team_names,
+                                     scarcity=scarcity, context_reasons=why, decision_context=per)
+            row.update(league_id=league_id, season=season, team_id=tid, computed_at=now)
+            per_team.append(row)
+    replace_where(con, "team_waiver_recommendations", per_team, "league_id=? AND season=?", [league_id, season])
+    owner = [{k: v for k, v in r.items() if k != "team_id"} for r in per_team if mine and r["team_id"] == mine[0]]
+    replace_where(con, "waiver_recommendations", owner, "league_id=? AND season=?", [league_id, season])
+    out = {"candidates": len(cands), "teams": len(teams),
+           "claims": sum(1 for r in owner if r["recommendation"] == "CLAIM"), "coverage": coverage}
+    if not mine:
+        out["warning"] = "your team is not identified (set ESPN_MY_TEAM_ID); only per-team recommendations were written"
+    return out
 
 
 def current_week_reports(con, season: int, week: int) -> dict[str, str]:

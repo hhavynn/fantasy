@@ -103,7 +103,7 @@ export function Evidence({ row, decision: d }: { row: WaiverRow; decision: Decis
         <b>Known capacity:</b> {d.roster_move.active_count}/{d.roster_move.capacity ?? "unknown"} active players. IR is excluded from active capacity.
         Position limits: {Object.entries(d.roster_move.position_limits).map(([p, n]) => `${p} ${n}`).join(", ") || "none supplied"}.
       </p>
-      <p>Each pickup is a separate scenario against your current roster. Refresh after making a move; these are not a combined claim queue.</p>
+      <p>Each pickup is a separate scenario against the team&apos;s current roster. Refresh after making a move; these are not a combined claim queue.</p>
     </div>
   );
 }
