@@ -244,7 +244,36 @@ verified there (2023-24 can); the report therefore also gives the 2023-24-only r
 
 ## 5. Development selection (2021-2022)
 
-*Pending: filled in by the commit that runs `rb_research.py develop`.*
+`rb_research.py develop` ran the three fixed grids on 2021-2022 only (3,557 common-support rows, 36 weeks),
+then wrote the frozen configuration once (bound to the SHA-256 of the preregistration block above and to the
+fingerprint of every input frame; `confirm` re-checks both and refuses a second run). Development numbers
+cannot confirm anything; they only fix the grid points.
+
+| Candidate | Grid (development MAE) | Frozen | Dev MAE (C 4.315) | Candidate - C [95% CI] | RMSE | Bias |
+|---|---|---|---|---|---|---|
+| `vol_shrink` | tau 4: 4.249, 8: 4.235, **12: 4.226** | tau = 12 (top of the grid) | 4.226 | -0.089 [-0.116, -0.063] | 6.051 (C 6.020) | +0.13 (C -0.17) |
+| `tm_transfer` | lambda **0.01: 4.268**, 0.03: 4.271, 0.1: 4.283 | lambda = 0.01 | 4.268 | -0.048 [-0.063, -0.033] | 5.995 | -0.12 |
+| `hurdle` | logit lambda 0.001: 4.2958, 0.01: 4.2959, 0.1: 4.2958 | 0.001 (flat) | 4.296 | -0.020 [-0.027, -0.012] | 6.014 | -0.14 |
+
+Reference on the same rows: A2 4.402, ifp-2 4.296 (ifp-2 - C -0.020), so on development all three
+candidates beat the season average (adjusted CIs below 0) and `tm_transfer`, `vol_shrink` beat ifp-2.
+
+Things to read before the confirmation numbers:
+
+* `vol_shrink` buys its MAE by moving toward the season average, which is a lower-variance but *biased*
+  forecast: bias flips from -0.17 to +0.13, RMSE rises 0.5% (6.020 to 6.051, beyond the 0.5% guard) and the
+  starters-pool MAE is no better (5.882 vs 5.880). Its gain is concentrated in the low-volume cohort
+  (-0.196 [-0.275, -0.120]) and is zero in the starters pool and high-volume backs by construction (weight 1
+  above 12 opportunities per game). The selected tau sits on the grid edge, so a larger tau might do better;
+  the preregistered grid is not widened.
+* `tm_transfer` improves pooled development MAE, but **not in the subset the hypothesis names**: with a
+  teammate Out or Doubtful (n = 492) its MAE is 4.870 against C's 4.818 (+0.052 [-0.089, +0.174]), while the
+  gain is in low-volume rows (-0.078 [-0.120, -0.036]) and early-season weeks (-0.028). Its bias there
+  falls from +0.61 to -0.15, but the error does not. The pooled rule is what was preregistered, so that is
+  what decides; the mechanism check is reported next to it.
+* `hurdle` ties ifp-2 on development (4.296) and is flat in its penalty.
+* All development decisions list `c2_consistency` as failed only because two seasons cannot satisfy the
+  "3 of 4 sub-windows" rule; it is not informative here.
 
 ## 6. Confirmation results (2023-2026 weeks 1-5, one run)
 
