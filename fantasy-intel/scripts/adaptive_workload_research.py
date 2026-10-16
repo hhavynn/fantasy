@@ -62,14 +62,24 @@ def _frame_hash(df: pl.DataFrame | None) -> str | None:
     return hashlib.sha256(np.sort(df.hash_rows(seed=0).to_numpy()).tobytes()).hexdigest()[:16]
 
 
+def code_hash() -> str:
+    """Hash of every module that can shape a cached result: all of app/ and every script (this one
+    and the store builders it imports). Deliberately broader than today's import graph, so a change
+    to any helper the store is built with invalidates the cache."""
+    root = Path(ch.__file__).resolve().parents[3]
+    files = sorted((root / "backend" / "app").rglob("*.py")) + sorted((root / "scripts").glob("*.py"))
+    h = hashlib.sha256()
+    for f in files:
+        h.update(str(f.relative_to(root)).encode() + b"\0" + f.read_bytes())
+    return h.hexdigest()[:16]
+
+
 def input_fingerprint(args, src, scoring_fingerprint: str, weeks) -> str:
     """Everything the cached store depends on: source data, weeks, scoring, role configs and the
     code that builds it. Any change rebuilds the cache."""
-    code = [Path(m.__file__).read_bytes() for m in (aw, ch, sys.modules["app.analytics.forecast_features"],
-                                                     sys.modules["app.analytics.forecast_backtest"])]
     parts = {"season": args.season, "weeks": weeks, "scoring": scoring_fingerprint, "version": aw.AW_VERSION,
              "configs": {k: asdict(c) for k, c in aw.CONFIGS.items()}, "polars": pl.__version__,
-             "code": hashlib.sha256(b"".join(code)).hexdigest()[:16],
+             "code": code_hash(),
              **{n: _frame_hash(getattr(src, n)) for n in ("panel", "games", "defense", "injuries", "exits", "rosters")}}
     return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
@@ -97,11 +107,19 @@ def store_fingerprint(args) -> str:
     return json.loads((_out(args) / "store_aw.meta.json").read_text())["fingerprint"]
 
 
-def _require_current(args, artifact: dict, what: str) -> None:
-    """Outputs of an earlier `run` may only be combined with the store they were computed from."""
-    if artifact.get("store_fingerprint") != store_fingerprint(args):
-        raise SystemExit(f"{what} was produced from different inputs (store fingerprint "
-                         f"{artifact.get('store_fingerprint')} != {store_fingerprint(args)}): re-run `run` first")
+def selection_sha(args) -> str:
+    return hashlib.sha256((args.ifp_dir / "selection.json").read_bytes()).hexdigest()[:16]
+
+
+def _require_current(args, artifact: dict, what: str, scoring_fingerprint: str) -> None:
+    """Outputs of an earlier `run` may only be combined with the store, league scoring, ifp-2
+    configuration and frozen ifp-1 penalties they were computed from: never mix model versions."""
+    current = {"store_fingerprint": store_fingerprint(args), "scoring_fingerprint": scoring_fingerprint,
+               "ifp2_config_hash": ch.ChallengerConfig.load().hash(), "selection_sha": selection_sha(args)}
+    stale = {k: (artifact.get(k), v) for k, v in current.items() if artifact.get(k) != v}
+    if stale:
+        diff = ", ".join(f"{k} {a} != {b}" for k, (a, b) in stale.items())
+        raise SystemExit(f"{what} was produced from different inputs ({diff}): re-run `run` first")
 
 
 def _cand_run(payload):
@@ -200,7 +218,7 @@ def cmd_run(args) -> dict:
     report = {"schema": "adaptive-workload-report/v1", "version": aw.AW_VERSION,
               "store_fingerprint": store_fingerprint(args),
               "created_at": datetime.now(timezone.utc).isoformat(), "scoring_fingerprint": scoring.fingerprint,
-              "ifp2_config_hash": cfg.hash(), "rules": aw.AW_DECISION_RULES,
+              "ifp2_config_hash": cfg.hash(), "selection_sha": selection_sha(args), "rules": aw.AW_DECISION_RULES,
               "development": {"seasons": aw.DEVELOPMENT, "weeks": len(dev_weeks), "best_lambda": best,
                               "report": dev_rep, "selected": chosen},
               "diagnostic": diag_rep, "decisions": decisions, "selected_decision": decisions[chosen],
@@ -289,7 +307,7 @@ def cmd_cases(args) -> dict:
     src, scoring = _sources(args)
     store = full_store(args, src, scoring.fingerprint)
     rep = json.loads((_out(args) / "report.json").read_text())
-    _require_current(args, rep, "report.json / diagnostic_preds.parquet")
+    _require_current(args, rep, "report.json / diagnostic_preds.parquet", scoring.fingerprint)
     best, chosen = rep["development"]["best_lambda"], rep["development"]["selected"]
     cfg = ch.ChallengerConfig.load()
     live = duckdb.connect(str(args.live_db), read_only=True)
