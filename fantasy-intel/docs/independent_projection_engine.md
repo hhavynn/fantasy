@@ -911,6 +911,17 @@ Feature store 2020-2026 (42.7k rows, with classification) 6.4 s; development gri
 penalties 16 s (parallel); confirmation 2.8 s; weekly `train` ~10 s; `predict` ~1 s; play-by-play
 sync ~0.5 s per season (nflverse cache). Artifacts ~30 KB each, ledger runs ~0.7 MB per week (436 players in week 6).
 
+### New data sources: FTN read progression and timestamped depth charts (research)
+
+`docs/research/first_read_depth_chart_signals.md` (`app/analytics/usage_signals.py`, never imported
+by the app). FTN `read_thrown` code `"1"`, not the dictionary's `"0"`, behaves as the first read in
+every season 2022-2026 (`"0"` replaced 2022's NA on non-pass plays). The first-read share of
+targets adds a small, consistent gain over ifp-2 for WR/RB (points MAE −0.020 development,
+−0.012 replay); the dictionary reading adds nothing. The modern timestamped depth charts (2025+
+only) help through the static pregame tier, mostly for backup QBs; the depth-*change* features
+(promotion, vacancy, chart-vs-snaps) are rejected. Nothing is integrated: both survivors are
+follow-up prospective-shadow candidates, and ifp-1.0.0 / ifp-2.0.0 are unchanged.
+
 ## Point distributions (research, ifpd-0.1.0)
 
 `docs/research/fantasy_point_distributions.md`: calibrated P10/P50/P90, P(points >= 10/15/20) and
