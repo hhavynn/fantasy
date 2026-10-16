@@ -295,11 +295,13 @@ def _dual_value_summary(dv: dict) -> dict:
             "checks": [{"criterion": c["criterion"], "status": c["status"]} for c in pl["checks"]]}
 
 
-def _weekly_names(dv: dict, names: dict[int, dict]) -> dict[int, dict]:
-    """{id: {name, position}} for every player who enters or leaves a starting lineup in dual_value's weekly
-    changes, so the page can name them (the K / D/ST streamer placeholders included)."""
+def _weekly_names(dv: dict, names: dict[int, dict], traded: tuple = ()) -> dict[int, dict]:
+    """{id: {name, position}} for every traded player (bench assets included, which the ratings table names)
+    and every player who enters or leaves a starting lineup in dual_value's weekly changes, so the page can name
+    them (the K / D/ST streamer placeholders included)."""
     streamers = {pid: pos for pos, pid in STREAMER_IDS.items()}
-    out = {}
+    out = {pid: {"name": (names.get(pid) or {}).get("name"), "position": (names.get(pid) or {}).get("position")}
+           for pid in traded}
     for side in ("you", "them"):
         for w in dv["lineup"][side]["weekly"]:
             for pid in (*w["entered"], *w["exited"]):
@@ -324,7 +326,7 @@ def _evidence(x: dict, ratings: dict, names: dict[int, dict]) -> dict:
     ab, mine, theirs = x["asset_balance"], x["mine_detail"], x["theirs_detail"]
     return {**{k: x[k] for k in EVIDENCE_FIELDS},
             "dual_value": x["dual_value"], "ratings": trade_ratings.evidence(ratings, x["sends"], x["receives"]),
-            "names": _weekly_names(x["dual_value"], names),
+            "names": _weekly_names(x["dual_value"], names, (*x["sends"], *x["receives"])),
             "rationale": {"points": x["rationale"]["points"], "concerns": x["rationale"]["concerns"]},
             "asset_balance": {k: ab[k] for k in ("you_send", "they_send", "caveats")},
             "mine_detail": {k: mine[k] for k in ("team_id", "team_name", "fit_notes")},

@@ -573,11 +573,15 @@ def test_api_evidence_has_dual_value_ratings_and_names(api):
         dv = ev["dual_value"]
         assert dv["plausibility"]["verdict"] == row["dual_value_summary"]["verdict"]
         assert set(dv) >= {"asset", "lineup", "plausibility", "rank_axes", "phase"}
-        assert ev["ratings"]["available"] is False and ev["ratings"]["reason"] and ev["ratings"]["version"] is None
+        # main's schema (#84) has the 0-100 columns, so a fresh database reads ratings-100.v1; a player
+        # without a computed rating stays None, never 0.
+        assert ev["ratings"]["available"] is True and ev["ratings"]["version"] == "ratings-100.v1"
         assert set(ev["ratings"]["players"]) == {str(p) for p in row["sends"] + row["receives"]}
-        assert all(v is None for v in ev["ratings"]["players"].values())            # missing is never 0
+        assert all(v is None or v["value_score_100"] is None or 0 <= v["value_score_100"] <= 100
+                   for v in ev["ratings"]["players"].values())
         ids = {p for side in ("you", "them") for w in dv["lineup"][side]["weekly"] for p in (*w["entered"], *w["exited"])}
         assert ids and ids <= {int(k) for k in ev["names"]}
+        assert set(row["sends"] + row["receives"]) <= {int(k) for k in ev["names"]}    # bench assets too (ratings table)
         assert all(set(v) == {"name", "position"} and v["name"] for v in ev["names"].values())
         assert banned_hits(json.loads(json.dumps(ev))) == []
     assert api.get("/api/trades/discover/evidence", params={"mode": "fair", "key": "nope"}).status_code == 404
