@@ -53,12 +53,13 @@ def fair_no_gain():
 
 
 def consolidation():
-    t1 = [(101, "QB", 20), (102, "RB", 15), (103, "RB", 14), (104, "WR", 16), (105, "WR", 14), (106, "WR", 13),
-          (107, "TE", 7), (108, "K", 8), (109, "D/ST", 7), (110, "RB", 3)]
-    t2 = [(201, "QB", 18), (202, "RB", 13), (203, "RB", 12), (204, "WR", 19, {"name": "Ember"}), (205, "WR", 17),
-          (206, "TE", 6), (207, "RB", 11), (208, "K", 7), (209, "D/ST", 6)]
+    """Team 1 has three good RBs and a weak WR2; Team 2 has deep WRs (Ember 19 among them) and weak RBs."""
+    t1 = [(101, "QB", 20), (102, "RB", 15), (103, "RB", 14), (104, "RB", 13), (105, "WR", 16), (106, "WR", 10),
+          (107, "WR", 9), (108, "TE", 7), (109, "K", 8), (110, "D/ST", 7)]
+    t2 = [(201, "QB", 18), (202, "RB", 8), (203, "RB", 6), (204, "WR", 19, {"name": "Ember"}), (205, "WR", 17),
+          (206, "WR", 15), (207, "WR", 14), (208, "TE", 6), (209, "K", 7), (210, "D/ST", 6)]
     fas = [(901, "QB", 12), (902, "RB", 5), (903, "WR", 6), (904, "TE", 4), (905, "K", 7), (906, "D/ST", 6)]
-    return league({1: t1, 2: t2, 3: filler(3, 300)}, fas, capacity=9)
+    return league({1: t1, 2: t2, 3: filler(3, 300)}, fas, capacity=10)
 
 
 def playoff_focus():
@@ -91,10 +92,10 @@ SCENARIOS = [
      "at WR and RB, so the WR it receives starts nowhere and its lineup does not move.",
      fair_no_gain, 2, [108], [209], "ros"),
     ("4. A 2-for-1 consolidation that forces a drop",
-     "Team 1 turns two starting WRs into one star, which does not pay: both lineups lose. Team 2 receives two players "
-     "for one on a full roster and must drop its cheapest lineup piece, a bench RB that costs no lineup points but is a "
-     "starter-caliber asset, so the depth check fails even though the lineup cost is zero.",
-     consolidation, 2, [105, 106], [204], "ros"),
+     "Team 1 turns RB depth and a weak WR2 into one star WR (Ember); Team 2, deep at WR and thin at RB, takes two "
+     "starters for one. Both lineups gain and the packages are balanced, but Team 2's roster is full: it must drop a "
+     "bench RB who still has asset value, so the depth check raises a concern.",
+     consolidation, 2, [103, 106], [204], "ros"),
     ("5. A playoff-focused trade",
      "Team 1's RB2 is on a bye in the playoff week. Closer sits behind him all regular season (delta 0) and "
      "starts in the playoffs. Assessed with the playoff phase, as the playoff lens does.",

@@ -136,45 +136,45 @@ Rank axes (never summed): lineup gain of the smaller side +0.0, asset ratio 0.77
 
 ## 4. A 2-for-1 consolidation that forces a drop
 
-Team 1 turns two starting WRs into one star, which does not pay: both lineups lose. Team 2 receives two players for one on a full roster and must drop its cheapest lineup piece, a bench RB that costs no lineup points but is a starter-caliber asset, so the depth check fails even though the lineup cost is zero.
+Team 1 turns RB depth and a weak WR2 into one star WR (Ember); Team 2, deep at WR and thin at RB, takes two starters for one. Both lineups gain and the packages are balanced, but Team 2's roster is full: it must drop a bench RB who still has asset value, so the depth check raises a concern.
 
-- **You send:** WR 105 (WR, #105), WR 106 (WR, #106)
+- **You send:** RB 103 (RB, #103), WR 106 (WR, #106)
 - **You receive:** Ember (WR, #204) (from Team 2)
-- **Team 2 sends:** Ember (WR, #204); **receives:** WR 105 (WR, #105), WR 106 (WR, #106)
+- **Team 2 sends:** Ember (WR, #204); **receives:** RB 103 (RB, #103), WR 106 (WR, #106)
 - **Phase assessed:** ros; weeks 10-13 (regular season through 12, playoffs after)
 
 **Asset value** (ESPN points above replacement, all remaining weeks)
 
-- You send 60.0; they send 52.0; ratio 0.867; label `you_surrender_multiple_strong` (You surrender multiple strong assets for fewer); imbalance significant, favours Team 2
-  - WR 105 (WR) You -> Team 2: PAR 32.0, starter-caliber True, starts 4 of 4 weeks before / 4 after, bench asset False
-  - WR 106 (WR) You -> Team 2: PAR 28.0, starter-caliber True, starts 4 of 4 weeks before / 4 after, bench asset False
+- You send 52.0; they send 52.0; ratio 1.0; label `balanced` (Asset packages appear relatively balanced); imbalance none
+  - RB 103 (RB) You -> Team 2: PAR 36.0, starter-caliber True, starts 4 of 4 weeks before / 4 after, bench asset False
+  - WR 106 (WR) You -> Team 2: PAR 16.0, starter-caliber True, starts 4 of 4 weeks before / 0 after, bench asset True
   - Ember (WR) Team 2 -> You: PAR 52.0, starter-caliber True, starts 4 of 4 weeks before / 4 after, bench asset False
   - depth, You: consolidates (net -1 players)
-  - depth, Team 2: adds depth (net +1 players); forced drop RB 207 (PAR 24.0, starter-caliber True, lineup cost +0.0)
+  - depth, Team 2: adds depth (net +1 players); forced drop RB 203 (PAR 4.0, starter-caliber False, lineup cost +0.0)
 
 **Lineup benefit** (starters only; bench points never count)
 
-- You (Team 1): ROS 456.0 -> 436.0 (delta -20.0); regular season -15.0; playoffs -5.0; weeks improved/worsened/unchanged 0/4/0
-- Team 2 (Team 2): ROS 436.0 -> 424.0 (delta -12.0); regular season -9.0; playoffs -3.0; weeks improved/worsened/unchanged 0/4/0
-- Key change, You: Ember (WR) starts 4 of 4 weeks in your lineup in place of WR 105 (WR).
-- Key change, Team 2: WR 105 (WR) starts 4 of 4 weeks in Team 2's lineup in place of Ember (WR).
+- You (Team 1): ROS 440.0 -> 456.0 (delta +16.0); regular season +12.0; playoffs +4.0; weeks improved/worsened/unchanged 4/0/0
+- Team 2 (Team 2): ROS 408.0 -> 420.0 (delta +12.0); regular season +9.0; playoffs +3.0; weeks improved/worsened/unchanged 4/0/0
+- Key change, You: Ember (WR) starts 4 of 4 weeks in your lineup in place of RB 103 (RB).
+- Key change, Team 2: RB 103 (RB) starts 4 of 4 weeks in Team 2's lineup in place of Ember (WR).
 
 **Checks**
 
 | criterion | status | reason |
 |---|---|---|
-| `lineup_gain` | fail | Your and Team 2's starting lineup does not improve (rest of season: -20.0 / -12.0). |
-| `asset_balance` | fail | You surrender multiple strong assets for fewer (60 vs 52 points above replacement). |
+| `lineup_gain` | pass | Both starting lineups improve (rest of season: You +16.0, Team 2 +12.0). |
+| `asset_balance` | pass | Asset packages appear relatively balanced. |
 | `positional_fit` | pass | Each side receives a player who starts at least half the remaining weeks. |
-| `depth_cost` | fail | Team 2 must drop RB 207 (RB), a starter-caliber player (24 above replacement). |
-| `free_agent_alternative` | fail | Most of this gain is available from free agency. |
+| `depth_cost` | concern | Team 2 must drop RB 203 (RB) (4 above replacement). |
+| `free_agent_alternative` | pass | Even after the best free-agent move, the trade still adds +16.0 for you. |
 | `uncertainty` | pass | No injury, eligibility or projection gaps on the traded players. |
 
-**Verdict:** `one_sided`. One-sided: your and Team 2's starting lineup does not improve and the asset packages are not balanced.
+**Verdict:** `sensible_with_concerns`. Both starting lineups improve, with concerns to weigh.
 
-**Main concern:** Your and Team 2's starting lineup does not improve (rest of season: -20.0 / -12.0).
+**Main concern:** Team 2 must drop RB 203 (RB) (4 above replacement).
 
-Rank axes (never summed): lineup gain of the smaller side -20.0, asset ratio 0.867, certainty 0.
+Rank axes (never summed): lineup gain of the smaller side +12.0, asset ratio 1.0, certainty 0.
 
 ## 5. A playoff-focused trade
 
@@ -208,7 +208,7 @@ Team 1's RB2 is on a bye in the playoff week. Closer sits behind him all regular
 | `asset_balance` | pass | Asset packages appear relatively balanced. |
 | `positional_fit` | concern | You: the best incoming player starts 1 of 4 weeks. |
 | `depth_cost` | pass | No forced drop of a player with asset value and no empty starting slot. |
-| `free_agent_alternative` | pass | Even after the best free-agent move, the trade still adds +12.0 for you. |
+| `free_agent_alternative` | not_applicable | The free-agent comparison is a rest-of-season figure; it does not judge this phase. |
 | `uncertainty` | pass | No injury, eligibility or projection gaps on the traded players. |
 
 **Verdict:** `sensible_with_concerns`. Both starting lineups improve, with concerns to weigh.

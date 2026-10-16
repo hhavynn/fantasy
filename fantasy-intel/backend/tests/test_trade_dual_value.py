@@ -748,26 +748,20 @@ def test_possessive_and_key_change_names():
     assert tdv.possessive("You") == "your" and tdv.possessive("They") == "their" and tdv.possessive("Team 2") == "Team 2's"
 
 
-# ====================================================== contract bugs found (see the report) --
+# ======================================================= regressions: contract fixes --
 
-@pytest.mark.xfail(strict=True, reason="trade_dual_value._key_change uses str.capitalize(), which lower-cases the rest of "
-                                       "a team name: 'Nico Robin FC' becomes 'Nico robin fc'")
 def test_key_change_keeps_the_team_name_case():
     st = bench_receiver_league()
     dv = assess_trade(st, 1, 2, [107], [209], labels=("Nico Robin FC", "Team 2"))    # a starter out, a benched Bowers in
     assert dv["lineup"]["you"]["key_change"].startswith("Nico Robin FC's lineup loses")
 
 
-@pytest.mark.xfail(strict=True, reason="the free_agent_alternative check says 'Most of this gain is available from free "
-                                       "agency' for a trade whose anchor has no gain at all (rest-of-season delta <= 0)")
 def test_free_agent_check_does_not_claim_a_gain_when_there_is_none():
     dv = assess_trade(bench_receiver_league(), 1, 2, [109], [209])
     assert dv["lineup"]["you"]["delta"]["ros"] <= 0
     assert "this gain is available" not in check_text(dv, "free_agent_alternative")
 
 
-@pytest.mark.xfail(strict=True, reason="in the playoff phase the free-agent check still judges the rest-of-season delta: a "
-                                       "trade that gains in the playoffs but not rest of season fails it")
 def test_free_agent_check_follows_the_playoff_phase():
     # Team 1 gives up regular-season points (WR 15 for Closer) for a playoff-week gain: ros -4, playoffs +8 (Team 2: +7)
     dv = assess_trade(playoff_league(), 1, 2, [105], [204], phase="playoff")
@@ -776,9 +770,6 @@ def test_free_agent_check_follows_the_playoff_phase():
     assert status(dv, "lineup_gain") == "pass" and status(dv, "free_agent_alternative") != "fail"
 
 
-@pytest.mark.xfail(strict=True, reason="rank() computes Pareto fronts over the whole pool, so a row in a worse verdict "
-                                       "(here unlikely_mutual) can push a sensible row to a later front and reorder the "
-                                       "sensible tier; the policy sorts by verdict first and fronts within it")
 def test_fronts_are_computed_within_a_verdict():
     rows = [_row("s1", "sensible", _axes(5, .5, 0), primary=10.0), _row("s2", "sensible", _axes(3, .9, 0), primary=1.0),
             _row("u", "unlikely_mutual", _axes(6, .6, 0), primary=6.0)]
