@@ -1,0 +1,1390 @@
+{
+ "_comment": "Synthetic fixture: invented players and teams matching the Trade Discovery 2.0 payload (docs/trade_discovery_dual_value.md). Not real league data.",
+ "summary": {
+  "league": {
+   "league_id": 900,
+   "season": 2026,
+   "name": "Synthetic League",
+   "current_week": 10,
+   "final_scoring_period": 17
+  },
+  "anchor": {
+   "team_id": 1,
+   "name": "Gridiron Goblins",
+   "abbrev": "GOB",
+   "is_mine": true
+  },
+  "teams": [
+   {
+    "team_id": 1,
+    "name": "Gridiron Goblins",
+    "abbrev": "GOB",
+    "is_mine": true
+   },
+   {
+    "team_id": 2,
+    "name": "Fourth Down Fugitives",
+    "abbrev": "FDF",
+    "is_mine": false
+   },
+   {
+    "team_id": 3,
+    "name": "Taco Tuesday Titans",
+    "abbrev": "TTT",
+    "is_mine": false
+   },
+   {
+    "team_id": 4,
+    "name": "Cleat Street Cartel",
+    "abbrev": "CSC",
+    "is_mine": false
+   },
+   {
+    "team_id": 5,
+    "name": "Bye Week Bandits",
+    "abbrev": "BWB",
+    "is_mine": false
+   }
+  ],
+  "evaluation": {
+   "start_week": 11,
+   "final_week": 14,
+   "last_regular_season_week": 13,
+   "weeks": [
+    11,
+    12,
+    13,
+    14
+   ],
+   "uncertain": false,
+   "warning": null,
+   "start_week_reason": "Evaluation starts at the next unplayed week."
+  },
+  "query": {
+   "team_id": 1,
+   "mode": "mutual_upgrades",
+   "phase": "ros",
+   "strictness": "standard",
+   "positions": [
+    "QB",
+    "RB",
+    "WR",
+    "TE"
+   ],
+   "include_kdst": false,
+   "shapes": [
+    "1-for-1",
+    "2-for-1",
+    "1-for-2"
+   ],
+   "sort": "my_gain",
+   "category": null,
+   "opponent": null,
+   "limit": 10,
+   "heuristic": true,
+   "kdst_streaming": true
+  },
+  "mode_text": "Best mutual upgrades: both projected starting lineups gain, ordered by verdict and Pareto front.",
+  "sections": {
+   "sensible": [
+    {
+     "key": "1|1-for-1|201|202",
+     "shape": "1-for-1",
+     "search_method": "exact",
+     "anchor_team_id": 1,
+     "opponent_team_id": 2,
+     "opponent_name": "Fourth Down Fugitives",
+     "sends": [
+      201
+     ],
+     "receives": [
+      202
+     ],
+     "mine": {
+      "ros_delta": 14.2,
+      "regular_season_delta": 10.1,
+      "playoff_delta": 4.1,
+      "known_ros_delta": 14.2
+     },
+     "theirs": {
+      "ros_delta": 9.6,
+      "regular_season_delta": 7.0,
+      "playoff_delta": 2.6,
+      "known_ros_delta": 9.6
+     },
+     "combined_ros_delta": 23.8,
+     "min_side_ros_delta": 9.6,
+     "categories": [],
+     "tier": "practical",
+     "consistent_with_manual_evaluator": true,
+     "asset_balance": {
+      "label": "balanced",
+      "text": "Balanced packages",
+      "note": "Points above replacement over the remaining weeks.",
+      "ratio": 0.91,
+      "you_send_par": 88.0,
+      "they_send_par": 80.0
+     },
+     "rationale": {
+      "trade_type": {
+       "kind": "swap",
+       "text": "Position swap"
+      },
+      "concerns": []
+     },
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 4,
+       "confidence": "MEDIUM"
+      }
+     },
+     "dual_value_summary": {
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
+      "main_concern": null,
+      "front": 0,
+      "you_change": "Dario Quill (WR) starts 4 of 4 weeks in your lineup, in place of Rex Alder (RB).",
+      "them_change": "Rex Alder (RB) starts 4 of 4 weeks in their lineup, replacing Nate Brisk (RB) in 4.",
+      "asset": {
+       "label": "balanced",
+       "text": "Balanced packages",
+       "ratio": 0.91,
+       "imbalance": "none",
+       "favours": null,
+       "you_send_par": 88.0,
+       "they_send_par": 80.0
+      },
+      "lineup": {
+       "you": {
+        "before": {
+         "ros": 1210.3,
+         "regular": 1000.0,
+         "playoff": 210.3
+        },
+        "after": {
+         "ros": 1224.5,
+         "regular": 1010.1,
+         "playoff": 214.4
+        },
+        "delta": {
+         "ros": 14.2,
+         "regular": 10.1,
+         "playoff": 4.1,
+         "known_ros": 11.4
+        },
+        "average_weekly_delta": 3.55
+       },
+       "them": {
+        "before": {
+         "ros": 1188.0,
+         "regular": 985.0,
+         "playoff": 203.0
+        },
+        "after": {
+         "ros": 1197.6,
+         "regular": 992.0,
+         "playoff": 205.6
+        },
+        "delta": {
+         "ros": 9.6,
+         "regular": 7.0,
+         "playoff": 2.6,
+         "known_ros": 11.4
+        },
+        "average_weekly_delta": 2.4
+       }
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "pass"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ]
+     }
+    }
+   ],
+   "sensible_with_concerns": [
+    {
+     "key": "2|2-for-1|203+204|205",
+     "shape": "2-for-1",
+     "search_method": "exact",
+     "anchor_team_id": 1,
+     "opponent_team_id": 3,
+     "opponent_name": "Taco Tuesday Titans",
+     "sends": [
+      203,
+      204
+     ],
+     "receives": [
+      205
+     ],
+     "mine": {
+      "ros_delta": 8.4,
+      "regular_season_delta": 6.2,
+      "playoff_delta": 2.2,
+      "known_ros_delta": 8.4
+     },
+     "theirs": {
+      "ros_delta": 5.1,
+      "regular_season_delta": 4.0,
+      "playoff_delta": 1.1,
+      "known_ros_delta": 5.1
+     },
+     "combined_ros_delta": 13.5,
+     "min_side_ros_delta": 5.1,
+     "categories": [
+      "CONSOLIDATION"
+     ],
+     "tier": "practical",
+     "consistent_with_manual_evaluator": true,
+     "asset_balance": {
+      "label": "they_give_more",
+      "text": "They give more asset value",
+      "note": "Points above replacement over the remaining weeks.",
+      "ratio": 0.64,
+      "you_send_par": 61.0,
+      "they_send_par": 96.0
+     },
+     "rationale": {
+      "trade_type": {
+       "kind": "swap",
+       "text": "Position swap"
+      },
+      "concerns": [
+       "Taco Tuesday Titans give up 96 points above replacement against your 61: moderate imbalance in your favour."
+      ]
+     },
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 4,
+       "confidence": "MEDIUM"
+      }
+     },
+     "dual_value_summary": {
+      "verdict": "sensible_with_concerns",
+      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "main_concern": "Taco Tuesday Titans give up 96 points above replacement against your 61: moderate imbalance in your favour.",
+      "front": 0,
+      "you_change": "Marcus Vale (RB) starts 4 of 4 weeks in your lineup, replacing Milo Strand (RB) in 4.",
+      "them_change": "Milo Strand (RB) starts 3 of 4 weeks in their lineup, replacing #299 (RB) in 3.",
+      "asset": {
+       "label": "they_give_more",
+       "text": "They give more asset value",
+       "ratio": 0.64,
+       "imbalance": "moderate",
+       "favours": "You",
+       "you_send_par": 61.0,
+       "they_send_par": 96.0
+      },
+      "lineup": {
+       "you": {
+        "before": {
+         "ros": 1190.0,
+         "regular": 980.0,
+         "playoff": 210.0
+        },
+        "after": {
+         "ros": 1198.4,
+         "regular": 986.2,
+         "playoff": 212.2
+        },
+        "delta": {
+         "ros": 8.4,
+         "regular": 6.2,
+         "playoff": 2.2,
+         "known_ros": 11.4
+        },
+        "average_weekly_delta": 2.1
+       },
+       "them": {
+        "before": {
+         "ros": 1175.0,
+         "regular": 970.0,
+         "playoff": 205.0
+        },
+        "after": {
+         "ros": 1180.1,
+         "regular": 974.0,
+         "playoff": 206.1
+        },
+        "delta": {
+         "ros": 5.1,
+         "regular": 4.0,
+         "playoff": 1.1,
+         "known_ros": 11.4
+        },
+        "average_weekly_delta": 1.27
+       }
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "concern"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "concern"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ]
+     }
+    }
+   ],
+   "unlikely_mutual": [
+    {
+     "key": "3|1-for-1|206|207",
+     "shape": "1-for-1",
+     "search_method": "exact",
+     "anchor_team_id": 1,
+     "opponent_team_id": 4,
+     "opponent_name": "Cleat Street Cartel",
+     "sends": [
+      206
+     ],
+     "receives": [
+      207
+     ],
+     "mine": {
+      "ros_delta": 6.3,
+      "regular_season_delta": 4.1,
+      "playoff_delta": 2.2,
+      "known_ros_delta": 6.3
+     },
+     "theirs": {
+      "ros_delta": 3.2,
+      "regular_season_delta": 2.0,
+      "playoff_delta": 1.2,
+      "known_ros_delta": 3.2
+     },
+     "combined_ros_delta": 9.5,
+     "min_side_ros_delta": 3.2,
+     "categories": [],
+     "tier": "practical",
+     "consistent_with_manual_evaluator": true,
+     "asset_balance": {
+      "label": "significant_they_give_more",
+      "text": "They give significantly more",
+      "note": "Points above replacement over the remaining weeks.",
+      "ratio": 0.37,
+      "you_send_par": 52.0,
+      "they_send_par": 140.0
+     },
+     "rationale": {
+      "trade_type": {
+       "kind": "swap",
+       "text": "Position swap"
+      },
+      "concerns": [
+       "Significant imbalance: Cleat Street Cartel give up 140 points above replacement against your 52."
+      ]
+     },
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 4,
+       "confidence": "MEDIUM"
+      }
+     },
+     "dual_value_summary": {
+      "verdict": "unlikely_mutual",
+      "verdict_text": "Both starting lineups improve, but the asset packages are lopsided: unlikely to be mutually attractive.",
+      "main_concern": "Significant imbalance: Cleat Street Cartel give up 140 points above replacement against your 52.",
+      "front": 1,
+      "you_change": "Jonas Kerr (QB) starts 4 of 4 weeks in your lineup, replacing Cade Lorne (WR) in 2.",
+      "them_change": "Cade Lorne (WR) starts 2 of 4 weeks in their lineup.",
+      "asset": {
+       "label": "significant_they_give_more",
+       "text": "They give significantly more",
+       "ratio": 0.37,
+       "imbalance": "significant",
+       "favours": "You",
+       "you_send_par": 52.0,
+       "they_send_par": 140.0
+      },
+      "lineup": {
+       "you": {
+        "before": {
+         "ros": 1201.0,
+         "regular": 990.0,
+         "playoff": 211.0
+        },
+        "after": {
+         "ros": 1207.3,
+         "regular": 994.1,
+         "playoff": 213.2
+        },
+        "delta": {
+         "ros": 6.3,
+         "regular": 4.1,
+         "playoff": 2.2,
+         "known_ros": 11.4
+        },
+        "average_weekly_delta": 1.57
+       },
+       "them": {
+        "before": {
+         "ros": 1190.0,
+         "regular": 979.0,
+         "playoff": 211.0
+        },
+        "after": {
+         "ros": 1193.2,
+         "regular": 981.0,
+         "playoff": 212.2
+        },
+        "delta": {
+         "ros": 3.2,
+         "regular": 2.0,
+         "playoff": 1.2,
+         "known_ros": 11.4
+        },
+        "average_weekly_delta": 0.8
+       }
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "fail"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "concern"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "pass"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "concern"
+       }
+      ]
+     }
+    }
+   ],
+   "incomplete": [
+    {
+     "key": "4|1-for-2|208|209+210",
+     "shape": "1-for-2",
+     "search_method": "exact",
+     "anchor_team_id": 1,
+     "opponent_team_id": 5,
+     "opponent_name": "Bye Week Bandits",
+     "sends": [
+      208
+     ],
+     "receives": [
+      209,
+      210
+     ],
+     "mine": {
+      "ros_delta": null,
+      "regular_season_delta": 2.0,
+      "playoff_delta": 1.0,
+      "known_ros_delta": 5.5
+     },
+     "theirs": {
+      "ros_delta": 4.4,
+      "regular_season_delta": 3.0,
+      "playoff_delta": 1.4,
+      "known_ros_delta": 4.4
+     },
+     "combined_ros_delta": null,
+     "min_side_ros_delta": null,
+     "categories": [],
+     "tier": "speculative",
+     "consistent_with_manual_evaluator": true,
+     "asset_balance": {
+      "label": "insufficient_data",
+      "text": "Not enough data",
+      "note": "Points above replacement over the remaining weeks.",
+      "ratio": null,
+      "you_send_par": null,
+      "they_send_par": null
+     },
+     "rationale": {
+      "trade_type": {
+       "kind": "swap",
+       "text": "Position swap"
+      },
+      "concerns": []
+     },
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 4,
+       "confidence": "MEDIUM"
+      }
+     },
+     "dual_value_summary": {
+      "verdict": "incomplete",
+      "verdict_text": "Incomplete: missing projections or asset data, so it is not ranked against complete trades.",
+      "main_concern": null,
+      "front": null,
+      "you_change": "Tobias Reed (WR) starts 3 of 4 weeks in your lineup.",
+      "them_change": "Elias Fenn (TE) starts 4 of 4 weeks in their lineup.",
+      "asset": {
+       "label": "insufficient_data",
+       "text": "Not enough data",
+       "ratio": null,
+       "imbalance": null,
+       "favours": null,
+       "you_send_par": null,
+       "they_send_par": null
+      },
+      "lineup": {
+       "you": {
+        "before": {
+         "ros": 1200.0,
+         "regular": 990.0,
+         "playoff": 210.0
+        },
+        "after": {
+         "ros": null,
+         "regular": null,
+         "playoff": null
+        },
+        "delta": {
+         "ros": null,
+         "regular": null,
+         "playoff": null,
+         "known_ros": 5.5
+        },
+        "average_weekly_delta": null
+       },
+       "them": {
+        "before": {
+         "ros": 1180.0,
+         "regular": 970.0,
+         "playoff": 210.0
+        },
+        "after": {
+         "ros": 1184.4,
+         "regular": 973.0,
+         "playoff": 211.4
+        },
+        "delta": {
+         "ros": 4.4,
+         "regular": 3.0,
+         "playoff": 1.4,
+         "known_ros": 11.4
+        },
+        "average_weekly_delta": 1.1
+       }
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "unknown"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "unknown"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "pass"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "unknown"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "concern"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "tiers": {},
+  "excluded": {
+   "not_mutual": 41,
+   "one_sided": 0,
+   "lopsided": 0
+  },
+  "pool_rule": "the exact top 100 by smaller-side ros gain, kept when both lineups improve (or a delta is unknown)",
+  "pool_size": 4,
+  "coverage": {
+   "exact": {
+    "candidates_considered": 5230,
+    "screened_out_by_upper_bound": 4100,
+    "fully_evaluated": 1130,
+    "matching_filters": 640,
+    "excluded_invalid_roster": 3,
+    "excluded_missing_data": 1,
+    "not_evaluated": 0,
+    "not_evaluated_reason": null,
+    "termination": "exhausted",
+    "exhaustive": true,
+    "bounds_valid": true,
+    "seconds": {
+     "stage_a": 0.4,
+     "stage_b": 1.1
+    }
+   },
+   "heuristic": null,
+   "exact_shapes": [
+    "1-for-1",
+    "2-for-1",
+    "1-for-2"
+   ],
+   "heuristic_shapes": [],
+   "positions": [
+    "QB",
+    "RB",
+    "WR",
+    "TE"
+   ]
+  },
+  "opponents": [],
+  "my_needs": {},
+  "asset_note": "Asset balance is measured in ESPN points above replacement.",
+  "asset_thresholds": {
+   "balanced_ratio": 0.6667,
+   "significant_ratio": 0.4,
+   "replacement_per_week": 1
+  },
+  "search": {
+   "consistency_checked": 4,
+   "consistency_failures": 0
+  },
+  "names": {
+   "201": {
+    "name": "Rex Alder",
+    "position": "RB",
+    "pro_team": "XXX",
+    "on_ir": false,
+    "injury_status": null,
+    "nfl_ineligible_weeks": []
+   },
+   "202": {
+    "name": "Dario Quill",
+    "position": "WR",
+    "pro_team": "XXX",
+    "on_ir": false,
+    "injury_status": null,
+    "nfl_ineligible_weeks": []
+   },
+   "203": {
+    "name": "Milo Strand",
+    "position": "RB",
+    "pro_team": "XXX",
+    "on_ir": false,
+    "injury_status": null,
+    "nfl_ineligible_weeks": []
+   },
+   "204": {
+    "name": "Orin Vasko",
+    "position": "WR",
+    "pro_team": "XXX",
+    "on_ir": false,
+    "injury_status": null,
+    "nfl_ineligible_weeks": []
+   },
+   "205": {
+    "name": "Marcus Vale",
+    "position": "RB",
+    "pro_team": "XXX",
+    "on_ir": false,
+    "injury_status": null,
+    "nfl_ineligible_weeks": []
+   },
+   "206": {
+    "name": "Cade Lorne",
+    "position": "WR",
+    "pro_team": "XXX",
+    "on_ir": false,
+    "injury_status": null,
+    "nfl_ineligible_weeks": []
+   },
+   "207": {
+    "name": "Jonas Kerr",
+    "position": "QB",
+    "pro_team": "XXX",
+    "on_ir": false,
+    "injury_status": null,
+    "nfl_ineligible_weeks": []
+   },
+   "208": {
+    "name": "Elias Fenn",
+    "position": "TE",
+    "pro_team": "XXX",
+    "on_ir": false,
+    "injury_status": null,
+    "nfl_ineligible_weeks": []
+   },
+   "209": {
+    "name": "Tobias Reed",
+    "position": "WR",
+    "pro_team": "XXX",
+    "on_ir": false,
+    "injury_status": null,
+    "nfl_ineligible_weeks": []
+   },
+   "210": {
+    "name": "Nate Brisk",
+    "position": "RB",
+    "pro_team": "XXX",
+    "on_ir": false,
+    "injury_status": "QUESTIONABLE",
+    "nfl_ineligible_weeks": []
+   }
+  },
+  "modes": {
+   "mutual_upgrades": "Best mutual upgrades: both projected starting lineups gain, ordered by verdict and Pareto front."
+  },
+  "phases": [
+   "ros",
+   "regular",
+   "playoff"
+  ],
+  "strictness_options": {},
+  "categories": {
+   "CONSOLIDATION": "Consolidation"
+  },
+  "sorts": [
+   "my_gain"
+  ],
+  "exact_shapes": [
+   "1-for-1",
+   "2-for-1",
+   "1-for-2"
+  ],
+  "heuristic_shapes": [
+   "3-for-1"
+  ],
+  "kdst_policy": "Kickers and team defenses are left out.",
+  "availability_note": "Availability note.",
+  "note": "Method note.",
+  "assumptions": [
+   "Synthetic data."
+  ],
+  "limitations": [
+   "Synthetic data."
+  ],
+  "lens": {
+   "mode": "mutual_upgrades",
+   "label": "Best mutual upgrades",
+   "pool_rule": "the exact top 100 by smaller-side ros gain, kept when both lineups improve (or a delta is unknown)"
+  },
+  "lens_note": null,
+  "ranking_policy": "Trades are ordered by verdict, then by Pareto front over three separately measured axes (smaller-side gain, asset ratio, certainty). Nothing estimates whether a manager would accept.",
+  "verdicts": {
+   "sensible": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
+   "sensible_with_concerns": "Both starting lineups improve, with concerns to weigh.",
+   "unlikely_mutual": "Both starting lineups improve, but the asset packages are lopsided: unlikely to be mutually attractive.",
+   "fair_no_lineup_gain": "Asset-fair exchange, but their starting lineup does not improve.",
+   "one_sided": "One-sided: their starting lineup does not improve and the asset packages are not balanced.",
+   "incomplete": "Incomplete: missing projections or asset data, so it is not ranked against complete trades."
+  },
+  "criteria": {
+   "lineup_gain": "Both projected starting lineups improve (starters only; bench points never count).",
+   "asset_balance": "The asset packages are reasonably balanced (points above replacement).",
+   "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
+   "depth_cost": "No starter-caliber player is forced off a roster and no starting slot is left empty.",
+   "free_agent_alternative": "The trade adds more than the best available free agent would (your side).",
+   "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
+  },
+  "projection_source": {
+   "used": "espn",
+   "experimental_comparison": null,
+   "note": "ESPN is the only evaluation source for trades; the independent model is not compared here."
+  }
+ },
+ "evidence": {
+  "key": "2|2-for-1|203+204|205",
+  "search_method": "exact",
+  "opponent_name": "Taco Tuesday Titans",
+  "anchor_team_id": 1,
+  "opponent_team_id": 3,
+  "sends": [
+   203,
+   204
+  ],
+  "receives": [
+   205
+  ],
+  "trade_vs_free_agency": {
+   "available": false,
+   "reason": "Synthetic fixture: no free-agent comparison."
+  },
+  "injury_scenarios": [],
+  "manager_context": {
+   "trade_history": {
+    "completed_trades": 4,
+    "confidence": "MEDIUM"
+   },
+   "note": "Secondary context; does not predict acceptance."
+  },
+  "need_notes": [
+   "Taco Tuesday Titans have a stored RB need score of 0.71; current roster state, not an acceptance signal."
+  ],
+  "rationale": {
+   "points": [
+    "Marcus Vale starts every remaining week in your lineup."
+   ],
+   "concerns": [
+    "Taco Tuesday Titans give up 96 points above replacement against your 61: moderate imbalance in your favour."
+   ]
+  },
+  "asset_balance": {
+   "you_send": [],
+   "they_send": [],
+   "caveats": []
+  },
+  "mine_detail": {
+   "team_id": 1,
+   "team_name": "Gridiron Goblins",
+   "fit_notes": [
+    "Vale replaces Strand at RB2."
+   ]
+  },
+  "theirs_detail": {
+   "team_id": 3,
+   "team_name": "Taco Tuesday Titans",
+   "fit_notes": [
+    "Strand fills their RB2."
+   ]
+  },
+  "dual_value": {
+   "phase": "ros",
+   "asset": {
+    "label": "they_give_more",
+    "text": "They give more asset value",
+    "ratio": 0.64,
+    "imbalance": "moderate",
+    "favours": "You",
+    "you_send_par": 61.0,
+    "they_send_par": 96.0,
+    "per_week": {
+     "you_send": 15.25,
+     "they_send": 24.0
+    },
+    "caveats": [
+     "Opponent depth was not modelled beyond the forced drop."
+    ],
+    "note": "Points above replacement over the remaining weeks.",
+    "you_send": [
+     {
+      "espn_player_id": 203,
+      "name": "Milo Strand",
+      "position": "RB",
+      "par": 38.0,
+      "known_par": 38.0,
+      "par_regular": 30.4,
+      "par_playoff": 7.6,
+      "position_rank": 18,
+      "position_rank_of": 36,
+      "league_starters_at_position": 24,
+      "starter_caliber": false,
+      "missing_weeks": [],
+      "nfl_ineligible_weeks": [],
+      "replacement_per_week": 7.5,
+      "from_side": "You",
+      "to_side": "They",
+      "starts_before": 2,
+      "starts_after": 3,
+      "weeks": 4,
+      "role_before": "part-time",
+      "role_after": "starter",
+      "bench_asset": false
+     },
+     {
+      "espn_player_id": 204,
+      "name": "Orin Vasko",
+      "position": "WR",
+      "par": 23.0,
+      "known_par": 23.0,
+      "par_regular": 18.4,
+      "par_playoff": 4.6,
+      "position_rank": 30,
+      "position_rank_of": 36,
+      "league_starters_at_position": 24,
+      "starter_caliber": false,
+      "missing_weeks": [],
+      "nfl_ineligible_weeks": [],
+      "replacement_per_week": 7.5,
+      "from_side": "You",
+      "to_side": "They",
+      "starts_before": 0,
+      "starts_after": 0,
+      "weeks": 4,
+      "role_before": "bench",
+      "role_after": "bench",
+      "bench_asset": true
+     }
+    ],
+    "you_receive": [
+     {
+      "espn_player_id": 205,
+      "name": "Marcus Vale",
+      "position": "RB",
+      "par": 96.0,
+      "known_par": 96.0,
+      "par_regular": 76.8,
+      "par_playoff": 19.2,
+      "position_rank": 4,
+      "position_rank_of": 36,
+      "league_starters_at_position": 24,
+      "starter_caliber": true,
+      "missing_weeks": [],
+      "nfl_ineligible_weeks": [],
+      "replacement_per_week": 7.5,
+      "from_side": "They",
+      "to_side": "You",
+      "starts_before": 4,
+      "starts_after": 4,
+      "weeks": 4,
+      "role_before": "starter",
+      "role_after": "starter",
+      "bench_asset": false
+     }
+    ],
+    "best_asset_surrendered": {
+     "you": {
+      "espn_player_id": 203,
+      "name": "Milo Strand",
+      "position": "RB",
+      "par": 38.0,
+      "position_rank": 18,
+      "starter_caliber": false
+     },
+     "them": {
+      "espn_player_id": 205,
+      "name": "Marcus Vale",
+      "position": "RB",
+      "par": 96.0,
+      "position_rank": 4,
+      "starter_caliber": true
+     }
+    },
+    "bench_assets": [
+     204
+    ],
+    "depth": {
+     "you": {
+      "net_players": -1,
+      "kind": "consolidates",
+      "forced_drops": [],
+      "forced_drop_par": 0.0,
+      "forced_drop_lineup_cost": 0.0,
+      "outgoing_non_starter_par": 12.5,
+      "open_roster_spots_after": 1,
+      "empty_slots_after": []
+     },
+     "them": {
+      "net_players": 1,
+      "kind": "adds depth",
+      "forced_drops": [
+       {
+        "espn_player_id": 299,
+        "name": null,
+        "position": "RB",
+        "par": 4.2,
+        "starter_caliber": false
+       }
+      ],
+      "forced_drop_par": 4.2,
+      "forced_drop_lineup_cost": 0.0,
+      "outgoing_non_starter_par": null,
+      "open_roster_spots_after": 0,
+      "empty_slots_after": [
+       {
+        "week": 14,
+        "slot": "FLEX"
+       }
+      ]
+     }
+    }
+   },
+   "lineup": {
+    "weeks": 4,
+    "basis": "Only projected starters count toward the lineup delta; bench players are depth and asset value, shown separately, never added as starting points.",
+    "you": {
+     "before": {
+      "ros": 1190.0,
+      "regular": 980.0,
+      "playoff": 210.0
+     },
+     "after": {
+      "ros": 1198.4,
+      "regular": 986.2,
+      "playoff": 212.2
+     },
+     "delta": {
+      "ros": 8.4,
+      "regular": 6.2,
+      "playoff": 2.2,
+      "known_ros": 11.4
+     },
+     "average_weekly_delta": 2.1,
+     "label": "You",
+     "team_id": 1,
+     "team_name": "Gridiron Goblins",
+     "weeks_improved": 3,
+     "weeks_worsened": 0,
+     "weeks_unchanged": 1,
+     "promoted": [
+      {
+       "espn_player_id": 205,
+       "name": "Marcus Vale",
+       "position": "RB",
+       "weeks": [
+        11,
+        12,
+        13,
+        14
+       ],
+       "incoming": true
+      }
+     ],
+     "displaced": [
+      {
+       "espn_player_id": 203,
+       "name": "Milo Strand",
+       "position": "RB",
+       "weeks": [
+        11,
+        12,
+        13,
+        14
+       ]
+      }
+     ],
+     "forced_drops": [],
+     "forced_drop_lineup_cost": 0.0,
+     "missing": {
+      "weeks": [],
+      "players": [],
+      "weeks_incomplete": 0
+     },
+     "weekly": [
+      {
+       "week": 11,
+       "phase": "regular",
+       "delta": 2.4,
+       "known_delta": 2.4,
+       "entered": [
+        205
+       ],
+       "exited": [
+        203
+       ]
+      },
+      {
+       "week": 12,
+       "phase": "regular",
+       "delta": 1.9,
+       "known_delta": 1.9,
+       "entered": [
+        205
+       ],
+       "exited": [
+        203
+       ]
+      },
+      {
+       "week": 13,
+       "phase": "regular",
+       "delta": 0.0,
+       "known_delta": 0.0,
+       "entered": [],
+       "exited": []
+      },
+      {
+       "week": 14,
+       "phase": "playoff",
+       "delta": 2.2,
+       "known_delta": 2.2,
+       "entered": [
+        205
+       ],
+       "exited": [
+        203,
+        299
+       ]
+      }
+     ],
+     "key_change": "Marcus Vale (RB) starts 4 of 4 weeks in your lineup, replacing Milo Strand (RB) in 4."
+    },
+    "them": {
+     "before": {
+      "ros": 1175.0,
+      "regular": 970.0,
+      "playoff": 205.0
+     },
+     "after": {
+      "ros": 1180.1,
+      "regular": 974.0,
+      "playoff": 206.1
+     },
+     "delta": {
+      "ros": 5.1,
+      "regular": 4.0,
+      "playoff": 1.1,
+      "known_ros": 11.4
+     },
+     "average_weekly_delta": 1.27,
+     "label": "They",
+     "team_id": 3,
+     "team_name": "Taco Tuesday Titans",
+     "weeks_improved": 3,
+     "weeks_worsened": 1,
+     "weeks_unchanged": 0,
+     "promoted": [
+      {
+       "espn_player_id": 203,
+       "name": "Milo Strand",
+       "position": "RB",
+       "weeks": [
+        11,
+        12,
+        13
+       ],
+       "incoming": true
+      }
+     ],
+     "displaced": [
+      {
+       "espn_player_id": 299,
+       "name": null,
+       "position": "RB",
+       "weeks": [
+        11,
+        12,
+        13
+       ]
+      }
+     ],
+     "forced_drops": [
+      {
+       "espn_player_id": 299,
+       "name": null,
+       "position": "RB"
+      }
+     ],
+     "forced_drop_lineup_cost": 0.0,
+     "missing": {
+      "weeks": [
+       14
+      ],
+      "players": [
+       299
+      ],
+      "weeks_incomplete": 1
+     },
+     "weekly": [
+      {
+       "week": 11,
+       "phase": "regular",
+       "delta": 1.7,
+       "known_delta": 1.7,
+       "entered": [
+        203
+       ],
+       "exited": [
+        299
+       ]
+      },
+      {
+       "week": 12,
+       "phase": "regular",
+       "delta": 2.0,
+       "known_delta": 2.0,
+       "entered": [
+        203
+       ],
+       "exited": [
+        299
+       ]
+      },
+      {
+       "week": 13,
+       "phase": "regular",
+       "delta": 1.4,
+       "known_delta": 1.4,
+       "entered": [
+        203
+       ],
+       "exited": [
+        299
+       ]
+      },
+      {
+       "week": 14,
+       "phase": "playoff",
+       "delta": null,
+       "known_delta": 0.0,
+       "entered": [
+        203
+       ],
+       "exited": [
+        205
+       ]
+      }
+     ],
+     "key_change": "Milo Strand (RB) starts 3 of 4 weeks in their lineup, replacing #299 (RB) in 3."
+    }
+   },
+   "plausibility": {
+    "verdict": "sensible_with_concerns",
+    "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+    "main_concern": "Taco Tuesday Titans give up 96 points above replacement against your 61: moderate imbalance in your favour.",
+    "criteria": {
+     "lineup_gain": "Both projected starting lineups improve (starters only; bench points never count).",
+     "asset_balance": "The asset packages are reasonably balanced (points above replacement).",
+     "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
+     "depth_cost": "No starter-caliber player is forced off a roster and no starting slot is left empty.",
+     "free_agent_alternative": "The trade adds more than the best available free agent would (your side).",
+     "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
+    },
+    "checks": [
+     {
+      "criterion": "lineup_gain",
+      "status": "pass",
+      "text": "Both starting lineups improve (rest of season: You +8.4, They +5.1)."
+     },
+     {
+      "criterion": "asset_balance",
+      "status": "concern",
+      "text": "They give more asset value (61 vs 96 points above replacement)."
+     },
+     {
+      "criterion": "positional_fit",
+      "status": "pass",
+      "text": "Each side receives a player who starts at least half the remaining weeks."
+     },
+     {
+      "criterion": "depth_cost",
+      "status": "concern",
+      "text": "They must drop #299 (RB) (4 above replacement); they would have an empty starting slot in week(s) 14."
+     },
+     {
+      "criterion": "free_agent_alternative",
+      "status": "pass",
+      "text": "Even after the best free-agent move, the trade still adds +6.8 for you."
+     },
+     {
+      "criterion": "uncertainty",
+      "status": "pass",
+      "text": "No injury, eligibility or projection gaps on the traded players."
+     }
+    ]
+   },
+   "rank_axes": {
+    "lineup_min_side": 5.1,
+    "asset_ratio": 0.64,
+    "certainty": 0
+   },
+   "rank": {
+    "front": 0,
+    "policy": "verdict, then Pareto front, then the view's measure"
+   },
+   "most_important_change": "Marcus Vale (RB) starts 4 of 4 weeks in your lineup, replacing Milo Strand (RB) in 4.",
+   "projection_source": "espn"
+  },
+  "ratings": {
+   "available": true,
+   "reason": null,
+   "version": "ratings-100.v1",
+   "note": "Ratings are position-relative 0-100 percentiles of recent opportunity and production: supporting context only.",
+   "players": {
+    "203": {
+     "position": "RB",
+     "opportunity_basis": "xfp",
+     "games": 9,
+     "opportunity_score_100": 61.5,
+     "production_score_100": 48.0,
+     "value_score_100": 55.2,
+     "rating_scale_version": "ratings-100.v1"
+    },
+    "204": {
+     "position": "WR",
+     "opportunity_basis": "targets+carries",
+     "games": 3,
+     "opportunity_score_100": 33.0,
+     "production_score_100": null,
+     "value_score_100": null,
+     "rating_scale_version": "ratings-100.v1"
+    },
+    "205": {
+     "position": "RB",
+     "opportunity_basis": "xfp",
+     "games": 9,
+     "opportunity_score_100": 88.0,
+     "production_score_100": 79.5,
+     "value_score_100": 84.0,
+     "rating_scale_version": "ratings-100.v1"
+    }
+   },
+   "comparable_pairs": [
+    {
+     "you_send": 203,
+     "you_receive": 205,
+     "position": "RB"
+    }
+   ]
+  },
+  "names": {
+   "203": {
+    "name": "Milo Strand",
+    "position": "RB"
+   },
+   "204": {
+    "name": "Orin Vasko",
+    "position": "WR"
+   },
+   "205": {
+    "name": "Marcus Vale",
+    "position": "RB"
+   }
+  }
+ }
+}
