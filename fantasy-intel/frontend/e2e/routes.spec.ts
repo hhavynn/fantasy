@@ -11,6 +11,9 @@ const ROUTES = [
   "/managers/1",
   "/players?id=201",
   "/data",
+  // Multi-league prototype: with MULTILEAGUE_UI_ENABLED unset (as here) it renders a "not enabled" notice
+  // and disabled provider cards without calling the backend, whose /v2 routes are off in this setup.
+  "/leagues",
   // Research lab (synthetic pool from backend/tests/synthetic_research.py): each position and chart view,
   // a selected player with a comparison, and a filter that empties the pool.
   "/research/wr",

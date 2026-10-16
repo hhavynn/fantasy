@@ -1,0 +1,24 @@
+[
+ {
+  "user_id": "700000000000000101",
+  "display_name": "alpha_mgr",
+  "is_owner": true,
+  "is_bot": null,
+  "league_id": "1180000000000000002",
+  "avatar": null,
+  "settings": null,
+  "metadata": {
+   "team_name": "Alpha Redraft"
+  }
+ },
+ {
+  "user_id": "700000000000000201",
+  "display_name": "delta_mgr",
+  "is_owner": false,
+  "is_bot": null,
+  "league_id": "1180000000000000002",
+  "avatar": null,
+  "settings": null,
+  "metadata": {}
+ }
+]
