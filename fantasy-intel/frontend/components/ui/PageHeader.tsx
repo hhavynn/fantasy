@@ -7,7 +7,9 @@ import styles from "./PageHeader.module.css";
  * (buttons, a selector). Wraps on phones: actions drop below the title. `children` render
  * as a full-width row under the header (tabs, filters).
  */
-export function PageHeader({ title, meta, actions, children, className }: {
+export function PageHeader({ eyebrow, title, meta, actions, children, className }: {
+  /** Small uppercase context line above the title (section or week). */
+  eyebrow?: ReactNode;
   title: ReactNode;
   meta?: ReactNode;
   actions?: ReactNode;
@@ -17,6 +19,7 @@ export function PageHeader({ title, meta, actions, children, className }: {
   return (
     <header className={cx(styles.header, className)}>
       <div className={styles.text}>
+        {eyebrow ? <p className={styles.eyebrow}>{eyebrow}</p> : null}
         <h1 className={styles.title}>{title}</h1>
         {meta ? <p className={styles.meta}>{meta}</p> : null}
       </div>

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Barlow_Condensed, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
-import { MobileNav, NavGroups, SubNav } from "@/components/Nav";
+import { BrandMark, MobileNav, NavGroups, SubNav, TabBar } from "@/components/Nav";
 import { ProjectionSwitch } from "@/components/ProjectionSwitch";
 import { SyncPill } from "@/components/SyncPill";
 import { TableScroll } from "@/components/TableScroll";
@@ -37,7 +37,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <header className="appbar">
           <div className="topbar">
             <Link href="/" className="brand" aria-label="Fantasy Intel home">
-              fantasy<span>intel</span>
+              <BrandMark />
+              <span className="brand-word">Fantasy<span>Intel</span></span>
             </Link>
             <NavGroups />
             <div className="topbar-end">
@@ -56,6 +57,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <SubNav />
         </header>
         <main>{children}</main>
+        <TabBar />
         <TableScroll />
       </body>
     </html>

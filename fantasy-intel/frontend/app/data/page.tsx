@@ -97,6 +97,7 @@ export default async function DataQualityPage({ searchParams }: PageProps<"/data
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="Data"
         title="Data quality"
         meta="ESPN ↔ nflverse ID mapping, validation and sync history. Unmatched players are listed here, never silently dropped."
       />

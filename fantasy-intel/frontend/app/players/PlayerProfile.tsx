@@ -22,8 +22,16 @@ export function PlayerProfile({ d, q, cols }: { d: Detail; q: string; cols: "all
   const hasUsage = d.weekly.length > 0 || d.score !== null;
   return (
     <div className="stack">
-      <ProfileHeader d={d} q={q} />
-      <KeyNumbers d={d} hasUsage={hasUsage} />
+      <div className={styles.hero}>
+        <ProfileHeader d={d} q={q} />
+        <div className={styles.heroStrip}><KeyNumbers d={d} hasUsage={hasUsage} /></div>
+        {hasUsage && (
+          <p className={styles.explainer}>
+            <b>PPR / game</b> is what the player scored. <b>Expected PPR</b> (nflverse xFP) is what an average player would score with the same targets,
+            carries and field position, so the gap between them separates role from efficiency.
+          </p>
+        )}
+      </div>
 
       {p.match_method === "unmatched" && (
         <Notice tone="caution" title="No usage data for this player">
@@ -65,7 +73,8 @@ function ProfileHeader({ d, q }: { d: Detail; q: string }) {
   const report = latestInj?.report_status;
   return (
     <PageHeader
-      title={<span className={styles.titleLine}><PlayerPhoto id={p.espn_player_id} name={p.full_name} size={56} />{p.full_name}</span>}
+      eyebrow="Player profile"
+      title={<span className={styles.titleLine}><PlayerPhoto id={p.espn_player_id} name={p.full_name} size={64} />{p.full_name}</span>}
       meta={
         <span className={styles.metaLine}>
           <Pos value={p.position} />

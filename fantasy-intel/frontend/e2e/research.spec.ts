@@ -11,8 +11,12 @@ test.beforeEach(async ({ page }) => {
 test("keyboard selection of a chart marker opens the evidence panel and keeps filters in the URL", async ({ page }) => {
   await page.goto("/research/wr?window=last5");
   const marker = page.locator('svg circle[role="button"]').first();
-  await marker.focus();
-  await expect(marker).toBeFocused();
+  // The chart re-measures its container after hydration, which can drop a focus taken before it settles.
+  // Focus again until it holds, so the keyboard check runs against the settled chart.
+  await expect(async () => {
+    await marker.focus();
+    await expect(marker).toBeFocused({ timeout: 500 });
+  }).toPass();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/window=last5/);
   await expect(page).toHaveURL(/sel=00-SYNWR/);

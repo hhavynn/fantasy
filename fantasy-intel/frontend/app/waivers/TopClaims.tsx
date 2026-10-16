@@ -1,5 +1,5 @@
-import { PlayerLink } from "@/components/PlayerLink";
-import { Badge, EmptyState, Pos, Score } from "@/components/ui";
+import { PlayerIdentity } from "@/components/PlayerIdentity";
+import { Badge, EmptyState, Score } from "@/components/ui";
 import type { TopClaims as Top } from "@/lib/waivers";
 import { Competition, EvidenceBadge, GiveUp, OwnedDelta, RoleTrend, actionLabel } from "./WaiverParts";
 import { hasInjuryDesignation } from "../players/helpers";
@@ -46,16 +46,19 @@ function ClaimCard({ row: w, rank, informational }: { row: WaiverRow; rank: numb
   const summary = d ? d.streaming?.summary ?? d.utility.summary : null;
   const names = w.competitors.map((c) => c.name);
   return (
-    <li className={styles.claim}>
+    <li className={styles.claim} data-actionable={informational ? undefined : "true"}>
       <div className={styles.claimHead}>
         <span className={styles.claimRank} aria-label={`Rank ${rank}`}>{rank}</span>
-        <h3 className={styles.claimName}><PlayerLink id={w.espn_player_id} name={w.full_name} /></h3>
-        <Pos value={w.position} />
+        <h3 className={styles.claimName}>
+          <PlayerIdentity
+            id={w.espn_player_id} name={w.full_name} position={w.position} team={w.pro_team} size="lg"
+            meta={<>
+              <span><OwnedDelta row={w} /> owned</span>
+              {hasInjuryDesignation(w.injury_status) && <Badge value={w.injury_status} />}
+            </>}
+          />
+        </h3>
       </div>
-      <p className={styles.claimMeta}>
-        {w.pro_team ?? "Team unknown"} · <OwnedDelta row={w} /> owned
-        {hasInjuryDesignation(w.injury_status) && <> <Badge value={w.injury_status} /></>}
-      </p>
       <div className={styles.claimAction}>
         <Badge value={w.recommendation} />
         <strong>{actionLabel(w) ?? "Refresh analytics"}</strong>

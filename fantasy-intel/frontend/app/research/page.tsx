@@ -21,11 +21,12 @@ export default async function ResearchOverview() {
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="Player research"
         title="Research lab"
         meta={d ? <>{first?.season} season · nflverse data through week {d.latest_week ?? "—"} · full PPR · NFL sync {when(d.nfl_synced_at)}</> : "Who is getting the opportunities, and is production keeping up?"}
       >
         <nav className={styles.posLinks} aria-label="Positions">
-          {SLUGS.map((s) => <Link key={s} href={`/research/${s}`} className={styles.posLink}>{POSITION_NAME[POSITION_OF[s]]}</Link>)}
+          {SLUGS.map((s) => <Link key={s} href={`/research/${s}`} className={`${styles.posLink} pos-${POSITION_OF[s]}`}>{POSITION_NAME[POSITION_OF[s]]} →</Link>)}
         </nav>
       </PageHeader>
 

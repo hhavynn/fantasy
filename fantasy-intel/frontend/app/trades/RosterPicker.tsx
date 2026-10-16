@@ -28,8 +28,10 @@ function availabilityBadge(p: OptionPlayer) {
 
 const playerName = (p: OptionPlayer) => p.name ?? `#${p.espn_player_id}`;
 
-export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, onToggle }: {
+export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, onToggle, className }: {
   role: string;
+  /** Side colour class from the builder (team A or team B). */
+  className?: string;
   team: OptionTeam;
   teams: OptionTeam[];
   picked: number[];
@@ -47,7 +49,7 @@ export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, on
   const positions = positionsIn(team.roster);
 
   return (
-    <section className={styles.side} aria-label={`${role}: ${team.name}`}>
+    <section className={cx(styles.side, className)} aria-label={`${role}: ${team.name}`}>
       <div className={styles.sideHead}>
         <span className={styles.role}>{role}</span>
         <select className={styles.teamSelect} aria-label={`${role} team`} value={team.team_id} onChange={(e) => onTeam(Number(e.target.value))}>
@@ -59,6 +61,7 @@ export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, on
         {chosen.length === 0 && <li className={styles.chipsEmpty}>No players selected</li>}
         {chosen.map((p) => (
           <li key={p.espn_player_id} className={styles.chip}>
+            <PlayerPhoto id={p.espn_player_id} name={p.name} size={22} />
             <span className={styles.chipName}>{playerName(p)}</span>
             <Pos value={p.position} />
             <button type="button" className={styles.chipRemove} aria-label={`Remove ${playerName(p)}`} onClick={() => onToggle(p.espn_player_id)}>×</button>

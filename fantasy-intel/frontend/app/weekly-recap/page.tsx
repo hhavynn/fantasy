@@ -61,6 +61,7 @@ function Body({ d, q }: { d: WeeklyRecap; q: RecapQuery }) {
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="League"
         title={`${label} recap`}
         meta={<>
           {d.league_name} {d.season} · <b>{d.matchups.length}</b> final {plural(d.matchups.length, "matchup")}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BarChart, type BarDatum } from "@/components/charts";
+import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { Badge, Delta, Method, Notice, Pos, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
@@ -29,8 +30,7 @@ function Players({ r, ids }: { r: TradeResult; ids: number[] }) {
         const n = r.names[id];
         return (
           <li key={id}>
-            <PlayerLink id={id} name={n?.name ?? null} /> <Pos value={n?.position} />
-            <span className="faint">{n?.pro_team ?? "FA"}</span>
+            <PlayerIdentity id={id} name={n?.name ?? null} position={n?.position} team={n?.pro_team ?? null} />
           </li>
         );
       })}
@@ -65,14 +65,14 @@ export function TradeResultView({ r }: { r: TradeResult }) {
 
 // ---------------------------------------------------------------------------------- verdict --
 
-function TeamStrip({ r, s }: { r: TradeResult; s: TradeSide }) {
+function TeamStrip({ r, s, side }: { r: TradeResult; s: TradeSide; side: "a" | "b" }) {
   const d = s.deltas;
   const lastReg = r.evaluation.last_regular_season_week;
   const final = r.evaluation.weeks[r.evaluation.weeks.length - 1];
   const first = r.evaluation.weeks[0];
   const incomplete = <span title={why}>incomplete · {signedText(d.known_ros_delta)} known</span>;
   return (
-    <div className={styles.strip}>
+    <div className={`${styles.strip} ${side === "a" ? styles.sideA : styles.sideB}`}>
       <h3 className={styles.stripHead}>
         <Link href={`/managers/${s.team_id}`}>{s.team_name}</Link>
         <span>receives {s.receives.length === 0 ? "nobody" : names(r, s.receives)}</span>
@@ -104,12 +104,14 @@ function Verdict({ r }: { r: TradeResult }) {
       </>}
     >
       <div className={styles.exchange}>
-        <div className={styles.exchangeSide}>
+        <div className={`${styles.exchangeSide} ${styles.sideA}`}>
           <span className={styles.eyebrow}>{an} sends</span>
           <Players r={r} ids={A.sends} />
         </div>
-        <span className={styles.exchangeArrow} aria-hidden="true">⇄</span>
-        <div className={styles.exchangeSide}>
+        <span className={styles.exchangeArrow} aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h11l-3-3" /><path d="M15 12H4l3 3" /></svg>
+        </span>
+        <div className={`${styles.exchangeSide} ${styles.sideB}`}>
           <span className={styles.eyebrow}>{bn} sends</span>
           <Players r={r} ids={B.sends} />
         </div>
@@ -119,8 +121,8 @@ function Verdict({ r }: { r: TradeResult }) {
         <span>Playoffs: {resultText(r.result.playoff_label, an, bn)}</span>
       </p>
       <div className={styles.strips}>
-        <TeamStrip r={r} s={A} />
-        <TeamStrip r={r} s={B} />
+        <TeamStrip r={r} s={A} side="a" />
+        <TeamStrip r={r} s={B} side="b" />
       </div>
     </Section>
   );
