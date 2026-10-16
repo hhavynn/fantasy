@@ -698,6 +698,47 @@ def decide(report: dict, name: str) -> dict:
             "vs_season_average": d_a2, "vs_C": d_c}
 
 
+def placebo_teammate_store(st: pl.DataFrame, seed: int = SEED) -> pl.DataFrame:
+    """Post-hoc control for `tm_transfer`: the three teammate columns are shuffled among the RB rows of
+    the same (season, week), so each week keeps its distribution of values but they no longer belong to
+    the right player. A gain that survives this shuffle is not about teammates."""
+    rng = np.random.default_rng(seed)
+    parts = []
+    for _, g in st.group_by(["season", "week"], maintain_order=True):
+        idx = rng.permutation(g.height)
+        parts.append(g.with_columns([pl.Series(c, g[c].to_numpy()[idx]) for c in TEAMMATE_COLUMNS]))
+    return pl.concat(parts) if parts else st
+
+
+def posthoc_report(preds: pl.DataFrame, placebo: pl.DataFrame | None = None) -> dict:
+    """Descriptive checks on an evaluated window, run AFTER the single preregistered run. They select
+    nothing and cannot change a verdict. `preds` carries pred_A1/A2/C/ifp2 and the three candidates;
+    `placebo` is a pred_placebo column from the shuffled-teammate control."""
+    models = [*REFERENCE_MODELS, *CANDIDATE_GRIDS]
+    d = preds if placebo is None else preds.join(placebo, on=["key", "gsis_id"], how="left")
+    d = common_support(d, models + (["placebo"] if placebo is not None else []))
+    y = lambda g: _arr(g, "label")  # noqa: E731
+    sub = d.filter(pl.col("tm_out_n") > 0)
+    rest = d.filter(pl.col("tm_out_n") == 0)
+    out: dict = {"n": d.height, "reference_diffs": {f"{a}-{b}": boot_diff(d, f"pred_{a}", f"pred_{b}")
+                                                    for a, b in (("C", "A2"), ("C", "A1"), ("ifp2", "A2"), ("ifp2", "C"))},
+                 "C_vs_A2_by_season": {s: boot_diff(g, "pred_C", "pred_A2") for s, g in season_windows(d).items()},
+                 "segments_C_vs_A2": segment_table(d, ["A2", "C"], {**rb_segments(), **outcome_segments()}, vs=(("C", "A2"),)),
+                 "volume_tiers": volume_tier_table(d, ["A2", "C"]),
+                 "mean_forecast": {m: _round(float(d[f"pred_{m}"].mean())) for m in models}, "mean_outcome": _round(float(d["label"].mean()))}
+    out["tm_transfer"] = {
+        "all": boot_diff(d, "pred_tm_transfer", "pred_C"),
+        "verified_timestamps_2023_24": boot_diff(d.filter(pl.col("season").is_in([2023, 2024])), "pred_tm_transfer", "pred_C"),
+        "unverifiable_timestamps_2025_26": boot_diff(d.filter(pl.col("season") >= 2025), "pred_tm_transfer", "pred_C"),
+        "teammate_unavailable": {"n": sub.height, **boot_diff(sub, "pred_tm_transfer", "pred_C"),
+                                 "bias": {m: metrics(y(sub), _arr(sub, f"pred_{m}"))["bias"] for m in ("A2", "C", "tm_transfer")}},
+        "no_teammate_unavailable": {"n": rest.height, **boot_diff(rest, "pred_tm_transfer", "pred_C")}}
+    if placebo is not None:
+        out["tm_transfer"]["placebo_vs_C"] = boot_diff(d, "pred_placebo", "pred_C")
+        out["tm_transfer"]["tm_transfer_vs_placebo"] = boot_diff(d, "pred_tm_transfer", "pred_placebo")
+    return out
+
+
 # ----------------------------------------------------------------------------- freezing and preregistration
 
 PREREG_START, PREREG_END = "<!-- PREREG-START -->", "<!-- PREREG-END -->"

@@ -304,6 +304,7 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
     allowed = {"projection_source.py",   # opt-in weekly source switch; SQL only, ESPN unless asked
                "independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
                "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",
+               "rb_research.py",  # RB forecasting research (shadow only)
                "connection.py",   # connection.py: schema-version rebuild list only (like schema.sql)
                "promotion_tracker.py", "projection_promotion.py",   # read-only promotion tracker
                # ifp-2 research challenger + weekly learning pipeline (shadow only; nothing imports them,

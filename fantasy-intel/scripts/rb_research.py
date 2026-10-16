@@ -6,6 +6,7 @@ prints aggregates only; outputs go to --out (default data/models/research/rb, gi
     uv run python ../scripts/rb_research.py diagnose   # development window 2021-2022 only
     uv run python ../scripts/rb_research.py develop    # grids on 2021-2022 only; writes the frozen config ONCE
     uv run python ../scripts/rb_research.py confirm    # frozen candidates on 2023-2026 wk 1-5 (write-once report)
+    uv run python ../scripts/rb_research.py posthoc    # descriptive follow-up on the same window (selects nothing)
 
 Inputs: the nflverse history database (sync_nfl_history.py), optionally a second nflverse-only database
 holding the 2026 weeks played (sync_nfl.py with FANTASY_DB_PATH pointing at a scratch file; no league needed)
@@ -143,13 +144,37 @@ def cmd_confirm(args) -> dict:
     return report
 
 
+def cmd_posthoc(args) -> dict:
+    """After `confirm`: descriptive checks on the same window (placebo control for the teammate features,
+    timestamp-verified slice, whether the development diagnostics replicate). Selects nothing; read-only."""
+    src, store, _, data_fp = load(args)
+    cfg_path = args.out / "frozen.json"
+    if not (cfg_path.exists() and (args.out / "confirmation_report.json").exists()):
+        raise SystemExit("run `develop` and `confirm` first")
+    cfg = json.loads(cfg_path.read_text())
+    rb.check_frozen(cfg, rb.preregistration_hash(args.doc.read_text()), data_fp)
+    weeks = rb.weeks_in(store, rb.CONFIRMATION)
+    ref = rb.reference_predictions(store, weeks)
+    st = rb.rb_store(store)
+    preds = ref
+    for name, sel in cfg["selected"].items():
+        preds = preds.join(rb.candidate_predictions(st, ref, weeks, name, {sel["param"]: sel["value"]}),
+                           on=["key", "gsis_id"], how="left")
+    sel = cfg["selected"]["tm_transfer"]
+    placebo = rb.candidate_predictions(rb.placebo_teammate_store(st), ref, weeks, "tm_transfer",
+                                       {sel["param"]: sel["value"]}).rename({"pred_tm_transfer": "pred_placebo"})
+    report = rb.posthoc_report(preds, placebo)
+    write_json(args.out / "posthoc.json", report)
+    return report
+
+
 def summarize(name: str, rep) -> str:
     return json.dumps(_round(rep), indent=1, default=str)
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["prepare", "diagnose", "develop", "confirm"])
+    ap.add_argument("command", choices=["prepare", "diagnose", "develop", "confirm", "posthoc"])
     ap.add_argument("--history-db", type=Path, default=_path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
     ap.add_argument("--live-db", type=Path, default=None,
                     help="optional nflverse-only database holding the 2026 weeks played (read-only)")
@@ -157,7 +182,8 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, default=_path("RB_RESEARCH_DIR", "data/models/research/rb"))
     ap.add_argument("--doc", type=Path, default=REPO_ROOT / "docs" / "research" / "rb_projection_diagnostics.md")
     args = ap.parse_args(argv)
-    result = {"prepare": cmd_prepare, "diagnose": cmd_diagnose, "develop": cmd_develop, "confirm": cmd_confirm}[args.command](args)
+    result = {"prepare": cmd_prepare, "diagnose": cmd_diagnose, "develop": cmd_develop, "confirm": cmd_confirm,
+              "posthoc": cmd_posthoc}[args.command](args)
     print(summarize(args.command, result))
     return 0
 

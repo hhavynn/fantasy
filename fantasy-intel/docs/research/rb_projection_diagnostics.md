@@ -277,8 +277,170 @@ Things to read before the confirmation numbers:
 
 ## 6. Confirmation results (2023-2026 weeks 1-5, one run)
 
-*Pending: filled in by the commit that runs `rb_research.py confirm`.*
+`rb_research.py confirm` ran once (the report file is write-once and the command refuses to run again; it
+also refuses if the preregistration text or any input frame changed since `develop`). 5,740 RB appearances,
+**5,594 common-support rows** in 59 weeks (146 abstain: no game in the lookback; identical for every model);
+2023: 1,703, 2024: 1,695, 2025: 1,705, 2026 weeks 1-5: 491.
+
+**Pooled MAE / RMSE / bias (mean(actual - forecast)), identical rows**
+
+| Model | MAE | RMSE | Bias | Mean forecast (outcome mean 6.959) |
+|---|---|---|---|---|
+| A1 recent average | 4.134 | 6.074 | +0.01 | 6.952 |
+| A2 season average | 4.074 | 6.034 | +0.17 | 6.787 |
+| **C** (ifp-1.0.0) | 4.047 | 5.762 | -0.05 | 7.006 |
+| ifp-2 | 4.030 | 5.756 | -0.00 | 6.961 |
+| `vol_shrink` (tau 12) | **3.944** | 5.780 | **+0.26** | 6.702 |
+| `tm_transfer` (lambda 0.01) | 4.025 | 5.741 | -0.05 | 7.006 |
+| `hurdle` (logit lambda 0.001) | 4.029 | 5.755 | -0.02 | 6.978 |
+
+**Differences in MAE (week-clustered bootstrap, 1,000 resamples, seed 20261016)**
+
+| Comparison | Difference | 95% CI | Bonferroni CI (3 candidates) |
+|---|---|---|---|
+| C - A2 (the reference gap) | -0.026 | [-0.083, +0.029] | [-0.098, +0.043] |
+| ifp-2 - C | -0.017 | [-0.028, -0.006] | [-0.031, -0.003] |
+| `vol_shrink` - C | **-0.103** | [-0.123, -0.084] | [-0.128, -0.081] |
+| `tm_transfer` - C | **-0.022** | [-0.037, -0.006] | [-0.040, -0.003] |
+| `hurdle` - C | **-0.018** | [-0.024, -0.013] | [-0.025, -0.012] |
+| `vol_shrink` - A2 | -0.129 | [-0.191, -0.076] | [-0.201, -0.066] |
+| `tm_transfer` - A2 | -0.049 | [-0.114, +0.008] | [-0.124, +0.021] |
+| `hurdle` - A2 | -0.045 | [-0.102, +0.009] | [-0.116, +0.023] |
+| `vol_shrink` - ifp-2 | -0.086 | [-0.106, -0.067] | [-0.109, -0.060] |
+| `tm_transfer` - ifp-2 | -0.005 | [-0.023, +0.013] | [-0.025, +0.017] |
+| `hurdle` - ifp-2 | -0.001 | [-0.013, +0.010] | [-0.016, +0.012] |
+
+By sub-window (candidate - C, 95% CI): 2023 `vol_shrink` -0.114 [-0.143, -0.084], `tm_transfer` -0.005
+[-0.027, +0.020], `hurdle` -0.016 [-0.027, -0.005]; 2024 -0.055 [-0.086, -0.025], -0.026 [-0.060, +0.008], -0.014
+[-0.024, -0.006]; 2025 -0.117 [-0.158, -0.075], -0.039 [-0.052, -0.022], -0.021 [-0.031, -0.010]; 2026 weeks 1-5
+-0.183 [-0.240, -0.138], -0.007 [-0.059, +0.048], -0.030 [-0.043, -0.022]. By-season MAE of A2 / C: 2023
+4.047 / 3.969, 2024 4.099 / 4.061, **2025 4.012 / 4.081**, 2026 4.290 / 4.152.
+
+**Cohorts** (MAE; in brackets the Bonferroni-adjusted CI of candidate - C)
+
+| Cohort | n | A2 | C | ifp-2 | `vol_shrink` | `tm_transfer` | `hurdle` |
+|---|---|---|---|---|---|---|---|
+| starters pool (top 48 by A1) | 2,832 | 5.869 | 5.603 | 5.582 | 5.606 [-0.011, +0.017] | 5.578 [-0.045, -0.004] | 5.602 [-0.009, +0.006] |
+| high-volume backs | 1,402 | 6.518 | 6.290 | 6.262 | 6.290 (identical by construction) | 6.283 [-0.029, +0.011] | 6.270 [-0.033, -0.008] |
+| injury returns | 450 | 3.380 | 3.364 | 3.362 | 3.180 [-0.281, -0.084] | 3.332 [-0.108, +0.057] | 3.353 [-0.038, +0.015] |
+| low volume (< 4 opp/g) | 1,986 | 1.776 | 1.979 | 1.962 | 1.762 [-0.274, -0.163] | 1.965 [-0.050, +0.027] | 1.926 [-0.067, -0.039] |
+| team changes | 1,097 | 3.872 | 3.799 | 3.740 | 3.740 [-0.114, -0.010] | 3.779 [-0.061, +0.028] | 3.788 [-0.025, +0.004] |
+| early season (weeks 1-4) | 1,551 | 4.194 | 4.131 | 4.105 | 3.975 [-0.205, -0.113] | 4.131 [-0.030, +0.037] | 4.106 [-0.036, -0.012] |
+| a teammate RB Out/Doubtful | 781 | 4.204 | 4.065 | 4.068 | 3.977 [-0.171, +0.002] | **4.202 [+0.004, +0.254]** | 4.052 [-0.036, +0.009] |
+
+**Start/Sit (pairs among the top-48 RBs, 66,330 pairs, 22,475 close calls):** pick accuracy A1 66.4%, A2 67.7%,
+C 68.8%, ifp-2 69.0%, `vol_shrink` 68.8%, `tm_transfer` 69.1%, `hurdle` 68.8%; mean regret 2.426 / 2.270 /
+2.141 / 2.119 / 2.145 / 2.107 / 2.145; close calls 55.2 / 59.2 / 61.4 / 61.9 / 61.3 / 62.0 / 61.4%. None of the
+three candidates moves pair accuracy by more than 0.3 points.
+
+**Decision rule outcome (pre-registered, c1-c7):**
+
+| Candidate | Verdict | Failed checks |
+|---|---|---|
+| `vol_shrink` | **not_supported** | c4 bias: +0.257 vs C -0.047 (limit 0.197); c5 starters-pool MAE 5.606 vs 5.603 |
+| `tm_transfer` | **supported_for_shadow_tracking** (marginally) | none: -0.022 against the -0.02 floor, 4 of 4 sub-windows, RMSE -0.4%, starters pool -0.025, pairs +0.3 points |
+| `hurdle` | **not_supported** | c1: -0.018 is smaller than the -0.02 floor (its adjusted CI is below 0 and every other check passes) |
+
+### Post-hoc checks (descriptive, after the single run; they select nothing and change no verdict)
+
+`rb_research.py posthoc` on the same window.
+
+**The development diagnostics replicate out of sample.** C - A2 by volume: carries/g < 5 **+0.161 [+0.113,
++0.215]** (n = 2,699), snap share < 0.30 +0.185 [+0.135, +0.243], no inside-5 carries +0.193 [+0.150, +0.242],
+team rush share < 0.15 +0.181 [+0.130, +0.235], fewer than 3 recent games **+0.455 [+0.216, +0.768]**;
+with volume it flips: carries/g 10-15 -0.238 [-0.391, -0.103], >= 15 -0.290 [-0.523, -0.087], starters pool
+**-0.266 [-0.387, -0.163]**, high-volume backs -0.228 [-0.406, -0.082], recent TDs above expectation -0.404
+[-0.607, -0.232]. By opportunities per game: 0-2 (n = 1,307, 57% with no carry or target, outcome median 0)
++0.282 [+0.232, +0.335]; 2-9 about +0.05 to +0.09 (CIs include 0); 9-12 -0.367, 12-16 -0.379, 16+ -0.204
+(all CIs below 0). Pooled C - A2 is only -0.026 [-0.083, +0.029], and in **2025 C loses to the season average
+(+0.069 [+0.011, +0.118])**, the same pattern the held-out report in `independent_projection_engine.md` showed:
+the aggregate gap between C and A2 is a weighted sum of "ridge wins on volume" and "ridge loses on
+low-volume backs", and the second term dominates in a season with many low-volume appearances.
+
+**`vol_shrink`: the biggest MAE gain is a loss-function effect, not a better forecast.** The mean forecast
+falls to 6.702 against an outcome mean of 6.959 (C: 7.006, ifp-2: 6.961): among low-volume backs (outcome mean
+1.78) bias goes from -0.16 (C) to +0.46, close to the season average's +0.55. MAE rewards forecasting near the
+median of a distribution with a spike at zero, so `vol_shrink` buys MAE by systematically under-forecasting
+the mean. It leaves the starters pool (+0.003) and pair decisions (68.8% vs 68.8%) untouched. It is useful
+only if the reported metric is MAE on all appearances; it is the wrong direction for `expected_points`
+(`p_play * projected_points`), which needs a mean.
+
+**`tm_transfer`: the gain is real but not where the hypothesis put it.**
+
+| Check | Result |
+|---|---|
+| Placebo: same model, the three teammate columns shuffled within each week | placebo - C +0.002 [-0.000, +0.004]; `tm_transfer` - placebo -0.024 [-0.039, -0.009]. The gain is not a ridge regularisation artefact. |
+| Teammate Out/Doubtful rows (n = 781) | bias drops from +0.91 (C; A2 +1.45) to +0.02, but **MAE rises +0.137 [+0.038, +0.230]** (2023 +0.286, 2024 +0.071, 2025 +0.018, 2026 +0.297). With a teammate carrying 8+ per game (n = 338): bias +1.85 (C) to +0.01, MAE 4.023 to 4.329. |
+| Rows with no unavailable teammate (n = 4,813) | **-0.048 [-0.055, -0.041]**; placebo +0.002. All of the pooled gain is here. |
+| Timestamp-verified seasons 2023-24 (n = 3,398) | -0.016 [-0.036, +0.007] (Bonferroni CI includes 0) |
+| 2025-26 (no `date_modified`, n = 2,196) | -0.032 [-0.049, -0.011] |
+| Against ifp-2 / the season average | -0.005 [-0.023, +0.013] / -0.049 [-0.114, +0.008]: no evidence it beats either |
+
+Reading: knowing that a back's teammate is *not* absent removes a contamination term from the ridge (14% of
+rows have a teammate out and are bumped up), which sharpens the baseline for the other 86%; for the 14% the
+teammate features fix the *mean* (bias to ~0) but widen the error because the size of the bump is uncertain
+(a skewed outcome again: mean fixed, MAE worse). The larger gain in 2025-26 comes from seasons whose injury
+reports cannot be checked against kickoff, which is why the result is reported with that caveat and not
+relied on.
+
+**`hurdle`** is a consistent small gain (-0.016, -0.014, -0.021, -0.030 across the four windows) concentrated in
+low-volume backs (-0.053) and indistinguishable from ifp-2 (-0.001 [-0.013, +0.010]); it is neither biased
+nor worse anywhere. It is below the pre-set effect floor and has no decision value (pairs 68.76% vs 68.82%).
 
 ## 7. Verdict, limitations and open questions
 
-*Pending.*
+**Verdict (plain).**
+
+1. **Where ridge loses to the season average:** on RBs with little volume (under ~4 carries + targets per
+   game, under 30% snaps, no goal-line work, fewer than 3 recent games), about a third of appearances. There the
+   outcome is dominated by a spike at zero (57% of the lowest tier have no touch) and a forecast near the
+   median beats a forecast at the mean on MAE; ridge is also over-dispersed there (development calibration slope 0.4-0.6). With
+   volume ridge beats the season average by 0.2-0.6 points with CIs below zero, in both windows. The
+   2025 aggregate loss to the season average is this effect, not a failure on starters.
+2. **No RB-specific candidate is a clear improvement.** The only one passing the preregistered rule,
+   `tm_transfer`, does so at the effect floor (-0.022 vs -0.02, 0.5% of MAE), its gain does not come from
+   the teammate-out mechanism that motivated it, its timestamp-verified slice is not significant, and it
+   is not distinguishable from ifp-2. `vol_shrink` improves MAE by 2.5% but only by biasing forecasts down
+   (fails the bias and starters guards) and changes no decision. `hurdle` is a 0.4% gain equal to ifp-2.
+3. **Nothing is promoted and nothing in production changed.** No candidate approaches the existing 3% bar over
+   the better trailing baseline, and ridge C itself does not beat the season average on RB with a CI
+   excluding 0 (-0.026 [-0.083, +0.029]); the existing `experimental` RB status stands.
+4. **Do not repeat** touchdown regression (no signal on development, group X confirmed null), healthy-game windows
+   and exposure weighting (ifp-2, adaptive workload), or non-linear models on the same features (HGB).
+
+**Recommendations (none acted on).** (a) If MAE over all appearances is the headline, report RB accuracy
+split at ~4 opportunities per game: the pooled number mixes two regimes. (b) Do not adopt `vol_shrink`-style
+shrinkage for `expected_points`; if wanted for a "typical outcome" display it is a median-style number and
+should be labelled so. (c) `tm_transfer`: do not add a third shadow model on this evidence; if the owner wants
+it, first pin down the 2025-26 injury-report timing (snapshot the report before kickoff in the weekly
+pipeline, as `source_provenance` already does for the weekly cycle) and pre-register the teammate features
+*added to the ifp-2 specification*, evaluated on prospective weeks 6 onward only.
+
+**Limitations.**
+
+* No fresh holdout: 2023-2026 week 5 had been inspected for the reference models (ridge C's penalty was chosen on
+  2023-24, which favours C there). The candidates were frozen on 2021-22 and run once, but a sceptic can
+  discount any confirmation on already-seen seasons; prospective frozen forecasts from 2026 week 6 are the
+  only clean test.
+* Conditional-on-appearing population (as ifp-1.0.0); availability is the participation model's job, and
+  `tm_transfer` partly duplicates what that model sees (teammates ahead designated Out/Doubtful).
+* Teammate availability uses nflverse injury reports; 2025-26 rows have no `date_modified` so their pregame
+  status cannot be verified. The teammate definition (last game for the team within 6 weeks, Out or
+  Doubtful) is a fixed choice, not tuned; Questionable players, IR/PUP players without a listing and role
+  vacancies from trades are not captured.
+* `vol_shrink` hit the top of its preregistered grid (tau = 12) on development; the grid was not widened.
+* MAE is the preregistered headline and rewards under-forecasting skewed distributions; RMSE and bias are
+  guards, not objectives. Three candidates, one confirmation: the Bonferroni CIs control the family-wise
+  rate for the c1 check only.
+* ESPN was not compared (no pregame ESPN snapshots exist for completed weeks) and is never an input.
+
+**Open questions.** Why does knowing "no teammate is out" help the other 86% of rows (is it a cleaner baseline,
+or a proxy for team health/stability)? Does the teammate feature add anything to ifp-2's richer feature set?
+Should the RB headline metric be MAE (median-friendly) or squared error (mean-friendly) given that
+`expected_points` multiplies the forecast by a probability? Would a median-style companion forecast for
+low-volume backs be useful to the Start/Sit page at all, given it changes no pairwise decision?
+
+**Reproduce** (about a minute of compute after the downloads, modest memory): the commands in section 2, then
+`prepare`, `diagnose`, `develop`, `confirm`, `posthoc`. The development and confirmation reports are
+`diagnostics.json`, `develop.json`, `frozen.json`, `confirmation_report.json`, `posthoc.json` under `--out`
+(git-ignored, not committed). The history, 2026 and play-by-play inputs live outside the repository.
