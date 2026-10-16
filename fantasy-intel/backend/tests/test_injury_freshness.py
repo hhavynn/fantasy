@@ -39,6 +39,15 @@ def obs(source=inj.SOURCE_NFLVERSE, team="BUF", week=7, retrieved=WED_NOON, sha=
 
 
 def put(db, *observations):
+    """Log observations, registering the successful nfl sync that wrote each nflverse one (as run_nfl_sync does)."""
+    for o in observations:
+        if o.source == inj.SOURCE_NFLVERSE and o.sync_run_id and not db.execute(
+                "SELECT count(*) FROM sync_runs WHERE run_id = ?", [o.sync_run_id]).fetchone()[0]:
+            at = naive(inj.naive_utc(o.retrieved_at))
+            db.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status, stats) "
+                       "VALUES (?, 'nfl', ?, ?, 'ok', ?)",
+                       [o.sync_run_id, at - timedelta(minutes=1), at + timedelta(minutes=10),
+                        json.dumps({"season": o.season})])
     return inj.record_observations(db, list(observations))
 
 
@@ -198,6 +207,32 @@ def test_a_log_failure_never_fails_the_sync(tmp_path, monkeypatch):
     assert any("injury retrieval log failed" in w for w in stats["warnings"])
     con = connect(tmp_path / "c.duckdb", read_only=True)
     assert con.execute("SELECT count(*) FROM nfl_injuries").fetchone()[0] == 3
+    con.close()
+
+
+def test_a_sync_that_dies_after_its_commit_leaves_a_running_row_and_the_view_fails_closed(tmp_path, monkeypatch):
+    from app.nfl import sync
+
+    payload, t0, t1 = _payload()
+    monkeypatch.setattr(sync, "fetch_all", lambda season: payload)
+    factory = _factory(tmp_path / "e.duckdb")
+    sync.run_nfl_sync(factory, 2026)                                         # run A: ok, logged
+    capture, kick = datetime(2030, 1, 1, tzinfo=UTC), {"BUF": datetime(2031, 1, 1, tzinfo=UTC)}
+    con = connect(tmp_path / "e.duckdb")
+    assert set(inj.manifest_view(con, 2026, 7, capture, kickoffs=kick)["teams"]) == {"BUF"}
+    con.close()
+
+    def die(*a, **k):
+        raise KeyboardInterrupt          # the process dies after write_all committed; finish('ok') never runs
+
+    monkeypatch.setattr(sync, "record_injury_retrievals", die)
+    with pytest.raises(KeyboardInterrupt):
+        sync.run_nfl_sync(factory, 2026)                                     # run B
+    con = connect(tmp_path / "e.duckdb")
+    assert sorted(r[0] for r in con.execute("SELECT status FROM sync_runs WHERE source = 'nfl'").fetchall()) == \
+        ["ok", "running"]
+    view = inj.manifest_view(con, 2026, 7, capture, kickoffs=kick)
+    assert view["teams"] == {} and view["log"].startswith("unverifiable: unfinished nfl sync nfl-")
     con.close()
 
 
@@ -630,3 +665,107 @@ def test_cli_execute_reports_per_source_errors_and_still_runs_the_other_sync(cli
     captured = capsys.readouterr()
     assert rc == 1 and calls == ["nfl", "espn"]
     assert "nflverse down" in captured.err and '"errors"' in captured.out
+
+
+# ----------------------------------------------------------------------------- manifest view / readiness notes
+
+
+def sync_run(db, run, finished, status="ok", season=2026):
+    db.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status, stats) "
+               "VALUES (?, 'nfl', ?, ?, ?, ?)",
+               [run, naive(finished) - timedelta(minutes=5), naive(finished), status, json.dumps({"season": season})])
+
+
+def test_manifest_view_records_only_pregame_retrievals_of_the_latest_sync_before_the_capture(db):
+    put(db, obs(team="BUF", retrieved=WED_NOON - timedelta(hours=5), sha="1" * 64, run="r1"),
+        obs(team="BUF", retrieved=WED_NOON, sha="2" * 64, run="r2", pub=WED_NOON - timedelta(hours=2)),
+        obs(team="KC", retrieved=WED_NOON, sha="3" * 64, run="r2"),
+        obs(team="DEN", retrieved=WED_NOON, sha="4" * 64, run="r2"),
+        obs(team="MIA", retrieved=WED_NOON - timedelta(hours=5), sha="5" * 64, run="r1"))   # r2 did not list MIA
+    ko = {**KICKOFFS, "KC": WED_NOON, "DEN": None}                   # KC kicks off exactly at the retrieval
+    view = inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(minutes=30), kickoffs=ko)
+    assert view["log"] == "present" and set(view["teams"]) == {"BUF"}   # not KC (at kickoff), DEN (unknown), MIA (old sync)
+    e = view["teams"]["BUF"]
+    assert (e["source"], e["content_sha"]) == ("nflverse", "2" * 64) and e["retrieved_at"] == WED_NOON.isoformat()
+    assert e["provider_published_at"] == (WED_NOON - timedelta(hours=2)).isoformat()
+    assert e["retrieval_id"] == db.execute("SELECT retrieval_id FROM injury_retrievals WHERE content_sha = ?",
+                                           ["2" * 64]).fetchone()[0]
+    # a capture before the latest sync finished cannot contain its content: nothing is embedded (not r1's rows)
+    assert inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(minutes=5), kickoffs=KICKOFFS)["teams"] == {}
+    # a failed sync does not count as the one that wrote the table; r2 stays the latest successful one
+    sync_run(db, "r3", WED_NOON + timedelta(hours=1), status="error")
+    assert set(inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(hours=2), kickoffs=KICKOFFS)["teams"]) == \
+        {"BUF", "KC", "DEN"}
+    # a newer successful sync whose log write failed (no rows): no older retrieval is attached to its content
+    sync_run(db, "r4", WED_NOON + timedelta(hours=3))
+    assert inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(hours=4), kickoffs=KICKOFFS)["teams"] == {}
+
+
+def test_manifest_view_is_read_only_and_marks_an_absent_table(db):
+    put(db, obs())
+    before = db.execute("SELECT * FROM injury_retrievals").fetchall()
+    inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(hours=1), kickoffs=KICKOFFS)
+    assert db.execute("SELECT * FROM injury_retrievals").fetchall() == before
+    db.execute("DROP TABLE injury_retrievals")
+    assert inj.manifest_view(db, 2026, 7, WED_NOON, kickoffs=KICKOFFS) == {
+        "schema": "injury-retrievals/v1", "log": "unavailable", "teams": {}}
+
+
+def test_readiness_notes_report_issues_post_kickoff_and_fallback_as_warnings(db):
+    injuries(db, [("BUF", 7, "g1", "Out", None, None)])
+    put(db, obs(team="BUF", retrieved=WED_NOON - timedelta(hours=30)),       # stale, Thursday game
+        obs(inj.SOURCE_ESPN, team="KC", retrieved=WED_NOON, sha="5" * 64))   # ESPN fallback, no mapped designation
+    db.execute("CREATE TABLE IF NOT EXISTS nfl_schedules (season INTEGER, week INTEGER, game_type VARCHAR, "
+               "gameday VARCHAR, gametime VARCHAR, home_team VARCHAR, away_team VARCHAR)")
+    db.execute("INSERT INTO nfl_schedules VALUES (2026, 7, 'REG', '2026-10-22', '20:15', 'BUF', 'MIA'), "
+               "(2026, 7, 'REG', '2026-10-25', '13:00', 'KC', 'DEN')")
+    notes = inj.readiness_notes(db, 2026, 7, WED_NOON)
+    text = " | ".join(notes["warnings"])
+    assert notes["log_available"] and "stale injury evidence" in text and "BUF" in text
+    assert notes["fallback_adds_no_designations"] == ["KC"] and "ESPN status fallback adds no designations" in text
+    assert "no injury evidence retrieved" in text and "MIA" in text and "DEN" in text
+    after = inj.readiness_notes(db, 2026, 7, SUN + timedelta(hours=1))        # everything kicked off
+    assert after["upcoming_issues"] == [] and "KC" not in " ".join(w for w in after["warnings"] if "stale" in w)
+
+
+def test_readiness_notes_absent_table_or_no_connection(db):
+    db.execute("DROP TABLE injury_retrievals")
+    for con in (db, None):
+        notes = inj.readiness_notes(con, 2026, 7, WED_NOON)
+        assert notes["log_available"] is False and notes["upcoming_issues"] == []
+        assert notes["warnings"] and notes["warnings"][0].startswith("injury retrieval log unavailable")
+
+
+def test_newer_sync_without_log_rows_makes_older_retrieval_not_fresh_and_warns(db):
+    db.execute("CREATE TABLE IF NOT EXISTS nfl_schedules (season INTEGER, week INTEGER, game_type VARCHAR, "
+               "gameday VARCHAR, gametime VARCHAR, home_team VARCHAR, away_team VARCHAR)")
+    db.execute("INSERT INTO nfl_schedules VALUES (2026, 7, 'REG', '2026-10-25', '13:00', 'KC', 'DEN')")
+    synced_nflverse(db, "KC", WED_NOON - timedelta(hours=2))                  # sync A: designation + logged retrieval
+    assert status_of(db, WED_NOON, "KC")["status"] == inj.FRESH
+    # sync B (newer, ok) rewrote nfl_injuries but its log write failed: no retrievals at all
+    sync_run(db, "rB", WED_NOON - timedelta(hours=1))
+    row = status_of(db, WED_NOON, "KC")
+    assert row["status"] == inj.STALE and row["reason"] == "nflverse_report_without_verified_retrieval"
+    assert row["evidence_retrieved_at"] is None
+    notes = inj.readiness_notes(db, 2026, 7, WED_NOON)
+    assert notes["nflverse_writer"] == {"run_id": "rB", "verified": True, "reason": None}   # B is the writer ...
+    assert any("stale injury evidence" in w for w in notes["warnings"])                      # ... with no retrievals
+    # a newer sync of ANOTHER season is not the writer: A's retrieval still vouches for the table
+    db.execute("DELETE FROM sync_runs WHERE run_id = 'rB'")
+    sync_run(db, "rOther", WED_NOON - timedelta(hours=1), season=2025)
+    assert status_of(db, WED_NOON, "KC")["status"] == inj.FRESH
+    # an unfinished sync after the writer makes the table unverifiable: never fresh, and the warning says why
+    sync_run(db, "rDead", WED_NOON - timedelta(hours=1), status="running")
+    row = status_of(db, WED_NOON, "KC")
+    assert row["status"] == inj.STALE
+    notes = inj.readiness_notes(db, 2026, 7, WED_NOON)
+    assert not notes["nflverse_writer"]["verified"]
+    assert any("cannot be tied to a logged retrieval" in w and "rDead" in w for w in notes["warnings"])
+
+
+def test_no_successful_sync_of_the_season_is_never_fresh(db):
+    injuries(db, [("KC", 7, "k1", "Out", None, None)])
+    put(db, obs(team="KC", retrieved=WED_NOON - timedelta(hours=1), run="r1"))
+    db.execute("DELETE FROM sync_runs")
+    assert status_of(db, WED_NOON, "KC")["status"] == inj.STALE
+    assert not inj.nfl_table_writer(db, 2026)["verified"]

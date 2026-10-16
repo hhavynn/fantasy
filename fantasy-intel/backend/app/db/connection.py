@@ -280,8 +280,22 @@ class SyncRun:
         self.run_id = f"{source}-{utcnow():%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
         self.started_at = utcnow()
 
-    def finish(self, status: str, message: str = "", stats: dict | None = None) -> None:
+    def start(self, message: str = "", stats: dict | None = None) -> None:
+        """Optional: persist a 'running' row now (finished_at NULL), replaced by finish(). A process that dies
+        in between leaves it behind, so an unfinished run is detectable (injury_freshness.manifest_view).
+        Readers that matter filter on status = 'ok'; the API reports such a leftover row (finished_at NULL) as
+        'interrupted' and leaves it out of each source's latest run (api/routes.py)."""
         upsert_rows(self.con, "sync_runs", [{
+            "run_id": self.run_id, "source": self.source, "started_at": self.started_at, "finished_at": None,
+            "status": "running", "message": message, "stats": stats or {},
+        }], ["run_id"])
+
+    def finish(self, status: str, message: str = "", stats: dict | None = None) -> None:
+        """Replace the start() marker (or insert). When the marker exists this is ONE UPDATE statement:
+        upsert_rows is DELETE then INSERT, so a crash between them would erase the 'running' marker and with it
+        the sign of an unfinished sync. A single statement is atomic, and it joins any transaction the caller
+        has open (no BEGIN of our own, which would abort a caller's transaction)."""
+        row = {
             "run_id": self.run_id,
             "source": self.source,
             "started_at": self.started_at,
@@ -289,7 +303,14 @@ class SyncRun:
             "status": status,
             "message": message,
             "stats": stats or {},
-        }], ["run_id"])
+        }
+        if self.con.execute("SELECT count(*) FROM sync_runs WHERE run_id = ?", [self.run_id]).fetchone()[0]:
+            self.con.execute("UPDATE sync_runs SET source = ?, started_at = ?, finished_at = ?, status = ?, "
+                             "message = ?, stats = ? WHERE run_id = ?",
+                             [row["source"], row["started_at"], row["finished_at"], row["status"], row["message"],
+                              json.dumps(row["stats"], default=str), self.run_id])
+        else:
+            upsert_rows(self.con, "sync_runs", [row], ["run_id"])
 
 
 def fetch_dicts(con: duckdb.DuckDBPyConnection, sql: str, params: Sequence[Any] = ()) -> list[dict]:

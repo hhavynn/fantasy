@@ -799,7 +799,22 @@ per injury row, when present; its coverage per season (and the count of rows wit
 is recorded as `available`, `partial` or `missing` and never imputed. Retrieved = an upper bound on
 the download time: the finish of the nflverse sync that wrote the live season (`sync_runs`), the
 play-by-play file's write time, or null (history seasons). Captured = the forecast's creation time.
-Used = the ledger run's `created_at`. `known_by` = retrieved if known, else captured.
+Used = the ledger run's `created_at`. `known_by` = retrieved if known, else captured. For a team's
+injury rows, `known_by` prefers the verified per-team retrieval time recorded in the manifest's
+`injury_retrievals` field (below), never later than `captured_at`.
+
+**Per-team injury retrievals.** New manifests add `injury_retrievals` (schema `injury-retrievals/v1`):
+per team the latest verified entry of the append-only `injury_retrievals` log (source, retrieved_at,
+provider_published_at, content_sha, retrieval_id) written by the latest successful nfl sync (the one that
+wrote the captured table), only if retrieved strictly before both the capture and that team's kickoff.
+A team with no qualifying entry (log write failed, backdated capture, sync after the capture) has none,
+and nothing is guessed. The first capture after deployment gets a new manifest id and so one extra
+frozen run. Manifests
+made before the field existed load and reconstruct unchanged, and an existing manifest is never
+rewritten. Readiness and the cycle report also list injury-freshness warnings (missing, stale or
+post-kickoff-only evidence, ESPN fallback adding no designations, or "injury retrieval log
+unavailable"); they are informational and never block or change a forecast. See
+`docs/injury_freshness.md` section 5.
 
 **Point-in-time reads.** `source_provenance.injuries_as_of(season, week, kickoffs)` returns, per team,
 the week's injury rows from the latest snapshot known strictly before **that team's** kickoff,

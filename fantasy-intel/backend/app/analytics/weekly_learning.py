@@ -120,10 +120,14 @@ def team_kickoffs(sources: Sources, season: int, week: int) -> dict[str, datetim
 # ----------------------------------------------------------------------------- readiness
 
 
-def readiness(sources: Sources, season: int, week: int, now: datetime, fetched_at: datetime | None = None) -> dict:
+def readiness(sources: Sources, season: int, week: int, now: datetime, fetched_at: datetime | None = None,
+              con=None) -> dict:
     """Is every input for a week-W forecast present and final? Errors block training/prediction.
     `fetched_at`: start of the nflverse sync that wrote the schedule; a scored game counts as final
-    only under game_presumed_final (unknown fetch time: never)."""
+    only under game_presumed_final (unknown fetch time: never).
+    `con`: the live database. When given, injury-retrieval freshness (injury_freshness.readiness_notes)
+    is added to `warnings` and under `injury_freshness`. These are informational only: they never add an
+    error, change `ok`/`pregame`, or reach a model input, injury probability or participation output."""
     errors, warnings = [], []
     now = _utc(now)
     games = sources.games.filter(pl.col("season") == season)
@@ -176,10 +180,16 @@ def readiness(sources: Sources, season: int, week: int, now: datetime, fetched_a
     kick = team_kickoffs(sources, season, week)
     first = min(kick.values()) if kick else None
     started = sorted(t for t, k in kick.items() if k <= now)
-    return {"season": season, "week": week, "checked_at": now.isoformat(), "ok": not errors, "errors": errors,
-            "warnings": warnings, "completed_weeks": checks, "pbp_exits_through_week": exits_through,
-            "first_kickoff": first.isoformat() if first else None,
-            "pregame": bool(first and now < first), "teams_already_kicked_off": started}
+    report = {"season": season, "week": week, "checked_at": now.isoformat(), "ok": not errors, "errors": errors,
+              "warnings": warnings, "completed_weeks": checks, "pbp_exits_through_week": exits_through,
+              "first_kickoff": first.isoformat() if first else None,
+              "pregame": bool(first and now < first), "teams_already_kicked_off": started}
+    if con is not None:
+        from .injury_freshness import readiness_notes
+        notes = readiness_notes(con, season, week, now)
+        warnings.extend(notes["warnings"])
+        report["injury_freshness"] = {k: v for k, v in notes.items() if k != "warnings"}
+    return report
 
 
 # ----------------------------------------------------------------------------- training
