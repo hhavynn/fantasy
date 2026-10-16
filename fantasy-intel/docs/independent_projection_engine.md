@@ -954,6 +954,14 @@ penalty and rows match, and no separate penalty or feature split beats ifp-2 on 
 appearance in a covered team-week is a measured zero; treating it as missing biases any xFP-target
 model by about -0.9 points.
 
+### Shallow gradient boosting (research, retain ridge)
+
+`docs/research/hgb_challenger.md`: per-position HistGradientBoosting on ifp-2's features (`ifp-hgb-0.1.0`,
+research only, scikit-learn in the `research` dependency group) is worse than ifp-2 on development
+(+0.025 MAE, CI [+0.003, +0.045]) and not better on the 2023-26 replay; ridge is retained. Its frozen
+configuration writes write-once pregame research forecasts (`hgb_research.py predict`) as prospective
+evidence only.
+
 ### Model registry (approval manifest, research only)
 
 `docs/model_registry.md`: `backend/app/analytics/model_registry.json` records the approved
@@ -969,6 +977,17 @@ changes a consumer; the hosted app does not import it.
 Feature store 2020-2026 (42.7k rows, with classification) 6.4 s; development grid of 20 specs x 8
 penalties 16 s (parallel); confirmation 2.8 s; weekly `train` ~10 s; `predict` ~1 s; play-by-play
 sync ~0.5 s per season (nflverse cache). Artifacts ~30 KB each, ledger runs ~0.7 MB per week (436 players in week 6).
+
+### New data sources: FTN read progression and timestamped depth charts (research)
+
+`docs/research/first_read_depth_chart_signals.md` (`app/analytics/usage_signals.py`, never imported
+by the app). FTN `read_thrown` code `"1"`, not the dictionary's `"0"`, behaves as the first read in
+every season 2022-2026 (`"0"` replaced 2022's NA on non-pass plays). The first-read share of
+targets adds a small, consistent gain over ifp-2 for WR/RB (points MAE −0.020 development,
+−0.012 replay); the dictionary reading adds nothing. The modern timestamped depth charts (2025+
+only) help through the static pregame tier, mostly for backup QBs; the depth-*change* features
+(promotion, vacancy, chart-vs-snaps) are rejected. Nothing is integrated: both survivors are
+follow-up prospective-shadow candidates, and ifp-1.0.0 / ifp-2.0.0 are unchanged.
 
 ## Point distributions (research, ifpd-0.1.0)
 
