@@ -488,21 +488,23 @@ def espn_comparison(preds: pl.DataFrame, espn: pl.DataFrame | None) -> dict:
 
 def league_roster_pairs(con, season: int) -> set[tuple]:
     """Same-position player pairs that sat on the same fantasy roster in the same scoring period
-    (contemporaneous lineup snapshots only; nothing is reconstructed)."""
+    (contemporaneous lineup snapshots only; nothing is reconstructed). A roster is one team of one league
+    (league_id, team_id); a pair that is real in any synced league is returned once as (season, week, a, b)."""
     from ..db.connection import fetch_dicts, table_exists
 
     if con is None or not table_exists(con, "lineup_snapshots"):
         return set()
     rows = fetch_dicts(con, """
-        SELECT s.season, s.scoring_period AS week, s.team_id, m.gsis_id, m.espn_position AS position
+        SELECT s.league_id, s.season, s.scoring_period AS week, s.team_id, m.gsis_id, m.espn_position AS position
         FROM lineup_snapshots s JOIN player_id_map m ON m.espn_player_id = s.espn_player_id
         WHERE s.season = ? AND m.match_confidence = 'high' AND m.gsis_id IS NOT NULL
           AND m.espn_position IN ('QB', 'RB', 'WR', 'TE')""", [season])
     groups = defaultdict(list)
     for r in rows:
-        groups[(r["season"], r["week"], r["team_id"], r["position"])].append(r["gsis_id"])
+        # ESPN team ids restart at 1 in every league: a roster is (league, team), never team alone
+        groups[(r["league_id"], r["season"], r["week"], r["team_id"], r["position"])].append(r["gsis_id"])
     out = set()
-    for (s, w, _, _), ids in groups.items():
+    for (_, s, w, _, _), ids in groups.items():
         ids = sorted(set(ids))
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):

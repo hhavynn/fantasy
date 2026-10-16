@@ -221,6 +221,11 @@ TE 80.0%. Intervals are prediction intervals for one week's score, not confidenc
 contemporaneous lineup snapshots, 1,012 pairs): recent 64.6%, season 62.3%, opportunity 65.0%,
 context 64.7%. No meaningful edge on this small sample.
 
+*Note:* this pair set was built before `league_roster_pairs` keyed rosters by `(league_id, team_id)`; ESPN team
+ids restart at 1 in every league, so with several synced leagues it also paired players from different leagues'
+team 1s. All models were scored on the same set, so the comparison between them is unaffected, but N (1,012) may
+be overstated. Rerun `backtest_independent_projections.py evaluate` on the real database to restate N.
+
 **ESPN comparison: 0 matched observations.** Nothing is claimed about ESPN.
 
 Runtime (Apple silicon laptop): history ingestion 17 s; feature store 42.7k rows in 3.3 s;
