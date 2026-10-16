@@ -29,7 +29,7 @@ settings or cached results.
 | `frontend/proxy.ts`, `lib/site-auth.ts` | One shared `SITE_PASSWORD`; any username accepted. No user identity reaches the backend. |
 | `frontend/lib/api.ts` | Every call is unscoped (`/league`, `/waivers`, ...); no league or user in the request. |
 
-### "Most recently synced league, globally" selectors (21 sites)
+### "Most recently synced league, globally" selectors (20 sites in 17 files)
 Every one of these silently picks `ORDER BY synced_at DESC LIMIT 1` across *all* leagues in the
 database. With two leagues in one database they return whichever synced last, for every caller.
 `tests/test_league_scope_audit.py` pins this list so a new global selector fails CI.

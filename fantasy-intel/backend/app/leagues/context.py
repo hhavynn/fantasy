@@ -13,6 +13,8 @@ Rules this module encodes:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -136,7 +138,15 @@ class Freshness:
     last_error: str | None = None               # sanitized, never contains credentials or raw responses
 
 
-_ISSUER = object()
+# Per-process key sealing the authorizing fields of every issued context. A context copied with
+# dataclasses.replace() keeps its old seal, so changing its principal, league, role or access breaks it.
+_SEAL_KEY = secrets.token_bytes(32)
+
+
+def _seal(league_id: object, key: object, principal: object, role: object, access: object) -> str:
+    parts = [str(league_id), getattr(key, "namespaced", repr(key)), str(getattr(principal, "user_id", None)),
+             str(getattr(role, "value", role)), str(getattr(access, "value", access))]
+    return hmac.new(_SEAL_KEY, "\x1f".join(parts).encode(), hashlib.sha256).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -154,7 +164,8 @@ class LeagueContext:
     _issuer: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
-        if self._issuer is not _ISSUER:
+        expected = _seal(self.league_id, self.key, self.principal, self.role, self.access)
+        if not isinstance(self._issuer, str) or not hmac.compare_digest(self._issuer, expected):
             raise RuntimeError("LeagueContext is issued by an authorization check (tenancy store), not built by hand")
         check_internal_league_id(self.league_id)
         if not self.principal.is_authenticated:
@@ -175,4 +186,6 @@ class LeagueContext:
 
 def issue_context(**kwargs) -> LeagueContext:
     """For the tenancy store's authorization check only (and tests of it)."""
-    return LeagueContext(**kwargs, _issuer=_ISSUER)
+    seal = _seal(kwargs.get("league_id"), kwargs.get("key"), kwargs.get("principal"), kwargs.get("role"),
+                 kwargs.get("access"))
+    return LeagueContext(**kwargs, _issuer=seal)

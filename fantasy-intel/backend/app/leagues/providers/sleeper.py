@@ -42,7 +42,7 @@ from ...sleeper.models import (SleeperLeague, SleeperPlayer, SleeperRoster, Slee
                                parse_players, parse_rosters, parse_users, sid)
 from ...sleeper.league import rostered_player_ids
 from ...sleeper.normalize import LEAGUE_TYPES, schedule_weeks
-from ..capabilities import Capability, CapabilityState, ProviderCapabilities, Support
+from ..capabilities import Capability, CapabilityState, CapabilityUnavailable, ProviderCapabilities, Support
 from ..context import LeagueKey, Provider
 from ..identity import Confidence, IdentityLink, IdentityMethod, ProviderPlayerId
 from ..models import (FLEX_POSITIONS, SUPERFLEX_POSITIONS, LeagueSettings, LineupRules, LineupSlot, PlayoffSettings,
@@ -360,7 +360,7 @@ def _guard(fn: Callable[[], T]) -> T:
     failure: ProviderError | None = None
     try:
         return fn()
-    except ProviderError:
+    except (ProviderError, CapabilityUnavailable):
         raise
     except InvalidLeagueId:
         failure = LeagueNotFound("Sleeper has no NFL league with this id")
@@ -372,6 +372,8 @@ def _guard(fn: Callable[[], T]) -> T:
         failure = ProviderUnavailable("Sleeper could not be reached")
     except (SleeperError, ValueError, KeyError, TypeError, AttributeError):
         failure = ProviderUnavailable("Sleeper returned an unexpected response")
+    except Exception:                            # noqa: BLE001 - never let upstream text through
+        failure = ProviderUnavailable("Sleeper request failed unexpectedly")
     raise failure
 
 

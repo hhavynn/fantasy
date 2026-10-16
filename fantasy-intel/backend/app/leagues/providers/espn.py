@@ -29,7 +29,7 @@ from typing import Any, Callable, TypeVar
 
 from ...espn.constants import PROJECTION_LIMIT, SLOT_MAP
 from ...espn.parse import anon_member, ms_to_dt, parse_league, parse_player_pool, parse_projection_week, parse_rosters, parse_transactions
-from ..capabilities import Capability, CapabilityState, ProviderCapabilities, Support
+from ..capabilities import Capability, CapabilityState, CapabilityUnavailable, ProviderCapabilities, Support
 from ..context import AccessMethod, LeagueKey, Provider
 from ..identity import ProviderPlayerId
 from ..models import (CANONICAL_STATS, FLEX_POSITIONS, SUPERFLEX_POSITIONS, LeagueSettings, LineupRules, LineupSlot,
@@ -401,7 +401,7 @@ def _guard(fn: Callable[[], T]) -> T:
     failure: ProviderError | None = None
     try:
         return fn()
-    except ProviderError:
+    except (ProviderError, CapabilityUnavailable):
         raise
     except Exception as exc:                          # noqa: BLE001 - classified below, text dropped
         name = type(exc).__name__
@@ -413,8 +413,8 @@ def _guard(fn: Callable[[], T]) -> T:
             failure = ProviderUnavailable("ESPN could not be reached")
         elif isinstance(exc, (ValueError, KeyError, TypeError, AttributeError)) or name == "ESPNUnknownError":
             failure = ProviderUnavailable("ESPN returned an unexpected response")
-        else:
-            raise
+        else:                                         # anything else: still never let upstream text through
+            failure = ProviderUnavailable("ESPN request failed unexpectedly")
     raise failure
 
 

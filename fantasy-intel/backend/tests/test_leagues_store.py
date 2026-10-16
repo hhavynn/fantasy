@@ -9,7 +9,7 @@ import pytest
 from app.config import get_settings
 from app.db.connection import utcnow
 from app.leagues.context import (
-    AccessMethod, LeagueAccessDenied, LeagueKey, Principal, Provider, SyncStatus,
+    AccessMethod, LeagueAccessDenied, LeagueKey, Principal, Provider, SyncStatus, issue_context,
 )
 from app.leagues.models import Provenance
 from app.leagues.store import TenancyStore, sanitize_error
@@ -283,8 +283,9 @@ def test_a_context_cannot_read_a_league_it_is_not_connected_to(store):
     b = connect(store, BOB, key=ESPN)
     store.save_snapshot(a, "settings", {"secret": "alice"}, prov())
     # Bob's own context, pointed at alice's league id by a buggy caller, cannot see it.
-    from dataclasses import replace
-    forged = replace(b, league_id=a.league_id)
+    import dataclasses
+    fields = {f.name: getattr(b, f.name) for f in dataclasses.fields(b) if f.name != "_issuer"}
+    forged = issue_context(**{**fields, "league_id": a.league_id})   # minted without authorization
     with pytest.raises(LeagueAccessDenied):
         store.load_snapshot(forged, "settings")
 

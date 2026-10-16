@@ -9,7 +9,7 @@ from app.leagues.capabilities import Capability
 from app.leagues.context import Provider
 from app.leagues.identity import Confidence, IdentityMethod, ProviderPlayerId, same_athlete
 from app.leagues.models import FLEX_POSITIONS, SUPERFLEX_POSITIONS, SlotKind
-from app.leagues.providers.base import LeagueNotFound
+from app.leagues.providers.base import LeagueNotFound, ProviderUnavailable
 from app.leagues.providers.fixtures import FixtureTransport
 from app.leagues.providers.sleeper import (SleeperProvider, canonical_position, lineup_rules, scoring_rules,
                                            settings_from)
@@ -54,11 +54,21 @@ def test_fixture_provenance_is_prefixed_and_live_provenance_is_not(prov, tmp_pat
     assert transport.calls == [f"/league/{SLEEPER_L1}"], "live mode goes through the injected transport only"
 
 
-def test_live_mode_builds_a_real_client_but_makes_no_request_until_asked(no_network):
+def test_live_mode_builds_a_real_client_but_makes_no_request_until_asked(no_network, monkeypatch):
+    import socket
+    attempts = []
+
+    def refuse(*a, **k):
+        attempts.append(a[1:2] or a[:1])
+        raise OSError("network access attempted in an offline provider test")
+
+    monkeypatch.setattr(socket, "getaddrinfo", refuse)
     p = SleeperProvider(source="live")
     assert p.capabilities().enabled and p.data_origin == "live"
-    with pytest.raises(AssertionError, match="network access attempted"):
-        p.fetch_settings(skey(), PUBLIC)       # the blocked socket proves nothing else can leak out
+    assert attempts == []                      # building the provider and reading capabilities is offline
+    with pytest.raises(ProviderUnavailable) as exc:
+        p.fetch_settings(skey(), PUBLIC)       # the blocked socket proves the live path is the real client
+    assert attempts and exc.value.__cause__ is None and exc.value.__context__ is None
 
 
 # -------------------------------------------------------------------------------- settings --

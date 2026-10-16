@@ -57,6 +57,10 @@ _ERROR_MAX = 240
 
 _BEARER = re.compile(r"(?i)\bbearer\s+[^\s,;]+")
 _COOKIE_LINE = re.compile(r"(?i)\b(set-cookie|cookie)\b\s*[=:]\s*.*")
+# Authorization headers: the scheme (Basic / Token / Digest / ...) is followed by the credential, so the
+# whole rest of the line goes. OAuth `code` / `state` URL parameters are one-time secrets too.
+_AUTH_LINE = re.compile(r"(?i)\b((?:proxy-)?authorization)\b\s*[=:]\s*.*")
+_OAUTH_PARAM = re.compile(r"(?i)([?&](?:code|state))=[^&\s#]+")
 _KEYED_SECRET = re.compile(
     r"(?i)\b(espn_s2|swid|access_token|refresh_token|id_token|client_secret|api[_-]?key|x-api-key|"
     r"authorization|token|secret|password|passwd|session)\b[\"']?\s*[=:]\s*[\"']?[^\s\"',;&]+")
@@ -85,6 +89,8 @@ def sanitize_error(err: BaseException | str, *, max_len: int = _ERROR_MAX) -> st
         name, text = "", str(err)
     text = text[:4000]
     text = _COOKIE_LINE.sub(lambda m: f"{m.group(1)}=[redacted]", text)
+    text = _AUTH_LINE.sub(lambda m: f"{m.group(1)}=[redacted]", text)
+    text = _OAUTH_PARAM.sub(lambda m: f"{m.group(1)}=[redacted]", text)
     text = _BEARER.sub("Bearer [redacted]", text)
     text = _KEYED_SECRET.sub(lambda m: f"{m.group(1)}=[redacted]", text)
     text = _GUID.sub("[redacted]", text)
@@ -112,6 +118,19 @@ class LeagueMeta:
     is_public: bool | None
 
 
+# A connection authorizes only while its access method is still valid for it: PUBLIC only while the
+# provider still reports the league public (a league that turned private stops being readable through
+# an old PUBLIC grant), OWNER_ENV only for ESPN and only while the principal is still the configured
+# deployment owner. The single parameter is settings.owner_user_id (NULL never matches).
+_ACCESS_STILL_VALID = """
+  AND (c.access_method <> 'public' OR r.is_public IS TRUE)
+  AND (c.access_method <> 'owner_env' OR (r.provider = 'espn' AND c.user_id = ?))"""
+
+
+def _owner_id() -> str | None:
+    return get_settings().owner_user_id
+
+
 _CONTEXT_SQL = """
 SELECT r.league_id, r.provider, r.external_league_id, r.season, r.name, r.is_public, r.data_origin,
        c.role, c.access_method, c.my_team_external_id,
@@ -119,8 +138,7 @@ SELECT r.league_id, r.provider, r.external_league_id, r.season, r.name, r.is_pub
 FROM league_connections c
 JOIN league_registry r ON r.league_id = c.league_id
 LEFT JOIN league_sync_status s ON s.league_id = c.league_id
-WHERE c.user_id = ? AND c.revoked_at IS NULL
-"""
+WHERE c.user_id = ? AND c.revoked_at IS NULL""" + _ACCESS_STILL_VALID + "\n"
 
 
 def _default_capabilities() -> dict[Provider, ProviderCapabilities] | None:
@@ -188,7 +206,8 @@ class TenancyStore:
             raise LeagueAccessDenied("unknown league") from None
 
     def _authorize_in(self, con, principal: Principal, league_id: str) -> LeagueContext:
-        rows = fetch_dicts(con, _CONTEXT_SQL + " AND c.league_id = ?", [principal.user_id, league_id])
+        rows = fetch_dicts(con, _CONTEXT_SQL + " AND c.league_id = ?",
+                           [principal.user_id, _owner_id(), league_id])
         if not rows:
             raise LeagueAccessDenied("unknown league")
         return self._context_from_row(rows[0], principal, self._capabilities())
@@ -202,9 +221,9 @@ class TenancyStore:
         row = con.execute(
             "SELECT 1 FROM league_connections c JOIN league_registry r ON r.league_id = c.league_id "
             "WHERE c.user_id = ? AND c.league_id = ? AND c.revoked_at IS NULL "
-            "AND r.provider = ? AND r.external_league_id = ? AND r.season = ?",
+            "AND r.provider = ? AND r.external_league_id = ? AND r.season = ?" + _ACCESS_STILL_VALID,
             [ctx.principal.user_id, ctx.league_id, ctx.key.provider.value,
-             ctx.key.external_league_id, ctx.key.season]).fetchone()
+             ctx.key.external_league_id, ctx.key.season, _owner_id()]).fetchone()
         if row is None:
             raise LeagueAccessDenied("unknown league")
 
@@ -298,7 +317,7 @@ class TenancyStore:
             return []
         with self._tx() as con:
             rows = fetch_dicts(con, _CONTEXT_SQL + " ORDER BY r.season DESC, r.name, r.league_id",
-                               [principal.user_id])
+                               [principal.user_id, _owner_id()])
         caps = self._capabilities()
         out = []
         for row in rows:
@@ -317,7 +336,7 @@ class TenancyStore:
         with self._tx() as con:
             rows = fetch_dicts(
                 con, _CONTEXT_SQL + " AND r.provider = ? AND r.external_league_id = ? AND r.season = ?",
-                [principal.user_id, key.provider.value, key.external_league_id, key.season])
+                [principal.user_id, _owner_id(), key.provider.value, key.external_league_id, key.season])
             if not rows:
                 return None
             return self._context_from_row(rows[0], principal, self._capabilities())

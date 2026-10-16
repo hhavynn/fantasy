@@ -58,3 +58,22 @@ asserted by a signed, short-lived token. 3. API → providers: outbound, credent
 ## Verification
 `tests/test_multileague_isolation.py`, `tests/test_leagues_*.py`, `tests/test_league_providers*.py`,
 `tests/test_no_credential_leaks.py`, `tests/test_league_scope_audit.py`.
+
+## Review findings (Phase 1 adversarial review, all fixed in this PR)
+
+| Id | Severity | Finding | Fix | Regression test |
+|---|---|---|---|---|
+| SEC-1 | Medium | A `PUBLIC` connection kept authorizing after the league was re-registered as private, exposing snapshots refreshed with owner credentials | Every authorization re-checks `access_method = public ⇒ league is_public` in SQL (`store._ACCESS_STILL_VALID`) | `test_sec1_public_connection_stops_authorizing_when_the_league_turns_private` |
+| SEC-2 | Medium | An `OWNER_ENV` connection survived a change/removal of `FANTASY_OWNER_USER_ID` | Same predicate: `owner_env ⇒ provider = espn AND user = current owner` | `test_sec2_owner_env_connection_ends_when_the_user_is_no_longer_the_owner` |
+| SEC-3 | Low | With the flag off, `/v2` answered 405/307 for other methods and slash variants, revealing the routes | Middleware answers 404 for every `/v2` path and method while disabled | `test_sec3_flag_off_is_404_for_every_method_and_path_shape` |
+| SEC-4 | Low | `sanitize_error` kept the value after `Authorization: <scheme>` | Whole authorization line redacted; OAuth `code`/`state` parameters redacted | `test_sec4_...` |
+| SEC-5 | Low | `dataclasses.replace()` could forge a `LeagueContext` (trusted by the tenant cache) | Contexts carry a per-process HMAC seal over league, key, principal, role and access | `test_sec5_a_context_cannot_be_forged_by_replacing_its_principal_or_league` |
+| SEC-6 | Low | The assertion secret could equal `FANTASY_API_KEY` (sent on every request) | Treated as unset when equal | `test_sec6_...` |
+| SEC-7 | Low/Medium | `repr(Settings)` printed `espn_s2`, `SWID`, the API key and the assertion secret (pre-existing for the first three) | Those fields are `repr=False` | `test_sec7_settings_repr_does_not_print_credentials` |
+| SEC-8 | Low | Adapters re-raised unrecognised exceptions with provider text and chains | Both adapters convert any exception into a fixed-text `ProviderUnavailable` without `__cause__`/`__context__` | `test_sec8_...` |
+
+Accepted / informational (no code change in Phase 1): connect has no per-user rate limit and `espn_api`
+sets no HTTP timeout (Phase 2: timeouts, per-user caps, circuit breaker); any signed-in user can read any
+Sleeper league by id (Sleeper's own model); anonymous `/v2/providers` reveals whether owner ESPN cookies
+are configured (not their values); `FANTASY_DEV_USER_ID` makes every visitor one user on non-production
+servers; `FANTASY_OWNER_USER_ID` must be an unguessable IdP subject once sign-in exists.

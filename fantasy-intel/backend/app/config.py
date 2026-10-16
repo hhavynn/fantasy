@@ -47,18 +47,18 @@ class Settings:
     league_id: int | None
     season: int
     nfl_season: int
-    espn_s2: str | None
-    swid: str | None
+    espn_s2: str | None = field(repr=False)   # secrets never appear in repr(), logs or tracebacks
+    swid: str | None = field(repr=False)
     my_team_id: int | None
     db_path: Path
     external_preferred_provider: str | None = None
     trade_max_players_per_side: int = 6     # manual trade analyzer guard (TRADE_MAX_PLAYERS_PER_SIDE, 1-10)
     motherduck_database: str | None = None  # hosted mode: the API reads md:<name> instead of db_path
-    api_key: str | None = None              # hosted mode: required `X-API-Key` header on every request
+    api_key: str | None = field(default=None, repr=False)   # hosted mode: required `X-API-Key` header on every request
     # --- multi-league platform (Phase 1). Every flag defaults OFF, so today's behaviour is unchanged. ---
     multileague_enabled: bool = False       # MULTILEAGUE_ENABLED=1: serves /v2/*; otherwise those routes 404
     tenancy_db_path: Path = field(default_factory=lambda: DATA_DIR / "tenancy.duckdb")   # FANTASY_TENANCY_DB_PATH
-    user_assertion_secret: str | None = None    # FANTASY_USER_ASSERTION_SECRET, >= 32 chars or treated as unset
+    user_assertion_secret: str | None = field(default=None, repr=False)  # FANTASY_USER_ASSERTION_SECRET, >= 32 chars or treated as unset
     owner_user_id: str | None = None        # FANTASY_OWNER_USER_ID: the one user allowed AccessMethod.OWNER_ENV
     sleeper_source: str = "disabled"        # SLEEPER_SOURCE = disabled | fixture | live
     espn_public_import_enabled: bool = False    # ESPN_PUBLIC_IMPORT_ENABLED=1
@@ -81,6 +81,10 @@ def get_settings() -> Settings:
     assertion_secret = _str_or_none(os.getenv("FANTASY_USER_ASSERTION_SECRET"))
     if assertion_secret is not None and len(assertion_secret) < _MIN_ASSERTION_SECRET:
         assertion_secret = None
+    api_key = (os.getenv("FANTASY_API_KEY") or "").strip() or None
+    # The API key travels on every request; if it also signed user assertions, any key holder could forge any user.
+    if assertion_secret is not None and assertion_secret == api_key:
+        assertion_secret = None
     return Settings(
         league_id=_int_or_none(os.getenv("ESPN_LEAGUE_ID")),
         season=season,
@@ -92,7 +96,7 @@ def get_settings() -> Settings:
         external_preferred_provider=(os.getenv("EXTERNAL_USAGE_PREFERRED_PROVIDER") or "").strip() or None,
         trade_max_players_per_side=max(1, min(10, _int_or_none(os.getenv("TRADE_MAX_PLAYERS_PER_SIDE")) or 6)),
         motherduck_database=(os.getenv("MOTHERDUCK_DATABASE") or "").strip() or None,
-        api_key=(os.getenv("FANTASY_API_KEY") or "").strip() or None,
+        api_key=api_key,
         multileague_enabled=_flag(os.getenv("MULTILEAGUE_ENABLED")),
         tenancy_db_path=tenancy_db_path,
         user_assertion_secret=assertion_secret,

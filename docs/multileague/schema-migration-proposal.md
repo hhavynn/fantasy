@@ -31,7 +31,7 @@ league context so the existing engines can serve more than one league.
 | `nfl_*`, `player_week_usage`, `player_context`, `defense_context`, `team_context`, `team_game_lines` | global | unchanged (league-independent) |
 
 ## Read path
-- Replace every `ORDER BY synced_at DESC LIMIT 1` selector (21 sites, pinned by
+- Replace every `ORDER BY synced_at DESC LIMIT 1` selector (20 sites, pinned by
   `tests/test_league_scope_audit.py`) with `load_league_state(con, ctx: LeagueContext)`; the
   owner deployment resolves its context from `ESPN_LEAGUE_ID`/`ESPN_SEASON` via a legacy shim, so
   its behaviour does not change.
