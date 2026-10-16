@@ -20,7 +20,6 @@ import json
 from dataclasses import dataclass
 
 from ..db.connection import fetch_dicts, replace_where, table_exists, utcnow
-from . import forward_ours
 
 PROJECTION_SOURCE = "ESPN"
 BASELINE_NOTE = ("ESPN projection is the forward fantasy-point baseline. Role, sustainability, schedule "
@@ -203,6 +202,9 @@ def player_forward(con, season: int, pid: int, team: str | None, source: str = "
     out = {"source": PROJECTION_SOURCE, "note": BASELINE_NOTE, "summary": summarize(window, weeks),
            "projection_synced_at": p["synced_at"], "weeks": weeks,
            "schedule_available": bool(covered)}
+    if source == "espn":    # the default never loads the opt-in switch
+        return out
+    from . import forward_ours   # lazy: the canonical ESPN module stays free of the opt-in switch
     ours = forward_ours.ours_forward(con, season, pid, weeks, source=source)
     if ours is not None:
         out["ours"] = ours

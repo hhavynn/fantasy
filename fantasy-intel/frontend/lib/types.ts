@@ -163,9 +163,10 @@ export type OursWeek = {
 
 /** Fantasy Intel's production model for the rest of the regular season. `ros_projected_points` is null unless complete. */
 export type OursForward = {
-  available: boolean; reason: string | null; label: string; model_version: string; weeks: OursWeek[];
+  available: boolean; reason: string | null; label: string; model_version: string; model_versions: string[];
+  mixed_models: boolean; weeks: OursWeek[];
   ros_projected_points: number | null; ros_weeks_expected: number; ros_weeks_available: number; ros_complete: boolean;
-  fallback_weeks: number[]; missing_weeks: number[]; last_regular_season_week: number | null; run_created_at: string | null;
+  fallback_weeks: number[]; missing_weeks: number[]; other_model_weeks: number[]; last_regular_season_week: number | null; run_created_at: string | null;
 };
 
 export type ForwardProjection = {

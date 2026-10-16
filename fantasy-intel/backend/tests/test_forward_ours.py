@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.analytics import projection_source as ps
-from app.analytics.forward_ours import LABEL, ours_forward
+from app.analytics.forward_ours import LABEL, ours_forward, player_weeks
 from app.analytics.projections import forward_weeks, league_window, load_schedule, player_forward, summarize
 from app.db.connection import connect, init_db
 
@@ -156,13 +156,37 @@ def test_a_player_missing_from_a_run_is_espn_for_that_week(con):
     assert by_week(o)[8]["origin"] == "espn" and o["ros_projected_points"] is None
 
 
-def test_previous_model_run_is_labeled_and_still_counts(con):
+def test_previous_model_weeks_are_labeled_and_never_counted_in_the_ifp2_total(con):
     populate(con, run_weeks=[])
     for w in range(CURRENT, LAST_REG + 1):
         add_run(con, w, version=ps.FALLBACK_VERSION)
     o = ours_for(con)["ours"]
     assert o["available"] and ps.FALLBACK_VERSION in o["reason"]
     assert {e["model_version"] for e in o["weeks"]} == {ps.FALLBACK_VERSION}
+    assert o["model_versions"] == [ps.FALLBACK_VERSION] and o["mixed_models"] is False
+    assert "ifp-1.0.0" in o["label"] and "ifp-2.0.0" not in o["label"]
+    assert o["ros_projected_points"] is None and o["ros_complete"] is False       # not an ifp-2.0.0 total
+    assert o["other_model_weeks"] == list(range(CURRENT, LAST_REG + 1))
+    assert by_week(o)[7]["value"] == ours_value(7)                                # the weekly numbers still show
+
+
+def test_mixed_model_weeks_are_labeled_and_hide_the_total(con):
+    populate(con, run_weeks=[w for w in range(CURRENT, LAST_REG + 1) if w != CURRENT])
+    add_run(con, CURRENT, version=ps.FALLBACK_VERSION)         # the current week only has the previous model
+    o = ours_for(con)["ours"]
+    w = by_week(o)
+    assert w[6]["model_version"] == ps.FALLBACK_VERSION and w[7]["model_version"] == ps.MODEL_VERSION
+    assert o["model_versions"] == [ps.FALLBACK_VERSION, ps.MODEL_VERSION] and o["mixed_models"] is True
+    assert "ifp-1.0.0" in o["label"] and "ifp-2.0.0" in o["label"]
+    assert o["model_version"] == ps.MODEL_VERSION               # the production model, for the per-week badge
+    assert o["ros_projected_points"] is None and o["ros_complete"] is False
+    assert o["other_model_weeks"] == [6] and o["missing_weeks"] == [6]
+    assert "Mixed models" in o["reason"] and "week 6" in o["reason"]
+    # once the production run exists for the week, the label and the total are ifp-2.0.0 again
+    add_run(con, CURRENT, created=CREATED + timedelta(hours=1))
+    o = ours_for(con)["ours"]
+    assert o["model_versions"] == [ps.MODEL_VERSION] and not o["mixed_models"] and o["ros_complete"]
+    assert o["label"] == LABEL and o["reason"] is None
 
 
 def test_newest_run_of_a_week_wins(con):
@@ -177,8 +201,8 @@ def test_newest_run_of_a_week_wins(con):
 def test_runs_without_horizon_columns_still_work(con):
     populate(con, horizon_col=False)
     w = by_week(ours_for(con)["ours"])
-    assert w[7]["horizon"] is None and w[7]["projected_from_week"] is None
-    assert w[6]["experimental"] is False and w[7]["experimental"] is True      # inferred from the week offset
+    assert w[7]["horizon"] == 0 and w[7]["projected_from_week"] is None         # NULL horizon = 0 (contract)
+    assert w[6]["experimental"] is False and w[7]["experimental"] is False
 
 
 def test_no_future_runs_means_unavailable_with_a_reason(con):
@@ -188,6 +212,44 @@ def test_no_future_runs_means_unavailable_with_a_reason(con):
     assert o["available"] is False and "No ifp-2.0.0 projection run" in o["reason"]
     assert o["weeks"] == [] and o["ros_projected_points"] is None
     assert out["summary"]["ros_projected_points"] is not None      # ESPN is still shown in full
+
+
+# ----------------------------------------------------------------------------- batching
+
+
+class Counting:
+    """Counts execute() calls on a connection."""
+    def __init__(self, con):
+        self.con, self.n = con, 0
+
+    def execute(self, *a, **k):
+        self.n += 1
+        return self.con.execute(*a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self.con, name)
+
+
+def test_queries_are_bounded_and_equal_the_per_week_switch(con):
+    populate(con, run_weeks=[w for w in range(CURRENT, LAST_REG + 1) if w != 11])   # week 11: ESPN fallback
+    add_run(con, 8, version=ps.FALLBACK_VERSION, created=CREATED + timedelta(hours=2))   # older-model, newer run
+    add_run(con, 10, created=CREATED + timedelta(hours=1))                                # a re-run wins
+    # a newest run whose rows were lost is skipped, like production_forecasts.latest_run
+    lost = add_run(con, 12, created=CREATED + timedelta(hours=3))
+    con.execute("DELETE FROM independent_projection_rows WHERE run_id = ?", [lost])
+    weeks = list(range(CURRENT, LAST_REG + 1))
+    counting = Counting(con)
+    got = {pid: player_weeks(counting, SEASON, pid, weeks) for pid in (1, 2, 3)}
+    assert counting.n <= 3 * 15, counting.n
+    for pid in (1, 2, 3):
+        for week in weeks:
+            ref = ps.weekly(con, SEASON, week, "independent")
+            g = got[pid][week]
+            assert g["origin"] == ref["origin"].get(pid, ps.ESPN) and g["value"] == ref["values"].get(pid)
+            assert (g["run"] or {}).get("run_id") == (ref["run"] or {}).get("run_id")
+    one = Counting(con)
+    ours_forward(one, SEASON, 1, espn_baseline(con)["weeks"], source="independent")
+    assert one.n < 15, one.n                      # was ~12 per week before batching
 
 
 # ----------------------------------------------------------------------------- ESPN stays the default

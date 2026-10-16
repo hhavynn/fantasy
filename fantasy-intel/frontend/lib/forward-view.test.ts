@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { oursBlock, oursCell, oursPoints, oursTotalNote } from "./forward-view.ts";
+import { modelBadge, oursBlock, oursCell, oursNotice, oursPoints, oursTotalNote } from "./forward-view.ts";
 import { SWITCH_SCOPE, withSource } from "./projection-source.ts";
 import type { ForwardProjection, ForwardWeek, OursForward, OursWeek } from "./types.ts";
 
@@ -13,19 +13,21 @@ const ow = (n: number, origin: OursWeek["origin"], value: number | null, over: P
 });
 const ours = (weeks: OursWeek[], over: Partial<OursForward> = {}): OursForward => ({
   available: true, reason: null, label: "Fantasy Intel projections (ifp-2.0.0); experimental beyond next week",
-  model_version: "ifp-2.0.0", weeks, ros_projected_points: 30, ros_weeks_expected: weeks.length,
-  ros_weeks_available: weeks.length, ros_complete: true, fallback_weeks: [], missing_weeks: [],
+  model_version: "ifp-2.0.0", model_versions: ["ifp-2.0.0"], mixed_models: false, weeks, ros_projected_points: 30, ros_weeks_expected: weeks.length,
+  ros_weeks_available: weeks.length, ros_complete: true, fallback_weeks: [], missing_weeks: [], other_model_weeks: [],
   last_regular_season_week: 14, run_created_at: "2026-10-14 12:00:00", ...over,
 });
 
 test("oursPoints charts only our numbers: ESPN fallback weeks, byes and the playoffs are gaps", () => {
   const weeks = [week(6), week(7), week(8), week(9, "regular", true), week(15, "playoff")];
   const o = ours([ow(6, "ours", 14.5), ow(7, "espn", 17), ow(8, "ours", 16.2), ow(9, "ours_zero", 0, { on_bye: true })]);
-  assert.deepEqual(oursPoints(weeks, o), [14.5, null, 16.2, 0, null]);
+  assert.deepEqual(oursPoints(weeks, o), [14.5, null, 16.2, null, null]);     // our 0 for a bye is a gap, not a plotted zero
+  const zero = ours([ow(6, "ours", 14.5), ow(7, "ours_zero", 0)]);              // unavailable (not a bye): a real 0
+  assert.deepEqual(oursPoints([week(6), week(7)], zero), [14.5, 0]);
 });
 
 test("oursCell marks ESPN-fallback weeks and the experimental weeks", () => {
-  assert.deepEqual(oursCell(ow(6, "ours", 14.5)), { value: 14.5, kind: "ours", experimental: false, title: "Fantasy Intel projection" });
+  assert.deepEqual(oursCell(ow(6, "ours", 14.5)), { value: 14.5, kind: "ours", experimental: false, model: null, title: "Fantasy Intel projection" });
   const later = oursCell(ow(8, "ours", 16.2));
   assert.equal(later.kind, "ours");
   assert.equal(later.experimental, true);
@@ -37,6 +39,23 @@ test("oursCell marks ESPN-fallback weeks and the experimental weeks", () => {
   assert.equal(oursCell(ow(10, "ours_zero", 0)).kind, "zero");
   assert.equal(oursCell(ow(11, "bye", null)).kind, "bye");
   assert.equal(oursCell(undefined).kind, "none");
+});
+
+test("a week shown from the previous model carries a model badge and the reason is shown with ours available", () => {
+  const prev = ow(6, "ours", 14.5, { model_version: "ifp-1.0.0" });
+  assert.equal(oursCell(prev, "ifp-2.0.0").model, "ifp-1");
+  assert.equal(oursCell(ow(7, "ours", 15), "ifp-2.0.0").model, null);
+  assert.equal(modelBadge("ifp-1.0.0", "ifp-1.0.0"), null);
+  const o = ours([prev, ow(7, "ours", 15)], {
+    reason: "No ifp-2.0.0 run is stored for week 6 yet, so the previous model ifp-1.0.0 is shown. Mixed models: total hidden.",
+    mixed_models: true, model_versions: ["ifp-1.0.0", "ifp-2.0.0"], other_model_weeks: [6],
+    ros_complete: false, ros_projected_points: null, missing_weeks: [6],
+  });
+  const n = oursNotice(o);
+  assert.equal(n?.title, "Mixed projection models");
+  assert.match(n?.text ?? "", /previous model ifp-1\.0\.0/);
+  assert.equal(oursNotice(ours([ow(6, "ours", 1)])), null);
+  assert.equal(oursNotice(ours([], { available: false, reason: "No run yet" }))?.text, "No run yet");
 });
 
 test("oursTotalNote explains an incomplete total", () => {

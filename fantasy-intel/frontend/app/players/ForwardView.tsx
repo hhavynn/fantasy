@@ -1,7 +1,7 @@
 import { LineChart } from "@/components/charts";
 import { OriginTag } from "@/components/ProjectionNotice";
-import { Badge, Notice, Section, Stat, StatStrip } from "@/components/ui";
-import { oursBlock, oursByWeek, oursCell, oursPoints, oursTotalNote } from "@/lib/forward-view";
+import { Badge, Notice, Section, Stat, StatStrip, VisuallyHidden } from "@/components/ui";
+import { oursBlock, oursByWeek, oursCell, oursNotice, oursPoints, oursTotalNote } from "@/lib/forward-view";
 import { num, pct, when } from "@/lib/format";
 import { valueDomain } from "@/lib/player-usage";
 import type { ForwardProjection } from "@/lib/types";
@@ -30,6 +30,7 @@ export function ForwardView({ f }: { f: ForwardProjection }) {
   const oursWeeks = ours && oursOn ? oursByWeek(ours) : null;
   const oursLine = ours && oursOn ? oursPoints(f.weeks, ours) : null;
   const fallback = ours?.fallback_weeks ?? [];
+  const notice = ours ? oursNotice(ours) : null;
 
   return (
     <Section
@@ -43,11 +44,7 @@ export function ForwardView({ f }: { f: ForwardProjection }) {
           Fantasy Intel projection yet and show ESPN&apos;s number, which also keeps the Ours total empty.</>}
       </>}
     >
-      {ours && !oursOn && (
-        <Notice tone="caution" title="Showing ESPN projections">
-          {ours.reason ?? "Fantasy Intel has no projections for the remaining weeks yet."}
-        </Notice>
-      )}
+      {notice && <Notice tone="caution" title={notice.title}>{notice.text}</Notice>}
       <div className={styles.stripBlock}>
         <StatStrip>
           <Stat
@@ -57,14 +54,14 @@ export function ForwardView({ f }: { f: ForwardProjection }) {
           />
           <Stat label="Rest of season" value={num(s.ros_projected_points, 1, INCOMPLETE)}
             note={<>{span(s.ros_weeks_available, s.ros_weeks_expected)} · {pct(s.ros_coverage, 0)} covered</>} />
-          {ours && oursOn && (
-            <Stat label="Ours: rest of season"
-              value={num(ours.ros_projected_points, 1, OURS_INCOMPLETE)}
-              note={oursTotalNote(ours)} />
-          )}
           <Stat label="Regular season left"
             value={splitKnown ? num(s.regular_season_projected_points, 1, INCOMPLETE) : <span className="missing" title="Fantasy playoff split unknown">—</span>}
             note={splitKnown ? `${s.regular_season_weeks_expected ? `wk ${s.as_of_week}–${s.last_regular_season_week} · ` : ""}${span(s.regular_season_weeks_available, s.regular_season_weeks_expected)}` : "split unknown"} />
+          {ours && oursOn && (
+            <Stat label="Ours: regular season left"
+              value={num(ours.ros_projected_points, 1, OURS_INCOMPLETE)}
+              note={oursTotalNote(ours)} />
+          )}
           <Stat label="Fantasy playoffs"
             value={splitKnown ? num(s.playoff_projected_points, 1, INCOMPLETE) : <span className="missing" title="Fantasy playoff split unknown">—</span>}
             note={splitKnown ? `wk ${Math.max((s.last_regular_season_week ?? 0) + 1, s.as_of_week)}–${s.final_week} · ${span(s.playoff_weeks_available, s.playoff_weeks_expected)}` : "split unknown"} />
@@ -88,7 +85,7 @@ export function ForwardView({ f }: { f: ForwardProjection }) {
                       : w.opponent ? `${w.is_home ? "vs" : "@"} ${w.opponent}`
                         : <span className="missing" title="NFL schedule unavailable">—</span>}
                   </td>
-                  {oursOn && <OursTd cell={oursCell(oursWeeks?.get(w.week))} />}
+                  {oursOn && <OursTd cell={oursCell(oursWeeks?.get(w.week), ours?.model_version)} />}
                   <td className="num">{num(w.espn_projected_points, 1, "ESPN returned no projection for this week (unknown, not 0)")}</td>
                   <td>{w.on_bye === null ? <span className="missing" title="Schedule unknown">?</span> : w.on_bye ? <Badge value="BYE" tone="warn" /> : null}</td>
                   <td className={styles.phase}>{w.phase === "playoff" ? "Playoffs" : w.phase === "regular" ? "Regular" : ""}</td>
@@ -127,9 +124,10 @@ function OursTd({ cell }: { cell: ReturnType<typeof oursCell> }) {
   if (cell.kind === "none" || cell.kind === "bye") return <td className="num"><span className="faint" title={cell.title}>—</span></td>;
   return (
     <td className="num" title={cell.title}>
-      {cell.kind === "espn" && <OriginTag origin="espn" ours />}{" "}
+      {cell.kind === "espn" && <OriginTag origin="espn" ours title="No independent estimate for this week: ESPN's projection" />}{" "}
+      {cell.model && <Badge value={cell.model} tone="warn" title={`Previous model: no production-model run for this week`} />}{" "}
       {num(cell.value, 1, cell.title)}
-      {cell.experimental && <sup className="faint" aria-label="experimental"> exp</sup>}
+      {cell.experimental && <><span aria-hidden="true" className="faint"> exp</span><VisuallyHidden> (experimental)</VisuallyHidden></>}
     </td>
   );
 }

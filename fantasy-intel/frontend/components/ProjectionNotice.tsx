@@ -22,7 +22,9 @@ export function ProjectionNotice({ detail, className }: { detail: ProjectionSour
 }
 
 /** Marks a number that is not from the independent model while the switch is on "Ours". */
-export function OriginTag({ origin, ours }: { origin: ProjectionOrigin | null | undefined; ours: boolean }) {
+export function OriginTag({ origin, ours, title = "No independent estimate for this player: ESPN's projection" }: {
+  origin: ProjectionOrigin | null | undefined; ours: boolean; title?: string;
+}) {
   if (!ours || origin !== "espn") return null;
-  return <Badge value="ESPN" tone="" title="No independent estimate for this player: ESPN's projection" />;
+  return <Badge value="ESPN" tone="" title={title} />;
 }

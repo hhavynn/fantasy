@@ -23,13 +23,17 @@ incomplete; a partial sum would look like an authoritative low projection.
 
 from __future__ import annotations
 
-from ..db.connection import table_columns
+import json
+
+from ..db.connection import fetch_dicts, table_exists
 from . import production_forecasts as pf
 from . import projection_source as ps
 
-LABEL = f"Fantasy Intel projections ({ps.MODEL_VERSION}); experimental beyond next week"
+PRIMARY = ps.MODEL_VERSION
 OURS_ORIGINS = (ps.OURS, ps.OURS_ZERO)
 BYE = "bye"
+LABEL_TAIL = "experimental beyond next week"
+LABEL = f"Fantasy Intel projections ({PRIMARY}); {LABEL_TAIL}"
 
 
 def normalize(source: str | None) -> str:
@@ -37,33 +41,81 @@ def normalize(source: str | None) -> str:
     return ps.normalize(source)
 
 
-def _run_meta(con, run_id: str | None) -> dict:
-    """forecast_horizon / projected_from_week of a stored run (NULL on legacy runs and on a schema without them)."""
-    out = {"horizon": None, "projected_from_week": None}
-    if not run_id:
-        return out
-    cols = set(table_columns(con, pf.RUNS))
-    wanted = [c for c in ("forecast_horizon", "projected_from_week") if c in cols]
-    if not wanted:
-        return out
-    row = con.execute(f"SELECT {', '.join(wanted)} FROM {pf.RUNS} WHERE run_id = ?", [run_id]).fetchone()
-    if row:
-        got = dict(zip(wanted, row))
-        out["horizon"], out["projected_from_week"] = got.get("forecast_horizon"), got.get("projected_from_week")
+def label_for(versions: list[str]) -> str:
+    """The label names the model versions actually shown, never just the production one."""
+    return f"Fantasy Intel projections ({', '.join(versions or [PRIMARY])}); {LABEL_TAIL}"
+
+
+def _stored_runs(con, season: int, weeks: list[int]) -> dict[int, dict]:
+    """The run `projection_source.weekly` would use for each week, in ONE query: the newest run (created_at,
+    run_id) of the production model, else of the previous model, under the league's current scoring, that still
+    has all of its rows (production_forecasts.latest_run's rule). Same helpers, not a copy of the SQL."""
+    fp = ps._scoring_fingerprint(con, season)
+    if fp is None or not table_exists(con, pf.RUNS) or pf.rows_source(con) is None:
+        return {}
+    runs = fetch_dicts(con, f"""SELECT * FROM {pf.RUNS} WHERE season = ? AND week IN (SELECT unnest(?))
+                                AND scoring_fingerprint = ? AND model_version IN (?, ?)
+                                ORDER BY created_at DESC, run_id DESC""",
+                       [season, weeks, fp, ps.MODEL_VERSION, ps.FALLBACK_VERSION])
+    intact = {r["run_id"] for r in runs}
+    if runs and table_exists(con, pf.ROWS):
+        have = dict(con.execute(f"SELECT run_id, count(*) FROM {pf.ROWS} WHERE run_id IN (SELECT unnest(?)) "
+                                "GROUP BY run_id", [sorted(intact)]).fetchall())
+        intact = {r["run_id"] for r in runs if r.get("row_count") and have.get(r["run_id"]) == r["row_count"]}
+    chosen: dict[int, dict] = {}
+    for week in weeks:
+        for version in (ps.MODEL_VERSION, ps.FALLBACK_VERSION):
+            run = next((r for r in runs if r["week"] == week and r["model_version"] == version
+                        and r["run_id"] in intact), None)
+            if run is not None:
+                chosen[week] = run
+                break
+    return chosen
+
+
+def player_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dict]:
+    """week -> {value, origin, run} for ONE player, equal to `projection_source.weekly(...)` per week
+    (values[pid], origin[pid], run) but in a handful of queries: independent of the number of weeks."""
+    espn = {r["scoring_period"]: None if r["projected_points"] is None else float(r["projected_points"])
+            for r in fetch_dicts(con, """SELECT scoring_period, projected_points FROM espn_player_weekly_points
+                                         WHERE season = ? AND espn_player_id = ?
+                                           AND scoring_period IN (SELECT unnest(?))""", [season, pid, weeks])}
+    runs = _stored_runs(con, season, weeks)
+    rows = {}
+    if runs:
+        rows = {(r["run_id"]): r for r in fetch_dicts(
+            con, f"""SELECT run_id, coverage_status, expected_points FROM {pf.rows_source(con)}
+                     WHERE espn_player_id = ? AND run_id IN (SELECT unnest(?))""",
+            [pid, sorted({r["run_id"] for r in runs.values()})])}
+    out = {}
+    for week in weeks:
+        run, value, origin = runs.get(week), espn.get(week), ps.ESPN
+        r = rows.get(run["run_id"]) if run else None
+        if r and r["coverage_status"] == "projected" and r["expected_points"] is not None:
+            value, origin = float(r["expected_points"]), ps.OURS
+        elif r and r["coverage_status"] in ps.ZERO_STATUSES:
+            value, origin = 0.0, ps.OURS_ZERO
+        out[week] = {"value": value, "origin": origin, "run": run}
     return out
 
 
 def _empty(reason: str, last_regular: int | None) -> dict:
-    return {"available": False, "reason": reason, "label": LABEL, "model_version": ps.MODEL_VERSION, "weeks": [],
+    return {"available": False, "reason": reason, "label": LABEL, "model_version": PRIMARY,
+            "model_versions": [], "mixed_models": False, "weeks": [],
             "ros_projected_points": None, "ros_weeks_expected": 0, "ros_weeks_available": 0, "ros_complete": False,
-            "fallback_weeks": [], "missing_weeks": [], "last_regular_season_week": last_regular, "run_created_at": None}
+            "fallback_weeks": [], "missing_weeks": [], "other_model_weeks": [],
+            "last_regular_season_week": last_regular, "run_created_at": None}
 
 
 def ours_forward(con, season: int, pid: int, weeks: list[dict], *, source: str) -> dict | None:
     """The "ours" block for one player, or None unless source == "independent".
 
     `weeks` is the ESPN forward view's week list (projections.forward_weeks): it supplies each week's phase and
-    bye flag (NFL schedule). Only the remaining regular-season weeks are projected here."""
+    bye flag (NFL schedule). Only the remaining regular-season weeks are projected here.
+
+    Model versions: a week without a production-model run shows the previous model's run, labeled per week. The
+    ours total counts ONLY production-model weeks: it is NULL (with a reason) when any non-bye week comes from
+    another model or from ESPN, so a total never mixes models."""
     if normalize(source) != "independent":
         return None
     regular = [w for w in weeks if w["phase"] == "regular"]
@@ -71,45 +123,51 @@ def ours_forward(con, season: int, pid: int, weeks: list[dict], *, source: str) 
     if not regular:
         return _empty("No remaining regular-season week (or the end of the regular season is unknown), "
                       "so there is nothing to project.", last_regular)
-    first = regular[0]["week"]
+    stored = player_weeks(con, season, pid, [w["week"] for w in regular])
     entries, reasons = [], []
     for w in regular:
-        wk = ps.weekly(con, season, w["week"], "independent")
-        run = wk["run"]
-        origin = wk["origin"].get(pid, ps.ESPN)
-        value = wk["values"].get(pid)
-        on_bye = w["on_bye"]
+        got = stored[w["week"]]
+        run, origin, value, on_bye = got["run"], got["origin"], got["value"], w["on_bye"]
         if origin == ps.ESPN and on_bye:       # a schedule bye is not an ESPN projection and not a gap to fill
             origin, value = BYE, None
-        meta = _run_meta(con, run["run_id"] if run else None)
-        horizon = meta["horizon"]
+        horizon = (run.get("forecast_horizon") or 0) if run else None     # NULL on legacy runs = 0
         entries.append({
             "week": w["week"], "value": value, "origin": origin, "on_bye": on_bye,
             "run_id": run["run_id"] if run else None, "model_version": run["model_version"] if run else None,
-            "run_created_at": run["created_at"] if run else None,
-            "horizon": horizon, "projected_from_week": meta["projected_from_week"],
-            "experimental": (horizon if horizon is not None else w["week"] - first) >= 1,
+            "run_created_at": str(run["created_at"]) if run else None,
+            "horizon": horizon, "projected_from_week": run.get("projected_from_week") if run else None,
+            "experimental": horizon is not None and horizon > 0,
         })
-        if run and wk["reason"] and wk["reason"] not in reasons:   # a previous-model week; absent runs are listed below
-            reasons.append(wk["reason"])
+        if run and run["model_version"] != PRIMARY:
+            reasons.append(f"No {PRIMARY} run is stored for week {w['week']} yet, so the previous model "
+                           f"{run['model_version']} is shown.")
     if not any(e["run_id"] for e in entries):
-        return _empty(f"No {ps.MODEL_VERSION} projection run is stored for any remaining regular-season week yet "
+        return _empty(f"No {PRIMARY} projection run is stored for any remaining regular-season week yet "
                       "(they are written by the rest-of-season learning cycle), so ESPN projections are shown.",
                       last_regular)
+    versions = sorted({e["model_version"] for e in entries if e["model_version"]})
     required = [e for e in entries if e["on_bye"] is not True]
-    counted = [e for e in entries if e["origin"] in OURS_ORIGINS]
+    counted = [e for e in required if e["origin"] in OURS_ORIGINS and e["model_version"] == PRIMARY]
     fallback = [e["week"] for e in entries if e["origin"] == ps.ESPN]
-    complete = all(e["origin"] in OURS_ORIGINS for e in required)
-    total = round(sum(e["value"] for e in counted if e["value"] is not None), 2) if complete else None
-    missing = [e["week"] for e in required if e["origin"] not in OURS_ORIGINS]
+    other = [e["week"] for e in entries if e["model_version"] not in (None, PRIMARY)]
+    missing = [e["week"] for e in required if e not in counted]
+    complete = not missing
+    total = round(sum(e["value"] for e in entries if e["origin"] in OURS_ORIGINS and e["model_version"] == PRIMARY
+                      and e["value"] is not None), 2) if complete else None
+    if other:
+        reasons.append(f"Mixed models: the rest-of-season total counts {PRIMARY} weeks only, so it is hidden while "
+                       f"week(s) {', '.join(map(str, other))} use another model." if len(versions) > 1 else
+                       f"The rest-of-season total counts {PRIMARY} weeks only, so it is hidden.")
+    elif fallback:
+        reasons.append(f"ESPN's number is shown for week(s) {', '.join(map(str, fallback))}: no independent "
+                       "estimate yet.")
     created = [e["run_created_at"] for e in entries if e["run_created_at"]]
     return {
-        "available": True,
-        "reason": " ".join(reasons) or (f"ESPN's number is shown for week(s) {', '.join(map(str, fallback))}: no "
-                                         "independent estimate yet." if fallback else None),
-        "label": LABEL, "model_version": ps.MODEL_VERSION, "weeks": entries,
+        "available": True, "reason": " ".join(reasons) or None,
+        "label": label_for(versions), "model_version": PRIMARY, "model_versions": versions,
+        "mixed_models": len(versions) > 1, "weeks": entries,
         "ros_projected_points": total, "ros_weeks_expected": len(required),
-        "ros_weeks_available": len(required) - len(missing), "ros_complete": complete,
-        "fallback_weeks": fallback, "missing_weeks": missing,
+        "ros_weeks_available": len(counted), "ros_complete": complete,
+        "fallback_weeks": fallback, "missing_weeks": missing, "other_model_weeks": other,
         "last_regular_season_week": last_regular, "run_created_at": max(created) if created else None,
     }

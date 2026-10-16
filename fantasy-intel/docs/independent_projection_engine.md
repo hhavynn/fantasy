@@ -501,15 +501,19 @@ requires an explicit `source`):
 
 * `weeks`: one entry per remaining regular-season week with `value`, `origin` (`ours`, `ours_zero`, `espn`
   for a week without an independent estimate, or `bye` from the NFL schedule), and the run's `run_id`,
-  `model_version`, `run_created_at`, `horizon` and `projected_from_week` (NULL on runs written before
-  those columns existed; `experimental` is then inferred from the offset to the first remaining week);
-* `ros_projected_points`: the same complete-or-null rule as ESPN's total. It is NULL unless every non-bye
-  remaining regular-season week is `ours` or `ours_zero`; an ESPN-fallback week (`fallback_weeks`,
-  `missing_weeks`) makes it incomplete. A bye is not expected and adds nothing;
+  `model_version`, `run_created_at`, `horizon` (NULL on a legacy run = 0) and `projected_from_week`; `experimental` is
+  true for horizon > 0;
+* `ros_projected_points`: the regular-season total ("Ours: regular season left"), with the same
+  complete-or-null rule as ESPN's. It counts `ifp-2.0.0` weeks only and is NULL unless every non-bye
+  remaining regular-season week is `ours` or `ours_zero` from that model. An ESPN-fallback week
+  (`fallback_weeks`, `missing_weeks`) or a week shown from the previous model (`other_model_weeks`) makes
+  it NULL, so a total never mixes models. A bye is not expected and adds nothing;
+* `model_versions` / `mixed_models` / `label`: the model versions actually shown, per-week
+  `model_version`, and a `reason` the UI prints as a notice (a previous-model week gets an "ifp-1" badge).
 * `available: false` with a `reason` when no remaining week has a stored run;
 * `label`: "Fantasy Intel projections (ifp-2.0.0); experimental beyond next week".
 
-The UI shows an "Ours" column next to ESPN's, an "Ours: rest of season" tile and a second line on the chart.
+The UI shows an "Ours" column next to ESPN's, an "Ours: regular season left" tile and a second line on the chart.
 ESPN-fallback weeks carry an ESPN tag and are gaps in the Ours line; weeks beyond the next one are marked
 "exp". The future-week runs are not produced by this change: they come from the rest-of-season learning
 cycle (Workstream R1, one immutable run per remaining target week). Until that cycle has run, only the
