@@ -311,6 +311,9 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                # see tests/test_weekly_learning.py::test_weekly_pipeline_never_imports_into_consumers)
                "challenger.py", "weekly_learning.py",
                "source_provenance.py",   # pregame source snapshots of the weekly pipeline (research only)
+               "adaptive_workload.py",   # research-only ifp-aw role estimator (never imported by the app)
+               "hgb_research.py",   # research-only gradient-boosting challenger (never imported by the app)
+               "opportunity_efficiency.py",   # research-only two-target model (never imported by the app)
                "model_registry.py",   # research-only approval manifest + dry-run promotion gate (never imported)
                "participation_calibration.py",   # P(appears) calibration research, shadow only (nothing imports it)
                "point_distributions.py"}   # research-only point distributions (never imported by the app)
