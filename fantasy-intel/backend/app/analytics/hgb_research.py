@@ -134,13 +134,15 @@ def walk_forward(store: pl.DataFrame, weeks: list[tuple[int, int]], features: di
                 cols[f"pred_{name}"] = np.where(ok, np.maximum(m.predict(X), 0.0), np.nan)
                 if permute_groups:
                     rng = np.random.default_rng(seed + k * 10 + POSITIONS.index(pos))
-                    perm = rng.permutation(rows.height)
+                    # shuffle among forecastable rows only: abstained rows are neither donors nor recipients
+                    elig = np.flatnonzero(ok)
+                    perm = elig[rng.permutation(len(elig))]
                     for g in FEATURE_GROUPS:
                         idx = [i for i, f in enumerate(features[pos]) if group_of(f) == g]
                         if not idx:
                             continue
                         Xp = X.copy()
-                        Xp[:, idx] = X[perm][:, idx]
+                        Xp[np.ix_(elig, idx)] = X[np.ix_(perm, idx)]
                         cols[f"pred_{name}__perm_{g}"] = np.where(ok, np.maximum(m.predict(Xp), 0.0), np.nan)
             out.append(rows.select("key", "gsis_id").with_columns(
                 [pl.Series(c, v).fill_nan(None) for c, v in cols.items()]))

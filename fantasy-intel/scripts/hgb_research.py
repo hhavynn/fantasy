@@ -137,6 +137,8 @@ def cmd_develop(args) -> dict:
     store_path = _out(args) / "store.parquet"
     cfg = ch.ChallengerConfig.load()
     sel = json.loads((args.ifp_dir / "selection.json").read_text())
+    if sel.get("scoring_fingerprint") != scoring.fingerprint:
+        raise SystemExit("selection.json (frozen ifp-1.0.0 penalties) was made under different league scoring")
     weeks = ch.window_weeks(store, hg.DEVELOPMENT)
     preds, runtime = _run_jobs(args, store_path, weeks, {p: dict(hg.SEARCH_SPACE) for p in POSITIONS})
     dev = store.filter(pl.col("key").is_in([s * 100 + w for s, w in weeks])).join(
@@ -202,6 +204,12 @@ def cmd_predict(args) -> dict:
     src, scoring = _sources(args)
     hg.check_frozen(frozen, scoring.fingerprint, cfg.hash())
     season, week = args.season, args.week
+    lpath = _out(args) / "ledger" / f"s{season}w{week:02d}-pregame.json"
+    if lpath.exists():      # write-once: a rerun reports the frozen run instead of fitting a new artifact
+        prev = json.loads(lpath.read_text())
+        return {"ledger": str(lpath), "written": False, "created_at": prev["created_at"],
+                "artifact_hash": prev["artifact_hash"], "rows": len(prev["rows"]),
+                "forecast_rows": sum(r["hgb_points"] is not None for r in prev["rows"])}
     kick = team_kickoffs(src, season, week)
     open_teams = {t for t, ko in kick.items() if now < ko}
     if not open_teams:
@@ -222,7 +230,6 @@ def cmd_predict(args) -> dict:
               "artifact_hash": art.content_hash, "training_cutoff_key": cutoff,
               "data_hash": art.data_hash, "scoring_fingerprint": scoring.fingerprint,
               "teams_excluded_already_started": sorted(set(kick) - open_teams), "rows": rows}
-    lpath = _out(args) / "ledger" / f"s{season}w{week:02d}-pregame.json"
     apath = _out(args) / "artifacts" / f"{hg.HGB_VERSION}-s{season}w{week:02d}-{art.content_hash}.json"
     wrote_a = _write_once(apath, art.to_dict())
     wrote_l = _write_once(lpath, ledger)
@@ -301,7 +308,10 @@ def cmd_diagnose(args) -> dict:
     store_path = _out(args) / "store.parquet"
     frozen = _frozen(args)
     cfg = ch.ChallengerConfig.load()
+    hg.check_frozen(frozen, scoring.fingerprint, cfg.hash())   # the replay must be the frozen model
     sel = json.loads((args.ifp_dir / "selection.json").read_text())
+    if sel.get("scoring_fingerprint") != scoring.fingerprint:
+        raise SystemExit("selection.json (frozen ifp-1.0.0 penalties) was made under different league scoring")
     weeks = sorted(w for s in hg.DIAGNOSTIC for w in ch.window_weeks(store, s))
     per_pos = {p: {"hgb": frozen["params"][p], "additive": hg.ADDITIVE} for p in POSITIONS}
     preds, runtime = _run_jobs(args, store_path, weeks, {p: {"hgb": per_pos[p]["hgb"]} for p in POSITIONS},
@@ -368,6 +378,7 @@ def cmd_ablate(args) -> dict:
     src, scoring = _sources(args)
     store = full_store(args, src, scoring.fingerprint)      # validates (or rebuilds) the cached store
     frozen = _frozen(args)
+    hg.check_frozen(frozen, scoring.fingerprint, ch.ChallengerConfig.load().hash())
     weeks = ch.window_weeks(store, hg.DEVELOPMENT)
     payloads = []
     for grp in [None, *hg.FEATURE_GROUPS]:

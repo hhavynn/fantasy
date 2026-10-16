@@ -155,16 +155,20 @@ within each week; every comparison on identical rows):
 
 | Group | QB | RB | WR | TE | All |
 |---|---|---|---|---|---|
-| Production (point averages) | 0.995 | 0.929 | 0.702 | 0.349 | 0.702 |
-| Usage (opportunity) | 0.198 | 0.776 | 0.494 | 0.533 | 0.545 |
-| Established workload / prior | — | 0.187 | 0.451 | 0.330 | 0.309 |
-| Trend / role | 0.247 | 0.082 | 0.080 | 0.068 | 0.093 |
-| Matchup / team | 0.048 | 0.020 | 0.012 | 0.017 | 0.018 |
-| Game-class flags | — | 0.003 | 0.000 | 0.001 | 0.000 |
+| Production (point averages) | 1.053 | 0.970 | 0.725 | 0.360 | 0.730 |
+| Usage (opportunity) | 0.214 | 0.799 | 0.521 | 0.546 | 0.567 |
+| Established workload / prior | — | 0.194 | 0.459 | 0.333 | 0.315 |
+| Trend / role | 0.286 | 0.055 | 0.068 | 0.066 | 0.085 |
+| Matchup / team | 0.046 | 0.003 | 0.012 | 0.006 | 0.011 |
+| Game-class flags | — | 0.005 | 0.000 | 0.000 | 0.001 |
 | Missing indicators | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
 
-(A first version of the pooled column mixed positions without a group, such as QB without flags,
-into the baseline. It is fixed so that every row is compared with its own unpermuted prediction.)
+Two corrections were made before these numbers:
+
+* A first version of the pooled column mixed positions without a group, such as QB without flags,
+  into the baseline. Now every row is compared with its own unpermuted prediction.
+* Following a Codex review, values are shuffled only among forecastable rows: players without a
+  recent game neither donate nor receive values.
 
 **Ablation: refit without the group, development MAE increase:**
 
