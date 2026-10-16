@@ -667,9 +667,12 @@ from test_independent_projections import SCORING, _artifact, live  # noqa: E402,
 
 
 def _run(con, src, created, scale):
-    """One week-5 production run through the real writer; unconditional points = scale * conditional."""
+    """One week-5 ifp-1.0.0 production run through the real writer; unconditional points = scale * conditional.
+    It records the pinned ifp-1.0.0 artifact (production_pin), as a run of the real artifact file would."""
+    from app.analytics.production_pin import APPROVED_ARTIFACT_SHA256
+
     meta, rows = build_live(con, src, _artifact(src, created_at="2026-09-01T00:00:00+00:00"), 2026, 5,
-                            artifact_sha256="a" * 64)
+                            artifact_sha256=APPROVED_ARTIFACT_SHA256)
     meta["created_at"] = created
     for r in rows:
         if r["projected_points"] is not None:
