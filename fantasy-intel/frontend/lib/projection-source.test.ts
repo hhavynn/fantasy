@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { modelStatusLine, parseProjectionSource, showingOurs, withSource } from "./projection-source.ts";
+import { horizonCaution, modelStatusLine, parseProjectionSource, showingOurs, withSource } from "./projection-source.ts";
 
 test("parseProjectionSource defaults to ESPN for anything but 'ours'", () => {
   assert.equal(parseProjectionSource("ours"), "ours");
@@ -42,4 +42,17 @@ test("modelStatusLine never claims more than the backend's governance", () => {
     model_status: { QB: "validated", RB: "experimental", WR: "experimental", TE: "experimental" } };
   assert.match(modelStatusLine(fallback), /^Fallback model ifp-1\.0\.0 \(no eligible ifp-2\.0\.0 run this week\)/);
   assert.match(modelStatusLine(fallback), /nothing is validated against ESPN/);
+});
+
+test("horizonCaution shows the experimental label only for a rest-of-season run shown as ours", () => {
+  const base = { source: "independent" as const, available: true, reason: null, counts: null, model_status: null };
+  const next = { ...base, run: { run_id: "r", model_version: "ifp-2.0.0", created_at: "t", forecast_horizon: 0, horizon_note: null } };
+  assert.equal(horizonCaution(next), null);
+  assert.equal(horizonCaution({ ...base, run: { run_id: "r", model_version: "ifp-2.0.0", created_at: "t" } }), null);
+  const later = { ...base, run: { ...next.run, forecast_horizon: 3, horizon_note: "rest-of-season forecast (horizon 3): experimental, not validated beyond the next week" } };
+  assert.match(horizonCaution(later) ?? "", /not validated beyond the next week/);
+  assert.match(horizonCaution({ ...later, run: { ...later.run, horizon_note: null } }) ?? "", /experimental/);
+  assert.equal(horizonCaution({ ...later, source: "espn" }), null);
+  assert.equal(horizonCaution({ ...later, available: false }), null);
+  assert.equal(horizonCaution(null), null);
 });
