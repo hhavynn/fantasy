@@ -8,6 +8,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import pathlib
 import random
+import subprocess
+import sys
 
 import numpy as np
 import polars as pl
@@ -400,3 +402,5 @@ def test_research_module_is_never_imported_by_the_app():
         if path.name == "usage_signals.py":
             continue
         assert "usage_signals" not in path.read_text(), path
+    code = "import sys, app.main; assert 'app.analytics.usage_signals' not in sys.modules"
+    subprocess.run([sys.executable, "-c", code], cwd=root.parent, check=True)

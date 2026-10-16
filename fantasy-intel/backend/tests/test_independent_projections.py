@@ -310,6 +310,7 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                # see tests/test_weekly_learning.py::test_weekly_pipeline_never_imports_into_consumers)
                "challenger.py", "weekly_learning.py",
                "source_provenance.py",   # pregame source snapshots of the weekly pipeline (research only)
+               "model_registry.py",   # research-only approval manifest + dry-run promotion gate (never imported)
                "participation_calibration.py",   # P(appears) calibration research, shadow only (nothing imports it)
                "usage_signals.py"}   # research-only FTN read / depth-chart signals (never imported by the app)
     for f in APP.rglob("*"):
