@@ -5,7 +5,7 @@ Storage is append-only (docs/independent_projection_engine.md, "Live runs and ab
 stores a run and its rows under their own run_id in `independent_projection_runs` /
 `independent_projection_rows`, never deletes or updates a committed run, returns the existing run for an
 identical retry, and raises if a run_id would receive different content. Each run records
-`artifact_id` (sha256 of the artifact FILE bytes, the same digest model_registry.json pins), a
+`artifact_id` (sha256 of the artifact FILE bytes, the digest the approval registry pins), a
 `content_sha256` over its canonicalised meta and rows, and its `row_count`.
 
 Guards (each produces an explicit coverage_status and a NULL projection, never a zero):
@@ -140,7 +140,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     ideally the previous season from the history DB). `participation`: optional
     ParticipationArtifact; without it p_play and expected_points stay null. `artifact_sha256`: sha256 of
     the artifact file the caller loaded (scripts/backtest_independent_projections.py project), stored as
-    the run's artifact_id so it can be compared with model_registry.json's pinned sha."""
+    the run's artifact_id so it can be compared with the approval registry's pinned sha."""
     _, scoring = league_scoring(con, season)
     scoring_ok = scoring.supported and scoring.fingerprint == artifact.scoring_fingerprint
     games = sources.games.filter((pl.col("season") == season) & (pl.col("week") == week))
@@ -244,7 +244,8 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
         if table_exists(con, "sync_runs") else [{"t": None}]
     meta = {"run_id": f"ifp-{season}w{week}-{utcnow():%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}", "season": season,
             "week": week, "model_version": artifact.version, "scoring_fingerprint": scoring.fingerprint if scoring.supported else None,
-            "artifact_id": artifact_sha256 or artifact_digest(artifact), "artifact_created_at": artifact.created_at, "data_through_season": last[0], "data_through_week": last[1],
+            "artifact_id": artifact_sha256 or artifact_digest(artifact), "artifact_created_at": artifact.created_at,
+            "data_through_season": last[0], "data_through_week": last[1],
             "nfl_synced_at": synced[0]["t"], "model_status": artifact.status, "evaluation": artifact.evaluation,
             "participation_version": participation.version if participation is not None else None,
             "participation_status": participation.status if participation is not None else None,

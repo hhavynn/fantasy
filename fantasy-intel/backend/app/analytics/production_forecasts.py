@@ -39,7 +39,6 @@ ROW_COLUMNS = ("season", "week", "espn_player_id", "gsis_id", "position", "nfl_t
                "projected_points", "interval_low", "interval_high", "model", "coverage_status", "games_used",
                "latest_usage_season", "latest_usage_week", "missing_inputs", "flags", "explanation", "p_play",
                "expected_points", "participation")
-ANNOTATIONS = ("kickoff", "pregame")
 _JSON = {"missing_inputs", "flags", "explanation", "participation"}
 _DOUBLE = {"projected_points", "interval_low", "interval_high", "p_play", "expected_points"}
 _INT = {"season", "week", "espn_player_id", "games_used", "latest_usage_season", "latest_usage_week"}
