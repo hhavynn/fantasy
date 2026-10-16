@@ -11,6 +11,8 @@
     uv run python ../scripts/backtest_independent_projections.py snap-ablation           # validation only
     uv run python ../scripts/backtest_independent_projections.py project --week 7   # appends one immutable run
     uv run python ../scripts/backtest_independent_projections.py project --week 7 --model ifp-1.0.0   # previous model
+    uv run python ../scripts/backtest_independent_projections.py project --week 10 --artifact-week 7   # week 10 from week 7's artifact
+    uv run python ../scripts/backtest_independent_projections.py project --week 7 --through-week 18   # rest of the season
 
 Inputs: the live DB (FANTASY_DB_PATH, opened read-only except by `project`) and the optional
 history DB from scripts/sync_nfl_history.py (NFL_HISTORY_DB_PATH, default data/nfl_history.duckdb).
@@ -23,6 +25,12 @@ the participation commands refuse a participation selection made with another co
 weekly-learning artifact for the target week (scripts/weekly_learning.py sync-exits + train --week W,
 --weekly-dir, default data/models/weekly) with its play-by-play injury evidence. `--model ifp-1.0.0`
 runs the previous model's frozen artifact from --out.
+
+Rest-of-season projections (docs/independent_projection_engine.md): `--week T --artifact-week W` projects the later
+week T with week W's artifact (features as of W, T's opponent; projected_from_week = W, forecast_horizon = T - W);
+`--week W --through-week L` does that for every week W..L in one process (one source load, one artifact
+registration; a failure on a later week is reported in the output's rest_of_season list and does not stop the others;
+a failure on week W itself is an error). Both apply to the weekly-trained model (ifp-2.0.0) only.
 """
 
 from __future__ import annotations
@@ -230,6 +238,11 @@ def cmd_snap_ablation(args, live, hist, scoring, protocol) -> dict:
     return snap_split_ablation(build_store(src, weeks), ifp, protocol)
 
 
+def _artifact_week(args) -> int | None:
+    """The week whose artifact makes the run: --artifact-week, else None (the target week's own artifact)."""
+    return getattr(args, "artifact_week", None)
+
+
 def _project_artifact(args, scoring) -> tuple[Artifact, bytes, pl.DataFrame | None, Path | None]:
     """(artifact, its file bytes, play-by-play exits) for `project --model`. ifp-1.0.0: the frozen artifact in
     --out. ifp-2.0.0: the newest weekly-learning artifact for the target week, which weekly_learning.latest_artifact
@@ -241,13 +254,14 @@ def _project_artifact(args, scoring) -> tuple[Artifact, bytes, pl.DataFrame | No
     from app.analytics import weekly_learning as wl
     from app.nfl import pbp_exits
     try:
-        art, _, path = wl.latest_artifact(args.weekly_dir, args.model, args.season, args.week, scoring.fingerprint)
+        art, _, path = wl.latest_artifact(args.weekly_dir, args.model, args.season, args.week, scoring.fingerprint,
+                                          artifact_week=_artifact_week(args))
     except wl.NotReady as err:
-        raise ValueError(f"{err} (scripts/weekly_learning.py train --week {args.week})") from err
+        raise ValueError(f"{err} (scripts/weekly_learning.py train --week {_artifact_week(args) or args.week})") from err
     if art.config["provenance"].get("retrospective"):
-        raise ValueError(f"the newest {args.model} artifact for week {args.week} ({path.name}) is a retrospective "
-                         "replay; train a pregame artifact (scripts/weekly_learning.py train --week "
-                         f"{args.week}) before kickoff")
+        raise ValueError(f"the newest {args.model} artifact for week {_artifact_week(args) or args.week} ({path.name}) "
+                         "is a retrospective replay; train a pregame artifact (scripts/weekly_learning.py train --week "
+                         f"{_artifact_week(args) or args.week}) before kickoff")
     exits = pbp_exits.load_dir(args.weekly_dir / "pbp_exits")
     if exits is None and art.config["provenance"].get("pbp_exits_through_week") is not None:
         raise ValueError(f"{path.name} was trained with play-by-play injury evidence, but {args.weekly_dir / 'pbp_exits'} "
@@ -255,10 +269,43 @@ def _project_artifact(args, scoring) -> tuple[Artifact, bytes, pl.DataFrame | No
     return art, path.read_bytes(), exits, path
 
 
+def _summary(meta: dict, rows: list[dict], stored: dict, art, art_sha: str, t0: float) -> dict:
+    by = {}
+    for r in rows:
+        by[r["coverage_status"]] = by.get(r["coverage_status"], 0) + 1
+    return {"run_id": stored["run_id"], "created": stored["created"], "rows": stored["row_count"],
+            "week": meta["week"], "forecast_horizon": meta["forecast_horizon"],
+            "projected_from_week": meta["projected_from_week"],
+            "model_version": art.version, "artifact_id": art_sha,
+            "content_sha256": stored["content_sha256"], "coverage": by, "runtime_seconds": round(time.time() - t0, 2),
+            "participation": meta["participation_version"],
+            "with_expected_points": sum(r["expected_points"] is not None for r in rows),
+            "data_through": [meta["data_through_season"], meta["data_through_week"]]}
+
+
 def cmd_project(args, hist, scoring) -> dict:
+    from app.analytics import weekly_learning as wl
     from app.analytics.independent_projection_store import build_live, write_run
     from app.db.connection import open_db
 
+    through = getattr(args, "through_week", None)
+    art_week = _artifact_week(args)
+    rest_of_season = through is not None or art_week is not None
+    if rest_of_season and args.model == MODEL_VERSION:
+        raise ValueError("--artifact-week / --through-week apply to the weekly-trained model (ifp-2.0.0) only")
+    if through is not None:
+        if art_week is not None:
+            raise ValueError("--through-week projects weeks --week .. --through-week from the artifact of --week; "
+                             "do not combine it with --artifact-week")
+        if through < args.week:
+            raise ValueError(f"--through-week {through} is before --week {args.week}")
+        weeks, from_week = list(range(args.week, through + 1)), args.week
+        target0 = args.week
+    else:
+        if art_week is not None and art_week > args.week:
+            raise ValueError(f"--artifact-week {art_week} is after the target week {args.week}")
+        weeks, from_week = [args.week], (art_week if art_week is not None else None)
+        target0 = args.week
     art, art_bytes, exits, art_path = _project_artifact(args, scoring.require_supported())
     # Run provenance: sha256 of the artifact FILE bytes (the digest model_registry.json pins).
     art_sha = hashlib.sha256(art_bytes).hexdigest()
@@ -272,7 +319,6 @@ def cmd_project(args, hist, scoring) -> dict:
             if art_path is None:
                 raise ValueError("--register-artifact applies to the weekly-trained model (ifp-2.0.0) only; ifp-1.0.0 "
                                  "is pinned in the registry and production_pin.py")
-            from app.analytics import weekly_learning as wl
             # FIRST every other artifact already in the write-once store (the first run after the upgrade covers the
             # runs those artifacts made; files that are not the store's own are skipped), THEN this run's artifact:
             # the first registration starts enforcement, so it must not precede the backfill.
@@ -288,19 +334,31 @@ def cmd_project(args, hist, scoring) -> dict:
                                      "artifact is not registered alone (that would start enforcement with the older "
                                      f"store artifacts unregistered): {backfill['error']}") from err
             registered = wl.register_saved_artifact(con, art, art_path, args.weekly_dir, args.register_artifact)
-        meta, rows = build_live(con, src, art, args.season, args.week, participation=part, artifact_sha256=art_sha)
-        stored = write_run(con, meta, rows)   # append-only: an identical retry returns the existing run
-    by = {}
-    for r in rows:
-        by[r["coverage_status"]] = by.get(r["coverage_status"], 0) + 1
-    return {"run_id": stored["run_id"], "created": stored["created"], "rows": stored["row_count"],
-            "model_version": art.version, "artifact_id": art_sha, "artifact_registered": registered and
-            {"sha256": registered[0], "created": registered[1], "source": args.register_artifact},
-            "artifact_backfill": backfill,
-            "content_sha256": stored["content_sha256"], "coverage": by, "runtime_seconds": round(time.time() - t, 2),
-            "participation": meta["participation_version"],
-            "with_expected_points": sum(r["expected_points"] is not None for r in rows),
-            "data_through": [meta["data_through_season"], meta["data_through_week"]]}
+        results, ros = [], []
+        for target in weeks:
+            t0 = time.time()
+            try:
+                if rest_of_season:     # the same artifact, whatever the horizon: its cutoff must precede the target
+                    wl.check_artifact(art, args.season, target, scoring.fingerprint)
+                meta, rows = build_live(con, src, art, args.season, target, participation=part,
+                                        artifact_sha256=art_sha, projected_from_week=from_week)
+                stored = write_run(con, meta, rows)   # append-only: an identical retry returns the existing run
+                results.append(_summary(meta, rows, stored, art, art_sha, t0))
+            except Exception as err:      # noqa: BLE001 - a later week's failure is reported, the others still run
+                if target == target0:
+                    raise
+                ros.append({"week": target, "forecast_horizon": target - from_week, "error": f"{type(err).__name__}: {err}"})
+                print(f"WARNING: rest-of-season projection for week {target} failed: {err}", file=sys.stderr)
+    first = results[0]
+    out = {**first, "artifact_registered": registered and
+           {"sha256": registered[0], "created": registered[1], "source": args.register_artifact},
+           "artifact_backfill": backfill, "runtime_seconds": round(time.time() - t, 2)}
+    if through is not None:
+        out["rest_of_season"] = [{k: r[k] for k in ("week", "forecast_horizon", "run_id", "created", "rows", "coverage",
+                                                   "with_expected_points")} for r in results[1:]] + ros
+        out["rest_of_season"].sort(key=lambda r: r["week"])
+        out["rest_of_season_failed"] = [r["week"] for r in ros]
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -313,6 +371,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=_path("INDEPENDENT_MODEL_DIR", "data/models"))
     parser.add_argument("--season", type=int, default=settings.nfl_season, help="live season")
     parser.add_argument("--week", type=int, help="target NFL week (project)")
+    parser.add_argument("--artifact-week", type=int, dest="artifact_week",
+                        help="project --week T with the ifp-2.0.0 artifact of this EARLIER week W (rest-of-season "
+                             "projection: features as of W, T's opponent; forecast_horizon = T - W)")
+    parser.add_argument("--through-week", type=int, dest="through_week",
+                        help="project --week W and every later week up to this one (the last regular-season week) "
+                             "from W's artifact, in one process")
     parser.add_argument("--model", choices=[CONSUMER_VERSION, MODEL_VERSION], default=CONSUMER_VERSION,
                         help="model `project` runs (default: the production model the projection switch reads)")
     parser.add_argument("--weekly-dir", type=Path, default=_path("WEEKLY_MODEL_DIR", "data/models/weekly"),

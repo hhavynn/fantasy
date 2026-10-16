@@ -144,6 +144,10 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
                     "artifact_created_at": run["artifact_created_at"], "created_at": str(run["created_at"]),
                     "scoring_fingerprint": run["scoring_fingerprint"],
                     "artifact_id": run.get("artifact_id"), "content_sha256": run.get("content_sha256"),
+                    # rest-of-season runs: horizon k = week - projected_from_week (0 = the pregame forecast); the
+                    # note is None at horizon 0 and "not validated beyond the next week" otherwise
+                    "forecast_horizon": run.get("horizon", 0), "projected_from_week": run.get("projected_from_week"),
+                    "experimental_note": run.get("horizon_note"),
                     "feature_cutoff": {"data_through_season": run["data_through_season"],
                                        "data_through_week": run["data_through_week"],
                                        "rule": "only NFL games completed before the target week"},

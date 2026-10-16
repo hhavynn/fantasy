@@ -751,17 +751,38 @@ def live_population(sources: Sources, season: int, week: int) -> pl.DataFrame:
 
 
 def predict_week(sources: Sources, artifact: ParticipationArtifact, season: int, week: int,
-                 fallback_teams: frozenset[str] | set[str] = frozenset()) -> dict[str, dict]:
+                 fallback_teams: frozenset[str] | set[str] = frozenset(), *,
+                 feature_week: int | None = None) -> dict[str, dict]:
     """P(appears) for every live-population player with a lookback game. Never trains.
     `fallback_teams`: teams whose week-W designations in `sources.injuries` come from a live
-    fallback source rather than the nflverse report (flagged on every affected row)."""
+    fallback source rather than the nflverse report (flagged on every affected row).
+
+    `feature_week` (rest-of-season projections, docs/independent_projection_engine.md): the data cutoff week W
+    when `week` is a LATER target week T. Every feature is computed exactly as for week W (player recency,
+    team and prior-season history stay in the training distribution) while the opponent and home/away come
+    from T's schedule, and no week-W or later injury report is read: week T has no report yet, so each player
+    is undesignated and every row is flagged. `feature_week` None or equal to `week` is the normal call and
+    changes nothing."""
+    if feature_week is None or feature_week == week:
+        return _predict_week(sources, artifact, season, week, week, fallback_teams, future=False)
+    if feature_week > week:
+        raise ValueError(f"feature_week {feature_week} is after the target week {week}")
+    inj = sources.injuries
+    if inj is not None:     # no designation from the cutoff week on can describe week T (and none exists for T yet)
+        inj = inj.filter(~((pl.col("season") == season) & (pl.col("week") >= feature_week)))
+    psrc = Sources(sources.panel, sources.games, sources.defense, sources.rosters, inj, sources.exits)
+    return _predict_week(psrc, artifact, season, week, feature_week, frozenset(), future=True)
+
+
+def _predict_week(sources: Sources, artifact: ParticipationArtifact, season: int, week: int, feature_week: int,
+                  fallback_teams, *, future: bool) -> dict[str, dict]:
     pop = live_population(sources, season, week)
     if pop.height == 0:
         return {}
-    base = features_for_week(sources, season, week, pop).filter(pl.col("games_recent") > 0)
+    base = features_for_week(sources, season, feature_week, pop).filter(pl.col("games_recent") > 0)
     if base.height == 0:
         return {}
-    feats = participation_features(sources, season, week, base)
+    feats = participation_features(sources, season, feature_week, base)
     published: set[str] = set()
     if sources.injuries is not None:
         published = set(sources.injuries.filter((pl.col("season") == season) & (pl.col("week") == week)
@@ -777,7 +798,10 @@ def predict_week(sources: Sources, artifact: ParticipationArtifact, season: int,
         st = artifact.status.get(pos, {})
         for i, rec in enumerate(rows.iter_rows(named=True)):
             flags = []
-            if rec["team"] in fallback_teams:
+            if future:
+                flags.append(f"future week: no week-{week} injury report yet, so P(plays) treats him as undesignated "
+                             f"(features as of the week-{feature_week} cutoff)")
+            elif rec["team"] in fallback_teams:
                 flags.append(f"week-{week} designations for {rec['team']} come from ESPN injury status (the nflverse "
                              "report the model was trained on is not synced yet); practice status unknown")
             elif rec["team"] not in published:

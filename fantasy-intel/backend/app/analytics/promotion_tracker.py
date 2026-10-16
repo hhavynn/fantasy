@@ -68,10 +68,13 @@ def latest_run(con, season: int, fingerprint: str | None) -> dict | None:
         return None
     gate = pf.artifact_gate(con, MODEL_VERSION)                # the artifact rule of production_pin for this model
     has_artifact = "artifact_id" in table_columns(con, "independent_projection_runs")
+    # Horizon 0 only: a rest-of-season run (made for a later week from an earlier week's artifact) is never "the
+    # latest run" of the model whose held-out status this page reports.
     rows = fetch_dicts(con, f"""SELECT run_id, week, model_version, created_at, model_status, evaluation
                                 {", artifact_id" if has_artifact else ""}
                                 FROM independent_projection_runs
                                 WHERE season = ? AND model_version = ? AND scoring_fingerprint = ?
+                                {pf.evidence_horizon_sql(con)}
                                 ORDER BY created_at DESC""", [season, MODEL_VERSION, fingerprint])
     rows = [r for r in rows if gate(r)[0] != "rejected"]
     if not rows:
@@ -88,8 +91,9 @@ def _run_missing_reason(con, season: int, fingerprint: str | None) -> str:
                "docs/independent_projection_engine.md).")
     if fingerprint is None:
         return "League scoring is not supported by the independent model, so no held-out status applies."
-    other = fetch_dicts(con, "SELECT count(*) AS n FROM independent_projection_runs WHERE season = ?",
-                        [season])[0]["n"] if table_exists(con, "independent_projection_runs") else 0
+    other = fetch_dicts(con, "SELECT count(*) AS n FROM independent_projection_runs WHERE season = ?"
+                        + pf.evidence_horizon_sql(con), [season])[0]["n"] \
+        if table_exists(con, "independent_projection_runs") else 0
     if other:
         pin = " or artifact (not an approved one)" if pf.gate_active(con, MODEL_VERSION) else ""
         return (f"Stored runs are from another model version{pin} or league scoring, so the held-out status of "
@@ -127,7 +131,9 @@ def _legacy_eligible_runs(con, season: int, fingerprint: str) -> tuple[list[str]
     for r in fetch_dicts(con, """SELECT * FROM independent_projection_runs WHERE season = ?
                                  ORDER BY week, run_id""", [season]):
         fitted, first = _utc(r["artifact_created_at"]), kick.get(r["week"])
-        if r["model_version"] != MODEL_VERSION:
+        if pf.horizon_of(r) > 0:
+            reason = pf.NOT_EVIDENCE.format(k=pf.horizon_of(r))
+        elif r["model_version"] != MODEL_VERSION:
             reason = f"model {r['model_version']}, not {MODEL_VERSION}"
         elif r["scoring_fingerprint"] != fingerprint:
             reason = "made under different league scoring"
@@ -183,6 +189,24 @@ def _stored_projections(con, season: int, fingerprint: str) -> tuple[pl.DataFram
     return (pl.DataFrame(rows, schema=schema) if rows else pl.DataFrame(schema=schema)), excluded
 
 
+def _collapse_future_exclusions(excluded: list[dict]) -> list[dict]:
+    """The page lists excluded runs; every cycle adds one rest-of-season run per remaining week, so those are
+    shown once per week ("horizons a-b, n runs") instead of one line each. Other exclusions are unchanged."""
+    keep, future = [], {}
+    for e in excluded:
+        if e["reason"].startswith("rest-of-season forecast"):
+            future.setdefault(e["week"], []).append(e)
+        else:
+            keep.append(e)
+    for week, es in sorted(future.items()):
+        ks = sorted(int(e["reason"].split("horizon ")[1].split(")")[0]) for e in es)
+        span = str(ks[0]) if ks[0] == ks[-1] else f"{ks[0]}-{ks[-1]}"
+        keep.append({"run_id": es[-1]["run_id"], "week": week,
+                     "reason": f"rest-of-season forecast (horizon {span}), not evidence"
+                               + (f" [{len(es)} runs]" if len(es) > 1 else "")})
+    return sorted(keep, key=lambda e: (e["week"], e["run_id"]))
+
+
 def espn_evidence(con, season: int, scoring) -> dict:
     """Matched pregame-ESPN observations so far, per position and per week."""
     need = PROMOTION_CRITERIA["espn_min_matched_per_position"]
@@ -214,7 +238,8 @@ def espn_evidence(con, season: int, scoring) -> dict:
     by_week = [{"week": int(w), "pregame_completed": pool.filter(pl.col("week") == w).height,
                 "matched": matched.filter(pl.col("week") == w).height} for w in weeks]
     return {"available": True, "unavailable_reason": None, "matched_observations": comp["matched_observations"],
-            "by_position": by_pos, "by_week": by_week, "excluded_runs": excluded}
+            "by_position": by_pos, "by_week": by_week,
+            "excluded_runs": _collapse_future_exclusions(excluded)}
 
 
 def pregame_snapshot(con, season: int, week: int) -> dict:

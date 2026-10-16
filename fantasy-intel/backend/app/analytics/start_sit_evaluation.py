@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from ..db.connection import fetch_dicts, table_exists
+from ..db.connection import fetch_dicts, table_columns, table_exists
 from .lineup import FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_slots
 
 UTC = timezone.utc
@@ -611,6 +611,8 @@ def legacy_forecast_reader(con, season: int, weeks: Iterable[int] | None = None,
         if ko is not None and (w not in first or ko < first[w]):
             first[w] = ko
     wk = "" if weeks is None else f"AND p.week IN ({', '.join(str(int(w)) for w in weeks)})"
+    if "forecast_horizon" in table_columns(con, "independent_projection_runs"):   # evidence is horizon 0 only
+        wk += " AND coalesce(r.forecast_horizon, 0) = 0"
     rows, excl = [], Counter()
     for r in fetch_dicts(con, f"""
             SELECT p.*, r.model_version, r.scoring_fingerprint, r.artifact_created_at, r.created_at AS run_created_at
