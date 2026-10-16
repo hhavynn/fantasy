@@ -501,6 +501,13 @@ starts importing them. Cold starts download the MotherDuck extension (a couple o
 `SITE_PASSWORD` matters: without it anyone with the URL sees your league. Locally none of
 these are set, so the API key check and the password prompt are off.
 
+**Deployments run for `main` only.** `backend/vercel.json` and `frontend/vercel.json` set
+`git.deploymentEnabled` to `{"**": false, "main": true}`: a push to any other branch creates no Vercel
+deployment (Vercel deploys when at least one matching rule is true), which keeps the free plan's daily
+deployment limit for production. Pull requests get no preview link; the GitHub Actions checks still run.
+Vercel reads the rule from the pushed commit, so a branch created before this change deploys until it
+merges `main`.
+
 **Refreshing the hosted data:** run the syncs, then `publish_motherduck.py`. No redeploy is
 needed; the API reads the new copy on the next request.
 
