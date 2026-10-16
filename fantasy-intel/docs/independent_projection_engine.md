@@ -484,7 +484,23 @@ A header toggle (**ESPN | Ours**, in the menu drawer on phones) stores the visit
 
 Only a run of the current model version under the league's current scoring is used (the newest one
 that still has all of its stored rows; a run whose rows were lost is skipped); otherwise the
-response says `available: false` and shows ESPN. Start/Sit and Matchup rerun the same lineup
+response says `available: false` and shows ESPN.
+
+**Artifact approval.** The switch (and the evidence readers: `pregame_forecasts`, `eligible_run_ids`, the
+promotion tracker) only use runs made by an approved artifact. `ifp-2.0.0` is retrained weekly, so each of its
+artifacts is approved by a row in the write-once `approved_artifacts` table, which the learning cycle's
+`project` stage writes (`--register-artifact learning_cycle`) for the write-once store artifact it uses; the
+run's `artifact_id` and the registered sha are the same sha256 of the artifact file bytes. A run of an
+unregistered artifact is excluded ("artifact not registered as approved") and the switch falls back to
+`ifp-1.0.0`, then ESPN. The `ifp-1.0.0` fallback keeps the single-sha pin
+`production_pin.APPROVED_ARTIFACT_SHA256` (`None` today, which changes nothing; pinning is a reviewed change to
+both `model_registry.json` and that constant, tested equal). A database without `approved_artifacts`, or whose table has no row for `ifp-2.0.0` yet (right after the upgrade), is
+read as before and marked unverified (`run.artifact_verified: false`): the switch fails open there so an old hosted
+copy and the first days after the upgrade keep working. Enforcement starts with the first registered artifact, and
+the first learning cycle registers its artifact and backfills the others already in the weekly store. Details, the manual pin and the transition after the upgrade are in
+[model_registry.md](model_registry.md) ("Approving artifacts for the consumer view").
+
+Start/Sit and Matchup rerun the same lineup
 optimizer on these numbers (Matchup computes both teams' lineups on the fly instead of reading
 `team_week_lineup_projections`). Availability warnings still quote ESPN's number, because they say
 so by name. Rest-of-season features (trades, waivers, team value, playoff race) stay on ESPN: the

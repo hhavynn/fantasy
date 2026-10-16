@@ -230,13 +230,14 @@ def cmd_snap_ablation(args, live, hist, scoring, protocol) -> dict:
     return snap_split_ablation(build_store(src, weeks), ifp, protocol)
 
 
-def _project_artifact(args, scoring) -> tuple[Artifact, bytes, pl.DataFrame | None]:
+def _project_artifact(args, scoring) -> tuple[Artifact, bytes, pl.DataFrame | None, Path | None]:
     """(artifact, its file bytes, play-by-play exits) for `project --model`. ifp-1.0.0: the frozen artifact in
     --out. ifp-2.0.0: the newest weekly-learning artifact for the target week, which weekly_learning.latest_artifact
-    checks was trained under the league's scoring on games before the week, plus the exits it was trained with."""
+    checks was trained under the league's scoring on games before the week, plus the exits it was trained with.
+    The fourth value is that artifact's path (None for ifp-1.0.0)."""
     if args.model == MODEL_VERSION:
         data = (args.out / f"independent_projections_{MODEL_VERSION}.json").read_bytes()
-        return Artifact.from_dict(json.loads(data)), data, None
+        return Artifact.from_dict(json.loads(data)), data, None, None
     from app.analytics import weekly_learning as wl
     from app.nfl import pbp_exits
     try:
@@ -251,14 +252,14 @@ def _project_artifact(args, scoring) -> tuple[Artifact, bytes, pl.DataFrame | No
     if exits is None and art.config["provenance"].get("pbp_exits_through_week") is not None:
         raise ValueError(f"{path.name} was trained with play-by-play injury evidence, but {args.weekly_dir / 'pbp_exits'} "
                          "has none (scripts/weekly_learning.py sync-exits)")
-    return art, path.read_bytes(), exits
+    return art, path.read_bytes(), exits, path
 
 
 def cmd_project(args, hist, scoring) -> dict:
     from app.analytics.independent_projection_store import build_live, write_run
     from app.db.connection import open_db
 
-    art, art_bytes, exits = _project_artifact(args, scoring.require_supported())
+    art, art_bytes, exits, art_path = _project_artifact(args, scoring.require_supported())
     # Run provenance: sha256 of the artifact FILE bytes (the digest model_registry.json pins).
     art_sha = hashlib.sha256(art_bytes).hexdigest()
     ppath = args.out / f"participation_{pm.PARTICIPATION_VERSION}.json"
@@ -266,13 +267,37 @@ def cmd_project(args, hist, scoring) -> dict:
     with open_db(args.live_db) as con:
         src = _sources(con, hist, scoring).with_exits(exits)
         t = time.time()
+        registered = backfill = None
+        if args.register_artifact:       # ifp-2.0.0 only: approve the write-once store artifact this run uses
+            if art_path is None:
+                raise ValueError("--register-artifact applies to the weekly-trained model (ifp-2.0.0) only; ifp-1.0.0 "
+                                 "is pinned in the registry and production_pin.py")
+            from app.analytics import weekly_learning as wl
+            # FIRST every other artifact already in the write-once store (the first run after the upgrade covers the
+            # runs those artifacts made; files that are not the store's own are skipped), THEN this run's artifact:
+            # the first registration starts enforcement, so it must not precede the backfill.
+            try:
+                backfill = wl.backfill_store_artifacts(con, args.weekly_dir, art.version, scoring.fingerprint,
+                                                       skip=(art_path,))
+            except Exception as err:      # noqa: BLE001 - reported, never swallowed
+                backfill = {"error": f"{type(err).__name__}: {err}"}
+                print(f"WARNING: backfill of the weekly artifact store failed: {backfill['error']}", file=sys.stderr)
+                if con.execute("SELECT count(*) FROM approved_artifacts WHERE model_version = ?",
+                               [art.version]).fetchone()[0] == 0:
+                    raise ValueError("the store backfill failed and no artifact is registered yet, so the current "
+                                     "artifact is not registered alone (that would start enforcement with the older "
+                                     f"store artifacts unregistered): {backfill['error']}") from err
+            registered = wl.register_saved_artifact(con, art, art_path, args.weekly_dir, args.register_artifact)
         meta, rows = build_live(con, src, art, args.season, args.week, participation=part, artifact_sha256=art_sha)
         stored = write_run(con, meta, rows)   # append-only: an identical retry returns the existing run
     by = {}
     for r in rows:
         by[r["coverage_status"]] = by.get(r["coverage_status"], 0) + 1
     return {"run_id": stored["run_id"], "created": stored["created"], "rows": stored["row_count"],
-            "model_version": art.version, "artifact_id": art_sha, "content_sha256": stored["content_sha256"], "coverage": by, "runtime_seconds": round(time.time() - t, 2),
+            "model_version": art.version, "artifact_id": art_sha, "artifact_registered": registered and
+            {"sha256": registered[0], "created": registered[1], "source": args.register_artifact},
+            "artifact_backfill": backfill,
+            "content_sha256": stored["content_sha256"], "coverage": by, "runtime_seconds": round(time.time() - t, 2),
             "participation": meta["participation_version"],
             "with_expected_points": sum(r["expected_points"] is not None for r in rows),
             "data_through": [meta["data_through_season"], meta["data_through_week"]]}
@@ -292,6 +317,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="model `project` runs (default: the production model the projection switch reads)")
     parser.add_argument("--weekly-dir", type=Path, default=_path("WEEKLY_MODEL_DIR", "data/models/weekly"),
                         help="weekly-learning output (ifp-2 artifacts and pbp_exits), as in weekly_learning.py --out")
+    parser.add_argument("--register-artifact", choices=["learning_cycle", "manual_pin"],
+                        help="project --model ifp-2.0.0: record the weekly-store artifact this run uses in the live "
+                             "database's approved_artifacts (write-once); the consumer view serves only registered "
+                             "ifp-2.0.0 artifacts. The learning cycle passes learning_cycle; a manual pin is manual_pin")
     parser.add_argument("--synthetic-label", action="store_true", help="mark reports as synthetic-data runs")
     args = parser.parse_args(argv)
     protocol = Protocol(heldout_seasons=(2025, args.season) if args.season > 2025 else (2025,))

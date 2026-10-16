@@ -25,6 +25,8 @@ import _bootstrap  # noqa: F401
 import duckdb
 
 from app.analytics import model_registry as reg
+from app.analytics.production_pin import APPROVED_ARTIFACT_SHA256 as CONSUMER_PIN
+from app.analytics.production_pin import PINNED_MODEL_VERSION as CONSUMER_PINNED_VERSION
 from app.analytics.projection_source import MODEL_VERSION as CONSUMER_VERSION
 from app.config import REPO_ROOT, get_settings
 
@@ -64,7 +66,9 @@ def main(argv: list[str] | None = None) -> int:
         m = reg.load_manifest(args.manifest)
         fp = _live_fingerprint(args.live_db, args.season)
         if args.command == "status":
-            result = reg.dry_run_report(m, model_root=args.models, live_scoring_fp=fp, consumer_version=CONSUMER_VERSION)
+            result = reg.dry_run_report(m, model_root=args.models, live_scoring_fp=fp, consumer_version=CONSUMER_VERSION,
+                                        consumer_artifact_sha256=CONSUMER_PIN,
+                                        consumer_pinned_version=CONSUMER_PINNED_VERSION)
         elif args.command == "evaluate":
             if not args.proposed:
                 print("--proposed is required", file=sys.stderr)

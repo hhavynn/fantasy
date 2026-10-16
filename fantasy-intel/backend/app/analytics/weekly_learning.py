@@ -317,6 +317,60 @@ def save_artifact(art: Artifact, root: Path) -> tuple[str, Path, bool]:
     return aid, path, created
 
 
+def register_saved_artifact(con, art: Artifact, path: Path, root: Path, source: str = "learning_cycle") -> tuple[str, bool]:
+    """Register the artifact stored at `path` as approved for its model version in the live database
+    (approved_artifacts, write-once). Only an artifact saved through `save_artifact` qualifies: `path` must be
+    the content-addressed file `root/artifacts/<version>/s<season>w<week>-<artifact_id>.json` of exactly this
+    artifact. Returns (sha256 of the file bytes, created); that sha is what `project` records as the run's
+    `artifact_id`. (The file name carries `artifact_id(art)`, a digest of the artifact content without its
+    timestamp; the registered sha is of the file bytes, the digest the model registry pins.)"""
+    from .independent_projection_store import register_approved_artifact
+
+    path = Path(path)
+    if (art.config.get("provenance") or {}).get("retrospective"):
+        raise NotReady(f"{path.name} is a retrospective replay; only pregame artifacts can be approved")
+    s, w = art.config["provenance"]["target"]
+    expected = Path(root) / "artifacts" / art.version / f"s{s}w{w:02d}-{artifact_id(art)}.json"
+    if path.resolve() != expected.resolve() or not path.is_file():
+        raise NotReady(f"{path} is not the write-once store file of this artifact ({expected}); only artifacts "
+                       "saved through save_artifact can be registered as approved")
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    created = register_approved_artifact(
+        con, model_version=art.version, artifact_sha256=sha, target_season=int(s), target_week=int(w),
+        training_cutoff_key=art.config["provenance"].get("data_cutoff_key"), artifact_created_at=str(art.created_at),
+        source=source)
+    return sha, created
+
+
+def backfill_store_artifacts(con, root: Path, version: str, scoring_fp: str | None = None,
+                             source: str = "learning_cycle_backfill", skip: tuple = ()) -> dict:
+    """Register every artifact of `version` already present in the local write-once store
+    (`root/artifacts/<version>/s<season>w<week>-<artifact_id>.json`), so the first cycle after the approved_artifacts
+    table appears covers the runs those artifacts already made. Only store files qualify: the file must load
+    and pass the artifact checks (schema, scoring when given, data cutoff before its target week, not a
+    retrospective replay), be of `version`, and be exactly the content-addressed store file of the artifact it
+    holds (register_saved_artifact). Anything else is skipped and listed, never registered. Idempotent.
+    `skip`: store files the caller registers itself (with its own source).
+    Returns {registered, existing, skipped: [(file name, why)]}."""
+    out = {"registered": 0, "existing": 0, "skipped": []}
+    for f in sorted((Path(root) / "artifacts" / version).glob("s*w*-*.json")):
+        if f.resolve() in {Path(p).resolve() for p in skip}:
+            continue
+        try:
+            art = load_artifact(f)
+            prov = art.config.get("provenance") or {}
+            s, w = prov["target"]
+            if art.version != version:
+                raise NotReady(f"holds a {art.version} artifact")
+            check_artifact(art, int(s), int(w), scoring_fp if scoring_fp is not None else art.scoring_fingerprint)
+            _, created = register_saved_artifact(con, art, f, root, source)
+        except (NotReady, ValueError, KeyError, TypeError) as err:
+            out["skipped"].append((f.name, str(err)[:120]))
+            continue
+        out["registered" if created else "existing"] += 1
+    return out
+
+
 def load_artifact(path: Path) -> Artifact:
     return Artifact.from_dict(_read_json(path))
 
@@ -818,6 +872,6 @@ def promotion_blockers(status: dict) -> dict:
             for pos, s in status.items()}
 
 
-__all__ = ["report_subject", "readiness", "train", "save_artifact", "load_artifact", "write_once", "latest_artifact", "predict",
+__all__ = ["report_subject", "readiness", "train", "save_artifact", "register_saved_artifact", "backfill_store_artifacts", "load_artifact", "write_once", "latest_artifact", "predict",
            "write_run", "load_ledger", "rebuild_run", "evaluate", "label_outcomes", "team_game_finality", "week_finality", "shadow_status",
            "shadow_criteria", "promotion_blockers", "NotReady", "MODEL_VERSION", "interval_for"]
