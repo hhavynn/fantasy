@@ -9,8 +9,8 @@ feature store, rows and scoring fingerprint (`e165b59686110c7d`) as the ifp-2 re
 
 **Answer.** Separating next-week points into predicted opportunity (expected league points) plus a
 regularized efficiency residual does **not** improve forecasts over the frozen ifp-2 challenger. The
-best candidate (OE_D, with a stronger penalty on efficiency) gains 0.008 points of MAE on development
-(95% CI [−0.014, −0.002]). The gain does not hold on the 2023-2026 replay (+0.003 [−0.001, +0.007]),
+best candidate (OE_D, with a stronger penalty on efficiency) gains 0.009 points of MAE on development
+(95% CI [−0.014, −0.003]). The gain does not hold on the 2023-2026 replay (+0.002 [−0.002, +0.006]),
 and Start/Sit regret does not improve. Under the pre-registered rule the outcome is **negative**, so
 no artifact is written. ifp-1.0.0, ifp-2.0.0, the weekly pipeline, the ledgers and the "Ours"
 selector are unchanged.
@@ -35,7 +35,7 @@ The decomposition adds no information because:
 Ridge regression is linear in its target. With identical features, penalty, recency weights and
 training rows, the opportunity model plus the efficiency model is exactly the direct model. This is
 proven in `test_summed_forecast_keeps_mean_semantics_and_equals_direct_ridge_on_identical_rows` and
-confirmed on real data: OE_C reproduces ifp-2 to three decimals on every window.
+confirmed on real data: OE_C reproduces ifp-2 to within 0.001 of MAE on every window.
 
 A two-target model can therefore differ from the direct model through only three channels. Each
 pre-registered candidate isolates one:
@@ -49,8 +49,9 @@ pre-registered candidate isolates one:
 Common to all candidates:
 
 * QB is decomposed too.
-* Recency weighting and penalties follow ifp-2's per-position settings.
-* Penalties are chosen on 2021-22 only.
+* Recency weighting follows ifp-2's per-position settings.
+* Penalties are tuned per position on a grid, using 2021-22 only and the unrounded development MAE.
+* Only fully final, fully ingested weeks are used (every week in the current data is).
 * Fitting uses squared loss throughout (mean semantics; no median-seeking loss).
 * Components are unfloored; only the summed forecast is floored at 0, exactly as the direct model
   floors its own prediction.
@@ -117,12 +118,12 @@ those same rows: 12,656 rows in development and 20,563 in 2023-26.
 
 | | Dev OE_C | Dev OE_D | Dev OE_E | 2023-26 OE_D |
 |---|---|---|---|---|
-| Opportunity MAE, all rows | 3.308 | 3.308 | 3.347 | 3.136 |
-| Opportunity MAE on the naive rows: model / `xfpl_eb` / `xfpl_recent` | 3.427 / 4.091 / 4.296 | 3.427 / 4.091 / 4.296 | 3.465 / 4.091 / 4.296 | 3.277 / 3.890 / 4.098 |
+| Opportunity MAE, all rows | 3.308 | 3.308 | 3.348 | 3.136 |
+| Opportunity MAE on the naive rows: model / `xfpl_eb` / `xfpl_recent` | 3.427 / 4.091 / 4.296 | 3.427 / 4.091 / 4.296 | 3.466 / 4.091 / 4.296 | 3.277 / 3.890 / 4.098 |
 | Opportunity R² / bias | 0.593 / −0.17 | 0.593 / −0.17 | 0.585 / −0.22 | 0.602 / −0.03 |
-| Efficiency MAE (predicting 0) | 2.575 (2.516) | 2.528 (2.516) | 2.527 | 2.440 (2.428) |
-| Efficiency R² / bias | −0.003 / −0.03 | 0.004 / −0.02 | 0.007 / −0.01 | 0.003 / +0.07 |
-| SD of efficiency forecast (target SD) | 0.56 (4.03) | 0.37 | 0.35 | 0.33 (3.94) |
+| Efficiency MAE (predicting 0) | 2.578 (2.516) | 2.531 (2.516) | 2.527 | 2.443 (2.428) |
+| Efficiency R² / bias | −0.004 / −0.03 | 0.004 / −0.02 | 0.007 / −0.01 | 0.004 / +0.07 |
+| SD of efficiency forecast (target SD) | 0.57 (4.03) | 0.38 | 0.35 | 0.33 (3.94) |
 | Correlation of component errors | −0.06 | −0.06 | −0.06 | −0.04 |
 | Var(sum of errors) / (sum of variances) | 0.94 | 0.94 | 0.95 | 0.96 |
 
@@ -147,8 +148,8 @@ every method.
 | Position baseline (recency-weighted mean residual) | 2.521 | −0.01 | 4.197 |
 | Player history (shrunk yardage + TD over expected) | 2.765 | −0.05 | 4.299 |
 | Position baseline + player history | 2.776 | +0.12 | 4.276 |
-| OE_D ridge (penalty 0.3-30) | 2.528 | −0.02 | 4.194 |
-| OE_E ridge | 2.527 | −0.01 | 4.195 |
+| OE_D ridge (penalty 0.3-30) | 2.531 | −0.02 | 4.194 |
+| OE_E ridge | 2.527 | −0.01 | 4.196 |
 
 What the shrinkage study shows:
 
@@ -163,22 +164,22 @@ What the shrinkage study shows:
 
 | Window | n | C | ifp-2 | OE_C | OE_D | OE_E |
 |---|---|---|---|---|---|---|
-| Development 2021-22 | 13,372 | 4.216 | 4.202 / 5.872 / −0.21 | 4.202 (±0.000) | 4.194 / 5.867 / −0.20 (−0.008 [−0.014, −0.002]) | 4.232 (+0.029 [+0.014, +0.046]) |
-| 2023-24, inspected | 13,345 | 4.031 | 4.016 | 4.016 | 4.021 (+0.005 [−0.000, +0.009]) | 4.041 (+0.025) |
-| 2025-26, inspected | 8,645 | 4.068 | 4.050 | 4.050 | 4.051 (+0.001 [−0.006, +0.008]) | 4.070 (+0.020) |
-| 2023-26 pooled | 21,990 | 4.045 | 4.030 / 5.745 / +0.015 | 4.030 | 4.033 / 5.748 / +0.030 (+0.003 [−0.001, +0.007]) | 4.052 (+0.023 [+0.012, +0.034]) |
+| Development 2021-22 | 13,372 | 4.216 | 4.202 / 5.872 / −0.21 | 4.202 (±0.000) | 4.194 / 5.868 / −0.20 (−0.009 [−0.014, −0.003]) | 4.231 (+0.029 [+0.014, +0.045]) |
+| 2023-24, inspected | 13,345 | 4.031 | 4.016 | 4.016 | 4.020 (+0.004 [−0.001, +0.008]) | 4.041 (+0.024) |
+| 2025-26, inspected | 8,645 | 4.068 | 4.050 | 4.049 | 4.050 (±0.000 [−0.006, +0.006]) | 4.068 (+0.018) |
+| 2023-26 pooled | 21,990 | 4.045 | 4.030 / 5.745 / +0.015 | 4.029 | 4.032 / 5.747 / +0.031 (+0.002 [−0.002, +0.006]) | 4.051 (+0.022 [+0.011, +0.033]) |
 
 **By position, OE_D − ifp-2:**
 
 * Development:
-  * QB +0.003.
+  * QB +0.002.
   * RB −0.018 [−0.033, −0.006].
-  * WR −0.005.
+  * WR −0.006.
   * TE −0.007.
 * 2023-26:
   * QB −0.001.
-  * RB +0.000 [−0.009, +0.008].
-  * WR +0.002.
+  * RB +0.000 [−0.008, +0.008].
+  * WR ±0.000.
   * TE +0.009 [+0.001, +0.019].
 
 The RB development gain, the most motivated case, does not replicate.
@@ -187,35 +188,35 @@ The RB development gain, the most motivated case, does not replicate.
 
 | Window | ifp-2 | OE_D | OE_E |
 |---|---|---|---|
-| Development | 65.37% / 2.523 | 65.43% / 2.519 | 65.11% / 2.555 |
+| Development | 65.37% / 2.523 | 65.44% / 2.520 | 65.11% / 2.554 |
 | 2023-26 | 65.47% / 2.492 | 65.41% / 2.500 | 65.25% / 2.515 |
 
 **Cohorts, 2023-26 pooled.** MAE, with bias in parentheses; [CI] is OE_D − ifp-2.
 
 | Cohort | n | ifp-2 | OE_D | OE_E |
 |---|---|---|---|---|
-| Starters pool | 9,204 | 5.794 (+0.17) | 5.799 (+0.22) [−0.001, +0.012] | 5.812 (+0.33) |
-| RB starters pool | 2,832 | 5.582 | 5.593 [−0.003, +0.023] | 5.606 |
-| High volume | 1,772 | 6.690 | 6.696 | 6.736 |
-| Injury return | 778 | 4.317 | 4.330 [−0.008, +0.033] | 4.362 |
-| Role change (role drop or team change) | 5,936 | 3.505 (−0.12) | 3.522 (−0.17) [+0.012, +0.024] | 3.534 |
-| Early season (weeks 1-4) | 6,085 | 4.116 | 4.126 [+0.001, +0.018] | 4.150 |
-| After a touchdown boom | 535 | 6.169 (+0.23) | 6.153 (+0.33) | 6.094 (+0.99) |
-| Low volume (< 5 opportunities) | 14,164 | 3.075 | 3.075 | 3.090 |
+| Starters pool | 9,204 | 5.794 (+0.17) | 5.799 (+0.21) [−0.001, +0.011] | 5.812 (+0.32) |
+| RB starters pool | 2,832 | 5.582 | 5.594 [−0.002, +0.024] | 5.606 |
+| High volume | 1,772 | 6.690 | 6.698 | 6.736 |
+| Injury return | 778 | 4.317 | 4.325 [−0.013, +0.028] | 4.361 |
+| Role change (role drop or team change) | 5,936 | 3.505 (−0.12) | 3.519 (−0.16) [+0.008, +0.020] | 3.532 |
+| Early season (weeks 1-4) | 6,085 | 4.116 | 4.124 [+0.000, +0.016] | 4.150 |
+| After a touchdown boom | 535 | 6.169 (+0.23) | 6.157 (+0.32) | 6.093 (+0.98) |
+| Low volume (< 5 opportunities) | 14,164 | 3.075 | 3.074 | 3.089 |
 
 Restraining the efficiency features (OE_E) makes the model react less to touchdown booms, with a
-lower MAE there, but it under-projects them by about a point and is worse overall. Role changes and
-early-season weeks are significantly worse for OE_D: separate penalties loosen the opportunity model
-where usage is least stable.
+lower MAE there, but it under-projects them by about a point and is worse overall. Role changes are
+significantly worse for OE_D, and early-season weeks are worse with a CI lower bound at zero: separate
+penalties loosen the opportunity model where usage is least stable.
 
 ## 5. Decision (`OE_DECISION_RULES`)
 
 * OE_D was selected (lowest development MAE).
-* It has a development gain (CI upper bound −0.002) but no decision gain (regret 2.519 vs 2.523,
+* It has a development gain (CI upper bound −0.003) but no decision gain (regret 2.520 vs 2.523,
   under the 1% bar).
-* On the 2023-26 replay its pooled MAE is worse (+0.003). That fires a rejection, so the outcome is
+* On the 2023-26 replay its pooled MAE is worse (+0.002). That fires a rejection, so the outcome is
   **negative**.
-* OE_C equals ifp-2 by construction. OE_E is worse everywhere.
+* OE_C matches ifp-2 by construction (within 0.001 of MAE). OE_E is worse everywhere.
 * No research artifact is serialized. The artifact format (`ResearchArtifact`, schema
   `opportunity-efficiency-research/v1`, status `research_only`) is implemented and tested: the
   production loader refuses it, and the format refuses any other status.

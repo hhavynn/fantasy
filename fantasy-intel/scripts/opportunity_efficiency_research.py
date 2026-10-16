@@ -74,11 +74,45 @@ def input_fingerprint(args, src, scoring_fingerprint: str, weeks) -> str:
     return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
+def final_weeks(args, src) -> list[tuple[int, int]]:
+    """Completed weeks that are also fully final and fully ingested (participation_calibration's
+    week_finality rule): a partly played or partly synced week would put an incomplete player pool
+    into the store, the diagnostics and the Start/Sit pairs."""
+    import duckdb
+    import participation_calibration as pcal
+
+    live = duckdb.connect(str(args.live_db), read_only=True)
+    hist = duckdb.connect(str(args.history_db), read_only=True) if args.history_db.exists() else None
+    try:
+        fetched = pcal.fetch_times(live, hist, args.season)
+    finally:
+        for c in (live, hist):
+            if c is not None:
+                c.close()
+    return pcal.fully_final_weeks(src, completed_weeks(src, list(range(ch.TRAIN_START, args.season + 1))), fetched)
+
+
+def _mae(actual, pred) -> float:
+    """Unrounded MAE over rows where both are present: the score penalties and candidates are
+    selected on (metrics() rounds to 3 decimals, which is for reporting only)."""
+    a, q = np.asarray(actual, dtype=float), np.asarray(pred, dtype=float)
+    ok = np.isfinite(a) & np.isfinite(q)
+    return float(np.abs(a[ok] - q[ok]).mean()) if ok.any() else float("inf")
+
+
+def _best_candidate(dev: pl.DataFrame, models: dict[str, str], names) -> str:
+    """The candidate with the lowest unrounded development MAE on compare()'s population (rows where
+    every model and the label are present); ties go to the first name alphabetically."""
+    cols = list(models.values())
+    pop = dev.filter(pl.all_horizontal([pl.col(c).is_not_null() for c in cols]) & pl.col("label").is_not_null())
+    return min(names, key=lambda n: (_mae(_arr(pop, "label"), _arr(pop, models[n])), n))
+
+
 def full_store(args, src, scoring_fingerprint: str) -> pl.DataFrame:
     """Cached feature store, reused only when its recorded input fingerprint still matches."""
     path = _out(args) / "store_oe.parquet"
     meta = path.with_suffix(".meta.json")
-    weeks = completed_weeks(src, list(range(ch.TRAIN_START, args.season + 1)))
+    weeks = final_weeks(args, src)
     fp = input_fingerprint(args, src, scoring_fingerprint, weeks)
     if path.exists() and meta.exists() and not args.rebuild and json.loads(meta.read_text()).get("fingerprint") == fp:
         return pl.read_parquet(path)
@@ -196,12 +230,12 @@ def cmd_run(args) -> dict:
             g = dev.filter(pl.col("position") == pos)
             pairs = oe.lambda_pairs(cand)
             P = g.select("label", *[oe.combine(g, tag, *pr).alias(f"_p{i}") for i, pr in enumerate(pairs)]).drop_nulls()
-            scores = {pr: metrics(P["label"].to_numpy(), P[f"_p{i}"].to_numpy())["mae"] for i, pr in enumerate(pairs)}
+            scores = {pr: _mae(P["label"].to_numpy(), P[f"_p{i}"].to_numpy()) for i, pr in enumerate(pairs)}
             best[cand.name][pos] = min(scores, key=lambda pr: (scores[pr], -pr[1], -pr[0]))
     dev = _assemble(dev, best)
     models = {"C": "pred_C", "ifp2": "pred_ifp2", **{c.name: f"pred_{c.name}" for c in oe.CANDIDATES}}
     dev_rep = oe.compare(dev, models)
-    chosen = min((c.name for c in oe.CANDIDATES), key=lambda n: dev_rep["ALL"]["metrics"][n]["mae"])
+    chosen = _best_candidate(dev, models, [c.name for c in oe.CANDIDATES])
 
     # ---- diagnostic windows (already inspected): frozen development penalties
     diag_weeks = sorted(w for s in oe.DIAGNOSTIC for w in ch.window_weeks(store, s))
