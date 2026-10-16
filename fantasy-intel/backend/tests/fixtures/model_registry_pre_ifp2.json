@@ -1,0 +1,61 @@
+{
+ "schema": "model-registry/v1",
+ "note": "Reviewed approval manifest (app/analytics/model_registry.py). Paths are relative to INDEPENDENT_MODEL_DIR (data/models). Read by research tooling only; the hosted app never reads it, and the projection switch keeps reading projection_source.MODEL_VERSION. Changing production is a separate, explicitly approved change to this file AND the consumer wiring (docs/independent_projection_engine.md, 'Model registry and promotion').",
+ "production": {"family": "ifp", "version": "ifp-1.0.0"},
+ "models": [
+  {
+   "family": "ifp",
+   "version": "ifp-1.0.0",
+   "state": "approved_production",
+   "artifact": {"path": "independent_projections_ifp-1.0.0.json", "sha256": null},
+   "scoring_fingerprint": "e165b59686110c7d",
+   "training_cutoff": null,
+   "approval": {
+    "kind": "incumbent",
+    "approved_by": null,
+    "approved_at": null,
+    "note": "The model the opt-in projection switch already read when the registry was created. Not an owner approval: it authorizes nothing new and cannot be reused by any other model."
+   },
+   "validation_reports": [
+    {"kind": "heldout_backtest", "path": "heldout_report.json", "sha256": null}
+   ],
+   "rollback_to": null,
+   "reason": "Current champion: ridge conditional model with the ipm-1.0.0 participation artifact for expected points. Production status is unchanged by the registry. Its artifact hash, training cutoff and held-out report hash are not pinned yet (the files are local and git-ignored); pin them in a reviewed manifest change before any promotion so a rollback can restore the exact bytes."
+  },
+  {
+   "family": "ifp",
+   "version": "ifp-2.0.0",
+   "state": "prospective_shadow",
+   "artifact": {"path": null, "sha256": null},
+   "scoring_fingerprint": "e165b59686110c7d",
+   "training_cutoff": null,
+   "approval": null,
+   "validation_reports": [],
+   "rollback_to": "ifp-1.0.0",
+   "reason": "Weekly-retrained shadow challenger (challenger.py, weekly_learning.py). Forecasts go to the frozen pregame ledger only; SHADOW_PROMOTION_CRITERIA are not met (fewer than 8 fully final prospective weeks). Its artifacts are per-target-week; a promotion would have to name one immutable artifact by sha256."
+  },
+  {
+   "family": "ifp",
+   "version": "ifp-hgb-0.1.0",
+   "state": "experimental_research",
+   "artifact": {"path": null, "sha256": null},
+   "scoring_fingerprint": "e165b59686110c7d",
+   "training_cutoff": null,
+   "approval": null,
+   "validation_reports": [
+    {"kind": "historical_research", "path": "research/hgb_challenger.md", "sha256": null}
+   ],
+   "rollback_to": null,
+   "reason": "Research-only gradient-boosting challenger (docs/research/hgb_challenger.md): worse than ifp-2 on development, ridge retained. Historical research cannot replace prospective confirmation."
+  }
+ ],
+ "history": [
+  {
+   "at": "2026-10-16T00:00:00+00:00",
+   "event": "registry_initialized",
+   "production": "ifp-1.0.0",
+   "by": null,
+   "reason": "Registry created with the incumbent champion as production. No model was promoted, activated or rolled back."
+  }
+ ]
+}

@@ -23,7 +23,7 @@ from app.analytics import espn_benchmark as eb
 from app.analytics import weekly_learning as wl
 from app.analytics.forecast_backtest import PROMOTION_CRITERIA
 from app.analytics.forecast_features import load_panel
-from app.analytics.independent_projections import MODEL_VERSION
+from app.analytics.espn_benchmark import MODEL_VERSION   # the production model (ifp-2.0.0)
 from app.analytics.league_scoring import resolve_skill_scoring
 
 from app.analytics import production_forecasts as pf
@@ -32,7 +32,7 @@ from app.db.connection import fetch_dicts, insert_rows
 from synthetic_forecast import SCORING_ITEMS, SLOTS, TEAMS, add_league, database, gsis
 from synthetic_nfl import record_fetch
 from test_independent_projections import live  # noqa: F401  (fixture: schema-v8 database with a week-5 history)
-from test_production_forecasts import store
+from test_production_forecasts import store as _store
 
 UTC = timezone.utc
 SCORING = resolve_skill_scoring(SCORING_ITEMS)
@@ -751,6 +751,11 @@ def with_participation(values):
             if r["coverage_status"] == "projected":
                 r["p_play"], r["expected_points"] = 0.9, values.get(r["espn_player_id"], 5.0)
     return fn
+
+
+def store(con, src, created, **kw):
+    """A stored run of the production model the benchmark scores (the fixture artifact relabeled)."""
+    return _store(con, src, created, meta_over={"model_version": MODEL_VERSION}, **kw)
 
 
 def v8_world(live):

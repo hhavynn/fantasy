@@ -4,7 +4,9 @@ Wraps the existing `weekly_learning.py` commands in one restartable, idempotent 
 scheduler (scripts/launchd/com.fantasy-intel.weekly-learning.plist). It must run on the machine that
 holds the writable DuckDB files and the git-ignored model directory (the laptop in this project's
 setup); MotherDuck and Vercel only carry a read-only published copy. Nothing here touches the
-production model files, the live projection tables, ESPN or MotherDuck.
+production model files, ESPN or MotherDuck. The one live-database write is the last stage, `project`:
+the production model's run for the target week (backtest_independent_projections.py project), which
+the next refresh_all.py publishes (skip it with --no-project).
 
     cd backend
     uv run python ../scripts/learning_cycle.py run                 # one cycle (what the scheduler runs)
@@ -14,7 +16,8 @@ production model files, the live projection tables, ESPN or MotherDuck.
 A cycle: lock -> preflight -> sync_nfl.py -> sync-exits -> pick the target week (the next week whose
 first kickoff, US Eastern from nflverse, is still ahead) -> readiness (every earlier game final,
 box scores / snaps / xFP synced) -> evaluate frozen forecasts -> train (reused when the training
-data, configuration and scoring fingerprint are unchanged) -> predict (pregame only) -> report.
+data, configuration and scoring fingerprint are unchanged) -> predict (pregame only) -> project (the
+production ifp-2.0.0 run in the live DB; an identical run already stored is a no-op) -> report.
 A stage failure stops every later stage. Nothing is backdated, overwritten or replayed: a week whose
 first kickoff passed without a frozen pregame forecast is recorded under <out>/missed/.
 
@@ -214,6 +217,32 @@ def stage_sync_exits(args) -> dict:
     return cli.cmd_sync_exits(args)
 
 
+def stage_project(args, conns: list, log_path: Path) -> dict:
+    """Store the production model's run for the target week in the live DB, the run the projection switch
+    reads (backtest_independent_projections.py project, which picks the newest artifact this cycle trained or
+    reused). The cycle's read-only connections are closed first: DuckDB allows one writing process."""
+    for con in conns:
+        if con is not None:
+            con.close()
+    conns.clear()
+    cmd = [sys.executable, str(SCRIPTS / "backtest_independent_projections.py"), "project",
+           "--season", str(args.season), "--week", str(args.week), "--live-db", str(args.live_db),
+           "--history-db", str(args.history_db), "--out", str(args.ifp_dir), "--weekly-dir", str(args.out)]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True, env=env)
+    out, err = getattr(proc, "stdout", "") or "", getattr(proc, "stderr", "") or ""
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"==> backtest_independent_projections.py project {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
+    if proc.returncode != 0:
+        raise RuntimeError(f"project exited {proc.returncode}: {err.strip()[-500:]} (see {log_path}); a DuckDB lock "
+                           "error means another process is writing the live database: retry later")
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {}
+
+
 def training_fingerprint(args, store, scoring) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
@@ -361,6 +390,11 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         report["forecast"] = {k: pr[k] for k in ("run_id", "path", "new", "rows", "pregame_rows", "with_challenger",
                                                  "source_manifest")}
         report["status"] = "forecast_frozen" if pr["new"] else "up_to_date"
+        if args.no_project:
+            report["stages"].append({"name": "project", "status": "skipped"})
+        else:
+            pj = stage("project", stage_project, args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+            report["projection"] = {k: pj.get(k) for k in ("run_id", "created", "rows", "model_version", "artifact_id")}
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):
@@ -407,6 +441,8 @@ def parse(argv=None):
     ap.add_argument("--skip-sync", action="store_true", help="do not run sync_nfl.py / sync-exits first")
     ap.add_argument("--force-retrain", action="store_true",
                     help="refit even if the training inputs are unchanged (e.g. to confirm a stat correction)")
+    ap.add_argument("--no-project", action="store_true",
+                    help="do not store the production model's run in the live database after predict")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (tests and audits only)")
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
     ap.add_argument("--history-db", type=Path, default=cli._path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
@@ -425,7 +461,7 @@ def main(argv=None) -> int:
         return 0
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
-            "training", "forecast", "evaluation", "missed_window", "exit_code")
+            "training", "forecast", "projection", "evaluation", "missed_window", "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))
     return code
 
