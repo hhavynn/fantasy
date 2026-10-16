@@ -569,6 +569,10 @@ def _explain_one(m: dict, ctx: dict) -> dict:
 
     # ---- schedule (a bye is shown for both sources; the opponent comparison is ours only)
     byes = sorted(w["week"] for w in m.get("weeks") or [] if w.get("bye"))
+    # A bye in only one forecast (a trade between the two): ours already reports it as a coverage-status change.
+    one_sided = {side: sorted(w["week"] for w in m.get("weeks") or []
+                              if w.get(f"bye_{side}") and not w.get(f"bye_{'after' if side == 'before' else 'before'}"))
+                 for side in ("before", "after")}
     if ctx["ours"]:
         changed = [(w["week"], *ctx["opponents"][(pid, w["week"])]) for w in m.get("weeks") or []
                    if (pid, w["week"]) in ctx["opponents"] and ctx["opponents"][(pid, w["week"])][0] != ctx["opponents"][(pid, w["week"])][1]]
@@ -586,6 +590,17 @@ def _explain_one(m: dict, ctx: dict) -> dict:
                     source="NFL schedule",
                     detail=f"{_weeks(byes).capitalize()} {'is a bye' if len(byes) == 1 else 'are byes'}, counted as "
                            "0 points in both forecasts."))
+    if not ctx["ours"]:
+        for side, which, other in (("before", "earlier", "latest"), ("after", "latest", "earlier")):
+            ws = one_sided[side]
+            if ws:
+                head = f"{_weeks(ws).capitalize()}: a bye in the {which} snapshot only"
+                add(_signal(G_SCHEDULE, sum(abs(_number(w.get("delta")) or 0.0) for w in m["weeks"] if w["week"] in ws),
+                            head, kind="schedule", key=f"bye_{side}_only", label="Bye week", before=None, after=None,
+                            unit="text", weeks_before=ws if side == "before" else [], weeks_after=ws if side == "after" else [],
+                            source="NFL schedule",
+                            detail=f"{_weeks(ws).capitalize()} counts 0 points as a bye in the {which} snapshot, while "
+                                   f"the {other} snapshot has a projection for the player that week."))
 
     # ---- model (ours only)
     if ctx["ours"]:

@@ -355,6 +355,17 @@ def test_bye_week_is_informational(db):
     assert keys(first)[-1] == "bye_week" and first["headline"].startswith("Snap share")    # after every real signal
 
 
+def test_a_bye_in_one_snapshot_only_is_named_and_not_called_zero_in_both(db):
+    weeks = [{"week": 9, "delta": -15.0, "bye": False, "bye_before": False, "bye_after": True}]
+    e = ev(db, movers=[mover(4, weeks=weeks)])[4]
+    s = sig(e, "bye_after_only")
+    assert (s["kind"], s["weeks_after"]) == ("schedule", [9])
+    assert "bye_week" not in keys(e) and "latest snapshot only" in e["headline"]
+    assert "both forecasts" not in s["detail"]
+    ours = ev(db, movers=[mover(4, weeks=weeks)], source="independent")[4]
+    assert "bye_after_only" not in keys(ours)       # ours reports it as a coverage-status change instead
+
+
 # ----------------------------------------------------------------------------- nothing to say
 
 

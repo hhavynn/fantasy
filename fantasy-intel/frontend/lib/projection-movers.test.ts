@@ -267,6 +267,17 @@ test("weekNote explains byes, status changes and horizons, and is silent for a p
   assert.equal(weekNote(espn.risers[0].weeks[0]), null);
 });
 
+test("a bye in only one forecast hides only that forecast's value", () => {
+  const w = { week: 9, before: 15, after: 0, delta: -15, bye: false, bye_before: false, bye_after: true,
+              status_before: "projected", status_after: "bye", horizon_before: null, horizon_after: null };
+  const s = weekSeries({ weeks: [w] });
+  assert.deepEqual([s.before, s.after], [[15], [null]]);
+  assert.equal(weekNote(w), "Bye in the latest forecast only · Status: projected → bye");
+  const old = { ...w, bye: true, bye_before: undefined, bye_after: undefined };     // payload from before the per-side flags
+  assert.deepEqual(weekSeries({ weeks: [old] }).before, [null]);
+  assert.equal(weekNote(old), "Bye week");
+});
+
 // ----------------------------------------------------------------------------- evidence
 
 const sig = (over: Partial<EvidenceSignal>): EvidenceSignal => ({

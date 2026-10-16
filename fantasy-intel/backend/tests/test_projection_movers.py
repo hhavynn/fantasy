@@ -163,7 +163,8 @@ def test_genuine_forecast_change_orders_risers_and_fallers_with_rank_movement(co
     assert bo["gsis_id"] is None                                          # an uncertain id mapping is not shown
     assert ace["components"] is None and all(m["evidence"] is None for m in r["players"])
     first = ace["weeks"][0]
-    assert first == {"week": 7, "before": 10.0, "after": 13.0, "delta": 3.0, "bye": False, "status_before": "projected",
+    assert first == {"week": 7, "before": 10.0, "after": 13.0, "delta": 3.0, "bye": False, "bye_before": False, "bye_after": False,
+                     "status_before": "projected",
                      "status_after": "projected", "horizon_before": None, "horizon_after": None}
     assert r["summary"] == {"compared": 6, "risers": 3, "fallers": 1, "unchanged": 2, "not_comparable": 0,
                             "not_comparable_reasons": {}}
@@ -273,7 +274,8 @@ def test_espn_bye_weeks_count_zero_and_a_missing_non_bye_week_is_not_comparable(
     espn(con, skip_before={(2, 9)}, skip_after={(5, 12)})     # both play that week: a real gap, not a bye
     r = pm.movement(con, SEASON)
     ace_w11 = by_id(r)[1]["weeks"][4]
-    assert ace_w11 == {"week": 11, "before": 0.0, "after": 0.0, "delta": 0.0, "bye": True, "status_before": "bye",
+    assert ace_w11 == {"week": 11, "before": 0.0, "after": 0.0, "delta": 0.0, "bye": True, "bye_before": True, "bye_after": True,
+                       "status_before": "bye",
                        "status_after": "bye", "horizon_before": None, "horizon_after": None}
     assert by_id(r)[1]["before"] == 100.0                      # the bye week adds nothing and does not block him
     assert 2 not in by_id(r) and 5 not in by_id(r)
@@ -663,6 +665,29 @@ def test_espn_zero_rows_on_a_bye_and_a_traded_players_old_bye_week(con):
     assert (cy9["bye"], cy9["status_before"], cy9["before"]) == (False, "projected", 15.0)
     ace11 = next(w for w in by_id(r)[1]["weeks"] if w["week"] == 11)
     assert (ace11["bye"], ace11["status_after"], ace11["after"]) == (True, "bye", 0.0)
+
+
+def test_ranks_count_only_players_comparable_on_both_sides(con):
+    """Bo (the WR1 before) has no latest week-12 projection: he must not hold a rank on one side only and make
+    Ace and Gus look like they moved up a spot with him gone."""
+    seed(con)
+    espn(con, skip_after={(2, 12)})
+    r = pm.movement(con, SEASON)
+    assert 2 not in by_id(r)
+    assert [(by_id(r)[p]["rank_before"], by_id(r)[p]["rank_after"]) for p in (1, 7)] == [(1, 1), (2, 2)]
+
+
+def test_a_bye_in_only_one_snapshot_keeps_the_other_snapshots_value(con):
+    """Cy, traded to DEN (bye in week 9), still has a week-9 projection in the earlier snapshot only: only the
+    latest side is a bye, and evidence names which snapshot has it rather than claiming 0 in both."""
+    seed(con, players={**PLAYERS, 3: ("Cy Back", "RB", "DEN")})
+    espn(con, skip_after={(3, 9)})                      # rows from PLAYERS (Cy on BUF): week 9 in the earlier only
+    r = pm.movement(con, SEASON)
+    cy9 = next(w for w in by_id(r)[3]["weeks"] if w["week"] == 9)
+    assert (cy9["before"], cy9["after"]) == (15.0, 0.0)
+    assert (cy9["bye"], cy9["bye_before"], cy9["bye_after"]) == (False, False, True)
+    ace11 = next(w for w in by_id(r)[1]["weeks"] if w["week"] == 11)
+    assert (ace11["bye"], ace11["bye_before"], ace11["bye_after"]) == (True, True, True)
 
 
 def test_weeks_after_the_final_scoring_period_are_listed(con):

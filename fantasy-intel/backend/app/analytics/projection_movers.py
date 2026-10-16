@@ -532,8 +532,10 @@ def movement(con, season: int, *, source: str = "espn", view: str = "ros", posit
     sides = {"before": (base, "earlier"), "after": (cur, "latest")}
     resolved = {k: {pid: _resolve(side, pid, window, team_of[pid], is_bye, which, ours) for pid in position_of}
                 for k, (side, which) in sides.items()}
-    totals = {k: {pid: sum(c["value"] for c in cells) for pid, (cells, _) in res.items() if cells}
-              for k, res in resolved.items()}
+    # Rank only the players resolved on both sides: one missing forecast must not move anyone else's rank.
+    comparable = [pid for pid in position_of
+                  if resolved["before"][pid][0] is not None and resolved["after"][pid][0] is not None]
+    totals = {k: {pid: sum(c["value"] for c in res[pid][0]) for pid in comparable} for k, res in resolved.items()}
     ranks = {k: _ranks(totals[k], position_of) for k in totals}
 
     n, reasons = len(window), {}
@@ -561,7 +563,8 @@ def movement(con, season: int, *, source: str = "espn", view: str = "ros", posit
             "rank_change": ranks["before"][pid] - ranks["after"][pid],
             "direction": direction, "relevant": max(b_raw, a_raw) / n >= THRESHOLDS["relevant_per_week"],
             "weeks": [{"week": x["week"], "before": round(x["value"], 2), "after": round(y["value"], 2),
-                       "delta": round(y["value"] - x["value"], 2), "bye": x["bye"] or y["bye"],
+                       "delta": round(y["value"] - x["value"], 2), "bye": x["bye"] and y["bye"],
+                       "bye_before": x["bye"], "bye_after": y["bye"],
                        "status_before": x["status"], "status_after": y["status"],
                        "horizon_before": x["horizon"], "horizon_after": y["horizon"]} for x, y in zip(before, after)],
             "components": _split(_components(before, after), delta) if ours else None, "evidence": None})

@@ -46,10 +46,12 @@ reconstructed.
 * **Next week** (`view=week`) is the first window week only. For ours it compares the earlier cycle's forward
   estimate of that week (horizon 1, experimental) with the latest pregame forecast (horizon 0).
 * **Values.** ESPN's number; ours is the expected points of a `projected` row and 0 for a bye or withheld-unavailable
-  row. A missing ESPN row on the player's schedule bye counts 0 and is flagged. Anything else missing makes the player
+  row. A missing ESPN row on the player's schedule bye counts 0 and is flagged per side (`bye_before`, `bye_after`;
+  `bye` is a bye in both), since a trade can leave a real projection in only one. Anything else missing makes the player
   not comparable (counted by reason, never given a partial total).
 * **Metrics.** Window totals before and after, change, percent change (only when the earlier total is at least 1
-  point), per-week averages, rank within position by window total in each snapshot. A change under 0.05 is unchanged;
+  point), per-week averages, rank within position by window total in each snapshot, among only the players comparable
+  in both (a player missing from one side never shifts anyone's rank). A change under 0.05 is unchanged;
   the risers and fallers lists need a change of at least 0.5 points and at least 3 points per week on either side.
 * **Ours components.** With `p` = P(appears) and `x` = points if he plays, a week's change splits exactly into
   availability `(p1 - p0) * x0` and per-game outlook `p1 * (x1 - x0)`. This is arithmetic on the model's own stored
@@ -72,8 +74,9 @@ the game was over when that forecast was made), against the player's last up to 
 * **Ours components** are split so they add up to the shown change exactly; the rounding of stored expected points
   (up to 0.005 a week) is left in the per-game part.
 * **Role**: team change, depth-chart rank at the position between the two snapshot times.
-* **Schedule** (ours): a target week whose opponent differs between the two runs. A bye inside the window is in both
-  forecasts, so it is informational only and never the headline.
+* **Schedule** (ours): a target week whose opponent differs between the two runs. A bye in both forecasts is
+  informational only and never the headline. A bye in only one ESPN snapshot is named with its side (ours reports it
+  as a coverage change).
 * **Model** (ours): the two components above, and per-week coverage changes (e.g. withheld -> projected).
 
 Nothing at or after the latest snapshot and nothing from a window week is read. Signals are labeled as observed over

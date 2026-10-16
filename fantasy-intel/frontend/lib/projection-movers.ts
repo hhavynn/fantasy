@@ -56,7 +56,11 @@ export type MoverWeek = {
   before: number | null;
   after: number | null;
   delta: number | null;
+  /** A bye in both forecasts. */
   bye: boolean;
+  /** Per-forecast bye flags (a trade can put a bye in only one); absent on older payloads, where `bye` stands for both. */
+  bye_before?: boolean;
+  bye_after?: boolean;
   status_before: string | null;
   status_after: string | null;
   horizon_before: number | null;
@@ -340,20 +344,24 @@ export function chartMovers(d: MoversResponse, each = 8): ChartMover[] {
 
 export type WeekSeries = { labels: string[]; before: (number | null)[]; after: (number | null)[] };
 
-/** The per-week lines for one player. A bye week is a gap, not a projected zero. */
+const byeBefore = (w: MoverWeek) => w.bye_before ?? w.bye;
+const byeAfter = (w: MoverWeek) => w.bye_after ?? w.bye;
+
+/** The per-week lines for one player. A bye week is a gap, not a projected zero, only in the forecast that has the bye. */
 export function weekSeries(m: Pick<Mover, "weeks">): WeekSeries {
   const weeks = [...m.weeks].sort((a, b) => a.week - b.week);
   return {
     labels: weeks.map((w) => String(w.week)),
-    before: weeks.map((w) => (w.bye ? null : w.before)),
-    after: weeks.map((w) => (w.bye ? null : w.after)),
+    before: weeks.map((w) => (byeBefore(w) ? null : w.before)),
+    after: weeks.map((w) => (byeAfter(w) ? null : w.after)),
   };
 }
 
 /** A short note for a week row when something other than a plain number sits behind it. */
 export function weekNote(w: MoverWeek): string | null {
-  if (w.bye) return "Bye week";
+  if (byeBefore(w) && byeAfter(w)) return "Bye week";
   const parts: string[] = [];
+  if (byeBefore(w) !== byeAfter(w)) parts.push(`Bye in the ${byeBefore(w) ? "earlier" : "latest"} forecast only`);
   const unusual = (s: string | null) => (s && s !== "projected" ? s.replaceAll("_", " ") : null);
   const b = unusual(w.status_before);
   const a = unusual(w.status_after);
