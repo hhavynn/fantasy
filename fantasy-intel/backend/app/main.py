@@ -19,6 +19,7 @@ from .api.start_sit import router as start_sit_router
 from .api.matchup import router as matchup_router
 from .api.projection_promotion import router as projection_promotion_router
 from .api.projection_performance import router as projection_performance_router
+from .api.projection_movers import router as projection_movers_router
 from .api.weekly_recap import router as weekly_recap_router
 from .api.research import router as research_router
 from .api.player_compare import router as player_compare_router
@@ -68,6 +69,7 @@ app.include_router(start_sit_router)
 app.include_router(matchup_router)
 app.include_router(projection_promotion_router)
 app.include_router(projection_performance_router)
+app.include_router(projection_movers_router)
 app.include_router(weekly_recap_router)
 app.include_router(research_router)
 app.include_router(player_compare_router)

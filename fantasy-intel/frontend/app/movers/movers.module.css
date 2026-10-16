@@ -1,0 +1,89 @@
+/* Projection movers. Tokens only; layout restacks at 1000 / 720 px. */
+
+/* ---------- Controls ---------- */
+.controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; min-width: 0; max-width: 100%;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+}
+.controls :global(.filters) { margin-bottom: 0; min-width: 0; max-width: 100%; }
+.chipLabel { color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-right: 2px; }
+.compare { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.field { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.field select { max-width: 100%; min-width: 0; }
+@media (max-width: 720px) {
+  /* Phones: each chip row scrolls sideways instead of wrapping into a tall control panel. */
+  .controls { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px; }
+  .controls :global(.filters) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .controls :global(.chip) { flex: none; }
+  .controls > :global(.chip.reset) { align-self: flex-start; }
+  .compare { flex-wrap: nowrap; }
+  .field { flex: 1 1 auto; flex-direction: column; align-items: stretch; gap: 2px; }
+}
+
+/* ---------- Ranked lists ---------- */
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--section-gap); align-items: start; }
+@media (max-width: 1000px) { .pair { grid-template-columns: minmax(0, 1fr); } }
+.rows { margin: 0; padding: 0; list-style: none; }
+.row {
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto;
+  grid-template-areas: "no who change" ". facts facts" ". evid evid";
+  gap: 4px 10px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); min-width: 0;
+}
+.row:first-child { border-top: 0; }
+.selected { background: var(--surface-hover); box-shadow: inset 3px 0 0 var(--accent); }
+.no {
+  grid-area: no; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-sm);
+  background: var(--surface-raised); color: var(--ink-muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.who { grid-area: who; min-width: 0; }
+.change { grid-area: change; display: grid; justify-items: end; gap: 0; }
+.big { font-family: var(--font-display); font-size: 24px; line-height: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pct { color: var(--ink-muted); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.facts {
+  grid-area: facts; display: flex; flex-wrap: wrap; gap: 2px 14px; color: var(--ink-muted); font-size: 13px; line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.evid {
+  grid-area: evid; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px;
+  color: var(--ink-muted); font-size: 13px; line-height: 18px; min-width: 0;
+}
+.evText { min-width: 0; overflow-wrap: anywhere; }
+.detailLink { font-size: 13px; white-space: nowrap; }
+.emptyList { margin: 0; padding: 16px; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.listNote { margin: 0; color: var(--ink-muted); font-size: 12px; line-height: 18px; max-width: 110ch; }
+
+/* ---------- Notices and chart ---------- */
+.aboutList { margin: 0; padding-left: 18px; color: var(--ink-muted); }
+.aboutList li { margin: 2px 0; }
+.barWrap { min-width: 0; }
+
+/* ---------- Player detail ---------- */
+.detailHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; margin: 0 0 16px; }
+.detailFacts {
+  margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; color: var(--ink-muted); font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.detailGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+@media (max-width: 1000px) { .detailGrid { grid-template-columns: minmax(0, 1fr); } }
+.detailChart { display: grid; gap: 16px; min-width: 0; }
+.weekNote { display: block; max-width: 28ch; white-space: normal; color: var(--ink-faint); font-size: 11px; line-height: 15px; }
+
+.evidence { min-width: 0; }
+.panelTitle { margin: 0 0 8px; font-size: 14px; line-height: 20px; font-weight: 600; }
+.headline { margin: 0 0 12px; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.muted { margin: 0 0 12px; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.sigGroup { margin: 0 0 12px; }
+.groupTitle { margin: 0 0 4px; color: var(--ink-faint); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.sigList { margin: 0; padding: 0; list-style: none; }
+.sig { padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
+.sig:first-child { border-top: 0; }
+.sig p { margin: 0; }
+.sigHead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; font-size: 13px; line-height: 19px; }
+.sigNums { font-variant-numeric: tabular-nums; font-weight: 600; }
+.sigMeta { color: var(--ink-faint); font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
+.sigDetail { color: var(--ink-muted); font-size: 12px; line-height: 17px; }
+.missingList { margin: 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.note { margin: 12px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 17px; }
+
+/* ---------- Table ---------- */
+.tablePlayer { min-width: 180px; }
