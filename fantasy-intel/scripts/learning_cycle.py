@@ -18,6 +18,10 @@ first kickoff, US Eastern from nflverse, is still ahead) -> readiness (every ear
 box scores / snaps / xFP synced) -> evaluate frozen forecasts -> train (reused when the training
 data, configuration and scoring fingerprint are unchanged) -> predict (pregame only) -> project (the
 production ifp-2.0.0 run in the live DB; an identical run already stored is a no-op) -> report.
+The project stage also projects EVERY LATER regular-season week W+1..last from the same week-W artifact (rest-of-season
+projections, docs/independent_projection_engine.md; no training per week). A failure on one later week is listed under
+`projection.rest_of_season` and in `warnings`, and does not stop the other weeks or change the cycle status; skip all
+of it with --no-rest-of-season.
 A stage failure stops every later stage. Nothing is backdated, overwritten or replayed: a week whose
 first kickoff passed without a frozen pregame forecast is recorded under <out>/missed/.
 
@@ -223,7 +227,8 @@ def stage_sync_exits(args) -> dict:
 def stage_project(args, conns: list, log_path: Path) -> dict:
     """Store the production model's run for the target week in the live DB, the run the projection switch
     reads (backtest_independent_projections.py project, which picks the newest artifact this cycle trained or
-    reused). The cycle's read-only connections are closed first: DuckDB allows one writing process."""
+    reused), then every later regular-season week through args.last_week from that same artifact (`--through-week`,
+    one process). The cycle's read-only connections are closed first: DuckDB allows one writing process."""
     for con in conns:
         if con is not None:
             con.close()
@@ -232,6 +237,9 @@ def stage_project(args, conns: list, log_path: Path) -> dict:
            "--season", str(args.season), "--week", str(args.week), "--live-db", str(args.live_db),
            "--history-db", str(args.history_db), "--out", str(args.ifp_dir), "--weekly-dir", str(args.out),
            "--register-artifact", "learning_cycle"]
+    last = getattr(args, "last_week", None)
+    if last is not None and last > args.week and not getattr(args, "no_rest_of_season", False):
+        cmd += ["--through-week", str(last)]
     log_path.parent.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True, env=env)
@@ -366,8 +374,9 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         if target is None:
             raise CycleStop("no_upcoming_week", EXIT_OK, f"no {args.season} regular-season week kicks off after "
                             f"{now.isoformat()}")
-        args.week = target
+        args.week, args.last_week = target, max(kick)
         report["target_week"], report["target_first_kickoff"] = target, kick[target].isoformat()
+        report["last_regular_season_week"] = args.last_week
         report["target_first_kickoff_eastern"] = kick[target].astimezone(EASTERN).isoformat()
         rd = stage("readiness", wl.readiness, src, args.season, target, now, cli._fetched_at(live, args.season),
                    con=live)
@@ -404,6 +413,17 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         else:
             pj = stage("project", stage_project, args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log")
             report["projection"] = {k: pj.get(k) for k in ("run_id", "created", "rows", "model_version", "artifact_id")}
+            if "rest_of_season" in pj:
+                ros = pj["rest_of_season"]
+                report["projection"]["rest_of_season"] = ros
+                report["projection"]["rest_of_season_summary"] = {
+                    "weeks": [r["week"] for r in ros if "error" not in r],
+                    "created": sum(1 for r in ros if r.get("created")),
+                    "unchanged": sum(1 for r in ros if "error" not in r and not r.get("created")),
+                    "failed": [{"week": r["week"], "error": r["error"]} for r in ros if "error" in r]}
+                for r in ros:
+                    if "error" in r:
+                        report["warnings"].append(f"rest-of-season projection for week {r['week']} failed: {r['error']}")
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):
@@ -452,6 +472,8 @@ def parse(argv=None):
                     help="refit even if the training inputs are unchanged (e.g. to confirm a stat correction)")
     ap.add_argument("--no-project", action="store_true",
                     help="do not store the production model's run in the live database after predict")
+    ap.add_argument("--no-rest-of-season", action="store_true",
+                    help="project only the target week, not every later regular-season week from the same artifact")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (tests and audits only)")
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
     ap.add_argument("--history-db", type=Path, default=cli._path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))

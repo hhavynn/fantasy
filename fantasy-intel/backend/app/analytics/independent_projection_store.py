@@ -23,6 +23,17 @@ Guards (each produces an explicit coverage_status and a NULL projection, never a
 With a participation artifact (app.analytics.participation), each projected row also gets
 p_play = P(appears in week W) and expected_points = p_play * projected_points (unconditional).
 projected_points stays the estimate CONDITIONAL on appearing.
+
+Rest-of-season runs (`build_live(..., projected_from_week=W)` for a target week T > W, horizon h = T - W): the
+SAME week-W artifact projects every remaining regular-season week, "as of now, against the future opponent".
+Player, usage and recency features are computed with feature week W (so weeks_since_last and every recency
+feature stay in the training distribution); only the opponent, home/away, bye and NFL reserve weeks come from
+T's schedule. Availability for h >= 1: NFL reserve designations apply per week (player_availability.derive
+unavailable_weeks); ESPN INJURY_RESERVE / SUSPENSION and a non-ACT/INA roster status withhold EVERY remaining week
+("long-term unavailable; return date unknown"); ESPN OUT / DOUBTFUL / QUESTIONABLE and the ESPN designation
+fallback describe the next game only and apply to h = 0 ONLY. Participation sees no week-T injury report and gives
+an undesignated p_play. Rows are flagged "future week: no injury report yet" and "experimental"; horizon-0
+output is byte-identical to a run made before this feature existed.
 """
 
 from __future__ import annotations
@@ -39,9 +50,14 @@ from .forecast_features import POSITIONS, Sources, features_for_week, key
 from .independent_projections import Artifact, flags_for, missing_inputs, predict_frame
 from .league_scoring import resolve_skill_scoring
 from .player_availability import RESTRICTED, derive
-from .production_forecasts import ROWS, RUNS, ImmutableRunError, annotate, content_sha256, team_kickoffs
+from .production_forecasts import (HORIZON_NOTE, NEXT_GAME_ONLY, ROWS, RUNS, ImmutableRunError, annotate, content_sha256,
+                                   horizon_of, team_kickoffs)
 
 WITHHELD_ESPN = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
+LONG_TERM_ESPN = {"INJURY_RESERVE", "SUSPENSION"}   # withheld for every remaining week; OUT is the next game only
+FUTURE_NO_REPORT = "future week: no injury report yet"
+LONG_TERM_UNAVAILABLE = "long-term unavailable; return date unknown"
+RESERVE_ROSTER = {"RES", "PUP", "NFI"}   # NFL reserve lists: player_availability.derive can date a return for these
 ACTIVE_ROSTER = {"ACT", "INA"}     # nflverse weekly roster: active 53 (INA = game-day inactive that week)
 SUPPORTED_MAPPING = "high"
 # Row `model` label per fitted model name: ifp-1.0.0 selects B or C per position, ifp-2.0.0 fits "ifp2" ridges.
@@ -137,12 +153,19 @@ def artifact_digest(artifact: Artifact) -> str:
 
 
 def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int,
-               participation=None, artifact_sha256: str | None = None) -> tuple[dict, list[dict]]:
+               participation=None, artifact_sha256: str | None = None, *,
+               projected_from_week: int | None = None) -> tuple[dict, list[dict]]:
     """Run metadata + one row per candidate. `sources` must contain the live season (and
     ideally the previous season from the history DB). `participation`: optional
     ParticipationArtifact; without it p_play and expected_points stay null. `artifact_sha256`: sha256 of
     the artifact file the caller loaded (scripts/backtest_independent_projections.py project), stored as
-    the run's artifact_id so it can be compared with the approval registry's pinned sha."""
+    the run's artifact_id so it can be compared with the approval registry's pinned sha.
+    `projected_from_week`: W, the first unplayed week, when `week` is a later target week T (rest-of-season
+    projection, horizon T - W; see the module docstring). None (or == week) is the normal horizon-0 run."""
+    fw = week if projected_from_week is None else projected_from_week
+    if fw > week:
+        raise ValueError(f"projected_from_week {fw} is after the target week {week}")
+    horizon = week - fw
     _, scoring = league_scoring(con, season)
     scoring_ok = scoring.supported and scoring.fingerprint == artifact.scoring_fingerprint
     games = sources.games.filter((pl.col("season") == season) & (pl.col("week") == week))
@@ -150,8 +173,10 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     team_weeks: dict[str, list[int]] = {}
     for r in sources.games.filter(pl.col("season") == season).iter_rows(named=True):
         team_weeks.setdefault(r["team"], []).append(int(r["week"]))
-    rosters = _roster_rows(con, season, week)
-    on_ir = _fantasy_ir(con, season, week)
+    # roster and fantasy-IR state as of the cutoff week W, whatever the target week (a replay of a past W must not
+    # read rows posted since; live, nothing exists after W anyway)
+    rosters = _roster_rows(con, season, fw)
+    on_ir = _fantasy_ir(con, season, fw)
     rows, targets = [], []
     for c in candidates(con, season, week):
         rec = {"season": season, "week": week, "espn_player_id": c["espn_player_id"], "gsis_id": c["gsis_id"],
@@ -186,19 +211,41 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
                        team_games=team_weeks.get(team), weeks=[week])
         if c["espn_player_id"] in on_ir:
             rec["flags"].append("in a fantasy IR slot")
+        espn_status = (c["injury_status"] or "").upper()
         roster_status = (hist[-1].get("status") or "").upper() if hist else None
-        if (avail["status"] in RESTRICTED and week in avail["unavailable_weeks"]) \
-                or (c["injury_status"] or "").upper() in WITHHELD_ESPN:
+        if horizon:
+            rec["flags"] += [FUTURE_NO_REPORT, HORIZON_NOTE.format(k=horizon)]
+        # Horizon >= 1: an NFL reserve-list player whose return derive() can date (reserve rule code -> earliest
+        # eligible week) is withheld only for the weeks in unavailable_weeks and projected after them, even when ESPN
+        # also lists INJURY_RESERVE; every other long-term status stays withheld for all remaining weeks.
+        dated_return = bool(horizon and roster_status in RESERVE_ROSTER and avail["status"] in RESTRICTED
+                            and avail["earliest_eligible_week"] is not None)
+        # ESPN OUT is the next game only; INJURY_RESERVE / SUSPENSION last past it (horizon 0: all three withhold).
+        espn_withheld = espn_status in (LONG_TERM_ESPN if horizon else WITHHELD_ESPN) \
+            and not (dated_return and espn_status == "INJURY_RESERVE")
+        if (avail["status"] in RESTRICTED and week in avail["unavailable_weeks"]) or espn_withheld:
             rec["coverage_status"] = "withheld_unavailable"
             rec["missing_inputs"] = [w for w in avail["warnings"]] or [f"ESPN status {c['injury_status']}"]
+            if horizon and espn_withheld:
+                rec["missing_inputs"] = [f"{LONG_TERM_UNAVAILABLE} (ESPN status {c['injury_status']})"]
             continue
-        if roster_status and roster_status not in ACTIVE_ROSTER:
+        # (a dated return not yet reached was withheld above; from the eligible week on he is projected)
+        if dated_return:
+            rec["flags"].append(f"returns from reserve (eligible week {avail['earliest_eligible_week']}): return "
+                                "not confirmed, assumed available")
+        elif roster_status and roster_status not in ACTIVE_ROSTER:
             # Exempt, suspended, practice squad, released, reserve of any kind: not on the active roster.
             rec["coverage_status"] = "withheld_unavailable"
             rec["missing_inputs"] = [f"not on the NFL active roster (weekly roster status {roster_status}, "
                                      f"week {hist[-1]['week']})"]
+            if horizon:
+                rec["missing_inputs"].insert(0, LONG_TERM_UNAVAILABLE)
             continue
-        if (c["injury_status"] or "").upper() in ("QUESTIONABLE", "DOUBTFUL"):
+        if horizon:
+            if espn_status in WITHHELD_ESPN | {"QUESTIONABLE", "DOUBTFUL"}:
+                rec["flags"].append(f"ESPN injury status {c['injury_status']} {NEXT_GAME_ONLY}; it is "
+                                    f"not applied to week {week}")
+        elif espn_status in ("QUESTIONABLE", "DOUBTFUL"):
             rec["flags"].append(f"ESPN injury status {c['injury_status']}: projection assumes he plays")
         rec["coverage_status"] = "pending"
         targets.append({"gsis_id": c["gsis_id"], "position": c["position"], "team": team,
@@ -206,7 +253,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     preds: dict[str, dict] = {}
     if targets:
         tdf = pl.DataFrame(targets).unique("gsis_id", keep="first")
-        feats = features_for_week(sources, season, week, tdf)
+        feats = features_for_week(sources, season, fw, tdf)    # feature week W; opponent / home-away are T's
         preds = {p["gsis_id"]: p for p in predict_frame(artifact, feats)}
     for rec in rows:
         if rec.get("coverage_status") != "pending":
@@ -228,8 +275,11 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     parts: dict[str, dict] = {}
     if participation is not None:
         from .participation import predict_week
-        psources, fallback = espn_designation_fallback(con, sources, season, week)
-        parts = predict_week(psources, participation, season, week, fallback_teams=fallback)
+        if horizon:      # no injury report and no ESPN fallback for a future week: undesignated p_play
+            parts = predict_week(sources, participation, season, week, feature_week=fw)
+        else:
+            psources, fallback = espn_designation_fallback(con, sources, season, week)
+            parts = predict_week(psources, participation, season, week, fallback_teams=fallback)
     for rec in rows:
         if participation is None or rec.get("coverage_status") != "projected":
             continue
@@ -239,7 +289,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
                                     "note": "no ACT/INA NFL weekly roster row for this season: no participation estimate"}
             continue
         rec.update(p_play=q["p_play"], expected_points=round(q["p_play"] * rec["projected_points"], 2), participation=q)
-    before = sources.panel.filter(pl.col("season") * 100 + pl.col("week") < key(season, week))
+    before = sources.panel.filter(pl.col("season") * 100 + pl.col("week") < key(season, fw))
     last = before.select(pl.col("season").max(), pl.col("week").filter(
         pl.col("season") == pl.col("season").max()).max()).row(0) if before.height else (None, None)
     synced = fetch_dicts(con, "SELECT max(finished_at) AS t FROM sync_runs WHERE source = 'nfl' AND status = 'ok'") \
@@ -252,6 +302,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
             "participation_version": participation.version if participation is not None else None,
             "participation_status": participation.status if participation is not None else None,
             "participation_evaluation": participation.evaluation if participation is not None else None,
+            "forecast_horizon": horizon, "projected_from_week": fw,
             "created_at": utcnow()}
     for rec in rows:
         rec["run_id"] = meta["run_id"]
@@ -286,9 +337,10 @@ def write_run(con, meta: dict, rows: list[dict]) -> dict:
             twin = fetch_dicts(con, f"""
                 SELECT run_id, content_sha256 FROM {RUNS} WHERE season = ? AND week = ? AND model_version = ?
                   AND scoring_fingerprint IS NOT DISTINCT FROM ? AND artifact_id IS NOT DISTINCT FROM ?
+                  AND coalesce(forecast_horizon, 0) = ?
                 ORDER BY created_at DESC, run_id DESC LIMIT 1""",
                                [meta["season"], meta["week"], meta["model_version"], meta.get("scoring_fingerprint"),
-                                meta.get("artifact_id")])
+                                meta.get("artifact_id"), horizon_of(meta)])
             twin = [t for t in twin if t["content_sha256"] == digest]
             if twin:
                 result = {"run_id": twin[0]["run_id"], "created": False}

@@ -1,6 +1,7 @@
 // Weekly projection source: ESPN (default) or Fantasy Intel's independent model ("ours").
 // The choice lives in a cookie so it follows the user across pages; the backend applies it when a
-// request carries `source=independent` (Start/Sit and Matchup; rest-of-season pages stay on ESPN).
+// request carries `source=independent` (Start/Sit, Matchup and the player forward view; trades, waivers, team
+// value and the playoff race stay on ESPN).
 
 export type ProjectionSource = "espn" | "ours";
 export type ProjectionOrigin = "ours" | "ours_zero" | "espn";
@@ -24,7 +25,11 @@ export type ProjectionSourceDetail = {
   source: "espn" | "independent";
   available: boolean;
   reason: string | null;
-  run: { run_id: string; model_version: string; created_at: string } | null;
+  run: {
+    run_id: string; model_version: string; created_at: string;
+    /** Weeks ahead of the first unplayed week the run was made for (0 = the validated next-week forecast). */
+    forecast_horizon?: number; projected_from_week?: number | null; horizon_note?: string | null;
+  } | null;
   model_status: Record<string, string | null> | null;
   counts: Record<ProjectionOrigin, number> | null;
   governance?: ProjectionGovernance | null;
@@ -41,13 +46,21 @@ export function withSource(path: string, source: ProjectionSource): string {
   return `${path}${sep}source=independent`;
 }
 
+/** The experimental label of a rest-of-season run (horizon > 0), or null for the next-week forecast. */
+export function horizonCaution(d: ProjectionSourceDetail | null | undefined): string | null {
+  if (!showingOurs(d)) return null;
+  const note = d?.run?.horizon_note;
+  if (note) return note;
+  return (d?.run?.forecast_horizon ?? 0) > 0 ? "Rest-of-season forecast: experimental, not validated beyond the next week." : null;
+}
+
 /** True when the page is showing independent numbers (a run existed for the week). */
 export function showingOurs(d: ProjectionSourceDetail | null | undefined): boolean {
   return !!d && d.source === "independent" && d.available;
 }
 
 export const SWITCH_SCOPE =
-  "Weekly projections on Home, Matchup and Start/Sit. Rest-of-season pages (trades, waivers, team value, playoff race) stay on ESPN: the independent model projects one week at a time.";
+  "Weekly projections on Home, Matchup and Start/Sit, and the week-by-week forward view on a player's page (experimental beyond next week). Trades, waivers, team value and the playoff race stay on ESPN.";
 
 /** One sentence on what the shown model is and is not, from the backend's governance (never stronger). */
 export function modelStatusLine(d: ProjectionSourceDetail): string {

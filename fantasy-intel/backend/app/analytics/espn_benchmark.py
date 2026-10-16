@@ -131,14 +131,15 @@ def legacy_forecast_reader(con, season: int, weeks: Iterable[int] | None = None,
             for t in (g["home_team"], g["away_team"]):
                 kick[(g["week"], t)] = _kickoff(g)
     runs = {r["run_id"]: r for r in fetch_dicts(
-        con, """SELECT run_id, week, model_version, scoring_fingerprint, artifact_created_at, created_at
-                FROM independent_projection_runs WHERE season = ? ORDER BY week, run_id""", [season])
+        con, """SELECT * FROM independent_projection_runs WHERE season = ? ORDER BY week, run_id""", [season])
             if want is None or r["week"] in want}
     keep: dict[str, dict] = {}
     exclusions: list[dict] = []
     for rid, r in runs.items():
         fitted, fk = _utc(r["artifact_created_at"]), first.get(r["week"])
-        if r["model_version"] != model_version:
+        if pf.horizon_of(r) > 0:
+            reason = pf.NOT_EVIDENCE.format(k=pf.horizon_of(r))
+        elif r["model_version"] != model_version:
             reason = f"model {r['model_version']}, not {model_version}"
         elif r["scoring_fingerprint"] != scoring_fingerprint:
             reason = "made under different league scoring"

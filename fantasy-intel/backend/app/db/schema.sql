@@ -829,7 +829,11 @@ CREATE TABLE IF NOT EXISTS independent_projection_runs (
     artifact_id          VARCHAR,     -- sha256 of the artifact FILE bytes the `project` path loaded
     content_sha256       VARCHAR,     -- sha256 of the canonicalised run meta + rows (excludes run_id, created_at)
     row_count            INTEGER,     -- rows stored under this run_id; NULL/0 = forecast rows missing
-    migrated_from_legacy BOOLEAN      -- TRUE: backfilled from independent_player_projections (v7 layout)
+    migrated_from_legacy BOOLEAN,     -- TRUE: backfilled from independent_player_projections (v7 layout)
+    -- Rest-of-season projections: the cycle projects every remaining week with the week-W artifact.
+    -- forecast_horizon = target week - projected_from_week (0 = the normal pregame forecast). NULL (legacy) = 0.
+    forecast_horizon     INTEGER,
+    projected_from_week  INTEGER      -- W: the first unplayed week the cycle ran for (the data cutoff week)
 );
 -- Non-destructive upgrade of an existing v7 table (CREATE TABLE IF NOT EXISTS above is a no-op there).
 -- Participation columns (schema v7) for a v6 table: added in place, because the old v7 rebuild DROPPED these
@@ -841,6 +845,9 @@ ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS artifact_id VAR
 ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS content_sha256 VARCHAR;
 ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS row_count INTEGER;
 ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS migrated_from_legacy BOOLEAN;
+-- Rest-of-season runs (create-only; never a connection._REBUILD entry: that list DROPS tables).
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS forecast_horizon INTEGER;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS projected_from_week INTEGER;
 
 CREATE TABLE IF NOT EXISTS independent_player_projections (
     season               INTEGER,

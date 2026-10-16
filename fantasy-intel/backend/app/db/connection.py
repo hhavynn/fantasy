@@ -85,6 +85,8 @@ _REBUILD = {
     # 8: create-only. independent_projection_rows is new, independent_projection_runs gains provenance columns
     #    (ALTER ... ADD COLUMN IF NOT EXISTS in schema.sql) and the legacy rows are copied by
     #    production_forecasts.migrate_legacy. These tables must NEVER be listed in a rebuild entry: the list DROPS.
+    #    Rest-of-season projections add forecast_horizon / projected_from_week to independent_projection_runs the
+    #    same way (ALTER ... ADD COLUMN IF NOT EXISTS in schema.sql, NULL = horizon 0): no version bump, no rebuild.
     8: [],
 }
 _V2_REBUILD = _REBUILD[2]

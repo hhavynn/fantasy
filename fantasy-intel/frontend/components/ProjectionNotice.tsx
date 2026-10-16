@@ -1,5 +1,5 @@
 import { Badge, Notice } from "@/components/ui";
-import { modelStatusLine, showingOurs, type ProjectionOrigin, type ProjectionSourceDetail } from "@/lib/projection-source";
+import { horizonCaution, modelStatusLine, showingOurs, type ProjectionOrigin, type ProjectionSourceDetail } from "@/lib/projection-source";
 
 /** What the page's projections are when the switch is on "Ours"; nothing for the ESPN default. */
 export function ProjectionNotice({ detail, className }: { detail: ProjectionSourceDetail | null | undefined; className?: string }) {
@@ -17,12 +17,15 @@ export function ProjectionNotice({ detail, className }: { detail: ProjectionSour
       can&apos;t project.
       {c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable), {c.espn} from ESPN.</>}
       {detail.reason && <> {detail.reason}</>}
+      {horizonCaution(detail) && <> <strong>Caution: {horizonCaution(detail)}</strong></>}
     </Notice>
   );
 }
 
 /** Marks a number that is not from the independent model while the switch is on "Ours". */
-export function OriginTag({ origin, ours }: { origin: ProjectionOrigin | null | undefined; ours: boolean }) {
+export function OriginTag({ origin, ours, title = "No independent estimate for this player: ESPN's projection" }: {
+  origin: ProjectionOrigin | null | undefined; ours: boolean; title?: string;
+}) {
   if (!ours || origin !== "espn") return null;
-  return <Badge value="ESPN" tone="" title="No independent estimate for this player: ESPN's projection" />;
+  return <Badge value="ESPN" tone="" title={title} />;
 }
