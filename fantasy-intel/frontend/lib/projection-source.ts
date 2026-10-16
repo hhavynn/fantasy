@@ -1,6 +1,7 @@
 // Weekly projection source: ESPN (default) or Fantasy Intel's independent model ("ours").
 // The choice lives in a cookie so it follows the user across pages; the backend applies it when a
-// request carries `source=independent` (Start/Sit and Matchup; rest-of-season pages stay on ESPN).
+// request carries `source=independent` (Start/Sit, Matchup and the player forward view; trades, waivers, team
+// value and the playoff race stay on ESPN).
 
 export type ProjectionSource = "espn" | "ours";
 export type ProjectionOrigin = "ours" | "ours_zero" | "espn";
@@ -33,4 +34,4 @@ export function showingOurs(d: ProjectionSourceDetail | null | undefined): boole
 }
 
 export const SWITCH_SCOPE =
-  "Weekly projections on Home, Matchup and Start/Sit. Rest-of-season pages (trades, waivers, team value, playoff race) stay on ESPN: the independent model projects one week at a time.";
+  "Weekly projections on Home, Matchup and Start/Sit, and the week-by-week forward view on a player's page (experimental beyond next week). Trades, waivers, team value and the playoff race stay on ESPN.";

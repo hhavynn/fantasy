@@ -151,9 +151,28 @@ export type RosSummary = {
   bye_weeks_remaining: number | null; bye_weeks: number[]; missing_weeks: number[]; projection_source: string;
 };
 
+/** Where an "ours" week's number came from: our model, our model's zero (bye / unavailable), ESPN's fallback, or a schedule bye. */
+export type OursOrigin = "ours" | "ours_zero" | "espn" | "bye";
+
+/** One remaining regular-season week of the "ours" series (GET /api/players/{id}/forward?source=independent). */
+export type OursWeek = {
+  week: number; value: number | null; origin: OursOrigin; on_bye: boolean | null;
+  run_id: string | null; model_version: string | null; run_created_at: string | null;
+  horizon: number | null; projected_from_week: number | null; experimental: boolean;
+};
+
+/** Fantasy Intel's production model for the rest of the regular season. `ros_projected_points` is null unless complete. */
+export type OursForward = {
+  available: boolean; reason: string | null; label: string; model_version: string; weeks: OursWeek[];
+  ros_projected_points: number | null; ros_weeks_expected: number; ros_weeks_available: number; ros_complete: boolean;
+  fallback_weeks: number[]; missing_weeks: number[]; last_regular_season_week: number | null; run_created_at: string | null;
+};
+
 export type ForwardProjection = {
   source: string; note: string; summary: RosSummary; projection_synced_at: string | null;
   weeks: ForwardWeek[]; schedule_available: boolean;
+  /** Present only when the request carried source=independent. */
+  ours?: OursForward;
 };
 
 // V2 Trade Evaluator (POST /api/trades/evaluate). Projected points: ESPN. Trade impact: exact lineup simulation.

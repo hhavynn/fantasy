@@ -20,6 +20,7 @@ import json
 from dataclasses import dataclass
 
 from ..db.connection import fetch_dicts, replace_where, table_exists, utcnow
+from . import forward_ours
 
 PROJECTION_SOURCE = "ESPN"
 BASELINE_NOTE = ("ESPN projection is the forward fantasy-point baseline. Role, sustainability, schedule "
@@ -187,14 +188,22 @@ def build_ros_projections(con, season: int) -> dict:
     }
 
 
-def player_forward(con, season: int, pid: int, team: str | None) -> dict | None:
-    """The forward view for one player, computed with the same functions as the stored table."""
+def player_forward(con, season: int, pid: int, team: str | None, source: str = "espn") -> dict | None:
+    """The forward view for one player, computed with the same functions as the stored table.
+
+    ESPN's series is always the baseline. With source="independent" an `ours` block is added (the production
+    model's per-week projections for the remaining regular season: analytics/forward_ours.py); nothing else in
+    the response changes, and without it the response carries no `ours` key."""
     window = league_window(con, season)
     if window is None:
         return None
     p = _projections(con, window, pid).get(pid, {"weeks": {}, "synced_at": None})
     games, covered = load_schedule(con, season, window.weeks)
     weeks = forward_weeks(window, team, p["weeks"], games, covered)
-    return {"source": PROJECTION_SOURCE, "note": BASELINE_NOTE, "summary": summarize(window, weeks),
-            "projection_synced_at": p["synced_at"], "weeks": weeks,
-            "schedule_available": bool(covered)}
+    out = {"source": PROJECTION_SOURCE, "note": BASELINE_NOTE, "summary": summarize(window, weeks),
+           "projection_synced_at": p["synced_at"], "weeks": weeks,
+           "schedule_available": bool(covered)}
+    ours = forward_ours.ours_forward(con, season, pid, weeks, source=source)
+    if ours is not None:
+        out["ours"] = ours
+    return out
