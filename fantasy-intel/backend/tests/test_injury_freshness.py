@@ -630,3 +630,58 @@ def test_cli_execute_reports_per_source_errors_and_still_runs_the_other_sync(cli
     captured = capsys.readouterr()
     assert rc == 1 and calls == ["nfl", "espn"]
     assert "nflverse down" in captured.err and '"errors"' in captured.out
+
+
+# ----------------------------------------------------------------------------- manifest view / readiness notes
+
+
+def test_manifest_view_records_only_pregame_retrievals_before_the_capture(db):
+    put(db, obs(team="BUF", retrieved=WED_NOON - timedelta(hours=5), sha="1" * 64, run="r1"),
+        obs(team="BUF", retrieved=WED_NOON, sha="2" * 64, run="r2", pub=WED_NOON - timedelta(hours=2)),
+        obs(team="KC", retrieved=SUN, sha="3" * 64, run="r3"),                       # at kickoff: not pregame
+        obs(team="DEN", retrieved=WED_NOON + timedelta(hours=1), sha="4" * 64, run="r4"))   # after the capture
+    view = inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(minutes=30), kickoffs=KICKOFFS)
+    assert view["log"] == "present" and set(view["teams"]) == {"BUF"}
+    e = view["teams"]["BUF"]
+    assert (e["source"], e["content_sha"]) == ("nflverse", "2" * 64) and e["retrieved_at"] == WED_NOON.isoformat()
+    assert e["provider_published_at"] == (WED_NOON - timedelta(hours=2)).isoformat()
+    assert e["retrieval_id"] == db.execute("SELECT retrieval_id FROM injury_retrievals WHERE content_sha = ?",
+                                           ["2" * 64]).fetchone()[0]
+    # the capture instant itself is excluded (strictly before), and an unknown kickoff never gets a time
+    assert inj.manifest_view(db, 2026, 7, WED_NOON, kickoffs=KICKOFFS)["teams"]["BUF"]["content_sha"] == "1" * 64
+    assert inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(minutes=30), kickoffs={"BUF": None})["teams"] == {}
+
+
+def test_manifest_view_is_read_only_and_marks_an_absent_table(db):
+    put(db, obs())
+    before = db.execute("SELECT * FROM injury_retrievals").fetchall()
+    inj.manifest_view(db, 2026, 7, WED_NOON + timedelta(hours=1), kickoffs=KICKOFFS)
+    assert db.execute("SELECT * FROM injury_retrievals").fetchall() == before
+    db.execute("DROP TABLE injury_retrievals")
+    assert inj.manifest_view(db, 2026, 7, WED_NOON, kickoffs=KICKOFFS) == {
+        "schema": "injury-retrievals/v1", "log": "unavailable", "teams": {}}
+
+
+def test_readiness_notes_report_issues_post_kickoff_and_fallback_as_warnings(db):
+    injuries(db, [("BUF", 7, "g1", "Out", None, None)])
+    put(db, obs(team="BUF", retrieved=WED_NOON - timedelta(hours=30)),       # stale, Thursday game
+        obs(inj.SOURCE_ESPN, team="KC", retrieved=WED_NOON, sha="5" * 64))   # ESPN fallback, no mapped designation
+    db.execute("CREATE TABLE IF NOT EXISTS nfl_schedules (season INTEGER, week INTEGER, game_type VARCHAR, "
+               "gameday VARCHAR, gametime VARCHAR, home_team VARCHAR, away_team VARCHAR)")
+    db.execute("INSERT INTO nfl_schedules VALUES (2026, 7, 'REG', '2026-10-22', '20:15', 'BUF', 'MIA'), "
+               "(2026, 7, 'REG', '2026-10-25', '13:00', 'KC', 'DEN')")
+    notes = inj.readiness_notes(db, 2026, 7, WED_NOON)
+    text = " | ".join(notes["warnings"])
+    assert notes["log_available"] and "stale injury evidence" in text and "BUF" in text
+    assert notes["fallback_adds_no_designations"] == ["KC"] and "ESPN status fallback adds no designations" in text
+    assert "no injury evidence retrieved" in text and "MIA" in text and "DEN" in text
+    after = inj.readiness_notes(db, 2026, 7, SUN + timedelta(hours=1))        # everything kicked off
+    assert after["upcoming_issues"] == [] and "KC" not in " ".join(w for w in after["warnings"] if "stale" in w)
+
+
+def test_readiness_notes_absent_table_or_no_connection(db):
+    db.execute("DROP TABLE injury_retrievals")
+    for con in (db, None):
+        notes = inj.readiness_notes(con, 2026, 7, WED_NOON)
+        assert notes["log_available"] is False and notes["upcoming_issues"] == []
+        assert notes["warnings"] and notes["warnings"][0].startswith("injury retrieval log unavailable")

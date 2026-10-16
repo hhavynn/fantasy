@@ -14,7 +14,7 @@ tests `backend/tests/test_injury_freshness.py`, table `injury_retrievals` (creat
 | `sync_runs` | One row per sync (start/finish/status/stats JSON). | Run-level, not per team, and the start time is not the download time of the injury dataset (the nflverse sync downloads ~15 datasets; ESPN's fetch takes minutes). |
 | `fantasy_players.injury_status` (ESPN) | Overwritten on each ESPN sync; `synced_at`/`detail_synced_at` are set at WRITE time (`utcnow()` in `write_all`, after the fetch). | No history; the timestamp is later than the actual fetch; the status has no provider publication time at all. |
 | `independent_projection_store.espn_designation_fallback` | For a team with no nflverse week-W `report_status` (after the pregame `date_modified` filter), uses ESPN OUT/DOUBTFUL/QUESTIONABLE (high-confidence id map) as the designation. | A team with no nflverse report AND no ESPN designation gets no rows, which the model treats the same as "nobody is listed". Absence of evidence is indistinguishable from "healthy". Early in the week nflverse rows often carry only practice status (no `report_status`), so the team is treated as unsynced. |
-| `source_provenance.py` (PR #53) | Immutable pregame snapshots (`injuries_as_of`), `known_by` (= the snapshot's `captured_at`/retrieval semantics), `injury_timestamp_coverage` (share of rows with `date_modified`), `publication_time_status`, `source_meta` (`espn_status_fallback_teams`). | Snapshots are only taken when a learning cycle runs; between cycles there is no proof of when a given team was last fetched, and nothing flags a team whose evidence is old or absent before its kickoff. The snapshot manifest carries no per-team retrieval time. |
+| `source_provenance.py` (PR #53) | Immutable pregame snapshots (`injuries_as_of`), `known_by` (= the snapshot's `captured_at`/retrieval semantics), `injury_timestamp_coverage` (share of rows with `date_modified`), `publication_time_status`, `source_meta` (`espn_status_fallback_teams`). | Snapshots are only taken when a learning cycle runs; between cycles there is no proof of when a given team was last fetched, and nothing flags a team whose evidence is old or absent before its kickoff. Superseded by section 5: new manifests carry per-team retrieval times. |
 | `weekly_learning.py`, `scripts/learning_cycle.py` | Orchestrate sync, readiness, predict. `readiness()` checks box scores and finality, not injury-report freshness. | No injury-freshness gate or report. Exit 3 "not ready" never mentions injuries. |
 | `pbp_exits.py` | In-game injury exits from play-by-play (completed games only). | Not a pregame source; unaffected. |
 
@@ -98,20 +98,46 @@ comparing the refresh's completion time with their kickoff (`pregame`, `post_kic
 `compute_analytics.py` afterwards as `sync_nfl.py` does. A retrieval is never relabeled: `pregame` means
 `retrieved_at < kickoff` strictly.
 
-## 5. Not done / integration pending A or the architect
+## 5. Integration: integrated
 
-Forbidden files (`source_provenance.py`, `independent_projection_store.py`, `weekly_learning.py`, ...)
-were not touched, so the snapshot manifest does not yet carry per-team retrieval times. Proposed interface
-when those files are open:
+The log and diagnostics are now used by the pregame snapshot and the weekly learning orchestration.
+Informational and provenance only: no model input, injury probability, participation output,
+readiness status or exit code changes.
 
-1. `source_provenance.capture` adds `meta["injury_retrievals"] = injury_freshness.manifest_view(con, season, week)`:
-   per team the latest `retrieved_at`/`content_sha` of each source strictly before that team's kickoff
-   (a pure SELECT over `injury_retrievals`; add that small helper when integrating). Then `known_by` for
-   injuries could use the verified `retrieved_at` instead of the capture time.
-2. `weekly_learning.readiness` (or `learning_cycle` preflight) calls `injury_freshness.diagnostics` and
-   reports `upcoming_issues` as a warning (not an error) so a Thursday team with stale evidence shows up
-   in the cycle report.
-3. `espn_designation_fallback` could flag teams where the fallback adds no designations.
+1. **Snapshot manifest** (`source_provenance.capture(..., con=)`; `weekly_learning.py predict` and so every
+   learning cycle pass the live DB). New manifests carry a top-level `injury_retrievals` field built by
+   `injury_freshness.manifest_view`: `{"schema": "injury-retrievals/v1", "log": "present" | "unavailable",
+   "teams": {team: {source, retrieved_at, provider_published_at, content_sha, retrieval_id}}}`.
+   Per team it is the latest verified `team_week` retrieval for that season and week strictly before the
+   capture time, kept only if it is also strictly before the team's kickoff. A team gets no entry (no time is
+   guessed) when its kickoff is unknown, when its latest retrieval before the capture is at or after kickoff
+   (the snapshot content may then include post-kickoff rows, so an older pregame time would overstate how
+   early it was known), or when a later nflverse `feed` download no longer listed the team. `log:
+   "unavailable"` means an old database without the table. The field is part of the content-addressed
+   manifest id, so a new retrieval gives a new manifest and, as for any changed input, a new ledger run; an
+   unchanged log is a no-op rerun. Manifests are write-once and an existing manifest or part is never
+   rewritten. Manifests made before this field existed have no such key; they load, reconstruct and
+   rebuild identically (a capture without `con` also still produces the old shape). The schema string stays
+   `source-snapshot/v1`: the field is additive and readers use `.get`.
+   `known_by(manifest, part, team=None)`: for a team's `injuries/` part the verified `retrieved_at` of that
+   team's entry replaces the sync-level upper bound from `sync_runs`, capped at `captured_at`, so it is never
+   later than the capture. Without an entry the old rule (`retrieved_at`, else `captured_at`) applies.
+   `injuries_as_of` evaluates it per team.
+2. **Readiness warnings** (`weekly_learning.readiness(..., con=)`; `weekly_learning.py status/train/predict`
+   and `learning_cycle.py` pass the live DB). `injury_freshness.readiness_notes` turns `diagnostics` into
+   warning strings appended to `warnings`, plus a structured `injury_freshness` block (`log_available`,
+   `upcoming_issues` = missing/stale teams whose game has not started, `post_kickoff_only`,
+   `fallback_adds_no_designations`). The learning-cycle report carries them in `warnings`,
+   `data.warnings` and `injury_freshness`, also when the cycle stops as not ready. They never add to
+   `errors`, change `ok`/`pregame`, the cycle status or exit code, or any forecast row or inputs hash. If the
+   `injury_retrievals` table is absent (old DB) or cannot be read, the single warning is "injury retrieval
+   log unavailable ..." and the run continues.
+3. **Fallback flag**: `fallback_adds_no_designations` (ESPN fallback in use but zero mapped
+   OUT/DOUBTFUL/QUESTIONABLE players, so the model sees an empty list) is listed in the same warnings.
+   `espn_designation_fallback` itself is untouched.
+
+The cycle's `preflight` only checks configuration on the machine, before any data is read; the injury
+warnings appear in the report at the readiness stage, where the target week is known.
 
 ## 6. Limits
 

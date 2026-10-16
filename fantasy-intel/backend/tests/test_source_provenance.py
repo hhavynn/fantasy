@@ -347,3 +347,172 @@ def test_ledger_rows_carry_injury_evidence(cli, env):
                                                                  sp.NO_DROP, sp.UNKNOWN) for r in with_ev)
     m = sp.load_manifest(env / "out", 2025, 10, run["sources"]["manifest_id"])
     assert set(m["meta"]["injury_report_timestamps"]) == {"2024", "2025"}
+
+
+# ----------------------------------------------------------------------------- injury retrieval provenance
+# Week 10 of the synthetic world: every team kicks off at KICK10 (17:00 UTC). The injury_retrievals log is
+# filled by hand here (the real syncs write it); nothing below touches a network or the production files.
+
+from app.analytics import injury_freshness as inj  # noqa: E402
+
+H = timedelta(hours=1)
+
+
+def _log(env, team, retrieved, *, scope=inj.SCOPE_TEAM_WEEK, sha=None, pub=None, run="r1"):
+    """One nflverse observation (team-week or feed) of the synthetic live DB, as the sync would log it."""
+    con = connect(env / "live.duckdb")
+    feed = scope == inj.SCOPE_FEED
+    inj.record_observations(con, [inj.Observation(
+        inj.SOURCE_NFLVERSE, scope, 2025, None if feed else 10, None if feed else team, retrieved,
+        sha or hashlib.sha256(f"{team}{retrieved}".encode()).hexdigest(), 3, 1 if pub else 0, pub,
+        retrieved - timedelta(seconds=30), run)])
+    con.close()
+
+
+def _capture(env, captured_at, *, con=True, retrieved_at=None):
+    handle = connect(env / "live.duckdb") if con else None
+    try:
+        return sp.capture(env / "out", _live_sources(env), 2025, 10, captured_at=captured_at, con=handle,
+                          retrieved_at=retrieved_at)
+    finally:
+        if handle is not None:
+            handle.close()
+
+
+def _entry(env, team, retrieved):
+    con = connect(env / "live.duckdb")
+    row = con.execute("SELECT retrieval_id, content_sha FROM injury_retrievals WHERE team = ? AND retrieved_at = ?",
+                      [team, retrieved.replace(tzinfo=None)]).fetchone()
+    con.close()
+    return row
+
+
+def test_capture_embeds_the_latest_verified_retrieval_per_team(env):
+    pub = KICK10 - 30 * H
+    _log(env, "AAA", KICK10 - 40 * H)
+    _log(env, "AAA", KICK10 - 20 * H, pub=pub)           # the latest before the capture is the one recorded
+    _log(env, "BBB", KICK10 - 10 * H)
+    m = _capture(env, KICK10 - 2 * H)
+    view = m["injury_retrievals"]
+    assert view["schema"] == "injury-retrievals/v1" and view["log"] == "present"
+    rid, sha = _entry(env, "AAA", KICK10 - 20 * H)
+    assert view["teams"]["AAA"] == {"source": "nflverse", "retrieved_at": (KICK10 - 20 * H).isoformat(),
+                                    "provider_published_at": pub.isoformat(), "content_sha": sha,
+                                    "retrieval_id": rid}
+    assert view["teams"]["BBB"]["provider_published_at"] is None            # no provider time: null, never imputed
+    assert "CCC" not in view["teams"]                                       # nothing logged, nothing invented
+    assert sp.load_manifest(env / "out", 2025, 10, m["manifest_id"]) == m
+
+
+def test_retrieval_at_or_after_kickoff_or_after_capture_is_not_embedded(env):
+    _log(env, "AAA", KICK10)                                     # exactly at kickoff
+    _log(env, "BBB", KICK10 + H)                                 # after kickoff
+    _log(env, "CCC", KICK10 - 1 * H)                             # after the capture below
+    _log(env, "DDD", KICK10 - 30 * H)                            # older pregame retrieval ...
+    _log(env, "DDD", KICK10 - 1 * H)                             # ... and a newer one after the capture
+    m = _capture(env, KICK10 - timedelta(minutes=90))
+    teams = m["injury_retrievals"]["teams"]
+    assert set(teams) == {"DDD"} and teams["DDD"]["retrieved_at"] == (KICK10 - 30 * H).isoformat()
+    # a capture after kickoff: AAA/BBB's latest retrieval is at/after kickoff, so the snapshot content may include
+    # it and an older pregame time would overstate how early it was known; DDD's latest is still pregame
+    late = _capture(env, KICK10 + 12 * H)
+    assert set(late["injury_retrievals"]["teams"]) == {"CCC", "DDD"}
+    assert late["injury_retrievals"]["teams"]["DDD"]["retrieved_at"] == (KICK10 - 1 * H).isoformat()
+
+
+def test_a_later_post_kickoff_retrieval_blocks_the_older_pregame_entry(env):
+    _log(env, "EEE", KICK10 - 20 * H)
+    _log(env, "EEE", KICK10 + 10 * H)
+    assert "EEE" not in _capture(env, KICK10 + 12 * H)["injury_retrievals"]["teams"]
+
+
+def test_a_later_feed_download_that_dropped_the_team_blocks_the_older_entry(env):
+    _log(env, "AAA", KICK10 - 30 * H)
+    _log(env, "BBB", KICK10 - 30 * H)
+    _log(env, None, KICK10 - 30 * H, scope=inj.SCOPE_FEED, run="r1")
+    _log(env, "BBB", KICK10 - 10 * H, run="r2")
+    _log(env, None, KICK10 - 10 * H, scope=inj.SCOPE_FEED, run="r2")     # r2 listed BBB but not AAA
+    teams = _capture(env, KICK10 - 2 * H)["injury_retrievals"]["teams"]
+    assert set(teams) == {"BBB"} and teams["BBB"]["retrieved_at"] == (KICK10 - 10 * H).isoformat()
+
+
+def test_missing_log_table_is_recorded_as_unavailable(env):
+    _sql(env, "DROP TABLE injury_retrievals")
+    m = _capture(env, KICK10 - 2 * H)
+    assert m["injury_retrievals"] == {"schema": "injury-retrievals/v1", "log": "unavailable", "teams": {}}
+
+
+def test_old_manifest_without_the_field_loads_and_reconstructs_identically(env):
+    src = _live_sources(env)
+    old = _capture(env, KICK10 - 20 * H, con=False)               # what every earlier capture produced
+    assert "injury_retrievals" not in old
+    body = {k: v for k, v in old.items() if k not in ("manifest_id", "captured_at")}
+    assert old["manifest_id"] == hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    path = env / "out" / "snapshots" / "manifests" / "s2025w10" / f"{old['manifest_id']}.json"
+    frozen = _digest(env / "out" / "snapshots")
+    _log(env, "AAA", KICK10 - 10 * H)
+    new = _capture(env, KICK10 - 2 * H)                           # a newer capture adds the field and a new file
+    assert new["manifest_id"] != old["manifest_id"] and new["injury_retrievals"]["teams"]
+    after = _digest(env / "out" / "snapshots")
+    assert all(after[k] == v for k, v in frozen.items()), "an existing manifest or part was rewritten"
+    assert sp.load_manifest(env / "out", 2025, 10, old["manifest_id"]) == old
+    assert path.read_bytes() == json.dumps(old, indent=1, default=str).encode()
+    rebuilt, _ = sp.reconstruct(env / "out", old)
+    for fam in sp.FAMILIES:
+        a, b = getattr(src, fam), getattr(rebuilt, fam)
+        assert (a is None) == (b is None)
+        if a is not None:
+            assert sp.frame_hash(sp._canonical(fam, a.filter(pl.col("season") >= 2024))) == sp.frame_hash(b)
+    # known_by of an old manifest is untouched by the new code path (team given or not)
+    part = "injuries/s2025"
+    assert sp.known_by(old, part, "AAA") == sp.known_by(old, part) == datetime.fromisoformat(old["captured_at"])
+
+
+def test_known_by_uses_the_verified_time_and_is_never_later_than_captured_at(env):
+    part = "injuries/s2025"
+    sync_end = KICK10 - 3 * H                                     # sync_runs upper bound for the part
+    _log(env, "AAA", KICK10 - 10 * H)
+    m = _capture(env, KICK10 - 2 * H, retrieved_at={"injuries": {2025: sync_end}})
+    assert m["parts"][part]["retrieved_at"] == sync_end.isoformat()
+    assert sp.known_by(m, part, "AAA") == KICK10 - 10 * H         # the verified download time wins
+    assert sp.known_by(m, part, "BBB") == sync_end == sp.known_by(m, part)    # no entry: unchanged rule
+    assert sp.known_by(m, "games/s2025", "AAA") == datetime.fromisoformat(m["captured_at"])   # other families
+    # a verified time later than the capture (corrupt or hand-edited) can never move known_by past captured_at
+    bad = json.loads(json.dumps(m))
+    bad["injury_retrievals"]["teams"]["AAA"]["retrieved_at"] = (KICK10 + H).isoformat()
+    assert sp.known_by(bad, part, "AAA") == datetime.fromisoformat(m["captured_at"])
+    # point-in-time reads report the verified time
+    _, rep = sp.injuries_as_of(env / "out", 2025, 10, {"AAA": KICK10, "BBB": KICK10})
+    assert rep["teams"]["AAA"]["known_by"] == (KICK10 - 10 * H).isoformat()
+    assert rep["teams"]["BBB"]["known_by"] == sync_end.isoformat()
+    # the verified time is what decides whether the snapshot counts as known before a given instant
+    assert set(sp.injuries_as_of(env / "out", 2025, 10, {"AAA": KICK10 - 5 * H, "BBB": KICK10 - 2 * H})[1]["teams"]) \
+        == {"AAA", "BBB"}
+    tight = sp.injuries_as_of(env / "out", 2025, 10, {"AAA": KICK10 - 11 * H, "BBB": KICK10 - 2 * H})[1]
+    assert tight["no_pregame_snapshot"] == ["AAA"] and set(tight["teams"]) == {"BBB"}
+
+
+def test_predict_embeds_retrievals_and_frozen_runs_are_unaffected(cli, env, monkeypatch):
+    # an earlier run made by the code before this field existed: no `con` reaches capture
+    real = sp.capture
+    monkeypatch.setattr(sp, "capture", lambda *a, **k: real(*a, **{**k, "con": None}))
+    legacy = _forecast(cli, env)
+    monkeypatch.undo()
+    assert "injury_retrievals" not in sp.load_manifest(env / "out", 2025, 10, legacy["sources"]["manifest_id"])
+    ledger, snaps = _digest(env / "out" / "ledger"), _digest(env / "out" / "snapshots")
+    _log(env, "AAA", datetime(2025, 9, 10, 3, tzinfo=UTC))        # logged after the legacy run was frozen
+    run = _forecast(cli, env, now="2025-09-10T09:00:00+00:00")
+    m = sp.load_manifest(env / "out", 2025, 10, run["sources"]["manifest_id"])
+    assert set(m["injury_retrievals"]["teams"]) == {"AAA"} and run["run_id"] != legacy["run_id"]
+    for r in (legacy, run):                                       # both still rebuild exactly from their snapshots
+        champ, chal = _arts(r)
+        rebuilt = wl.rebuild_run(env / "out", r, champ, chal, _participation(env))
+        assert rebuilt["inputs_hash"] == r["inputs_hash"] and rebuilt["rows"] == r["rows"]
+    assert all(_digest(env / "out" / "ledger").get(k) == v for k, v in ledger.items())
+    assert all(_digest(env / "out" / "snapshots").get(k) == v for k, v in snaps.items())
+    # the extra field never changes what the model saw: same forecast numbers as the legacy run
+    assert [(r["gsis_id"], r["challenger"], r["p_play"]) for r in run["rows"]] == \
+        [(r["gsis_id"], r["challenger"], r["p_play"]) for r in legacy["rows"]]
+    # nothing new in the log: the same inputs are a no-op, not a new run
+    again = _forecast(cli, env, now="2025-09-10T09:30:00+00:00")
+    assert again["run_id"] == run["run_id"]

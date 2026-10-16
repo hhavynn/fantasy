@@ -98,11 +98,11 @@ def _fetched_at(live, season: int):
 
 
 def cmd_status(args, src, live=None, **_) -> dict:
-    return wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season))
+    return wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season), con=live)
 
 
 def _require_ready(args, src, live=None) -> dict:
-    rep = wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season))
+    rep = wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season), con=live)
     if not rep["ok"]:
         raise wl.NotReady("; ".join(rep["errors"]))
     if not rep["pregame"] and not args.retrospective:
@@ -170,7 +170,8 @@ def capture_sources(args, live, hist, src, participation_sources) -> dict:
             (pl.col("season") == args.season) & (pl.col("week") == args.week))
     try:
         return sp.capture(args.out, src, args.season, args.week, captured_at=_now(args),
-                          retrieved_at=_retrieved_at(args, live), meta=sp.source_meta(cov, fallback), extra=extra)
+                          retrieved_at=_retrieved_at(args, live), meta=sp.source_meta(cov, fallback), extra=extra,
+                          con=live)
     except Exception as err:
         raise wl.NotReady(f"could not snapshot the forecast's sources ({err.__class__.__name__}: {err}); no forecast "
                           "was frozen") from err

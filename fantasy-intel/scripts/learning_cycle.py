@@ -18,6 +18,9 @@ data, configuration and scoring fingerprint are unchanged) -> predict (pregame o
 A stage failure stops every later stage. Nothing is backdated, overwritten or replayed: a week whose
 first kickoff passed without a frozen pregame forecast is recorded under <out>/missed/.
 
+Injury-retrieval freshness (docs/injury_freshness.md section 5) is reported as `warnings` /
+`injury_freshness` in the cycle report; it never changes a status, an exit code or a forecast.
+
 Exit codes: 0 forecast frozen or already up to date (or no upcoming week); 3 not ready yet (retry
 before kickoff); 4 another cycle holds the lock; 5 configuration/dependency error; 1 stage failure.
 Reports: <out>/reports/cycle-<UTC stamp>.json (write-once), <out>/status/latest-cycle.json.
@@ -290,7 +293,8 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
     stamp = f"{now:%Y%m%dT%H%M%SZ}"
     report = {"schema": SCHEMA, "started_at": now.isoformat(), "now_eastern": now.astimezone(EASTERN).isoformat(),
               "season": args.season, "target_week": None, "status": None, "stages": [], "errors": [],
-              "required_actions": [], "missed_window": None, "prediction_models_changed": False}
+              "required_actions": [], "missed_window": None, "prediction_models_changed": False,
+              "warnings": [], "injury_freshness": None}
     lock, code, conns = None, EXIT_OK, []
 
     def stage(name, fn, *a, **kw):
@@ -335,9 +339,13 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         args.week = target
         report["target_week"], report["target_first_kickoff"] = target, kick[target].isoformat()
         report["target_first_kickoff_eastern"] = kick[target].astimezone(EASTERN).isoformat()
-        rd = stage("readiness", wl.readiness, src, args.season, target, now, cli._fetched_at(live, args.season))
+        rd = stage("readiness", wl.readiness, src, args.season, target, now, cli._fetched_at(live, args.season),
+                   con=live)
         report["data"].update(readiness_ok=rd["ok"], warnings=rd["warnings"], pbp_exits_through_week=rd[
             "pbp_exits_through_week"], completed_weeks=len(rd["completed_weeks"]))
+        # Informational only (injury retrieval freshness, ESPN fallback adding no designations): never a gate.
+        report["warnings"] = list(rd["warnings"])
+        report["injury_freshness"] = rd.get("injury_freshness")
         if target > 1:
             report["data"]["previous_week_finality"] = wl.week_finality(src, args.season, target - 1,
                                                                        cli._fetched_at(live, args.season))
@@ -425,7 +433,7 @@ def main(argv=None) -> int:
         return 0
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
-            "training", "forecast", "evaluation", "missed_window", "exit_code")
+            "training", "forecast", "evaluation", "missed_window", "warnings", "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))
     return code
 

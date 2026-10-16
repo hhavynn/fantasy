@@ -542,3 +542,71 @@ def test_starters_pool_is_ranked_before_appearance_is_known(monkeypatch):
                                                    "exp_champion", "exp_challenger")})
     sp = wl._position_reports(rows, 1, bootstrap=False)["WR"]["starters_pool"]
     assert sp["n"] == 1 and sp["mae"] == {"champion": 2.0, "challenger": 1.0}      # only "b", never "c"
+
+
+# ----------------------------------------------------------------------------- injury retrieval warnings
+
+
+def _log_obs(con, source, team, retrieved, scope=None):
+    from app.analytics import injury_freshness as inj
+    week = None if source == inj.SOURCE_ESPN else 10
+    scope = scope or (inj.SCOPE_TEAM_CURRENT if source == inj.SOURCE_ESPN else inj.SCOPE_TEAM_WEEK)
+    inj.record_observations(con, [inj.Observation(source, scope, 2025, week, team, retrieved, "a" * 64, 3, 0, None,
+                                                  retrieved - timedelta(seconds=30), "r1")])
+
+
+def test_readiness_carries_injury_freshness_warnings_without_changing_anything_else(tmp_path):
+    """Week 10 kicks off 2025-09-10 17:00 UTC for every synthetic team; BEFORE_W10 is 29 h earlier."""
+    from app.analytics import injury_freshness as inj
+    con = _db(tmp_path / "w.duckdb", {2025: 10})
+    src, _ = _src(con)
+    plain = _ready(src, 2025, 10, BEFORE_W10)
+    con.execute("INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, report_status) "
+                "VALUES (2025, 'REG', 'AAA', 10, 'g-aaa', 'Questionable')")       # AAA has a designation ...
+    _log_obs(con, inj.SOURCE_NFLVERSE, "AAA", BEFORE_W10 - timedelta(hours=40))        # ... retrieved 69 h pregame: stale
+    _log_obs(con, inj.SOURCE_ESPN, "BBB", BEFORE_W10 - timedelta(hours=1))             # fresh ESPN fallback, nobody listed
+    with_log = wl.readiness(src, 2025, 10, BEFORE_W10, fetched_at=FETCHED, con=con)
+    for key in plain:                                          # status, errors, gates: identical
+        if key != "warnings":
+            assert with_log[key] == plain[key], key
+    assert with_log["ok"] and with_log["pregame"] and with_log["errors"] == plain["errors"]
+    assert with_log["warnings"][:len(plain["warnings"])] == plain["warnings"]
+    extra = with_log["warnings"][len(plain["warnings"]):]
+    text = "\n".join(extra)
+    assert "stale injury evidence" in text and "AAA" in text
+    assert "no injury evidence retrieved" in text and "CCC" in text
+    assert "ESPN status fallback adds no designations for BBB" in text
+    assert "informational only" in text
+    info = with_log["injury_freshness"]
+    assert info["log_available"] and info["fallback_adds_no_designations"] == ["BBB"]
+    assert {i["team"] for i in info["upcoming_issues"]} == {"AAA", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH"}
+    assert "injury_freshness" not in plain
+    con.close()
+
+
+def test_readiness_survives_an_absent_injury_retrieval_log(tmp_path):
+    con = _db(tmp_path / "old.duckdb", {2025: 10})
+    src, _ = _src(con)
+    plain = _ready(src, 2025, 10, BEFORE_W10)
+    con.execute("DROP TABLE injury_retrievals")                 # an old database from before the log existed
+    rep = wl.readiness(src, 2025, 10, BEFORE_W10, fetched_at=FETCHED, con=con)
+    assert rep["ok"] == plain["ok"] and rep["errors"] == plain["errors"] and rep["pregame"] == plain["pregame"]
+    assert rep["warnings"][len(plain["warnings"])].startswith("injury retrieval log unavailable")
+    assert rep["injury_freshness"]["log_available"] is False and rep["injury_freshness"]["upcoming_issues"] == []
+    con.close()
+
+
+def test_injury_warnings_never_change_a_forecast(env, tmp_path):
+    """The same inputs give the same ledger rows and inputs hash whatever the readiness warnings say."""
+    _, src, scoring = env
+    champ, chal = _train(src, scoring)
+    ids = {"champion": {"version": champ.version, "id": wl.artifact_id(champ)},
+           "challenger": {"version": chal.version, "id": wl.artifact_id(chal)}}
+    base = wl.predict(src, champ, chal, 2025, 10, BEFORE_W10, artifact_ids=ids,
+                      readiness_report=wl.readiness(src, 2025, 10, BEFORE_W10, fetched_at=FETCHED))
+    con = _db(tmp_path / "noisy.duckdb", {2025: 10})
+    noisy = wl.predict(src, champ, chal, 2025, 10, BEFORE_W10, artifact_ids=ids,
+                       readiness_report=wl.readiness(src, 2025, 10, BEFORE_W10, fetched_at=FETCHED, con=con))
+    con.close()
+    assert noisy["inputs_hash"] == base["inputs_hash"] and noisy["rows"] == base["rows"]
+    assert noisy["readiness"]["warnings"] != base["readiness"]["warnings"]

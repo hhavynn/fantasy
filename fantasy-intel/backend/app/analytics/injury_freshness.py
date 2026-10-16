@@ -218,16 +218,17 @@ def _retrievals(con, source: str, season: int, scope: str, week: int | None = No
     if not table_exists(con, TABLE):
         return {}
     sql = (f"SELECT team, retrieved_at, content_sha, row_count, rows_with_publication_time, provider_published_at, "
-           f"sync_run_id FROM {TABLE} WHERE source = ? AND scope = ? AND season = ?")
+           f"sync_run_id, retrieval_id FROM {TABLE} WHERE source = ? AND scope = ? AND season = ?")
     params: list = [source, scope, season]
     if week is not None:
         sql += " AND week = ?"
         params.append(week)
     out: dict = {}
-    for team, r_at, sha, n, npub, pub, run in con.execute(sql + " ORDER BY retrieved_at", params).fetchall():
+    for team, r_at, sha, n, npub, pub, run, rid in con.execute(sql + " ORDER BY retrieved_at", params).fetchall():
         out.setdefault(team, []).append({"retrieved_at": naive_utc(r_at), "content_sha": sha, "row_count": n,
                                          "rows_with_publication_time": npub,
-                                         "provider_published_at": naive_utc(pub), "sync_run_id": run})
+                                         "provider_published_at": naive_utc(pub), "sync_run_id": run,
+                                         "retrieval_id": rid})
     return out
 
 
@@ -403,6 +404,93 @@ def diagnostics(con, season: int, week: int, now: datetime, *, kickoffs: Mapping
             "thresholds": {"stale_after_hours": thresholds.stale_after_hours, "window_hours": thresholds.window_hours},
             "log_present": table_exists(con, TABLE), "summary": summarize(teams), "teams": teams,
             "upcoming_issues": issues}
+
+
+# ----------------------------------------------------------------------------- integration views
+
+MANIFEST_VIEW_SCHEMA = "injury-retrievals/v1"
+LOG_UNAVAILABLE = "injury retrieval log unavailable"
+
+
+def _utc_iso(value: datetime | None) -> str | None:
+    t = naive_utc(value)
+    return None if t is None else t.replace(tzinfo=timezone.utc).isoformat()
+
+
+def manifest_view(con, season: int, week: int, captured_at: Any, *,
+                  kickoffs: Mapping[str, Any] | None = None) -> dict:
+    """What the source snapshot manifest records about WHEN each team's week-W nflverse injury rows were
+    retrieved (our clock), from the append-only log. Pure SELECT; never writes, never imputes.
+
+    Per team, the latest verified `team_week` retrieval strictly before `captured_at`, kept only if it is
+    also strictly before that team's kickoff. A team is left out (no entry, never a guessed time) when
+      * its kickoff is unknown, or the latest retrieval before the capture is at/after the kickoff (the
+        snapshot content may then include post-kickoff rows, so an older pregame time would overstate
+        how early it was known), or
+      * a later nflverse feed download (before the capture) no longer listed the team: the rows in the
+        table came from that later download, which the older team entry does not describe.
+    `log`: 'present' or 'unavailable' (old database without the table, or an unreadable log)."""
+    cut = naive_utc(captured_at)
+    if cut is None:
+        raise ValueError("captured_at is required")
+    view: dict = {"schema": MANIFEST_VIEW_SCHEMA, "log": "unavailable", "teams": {}}
+    try:
+        if not table_exists(con, TABLE):
+            return view
+        ko = dict(kickoffs) if kickoffs is not None else scheduled_kickoffs(con, season, week)
+        nfl = _retrievals(con, SOURCE_NFLVERSE, season, SCOPE_TEAM_WEEK, week)
+        feed = _latest(_retrievals(con, SOURCE_NFLVERSE, season, SCOPE_FEED).get(None), cut)
+    except Exception:
+        return view
+    view["log"] = "present"
+    for team in sorted(ko):
+        kick, hit = naive_utc(ko[team]), _latest(nfl.get(team), cut)
+        if hit is None or kick is None or hit["retrieved_at"] >= kick:
+            continue
+        if feed is not None and feed["retrieved_at"] > hit["retrieved_at"]:
+            continue
+        view["teams"][team] = {"source": SOURCE_NFLVERSE, "retrieved_at": _utc_iso(hit["retrieved_at"]),
+                               "provider_published_at": _utc_iso(hit["provider_published_at"]),
+                               "content_sha": hit["content_sha"], "retrieval_id": hit["retrieval_id"]}
+    return view
+
+
+def readiness_notes(con, season: int, week: int, now: datetime) -> dict:
+    """Informational injury-freshness warnings for the readiness report and the learning-cycle report.
+    They never block or change a forecast: no caller may use them as a gate or a model input.
+    Keys: log_available, warnings (strings), upcoming_issues (missing / stale, game not started),
+    post_kickoff_only, fallback_adds_no_designations (teams whose ESPN fallback contributes zero
+    designations). An absent log table, or any error reading it, yields one 'unavailable' warning."""
+    out = {"log_available": False, "warnings": [], "upcoming_issues": [], "post_kickoff_only": [],
+           "fallback_adds_no_designations": []}
+    try:
+        if con is None or not table_exists(con, TABLE):
+            out["warnings"].append(f"{LOG_UNAVAILABLE} (no {TABLE} table in this database); "
+                                   "pregame injury freshness not checked")
+            return out
+        diag = diagnostics(con, season, week, now)
+    except Exception as err:
+        out["warnings"].append(f"{LOG_UNAVAILABLE} (freshness check failed: {type(err).__name__}); "
+                               "pregame injury freshness not checked")
+        return out
+    out["log_available"] = True
+    out["upcoming_issues"] = diag["upcoming_issues"]
+    out["post_kickoff_only"] = sorted(t["team"] for t in diag["teams"] if t["status"] == POST_KICKOFF_ONLY)
+    out["fallback_adds_no_designations"] = diag["summary"]["espn_fallback_without_designations"]
+    for status, label in ((MISSING, "no injury evidence retrieved"), (STALE, "stale injury evidence")):
+        hit = [i for i in diag["upcoming_issues"] if i["status"] == status]
+        if hit:
+            out["warnings"].append(f"{label} for {len(hit)} team(s) before kickoff: "
+                                   + ", ".join(f"{i['team']} ({i['reason']})" for i in hit[:8])
+                                   + (" ..." if len(hit) > 8 else "") + "; informational only, the forecast is unchanged")
+    if out["post_kickoff_only"]:
+        out["warnings"].append(f"injury evidence retrieved only after kickoff for {', '.join(out['post_kickoff_only'])}; "
+                               "informational only")
+    if out["fallback_adds_no_designations"]:
+        out["warnings"].append("ESPN status fallback adds no designations for "
+                               f"{', '.join(out['fallback_adds_no_designations'])} (the model sees an empty injury "
+                               "list for them); informational only")
+    return out
 
 
 # ----------------------------------------------------------------------------- refresh

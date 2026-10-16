@@ -19,7 +19,10 @@ Timestamps (never invented or backfilled):
   retrieved_at  upper bound on when we downloaded the content: the finish time of the sync that
                 wrote the table (sync_runs) or the play-by-play file's write time; null if unknown
   captured_at   when this snapshot was taken (the forecast's creation time); always known
-  known_by      retrieved_at when known, else captured_at: the latest time we provably had it
+  known_by      retrieved_at when known, else captured_at: the latest time we provably had it. For a
+                team's injury rows, the verified per-team retrieval time from the `injury_retrievals` log
+                (manifest field `injury_retrievals`, added by newer captures) is preferred when present,
+                and is never later than captured_at. Older manifests lack the field and read as before.
   used_at       the ledger run's created_at (the forecast that read the manifest)
 """
 
@@ -121,11 +124,14 @@ def read_part(root: Path, family: str, season: int, digest: str) -> pl.DataFrame
 
 
 def capture(root: Path, sources: Sources, season: int, week: int, *, captured_at, retrieved_at: dict | None = None,
-            meta: dict | None = None, extra: dict[str, pl.DataFrame] | None = None) -> dict:
+            meta: dict | None = None, extra: dict[str, pl.DataFrame] | None = None, con=None) -> dict:
     """Snapshot every source family for seasons [season - PRIOR_SEASONS, season] and write a
     write-once manifest. `retrieved_at`: {family: {season: timestamp | None}}. `extra`: additional
     week-level frames (e.g. PARTICIPATION_INJURIES). An identical capture returns the existing
-    manifest (its earlier captured_at is kept: the content was known since then)."""
+    manifest (its earlier captured_at is kept: the content was known since then).
+    `con`: the live database; when given, the manifest also records per team the latest verified
+    injury retrieval (injury_freshness.manifest_view: strictly before the capture and the team's
+    kickoff). Without it the field is absent, exactly as in manifests made before it existed."""
     seasons = list(range(season - PRIOR_SEASONS, season + 1))
     parts = {}
     for fam in FAMILIES:
@@ -144,7 +150,10 @@ def capture(root: Path, sources: Sources, season: int, week: int, *, captured_at
                                                  "rows": part.height, "retrieved_at": None}
     body = {"schema": SNAPSHOT_SCHEMA, "season": season, "week": week, "seasons": seasons, "parts": parts,
             "meta": meta or {}}
-    mid = hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    if con is not None:       # additive field: absent in older manifests, which still load and reconstruct
+        from .injury_freshness import manifest_view
+        body["injury_retrievals"] = manifest_view(con, season, week, captured_at)
+    mid =hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
     path = Path(root) / "snapshots" / "manifests" / f"s{season}w{week:02d}" / f"{mid}.json"
     if path.exists():
         return load_manifest(root, season, week, mid)
@@ -191,9 +200,19 @@ def reconstruct(root: Path, manifest: dict) -> tuple[Sources, dict[str, pl.DataF
     return Sources(**frames), extra
 
 
-def known_by(manifest: dict, part: str) -> datetime | None:
+def known_by(manifest: dict, part: str, team: str | None = None) -> datetime | None:
+    """The latest time we provably had `part`. With `team` and an injuries part, the verified per-team
+    retrieval time recorded in the manifest (`injury_retrievals`) wins over the part's sync-level upper
+    bound, capped at captured_at so it can never be later than the capture. Nothing is invented: no
+    recorded retrieval for the team means the unchanged rule (retrieved_at, else captured_at)."""
     p = manifest["parts"].get(part) or {}
     ts = p.get("retrieved_at") or manifest.get("captured_at")
+    if team is not None and part.startswith("injuries/"):
+        hit = ((manifest.get("injury_retrievals") or {}).get("teams") or {}).get(team) or {}
+        if hit.get("retrieved_at") and hit.get("source") == "nflverse":
+            ts, cap = hit["retrieved_at"], manifest.get("captured_at")
+            if cap and datetime.fromisoformat(cap) < datetime.fromisoformat(ts):
+                ts = cap
     return datetime.fromisoformat(ts) if ts else None
 
 
@@ -202,11 +221,10 @@ def injuries_as_of(root: Path, season: int, week: int, kickoffs: dict[str, datet
     kickoff, from the persisted snapshots alone (never the current table). Teams with no snapshot
     known before kickoff get no rows and are listed under `no_pregame_snapshot`."""
     part = f"injuries/s{season}"
-    caps = [(known_by(m, part), m) for m in manifests(root, season)
-            if (m["parts"].get(part) or {}).get("status") == "captured"]
+    caps = [m for m in manifests(root, season) if (m["parts"].get(part) or {}).get("status") == "captured"]
     rows, used, missing = [], {}, []
     for team, ko in sorted(kickoffs.items()):
-        before = [(t, m) for t, m in caps if t is not None and t < ko]
+        before = [(t, m) for t, m in ((known_by(m, part, team), m) for m in caps) if t is not None and t < ko]
         if not before:
             missing.append(team)
             continue
