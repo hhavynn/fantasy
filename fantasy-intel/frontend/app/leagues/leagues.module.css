@@ -1,0 +1,56 @@
+.cards, .leagues { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.cards > li, .leagues > li { min-width: 0; display: flex; }
+.card, .league {
+  flex: 1; min-width: 0; display: grid; align-content: start; gap: 12px;
+  padding: 14px 16px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.cardHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.cardTitle { margin: 0; font-size: 16px; line-height: 22px; overflow-wrap: anywhere; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.desc, .plain, .hint { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.hint { font-size: 12px; line-height: 17px; color: var(--ink-faint); }
+
+/* A switched-off provider: the reason is text next to a disabled control, never colour alone. */
+.disabledBlock { display: grid; gap: 10px; }
+.reason { margin: 0; padding: 8px 10px; border-left: 3px solid var(--caution); background: var(--caution-soft); border-radius: var(--radius-xs); color: var(--ink); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+.reasonLabel { font-weight: 600; }
+.disabledBlock button { justify-self: start; max-width: 100%; height: auto; min-height: 34px; padding-top: 6px; padding-bottom: 6px; white-space: normal; text-align: left; }
+
+.disabledBlock button:disabled { background: var(--neutral-soft); color: var(--ink-muted); border-color: var(--line-control); opacity: 1; }
+
+/* Forms */
+.form, .teamForm { display: grid; gap: 12px; min-width: 0; }
+.teamForm { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.teamForm > :not(.field, button) { grid-column: 1 / -1; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label { font-size: 12px; font-weight: 600; color: var(--ink-muted); }
+.field input[type="text"], .field select { width: 100%; min-width: 0; }
+.field input[type="text"].season { max-width: 9ch; }
+.fieldError { margin: 0; color: var(--negative); font-size: 12px; line-height: 17px; font-weight: 600; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ok { margin: 0; color: var(--positive); font-size: 13px; font-weight: 600; }
+.secondary, .danger { background: transparent; color: var(--ink); border-color: var(--line-control); }
+.danger { color: var(--negative); border-color: var(--negative); }
+.confirm { display: grid; gap: 8px; }
+.confirmText { margin: 0; font-size: 13px; line-height: 19px; color: var(--ink); }
+
+/* Connected leagues */
+.facts { margin: 0; display: grid; gap: 8px; }
+.facts > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.facts dt { color: var(--ink-faint); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.detailLine { display: block; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.subhead { margin: 0 0 4px; font-size: 13px; color: var(--ink-muted); font-weight: 600; }
+.caps { min-width: 0; }
+.capList { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+.capList b { color: var(--ink); font-weight: 600; }
+.details { font-size: 13px; }
+.manage > button { justify-self: start; }
+.manage { display: grid; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); min-width: 0; }
+
+@media (max-width: 720px) {
+  .facts > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .teamForm { grid-template-columns: minmax(0, 1fr); }
+  .teamForm button, .actions button { width: 100%; }
+}

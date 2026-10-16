@@ -87,6 +87,9 @@ _REBUILD = {
     #    production_forecasts.migrate_legacy. These tables must NEVER be listed in a rebuild entry: the list DROPS.
     #    Rest-of-season projections add forecast_horizon / projected_from_week to independent_projection_runs the
     #    same way (ALTER ... ADD COLUMN IF NOT EXISTS in schema.sql, NULL = horizon 0): no version bump, no rebuild.
+    #    Player ratings (ratings-100.v1) add *_score_100 / rating_scale_version to player_scores and
+    #    opportunity_score_100 to waiver_recommendations the same way: no version bump, no rebuild. The read API
+    #    selects them only when present (routes._player_cols), so an older hosted copy keeps working.
     8: [],
 }
 _V2_REBUILD = _REBUILD[2]

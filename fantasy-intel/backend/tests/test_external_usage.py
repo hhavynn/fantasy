@@ -313,7 +313,8 @@ def test_single_provider_is_used_and_conflicting_datasets_give_null(nfl, tmp_pat
 
 SCORE_FIELDS = ["opportunity_score", "production_score", "usage_trend_score", "trend_label", "opportunity_tier",
                 "role_trend", "market_signal", "classification", "value_score", "fp_per_game", "xfp_per_game",
-                "fp_minus_xfp", "value_gap_label", "games", "opportunity_basis", "reasons", "components"]
+                "fp_minus_xfp", "value_gap_label", "games", "opportunity_basis", "reasons", "components",
+                "opportunity_score_100", "production_score_100", "value_score_100", "rating_scale_version"]
 CANONICAL_USAGE = ["targets", "receptions", "receiving_yards", "air_yards", "target_share", "air_yards_share",
                    "wopr", "carries", "fantasy_points_ppr", "xfp", "offense_pct", "opportunities"]
 

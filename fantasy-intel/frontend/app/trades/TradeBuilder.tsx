@@ -70,10 +70,9 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
     results.current?.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" });
   }, [current, pending]);
 
-  // "You give" reads naturally only when Team A is the user's team.
-  const mine = teamA?.is_mine ?? false;
-  const giveLabel = mine ? "You give" : `${teamA?.name ?? "Team A"} gives`;
-  const getLabel = mine ? "You get" : `${teamB?.name ?? "Team B"} gives`;
+  // Named sides, never "you": anyone in the league may be analyzing either team.
+  const giveLabel = `${teamA?.name ?? "Team A"} gives`;
+  const getLabel = `${teamB?.name ?? "Team B"} gives`;
   const ready = issues.length === 0;
 
   return (
@@ -81,7 +80,7 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
       <Section title="Build a trade">
         <div className={styles.sides}>
           {teamA && (
-            <RosterPicker role={mine ? "Your team sends" : "Team A sends"} className={styles.sideA} team={teamA} teams={teams} picked={sel.a} maxPerSide={maxPerSide}
+            <RosterPicker role="Team A sends" className={styles.sideA} team={teamA} teams={teams} picked={sel.a} maxPerSide={maxPerSide}
               onTeam={(id) => setSel(changeTeam(sel, teams, "a", id))}
               onToggle={(id) => setSel(togglePlayer(sel, "a", id, maxPerSide))} />
           )}
@@ -89,7 +88,7 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h11l-3-3" /><path d="M15 12H4l3 3" /></svg>
           </span>
           {teamB && (
-            <RosterPicker role={mine ? "Partner sends" : "Team B sends"} className={styles.sideB} team={teamB} teams={teams} picked={sel.b} maxPerSide={maxPerSide}
+            <RosterPicker role="Team B sends" className={styles.sideB} team={teamB} teams={teams} picked={sel.b} maxPerSide={maxPerSide}
               onTeam={(id) => setSel(changeTeam(sel, teams, "b", id))}
               onToggle={(id) => setSel(togglePlayer(sel, "b", id, maxPerSide))} />
           )}

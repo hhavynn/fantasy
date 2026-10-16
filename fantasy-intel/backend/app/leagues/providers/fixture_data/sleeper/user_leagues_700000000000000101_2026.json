@@ -1,0 +1,20 @@
+[
+ {
+  "league_id": "1180000000000000001",
+  "name": "Fixture Dynasty League",
+  "season": "2026",
+  "sport": "nfl",
+  "total_rosters": 4,
+  "status": "in_season",
+  "season_type": "regular"
+ },
+ {
+  "league_id": "1180000000000000002",
+  "name": "Fixture Redraft Half-PPR TE Premium",
+  "season": "2026",
+  "sport": "nfl",
+  "total_rosters": 2,
+  "status": "in_season",
+  "season_type": "regular"
+ }
+]

@@ -348,7 +348,9 @@ details.method > :last-child { margin-bottom: 16px; }
 details.method p, details.method li { color: var(--ink-muted); max-width: 100ch; }
 
 /* ---------- Tables ---------- */
-.table-wrap { overflow-x: auto; overscroll-behavior-x: contain; --cell-bg: var(--surface); }
+/* position: relative makes the scroll box the containing block of absolutely positioned descendants (e.g. a
+   VisuallyHidden label in a cell), so they stay clipped here instead of widening the page on phones. */
+.table-wrap { position: relative; overflow-x: auto; overscroll-behavior-x: contain; --cell-bg: var(--surface); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
 th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
 th { color: var(--ink-muted); font-weight: 600; font-size: 11px; line-height: 18px; letter-spacing: .05em; text-transform: uppercase; text-align: left; position: sticky; top: 0; background: var(--surface-raised); }
@@ -415,6 +417,7 @@ tr.group:hover td { background: var(--bg); }
 /* ---------- Score meter: number + ten ticks ---------- */
 .score { display: inline-flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .score .v { min-width: 28px; text-align: right; }
+.score .unit { color: var(--ink-faint); }
 .ticks { display: inline-grid; grid-template-columns: repeat(10, 4px); gap: 2px; }
 .ticks i { height: 10px; border-radius: 1px; background: var(--line); }
 .ticks i.on { background: var(--accent); }
