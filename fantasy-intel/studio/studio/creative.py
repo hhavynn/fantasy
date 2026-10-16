@@ -27,10 +27,19 @@ RETENTION_FIELDS = ("retention_3s", "avg_pct_viewed", "completion_rate", "rewatc
 
 
 def fingerprint(structure: dict) -> dict:
-    return {"family": structure.get("family") or structure.get("format"),
-            "hook_mechanism": structure.get("hook_mechanism") or structure.get("hook"),
-            "scenes": tuple(structure.get("scenes") or ()),
-            "ending_mechanism": structure.get("ending_mechanism") or structure.get("ending"),
+    """The five dimensions, with the fields older history rows did not record derived the same way new scripts
+    record them (the family from the format or storyline, the opening and ending as mechanisms)."""
+    from .shows import ENDING_OF_SCENE, HOOK_MECHANISM, LEGACY
+    fmt = structure.get("format")
+    family = structure.get("family") or LEGACY.get(fmt) or (
+        "template:" + structure["angle"] if fmt in (None, "template") and structure.get("angle") else fmt)
+    hook = structure.get("hook_mechanism") or HOOK_MECHANISM.get(structure.get("hook"), structure.get("hook"))
+    scenes = tuple(structure.get("scenes") or ())
+    ending = structure.get("ending_mechanism")
+    if not ending:
+        last = (structure.get("ending") or "").split(":")[0] or (scenes[-1] if scenes else None)
+        ending = ENDING_OF_SCENE.get(last, last) if last else None
+    return {"family": family, "hook_mechanism": hook, "scenes": scenes, "ending_mechanism": ending,
             "beats": tuple(structure.get("beats") or ())}
 
 

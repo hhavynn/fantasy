@@ -181,3 +181,48 @@ def test_legacy_scripts_are_fingerprinted_from_their_shots():
     assert fp["scenes"] == ["player_card", "decision"] and fp["ending_mechanism"] == "buttons"
     assert fp["family"] == "template:vanishing_targets"
     assert creative.shared(fp, creative.from_script(old)) == list(creative.DIMENSIONS)
+
+
+def test_legacy_history_rows_compare_like_new_ones():
+    """A history row from before the fingerprint fields still counts as a repeat of the same template."""
+    old_row = {"episode_id": "old", "structure": {"angle": "vanishing_targets", "format": "template", "hook": "mystery",
+                                                  "beats": ["hook", "twist"], "ending": "decision:",
+                                                  "scenes": ["player_card", "decision"]}}
+    new = {"family": "template:vanishing_targets", "hook_mechanism": "question", "scenes": ["player_card", "decision"],
+           "ending_mechanism": "buttons", "beats": ["hook", "twist"]}
+    assert creative.compare(new, [old_row])[0]["shared"] == list(creative.DIMENSIONS)
+
+
+def test_a_planned_detective_or_contingency_is_made_as_planned():
+    """compose honours the show the batch editor planned instead of re-choosing the format."""
+    from studio import editorial as E
+    f, p, cl = _facts(_red_flag_snap(), "00-FALLER")
+    called = []
+    orig = E.choose_format
+    E.choose_format = lambda *a: called.append(1) or orig(*a)
+    try:
+        story.compose(f, cl, "seed", {}, None, None)
+        assert called                                       # no plan: the format is chosen from the data
+        called.clear()
+        try:
+            story.compose(f, cl, "seed", {}, None, "detective")
+        except Exception:
+            pass                                            # this story has no mystery case; what matters is...
+        assert not called                                   # ...that a planned show is never re-chosen
+    finally:
+        E.choose_format = orig
+
+
+def test_preview_writes_only_under_its_own_directory(tmp_path, monkeypatch):
+    from studio import storyboard
+    src = tmp_path / "real" / "2026-w06-short-someone"
+    src.mkdir(parents=True)
+    keep = tmp_path / "real" / "2026-w06-short-someone-show-red_flag"
+    keep.mkdir()
+    (keep / "final.mp4").write_text("a real episode")
+    monkeypatch.setenv("STUDIO_EPISODES", str(tmp_path / "real"))
+    with pytest.raises(FileNotFoundError):                  # no snapshot to copy: fails before touching anything
+        storyboard.preview(src, "red_flag", tmp_path / "previews")
+    assert (keep / "final.mp4").exists()
+    import os
+    assert os.environ["STUDIO_EPISODES"] == str(tmp_path / "real")   # restored

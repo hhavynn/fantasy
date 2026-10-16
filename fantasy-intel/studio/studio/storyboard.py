@@ -12,6 +12,7 @@ episode changes; a full render happens only after these gates pass.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 from dataclasses import asdict
@@ -30,11 +31,26 @@ WPS = 2.9                              # Kokoro at this speed, words per second 
 
 def preview(src: Path, show: str | None, out: Path) -> Path:
     cfg = Config.load()
+    source_dir = cfg.episodes_dir                       # the channel's real episodes (and its history.jsonl)
+    out = out.resolve()
     base_id = src.name
     slug = base_id.split("-short-", 1)[1] + (f"-show-{show}" if show else "-preview")
     season, week = int(base_id[:4]), int(base_id.split("-w")[1][:2])
-    cfg.raw["episodes_dir"] = str(out)
+    saved = os.environ.get("STUDIO_EPISODES")
+    os.environ["STUDIO_EPISODES"] = str(out)            # Config.episodes_dir reads the environment first
+    try:
+        return _preview(cfg, src, show, out, source_dir, base_id, slug, season, week)
+    finally:
+        if saved is None:
+            os.environ.pop("STUDIO_EPISODES", None)
+        else:
+            os.environ["STUDIO_EPISODES"] = saved
+
+
+def _preview(cfg, src, show, out, source_dir, base_id, slug, season, week) -> Path:
     ep = Episode(season, week, "short", cfg, slug=slug, log=lambda *_: None)
+    if ep.dir.resolve().parent != out:                  # never clear anything outside the preview directory
+        raise RuntimeError(f"preview would write to {ep.dir}, outside {out}")
     if ep.dir.exists():
         shutil.rmtree(ep.dir)
     ep.dir.mkdir(parents=True)
@@ -45,7 +61,7 @@ def preview(src: Path, show: str | None, out: Path) -> Path:
     ST.run(ep)
     script, facts = read_json(ep.path("script.json")), read_json(ep.path("facts.json"))
     snap = read_json(ep.path("snapshot.json"))
-    hist_path = Path(__file__).resolve().parents[1] / "episodes" / "history.jsonl"
+    hist_path = source_dir / "history.jsonl"
     history = [json.loads(l) for l in hist_path.read_text().splitlines() if l.strip()] if hist_path.exists() else []
     history = [h for h in history if h["format"] == "short" and h["episode_id"] != base_id]
     gates = [qc.gate_claims(snap, facts, script), qc.gate_narration(script), qc.gate_creative(ep, script, history)]

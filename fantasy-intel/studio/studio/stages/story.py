@@ -183,7 +183,8 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
                                           titles=titles, ending=extra["ending"])
         structure["hook_variants"] = variants
         return beats, titles, structure
-    fmt = E.choose_format(p, claims)
+    # a planned detective or contingency is made as planned, not re-chosen (the board and the video must agree)
+    fmt = {"detective": "mystery", "contingency": "opportunity"}.get(show) or E.choose_format(p, claims)
     if fmt in ("mystery", "opportunity"):
         build = F.mystery if fmt == "mystery" else F.opportunity
         beats, titles, hook_key, variants = build(p, claims, used, hook_override)

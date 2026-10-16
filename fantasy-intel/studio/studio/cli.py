@@ -92,7 +92,7 @@ def editorial_pick(cfg: Config, snap: dict, season: int, week: int, recent: set[
         d = plan.get(s["slug"])
         if d and d["verdict"] == "defer":
             row["verdict"], row["reject_reasons"] = "reject", row["reject_reasons"] + d["reasons"][-1:]
-        if d and d["show"] in ("red_flag", "heist", "myth"):
+        if d and d["show"]:                     # the planned show is the one made (the formats included)
             s["show"] = d["show"]
     week_ep.path("editorial.md").write_text(editorial.board_markdown([r for _, r in rows]))
     quota = cfg["shorts"]["risers"] + cfg["shorts"]["fallers"]
@@ -114,7 +114,7 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
     if only:      # an explicitly requested player isn't limited by the weekly quota, only by the selection rules
         stories = facts.pick_stories(snap, 0, 0, recent, only=only)[:1]
         planned = {d["slug"]: d["show"] for d in read_json(week_ep.path("shows.json"))}
-        if stories and planned.get(stories[0]["slug"]) in ("red_flag", "heist", "myth"):
+        if stories and planned.get(stories[0]["slug"]):
             stories[0]["show"] = planned[stories[0]["slug"]]
         if not stories:
             print(f"no story for {only!r}; this week's: {[s['slug'] for s in read_json(week_ep.path('stories.json'))]}")
