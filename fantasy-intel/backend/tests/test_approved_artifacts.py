@@ -162,6 +162,7 @@ def test_without_the_table_the_evidence_readers_fail_open(live):  # noqa: F811
 
 def test_the_single_sha_pin_leaves_ifp1_unchanged_when_unset_and_filters_when_set(live, monkeypatch):  # noqa: F811
     con, src, _ = live
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", None)    # the committed pin is set; unset it here
     a, _, _ = store(con, src, BEFORE_ALL, sha="a" * 64)
     b, _, _ = store(con, src, BEFORE_ALL, sha="b" * 64)
     assert production_pin.APPROVED_ARTIFACT_SHA256 is None and not gate_active(con, "ifp-1.0.0")
@@ -176,8 +177,9 @@ def test_the_single_sha_pin_leaves_ifp1_unchanged_when_unset_and_filters_when_se
 # ----------------------------------------------------------------------------- upgrade transition and backfill
 
 
-def test_zero_registered_rows_is_unverified_and_the_first_registration_starts_enforcement(live):  # noqa: F811
+def test_zero_registered_rows_is_unverified_and_the_first_registration_starts_enforcement(live, monkeypatch):  # noqa: F811
     con, src, _ = live
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", None)    # to show the ifp-1.0.0 rule is unaffected
     old, _, _ = store(con, src, BEFORE_ALL, sha="b" * 64, meta_over={"model_version": PROD})   # stored before the upgrade
     assert rows_in(con) == []
     assert artifact_gate(con, PROD)({"artifact_id": "b" * 64})[0] == "unverified"
@@ -280,7 +282,7 @@ def test_a_rejected_production_run_is_explained_as_not_approved_not_as_missing(l
     register_approved_artifact(con, model_version=PROD, artifact_sha256="a" * 64, target_season=2026, target_week=6,
                                training_cutoff_key=202605, source="learning_cycle")
     store(con, src, BEFORE_ALL, sha="b" * 64, meta_over={"model_version": PROD})      # unregistered ifp-2 run
-    store(con, src, BEFORE_ALL, sha="c" * 64)                                           # ifp-1.0.0 run
+    store(con, src, BEFORE_ALL, sha=production_pin.APPROVED_ARTIFACT_SHA256)            # ifp-1.0.0 run, pinned file
     w = ps.weekly(con, 2026, 6, "independent")
     assert w["run"]["model_version"] == "ifp-1.0.0"
     assert "not approved" in w["reason"] and "No ifp-2.0.0 run is stored" not in w["reason"]

@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.analytics import production_pin
 from app.analytics import start_sit_evaluation as sse
 from app.analytics.independent_projection_store import league_scoring, write_run
 from app.db.connection import connect, init_db
@@ -337,7 +338,7 @@ def _run(con, version, week, created, fit="2026-10-15T09:00:00+00:00"):
              "latest_usage_week": 5, "missing_inputs": [], "flags": [], "explanation": {}, "p_play": 0.9,
              "expected_points": 9.0 + pid, "participation": None} for pid, (pos, team) in PLAYERS.items()]
     meta = {"run_id": f"{version}-w{week}-{created:%H%M}", "season": 2026, "week": week, "model_version": version,
-            "scoring_fingerprint": scoring.fingerprint, "artifact_id": f"art-{version}", "artifact_created_at": fit,
+            "scoring_fingerprint": scoring.fingerprint, "artifact_id": production_pin.APPROVED_ARTIFACT_SHA256 if version == production_pin.PINNED_MODEL_VERSION else f"art-{version}", "artifact_created_at": fit,
             "data_through_season": 2026, "data_through_week": 5, "model_status": {"QB": {"status": "shadow"}},
             "created_at": _ts(created)}
     return write_run(con, meta, rows)

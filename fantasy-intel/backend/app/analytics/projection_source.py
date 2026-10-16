@@ -14,13 +14,28 @@ each number came from (`origin`):
   espn       no independent estimate exists for him (K and D/ST have no model; rookies without an NFL
              game, uncertain ID mapping, no participation estimate): ESPN's projection, labeled.
 
-The independent run must be the approved production model (MODEL_VERSION; the registry manifest) under the league's
-current scoring and, made by an approved artifact (production_pin: an ifp-2.0.0 run must use an artifact registered in the
-database's approved_artifacts table, an ifp-1.0.0 run the sha pin once it is set; runs record the sha256 of the
-artifact file bytes in artifact_id; a database without that table is read unverified). A week with
-no production run falls back to the previous production model (FALLBACK_VERSION) and says so in `reason`;
-with neither the switch reports `available: false` and the consumer keeps ESPN. Runs are immutable: the newest run that still has its stored rows is used, read from
-independent_projection_rows (the legacy table only when the database has not been migrated to schema v8).
+Which run consumers see (`select_run`, the one selection every consumer view uses: this switch, and
+GET /api/projections/independent):
+
+  1. the league's current scoring must be supported (else nothing is shown: ESPN);
+  2. candidates are runs of MODEL_VERSION (production, the registry manifest) under that scoring, newest first;
+     only when none qualifies, runs of FALLBACK_VERSION (the retired previous production model, its rollback
+     target), labeled as the fallback in `reason` and `governance`;
+  3. a run qualifies only when its artifact is approved (production_forecasts.artifact_gate with the rules of
+     production_pin: an ifp-2.0.0 run's artifact must be registered in the write-once approved_artifacts table,
+     an ifp-1.0.0 run must use the pinned artifact file; a database without registrations is read unverified,
+     fail open, and says so) AND its stored rows verify against its content hash
+     (production_forecasts.integrity_problem, the same rule the evidence readers apply). A run that fails is
+     skipped and reported in `skipped`, never shown. A database not migrated to schema v8 shows nothing.
+
+This is the LIVE view: the newest qualifying run, whenever it was made. Accuracy evidence uses a stricter
+population (production_forecasts.pregame_forecasts: per player, only rows made before his own kickoff);
+`timing` says how many of the shown rows are pregame. Nothing here writes, so a late run never changes a
+stored forecast.
+
+Production status (GOVERNANCE, mirrored from the registry manifest and tested against it): ifp-2.0.0 is
+production by an owner override. Its research validation is historical only, it has not met the
+prospective promotion criteria, and it is not shown to be better than ESPN; no position is Start/Sit-ready.
 """
 
 from __future__ import annotations
@@ -33,10 +48,31 @@ from . import production_forecasts as pf
 SOURCES = ("espn", "independent")
 OURS, OURS_ZERO, ESPN = "ours", "ours_zero", "espn"
 ZERO_STATUSES = {"bye", "withheld_unavailable"}
+POSITIONS = ("QB", "RB", "WR", "TE")
 MODEL_VERSION = "ifp-2.0.0"     # approved production (registry manifest); app.analytics.challenger.CHALLENGER_VERSION
 FALLBACK_VERSION = "ifp-1.0.0"  # previous production (app.analytics.independent_projections.MODEL_VERSION), read
                                 # only for a week without a MODEL_VERSION run; numpy-free copies, tested
-# The approved-artifact pin (for MODEL_VERSION only) lives in the leaf module production_pin, read at call time.
+# The artifact rules (ifp-1.0.0 sha pin, ifp-2.0.0 approved_artifacts) live in the leaf module production_pin and
+# are applied by production_forecasts.artifact_gate, read at call time.
+CONSUMER_VERSIONS = (MODEL_VERSION, FALLBACK_VERSION)
+GATE_REASONS = (pf.NOT_REGISTERED, pf.NOT_APPROVED_ARTIFACT)
+
+# What consumers may say about each served model. Mirrors the registry manifest (tested): ifp-2.0.0 is approved by
+# an owner override citing no evidence report, start_sit_ready is false for both.
+GOVERNANCE = {
+    MODEL_VERSION: {
+        "role": "production", "approval": "owner_override", "start_sit_ready": False,
+        "artifact_identity": "per-run: each weekly artifact is approved in approved_artifacts by the sha256 of its file",
+        "status_note": "Production by owner override, not by evidence: the prospective promotion criteria are not "
+                       "met, its research validation is historical (backtests) only, and it is not shown to be "
+                       "better than ESPN."},
+    FALLBACK_VERSION: {
+        "role": "fallback", "approval": "retired_rollback_target", "start_sit_ready": False,
+        "artifact_identity": "pinned: production_pin.APPROVED_ARTIFACT_SHA256",
+        "status_note": "Retired previous production model, shown only for a week without an eligible ifp-2.0.0 "
+                       "run. 'validated' means held-out MAE vs trailing-average baselines only, never vs ESPN."},
+}
+OVERRIDE_STATUS = "owner_override"
 
 
 def normalize(source: str | None) -> str:
@@ -52,62 +88,130 @@ def _espn(con, season: int, week: int) -> dict[int, float | None]:
                                          WHERE season = ? AND scoring_period = ?""", [season, week])}
 
 
-def _scoring_fingerprint(con, season: int) -> str | None:
-    """The live league's scoring fingerprint, computed the way the live run stamps it."""
+def _scoring(con, season: int) -> tuple[str | None, str | None]:
+    """(the live league's scoring fingerprint computed the way the live run stamps it, why it is unusable)."""
     from .league_scoring import resolve_skill_scoring
 
     rows = fetch_dicts(con, "SELECT scoring_items FROM leagues WHERE season = ? ORDER BY synced_at DESC LIMIT 1",
                        [season]) if table_exists(con, "leagues") else []
     if not rows:
-        return None
+        return None, "the league's scoring settings are not synced"
     items = rows[0]["scoring_items"]
     scoring = resolve_skill_scoring(json.loads(items) if isinstance(items, str) else items)
-    return scoring.fingerprint if scoring.supported else None
+    if not scoring.supported:
+        return None, "the league's scoring is not supported by the independent model"
+    return scoring.fingerprint, None
 
 
-def _unapproved(con, season: int, week: int, version: str) -> bool:
-    fp = _scoring_fingerprint(con, season)
-    return fp is not None and pf.unapproved_runs(con, season, week, version, fp) > 0
+def _scoring_fingerprint(con, season: int) -> str | None:
+    return _scoring(con, season)[0]
+
+
+def _gate_rejected(s: dict) -> bool:
+    return any(s["reason"].startswith(g) for g in GATE_REASONS)
+
+
+def select_run(con, season: int, week: int, *, versions: tuple[str, ...] = CONSUMER_VERSIONS) -> dict:
+    """The run consumers see for the week (module docstring). Returns {run, rows, fallback, scoring_fingerprint,
+    skipped [{run_id, model_version, created_at, reason}], unavailable_reason}; run/rows are None when nothing
+    qualifies. `rows` are exactly the rows that were verified, so callers never re-read them. The run carries
+    `artifact_check` / `artifact_note` (production_forecasts.artifact_gate)."""
+    out = {"run": None, "rows": None, "fallback": False, "scoring_fingerprint": None, "skipped": [],
+           "unavailable_reason": None}
+    fp, why = _scoring(con, season)
+    if fp is None:
+        return {**out, "unavailable_reason": f"No independent projections: {why}."}
+    out["scoring_fingerprint"] = fp
+    if table_exists(con, pf.RUNS) and not table_exists(con, pf.ROWS):
+        return {**out, "unavailable_reason": "No independent projections: the database is not migrated to schema v8, "
+                "so no stored run can be integrity-checked."}
+    for version in versions:
+        for run, rows, problem in pf.verified_runs(con, season, week, model_version=version, scoring_fingerprint=fp):
+            if problem is None:
+                return {**out, "run": run, "rows": rows, "fallback": version != versions[0]}
+            out["skipped"].append({"run_id": run["run_id"], "model_version": run["model_version"],
+                                   "created_at": str(run["created_at"]), "reason": problem})
+    skipped = out["skipped"]
+    if not skipped:
+        why = (f"No independent projection run of {MODEL_VERSION} (or {FALLBACK_VERSION}) under the current league "
+               f"scoring is stored for week {week}, so ESPN projections are shown.")
+    else:
+        detail = "; ".join(f"{s['run_id']} ({s['model_version']}): {s['reason']}" for s in skipped)
+        lead = (f"No independent projection run of {MODEL_VERSION} (or {FALLBACK_VERSION}) with an approved artifact is "
+                f"available for week {week}: a stored run was made by an artifact that is not approved (runs made by "
+                "an artifact that is not approved are never shown)") if any(_gate_rejected(s) for s in skipped) else (
+                f"No stored independent projection run for week {week} passed the integrity checks")
+        why = f"{lead} ({detail}), so ESPN projections are shown."
+    return {**out, "unavailable_reason": why}
 
 
 def _run(con, season: int, week: int) -> dict | None:
-    """Newest run of the production model under the league's current scoring that still has its rows, else
-    the same for FALLBACK_VERSION (production_forecasts.latest_run; runs are immutable, a later run never
-    deletes an earlier one)."""
-    fp = _scoring_fingerprint(con, season)
-    if fp is None:
-        return None
-    # latest_run applies the artifact rule of production_pin per version: MODEL_VERSION runs must use a registered
-    # artifact, FALLBACK_VERSION runs the sha pin once it is set; a rejected run is skipped like a run without rows
-    for version in (MODEL_VERSION, FALLBACK_VERSION):
-        run = pf.latest_run(con, season, week, model_version=version, scoring_fingerprint=fp)
-        if run is not None:
-            return run
-    return None
+    return select_run(con, season, week)["run"]
+
+
+def governance(served_version: str | None) -> dict:
+    """What a consumer may claim about the model it shows (GOVERNANCE)."""
+    g = GOVERNANCE.get(served_version) or {}
+    return {"production_version": MODEL_VERSION, "fallback_version": FALLBACK_VERSION,
+            "served_version": served_version, "is_fallback": served_version == FALLBACK_VERSION,
+            "production_approval": GOVERNANCE[MODEL_VERSION]["approval"],
+            "espn_superiority_established": False, "start_sit_ready": False,
+            "production_evidence": "Historical research only (backtests and a 2023-24 confirmation); no prospective or "
+                                   "held-out report is cited by the approval, and nothing is validated against ESPN.",
+            "status_note": g.get("status_note")}
+
+
+def consumer_status(run: dict) -> dict:
+    """Per-position status consumers show. The stored model_status is frozen with the run at training time: an
+    ifp-2.0.0 run says "shadow ... never read by consumers", which stopped being true at the owner's override,
+    so production positions read OVERRIDE_STATUS; the fallback keeps its stored held-out status."""
+    status = run.get("model_status")
+    status = json.loads(status) if isinstance(status, str) else (status or {})
+    if run.get("model_version") == MODEL_VERSION:
+        return {p: OVERRIDE_STATUS for p in POSITIONS}
+    return {p: (s or {}).get("status") for p, s in status.items()}
+
+
+def timing(con, run: dict, rows: list[dict]) -> dict:
+    """How many shown rows were made before the player's own kickoff (the only rows that can be evidence)."""
+    now_kick = pf.team_kickoffs(con, run["season"], run["week"])
+    pre = sum(pf.is_pregame(run["created_at"], pf.own_kickoff(r, run["week"], now_kick)) for r in rows)
+    return {"run_created_at": str(run["created_at"]), "rows_pregame": pre, "rows_not_pregame": len(rows) - pre,
+            "note": "Live view: the newest verified run. Accuracy evidence counts only rows made before each player's "
+                    "own kickoff; showing a later run never changes a stored forecast."}
+
+
+def _fallback_reason(week: int, run: dict, skipped: list[dict]) -> str:
+    prod = [s for s in skipped if s["model_version"] == MODEL_VERSION]
+    if any(_gate_rejected(s) for s in prod):
+        lead = (f"The {MODEL_VERSION} run for week {week} was made by an artifact that is not approved, so the "
+                f"previous model {run['model_version']} is shown.")
+    elif prod:
+        lead = (f"The stored {MODEL_VERSION} run(s) for week {week} failed the integrity check (see skipped), so the "
+                f"previous model {run['model_version']} is shown.")
+    else:
+        lead = f"No {MODEL_VERSION} run is stored for week {week} yet, so the previous model {run['model_version']} is shown."
+    return (f"{lead} It is the labeled fallback (the retired previous production model and rollback target), not the "
+            "production model.")
 
 
 def weekly(con, season: int, week: int, source: str) -> dict:
-    """{source, available, reason, values {pid: float|None}, origin {pid: str}, run, model_status, counts}."""
+    """{source, available, reason, values {pid: float|None}, origin {pid: str}, run, model_status, counts}; with
+    source=independent also governance, timing and skipped."""
     espn = _espn(con, season, week)
     base = {"source": source, "available": True, "reason": None, "values": espn,
             "origin": {pid: ESPN for pid in espn}, "run": None, "model_status": None, "counts": None}
     if source == "espn":
         return base
-    run = _run(con, season, week)
+    sel = select_run(con, season, week)
+    extra = {"governance": governance(None), "timing": None, "skipped": sel["skipped"]}
+    run = sel["run"]
     if run is None:
-        if any(_unapproved(con, season, week, v) for v in (MODEL_VERSION, FALLBACK_VERSION)):
-            why = (f"No independent projection run of {MODEL_VERSION} (or {FALLBACK_VERSION}) with an approved artifact "
-                   f"is available for week {week}: a stored run was made by an artifact that is not approved "
-                   "(runs made by an artifact that is not approved are never shown), so ESPN projections are shown.")
-        else:
-            why = (f"No independent projection run of {MODEL_VERSION} (or {FALLBACK_VERSION}) under the current "
-                   f"league scoring is stored for week {week}, so ESPN projections are shown.")
-        return {**base, "available": False, "reason": why}
+        return {**base, **extra, "available": False, "reason": sel["unavailable_reason"]}
     values: dict[int, float | None] = dict(espn)
     origin: dict[int, str] = {pid: ESPN for pid in espn}
     counts = {OURS: 0, OURS_ZERO: 0, ESPN: 0}
-    for r in fetch_dicts(con, f"""SELECT espn_player_id, coverage_status, expected_points FROM {pf.rows_source(con)}
-                                  WHERE run_id = ?""", [run["run_id"]]):
+    for r in sel["rows"]:
         pid = r["espn_player_id"]
         if r["coverage_status"] == "projected" and r["expected_points"] is not None:
             values[pid], origin[pid] = float(r["expected_points"]), OURS
@@ -115,16 +219,7 @@ def weekly(con, season: int, week: int, source: str) -> dict:
             values[pid], origin[pid] = 0.0, OURS_ZERO
     for o in origin.values():
         counts[o] += 1
-    status = run["model_status"]
-    status = json.loads(status) if isinstance(status, str) else (status or {})
-    if run["model_version"] == MODEL_VERSION:
-        reason = None
-    elif _unapproved(con, season, week, MODEL_VERSION):
-        reason = (f"The {MODEL_VERSION} run for week {week} was made by an artifact that is not approved, so the "
-                  f"previous model {run['model_version']} is shown.")
-    else:
-        reason = (f"No {MODEL_VERSION} run is stored for week {week} yet, so the previous model "
-                  f"{run['model_version']} is shown.")
+    reason = _fallback_reason(week, run, sel["skipped"]) if sel["fallback"] else None
     run_info = {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"])}
     check = run.get("artifact_check")
     if check == "verified":     # artifact_verified only appears when verification ran (the response shape is otherwise unchanged)
@@ -134,15 +229,19 @@ def weekly(con, season: int, week: int, source: str) -> dict:
         note = (f"The approval of this run's artifact could not be verified ({run.get('artifact_note') or 'unknown'}), "
                 "so the latest run is shown unverified.")
         reason = f"{reason} {note}" if reason else note
-    return {**base, "reason": reason, "values": values, "origin": origin, "counts": counts, "run": run_info,
-            "model_status": {p: (s or {}).get("status") for p, s in status.items()}}
+    return {**base, **extra, "reason": reason, "values": values, "origin": origin, "counts": counts, "run": run_info,
+            "model_status": consumer_status(run), "governance": governance(run["model_version"]),
+            "timing": timing(con, run, sel["rows"])}
 
 
 def describe(w: dict) -> dict:
     """The part of `weekly` a response carries (no per-player maps)."""
-    return {k: w[k] for k in ("source", "available", "reason", "run", "model_status", "counts")}
+    keys = ("source", "available", "reason", "run", "model_status", "counts", "governance", "timing", "skipped")
+    return {k: w[k] for k in keys if k in w}
 
 
-NOTE = ("Independent projections are Fantasy Intel's own research model (expected points, ifp-2.0.0, retrained "
-        "weekly). It has not met its promotion criteria and nothing is validated against ESPN. K and D/ST, and "
-        "players the model cannot project, keep ESPN's number and are marked.")
+NOTE = ("Independent projections are Fantasy Intel's own model (expected points). The production model ifp-2.0.0 "
+        "(retrained weekly) was approved by an owner override: it has not met its prospective promotion criteria, its "
+        "research validation is historical only, and it is not shown to be better than ESPN. A week without an "
+        "eligible ifp-2.0.0 run shows the previous model ifp-1.0.0 as a labeled fallback. K and D/ST, and players the "
+        "model cannot project, keep ESPN's number and are marked.")

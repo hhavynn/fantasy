@@ -12,8 +12,16 @@ Storage model (schema v8, docs/independent_projection_engine.md "Live runs and a
 
 A run is *sealed* by `content_sha256`, the digest of its canonicalised meta and rows (run_id, created_at,
 nfl_synced_at, kickoff and pregame excluded: the first two are identities/operational stamps, the last two
-are annotations derived from nfl_schedules). `pregame_forecasts` recomputes it, so a run whose rows were
-lost, edited or only partially copied is excluded with a reason instead of being used as evidence.
+are annotations derived from nfl_schedules). Every reader recomputes it through `integrity_problem`: the
+consumer view (`latest_run`, `verified_runs`, used by projection_source.select_run) and the evidence reader
+(`pregame_forecasts`) alike, so a run whose rows were lost, edited (even with the row count unchanged) or only
+partially copied is never shown and never counted; the evidence reader also says why.
+
+Two populations, never mixed: the CONSUMER view is the newest verified run, whenever it was made (a late
+update made after some kickoffs is a legitimate live prediction). The EVIDENCE population
+(`pregame_forecasts`) is per player the latest verified run created strictly before his own kickoff, from an
+artifact fitted before the week's first kickoff. Runs are append-only, so a later run never rewrites a frozen
+pregame row, and a post-kickoff row never becomes evidence.
 
 Time rule (CONTRACTS section 2): a row is PREGAME iff run created_at < the kickoff of the player's OWN team's
 game; an unknown kickoff is never pregame. The kickoff stored at write time and the one in the schedule now
@@ -173,6 +181,9 @@ def gate_active(con, model_version: str | None) -> bool:
     return artifact_gate(con, model_version)(
         {"artifact_id": None}
     )[0] not in ("unchecked", "unverified")
+
+
+MISSING_ROWS = "forecast rows missing"
 
 
 class ImmutableRunError(ValueError):
@@ -346,21 +357,32 @@ def rows_source(con) -> str | None:
     return LEGACY if table_exists(con, LEGACY) else None
 
 
-def latest_run(con, season: int, week: int, *, model_version: str | None = None,
-               scoring_fingerprint: str | None = None, artifact_id=_PIN) -> dict | None:
-    """Consumer view: the newest run (by created_at) for the week that still has all of its rows.
-    A run whose rows are missing (destroyed by the pre-v8 overwrite) is skipped, not shown as an empty
-    forecast. With only the legacy table (unmigrated copy) it is the newest run, as before.
-    Runs the artifact rule rejects (artifact_gate) are skipped; the returned run carries `artifact_check`
-    ("unchecked" | "verified" | "unverified") and, when unverified, `artifact_note` (why).
+def integrity_problem(run: dict, rows: list[dict]) -> str | None:
+    """The one integrity rule every reader applies (consumer selection and pregame evidence alike): the run is
+    sealed (row_count and content_sha256 recorded) and its stored rows are exactly the sealed content. None when
+    the rows verify, else why not. A row count alone is not proof: an edited value keeps the count."""
+    expected = run.get("row_count")
+    if not expected or not rows:
+        return (f"{MISSING_ROWS}: the run has no stored rows (row_count "
+                f"{'NULL' if expected is None else expected}); pre-v8 overwrite or unsealed run")
+    if len(rows) != expected:
+        return f"integrity: {len(rows)} stored rows but the run recorded row_count {expected}"
+    if not run.get("content_sha256"):
+        return "integrity: run has no content hash (unsealed)"
+    if content_sha256(run, rows) != run["content_sha256"]:
+        return "integrity: stored rows do not match the run's content_sha256"
+    return None
 
-    CONSUMER selection, deliberately of ANY forecast horizon: the newest run for the requested week wins whether
-    it is the week's pregame run (horizon 0) or a rest-of-season run made by an earlier cycle (horizon k > 0), so
-    a later, better-informed run is never hidden behind an older one. The returned run carries `horizon`
-    (forecast_horizon, NULL read as 0) and `horizon_note` (the experimental label, None at horizon 0). Evidence
-    readers (pregame_forecasts, eligible_run_ids) do the opposite and use horizon 0 only."""
-    if not table_exists(con, RUNS) or rows_source(con) is None:
-        return None
+
+def verified_runs(con, season: int, week: int, *, model_version: str | None = None,
+                  scoring_fingerprint: str | None = None, artifact_id=_PIN):
+    """Newest-first (by created_at, then run_id) runs of the week as (run, rows, problem). `run` carries
+    `artifact_check` / `artifact_note` from artifact_gate (applied when `model_version` is given); `problem` is
+    None when the run may be shown, else the gate's rejection reason (its rows are then not read) or the
+    integrity problem. A generator: a caller that stops at the first acceptable run reads no more rows.
+    Yields nothing without the run-keyed table: legacy rows cannot be verified, so they are never served."""
+    if not (table_exists(con, RUNS) and table_exists(con, ROWS)):
+        return
     where, params = ["season = ?", "week = ?"], [season, week]
     if model_version is not None:
         where.append("model_version = ?")
@@ -369,26 +391,57 @@ def latest_run(con, season: int, week: int, *, model_version: str | None = None,
         where.append("scoring_fingerprint = ?")
         params.append(scoring_fingerprint)
     gate = _unchecked if model_version is None else artifact_gate(con, model_version, artifact_id)
-    runs = fetch_dicts(con, f"SELECT * FROM {RUNS} WHERE {' AND '.join(where)} ORDER BY created_at DESC, run_id DESC",
-                       params)
-    has_rows = table_exists(con, ROWS)
-    for run in runs:
+    for run in fetch_dicts(con, f"SELECT * FROM {RUNS} WHERE {' AND '.join(where)} "
+                                "ORDER BY created_at DESC NULLS LAST, run_id DESC", params):
         status, why = gate(run)
+        run = {**run, "artifact_check": status, "artifact_note": why, "horizon": horizon_of(run),
+               "horizon_note": horizon_note(run)}
         if status == "rejected":
+            yield run, [], why
             continue
-        n = run.get("row_count")
-        if not has_rows or (n and con.execute(f"SELECT count(*) FROM {ROWS} WHERE run_id = ?",
-                                              [run["run_id"]]).fetchone()[0] == n):
-            return {**run, "artifact_check": status, "artifact_note": why, "horizon": horizon_of(run),
-                    "horizon_note": horizon_note(run)}
+        rows = fetch_dicts(con, f"SELECT * FROM {ROWS} WHERE run_id = ?", [run["run_id"]])
+        yield run, rows, integrity_problem(run, rows)
+
+
+def latest_run(con, season: int, week: int, *, model_version: str | None = None,
+               scoring_fingerprint: str | None = None, artifact_id=_PIN) -> dict | None:
+    """Consumer view: the newest run of the week that the artifact rule (artifact_gate) does not reject AND whose
+    stored rows verify against its content hash (integrity_problem), or None. A run whose rows were lost, edited
+    (even with the row count unchanged) or never sealed is skipped, never shown. The returned run carries
+    `artifact_check` ("unchecked" | "verified" | "unverified") and, when unverified, `artifact_note` (why).
+    Without the run-keyed table (a database not migrated to schema v8) nothing can be verified, so nothing is
+    returned. projection_source.select_run is the consumer policy built on verified_runs.
+
+    CONSUMER selection, deliberately of ANY forecast horizon: the newest verified run for the requested week wins
+    whether it is the week's pregame run (horizon 0) or a rest-of-season run made by an earlier cycle (horizon k > 0),
+    so a later, better-informed run is never hidden behind an older one. The returned run carries `horizon`
+    (forecast_horizon, NULL read as 0) and `horizon_note` (the experimental label, None at horizon 0). Evidence
+    readers (pregame_forecasts, eligible_run_ids, the promotion tracker) do the opposite and use horizon 0 only."""
+    for run, _, problem in verified_runs(con, season, week, model_version=model_version,
+                                         scoring_fingerprint=scoring_fingerprint, artifact_id=artifact_id):
+        if problem is None:
+            return run
     return None
-
-
-# ----------------------------------------------------------------------------- pregame forecasts
 
 
 def _aware(v):
     return _utc(v)
+
+
+def own_kickoff(row: dict, week: int, now_kick: dict) -> datetime | None:
+    """A row's own-team kickoff: the EARLIER of the kickoff stored at write time and the one in the schedule
+    now (a flexed game can only make a row less eligible). None when neither is known."""
+    known = [k for k in (_aware(row.get("kickoff")), now_kick.get((week, row.get("nfl_team")))) if k is not None]
+    return min(known) if known else None
+
+
+def is_pregame(created, kickoff) -> bool:
+    """CONTRACTS section 2: created strictly before the player's own kickoff; unknown is never pregame."""
+    created = _aware(created)
+    return kickoff is not None and created is not None and created < kickoff
+
+
+# ----------------------------------------------------------------------------- pregame forecasts
 
 
 def _assess(con, season: int, weeks: set[int] | None, model_version: str, scoring_fingerprint: str,
@@ -418,7 +471,6 @@ def _assess(con, season: int, weeks: set[int] | None, model_version: str, scorin
     for run in runs:
         fitted, first = _aware(run.get("artifact_created_at")), kick_first.get(run["week"])
         rows = stored.get(run["run_id"], [])
-        expected = run.get("row_count")
         if horizon_of(run) > 0 and not include_future_horizons:
             reason = NOT_EVIDENCE.format(k=horizon_of(run))
         elif run["model_version"] != model_version:
@@ -429,19 +481,14 @@ def _assess(con, season: int, weeks: set[int] | None, model_version: str, scorin
             reason = gate(run)[1]
         elif run.get("created_at") is None:
             reason = "run creation time unknown (created_at is NULL), so no row can be shown to be pregame"
-        elif not expected or not rows:
-            reason = ("forecast rows missing: the run has no stored rows (row_count "
-                      f"{'NULL' if expected is None else expected}); pre-v8 overwrite or unsealed run")
+        elif (problem := integrity_problem(run, rows)) is not None and problem.startswith(MISSING_ROWS):
+            reason = problem
         elif fitted is None or first is None:
             reason = "artifact fit time or week kickoff unknown"
         elif fitted >= first:
             reason = "artifact fitted after the week's first kickoff (it may have trained on that week)"
-        elif len(rows) != expected:
-            reason = f"integrity: {len(rows)} stored rows but the run recorded row_count {expected}"
-        elif not run.get("content_sha256"):
-            reason = "integrity: run has no content hash (unsealed)"
-        elif content_sha256(run, rows) != run["content_sha256"]:
-            reason = "integrity: stored rows do not match the run's content_sha256"
+        elif problem is not None:
+            reason = problem
         else:
             ok.append({"run": run, "rows": rows})
             continue
@@ -480,10 +527,8 @@ def pregame_forecasts(con, season: int, weeks: Iterable[int] | None = None, *,
         created = _aware(run["created_at"])
         order = (created or datetime.min.replace(tzinfo=timezone.utc), run["run_id"])
         for r in a["rows"]:
-            known = [k for k in (_aware(r.get("kickoff")), now_kick.get((run["week"], r.get("nfl_team"))))
-                     if k is not None]
-            kickoff = min(known) if known else None
-            if kickoff is None or created is None or not created < kickoff:
+            kickoff = own_kickoff(r, run["week"], now_kick)
+            if not is_pregame(created, kickoff):
                 continue
             contributed.add(run["run_id"])
             key = (run["week"], int(r["espn_player_id"]))

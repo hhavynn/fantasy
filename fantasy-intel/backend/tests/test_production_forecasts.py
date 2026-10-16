@@ -32,6 +32,13 @@ ROW_KEYS = {"season", "week", "espn_player_id", "gsis_id", "position", "run_id",
             "coverage_status", "projected_points", "p_play", "expected_points"}
 
 
+@pytest.fixture(autouse=True)
+def _unpinned(monkeypatch):
+    """These tests exercise the storage, integrity and pregame rules with ifp-1.0.0 (MODEL) runs of synthetic
+    artifacts, so the committed ifp-1.0.0 pin is unset here; the pin tests below set it explicitly."""
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", None)
+
+
 def thursday(con):
     con.execute("UPDATE nfl_schedules SET gameday = '2026-09-03', gametime = '20:20' "
                 "WHERE season = 2026 AND week = 6 AND home_team = 'AAA'")
@@ -322,7 +329,7 @@ def test_runs_without_rows_or_with_altered_rows_are_excluded(live):  # noqa: F81
     assert why[lost["run_id"]].startswith("integrity: ") and "row_count" in why[lost["run_id"]]
     assert why[edited["run_id"]] == "integrity: stored rows do not match the run's content_sha256"
     assert {r["run_id"] for r in rows} == {ok["run_id"]}
-    assert latest_run(con, 2026, 6)["run_id"] in {ok["run_id"], edited["run_id"]}    # never the empty runs
+    assert latest_run(con, 2026, 6)["run_id"] == ok["run_id"]       # never the empty, short or edited runs
 
 
 # ----------------------------------------------------------------------------- v7 -> v8 migration
@@ -473,3 +480,22 @@ def test_publish_copies_the_run_tables_as_is_and_cannot_touch_local_history(live
                        ).fetchall() == before                                       # publishing never writes the source
     hub.close()
     assert table_exists(duckdb.connect(str(hosted), read_only=True), "independent_projection_rows")
+
+
+# ----------------------------------------------------------------------------- consumer selection integrity
+
+
+def test_latest_run_rechecks_the_content_hash_not_just_the_row_count(live):  # noqa: F811
+    """Same-row-count tampering: a stored value changes, the row count does not. The consumer view must skip
+    the run exactly like the benchmark reader does, and fall back to the newest run that still verifies."""
+    con, src, _ = live
+    ok, _, _ = store(con, src, BEFORE_ALL, mutate=bump(1, 3.0))
+    tampered, _, _ = store(con, src, BETWEEN, mutate=bump(1, 4.0))
+    con.execute("UPDATE independent_projection_rows SET projected_points = 99 WHERE run_id = ? AND espn_player_id = 1",
+                [tampered["run_id"]])
+    assert con.execute("SELECT count(*) FROM independent_projection_rows WHERE run_id = ?",
+                       [tampered["run_id"]]).fetchone()[0] == tampered["row_count"]
+    assert latest_run(con, 2026, 6)["run_id"] == ok["run_id"]
+    _, excluded = forecasts(con)
+    assert {e["run_id"]: e["reason"] for e in excluded}[tampered["run_id"]] == \
+        "integrity: stored rows do not match the run's content_sha256"

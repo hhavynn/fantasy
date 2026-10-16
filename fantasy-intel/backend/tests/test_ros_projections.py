@@ -11,6 +11,7 @@ import polars as pl
 import pytest
 
 from app.analytics import production_forecasts as pf
+from app.analytics import production_pin
 from app.analytics import promotion_tracker as pt
 from app.analytics.forecast_backtest import build_store, completed_weeks
 from app.analytics.forecast_features import Sources, load_sources
@@ -44,6 +45,7 @@ PLAYERS = {
     13: ("Reserve + ESPN IR WR", "WR", gsis("DDD", "WR1"), "INJURY_RESERVE"),   # RES + R01 from week 5: eligible week 9
 }
 RESERVE_ID, PS_ID, OTHER_RES_ID, IR_RES_ID = 5, 6, 12, 13
+TRACKED = "ifp-2.0.0"                  # the production model the tracker reports on (no approved_artifacts table: fail open)
 
 
 def artifact(src, created_at="2026-08-01T00:00:00+00:00"):
@@ -107,8 +109,10 @@ def by_id(rows):
 
 
 def project(con, src, art, target, part=None, from_week=W):
+    # the production pin (ifp-1.0.0 runs must carry the pinned artifact sha to count) when one is set
     return build_live(con, src, art, 2026, target, participation=part,
-                      artifact_sha256="a" * 64, projected_from_week=from_week)
+                      artifact_sha256=production_pin.APPROVED_ARTIFACT_SHA256 or "a" * 64,
+                      projected_from_week=from_week)
 
 
 def sources_with_injuries(src, rows):
@@ -421,12 +425,12 @@ def test_promotion_tracker_is_unaffected_by_future_week_runs(world):
     art = artifact(src)
     fp = SCORING.fingerprint
     h0_meta, h0_rows = project(con, src, art, W)
-    h0 = write_run(con, {**h0_meta, "created_at": CREATED}, h0_rows)
+    h0 = write_run(con, {**h0_meta, "model_version": TRACKED, "created_at": CREATED}, h0_rows)
     before = pt.latest_run(con, 2026, fp)
     assert before["run_id"] == h0["run_id"]
     for target in range(W + 1, LAST + 1):                          # created LATER than the horizon-0 run
         m, r = project(con, src, art, target)
-        write_run(con, {**m, "created_at": datetime(2026, 9, 2)}, r)
+        write_run(con, {**m, "model_version": TRACKED, "created_at": datetime(2026, 9, 2)}, r)
     assert pt.latest_run(con, 2026, fp)["run_id"] == h0["run_id"]
     ids, excluded = pt.eligible_runs(con, 2026, fp)
     assert ids == [h0["run_id"]]
@@ -601,3 +605,30 @@ def test_the_write_connection_is_opened_only_after_every_week_is_built(tmp_path,
     assert events.index(("open", "ro")) < min(i for i, e in enumerate(events) if e[0] == "build")
     assert all(e[0] != "build" for e in events[rw:])                     # no build after the write connection opens
     assert [r["week"] for r in out["rest_of_season"]] == [W + 1, W + 2, W + 3] and out["rest_of_season_failed"] == []
+
+
+def test_a_future_run_with_next_game_flags_passes_the_integrity_check(world):
+    """integrity_problem (the consumer and evidence rule) recomputes the SAME digest the write path stored for a
+    horizon-k run, whose digest leaves the ESPN next-game-only flags out."""
+    from app.db.connection import fetch_dicts
+
+    con, src = world
+    art = artifact(src)
+    m, r = project(con, src, art, W + 2)
+    assert any(pf.NEXT_GAME_ONLY in f for row in r for f in row["flags"])
+    stored = write_run(con, {**m, "created_at": CREATED}, r)
+    run = fetch_dicts(con, "SELECT * FROM independent_projection_runs WHERE run_id = ?", [stored["run_id"]])[0]
+    rows = fetch_dicts(con, "SELECT * FROM independent_projection_rows WHERE run_id = ?", [stored["run_id"]])
+    assert any(pf.NEXT_GAME_ONLY in f for row in rows for f in (row["flags"] if isinstance(row["flags"], list)
+                                                                  else json.loads(row["flags"])))
+    assert pf.integrity_problem(run, rows) is None
+    got = pf.latest_run(con, 2026, W + 2, model_version=MODEL_VERSION, scoring_fingerprint=SCORING.fingerprint,
+                        artifact_id=None)
+    assert got["run_id"] == stored["run_id"] and got["horizon"] == 2 and got["horizon_note"]
+    # editing a stored value (count unchanged) is still caught
+    con.execute("UPDATE independent_projection_rows SET projected_points = projected_points + 1 WHERE run_id = ? "
+                "AND coverage_status = 'projected'", [stored["run_id"]])
+    rows = fetch_dicts(con, "SELECT * FROM independent_projection_rows WHERE run_id = ?", [stored["run_id"]])
+    assert pf.integrity_problem(run, rows).startswith("integrity: stored rows do not match")
+    assert pf.latest_run(con, 2026, W + 2, model_version=MODEL_VERSION, scoring_fingerprint=SCORING.fingerprint,
+                         artifact_id=None) is None

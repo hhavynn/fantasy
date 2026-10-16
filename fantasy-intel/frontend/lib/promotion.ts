@@ -68,4 +68,5 @@ export const STATUS_LABEL: Record<string, { text: string; tone: string }> = {
   validated: { text: "Validated", tone: "good" },
   experimental: { text: "Experimental", tone: "warn" },
   insufficient_data: { text: "Insufficient data", tone: "" },
+  owner_override: { text: "Owner override (unproven)", tone: "warn" },
 };

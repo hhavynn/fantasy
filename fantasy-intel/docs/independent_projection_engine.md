@@ -1,16 +1,29 @@
 # Independent Weekly Projection Engine (V1, research)
 
 An NFL-evidence fantasy-point model for QB/RB/WR/TE that **never uses ESPN projections as an
-input**. ESPN appears only as an external comparison. It is research output: by default nothing in
-lineups, trades, waivers, playoff odds, player scores or market signals reads it. The one opt-in
+input**. ESPN appears only as an external comparison and stays the default everywhere: nothing in
+lineups, trades, waivers, playoff odds, player scores or market signals reads the model. The one opt-in
 path is the **projection switch** (header toggle "ESPN | Ours", see "Projection switch" below),
 which only changes the weekly numbers on Home, Matchup and Start/Sit.
 
-**Production model: `ifp-2.0.0` (owner approval 2026-10-16, recorded as an override in
-`model_registry.json`: it has NOT met `SHADOW_PROMOTION_CRITERIA` or `PROMOTION_CRITERIA`).** The
-projection switch reads the newest `ifp-2.0.0` run for the week and falls back, labeled, to the newest
-`ifp-1.0.0` run when a week has none. Weekly routine (laptop, before the week's first kickoff), automated
-by the launchd jobs in `scripts/launchd/`:
+**Production model: `ifp-2.0.0`, by owner override (2026-10-16, `model_registry.json`).** What that
+does and does not establish:
+
+* it is production because the owner decided so, not because of evidence: it has NOT met
+  `SHADOW_PROMOTION_CRITERIA` (>= 8 fully final prospective weeks, >= 400 matched appearances per
+  position) or `PROMOTION_CRITERIA` (>= 3% vs the best trailing baseline, ESPN rule), and the approval
+  cites no prospective or held-out report;
+* its research validation (the 2023-24 confirmation, backtests) is **historical evidence only**;
+* it is **not shown to be better than ESPN**; that question is answered only by frozen pregame forecasts
+  as they accumulate (`espn_benchmark.py`, the promotion tracker);
+* no position is Start/Sit-ready, and the consumer status of every position is `owner_override`
+  (never `validated`);
+* the model a user sees **may be the `ifp-1.0.0` fallback**: a week with no eligible `ifp-2.0.0` run shows
+  the newest eligible `ifp-1.0.0` run, labeled as the fallback (on 2026-10-16 this is the case for week 7).
+
+Which run is shown, and what may be said about it, is decided in one place
+(`projection_source.select_run` / `governance`, see "Projection switch"). Weekly routine (laptop, before
+the week's first kickoff), automated by the launchd jobs in `scripts/launchd/`:
 
 ```bash
 uv run python ../scripts/learning_cycle.py run    # sync, train and freeze ifp-2 for week W, then store its run (`project`)
@@ -20,7 +33,8 @@ uv run python ../scripts/refresh_all.py           # ... which the next refresh p
 `learning_cycle.py run --no-project` skips storing the run; `backtest_independent_projections.py project
 --week W` stores it by hand.
 
-**`ifp-1.0.0` status (previous production; held-out evaluation on real data, see "Results"):**
+**`ifp-1.0.0` status (previous production, now the labeled fallback and the rollback target; its artifact
+is pinned in the registry; held-out evaluation on real data, see "Results"):**
 
 | Position | Status | Start/Sit ready |
 |---|---|---|
@@ -48,12 +62,14 @@ where `p_play` = P(appears in week W) from pregame roster status, injury report 
 "Validated" here means calibrated and better than simple pregame baselines on held-out
 roster-population weeks; it says nothing about ESPN.
 
-**Research challenger `ifp-2.0.0` (shadow, see "Weekly learning and the ifp-2 challenger"):**
-injury-aware established workload, previous-season usage priors and recency-weighted training.
-It passed its frozen confirmation rules on 2023-24 (pooled MAE 4.031 -> 4.016, 95% CI of the
-difference [-0.023, -0.007]) but the gain is ~0.4%, far below the 3% promotion bar. It runs in shadow
-only: nothing reads it, `ifp-1.0.0` and its artifacts are unchanged, and only frozen pregame forecasts
-from 2026 week 6 onward count as evidence for it.
+**`ifp-2.0.0` research history (historical evidence only; see "Weekly learning and the ifp-2
+challenger"):** injury-aware established workload, previous-season usage priors and recency-weighted
+training. It passed its frozen confirmation rules on 2023-24 (pooled MAE 4.031 -> 4.016, 95% CI of the
+difference [-0.023, -0.007]), but the gain is ~0.4%, far below the 3% promotion bar, and a historical
+replay can never stand in for prospective confirmation. It ran in shadow until the owner override; its
+stored runs still carry the status frozen at training time ("shadow ... never read by consumers"), which
+consumers replace with `owner_override`. Only frozen pregame forecasts from 2026 week 6 onward count as
+evidence for it.
 
 ## Files
 
@@ -406,10 +422,11 @@ history only began on 2026-10-14. Nothing backfills a missed week, so every week
 The **Data quality page (`/data`) section "Independent projections: path to promotion"** reads
 `GET /api/projections/independent/promotion` (`independent-promotion/v1`, read-only):
 
-* per position, the held-out status, relative MAE improvement vs the `PROMOTION_CRITERIA` bar,
-  held-out MAE and n, copied from the evaluation stored with the latest live run of the current
-  model version under the current league scoring (nothing is recomputed; with no such run these
-  are null and the page says why);
+* the tracker follows the PRODUCTION model (`projection_source.MODEL_VERSION`, `ifp-2.0.0`) and reports
+  its `governance`; per position the status is `owner_override` (never the frozen "shadow" text stored in
+  its runs). Held-out fields are copied from the evaluation stored with the latest verified run of that
+  model under the current scoring; `ifp-2.0.0` runs store no per-position held-out evaluation, so they
+  are null (never borrowed from `ifp-1.0.0`);
 * matched pregame-ESPN observations so far vs `espn_min_matched_per_position`, computed with
   `espn_pregame` + `espn_comparison` on counted stored weekly projections (`pred_primary` = the
   player's row from the latest eligible run created before his own kickoff,
@@ -421,12 +438,12 @@ The **Data quality page (`/data`) section "Independent projections: path to prom
 * whether the current week already has an ESPN snapshot taken before its first kickoff (a later
   snapshot still counts for players whose own game kicks off after it).
 
-The tracker never promotes anything: once a position reaches the matched count, rerun `evaluate`,
-and only after a position passes the frozen criteria **and the user approves** may its
-projections reach lineups, start/sit, trades or waivers. The isolation test in
+The tracker never promotes anything. `ifp-2.0.0` already reaches the opt-in weekly views by the owner's
+override; the tracker measures the evidence that override did not have, and no position may be called
+Start/Sit-ready or better than ESPN until it passes the frozen criteria. The isolation test in
 `tests/test_independent_projections.py` keeps every other module from importing the tracker or
 the projection tables. The hosted API bundle ships without polars, so there the endpoint answers
-`available: false` instead of a copy of the criteria.
+`available: false` instead of a copy of the criteria, still with the production model's `governance`.
 
 ## Weekly evidence routine (automated)
 
@@ -472,8 +489,8 @@ ESPN sync, nflverse sync and analytics have finished and the pregame snapshot ch
 ## Projection switch (opt-in weekly view)
 
 The switch reads the production model `ifp-2.0.0` (`projection_source.MODEL_VERSION`); for a week
-without an `ifp-2.0.0` run it shows the newest `ifp-1.0.0` run (`FALLBACK_VERSION`) and says so in
-`reason`, which the notice on Home, Matchup and Start/Sit prints.
+without an eligible `ifp-2.0.0` run it shows the newest eligible `ifp-1.0.0` run (`FALLBACK_VERSION`) and
+says so in `reason` and `governance.is_fallback`, which the notice on Home, Matchup and Start/Sit prints.
 
 A header toggle (**ESPN | Ours**, in the menu drawer on phones) stores the visitor's choice in the
 `fi_projection` cookie. With "Ours", Home, Matchup and Start/Sit request `source=independent`
@@ -485,9 +502,20 @@ A header toggle (**ESPN | Ours**, in the menu drawer on phones) stores the visit
 * `espn`: ESPN's number where no independent estimate exists (K, D/ST, abstentions, uncertain ID
   mapping, no participation estimate), tagged "ESPN" in the UI.
 
-Only a run of the current model version under the league's current scoring is used (the newest one
-that still has all of its stored rows; a run whose rows were lost is skipped); otherwise the
-response says `available: false` and shows ESPN.
+**Run selection (`projection_source.select_run`, shared with `GET /api/projections/independent`; the tracker
+applies the same two checks).** The league's scoring must be supported. Candidates are `ifp-2.0.0` runs under
+that scoring, newest first, then (only if none qualifies) `ifp-1.0.0` runs. A run qualifies only when:
+
+* **approved artifact** (`production_forecasts.artifact_gate`, below): the run's artifact passes the rule of its
+  model version;
+* **integrity**: its stored rows reproduce its `content_sha256`
+  (`production_forecasts.integrity_problem`, the same rule as the evidence readers). A row count is not
+  enough: an edited value keeps the count. Unsealed, short, empty or edited runs are skipped;
+* any other model version (research models such as `ifp-hgb-0.1.0`) is never a candidate.
+
+Skipped runs are reported in `skipped` with their reason; with nothing left the response says
+`available: false` and why, and shows ESPN. A database without `independent_projection_rows` (not
+migrated to schema v8) fails closed: legacy rows cannot be integrity-checked, so nothing is shown.
 
 **Artifact approval.** The switch (and the evidence readers: `pregame_forecasts`, `eligible_run_ids`, the
 promotion tracker) only use runs made by an approved artifact. `ifp-2.0.0` is retrained weekly, so each of its
@@ -495,20 +523,34 @@ artifacts is approved by a row in the write-once `approved_artifacts` table, whi
 `project` stage writes (`--register-artifact learning_cycle`) for the write-once store artifact it uses; the
 run's `artifact_id` and the registered sha are the same sha256 of the artifact file bytes. A run of an
 unregistered artifact is excluded ("artifact not registered as approved") and the switch falls back to
-`ifp-1.0.0`, then ESPN. The `ifp-1.0.0` fallback keeps the single-sha pin
-`production_pin.APPROVED_ARTIFACT_SHA256` (`None` today, which changes nothing; pinning is a reviewed change to
-both `model_registry.json` and that constant, tested equal). A database without `approved_artifacts`, or whose table has no row for `ifp-2.0.0` yet (right after the upgrade), is
-read as before and marked unverified (`run.artifact_verified: false`): the switch fails open there so an old hosted
-copy and the first days after the upgrade keep working. Enforcement starts with the first registered artifact, and
-the first learning cycle registers its artifact and backfills the others already in the weekly store. Details, the manual pin and the transition after the upgrade are in
+`ifp-1.0.0`, then ESPN. The `ifp-1.0.0` fallback has the single-sha pin
+`production_pin.APPROVED_ARTIFACT_SHA256` = `a1fe1bc3...9881`, the file the newest stored `ifp-1.0.0`
+production run recorded (the same sha as `model_registry.json`, tested equal): a run made from a later refit
+under the same version label, or a legacy-migrated run with no recorded `artifact_id`, is never shown as the
+fallback. A database without `approved_artifacts`, or whose table has no row for `ifp-2.0.0` yet (right after
+the upgrade), is read as before and marked unverified (`run.artifact_verified: false`): the switch fails open
+there so an old hosted copy and the first days after the upgrade keep working. Enforcement starts with the first
+registered artifact, and the first learning cycle registers its artifact and backfills the others already in the
+weekly store. Details, the manual pin and the transition after the upgrade are in
 [model_registry.md](model_registry.md) ("Approving artifacts for the consumer view").
 
-Start/Sit and Matchup rerun the same lineup
-optimizer on these numbers (Matchup computes both teams' lineups on the fly instead of reading
+**Live view vs evidence.** The switch shows the newest qualifying run whenever it was made: a run made
+after Thursday's kickoff is a legitimate live update for Sunday's players. Accuracy evidence uses a
+different population (`production_forecasts.pregame_forecasts`: per player, the latest verified run made
+before his own kickoff, from an artifact fitted before the week's first kickoff). `timing` says how many
+shown rows are pregame. Runs are append-only, so a late run never rewrites the frozen pregame row of a
+player whose game had started, and never becomes evidence for him.
+
+**What consumers may claim (`governance`, `consumer_status`).** `model_status` is `owner_override` for
+every `ifp-2.0.0` position; the fallback keeps its stored held-out status (`validated` = held-out MAE vs
+trailing-average baselines only). `governance` carries `production_approval: owner_override`,
+`espn_superiority_established: false`, `start_sit_ready: false`, `is_fallback` and `production_evidence`.
+
+Start/Sit and Matchup rerun the same lineup optimizer on these numbers (Matchup computes both teams' lineups on the fly instead of reading
 `team_week_lineup_projections`). Availability warnings still quote ESPN's number, because they say
 so by name. Rest-of-season features (trades, waivers, team value, playoff race) stay on ESPN: the
-model projects one week at a time. The switch is a view, not a promotion: the frozen
-`PROMOTION_CRITERIA` and the tracker are unchanged.
+model projects one week at a time. The switch is a view, not evidence: the frozen
+`PROMOTION_CRITERIA` and the tracker still have to be met.
 
 ## Live runs and abstention
 
@@ -581,11 +623,13 @@ could be counted as evidence with no rows behind it. v8 fixes this with append-o
   a run whose rows the old overwrite destroyed), `integrity` (row count differs, no content hash, hash
   mismatch), `post-kickoff` (no row was made before its player's kickoff). The module is SQL + stdlib so
   the hosted API imports it.
-* **Readers.** `projection_source`, `GET /api/projections/independent` and the promotion tracker read
-  `independent_projection_rows`; the consumer views show the newest run that still has its rows and keep
-  their response shapes, ESPN default and origin labels. If `independent_projection_rows` does not exist
-  (an old DB, or a hosted copy published before the migration) they read the legacy table read-only; the
-  tracker then uses run-level eligibility only (no per-player kickoff check).
+* **Readers.** Every reader applies `production_forecasts.integrity_problem` (row count AND content hash).
+  The consumer views (`projection_source`, `GET /api/projections/independent`) show the run
+  `projection_source.select_run` picks (integrity plus approved artifact, see "Projection switch") and
+  keep their ESPN default and origin labels. If `independent_projection_rows` does not exist (an old DB,
+  or a hosted copy published before the migration) the consumer views **fail closed** (nothing shown,
+  with the reason); only the research tracker's ESPN evidence still reads the legacy table, with
+  run-level eligibility only (no per-player kickoff check).
 * **Migration (`SCHEMA_VERSION` 8, create-only).** `init_db` adds the new table and the four run columns
   (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`), then `production_forecasts.migrate_legacy` copies every
   legacy row whose run exists into the new table under its original `run_id` (`ON CONFLICT DO NOTHING`),
@@ -654,7 +698,8 @@ promotion tracker and the prospective evidence audit (`scripts/evidence_audit.py
 is never replaced by an earlier, less informed forecast. `promotion_tracker.latest_run` likewise never reports a
 future-week run as the latest. The **consumer** selection is the opposite by design: `production_forecasts.latest_run`
 (used by the projection switch and `GET /api/projections/independent`) returns the newest run of **any** horizon for the
-requested week, so a later, better-informed run is never hidden behind an older one; it carries `horizon` and
+requested week that passes the artifact rule and `integrity_problem` (`verified_runs`; a horizon-k run's digest leaves the
+ESPN next-game-only flags out, and the integrity check recomputes that same digest), so a later, better-informed run is never hidden behind an older one; it carries `horizon` and
 `horizon_note` ("rest-of-season forecast (horizon k): experimental, not validated beyond the next week"), and the API run
 block exposes `forecast_horizon`, `projected_from_week` and `experimental_note`.
 
@@ -667,10 +712,16 @@ horizon >= 1 as experimental until a horizon-by-horizon held-out study exists.
 
 v2 = v1 plus `independent.expected_points`, `independent.participation`,
 `comparison.expected_minus_espn`, `comparison.expected_comparable` and `run.participation`
-(additive; v1 fields keep their meaning).
+(additive). Governance additions (additive): top-level `governance` (`projection_source.governance`),
+`run.is_fallback`, `run.fallback_reason`, `run.skipped_runs`, `run.artifact_model_status` (the status
+frozen in the run at training time) and `independent.pregame` (row made before the player's own kickoff).
+`model_status` (top level and per player) is now the status consumers may state: `owner_override` for
+every `ifp-2.0.0` position, with `start_sit_ready: false`; the run shown is the one the projection
+switch shows (`select_run`), never the newest run of any model.
 
 `GET /api/projections/independent?week=7[&position=WR][&team_id=3]` (default week: league
-`current_week`). 200 with `available: false` when no run exists; 422 for a bad position.
+`current_week`). 200 with `available: false` (and `unavailable_reason`) when no run qualifies; 422 for
+a bad position. Example (an `ifp-1.0.0` fallback week):
 
 ```json
 {
@@ -681,11 +732,17 @@ v2 = v1 plus `independent.expected_points`, `independent.participation`,
           "created_at": "...", "scoring_fingerprint": "e165b59686110c7d",
           "feature_cutoff": {"data_through_season": 2026, "data_through_week": 6,
                              "rule": "only NFL games completed before the target week"},
+          "is_fallback": true, "fallback_reason": "No eligible ifp-2.0.0 run for week 7; ...",
+          "skipped_runs": [], "artifact_id": "a1fe1bc3...", "content_sha256": "...",
+          "artifact_model_status": {"WR": {"status": "experimental", "...": "..."}},
           "nfl_synced_at": "...", "heldout_evaluation": {"...": "aggregates"},
           "participation": {"model_version": "ipm-1.0.0", "status": {"WR": {"participation": "validated",
                             "expected_points": "validated", "reasons": []}}, "heldout_evaluation": {"...": "aggregates"}}},
+  "governance": {"production_version": "ifp-2.0.0", "served_version": "ifp-1.0.0", "is_fallback": true,
+                 "production_approval": "owner_override", "espn_superiority_established": false,
+                 "start_sit_ready": false, "production_evidence": "Historical research only ...", "...": "..."},
   "model_status": {"WR": {"status": "experimental", "validated_for": null, "start_sit_ready": false,
-                          "intervals_published": true, "reasons": ["relative MAE improvement 0.0276 < 0.03", "..."]}},
+                          "reasons": ["relative MAE improvement 0.0276 < 0.03", "..."]}},
   "players": [{
     "espn_player_id": 1001, "gsis_id": "00-0000001", "name": "Example WR", "position": "WR",
     "nfl_team": "AAA", "opponent": "BBB", "is_home": true, "fantasy_team_id": 3, "injury_status": "ACTIVE",
@@ -696,7 +753,7 @@ v2 = v1 plus `independent.expected_points`, `independent.participation`,
       "latest_usage": {"season": 2026, "week": 6}, "missing_inputs": [], "flags": [],
       "explanation": [{"feature": "target_share", "value": 0.27, "training_mean": 0.119,
                        "contribution": 1.9, "text": "target share: 0.270 (training average 0.119)"}],
-      "is_espn_fallback": false,
+      "is_espn_fallback": false, "pregame": true,
       "expected_points": 10.9,
       "participation": {"p_play": 0.956, "model_version": "ipm-1.0.0", "model_status": "validated",
                         "expected_points_status": "validated", "depth_rank": 1,
@@ -839,7 +896,7 @@ participation artifact is not retrained (unchanged); the challenger stays shadow
 | ESPN status fallback (`fantasy_players.injury_status`) | live DB | **Yes**, every ESPN sync |
 | ESPN projection snapshots (`espn_projection_history`) | live DB, one row per player, week and **local date** | A same-day sync replaced that day's row, including one captured before kickoff by a sync after it. **Fixed**: such a row is now locked (below) |
 | Model artifacts, ledger runs | weekly model dir | No: content-addressed / write-once (earlier sections) |
-| Production `ifp-1.0.0` runs (`independent_projection_runs`) | live DB | `project` replaces the week's rows (unchanged; documented above) |
+| Production runs (`independent_projection_runs` / `independent_projection_rows`) | live DB | No since schema v8: append-only, content-hashed (Storage, above); before v8 `project` replaced the week's rows |
 
 No historical leakage is claimed: forecasts were made pregame from the tables as they were then.
 The problem was reconstruction: a past forecast's inputs could only be re-read from tables that had
@@ -1108,6 +1165,10 @@ Status vocabulary (separate axes):
 | | `approved_production` | only by explicit user approval plus a reviewed code change that wires a model into consumers; never set by evaluation |
 | `production_gate` | `not_evaluated` | `PROMOTION_CRITERIA` stays a separate gate the weekly evaluation does not evaluate |
 
+Since the owner override of 2026-10-16, `lifecycle: research_shadow` describes the weekly ledger's
+evaluation of ifp-2.0.0 against the champion only; it no longer means consumers never read ifp-2.0.0 (the
+projection switch does, as production by override).
+
 `evaluate` writes `shadow_status` (per position: `status`, `lifecycle`, `criteria`, `blocking`,
 `production_gate`) and `promotion_blockers`, which answers "what prevents ifp-2 from replacing
 ifp-1?" per position: every non-passing criterion's explanation plus the approval and production
@@ -1133,8 +1194,8 @@ evidence only.
 ### Model registry (approval manifest, research only)
 
 `docs/model_registry.md`: `backend/app/analytics/model_registry.json` records the approved
-production model (`ifp-1.0.0`, unchanged, an `incumbent` record, not an owner approval) and every
-other model's lifecycle state (`ifp-2.0.0` prospective shadow, `ifp-hgb-0.1.0` experimental).
+production model (`ifp-2.0.0`, an `owner_approval` with `override: true` that cites no evidence),
+`ifp-1.0.0` (retired, the rollback target, artifact pinned) and `ifp-hgb-0.1.0` (experimental).
 `scripts/model_registry.py status` is a dry-run promotion gate: artifact sha256 integrity, scoring
 fingerprint, finalized pregame prospective evidence recomputed per position, `PROMOTION_CRITERIA`,
 the ESPN rule where claimed, a restorable rollback target and an explicit owner approval. It never
