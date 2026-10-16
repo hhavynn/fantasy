@@ -343,6 +343,7 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "promotion_tracker.py", "projection_promotion.py",   # read-only promotion tracker
                # ifp-2 research challenger + weekly learning pipeline (shadow only; nothing imports them,
                # see tests/test_weekly_learning.py::test_weekly_pipeline_never_imports_into_consumers)
+               "start_sit_evaluation.py",   # research-only roster decision evaluation (reads the independent tables)
                "challenger.py", "weekly_learning.py",
                "source_provenance.py",   # pregame source snapshots of the weekly pipeline (research only)
                "adaptive_workload.py",   # research-only ifp-aw role estimator (never imported by the app)
