@@ -486,6 +486,28 @@ CREATE TABLE IF NOT EXISTS player_id_map (
     mapped_at         TIMESTAMP
 );
 
+-- Write-once log of every injury-feed retrieval (nflverse report / ESPN status), recorded at sync time
+-- from our own clock. Append-only: the code only ever INSERTs (identical content fetched again is a new
+-- row with the same content_sha, never an overwrite). provider_published_at is the provider's own
+-- timestamp (nflverse date_modified) and stays NULL when the provider supplies none; ESPN status has none.
+-- Create-only (no SCHEMA_VERSION bump). See docs/injury_freshness.md.
+CREATE TABLE IF NOT EXISTS injury_retrievals (
+    retrieval_id               VARCHAR PRIMARY KEY,
+    source                     VARCHAR NOT NULL,   -- nflverse | espn_status
+    scope                      VARCHAR NOT NULL,   -- team_week (nflverse) | team_current (ESPN status) | feed (whole nflverse injury frame)
+    season                     INTEGER NOT NULL,
+    week                       INTEGER,            -- NULL for ESPN status (a current status) and feed rows
+    team                       VARCHAR,            -- NULL for feed rows
+    fetch_started_at           TIMESTAMP,          -- naive UTC, before the download began
+    retrieved_at               TIMESTAMP NOT NULL, -- naive UTC, when the download returned
+    content_sha                VARCHAR NOT NULL,   -- sha256 of this scope's rows as downloaded
+    row_count                  INTEGER NOT NULL,
+    rows_with_publication_time INTEGER NOT NULL,
+    provider_published_at      TIMESTAMP,          -- latest provider date_modified; NULL when none supplied
+    sync_run_id                VARCHAR,
+    recorded_at                TIMESTAMP NOT NULL
+);
+
 -- ---------------------------------------------------------- Analytics ----
 
 CREATE TABLE IF NOT EXISTS player_week_usage (
