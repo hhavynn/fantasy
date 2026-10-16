@@ -102,3 +102,10 @@ motion = "library"
 library = "~/models/presenter/motion/library"
 detail = 1.0
 detail_sigma = 3.5
+
+[editorial_media]
+# EXPERIMENTAL re-edit of each Short with real photography, B-roll and its own graphics (stages/editorial_media.py,
+# docs/editorial-media/README.md). off | preview | render. preview writes the storyboard only; render also writes
+# <slug>-editorial/final.mp4. The original Short is never changed. Media comes from assets/media/manifest.json;
+# a video using media no person has approved yet fails the publish check.
+mode = "off"
