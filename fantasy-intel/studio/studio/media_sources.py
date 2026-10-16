@@ -326,6 +326,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("path")
     for name in ("id", "type", "license", "attribution", "url", "player", "name", "team", "context", "relevance"):
         s.add_argument(f"--{name}")
+    s.add_argument("--license-ref", default="", help="invoice / agreement id: required with --license licensed")
     s.add_argument("--season", type=int)
     s.add_argument("--illustrative", action="store_true")
     s = sub.add_parser("approve")
@@ -359,7 +360,8 @@ def main(argv: list[str] | None = None) -> int:
         if a.cmd == "add-commons":
             add_commons(lib, a.title, a.id, a.type, jersey=a.jersey, attribution=a.attribution, **common)
         else:
-            add_local(lib, Path(a.path), a.id, a.type, a.license, a.attribution or "", a.url or "", **common)
+            add_local(lib, Path(a.path), a.id, a.type, a.license, a.attribution or "", a.url or "",
+                      license_ref=a.license_ref, **common)
     lib.save()
     print(report(lib))
     return 0

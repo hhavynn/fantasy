@@ -366,6 +366,9 @@ class ShotRenderer:
 
     def geometry(self, shot: dict):
         e = self.lib.get(shot["asset"])
+        if e.is_video:                     # never opened as a still: ClipReader cover-crops the centre of each frame
+            sw, sh = (e.width or 1920), (e.height or 1080)
+            return e, (sw, sh), _cover((0, 0, sw, sh), sw, sh), True
         im = prepared(str(e.file), self.look, None)
         win, fits = crop_window(im.width, im.height, e.subject, shot["crop"]["framing"])
         up = H / (win[3] - win[1])

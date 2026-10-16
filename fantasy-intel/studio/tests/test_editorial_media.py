@@ -505,3 +505,36 @@ def test_a_reedit_writes_a_new_folder_and_leaves_the_source_untouched(lib, tmp_p
     assert {a["id"] for a in prov["assets"]} <= set(lib.entries)
     sb = json.loads((out / "storyboard.json").read_text())
     assert sb["shots"][0]["asset"] == "star-game"
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_a_video_broll_entry_plans_and_renders_without_being_opened_as_a_still(lib, tmp_path):
+    clip = tmp_path / "ruler.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30:duration=2",
+                    "-pix_fmt", "yuv420p", str(clip)], check=True)
+    lib.entries.pop("broll-ruler")
+    e = SRC.add_local(lib, clip, "broll-ruler-clip", "context_broll", "CC0", "", "https://example.org/clip",
+                      illustrative=True, relevance=["ruler"])
+    assert e.is_video and (e.width, e.height) == (640, 360)
+    script, facts, claims, toks, durs = _episode([("Measuring his passes? Grab a smaller ruler.", {})], role="flame")
+    script["narration_segments"][0]["scene"]["cues"] = [{"word": "ruler", "event": "punchline", "sfx": "bruh"}]
+    p = SP.plan(script, facts, claims, toks, durs, lib, "roast", season=SEASON, cfg_headshots=True, episode_id="x")
+    shot = next(s for s in p.shots if s.get("asset") == "broll-ruler-clip")
+    r = _renderer(lib, "cold")
+    assert r.zones(shot)[0] in ("low", "top")
+    _, size, win, full = r.geometry(shot)
+    assert size == (640, 360) and full and abs((win[2] - win[0]) / (win[3] - win[1]) - 9 / 16) < 1e-6
+    assert r.draw(shot, shot["t0"] + 0.3, 3.0, toks["s01"], (255, 0, 0)).size == (1080, 1920)
+    r.close()
+
+
+def test_add_local_accepts_the_licence_reference_a_paid_file_needs(lib, tmp_path, monkeypatch):
+    src = _photo(tmp_path / "paid.jpg")
+    monkeypatch.setattr(SRC, "detect_subject", lambda path: {"box": [0.2, 0.1, 0.8, 0.95], "face": None,
+                                                             "method": "test"})
+    monkeypatch.setattr(ML.Library, "load", classmethod(lambda cls, path=None: lib))
+    monkeypatch.setattr(ML.Library, "save", lambda self: None)
+    SRC.main(["add-local", str(src), "--id", "paid-1", "--type", "team_photo", "--license", "licensed",
+              "--license-ref", "INV-123", "--attribution", "Agency / Photographer", "--team", "LA",
+              "--url", "https://example.org/paid"])
+    assert lib.get("paid-1").license_ref == "INV-123" and ML.validate(lib.get("paid-1")) == []
