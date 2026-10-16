@@ -67,6 +67,10 @@ def connect_motherduck(database: str) -> duckdb.DuckDBPyConnection:
 
 
 SCHEMA_VERSION = 8
+# Oldest schema the read-only API serves. v8 only adds tables/columns, and every v8 reader falls back to the
+# v7 layout (production_forecasts.rows_source and friends), so a hosted copy published before its laptop
+# migrated keeps working. Raise this whenever a version changes something readers cannot fall back from.
+MIN_READ_SCHEMA_VERSION = 7
 
 # Derived tables whose definitions changed in each version. Raw ESPN/nflverse tables
 # are never dropped; derived ones are rebuilt by re-running the syncs/analytics.
