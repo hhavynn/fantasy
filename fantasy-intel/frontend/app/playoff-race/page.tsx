@@ -66,6 +66,7 @@ function Body({ d, q }: { d: PlayoffRace; q: Q }) {
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="League"
         title="Playoff race lab"
         meta={<>
           {d.league.name} {d.league.season} · ESPN week {d.league.current_week}

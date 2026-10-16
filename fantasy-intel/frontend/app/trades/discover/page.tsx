@@ -92,6 +92,7 @@ function Body({ c: d, summary, q, sp }: { c: DiscoveryContext; summary: Promise<
   return (
     <>
       <PageHeader
+        eyebrow="Trades"
         title="Trade discovery"
         meta={<>Projected points: <b>ESPN</b> · Trade impact: <b>exact lineup simulation</b> for both teams · weeks {ev.start_week}–{ev.final_week}
           {ev.last_regular_season_week !== null && <> (regular season through {ev.last_regular_season_week})</>}</>}

@@ -63,6 +63,7 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="Trades"
         title="Trade analyzer"
         meta={<>Projected points: <b>ESPN</b> · Trade impact: <b>our exact lineup simulation</b> · weeks {firstWeek}–{evaluation.final_week}</>}
         actions={<Link href="/trades/discover">Discover trades</Link>}

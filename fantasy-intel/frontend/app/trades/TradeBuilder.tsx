@@ -81,12 +81,15 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
       <Section title="Build a trade">
         <div className={styles.sides}>
           {teamA && (
-            <RosterPicker role={mine ? "Your team" : "Team A"} team={teamA} teams={teams} picked={sel.a} maxPerSide={maxPerSide}
+            <RosterPicker role={mine ? "Your team sends" : "Team A sends"} className={styles.sideA} team={teamA} teams={teams} picked={sel.a} maxPerSide={maxPerSide}
               onTeam={(id) => setSel(changeTeam(sel, teams, "a", id))}
               onToggle={(id) => setSel(togglePlayer(sel, "a", id, maxPerSide))} />
           )}
+          <span className={styles.swap} aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h11l-3-3" /><path d="M15 12H4l3 3" /></svg>
+          </span>
           {teamB && (
-            <RosterPicker role={mine ? "Partner" : "Team B"} team={teamB} teams={teams} picked={sel.b} maxPerSide={maxPerSide}
+            <RosterPicker role={mine ? "Partner sends" : "Team B sends"} className={styles.sideB} team={teamB} teams={teams} picked={sel.b} maxPerSide={maxPerSide}
               onTeam={(id) => setSel(changeTeam(sel, teams, "b", id))}
               onToggle={(id) => setSel(togglePlayer(sel, "b", id, maxPerSide))} />
           )}

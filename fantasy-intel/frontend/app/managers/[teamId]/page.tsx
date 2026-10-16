@@ -64,6 +64,7 @@ export default async function ManagerDetail({ params, searchParams }: PageProps<
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="Manager scouting"
         title={<>{t.name}{t.is_mine && <> <Badge value="You" tone="info" /></>}</>}
         meta={`${t.owner_names ?? "Owner unknown"} · ${record} · PF ${num(t.points_for, 1)}${t.playoff_seed ? ` · seed ${t.playoff_seed}` : ""}`}
         actions={<Link href="/managers">← All managers</Link>}

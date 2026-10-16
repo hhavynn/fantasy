@@ -42,6 +42,7 @@ export function UsageCharts({ d }: { d: Detail }) {
   return (
     <Section
       title="Usage by week"
+      subtitle="Snaps, shares and opportunity, week by week"
       footnote="A gap in a line is a week with no record (bye, inactive or not yet played). It is not a zero."
     >
       <div className={styles.charts}>
@@ -49,6 +50,7 @@ export function UsageCharts({ d }: { d: Detail }) {
           <div key={spec.id} className={styles.chart}>
             <h3 className={styles.chartTitle}>{spec.title}</h3>
             <LineChart
+              caption={`Weeks ${labels[0]}–${labels[labels.length - 1]} · nflverse`}
               series={series}
               xLabels={labels}
               yFormat={spec.format === "pct" ? pctTick : ptsTick}

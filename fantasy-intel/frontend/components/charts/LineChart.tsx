@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { ChartFrame, Legend } from "./ChartFrame";
 import { extent, linearScale, niceTicks, ticksWithin } from "./scale";
 import { BASE_FONT, defaultFormat, phoneFont, seriesColor, textWidth, thinStep } from "./shared";
@@ -22,7 +22,7 @@ export type LineSeries = {
  * `refLine` with round-number ticks. `width` is the natural chart width in SVG units (text stays
  * readable at roughly that size); the figure scales down to its container and up to 1.3x.
  */
-export function LineChart({ series, xLabels, yFormat = defaultFormat, height = 220, width = 480, yDomain, markers = false, refLine, ariaLabel = "Line chart", className }: {
+export function LineChart({ series, xLabels, yFormat = defaultFormat, height = 220, width = 480, yDomain, markers = false, refLine, ariaLabel = "Line chart", title, caption, className }: {
   series: LineSeries[];
   xLabels: string[];
   yFormat?: (v: number) => string;
@@ -32,6 +32,9 @@ export function LineChart({ series, xLabels, yFormat = defaultFormat, height = 2
   markers?: boolean;
   refLine?: { y: number; label: string };
   ariaLabel?: string;
+  /** Visible heading and source/sample line, drawn by ChartFrame. */
+  title?: ReactNode;
+  caption?: ReactNode;
   className?: string;
 }) {
   const clipId = useId();
@@ -75,6 +78,8 @@ export function LineChart({ series, xLabels, yFormat = defaultFormat, height = 2
       width={width}
       height={height}
       label={summary}
+      title={title}
+      caption={caption}
       className={className}
       legend={series.length > 1 ? <Legend items={series.map((s, i) => ({ id: s.id, label: s.label, color: seriesColor(i, s.color) }))} /> : undefined}
     >
@@ -115,7 +120,7 @@ export function LineChart({ series, xLabels, yFormat = defaultFormat, height = 2
           }
           if (current.length) segments.push(current);
           return (
-            <g key={s.id}>
+            <g key={s.id} className={styles.series}>
               {segments.filter((seg) => seg.length > 1).map((seg, k) => (
                 <path key={k} className={styles.line} stroke={color}
                       d={seg.map((p, j) => `${j ? "L" : "M"}${xs(p.i).toFixed(1)},${ys(p.v).toFixed(1)}`).join("")} />
@@ -125,7 +130,7 @@ export function LineChart({ series, xLabels, yFormat = defaultFormat, height = 2
                 <circle key={`solo-${seg[0].i}`} cx={xs(seg[0].i)} cy={ys(seg[0].v)} r={3} fill={color} className={styles.dot} />
               ))}
               {segments.flat().map((p) => (
-                <circle key={p.i} cx={xs(p.i)} cy={ys(p.v)} className={markers ? styles.dot : undefined}
+                <circle key={p.i} cx={xs(p.i)} cy={ys(p.v)} className={markers ? styles.dot : styles.hit}
                         r={markers ? 3.5 : 7}
                         fill={markers ? color : "transparent"}>
                   <title>{`${s.label}, ${xLabels[p.i]}: ${yFormat(p.v)}`}</title>

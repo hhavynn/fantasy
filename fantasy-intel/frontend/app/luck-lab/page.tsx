@@ -80,6 +80,7 @@ function Body({ d, cleared, sp }: { d: LuckLab; cleared: boolean; sp: SearchPara
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="League"
         title="Luck vs. skill lab"
         meta={<>
           {s.name}{s.is_mine ? " (your team)" : ""} · <b>{cov.eligible_periods.length}</b> completed, fully observed regular-season {plural(cov.eligible_periods.length, "period")} of {cov.teams} teams
