@@ -11,6 +11,6 @@ from here at call time, so the evidence readers never need the consumer switch m
 """
 
 APPROVED_ARTIFACT_SHA256: str | None = None
-# The model version the pin belongs to: a numpy-free copy of projection_source.MODEL_VERSION (tested equal).
-# Reads of any other model version (the ifp-2 shadow, say) are never restricted by the pin.
-PINNED_MODEL_VERSION = "ifp-1.0.0"
+# The model version the pin belongs to: the approved production model, a copy of projection_source.MODEL_VERSION
+# (tested equal). Reads of any other model version (the fallback ifp-1.0.0, a shadow) are never restricted by the pin.
+PINNED_MODEL_VERSION = "ifp-2.0.0"

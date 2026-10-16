@@ -16,6 +16,7 @@ export function ProjectionNotice({ detail, className }: { detail: ProjectionSour
       validated against ESPN yet). Players marked <OriginTag origin="espn" ours /> keep ESPN&apos;s number: K, D/ST and anyone the model
       can&apos;t project.
       {c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable), {c.espn} from ESPN.</>}
+      {detail.reason && <> {detail.reason}</>}
     </Notice>
   );
 }

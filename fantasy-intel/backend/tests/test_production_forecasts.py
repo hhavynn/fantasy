@@ -19,6 +19,7 @@ from app.db.connection import SCHEMA_VERSION, init_db, table_columns, table_exis
 from test_independent_projections import SCORING, _artifact, live  # noqa: F401  (live is a fixture)
 
 MODEL = "ifp-1.0.0"
+PROD = "ifp-2.0.0"      # the approved production model: the only version the artifact pin applies to
 FP = SCORING.fingerprint
 FIT = "2026-09-01T00:00:00+00:00"           # before every week-6 kickoff below
 # Week 6: CCC@AAA is a Thursday game (2026-09-03 20:20 ET = 2026-09-04 00:20 UTC); the rest kick off Sunday
@@ -266,36 +267,39 @@ def test_mismatched_runs_are_excluded_with_a_reason(live):  # noqa: F811
 def test_pinned_artifact_excludes_other_artifacts_with_a_reason(live, monkeypatch):  # noqa: F811
     con, src, _ = live
     thursday(con)       # run B (BETWEEN) is post-kickoff for the Thursday player 1, so run A still supplies his row
-    a, _, _ = store(con, src, BEFORE_ALL, sha="a" * 64)
-    b, _, _ = store(con, src, BETWEEN, sha="b" * 64, mutate=bump(1, 77.0))
+    a, _, _ = store(con, src, BEFORE_ALL, sha="a" * 64, meta_over={"model_version": PROD})
+    b, _, _ = store(con, src, BETWEEN, sha="b" * 64, mutate=bump(1, 77.0), meta_over={"model_version": PROD})
     # unpinned (today): both artifacts are legitimate evidence and the latest eligible run wins per player
     assert production_pin.APPROVED_ARTIFACT_SHA256 is None
-    rows, excluded = forecasts(con)
+    rows, excluded = forecasts(con, model=PROD)
     assert {r["run_id"] for r in rows} == {a["run_id"], b["run_id"]} and not excluded
-    assert sorted(eligible_run_ids(con, 2026, MODEL, FP)[0]) == sorted([a["run_id"], b["run_id"]])
+    assert sorted(eligible_run_ids(con, 2026, PROD, FP)[0]) == sorted([a["run_id"], b["run_id"]])
     # pinned to artifact A: B's run is excluded with the reason and none of its rows is returned
     monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "a" * 64)
-    rows, excluded = forecasts(con)
+    rows, excluded = forecasts(con, model=PROD)
     assert {r["run_id"] for r in rows} == {a["run_id"]} and {r["artifact_id"] for r in rows} == {"a" * 64}
     assert [(e["run_id"], e["reason"]) for e in excluded] == [(b["run_id"], NOT_APPROVED_ARTIFACT)]
     assert NOT_APPROVED_ARTIFACT == "artifact not the approved production artifact"
-    run_ids, excluded = eligible_run_ids(con, 2026, MODEL, FP)
+    run_ids, excluded = eligible_run_ids(con, 2026, PROD, FP)
     assert run_ids == [a["run_id"]] and excluded[0]["reason"] == NOT_APPROVED_ARTIFACT
-    assert latest_run(con, 2026, 6, model_version=MODEL)["run_id"] == a["run_id"]
+    assert latest_run(con, 2026, 6, model_version=PROD)["run_id"] == a["run_id"]
     # pinned to an artifact nobody used: no evidence at all, every run excluded with the reason
     monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "c" * 64)
-    rows, excluded = forecasts(con)
+    rows, excluded = forecasts(con, model=PROD)
     assert rows == [] and {e["reason"] for e in excluded} == {NOT_APPROVED_ARTIFACT} and len(excluded) == 2
-    assert latest_run(con, 2026, 6, model_version=MODEL) is None
+    assert latest_run(con, 2026, 6, model_version=PROD) is None
 
 
 def test_the_pin_applies_to_the_production_model_only(live, monkeypatch):  # noqa: F811
-    """The pin names ifp-1.0.0's artifact; another model version (the ifp-2 shadow) is never filtered by it."""
+    """The pin names the production model's (ifp-2.0.0) artifact; another model version (the ifp-1.0.0
+    fallback, a shadow) is never filtered by it."""
     con, src, _ = live
-    store(con, src, BEFORE_ALL, sha="a" * 64, meta_over={"model_version": "ifp-2.0.0"})
+    store(con, src, BEFORE_ALL, sha="a" * 64)                      # ifp-1.0.0
     monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "c" * 64)
-    rows, excluded = forecasts(con, model="ifp-2.0.0")
+    rows, excluded = forecasts(con, model=MODEL)
     assert rows and not excluded
+    assert latest_run(con, 2026, 6, model_version=MODEL) is not None
+    assert forecasts(con, model=PROD)[0] == []
 
 
 def test_runs_without_rows_or_with_altered_rows_are_excluded(live):  # noqa: F811
@@ -443,7 +447,7 @@ def test_module_imports_without_polars_or_numpy():
             "print(pf.pregame_forecasts.__name__, ps.MODEL_VERSION)")
     out = subprocess.run([sys.executable, "-c", code], cwd=backend, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
-    assert out.stdout.split() == ["pregame_forecasts", "ifp-1.0.0"]
+    assert out.stdout.split() == ["pregame_forecasts", "ifp-2.0.0"]   # the production model (projection_source)
 
 
 def test_publish_copies_the_run_tables_as_is_and_cannot_touch_local_history(live, tmp_path):  # noqa: F811

@@ -1,9 +1,14 @@
 # Approved production model registry and the future promotion process
 
-**Status: preparation only. The approved production model is `ifp-1.0.0` and stays `ifp-1.0.0`.**
-The registry promotes nothing, activates nothing and is read by research tooling only. Every
-consumer value is unchanged: the projection switch keeps reading `projection_source.MODEL_VERSION`
-(`ifp-1.0.0`), and the hosted app never imports the registry.
+**Status: the approved production model is `ifp-2.0.0`** (promotion event of 2026-10-16, an
+`owner_approval` by the repository owner recorded with `override: true`: it cites no prospective or
+held-out report, and `evaluate_promotion` correctly reports the transition as not activatable on
+evidence). `ifp-1.0.0` is retired (`superseded`), is `ifp-2.0.0`'s `rollback_to`, and is still read
+by the projection switch for a week with no `ifp-2.0.0` run. Its artifact hash is still unpinned, so
+`plan_rollback` refuses until it is pinned. The projection switch reads
+`projection_source.MODEL_VERSION` (`ifp-2.0.0`); the hosted app never imports the registry.
+The pre-promotion manifest is kept as `backend/tests/fixtures/model_registry_pre_ifp2.json`; the
+sections below describe the gate as designed.
 
 | File | Role |
 |---|---|
@@ -29,9 +34,11 @@ So a production switch would touch three places, all in one reviewed change: `MO
 
 ## Pinning the production artifact (consumer pin)
 
-By default the opt-in projection switch serves the newest run of `ifp-1.0.0` under the league's scoring,
-whichever artifact file produced it. Once the incumbent's artifact is pinned, the switch serves only runs
-made by exactly that file. Every run records `independent_projection_runs.artifact_id`, the sha256 of the
+By default the opt-in projection switch serves the newest run of the production model (`ifp-2.0.0` today,
+else the `ifp-1.0.0` fallback) under the league's scoring, whichever artifact file produced it. Once the
+production model's artifact is pinned, the switch serves only production-model runs made by exactly that
+file; the `ifp-1.0.0` fallback is never constrained by the pin. Today the pin stays unset: `ifp-2.0.0`
+retrains per target week and has no single immutable artifact yet (see Known limitations). Every run records `independent_projection_runs.artifact_id`, the sha256 of the
 artifact **file bytes** (`dict:` + digest when no file was used, which never matches a pin).
 
 The pin lives in two places that must agree, because the hosted app never reads the registry:
@@ -53,9 +60,12 @@ source in any case.
 * the projection switch (`projection_source.weekly`, so Start/Sit, Matchup and Home with
   `source=independent`);
 * evidence: `production_forecasts.pregame_forecasts`, `eligible_run_ids` and `latest_run` (and so the
-  ESPN benchmark and the Start/Sit evaluation, which read them) for the production model version only;
-  the ifp-2 shadow and other model versions are never filtered by this pin;
-* the promotion tracker (latest run, eligible runs and stored projections, including the pre-v8 path).
+  ESPN benchmark and the Start/Sit evaluation, which read them) for the production model version only
+  (`production_pin.PINNED_MODEL_VERSION`, tested equal to `projection_source.MODEL_VERSION`); the fallback
+  and every other model version are never filtered by this pin;
+* the promotion tracker (latest run, eligible runs and stored projections, including the pre-v8 path), when
+  the model it tracks (`independent_projections.MODEL_VERSION`, the frozen-criteria gate) is the pinned one; it
+  tracks `ifp-1.0.0` today, so a pin on `ifp-2.0.0` leaves it unchanged.
 
 Other runs are excluded with the reason `artifact not the approved production artifact`. When no run of
 the pinned artifact exists for the week the switch reports `available: false` with a reason that names
@@ -67,7 +77,8 @@ stored run, says so in its notes, and is not filtered by the pin.
 **To pin (a reviewed change, one commit, owner-approved):**
 
 1. On the machine that holds the artifact, from the repo root, compute the digest of the exact file the
-   `project` command loads (`INDEPENDENT_MODEL_DIR`, default `data/models`):
+   production model's `project` run loads (`INDEPENDENT_MODEL_DIR`, default `data/models`; the example is
+   the `ifp-1.0.0` file, substitute the production model's artifact once it has one):
 
    ```
    shasum -a 256 data/models/independent_projections_ifp-1.0.0.json
@@ -146,11 +157,12 @@ explanation}`; `insufficient_data` is never a pass, and `activates` is always `f
 
 ## Future promotion process (not executed)
 
-1. Pin the incumbent: a reviewed change that fills `ifp-1.0.0`'s artifact sha256 (`shasum -a 256
-   data/models/independent_projections_ifp-1.0.0.json`), training cutoff and held-out report hash, and
-   sets `production_pin.APPROVED_ARTIFACT_SHA256` to the same digest (see "Pinning the production
-   artifact"). From then on the file can never be swapped silently, and the switch serves only runs made
-   by exactly that file.
+1. Pin the model that is to be production (or, for a rollback, the restored model's file): a reviewed
+   change that fills its artifact sha256 (`shasum -a 256 data/models/independent_projections_ifp-1.0.0.json`
+   for the `ifp-1.0.0` file), training cutoff and held-out report hash, and sets
+   `production_pin.APPROVED_ARTIFACT_SHA256` and `PINNED_MODEL_VERSION` to match (see "Pinning the
+   production artifact"). From then on the file can never be swapped silently, and the switch serves only
+   production-model runs made by exactly that file.
 2. Keep the challenger in the frozen pregame ledger until `scripts/weekly_learning.py evaluate`
    has >= 8 fully final prospective weeks; freeze that report (never edit it) and note its sha256.
 3. Fit the candidate's single production artifact under the league scoring and copy it to a new,

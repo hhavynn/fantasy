@@ -120,6 +120,10 @@ def test_pinned_artifact_gates_the_tracker(tracked, monkeypatch):
     sha = con.execute("SELECT artifact_id FROM independent_projection_runs").fetchone()[0]
     assert production_pin.APPROVED_ARTIFACT_SHA256 is None
     unpinned = build_tracker(con)
+    # the pin belongs to the production model (ifp-2.0.0); the tracker tracks ifp-1.0.0's gate, so it is unaffected
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "e" * 64)
+    assert build_tracker(con) == unpinned
+    monkeypatch.setattr(production_pin, "PINNED_MODEL_VERSION", "ifp-1.0.0")   # as if the tracked model were pinned
     monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", sha)    # the stored run's own artifact
     assert build_tracker(con) == unpinned
     monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "f" * 64)

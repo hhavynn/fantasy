@@ -1,6 +1,8 @@
-"""Approved production model registry (app.analytics.model_registry): the committed manifest keeps
-ifp-1.0.0 as production, every promotion check fails closed, a fixture approval is accepted only in
-isolation, rollback is planned (never applied), and nothing in the hosted app reads the registry."""
+"""Approved production model registry (app.analytics.model_registry): the committed manifest records the
+owner's promotion of ifp-2.0.0 over ifp-1.0.0 as a valid transition, every promotion check fails closed, a
+fixture approval is accepted only in isolation, rollback is planned (never applied), and nothing in the hosted
+app reads the registry. Promotion fixtures start from the pre-promotion manifest (ifp-1.0.0 production,
+tests/fixtures/model_registry_pre_ifp2.json)."""
 
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -25,6 +27,12 @@ CAND = "ifp-9.0.0"
 AT = datetime(2027, 1, 5, 12, tzinfo=timezone.utc)
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
 APP = BACKEND / "app"
+PRE_IFP2 = pathlib.Path(__file__).resolve().parent / "fixtures" / "model_registry_pre_ifp2.json"
+
+
+def _pre() -> dict:
+    """The manifest before the ifp-2.0.0 promotion: ifp-1.0.0 production under its incumbent record."""
+    return reg.load_manifest(PRE_IFP2)
 
 
 # ----------------------------------------------------------------------------- fixtures
@@ -89,7 +97,7 @@ def env(tmp_path):
     ledger.mkdir(parents=True)
     (ledger / "pregame-run.json").write_text('{"run_id": "frozen"}')
 
-    old = reg.load_manifest()
+    old = _pre()
     ch = reg.entry(old, MODEL_VERSION)
     ch["artifact"]["sha256"] = champ_sha
     ch["training_cutoff"] = {"season": 2026, "week": 0}
@@ -137,30 +145,44 @@ def _repin(new, kind, sha):
 # ----------------------------------------------------------------------------- default production
 
 
-def test_default_approved_champion_is_ifp_1():
-    m = reg.load_manifest()
+def test_pre_promotion_manifest_had_ifp_1_as_incumbent():
+    m = _pre()
     p = reg.production(m)
-    assert p["version"] == MODEL_VERSION == ps.MODEL_VERSION == "ifp-1.0.0"
+    assert p["version"] == MODEL_VERSION == ps.FALLBACK_VERSION == "ifp-1.0.0"
     assert p["state"] == reg.APPROVED and p["approval"]["kind"] == reg.INCUMBENT
-    assert p["scoring_fingerprint"] == FP
-    # no owner approval anywhere, and nothing else is approved
-    assert [e["version"] for e in m["models"] if e["state"] == reg.APPROVED] == [MODEL_VERSION]
-    assert not [e for e in m["models"] if (e.get("approval") or {}).get("kind") == reg.OWNER_APPROVAL]
     assert reg.entry(m, "ifp-2.0.0")["state"] == reg.SHADOW
     assert [h["event"] for h in m["history"]] == ["registry_initialized"]
+
+
+def test_committed_production_is_ifp_2_by_owner_approval():
+    m = reg.load_manifest()
+    p = reg.production(m)
+    assert p["version"] == ps.MODEL_VERSION == "ifp-2.0.0"
+    assert p["state"] == reg.APPROVED and p["scoring_fingerprint"] == FP and p["rollback_to"] == MODEL_VERSION
+    ap = p["approval"]
+    assert ap["kind"] == reg.OWNER_APPROVAL and ap["approved_by"] and ap["override"] is True
+    assert ap["start_sit_ready"] is False and ap["evidence_sha256"] == {}     # no evidence is claimed
+    assert [e["version"] for e in m["models"] if e["state"] == reg.APPROVED] == ["ifp-2.0.0"]
+    assert reg.entry(m, MODEL_VERSION)["state"] == reg.RETIRED
+    assert [h["event"] for h in m["history"]] == ["registry_initialized", "promotion"]
+    # a valid, append-only transition from the pre-promotion manifest
+    assert reg.verify_transition(_pre(), m) == []
 
 
 def test_dry_run_report_on_the_committed_manifest(tmp_path):
     m = reg.load_manifest()
     rep = reg.dry_run_report(m, model_root=tmp_path, live_scoring_fp=FP, consumer_version=ps.MODEL_VERSION)
-    assert rep["production"]["version"] == MODEL_VERSION and rep["production"]["consumers_match"]
+    assert rep["production"]["version"] == ps.MODEL_VERSION and rep["production"]["consumers_match"]
     assert rep["production"]["artifact_pinned"] is False and rep["production"]["note"]
-    assert {c["version"] for c in rep["candidates"]} == {"ifp-2.0.0", "ifp-hgb-0.1.0"}
+    assert {c["version"] for c in rep["candidates"]} == {MODEL_VERSION, "ifp-hgb-0.1.0"}
+    # the owner override does not pass the evidence gate: the approval cites no report
+    gate = reg.evaluate_promotion(_pre(), m, model_root=tmp_path, live_scoring_fp=FP)
+    assert gate["activatable"] is False and gate["blocking"]
     assert not any(c["activatable"] or c["eligible_for_review"] or c["activates"] for c in rep["candidates"])
 
 
 def test_incumbent_record_cannot_be_reused_by_another_model():
-    m = reg.load_manifest()
+    m = _pre()
     bad = deepcopy(m)
     reg.entry(bad, MODEL_VERSION)["state"] = reg.RETIRED
     e = reg.entry(bad, "ifp-2.0.0")
@@ -179,7 +201,7 @@ def test_incumbent_record_cannot_be_reused_by_another_model():
     lambda m: m.update(schema="model-registry/v0"),
 ])
 def test_malformed_manifest_fails_closed(tmp_path, mutate):
-    m = reg.load_manifest()
+    m = _pre()
     mutate(m)
     assert reg.validate_manifest(m)
     p = tmp_path / "m.json"
@@ -204,7 +226,7 @@ def test_explicit_future_approval_fixture_is_accepted_in_isolation(env):
             assert r[f"{pos}:{name}"] == reg.PASS, (pos, name)
     assert r["espn_rule"] == reg.NOT_APPLICABLE and r["human_approval"] == reg.PASS
     # the committed manifest is untouched by evaluating a proposal
-    assert reg.production(reg.load_manifest())["version"] == MODEL_VERSION
+    assert reg.production(reg.load_manifest())["version"] == ps.MODEL_VERSION
 
 
 def test_espn_rule_required_when_start_sit_readiness_is_claimed(env):
@@ -451,6 +473,9 @@ def test_rollback_refuses_incompatible_scoring_or_tampered_target(env):
     with pytest.raises(reg.RegistryError, match="changed or replaced"):
         reg.plan_rollback(promoted, live_scoring_fp=FP, **kw)
     with pytest.raises(reg.RegistryError, match="no registered rollback target"):
+        reg.plan_rollback(_pre(), live_scoring_fp=FP, **kw)
+    # the committed rollback target (ifp-1.0.0) is registered but its artifact hash is not pinned yet
+    with pytest.raises(reg.RegistryError, match=f"cannot roll back to {MODEL_VERSION}"):
         reg.plan_rollback(reg.load_manifest(), live_scoring_fp=FP, **kw)
 
 
@@ -465,7 +490,8 @@ def test_same_production_projections_before_and_after_registry(stored, env):  # 
     reg.plan_rollback(new, reason="r", by="o", at=AT, model_root=root, live_scoring_fp=FP)
     after = {s: ps.weekly(stored, 2026, 6, s) for s in ps.SOURCES}
     assert after == before
-    assert before["independent"]["run"]["model_version"] == MODEL_VERSION == reg.production(reg.load_manifest())["version"]
+    assert before["independent"]["run"]["model_version"] == ps.FALLBACK_VERSION == MODEL_VERSION   # fixture run: ifp-1
+    assert reg.production(reg.load_manifest())["version"] == ps.MODEL_VERSION
 
 
 def test_consumer_artifact_pin_is_a_tested_copy_of_the_registry_pin():
@@ -489,7 +515,7 @@ def test_hosted_app_never_reads_the_registry_or_research_packages():
     code = ("import sys; sys.modules['polars'] = None; sys.modules['numpy'] = None; "
             "from app.analytics import model_registry as r; print(r.production(r.load_manifest())['version'])")
     out = subprocess.run([sys.executable, "-c", code], cwd=BACKEND, check=True, capture_output=True, text=True)
-    assert out.stdout.strip() == MODEL_VERSION
+    assert out.stdout.strip() == ps.MODEL_VERSION
     runtime = (BACKEND / "pyproject.toml").read_text().split("dependencies = [", 1)[1].split("]", 1)[0]
     assert "scikit" not in runtime
 
@@ -507,7 +533,7 @@ def test_cli_status_is_read_only(tmp_path):
     assert cli.main(["status", "--models", str(tmp_path), "--live-db", str(tmp_path / "none.duckdb"),
                      "--out", str(out)]) == 0
     rep = json.loads(out.read_text())
-    assert rep["production"]["version"] == MODEL_VERSION and rep["dry_run"] is True
+    assert rep["production"]["version"] == ps.MODEL_VERSION and rep["dry_run"] is True
     assert rep["production"]["consumer_pin_matches"] is True       # both unpinned today
     assert cli.main(["status", "--models", str(tmp_path), "--live-db", str(tmp_path / "none.duckdb"),
                      "--out", str(out)]) == 2                       # write-once

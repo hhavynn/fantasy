@@ -14,11 +14,12 @@ each number came from (`origin`):
   espn       no independent estimate exists for him (K and D/ST have no model; rookies without an NFL
              game, uncertain ID mapping, no participation estimate): ESPN's projection, labeled.
 
-The independent run must be the current model version under the league's current scoring and, once
-production_pin.APPROVED_ARTIFACT_SHA256 is pinned, made by exactly that artifact file (runs record the sha256 of the file bytes
-in artifact_id); without one the switch reports `available: false` and the consumer keeps ESPN. Runs are immutable:
-the newest run that still has its stored rows is used, read from independent_projection_rows (the legacy
-table only when the database has not been migrated to schema v8).
+The independent run must be the approved production model (MODEL_VERSION; the registry manifest) under the league's
+current scoring and, once production_pin.APPROVED_ARTIFACT_SHA256 is pinned, made by exactly that artifact
+file (runs record the sha256 of the file bytes in artifact_id; the fallback model is not pinned). A week with
+no production run falls back to the previous production model (FALLBACK_VERSION) and says so in `reason`;
+with neither the switch reports `available: false` and the consumer keeps ESPN. Runs are immutable: the newest run that still has its stored rows is used, read from
+independent_projection_rows (the legacy table only when the database has not been migrated to schema v8).
 """
 
 from __future__ import annotations
@@ -32,8 +33,10 @@ from . import production_pin
 SOURCES = ("espn", "independent")
 OURS, OURS_ZERO, ESPN = "ours", "ours_zero", "espn"
 ZERO_STATUSES = {"bye", "withheld_unavailable"}
-MODEL_VERSION = "ifp-1.0.0"     # app.analytics.independent_projections.MODEL_VERSION (numpy-free copy, tested)
-# The approved-artifact pin lives in the leaf module production_pin (read at call time below).
+MODEL_VERSION = "ifp-2.0.0"     # approved production (registry manifest); app.analytics.challenger.CHALLENGER_VERSION
+FALLBACK_VERSION = "ifp-1.0.0"  # previous production (app.analytics.independent_projections.MODEL_VERSION), read
+                                # only for a week without a MODEL_VERSION run; numpy-free copies, tested
+# The approved-artifact pin (for MODEL_VERSION only) lives in the leaf module production_pin, read at call time.
 
 
 def normalize(source: str | None) -> str:
@@ -63,13 +66,18 @@ def _scoring_fingerprint(con, season: int) -> str | None:
 
 
 def _run(con, season: int, week: int) -> dict | None:
-    """Newest run of the current model under the league's current scoring that still has its rows
-    (production_forecasts.latest_run; runs are immutable, a later run never deletes an earlier one)."""
+    """Newest run of the production model under the league's current scoring that still has its rows, else
+    the same for FALLBACK_VERSION (production_forecasts.latest_run; runs are immutable, a later run never
+    deletes an earlier one)."""
     fp = _scoring_fingerprint(con, season)
     if fp is None:
         return None
-    return pf.latest_run(con, season, week, model_version=MODEL_VERSION, scoring_fingerprint=fp,
-                         artifact_id=production_pin.APPROVED_ARTIFACT_SHA256)
+    # the pin (production_pin) restricts reads of MODEL_VERSION to the approved artifact; FALLBACK_VERSION is not pinned
+    for version in (MODEL_VERSION, FALLBACK_VERSION):
+        run = pf.latest_run(con, season, week, model_version=version, scoring_fingerprint=fp)
+        if run is not None:
+            return run
+    return None
 
 
 def weekly(con, season: int, week: int, source: str) -> dict:
@@ -84,8 +92,8 @@ def weekly(con, season: int, week: int, source: str) -> dict:
         sha = production_pin.APPROVED_ARTIFACT_SHA256
         pin = f" made by the approved production artifact (sha256 {sha[:12]}...)" if sha is not None else ""
         return {**base, "available": False,
-                "reason": f"No independent projection run of {MODEL_VERSION}{pin} under the current league scoring is "
-                          f"stored for week {week}, so ESPN projections are shown."}
+                "reason": f"No independent projection run of {MODEL_VERSION}{pin} (or {FALLBACK_VERSION}) under the current "
+                          f"league scoring is stored for week {week}, so ESPN projections are shown."}
     values: dict[int, float | None] = dict(espn)
     origin: dict[int, str] = {pid: ESPN for pid in espn}
     counts = {OURS: 0, OURS_ZERO: 0, ESPN: 0}
@@ -100,10 +108,12 @@ def weekly(con, season: int, week: int, source: str) -> dict:
         counts[o] += 1
     status = run["model_status"]
     status = json.loads(status) if isinstance(status, str) else (status or {})
+    reason = None if run["model_version"] == MODEL_VERSION else (
+        f"No {MODEL_VERSION} run is stored for week {week} yet, so the previous model {run['model_version']} is shown.")
     run_info = {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"])}
-    if production_pin.APPROVED_ARTIFACT_SHA256 is not None:     # only when pinned: unpinned responses are unchanged
-        run_info["artifact_pinned"] = True
-    return {**base, "values": values, "origin": origin, "counts": counts, "run": run_info,
+    if run["model_version"] == MODEL_VERSION and production_pin.APPROVED_ARTIFACT_SHA256 is not None:
+        run_info["artifact_pinned"] = True              # only when pinned: unpinned responses are unchanged
+    return {**base, "reason": reason, "values": values, "origin": origin, "counts": counts, "run": run_info,
             "model_status": {p: (s or {}).get("status") for p, s in status.items()}}
 
 
@@ -112,6 +122,6 @@ def describe(w: dict) -> dict:
     return {k: w[k] for k in ("source", "available", "reason", "run", "model_status", "counts")}
 
 
-NOTE = ("Independent projections are Fantasy Intel's own research model (expected points). QB is validated against "
-        "trailing-average baselines only; RB, WR and TE are experimental; none is validated against ESPN. K and D/ST, "
-        "and players the model cannot project, keep ESPN's number and are marked.")
+NOTE = ("Independent projections are Fantasy Intel's own research model (expected points, ifp-2.0.0, retrained "
+        "weekly). It has not met its promotion criteria and nothing is validated against ESPN. K and D/ST, and "
+        "players the model cannot project, keep ESPN's number and are marked.")
