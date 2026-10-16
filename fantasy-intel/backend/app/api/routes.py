@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ..analytics.availability import availability, injury_order_sql, latest_injuries
+from ..analytics import forward_ours
 from ..analytics.context import ftn_semantics
 from ..analytics.projections import BASELINE_NOTE, league_window, player_forward
 from ..analytics.team_lineups import project_team, public_weeks, replacement_market, roster_marginal_value
@@ -248,14 +249,28 @@ def player_detail(espn_player_id: int):
 
 
 @router.get("/players/{espn_player_id}/forward")
-def player_forward_view(espn_player_id: int):
-    """ESPN's projection for every remaining fantasy week (unmodified) + the ROS summary."""
+def player_forward_view(espn_player_id: int,
+                        source: str = Query("espn", description="Projection source: espn (default) | independent")):
+    """ESPN's projection for every remaining fantasy week (unmodified) + the ROS summary.
+
+    With source=independent the response also carries `ours`: Fantasy Intel's production model (ifp-2.0.0) for
+    each remaining regular-season week {available, reason, label, model_version, weeks [{week, value, origin
+    (ours | ours_zero | espn | bye), on_bye, run_id, model_version, run_created_at, horizon, projected_from_week,
+    experimental}], ros_projected_points (NULL unless every non-bye week is ours / ours_zero), ros_weeks_expected,
+    ros_weeks_available, ros_complete, fallback_weeks, missing_weeks, run_created_at}. available=false (with a
+    reason) means no rest-of-season run is stored yet. Without it, or with source=espn, the response is ESPN's only.
+
+    404 for an unknown player, 422 for a bad source, 503 when the league window is unknown."""
+    try:
+        forward_ours.normalize(source)
+    except ValueError as err:
+        raise HTTPException(422, str(err))
     with db() as con:
         lg = _league(con)
         p = one(con, "SELECT pro_team FROM fantasy_players WHERE espn_player_id = ?", [espn_player_id])
         if not p:
             raise HTTPException(404, "Unknown ESPN player id")
-        out = player_forward(con, lg["season"], espn_player_id, p["pro_team"])
+        out = player_forward(con, lg["season"], espn_player_id, p["pro_team"], source=source)
         if out is None:
             raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
         return out

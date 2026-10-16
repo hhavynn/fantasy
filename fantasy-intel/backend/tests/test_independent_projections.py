@@ -345,7 +345,8 @@ def test_live_participation_gives_unconditional_expected_points(live, monkeypatc
 def test_canonical_espn_systems_do_not_read_independent_projections():
     """Lineups, trades, waivers, scores and ESPN projections must not depend on this research model.
     The only path to it is the opt-in projection switch (analytics/projection_source.py, ESPN by
-    default), which only Start/Sit and Matchup import (test below)."""
+    default), which only weekly Start/Sit, weekly Matchup and the opt-in player forward view
+    (analytics/forward_ours.py) import (test below)."""
     allowed = {"projection_source.py",   # opt-in weekly source switch; SQL only, ESPN unless asked
                "production_forecasts.py",   # immutable run-keyed forecast store (SQL only); readers of the runs
                "independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
@@ -377,9 +378,11 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
 
 
 def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
+    """Weekly Start/Sit, weekly Matchup and the opt-in player forward view (analytics/forward_ours.py) are the
+    only consumers of the switch. Trades, waivers, team value and the playoff race stay ESPN."""
     import inspect
 
-    from app.analytics import matchup, projection_source, start_sit
+    from app.analytics import forward_ours, matchup, projection_source, start_sit
     from app.analytics.challenger import CHALLENGER_VERSION
     from app.analytics.independent_projections import MODEL_VERSION
 
@@ -388,10 +391,14 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     assert projection_source.FALLBACK_VERSION == MODEL_VERSION == "ifp-1.0.0"
     assert inspect.signature(start_sit.load_start_sit_evaluation).parameters["source"].default == "espn"
     assert inspect.signature(matchup.load_matchup).parameters["source"].default == "espn"
+    # the forward view's entry point requires an explicit source (no default), and the route defaults to ESPN
+    from app.api import routes
+    assert inspect.signature(forward_ours.ours_forward).parameters["source"].default is inspect.Parameter.empty
+    assert inspect.signature(routes.player_forward_view).parameters["source"].default.default == "espn"
     import re
     imports = re.compile(r"from \.+(analytics\.)?projection_source import|import projection_source")
     users = {f.relative_to(APP).as_posix() for f in APP.rglob("*.py") if imports.search(f.read_text())}
-    switch = {"analytics/start_sit.py", "analytics/matchup.py"}
+    switch = {"analytics/start_sit.py", "analytics/matchup.py", "analytics/forward_ours.py"}
     # read-only views that must show the SAME run and governance as the switch (they never feed a lineup)
     readers = {"api/independent_projections.py", "analytics/promotion_tracker.py", "api/projection_promotion.py",
                "analytics/model_registry.py"}   # research-only rollback dry run (simulates the selection)

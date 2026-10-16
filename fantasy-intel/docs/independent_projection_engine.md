@@ -4,7 +4,8 @@ An NFL-evidence fantasy-point model for QB/RB/WR/TE that **never uses ESPN proje
 input**. ESPN appears only as an external comparison and stays the default everywhere: nothing in
 lineups, trades, waivers, playoff odds, player scores or market signals reads the model. The one opt-in
 path is the **projection switch** (header toggle "ESPN | Ours", see "Projection switch" below),
-which only changes the weekly numbers on Home, Matchup and Start/Sit.
+which only changes the weekly numbers on Home, Matchup and Start/Sit and adds Fantasy Intel's series to a
+player's forward view.
 
 **Production model: `ifp-2.0.0`, by owner override (2026-10-16, `model_registry.json`).** What that
 does and does not establish:
@@ -548,9 +549,46 @@ trailing-average baselines only). `governance` carries `production_approval: own
 
 Start/Sit and Matchup rerun the same lineup optimizer on these numbers (Matchup computes both teams' lineups on the fly instead of reading
 `team_week_lineup_projections`). Availability warnings still quote ESPN's number, because they say
-so by name. Rest-of-season features (trades, waivers, team value, playoff race) stay on ESPN: the
-model projects one week at a time. The switch is a view, not evidence: the frozen
-`PROMOTION_CRITERIA` and the tracker still have to be met.
+so by name. Trades, waivers, team value and the playoff race stay on ESPN. The switch is a view, not evidence: the
+frozen `PROMOTION_CRITERIA` and the tracker still have to be met.
+
+**Player forward view (opt-in).** With "Ours", a player's page asks
+`GET /api/players/{id}/forward?source=independent`. The response is ESPN's forward view, unchanged and
+byte-identical to the default (`source=espn` or no `source`), plus an `ours` block. It is built by
+`app/analytics/forward_ours.py`, the only module besides Start/Sit and Matchup that imports
+`projection_source` (it applies the switch's own selection to every remaining regular-season week;
+`test_projection_switch_is_opt_in_and_limited_to_weekly_views` pins the importer set, and its entry point
+requires an explicit `source`):
+
+* `weeks`: one entry per remaining regular-season week with `value`, `origin` (`ours`, `ours_zero`, `espn`
+  for a week without an independent estimate, or `bye` from the NFL schedule), and the run's `run_id`,
+  `model_version`, `run_created_at`, `horizon` (NULL on a legacy run = 0) and `projected_from_week`; `experimental` is
+  true for horizon > 0;
+* `ros_projected_points`: the regular-season total ("Ours: regular season left"), with the same
+  complete-or-null rule as ESPN's. It counts `ifp-2.0.0` weeks only and is NULL unless every non-bye
+  remaining regular-season week is `ours` or `ours_zero` from that model. An ESPN-fallback week
+  (`fallback_weeks`, `missing_weeks`) or a week shown from the previous model (`other_model_weeks`) makes
+  it NULL, so a total never mixes models. A bye is not expected and adds nothing;
+* Selection per week is exactly `projection_source.select_run`'s: the production model first, else the labeled
+  previous model; within a model the newest run of ANY horizon (`created_at DESC NULLS LAST`) that
+  `production_forecasts.artifact_gate` accepts and whose stored rows pass `integrity_problem` (an edited,
+  lost or unsealed run is skipped). `artifact_verified` is true for a registered / pinned artifact and false when
+  approval could not be verified (fail open). `forward_ours` reuses `artifact_gate`, `integrity_problem`,
+  `horizon_of` and `horizon_note` and reads all weeks with one runs query and one rows query for the first
+  candidate of each week: 11 queries per request on clean data (4 are ESPN's), constant in the number of weeks,
+  plus one per extra candidate run that must be checked. Integrity needs all of a run's rows, so rows are not
+  filtered by player. A test pins the result equal to `projection_source.weekly()` per week (value, origin, run,
+  reason, skipped). `experimental` comes from the run's `horizon_note` (horizon > 0);
+* `model_versions` / `mixed_models` / `label`: the model versions actually shown, per-week
+  `model_version`, and a `reason` the UI prints as a notice (a previous-model week gets an "ifp-1" badge).
+* `available: false` with a `reason` when no remaining week has a stored run;
+* `label`: "Fantasy Intel projections (ifp-2.0.0); experimental beyond next week".
+
+The UI shows an "Ours" column next to ESPN's, an "Ours: regular season left" tile and a second line on the chart.
+ESPN-fallback weeks carry an ESPN tag and are gaps in the Ours line; weeks beyond the next one are marked
+"exp". The future-week runs are not produced by this change: they come from the rest-of-season learning
+cycle (Workstream R1, one immutable run per remaining target week). Until that cycle has run, only the
+upcoming week has a run, the other weeks fall back to ESPN, and the Ours total stays empty.
 
 ## Live runs and abstention
 
