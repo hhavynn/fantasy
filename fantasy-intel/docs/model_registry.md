@@ -24,7 +24,7 @@ consumer value is unchanged: the projection switch keeps reading `projection_sou
 | ifp-2.0.0 challenger, weekly ledger, research models | nothing consumer-facing | shadow only (`test_weekly_pipeline_never_imports_into_consumers`) |
 
 So a production switch would touch three places, all in one reviewed change: `MODEL_VERSION` and
-`APPROVED_ARTIFACT_SHA256` in `projection_source.py` (and the tested copy of the version in
+`APPROVED_ARTIFACT_SHA256` in `production_pin.py` (and the tested copy of the version in
 `independent_projections.py`), the artifact that `project` loads, and the registry manifest. The registry alone changes none of them.
 
 ## Pinning the production artifact (consumer pin)
@@ -39,7 +39,7 @@ The pin lives in two places that must agree, because the hosted app never reads 
 | Place | Field | Today |
 |---|---|---|
 | `backend/app/analytics/model_registry.json` | production entry `artifact.sha256` | `null` |
-| `backend/app/analytics/projection_source.py` | `APPROVED_ARTIFACT_SHA256` (numpy-free, registry-free copy) | `None` |
+| `backend/app/analytics/production_pin.py` | `APPROVED_ARTIFACT_SHA256` (leaf module: stdlib only, registry-free copy) | `None` |
 
 `test_consumer_artifact_pin_is_a_tested_copy_of_the_registry_pin` fails CI if one is pinned without the
 other, the same way the `MODEL_VERSION` copy is tested. `scripts/model_registry.py status` also reports
@@ -60,8 +60,9 @@ source in any case.
 Other runs are excluded with the reason `artifact not the approved production artifact`. When no run of
 the pinned artifact exists for the week the switch reports `available: false` with a reason that names
 the pin, and the consumer keeps ESPN. Response shapes are unchanged except for an optional
-`run.artifact_pinned` boolean in the switch's `run` block. `GET /api/projections/independent` is a
-research view of the latest stored run and is not filtered by the pin.
+`run.artifact_pinned: true` in the switch's `run` block, present only when a pin is set (unpinned
+responses are identical to before). `GET /api/projections/independent` is a research view of the latest
+stored run, says so in its notes, and is not filtered by the pin.
 
 **To pin (a reviewed change, one commit, owner-approved):**
 
@@ -75,7 +76,7 @@ research view of the latest stored run and is not filtered by the pin.
    (`sha256sum` on Linux). The registry script has no hashing command; its `status` output shows the
    digest it computed for the pinned file as `production.artifact_check.observed` once a pin exists.
 2. Put the 64-character lowercase hex digest in **both** `model_registry.json` (production entry
-   `artifact.sha256`) and `APPROVED_ARTIFACT_SHA256` in `projection_source.py`.
+   `artifact.sha256`) and `APPROVED_ARTIFACT_SHA256` in `production_pin.py`.
 3. `cd backend && uv run python ../scripts/model_registry.py status` must show `artifact_pinned: true`,
    `consumer_pin_matches: true` and an `artifact_check` that passes; run the backend tests.
 4. Runs already stored by a different file stop being served and stop counting as evidence. Re-run
@@ -147,7 +148,7 @@ explanation}`; `insufficient_data` is never a pass, and `activates` is always `f
 
 1. Pin the incumbent: a reviewed change that fills `ifp-1.0.0`'s artifact sha256 (`shasum -a 256
    data/models/independent_projections_ifp-1.0.0.json`), training cutoff and held-out report hash, and
-   sets `projection_source.APPROVED_ARTIFACT_SHA256` to the same digest (see "Pinning the production
+   sets `production_pin.APPROVED_ARTIFACT_SHA256` to the same digest (see "Pinning the production
    artifact"). From then on the file can never be swapped silently, and the switch serves only runs made
    by exactly that file.
 2. Keep the challenger in the frozen pregame ledger until `scripts/weekly_learning.py evaluate`

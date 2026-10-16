@@ -27,6 +27,8 @@ NOTES = [
     "Compare ESPN with expected_points (comparison.expected_minus_espn): both are unconditional. "
     "independent_minus_espn compares a conditional estimate and is marked not comparable when ESPN projects 0.",
     "Experimental positions are research output: do not treat them as better than ESPN.",
+    "This view shows the latest stored run and is not restricted to the approved production artifact; the opt-in "
+    "projection switch and the evidence readers are.",
 ]
 
 

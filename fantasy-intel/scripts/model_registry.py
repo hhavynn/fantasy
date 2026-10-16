@@ -25,7 +25,7 @@ import _bootstrap  # noqa: F401
 import duckdb
 
 from app.analytics import model_registry as reg
-from app.analytics.projection_source import APPROVED_ARTIFACT_SHA256 as CONSUMER_PIN
+from app.analytics.production_pin import APPROVED_ARTIFACT_SHA256 as CONSUMER_PIN
 from app.analytics.projection_source import MODEL_VERSION as CONSUMER_VERSION
 from app.config import REPO_ROOT, get_settings
 

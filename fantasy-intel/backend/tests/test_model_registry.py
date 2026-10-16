@@ -13,6 +13,7 @@ import sys
 import pytest
 
 from app.analytics import model_registry as reg
+from app.analytics import production_pin
 from app.analytics import projection_source as ps
 from app.analytics.independent_projections import ARTIFACT_SCHEMA, MODEL_VERSION
 
@@ -468,11 +469,12 @@ def test_same_production_projections_before_and_after_registry(stored, env):  # 
 
 
 def test_consumer_artifact_pin_is_a_tested_copy_of_the_registry_pin():
-    """projection_source.APPROVED_ARTIFACT_SHA256 is the hosted app's numpy-free, registry-free copy of the
+    """production_pin.APPROVED_ARTIFACT_SHA256 (a stdlib-only leaf) is the hosted app's numpy-free, registry-free copy of the
     production entry's artifact sha256. Pinning one without the other fails here (a reviewed change does both)."""
     registry_pin = reg.production(reg.load_manifest())["artifact"]["sha256"]
-    assert ps.APPROVED_ARTIFACT_SHA256 == registry_pin
-    assert ps.APPROVED_ARTIFACT_SHA256 is None or reg._sha_ok(ps.APPROVED_ARTIFACT_SHA256)
+    assert production_pin.APPROVED_ARTIFACT_SHA256 == registry_pin
+    assert production_pin.APPROVED_ARTIFACT_SHA256 is None or reg._sha_ok(production_pin.APPROVED_ARTIFACT_SHA256)
+    assert production_pin.PINNED_MODEL_VERSION == ps.MODEL_VERSION == reg.production(reg.load_manifest())["version"]
 
 
 def test_hosted_app_never_reads_the_registry_or_research_packages():

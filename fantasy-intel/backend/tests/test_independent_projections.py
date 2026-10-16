@@ -386,11 +386,4 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     import re
     imports = re.compile(r"from \.+(analytics\.)?projection_source import|import projection_source")
     users = {f.relative_to(APP).as_posix() for f in APP.rglob("*.py") if imports.search(f.read_text())}
-    # production_forecasts and promotion_tracker (evidence readers, not consumers) import it only to read the
-    # artifact pin (APPROVED_ARTIFACT_SHA256) and MODEL_VERSION, so the evidence and the view cannot disagree.
-    assert users == {"analytics/start_sit.py", "analytics/matchup.py", "analytics/production_forecasts.py",
-                     "analytics/promotion_tracker.py"}
-    for name in ("production_forecasts", "promotion_tracker"):
-        text = (APP / "analytics" / f"{name}.py").read_text()
-        assert set(re.findall(r"projection_source\.(\w+)|\bps\.(\w+)", text)) <= {
-            ("APPROVED_ARTIFACT_SHA256", ""), ("", "APPROVED_ARTIFACT_SHA256"), ("", "MODEL_VERSION")}, name
+    assert users == {"analytics/start_sit.py", "analytics/matchup.py"}

@@ -422,7 +422,7 @@ Only a run of the current model version under the league's current scoring is us
 that still has all of its stored rows; a run whose rows were lost is skipped); otherwise the
 response says `available: false` and shows ESPN.
 
-**Artifact pin.** `projection_source.APPROVED_ARTIFACT_SHA256` is `None` today, which changes nothing.
+**Artifact pin.** `production_pin.APPROVED_ARTIFACT_SHA256` (a stdlib-only leaf module) is `None` today, which changes nothing.
 When it holds a sha256, only runs whose `artifact_id` (the sha256 of the artifact file the `project`
 command loaded) equals it are served, and only those count as evidence in `pregame_forecasts`,
 `eligible_run_ids` and the promotion tracker; other runs are excluded with the reason "artifact not the

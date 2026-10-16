@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from typing import Iterable
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
+from . import production_pin
 from .projection_backtest import _kickoff, _utc
 
 RUNS = "independent_projection_runs"
@@ -51,20 +52,18 @@ HASHED_META = META_INT + META_STR + META_JSON
 
 
 NOT_APPROVED_ARTIFACT = "artifact not the approved production artifact"
-_PIN = object()     # "use the production pin": projection_source.APPROVED_ARTIFACT_SHA256, for the production model only
+_PIN = object()     # "use the production pin": production_pin.APPROVED_ARTIFACT_SHA256, for the production model only
 
 
 def approved_artifact(model_version: str | None, artifact_id=_PIN) -> str | None:
     """The artifact sha256 a read of `model_version` is restricted to, or None for no restriction.
 
-    An explicit `artifact_id` argument wins. By default only the production model (projection_source.
-    MODEL_VERSION) is pinned, and only once projection_source.APPROVED_ARTIFACT_SHA256 is set (a reviewed
+    An explicit `artifact_id` argument wins. By default only the production model (production_pin.
+    PINNED_MODEL_VERSION) is pinned, and only once production_pin.APPROVED_ARTIFACT_SHA256 is set (a reviewed
     change that also updates the registry); another model version (the ifp-2 shadow) is never filtered."""
     if artifact_id is not _PIN:
         return artifact_id
-    from . import projection_source as ps     # lazy: projection_source imports this module
-
-    return ps.APPROVED_ARTIFACT_SHA256 if model_version == ps.MODEL_VERSION else None
+    return production_pin.APPROVED_ARTIFACT_SHA256 if model_version == production_pin.PINNED_MODEL_VERSION else None
 
 
 class ImmutableRunError(ValueError):

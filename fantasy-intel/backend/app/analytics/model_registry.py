@@ -736,7 +736,7 @@ def _evaluate_promotion(old: dict, new: dict, *, model_root: Path, live_scoring_
 def production_status(m: dict, *, model_root: Path, live_scoring_fp: str | None, consumer_version: str,
                       consumer_artifact_sha256: str | None = None) -> dict:
     """The approved production model and whether the runtime switch reads exactly it (version, and the
-    artifact pin: projection_source.APPROVED_ARTIFACT_SHA256 must equal the registry's artifact sha256)."""
+    artifact pin: production_pin.APPROVED_ARTIFACT_SHA256 must equal the registry's artifact sha256)."""
     p = production(m)
     c, _ = verify_file(Path(model_root), p["artifact"], "artifact")
     pinned = _sha_ok(p["artifact"].get("sha256"))

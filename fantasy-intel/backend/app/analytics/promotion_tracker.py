@@ -29,7 +29,7 @@ from ..db.connection import fetch_dicts, table_columns, table_exists
 from .forecast_backtest import PROMOTION_CRITERIA, espn_comparison, espn_pregame
 from .forecast_features import POSITIONS, load_panel
 from .independent_projection_store import league_scoring
-from . import projection_source
+from . import production_pin
 from .independent_projections import MODEL_VERSION
 from . import production_forecasts as pf
 from .production_forecasts import ROWS, eligible_run_ids, pregame_forecasts
@@ -67,15 +67,15 @@ def latest_run(con, season: int, fingerprint: str | None) -> dict | None:
     version or scoring carries another model's held-out status, so it is never shown here."""
     if fingerprint is None or not table_exists(con, "independent_projection_runs"):
         return None
-    pinned = projection_source.APPROVED_ARTIFACT_SHA256       # None: unpinned, any artifact of the model counts
-    if pinned and "artifact_id" not in table_columns(con, "independent_projection_runs"):
+    pinned = production_pin.APPROVED_ARTIFACT_SHA256          # None: unpinned, any artifact of the model counts
+    if pinned is not None and "artifact_id" not in table_columns(con, "independent_projection_runs"):
         return None                                           # a copy that never recorded artifacts: none can match
     rows = fetch_dicts(con, f"""SELECT run_id, week, model_version, created_at, model_status, evaluation
                                 FROM independent_projection_runs
                                 WHERE season = ? AND model_version = ? AND scoring_fingerprint = ?
-                                {"AND artifact_id = ?" if pinned else ""}
+                                {"AND artifact_id = ?" if pinned is not None else ""}
                                 ORDER BY created_at DESC LIMIT 1""",
-                       [season, MODEL_VERSION, fingerprint] + ([pinned] if pinned else []))
+                       [season, MODEL_VERSION, fingerprint] + ([pinned] if pinned is not None else []))
     if not rows:
         return None
     run = rows[0]
@@ -92,7 +92,7 @@ def _run_missing_reason(con, season: int, fingerprint: str | None) -> str:
                         [season])[0]["n"] if table_exists(con, "independent_projection_runs") else 0
     if other:
         pin = (" or artifact (not the approved production artifact)"
-               if projection_source.APPROVED_ARTIFACT_SHA256 else "")
+               if production_pin.APPROVED_ARTIFACT_SHA256 is not None else "")
         return (f"Stored runs are from another model version{pin} or league scoring, so the held-out status of "
                 f"{MODEL_VERSION} under the current scoring is not shown. {project}")
     return f"No independent projection run is stored for this season, so the held-out status is not shown. {project}"
@@ -124,7 +124,7 @@ def _legacy_eligible_runs(con, season: int, fingerprint: str) -> tuple[list[str]
     """Unmigrated database (no independent_projection_rows): the pre-v8 rule, run metadata only."""
     kick = first_kickoffs(con, season)
     keep, excluded = [], []
-    pinned = projection_source.APPROVED_ARTIFACT_SHA256
+    pinned = production_pin.APPROVED_ARTIFACT_SHA256
     for r in fetch_dicts(con, """SELECT * FROM independent_projection_runs WHERE season = ?
                                  ORDER BY week, run_id""", [season]):
         fitted, first = _utc(r["artifact_created_at"]), kick.get(r["week"])
@@ -132,7 +132,7 @@ def _legacy_eligible_runs(con, season: int, fingerprint: str) -> tuple[list[str]
             reason = f"model {r['model_version']}, not {MODEL_VERSION}"
         elif r["scoring_fingerprint"] != fingerprint:
             reason = "made under different league scoring"
-        elif pinned and r.get("artifact_id") != pinned:
+        elif pinned is not None and r.get("artifact_id") != pinned:
             reason = pf.NOT_APPROVED_ARTIFACT
         elif fitted is None or first is None:
             reason = "artifact fit time or week kickoff unknown"

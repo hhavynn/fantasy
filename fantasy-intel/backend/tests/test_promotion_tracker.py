@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 from fastapi.testclient import TestClient
 
-from app.analytics import projection_source
+from app.analytics import production_pin
 from app.analytics.forecast_backtest import PROMOTION_CRITERIA
 from app.analytics.forecast_features import load_panel
 from app.analytics.independent_projection_store import build_live, write_live
@@ -118,11 +118,11 @@ def test_other_model_versions_do_not_count(tracked):
 def test_pinned_artifact_gates_the_tracker(tracked, monkeypatch):
     con, _, _ = tracked
     sha = con.execute("SELECT artifact_id FROM independent_projection_runs").fetchone()[0]
-    assert projection_source.APPROVED_ARTIFACT_SHA256 is None
+    assert production_pin.APPROVED_ARTIFACT_SHA256 is None
     unpinned = build_tracker(con)
-    monkeypatch.setattr(projection_source, "APPROVED_ARTIFACT_SHA256", sha)    # the stored run's own artifact
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", sha)    # the stored run's own artifact
     assert build_tracker(con) == unpinned
-    monkeypatch.setattr(projection_source, "APPROVED_ARTIFACT_SHA256", "f" * 64)
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "f" * 64)
     t = build_tracker(con)
     assert t["espn"]["matched_observations"] == 0 and t["run"] is None
     assert "approved production artifact" in t["run_missing_reason"]

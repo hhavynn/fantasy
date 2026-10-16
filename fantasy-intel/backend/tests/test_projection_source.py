@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import pytest
 
+from app.analytics import production_pin
 from app.analytics import projection_source as ps
 from app.analytics.independent_projection_store import build_live, write_live
 from app.analytics.start_sit import load_start_sit_evaluation
@@ -121,17 +122,25 @@ def _two_runs(con, src):
 
 def test_the_pin_is_unset_by_default_and_the_unpinned_path_serves_the_newest_run(live):  # noqa: F811
     con, src, _ = live
-    assert ps.APPROVED_ARTIFACT_SHA256 is None
+    assert production_pin.APPROVED_ARTIFACT_SHA256 is None
     _, newer = _two_runs(con, src)
     w = ps.weekly(con, 2026, 6, "independent")
     assert w["available"] and w["run"]["run_id"] == newer["run_id"] and w["values"][1] == 31.0
-    assert w["run"]["artifact_pinned"] is False
+    assert "artifact_pinned" not in w["run"] and "artifact_pinned" not in ps.describe(w)["run"]   # unchanged shape
+
+
+def test_the_pin_module_is_a_leaf_that_imports_nothing():
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(production_pin))
+    assert not [n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]
 
 
 def test_a_pinned_artifact_serves_only_its_own_runs(live, monkeypatch):  # noqa: F811
     con, src, _ = live
     older, _ = _two_runs(con, src)
-    monkeypatch.setattr(ps, "APPROVED_ARTIFACT_SHA256", SHA_A)
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", SHA_A)
     w = ps.weekly(con, 2026, 6, "independent")
     assert w["available"] and w["run"]["run_id"] == older["run_id"] and w["run"]["artifact_pinned"] is True
     assert w["values"][1] == 21.0 and w["origin"][1] == "ours"       # the newer run of artifact B is ignored
@@ -143,7 +152,7 @@ def test_a_newer_run_of_another_artifact_means_espn_with_a_reason(live, monkeypa
     con, src, _ = live
     _two_runs(con, src)
     espn = ps.weekly(con, 2026, 6, "espn")
-    monkeypatch.setattr(ps, "APPROVED_ARTIFACT_SHA256", SHA_C)       # neither stored run was made by artifact C
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", SHA_C)       # neither stored run was made by artifact C
     w = ps.weekly(con, 2026, 6, "independent")
     assert w["available"] is False and w["run"] is None and w["counts"] is None
     assert "No independent projection run" in w["reason"] and "approved production artifact" in w["reason"]
@@ -155,7 +164,7 @@ def test_a_run_without_a_recorded_artifact_is_not_the_pinned_artifact(live, monk
     con, src, _ = live
     _two_runs(con, src)
     con.execute("UPDATE independent_projection_runs SET artifact_id = NULL")
-    monkeypatch.setattr(ps, "APPROVED_ARTIFACT_SHA256", SHA_A)
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", SHA_A)
     assert ps.weekly(con, 2026, 6, "independent")["available"] is False
 
 
