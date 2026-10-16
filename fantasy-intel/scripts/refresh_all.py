@@ -16,8 +16,10 @@ refresh: each step's problem is logged as a WARNING and the exit code is unchang
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +35,9 @@ LOG_DIR = DATA_DIR / "logs"
 STEPS = ("sync_espn.py", "sync_nfl.py", "compute_analytics.py")
 PUBLISH = "publish_motherduck.py"
 EVIDENCE = "Evidence:"
+TIMED_OUT = -999                     # run_step's result for a step killed at its deadline
+EVIDENCE_TIMEOUT_S = 15 * 60         # per evidence step; REFRESH_EVIDENCE_TIMEOUT_S overrides
+START_SIT_NOTHING_ELIGIBLE = 2       # start_sit_evaluation record: no pregame roster row to freeze
 
 
 def plan(publish: bool) -> list[str]:
@@ -56,14 +61,44 @@ class Log:
         self._f.close()
 
 
-def run_step(cmd: list[str], log: Log) -> int:
+def run_step(cmd: list[str], log: Log, timeout: float | None = None) -> int:
+    """Run one step, logging its output. `timeout` (seconds, evidence steps only) is a hard deadline: the
+    step's whole process group is killed and TIMED_OUT returned. Without it the step may run as long as it
+    needs (the syncs)."""
     started = time.monotonic()
     log(f"==> {Path(cmd[1]).name}  ({datetime.now().astimezone():%Y-%m-%d %H:%M %Z})")
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    if timeout is None:
+        with subprocess.Popen(cmd, cwd=BACKEND, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True) as proc:
+            for line in proc.stdout:
+                log(line.rstrip("\n"))
+        log(f"<== exit {proc.returncode} after {time.monotonic() - started:.0f}s")
+        return proc.returncode
+    # own session, so the kill reaches anything the step spawned and closes the output pipe
     with subprocess.Popen(cmd, cwd=BACKEND, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                          text=True) as proc:
-        for line in proc.stdout:
-            log(line.rstrip("\n"))
+                          text=True, start_new_session=True) as proc:
+        def pump() -> None:
+            for line in proc.stdout:
+                log(line.rstrip("\n"))
+
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        try:
+            proc.wait(timeout=timeout)
+            timed_out = False
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.kill()
+            proc.wait()
+        reader.join(5)
+    if timed_out:
+        log(f"<== killed: no exit after {timeout:g}s")
+        return TIMED_OUT
     log(f"<== exit {proc.returncode} after {time.monotonic() - started:.0f}s")
     return proc.returncode
 
@@ -135,17 +170,21 @@ def pick_evidence_weeks(kickoffs: dict[int, list[datetime]], now: datetime) -> t
     return (min(ahead) if ahead else None), done
 
 
-def week_is_final(con, season: int, week: int) -> tuple[bool, str]:
-    """(fully final?, why not): weekly_learning.week_finality, the rule espn_benchmark counts weeks by."""
+def week_is_final(con, season: int, week: int, cache: dict | None = None) -> tuple[bool, str]:
+    """(fully final?, why not): weekly_learning.week_finality, the rule espn_benchmark counts weeks by.
+    Pass the same `cache` dict for every week of one stage to load the season's sources only once."""
     from app.analytics import weekly_learning as wl
     from app.analytics.forecast_features import load_sources
     from app.analytics.independent_projection_store import league_scoring
     from app.analytics.schedule_intelligence import nfl_fetch_times
 
-    _, scoring = league_scoring(con, season)
-    scoring.require_supported()
-    fin = wl.week_finality(load_sources(con, scoring, [season]), season, week,
-                           nfl_fetch_times(con, season)["schedules"])
+    cache = {} if cache is None else cache
+    if "inputs" not in cache:
+        _, scoring = league_scoring(con, season)
+        scoring.require_supported()
+        cache["inputs"] = (load_sources(con, scoring, [season]), nfl_fetch_times(con, season)["schedules"])
+    sources, fetched_at = cache["inputs"]
+    fin = wl.week_finality(sources, season, week, fetched_at)
     if fin["fully_final"]:
         return True, ""
     return False, (f"{fin['final_teams']}/{fin['scheduled_teams']} teams final, "
@@ -160,9 +199,12 @@ def select_evidence(con, season: int, now: datetime, final: Callable | None = No
     if upcoming is None:
         notes.append(f"no {season} regular-season week has a kickoff ahead; injury report and start/sit skipped")
     final_week = None
+    if final is None:
+        cache: dict = {}                 # the sources are loaded once, however many weeks are walked back
+        final = lambda c, s, w: week_is_final(c, s, w, cache)  # noqa: E731
     for w in done:                       # newest first; stop at the first fully final week
         try:
-            ok, why = (final or week_is_final)(con, season, w)
+            ok, why = final(con, season, w)
         except Exception as e:           # e.g. unsupported scoring: this week can't be judged final
             ok, why = False, f"finality check failed: {e!r}"
         if ok:
@@ -193,9 +235,19 @@ def evidence_steps(sel: dict) -> list[tuple[str, list[str]]]:
     return steps
 
 
-def run_evidence(log: Log, now: datetime | None = None) -> list[str]:
-    """Run the evidence stage; returns its problems (each also logged as a WARNING). Never raises."""
+def evidence_timeout() -> float:
+    try:
+        return float(os.getenv("REFRESH_EVIDENCE_TIMEOUT_S") or EVIDENCE_TIMEOUT_S)
+    except ValueError:
+        return EVIDENCE_TIMEOUT_S
+
+
+def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = None) -> list[str]:
+    """Run the evidence stage; returns its problems (each also logged as a WARNING). Never raises.
+    Each step gets `timeout` seconds (default 15 min) and is killed after that, so a stuck step cannot
+    keep the refresh running into the next scheduled launch."""
     problems: list[str] = []
+    timeout = evidence_timeout() if timeout is None else timeout
 
     def warn(msg: str) -> None:
         problems.append(msg)
@@ -221,11 +273,15 @@ def run_evidence(log: Log, now: datetime | None = None) -> list[str]:
         log(f"{EVIDENCE} {note}")
     for label, cmd in steps:
         try:
-            code = run_step(cmd, log)
+            code = run_step(cmd, log, timeout=timeout)
         except Exception as e:
             warn(f"{label} could not run: {e!r}")
             continue
-        if code != 0:
+        if code == TIMED_OUT:
+            warn(f"{label} timed out after {timeout:g}s and was killed")
+        elif code == START_SIT_NOTHING_ELIGIBLE and label.startswith("start_sit_evaluation"):
+            log(f"INFO: {EVIDENCE} {label} recorded nothing: no roster player is still pregame and synced")
+        elif code != 0:
             warn(f"{label} exited {code} (output above; the refresh exit code is unchanged)")
     log(f"{EVIDENCE} " + (f"{len(problems)} problem(s), see the WARNING lines above" if problems else "all steps ok"))
     return problems

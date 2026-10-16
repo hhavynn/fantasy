@@ -170,9 +170,9 @@ TUE = datetime(2026, 10, 20, 15, 0, tzinfo=UTC)
 
 
 def test_run_evidence_runs_the_three_read_only_scripts(refresh, evidence_env, monkeypatch):
-    monkeypatch.setattr(refresh, "week_is_final", lambda con, season, week: (True, ""))
+    monkeypatch.setattr(refresh, "week_is_final", lambda con, season, week, cache=None: (True, ""))
     ran = []
-    monkeypatch.setattr(refresh, "run_step", lambda cmd, log: ran.append(cmd) or 0)
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: ran.append(cmd) or 0)
     assert refresh.run_evidence(evidence_env, now=TUE) == []
     assert [(Path(c[1]).name, c[2], c[-1]) for c in ran] == [
         ("injury_freshness.py", "report", "7"), ("start_sit_evaluation.py", "record", "7"),
@@ -182,22 +182,105 @@ def test_run_evidence_runs_the_three_read_only_scripts(refresh, evidence_env, mo
 
 
 def test_every_evidence_step_failure_is_reported_and_none_raises(refresh, evidence_env, monkeypatch):
-    monkeypatch.setattr(refresh, "week_is_final", lambda con, season, week: (True, ""))
+    monkeypatch.setattr(refresh, "week_is_final", lambda con, season, week, cache=None: (True, ""))
     calls = []
 
-    def fake(cmd, log):
+    def fake(cmd, log, timeout=None):
         calls.append(Path(cmd[1]).name)
         if cmd[1].endswith("injury_freshness.py"):
             raise OSError("boom")
-        return 3 if cmd[1].endswith("espn_benchmark.py") else 2
+        return 3 if cmd[1].endswith("espn_benchmark.py") else 1
 
     monkeypatch.setattr(refresh, "run_step", fake)
     problems = refresh.run_evidence(evidence_env, now=TUE)
     assert calls == ["injury_freshness.py", "start_sit_evaluation.py", "espn_benchmark.py"]   # a failure does not stop the rest
     assert len(problems) == 3
     text = evidence_env.path.read_text()
-    assert "could not run: OSError('boom')" in text and "start_sit_evaluation week 7 exited 2" in text
+    assert "could not run: OSError('boom')" in text and "start_sit_evaluation week 7 exited 1" in text
     assert "espn_benchmark week 6 exited 3" in text
+
+
+def test_start_sit_with_nothing_eligible_is_info_not_a_warning(refresh, evidence_env, monkeypatch):
+    monkeypatch.setattr(refresh, "week_is_final", lambda con, season, week, cache=None: (True, ""))
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: 2 if "start_sit" in cmd[1] else 0)
+    assert refresh.run_evidence(evidence_env, now=TUE) == []
+    text = evidence_env.path.read_text()
+    assert "INFO: Evidence: start_sit_evaluation week 7 recorded nothing" in text and "WARNING" not in text
+
+
+SLEEPER = [sys.executable, "-c", "import os, time; print(os.getpid(), flush=True); time.sleep(60)"]
+
+
+def test_a_hung_evidence_step_is_killed_and_the_refresh_still_exits_0(refresh, evidence_env, monkeypatch, tmp_path):
+    import os
+    import time
+
+    monkeypatch.setattr(refresh, "week_is_final", lambda con, season, week, cache=None: (True, ""))
+    monkeypatch.setattr(refresh, "evidence_steps", lambda sel: [("start_sit_evaluation week 7", SLEEPER)])
+    monkeypatch.setenv("REFRESH_EVIDENCE_TIMEOUT_S", "1")           # the configurable per-step deadline
+    started = time.monotonic()
+    problems = refresh.run_evidence(evidence_env, now=TUE)
+    assert time.monotonic() - started < 10
+    assert len(problems) == 1 and "start_sit_evaluation week 7 timed out after 1s" in problems[0]
+    text = evidence_env.path.read_text()
+    assert text.count("timed out after") == 1 and "<== killed: no exit after 1s" in text
+    pid = int(next(line for line in text.splitlines() if line.strip().isdigit()))
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)                                             # the child is gone, not orphaned
+
+    # through main(): sync steps are stubbed (no timeout), the evidence step is the real, hung process
+    real = refresh.run_step
+    monkeypatch.setattr(refresh, "LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(refresh, "check_pregame", lambda log: None)
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: real(cmd, log, timeout) if timeout else 0)
+    monkeypatch.setattr(sys, "argv", ["refresh_all.py", "--no-publish"])
+    started = time.monotonic()
+    assert refresh.main() == 0
+    assert time.monotonic() - started < 10
+    assert "WARNING: Evidence: start_sit_evaluation week 7 timed out" in next(
+        (tmp_path / "logs").glob("refresh-*.log")).read_text()
+
+
+def test_sync_steps_get_no_deadline(refresh, monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(refresh, "LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: seen.append(timeout) or 0)
+    monkeypatch.setattr(refresh, "check_pregame", lambda log: None)
+    monkeypatch.setattr(sys, "argv", ["refresh_all.py", "--no-publish", "--skip-evidence"])
+    assert refresh.main() == 0 and seen == [None, None, None]
+
+
+def test_the_real_finality_check_on_a_synthetic_sources_world(refresh, tmp_path):
+    """No stubs: weekly_learning.week_finality over real tables. Week 2 has a team without synced box
+    scores (final but missing ingestion), week 7 has no scores yet (pending), the rest are complete."""
+    import duckdb
+
+    import test_espn_benchmark as world
+
+    world.make_world(tmp_path / "w.duckdb", skip_stats_teams=[(2, "CCC")]).close()
+    con = duckdb.connect(str(tmp_path / "w.duckdb"), read_only=True)
+    try:
+        ok1, _ = refresh.week_is_final(con, 2026, 1)
+        ok2, why2 = refresh.week_is_final(con, 2026, 2)
+        ok7, why7 = refresh.week_is_final(con, 2026, 7)
+        assert ok1 is True
+        assert ok2 is False and "1 without synced box scores or snaps" in why2
+        assert ok7 is False and "0/8 teams final" in why7
+
+        import app.analytics.forecast_features as ff
+
+        loads = []
+        real_load = ff.load_sources
+        ff.load_sources = lambda *a, **k: loads.append(1) or real_load(*a, **k)
+        try:
+            sel = refresh.select_evidence(con, 2026, datetime(2027, 6, 1, tzinfo=UTC))   # walks 7 -> 6, both checked
+        finally:
+            ff.load_sources = real_load
+        assert (sel["week"], sel["final_week"]) == (None, 6)
+        assert [n for n in sel["notes"] if n.startswith("week 7 is not fully final")]
+        assert len(loads) == 1                                   # sources loaded once for the whole walk
+    finally:
+        con.close()
 
 
 def test_run_evidence_reports_a_database_that_cannot_be_read(refresh, evidence_env, monkeypatch, tmp_path):

@@ -433,10 +433,14 @@ ESPN sync, nflverse sync and analytics have finished and the pregame snapshot ch
   MotherDuck and changes no model. Outputs go to the existing git-ignored defaults
   (`data/models/start_sit`, `data/models/espn_benchmark`).
 * **Failures never fail the refresh.** A step that exits non-zero (for example `start_sit_evaluation`
-  exit 2 when nothing is recordable, `espn_benchmark` exit 3 when not ready, or a DuckDB lock held by
-  the learning cycle) or cannot start is logged as `WARNING: Evidence: ...` in
-  `data/logs/refresh-<UTC stamp>.log`, and `refresh_all.py` keeps its exit code. The injury report is
-  printed into the same log. After a failed sync step the stage does not run.
+  `espn_benchmark` exit 3 when not ready, or a DuckDB lock held by the learning cycle) or cannot
+  start is logged as `WARNING: Evidence: ...` in `data/logs/refresh-<UTC stamp>.log`, and
+  `refresh_all.py` keeps its exit code. `start_sit_evaluation` exit 2 (no player is still pregame)
+  is an `INFO` line. Each evidence step has a 15 minute deadline (`REFRESH_EVIDENCE_TIMEOUT_S`
+  overrides, in seconds): a step still running then is killed with its process group and logged as
+  `timed out`, so a stuck step cannot block the next scheduled refresh. The sync steps have no
+  deadline. The injury report is printed into the same log. After a failed sync step the stage does
+  not run.
 * `--skip-evidence` skips the stage; `--check-only` implies it.
 
 ## Projection switch (opt-in weekly view)
