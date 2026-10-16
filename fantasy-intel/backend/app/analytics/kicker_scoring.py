@@ -251,11 +251,14 @@ STAT_COLUMNS = ("fg_made", "fg_missed", "fg_blocked", "fg_made_list", "fg_missed
 
 
 def league_items(con, season: int) -> list[dict] | None:
-    """The live league's scoring items, read through projection_source (the same league its skill-position check
-    reads; no separate league selector here)."""
-    from .projection_source import league_scoring_items
+    """The live league's scoring items (legacy_league.latest_league: the one sanctioned single-league selector)."""
+    from .legacy_league import latest_league
 
-    return league_scoring_items(con, season)
+    row = latest_league(con, ["scoring_items"], season=season)
+    if not row:
+        return None
+    items = row["scoring_items"]
+    return json.loads(items) if isinstance(items, str) else items
 
 
 def reconcile_with_espn(con, season: int, scoring: KickerScoring, scoring_items: list[dict] | None = None,

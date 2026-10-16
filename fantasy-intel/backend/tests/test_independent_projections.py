@@ -367,9 +367,8 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "participation_calibration.py",   # P(appears) calibration research, shadow only (nothing imports it)
                "point_distributions.py",   # research-only point distributions (never imported by the app)
                "usage_signals.py",   # research-only FTN read / depth-chart signals (never imported by the app)
-               # kicker model: reconciliation scores a kicker's rare offensive stats (fakes) with the skill weights;
-               # its API reads the league through the independent API's (pinned) legacy selector
-               "kicker_scoring.py", "kicker_projections.py"}
+               # kicker model: reconciliation scores a kicker's rare offensive stats (fakes) with the skill weights
+               "kicker_scoring.py"}
     for f in APP.rglob("*"):
         if f.suffix not in (".py", ".sql") or f.name in allowed:
             continue
@@ -405,8 +404,7 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     # read-only views that must show the SAME run and governance as the switch (they never feed a lineup)
     readers = {"api/independent_projections.py", "analytics/promotion_tracker.py", "api/projection_promotion.py",
                "analytics/model_registry.py",   # research-only rollback dry run (simulates the selection)
-               "analytics/performance_report.py",   # the accuracy page's governance (constants only, no run read)
-               "analytics/kicker_scoring.py"}   # reads the league's scoring items through the switch's own selector
+               "analytics/performance_report.py"}   # the accuracy page's governance (constants only, no run read)
     assert switch <= users <= switch | readers
     assert {f for f in users if re.search(r"\bweekly\(", (APP / f).read_text())} == switch
 

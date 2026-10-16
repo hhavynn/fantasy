@@ -97,24 +97,15 @@ def _scoring(con, season: int) -> tuple[str | None, str | None]:
     """(the live league's scoring fingerprint computed the way the live run stamps it, why it is unusable)."""
     from .league_scoring import resolve_skill_scoring
 
-    items = league_scoring_items(con, season)
-    if items is None:
-        return None, "the league's scoring settings are not synced"
-    scoring = resolve_skill_scoring(items)
-    if not scoring.supported:
-        return None, "the league's scoring is not supported by the independent model"
-    return scoring.fingerprint, None
-
-
-def league_scoring_items(con, season: int) -> list[dict] | None:
-    """The live league's ESPN scoring items (the legacy single-league selector, shared with the kicker model so the
-    two scoring checks always read the same league), or None when not synced."""
     rows = fetch_dicts(con, "SELECT scoring_items FROM leagues WHERE season = ? ORDER BY synced_at DESC LIMIT 1",
                        [season]) if table_exists(con, "leagues") else []
     if not rows:
-        return None
+        return None, "the league's scoring settings are not synced"
     items = rows[0]["scoring_items"]
-    return json.loads(items) if isinstance(items, str) else items
+    scoring = resolve_skill_scoring(json.loads(items) if isinstance(items, str) else items)
+    if not scoring.supported:
+        return None, "the league's scoring is not supported by the independent model"
+    return scoring.fingerprint, None
 
 
 def _scoring_fingerprint(con, season: int) -> str | None:
