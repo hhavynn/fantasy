@@ -5,6 +5,10 @@ output changes. Code: `backend/app/analytics/injury_freshness.py`, CLI `scripts/
 tests `backend/tests/test_injury_freshness.py`, table `injury_retrievals` (create-only block in
 `schema.sql` right after `player_id_map`, no `SCHEMA_VERSION` bump).
 
+`scripts/refresh_all.py` runs `report` for the upcoming week on every refresh and prints it into the refresh
+log (see "Weekly evidence routine (automated)" in `independent_projection_engine.md`); `--skip-evidence`
+turns it off. It never runs `refresh --execute`.
+
 ## 1. Audit: what exists, what is missing
 
 | Piece | What it does | Gap |

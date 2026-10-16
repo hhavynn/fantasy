@@ -5,6 +5,10 @@ Workstream E. Research and diagnostics only: it changes no lineup, projection, m
 `scripts/start_sit_evaluation.py` (adapters for outcomes, baselines, ledger; `report` and `record`),
 tests `backend/tests/test_start_sit_evaluation.py`.
 
+`scripts/refresh_all.py` runs `record` for the upcoming week on every refresh (Thu, Sun, Mon, Tue), each run
+capturing the players still pregame (see "Weekly evidence routine (automated)" in
+`independent_projection_engine.md`); `--skip-evidence` turns it off.
+
 The question: on the rosters people actually hold, do our projections make better lineup decisions than
 ESPN and than simple baselines? The 64.7% (context model) vs 64.6% (recent average) held-out pair accuracy
 quoted elsewhere is a comparison between two of OUR models on 1,012 same-roster pairs

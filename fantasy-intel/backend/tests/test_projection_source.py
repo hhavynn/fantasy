@@ -1,6 +1,7 @@
 """Projection source switch (app.analytics.projection_source): ESPN by default, the independent
 model only when asked, with every number's origin labeled."""
 
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -49,7 +50,9 @@ def test_independent_without_a_run_falls_back_to_espn_and_says_so(live):  # noqa
 
 def test_independent_values_and_origins(stored):
     w = ps.weekly(stored, 2026, 6, "independent")
-    assert w["available"] and w["run"]["model_version"] == ps.MODEL_VERSION
+    # the fixture run is the previous model's: shown, and labeled as the fallback
+    assert w["available"] and w["run"]["model_version"] == ps.FALLBACK_VERSION
+    assert ps.MODEL_VERSION in w["reason"] and ps.FALLBACK_VERSION in w["reason"]
     rows = {r[0]: r[1:] for r in stored.execute(
         "SELECT espn_player_id, coverage_status, expected_points FROM independent_projection_rows").fetchall()}
     espn = dict(stored.execute("SELECT espn_player_id, projected_points FROM espn_player_weekly_points").fetchall())
@@ -65,6 +68,27 @@ def test_independent_values_and_origins(stored):
 def test_a_run_of_another_model_or_scoring_is_not_used(stored, column, value):
     stored.execute(f"UPDATE independent_projection_runs SET {column} = ?", [value])
     assert ps.weekly(stored, 2026, 6, "independent")["available"] is False
+
+
+def test_production_run_is_preferred_over_a_newer_fallback_run(live):  # noqa: F811
+    """An ifp-2.0.0 run (ridges named "ifp2") is shown without a fallback note, even when an ifp-1.0.0
+    run of the same week is newer."""
+    con, src, _ = live
+    art = _artifact(src)
+    prod = replace(art, version=ps.MODEL_VERSION,
+                   models={p: replace(m, model="ifp2") for p, m in art.models.items()})
+    meta2, rows2 = build_live(con, src, prod, 2026, 6)
+    assert {r["model"] for r in rows2 if r["coverage_status"] == "projected"} == {"ifp2_ridge"}
+    for r in rows2:
+        if r["coverage_status"] == "projected":
+            r["expected_points"] = 30.0
+    write_live(con, meta2, rows2)
+    meta1, rows1 = build_live(con, src, art, 2026, 6)
+    meta1["created_at"] = meta2["created_at"] + timedelta(minutes=5)
+    write_live(con, meta1, rows1)
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["run"]["run_id"] == meta2["run_id"] and w["run"]["model_version"] == ps.MODEL_VERSION
+    assert w["reason"] is None and w["values"][1] == 30.0 and w["origin"][1] == "ours"
 
 
 def test_latest_run_is_shown_and_the_earlier_run_survives(live):  # noqa: F811

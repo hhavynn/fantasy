@@ -6,7 +6,21 @@ lineups, trades, waivers, playoff odds, player scores or market signals reads it
 path is the **projection switch** (header toggle "ESPN | Ours", see "Projection switch" below),
 which only changes the weekly numbers on Home, Matchup and Start/Sit.
 
-**Current status (model `ifp-1.0.0`, held-out evaluation on real data, see "Results"):**
+**Production model: `ifp-2.0.0` (owner approval 2026-10-16, recorded as an override in
+`model_registry.json`: it has NOT met `SHADOW_PROMOTION_CRITERIA` or `PROMOTION_CRITERIA`).** The
+projection switch reads the newest `ifp-2.0.0` run for the week and falls back, labeled, to the newest
+`ifp-1.0.0` run when a week has none. Weekly routine (laptop, before the week's first kickoff), automated
+by the launchd jobs in `scripts/launchd/`:
+
+```bash
+uv run python ../scripts/learning_cycle.py run    # sync, train and freeze ifp-2 for week W, then store its run (`project`)
+uv run python ../scripts/refresh_all.py           # ... which the next refresh publishes to MotherDuck
+```
+
+`learning_cycle.py run --no-project` skips storing the run; `backtest_independent_projections.py project
+--week W` stores it by hand.
+
+**`ifp-1.0.0` status (previous production; held-out evaluation on real data, see "Results"):**
 
 | Position | Status | Start/Sit ready |
 |---|---|---|
@@ -79,8 +93,16 @@ uv run python ../scripts/backtest_independent_projections.py participation-selec
 uv run python ../scripts/backtest_independent_projections.py participation-evaluate  # frozen -> held-out
 uv run python ../scripts/backtest_independent_projections.py participation-fit       # data/models/participation_ipm-1.0.0.json
 uv run python ../scripts/backtest_independent_projections.py snap-ablation           # validation-only diagnostic
-uv run python ../scripts/backtest_independent_projections.py project --week 7    # writes the two live tables
+uv run python ../scripts/backtest_independent_projections.py project --week 7    # stores one ifp-2.0.0 run
+uv run python ../scripts/backtest_independent_projections.py project --week 7 --model ifp-1.0.0   # previous model
 ```
+
+`project` runs the production model by default (`projection_source.MODEL_VERSION`, `ifp-2.0.0`): the
+newest weekly-learning artifact trained for the target week (`--weekly-dir`, default
+`data/models/weekly`, written by `weekly_learning.py train` / `learning_cycle.py run`) with the
+play-by-play injury evidence it was trained with, and the run records that artifact file's sha256 as
+its `artifact_id`. It refuses a week without such an artifact, a retrospective artifact, or missing
+injury evidence the artifact used. `--model ifp-1.0.0` runs the frozen artifact in `--out`.
 
 `select`/`evaluate`/`fit`/`audit` open the live DB read-only. Only `project` writes, and only the
 tables `independent_projection_runs` and `independent_player_projections` (create-only, no schema
@@ -406,7 +428,49 @@ projections reach lineups, start/sit, trades or waivers. The isolation test in
 the projection tables. The hosted API bundle ships without polars, so there the endpoint answers
 `available: false` instead of a copy of the criteria.
 
+## Weekly evidence routine (automated)
+
+`scripts/refresh_all.py` (launchd: Thu 15:00, Sun 08:00, Mon 15:00, Tue 08:00 Pacific) now also runs
+the prospective-evidence capture, so no step above depends on remembering to run a script. After the
+ESPN sync, nflverse sync and analytics have finished and the pregame snapshot check has printed, an
+**evidence stage** runs three existing scripts, each as its own process:
+
+| Step | When | Week |
+| --- | --- | --- |
+| `injury_freshness.py report` | every run | the upcoming week |
+| `start_sit_evaluation.py record` | every run with an upcoming week | the upcoming week |
+| `espn_benchmark.py record` | when a fully final week exists | the latest fully final week |
+
+* **Upcoming week** = the earliest regular-season week with a game still to kick off (nflverse
+  schedule, US Eastern kickoffs). Thursday, Sunday and Monday runs therefore all target the week in
+  progress, and Tuesday's run targets the next week. `record` is write-once and refuses players whose
+  game has kicked off, so each run captures exactly the players still pregame; this is intended.
+* **Fully final week** = `weekly_learning.week_finality` (every game final, box scores and snaps
+  synced), the rule the benchmark itself counts weeks by. The Tuesday run normally finds the week
+  just played; if nflverse has not caught up it logs why and tries again on the next run, and the
+  benchmark is never recorded for a week that is not final. Recording is content-addressed, so a
+  repeat with identical inputs writes nothing.
+* **Safety.** The stage starts only after every write connection has closed (each sync runs in its own
+  process), opens the database read-only, runs no sync, writes no live table, never touches
+  MotherDuck and changes no model. Outputs go to the existing git-ignored defaults
+  (`data/models/start_sit`, `data/models/espn_benchmark`).
+* **Failures never fail the refresh.** A step that exits non-zero (for example `start_sit_evaluation`
+  `espn_benchmark` exit 3 when not ready, or a DuckDB lock held by the learning cycle) or cannot
+  start is logged as `WARNING: Evidence: ...` in `data/logs/refresh-<UTC stamp>.log`, and
+  `refresh_all.py` keeps its exit code. `start_sit_evaluation` exit 2 (no player is still pregame)
+  is an `INFO` line. Each evidence step has a 15 minute deadline (`REFRESH_EVIDENCE_TIMEOUT_S`
+  overrides, in seconds): a step still running then is killed with its process group and logged as
+  `timed out`, so a stuck step cannot block the next scheduled refresh. The sync steps have no
+  deadline. The injury report is printed into the same log. After a failed sync or analytics step
+  the stage does not run; after a failed MotherDuck publish alone it does (the local data is fresh,
+  and a skipped start/sit record cannot be redone once games kick off), and the refresh still exits 1.
+* `--skip-evidence` skips the stage; `--check-only` implies it.
+
 ## Projection switch (opt-in weekly view)
+
+The switch reads the production model `ifp-2.0.0` (`projection_source.MODEL_VERSION`); for a week
+without an `ifp-2.0.0` run it shows the newest `ifp-1.0.0` run (`FALLBACK_VERSION`) and says so in
+`reason`, which the notice on Home, Matchup and Start/Sit prints.
 
 A header toggle (**ESPN | Ours**, in the menu drawer on phones) stores the visitor's choice in the
 `fi_projection` cookie. With "Ours", Home, Matchup and Start/Sit request `source=independent`

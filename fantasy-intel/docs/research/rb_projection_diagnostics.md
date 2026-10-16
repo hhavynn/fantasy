@@ -126,7 +126,8 @@ diagnostics only.
 | *outcome: <= 40% snap share* | 2,223 | 3.24 | 3.14 | 3.27 | 3.23 | +0.131 [+0.072, +0.193] | -1.40 / -0.84 |
 | *outcome: zero carries and zero targets* | 661 | 1.73 | 1.41 | 2.18 | 2.07 | +0.767 [+0.625, +0.904] | -2.13 / -1.36 |
 
-**Finding 1: the loss is one segment, low-volume backs.** Ridge loses to the season average exactly where a
+**Finding 1: on the development window the loss is concentrated in low-volume backs** (the out-of-sample picture in
+section 7 is broader). Ridge loses to the season average mainly where a
 back has few opportunities (carries/g < 5, targets/g < 1.5, snap share < 0.30, no inside-5 carries, rush share
 < 0.15): about half the rows, each with C - A2 of +0.10 to +0.12 and a CI above 0. Everywhere with real volume
 (5+ carries/g, 3.5+ targets/g, 30%+ snaps, any goal-line work, the starters pool) ridge wins by 0.2-0.5 points
@@ -382,6 +383,11 @@ teammate features fix the *mean* (bias to ~0) but widen the error because the si
 (a skewed outcome again: mean fixed, MAE worse). The larger gain in 2025-26 comes from seasons whose injury
 reports cannot be checked against kickoff, which is why the result is reported with that caveat and not
 relied on.
+An empirical check on the seasons that can be verified: in 2019-24, 0 of 544 RB Out/Doubtful report rows were
+modified at or after kickoff, and the latest modification was at least about 18 hours before kickoff, so
+the pregame filter dropped nothing there and the timing risk looks small for those years; it still says
+nothing certain about 2025-26. Treating the non-significant 2023-24 slice (-0.016, Bonferroni CI includes 0)
+as evidence against the effect is weak: its interval comfortably contains the pooled -0.022.
 
 **`hurdle`** is a consistent small gain (-0.016, -0.014, -0.021, -0.030 across the four windows) concentrated in
 low-volume backs (-0.053) and indistinguishable from ifp-2 (-0.001 [-0.013, +0.010]); it is neither biased
@@ -391,12 +397,20 @@ nor worse anywhere. It is below the pre-set effect floor and has no decision val
 
 **Verdict (plain).**
 
-1. **Where ridge loses to the season average:** on RBs with little volume (under ~4 carries + targets per
-   game, under 30% snaps, no goal-line work, fewer than 3 recent games), about a third of appearances. There the
-   outcome is dominated by a spike at zero (57% of the lowest tier have no touch) and a forecast near the
-   median beats a forecast at the mean on MAE; ridge is also over-dispersed there (development calibration slope 0.4-0.6). With
-   volume ridge beats the season average by 0.2-0.6 points with CIs below zero, in both windows. The
-   2025 aggregate loss to the season average is this effect, not a failure on starters.
+1. **Where ridge loses to the season average:** mainly on RBs with little volume (under ~4 carries + targets per
+   game, under 30% snaps, no goal-line work, fewer than 3 recent games; under 4 opportunities per game is about
+   a third of appearances), but not only there. The MAE point estimate of C is worse than the season average
+   up to about 9 opportunities per game (58% of rows), although the difference is significant only below about
+   2. In the lowest tier the outcome is dominated by a spike at zero (57% of the lowest tier have no touch) and
+   a forecast near the median beats a forecast at the mean on MAE; ridge is also over-dispersed there
+   (development calibration slope 0.4-0.6). Wherever C loses on MAE it has the lower MSE (under 4
+   opportunities per game: MSE 10.50 for C against 11.51 for the season average, while MAE is 1.979 against
+   1.776), which is the mean-versus-median effect, not evidence that C's mean is worse. (This report holds only
+   that one tier's MSE, so no MSE-by-tier table is given and nothing was rerun to build one.) The "fewer than 3
+   recent games" segment is not purely low volume: it contains 102 rows with >= 4 opportunities per game where
+   C is also worse (+0.18), which is partly a small-sample effect. With volume ridge beats the season average
+   by 0.2-0.6 points with CIs below zero, in both windows. The 2025 aggregate loss to the season average comes
+   mostly from the low-volume end, not from a failure on starters.
 2. **No RB-specific candidate is a clear improvement.** The only one passing the preregistered rule,
    `tm_transfer`, does so at the effect floor (-0.022 vs -0.02, 0.5% of MAE), its gain does not come from
    the teammate-out mechanism that motivated it, its timestamp-verified slice is not significant, and it
@@ -411,7 +425,15 @@ nor worse anywhere. It is below the pre-set effect floor and has no decision val
 **Recommendations (none acted on).** (a) If MAE over all appearances is the headline, report RB accuracy
 split at ~4 opportunities per game: the pooled number mixes two regimes. (b) Do not adopt `vol_shrink`-style
 shrinkage for `expected_points`; if wanted for a "typical outcome" display it is a median-style number and
-should be labelled so. (c) `tm_transfer`: do not add a third shadow model on this evidence; if the owner wants
+should be labelled so. (c) `tm_transfer`: do not add a third shadow model on this evidence. This is a **post-hoc departure
+from the preregistered consequence of a pass**, which was "worth tracking on frozen pregame forecasts"
+(section 4): by the preregistered rule `tm_transfer` earned shadow tracking, and withholding it is a judgement
+made after seeing the results. Its grounds were not preregistered: (i) the gain does not come from the
+teammate-out mechanism that motivated the candidate; (ii) it is indistinguishable from ifp-2 (-0.005
+[-0.023, +0.013]); (iii) the teammate-out cohort is significantly worse (+0.137, adjusted CI [+0.004, +0.254]),
+and that cohort was not one of the c7 guard cohorts (high-volume backs, injury returns, team changes, low
+volume), so the preregistered rule could not fail it. The verdict `supported_for_shadow_tracking` above stands
+as the rule's outcome; the owner may still choose to track it. If the owner wants
 it, first pin down the 2025-26 injury-report timing (snapshot the report before kickoff in the weekly
 pipeline, as `source_provenance` already does for the weekly cycle) and pre-register the teammate features
 *added to the ifp-2 specification*, evaluated on prospective weeks 6 onward only.
@@ -430,8 +452,9 @@ pipeline, as `source_provenance` already does for the weekly cycle) and pre-regi
   vacancies from trades are not captured.
 * `vol_shrink` hit the top of its preregistered grid (tau = 12) on development; the grid was not widened.
 * MAE is the preregistered headline and rewards under-forecasting skewed distributions; RMSE and bias are
-  guards, not objectives. Three candidates, one confirmation: the Bonferroni CIs control the family-wise
-  rate for the c1 check only.
+  guards, not objectives. Three candidates, one confirmation: the Bonferroni adjustment (3 candidates) covers c1;
+  c7 also uses the adjusted CI, but without family-wise control across the 4 guard cohorts; c2-c6 are
+  point-estimate thresholds with no multiplicity control.
 * ESPN was not compared (no pregame ESPN snapshots exist for completed weeks) and is never an input.
 
 **Open questions.** Why does knowing "no teammate is out" help the other 86% of rows (is it a cleaner baseline,
@@ -445,7 +468,11 @@ low-volume backs be useful to the Start/Sit page at all, given it changes no pai
 `diagnostics.json`, `develop.json`, `frozen.json`, `confirmation_report.json`, `posthoc.json` under `--out`
 (git-ignored, not committed). The history, 2026 and play-by-play inputs live outside the repository.
 The frozen configuration is bound to the input frames *and* to the production feature/model code
-(`code_fingerprint`), so reproducing on a later commit means running the whole sequence into a fresh
+(`code_fingerprint`), and, since the review of this study, to the source of the candidate functions
+(`candidate_code_sha256`, `candidate_code_fingerprint()`, re-checked by `check_frozen`; `data_fingerprint`
+deliberately excludes `rb_research.py`). **The published run predates this check:** its `frozen.json` has no
+such field, so `confirm` from that file is now refused; the reviewer verified that no candidate code changed
+between `develop` and `confirm`. So reproducing on a later commit means running the whole sequence into a fresh
 `--out` directory (the nflverse inputs are deterministic for a given release; the numbers above come from
 the code at the commits before main `0314d40` was merged in, which changed `forecast_backtest.py` only by
 adding optional unrounded-metric flags). Run on 2026-10-16 with nflverse as published that day.

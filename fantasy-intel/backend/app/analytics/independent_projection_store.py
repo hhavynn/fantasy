@@ -44,6 +44,8 @@ from .production_forecasts import ROWS, RUNS, ImmutableRunError, annotate, conte
 WITHHELD_ESPN = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
 ACTIVE_ROSTER = {"ACT", "INA"}     # nflverse weekly roster: active 53 (INA = game-day inactive that week)
 SUPPORTED_MAPPING = "high"
+# Row `model` label per fitted model name: ifp-1.0.0 selects B or C per position, ifp-2.0.0 fits "ifp2" ridges.
+MODEL_LABELS = {"B": "opportunity", "C": "context", "ifp2": "ifp2_ridge"}
 
 
 def league_scoring(con, season: int):
@@ -221,7 +223,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
             continue
         rec.update(coverage_status="projected", projected_points=p["model_points"],
                    interval_low=p["interval_low"], interval_high=p["interval_high"],
-                   model={"B": "opportunity", "C": "context"}[artifact.models[rec["position"]].model],
+                   model=MODEL_LABELS.get(artifact.models[rec["position"]].model, artifact.models[rec["position"]].model),
                    explanation=p["explanation"])
     parts: dict[str, dict] = {}
     if participation is not None:
