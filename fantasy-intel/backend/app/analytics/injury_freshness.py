@@ -456,7 +456,7 @@ def manifest_view(con, season: int, week: int, captured_at: Any, *,
     if run is None or run["finished_at"] is None or run["finished_at"] >= cut:
         return view
     try:
-        why = unverifiable_after(con, season, run, cut)
+        why = unverifiable_after(con, season, run)
     except Exception:
         why = f"cannot read sync history after {run['run_id']}"
     if why:
@@ -484,22 +484,24 @@ def latest_nfl_sync_run(con) -> dict | None:
                                      "started_at": naive_utc(row[2])}
 
 
-def unverifiable_after(con, season: int, run: dict, cut: datetime) -> str | None:
-    """Why the table content may be newer than `run` (the latest 'ok' nfl sync), or None. See manifest_view."""
+def unverifiable_after(con, season: int, run: dict) -> str | None:
+    """Why the table content may be newer than `run` (the latest 'ok' nfl sync), or None. See manifest_view.
+    No upper bound: the table is what it is now, so a crashed committed sync that started after a backdated
+    capture time still makes the view unverifiable."""
     started = run["started_at"]
     if started is None:
         return f"start time of {run['run_id']} unknown"
     bad = con.execute("SELECT run_id, status FROM sync_runs WHERE source = 'nfl' AND run_id <> ? AND started_at > ? "
-                      "AND started_at < ? AND (status IS NULL OR status NOT IN ('ok', 'error')) "
-                      "ORDER BY started_at LIMIT 1", [run["run_id"], started, cut]).fetchone()
+                      "AND (status IS NULL OR status NOT IN ('ok', 'error')) "
+                      "ORDER BY started_at LIMIT 1", [run["run_id"], started]).fetchone()
     if bad:
         return f"unfinished nfl sync {bad[0]} (status {bad[1]}) after {run['run_id']}"
     if not table_exists(con, TABLE):
         return None
     orphan = con.execute(
-        f"SELECT sync_run_id FROM {TABLE} WHERE source = ? AND season = ? AND retrieved_at >= ? AND retrieved_at < ? "
+        f"SELECT sync_run_id FROM {TABLE} WHERE source = ? AND season = ? AND retrieved_at >= ? "
         "AND sync_run_id IS NOT NULL AND sync_run_id <> ? AND sync_run_id NOT IN (SELECT run_id FROM sync_runs) "
-        "LIMIT 1", [SOURCE_NFLVERSE, season, started, cut, run["run_id"]]).fetchone()
+        "LIMIT 1", [SOURCE_NFLVERSE, season, started, run["run_id"]]).fetchone()
     if orphan:
         return f"nfl retrieval of sync {orphan[0]}, which has no recorded status, after {run['run_id']}"
     return None

@@ -635,3 +635,38 @@ def test_predict_embeds_retrievals_and_frozen_runs_are_unaffected(cli, env, monk
     # nothing new in the log: the same inputs are a no-op, not a new run
     again = _forecast(cli, env, now="2025-09-10T09:30:00+00:00")
     assert again["run_id"] == run["run_id"]
+
+
+def _real_crashing_sync(env, monkeypatch, at):
+    """The real run_nfl_sync: write_all commits a post-kickoff AAA row, then the process dies (KeyboardInterrupt
+    stands in for SIGTERM/kill) before the retrievals are logged and finish('ok') runs."""
+    from app.db import connection as dbc
+    from app.nfl import sync as nfl_sync
+
+    monkeypatch.setattr(dbc, "utcnow", lambda: at.replace(tzinfo=None))
+    monkeypatch.setattr(nfl_sync, "fetch_all", lambda season: object())
+
+    def write_all(con, p):
+        con.execute("BEGIN TRANSACTION")
+        con.execute("INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, report_status) "
+                    "VALUES (2025, 'REG', 'AAA', 10, 'POSTKICK', 'Out')")
+        con.execute("COMMIT")
+        return {"warnings": []}
+
+    def die(*a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(nfl_sync, "write_all", write_all)
+    monkeypatch.setattr(nfl_sync, "record_injury_retrievals", die)
+    with pytest.raises(KeyboardInterrupt):
+        nfl_sync.run_nfl_sync(lambda: connect(env / "live.duckdb"), 2025)
+    monkeypatch.undo()
+
+
+def test_real_sync_crash_after_commit_is_unverifiable_even_for_a_backdated_capture(env, monkeypatch):
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    _real_crashing_sync(env, monkeypatch, KICK10 + 1 * H)           # B committed POSTKICK, then died
+    for captured in (KICK10 + 2 * H, KICK10 - 10 * H):              # a normal capture and one with --now in the past
+        m = _capture(env, captured)
+        assert m["injury_retrievals"]["teams"] == {}, captured
+        assert m["injury_retrievals"]["log"].startswith("unverifiable: unfinished nfl sync nfl-")

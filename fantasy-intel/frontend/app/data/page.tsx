@@ -202,7 +202,7 @@ function RunsTable({ runs }: { runs: DQ["sync_runs"] }) {
           {runs.map((r) => (
             <tr key={r.run_id}>
               <td>{r.source}</td><td>{when(r.started_at)}</td><td>{when(r.finished_at)}</td>
-              <td><Badge value={r.status.toUpperCase()} tone={r.status === "ok" ? "good" : "bad"} /></td>
+              <td><Badge value={r.status.toUpperCase()} tone={r.status === "ok" ? "good" : r.status === "interrupted" ? "warn" : "bad"} /></td>
               <td className={cx(styles.wrap, "faint")}>{r.message}</td>
             </tr>
           ))}

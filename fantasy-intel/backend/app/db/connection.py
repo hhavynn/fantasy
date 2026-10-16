@@ -283,7 +283,8 @@ class SyncRun:
     def start(self, message: str = "") -> None:
         """Optional: persist a 'running' row now (finished_at NULL), replaced by finish(). A process that dies
         in between leaves it behind, so an unfinished run is detectable (injury_freshness.manifest_view).
-        Every reader of sync_runs that matters filters on status = 'ok'."""
+        Readers that matter filter on status = 'ok'; the API reports such a leftover row (finished_at NULL) as
+        'interrupted' and leaves it out of each source's latest run (api/routes.py)."""
         upsert_rows(self.con, "sync_runs", [{
             "run_id": self.run_id, "source": self.source, "started_at": self.started_at, "finished_at": None,
             "status": "running", "message": message, "stats": {},

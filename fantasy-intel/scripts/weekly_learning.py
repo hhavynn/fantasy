@@ -153,8 +153,7 @@ def _retrieved_at(args, live) -> dict:
             # (run_nfl_sync commits before it finishes): then the ok run's time no longer bounds the download.
             from app.analytics import injury_freshness as inj
             run = inj.latest_nfl_sync_run(live)
-            if synced is not None and run is not None and inj.unverifiable_after(
-                    live, args.season, run, datetime(2200, 1, 1)):
+            if synced is not None and run is not None and inj.unverifiable_after(live, args.season, run):
                 synced = None
         except duckdb.Error:
             synced = None
