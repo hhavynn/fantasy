@@ -4,8 +4,14 @@ For every skill player with games this season we store:
   opportunity_basis        "xfp" (nflverse expected fantasy points) or "targets+carries"
                            when xFP is unavailable -- percentiles are computed per basis
   opportunity_score  0-10  position percentile of recent opportunity per game (see basis)
+                           (legacy internal policy scale; every decision rule reads this one)
   opportunity_tier         HIGH / MEDIUM / LOW from ABSOLUTE per-position thresholds
-  production_score   0-10  position percentile of recent PPR points/game
+  production_score   0-10  position percentile of recent PPR points/game (legacy, policy scale)
+  value_score        0-10  blended rest-of-season value proxy (legacy, policy scale)
+  opportunity_score_100 / production_score_100 / value_score_100
+                     0-100.0 (1 dp) versioned ratings, computed from UNROUNDED ranks and inputs
+                           (rating_scale_version "ratings-100.v1", docs/player_ratings_100.md);
+                           display/ranking only -- no decision reads them
   role_trend               UP / FLAT / DOWN / INSUFFICIENT (composite of usage deltas)
   fp_minus_xfp             season PPR/game minus xFP/game -> value-gap label
   production_sustainability ABOVE_EXPECTATION / ALIGNED / BELOW_EXPECTATION / INSUFFICIENT:
@@ -30,6 +36,7 @@ from .trends import TREND_METRICS, compute_trend, composite_trend
 RECENT_GAMES = 3
 MIN_GAMES_CLASSIFY = 3
 MIN_GAMES_PERCENTILE_POOL = 2
+RATING_SCALE_VERSION = "ratings-100.v1"
 GAP_ABS = 2.5     # PPR points/game
 GAP_REL = 0.20    # of xFP/game
 
@@ -65,6 +72,23 @@ def percentile_scores(values: dict[str, float]) -> dict[str, float]:
         below = sum(1 for x in ordered if x < v)
         equal = sum(1 for x in ordered if x == v)
         out[key] = round(10.0 * (below + 0.5 * equal) / n, 1) if n > 1 else 5.0
+    return out
+
+
+def percentile_scores_100(values: dict) -> dict:
+    """Map id -> UNROUNDED 0..100 mid-rank percentile: 100*(below + 0.5*equal)/n (ties share the average rank).
+
+    The top of a pool is not forced to 100 (n distinct -> 100*(n-0.5)/n) and a single-player pool is 50.0.
+    Callers round once, to 1 dp, at storage; never derive this from the rounded 0..10 percentile."""
+    if not values:
+        return {}
+    ordered = sorted(values.values())
+    n = len(ordered)
+    out = {}
+    for key, v in values.items():
+        below = sum(1 for x in ordered if x < v)
+        equal = sum(1 for x in ordered if x == v)
+        out[key] = 100.0 * (below + 0.5 * equal) / n if n > 1 else 50.0
     return out
 
 
@@ -171,6 +195,21 @@ def blended_value(opportunity: float | None, production: float | None, trend_sco
     return round(max(0.0, min(10.0, v)), 2)
 
 
+def blended_value_100(opportunity_100: float | None, production_100: float | None,
+                      trend_score: float | None) -> float | None:
+    """Unrounded 0..100 value: blended_value's formula on the 100 scale (trend 10 points per legacy point)."""
+    if opportunity_100 is None and production_100 is None:
+        return None
+    opp = opportunity_100 if opportunity_100 is not None else production_100
+    prod = production_100 if production_100 is not None else opportunity_100
+    v = 0.75 * opp + 0.25 * prod + 10.0 * (trend_score or 0.0)
+    return max(0.0, min(100.0, v))
+
+
+def _r1(x: float | None) -> float | None:
+    return round(x, 1) if x is not None else None
+
+
 def score_players(usage_rows: Iterable[dict], season: int) -> list[dict]:
     by_player: dict[str, list[dict]] = defaultdict(list)
     for r in usage_rows:
@@ -206,11 +245,17 @@ def score_players(usage_rows: Iterable[dict], season: int) -> list[dict]:
     # Position-relative percentiles among players with enough games.
     opp_pct: dict[str, float] = {}
     prod_pct: dict[str, float] = {}
+    opp_pct_100: dict[str, float] = {}     # same pools, unrounded 0-100 (display scale)
+    prod_pct_100: dict[str, float] = {}
     for pos in {s["position"] for s in summary.values()}:
         pool = {g: s for g, s in summary.items() if s["position"] == pos and s["games"] >= MIN_GAMES_PERCENTILE_POOL}
         for basis in ("xfp", "targets+carries"):
-            opp_pct.update(percentile_scores({g: s["opp_metric"] for g, s in pool.items() if s["opp_basis"] == basis}))
-        prod_pct.update(percentile_scores({g: s["prod_metric"] for g, s in pool.items() if s["prod_metric"] is not None}))
+            opp_pool = {g: s["opp_metric"] for g, s in pool.items() if s["opp_basis"] == basis}
+            opp_pct.update(percentile_scores(opp_pool))
+            opp_pct_100.update(percentile_scores_100(opp_pool))
+        prod_pool = {g: s["prod_metric"] for g, s in pool.items() if s["prod_metric"] is not None}
+        prod_pct.update(percentile_scores(prod_pool))
+        prod_pct_100.update(percentile_scores_100(prod_pool))
 
     now = utcnow()
     out = []
@@ -221,6 +266,7 @@ def score_players(usage_rows: Iterable[dict], season: int) -> list[dict]:
         gap_fp = s["fp_pg_matched"]
         gap = value_gap(gap_fp, s["xfp_pg"], s["n_xfp"])
         opp, prod = opp_pct.get(gsis), prod_pct.get(gsis)
+        opp100, prod100 = opp_pct_100.get(gsis), prod_pct_100.get(gsis)
         tier = opportunity_tier(s["opp_basis"], pos, s["opp_metric"])
         cls, reasons = classify(s["games"], trend_label, gap, tier, pos, s["fp_pg"])
         for t in trends:
@@ -253,6 +299,10 @@ def score_players(usage_rows: Iterable[dict], season: int) -> list[dict]:
             "value_gap_label": gap,
             "classification": cls,
             "value_score": blended_value(opp, prod, trend_score),
+            "opportunity_score_100": _r1(opp100),
+            "production_score_100": _r1(prod100),
+            "value_score_100": _r1(blended_value_100(opp100, prod100, trend_score)),
+            "rating_scale_version": RATING_SCALE_VERSION,
             "components": {
                 "opportunity_basis": s["opp_basis"],
                 "production_sustainability": production_sustainability(gap),
@@ -263,6 +313,8 @@ def score_players(usage_rows: Iterable[dict], season: int) -> list[dict]:
                 "games_with_xfp": s["n_xfp"],
                 "trends": [t.as_dict() for t in trends],
                 "value_formula": "0.75*opportunity + 0.25*production + 1.0*trend (clamped 0-10)",
+                "value_formula_100": "0.75*opportunity_100 + 0.25*production_100 + 10.0*trend (clamped 0-100, "
+                                     "unrounded inputs)",
             },
             "reasons": reasons,
             "computed_at": now,

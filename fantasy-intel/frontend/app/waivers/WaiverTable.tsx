@@ -35,7 +35,7 @@ export function WaiverTable({ rows, sort, sp, empty }: {
           <tr>
             <SortableTh sortKey="rank" label="Player" defaultDir="asc" current={sort} searchParams={sp} title="Decision rank: actionable moves first, then roster impact (the default order)" />
             <th scope="col">Move</th>
-            <SortableTh sortKey="score" label="Score" align="right" current={sort} searchParams={sp} title="Waiver score, 0–10: a compatibility heuristic, not a probability" />
+            <SortableTh sortKey="score" label="Score" align="right" current={sort} searchParams={sp} title="Waiver score, 0–10 (not a 0–100 rating): a compatibility heuristic, not a probability" />
             <SortableTh sortKey="trend" label="Role trend" defaultDir="desc" current={sort} searchParams={sp} title="Composite usage trend: rising, flat, falling" />
             <SortableTh sortKey="owned" label="% owned" align="right" current={sort} searchParams={sp} title="ESPN % owned and its change this week; sorts by the change" />
             <SortableTh sortKey="competition" label="Competition" defaultDir="desc" current={sort} searchParams={sp} title="League interest from managers' historical tendencies and needs; not a forecast of bids" />
@@ -65,7 +65,7 @@ export function WaiverTable({ rows, sort, sp, empty }: {
                   </div>
                   {summary && <span className={styles.sub}>{summary}</span>}
                 </td>
-                <td className="num"><Score value={w.waiver_score} /></td>
+                <td className="num"><Score value={w.waiver_score} label="Waiver score" /></td>
                 <td><RoleTrend trend={w.role_trend} /></td>
                 <td className="num"><OwnedDelta row={w} /></td>
                 <td><Competition row={w} /></td>

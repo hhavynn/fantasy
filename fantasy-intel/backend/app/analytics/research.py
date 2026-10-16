@@ -36,7 +36,7 @@ from typing import Iterable
 
 from ..db.connection import fetch_dicts, table_exists
 from .availability import latest_injuries
-from .player_scores import GAP_ABS, GAP_REL, MIN_GAMES_CLASSIFY, TIER_THRESHOLDS, percentile_scores, played, value_gap
+from .player_scores import GAP_ABS, GAP_REL, MIN_GAMES_CLASSIFY, TIER_THRESHOLDS, percentile_scores_100, played, value_gap
 from .trends import TREND_METRICS, compute_trend
 
 POSITIONS = ("WR", "RB", "TE")
@@ -513,11 +513,11 @@ def validate_filters(position: str, window: str, min_games: int | None, min_volu
 def _add_percentiles(position: str, players: list[dict]) -> None:
     for metric in PERCENTILE_METRICS[position]:
         values = {p["gsis_id"]: p["window"][metric] for p in players if p["window"].get(metric) is not None}
-        pct = percentile_scores(values)
+        pct = percentile_scores_100(values)    # unrounded rank; stays an integer for ordinals and heat buckets
         for p in players:
             p.setdefault("percentiles", {})
             if p["gsis_id"] in pct:
-                p["percentiles"][metric] = round(pct[p["gsis_id"]] * 10)
+                p["percentiles"][metric] = round(pct[p["gsis_id"]])
 
 
 def build_opportunity(con, season: int | None, position: str, window: str = "season", min_games: int | None = None,

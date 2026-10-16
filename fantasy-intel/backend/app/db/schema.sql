@@ -595,8 +595,8 @@ CREATE TABLE IF NOT EXISTS player_scores (
     opportunity_tier     VARCHAR,    -- HIGH | MEDIUM | LOW (absolute per-position thresholds)
     role_trend           VARCHAR,    -- UP | FLAT | DOWN | INSUFFICIENT
     market_signal        VARCHAR,    -- BUY | SELL | HOLD | WATCH | MONITOR
-    opportunity_score    DOUBLE,     -- 0-10 position percentile of recent opportunity (see basis)
-    production_score     DOUBLE,     -- 0-10 position percentile of recent PPR/game
+    opportunity_score    DOUBLE,     -- legacy 0-10, internal policy scale: position percentile of recent opportunity (see basis)
+    production_score     DOUBLE,     -- legacy 0-10, internal policy scale: position percentile of recent PPR/game
     usage_trend_score    DOUBLE,     -- -1..+1 composite of usage deltas
     trend_label          VARCHAR,    -- UP | DOWN | FLAT | INSUFFICIENT
     fp_per_game          DOUBLE,
@@ -604,12 +604,21 @@ CREATE TABLE IF NOT EXISTS player_scores (
     fp_minus_xfp         DOUBLE,
     value_gap_label      VARCHAR,    -- PRODUCTION_EXCEEDS_USAGE | USAGE_EXCEEDS_PRODUCTION | ALIGNED | INSUFFICIENT
     classification       VARCHAR,    -- = market_signal (kept for compatibility)
-    value_score          DOUBLE,     -- 0-10 blended rest-of-season value proxy
+    value_score          DOUBLE,     -- legacy 0-10, internal policy scale: blended rest-of-season value proxy
+    opportunity_score_100 DOUBLE,    -- 0-100.0 (1 dp) mid-rank percentile, from the unrounded rank (ratings-100.v1)
+    production_score_100  DOUBLE,    -- 0-100.0 (1 dp) mid-rank percentile of recent PPR/game
+    value_score_100       DOUBLE,    -- 0-100.0 (1 dp) clamp(0.75*opp100 + 0.25*prod100 + 10*trend, 0, 100)
+    rating_scale_version  VARCHAR,   -- "ratings-100.v1"
     components           JSON,
     reasons              JSON,
     computed_at          TIMESTAMP,
     PRIMARY KEY (season, gsis_id)
 );
+-- Non-destructive upgrade of an existing table (CREATE TABLE IF NOT EXISTS above is a no-op there). NULL = not computed.
+ALTER TABLE player_scores ADD COLUMN IF NOT EXISTS opportunity_score_100 DOUBLE;
+ALTER TABLE player_scores ADD COLUMN IF NOT EXISTS production_score_100 DOUBLE;
+ALTER TABLE player_scores ADD COLUMN IF NOT EXISTS value_score_100 DOUBLE;
+ALTER TABLE player_scores ADD COLUMN IF NOT EXISTS rating_scale_version VARCHAR;
 
 CREATE TABLE IF NOT EXISTS manager_metrics (
     league_id    BIGINT,
@@ -668,7 +677,8 @@ CREATE TABLE IF NOT EXISTS waiver_recommendations (
     espn_player_id         BIGINT,
     position               VARCHAR,
     availability_status    VARCHAR,
-    opportunity_score      DOUBLE,
+    opportunity_score      DOUBLE,    -- legacy 0-10, internal policy scale
+    opportunity_score_100  DOUBLE,    -- 0-100.0 (1 dp) waiver-adjusted opportunity (ratings-100.v1); display only
     roster_fit_score       DOUBLE,
     league_interest        VARCHAR,   -- LOW | MEDIUM | HIGH
     interest_score         DOUBLE,
@@ -681,6 +691,7 @@ CREATE TABLE IF NOT EXISTS waiver_recommendations (
     computed_at            TIMESTAMP,
     PRIMARY KEY (league_id, season, espn_player_id)
 );
+ALTER TABLE waiver_recommendations ADD COLUMN IF NOT EXISTS opportunity_score_100 DOUBLE;
 
 CREATE TABLE IF NOT EXISTS player_context (
     season          INTEGER,
