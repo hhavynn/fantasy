@@ -453,7 +453,10 @@ def draw_scene(scene: dict, t: float, dur: float, c: Ctx) -> Image.Image:
     return _camera(img, min(t / max(dur, 0.1), 1), punch, scene.get("camera", "push"))
 
 
-def _run(ep: Episode) -> None:
+def plan(ep: Episode, work=None) -> dict:
+    """Everything a render needs except the pictures: the scene timeline keyed to the narration, caption cues,
+    sound events and the mixed audio (written to `work`/mix.wav). Shared by the original renderer and the
+    graphic styles (studio/graphics), so every style has the same timing, audio and captions."""
     script = read_json(ep.path("script.json"))
     facts = read_json(ep.path("facts.json"))
     claims = {cl["id"]: cl for cl in facts["claims"]}
@@ -496,10 +499,18 @@ def _run(ep: Episode) -> None:
     sh = ep.cfg["shorts"]
     mixed = A.mix(A.upsample(np.concatenate(voice), sr), events, sh.get("music", True), sh.get("music_db", -22),
                   sh.get("sfx_db", -12), MOOD.get(story, "drive"))
-    work = ep.path("work")
+    work = work or ep.path("work")
     work.mkdir(parents=True, exist_ok=True)
     sf.write(work / "mix.wav", mixed, A.SR, subtype="PCM_16")
+    return {"ctx": ctx, "scenes": scenes, "cues": cues, "events": events, "total": total, "fps": fps,
+            "accent": accent, "story": story, "mix": work / "mix.wav"}
 
+
+def _run(ep: Episode) -> None:
+    pl = plan(ep)
+    ctx, scenes, cues, events, total, fps, accent = (pl[k] for k in ("ctx", "scenes", "cues", "events", "total",
+                                                                      "fps", "accent"))
+    work = ep.path("work")
     frames = int(math.ceil(total * fps))
     proc = subprocess.Popen(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
