@@ -21,7 +21,7 @@ def acquisition_utility(state: dict, candidate: dict, move: dict, *, need: float
     depth = [p["raw_value"] for p in players if p["position"] == candidate["position"] and p.get("raw_value") is not None]
     depth_unknown = any(p.get("raw_value") is None for p in players if p["position"] == candidate["position"])
     depth_gain = None if depth_unknown else (candidate.get("raw_value") or 0) - min(depth) if depth else candidate.get("raw_value")
-    forward = forward_effect(players, after, slots, state.get("weeks", []))
+    forward = forward_effect(players, after, slots, state.get("weeks", []), state.get("stream"))
     forward_mean = (forward["total_gain"] / len(state["weeks"]) if forward["total_gain"] is not None and state.get("weeks") else None)
     starter = (gain is not None and gain >= 1) or (forward_mean is not None and forward_mean >= 1)
     stash = (candidate["position"] not in ("K", "D/ST") and (candidate.get("raw_value") or 0) >= 6

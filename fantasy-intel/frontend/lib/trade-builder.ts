@@ -45,10 +45,72 @@ export function changeTeam(s: Selection, teams: BuilderTeam[], side: "a" | "b", 
   return { ...s, tb: team, b: keepOn(s.b, roster(teams, team)), a: keepOn(s.a, roster(teams, s.ta)) };
 }
 
-export function togglePlayer(s: Selection, side: "a" | "b", id: number): Selection {
+/**
+ * Toggle one player on a side. With `maxPerSide`, adding a player to a side that is already full is a
+ * no-op (removing always works), so the picker can never build a selection the analyzer would reject.
+ */
+export function togglePlayer(s: Selection, side: "a" | "b", id: number, maxPerSide?: number): Selection {
   const cur = side === "a" ? s.a : s.b;
+  if (!cur.includes(id) && maxPerSide !== undefined && cur.length >= maxPerSide) return s;
   const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
   return side === "a" ? { ...s, a: next } : { ...s, b: next };
+}
+
+export function clearPicks(s: Selection): Selection {
+  return { ...s, a: [], b: [] };
+}
+
+export type SideLimit = { count: number; max: number; remaining: number; atLimit: boolean; over: boolean };
+
+/** How full one side is against the analyzer's per-side limit. */
+export function sideLimit(count: number, max: number): SideLimit {
+  return { count, max, remaining: Math.max(0, max - count), atLimit: count >= max, over: count > max };
+}
+
+/** Display order of positions in the roster picker; anything else follows alphabetically, unknown last. */
+export const POSITION_ORDER = ["QB", "RB", "WR", "TE", "K", "D/ST"];
+
+function positionKey(position: string | null): [number, string] {
+  if (position === null) return [POSITION_ORDER.length + 1, ""];
+  const i = POSITION_ORDER.indexOf(position);
+  return i >= 0 ? [i, position] : [POSITION_ORDER.length, position];
+}
+
+export function comparePositions(a: string | null, b: string | null): number {
+  const [ai, an] = positionKey(a);
+  const [bi, bn] = positionKey(b);
+  return ai - bi || an.localeCompare(bn);
+}
+
+export type RosterGroup<T> = { position: string; players: T[] };
+
+/** Groups players by position in picker order; players keep their input order within a group. */
+export function groupByPosition<T extends { position: string | null }>(players: readonly T[]): RosterGroup<T>[] {
+  const groups = new Map<string, T[]>();
+  for (const p of players) {
+    const key = p.position ?? "?";
+    groups.set(key, [...(groups.get(key) ?? []), p]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => comparePositions(a === "?" ? null : a, b === "?" ? null : b))
+    .map(([position, ps]) => ({ position, players: ps }));
+}
+
+/** Positions present in a roster, in picker order (the filter chips). */
+export function positionsIn(players: readonly { position: string | null }[]): string[] {
+  return groupByPosition(players).map((g) => g.position);
+}
+
+/** Roster search: `query` matches name or NFL team (case-insensitive, whitespace-trimmed); `position` "" means all. */
+export function filterRoster<T extends { name?: string | null; position: string | null; pro_team?: string | null }>(
+  players: readonly T[], query: string, position: string,
+): T[] {
+  const q = query.trim().toLowerCase();
+  return players.filter((p) => {
+    if (position !== "" && (p.position ?? "?") !== position) return false;
+    if (q === "") return true;
+    return (p.name ?? "").toLowerCase().includes(q) || (p.pro_team ?? "").toLowerCase().includes(q);
+  });
 }
 
 export function setStartWeek(s: Selection, sw: number | null): Selection {

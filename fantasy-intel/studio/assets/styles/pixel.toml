@@ -1,0 +1,50 @@
+# Style B: Retro Pixel-Art Football. Everything is drawn on a 216x384 grid and scaled x5 (nearest neighbour).
+name = "pixel"
+title = "Retro Pixel Football"
+
+[grid]
+w = 216
+h = 384
+scale = 5                 # 216x384 * 5 = 1080x1920; one art pixel = 5 video pixels
+
+[palette]                 # 14 fixed colours + 2 team slots (palette-swapped per team, like the 16-bit games)
+night = "#0B0E1A"
+navy = "#18203A"
+slate = "#2B3556"
+steel = "#55628A"
+mist = "#9AA6C8"
+white = "#F4F1E6"
+turf_dark = "#1D5A35"
+turf = "#2A7A45"
+turf_light = "#3D9455"
+chalk = "#DCE8D2"
+leather = "#8A4A23"
+leather_dark = "#4E2810"
+gold = "#F7C948"
+red = "#FF6A5C"
+green = "#5BD26B"
+
+[type]                    # the original 5x7 pixel font in studio/graphics/pixel.py, at whole-number scales
+label = 1
+body = 2
+title = 3
+number_l = 5
+number_xl = 7
+
+[motion]
+fps_art = 15              # sprites animate on twos
+transition = "palette_fade"      # four steps down to night, four steps up
+transition_dur = 0.3
+shake = 1                 # screen shake in art pixels on impacts
+camera_push = 0.0         # no zoom: it would break the pixel grid
+
+[caption]
+font = "pixel5x7"
+scale = 2
+box = true
+max_chars = 16
+max_lines = 2               # on screen at once; longer cards page
+
+[rules]
+icons = "sprites on the art grid only, 1 px dark outline, no anti-aliasing, no gradients"
+illustration = "original pixel helmet, jersey and football sprites; no photos"

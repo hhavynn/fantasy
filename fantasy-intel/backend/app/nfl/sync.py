@@ -9,7 +9,12 @@ from typing import Any, Callable
 import nflreadpy as nfl
 import polars as pl
 
-from ..db.connection import SyncRun, replace_frame_partition, replace_where, upsert_rows
+from ..analytics import injury_freshness
+from ..db.connection import SyncRun, replace_frame_partition, replace_where, upsert_rows, utcnow
+# FTN `read_thrown` semantics live in ftn.py so the API can describe them without importing polars.
+from .kicking_pbp import derive_kicks, derive_team_drives
+from .ftn import (FTN_ASSUMED_PRIMARY_READ_CODE, FTN_NUMERIC_CODES, FTN_READ_SEMANTICS_STATUS,  # noqa: F401
+                  FTN_SEMANTICS_REFERENCE)
 
 log = logging.getLogger("nfl.sync")
 
@@ -46,6 +51,9 @@ class NflPayloads:
     pbp: pl.DataFrame | None = None
     ftn: pl.DataFrame | None = None
     warnings: list[str] = field(default_factory=list)
+    # table -> (download started, download returned), naive UTC from our clock; read by the injury
+    # retrieval log (analytics/injury_freshness.py). Only datasets that downloaded are present.
+    fetch_times: dict[str, tuple] = field(default_factory=dict)
 
 
 def _try(warnings: list[str], label: str, fn: Callable[[], Any]) -> Any:
@@ -62,9 +70,11 @@ def fetch_all(season: int) -> NflPayloads:
     p = NflPayloads(season=season)
     for table, (loader, _) in RAW_DATASETS.items():
         log.info("loading %s", table)
+        started = utcnow()
         df = _try(p.warnings, table, lambda: loader(season))
         if df is not None:
             p.frames[table] = df
+            p.fetch_times[table] = (started, utcnow())
     p.players = _try(p.warnings, "players", nfl.load_players)
     log.info("loading play-by-play")
     p.pbp = _try(p.warnings, "pbp", lambda: nfl.load_pbp([season]))
@@ -105,16 +115,6 @@ def curate_players(players: pl.DataFrame) -> list[dict]:
             "draft_pick": _int(r.get("draft_pick")),
         })
     return rows
-
-
-# FTN `read_thrown`: the nflreadr dictionary documents "0" = primary read, but observed
-# 2023-2026 data conflicts (code "1" covers ~50-60% of targets; "0" mostly tags non-pass
-# plays). Upstream clarification pending: https://github.com/nflverse/nflreadr/issues/325
-# We store raw per-code counts and do NOT treat any numeric code as the primary read.
-FTN_READ_SEMANTICS_STATUS = "UNVERIFIED"
-FTN_ASSUMED_PRIMARY_READ_CODE = "1"   # display-only assumption; never used in scoring
-FTN_SEMANTICS_REFERENCE = "https://github.com/nflverse/nflreadr/issues/325"
-FTN_NUMERIC_CODES = ("0", "1", "2")
 
 
 def _flag(col: str) -> pl.Expr:
@@ -302,6 +302,10 @@ def write_all(con, p: NflPayloads) -> dict:
             stats["nfl_pbp_player_week"] = replace_where(con, "nfl_pbp_player_week", player_rows, "season = ?", [p.season])
             stats["nfl_team_week"] = replace_where(con, "nfl_team_week", team_rows, "season = ?", [p.season])
             stats["nfl_defense_week"] = replace_where(con, "nfl_defense_week", defense_rows, "season = ?", [p.season])
+            stats["nfl_kick_attempts"] = replace_where(con, "nfl_kick_attempts", derive_kicks(p.pbp, p.season),
+                                                       "season = ?", [p.season])
+            stats["nfl_team_game_drives"] = replace_where(con, "nfl_team_game_drives",
+                                                          derive_team_drives(p.pbp, p.season), "season = ?", [p.season])
             stats["pbp_max_week"] = p.pbp["week"].max()
             stats["ftn_games_charted"] = p.ftn["nflverse_game_id"].n_unique() if p.ftn is not None else 0
         con.execute("COMMIT")
@@ -311,14 +315,34 @@ def write_all(con, p: NflPayloads) -> dict:
     return stats
 
 
+def record_injury_retrievals(con, p: NflPayloads, sync_run_id: str | None = None) -> dict | None:
+    """Append this sync's injury download to the write-once retrieval log (injury_retrievals), using
+    the download times captured by fetch_all. Not part of the data transaction and it changes no
+    existing table; a failure is returned to the caller as a warning, never raised."""
+    df = p.frames.get("nfl_injuries")
+    times = p.fetch_times.get("nfl_injuries")
+    if df is None or times is None:
+        return None
+    obs = injury_freshness.nflverse_observations(df.to_dicts(), p.season, retrieved_at=times[1],
+                                                 fetch_started_at=times[0], sync_run_id=sync_run_id)
+    return injury_freshness.record_observations(con, obs)
+
+
 def run_nfl_sync(con_factory, season: int) -> dict:
     payloads = fetch_all(season)
     with con_factory() as con:
         run = SyncRun(con, "nfl")
+        run.start(stats={"season": season})      # a crash after write_all's COMMIT leaves this 'running' row (see injury_freshness)
         try:
             stats = write_all(con, payloads)
         except Exception as err:
             run.finish("error", f"{type(err).__name__}: {err}")
             raise
+        try:
+            stats["injury_retrievals"] = record_injury_retrievals(con, payloads, run.run_id)
+        except Exception as err:   # audit log only; the synced data above is already committed
+            msg = f"injury retrieval log failed: {type(err).__name__}: {err}"
+            log.warning(msg)
+            stats["warnings"].append(msg)
         run.finish("ok", "warnings: %d" % len(stats["warnings"]), stats)
     return stats

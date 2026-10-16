@@ -22,8 +22,8 @@ export function SyncPopover({ state, text, children }: { state: SyncState; text:
   return (
     <div className="sync" ref={root}>
       <button ref={trigger} type="button" className="sync-pill" data-state={state} aria-expanded={open}
-              aria-controls="sync-pop" aria-haspopup="dialog" onClick={() => setOpen((o) => !o)}>
-        {text}
+              aria-controls="sync-pop" aria-haspopup="dialog" title={text} onClick={() => setOpen((o) => !o)}>
+        <span className="sync-text">{text}</span>
       </button>
       {open && (
         <div id="sync-pop" className="sync-pop" role="dialog" aria-label="Data freshness">

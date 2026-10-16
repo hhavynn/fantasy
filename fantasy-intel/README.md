@@ -7,6 +7,8 @@ fantasy points, and how does my league behave?*
 
 Everything runs on your laptop: Python/FastAPI + DuckDB backend, Next.js dashboard.
 No accounts, no cloud, no LLM calls. All scores are deterministic and explainable.
+Optionally, a read-only copy can be hosted for free on Vercel + MotherDuck; see
+[Hosting](#hosting-vercel--motherduck).
 
 ---
 
@@ -92,8 +94,13 @@ fantasy-intel/
 
 | Route              | What it shows |
 |--------------------|---------------|
-| `/`                | League, your record/standing, current roster with usage + classification, injuries (ESPN + NFL report), positional needs, standings, recent league transactions |
+| `/`                | The weekly command center: your record and standing, this week's matchup card and prioritized action items (start/sit swaps, injured starters, top waiver claim), current roster with usage + classification, injuries (ESPN + NFL report), positional needs, standings, recent league transactions |
+| `/matchup`         | This week's head-to-head (any week through the switcher): both teams' best projected lineups slot by slot, and the lineups as set in ESPN, with projected totals, margin and point share (a share of projected points, not a win probability) |
+| `/start-sit`       | Your submitted lineup vs the best projected lineup that respects kickoff locks, each swap with its projected gain, availability alerts, bench and reserves; next week as a preview. ESPN projections, no invented numbers |
 | `/players`         | Search; per-player profile: underlying value vs box score, usage trend table, weekly snaps/targets/shares/aDOT/RZ/GL/xFP |
+| `/research`        | Research lab: the whole NFL WR/RB/TE pool. Expected points (xFP/G) against production (FPOE/G or PPR/G) over paired games for season, last 5 or last 3 games; position workload maps (WR target vs air-yard share, RB backfield share vs targets, TE snaps vs target share); role momentum (change in xFP vs change in PPR, with sample badges); a sortable leaderboard with a position-percentile heatmap; red-zone work with raw totals; and a weekly timeline that keeps byes and missed games distinct from zeros. URL-backed filters and selection. Descriptive research lists, no buy/sell calls. See `docs/research_lab.md` |
+| `/movers`         | Projection movers: whose outlook moved between two stored forecasts. ESPN's daily snapshots by default, Fantasy Intel's own runs (ifp-2.0.0, experimental beyond next week) opt-in. Biggest risers and fallers per position for the rest of the season or next week, over the identical target weeks in both forecasts (weeks already kicked off are left out), with before -> after, rank movement, the usage, injury and role data recorded over the same period (not presented as causes) and, for ours, the exact availability / per-game split. Never reconstructs a missing forecast. See `docs/projection_movers.md` |
+| `/projection-performance` | Projection accuracy: the production model (ifp-2.0.0, production by owner override) against ESPN's pregame projections per position on fully final weeks only: MAE / RMSE / mean signed error, the paired MAE difference with its 95% week-clustered interval and the evidence gate (4 weeks, 300 matched observations per position), weekly trend, ifp-1 vs ifp-2 on weeks both forecast, Start/Sit decision utility from recorded pregame decision sets (8 weeks, 200 decisions), coverage, ESPN-fallback share and every exclusion. Served from a published, hash-verified report; see `docs/projection_performance.md` |
 | `/waivers`         | Available players ranked by local waiver score, with role trend, roster fit, league competition (LOW/MED/HIGH + likely competitors), recommendation, suggested drop. Filter by position / recommendation |
 | `/trades`          | Manual trade analyzer (any player counts up to 6 per side; teams switch instantly, Evaluate runs the URL-backed selection): both teams' optimal starting lineups rebuilt every remaining week before/after the trade on ESPN's projections; ROS / regular-season / playoff deltas, weekly table, starter changes, mandatory drop / open roster spot, hypothetical FA replacement, player context. No trade grade, no acceptance probability |
 | `/trades/discover` | Trade opportunity discovery: exact lineup impact for both teams across every 1-for-1 / 2-for-1 / 1-for-2 trade with every manager, sortable by projected gains, with categories, manager context and a link into the manual evaluator. No acceptance estimate |
@@ -107,6 +114,13 @@ fantasy-intel/
 
 Every page shows last-sync timestamps in the header. A muted **—** always means
 *missing* (hover for the reason). **0** is always a measured zero.
+
+**Navigating.** `Ctrl+K` / `⌘K` (or `/` outside a text field) opens a command palette: quick
+actions ("Decide who to start"), every page, and player search against the backend; the app bar
+button does the same. The app bar groups pages (My team, Players, Trades, League) with a sub-nav
+for the active group, and collapses into a menu on phones. Choose **System**, **Light** or **Dark**
+in the app bar (System follows the OS); the choice is stored in the browser. Wide tables scroll
+sideways inside their panel with the first column pinned, so they stay readable at 375px.
 
 ---
 
@@ -346,6 +360,11 @@ single legal acquisition of a currently available player (ESPN free agents; waiv
 guaranteed), and what the trade still adds once that move is made. It never enters the canonical delta. Details:
 [`docs/v3_1_trade_vs_free_agency.md`](docs/v3_1_trade_vs_free_agency.md).
 
+Trades, discovery, My Team Value and waivers value **K and D/ST against weekly streaming**. Each week either slot
+can be filled at the projection of the 3rd-best available player, so a kicker or defense counts only for what it
+adds above streaming. Pass `kdst_streaming=false` to hold current K/D/ST all season instead. Details:
+[`docs/kdst_streaming_baseline.md`](docs/kdst_streaming_baseline.md).
+
 ## Trade opportunity discovery (V2)
 
 `GET /api/trades/discover` (and the `/trades/discover` page) searches every 1-for-1, 2-for-1 and 1-for-2 trade
@@ -426,6 +445,223 @@ cd backend
 SLEEPER_LIVE_LEAGUE_ID=<public league id> uv run pytest tests/test_sleeper_live.py -s
 ```
 
+## Hosting (Vercel + MotherDuck)
+
+Optional. Syncs still run on your laptop against the local DuckDB file. A publish step
+copies that file to [MotherDuck](https://motherduck.com) (hosted DuckDB), and two Vercel
+projects serve it: the FastAPI backend reads MotherDuck, and the Next.js dashboard calls the
+backend. The free tiers of both cover this. The hosted side only reads: ESPN
+cookies stay in your local `.env`.
+
+```
+laptop: sync_espn.py / sync_nfl.py -> data/fantasy.duckdb -> publish_motherduck.py
+                                                                    |
+Vercel: dashboard (SITE_PASSWORD) -> API (X-API-Key) -> md:fantasy_intel
+```
+
+**1. MotherDuck.** Sign up (the free Lite plan is enough) and create two access tokens under
+Settings -> Access Tokens: one for your laptop and one for the API, so either can be revoked on
+its own. Both are normal read/write tokens: read-only read-scaling tokens need MotherDuck's paid
+Business plan. The API never writes (it only runs SELECTs, with `saas_mode` on), and only the
+dashboard can call it (`FANTASY_API_KEY`); if you are on Business, a read-scaling token works too.
+
+**2. Publish from your laptop.** Add the laptop token to `.env` as `MOTHERDUCK_TOKEN`,
+then after any sync:
+
+```bash
+cd backend
+uv run python ../scripts/publish_motherduck.py     # replaces md:fantasy_intel
+```
+
+Do not put `MOTHERDUCK_DATABASE` in your local `.env`: it switches the local API to
+MotherDuck too.
+
+**3. Backend project on Vercel.** Import this repository, set Root Directory to
+`fantasy-intel/backend` (FastAPI is detected; `[tool.vercel] entrypoint = "app.main:app"`).
+Environment variables:
+
+| variable              | value                                             |
+|-----------------------|---------------------------------------------------|
+| `MOTHERDUCK_TOKEN`    | the API's access token from step 1               |
+| `MOTHERDUCK_DATABASE` | `fantasy_intel`                                   |
+| `FANTASY_API_KEY`     | a long random string (`openssl rand -hex 32`)     |
+
+Vercel installs with `uv sync --no-dev`, which skips the sync-only packages (polars,
+nflreadpy, espn-api live in the `sync` dependency group) and keeps the function bundle
+around 310 MB, under Vercel's 500 MB limit. `tests/test_hosting.py` fails if an API route
+starts importing them. Cold starts download the MotherDuck extension (a couple of seconds).
+The offline gradient-boosting research (`scripts/hgb_research.py`) needs scikit-learn, which
+lives in the `research` group (included by `dev`, so also skipped by `--no-dev`);
+`tests/test_hgb_research.py` fails if the API ever loads it.
+
+**4. Dashboard project on Vercel.** Import the repository again with Root Directory
+`fantasy-intel/frontend`. Environment variables:
+
+| variable        | value                                                   |
+|-----------------|---------------------------------------------------------|
+| `API_URL`       | the backend's production URL, e.g. `https://<backend>.vercel.app` |
+| `API_KEY`       | the same value as the backend's `FANTASY_API_KEY`       |
+| `SITE_PASSWORD` | the password the browser will ask for (any username)    |
+
+`SITE_PASSWORD` matters: without it anyone with the URL sees your league. Locally none of
+these are set, so the API key check and the password prompt are off.
+
+**Deployments run for `main` only.** `backend/vercel.json` and `frontend/vercel.json` set
+`git.deploymentEnabled` to `{"**": false, "main": true}`: a push to any other branch creates no Vercel
+deployment (Vercel deploys when at least one matching rule is true), which keeps the free plan's daily
+deployment limit for production. Pull requests get no preview link; the GitHub Actions checks still run.
+Vercel reads the rule from the pushed commit, so a branch created before this change deploys until it
+merges `main`.
+
+**Refreshing the hosted data:** run the syncs, then `publish_motherduck.py`. No redeploy is
+needed; the API reads the new copy on the next request.
+
+## Scheduled refresh (macOS launchd)
+
+ESPN projections are only stored as history (`espn_projection_history`) when a sync runs, and
+the projection promotion tracker only counts snapshots taken **before kickoff**. A week without
+a pregame sync has no ESPN baseline, so the refresh should run on a schedule. ESPN cookies live
+in your local `.env`, so it has to run on your Mac (not in GitHub Actions).
+
+`scripts/refresh_all.py` runs `sync_espn.py` → `sync_nfl.py` → `compute_analytics.py`, then builds the
+projection-performance report (`projection_performance.py publish`, one write-once row; a failure is a `WARNING:`
+line, never a stop; `--skip-report` skips it), then `publish_motherduck.py` only if `MOTHERDUCK_TOKEN` is set. Each step runs in its own process,
+the first failure stops the chain and the script exits 1. Every run writes
+`data/logs/refresh-<UTC stamp>.log`. At the end it checks that the current week's ESPN
+projections were snapshotted before that week's first kickoff and prints a `WARNING:` line if
+not (`/data` shows the same check under "Independent projections: path to promotion"). It then
+runs a read-only evidence stage (injury freshness report, start/sit decision set, ESPN benchmark;
+see `docs/independent_projection_engine.md`, "Weekly evidence routine (automated)") whose problems
+are `WARNING:` lines and never change the exit code; `--skip-evidence` skips it.
+
+```bash
+cd backend
+uv run python ../scripts/refresh_all.py                # full refresh (+ publish when configured)
+uv run python ../scripts/refresh_all.py --no-publish   # never touch MotherDuck
+uv run python ../scripts/refresh_all.py --check-only   # only the pregame snapshot check
+```
+
+`scripts/launchd/com.fantasy-intel.refresh.plist` is a template; nothing installs it for you.
+It runs the refresh on **Thursday 3pm, Sunday 8am, Monday 3pm and Tuesday 8am**, in the
+Mac's local time zone (the times assume Pacific; edit them otherwise). A run missed while the
+Mac sleeps fires when it wakes; one missed while it is shut down is skipped.
+
+**Install** (from `fantasy-intel/` in the checkout that has your `.env`):
+
+```bash
+mkdir -p data/logs ~/Library/LaunchAgents
+sed -e "s|__FANTASY_INTEL_DIR__|$PWD|g" -e "s|__UV__|$(command -v uv)|g" scripts/launchd/com.fantasy-intel.refresh.plist > ~/Library/LaunchAgents/com.fantasy-intel.refresh.plist
+plutil -lint ~/Library/LaunchAgents/com.fantasy-intel.refresh.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.fantasy-intel.refresh.plist
+```
+
+Run it once now to confirm it works under launchd: `launchctl kickstart gui/$(id -u)/com.fantasy-intel.refresh`.
+
+**Check it ran:**
+
+```bash
+launchctl print gui/$(id -u)/com.fantasy-intel.refresh | grep -E "state|runs|last exit code"
+ls -t data/logs/refresh-*.log | head -3                       # newest run first
+tail -n 30 "$(ls -t data/logs/refresh-*.log | head -1)"       # FAILED / WARNING lines are at the end
+cat data/logs/launchd.err.log                                 # uv or permission errors before the log opened
+```
+
+**Uninstall:**
+
+```bash
+launchctl bootout gui/$(id -u)/com.fantasy-intel.refresh
+rm ~/Library/LaunchAgents/com.fantasy-intel.refresh.plist
+```
+
+`uv run python ../scripts/evidence_health.py launchd install` (from `backend/`) prints the same steps as an
+idempotent plan: it does nothing for a job that is already installed as templated and loaded, and backs up a
+hand-edited plist before replacing it; `--apply` performs it. After editing the template, uninstall and install
+again (or run that command with `--apply`). If the repository lives under
+`~/Documents`, `~/Desktop` or `~/Downloads`, macOS privacy protection can block a launchd job
+from reading it (`Operation not permitted` in `launchd.err.log`, with no refresh log). Grant
+Full Disk Access to `uv` and to the Python in `backend/.venv` (System Settings → Privacy &
+Security), or keep the checkout somewhere else.
+
+## Weekly learning cycle (macOS launchd)
+
+The independent projection engine's research cycle (champion `ifp-1.0.0` refit + shadow
+challenger `ifp-2.0.0`, frozen pregame forecasts, prospective evaluation) runs separately from the
+refresh: `scripts/learning_cycle.py run` locks, checks its dependencies, runs `sync_nfl.py` and the
+play-by-play injury sync, picks the next week that has not kicked off, checks that every earlier
+game is final with box scores, snaps and nflverse expected points, evaluates earlier frozen
+forecasts, trains (reusing the previous artifacts when the training data, configuration and scoring
+are unchanged) and freezes pregame forecasts. It reads the production `ifp-1.0.0` files and never
+writes them, the live projection tables, ESPN or MotherDuck; nothing a page or lineup reads
+changes. Details: docs/independent_projection_engine.md, "Automated weekly cycle".
+
+It needs the writable `data/fantasy.duckdb`, `data/nfl_history.duckdb` and the git-ignored
+`data/models/` (production `selection.json`, `heldout_report.json`; outputs in
+`data/models/weekly/`), which only exist on your Mac: GitHub Actions and Vercel cannot run it.
+
+```bash
+cd backend
+uv run python ../scripts/learning_cycle.py run                # one cycle (what launchd runs)
+uv run python ../scripts/learning_cycle.py run --skip-sync    # data already synced
+uv run python ../scripts/learning_cycle.py status             # latest report, lock, missed weeks
+uv run python ../scripts/learning_cycle.py run --force-retrain   # refit after a stat correction
+uv run python ../scripts/weekly_learning.py evaluate          # prospective evaluation only
+```
+
+Exit codes: 0 frozen or already up to date, 3 data not ready (retry before kickoff), 4 another
+cycle is running, 5 missing dependency (the report says what to do), 1 a stage failed.
+
+`scripts/launchd/com.fantasy-intel.weekly-learning.plist` is a template; nothing installs it for
+you. It runs **Tuesday, Wednesday and Thursday at 7am** (Mac local time; the times assume
+Pacific, edit them otherwise), an hour before the Tuesday refresh (if both fire together when a
+sleeping Mac wakes, the cycle's sync step fails on the DuckDB write lock and the next attempt
+retries); a later attempt only redoes what the earlier one could not finish. Install from
+`fantasy-intel/`:
+
+```bash
+mkdir -p data/logs ~/Library/LaunchAgents
+sed -e "s|__FANTASY_INTEL_DIR__|$PWD|g" -e "s|__UV__|$(command -v uv)|g" scripts/launchd/com.fantasy-intel.weekly-learning.plist > ~/Library/LaunchAgents/com.fantasy-intel.weekly-learning.plist
+plutil -lint ~/Library/LaunchAgents/com.fantasy-intel.weekly-learning.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.fantasy-intel.weekly-learning.plist
+launchctl kickstart gui/$(id -u)/com.fantasy-intel.weekly-learning     # optional: run once now
+```
+
+Check: `uv run python ../scripts/learning_cycle.py status` (from `backend/`), or
+`data/models/weekly/status/latest-cycle.json`; `data/logs/weekly-learning.err.log` for uv errors.
+Uninstall: `launchctl bootout gui/$(id -u)/com.fantasy-intel.weekly-learning` and delete the plist.
+
+A sleeping Mac runs the missed attempt on wake; a Mac that is shut down skips it. For unattended
+runs keep it plugged in and optionally schedule a wake a few minutes before the attempts, e.g.
+`sudo pmset repeat wakeorpoweron TWR 06:55:00` (one `repeat` schedule per Mac; this replaces any
+existing one, so check `pmset -g sched` first). If every attempt fails before a week's first
+kickoff, that week has no pregame forecast: the next cycle records it under
+`data/models/weekly/missed/` and nothing is backfilled.
+
+## Evidence health (is real evidence being collected?)
+
+A refresh that exits 0 has synced ESPN and nflverse; it does **not** prove that the week's pregame evidence
+(ESPN snapshot before each kickoff, Start/Sit decision set, production forecast, frozen research forecast,
+ESPN benchmark) was captured, because evidence failures are only `WARNING:` lines. One read-only command checks
+all of it on this Mac:
+
+```bash
+cd backend
+uv run python ../scripts/evidence_health.py                 # summary + what to fix before the next kickoff
+uv run python ../scripts/evidence_health.py status --json   # machine-readable; exit 0 ok, 2 warnings, 1 failures
+uv run python ../scripts/evidence_health.py launchd verify  # jobs installed as templated, loaded, running?
+uv run python ../scripts/evidence_health.py launchd install  # idempotent install plan; add --apply to perform it
+```
+
+It reports per week (from the first prospective week) the scheduled capture windows and which ran, ESPN
+snapshot times per kickoff, valid ifp-2 pregame rows by position, whether the projection switch serves ifp-2 or
+the ifp-1 fallback, research ledgers, Start/Sit sets, finality, matched benchmark observations, and every missing
+piece with its cause. Missed captures are reported, never regenerated.
+
+The fixed refresh times miss London/Germany Sunday-morning games, Thanksgiving's afternoon games, and
+Friday/Saturday games. The optional **pregame guard** (`com.fantasy-intel.pregame-guard.plist`, installed with
+`launchd install --jobs pregame-guard --apply`) checks the real kickoff times every 30 minutes. It runs
+`refresh_all.py` only when a kickoff is within 6 hours and has no fresh capture, at most 3 times per kickoff,
+and it posts one macOS notification per new problem. Details: [docs/evidence_health.md](docs/evidence_health.md).
+
 ## Tests
 
 ```bash
@@ -444,6 +680,30 @@ streaming requiring starter turnover, trade-source union/dedup, target-share sum
 NGS NULLs, implied-total sign/arithmetic, team/defense aggregation keys,
 validation errors vs warnings, and an end-to-end API smoke test.
 
+### Browser smoke test (Playwright)
+
+`frontend/e2e/routes.spec.ts` loads every page in `frontend/lib/navigation.ts`, a manager detail page
+(`/managers/1`), a player profile (`/players?id=201`) and `/data` in Chromium, in the Light and Dark
+themes at 1440px and 375px wide. Each load must return HTTP 200 with exactly one `h1`, zero console
+errors, no backend or render error state and no horizontal page scroll (the PRODUCT.md quality bar).
+
+It needs no ESPN cookies or network: Playwright builds a synthetic DuckDB at `data/e2e.duckdb` with
+`scripts/build_e2e_db.py` (the ESPN fixture league from `backend/tests/espn_fixture.py` plus the
+synthetic NFL schedule from `backend/tests/synthetic_nfl.py`), serves it with uvicorn on port 8765,
+and runs `next start` on port 3100, so a dev server on 3000/8000 is left alone.
+
+```bash
+cd backend && uv sync                  # once
+cd ../frontend
+npx playwright install chromium        # once per Playwright version
+npm run build                          # the test runs the production build
+npm run e2e                            # add --ui or --headed to watch
+```
+
+A failure keeps a trace in `frontend/test-results/`; open it with
+`npx playwright show-trace <path>/trace.zip`. A page added to `lib/navigation.ts` is covered
+automatically; a new route outside the nav goes in the `ROUTES` list of the spec.
+
 ## Continuous Integration (CI)
 
 Every push to `main` and pull request targeting `main` automatically triggers GitHub Actions (`.github/workflows/ci.yml`).
@@ -452,6 +712,7 @@ Every push to `main` and pull request targeting `main` automatically triggers Gi
 
 - **Backend job (`backend`)**: Runs on Ubuntu with Python 3.12 and `uv`. Installs pinned dependencies from `backend/uv.lock` and executes the full pytest suite.
 - **Frontend job (`frontend`)**: Runs on Ubuntu with Node.js 22 LTS. Installs pinned dependencies from `frontend/package-lock.json` with `npm ci`, runs ESLint, verifies TypeScript types (`npm run typecheck`), runs the unit tests (`npm test`), and compiles a production build (`npm run build`).
+- **E2E job (`e2e`)**: Installs both, builds the frontend, and runs the Playwright route smoke test (`npm run e2e`, see [Browser smoke test](#browser-smoke-test-playwright)) against the backend serving the synthetic DuckDB. On failure it uploads the traces and HTML report as the `playwright-traces` artifact.
 
 ### Reproducing checks locally
 
@@ -470,6 +731,8 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npx playwright install chromium
+npm run e2e
 ```
 
 ### What to do when CI fails
@@ -480,6 +743,7 @@ npm run build
 4. If frontend typecheck fails: run `npm run typecheck` (which runs `next typegen` followed by `tsc --noEmit`).
 5. If frontend unit tests fail: run `npm test` locally (Node 22.6+ is required for `--experimental-strip-types`).
 6. If frontend build fails: run `npm run build` locally and inspect Next.js build errors.
+7. If the E2E smoke test fails: download the `playwright-traces` artifact and open the failing test's `trace.zip` with `npx playwright show-trace`, or run `npm run build && npm run e2e` locally. The test name says the route and theme; the project name (`desktop-1440` or `mobile-375`) says the width.
 
 ### Isolation and environment requirements
 

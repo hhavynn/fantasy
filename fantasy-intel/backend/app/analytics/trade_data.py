@@ -325,7 +325,8 @@ def named_weeks(weeks: list[dict], names: dict[int, dict]) -> list[dict]:
     out = []
     for w in weeks:
         w = dict(w)
-        w["assignment"] = [{**a, "name": (names.get(a["player_id"]) or {}).get("full_name")} for a in w["assignment"]]
+        w["assignment"] = [{**a, "name": a.get("name") if a.get("streamer") else (names.get(a["player_id"]) or {}).get("full_name")}
+                           for a in w["assignment"]]
         w["bench"] = [{**b, "name": (names.get(b["player_id"]) or {}).get("full_name")} for b in w["bench"]]
         w["ir"] = [{**x, "name": (names.get(x["player_id"]) or {}).get("full_name")} for x in w.get("ir", [])]
         w["unavailable"] = [{**x, "name": (names.get(x["player_id"]) or {}).get("full_name")}

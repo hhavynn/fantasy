@@ -486,6 +486,28 @@ CREATE TABLE IF NOT EXISTS player_id_map (
     mapped_at         TIMESTAMP
 );
 
+-- Write-once log of every injury-feed retrieval (nflverse report / ESPN status), recorded at sync time
+-- from our own clock. Append-only: the code only ever INSERTs (identical content fetched again is a new
+-- row with the same content_sha, never an overwrite). provider_published_at is the provider's own
+-- timestamp (nflverse date_modified) and stays NULL when the provider supplies none; ESPN status has none.
+-- Create-only (no SCHEMA_VERSION bump). See docs/injury_freshness.md.
+CREATE TABLE IF NOT EXISTS injury_retrievals (
+    retrieval_id               VARCHAR PRIMARY KEY,
+    source                     VARCHAR NOT NULL,   -- nflverse | espn_status
+    scope                      VARCHAR NOT NULL,   -- team_week (nflverse) | team_current (ESPN status) | feed (whole nflverse injury frame)
+    season                     INTEGER NOT NULL,
+    week                       INTEGER,            -- NULL for ESPN status (a current status) and feed rows
+    team                       VARCHAR,            -- NULL for feed rows
+    fetch_started_at           TIMESTAMP,          -- naive UTC, before the download began
+    retrieved_at               TIMESTAMP NOT NULL, -- naive UTC, when the download returned
+    content_sha                VARCHAR NOT NULL,   -- sha256 of this scope's rows as downloaded
+    row_count                  INTEGER NOT NULL,
+    rows_with_publication_time INTEGER NOT NULL,
+    provider_published_at      TIMESTAMP,          -- latest provider date_modified; NULL when none supplied
+    sync_run_id                VARCHAR,
+    recorded_at                TIMESTAMP NOT NULL
+);
+
 -- ---------------------------------------------------------- Analytics ----
 
 CREATE TABLE IF NOT EXISTS player_week_usage (
@@ -573,8 +595,8 @@ CREATE TABLE IF NOT EXISTS player_scores (
     opportunity_tier     VARCHAR,    -- HIGH | MEDIUM | LOW (absolute per-position thresholds)
     role_trend           VARCHAR,    -- UP | FLAT | DOWN | INSUFFICIENT
     market_signal        VARCHAR,    -- BUY | SELL | HOLD | WATCH | MONITOR
-    opportunity_score    DOUBLE,     -- 0-10 position percentile of recent opportunity (see basis)
-    production_score     DOUBLE,     -- 0-10 position percentile of recent PPR/game
+    opportunity_score    DOUBLE,     -- legacy 0-10, internal policy scale: position percentile of recent opportunity (see basis)
+    production_score     DOUBLE,     -- legacy 0-10, internal policy scale: position percentile of recent PPR/game
     usage_trend_score    DOUBLE,     -- -1..+1 composite of usage deltas
     trend_label          VARCHAR,    -- UP | DOWN | FLAT | INSUFFICIENT
     fp_per_game          DOUBLE,
@@ -582,12 +604,21 @@ CREATE TABLE IF NOT EXISTS player_scores (
     fp_minus_xfp         DOUBLE,
     value_gap_label      VARCHAR,    -- PRODUCTION_EXCEEDS_USAGE | USAGE_EXCEEDS_PRODUCTION | ALIGNED | INSUFFICIENT
     classification       VARCHAR,    -- = market_signal (kept for compatibility)
-    value_score          DOUBLE,     -- 0-10 blended rest-of-season value proxy
+    value_score          DOUBLE,     -- legacy 0-10, internal policy scale: blended rest-of-season value proxy
+    opportunity_score_100 DOUBLE,    -- 0-100.0 (1 dp) mid-rank percentile, from the unrounded rank (ratings-100.v1)
+    production_score_100  DOUBLE,    -- 0-100.0 (1 dp) mid-rank percentile of recent PPR/game
+    value_score_100       DOUBLE,    -- 0-100.0 (1 dp) clamp(0.75*opp100 + 0.25*prod100 + 10*trend, 0, 100)
+    rating_scale_version  VARCHAR,   -- "ratings-100.v1"
     components           JSON,
     reasons              JSON,
     computed_at          TIMESTAMP,
     PRIMARY KEY (season, gsis_id)
 );
+-- Non-destructive upgrade of an existing table (CREATE TABLE IF NOT EXISTS above is a no-op there). NULL = not computed.
+ALTER TABLE player_scores ADD COLUMN IF NOT EXISTS opportunity_score_100 DOUBLE;
+ALTER TABLE player_scores ADD COLUMN IF NOT EXISTS production_score_100 DOUBLE;
+ALTER TABLE player_scores ADD COLUMN IF NOT EXISTS value_score_100 DOUBLE;
+ALTER TABLE player_scores ADD COLUMN IF NOT EXISTS rating_scale_version VARCHAR;
 
 CREATE TABLE IF NOT EXISTS manager_metrics (
     league_id    BIGINT,
@@ -646,7 +677,8 @@ CREATE TABLE IF NOT EXISTS waiver_recommendations (
     espn_player_id         BIGINT,
     position               VARCHAR,
     availability_status    VARCHAR,
-    opportunity_score      DOUBLE,
+    opportunity_score      DOUBLE,    -- legacy 0-10, internal policy scale
+    opportunity_score_100  DOUBLE,    -- 0-100.0 (1 dp) waiver-adjusted opportunity (ratings-100.v1); display only
     roster_fit_score       DOUBLE,
     league_interest        VARCHAR,   -- LOW | MEDIUM | HIGH
     interest_score         DOUBLE,
@@ -659,6 +691,32 @@ CREATE TABLE IF NOT EXISTS waiver_recommendations (
     computed_at            TIMESTAMP,
     PRIMARY KEY (league_id, season, espn_player_id)
 );
+ALTER TABLE waiver_recommendations ADD COLUMN IF NOT EXISTS opportunity_score_100 DOUBLE;
+
+-- The same recommendations evaluated from every team's roster (league-wide team perspective). Create-only: no
+-- schema version bump; the API falls back to waiver_recommendations for the owner's team when this table is missing.
+CREATE TABLE IF NOT EXISTS team_waiver_recommendations (
+    league_id              BIGINT,
+    season                 INTEGER,
+    team_id                INTEGER,
+    espn_player_id         BIGINT,
+    position               VARCHAR,
+    availability_status    VARCHAR,
+    opportunity_score      DOUBLE,
+    opportunity_score_100  DOUBLE,    -- 0-100.0 (1 dp), as in waiver_recommendations (ratings-100.v1); display only
+    roster_fit_score       DOUBLE,
+    league_interest        VARCHAR,
+    interest_score         DOUBLE,
+    waiver_score           DOUBLE,
+    recommendation         VARCHAR,
+    suggested_drop_id      BIGINT,
+    components             JSON,
+    reasons                JSON,
+    competitors            JSON,
+    computed_at            TIMESTAMP,
+    PRIMARY KEY (league_id, season, team_id, espn_player_id)
+);
+ALTER TABLE team_waiver_recommendations ADD COLUMN IF NOT EXISTS opportunity_score_100 DOUBLE;
 
 CREATE TABLE IF NOT EXISTS player_context (
     season          INTEGER,
@@ -801,8 +859,31 @@ CREATE TABLE IF NOT EXISTS independent_projection_runs (
     participation_version    VARCHAR, -- participation model (P(appears)); NULL when not applied
     participation_status     JSON,    -- position -> {participation, expected_points, reasons}
     participation_evaluation JSON,    -- held-out participation aggregates
-    created_at           TIMESTAMP
+    created_at           TIMESTAMP,
+    -- Provenance and integrity (schema v8). Runs are write-once: a committed run and its rows are never
+    -- updated or deleted. NULL on pre-v8 runs until the v8 backfill (production_forecasts.migrate_legacy).
+    artifact_id          VARCHAR,     -- sha256 of the artifact FILE bytes the `project` path loaded
+    content_sha256       VARCHAR,     -- sha256 of the canonicalised run meta + rows (excludes run_id, created_at)
+    row_count            INTEGER,     -- rows stored under this run_id; NULL/0 = forecast rows missing
+    migrated_from_legacy BOOLEAN,     -- TRUE: backfilled from independent_player_projections (v7 layout)
+    -- Rest-of-season projections: the cycle projects every remaining week with the week-W artifact.
+    -- forecast_horizon = target week - projected_from_week (0 = the normal pregame forecast). NULL (legacy) = 0.
+    forecast_horizon     INTEGER,
+    projected_from_week  INTEGER      -- W: the first unplayed week the cycle ran for (the data cutoff week)
 );
+-- Non-destructive upgrade of an existing v7 table (CREATE TABLE IF NOT EXISTS above is a no-op there).
+-- Participation columns (schema v7) for a v6 table: added in place, because the old v7 rebuild DROPPED these
+-- tables and with them every stored run.
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS participation_version VARCHAR;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS participation_status JSON;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS participation_evaluation JSON;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS artifact_id VARCHAR;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS content_sha256 VARCHAR;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS row_count INTEGER;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS migrated_from_legacy BOOLEAN;
+-- Rest-of-season runs (create-only; never a connection._REBUILD entry: that list DROPS tables).
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS forecast_horizon INTEGER;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS projected_from_week INTEGER;
 
 CREATE TABLE IF NOT EXISTS independent_player_projections (
     season               INTEGER,
@@ -829,4 +910,181 @@ CREATE TABLE IF NOT EXISTS independent_player_projections (
     expected_points      DOUBLE,      -- p_play * projected_points (unconditional); NULL if either is NULL
     participation        JSON,        -- {p_play, status, depth_rank, explanation, flags, ...}
     PRIMARY KEY (season, week, espn_player_id)
+);
+
+ALTER TABLE independent_player_projections ADD COLUMN IF NOT EXISTS p_play DOUBLE;
+ALTER TABLE independent_player_projections ADD COLUMN IF NOT EXISTS expected_points DOUBLE;
+ALTER TABLE independent_player_projections ADD COLUMN IF NOT EXISTS participation JSON;
+
+-- LEGACY (schema v7): one row per (season, week, player), replaced by the next run of the same week, which is
+-- how an earlier run's forecasts were lost. Kept read-only for old readers and as the source of the v8 backfill;
+-- never written, dropped or modified by v8. New code writes independent_projection_rows instead.
+
+-- Immutable production forecasts (schema v8). Append-only and run-keyed: every `project` run keeps its own rows.
+-- NEVER add this table to a connection._REBUILD entry (that list DROPS tables). The writer
+-- (independent_projection_store.write_run) never deletes or updates a committed run; kickoff/pregame are
+-- annotations derived at write time from nfl_schedules (naive UTC) and are not part of the content hash.
+CREATE TABLE IF NOT EXISTS independent_projection_rows (
+    run_id               VARCHAR NOT NULL,
+    season               INTEGER,
+    week                 INTEGER,
+    espn_player_id       BIGINT NOT NULL,
+    gsis_id              VARCHAR,
+    position             VARCHAR,
+    nfl_team             VARCHAR,
+    opponent             VARCHAR,
+    is_home              BOOLEAN,
+    projected_points     DOUBLE,
+    interval_low         DOUBLE,
+    interval_high        DOUBLE,
+    model                VARCHAR,
+    coverage_status      VARCHAR,
+    games_used           INTEGER,
+    latest_usage_season  INTEGER,
+    latest_usage_week    INTEGER,
+    missing_inputs       JSON,
+    flags                JSON,
+    explanation          JSON,
+    p_play               DOUBLE,
+    expected_points      DOUBLE,
+    participation        JSON,
+    kickoff              TIMESTAMP,   -- the player's own team kickoff (naive UTC); NULL = unknown
+    pregame              BOOLEAN,     -- run created_at < kickoff; unknown kickoff = FALSE
+    PRIMARY KEY (run_id, espn_player_id)
+);
+
+-- Approved weekly artifacts (create-only, no version bump). ifp-2.0.0 retrains every week, so its approval is
+-- one row per artifact, written ON CONFLICT DO NOTHING when the artifact (saved through the write-once weekly
+-- store) is used by `project`. A run is served / counted as evidence only if its artifact_id (the sha256 of the
+-- artifact FILE bytes) is registered here. NEVER update or delete a row, and never list this table in a
+-- connection._REBUILD entry (that list DROPS tables). The hosted app reads this table, never the registry file.
+CREATE TABLE IF NOT EXISTS approved_artifacts (
+    model_version        VARCHAR NOT NULL,
+    artifact_sha256      VARCHAR NOT NULL,   -- == independent_projection_runs.artifact_id of the runs it made
+    target_season        INTEGER,            -- the week the artifact was trained for; NULL = any week
+    target_week          INTEGER,
+    training_cutoff_key  INTEGER,            -- artifact provenance data_cutoff_key (season * 100 + week)
+    artifact_created_at  VARCHAR,
+    source               VARCHAR NOT NULL,   -- learning_cycle | manual_pin
+    registered_at        TIMESTAMP,
+    PRIMARY KEY (model_version, artifact_sha256)
+);
+
+-- Published projection-performance reports (create-only, no version bump). Built OFFLINE by
+-- scripts/projection_performance.py from the research-only ESPN comparison and the recorded Start/Sit decision sets
+-- (polars/numpy), so the hosted API can serve the scorecard with SQL alone (app/analytics/performance_report.py).
+-- Write-once: one row per distinct report, keyed by the sha256 of its canonical JSON text, inserted in one statement
+-- and never updated or deleted; readers recompute the hash and ignore a row that does not verify. Aggregates only:
+-- no player, roster, league or team identifiers. Never list this table in a connection._REBUILD entry.
+CREATE TABLE IF NOT EXISTS projection_performance_reports (
+    report_sha256        VARCHAR PRIMARY KEY,   -- sha256 of `payload` (UTF-8 bytes, exactly as stored)
+    season               INTEGER NOT NULL,
+    schema_version       VARCHAR NOT NULL,      -- performance_report.SCHEMA_VERSION
+    generated_at         TIMESTAMP NOT NULL,    -- naive UTC, also inside the payload
+    payload              VARCHAR NOT NULL       -- canonical JSON (sorted keys, no NaN)
+);
+
+-- Kicker projection inputs derived from nflverse play-by-play (app/nfl/kicking_pbp.py). Create-only (no version
+-- bump); rebuilt per season by the live sync, the history sync and scripts/sync_kicking_pbp.py.
+-- temp / wind / roof are nflverse's OBSERVED game conditions: never a pregame forecast.
+CREATE TABLE IF NOT EXISTS nfl_kick_attempts (
+    season INTEGER, week INTEGER, game_id VARCHAR, play_id DOUBLE, posteam VARCHAR, defteam VARCHAR,
+    home_team VARCHAR, away_team VARCHAR, kicker_player_id VARCHAR, kicker_player_name VARCHAR,
+    kick_type VARCHAR,               -- FG | PAT
+    kick_distance DOUBLE,
+    result VARCHAR,                  -- made | missed | blocked (| aborted for a PAT snap that was never kicked)
+    qtr DOUBLE, half_seconds_remaining DOUBLE, score_differential DOUBLE,
+    roof VARCHAR, surface VARCHAR, temp DOUBLE, wind DOUBLE, stadium_id VARCHAR, location VARCHAR,
+    PRIMARY KEY (game_id, play_id)
+);
+
+-- One row per (game, offense): drive outcomes and kicking opportunities (nflverse fixed_drive segmentation).
+CREATE TABLE IF NOT EXISTS nfl_team_game_drives (
+    season INTEGER, week INTEGER, game_id VARCHAR, team VARCHAR, opponent VARCHAR, is_home BOOLEAN,
+    location VARCHAR, roof VARCHAR, surface VARCHAR, temp DOUBLE, wind DOUBLE, stadium_id VARCHAR,
+    drives INTEGER, td_drives INTEGER, fg_drives INTEGER, punt_drives INTEGER, turnover_drives INTEGER,
+    downs_drives INTEGER, end_half_drives INTEGER,
+    fg_range_drives INTEGER,         -- drives with a scrimmage snap at or inside the opponent 35
+    rz_drives INTEGER, rz_td_drives INTEGER, rz_fg_drives INTEGER, avg_start_yardline DOUBLE,
+    fg_att INTEGER, fg_made INTEGER, fg_att_50 INTEGER, pat_att INTEGER, pat_made INTEGER, two_pt_att INTEGER,
+    fourth_go_in_range INTEGER, fourth_in_range INTEGER, plays INTEGER, epa_per_play DOUBLE, success_rate DOUBLE,
+    turnovers INTEGER, points DOUBLE,
+    kicker_id VARCHAR,               -- most FG/PAT tries this game
+    kickoff_kicker_id VARCHAR,       -- most kickoffs this game
+    game_kicker_id VARCHAR,          -- kicker_id, else kickoff_kicker_id (a kicker who dressed but never tried a kick)
+    PRIMARY KEY (game_id, team)
+);
+
+-- Write-once weather forecast snapshots (app/analytics/kicker_weather.py). One row per retrieval; a later
+-- retrieval for the same game is a new row, never an update. NWS (api.weather.gov) only: US public domain data.
+CREATE TABLE IF NOT EXISTS weather_forecasts (
+    forecast_id      VARCHAR PRIMARY KEY,   -- sha256 of (provider, game, venue, kickoff, retrieved_at, nonce)
+    provider         VARCHAR,               -- nws
+    provider_model   VARCHAR,               -- e.g. nws:forecastHourly + gridpoints
+    game_id          VARCHAR,
+    venue_id         VARCHAR,
+    latitude         DOUBLE,
+    longitude        DOUBLE,
+    kickoff_utc      TIMESTAMP,
+    window_start_utc TIMESTAMP,
+    window_end_utc   TIMESTAMP,
+    retrieved_at     TIMESTAMP,             -- our clock, naive UTC
+    issued_at        TIMESTAMP,             -- provider updateTime, naive UTC (NULL if not given)
+    status           VARCHAR,               -- ok | unavailable | error
+    error            VARCHAR,
+    forecast_values  JSON,                  -- window aggregates (see kicker_weather.SUMMARY_FIELDS)
+    units            JSON
+);
+
+-- Kicker projection runs (kfp-*), parallel to independent_projection_runs/rows and deliberately NOT stored there:
+-- the skill-position tables are read by several evidence readers that select runs by season only, and a kicker
+-- run is made under a different (kicker) scoring fingerprint. Same contract: append-only, write-once, sealed by
+-- content_sha256 over the canonical meta + rows (app/analytics/kicker_store.py), verified by every reader.
+-- Never list these tables in a connection._REBUILD entry.
+CREATE TABLE IF NOT EXISTS kicker_projection_runs (
+    run_id               VARCHAR PRIMARY KEY,
+    season               INTEGER,
+    week                 INTEGER,
+    model_version        VARCHAR,
+    scoring_fingerprint  VARCHAR,           -- kicker_scoring fingerprint ('k:...')
+    scoring              JSON,              -- resolved kicker rules + reconciliation summary
+    artifact_id          VARCHAR,           -- sha256 of the artifact file bytes
+    artifact_created_at  VARCHAR,
+    data_through_season  INTEGER,
+    data_through_week    INTEGER,
+    nfl_synced_at        TIMESTAMP,
+    model_status         JSON,
+    evaluation           JSON,
+    weather_summary      JSON,
+    forecast_horizon     INTEGER,
+    projected_from_week  INTEGER,
+    created_at           TIMESTAMP,
+    content_sha256       VARCHAR,
+    row_count            INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS kicker_projection_rows (
+    run_id               VARCHAR,
+    season               INTEGER,
+    week                 INTEGER,
+    espn_player_id       BIGINT,
+    gsis_id              VARCHAR,
+    nfl_team             VARCHAR,
+    opponent             VARCHAR,
+    is_home              BOOLEAN,
+    venue_id             VARCHAR,
+    coverage_status      VARCHAR,           -- projected | bye | withheld_unavailable | not_expected_kicker | ...
+    projected_points     DOUBLE,            -- conditional on kicking in the game
+    interval_low         DOUBLE,
+    interval_high        DOUBLE,
+    p_play               DOUBLE,
+    expected_points      DOUBLE,            -- p_play * projected_points
+    stat_line            JSON,              -- expected FG tries / makes by distance, PAT tries / makes
+    context              JSON,              -- model inputs actually used (team, opponent, venue, weather)
+    explanation          JSON,
+    flags                JSON,
+    missing_inputs       JSON,
+    kickoff              TIMESTAMP,         -- annotations (not hashed)
+    pregame              BOOLEAN,
+    PRIMARY KEY (run_id, espn_player_id)
 );

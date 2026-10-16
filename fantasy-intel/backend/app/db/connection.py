@@ -8,6 +8,8 @@ API opens short-lived read-only connections, so the two rarely collide.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import time
 import uuid
 from contextlib import contextmanager
@@ -44,7 +46,31 @@ class DatabaseBusy(RuntimeError):
     pass
 
 
-SCHEMA_VERSION = 7
+def motherduck_dsn(database: str) -> str:
+    """Connection string for one hosted MotherDuck database. The token comes from MOTHERDUCK_TOKEN;
+    attach_mode=single keeps the rest of the MotherDuck workspace out of information_schema, and
+    saas_mode=true stops the hosted API from touching its local filesystem through SQL."""
+    return f"md:{database}?attach_mode=single&saas_mode=true"
+
+
+def connect_motherduck(database: str) -> duckdb.DuckDBPyConnection:
+    """Open the hosted database. The motherduck extension needs a home directory, and Vercel
+    functions run with HOME empty, so fall back to the temp dir (the only writable one there);
+    the extension is then downloaded under it on a cold start. The home_directory /
+    extension_directory connect options are not honoured for md: URLs, so it has to be HOME."""
+    if not (os.getenv("MOTHERDUCK_TOKEN") or os.getenv("motherduck_token")):
+        # Without a token the extension falls back to an interactive browser login and blocks ~1 min.
+        raise duckdb.InvalidInputException("MOTHERDUCK_TOKEN is not set")
+    if not os.getenv("HOME"):
+        os.environ["HOME"] = tempfile.gettempdir()
+    return duckdb.connect(motherduck_dsn(database))
+
+
+SCHEMA_VERSION = 8
+# Oldest schema the read-only API serves. v8 only adds tables/columns, and every v8 reader falls back to the
+# v7 layout (production_forecasts.rows_source and friends), so a hosted copy published before its laptop
+# migrated keeps working. Raise this whenever a version changes something readers cannot fall back from.
+MIN_READ_SCHEMA_VERSION = 7
 
 # Derived tables whose definitions changed in each version. Raw ESPN/nflverse tables
 # are never dropped; derived ones are rebuilt by re-running the syncs/analytics.
@@ -55,7 +81,16 @@ _REBUILD = {
     4: ["player_week_usage"],   # external route columns added; external_* tables are never dropped
     5: [],                      # create-only: espn_projection_history + player_ros_projections
     6: ["team_week_lineup_projections", "team_ros_lineup_projections"],   # V2 lineup tables only
-    7: ["independent_projection_runs", "independent_player_projections"],  # participation columns added
+    7: [],                      # participation columns are ALTERed in (schema.sql): rebuilding would DROP stored runs
+    # 8: create-only. independent_projection_rows is new, independent_projection_runs gains provenance columns
+    #    (ALTER ... ADD COLUMN IF NOT EXISTS in schema.sql) and the legacy rows are copied by
+    #    production_forecasts.migrate_legacy. These tables must NEVER be listed in a rebuild entry: the list DROPS.
+    #    Rest-of-season projections add forecast_horizon / projected_from_week to independent_projection_runs the
+    #    same way (ALTER ... ADD COLUMN IF NOT EXISTS in schema.sql, NULL = horizon 0): no version bump, no rebuild.
+    #    Player ratings (ratings-100.v1) add *_score_100 / rating_scale_version to player_scores and
+    #    opportunity_score_100 to waiver_recommendations the same way: no version bump, no rebuild. The read API
+    #    selects them only when present (routes._player_cols), so an older hosted copy keeps working.
+    8: [],
 }
 _V2_REBUILD = _REBUILD[2]
 
@@ -70,6 +105,9 @@ def init_db(con: duckdb.DuckDBPyConnection) -> None:
             for t in tables:
                 con.execute(f"DROP TABLE IF EXISTS {t}")
     con.execute(SCHEMA_PATH.read_text())
+    if version < 8:
+        from ..analytics.production_forecasts import migrate_legacy   # SQL + stdlib only; lazy: it imports this module
+        migrate_legacy(con)
     con.execute("DELETE FROM schema_meta WHERE key = 'schema_version'")
     con.execute("INSERT INTO schema_meta VALUES ('schema_version', ?)", [str(SCHEMA_VERSION)])
 
@@ -174,6 +212,19 @@ def merge_columns(
     return len(rows)
 
 
+def insert_rows(con: duckdb.DuckDBPyConnection, table: str, rows: Sequence[dict]) -> int:
+    """Append rows; never deletes or replaces. A key collision raises (the table's PRIMARY KEY)."""
+    if not rows:
+        return 0
+    tmp = f"_tmp_{uuid.uuid4().hex[:8]}"
+    con.register(tmp, _rows_to_arrow(con, table, rows))
+    try:
+        con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM {tmp}")
+    finally:
+        con.unregister(tmp)
+    return len(rows)
+
+
 def replace_where(
     con: duckdb.DuckDBPyConnection,
     table: str,
@@ -234,8 +285,22 @@ class SyncRun:
         self.run_id = f"{source}-{utcnow():%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
         self.started_at = utcnow()
 
-    def finish(self, status: str, message: str = "", stats: dict | None = None) -> None:
+    def start(self, message: str = "", stats: dict | None = None) -> None:
+        """Optional: persist a 'running' row now (finished_at NULL), replaced by finish(). A process that dies
+        in between leaves it behind, so an unfinished run is detectable (injury_freshness.manifest_view).
+        Readers that matter filter on status = 'ok'; the API reports such a leftover row (finished_at NULL) as
+        'interrupted' and leaves it out of each source's latest run (api/routes.py)."""
         upsert_rows(self.con, "sync_runs", [{
+            "run_id": self.run_id, "source": self.source, "started_at": self.started_at, "finished_at": None,
+            "status": "running", "message": message, "stats": stats or {},
+        }], ["run_id"])
+
+    def finish(self, status: str, message: str = "", stats: dict | None = None) -> None:
+        """Replace the start() marker (or insert). When the marker exists this is ONE UPDATE statement:
+        upsert_rows is DELETE then INSERT, so a crash between them would erase the 'running' marker and with it
+        the sign of an unfinished sync. A single statement is atomic, and it joins any transaction the caller
+        has open (no BEGIN of our own, which would abort a caller's transaction)."""
+        row = {
             "run_id": self.run_id,
             "source": self.source,
             "started_at": self.started_at,
@@ -243,7 +308,14 @@ class SyncRun:
             "status": status,
             "message": message,
             "stats": stats or {},
-        }], ["run_id"])
+        }
+        if self.con.execute("SELECT count(*) FROM sync_runs WHERE run_id = ?", [self.run_id]).fetchone()[0]:
+            self.con.execute("UPDATE sync_runs SET source = ?, started_at = ?, finished_at = ?, status = ?, "
+                             "message = ?, stats = ? WHERE run_id = ?",
+                             [row["source"], row["started_at"], row["finished_at"], row["status"], row["message"],
+                              json.dumps(row["stats"], default=str), self.run_id])
+        else:
+            upsert_rows(self.con, "sync_runs", [row], ["run_id"])
 
 
 def fetch_dicts(con: duckdb.DuckDBPyConnection, sql: str, params: Sequence[Any] = ()) -> list[dict]:

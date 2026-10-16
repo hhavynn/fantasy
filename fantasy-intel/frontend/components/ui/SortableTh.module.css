@@ -1,0 +1,22 @@
+.th { white-space: nowrap; }
+.right { text-align: right; }
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: inherit;
+  border-radius: 4px;
+}
+.right .link { flex-direction: row-reverse; }
+.link:hover { color: var(--ink); text-decoration: none; }
+.active { color: var(--ink); }
+.arrow { font-size: 9px; line-height: 1; color: var(--accent); }
+/* Inactive columns hint at sortability only on hover/focus; the active column always shows its arrow. */
+.link:not(.active) .arrow { visibility: hidden; color: var(--ink-faint); }
+.link:not(.active):hover .arrow, .link:not(.active):focus-visible .arrow { visibility: visible; }
+
+/* Phones: a 40px-tall sort target (the header row grows to fit; no extra padding on top of it). */
+@media (max-width: 720px) {
+  .th { padding-top: 0; padding-bottom: 0; }
+  .link { min-height: 40px; }
+}

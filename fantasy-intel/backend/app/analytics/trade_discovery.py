@@ -48,7 +48,7 @@ from dataclasses import replace
 from itertools import combinations
 
 from .lineup import FLEX_ELIGIBILITY, assign_lineup, lineup_total
-from .team_lineups import NDIGITS, RosterPlayer, lineup_relevant, r
+from .team_lineups import NDIGITS, STREAMER_IDS, RosterPlayer, lineup_relevant, r, slot_filled, stream_levels
 from .trades import (EvaluationUnavailable, LeagueState, NoRemainingWeeksError, TradeError, choose_forced_drops,
                      evaluate_trade, legal_roster)
 
@@ -69,8 +69,9 @@ CATEGORIES = {
     "MUTUAL_PROJECTED_IMPROVEMENT": "Both starting lineups project to gain.",
     "IMPROVES_MINE_COSTS_THEIRS": "Your lineup gains; theirs projects to lose starting points.",
     "IMPROVES_MINE_THEIRS_UNCHANGED": "Your lineup gains; theirs is projected unchanged.",
-    "CONSOLIDATION": "Two-for-one in which the side receiving one player upgrades its starting lineup; "
-                     "the other side's depth, displacement and forced drops are shown.",
+    "CONSOLIDATION": "Uneven trade (2-for-1, 3-for-1, 3-for-2 and the reverse) in which the side receiving fewer "
+                     "players upgrades its starting lineup; the other side's depth, displacement and forced drops are "
+                     "shown.",
     "PLAYOFF_FOCUSED": "Your playoff delta is positive while your regular-season delta is not.",
     "REGULAR_SEASON_FOCUSED": "Your regular-season delta is positive while your playoff delta is not.",
 }
@@ -116,17 +117,25 @@ class _Totals:
         self.val = [{p: (positions.get(p), float(state.projections[p][w])) for p in pids
                      if state.projections.get(p, {}).get(w) is not None and w not in blocked.get(p, ())} for w in weeks]
         self.negative = any(v < 0 for row in self.val for _, v in row.values())
+        # The K/D/ST waiver streamer (team_lineups.project_week): a player every roster always has, worth the
+        # week's streaming baseline. Adding one fixed element to every set keeps the lineup total monotone and
+        # submodular, so every stage-A bound below stays valid.
+        levels = stream_levels(state.projections)
+        self.stream = [{pos: per[w] for pos, per in levels.items() if pos in state.slots and per.get(w) is not None}
+                       for w in weeks]
         relevant = {p for p in pids if lineup_relevant(positions.get(p), state.slots) and teams.get(p)}
         self.missing = [frozenset(p for p in relevant if p not in row and w not in blocked.get(p, ()))
                         for w, row in zip(weeks, self.val)]
         self.solves = 0
 
     def week(self, ids, i: int) -> float:
-        row = self.val[i]
+        row, stream = self.val[i], self.stream[i]
         if self.general:
             return lineup_total(assign_lineup([{"espn_player_id": p, "position": self.pos.get(p), "value": row[p][1]}
-                                               for p in ids if p in row], self.slots))
-        by: dict = {}
+                                               for p in ids if p in row]
+                                              + [{"espn_player_id": STREAMER_IDS[pos], "position": pos, "value": v}
+                                                 for pos, v in stream.items()], self.slots))
+        by: dict = {pos: [v] for pos, v in stream.items()}
         for p in ids:
             e = row.get(p)
             if e is not None:
@@ -598,11 +607,16 @@ class TradeSearch:
         return True
 
     def evaluation(self) -> dict:
-        reason = self.state.start_week_reason or {}
-        return {"start_week": self.window.start, "final_week": self.window.final,
-                "last_regular_season_week": self.window.last_regular, "weeks": list(self.weeks),
-                "uncertain": bool(reason.get("uncertain")), "warning": reason.get("warning"),
-                "start_week_reason": reason.get("reason")}
+        return evaluation(self.state, self.window)
+
+
+def evaluation(state: LeagueState, window) -> dict:
+    """The evaluation window and why it starts where it does (no search needed)."""
+    reason = state.start_week_reason or {}
+    return {"start_week": window.start, "final_week": window.final,
+            "last_regular_season_week": window.last_regular, "weeks": list(window.weeks),
+            "uncertain": bool(reason.get("uncertain")), "warning": reason.get("warning"),
+            "start_week_reason": reason.get("reason")}
 
 
 DELTA_KEYS = ("ros_delta", "regular_season_delta", "playoff_delta", "known_ros_delta", "average_weekly_delta",
@@ -666,7 +680,12 @@ def _categories(shape: str, mine: dict, theirs: dict) -> list[str]:
     if m is not None and m > 0 and t is not None:
         out.append("MUTUAL_PROJECTED_IMPROVEMENT" if t > 0 else "IMPROVES_MINE_COSTS_THEIRS" if t < 0
                    else "IMPROVES_MINE_THEIRS_UNCHANGED")
-    consolidator = mine if shape == "2-for-1" else theirs if shape == "1-for-2" else None
+    # The side receiving FEWER players consolidates (shape "a-for-b": the anchor sends a, receives b): the
+    # anchor when b < a, the opponent when b > a. Exact 2-for-1 / 1-for-2 behave as before; the uneven
+    # heuristic shapes (3-for-1, 1-for-3, 3-for-2, 2-for-3) now qualify too. Only the row's category:
+    # `_may_match` and the stage-A bounds never see it.
+    sent, got = (int(x) for x in shape.split("-for-"))
+    consolidator = mine if got < sent else theirs if got > sent else None
     if consolidator is not None and consolidator["ros_delta"] is not None and consolidator["ros_delta"] > 0:
         out.append("CONSOLIDATION")
     reg, po = mine["regular_season_delta"], mine["playoff_delta"]
@@ -688,9 +707,9 @@ def _empty_slots(side: dict) -> list[dict]:
     """Starting slots the team could fill before the trade but not after (no eligible player)."""
     out = []
     for b, a in zip(side["lineups"]["before"], side["lineups"]["after"]):
-        had = [x["slot"] for x in b["assignment"] if x["player_id"] is not None]
+        had = [x["slot"] for x in b["assignment"] if slot_filled(x)]
         for x in a["assignment"]:
-            if x["player_id"] is None and x["slot"] in had:
+            if not slot_filled(x) and x["slot"] in had:
                 had.remove(x["slot"])
                 out.append({"week": a["week"], "slot": x["slot"]})
     return out

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template for a per-user launchd agent that runs scripts/learning_cycle.py (the research-only
+  weekly learning cycle of the independent projection engine). Not installed automatically: see
+  README "Weekly learning cycle (macOS launchd)" for the sed command that fills in
+  __FANTASY_INTEL_DIR__ (the fantasy-intel folder holding .env and data/) and __UV__ (`command -v uv`).
+
+  It is separate from com.fantasy-intel.refresh (ESPN snapshots, analytics, MotherDuck), which keeps
+  its own schedule; this agent never runs sync_espn.py or publish_motherduck.py.
+
+  StartCalendarInterval uses the Mac's local time zone; the times below assume Pacific.
+  Weekday: 2 = Tuesday, 3 = Wednesday, 4 = Thursday.
+    Tue 07:00 PT (10:00 ET)  first attempt, after Monday night's game (an hour before refresh_all.py;
+                             if both fire together on wake, the cycle's sync fails on the DuckDB
+                             write lock and the next attempt retries)
+    Wed 07:00 PT (10:00 ET)  retry: nflverse expected points (ff_opportunity) often land a day later
+    Thu 07:00 PT (10:00 ET)  last retry, before any Thursday kickoff including Thanksgiving's 12:30 ET
+  Each attempt is idempotent: once the week's forecast is frozen, later attempts report up_to_date.
+  The cycle compares against the real nflverse kickoff (US Eastern) and refuses after it; it never
+  assumes a fixed Thursday time. A run missed while the Mac sleeps fires on wake; one missed while
+  it is powered off is skipped (see README for `pmset` wake scheduling).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.fantasy-intel.weekly-learning</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__UV__</string>
+    <string>run</string>
+    <string>python</string>
+    <string>../scripts/learning_cycle.py</string>
+    <string>run</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__FANTASY_INTEL_DIR__/backend</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Weekday</key><integer>2</integer>
+      <key>Hour</key><integer>7</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>3</integer>
+      <key>Hour</key><integer>7</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>4</integer>
+      <key>Hour</key><integer>7</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <!-- The cycle writes its own reports under data/models/weekly/reports and the sync output under
+       data/models/weekly/logs; stderr catches uv/permission errors before those exist. -->
+  <key>StandardOutPath</key>
+  <string>__FANTASY_INTEL_DIR__/data/logs/weekly-learning.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__FANTASY_INTEL_DIR__/data/logs/weekly-learning.err.log</string>
+</dict>
+</plist>

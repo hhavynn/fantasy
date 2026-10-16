@@ -1,0 +1,57 @@
+.controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
+.controls label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.controls select { min-width: 140px; max-width: 100%; }
+.reset { align-self: center; font-size: 13px; }
+
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--ink-muted); }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Timeline: players down, weeks across; scrolls inside its section on phones. */
+.timeline { border-collapse: separate; border-spacing: 0; width: auto; min-width: 100%; }
+.timeline th, .timeline td { padding: 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.timeline thead th { position: static; background: var(--surface-raised); text-align: center; padding: 6px 4px; font-size: 12px; }
+.timeline .phaseRow th { border-bottom: 0; padding-bottom: 0; color: var(--ink-faint); font-weight: 600; text-align: left; padding-left: 8px; }
+.timeline .phaseRow .playoffHead { color: var(--accent); border-left: 1px solid var(--line-control); }
+.timeline .corner, .timeline .who { position: sticky; left: 0; z-index: 1; text-align: left; min-width: 168px; max-width: 200px; white-space: nowrap; }
+.timeline .corner { background: var(--surface-raised); padding-left: 16px; }
+.timeline .who { background: var(--surface); padding: 6px 12px 6px 16px; font-weight: 400; font-size: 13px; }
+.who a { font-weight: 500; }
+.team { color: var(--ink-faint); font-size: 12px; margin-left: 4px; }
+.wk { min-width: 60px; }
+.wk small { display: block; color: var(--ink-faint); font-weight: 400; font-size: 11px; }
+.past { opacity: .55; }
+.playoffEdge { border-left: 1px solid var(--line-control); }
+
+.cell { display: block; min-width: 60px; padding: 5px 6px; text-align: center; font-size: 12px; line-height: 16px; border-radius: 0; font-variant-numeric: tabular-nums; }
+.cell b { display: block; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.cell span { display: block; font-size: 11px; color: var(--ink-muted); white-space: nowrap; }
+.permissive { background: var(--positive-soft); }
+.permissive span { color: var(--positive); }
+.tougher { background: var(--negative-soft); }
+.tougher span { color: var(--negative); }
+.middle { background: var(--neutral-soft); }
+.insufficient, .unavailable { background: var(--caution-soft); }
+.insufficient span, .unavailable span { color: var(--caution); }
+.bye { color: var(--ink-faint); }
+.bye b { color: var(--ink-faint); font-weight: 500; }
+.none { color: var(--ink-faint); }
+
+.evidence { white-space: normal; min-width: 280px; max-width: 420px; color: var(--ink-muted); }
+.evidence b { color: var(--ink); font-weight: 600; }
+.note { display: block; color: var(--ink-faint); font-size: 12px; }
+.gap { color: var(--caution); }
+.dim td { opacity: .6; }
+.metrics { margin: 0; padding: 0; list-style: none; white-space: normal; }
+.metrics li + li { margin-top: 2px; }
+.counts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 12px; font-size: 13px; }
+.countsItem b { color: var(--ink); font-weight: 600; }
+.inline { margin: 0; color: var(--ink-muted); font-size: 13px; }
+.detailTop { padding: 16px 16px 0; display: grid; gap: 12px; }
+.detailTop:empty { display: none; }
+
+@media (max-width: 720px) {
+  .controls { display: grid; grid-template-columns: 1fr 1fr; align-items: end; }
+  .controls select { width: 100%; min-width: 0; }
+  .timeline .corner, .timeline .who { min-width: 118px; max-width: 132px; white-space: normal; padding-left: 12px; padding-right: 8px; }
+  .team { display: none; }
+}

@@ -1,33 +1,78 @@
 import type { Metadata } from "next";
-import { Barlow_Condensed, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import Link from "next/link";
-import { MobileNav, NavGroups, SubNav } from "@/components/Nav";
+import { CommandPalette } from "@/components/CommandPalette";
+import { BrandMark, MobileNav, NavGroups, SubNav, TabBar } from "@/components/Nav";
+import { ProjectionSwitch } from "@/components/ProjectionSwitch";
 import { SyncPill } from "@/components/SyncPill";
+import { TableScroll } from "@/components/TableScroll";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { api } from "@/lib/api";
+import { getProjectionSource } from "@/lib/projection-source.server";
 import type { StatusPayload } from "@/lib/sync-status";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
 
-const display = Barlow_Condensed({ subsets: ["latin"], weight: ["500", "600"], variable: "--font-barlow-condensed" });
-const sans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-plex-sans" });
-const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono" });
+// Self-hosted (app/fonts, from @fontsource, see app/fonts/README.md) so `next build` never fetches Google Fonts.
+// Same files Google served (latin, preloaded; Plex Sans Greek on demand for "Δ"), weights, `swap` and CSS variables
+// as the old next/font/google setup. The metric-matched "… Fallback" faces live in globals.css.
+const barlowCondensed = localFont({
+  src: [
+    { path: "./fonts/barlow-condensed-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/barlow-condensed-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
+  display: "swap",
+  fallback: ["Barlow Condensed Fallback"],
+  adjustFontFallback: false,
+  variable: "--font-barlow-condensed",
+});
+const plexSans = localFont({
+  src: [{ path: "./fonts/ibm-plex-sans-latin-wght-normal.woff2", weight: "400 700", style: "normal" }],
+  display: "swap",
+  adjustFontFallback: false,
+  variable: "--font-plex-sans",
+});
+const plexSansGreek = localFont({
+  src: [{ path: "./fonts/ibm-plex-sans-greek-wght-normal.woff2", weight: "400 700", style: "normal" }],
+  declarations: [{ prop: "unicode-range", value: "U+0370-0377,U+037A-037F,U+0384-038A,U+038C,U+038E-03A1,U+03A3-03FF" }],
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+  variable: "--font-plex-sans-greek",
+});
+const plexMono = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
+  ],
+  display: "swap",
+  fallback: ["IBM Plex Mono Fallback"],
+  adjustFontFallback: false,
+  variable: "--font-plex-mono",
+});
 
 export const metadata: Metadata = {
-  title: "Fantasy Intel",
-  description: "Local fantasy football war room",
+  title: { default: "Fantasy Intel", template: "%s · Fantasy Intel" },
+  description: "Fantasy football war room for your league",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const status = await api<NonNullable<StatusPayload>>("/api/status");
+  const [status, projection] = await Promise.all([api<NonNullable<StatusPayload>>("/api/status"), getProjectionSource()]);
   const s = status.data;
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    // suppressHydrationWarning: the inline script below sets data-theme on <html> before React hydrates.
+    <html lang="en" className={`${barlowCondensed.variable} ${plexSans.variable} ${plexSansGreek.variable} ${plexMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body>
         <header className="appbar">
           <div className="topbar">
             <Link href="/" className="brand" aria-label="Fantasy Intel home">
-              fantasy<span>intel</span>
+              <BrandMark />
+              <span className="brand-word">Fantasy<span>Intel</span></span>
             </Link>
             <NavGroups />
             <div className="topbar-end">
@@ -36,13 +81,18 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   {s.league.name} <span className="faint">· wk {s.league.current_week}</span>
                 </span>
               )}
+              <CommandPalette />
+              <ProjectionSwitch value={projection} className="topbar-proj" />
+              <ThemeSwitch className="topbar-theme" />
               <SyncPill status={s ?? null} />
-              <MobileNav />
+              <MobileNav projection={projection} />
             </div>
           </div>
           <SubNav />
         </header>
         <main>{children}</main>
+        <TabBar />
+        <TableScroll />
       </body>
     </html>
   );

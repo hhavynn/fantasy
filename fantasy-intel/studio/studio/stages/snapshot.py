@@ -148,14 +148,19 @@ def run(ep: Episode) -> None:
         snap = build_snapshot(con, ep.season, ep.week)
     finally:
         con.close()
-    # The source-sync timestamp changes on every sync even when the data does not; the content hash
-    # covers the tables only, so an unchanged dataset keeps downstream stages cached.
+    # The content hash covers the tables only. An unchanged dataset with the same sync record is skipped; a new
+    # sync of the same data still rewrites the file, because "as of" claims (and the timeliness gate) read the
+    # sync's timestamp, and a fresh sync must be able to clear a stale one.
     digest = sha256_bytes(canonical_json(snap["tables"]).encode())
     snap["content_sha256"] = digest
     path = ep.path("snapshot.json")
-    if path.exists() and read_json(path).get("content_sha256") == digest and "snapshot" not in ep.force:
-        ep.log(f"  snapshot: unchanged ({digest[:12]}), skipped")
-        return
+    if path.exists() and "snapshot" not in ep.force:
+        prev = read_json(path)
+        if prev.get("content_sha256") == digest and prev.get("source_sync") == snap.get("source_sync"):
+            ep.log(f"  snapshot: unchanged ({digest[:12]}), skipped")
+            return
+        if prev.get("content_sha256") == digest:
+            ep.log(f"  snapshot: same data ({digest[:12]}), newer sync record: refreshed")
     write_json(path, snap)
     ep.log(f"  snapshot: wrote {len(snap['tables']['player_week_usage'])} usage rows "
            f"through week {snap['data_through_week']} ({digest[:12]})")

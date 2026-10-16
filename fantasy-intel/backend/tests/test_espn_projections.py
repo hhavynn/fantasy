@@ -606,3 +606,25 @@ def test_unmigrated_v4_database_is_refused_by_api_and_skipped_by_ros_builder(tmp
     for path in ("/api/data-quality", "/api/players/201/forward"):   # the read-only API never migrates
         res = api.get(path)
         assert res.status_code == 503 and f"older than v{SCHEMA_VERSION}" in res.json()["detail"]
+
+
+def test_same_day_sync_after_kickoff_keeps_the_pregame_history_row(con):
+    """A history row captured before the player's kickoff is the pregame ESPN benchmark: a later
+    sync on the same day, after that kickoff, must not replace it. Players whose game has not
+    started are replaced as before."""
+    sync(con, FakeEspnClient(projections={5: projection_payload(5, values={201: 6.0, 202: 7.0})}))
+    teams = dict(con.execute("SELECT espn_player_id, pro_team FROM fantasy_players "
+                             "WHERE espn_player_id IN (201, 202)").fetchall())
+    assert teams[201] and teams[202] and teams[201] != teams[202]
+    con.execute("UPDATE espn_projection_history SET synced_at = TIMESTAMP '2020-01-05 15:00:00'")   # 10:00 ET
+    con.execute("CREATE OR REPLACE TABLE nfl_schedules (season INT, week INT, game_type VARCHAR, game_id VARCHAR, "
+                "gameday VARCHAR, gametime VARCHAR, home_team VARCHAR, away_team VARCHAR)")
+    con.execute("INSERT INTO nfl_schedules VALUES (?, 5, 'REG', 'g1', '2020-01-05', '13:00', ?, 'ZZZ'), "
+                "(?, 5, 'REG', 'g2', '2099-01-05', '13:00', ?, 'YYY')", [SEASON, teams[201], SEASON, teams[202]])
+    sync(con, FakeEspnClient(projections={5: projection_payload(5, values={201: 1.0, 202: 2.0})}))
+    h = {pid: (pts, at) for pid, pts, at in con.execute(
+        "SELECT espn_player_id, projected_points, synced_at FROM espn_projection_history "
+        "WHERE scoring_period = 5 AND espn_player_id IN (201, 202)").fetchall()}
+    assert h[201] == (6.0, datetime(2020, 1, 5, 15, 0))       # pregame row kept, not overwritten after kickoff
+    assert h[202][0] == 2.0 and h[202][1] > datetime(2020, 1, 6)   # not kicked off: today's row replaced
+    assert sync_mod.pregame_history_locked(con, SEASON, 5, date.today(), datetime(2020, 1, 5, 17, 59)) == set()

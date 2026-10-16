@@ -1,0 +1,7 @@
+.conf { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.dot { font-size: 10px; line-height: 1; }
+.high { color: var(--positive); }
+.medium { color: var(--caution); }
+.low { color: var(--ink-faint); }
+.confText { color: var(--ink-muted); font-size: 12px; }
+.classBadge { display: inline-flex; align-items: center; gap: 4px; }

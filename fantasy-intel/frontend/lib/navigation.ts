@@ -8,16 +8,30 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "My team",
     pages: [
       { href: "/", label: "Overview" },
+      { href: "/matchup", label: "Matchup" },
       { href: "/start-sit", label: "Start/Sit" },
       { href: "/my-team/value", label: "Team value" },
     ],
   },
-  { label: "Players", pages: [{ href: "/players", label: "Players" }, { href: "/waivers", label: "Waivers" }] },
+  {
+    label: "Players",
+    pages: [
+      { href: "/players", label: "Players" },
+      { href: "/compare", label: "Compare" },
+      { href: "/rankings", label: "Rankings" },
+      { href: "/research", label: "Research lab" },
+      { href: "/movers", label: "Projection movers" },
+      { href: "/projection-performance", label: "Projection accuracy" },
+      { href: "/waivers", label: "Waivers" },
+      { href: "/kickers", label: "Kicker outlook" },
+    ],
+  },
   { label: "Trades", pages: [{ href: "/trades", label: "Analyzer" }, { href: "/trades/discover", label: "Discover" }] },
   {
     label: "League",
     pages: [
       { href: "/schedule-intelligence", label: "Schedule" },
+      { href: "/weekly-recap", label: "Weekly recap" },
       { href: "/luck-lab", label: "Luck lab" },
       { href: "/playoff-race", label: "Playoff race" },
       { href: "/managers", label: "Managers" },

@@ -107,6 +107,8 @@ def _run(ep: Episode) -> None:
     pipe = make_pipeline(cfg)
     out_dir = ep.path("audio")
     out_dir.mkdir(parents=True, exist_ok=True)
+    for old in out_dir.glob("*.wav"):        # a shorter script must not leave earlier segments behind for QC
+        old.unlink()                         # and provenance to pick up
     timings, unknown = {"sample_rate": cfg["sample_rate"], "voice": cfg["voice"], "segments": []}, {}
     fallback_words: set[str] = set()
     for seg in script["narration_segments"]:

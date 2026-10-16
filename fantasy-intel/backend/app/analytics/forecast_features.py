@@ -40,6 +40,10 @@ OPP_SHRINK_PLAYS = 150.0    # opponent EPA per play
 ABSENCE_WEEKS = 3           # weeks since last game at or above which a player is "returning"
 SNAP_DROP = 0.15            # last-game snap share this far below the earlier recent mean is a "drop"
 EXIT_REPORT_WEEKS = 2       # an injury listing within this many weeks after the drop game marks an injury exit
+BLOWOUT_MARGIN = 17         # a snap drop in a game decided by at least this many points is "game script"
+REF_GAMES = 4               # a game's reference snap share: mean of the player's previous <= this many games
+USAGE_PRIOR_GAMES = 3.0     # healthy current-season usage shrinks toward last season's by this many games (EB)
+GAME_CLASSES = ("full", "injury_exit", "blowout_low", "listed_low", "role_low", "unknown")
 
 PANEL_COLUMNS = (
     "season", "week", "gsis_id", "position", "team", "opponent", "has_stats", "has_snaps",
@@ -47,7 +51,21 @@ PANEL_COLUMNS = (
     "passing_yards", "rushing_yards", "receiving_yards", "offense_pct", "xfp",
     "rz_targets", "rz_carries", "gl_carries", "designed_rushes",
     "team_targets", "team_rush_attempts", "team_rb_carries",
+    "td_points", "xfpl", "xfpl_td", "team_plays",
 )
+
+# League scoring column -> nflverse ff_opportunity expected column. Expected league points
+# (`xfpl`) = sum(league weight * expected count): the same units as `league_points`, unlike
+# nflverse's own PPR total. Fumbles and return/recovery TDs have no expected column and are left
+# out (they are rare); every touchdown component is also summed separately (`xfpl_td`).
+EXPECTED_COMPONENTS = {
+    "receptions": "receptions_exp", "receiving_yards": "rec_yards_gained_exp",
+    "rushing_yards": "rush_yards_gained_exp", "passing_yards": "pass_yards_gained_exp",
+    "passing_tds": "pass_touchdown_exp", "receiving_tds": "rec_touchdown_exp", "rushing_tds": "rush_touchdown_exp",
+    "passing_interceptions": "pass_interception_exp", "passing_2pt_conversions": "pass_two_point_conv_exp",
+    "receiving_2pt_conversions": "rec_two_point_conv_exp", "rushing_2pt_conversions": "rush_two_point_conv_exp",
+}
+TD_COLUMNS = ("passing_tds", "receiving_tds", "rushing_tds", "special_teams_tds", "fumble_recovery_tds")
 
 
 def key(season, week):
@@ -91,21 +109,36 @@ def load_panel(con, scoring: SkillScoring, seasons: list[int] | None = None) -> 
         FROM nfl_pbp_player_week WHERE true {where}""",
         "SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS season, NULL::INT AS week, NULL::INT AS rz_targets, "
         "NULL::INT AS rz_carries, NULL::INT AS gl_carries, NULL::INT AS designed_rushes WHERE false")
+    exp = {k: c for k, c in EXPECTED_COMPONENTS.items() if k in scoring.weights}
+
+    def exp_sum(keys) -> str:
+        return " + ".join(f"{float(scoring.weights[k])!r} * coalesce({exp[k]}, 0)" for k in keys) or "0"
+
+    xfpl = _optional_sql(con, "nfl_ff_opportunity", {"player_id", *exp.values()}, f"""
+        SELECT player_id AS gsis_id, season::INT AS season, week::INT AS week,
+               sum({exp_sum(exp)}) AS xfpl, sum({exp_sum([k for k in exp if k.endswith('_tds')])}) AS xfpl_td
+        FROM nfl_ff_opportunity WHERE true {where} GROUP BY 1, 2, 3""",
+        "SELECT NULL::VARCHAR AS gsis_id, NULL::INT AS season, NULL::INT AS week, NULL::DOUBLE AS xfpl, "
+        "NULL::DOUBLE AS xfpl_td WHERE false")
+    tw_cols = set(table_columns(con, "nfl_team_week")) if table_exists(con, "nfl_team_week") else set()
+    plays = "offense_plays" if "offense_plays" in tw_cols else "NULL::INT"
     team = _optional_sql(con, "nfl_team_week", {"team_targets", "team_rush_attempts", "team_rb_carries"}, f"""
-        SELECT season, week, team, team_targets, team_rush_attempts, team_rb_carries
+        SELECT season, week, team, team_targets, team_rush_attempts, team_rb_carries, {plays} AS team_plays
         FROM nfl_team_week WHERE true {where}""",
         "SELECT NULL::INT AS season, NULL::INT AS week, NULL::VARCHAR AS team, NULL::INT AS team_targets, "
-        "NULL::INT AS team_rush_attempts, NULL::INT AS team_rb_carries WHERE false")
+        "NULL::INT AS team_rush_attempts, NULL::INT AS team_rb_carries, NULL::INT AS team_plays WHERE false")
     pts = points_sql(scoring, "w")
+    td_pts = " + ".join(f"{float(scoring.weights[c])!r} * coalesce(w.{c}, 0)" for c in TD_COLUMNS
+                        if c in scoring.weights and c in stat_cols) or "0"
     sql = f"""
     WITH stats AS (
         SELECT w.player_id AS gsis_id, w.season::INT AS season, w.week::INT AS week, w.team,
                w.opponent_team AS opponent, CASE WHEN w.position = 'FB' THEN 'RB' ELSE w.position END AS position,
-               {pts} AS league_points, w.attempts AS pass_attempts, w.carries, w.targets, w.receptions,
+               {pts} AS league_points, {td_pts} AS td_points, w.attempts AS pass_attempts, w.carries, w.targets, w.receptions,
                w.receiving_air_yards AS air_yards, w.passing_yards, w.rushing_yards, w.receiving_yards
         FROM nfl_weekly_stats w WHERE w.season_type = 'REG' {where}
     ),
-    snaps AS ({snaps}), xfp AS ({xfp}), pbp AS ({pbp}), tw AS ({team}),
+    snaps AS ({snaps}), xfp AS ({xfp}), xfpl AS ({xfpl}), pbp AS ({pbp}), tw AS ({team}),
     base AS (
         SELECT coalesce(st.gsis_id, sn.gsis_id) AS gsis_id, coalesce(st.season, sn.season) AS season,
                coalesce(st.week, sn.week) AS week, coalesce(st.team, sn.team) AS team,
@@ -113,6 +146,7 @@ def load_panel(con, scoring: SkillScoring, seasons: list[int] | None = None) -> 
                coalesce(st.position, CASE WHEN np.position = 'FB' THEN 'RB' ELSE np.position END) AS position,
                st.gsis_id IS NOT NULL AS has_stats, sn.gsis_id IS NOT NULL AS has_snaps,
                CASE WHEN st.gsis_id IS NULL THEN 0.0 ELSE st.league_points END AS league_points,
+               CASE WHEN st.gsis_id IS NULL THEN 0.0 ELSE st.td_points END AS td_points,
                coalesce(st.pass_attempts, 0) AS pass_attempts, coalesce(st.carries, 0) AS carries,
                coalesce(st.targets, 0) AS targets, coalesce(st.receptions, 0) AS receptions,
                coalesce(st.air_yards, 0) AS air_yards, coalesce(st.passing_yards, 0) AS passing_yards,
@@ -130,9 +164,11 @@ def load_panel(con, scoring: SkillScoring, seasons: list[int] | None = None) -> 
            CASE WHEN p.gsis_id IS NULL AND t.team IS NOT NULL THEN 0 ELSE p.rz_carries END AS rz_carries,
            CASE WHEN p.gsis_id IS NULL AND t.team IS NOT NULL THEN 0 ELSE p.gl_carries END AS gl_carries,
            CASE WHEN p.gsis_id IS NULL AND t.team IS NOT NULL THEN 0 ELSE p.designed_rushes END AS designed_rushes,
-           t.team_targets, t.team_rush_attempts, t.team_rb_carries
+           t.team_targets, t.team_rush_attempts, t.team_rb_carries,
+           b.td_points, xl.xfpl, xl.xfpl_td, t.team_plays
     FROM base b
     LEFT JOIN xfp x ON x.gsis_id = b.gsis_id AND x.season = b.season AND x.week = b.week
+    LEFT JOIN xfpl xl ON xl.gsis_id = b.gsis_id AND xl.season = b.season AND xl.week = b.week
     LEFT JOIN pbp p ON p.gsis_id = b.gsis_id AND p.season = b.season AND p.week = b.week
     LEFT JOIN tw t ON t.team = b.team AND t.season = b.season AND t.week = b.week
     WHERE b.gsis_id IS NOT NULL AND b.position IN ('QB', 'RB', 'WR', 'TE')
@@ -150,7 +186,8 @@ def _panel_schema() -> dict:
             "has_snaps": b, "league_points": f, "pass_attempts": f, "carries": f, "targets": f,
             "receptions": f, "air_yards": f, "passing_yards": f, "rushing_yards": f, "receiving_yards": f,
             "offense_pct": f, "xfp": f, "rz_targets": f, "rz_carries": f, "gl_carries": f,
-            "designed_rushes": f, "team_targets": f, "team_rush_attempts": f, "team_rb_carries": f}
+            "designed_rushes": f, "team_targets": f, "team_rush_attempts": f, "team_rb_carries": f,
+            "td_points": f, "xfpl": f, "xfpl_td": f, "team_plays": f}
 
 
 def load_games(con, seasons: list[int] | None = None) -> pl.DataFrame:
@@ -191,6 +228,7 @@ class Sources:
     defense: pl.DataFrame
     rosters: pl.DataFrame | None = None     # nflverse weekly roster status (participation model)
     injuries: pl.DataFrame | None = None    # nflverse weekly injury report, pregame rows only
+    exits: pl.DataFrame | None = None       # play-by-play in-game injury evidence (app.nfl.pbp_exits)
 
     @staticmethod
     def concat(parts: list["Sources"]) -> "Sources":
@@ -205,7 +243,8 @@ class Sources:
             flt = pl.col("season").is_in(sorted(new))
             keep.append(Sources(part.panel.filter(flt), part.games.filter(flt), part.defense.filter(flt),
                                 None if part.rosters is None else part.rosters.filter(flt),
-                                None if part.injuries is None else part.injuries.filter(flt)))
+                                None if part.injuries is None else part.injuries.filter(flt),
+                                None if part.exits is None else part.exits.filter(flt)))
         keep.reverse()
 
         def optional(name):
@@ -214,9 +253,18 @@ class Sources:
 
         return Sources(pl.concat([k.panel for k in keep]).sort("season", "week", "gsis_id"),
                        pl.concat([k.games for k in keep]), pl.concat([k.defense for k in keep]),
-                       optional("rosters"), optional("injuries"))
+                       optional("rosters"), optional("injuries"), optional("exits"))
+
+    def with_exits(self, exits: pl.DataFrame | None) -> "Sources":
+        """Same sources plus play-by-play in-game injury evidence (seasons it covers only)."""
+        if exits is None:
+            return self
+        return Sources(self.panel, self.games, self.defense, self.rosters, self.injuries,
+                       exits.cast(EXITS_SCHEMA, strict=False).select(list(EXITS_SCHEMA)))
 
 
+EXITS_SCHEMA = {"season": pl.Int64, "week": pl.Int64, "gsis_id": pl.String, "injured_in_game": pl.Int8,
+                "injury_sec": pl.Float64, "last_touch_sec": pl.Float64, "team_last_sec": pl.Float64}
 ROSTER_SCHEMA = {"season": pl.Int64, "week": pl.Int64, "gsis_id": pl.String, "team": pl.String,
                  "position": pl.String, "status": pl.String}
 INJURY_SCHEMA = {"season": pl.Int64, "week": pl.Int64, "gsis_id": pl.String, "team": pl.String,
@@ -329,6 +377,60 @@ FEATURE_DOCS: dict[str, tuple[str, str]] = {
     "xfp_missing": ("1 if no recent game has nflverse xFP", "derived"),
     "snap_missing": ("1 if no recent game has a snap record", "derived"),
     "rz_missing": ("1 if no recent game has play-by-play red-zone data", "derived"),
+    # --- added for the ifp-2 research challenger (unused by ifp-1.0.0; see docs "Weekly learning")
+    "xfpl_recent": ("Expected LEAGUE points per game over the last <=5 games with xFP coverage (nflverse expected "
+                    "counts x this league's weights), shrunk toward the position mean", "nfl_ff_opportunity + scoring"),
+    "xfpl_last": ("Expected league points in the player's most recent game (null without coverage)",
+                  "nfl_ff_opportunity + scoring"),
+    "xfpl_td_recent": ("Touchdown part of expected league points per game, last <=5 covered games",
+                       "nfl_ff_opportunity + scoring"),
+    "yd_over_exp": ("Non-touchdown league points minus non-touchdown expected league points per game, last <=5 "
+                    f"covered games, shrunk toward 0 by {SHRINK_GAMES:g} games (yardage/catch efficiency)",
+                    "box score + nfl_ff_opportunity"),
+    "td_over_exp": ("Touchdown league points minus expected touchdown points per game, last <=5 covered games, shrunk "
+                    f"toward 0 by {SHRINK_GAMES:g} games (touchdown luck or skill)", "box score + nfl_ff_opportunity"),
+    "pts_median": ("Median league points over the last <=5 games", "nfl_weekly_stats via league_scoring"),
+    "opp_share": ("(Targets + carries) / (team targets + team rush attempts) over the last <=5 games",
+                  "nfl_weekly_stats + nfl_team_week"),
+    "opp_share_last": ("(Targets + carries) / team (targets + rush attempts) in the most recent game",
+                       "nfl_weekly_stats + nfl_team_week"),
+    "team_plays_pg": ("Target team's offensive plays per game this season before week W minus league mean, shrunk "
+                      f"by {TEAM_SHRINK_GAMES:g} games", "nfl_team_week"),
+    "last_team_plays_rel": ("Team offensive plays in the player's last game minus that team's mean over the player's "
+                            "earlier recent games (low-volume game indicator)", "nfl_team_week"),
+    "last_margin": ("Player's team final score margin in his last game (positive = won)", "nfl_schedules"),
+    "xfpl_missing": ("1 if no recent game has expected league points", "derived"),
+    # --- healthy-game usage and previous-season usage priors (ifp-2 research challenger). A game is an
+    # injury exit when snap share fell >= SNAP_DROP below the player's previous <= REF_GAMES games AND
+    # play-by-play says he was injured in it, or a NEW injury listing (not on that week's own report)
+    # follows within EXIT_REPORT_WEEKS weeks, using reports up to the target week's pregame report only.
+    "h_games_recent": ("Healthy (not injury-exit) games among the player's last <=5 healthy games in the lookback",
+                       "derived"),
+    "h_xfpl_pg": ("Expected league points per game over the last <=5 healthy games, shrunk toward the position mean",
+                  "nfl_ff_opportunity + scoring + game classes"),
+    "h_carries_pg": ("Carries per game over the last <=5 healthy games", "nfl_weekly_stats + game classes"),
+    "h_targets_pg": ("Targets per game over the last <=5 healthy games", "nfl_weekly_stats + game classes"),
+    "h_snap_pct": ("Mean snap share over the last <=5 healthy games with a snap record", "nfl_snap_counts + game classes"),
+    "h_opp_share": ("(Targets + carries) / team (targets + rush attempts) over the last <=5 healthy games",
+                    "nfl_weekly_stats + nfl_team_week + game classes"),
+    "inj_exits_recent": ("Injury-exit games among the player's last <=5 appearances", "game classes"),
+    "last_injury_exit": ("1 if the player's last game is classified as an injury exit", "game classes"),
+    "last_role_low": ("1 if the last game was a snap drop with no injury evidence and no blowout (possible role cut)",
+                      "game classes"),
+    "last_blowout_low": (f"1 if the last game was a snap drop in a game decided by >= {BLOWOUT_MARGIN} points without "
+                         "injury evidence", "game classes"),
+    "prev_h_games": ("Healthy games in the previous season", "game classes"),
+    "prev_xfpl_pg": ("Previous-season expected league points per healthy game, shrunk toward the position mean by "
+                     f"{SHRINK_GAMES:g} games (null without a previous-season game)", "nfl_ff_opportunity + game classes"),
+    "prev_carries_pg": ("Previous-season carries per healthy game", "nfl_weekly_stats + game classes"),
+    "prev_targets_pg": ("Previous-season targets per healthy game", "nfl_weekly_stats + game classes"),
+    "prev_snap_pct": ("Previous-season mean snap share over healthy games", "nfl_snap_counts + game classes"),
+    "prev_team_changed": ("1 if the target-week team differs from the player's last team of the previous season",
+                          "derived"),
+    "cur_h_games": ("Healthy games this season before week W with expected-points coverage", "game classes"),
+    "xfpl_eb": ("Empirical-Bayes established workload: this season's healthy-game expected league points per game, "
+                f"shrunk toward prev_xfpl_pg by {USAGE_PRIOR_GAMES:g} games (toward the position mean when there is no "
+                "previous season); null with neither", "nfl_ff_opportunity + game classes"),
 }
 
 
@@ -356,9 +458,11 @@ def features_for_week(sources: Sources, season: int, week: int, targets: pl.Data
         priors[pos] = {
             "pts": float(rows["league_points"].mean()) if rows.height else 0.0,
             "xfp": float(rows["xfp"].drop_nulls().mean()) if rows["xfp"].drop_nulls().len() else 0.0,
+            "xfpl": float(rows["xfpl"].drop_nulls().mean()) if rows["xfpl"].drop_nulls().len() else 0.0,
         }
     prior_df = pl.DataFrame({"position": list(priors), "prior_pts": [priors[p]["pts"] for p in priors],
-                             "prior_xfp": [priors[p]["xfp"] for p in priors]})
+                             "prior_xfp": [priors[p]["xfp"] for p in priors],
+                             "prior_xfpl": [priors[p]["xfpl"] for p in priors]})
 
     # --- player windows
     ordered = panel.sort(["season", "week"], descending=True)
@@ -366,6 +470,8 @@ def features_for_week(sources: Sources, season: int, week: int, targets: pl.Data
     recent = recent.with_columns(pl.int_range(pl.len()).over("gsis_id").alias("rank"))
     xfp_ok, snap_ok = pl.col("xfp").is_not_null(), pl.col("offense_pct").is_not_null()
     rz_ok = pl.col("rz_targets").is_not_null()
+    xfpl_ok = pl.col("xfpl").is_not_null()
+    team_ok = pl.col("team_targets").is_not_null() & pl.col("team_rush_attempts").is_not_null()
     agg = recent.group_by("gsis_id").agg(
         pl.len().alias("games_recent"),
         pl.col("league_points").sum().alias("pts_sum"),
@@ -394,12 +500,36 @@ def features_for_week(sources: Sources, season: int, week: int, targets: pl.Data
         pl.col("team").first().alias("last_team"),
         pl.col("season").first().alias("last_season"),
         pl.col("week").first().alias("last_week"),
+        # challenger inputs (expected league points split into touchdown / non-touchdown parts)
+        pl.col("xfpl").filter(xfpl_ok).sum().alias("_xl_sum"),
+        xfpl_ok.sum().alias("_xl_n"),
+        pl.col("xfpl_td").filter(xfpl_ok).sum().alias("_xl_td_sum"),
+        ((pl.col("league_points") - pl.col("td_points")) - (pl.col("xfpl") - pl.col("xfpl_td")))
+          .filter(xfpl_ok).sum().alias("_yd_res_sum"),
+        (pl.col("td_points") - pl.col("xfpl_td")).filter(xfpl_ok).sum().alias("_td_res_sum"),
+        pl.col("xfpl").filter(pl.col("rank") == 0).first().alias("xfpl_last"),
+        pl.col("league_points").median().alias("pts_median"),
+        (pl.col("targets") + pl.col("carries")).filter(team_ok).sum().alias("_opp_sum"),
+        (pl.col("team_targets") + pl.col("team_rush_attempts")).filter(team_ok).sum().alias("_team_opp"),
+        ((pl.col("targets") + pl.col("carries")) / (pl.col("team_targets") + pl.col("team_rush_attempts")))
+          .filter((pl.col("rank") == 0) & team_ok).first().alias("opp_share_last"),
+        pl.col("team_plays").filter(pl.col("rank") == 0).first().alias("_plays_last"),
+        pl.col("team_plays").filter(pl.col("rank") > 0).mean().alias("_plays_prev"),
     )
     season_agg = season_panel.group_by("gsis_id").agg(pl.len().alias("games_season"),
                                                       pl.col("league_points").sum().alias("pts_season_sum"),
                                                       pl.col("league_points").mean().alias("pts_season_raw"))
     prev_agg = panel.filter(pl.col("season") == season - 1).group_by("gsis_id").agg(
         pl.col("league_points").mean().alias("pts_prev_season"))
+    # --- team play volume this season before W, and each team-game's final margin
+    team_plays = season_panel.select("week", "team", "team_plays").drop_nulls().unique(["week", "team"]).group_by(
+        "team").agg(pl.len().alias("_tp_n"), pl.col("team_plays").sum().alias("_tp_sum"))
+    league_plays = float(team_plays["_tp_sum"].sum() / team_plays["_tp_n"].sum()) if team_plays.height else None
+    margins = sources.games.filter((pl.col("season") * 100 + pl.col("week") < cutoff)
+                                   & pl.col("points_for").is_not_null()).select(
+        pl.col("season").alias("last_season"), pl.col("week").alias("last_week"), pl.col("team").alias("last_team"),
+        (pl.col("points_for") - pl.col("points_against")).alias("last_margin")).unique(
+        ["last_season", "last_week", "last_team"])
 
     # --- team offense (target team, this season before W)
     team_pts = games.group_by("team").agg(pl.len().alias("_tg_n"), pl.col("points_for").sum().alias("_tg_pts"))
@@ -423,7 +553,9 @@ def features_for_week(sources: Sources, season: int, week: int, targets: pl.Data
            .join(team_pts, on="team", how="left")
            .join(allowed, left_on=["opponent", "position"], right_on=["opponent", "position"], how="left")
            .join(pos_mean_allowed, on="position", how="left")
-           .join(dfn, left_on="opponent", right_on="defteam", how="left"))
+           .join(dfn, left_on="opponent", right_on="defteam", how="left")
+           .join(team_plays, on="team", how="left")
+           .join(margins, on=["last_season", "last_week", "last_team"], how="left"))
     n = pl.col("games_recent").fill_null(0)
     out = out.with_columns(
         n.alias("games_recent"),
@@ -459,6 +591,8 @@ def features_for_week(sources: Sources, season: int, week: int, targets: pl.Data
          - (lg_rush or 0)).alias("opp_rush_epa"),
         pl.lit(season).alias("season"), pl.lit(week).alias("week"),
     ).with_columns((pl.col("pts_recent") - pl.col("xfp_recent")).alias("pts_minus_xfp"))
+    out = _challenger_features(out, league_plays)
+    out = _usage_features(out, classify_games(panel, sources, season, week), season)
     # the opponent/team context had data this season?
     out = out.with_columns(
         (pl.col("_oa_n").fill_null(0)).alias("opp_games"),
@@ -467,10 +601,130 @@ def features_for_week(sources: Sources, season: int, week: int, targets: pl.Data
     )
     out = _injury_exits(out, sources.injuries, season, week)
     keep = ["season", "week", "gsis_id", "position", "team", "opponent", "last_team", "last_season", "last_week",
-            "opp_games", "team_games", *FEATURE_DOCS]
+            "opp_games", "team_games", *FEATURE_DOCS, "cur_h_xfpl_pg", "prior_xfpl"]
     out = out.select([c for c in dict.fromkeys(keep) if c in out.columns])
     # Parallel aggregation can change float summation order (~1e-15); rounding makes features bit-reproducible.
     return out.with_columns([pl.col(c).round(10) for c, t in out.schema.items() if t == pl.Float64])
+
+
+def _challenger_features(out: pl.DataFrame, league_plays: float | None) -> pl.DataFrame:
+    """Opportunity-first inputs for the ifp-2 research challenger. Same window and cutoff as the
+    ifp-1.0.0 features; touchdown and non-touchdown efficiency are kept apart so a model can weigh
+    a touchdown-driven boom differently from repeatable yardage efficiency."""
+    xn = pl.col("_xl_n").fill_null(0)
+    covered = xn > 0
+    return out.with_columns(
+        pl.when(covered).then((pl.col("_xl_sum") + pl.col("prior_xfpl") * SHRINK_GAMES) / (xn + SHRINK_GAMES))
+          .otherwise(None).alias("xfpl_recent"),
+        pl.when(covered).then(pl.col("_xl_td_sum") / xn).otherwise(None).alias("xfpl_td_recent"),
+        pl.when(covered).then(pl.col("_yd_res_sum") / (xn + SHRINK_GAMES)).otherwise(None).alias("yd_over_exp"),
+        pl.when(covered).then(pl.col("_td_res_sum") / (xn + SHRINK_GAMES)).otherwise(None).alias("td_over_exp"),
+        pl.when(pl.col("_team_opp") > 0).then(pl.col("_opp_sum") / pl.col("_team_opp")).otherwise(None).alias("opp_share"),
+        (((pl.col("_tp_sum").fill_null(0) + (league_plays or 0) * TEAM_SHRINK_GAMES)
+          / (pl.col("_tp_n").fill_null(0) + TEAM_SHRINK_GAMES)) - (league_plays or 0)).alias("team_plays_pg"),
+        (pl.col("_plays_last") - pl.col("_plays_prev")).alias("last_team_plays_rel"),
+        (~covered).cast(pl.Int8).alias("xfpl_missing"),
+    )
+
+
+def classify_games(panel: pl.DataFrame, sources: Sources, season: int, week: int) -> pl.DataFrame:
+    """Label every pre-cutoff panel game for a forecast of (season, week). Point-in-time: the
+    reference snap share uses only the player's EARLIER games, and injury listings are read only up
+    to the target week's pregame report, so a recent game can be relabeled as later reports appear
+    but never with information from after the forecast.
+
+    gclass: full (no snap drop) | injury_exit (drop + play-by-play injury, or a new listing after it)
+            | blowout_low (drop, no injury evidence, final margin >= BLOWOUT_MARGIN)
+            | listed_low (drop, listed after it but also listed before it: chronic listing, ambiguous)
+            | role_low (drop with no injury evidence: possible role cut, coaching decision, or an
+              unreported injury - ambiguous by construction) | unknown (no snap share or reference)."""
+    cutoff = key(season, week)
+    p = panel.sort("gsis_id", "season", "week").with_columns(
+        pl.col("offense_pct").shift(1).rolling_mean(REF_GAMES, min_samples=1).over("gsis_id").alias("ref_snap"))
+    keys = ["season", "week", "gsis_id"]
+    if sources.injuries is not None:
+        inj = sources.injuries.filter((pl.col("season") * 100 + pl.col("week") <= cutoff)
+                                      & ~pl.col("not_injury").fill_null(False)).select(keys).unique()
+        same = inj.with_columns(pl.lit(True).alias("_listed_same"))
+        after = (p.select(keys).join(inj.rename({"week": "_rw"}), on=["season", "gsis_id"])
+                 .filter((pl.col("_rw") > pl.col("week")) & (pl.col("_rw") <= pl.col("week") + EXIT_REPORT_WEEKS))
+                 .select(keys).unique().with_columns(pl.lit(True).alias("_listed_after")))
+        p = p.join(same, on=keys, how="left").join(after, on=keys, how="left")
+    else:
+        p = p.with_columns(pl.lit(None, dtype=pl.Boolean).alias("_listed_same"),
+                           pl.lit(None, dtype=pl.Boolean).alias("_listed_after"))
+    if sources.exits is not None:
+        ex = sources.exits.filter(pl.col("season") * 100 + pl.col("week") < cutoff).select(
+            *keys, (pl.col("injured_in_game") == 1).alias("_pbp_injured")).unique(keys)
+        p = p.join(ex, on=keys, how="left")
+    else:
+        p = p.with_columns(pl.lit(None, dtype=pl.Boolean).alias("_pbp_injured"))
+    margin = sources.games.filter(pl.col("points_for").is_not_null()).select(
+        "season", "week", "team", (pl.col("points_for") - pl.col("points_against")).alias("_margin")).unique(
+        ["season", "week", "team"])
+    p = p.join(margin, on=["season", "week", "team"], how="left")
+    drop = (pl.col("ref_snap") - pl.col("offense_pct")) >= SNAP_DROP
+    listed_after, listed_same = pl.col("_listed_after").fill_null(False), pl.col("_listed_same").fill_null(False)
+    gclass = (pl.when(pl.col("offense_pct").is_null() | pl.col("ref_snap").is_null()).then(pl.lit("unknown"))
+              .when(~drop).then(pl.lit("full"))
+              .when(pl.col("_pbp_injured").fill_null(False) | (listed_after & ~listed_same)).then(pl.lit("injury_exit"))
+              .when(pl.col("_margin").abs() >= BLOWOUT_MARGIN).then(pl.lit("blowout_low"))
+              .when(listed_after).then(pl.lit("listed_low"))
+              .otherwise(pl.lit("role_low")))
+    return p.with_columns(gclass.alias("gclass")).with_columns((pl.col("gclass") != "injury_exit").alias("healthy")).drop(
+        "_listed_same", "_listed_after", "_pbp_injured", "_margin")
+
+
+def _usage_features(out: pl.DataFrame, cp: pl.DataFrame, season: int) -> pl.DataFrame:
+    """Healthy-game usage, previous-season usage and the empirical-Bayes established workload.
+    `cp` is classify_games output (pre-cutoff games only)."""
+    ok = pl.col("xfpl").is_not_null()
+    team_ok = pl.col("team_targets").is_not_null() & pl.col("team_rush_attempts").is_not_null()
+    opp, team_opp = pl.col("targets") + pl.col("carries"), pl.col("team_targets") + pl.col("team_rush_attempts")
+    desc = cp.sort(["season", "week"], descending=True)
+    healthy = desc.filter(pl.col("healthy"))
+    h = healthy.group_by("gsis_id", maintain_order=True).head(RECENT_GAMES).group_by("gsis_id").agg(
+        pl.len().alias("h_games_recent"), pl.col("xfpl").filter(ok).sum().alias("_h_xl_sum"), ok.sum().alias("_h_xl_n"),
+        pl.col("carries").mean().alias("h_carries_pg"), pl.col("targets").mean().alias("h_targets_pg"),
+        pl.col("offense_pct").mean().alias("h_snap_pct"),
+        opp.filter(team_ok).sum().alias("_h_opp"), team_opp.filter(team_ok).sum().alias("_h_team_opp"))
+    last5 = desc.group_by("gsis_id", maintain_order=True).head(RECENT_GAMES).group_by("gsis_id", maintain_order=True).agg(
+        (pl.col("gclass") == "injury_exit").sum().alias("inj_exits_recent"), pl.col("gclass").first().alias("_last_class"))
+    prev = healthy.filter(pl.col("season") == season - 1).group_by("gsis_id").agg(
+        pl.len().alias("prev_h_games"), pl.col("xfpl").filter(ok).sum().alias("_p_xl_sum"), ok.sum().alias("_p_xl_n"),
+        pl.col("carries").mean().alias("prev_carries_pg"), pl.col("targets").mean().alias("prev_targets_pg"),
+        pl.col("offense_pct").mean().alias("prev_snap_pct"))
+    prev_team = desc.filter(pl.col("season") == season - 1).group_by("gsis_id", maintain_order=True).agg(
+        pl.col("team").first().alias("_prev_team"))
+    cur = healthy.filter((pl.col("season") == season) & ok).group_by("gsis_id").agg(
+        pl.len().alias("cur_h_games"), pl.col("xfpl").sum().alias("_c_xl_sum"))
+    out = (out.join(h, on="gsis_id", how="left").join(last5, on="gsis_id", how="left").join(prev, on="gsis_id", how="left")
+           .join(prev_team, on="gsis_id", how="left").join(cur, on="gsis_id", how="left"))
+    pn, cn = pl.col("_p_xl_n").fill_null(0), pl.col("cur_h_games").fill_null(0)
+    hn = pl.col("_h_xl_n").fill_null(0)
+    prior = pl.when(pn > 0).then((pl.col("_p_xl_sum") + pl.col("prior_xfpl") * SHRINK_GAMES) / (pn + SHRINK_GAMES))
+    out = out.with_columns(
+        pl.col("h_games_recent").fill_null(0), pl.col("inj_exits_recent").fill_null(0), cn.alias("cur_h_games"),
+        pl.col("prev_h_games").fill_null(0),
+        pl.when(hn > 0).then((pl.col("_h_xl_sum") + pl.col("prior_xfpl") * SHRINK_GAMES) / (hn + SHRINK_GAMES))
+          .otherwise(None).alias("h_xfpl_pg"),
+        pl.when(pl.col("_h_team_opp") > 0).then(pl.col("_h_opp") / pl.col("_h_team_opp")).otherwise(None).alias("h_opp_share"),
+        prior.otherwise(None).alias("prev_xfpl_pg"),
+        (pl.col("_prev_team").is_not_null() & (pl.col("_prev_team") != pl.col("team"))).cast(pl.Int8).alias("prev_team_changed"),
+        (pl.col("_last_class") == "injury_exit").cast(pl.Int8).alias("last_injury_exit"),
+        (pl.col("_last_class") == "role_low").cast(pl.Int8).alias("last_role_low"),
+        (pl.col("_last_class") == "blowout_low").cast(pl.Int8).alias("last_blowout_low"),
+        pl.col("_c_xl_sum").fill_null(0).alias("_c_xl_sum"),
+    )
+    eb_prior = pl.coalesce(pl.col("prev_xfpl_pg"), pl.col("prior_xfpl"))
+    return out.with_columns(
+        pl.when((pl.col("cur_h_games") > 0) | pl.col("prev_xfpl_pg").is_not_null())
+          .then((pl.col("_c_xl_sum") + eb_prior * USAGE_PRIOR_GAMES) / (pl.col("cur_h_games") + USAGE_PRIOR_GAMES))
+          .otherwise(None).alias("xfpl_eb"),
+        # raw EB ingredients, kept so research can evaluate other prior strengths without refitting features
+        pl.when(pl.col("cur_h_games") > 0).then(pl.col("_c_xl_sum") / pl.col("cur_h_games")).otherwise(None)
+          .alias("cur_h_xfpl_pg"),
+    )
 
 
 def _injury_exits(out: pl.DataFrame, injuries: pl.DataFrame | None, season: int, week: int) -> pl.DataFrame:

@@ -44,6 +44,15 @@ PROMOTION_CRITERIA = {
 }
 PAIR_POOL = {"QB": 24, "RB": 48, "WR": 60, "TE": 24}   # pregame relevance pool per position-week
 CLOSE_PAIR_POINTS = 3.0
+STARTERS_POOL_DEFINITION = ("per (season, week, position), the top PAIR_POOL[position] players (QB 24, RB 48, "
+                            "WR 60, TE 24) by the recent-average baseline A1, a pregame quantity identical for "
+                            "every model; the same pool as the Start/Sit pair decisions")
+
+
+def starters_pool_expr(pool: dict[str, int] = PAIR_POOL) -> pl.Expr:
+    """True for rows in the starters pool (STARTERS_POOL_DEFINITION); null pred_A1 is never in it."""
+    rank = pl.col("pred_A1").rank("ordinal", descending=True).over(["season", "week", "position"])
+    return (rank <= pl.col("position").replace_strict(pool, default=0)).fill_null(False)
 
 
 @dataclass(frozen=True)
@@ -126,22 +135,29 @@ def walk_forward(store: pl.DataFrame, test_weeks: list[tuple[int, int]], penalti
 # ----------------------------------------------------------------------------- metrics
 
 
-def metrics(actual: np.ndarray, pred: np.ndarray) -> dict:
+def _rnd(x: float, nd: int, exact: bool) -> float:
+    return float(x) if exact else round(float(x), nd)
+
+
+def metrics(actual: np.ndarray, pred: np.ndarray, exact: bool = False) -> dict:
+    """MAE / RMSE / bias on rows where both are present, rounded for reporting; `exact` skips the
+    rounding (for decision rules, which must not be decided by rounding)."""
     ok = ~(np.isnan(actual) | np.isnan(pred))
     a, p = actual[ok], pred[ok]
     if len(a) == 0:
         return {"n": 0, "mae": None, "rmse": None, "bias": None}
     err = a - p
-    return {"n": int(len(a)), "mae": round(float(np.abs(err).mean()), 3),
-            "rmse": round(float(math.sqrt((err ** 2).mean())), 3), "bias": round(float(err.mean()), 3)}
+    return {"n": int(len(a)), "mae": _rnd(np.abs(err).mean(), 3, exact),
+            "rmse": _rnd(math.sqrt((err ** 2).mean()), 3, exact), "bias": _rnd(err.mean(), 3, exact)}
 
 
 def _arr(df: pl.DataFrame, col: str) -> np.ndarray:
     return df[col].cast(pl.Float64).fill_null(np.nan).to_numpy()
 
 
-def week_bootstrap_mae_diff(df: pl.DataFrame, a: str, b: str, resamples: int, seed: int) -> dict:
-    """95% CI of MAE(a) - MAE(b) resampling whole weeks (player-weeks within a week are correlated)."""
+def week_bootstrap_mae_diff(df: pl.DataFrame, a: str, b: str, resamples: int, seed: int, exact: bool = False) -> dict:
+    """95% CI of MAE(a) - MAE(b) resampling whole weeks (player-weeks within a week are correlated);
+    `exact` skips the reporting rounding."""
     d = df.filter(pl.col(a).is_not_null() & pl.col(b).is_not_null())
     if d.height == 0:
         return {"diff": None, "ci95": None}
@@ -153,11 +169,11 @@ def week_bootstrap_mae_diff(df: pl.DataFrame, a: str, b: str, resamples: int, se
     diffs = (ea[idx].sum(1) - eb[idx].sum(1)) / n[idx].sum(1)
     point = (ea.sum() - eb.sum()) / n.sum()
     lo, hi = np.percentile(diffs, [2.5, 97.5])
-    return {"diff": round(float(point), 3), "ci95": [round(float(lo), 3), round(float(hi), 3)]}
+    return {"diff": _rnd(point, 3, exact), "ci95": [_rnd(lo, 3, exact), _rnd(hi, 3, exact)]}
 
 
 def pair_decisions(df: pl.DataFrame, models: list[str], pool: dict[str, int] = PAIR_POOL,
-                   restrict: set[tuple] | None = None) -> dict:
+                   restrict: set[tuple] | None = None, exact: bool = False) -> dict:
     """Same-position, same-week player pairs among the pregame relevance pool (top-N by the
     recent-average baseline, a pregame quantity identical for every model). For each model,
     start the higher projection; correct if that player outscored the other. Ties in actual
@@ -194,8 +210,9 @@ def pair_decisions(df: pl.DataFrame, models: list[str], pool: dict[str, int] = P
                         bucket[m]["regret"] += regret
 
     def fmt(b):
-        return {m: {"pairs": v["pairs"], "accuracy": round(v["correct"] / v["pairs"], 4) if v["pairs"] else None,
-                    "mean_regret": round(v["regret"] / v["pairs"], 3) if v["pairs"] else None} for m, v in b.items()}
+        return {m: {"pairs": v["pairs"], "accuracy": _rnd(v["correct"] / v["pairs"], 4, exact) if v["pairs"] else None,
+                    "mean_regret": _rnd(v["regret"] / v["pairs"], 3, exact) if v["pairs"] else None}
+                for m, v in b.items()}
     return {"all": fmt(res), "close_calls": fmt(close), "actual_ties_skipped": ties_skipped,
             "pool": pool, "close_call_definition": f"recent-average baselines within {CLOSE_PAIR_POINTS:g} points"}
 
@@ -471,21 +488,23 @@ def espn_comparison(preds: pl.DataFrame, espn: pl.DataFrame | None) -> dict:
 
 def league_roster_pairs(con, season: int) -> set[tuple]:
     """Same-position player pairs that sat on the same fantasy roster in the same scoring period
-    (contemporaneous lineup snapshots only; nothing is reconstructed)."""
+    (contemporaneous lineup snapshots only; nothing is reconstructed). A roster is one team of one league
+    (league_id, team_id); a pair that is real in any synced league is returned once as (season, week, a, b)."""
     from ..db.connection import fetch_dicts, table_exists
 
     if con is None or not table_exists(con, "lineup_snapshots"):
         return set()
     rows = fetch_dicts(con, """
-        SELECT s.season, s.scoring_period AS week, s.team_id, m.gsis_id, m.espn_position AS position
+        SELECT s.league_id, s.season, s.scoring_period AS week, s.team_id, m.gsis_id, m.espn_position AS position
         FROM lineup_snapshots s JOIN player_id_map m ON m.espn_player_id = s.espn_player_id
         WHERE s.season = ? AND m.match_confidence = 'high' AND m.gsis_id IS NOT NULL
           AND m.espn_position IN ('QB', 'RB', 'WR', 'TE')""", [season])
     groups = defaultdict(list)
     for r in rows:
-        groups[(r["season"], r["week"], r["team_id"], r["position"])].append(r["gsis_id"])
+        # ESPN team ids restart at 1 in every league: a roster is (league, team), never team alone
+        groups[(r["league_id"], r["season"], r["week"], r["team_id"], r["position"])].append(r["gsis_id"])
     out = set()
-    for (s, w, _, _), ids in groups.items():
+    for (_, s, w, _, _), ids in groups.items():
         ids = sorted(set(ids))
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):

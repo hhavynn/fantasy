@@ -9,11 +9,39 @@ test("root route ('/') activates Overview in My team", () => {
   assert.equal(group("/"), "My team");
 });
 
+test("the matchup page sits after Overview in My team", () => {
+  assert.equal(getActiveRoute("/matchup").activeHref, "/matchup");
+  assert.equal(group("/matchup"), "My team");
+  assert.deepEqual(NAV_GROUPS[0].pages.map((p) => p.href).slice(0, 2), ["/", "/matchup"]);
+});
+
 test("nested trade routes: the longest match wins", () => {
   assert.equal(getActiveRoute("/trades").activeHref, "/trades");
   assert.equal(getActiveRoute("/trades/discover").activeHref, "/trades/discover");
   assert.equal(getActiveRoute("/trades/discover/something").activeHref, "/trades/discover");
   assert.equal(group("/trades/discover"), "Trades");
+});
+
+test("the weekly recap sits in League after Schedule, so the palette lists it", () => {
+  assert.equal(getActiveRoute("/weekly-recap").activeHref, "/weekly-recap");
+  assert.equal(group("/weekly-recap"), "League");
+  assert.deepEqual(NAV_GROUPS[3].pages.map((p) => p.href).slice(0, 2), ["/schedule-intelligence", "/weekly-recap"]);
+});
+
+test("projection movers sits in Players right after the Research lab", () => {
+  const hrefs = NAV_GROUPS[1].pages.map((p) => p.href);
+  assert.equal(hrefs[hrefs.indexOf("/research") + 1], "/movers");
+  assert.equal(getActiveRoute("/movers").activeHref, "/movers");
+  assert.equal(group("/movers"), "Players");
+});
+
+test("Compare sits right after Players in the Players group", () => {
+  assert.equal(getActiveRoute("/compare").activeHref, "/compare");
+  assert.equal(group("/compare"), "Players");
+  const hrefs = NAV_GROUPS[1].pages.map((p) => p.href);
+  assert.equal(hrefs[hrefs.indexOf("/players") + 1], "/compare");
+  assert.equal(getActiveRoute("/compare/").activeHref, "/compare");
+  assert.equal(getActiveRoute("/comparex").activeHref, null);
 });
 
 test("detail pages activate their list page", () => {
@@ -40,8 +68,14 @@ test("every page appears once and every group has pages", () => {
   assert.equal(hrefs.length, new Set(hrefs).size, "duplicate hrefs in navigation");
   assert.deepEqual(NAV_GROUPS.map((g) => g.label), ["My team", "Players", "Trades", "League"]);
   assert.ok(NAV_GROUPS.every((g) => g.pages.length > 0));
-  for (const href of ["/", "/start-sit", "/my-team/value", "/players", "/waivers", "/trades", "/trades/discover",
-    "/schedule-intelligence", "/luck-lab", "/playoff-race", "/managers"]) {
+  for (const href of ["/", "/matchup", "/start-sit", "/my-team/value", "/players", "/compare", "/movers", "/waivers", "/trades", "/trades/discover",
+    "/schedule-intelligence", "/weekly-recap", "/luck-lab", "/playoff-race", "/managers"]) {
     assert.ok(hrefs.includes(href), `${href} missing from navigation`);
   }
+});
+
+test("the kicker outlook sits in Players", () => {
+  assert.equal(getActiveRoute("/kickers").activeHref, "/kickers");
+  assert.equal(group("/kickers"), "Players");
+  assert.ok(ALL_NAV_PAGES.some((p) => p.href === "/kickers"));
 });

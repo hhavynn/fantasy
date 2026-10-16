@@ -1,0 +1,38 @@
+.section {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.titles { min-width: 0; }
+.title { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); letter-spacing: .005em; }
+.subtitle { margin: 1px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 17px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.body { padding: 16px; min-width: 0; }
+.footnote {
+  margin: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Flush: tables run edge to edge; their first and last cells keep the section's 16px gutter. */
+.flush .body { padding: 0; overflow: clip; border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px); }
+.flush .body :global(th:first-child),
+.flush .body :global(td:first-child) { padding-left: 16px; }
+.flush .body :global(th:last-child),
+.flush .body :global(td:last-child) { padding-right: 16px; }
+.flush .body :global(tbody:last-of-type > tr:last-child > td) { border-bottom: 0; }
+.flush .footnote { border-top: 1px solid var(--line); }
+.section:not(.flush) .footnote { padding-top: 0; border-top: 0; }

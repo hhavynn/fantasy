@@ -1,0 +1,8 @@
+/* Shared by error.tsx and not-found.tsx. */
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.digest { color: var(--ink-faint); font-size: 12px; }
+
+.groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 24px 16px; }
+.group { display: flex; flex-direction: column; gap: 2px; }
+.groupTitle { margin: 0 0 4px; color: var(--ink-faint); font-size: 12px; font-weight: 600; }
+.group a { padding: 4px 0; }
