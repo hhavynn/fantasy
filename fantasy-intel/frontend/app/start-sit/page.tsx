@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
 import { CompareLink } from "@/components/CompareLink";
+import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
+import { isUnknownTeam, readTeamSelection, withTeam, withTeamId } from "@/lib/team-perspective";
 import { PlayerLink } from "@/components/PlayerLink";
 import { OriginTag, ProjectionNotice } from "@/components/ProjectionNotice";
 import {
@@ -40,12 +42,27 @@ const one = (v: string | string[] | undefined): string | undefined => (Array.isA
 export default async function StartSitPage({ searchParams }: PageProps<"/start-sit">) {
   const sp: SP = await searchParams;
   const qs = new URLSearchParams();
-  const teamId = one(sp.team_id);
+  const sel = readTeamSelection(sp);
   const week = one(sp.week);
-  if (teamId) qs.set("team_id", teamId);
   if (week) qs.set("week", week);
+  if (sel.kind === "invalid") {
+    return (
+      <div className="stack">
+        <PageHeader title="Start/Sit" actions={<TeamPerspective path="/start-sit" sp={sp} current={null} />} />
+        <UnknownTeam path="/start-sit" sel={sel} />
+      </div>
+    );
+  }
 
-  const res = await api<StartSitResponse>(withSource(`/api/start-sit?${qs.toString()}`, await getProjectionSource()));
+  const res = await api<StartSitResponse>(withTeamId(withSource(`/api/start-sit?${qs.toString()}`, await getProjectionSource()), sel));
+  if (isUnknownTeam(res, sel)) {
+    return (
+      <div className="stack">
+        <PageHeader title="Start/Sit" actions={<TeamPerspective path="/start-sit" sp={sp} current={null} />} />
+        <UnknownTeam path="/start-sit" sel={sel} detail={res.error} />
+      </div>
+    );
+  }
   if (!res.ok) {
     return (
       <div className="stack">
@@ -83,17 +100,18 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   return (
     <div className="stack">
       <PageHeader
-        eyebrow="My team"
+        eyebrow={team.name}
         title={`Start/Sit · Week ${d.scoring_period}`}
         meta={`${team.name} (${team.abbrev}) · ${d.projection_source} projections · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
         actions={
-          <StartSitControls
-            currentTeamId={team.id}
-            teams={d.teams && d.teams.length > 0 ? d.teams : [team]}
-            currentWeek={league.current_week}
-            selectedWeek={d.scoring_period}
-            finalWeek={league.final_scoring_period}
-          />
+          <TeamPerspective path="/start-sit" sp={sp} current={team.id}>
+            <StartSitControls
+              team={sel.kind === "team" ? String(sel.id) : null}
+              currentWeek={league.current_week}
+              selectedWeek={d.scoring_period}
+              finalWeek={league.final_scoring_period}
+            />
+          </TeamPerspective>
         }
       />
 
@@ -104,7 +122,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         <Notice tone={verdict.tone} title={verdict.headline}>
           {verdict.detail}
           {emptySlots.map((slot) => (
-            <span key={slot}> <Link href={WAIVER_POSITIONS.includes(slot) ? `/waivers?pos=${encodeURIComponent(slot)}` : "/waivers"}>Find a {slot} on waivers</Link>.</span>
+            <span key={slot}> <Link href={withTeam(WAIVER_POSITIONS.includes(slot) ? `/waivers?pos=${encodeURIComponent(slot)}` : "/waivers", sel.kind === "team" ? String(sel.id) : null)}>Find a {slot} on waivers</Link>.</span>
           ))}
         </Notice>
         <StatStrip>
@@ -213,7 +231,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
       <Method title="How this is calculated">
         <p className={styles.prose}>
-          Three lineups are compared for the week: your submitted ESPN lineup, the best lineup under kickoff locks (the one recommended here),
+          Three lineups are compared for the week: the submitted ESPN lineup, the best lineup under kickoff locks (the one recommended here),
           and an unconstrained optimum used only as a benchmark. {ours
             ? "Projections are Fantasy Intel's independent expected points (switch in the header); players marked ESPN keep ESPN's number."
             : "Projections are unmodified ESPN weekly projections."} Players whose games

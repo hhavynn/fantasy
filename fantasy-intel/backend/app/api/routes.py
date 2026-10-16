@@ -21,6 +21,7 @@ from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade
 from ..config import get_settings
 from ..db.connection import schema_version, table_columns, table_exists
 from .deps import db, one, rows
+from .perspective import league_teams, resolve_team, waiver_table
 
 router = APIRouter(prefix="/api")
 
@@ -128,22 +129,36 @@ def _roster(con, league_id: int, season: int, week: int, team_id: int) -> list[d
     return roster
 
 
+@router.get("/teams")
+def teams():
+    """The league's teams for the team-perspective selector: names, the owner's default and roster freshness."""
+    with db() as con:
+        lg = _league(con)
+        ts = league_teams(con, lg["league_id"], lg["season"])
+        return {"league": {k: lg[k] for k in ("league_id", "season", "name", "current_week", "synced_at")},
+                "teams": ts, "default_team_id": next((t["team_id"] for t in ts if t["is_owner_default"]), None)}
+
+
 @router.get("/overview")
-def overview():
+def overview(team_id: int | None = Query(None, description="Fantasy team to analyze (defaults to the owner's team)")):
     with db() as con:
         lg = _league(con)
         league_id, season, week = lg["league_id"], lg["season"], lg["current_week"]
+        perspective = resolve_team(con, lg, team_id)
         teams = rows(con, """SELECT * FROM fantasy_teams WHERE league_id=? AND season=?
                              ORDER BY wins DESC, ties DESC, points_for DESC""", [league_id, season])
         me = next((t for t in teams if t["is_mine"]), None)
-        roster = _roster(con, league_id, season, week, me["team_id"]) if me else []
+        team = next((t for t in teams if t["team_id"] == perspective["team_id"]), None) if perspective else None
+        roster = _roster(con, league_id, season, week, team["team_id"]) if team else []
         injuries = [p for p in roster if (p["injury_status"] or "ACTIVE") not in ("ACTIVE", "NORMAL")
                     or (p.get("nfl_injury") or {}).get("report_status")]
         needs = rows(con, """SELECT * FROM team_position_needs WHERE league_id=? AND season=? AND team_id=?
-                             ORDER BY need_score DESC""", [league_id, season, me["team_id"]]) if me else []
+                             ORDER BY need_score DESC""", [league_id, season, team["team_id"]]) if team else []
         return {
             "league": lg,
-            "my_team": me,
+            "my_team": me,          # the owner's team (is_mine), unchanged by the selection
+            "team": team,           # the team this overview is for
+            "perspective": perspective,
             "standings": teams,
             "roster": roster,
             "injuries": injuries,
@@ -327,12 +342,15 @@ def _route_summary(weekly: list[dict]) -> dict | None:
 
 @router.get("/waivers")
 def waivers(position: str | None = None, recommendation: str | None = None,
-            limit: int = Query(150, ge=1, le=360), offset: int = Query(0, ge=0), view: str = "ALL"):
+            limit: int = Query(150, ge=1, le=360), offset: int = Query(0, ge=0), view: str = "ALL",
+            team_id: int | None = Query(None, description="Fantasy team to evaluate pickups for (defaults to the owner's team)")):
     with db() as con:
         lg = _league(con)
         season = lg["season"]
-        params: list = [lg["league_id"], season]
-        where = ""
+        perspective = resolve_team(con, lg, team_id)
+        table, team_params = waiver_table(con, lg, perspective)
+        params: list = [lg["league_id"], season, *team_params]
+        where = " AND w.team_id = ?" if team_params else ""
         if position:
             where += " AND w.position = ?"
             params.append(position.upper())
@@ -350,16 +368,16 @@ def waivers(position: str | None = None, recommendation: str | None = None,
         if view.upper() not in views:
             raise HTTPException(422, "Unknown waiver view")
         where += views[view.upper()]
-        total = one(con, f"SELECT count(*) n FROM waiver_recommendations w WHERE w.league_id=? AND w.season=? {where}", params)["n"]
-        meta = one(con, "SELECT components, computed_at FROM waiver_recommendations WHERE league_id=? AND season=? LIMIT 1",
-                   [lg["league_id"], season])
+        total = one(con, f"SELECT count(*) n FROM {table} WHERE w.league_id=? AND w.season=? {where}", params)["n"]
+        meta = one(con, f"SELECT w.components, w.computed_at FROM {table} WHERE w.league_id=? AND w.season=? "
+                        f"{' AND w.team_id = ?' if team_params else ''} LIMIT 1", [lg["league_id"], season, *team_params])
         params.extend([limit, offset])
         out = rows(con, f"""
             SELECT w.*, fp.full_name, fp.pro_team, fp.injury_status, fp.percent_owned, fp.percent_change,
                    s.trend_label, s.classification, s.games, s.xfp_per_game, s.fp_per_game,
                    s.opportunity_basis, s.opportunity_tier, s.role_trend, s.market_signal, pc.labels AS context_labels,
                    d.full_name AS drop_name, d.position AS drop_position
-            FROM waiver_recommendations w
+            FROM {table}
             JOIN fantasy_players fp ON fp.espn_player_id = w.espn_player_id
             LEFT JOIN player_id_map m ON m.espn_player_id = w.espn_player_id
             LEFT JOIN player_scores s ON s.gsis_id = m.gsis_id AND s.season = w.season
@@ -372,7 +390,19 @@ def waivers(position: str | None = None, recommendation: str | None = None,
                      w.waiver_score DESC, w.espn_player_id
             LIMIT ? OFFSET ?
         """, params)
-        return {"league": lg, "players": out, "computed_at": meta["computed_at"] if meta else None,
+        computed_at = meta["computed_at"] if meta else None
+        if perspective:
+            # The roster may have been re-synced after the analysis ran: say so, and mark suggested drops that are no
+            # longer on the team instead of presenting them as current.
+            on_roster = {r["espn_player_id"] for r in rows(con, """SELECT espn_player_id FROM lineup_snapshots
+                         WHERE league_id=? AND season=? AND scoring_period=? AND team_id=?""",
+                                                                [lg["league_id"], season, lg["current_week"],
+                                                                 perspective["team_id"]])}
+            for r in out:
+                r["drop_on_roster"] = None if r["suggested_drop_id"] is None else r["suggested_drop_id"] in on_roster
+        roster_synced = perspective["roster_synced_at"] if perspective else None
+        return {"league": lg, "perspective": perspective, "players": out, "computed_at": computed_at,
+                "roster_newer_than_analysis": bool(roster_synced and computed_at and roster_synced > computed_at),
                 "coverage": (meta["components"].get("decision") or {}).get("coverage") if meta else None,
                 "total": total, "offset": offset, "limit": limit}
 

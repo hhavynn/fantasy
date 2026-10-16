@@ -23,7 +23,14 @@ export function GiveUp({ row }: { row: WaiverRow }) {
   const d = row.components.decision;
   if (!d) return <span className="missing" title="Refresh analytics to generate roster advice">—</span>;
   const drop = d.roster_move.drop;
-  if (drop) return <><PlayerLink id={drop.espn_player_id} name={drop.name} /> <Pos value={drop.position} /></>;
+  if (drop) {
+    return (
+      <>
+        <PlayerLink id={drop.espn_player_id} name={drop.name} /> <Pos value={drop.position} />
+        {row.drop_on_roster === false && <> <Badge value="No longer on roster" tone="warn" title="The roster was re-synced after this suggestion was computed" /></>}
+      </>
+    );
+  }
   switch (d.roster_move.status) {
     case "ADD_WITHOUT_DROP":
       return <span title={d.roster_move.summary}>None needed</span>;

@@ -142,7 +142,7 @@ export function startSitVerdict(v: VerdictInput): Verdict {
     }
     return v.status === "all_locked"
       ? { tone: "info", headline: "Every relevant game has kicked off", detail: "No lineup changes are possible under kickoff locks." }
-      : { tone: "positive", headline: "Your lineup is optimal for the projections", detail: "No swap improves the projected total under kickoff locks." };
+      : { tone: "positive", headline: "The submitted lineup is optimal for the projections", detail: "No swap improves the projected total under kickoff locks." };
   }
   const gain = v.projectedGain !== null && v.projectedGain > 0 ? ` for ${formatGain(v.projectedGain)}` : "";
   const headline = `${v.moves} recommended ${v.moves === 1 ? "move" : "moves"}${gain}`;

@@ -53,7 +53,7 @@ export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, on
       <div className={styles.sideHead}>
         <span className={styles.role}>{role}</span>
         <select className={styles.teamSelect} aria-label={`${role} team`} value={team.team_id} onChange={(e) => onTeam(Number(e.target.value))}>
-          {teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
+          {teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (default)" : ""}</option>)}
         </select>
       </div>
 

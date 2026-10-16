@@ -47,7 +47,7 @@ export function Summary({ d, phase }: { d: TeamValue; phase: TvPhase }) {
     .sort((a, b) => Math.abs(a.projected_margin!) - Math.abs(b.projected_margin!))[0];
   const status = race.standing_projected.status;
   return (
-    <Section title={`${d.team.name}${d.team.is_mine ? " (your team)" : ""} · ${PHASE_TEXT[phase]}`}>
+    <Section title={`${d.team.name}${d.team.is_mine ? " (default team)" : ""} · ${PHASE_TEXT[phase]}`}>
       <ul className={styles.takeaways}>
         {pos.strongest.length > 0 && (
           <li>Strongest starting slots vs the league: <b>{pos.strongest.join(", ")}</b>. Weakest: <b>{pos.weakest.join(", ")}</b> (average projected points per comparable week).</li>
