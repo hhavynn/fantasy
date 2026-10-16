@@ -23,11 +23,12 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from statistics import mean, stdev
 
-from ..db.connection import fetch_dicts, table_exists
+from ..db.connection import fetch_dicts, table_columns, table_exists, utcnow
 from . import forward_ours
 from .availability import ESPN_STATUS, NFL_REPORT_STATUS, SEVERITY, injury_order_sql
 from .player_scores import played
-from .projections import league_window, load_schedule, player_forward
+from .projection_backtest import _kickoff, _utc
+from .projections import league_window, load_schedule, player_forward, summarize
 
 MIN_USAGE_GAMES = 3          # a usage row needs this many completed games for BOTH players to claim an edge
 MIN_STABILITY_GAMES = 4      # coefficient of variation needs at least this many games with the metric
@@ -346,6 +347,45 @@ def _player_row(con, season: int, pid: int) -> dict | None:
     return rows[0] if rows else None
 
 
+def _team_kickoff(con, season: int, week: int, team: str | None):
+    """The (UTC-aware) kickoff of `team`'s regular-season game in `week`; None when unknown or no game."""
+    if not team or not table_exists(con, "nfl_schedules") \
+            or not {"gameday", "gametime"} <= set(table_columns(con, "nfl_schedules")):
+        return None
+    g = fetch_dicts(con, """SELECT gameday, gametime FROM nfl_schedules WHERE season = ? AND week = ?
+                            AND game_type = 'REG' AND ? IN (home_team, away_team) LIMIT 1""", [season, week, team])
+    return _kickoff(g[0]) if g else None
+
+
+def lock_pregame_week(con, season: int, week: int, pid: int, team: str | None, fwd: dict | None, now,
+                      name: str) -> tuple[dict | None, str | None]:
+    """ESPN's live `projected_points` can be overwritten after kickoff. Once `team`'s game in `week` has kicked
+    off, the week's ESPN value becomes the last projection stored before kickoff (espn_projection_history, kept by
+    the sync's pregame lock); with none stored it is left out (None, never the live number), and the summary is
+    recomputed so the rest-of-season total matches. Returns (fwd, limitation or None)."""
+    kick = _team_kickoff(con, season, week, team)
+    if fwd is None or kick is None or kick > _utc(now):
+        return fwd, None
+    cur = next((w for w in fwd["weeks"] if w["week"] == week), None)
+    if cur is None or cur["on_bye"]:
+        return fwd, None
+    rows = fetch_dicts(con, """SELECT projected_points, synced_at FROM espn_projection_history
+                               WHERE season = ? AND scoring_period = ? AND espn_player_id = ?
+                               AND projected_points IS NOT NULL""", [season, week, pid]) \
+        if table_exists(con, "espn_projection_history") else []
+    before = [r for r in rows if _utc(r["synced_at"]) is not None and _utc(r["synced_at"]) < kick]
+    value = float(max(before, key=lambda r: _utc(r["synced_at"]))["projected_points"]) if before else None
+    weeks = [{**w, "espn_projected_points": value, "projection_available": value is not None}
+             if w["week"] == week else w for w in fwd["weeks"]]
+    window = league_window(con, season)
+    out = {**fwd, "weeks": weeks, "summary": summarize(window, weeks) if window else fwd["summary"]}
+    if value is None:
+        return out, (f"{name}: the week {week} game has kicked off and no ESPN projection stored before kickoff "
+                     f"was found, so ESPN's week {week} number is left out (the live value may be post-kickoff).")
+    return out, (f"{name}: the week {week} game has kicked off; ESPN's week {week} number is the last projection "
+                 "stored before kickoff.")
+
+
 def projection_block(fwd: dict | None, name: str, as_of_week: int, source: str) -> tuple[dict | None, list[str]]:
     """The card's `projection` from `player_forward`'s output, and the limitations it implies. ESPN's numbers are
     taken as stored; a bye is never a 0 and a missing projection is None."""
@@ -485,6 +525,9 @@ def _load_side(con, ctx: dict, pid: int, which: str) -> Side:
             if d else None
 
     fwd = player_forward(con, season, pid, team, source=ctx["source"])
+    fwd, lock_note = lock_pregame_week(con, season, as_of, pid, team, fwd, ctx["now"], name)
+    if lock_note:
+        notes.append(lock_note)
     projection, proj_notes = projection_block(fwd, name, as_of, ctx["source"])
     notes += proj_notes
 
@@ -775,7 +818,7 @@ def _freshness(con) -> dict:
     return {"espn_synced_at": _iso(last.get("espn")), "nfl_synced_at": _iso(last.get("nfl"))}
 
 
-def compare(con, a: int, b: int, source: str = "espn") -> dict:
+def compare(con, a: int, b: int, source: str = "espn", now=None) -> dict:
     """The comparison payload (docs/player_comparison_lab.md). Raises ValueError for an unknown `source`,
     UnknownPlayer (`a` first) for an unknown id and LeagueUnavailable without a synced league."""
     source = forward_ours.normalize(source)
@@ -787,7 +830,7 @@ def compare(con, a: int, b: int, source: str = "espn") -> dict:
             raise UnknownPlayer(which, pid)
     sched_games, covered = load_schedule(con, season, list(range(1, done + 1))) if done >= 1 else ({}, set())
     ctx = {"season": season, "league_id": lg["league_id"], "as_of": as_of, "completed": done, "source": source,
-           "sched_games": sched_games, "covered": covered}
+           "sched_games": sched_games, "covered": covered, "now": now or utcnow()}
     sa = _load_side(con, ctx, a, "a")
     identical = a == b
     sb = Side(sa.pid, sa.name, sa.position, deepcopy(sa.card), sa.games, sa.league_games, list(sa.notes)) \

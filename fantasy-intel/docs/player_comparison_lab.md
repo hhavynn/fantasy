@@ -23,7 +23,10 @@ aligns and compares stored numbers.
 `as_of_week` = league `current_week` (the first unplayed fantasy week); `completed_through_week = as_of_week - 1`.
 Every historical number (usage, league points per game, weekly series, recent games, stability) uses only
 weeks `<= completed_through_week`, for **both** players, even when one of them already played this week
-(Thursday game). Projections are the stored pregame projections (`projected_points`), never actuals.
+(Thursday game). Projections are the stored pregame projections (`projected_points`), never actuals. ESPN's live
+`projected_points` can be overwritten after kickoff, so once a player's `as_of_week` game has kicked off his ESPN
+number for that week is the last `espn_projection_history` row stored before kickoff (the sync's pregame lock); with
+none stored it is left out (null, with a limitation), and the rest-of-season total is recomputed to match.
 ESPN's `season_avg_points` is **not** used (it can include the in-progress week). When `player_scores.as_of_week
 >= as_of_week` (ratings/trend computed after a game this week) a limitation says so.
 

@@ -766,3 +766,45 @@ def test_ratings_block_prefers_100_scale():
     assert r["production"] == {"value": 5.0, "scale": 10, "legacy": True}
     assert pc.ratings_block(None) == {"opportunity": None, "production": None, "basis": None, "version": None,
                                       "as_of_week": None}
+
+
+# ------------------------------------------------------------------------------ pregame lock for the as-of week
+
+
+def _kickoffs(con, kick_day="2026-10-15", clock="20:15"):
+    """Give the fixture schedule kickoff times (Eastern): every week on `kick_day` + 7 days per week from week 6."""
+    from datetime import date, timedelta
+    con.execute("ALTER TABLE nfl_schedules ADD COLUMN IF NOT EXISTS gameday VARCHAR")
+    con.execute("ALTER TABLE nfl_schedules ADD COLUMN IF NOT EXISTS gametime VARCHAR")
+    for wk in range(1, 19):
+        day = date.fromisoformat(kick_day) + timedelta(days=7 * (wk - CURRENT))
+        con.execute("UPDATE nfl_schedules SET gameday = ?, gametime = ? WHERE week = ?", [day.isoformat(), clock, wk])
+
+
+def test_after_kickoff_the_as_of_week_uses_the_last_pregame_snapshot(w):
+    """Week 6 KC kicks off 2026-10-16 00:15 UTC. ESPN's live value was overwritten after kickoff (6.0 -> 2.5); the
+    comparison reads the history row stored before kickoff, never the live one, and the ROS total follows."""
+    from datetime import datetime
+    _kickoffs(w)
+    w.execute("INSERT INTO espn_projection_history VALUES ('2026-10-15', ?, ?, ?, 13.0, '2026-10-15 12:00:00')",
+              [SEASON, ACE, CURRENT])
+    before = pc.compare(w, ACE, ZED, "espn", now=datetime(2026, 10, 15, 12, 30))       # before kickoff: live value
+    live = card(before, "a")["projection"]
+    w.execute("UPDATE espn_player_weekly_points SET projected_points = 2.5 WHERE espn_player_id = ? AND scoring_period = ?",
+              [ACE, CURRENT])
+    after = pc.compare(w, ACE, ZED, "espn", now=datetime(2026, 10, 16, 3, 0))
+    ace = card(after, "a")["projection"]
+    assert ace["next_week"]["espn"] == 13.0 and next(x for x in ace["weeks"] if x["week"] == CURRENT)["espn"] == 13.0
+    assert ace["ros"]["espn"] == pytest.approx(live["ros"]["espn"] - live["next_week"]["espn"] + 13.0)
+    assert any("last projection stored before kickoff" in n for n in after["limitations"])
+    assert not any("kicked off" in n for n in before["limitations"])
+
+
+def test_after_kickoff_without_a_pregame_snapshot_the_week_is_left_out(w):
+    from datetime import datetime
+    _kickoffs(w)
+    after = pc.compare(w, ACE, ZED, "espn", now=datetime(2026, 10, 16, 3, 0))
+    ace = card(after, "a")["projection"]
+    assert ace["next_week"]["espn"] is None
+    assert ace["ros"]["espn_weeks_available"] == ace["ros"]["espn_weeks_expected"] - 1
+    assert any("no ESPN projection stored before kickoff" in n for n in after["limitations"])
