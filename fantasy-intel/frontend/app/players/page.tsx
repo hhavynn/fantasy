@@ -42,6 +42,7 @@ export default async function PlayersPage({ searchParams }: PageProps<"/players"
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="Player research"
         title="Players"
         meta="Usage beneath the box score: snaps, shares, expected points, red-zone work."
       >
@@ -49,6 +50,11 @@ export default async function PlayersPage({ searchParams }: PageProps<"/players"
         <p className={styles.hint}>
           Search by name; kickers and team defenses too. Open a player for week-by-week usage, the forward projection and the game log.
         </p>
+        <dl className={styles.glossary}>
+          <div><dt>PPR/g</dt><dd>Fantasy points scored per game</dd></div>
+          <div><dt>xFP/g</dt><dd>Points an average player would expect from the same targets, carries and field position</dd></div>
+          <div><dt>+/− xFP</dt><dd>The difference: production above or below what the role implies</dd></div>
+        </dl>
       </PageHeader>
       {list.ok
         ? <ResultsTable rows={list.data} q={q} limit={LIMIT} />

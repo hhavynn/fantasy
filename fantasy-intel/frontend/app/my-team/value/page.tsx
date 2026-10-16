@@ -64,6 +64,7 @@ export default async function TeamValuePage({ searchParams }: PageProps<"/my-tea
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="My team"
         title="My team value"
         meta={`${d.team.name}${d.team.is_mine ? " (you)" : ""} · ${PHASE_TEXT[phase]}${weeks.length ? ` · weeks ${weeks[0]}–${weeks[weeks.length - 1]}` : ""}`}
         actions={

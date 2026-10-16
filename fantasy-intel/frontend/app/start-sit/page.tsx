@@ -82,6 +82,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   return (
     <div className="stack">
       <PageHeader
+        eyebrow="My team"
         title={`Start/Sit · Week ${d.scoring_period}`}
         meta={`${team.name} (${team.abbrev}) · ${d.projection_source} projections · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
         actions={

@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { PlayerLink } from "@/components/PlayerLink";
-import { Badge, EmptyState, Pos, Score, SortableTh } from "@/components/ui";
+import { PlayerIdentity } from "@/components/PlayerIdentity";
+import { Badge, EmptyState, Score, SortableTh } from "@/components/ui";
 import type { SearchParams, SortState } from "@/lib/sort";
 import { Evidence } from "./Evidence";
 import { Competition, EvidenceBadge, GiveUp, OwnedDelta, RoleTrend, actionLabel } from "./WaiverParts";
@@ -49,11 +49,13 @@ export function WaiverTable({ rows, sort, sp, empty }: {
             <tbody key={w.espn_player_id} className={styles.player}>
               <tr className={styles.main}>
                 <td className={styles.who}>
-                  <PlayerLink id={w.espn_player_id} name={w.full_name} /> <Pos value={w.position} />
-                  <span className={styles.sub}>
-                    {w.pro_team ?? "Team unknown"} · {label(w.availability_status)}
-                    {hasInjuryDesignation(w.injury_status) && <> <Badge value={w.injury_status} /></>}
-                  </span>
+                  <PlayerIdentity
+                    id={w.espn_player_id} name={w.full_name} position={w.position} team={w.pro_team}
+                    meta={<>
+                      <span>{label(w.availability_status)}</span>
+                      {hasInjuryDesignation(w.injury_status) && <Badge value={w.injury_status} />}
+                    </>}
+                  />
                 </td>
                 <td className={styles.move}>
                   <div className={styles.moveHead}>

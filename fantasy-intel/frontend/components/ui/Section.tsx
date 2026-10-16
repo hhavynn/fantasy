@@ -7,8 +7,10 @@ import styles from "./Section.module.css";
  * `flush` removes the body padding so a table runs edge to edge. Without a `title` the
  * section has no header bar. The title is the section's `h2`.
  */
-export function Section({ title, actions, footnote, flush = false, id, className, children }: {
+export function Section({ title, subtitle, actions, footnote, flush = false, id, className, children }: {
   title?: ReactNode;
+  /** One muted line under the title: the sample, the source, or what the section answers. */
+  subtitle?: ReactNode;
   actions?: ReactNode;
   footnote?: ReactNode;
   flush?: boolean;
@@ -22,7 +24,12 @@ export function Section({ title, actions, footnote, flush = false, id, className
     <section id={id} className={cx(styles.section, flush && styles.flush, className)} aria-labelledby={hasHead ? headingId : undefined}>
       {(hasHead || actions) && (
         <div className={styles.head}>
-          {hasHead ? <h2 id={headingId} className={styles.title}>{title}</h2> : <span />}
+          {hasHead ? (
+            <div className={styles.titles}>
+              <h2 id={headingId} className={styles.title}>{title}</h2>
+              {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
+            </div>
+          ) : <span />}
           {actions ? <div className={styles.actions}>{actions}</div> : null}
         </div>
       )}

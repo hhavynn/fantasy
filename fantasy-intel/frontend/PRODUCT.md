@@ -21,6 +21,9 @@ Factual, compact, cautious. Separate current conditions from historical tendenci
 - Decision first, evidence second, method last: a page opens with the answer, then the table or chart behind it, then a collapsible `Method` with the assumptions.
 - Honest data: a muted `—` with a `title` reason means missing, `0` is a measured zero, and the UI never invents a number. No trade grades, acceptance or win probabilities, or clinching and elimination claims; the UI may sort, filter, sum and compare numbers the backend computed. Sample sizes and caveats stay next to the claims they limit.
 - Dense but calm: compact tables, restrained surfaces, hierarchy from type scale and spacing rather than boxes.
+- Identity: deep navy foundations with one electric-blue accent; the wordmark is uppercase Barlow Condensed beside the bar mark (`BrandMark` in `components/Nav.tsx`). Page titles sit under a small accent eyebrow (the section or week). Table headers, stat labels and eyebrows are small uppercase labels; values carry the weight.
+- Colour has fixed meanings: accent for the selected thing and links; positive, negative and caution for direction and availability; `--chart-1` (blue) for your side and `--chart-2` (orange) for the other side in every head-to-head view (matchup card, trade builder, trade result); position accents (QB `--chart-4`, RB `--chart-3`, WR `--chart-1`, TE `--chart-2`, K `--chart-6`, D/ST `--chart-5`) only as the thin edge of the `Pos` tag.
+- Shape and frame: radii from `--radius-xs` to `--radius-lg`, one page frame (`--page-max`, `--gutter`) and one gap between page sections (`--section-gap`).
 - Copy is sentence case and factual: no exclamation marks, no emoji, no "(s)" plural hedges (use `plural()` from `lib/plural.ts`), and no engine identifiers in prose (`tidyReason()` in `lib/reason-text.ts` formats the engine's reason sentences for display).
 
 ## Anti-references
@@ -31,10 +34,12 @@ The supplied brief rules out giant walls of cards and unsupported claims. Avoid 
 
 Build pages from the shared primitives instead of one-off markup. UI primitives live in `components/ui/` (import from `@/components/ui`), chart primitives in `components/charts/` (import from `@/components/charts`). Both are server-component friendly and styled with CSS modules and the tokens in `app/globals.css`.
 
-- Layout: `PageHeader` (title, meta line, actions), `Section` (header bar, `flush` for edge-to-edge tables, `footnote`), `StatStrip` + `Stat`, `Tabs` (URL-backed views), `Method` (collapsible "how it's calculated").
-- Data: `SortableTh` with `lib/sort.ts` (`parseSort`, `sortRows`) for URL-backed server-side sorting, `Delta` (signed change with glyph), `Badge`, `Pos`, `Score`, `TrendArrow`, `Sparkline`.
+- Layout: `PageHeader` (eyebrow, title, meta line, actions), `Section` (header bar with optional `subtitle`, `flush` for edge-to-edge tables, `footnote`), `StatStrip` + `Stat`, `Tabs` (URL-backed views), `Method` (collapsible "how it's calculated").
+- Players: `PlayerIdentity` (`components/PlayerIdentity.tsx`: photo, linked name, position and NFL team line, extra `meta`) is the player cell for tables and cards; `PlayerLink` stays for running text.
+- Data: `Meter` (a number with a 0-max data bar for table cells), `SortableTh` with `lib/sort.ts` (`parseSort`, `sortRows`) for URL-backed server-side sorting, `Delta` (signed change with glyph), `Badge`, `Pos`, `Score`, `TrendArrow`, `Sparkline`.
 - States: `Notice` (info, caution, negative, positive), `EmptyState`, `Skeleton`, `SkeletonTable`, `SkeletonStatStrip`, `BackendProblem` (backend offline, stale schema, HTTP error). `app/loading.tsx`, `app/error.tsx` and `app/not-found.tsx` cover the route states.
-- Charts: `LineChart`, `BarChart`, `ScatterChart`, coloured by the `--chart-1` to `--chart-6` tokens.
+- Charts: `LineChart`, `BarChart`, `ScatterChart`, coloured by the `--chart-1` to `--chart-6` tokens. Each takes an optional `title` and `caption` (source, sample weeks or freshness), drawn by `ChartFrame`. Hovering a line series brings it forward and dims the others.
+- Interactive charts: `InteractiveScatter` (client) for scatter and bubble plots that need hover, focus and tap tooltips, keyboard-selectable markers and URL-backed selection (the Research lab). It measures its container so text and markers keep real pixel sizes on phones; `y = x` only when both axes share a unit. Server-rendered `ScatterChart` stays for static plots.
 - Helpers: `cx()` in `lib/cx.ts`, `plural()` in `lib/plural.ts`, number formatting in `lib/format.tsx` (`num`, `pct`, `signed`, `Missing`).
 - Also exported: `ToneIcon`, `VisuallyHidden`, `Callout` and `ErrorBox` (legacy wrappers over `Notice`).
 
@@ -44,7 +49,7 @@ Rules: no new inline `style={{...}}` except computed geometry (chart coordinates
 
 - Every route has a `loading.tsx` skeleton (the root one is the fallback) and the root `error.tsx` and `not-found.tsx`.
 - A page that awaits one slow source beside fast ones starts the slow request without awaiting it, and renders the slow part inside `<Suspense>` with a skeleton of the same footprint, so the header and first section stream at once. Examples: the Overview week band (`app/WeekBand.tsx`) and the Trade analyzer result (`app/trades/EvaluatedTrade.tsx`). Do this only where the wait is real; a section that needs the same payload as the page header cannot stream.
-- Fonts come from `next/font` (self-hosted, size-adjusted fallbacks), so loading them does not shift the layout. The pages use no images (only the generated app icons), so there is nothing to reserve space for.
+- Fonts come from `next/font` (self-hosted, size-adjusted fallbacks), so loading them does not shift the layout. Player photos render at fixed square sizes with an initials placeholder, so they reserve their space and never shift the layout.
 
 ## Quality bar
 
@@ -52,6 +57,8 @@ Before a page ships: no horizontal page scroll from 320 to 1600px in both themes
 
 ## Global UX (M7)
 
+- Navigation: desktop shows the four groups with an accent underline and a pill sub-nav labelled with the group. Phones (720px and below) add a bottom tab bar (`TabBar` in `components/Nav.tsx`) with one tab per group, so any section is one tap away; the sub-nav at the top lists the group's pages and the menu button keeps every page plus the theme and projection switches.
+- Filters: chip rows (`.chip`, active via `.active` or `aria-current`) are filled when selected; a `.chip.reset` link appears beside active filters. On phones a chip row scrolls sideways rather than wrapping into a tall panel.
 - Command palette (`components/CommandPalette.tsx`, Ctrl/Cmd+K or `/`): pages and quick actions from `lib/navigation.ts` and `lib/palette.ts`, players from `app/api/search/route.ts`, which reaches the backend through `api()` so the hosted-mode key stays on the server.
 - Themes: tokens live in `:root` (Night), `:root[data-theme="light"]` and `@media (prefers-color-scheme: light)`; the two light blocks must be identical and every pair must pass AA (`lib/theme-contrast.test.ts` checks both). Define any new colour token in all three places. Never write raw colours in components.
 - Tables: `.table-wrap` scrolls sideways and pins its first column (opt out with `.table-wrap.flat` for tables that restack into cards). Sticky offsets under the app bar use `var(--appbar-h)`.

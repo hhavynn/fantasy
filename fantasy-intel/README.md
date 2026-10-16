@@ -98,6 +98,7 @@ fantasy-intel/
 | `/matchup`         | This week's head-to-head (any week through the switcher): both teams' best projected lineups slot by slot, and the lineups as set in ESPN, with projected totals, margin and point share (a share of projected points, not a win probability) |
 | `/start-sit`       | Your submitted lineup vs the best projected lineup that respects kickoff locks, each swap with its projected gain, availability alerts, bench and reserves; next week as a preview. ESPN projections, no invented numbers |
 | `/players`         | Search; per-player profile: underlying value vs box score, usage trend table, weekly snaps/targets/shares/aDOT/RZ/GL/xFP |
+| `/research`        | Research lab: the whole NFL WR/RB/TE pool. Expected points (xFP/G) against production (FPOE/G or PPR/G) over paired games for season, last 5 or last 3 games; position workload maps (WR target vs air-yard share, RB backfield share vs targets, TE snaps vs target share); role momentum (change in xFP vs change in PPR, with sample badges); a sortable leaderboard with a position-percentile heatmap; red-zone work with raw totals; and a weekly timeline that keeps byes and missed games distinct from zeros. URL-backed filters and selection. Descriptive research lists, no buy/sell calls. See `docs/research_lab.md` |
 | `/waivers`         | Available players ranked by local waiver score, with role trend, roster fit, league competition (LOW/MED/HIGH + likely competitors), recommendation, suggested drop. Filter by position / recommendation |
 | `/trades`          | Manual trade analyzer (any player counts up to 6 per side; teams switch instantly, Evaluate runs the URL-backed selection): both teams' optimal starting lineups rebuilt every remaining week before/after the trade on ESPN's projections; ROS / regular-season / playoff deltas, weekly table, starter changes, mandatory drop / open roster spot, hypothetical FA replacement, player context. No trade grade, no acceptance probability |
 | `/trades/discover` | Trade opportunity discovery: exact lineup impact for both teams across every 1-for-1 / 2-for-1 / 1-for-2 trade with every manager, sortable by projected gains, with categories, manager context and a link into the manual evaluator. No acceptance estimate |
@@ -499,6 +500,13 @@ starts importing them. Cold starts download the MotherDuck extension (a couple o
 
 `SITE_PASSWORD` matters: without it anyone with the URL sees your league. Locally none of
 these are set, so the API key check and the password prompt are off.
+
+**Deployments run for `main` only.** `backend/vercel.json` and `frontend/vercel.json` set
+`git.deploymentEnabled` to `{"**": false, "main": true}`: a push to any other branch creates no Vercel
+deployment (Vercel deploys when at least one matching rule is true), which keeps the free plan's daily
+deployment limit for production. Pull requests get no preview link; the GitHub Actions checks still run.
+Vercel reads the rule from the pushed commit, so a branch created before this change deploys until it
+merges `main`.
 
 **Refreshing the hosted data:** run the syncs, then `publish_motherduck.py`. No redeploy is
 needed; the API reads the new copy on the next request.

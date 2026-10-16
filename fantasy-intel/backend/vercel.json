@@ -4,5 +4,11 @@
     "app/main.py": {
       "excludeFiles": "{tests/**,.pytest_cache/**,.venv/**}"
     }
+  },
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "main": true
+    }
   }
 }

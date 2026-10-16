@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ChartFrame } from "./ChartFrame";
 import { placeLabels, type PlacedLabel } from "./labels";
 import { extent, linearScale, niceTicks, ticksWithin } from "./scale";
@@ -21,7 +22,7 @@ export type ScatterPoint = {
  * share one domain and a dashed y = x line is drawn (above the line means y exceeds x).
  * Labels that cannot be placed without overlap are dropped, never stacked; every point keeps a tooltip.
  */
-export function ScatterChart({ points, xLabel, yLabel, xFormat = defaultFormat, yFormat = defaultFormat, diagonal = false, xDomain, yDomain, height = 340, width = 480, ariaLabel = "Scatter plot", className }: {
+export function ScatterChart({ points, xLabel, yLabel, xFormat = defaultFormat, yFormat = defaultFormat, diagonal = false, xDomain, yDomain, height = 340, width = 480, ariaLabel = "Scatter plot", title, caption, className }: {
   points: ScatterPoint[];
   xLabel: string;
   yLabel: string;
@@ -33,6 +34,9 @@ export function ScatterChart({ points, xLabel, yLabel, xFormat = defaultFormat, 
   height?: number;
   width?: number;
   ariaLabel?: string;
+  /** Visible heading and source/sample line, drawn by ChartFrame. */
+  title?: ReactNode;
+  caption?: ReactNode;
   className?: string;
 }) {
   const xe = extent(points.map((p) => p.x));
@@ -86,7 +90,7 @@ export function ScatterChart({ points, xLabel, yLabel, xFormat = defaultFormat, 
   const summary = `${ariaLabel}: ${points.length} points; ${xLabel} from ${xFormat(xe[0])} to ${xFormat(xe[1])}, ${yLabel} from ${yFormat(ye[0])} to ${yFormat(ye[1])}`;
 
   return (
-    <ChartFrame width={width} height={height} label={summary} className={className}>
+    <ChartFrame width={width} height={height} label={summary} title={title} caption={caption} className={className}>
       {ay.ticks.map((t) => (
         <g key={`y${t}`}>
           <line x1={left} x2={width - right} y1={ys(t)} y2={ys(t)} className={styles.grid} />
