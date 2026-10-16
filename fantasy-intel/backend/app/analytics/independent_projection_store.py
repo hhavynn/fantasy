@@ -310,7 +310,7 @@ def write_run(con, meta: dict, rows: list[dict]) -> dict:
     return {**result, "row_count": len(rows), "content_sha256": digest}
 
 
-APPROVED_SOURCES = ("learning_cycle", "manual_pin")
+APPROVED_SOURCES = ("learning_cycle", "manual_pin", "learning_cycle_backfill")
 
 
 def register_approved_artifact(con, *, model_version: str, artifact_sha256: str, target_season: int | None,

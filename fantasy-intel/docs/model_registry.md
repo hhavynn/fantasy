@@ -81,14 +81,20 @@ uv run python ../scripts/backtest_independent_projections.py project --model ifp
 
 which registers the newest store artifact for that week (recorded with `source = manual_pin`) and stores the run.
 
-**Fail-open window.** A database without `approved_artifacts` (an old local database or a hosted copy published
-before the owner's laptop migrated) is read as before: ifp-2.0.0 runs count, and the response says so
-(`run.artifact_verified: false` and a note in `reason`). This is a deliberate choice: failing closed would blank
-the projection switch for the owner until they re-sync and republish. The flip side: once the table exists
-(created by any write-mode open of the database) but is empty, ifp-2.0.0 runs stored before this change are
-**not** approved. Re-running the cycle for the current week (or the `project ... --register-artifact` command
-above, idempotent for an identical run) registers the artifact and restores them; until then the switch falls
-back to `ifp-1.0.0`, then ESPN.
+**Fail-open window and the upgrade transition.** Enforcement for a model starts with its first registered artifact.
+Until then, a database without `approved_artifacts` (an old local database or a hosted copy published before the
+owner's laptop migrated) **or** whose table has no row for `ifp-2.0.0` yet (it was just created by the upgrade) is
+read as before: ifp-2.0.0 runs count, and the response says so (`run.artifact_verified: false` and a note in
+`reason`). This is deliberate: failing closed would blank the owner's "Ours" view until the next cycle. The first
+learning cycle after the upgrade, and any `project --register-artifact` run, first registers the run's artifact
+and then **backfills** every other artifact already in the local write-once weekly store
+(`weekly_learning.backfill_store_artifacts`, source `learning_cycle_backfill`). Only the store's own
+`s<season>w<week>-<artifact_id>.json` files qualify, and only if they load, belong to the model, pass the artifact
+checks (schema, scoring, data cutoff before the target week, not a retrospective replay) and match their
+content-addressed name; anything else is skipped and listed in the command's `artifact_backfill.skipped`, and
+nothing outside the store is read. It is idempotent. So runs that were made from store artifacts keep being served
+after the first cycle; a run whose artifact file is not in the store (hand-written, or deleted) stays excluded
+once enforcement has started.
 
 **ifp-1.0.0 single-sha pin.** The pin lives in two places that must agree, because the hosted app never reads
 the registry:

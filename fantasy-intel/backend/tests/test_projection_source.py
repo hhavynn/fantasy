@@ -203,6 +203,8 @@ def test_an_unregistered_production_artifact_falls_back_per_the_existing_rules(l
     con, src, _ = live
     [fallback] = _runs(con, src, ps.FALLBACK_VERSION, [(SHA_B, 11.0, 0)])
     [hand_made] = _runs(con, src, ps.MODEL_VERSION, [(SHA_A, 99.0, 5)])
+    register_approved_artifact(con, model_version=ps.MODEL_VERSION, artifact_sha256=SHA_C, target_season=2026,
+                               target_week=6, source="learning_cycle")        # enforcement starts with a first row
     w = ps.weekly(con, 2026, 6, "independent")
     assert w["run"]["run_id"] == fallback["run_id"] and w["values"][1] == 11.0           # ifp-1.0.0 fallback
     assert ps.MODEL_VERSION in w["reason"] and ps.FALLBACK_VERSION in w["reason"]
@@ -231,7 +233,8 @@ def test_without_the_table_the_view_fails_open_and_says_unverified(live):  # noq
     """An old local database or hosted copy has no approved_artifacts: behave as before, but say so."""
     con, src, _ = live
     [run] = _runs(con, src, ps.MODEL_VERSION, [(SHA_A, 21.0, 0)])
-    assert ps.weekly(con, 2026, 6, "independent")["available"] is False        # table present and empty: not approved
+    w = ps.weekly(con, 2026, 6, "independent")           # table present but no row for the model yet: also unverified
+    assert w["available"] and w["run"]["artifact_verified"] is False and "could not be verified" in w["reason"]
     con.execute("DROP TABLE approved_artifacts")
     w = ps.weekly(con, 2026, 6, "independent")
     assert w["available"] and w["run"]["run_id"] == run["run_id"] and w["values"][1] == 21.0

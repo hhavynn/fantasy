@@ -110,7 +110,7 @@ def test_registration_never_updates_and_rejects_malformed_input_loudly(live):  #
                 {"model_version": ""}, {"source": "somebody"}):
         with pytest.raises(ValueError):
             register_approved_artifact(con, **{**kw, "source": "manual_pin", **bad})
-    assert len(rows_in(con)) == 2 and set(APPROVED_SOURCES) == {"learning_cycle", "manual_pin"}
+    assert len(rows_in(con)) == 2 and set(APPROVED_SOURCES) == {"learning_cycle", "manual_pin", "learning_cycle_backfill"}
     src = inspect.getsource(register_approved_artifact).upper()
     assert "ON CONFLICT DO NOTHING" in src and "UPDATE " not in src and "DELETE " not in src
 
@@ -151,7 +151,8 @@ def test_evidence_counts_only_registered_production_artifacts(live):  # noqa: F8
 def test_without_the_table_the_evidence_readers_fail_open(live):  # noqa: F811
     con, src, _ = live
     run, _, _ = store(con, src, BEFORE_ALL, sha="b" * 64, meta_over={"model_version": PROD})
-    assert pregame_forecasts(con, 2026, None, model_version=PROD, scoring_fingerprint=FP)[0] == []   # empty table
+    rows, excluded = pregame_forecasts(con, 2026, None, model_version=PROD, scoring_fingerprint=FP)
+    assert {r["run_id"] for r in rows} == {run["run_id"]} and not excluded           # empty table: also fail open
     con.execute("DROP TABLE approved_artifacts")
     rows, excluded = pregame_forecasts(con, 2026, None, model_version=PROD, scoring_fingerprint=FP)
     assert {r["run_id"] for r in rows} == {run["run_id"]} and not excluded                # today's behaviour
@@ -170,3 +171,70 @@ def test_the_single_sha_pin_leaves_ifp1_unchanged_when_unset_and_filters_when_se
     assert eligible_run_ids(con, 2026, "ifp-1.0.0", FP)[0] == [a["run_id"]]
     assert latest_run(con, 2026, 6, model_version="ifp-1.0.0")["artifact_check"] == "verified"
     assert b["run_id"] not in eligible_run_ids(con, 2026, "ifp-1.0.0", FP)[0]
+
+
+# ----------------------------------------------------------------------------- upgrade transition and backfill
+
+
+def test_zero_registered_rows_is_unverified_and_the_first_registration_starts_enforcement(live):  # noqa: F811
+    con, src, _ = live
+    old, _, _ = store(con, src, BEFORE_ALL, sha="b" * 64, meta_over={"model_version": PROD})   # stored before the upgrade
+    assert rows_in(con) == []
+    assert artifact_gate(con, PROD)({"artifact_id": "b" * 64})[0] == "unverified"
+    w = ps.weekly(con, 2026, 6, "independent")                 # the owner's view is not blanked after the upgrade
+    assert w["available"] and w["run"]["run_id"] == old["run_id"] and w["run"]["artifact_verified"] is False
+    assert "could not be verified" in w["reason"]
+    assert latest_run(con, 2026, 6, model_version=PROD)["artifact_check"] == "unverified"
+    # one registration (of ANY artifact) switches this model to enforcement: the old unregistered run is out
+    register_approved_artifact(con, model_version=PROD, artifact_sha256="a" * 64, target_season=2026, target_week=6,
+                               source="learning_cycle")
+    assert artifact_gate(con, PROD)({"artifact_id": "b" * 64}) == ("rejected", NOT_REGISTERED)
+    assert pregame_forecasts(con, 2026, None, model_version=PROD, scoring_fingerprint=FP)[0] == []
+    assert ps.weekly(con, 2026, 6, "independent")["available"] is False
+    # enforcement is per model: the ifp-1.0.0 rule is unaffected
+    assert artifact_gate(con, "ifp-1.0.0")({"artifact_id": "x"}) == ("unchecked", None)
+
+
+def test_backfill_registers_the_stores_own_files_and_nothing_else(live, tmp_path):  # noqa: F811
+    con, src, _ = live
+    arts = [weekly_artifact(src, w) for w in (4, 5, 6)]
+    saved = [wl.save_artifact(a, tmp_path) for a in arts]
+    store_dir = tmp_path / "artifacts" / PROD
+    stray = store_dir / "s2026w06-stray.json"                                 # a hand copy under a store-like name
+    stray.write_bytes(saved[2][1].read_bytes())
+    (tmp_path / "copy.json").write_bytes(saved[0][1].read_bytes())             # outside the store: never even looked at
+    (store_dir / "s2026w09-broken.json").write_text("{not json")               # unreadable
+    retro = weekly_artifact(src, 7)
+    retro.config["provenance"]["retrospective"] = True
+    wl.save_artifact(retro, tmp_path)                                          # a retrospective replay is never production
+    res = wl.backfill_store_artifacts(con, tmp_path, PROD)
+    assert res["registered"] == 3 and res["existing"] == 0
+    skipped = {name for name, _ in res["skipped"]}
+    assert skipped == {"s2026w06-stray.json", "s2026w09-broken.json", saved_name(tmp_path, retro)}
+    got = rows_in(con)
+    assert {r[1] for r in got} == {sha(p) for _, p, _ in saved} and {r[4] for r in got} == {"learning_cycle_backfill"}
+    assert {(r[2], r[3]) for r in got} == {(2026, 4), (2026, 5), (2026, 6)}
+    # idempotent
+    again = wl.backfill_store_artifacts(con, tmp_path, PROD)
+    assert again["registered"] == 0 and again["existing"] == 3 and rows_in(con) == got
+
+
+def saved_name(root, art):
+    s, w = art.config["provenance"]["target"]
+    return f"s{s}w{w:02d}-{wl.artifact_id(art)}.json"
+
+
+def test_backfill_covers_existing_runs_so_the_first_cycle_after_the_upgrade_keeps_them(live, tmp_path):  # noqa: F811
+    """The run was made from a store artifact before approved_artifacts existed: backfill registers that artifact,
+    so enforcement (started by the registration) still serves the run."""
+    con, src, _ = live
+    art = weekly_artifact(src)
+    _, path, _ = wl.save_artifact(art, tmp_path)
+    run, _, _ = store(con, src, BEFORE_ALL, sha=sha(path), meta_over={"model_version": PROD})
+    hand, _, _ = store(con, src, BEFORE_ALL, sha="e" * 64, meta_over={"model_version": PROD})
+    assert ps.weekly(con, 2026, 6, "independent")["run"]["artifact_verified"] is False          # before the first cycle
+    wl.backfill_store_artifacts(con, tmp_path, PROD)
+    rows, excluded = pregame_forecasts(con, 2026, None, model_version=PROD, scoring_fingerprint=FP)
+    assert {r["run_id"] for r in rows} == {run["run_id"]}
+    assert [(e["run_id"], e["reason"]) for e in excluded] == [(hand["run_id"], NOT_REGISTERED)]
+    assert ps.weekly(con, 2026, 6, "independent")["run"]["artifact_verified"] is True

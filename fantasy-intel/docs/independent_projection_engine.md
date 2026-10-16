@@ -494,9 +494,10 @@ run's `artifact_id` and the registered sha are the same sha256 of the artifact f
 unregistered artifact is excluded ("artifact not registered as approved") and the switch falls back to
 `ifp-1.0.0`, then ESPN. The `ifp-1.0.0` fallback keeps the single-sha pin
 `production_pin.APPROVED_ARTIFACT_SHA256` (`None` today, which changes nothing; pinning is a reviewed change to
-both `model_registry.json` and that constant, tested equal). A database without `approved_artifacts` is read
-as before and marked unverified (`run.artifact_verified: false`): the switch fails open there so an old hosted
-copy keeps working until the next publish. Details, the manual pin and the transition after the upgrade are in
+both `model_registry.json` and that constant, tested equal). A database without `approved_artifacts`, or whose table has no row for `ifp-2.0.0` yet (right after the upgrade), is
+read as before and marked unverified (`run.artifact_verified: false`): the switch fails open there so an old hosted
+copy and the first days after the upgrade keep working. Enforcement starts with the first registered artifact, and
+the first learning cycle registers its artifact and backfills the others already in the weekly store. Details, the manual pin and the transition after the upgrade are in
 [model_registry.md](model_registry.md) ("Approving artifacts for the consumer view").
 
 Start/Sit and Matchup rerun the same lineup

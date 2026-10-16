@@ -66,9 +66,11 @@ def artifact_gate(con, model_version: str | None, artifact_id=_PIN):
 
     * "unchecked"  no artifact rule applies (another version, or ifp-1.0.0 while unpinned): the run counts;
     * "verified"   the run's artifact_id matches the pin / is registered in approved_artifacts: counts;
-    * "unverified" ifp-2.0.0 on a database WITHOUT approved_artifacts (an old local database or hosted copy):
-                   counts, but is marked unverified (fail OPEN: failing closed would blank production until
-                   the owner re-syncs and republishes);
+    * "unverified" ifp-2.0.0 on a database WITHOUT approved_artifacts (an old local database or hosted copy),
+                   or whose approved_artifacts has NO row for the model yet (the table exists but nothing has
+                   been registered, as right after an upgrade): counts, but is marked unverified (fail OPEN:
+                   failing closed would blank production until the owner re-syncs, republishes or re-runs the
+                   cycle). Enforcement starts per model with its first registered artifact;
     * "rejected"   excluded, with `reason`.
 
     An explicit `artifact_id` (a sha, or None for no rule) overrides the per-version default."""
@@ -92,6 +94,9 @@ def artifact_gate(con, model_version: str | None, artifact_id=_PIN):
     for r in fetch_dicts(con, f"SELECT artifact_sha256, target_season, target_week FROM {APPROVED} "
                               "WHERE model_version = ?", [model_version]):
         targets.setdefault(r["artifact_sha256"], []).append((r["target_season"], r["target_week"]))
+
+    if not targets:
+        return lambda run: ("unverified", None)
 
     def check(run):
         t = targets.get(run.get("artifact_id"))

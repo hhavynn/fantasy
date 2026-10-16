@@ -267,13 +267,16 @@ def cmd_project(args, hist, scoring) -> dict:
     with open_db(args.live_db) as con:
         src = _sources(con, hist, scoring).with_exits(exits)
         t = time.time()
-        registered = None
+        registered = backfill = None
         if args.register_artifact:       # ifp-2.0.0 only: approve the write-once store artifact this run uses
             if art_path is None:
                 raise ValueError("--register-artifact applies to the weekly-trained model (ifp-2.0.0) only; ifp-1.0.0 "
                                  "is pinned in the registry and production_pin.py")
             from app.analytics import weekly_learning as wl
             registered = wl.register_saved_artifact(con, art, art_path, args.weekly_dir, args.register_artifact)
+            # then every other artifact already in the write-once store (the first run after the upgrade covers the
+            # runs those artifacts made); files that are not the store's own are skipped
+            backfill = wl.backfill_store_artifacts(con, args.weekly_dir, art.version, scoring.fingerprint)
         meta, rows = build_live(con, src, art, args.season, args.week, participation=part, artifact_sha256=art_sha)
         stored = write_run(con, meta, rows)   # append-only: an identical retry returns the existing run
     by = {}
@@ -282,6 +285,7 @@ def cmd_project(args, hist, scoring) -> dict:
     return {"run_id": stored["run_id"], "created": stored["created"], "rows": stored["row_count"],
             "model_version": art.version, "artifact_id": art_sha, "artifact_registered": registered and
             {"sha256": registered[0], "created": registered[1], "source": args.register_artifact},
+            "artifact_backfill": backfill,
             "content_sha256": stored["content_sha256"], "coverage": by, "runtime_seconds": round(time.time() - t, 2),
             "participation": meta["participation_version"],
             "with_expected_points": sum(r["expected_points"] is not None for r in rows),
