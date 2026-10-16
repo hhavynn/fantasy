@@ -3,10 +3,12 @@ fallbacks, probability validity, determinism and production isolation. Synthetic
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import importlib.util
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import polars as pl
@@ -58,6 +60,9 @@ def test_calibration_never_uses_future_outcomes():
     assert rolling == min(pc.ROLLING_WEEKS, keys.index(k))
 
 
+FETCHED = {s: datetime(2099, 1, 1, tzinfo=timezone.utc) for s in (2024, 2025)}
+
+
 @pytest.fixture(scope="module")
 def synthetic_oos(tmp_path_factory):
     from app.analytics.forecast_backtest import Protocol
@@ -75,7 +80,7 @@ def synthetic_oos(tmp_path_factory):
                         heldout_seasons=(2025,))
     ifp_sel = {"positions": {p: {"primary": "C", "lambda": {"B": 0.01, "C": 0.01}} for p in pm.POSITIONS}}
     psel = {"positions": {p: {"lambda": 0.01} for p in pm.POSITIONS}}
-    oos, _ = cli.oos_predictions(src, protocol, ifp_sel, psel, tmp_path_factory.mktemp("cache"))
+    oos, _ = cli.oos_predictions(src, protocol, ifp_sel, psel, tmp_path_factory.mktemp("cache"), FETCHED)
     weeks = sorted({(int(s), int(w)) for s, w in oos.select("season", "week").unique().iter_rows()})
     store = pm.build_store(src, weeks)
     return cli, src, oos, store
@@ -232,3 +237,24 @@ def test_production_participation_and_consumers_are_unchanged():
     # the production artifact cannot be read as a calibration artifact (and vice versa)
     with pytest.raises(ValueError):
         pc.CalibrationArtifact.from_dict({"schema": pm.PARTICIPATION_SCHEMA, "status": "shadow"})
+
+
+def test_labels_only_from_fully_final_and_fully_ingested_weeks(synthetic_oos):
+    cli, src, _, _ = synthetic_oos
+    weeks = sorted({(int(s), int(w)) for s, w in src.games.select("season", "week").unique().iter_rows()})
+    assert cli.fully_final_weeks(src, weeks, FETCHED) == weeks
+    s, w = weeks[-1]
+    team = src.games.filter((pl.col("season") == s) & (pl.col("week") == w))["team"][0]
+    this = (pl.col("season") == s) & (pl.col("week") == w) & (pl.col("team") == team)
+    # one team's snap counts (or box scores) not yet ingested: its rostered players would become
+    # false non-participants, so the whole week is excluded
+    no_snaps = src.panel.with_columns(pl.when(this).then(None).otherwise(pl.col("offense_pct")).alias("offense_pct"))
+    no_box = src.panel.with_columns(pl.when(this).then(False).otherwise(pl.col("has_stats")).alias("has_stats"))
+    for panel in (no_snaps, no_box):
+        assert (s, w) not in cli.fully_final_weeks(SimpleNamespace(games=src.games, panel=panel), weeks, FETCHED)
+    # a score that may be live (schedule fetch time unknown) is not final either
+    assert cli.fully_final_weeks(src, weeks, {**FETCHED, s: None}) == [x for x in weeks if x[0] != s]
+    # a relocated team's old code in the schedule still matches its box scores
+    oak = src.games.with_columns(pl.when(this).then(pl.lit("OAK")).otherwise(pl.col("team")).alias("team"))
+    lv = src.panel.with_columns(pl.when(this).then(pl.lit("LV")).otherwise(pl.col("team")).alias("team"))
+    assert (s, w) in cli.fully_final_weeks(SimpleNamespace(games=oak, panel=lv), weeks, FETCHED)

@@ -24,6 +24,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 import time
 
 import _bootstrap  # noqa: F401
@@ -37,6 +38,8 @@ import polars as pl  # noqa: E402
 
 from app.analytics import participation as pm  # noqa: E402
 from app.analytics import participation_calibration as pc  # noqa: E402
+from app.analytics import weekly_learning as wl  # noqa: E402
+from app.external.identity import TEAM_ALIASES  # noqa: E402
 from app.analytics.forecast_backtest import Protocol, completed_weeks  # noqa: E402
 from app.config import get_settings  # noqa: E402
 
@@ -54,17 +57,49 @@ def _frame_hash(df: pl.DataFrame) -> str:
                           + ",".join(sorted(flat.columns)).encode()).hexdigest()[:16]
 
 
-def fully_final_weeks(src, weeks: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Only weeks whose every scheduled game has a final score. A partly played week would label the
-    rostered players of games not yet played as non-participants."""
-    open_ = {(int(s), int(w)) for s, w in src.games.filter(pl.col("points_for").is_null())
-             .select("season", "week").unique().iter_rows()}
-    return [sw for sw in weeks if sw not in open_]
+def code_hash() -> str:
+    """Hash of every module that can shape a cached result: all of app/ plus this script and the
+    backtest script it builds stores with. Broader than the modules imported today, so a change to
+    any helper they call (or will call) invalidates the cache."""
+    app_dir = Path(pm.__file__).resolve().parents[1]
+    files = sorted(app_dir.rglob("*.py")) + [Path(__file__).resolve(), Path(bip.__file__).resolve()]
+    h = hashlib.sha256()
+    for f in files:
+        h.update(str(f.relative_to(app_dir.parent.parent)).encode() + b"\0" + f.read_bytes())
+    return h.hexdigest()[:16]
 
 
-def oos_predictions(src, protocol, ifp_sel: dict, psel: dict, cache_dir: Path) -> tuple[pl.DataFrame, str]:
+def fully_final_weeks(src, weeks: list[tuple[int, int]], fetched_at: dict) -> list[tuple[int, int]]:
+    """Only weeks that are fully final by the weekly_learning.week_finality rule: every scheduled game
+    presumed final (both scores, fetched long enough after kickoff; `fetched_at`: {season: schedule
+    fetch time}) and every scheduled team's box scores and snap counts synced. A partly played or
+    partly ingested week would label rostered players with no panel row as non-participants. Team
+    codes are compared after alias normalisation (2019 schedules say OAK where box scores say LV)."""
+    norm = lambda df: df.with_columns(pl.col("team").replace(TEAM_ALIASES))  # noqa: E731
+    view = SimpleNamespace(games=norm(src.games), panel=norm(src.panel))
+    return [(s, w) for s, w in weeks if wl.week_finality(view, s, w, fetched_at.get(s))["fully_final"]]
+
+
+def fetch_times(live, hist, season: int) -> dict:
+    """{season: when its schedule was fetched}: the live sync for `season`, the latest successful
+    history sync for every earlier season (None when unknown: such weeks never count as final)."""
+    from app.analytics.schedule_intelligence import nfl_fetch_times
+
+    h = None
+    if hist is not None:
+        h = hist.execute("SELECT max(started_at) FROM sync_runs WHERE source = 'nfl_history' AND status = 'ok'"
+                         ).fetchone()[0]
+        h = h.replace(tzinfo=timezone.utc) if h is not None and h.tzinfo is None else h
+    out = {s: h for s in range(2000, season)}
+    out[season] = nfl_fetch_times(live, season)["schedules"] if live is not None else None
+    return out
+
+
+def oos_predictions(src, protocol, ifp_sel: dict, psel: dict, cache_dir: Path,
+                    fetched_at: dict) -> tuple[pl.DataFrame, str]:
     weeks = fully_final_weeks(src, completed_weeks(src, list(range(protocol.train_start_season,
-                                                                     max(protocol.heldout_seasons) + 1))))
+                                                                     max(protocol.heldout_seasons) + 1))),
+                              fetched_at)
     cond_store, store = bip.build_store(src, weeks), pm.build_store(src, weeks)
     data_hash = hashlib.sha256(store.sort("key", "gsis_id").select("key", "gsis_id", "played", "label")
                                .write_csv().encode()).hexdigest()[:16]
@@ -73,12 +108,10 @@ def oos_predictions(src, protocol, ifp_sel: dict, psel: dict, cache_dir: Path) -
     # The cache key covers every input of the prediction: both feature stores in full (any corrected
     # roster, injury, schedule or usage value changes it), the penalties, the conditional spec and the
     # code that builds and fits the models.
-    code = b"".join(Path(m.__file__).read_bytes() for m in (pm, sys.modules["app.analytics.forecast_features"],
-                                                             sys.modules["app.analytics.forecast_backtest"]))
     tag = _hash({"data": data_hash, "store": _frame_hash(store), "cond_store": _frame_hash(cond_store),
                  "lams": lams, "cond": spec, "train_start": protocol.train_start_season,
                  "oos_start": OOS_START_SEASON, "version": pm.PARTICIPATION_VERSION, "polars": pl.__version__,
-                 "code": hashlib.sha256(code).hexdigest()[:16]})
+                 "code": code_hash()})
     path = cache_dir / f"oos_base_{tag}.parquet"
     if path.exists():
         return pl.read_parquet(path), data_hash
@@ -109,13 +142,14 @@ def cmd_run(args) -> dict:
         if psel.get("ifp_selection_sha") != bip._sha(models / "selection.json"):
             raise SystemExit("participation_selection.json was made from a different selection.json")
         src = bip._sources(live, hist, scoring.require_supported())
+        fetched = fetch_times(live, hist, args.season)
     finally:
         for c in (live, hist):
             if c is not None:
                 c.close()
     protocol = Protocol(heldout_seasons=(2025, args.season) if args.season > 2025 else (2025,))
     out_dir = models / "research"
-    oos, data_hash = oos_predictions(src, protocol, ifp_sel, psel, out_dir)
+    oos, data_hash = oos_predictions(src, protocol, ifp_sel, psel, out_dir, fetched)
     t_base = round(time.time() - t0, 1)
     report_teams = None
     if src.injuries is not None:
