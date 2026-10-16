@@ -60,21 +60,29 @@ export function oursByWeek(ours: OursForward): Map<number, OursWeek> {
   return new Map(ours.weeks.map((w) => [w.week, w] as const));
 }
 
-/** Caption for the total: why it is missing when it is, or what it covers. */
+/** Caption for the total: why it is missing when it is, or what it covers. Previous-model weeks and genuine ESPN
+ * fallback weeks are named differently (both are in `missing_weeks`). */
 export function oursTotalNote(ours: OursForward): string {
   const span = `${ours.ros_weeks_available}/${ours.ros_weeks_expected} wk`;
   if (ours.ros_complete) return `${span} · experimental beyond next week`;
-  const gaps = ours.missing_weeks.length ? `ESPN's number in wk ${ours.missing_weeks.join(", ")}` : "incomplete";
-  return `${span} · ${gaps}`;
+  const other = new Set(ours.other_model_weeks);
+  const espn = ours.missing_weeks.filter((w) => !other.has(w));
+  const parts: string[] = [];
+  if (other.size) parts.push(`previous model in wk ${[...other].join(", ")}`);
+  if (espn.length) parts.push(`ESPN's number in wk ${espn.join(", ")}`);
+  return `${span} · ${parts.length ? parts.join("; ") : "incomplete"}`;
 }
 
-/** The caution notice for the Ours series: why ESPN is shown instead (unavailable), or what is mixed or
- * falls back to ESPN while ours is shown. null = nothing to say. */
+/** The caution notice for the Ours series: why ESPN is shown instead (unavailable), or what is mixed, falls back
+ * to ESPN or could not be verified while ours is shown. The title follows the actual fields, never a guess from
+ * the reason being set. null = nothing to say. */
 export function oursNotice(ours: OursForward): { title: string; text: string } | null {
   if (!ours.available) {
     return { title: "Showing ESPN projections", text: ours.reason ?? "Fantasy Intel has no projections for the remaining weeks yet." };
   }
   if (!ours.reason) return null;
-  const mixed = ours.mixed_models || ours.other_model_weeks.length > 0;
-  return { title: mixed ? "Mixed projection models" : "Ours: some weeks use ESPN", text: ours.reason };
+  if (ours.mixed_models) return { title: "Mixed projection models", text: ours.reason };
+  if (ours.other_model_weeks.length > 0) return { title: "Previous model in some weeks", text: ours.reason };
+  if (ours.fallback_weeks.length > 0) return { title: "Ours: some weeks use ESPN", text: ours.reason };
+  return { title: "Ours: see note", text: ours.reason };
 }

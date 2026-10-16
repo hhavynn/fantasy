@@ -46,7 +46,7 @@ def label_for(versions: list[str]) -> str:
     return f"Fantasy Intel projections ({', '.join(versions or [PRIMARY])}); {LABEL_TAIL}"
 
 
-def _select_batch(con, season: int, weeks: list[int]) -> dict[int, dict]:
+def _select_batch(con, season: int, weeks: list[int]) -> tuple[dict[int, dict], str | None]:
     """week -> {run, rows, skipped, fallback} exactly as `projection_source.select_run` picks them, for several
     weeks at once. The policy is the switch's own: the production model first, else the previous model; within a
     model the newest run (created_at DESC NULLS LAST, run_id DESC) of ANY horizon that production_forecasts'
@@ -57,9 +57,14 @@ def _select_batch(con, season: int, weeks: list[int]) -> dict[int, dict]:
     first candidate of every (week, model), then one rows query per further candidate, only when the one before
     it was rejected or failed verification. Integrity needs ALL of a run's rows, so rows are not filtered by player
     here; the caller picks its player out of the verified rows."""
-    fp, _ = ps._scoring(con, season)
-    if fp is None or not table_exists(con, pf.RUNS) or not table_exists(con, pf.ROWS):
-        return {}
+    fp, why = ps._scoring(con, season)
+    if fp is None:       # select_run's own reason, word for word: scoring missing or unsupported
+        return {}, f"No independent projections: {why}."
+    if table_exists(con, pf.RUNS) and not table_exists(con, pf.ROWS):
+        return {}, ("No independent projections: the database is not migrated to schema v8, "
+                    "so no stored run can be integrity-checked.")
+    if not table_exists(con, pf.RUNS):
+        return {}, None
     versions = ps.CONSUMER_VERSIONS
     gates = {v: pf.artifact_gate(con, v) for v in versions}
     cand: dict[tuple[int, str], list[dict]] = {}
@@ -95,7 +100,7 @@ def _select_batch(con, season: int, weeks: list[int]) -> dict[int, dict]:
             if sel["run"] is not None:
                 break
         out[week] = sel
-    return out
+    return out, None
 
 
 def _week_reason(week: int, sel: dict) -> str | None:
@@ -118,7 +123,7 @@ def player_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dict
             for r in fetch_dicts(con, """SELECT scoring_period, projected_points FROM espn_player_weekly_points
                                          WHERE season = ? AND espn_player_id = ?
                                            AND scoring_period IN (SELECT unnest(?))""", [season, pid, weeks])}
-    selected = _select_batch(con, season, weeks)
+    selected, unavailable = _select_batch(con, season, weeks)
     out = {}
     for week in weeks:
         sel = selected.get(week) or {"run": None, "rows": None, "skipped": [], "fallback": False}
@@ -129,7 +134,7 @@ def player_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dict
         elif r and r["coverage_status"] in ps.ZERO_STATUSES:
             value, origin = 0.0, ps.OURS_ZERO
         out[week] = {"value": value, "origin": origin, "run": run, "skipped": sel["skipped"],
-                     "reason": _week_reason(week, sel) if run else None}
+                     "reason": _week_reason(week, sel) if run else None, "unavailable_reason": unavailable}
     return out
 
 
@@ -180,6 +185,9 @@ def ours_forward(con, season: int, pid: int, weeks: list[dict], *, source: str) 
         if got["reason"] and got["reason"] not in reasons:
             reasons.append(got["reason"])
     if not any(e["run_id"] for e in entries):
+        why = next((g["unavailable_reason"] for g in stored.values() if g["unavailable_reason"]), None)
+        if why:      # scoring missing / unsupported, or an unmigrated database: the switch's own explanation
+            return _empty(why, last_regular)
         skipped = [x for w in regular for x in stored[w["week"]]["skipped"]]
         if any(ps._gate_rejected(x) for x in skipped):
             return _empty(f"No {PRIMARY} projection run with an approved artifact is available for the remaining "

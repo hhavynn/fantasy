@@ -96,6 +96,9 @@ def seal(con, run_id):
                 [pf.content_sha256(run, rows), run_id])
 
 
+ORIGINAL_SCORING = ps._scoring        # the switch's own scoring resolver, before the fixture replaces it
+
+
 @pytest.fixture(autouse=True)
 def fingerprint(monkeypatch):
     monkeypatch.setattr(ps, "_scoring", lambda con, season: ("fp", None))
@@ -452,3 +455,18 @@ def test_forward_route_defaults_to_espn_and_validates_source(api):
     assert api.get("/api/players/999/forward", params={"source": "independent"}).status_code == 404
     # the player detail page's embedded forward view stays ESPN
     assert "ours" not in api.get("/api/players/1").json()["forward_projection"]
+
+
+@pytest.mark.parametrize("delete_league", [False, True])
+def test_unusable_league_scoring_keeps_the_switchs_own_reason(con, monkeypatch, delete_league):
+    """Scoring unsynced / unsupported: ours says why, word for word like weekly(), not "no run is stored"."""
+    populate(con)
+    base = espn_baseline(con)["weeks"]
+    monkeypatch.setattr(ps, "_scoring", ORIGINAL_SCORING)
+    if delete_league:
+        con.execute("DELETE FROM leagues")
+    ref = ps.weekly(con, SEASON, CURRENT, "independent")
+    o = ours_forward(con, SEASON, 1, base, source="independent")
+    assert ref["available"] is False and ref["reason"].startswith("No independent projections: the league's scoring")
+    assert o["available"] is ref["available"] and o["reason"] == ref["reason"]
+    assert o["weeks"] == [] and o["ros_projected_points"] is None

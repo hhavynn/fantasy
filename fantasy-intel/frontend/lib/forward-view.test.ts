@@ -77,3 +77,22 @@ test("the switch scope includes the player forward view and keeps the ESPN-only 
   assert.match(SWITCH_SCOPE, /forward view/);
   assert.match(SWITCH_SCOPE, /Trades, waivers, team value and the playoff race stay on ESPN/);
 });
+
+test("oursNotice picks its title from the fields: ESPN fallback, previous model, mixed, or another reason", () => {
+  const w = [ow(6, "ours", 1)];
+  const unverified = "The approval of this run's artifact could not be verified (no approved_artifacts table yet).";
+  assert.equal(oursNotice(ours(w, { reason: unverified }))?.title, "Ours: see note");        // every week is ours
+  assert.equal(oursNotice(ours(w, { reason: "x", fallback_weeks: [7] }))?.title, "Ours: some weeks use ESPN");
+  assert.equal(oursNotice(ours(w, { reason: "x", other_model_weeks: [6] }))?.title, "Previous model in some weeks");
+  assert.equal(oursNotice(ours(w, { reason: "x", other_model_weeks: [6], mixed_models: true }))?.title, "Mixed projection models");
+  assert.equal(oursNotice(ours(w, { reason: unverified }))?.text, unverified);
+});
+
+test("oursTotalNote names previous-model weeks apart from ESPN fallback weeks", () => {
+  const base = { ros_complete: false, ros_projected_points: null, ros_weeks_available: 1, ros_weeks_expected: 4 };
+  const w = [ow(6, "ours", 1)];
+  assert.equal(oursTotalNote(ours(w, { ...base, missing_weeks: [7], other_model_weeks: [7] })), "1/4 wk · previous model in wk 7");
+  assert.equal(oursTotalNote(ours(w, { ...base, missing_weeks: [7, 8, 9], other_model_weeks: [7], fallback_weeks: [8, 9] })),
+    "1/4 wk · previous model in wk 7; ESPN's number in wk 8, 9");
+  assert.equal(oursTotalNote(ours(w, { ...base, missing_weeks: [] })), "1/4 wk · incomplete");
+});
