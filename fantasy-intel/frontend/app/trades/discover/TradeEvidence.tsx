@@ -64,7 +64,7 @@ function Evidence({ e, analyzer }: { e: DEvidence; analyzer: string }) {
       <TradeVsFreeAgency t={e.trade_vs_free_agency} only="team_a" />
       <AssetTable e={e} />
       <div className={styles.cols}>
-        {[{ s: e.mine_detail, t: `${e.mine_detail.team_name} (you)` }, { s: e.theirs_detail, t: e.theirs_detail.team_name ?? "Them" }].map(({ s, t }) => (
+        {[{ s: e.mine_detail, t: e.mine_detail.team_name ?? "Analyzed team" }, { s: e.theirs_detail, t: e.theirs_detail.team_name ?? "Partner" }].map(({ s, t }) => (
           <div key={s.team_id}>
             <h4>{t}</h4>
             <ul className={styles.list}>{s.fit_notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
@@ -84,7 +84,7 @@ function Evidence({ e, analyzer }: { e: DEvidence; analyzer: string }) {
 }
 
 function AssetTable({ e }: { e: DEvidence }) {
-  const rows = [...e.asset_balance.you_send.map((p) => ({ p, who: "you send" })), ...e.asset_balance.they_send.map((p) => ({ p, who: "they send" }))];
+  const rows = [...e.asset_balance.you_send.map((p) => ({ p, who: "gives" })), ...e.asset_balance.they_send.map((p) => ({ p, who: "receives" }))];
   return (
     <div>
       <div className="table-wrap">
