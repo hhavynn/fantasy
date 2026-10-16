@@ -298,7 +298,7 @@ def gate_series(script: dict, brief_path: Path, history: list[dict]) -> Gate:
             failures.append(f"script format {st.get('format_family')} is not the brief's {brief['format']}")
     fam = st.get("format_family")
     if fam in FORMATS and FORMATS[fam].get("parody"):
-        unlabeled = [s.get("id", s["type"]) for s in script["shots"] if not s["type"].startswith("court_")]
+        unlabeled = [s.get("id", s["type"]) for s in script["shots"] if not s["type"].startswith(("court_", "cx_"))]   # both draw the PARODY badge
         if unlabeled:
             failures.append(f"parody format with scenes that do not carry the parody label: {unlabeled}")
     last = script["narration_segments"][-1]["text_display"]
