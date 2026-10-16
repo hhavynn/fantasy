@@ -20,6 +20,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/compare", label: "Compare" },
       { href: "/rankings", label: "Rankings" },
       { href: "/research", label: "Research lab" },
+      { href: "/movers", label: "Projection movers" },
       { href: "/projection-performance", label: "Projection accuracy" },
       { href: "/waivers", label: "Waivers" },
     ],
