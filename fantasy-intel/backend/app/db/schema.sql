@@ -703,6 +703,7 @@ CREATE TABLE IF NOT EXISTS team_waiver_recommendations (
     position               VARCHAR,
     availability_status    VARCHAR,
     opportunity_score      DOUBLE,
+    opportunity_score_100  DOUBLE,    -- 0-100.0 (1 dp), as in waiver_recommendations (ratings-100.v1); display only
     roster_fit_score       DOUBLE,
     league_interest        VARCHAR,
     interest_score         DOUBLE,
@@ -715,6 +716,7 @@ CREATE TABLE IF NOT EXISTS team_waiver_recommendations (
     computed_at            TIMESTAMP,
     PRIMARY KEY (league_id, season, team_id, espn_player_id)
 );
+ALTER TABLE team_waiver_recommendations ADD COLUMN IF NOT EXISTS opportunity_score_100 DOUBLE;
 
 CREATE TABLE IF NOT EXISTS player_context (
     season          INTEGER,
