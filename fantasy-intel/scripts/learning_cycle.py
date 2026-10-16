@@ -227,7 +227,8 @@ def stage_project(args, conns: list, log_path: Path) -> dict:
     conns.clear()
     cmd = [sys.executable, str(SCRIPTS / "backtest_independent_projections.py"), "project",
            "--season", str(args.season), "--week", str(args.week), "--live-db", str(args.live_db),
-           "--history-db", str(args.history_db), "--out", str(args.ifp_dir), "--weekly-dir", str(args.out)]
+           "--history-db", str(args.history_db), "--out", str(args.ifp_dir), "--weekly-dir", str(args.out),
+           "--register-artifact", "learning_cycle"]
     log_path.parent.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True, env=env)

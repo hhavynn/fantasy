@@ -307,6 +307,29 @@ def save_artifact(art: Artifact, root: Path) -> tuple[str, Path, bool]:
     return aid, path, created
 
 
+def register_saved_artifact(con, art: Artifact, path: Path, root: Path, source: str = "learning_cycle") -> tuple[str, bool]:
+    """Register the artifact stored at `path` as approved for its model version in the live database
+    (approved_artifacts, write-once). Only an artifact saved through `save_artifact` qualifies: `path` must be
+    the content-addressed file `root/artifacts/<version>/s<season>w<week>-<artifact_id>.json` of exactly this
+    artifact. Returns (sha256 of the file bytes, created); that sha is what `project` records as the run's
+    `artifact_id`. (The file name carries `artifact_id(art)`, a digest of the artifact content without its
+    timestamp; the registered sha is of the file bytes, the digest the model registry pins.)"""
+    from .independent_projection_store import register_approved_artifact
+
+    path = Path(path)
+    s, w = art.config["provenance"]["target"]
+    expected = Path(root) / "artifacts" / art.version / f"s{s}w{w:02d}-{artifact_id(art)}.json"
+    if path.resolve() != expected.resolve() or not path.is_file():
+        raise NotReady(f"{path} is not the write-once store file of this artifact ({expected}); only artifacts "
+                       "saved through save_artifact can be registered as approved")
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    created = register_approved_artifact(
+        con, model_version=art.version, artifact_sha256=sha, target_season=int(s), target_week=int(w),
+        training_cutoff_key=art.config["provenance"].get("data_cutoff_key"), artifact_created_at=str(art.created_at),
+        source=source)
+    return sha, created
+
+
 def load_artifact(path: Path) -> Artifact:
     return Artifact.from_dict(_read_json(path))
 
@@ -808,6 +831,6 @@ def promotion_blockers(status: dict) -> dict:
             for pos, s in status.items()}
 
 
-__all__ = ["report_subject", "readiness", "train", "save_artifact", "load_artifact", "write_once", "latest_artifact", "predict",
+__all__ = ["report_subject", "readiness", "train", "save_artifact", "register_saved_artifact", "load_artifact", "write_once", "latest_artifact", "predict",
            "write_run", "load_ledger", "rebuild_run", "evaluate", "label_outcomes", "team_game_finality", "week_finality", "shadow_status",
            "shadow_criteria", "promotion_blockers", "NotReady", "MODEL_VERSION", "interval_for"]

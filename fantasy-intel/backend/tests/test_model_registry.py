@@ -497,10 +497,14 @@ def test_same_production_projections_before_and_after_registry(stored, env):  # 
 def test_consumer_artifact_pin_is_a_tested_copy_of_the_registry_pin():
     """production_pin.APPROVED_ARTIFACT_SHA256 (a stdlib-only leaf) is the hosted app's numpy-free, registry-free copy of the
     production entry's artifact sha256. Pinning one without the other fails here (a reviewed change does both)."""
-    registry_pin = reg.production(reg.load_manifest())["artifact"]["sha256"]
+    m = reg.load_manifest()
+    registry_pin = reg.entry(m, production_pin.PINNED_MODEL_VERSION)["artifact"]["sha256"]     # the ifp-1.0.0 entry
     assert production_pin.APPROVED_ARTIFACT_SHA256 == registry_pin
     assert production_pin.APPROVED_ARTIFACT_SHA256 is None or reg._sha_ok(production_pin.APPROVED_ARTIFACT_SHA256)
-    assert production_pin.PINNED_MODEL_VERSION == ps.MODEL_VERSION == reg.production(reg.load_manifest())["version"]
+    # the versions the two artifact rules belong to are tested copies of the switch's
+    assert production_pin.PINNED_MODEL_VERSION == ps.FALLBACK_VERSION
+    assert production_pin.REGISTERED_MODEL_VERSION == ps.MODEL_VERSION == reg.production(m)["version"]
+    assert reg.production(m)["artifact"]["sha256"] is None          # ifp-2.0.0 retrains weekly: approved in the database
 
 
 def test_hosted_app_never_reads_the_registry_or_research_packages():

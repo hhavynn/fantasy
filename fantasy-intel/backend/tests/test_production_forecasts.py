@@ -265,41 +265,40 @@ def test_mismatched_runs_are_excluded_with_a_reason(live):  # noqa: F811
 
 
 def test_pinned_artifact_excludes_other_artifacts_with_a_reason(live, monkeypatch):  # noqa: F811
+    """ifp-1.0.0 (MODEL here) is the single-sha pin's model."""
     con, src, _ = live
     thursday(con)       # run B (BETWEEN) is post-kickoff for the Thursday player 1, so run A still supplies his row
-    a, _, _ = store(con, src, BEFORE_ALL, sha="a" * 64, meta_over={"model_version": PROD})
-    b, _, _ = store(con, src, BETWEEN, sha="b" * 64, mutate=bump(1, 77.0), meta_over={"model_version": PROD})
+    a, _, _ = store(con, src, BEFORE_ALL, sha="a" * 64)
+    b, _, _ = store(con, src, BETWEEN, sha="b" * 64, mutate=bump(1, 77.0))
     # unpinned (today): both artifacts are legitimate evidence and the latest eligible run wins per player
     assert production_pin.APPROVED_ARTIFACT_SHA256 is None
-    rows, excluded = forecasts(con, model=PROD)
+    rows, excluded = forecasts(con)
     assert {r["run_id"] for r in rows} == {a["run_id"], b["run_id"]} and not excluded
-    assert sorted(eligible_run_ids(con, 2026, PROD, FP)[0]) == sorted([a["run_id"], b["run_id"]])
+    assert sorted(eligible_run_ids(con, 2026, MODEL, FP)[0]) == sorted([a["run_id"], b["run_id"]])
     # pinned to artifact A: B's run is excluded with the reason and none of its rows is returned
     monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "a" * 64)
-    rows, excluded = forecasts(con, model=PROD)
+    rows, excluded = forecasts(con)
     assert {r["run_id"] for r in rows} == {a["run_id"]} and {r["artifact_id"] for r in rows} == {"a" * 64}
     assert [(e["run_id"], e["reason"]) for e in excluded] == [(b["run_id"], NOT_APPROVED_ARTIFACT)]
     assert NOT_APPROVED_ARTIFACT == "artifact not the approved production artifact"
-    run_ids, excluded = eligible_run_ids(con, 2026, PROD, FP)
+    run_ids, excluded = eligible_run_ids(con, 2026, MODEL, FP)
     assert run_ids == [a["run_id"]] and excluded[0]["reason"] == NOT_APPROVED_ARTIFACT
-    assert latest_run(con, 2026, 6, model_version=PROD)["run_id"] == a["run_id"]
+    assert latest_run(con, 2026, 6, model_version=MODEL)["run_id"] == a["run_id"]
     # pinned to an artifact nobody used: no evidence at all, every run excluded with the reason
     monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "c" * 64)
-    rows, excluded = forecasts(con, model=PROD)
+    rows, excluded = forecasts(con)
     assert rows == [] and {e["reason"] for e in excluded} == {NOT_APPROVED_ARTIFACT} and len(excluded) == 2
-    assert latest_run(con, 2026, 6, model_version=PROD) is None
+    assert latest_run(con, 2026, 6, model_version=MODEL) is None
 
 
-def test_the_pin_applies_to_the_production_model_only(live, monkeypatch):  # noqa: F811
-    """The pin names the production model's (ifp-2.0.0) artifact; another model version (the ifp-1.0.0
-    fallback, a shadow) is never filtered by it."""
+def test_the_pin_applies_to_its_model_version_only(live, monkeypatch):  # noqa: F811
     con, src, _ = live
-    store(con, src, BEFORE_ALL, sha="a" * 64)                      # ifp-1.0.0
+    store(con, src, BEFORE_ALL, sha="a" * 64, meta_over={"model_version": "ifp-0.0.5"})
     monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", "c" * 64)
-    rows, excluded = forecasts(con, model=MODEL)
+    rows, excluded = forecasts(con, model="ifp-0.0.5")
     assert rows and not excluded
-    assert latest_run(con, 2026, 6, model_version=MODEL) is not None
-    assert forecasts(con, model=PROD)[0] == []
+    assert latest_run(con, 2026, 6, model_version="ifp-0.0.5") is not None
+    assert forecasts(con, model=MODEL)[0] == []                    # no ifp-1.0.0 run exists at all here
 
 
 def test_runs_without_rows_or_with_altered_rows_are_excluded(live):  # noqa: F811

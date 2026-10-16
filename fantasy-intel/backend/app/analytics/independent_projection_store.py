@@ -310,6 +310,28 @@ def write_run(con, meta: dict, rows: list[dict]) -> dict:
     return {**result, "row_count": len(rows), "content_sha256": digest}
 
 
+APPROVED_SOURCES = ("learning_cycle", "manual_pin")
+
+
+def register_approved_artifact(con, *, model_version: str, artifact_sha256: str, target_season: int | None,
+                               target_week: int | None, training_cutoff_key: int | None = None,
+                               artifact_created_at: str | None = None, source: str) -> bool:
+    """Record an artifact as approved for `model_version` in the write-once approved_artifacts table.
+    INSERT ... ON CONFLICT DO NOTHING on (model_version, artifact_sha256): returns True if the row was
+    created, False if it already existed unchanged (an existing row is never updated or deleted, whatever
+    the arguments). Malformed input raises instead of being stored or dropped silently."""
+    if not model_version or not isinstance(artifact_sha256, str) or len(artifact_sha256) != 64 \
+            or any(c not in "0123456789abcdef" for c in artifact_sha256):
+        raise ValueError("an approved artifact needs a model version and the lowercase hex sha256 of the artifact file")
+    if source not in APPROVED_SOURCES:
+        raise ValueError(f"source must be one of {', '.join(APPROVED_SOURCES)}")
+    before = con.execute("SELECT count(*) FROM approved_artifacts").fetchone()[0]
+    con.execute("INSERT INTO approved_artifacts VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                [model_version, artifact_sha256, target_season, target_week, training_cutoff_key,
+                 artifact_created_at, source, utcnow()])
+    return con.execute("SELECT count(*) FROM approved_artifacts").fetchone()[0] > before
+
+
 def write_live(con, meta: dict, rows: list[dict]) -> int:
     """Compatibility wrapper around `write_run`; returns the number of rows in the run."""
     return write_run(con, meta, rows)["row_count"]

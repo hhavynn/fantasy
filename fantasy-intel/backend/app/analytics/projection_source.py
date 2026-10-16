@@ -15,8 +15,9 @@ each number came from (`origin`):
              game, uncertain ID mapping, no participation estimate): ESPN's projection, labeled.
 
 The independent run must be the approved production model (MODEL_VERSION; the registry manifest) under the league's
-current scoring and, once production_pin.APPROVED_ARTIFACT_SHA256 is pinned, made by exactly that artifact
-file (runs record the sha256 of the file bytes in artifact_id; the fallback model is not pinned). A week with
+current scoring and, made by an approved artifact (production_pin: an ifp-2.0.0 run must use an artifact registered in the
+database's approved_artifacts table, an ifp-1.0.0 run the sha pin once it is set; runs record the sha256 of the
+artifact file bytes in artifact_id; a database without that table is read unverified). A week with
 no production run falls back to the previous production model (FALLBACK_VERSION) and says so in `reason`;
 with neither the switch reports `available: false` and the consumer keeps ESPN. Runs are immutable: the newest run that still has its stored rows is used, read from
 independent_projection_rows (the legacy table only when the database has not been migrated to schema v8).
@@ -28,7 +29,6 @@ import json
 
 from ..db.connection import fetch_dicts, table_exists
 from . import production_forecasts as pf
-from . import production_pin
 
 SOURCES = ("espn", "independent")
 OURS, OURS_ZERO, ESPN = "ours", "ours_zero", "espn"
@@ -72,7 +72,8 @@ def _run(con, season: int, week: int) -> dict | None:
     fp = _scoring_fingerprint(con, season)
     if fp is None:
         return None
-    # the pin (production_pin) restricts reads of MODEL_VERSION to the approved artifact; FALLBACK_VERSION is not pinned
+    # latest_run applies the artifact rule of production_pin per version: MODEL_VERSION runs must use a registered
+    # artifact, FALLBACK_VERSION runs the sha pin once it is set; a rejected run is skipped like a run without rows
     for version in (MODEL_VERSION, FALLBACK_VERSION):
         run = pf.latest_run(con, season, week, model_version=version, scoring_fingerprint=fp)
         if run is not None:
@@ -89,11 +90,11 @@ def weekly(con, season: int, week: int, source: str) -> dict:
         return base
     run = _run(con, season, week)
     if run is None:
-        sha = production_pin.APPROVED_ARTIFACT_SHA256
-        pin = f" made by the approved production artifact (sha256 {sha[:12]}...)" if sha is not None else ""
+        gated = any(pf.gate_active(con, v) for v in (MODEL_VERSION, FALLBACK_VERSION))
         return {**base, "available": False,
-                "reason": f"No independent projection run of {MODEL_VERSION}{pin} (or {FALLBACK_VERSION}) under the current "
-                          f"league scoring is stored for week {week}, so ESPN projections are shown."}
+                "reason": f"No independent projection run of {MODEL_VERSION} (or {FALLBACK_VERSION}) under the current "
+                          f"league scoring is stored for week {week}, so ESPN projections are shown."
+                          + (" Runs made by an artifact that is not approved are never shown." if gated else "")}
     values: dict[int, float | None] = dict(espn)
     origin: dict[int, str] = {pid: ESPN for pid in espn}
     counts = {OURS: 0, OURS_ZERO: 0, ESPN: 0}
@@ -111,8 +112,14 @@ def weekly(con, season: int, week: int, source: str) -> dict:
     reason = None if run["model_version"] == MODEL_VERSION else (
         f"No {MODEL_VERSION} run is stored for week {week} yet, so the previous model {run['model_version']} is shown.")
     run_info = {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"])}
-    if run["model_version"] == MODEL_VERSION and production_pin.APPROVED_ARTIFACT_SHA256 is not None:
-        run_info["artifact_pinned"] = True              # only when pinned: unpinned responses are unchanged
+    check = run.get("artifact_check")
+    if check == "verified":     # artifact_verified only appears when verification ran (the response shape is otherwise unchanged)
+        run_info["artifact_verified"] = True
+    elif check == "unverified":     # fail OPEN: this database cannot say which artifacts are approved
+        run_info["artifact_verified"] = False
+        note = ("The approval of this run's artifact could not be verified (this database has no approved_artifacts "
+                "table yet), so the latest run is shown unverified.")
+        reason = f"{reason} {note}" if reason else note
     return {**base, "reason": reason, "values": values, "origin": origin, "counts": counts, "run": run_info,
             "model_status": {p: (s or {}).get("status") for p, s in status.items()}}
 

@@ -32,69 +32,93 @@ So a production switch would touch three places, all in one reviewed change: `MO
 `APPROVED_ARTIFACT_SHA256` in `production_pin.py` (and the tested copy of the version in
 `independent_projections.py`), the artifact that `project` loads, and the registry manifest. The registry alone changes none of them.
 
-## Pinning the production artifact (consumer pin)
+## Approving artifacts for the consumer view (pin and weekly registration)
 
-By default the opt-in projection switch serves the newest run of the production model (`ifp-2.0.0` today,
-else the `ifp-1.0.0` fallback) under the league's scoring, whichever artifact file produced it. Once the
-production model's artifact is pinned, the switch serves only production-model runs made by exactly that
-file; the `ifp-1.0.0` fallback is never constrained by the pin. Today the pin stays unset: `ifp-2.0.0`
-retrains per target week and has no single immutable artifact yet (see Known limitations). Every run records `independent_projection_runs.artifact_id`, the sha256 of the
-artifact **file bytes** (`dict:` + digest when no file was used, which never matches a pin).
+The hosted app reads only the database, never the registry file or the model files, so artifact approval
+has to be visible in the database. Every run records `independent_projection_runs.artifact_id`, the sha256 of
+the artifact **file bytes** (`dict:` + digest when no file was used, which never matches anything below).
+The consumer view and the evidence readers apply one rule per model version
+(`production_forecasts.artifact_gate`, constants in the stdlib-only leaf `backend/app/analytics/production_pin.py`):
 
-The pin lives in two places that must agree, because the hosted app never reads the registry:
+| Model | Rule | Today |
+|---|---|---|
+| `ifp-1.0.0` (fallback, rollback target) | one immutable file: runs must match `production_pin.APPROVED_ARTIFACT_SHA256`; `None` = unpinned, every run counts as before | `None` |
+| `ifp-2.0.0` (production, retrained weekly) | each artifact is approved by a row in the **write-once `approved_artifacts` table**: the run's `artifact_id` must be registered for the model (and the target week, when recorded) | enforced |
+| anything else | no rule | n/a |
+
+The rule covers the projection switch (`projection_source.weekly`, so Start/Sit, Matchup and Home with
+`source=independent`), the evidence readers (`production_forecasts.pregame_forecasts`, `eligible_run_ids`,
+`latest_run`, and so the ESPN benchmark and the Start/Sit evaluation) and the promotion tracker for the model
+it tracks (`ifp-1.0.0`, the frozen-criteria gate). Excluded runs carry the reason
+`artifact not registered as approved` (ifp-2.0.0) or `artifact not the approved production artifact`
+(ifp-1.0.0 pin). When no approved run exists for the week the switch falls back by its existing rules
+(ifp-2.0.0, then ifp-1.0.0, then ESPN with `available: false` and a reason). Response shapes are unchanged,
+except that `run.artifact_verified` appears when verification ran (`true`), or `false` for an unverified run
+(below). `GET /api/projections/independent` is a research view of the latest stored run, says so in its notes,
+and is not filtered.
+
+**ifp-2.0.0: weekly registration.** `scripts/learning_cycle.py` trains the week's artifacts into the write-once,
+content-addressed store (`weekly_learning.save_artifact`: `artifacts/ifp-2.0.0/s<season>w<week>-<artifact_id>.json`),
+then its `project` stage runs `backtest_independent_projections.py project --register-artifact learning_cycle`.
+That call registers the store file it uses (`weekly_learning.register_saved_artifact`) in `approved_artifacts`
+and stamps the run with the same value: **the run's `artifact_id` is `sha256(file bytes)` of that store file,
+and the registered `artifact_sha256` is the same digest**. (The `<artifact_id>` in the file name is a different
+digest, of the artifact content without its timestamp; it is only used to check that the file is the store's own.)
+Registration refuses a file that is not exactly the store file of that artifact, so a hand-written or edited
+artifact cannot be registered by accident, and a `project` run without `--register-artifact` never registers
+anything: its ifp-2.0.0 run is excluded until its artifact is registered. The table is create-only DDL in
+`schema.sql` (no schema version bump), keyed `(model_version, artifact_sha256)`, written
+`INSERT ... ON CONFLICT DO NOTHING` and never updated or deleted, and it travels with the database copy that
+`publish_motherduck.py` publishes.
+
+**Manual pin of an ifp-2.0.0 artifact** (an artifact the cycle did not register, for example after a restore):
+save it through the weekly store, then from `backend/`:
+
+```
+uv run python ../scripts/backtest_independent_projections.py project --model ifp-2.0.0 --season S --week W \
+    --register-artifact manual_pin
+```
+
+which registers the newest store artifact for that week (recorded with `source = manual_pin`) and stores the run.
+
+**Fail-open window.** A database without `approved_artifacts` (an old local database or a hosted copy published
+before the owner's laptop migrated) is read as before: ifp-2.0.0 runs count, and the response says so
+(`run.artifact_verified: false` and a note in `reason`). This is a deliberate choice: failing closed would blank
+the projection switch for the owner until they re-sync and republish. The flip side: once the table exists
+(created by any write-mode open of the database) but is empty, ifp-2.0.0 runs stored before this change are
+**not** approved. Re-running the cycle for the current week (or the `project ... --register-artifact` command
+above, idempotent for an identical run) registers the artifact and restores them; until then the switch falls
+back to `ifp-1.0.0`, then ESPN.
+
+**ifp-1.0.0 single-sha pin.** The pin lives in two places that must agree, because the hosted app never reads
+the registry:
 
 | Place | Field | Today |
 |---|---|---|
-| `backend/app/analytics/model_registry.json` | production entry `artifact.sha256` | `null` |
-| `backend/app/analytics/production_pin.py` | `APPROVED_ARTIFACT_SHA256` (leaf module: stdlib only, registry-free copy) | `None` |
+| `backend/app/analytics/model_registry.json` | `ifp-1.0.0` entry `artifact.sha256` | `null` |
+| `backend/app/analytics/production_pin.py` | `APPROVED_ARTIFACT_SHA256` (stdlib-only, registry-free copy) | `None` |
 
-`test_consumer_artifact_pin_is_a_tested_copy_of_the_registry_pin` fails CI if one is pinned without the
-other, the same way the `MODEL_VERSION` copy is tested. `scripts/model_registry.py status` also reports
-`consumer_pin_matches` for the production entry.
+`test_consumer_artifact_pin_is_a_tested_copy_of_the_registry_pin` fails CI if one is pinned without the other
+(the same way the `MODEL_VERSION` copy is tested), and `production_pin.PINNED_MODEL_VERSION` /
+`REGISTERED_MODEL_VERSION` are tested equal to `projection_source.FALLBACK_VERSION` / `MODEL_VERSION`.
+`scripts/model_registry.py status` also reports `consumer_pin_matches`. To pin (a reviewed, owner-approved
+change in one commit):
 
-**Unpinned (`None`, the committed state): behaviour is exactly as before.** ESPN stays the default
-source in any case.
-
-**Pinned:** the following consider only runs whose `artifact_id` equals the pin:
-
-* the projection switch (`projection_source.weekly`, so Start/Sit, Matchup and Home with
-  `source=independent`);
-* evidence: `production_forecasts.pregame_forecasts`, `eligible_run_ids` and `latest_run` (and so the
-  ESPN benchmark and the Start/Sit evaluation, which read them) for the production model version only
-  (`production_pin.PINNED_MODEL_VERSION`, tested equal to `projection_source.MODEL_VERSION`); the fallback
-  and every other model version are never filtered by this pin;
-* the promotion tracker (latest run, eligible runs and stored projections, including the pre-v8 path), when
-  the model it tracks (`independent_projections.MODEL_VERSION`, the frozen-criteria gate) is the pinned one; it
-  tracks `ifp-1.0.0` today, so a pin on `ifp-2.0.0` leaves it unchanged.
-
-Other runs are excluded with the reason `artifact not the approved production artifact`. When no run of
-the pinned artifact exists for the week the switch reports `available: false` with a reason that names
-the pin, and the consumer keeps ESPN. Response shapes are unchanged except for an optional
-`run.artifact_pinned: true` in the switch's `run` block, present only when a pin is set (unpinned
-responses are identical to before). `GET /api/projections/independent` is a research view of the latest
-stored run, says so in its notes, and is not filtered by the pin.
-
-**To pin (a reviewed change, one commit, owner-approved):**
-
-1. On the machine that holds the artifact, from the repo root, compute the digest of the exact file the
-   production model's `project` run loads (`INDEPENDENT_MODEL_DIR`, default `data/models`; the example is
-   the `ifp-1.0.0` file, substitute the production model's artifact once it has one):
+1. On the machine that holds the artifact, from the repo root:
 
    ```
    shasum -a 256 data/models/independent_projections_ifp-1.0.0.json
    ```
 
-   (`sha256sum` on Linux). The registry script has no hashing command; its `status` output shows the
-   digest it computed for the pinned file as `production.artifact_check.observed` once a pin exists.
-2. Put the 64-character lowercase hex digest in **both** `model_registry.json` (production entry
+   (`sha256sum` on Linux). The registry script has no hashing command; its `status` output shows the digest it
+   computed for the production entry's pinned file once one exists.
+2. Put the 64-character lowercase hex digest in **both** `model_registry.json` (the `ifp-1.0.0` entry's
    `artifact.sha256`) and `APPROVED_ARTIFACT_SHA256` in `production_pin.py`.
-3. `cd backend && uv run python ../scripts/model_registry.py status` must show `artifact_pinned: true`,
-   `consumer_pin_matches: true` and an `artifact_check` that passes; run the backend tests.
-4. Runs already stored by a different file stop being served and stop counting as evidence. Re-run
-   `project` from the pinned file to produce a serving run; earlier runs are never deleted.
+3. `cd backend && uv run python ../scripts/model_registry.py status` must show `consumer_pin_matches: true`;
+   run the backend tests. Fallback runs made by any other file stop being served.
 
-To unpin or roll the pin to another artifact, change both places in the same reviewed commit. A promotion
-or rollback (below) changes the pin together with `MODEL_VERSION`.
+A promotion or rollback (below) changes `MODEL_VERSION`, `FALLBACK_VERSION` and the `production_pin` constants
+together.
 
 ## The manifest
 
@@ -157,7 +181,8 @@ explanation}`; `insufficient_data` is never a pass, and `activates` is always `f
 
 ## Future promotion process (not executed)
 
-1. Pin the model that is to be production (or, for a rollback, the restored model's file): a reviewed
+1. Pin the model that is to be production (or, for a rollback, the restored model's file; a weekly-retrained
+   production model is instead approved per artifact, see above): a reviewed
    change that fills its artifact sha256 (`shasum -a 256 data/models/independent_projections_ifp-1.0.0.json`
    for the `ifp-1.0.0` file), training cutoff and held-out report hash, and sets
    `production_pin.APPROVED_ARTIFACT_SHA256` and `PINNED_MODEL_VERSION` to match (see "Pinning the
@@ -209,5 +234,7 @@ Historical forecast ledgers stay immutable throughout; they record which model m
 * `GET /api/projections/independent` shows the latest stored run of a week without filtering by
   model version. Today only `project` writes runs, from the `ifp-1.0.0` artifact; the deployment PR
   of a future promotion must add a registry-equivalent version filter there.
-* ifp-2.0.0 retrains per target week, so it has no single immutable artifact yet (unpinned in the
-  manifest); a promotion has to name one.
+* ifp-2.0.0 retrains per target week, so it has no single sha in the manifest (`artifact.sha256` stays
+  `null`); its artifacts are approved one by one in the database (`approved_artifacts`, see above). That
+  table is a local-trust record, not an authenticated one: anyone who can write the live database can add a
+  row. It guards against serving a run of an artifact nobody registered, not against a malicious local writer.

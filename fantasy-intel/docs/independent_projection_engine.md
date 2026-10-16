@@ -486,18 +486,18 @@ Only a run of the current model version under the league's current scoring is us
 that still has all of its stored rows; a run whose rows were lost is skipped); otherwise the
 response says `available: false` and shows ESPN.
 
-**Artifact pin.** `production_pin.APPROVED_ARTIFACT_SHA256` (a stdlib-only leaf module) is `None` today, which changes nothing.
-When it holds a sha256, only runs of the production model (`ifp-2.0.0`; the `ifp-1.0.0` fallback is not
-pinned) whose `artifact_id` (the sha256 of the artifact file the `project`
-command loaded) equals it are served, and only those count as evidence in `pregame_forecasts`,
-`eligible_run_ids` and the promotion tracker; other runs are excluded with the reason "artifact not the
-approved production artifact", and a week with no matching run falls back to ESPN with `available: false`
-and a reason naming the pin. Pinning is a reviewed manifest change that updates BOTH the registry
-(`model_registry.json`, production `artifact.sha256`) and the constant in the same commit; a test fails if
-they disagree. Compute the digest on the machine that holds the artifact with
-`shasum -a 256 data/models/independent_projections_ifp-1.0.0.json` (the `ifp-1.0.0` file as the example;
-`ifp-2.0.0` retrains per target week and has no single artifact to pin yet). The full workflow is in
-[model_registry.md](model_registry.md) ("Pinning the production artifact").
+**Artifact approval.** The switch (and the evidence readers: `pregame_forecasts`, `eligible_run_ids`, the
+promotion tracker) only use runs made by an approved artifact. `ifp-2.0.0` is retrained weekly, so each of its
+artifacts is approved by a row in the write-once `approved_artifacts` table, which the learning cycle's
+`project` stage writes (`--register-artifact learning_cycle`) for the write-once store artifact it uses; the
+run's `artifact_id` and the registered sha are the same sha256 of the artifact file bytes. A run of an
+unregistered artifact is excluded ("artifact not registered as approved") and the switch falls back to
+`ifp-1.0.0`, then ESPN. The `ifp-1.0.0` fallback keeps the single-sha pin
+`production_pin.APPROVED_ARTIFACT_SHA256` (`None` today, which changes nothing; pinning is a reviewed change to
+both `model_registry.json` and that constant, tested equal). A database without `approved_artifacts` is read
+as before and marked unverified (`run.artifact_verified: false`): the switch fails open there so an old hosted
+copy keeps working until the next publish. Details, the manual pin and the transition after the upgrade are in
+[model_registry.md](model_registry.md) ("Approving artifacts for the consumer view").
 
 Start/Sit and Matchup rerun the same lineup
 optimizer on these numbers (Matchup computes both teams' lineups on the fly instead of reading

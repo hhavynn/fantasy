@@ -909,3 +909,20 @@ CREATE TABLE IF NOT EXISTS independent_projection_rows (
     pregame              BOOLEAN,     -- run created_at < kickoff; unknown kickoff = FALSE
     PRIMARY KEY (run_id, espn_player_id)
 );
+
+-- Approved weekly artifacts (create-only, no version bump). ifp-2.0.0 retrains every week, so its approval is
+-- one row per artifact, written ON CONFLICT DO NOTHING when the artifact (saved through the write-once weekly
+-- store) is used by `project`. A run is served / counted as evidence only if its artifact_id (the sha256 of the
+-- artifact FILE bytes) is registered here. NEVER update or delete a row, and never list this table in a
+-- connection._REBUILD entry (that list DROPS tables). The hosted app reads this table, never the registry file.
+CREATE TABLE IF NOT EXISTS approved_artifacts (
+    model_version        VARCHAR NOT NULL,
+    artifact_sha256      VARCHAR NOT NULL,   -- == independent_projection_runs.artifact_id of the runs it made
+    target_season        INTEGER,            -- the week the artifact was trained for; NULL = any week
+    target_week          INTEGER,
+    training_cutoff_key  INTEGER,            -- artifact provenance data_cutoff_key (season * 100 + week)
+    artifact_created_at  VARCHAR,
+    source               VARCHAR NOT NULL,   -- learning_cycle | manual_pin
+    registered_at        TIMESTAMP,
+    PRIMARY KEY (model_version, artifact_sha256)
+);
