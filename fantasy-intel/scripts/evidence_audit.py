@@ -496,26 +496,46 @@ def kickoff_slots(con, season: int) -> dict[int, list[dict]]:
             for w, slots in sorted(by.items())}
 
 
-def espn_snapshots(con, season: int, week: int) -> dict:
-    """Stored ESPN projection snapshots of `week`: [{synced_at, players}] and the stamps per NFL team
-    (fantasy_players.pro_team, the team the ESPN sync's own pregame lock uses)."""
+def verified_snapshot_stamps(con, season: int, slack_s: float = 120.0) -> set[datetime]:
+    """ESPN snapshot stamps of the season that a successful ESPN sync run covers (started_at - slack <=
+    synced_at <= finished_at + slack): the only stamps whose capture time is proven."""
+    if not (table_exists(con, "espn_projection_history") and table_exists(con, "sync_runs")):
+        return set()
+    rows = fetch_dicts(con, """
+        SELECT DISTINCT h.synced_at FROM espn_projection_history h
+        WHERE h.season = ? AND EXISTS (
+            SELECT 1 FROM sync_runs r WHERE r.source = 'espn' AND r.status = 'ok'
+              AND h.synced_at BETWEEN r.started_at - to_seconds(?) AND coalesce(r.finished_at, r.started_at) + to_seconds(?))
+        """, [season, slack_s, slack_s])
+    return {t for r in rows if (t := utc(r["synced_at"])) is not None}
+
+
+def espn_snapshots(con, season: int, week: int, slack_s: float = 120.0) -> dict:
+    """Stored ESPN projection snapshots of `week`: [{synced_at, players, verified}] and the stamps per NFL team
+    (fantasy_players.pro_team, the team the ESPN sync's own pregame lock uses). Only provenance-verified stamps
+    (verified_snapshot_stamps) are in `by_team`, the captures every check counts; a stamp no successful ESPN sync
+    run covers is in `unverified_by_team`, reported but never taken as a pregame capture."""
     if not table_exists(con, "espn_projection_history"):
-        return {"snapshots": [], "by_team": {}}
+        return {"snapshots": [], "by_team": {}, "unverified_by_team": {}}
     rows = fetch_dicts(con, """SELECT h.synced_at, fp.pro_team, count(DISTINCT h.espn_player_id) AS n
                                FROM espn_projection_history h LEFT JOIN fantasy_players fp USING (espn_player_id)
                                WHERE h.season = ? AND h.scoring_period = ? AND h.projected_points IS NOT NULL
                                GROUP BY 1, 2""", [season, week]) if table_exists(con, "fantasy_players") else []
+    verified = verified_snapshot_stamps(con, season, slack_s)
     total: Counter = Counter()
     by_team: dict[str, list[datetime]] = defaultdict(list)
+    unverified: dict[str, list[datetime]] = defaultdict(list)
     for r in rows:
         t = utc(r["synced_at"])
         if t is None:
             continue
         total[t] += r["n"]
         if r["pro_team"]:
-            by_team[r["pro_team"]].append(t)
-    return {"snapshots": [{"synced_at": _iso(t), "players": n} for t, n in sorted(total.items())],
-            "by_team": {k: sorted(v) for k, v in by_team.items()}}
+            (by_team if t in verified else unverified)[r["pro_team"]].append(t)
+    return {"snapshots": [{"synced_at": _iso(t), "players": n, "verified": t in verified}
+                          for t, n in sorted(total.items())],
+            "by_team": {k: sorted(v) for k, v in by_team.items()},
+            "unverified_by_team": {k: sorted(v) for k, v in unverified.items()}}
 
 
 def unverified_snapshot_stamps(con, season: int, slack_s: float = 120.0) -> list[str]:
@@ -858,7 +878,10 @@ def audit_weeks(con, ctx: Context, refresh: Sequence[dict], refresh_entries, tra
     if ledger_root.exists():
         evidence_weeks |= {int(m.group(1)) for d in ledger_root.glob(f"s{season}w*")
                            if (m := re.match(rf"^s{season}w(\d+)$", d.name))}
-    last = max([w for w in (next_week, *evidence_weeks) if w is not None] or [first - 1])
+    # every week that has kicked off is audited even with no evidence at all (collection failing completely, or the
+    # season over with no future kickoff): those misses are what this audit must show
+    started = [w for w, ss in slots_by_week.items() if any(s["kickoff"] and s["kickoff"] <= now for s in ss)]
+    last = max([w for w in (next_week, *started, *evidence_weeks) if w is not None] or [first - 1])
     weeks = [w for w in range(first, last + 1) if w in slots_by_week]
     prod_rows, prod_excl, prod_err = pregame_rows(con, season, weeks, ps.MODEL_VERSION)
     fb_rows, _, _ = pregame_rows(con, season, weeks, ps.FALLBACK_VERSION)
@@ -875,7 +898,7 @@ def audit_weeks(con, ctx: Context, refresh: Sequence[dict], refresh_entries, tra
         window_start = prev_last or (first_k - timedelta(days=7) if first_k else None)
         state = ("unknown_kickoffs" if not kicks else "future" if first_k > now else
                  "played" if last_k <= now and len(kicks) == len(slots) else "in_progress")
-        espn = espn_snapshots(con, season, w)
+        espn = espn_snapshots(con, season, w, ctx.thresholds.provenance_slack_s)
         rows_w = [r for r in prod_rows if r["week"] == w]
         fb_w = [r for r in fb_rows if r["week"] == w]
         ledger = research_ledger(ctx.paths.weekly, season, w)
@@ -899,6 +922,8 @@ def audit_weeks(con, ctx: Context, refresh: Sequence[dict], refresh_entries, tra
             k = s["kickoff"]
             teams = set(s["teams"])
             esnap = _latest_before([t for team in teams for t in espn["by_team"].get(team, [])], k)
+            unver = _latest_before([t for team in teams for t in espn["unverified_by_team"].get(team, [])], k)
+            unver = unver if unver is not None and (esnap is None or unver > esnap) else None
             prod_n = sum(1 for r in rows_w if r["nfl_team"] in teams and r["coverage_status"] == "projected")
             fb_n = sum(1 for r in fb_w if r["nfl_team"] in teams and r["coverage_status"] == "projected")
             res_n = sum(1 for run in ledger["runs"] if k and _iso(k) in run["pregame_kickoffs"])
@@ -906,7 +931,7 @@ def audit_weeks(con, ctx: Context, refresh: Sequence[dict], refresh_entries, tra
             ss_at = _latest_before([utc(x["recorded_at"]) for x in sets["sets"] if not x["audit_only"]
                                     and k and _iso(k) in x["kickoffs"]], k)
             row = {"kickoff": _iso(k), "local": show(k, tz), "games": s["games"], "kicked_off": bool(k and k <= now),
-                   "espn_pregame_snapshot": _iso(esnap),
+                   "espn_pregame_snapshot": _iso(esnap), "espn_unverified_snapshot": _iso(unver),
                    "espn_age_h": round(_hours(esnap, k), 1) if esnap and k else None,
                    "production_pregame_projected": prod_n, "fallback_pregame_projected": fb_n,
                    "research_frozen": res_n > 0, "start_sit_needed": need_ss, "start_sit_recorded_at": _iso(ss_at)}
@@ -916,8 +941,11 @@ def audit_weeks(con, ctx: Context, refresh: Sequence[dict], refresh_entries, tra
             label_ = _slot_label(s, tz)
             if esnap is None:
                 missing.append({"evidence": "espn_snapshot", "slot": label_,
-                                "cause": _cause_no_run(refresh, window_start, k, refresh_entries, tz,
-                                                       "no ESPN snapshot of this week stored before kickoff")})
+                                "cause": (f"only an UNVERIFIED snapshot ({show(unver, tz)}) precedes kickoff: no successful "
+                                          "ESPN sync run covers its stamp, so it is not counted as a pregame capture; "
+                                          if unver else "")
+                                + _cause_no_run(refresh, window_start, k, refresh_entries, tz,
+                                                "no provenance-verified ESPN snapshot of this week stored before kickoff")})
             elif _hours(esnap, k) > ctx.thresholds.capture_max_age_h:
                 stale.append({"slot": label_, "age_h": round(_hours(esnap, k), 1), "snapshot": _iso(esnap)})
             reported = [(t, r["log"]) for r in refresh if r.get("pregame", {}).get("week") == w
@@ -991,6 +1019,9 @@ def next_kickoff(con, ctx: Context, slots_by_week: Mapping[int, list[dict]], ref
     first_of_week = wk is not None and wk["first_kickoff"] == _iso(k)
     served = (wk or {}).get("served") or {}
     have, need = [], []
+    if slot.get("espn_unverified_snapshot"):
+        need.append(f"ignored: the newer ESPN snapshot {show(utc(slot['espn_unverified_snapshot']), tz)} has no matching "
+                    "successful ESPN sync run (unverified provenance)")
     if espn_at and k - espn_at <= max_age:
         have.append(f"ESPN snapshot {show(espn_at, tz)} ({_hours(espn_at, k):.1f}h before kickoff)")
     elif fresh_planned:
@@ -1551,7 +1582,8 @@ def pregame_capture_ok(run: Mapping) -> bool:
 
 
 def espn_latest_by_slot(con, season: int, now: datetime) -> tuple[list[datetime], dict[str, datetime | None]]:
-    """(future kickoffs, {slot iso: latest ESPN snapshot of the slot's teams before kickoff})."""
+    """(future kickoffs, {slot iso: latest provenance-verified ESPN snapshot of the slot's teams before kickoff}).
+    An unverified stamp never counts, so it cannot make the guard skip a needed refresh."""
     out, kicks = {}, []
     for w, slots in kickoff_slots(con, season).items():
         snaps = None

@@ -116,14 +116,20 @@ def build_report(args, now: datetime | None = None, runner=None) -> dict:
 
 
 def notify(report: dict, paths: eh.Paths, now: datetime, runner=None) -> list[dict]:
-    """Notify each warn/fail issue once while it stays open (state: data/logs/evidence_health/alerts.json)."""
+    """Notify each warn/fail issue once while it stays open (state: data/logs/evidence_health/alerts.json).
+    New fingerprints are stored only when the notification was actually delivered: after a failed `osascript`
+    they stay unsent, so the next run tries again instead of silently suppressing the alert."""
     state_file = paths.state / "alerts.json"
     fresh, state = eh.new_alerts(report["issues"], eh.read_json(state_file, {}), now)
     if fresh:
         worst = max(fresh, key=lambda i: eh._RANK[i["severity"]])
         more = f" (+{len(fresh) - 1} more: evidence_health.py)" if len(fresh) > 1 else ""
-        eh.notify_macos(f"Fantasy evidence: {worst['severity'].upper()}", worst["message"] + more,
-                        runner or eh.run_command)
+        sent = eh.notify_macos(f"Fantasy evidence: {worst['severity'].upper()}", worst["message"] + more,
+                               runner or eh.run_command)
+        if not sent:
+            for i in fresh:
+                state.pop(i["fingerprint"], None)
+            fresh = []
     eh.write_json_atomic(state_file, state)
     return fresh
 

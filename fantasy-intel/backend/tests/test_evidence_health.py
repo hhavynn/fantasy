@@ -456,6 +456,63 @@ def test_week_audit_names_every_missing_capture_and_its_cause(world):
     assert rep["status"] == eh.FAIL
 
 
+def _write(paths, *sql_params):
+    con = connect(paths.db)
+    try:
+        for sql, params in sql_params:
+            con.execute(sql, params)
+    finally:
+        con.close()
+
+
+def test_an_unverified_espn_stamp_is_never_a_capture(world, cli, capsys):
+    """Review P1: a synced_at no successful ESPN sync run covers is reported as unverified, never as present."""
+    orphan = datetime(2026, 10, 15, 23, 50, tzinfo=UTC)                 # after the verified 22:00Z, before TNF
+    london_orphan = LONDON - timedelta(hours=1)                         # the only "capture" near the London kickoff
+    # hand-written rows (their own snapshot_date): no ESPN sync run covers either stamp
+    _write(world, *[("INSERT INTO espn_projection_history VALUES (?, 2026, ?, 6, 13.0, ?)", [day, pid, _ts(d)])
+                    for d, day in ((orphan, datetime(2026, 10, 16).date()), (london_orphan, datetime(2026, 10, 18).date()))
+                    for pid in PLAYERS])
+    rep = _assess(world, SAT)
+    w6 = next(w for w in rep["weeks"] if w["week"] == 6)
+    tnf, london = w6["slots"][0], w6["slots"][1]
+    assert tnf["espn_pregame_snapshot"] == THU_PT_1500.isoformat()    # the verified one still counts
+    assert tnf["espn_unverified_snapshot"] == orphan.isoformat()
+    assert {s["synced_at"]: s["verified"] for s in w6["espn_snapshots"]}[orphan.isoformat()] is False
+    assert london["espn_pregame_snapshot"] == THU_PT_1500.isoformat() and london["espn_unverified_snapshot"]
+    assert any("fresh ESPN snapshot" in m for m in rep["next_kickoff"]["missing"])          # not satisfied by the orphan
+    assert any("unverified provenance" in m for m in rep["next_kickoff"]["missing"])
+    assert orphan.isoformat() in rep["provenance"]["unverified_espn_snapshots"]
+    # the guard sees no fresh verified capture for London, so it still refreshes
+    con = connect(world.db, read_only=True)
+    try:
+        kicks, espn = eh.espn_latest_by_slot(con, 2026, LONDON - timedelta(hours=3))
+    finally:
+        con.close()
+    assert espn[LONDON.isoformat()] == THU_PT_1500
+    fresh = [_log(LONDON - timedelta(hours=2))]
+    assert eh.guard_decision(LONDON - timedelta(hours=1, minutes=30), kicks, fresh, espn, {})["action"] == "run"
+    # a played slot whose only snapshot is unverified is a missing capture, with that reason
+    _write(world, ("DELETE FROM sync_runs WHERE source = 'espn'", []))
+    rep = _assess(world, SAT)
+    miss = next(m for w in rep["weeks"] if w["week"] == 6 for m in w["missing"] if m["evidence"] == "espn_snapshot")
+    assert "only an UNVERIFIED snapshot" in miss["cause"]
+
+
+def test_weeks_without_any_evidence_are_still_audited(world, monkeypatch):
+    """Review P2: with no future kickoff and no stored evidence, every played week is still audited."""
+    import shutil
+    _write(world, ("DELETE FROM independent_projection_rows", []), ("DELETE FROM independent_projection_runs", []))
+    shutil.rmtree(world.weekly / "ledger")
+    monkeypatch.setattr(eh, "week_finality", lambda con, season, weeks: {w: {"fully_final": True, "detail": "fully final"}
+                                                                         for w in weeks})
+    rep = _assess(world, datetime(2026, 11, 2, tzinfo=UTC))          # after the last scheduled kickoff
+    assert rep["next_kickoff"] is None
+    assert [(w["week"], w["state"]) for w in rep["weeks"]] == [(6, "played"), (7, "played")]
+    kinds = {m["evidence"] for w in rep["weeks"] for m in w["missing"]}
+    assert {"production_forecast", "research_forecast"} <= kinds
+
+
 def test_next_kickoff_and_london_gap(world):
     rep = _assess(world, SAT)
     nk = rep["next_kickoff"]
@@ -668,6 +725,18 @@ def test_alerts_are_sent_once_per_open_issue():
     assert state == {}                                                     # resolved: forgotten
     fresh, _ = eh.new_alerts([a], state, now)
     assert fresh == [a]                                                    # it came back: notify again
+
+
+def test_a_failed_notification_is_retried_not_suppressed(cli, world):
+    """Review P2: a fingerprint is stored only after the notification was delivered."""
+    report = {"issues": [{"fingerprint": "x:1", "severity": eh.FAIL, "message": "m"}]}
+    assert cli.notify(report, world, SAT, runner=lambda a: (1, "osascript failed")) == []
+    assert eh.read_json(world.state / "alerts.json", None) == {}
+    calls = []
+    sent = cli.notify(report, world, SAT, runner=lambda a: calls.append(a) or (0, ""))
+    assert [i["fingerprint"] for i in sent] == ["x:1"] and len(calls) == 1
+    assert list(eh.read_json(world.state / "alerts.json", None)) == ["x:1"]
+    assert cli.notify(report, world, SAT, runner=lambda a: calls.append(a) or (0, "")) == [] and len(calls) == 1
 
 
 def test_notify_uses_osascript_once(cli, world):
