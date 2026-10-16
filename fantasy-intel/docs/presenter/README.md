@@ -90,11 +90,30 @@ All variants pass the existing presenter QC; no gate was loosened. The Gadsden l
 | Decode | each clip in its own process (VAE only), with decoded tiles moved to the CPU, otherwise 48 GB runs out |
 | hq lip sync | about 1.2–2× the time of the original MuseTalk path, per the table above |
 
+### Library pass 2 (idle_04–06)
+
+The pass-2 prompts asked for eye contact throughout and one quick blink, plus negatives for closed eyes, squinting and looking away. All three clips pass the audit end to end (3.4 s each):
+- gaze stays within 0.02 of the portrait
+- idle_06 has one quick blink and a slight head turn
+
+The library now has about 12 usable seconds instead of 2. B and D were re-rendered: the verdict line now uses a pass-2 clip, while the hook still draws idle_03's audited stretch (the pick is a stable hash of episode and line).
+
+Verdict window (s05), after the re-render:
+
+| | B | D |
+|---|---|---|
+| Lower-face detail vs base | 0.09 | 0.30 |
+| Head motion range (% of face width) | 2.6 | 2.7 |
+| Landmark jitter | 1.09 | 1.56 |
+| Identity geometry drift (%) | 3.4 | 4.7 |
+
+The new clips are calmer than idle_01's sideways drift: there's less raw motion, but it's natural, non-rigid movement that keeps eye contact.
+
 ### Recommendation
 
 - **The hq mouth (C or D):** ready to approve. It's a clear, low-risk improvement.
-- **Library motion:** the approach is right, but the library is too thin today (2 usable seconds). Regenerate idle_04–06 with the pass-2 prompts (eye contact, one quick blink; already in `presenter_motion.py`), then re-run the audit and review D again.
-- **Keep `mode = "off"`** until a D render with a fuller library passes your review. The teeth gap remains the most visible tell.
+- **Library motion:** with pass 2 the library is usable (about 12 s that pass the audit). D, the hq mouth plus library motion, is the candidate to approve: switch `motion = "library"` after you review the updated montages.
+- **Keep `mode = "off"`** until D passes your review. The teeth gap remains the most visible tell.
 
 ## Update: the host's own voice
 
