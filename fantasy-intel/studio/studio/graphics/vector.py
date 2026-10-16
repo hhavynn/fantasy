@@ -18,6 +18,7 @@ from functools import lru_cache
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
+from .. import format_scenes as FS
 from .. import motion as M
 from ..numbers import TEAM_NAMES, render
 from ..stages.story import last as last_name
@@ -59,8 +60,9 @@ class Look:
         return self.down if c.p.get("role") == "faller" else self.up
 
     def team(self, c):
+        """The team's colours, the primary darkened just enough (if at all) that type on it reaches 4.5:1."""
         p, s = M.team_colors(c.team)
-        return p, s
+        return readable(p), s
 
     # panels -----------------------------------------------------------------------------------
     def panel_box(self, F: Frame, box, fill=None, alpha=1.0, outline=True, team=None):
@@ -86,6 +88,16 @@ class Look:
         if max_width and sh:
             max_width -= sh * self.ty(key)[1] * 0.75           # the lean of italic type needs room on the right
         return F.text(t, x, y, self.ty(key), fill, anchor, alpha, scale, src, role, sh, tabular, max_width)
+
+
+def readable(col) -> tuple:
+    """`col`, or the nearest darker shade on which white or near-black type has at least 4.5:1 contrast."""
+    out = tuple(col)
+    for k in range(0, 21):
+        out = mix(col, (10, 15, 28), k * 0.05)
+        if max(K.contrast((255, 255, 255), out), K.contrast((10, 15, 28), out)) >= 4.5:
+            break
+    return out
 
 
 STYLES = {"premium": None, "broadcast": None}
@@ -178,9 +190,10 @@ def portrait(c, width: int) -> Image.Image:
 def chrome(F: Frame, L: Look, c, t: float, scene: dict, dur: float):
     """Persistent identity: premium, a quiet header line; broadcast, a score bug and a lower third."""
     week = c.d(c.facts["episode"]["week"])
+    show = SHOW.get(FS.FORMAT_SCENES.get(scene["type"], ("usage",))[0], SHOW["usage"])
     if not L.broadcast:
         y = 248
-        L.text(F, "THE USAGE REPORT", L.mx, y, "kicker", L.muted, role="kicker")
+        L.text(F, show[0], L.mx, y, "kicker", L.muted, role="kicker")
         L.text(F, week, W - L.mr, y, "kicker", L.muted, anchor="r", role="kicker", src=c.facts["episode"]["week"])
         F.line((L.mx, y + 40, W - L.mr, y + 40), L.line, 2)
         return
@@ -189,7 +202,7 @@ def chrome(F: Frame, L: Look, c, t: float, scene: dict, dur: float):
     y0, y1 = 240, 292
     F.poly([(L.mx, y0), (L.mx + 330, y0), (L.mx + 330 - 11, y1), (L.mx - 11, y1)], pal(L.tk, "slab_dark"))
     F.poly([(L.mx + 330, y0), (L.mx + 470, y0), (L.mx + 470 - 11, y1), (L.mx + 330 - 11, y1)], p)
-    F.text("USAGE REPORT", L.mx + 22, y0 + 13, ["black", 30, 0.06], L.ink, role="kicker")
+    F.text(show[1], L.mx + 22, y0 + 13, ["black", 30, 0.06], L.ink, role="kicker")
     F.text(week.upper(), L.mx + 400 - 6, y0 + 13, ["black", 30, 0.04], _on(p), anchor="c", role="kicker",
            src=c.facts["episode"]["week"])
     if scene["type"] not in LOWER_THIRD:
@@ -198,18 +211,25 @@ def chrome(F: Frame, L: Look, c, t: float, scene: dict, dur: float):
     k = L.e(t, 0.0, 0.3)
     y = 1316
     name = c.p["name"].upper()
-    nw = K.measure(name, "black", 50, -0.01) + 70
-    x0 = L.mx - (1 - k) * 500
-    F.poly([(x0 + 16, y), (x0 + nw + 16, y), (x0 + nw, y + 74), (x0, y + 74)], p, alpha=0.97)
-    F.text(name, x0 + 32, y + 16, ["black", 50, -0.01], _on(p), shear=L.shear, role="label", alpha=k)
     sub = f"{c.p['position']} · {c.d(c.p['team_name']).upper()}"
     sw = K.measure(sub, "bold", 30, 0.04) + 40
+    npx = 50                                     # a long name steps down so the strip stays inside the safe zone
+    while npx > 40 and K.measure(name, "black", npx, -0.01) + 70 + 8 + sw + 16 > W - L.mr - L.mx:
+        npx -= 2
+    nw = K.measure(name, "black", npx, -0.01) + 70
+    x0 = L.mx - (1 - k) * 500
+    F.poly([(x0 + 16, y), (x0 + nw + 16, y), (x0 + nw, y + 74), (x0, y + 74)], p, alpha=0.97)
+    F.text(name, x0 + 32, y + 16 + (50 - npx) * 0.36, ["black", npx, -0.01], _on(p), shear=L.shear, role="label",
+           alpha=k)
     xs = x0 + nw + 8
     F.poly([(xs + 16, y + 12), (xs + sw + 16, y + 12), (xs + sw, y + 74), (xs, y + 74)], s if K.contrast(s, p) > 1.5 else L.ink)
     F.text(sub, xs + 24, y + 31, ["bold", 30, 0.04], _on(s if K.contrast(s, p) > 1.5 else L.ink), role="label", alpha=k)
 
 
-LOWER_THIRD = {"target_balls", "split", "presence", "teammate_out", "status_stamp"}
+LOWER_THIRD = {"target_balls", "split", "presence", "teammate_out", "status_stamp", "zoom_out", "volume_balls"}
+# The show's name in the chrome, by format: the usage report, or the format scenes' own (format_scenes.py).
+SHOW = {"usage": ("THE USAGE REPORT", "USAGE REPORT"), "casefile": ("THE CASE FILE", "CASE FILE"),
+        "alert": ("OPPORTUNITY WATCH", "OPPORTUNITY")}
 
 
 def _on(bg) -> tuple:
@@ -706,7 +726,7 @@ def transition(name: str, prev: Image.Image, cur: Image.Image, k: float, c) -> I
 
 CAPTION_Y = 1420
 CAPTION_ZONE = 1396            # scene text stays above this line; the captions own the band below it
-CAPTION_BOTTOM = 1520
+CAPTION_BOTTOM = 1535          # the last caption line's letters end above this
 
 
 def caption(name: str, img: Image.Image, words: list[dict], active: int, t_in: float, c, measure=False) -> list[dict]:
@@ -720,7 +740,7 @@ def caption(name: str, img: Image.Image, words: list[dict], active: int, t_in: f
     lines = _wrap_words(text_words, spec, CAPTION_MAX_W)
     lh = int(tk.size * 1.3)
     # centred on the caption line for one or two lines; a rare third line grows upward, never into the UI below
-    y0 = min(CAPTION_Y + (2 - len(lines)) * lh / 2, CAPTION_BOTTOM - len(lines) * lh)
+    y0 = min(CAPTION_Y + (2 - len(lines)) * lh / 2, CAPTION_BOTTOM - tk.size - (len(lines) - 1) * lh)
     y0 += (1 - K.bezier(*L.tk.motion.enter)(K.clamp(t_in * 5))) * 14
     if tk.band:
         band = _band(tk.band)
@@ -782,3 +802,6 @@ def caption_spec(name: str) -> dict:
     from .. import visual
     return {"font": visual.WEIGHTS[tk.weight], "font_size": tk.size, "max_width_px": CAPTION_MAX_W, "max_lines": 2,
             "case": tk.case}
+
+
+from . import vector_formats  # noqa: E402,F401  (registers the format scenes in SCENES)

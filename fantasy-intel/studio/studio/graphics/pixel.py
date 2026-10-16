@@ -41,6 +41,7 @@ GLYPHS = {
     "→": ".....|..#..|...#.|#####|...#.|..#..|.....", "▶": "#...|##..|###.|####|###.|##..|#...",
     "·": ".|.|.|#|.|.|.", "#": ".#.#.|.#.#.|#####|.#.#.|#####|.#.#.|.#.#.", "=": ".....|.....|#####|.....|#####|.....|.....",
     "&": ".##..|#..#.|.##..|.#...|#.#.#|#..#.|.##.#", '"': "#.#|#.#|...|...|...|...|...",
+    "≠": "....#|...#.|#####|..#..|#####|.#...|#....",
 }
 ALIASES = {"–": "-", "—": "-", "−": "-", "’": "'", "“": '"', "”": '"', ";": ":"}
 SPACE = 3
@@ -132,9 +133,12 @@ def outline(spr: Image.Image, color) -> Image.Image:
 
 
 @lru_cache(maxsize=32)
-def football(ghost: bool = False) -> Image.Image:
-    """A 13x7 football: leather, a white lace line with three stitches, a dark outline."""
+def football(ghost: bool = False, tint: str | None = None) -> Image.Image:
+    """A 13x7 football: leather, a white lace line with three stitches, a dark outline. `tint` swaps the
+    leather for a palette colour ("gold" marks the story player's own, "silver" another player's)."""
     P = palette()
+    body, edge = {"gold": (P["gold"], P["leather_dark"]), "silver": (P["mist"], P["steel"])}.get(
+        tint, (P["leather"], P["leather_dark"]))
     rows = ["....#####....", "..##LLLLL##..", ".#LLLWLWLLLL#", "#LLLWWWWWLLL#", ".#LLLWLWLLLL#",
             "..##LLLLL##..", "....#####...."]
     img = Image.new("RGBA", (13, 7), (0, 0, 0, 0))
@@ -145,9 +149,9 @@ def football(ghost: bool = False) -> Image.Image:
                 if c == "#" and (x + y) % 2 == 0:
                     px[x, y] = (*P["mist"], 255)
             elif c == "#":
-                px[x, y] = (*P["leather_dark"], 255)
+                px[x, y] = (*edge, 255)
             elif c == "L":
-                px[x, y] = (*P["leather"], 255)
+                px[x, y] = (*body, 255)
             elif c == "W":
                 px[x, y] = (*P["white"], 255)
     return img

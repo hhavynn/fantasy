@@ -94,7 +94,7 @@ voice = "am_adam"
 # broadcast | auto. 'original' renders only final.mp4, exactly as before. Any other value ALSO renders
 # styles/<style>/final.mp4 with its own QC; final.mp4 is never replaced.
 style = "auto"
-# auto: preferred style per story angle (mystery and opportunity formats fall back to original for now).
+# auto: preferred style per story angle; an angle with no preference (mystery, opportunity) uses auto_default.
 auto_default = "original"
 
 [graphics.auto]

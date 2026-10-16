@@ -45,7 +45,7 @@ vanishing_targets = "premium"
 fill_in = "broadcast"
 ```
 
-`auto` picks by story angle and falls back to `original` when the chosen style has no design for one of the story's scenes. The mystery and opportunity formats (`format_scenes.py`) don't have styled scenes yet, so they always fall back.
+`auto` picks by story angle and falls back to `original` when the chosen style has no design for one of the story's scenes. Every scene type has a design in all three styles, the mystery and opportunity formats included, so in practice `auto` uses `original` only for an angle with no preference. Mystery and opportunity have none yet; to style them, add a line each under `[graphics.auto]`, for example `mystery = "premium"` and `opportunity = "broadcast"`.
 
 ### Caching
 
@@ -84,9 +84,31 @@ Layouts that depend on structure (where a chart sits, what a scene shows) live i
 | Teammate grid (out weeks against his weeks) | `scene_teammate_out` | fill-in stories |
 | Status card | `scene_status_stamp` | fill-in stories |
 | Lineup strip and decision card; question and options | `scene_lineup`, `scene_decision` | takeaway, question |
-| Pixel font, player sprite, football sprite, turf, segmented meter, menu window, dialog box | `pixel.py`, `pixelart.py` | pixel |
+| Pixel font, player sprite, football sprite (leather, gold for the story player's own, silver, outline), turf, segmented meter, menu window, dialog box | `pixel.py`, `pixelart.py` | pixel |
+| Format scenes (mystery and opportunity): see below | `vector_formats.py`, `pixel_formats.py` | all three |
 | Captions per style | `vector.caption`, `pixelart.caption` | every frame |
 | Transitions: slide and fade (premium), slab wipe (broadcast), stepped palette fade (pixel) | `vector.transition`, `pixelart.transition` | scene changes |
+
+### Format scenes
+
+The editorial formats (`studio/format_scenes.py`) tell one football idea per scene. Each has a design in every style, keyed to the same narration cues as the original, so a number still lands as it is said.
+
+| Scene | Premium and broadcast (`vector_formats.py`) | Pixel (`pixel_formats.py`) |
+|---|---|---|
+| `mirror` | two games side by side: the snaps land with an equals sign, the targets stay "?" until each is said, then a crossed equals; one square per target on one scale | two score panels, "=" and "≠" tags, one football per target |
+| `which` | his picture between two cards (week, targets); "Which one is real?" lands on "real" (broadcast: on a highlight slab) | his sprite, the question in the title bar, a "?" block |
+| `rival` | the returning teammate head to head: names, "Back" and the weeks he missed, then snaps and targets as numbers over a bar pair on one axis (zero at the centre line) | two sprites, a stat panel with the winner in gold |
+| `zoom_out` | his season as a zero-based column chart; on "zoom" the chart widens from the two games everyone saw to every game. The verdict marks the outlier, boxes the snaps that never moved ("Locked in"), and the call replaces the title (broadcast: a slab) | footballs stacked one per target, the same widening in whole art pixels, an "OUTLIER" tag and a "LOCKED IN" frame |
+| `volume_balls` | the team's targets per game as columns with his targets inside each column | two rows of footballs, his in gold |
+| `verdict` | steady against swinging, game against game, then the call as sentences | two panels with tags, the call in boxes |
+| `giant_number` | the share huge on frame 0, what it measures, then one square per carry filling as the line is said | the share at x7 in a night panel, a field of footballs |
+| `carry_grid` | one square per carry: his now (filled) against other backs (outlined); or the old split, the starter's squares neutral and his in the data colour, with both shares and counts | the same as footballs (his in gold) and 5%-per-segment meters |
+| `handoff` | two pictures, the starter dimmed with "Out", the injury and the weeks missed, an arrow to the backup | two sprites (the starter greys out), footballs arcing across, a dialog box |
+| `report` | the injury report as a dated card: missed, injury, practice status (in the down colour), "As of" and "check the final status before kickoff" | a paper report with a stamped status block |
+| `window` | "While he sits" over his picture with the call on a chip; when he is back, the only split seen with him on a 0–100% bar | a window opening on his sprite; two meters |
+| `fork` | the call both ways as two branch cards, each with its share on a 0–100% track and the weeks it covers | two menu boxes with a cursor and meters |
+
+Premium never stamps (the call is a sentence in the title type); broadcast puts calls on slabs, and big cards get a gentle slant with their colour bar outside the left edge so it never runs under type. The chrome names the show by format: "The case file" for mystery, "Opportunity watch" for opportunity. Squares and footballs are drawn from the claims' own values (38 of 40 carries is 38 filled and 2 outlined; a test checks it), and a derived number the original drew (the "−10" gap, "WEEK {n+1}", the "5-game sample") is replaced by claim numbers or left out.
 
 ### Accuracy rules the components follow
 
@@ -112,6 +134,8 @@ Layouts that depend on structure (where a chart sits, what a scene shows) live i
 
 The gates earned their place on the first renders. They caught red numbers on green turf at equal luminance (contrast 1.0), labels under the right-hand action rail, a long name ("Fannin Jr.") running off the card, an "88%" wider than its cell, close values whose labels collided (14% and 21%), three-line captions running into the UI, and (after a frame review the gates had missed) a stamp sliding under the pixel dialog box, which is why `vqa_caption_clear` exists. Reviewing frames by eye also caught "JR." standing in for a surname and a pixel dissolve that looked like signal corruption; both are fixed, and the surname case has a test. Each was fixed in the design, not by loosening a gate.
 
+The format scenes added their own catches, each fixed in the design: a "8 to Endman" label off the right edge, footballs dropping through the count above them (contrast 1.4), the Chargers' blue at 4.47:1 under white type in the broadcast score bug (team slabs now darken just enough to reach 4.5:1, for every scene), a long name pushing the broadcast lower third past the safe zone (the name now steps down a size), and the pixel caption's "more" marker sitting outside the safe zone.
+
 The subtitle gate also learned two things: it honours `captions.json`'s `case` (the burned-in captions are capitals), and it measures the pixel font.
 
 ## Comparison report
@@ -133,6 +157,13 @@ Same four Shorts, same narration, music, sound effects, timing and captions. Mea
 
 Render times are on the M5 Pro, single process. Broadcast is slower because of its camera push (a full-frame resize per frame). Premium has none on purpose, so type and hairlines stay pixel-sharp.
 
+Format Shorts (Week 6, measured on the styled renders; both pass QC in every style):
+
+| | Premium | Pixel | Broadcast |
+|---|---|---|---|
+| Oronde Gadsden II (mystery): numbers checked, worst contrast, render time, size | 94, 5.7:1, 7 s, 2.1 MB | 94, 5.7:1, 6 s, 2.1 MB | 94, 3.3:1, 17 s, 6.9 MB |
+| Braelon Allen (opportunity) | 48, 5.7:1, 9 s, 2.1 MB | 51, 5.3:1, 5 s, 2.2 MB | 48, 3.3:1, 13 s, 6.7 MB |
+
 ### Judgement (subjective; watch `compare_2x2.mp4` and decide)
 
 | Criterion | Original | Premium | Pixel | Broadcast |
@@ -146,11 +177,11 @@ Render times are on the M5 Pro, single process. Broadcast is slower because of i
 | Reusability | per-scene code | shared components | shared structure, own drawing | shared components |
 | Production efficiency | baseline | fastest vector style | fastest overall | slowest new style, still under 20 s |
 
-My recommendation, for you to confirm by watching: **premium** for usage deep dives (the `vanishing_targets` stories), **broadcast** for weekly reports and fill-in or injury stories, and **pixel** as an occasional change-up for head-to-head or fun stories rather than the default, since its novelty is its strength. The `auto` mapping in `config.toml` follows this and is now the default: usage deep dives render in premium, fill-in stories in broadcast, and everything else (including the mystery and opportunity formats) stays original. The weekly `review.md` index lists each Short's styled video and its QC next to `final.mp4`. `final.mp4` is still rendered, and metadata, thumbnail and upload still point at it, so when publishing a styled Short, upload `styles/<style>/final.mp4` by hand.
+My recommendation, for you to confirm by watching: **premium** for usage deep dives (the `vanishing_targets` stories), **broadcast** for weekly reports and fill-in or injury stories, and **pixel** as an occasional change-up for head-to-head or fun stories rather than the default, since its novelty is its strength. The `auto` mapping in `config.toml` follows this and is now the default: usage deep dives render in premium, fill-in stories in broadcast, and everything else (including the mystery and opportunity formats, which have designs but no preference yet) stays original. The weekly `review.md` index lists each Short's styled video and its QC next to `final.mp4`. `final.mp4` is still rendered, and metadata, thumbnail and upload still point at it, so when publishing a styled Short, upload `styles/<style>/final.mp4` by hand.
 
 ## Limitations and known issues
 
-- **Formats not covered yet.** The mystery (`mirror`, `which`, `rival`, `zoom_out`, `verdict`) and opportunity (`giant_number`, `carry_grid`, `handoff`, `report`, `window`, `fork`) scenes in `format_scenes.py` have no styled versions; those Shorts fall back to the original. Neither do the long-form charts (`stages/charts.py`).
+- **Long-form charts not covered.** The long-form video's charts (`stages/charts.py`) have no styled versions. Every Shorts scene, including the mystery and opportunity formats, does.
 - **Typeface.** Inter is the only licensed face in the repo. Broadcast's italics are a shear, not a drawn italic, and a condensed sports face would suit it better. Adding one (for example an OFL condensed sans) is a small download that needs your OK.
 - **Sprites are procedural.** The player sprite is built from shapes at native resolution and outlined; it's on-grid and clean, but a hand-drawn sprite sheet (Aseprite) would have more character.
 - **Headshots.** Premium and broadcast show the ESPN headshot when `[shorts] headshots = true`, with the same rights caveat as the original renderer; pixel never uses photos.
@@ -160,7 +191,7 @@ My recommendation, for you to confirm by watching: **premium** for usage deep di
 
 ## Next improvements
 
-1. Style the mystery and opportunity format scenes, so `auto` never has to fall back.
+1. Choose `auto` preferences for the mystery and opportunity angles (their designs exist; see "Using a style").
 2. Add a licensed condensed display face for broadcast (needs your OK for the download).
 3. Hand-drawn sprite sheets for pixel (player poses, a short run cycle, helmets), loaded by `pixel.py`.
 4. Let the presenter composite over a styled video.

@@ -14,6 +14,7 @@ import math
 import numpy as np
 from PIL import Image
 
+from .. import format_scenes as FS
 from .. import motion as M
 from ..numbers import TEAM_NAMES, render
 from ..stages.story import last as last_name
@@ -72,9 +73,13 @@ def background(F: X.PixelFrame, t: float):
     F.rect((0, 312, AW, AH), P()["night"])
 
 
-def hud(F, c, col: C):
+SHOW = {"casefile": "CASE FILE", "alert": "OPPORTUNITY"}      # the format scenes' own show names
+
+
+def hud(F, c, col: C, scene: dict | None = None):
     F.frame_box((L0, T0, R0, T0 + 16), col.night, col.steel)
-    F.text("USAGE REPORT", L0 + 5, T0 + 5, 1, col.white, role="kicker")
+    kind = FS.FORMAT_SCENES.get((scene or {}).get("type"), ("usage",))[0]
+    F.text(SHOW.get(kind, "USAGE REPORT"), L0 + 5, T0 + 5, 1, col.white, role="kicker")
     wk = c.d(c.facts["episode"]["week"]).upper()
     w = X.text_width(wk, 1) + 10
     tw = X.text_width(c.team, 1) + 10
@@ -423,7 +428,7 @@ def draw(scene: dict, t: float, dur: float, c, measure: bool = False) -> X.Pixel
     F = X.PixelFrame(S, measure)
     col = C(c)
     background(F, t + scene.get("_start", 0))
-    hud(F, c, col)
+    hud(F, c, col, scene)
     SCENES[scene["type"]](F, c, t, dur, scene, col)
     return F
 
@@ -449,7 +454,7 @@ def caption(F: X.PixelFrame, words: list[dict], active: int, c) -> None:
     F.frame_box(CAPTION_BOX[:2] + (CAPTION_BOX[2] - 1, CAPTION_BOX[3] - 1), col.night, col.white)
     F.rect((L0 - 2, 268, R0 + 2, 269), col.slate)
     if more:
-        F.text("▶", R0 - 2, 298, 1, col.gold, role="label")
+        F.text("▶", R0 - 6, 298, 1, col.gold, role="caption")
     y = 286 - (len(lines) * 18 - 4) // 2
     for line in lines:
         total = X.text_width(" ".join(texts[i] for i in line), 2)
@@ -479,3 +484,6 @@ def caption_spec() -> dict:
     # two lines on screen; a longer card pages (two pages at most for the 2-5 word cues the timeline makes)
     return {"font": "pixel5x7", "font_size": 2, "max_width_px": (R0 - L0 - 4), "max_lines": 4, "case": "upper",
             "lines_on_screen": 2}
+
+
+from . import pixel_formats  # noqa: E402,F401  (registers the format scenes in SCENES)

@@ -15,9 +15,8 @@ AUTO = {"vanishing_targets": "premium", "fill_in": "broadcast", "comparison": "p
 
 
 def choose(cfg, story_angle: str, scene_types) -> str:
-    """The style for a story under `auto`: the configured preference for its angle, falling back to the
-    original renderer when that style has no design for one of its scenes (the mystery and opportunity
-    formats are still original-only)."""
+    """The style for a story under `auto`: the configured preference for its angle (auto_default without one),
+    falling back to the original renderer when that style has no design for one of its scenes."""
     from .render import unsupported
     prefs = {**AUTO, **((cfg.raw.get("graphics") or {}).get("auto") or {})}
     style = prefs.get(story_angle, (cfg.raw.get("graphics") or {}).get("auto_default", "original"))
