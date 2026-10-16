@@ -145,16 +145,17 @@ def shrinkage_study(df: pl.DataFrame, store: pl.DataFrame, weeks, cfg, opp_col: 
         pl.lit(0.0).alias("eff_zero"),
         (pl.col("yd_over_exp").fill_null(0) + pl.col("td_over_exp").fill_null(0)).alias("eff_player_hist"),
     ).with_columns((pl.col("eff_pos_baseline") + pl.col("eff_player_hist")).alias("eff_pos_plus_player"))
-    out = {}
-    for name in ("eff_zero", "eff_pos_baseline", "eff_player_hist", "eff_pos_plus_player", "OE_D_eff", "OE_E_eff"):
-        t = d.filter(pl.col("t_eff").is_not_null() & pl.col(name).is_not_null())
-        pts = d.filter(pl.col(opp_col).is_not_null() & pl.col(name).is_not_null())
-        out[name] = {"eff_mae": metrics(_arr(t, "t_eff"), _arr(t, name))["mae"],
-                     "eff_bias": metrics(_arr(t, "t_eff"), _arr(t, name))["bias"],
-                     "points_mae_with_selected_opportunity": metrics(_arr(pts, "label"),
-                                                                     np.maximum(_arr(pts, opp_col) + _arr(pts, name),
-                                                                                0.0))["mae"],
-                     "n": t.height}
+    names = ("eff_zero", "eff_pos_baseline", "eff_player_hist", "eff_pos_plus_player", "OE_D_eff", "OE_E_eff")
+    # one population for every shrinkage target: rows with a known efficiency target, an opportunity
+    # forecast and a value from every compared method (the ridge components abstain without history)
+    shared = d.filter(pl.col("t_eff").is_not_null() & pl.col("label").is_not_null() & pl.col(opp_col).is_not_null()
+                      & pl.all_horizontal([pl.col(n).is_not_null() for n in names]))
+    out = {"n": shared.height}
+    for name in names:
+        out[name] = {"eff_mae": metrics(_arr(shared, "t_eff"), _arr(shared, name))["mae"],
+                     "eff_bias": metrics(_arr(shared, "t_eff"), _arr(shared, name))["bias"],
+                     "points_mae_with_selected_opportunity": metrics(
+                         _arr(shared, "label"), np.maximum(_arr(shared, opp_col) + _arr(shared, name), 0.0))["mae"]}
     return out
 
 
@@ -166,6 +167,8 @@ def cmd_run(args) -> dict:
     store_path = _out(args) / "store_oe.parquet"
     cfg = ch.ChallengerConfig.load()
     sel = json.loads((args.ifp_dir / "selection.json").read_text())
+    if sel.get("scoring_fingerprint") != scoring.fingerprint:
+        raise SystemExit("selection.json (frozen ifp-1.0.0 penalties) was made under different league scoring")
 
     # ---- development: every penalty of every component, then the best pair per candidate/position
     dev_weeks = ch.window_weeks(store, oe.DEVELOPMENT)

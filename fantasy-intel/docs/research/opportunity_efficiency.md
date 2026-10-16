@@ -134,14 +134,16 @@ What the table shows:
 * The decomposition supplies no separate signal. It reproduces the direct regression, with an
   efficiency term that the data shrinks to nearly a constant.
 
-**Where should efficiency shrink?** Development, combined with OE_D's opportunity forecast:
+**Where should efficiency shrink?** Development, combined with OE_D's opportunity forecast. Every
+method is scored on the same 13,372 rows: a known target, an opportunity forecast, and a value from
+every method.
 
 | Efficiency forecast | Efficiency MAE | Bias | Points MAE |
 |---|---|---|---|
-| Zero | 2.491 | −0.19 | 4.234 |
-| Position baseline (recency-weighted mean residual) | 2.496 | −0.02 | 4.197 |
-| Player history (shrunk yardage + TD over expected) | 2.734 | −0.06 | 4.299 |
-| Position baseline + player history | 2.746 | +0.12 | 4.276 |
+| Zero | 2.516 | −0.18 | 4.234 |
+| Position baseline (recency-weighted mean residual) | 2.521 | −0.01 | 4.197 |
+| Player history (shrunk yardage + TD over expected) | 2.765 | −0.05 | 4.299 |
+| Position baseline + player history | 2.776 | +0.12 | 4.276 |
 | OE_D ridge (penalty 0.3-30) | 2.528 | −0.02 | 4.194 |
 | OE_E ridge | 2.527 | −0.01 | 4.195 |
 
