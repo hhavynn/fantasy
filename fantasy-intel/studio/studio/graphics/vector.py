@@ -828,3 +828,4 @@ def caption_spec(name: str) -> dict:
 
 
 from . import vector_formats  # noqa: E402,F401  (registers the format scenes in SCENES)
+from . import vector_shows  # noqa: E402,F401  (registers the show scenes in SCENES)
