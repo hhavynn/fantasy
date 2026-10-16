@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import hashlib
 import json
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -262,6 +263,27 @@ def fit_artifact(store: pl.DataFrame, cutoff_key: int, params: dict[str, dict], 
                                            cutoff_key))
     return ResearchArtifact(HGB_VERSION, created_at, scoring_fingerprint, cutoff_key, config_hash, data_hash,
                             sklearn.__version__, params, feats, models, n).seal()
+
+
+def claim_artifact(path: Path, fit, scoring_fingerprint: str, config_hash: str,
+                   cutoff_key: int) -> tuple[ResearchArtifact, bool]:
+    """The one artifact of a forecast week, stored write-once at a deterministic path. If an earlier
+    run (interrupted before its ledger write, or a concurrent one that won the race) already stored
+    it, that artifact is loaded and used instead of fitting another, so a week never accumulates
+    orphan artifacts and its ledger always refers to the stored one. Returns (artifact, written)."""
+    from app.analytics.weekly_learning import write_once
+
+    path = Path(path)
+    if not path.exists():
+        art = fit()
+        if write_once(path, json.dumps(art.to_dict(), indent=1, default=str)):
+            return art, True
+    art = ResearchArtifact.from_dict(json.loads(path.read_text()))
+    if (art.scoring_fingerprint, art.config_hash, art.training_cutoff_key) != (scoring_fingerprint, config_hash,
+                                                                                cutoff_key):
+        raise ValueError(f"stored artifact {path.name} was built under a different scoring, configuration or "
+                         "cutoff; refusing to reuse it")
+    return art, False
 
 
 def check_frozen(frozen: dict, scoring_fingerprint: str, ifp2_config_hash: str) -> None:

@@ -143,6 +143,41 @@ def test_research_artifact_round_trips_through_json_without_pickle():
         hg.ResearchArtifact.from_dict(tampered)
 
 
+def test_week_artifact_is_stored_once_and_reused_after_an_interrupted_run(tmp_path):
+    store = _store()
+    art = _artifact(store)
+    path = tmp_path / "artifacts" / "hgb-s2025w06.json"
+    fits = []
+
+    def fit():
+        fits.append(1)
+        return art
+
+    first, wrote = hg.claim_artifact(path, fit, art.scoring_fingerprint, art.config_hash, art.training_cutoff_key)
+    assert wrote and fits == [1] and first.content_hash == art.content_hash
+    # a retry after a crash before the ledger write (or a concurrent run) reuses the stored artifact
+    again, wrote = hg.claim_artifact(path, fit, art.scoring_fingerprint, art.config_hash, art.training_cutoff_key)
+    assert not wrote and fits == [1] and again.content_hash == art.content_hash
+    assert [p.name for p in path.parent.iterdir()] == [path.name]
+    with pytest.raises(ValueError, match="different"):
+        hg.claim_artifact(path, fit, "other-scoring", art.config_hash, art.training_cutoff_key)
+
+
+def test_a_run_that_loses_the_artifact_race_uses_the_winners_artifact(tmp_path):
+    store = _store()
+    art = _artifact(store)
+    other = hg.ResearchArtifact(**{**art.to_dict(), "created_at": "2099-01-01T00:00:00+00:00"}).seal()
+    path = tmp_path / "hgb-s2025w06.json"
+
+    def racing_fit():                       # the winner stores its artifact while this run is still fitting
+        hg.claim_artifact(path, lambda: art, art.scoring_fingerprint, art.config_hash, art.training_cutoff_key)
+        return other
+
+    got, wrote = hg.claim_artifact(path, racing_fit, art.scoring_fingerprint, art.config_hash,
+                                   art.training_cutoff_key)
+    assert not wrote and got.content_hash == art.content_hash != other.content_hash
+
+
 def test_feature_columns_are_used_in_the_stored_order():
     store = _store()
     art = _artifact(store)
@@ -220,3 +255,14 @@ def test_exported_trees_reproduce_sklearn_exactly():
     X = hg.matrix(store.filter(pl.col("week") == 6), FEATS["RB"])
     X[0, 0] = np.nan                                         # a value missing at predict time only
     assert np.allclose(hg.predict_trees(hg.export_trees(model), X), model.predict(X))
+
+
+def test_exact_mode_skips_reporting_rounding_only():
+    from app.analytics import forecast_backtest as fb
+    a = np.array([1.0, 2.0, 3.0, 4.0])
+    p = a + 0.0004                                  # a regression far below the 3-decimal rounding step
+    assert fb.metrics(a, p)["mae"] == 0.0           # reported (rounded) value unchanged
+    assert fb.metrics(a, p, exact=True)["mae"] == pytest.approx(0.0004)
+    df = pl.DataFrame({"key": [1, 1, 2, 2], "label": a, "x": p, "y": a})
+    assert fb.week_bootstrap_mae_diff(df, "x", "y", 50, 0)["diff"] == 0.0
+    assert fb.week_bootstrap_mae_diff(df, "x", "y", 50, 0, exact=True)["diff"] == pytest.approx(0.0004)

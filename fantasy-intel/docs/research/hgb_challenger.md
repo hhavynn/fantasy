@@ -81,6 +81,9 @@ them arbitrarily, so the group-level importance below is the meaningful unit, no
 * Searched: max_leaf_nodes {7, 15} × min_samples_leaf {50, 200} × max_iter {150, 300}, so 8
   configurations.
 * Each configuration is refit every week on strictly earlier rows (identical cutoffs to ridge).
+* The configuration (and any ensemble weight) is chosen on unrounded development MAE. The decision
+  rules are applied to unrounded values; the tables show them rounded.
+* Only fully final, fully ingested weeks are used (every week in the current data is).
 
 | Position | ifp-2 ridge | Best HGB (chosen) | Worst HGB |
 |---|---|---|---|
@@ -254,6 +257,9 @@ The complexity buys no accuracy.
   * ledger `s2026w06-pregame.json`, with 436 roster players and 413 forecasts: the same population
     the weekly pipeline froze.
 * A rerun cannot overwrite either file. Rows of teams that have already kicked off are excluded.
+* Artifacts are now stored at one deterministic path per week (`ifp-hgb-0.1.0-s{season}w{week}.json`).
+  A rerun after an interrupted or concurrent run loads that stored artifact instead of fitting another,
+  and the ledger names the file it used. The week-6 artifact above predates this naming.
 * The ledger is standalone (`data/models/research/hgb/ledger/`, git-ignored) rather than part of
   the weekly ledger. Adding a third model to that ledger's run schema would change frozen run
   hashes and the weekly evaluator's inputs, which this PR must not touch.

@@ -63,22 +63,58 @@ def _frame_hash(df: pl.DataFrame | None) -> str | None:
     return hashlib.sha256(np.sort(df.hash_rows(seed=0).to_numpy()).tobytes()).hexdigest()[:16]
 
 
+def code_hash() -> str:
+    """Hash of every module that can shape a cached result: all of app/ and every script (this one
+    and the store builders it imports). Deliberately broader than today's import graph, so a change
+    to any helper the store is built with invalidates the cache."""
+    root = Path(ch.__file__).resolve().parents[3]
+    files = sorted((root / "backend" / "app").rglob("*.py")) + sorted((root / "scripts").glob("*.py"))
+    h = hashlib.sha256()
+    for f in files:
+        h.update(str(f.relative_to(root)).encode() + b"\0" + f.read_bytes())
+    return h.hexdigest()[:16]
+
+
 def input_fingerprint(args, src, scoring_fingerprint: str, weeks) -> str:
     """Everything the cached store depends on: source data, weeks, scoring and the code that builds
     it. Any change rebuilds the cache."""
-    mods = ["app.analytics.challenger", "app.analytics.forecast_features", "app.analytics.forecast_backtest", "app.analytics.hgb_research"]
-    code = b"".join(Path(sys.modules[m].__file__).read_bytes() for m in mods)
     parts = {"season": args.season, "weeks": weeks, "scoring": scoring_fingerprint, "polars": pl.__version__,
-             "code": hashlib.sha256(code).hexdigest()[:16],
-             **{n: _frame_hash(getattr(src, n)) for n in ("panel", "games", "injuries", "exits", "rosters")}}
+             "code": code_hash(),
+             **{n: _frame_hash(getattr(src, n)) for n in ("panel", "games", "defense", "injuries", "exits", "rosters")}}
     return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def final_weeks(args, src) -> list[tuple[int, int]]:
+    """Completed weeks that are also fully final and fully ingested (participation_calibration's
+    week_finality rule): a partly played or partly synced week would put an incomplete player pool
+    into the store, the diagnostics and the Start/Sit pairs."""
+    import duckdb
+    import participation_calibration as pcal
+
+    live = duckdb.connect(str(args.live_db), read_only=True)
+    hist = duckdb.connect(str(args.history_db), read_only=True) if args.history_db.exists() else None
+    try:
+        fetched = pcal.fetch_times(live, hist, args.season)
+    finally:
+        for c in (live, hist):
+            if c is not None:
+                c.close()
+    return pcal.fully_final_weeks(src, completed_weeks(src, list(range(ch.TRAIN_START, args.season + 1))), fetched)
+
+
+def _mae(actual, pred) -> float:
+    """Unrounded MAE over rows where both are present: the score penalties and candidates are
+    selected on (metrics() rounds to 3 decimals, which is for reporting only)."""
+    a, q = np.asarray(actual, dtype=float), np.asarray(pred, dtype=float)
+    ok = np.isfinite(a) & np.isfinite(q)
+    return float(np.abs(a[ok] - q[ok]).mean()) if ok.any() else float("inf")
 
 
 def full_store(args, src, scoring_fingerprint: str) -> pl.DataFrame:
     """Cached feature store, reused only when its recorded input fingerprint still matches."""
     path = _out(args) / "store.parquet"
     meta = path.with_suffix(".meta.json")
-    weeks = completed_weeks(src, list(range(ch.TRAIN_START, args.season + 1)))
+    weeks = final_weeks(args, src)
     fp = input_fingerprint(args, src, scoring_fingerprint, weeks)
     if path.exists() and meta.exists() and not args.rebuild and json.loads(meta.read_text()).get("fingerprint") == fp:
         return pl.read_parquet(path)
@@ -86,6 +122,28 @@ def full_store(args, src, scoring_fingerprint: str) -> pl.DataFrame:
     store.write_parquet(path)
     meta.write_text(json.dumps({"fingerprint": fp, "rows": store.height, "weeks": len(weeks)}))
     return store
+
+
+def store_fingerprint(args) -> str:
+    """Fingerprint of the store full_store just validated or built."""
+    return json.loads((_out(args) / "store.meta.json").read_text())["fingerprint"]
+
+
+def provenance(args, scoring_fingerprint: str) -> dict:
+    """What an output was computed from: the store, league scoring, ifp-2 configuration and frozen
+    ifp-1 penalties. Recorded in every output a later command consumes."""
+    return {"store_fingerprint": store_fingerprint(args), "scoring_fingerprint": scoring_fingerprint,
+            "ifp2_config_hash": ch.ChallengerConfig.load().hash(),
+            "selection_sha": hashlib.sha256((args.ifp_dir / "selection.json").read_bytes()).hexdigest()[:16]}
+
+
+def _require_current(args, artifact: dict, what: str, rerun: str, scoring_fingerprint: str) -> None:
+    """Outputs of an earlier command may only be combined with the inputs they were computed from:
+    never mix stores or model versions."""
+    stale = {k: (artifact.get(k), v) for k, v in provenance(args, scoring_fingerprint).items() if artifact.get(k) != v}
+    if stale:
+        diff = ", ".join(f"{k} {a} != {b}" for k, (a, b) in stale.items())
+        raise SystemExit(f"{what} was produced from different inputs ({diff}): re-run `{rerun}` first")
 
 
 def _job(payload):
@@ -152,7 +210,7 @@ def cmd_develop(args) -> dict:
         a = _arr(g, "label")
         grid[pos] = {n: metrics(a, _arr(g, f"pred_{n}"))["mae"] for n in names}
         grid[pos]["ifp2"] = metrics(a, _arr(g, "pred_ifp2"))["mae"]
-        chosen[pos] = min(names, key=lambda n: (grid[pos][n], n))
+        chosen[pos] = min(names, key=lambda n: (_mae(a, _arr(g, f"pred_{n}")), n))   # unrounded
     dev = dev.with_columns(pl.coalesce([pl.when(pl.col("position") == p).then(pl.col(f"pred_{n}"))
                                         for p, n in chosen.items()]).alias("pred_hgb"))
     both = dev.filter(pl.col("pred_hgb").is_not_null() & pl.col("pred_ifp2").is_not_null())
@@ -162,7 +220,9 @@ def cmd_develop(args) -> dict:
     if corr < hg.ENSEMBLE_MAX_ERROR_CORR:
         scores = {w: metrics(_arr(both, "label"), w * _arr(both, "pred_ifp2") + (1 - w) * _arr(both, "pred_hgb"))["mae"]
                   for w in hg.ENSEMBLE_WEIGHTS}
-        ens = {"w_ridge": min(scores, key=lambda w: (scores[w], -w)), "dev_mae_by_weight": scores}
+        exact = {w: _mae(_arr(both, "label"), w * _arr(both, "pred_ifp2") + (1 - w) * _arr(both, "pred_hgb"))
+                 for w in hg.ENSEMBLE_WEIGHTS}
+        ens = {"w_ridge": min(exact, key=lambda w: (exact[w], -w)), "dev_mae_by_weight": scores}
     frozen = {"version": hg.HGB_VERSION, "selected_on": hg.DEVELOPMENT, "search_space": hg.SEARCH_SPACE,
               "params": {p: hg.SEARCH_SPACE[n] for p, n in chosen.items()}, "chosen": chosen,
               "features": {p: hg.hgb_features(p, cfg) for p in POSITIONS},
@@ -179,7 +239,8 @@ def cmd_develop(args) -> dict:
             raise SystemExit(f"{path} already frozen with a different configuration ({prev['config_hash']})")
     dev.select("key", "season", "week", "gsis_id", "position", "label", "pred_C", "pred_ifp2", "pred_hgb",
                *[f"pred_{n}" for n in names]).write_parquet(_out(args) / "development_preds.parquet")
-    (_out(args) / "development_grid.json").write_text(json.dumps({"mae": grid, "runtime_seconds": runtime}, indent=1))
+    (_out(args) / "development_grid.json").write_text(json.dumps(
+        {"mae": grid, "runtime_seconds": runtime, **provenance(args, scoring.fingerprint)}, indent=1))
     return {"chosen": chosen, "grid": grid, "ensemble": ens, "error_corr": round(corr, 4),
             "config_hash": frozen["config_hash"], "runtime_seconds": round(time.time() - t0, 1)}
 
@@ -206,19 +267,22 @@ def cmd_predict(args) -> dict:
     season, week = args.season, args.week
     lpath = _out(args) / "ledger" / f"s{season}w{week:02d}-pregame.json"
     if lpath.exists():      # write-once: a rerun reports the frozen run instead of fitting a new artifact
-        prev = json.loads(lpath.read_text())
-        return {"ledger": str(lpath), "written": False, "created_at": prev["created_at"],
-                "artifact_hash": prev["artifact_hash"], "rows": len(prev["rows"]),
-                "forecast_rows": sum(r["hgb_points"] is not None for r in prev["rows"])}
+        return _ledger_summary(lpath, written=False)
     kick = team_kickoffs(src, season, week)
     open_teams = {t for t, ko in kick.items() if now < ko}
     if not open_teams:
         raise SystemExit(f"every week-{week} game has kicked off: no pregame forecast possible")
-    store = training_store(src, season, week)
     cutoff = season * 100 + week
-    art = hg.fit_artifact(store, cutoff, frozen["params"], cfg, now.isoformat(), scoring.fingerprint,
-                          frozen["config_hash"], store_hash(store, sorted({f for fs in frozen["features"].values()
-                                                                           for f in fs})))
+    apath = _out(args) / "artifacts" / f"{hg.HGB_VERSION}-s{season}w{week:02d}.json"
+
+    def fit():
+        store = training_store(src, season, week)
+        return hg.fit_artifact(store, cutoff, frozen["params"], cfg, now.isoformat(), scoring.fingerprint,
+                               frozen["config_hash"], store_hash(store, sorted({f for fs in frozen["features"].values()
+                                                                                for f in fs})))
+
+    # one artifact per week at a fixed path: an interrupted or concurrent earlier run's artifact is reused
+    art, wrote_a = hg.claim_artifact(apath, fit, scoring.fingerprint, frozen["config_hash"], cutoff)
     pop = live_population(src, season, week)
     feats = features_for_week(src, season, week, pop).filter(pl.col("team").is_in(sorted(open_teams)))
     pred = art.predict(feats)
@@ -227,15 +291,20 @@ def cmd_predict(args) -> dict:
             for r, p in zip(feats.select("gsis_id", "position", "team").iter_rows(named=True), pred)]
     ledger = {"schema": hg.LEDGER_SCHEMA, "version": hg.HGB_VERSION, "kind": "pregame", "season": season,
               "week": week, "created_at": now.isoformat(), "config_hash": frozen["config_hash"],
-              "artifact_hash": art.content_hash, "training_cutoff_key": cutoff,
+              "artifact": apath.name, "artifact_hash": art.content_hash, "training_cutoff_key": cutoff,
               "data_hash": art.data_hash, "scoring_fingerprint": scoring.fingerprint,
               "teams_excluded_already_started": sorted(set(kick) - open_teams), "rows": rows}
-    apath = _out(args) / "artifacts" / f"{hg.HGB_VERSION}-s{season}w{week:02d}-{art.content_hash}.json"
-    wrote_a = _write_once(apath, art.to_dict())
-    wrote_l = _write_once(lpath, ledger)
-    return {"ledger": str(lpath), "written": wrote_l, "artifact": str(apath), "artifact_written": wrote_a,
-            "rows": len(rows), "forecast_rows": sum(r["hgb_points"] is not None for r in rows),
-            "artifact_bytes": apath.stat().st_size, "excluded_teams": ledger["teams_excluded_already_started"]}
+    # a concurrent run that wrote its ledger first wins; both used the same stored artifact
+    out = _ledger_summary(lpath, written=_write_once(lpath, ledger))
+    return {**out, "artifact": str(apath), "artifact_written": wrote_a, "artifact_bytes": apath.stat().st_size}
+
+
+def _ledger_summary(lpath: Path, written: bool) -> dict:
+    led = json.loads(lpath.read_text())
+    return {"ledger": str(lpath), "written": written, "created_at": led["created_at"],
+            "artifact_hash": led["artifact_hash"], "rows": len(led["rows"]),
+            "forecast_rows": sum(r["hgb_points"] is not None for r in led["rows"]),
+            "excluded_teams": led["teams_excluded_already_started"]}
 
 
 # ----------------------------------------------------------------------------- diagnose (2023-26)
@@ -254,29 +323,29 @@ def cohorts(df: pl.DataFrame) -> dict[str, pl.Expr]:
     return out
 
 
-def compare(p: pl.DataFrame, models: list[str], baseline: str = "ifp2", seed: int = 20261015) -> dict:
+def compare(p: pl.DataFrame, models: list[str], baseline: str = "ifp2", seed: int = 20261015, exact: bool = False) -> dict:
     lab = p.filter(pl.col("label").is_not_null())
-    cov = {m: round(float(lab[f"pred_{m}"].is_not_null().mean()), 4) for m in models}
+    cov = {m: (lambda v: v if exact else round(v, 4))(float(lab[f"pred_{m}"].is_not_null().mean())) for m in models}
     p = hg.common_rows(lab, [f"pred_{m}" for m in models])
     out = {"population": {"labeled": lab.height, "common": p.height, "coverage": cov}}
     flt = cohorts(p)
     for pos in [*POSITIONS, "ALL"]:
         g = p if pos == "ALL" else p.filter(pl.col("position") == pos)
         a = _arr(g, "label")
-        r = {"n": g.height, "metrics": {m: metrics(a, _arr(g, f"pred_{m}")) for m in models},
-             "minus_baseline_mae": {m: week_bootstrap_mae_diff(g, f"pred_{m}", f"pred_{baseline}", 1000, seed)
+        r = {"n": g.height, "metrics": {m: metrics(a, _arr(g, f"pred_{m}"), exact) for m in models},
+             "minus_baseline_mae": {m: week_bootstrap_mae_diff(g, f"pred_{m}", f"pred_{baseline}", 1000, seed, exact)
                                     for m in models if m != baseline}}
         if pos == "ALL":
             r["cohorts"] = {}
             for c, e in flt.items():
                 cg = g.filter(e.fill_null(False))
-                r["cohorts"][c] = {"n": cg.height, **{m: metrics(_arr(cg, "label"), _arr(cg, f"pred_{m}")) for m in models}}
+                r["cohorts"][c] = {"n": cg.height, **{m: metrics(_arr(cg, "label"), _arr(cg, f"pred_{m}"), exact) for m in models}}
                 if cg.height >= 30:
                     r["cohorts"][c]["minus_baseline_mae"] = {
-                        m: week_bootstrap_mae_diff(cg, f"pred_{m}", f"pred_{baseline}", 1000, seed)
+                        m: week_bootstrap_mae_diff(cg, f"pred_{m}", f"pred_{baseline}", 1000, seed, exact)
                         for m in models if m != baseline}
         out[pos] = r
-    out["pairs"] = pair_decisions(p, [f"pred_{m}" for m in models])
+    out["pairs"] = pair_decisions(p, [f"pred_{m}" for m in models], exact=exact)
     return out
 
 
@@ -326,6 +395,8 @@ def cmd_diagnose(args) -> dict:
         diag = diag.with_columns(hg.ensemble(pl.col("pred_ifp2"), pl.col("pred_hgb"),
                                              frozen["ensemble"]["w_ridge"]).alias("pred_ens"))
         models.append("ens")
+    _require_current(args, json.loads((_out(args) / "development_grid.json").read_text()),
+                     "development_preds.parquet", "develop", scoring.fingerprint)
     dev = pl.read_parquet(_out(args) / "development_preds.parquet").join(
         store.drop("label", "season", "week", "position"), on=["key", "gsis_id"], how="left").with_columns(
         pl.col("pred_C").alias("pred_C"))
@@ -339,7 +410,9 @@ def cmd_diagnose(args) -> dict:
                "2025-2026": diag.filter(pl.col("season").is_in(list(hg.DIAGNOSTIC[1])))}
     rep = {w: compare(d, models) for w, d in windows.items()}
     rep["pooled"] = compare(diag, models)
-    decisions = {m: decision(dev_rep, rep["pooled"], m) for m in dev_models if m not in ("C", "ifp2")}
+    # the pre-registered gates are applied to unrounded values (rounding is for reporting only)
+    gate_dev, gate_diag = compare(dev, dev_models, exact=True), compare(diag, models, exact=True)
+    decisions = {m: decision(gate_dev, gate_diag, m) for m in dev_models if m not in ("C", "ifp2")}
     # permutation importance (out-of-sample, 2023-26): MAE increase when a group is shuffled
     common = diag.filter(pl.col("pred_hgb").is_not_null() & pl.col("label").is_not_null())
     base_mae = metrics(_arr(common, "label"), _arr(common, "pred_hgb"))["mae"]
@@ -360,8 +433,9 @@ def cmd_diagnose(args) -> dict:
     er, eh = _arr(common, "label") - _arr(common, "pred_ifp2"), _arr(common, "label") - _arr(common, "pred_hgb")
     keep = ["key", "season", "week", "gsis_id", "position", "label", *[f"pred_{m}" for m in models]]
     diag.select(keep).write_parquet(_out(args) / "diagnostic_preds.parquet")
-    report = {"schema": "hgb-research-report/v1", "version": hg.HGB_VERSION, "created_at": datetime.now(timezone.utc)
-              .isoformat(), "frozen_config_hash": frozen["config_hash"], "scoring_fingerprint": scoring.fingerprint,
+    report = {"schema": "hgb-research-report/v1", "version": hg.HGB_VERSION,
+              **provenance(args, scoring.fingerprint), "created_at": datetime.now(timezone.utc)
+              .isoformat(), "frozen_config_hash": frozen["config_hash"],
               "development": dev_rep, "diagnostic": rep, "decisions": decisions,
               "permutation_importance_mae_increase": importance, "base_mae": base_mae,
               "error_correlation_2023_26": round(float(np.corrcoef(er, eh)[0, 1]), 4),
@@ -413,6 +487,8 @@ def cmd_cases(args) -> dict:
 
     src, scoring = _sources(args)
     store = full_store(args, src, scoring.fingerprint)
+    _require_current(args, json.loads((_out(args) / "report.json").read_text()), "diagnostic_preds.parquet",
+                     "diagnose", scoring.fingerprint)
     d = pl.read_parquet(_out(args) / "diagnostic_preds.parquet").join(
         store.select("key", "gsis_id", "carries_pg", "targets_pg", "snap_pct", "xfpl_eb", "prev_xfpl_pg",
                      "games_recent", "inj_exits_recent", "last_injury_exit", "last_role_low", "team_changed",
