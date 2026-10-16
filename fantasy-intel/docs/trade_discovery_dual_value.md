@@ -80,7 +80,7 @@ carries its reason:
 | `asset_balance` | balanced or replacement-level | moderate imbalance | significant imbalance or multiple strong assets for fewer (`unknown` when the data is insufficient) |
 | `positional_fit` | each side gets a player who starts ≥ half the weeks | a side's best incoming player starts, but in fewer than half the weeks | a side gets nobody who ever starts |
 | `depth_cost` | no forced drop with PAR, no empty slot | a forced drop with PAR > 0 (`unknown` if its PAR is unknown) | a starter-caliber player is forced off, or a starting slot is left empty |
-| `free_agent_alternative` | the trade still adds after your best free-agent move | most of the gain is available from free agency (majority rule) | the trade adds nothing after that move |
+| `free_agent_alternative` | the trade still adds after your best free-agent move | most of the gain is available from free agency (majority rule) | the trade adds nothing after that move (`not_applicable` in a regular-season or playoff view, or when your lineup does not gain) |
 | `uncertainty` | no flags | an injury, IR or eligibility flag on a traded player | — (`unknown` when projections are missing) |
 
 ### Verdicts
@@ -103,7 +103,8 @@ The verdict is set by a fixed rule (`trade_dual_value.verdict`), applied in this
 The policy is conservative and stated in full (`RANKING_POLICY`):
 
 1. Sort by verdict, in the order listed above.
-2. Within a verdict, sort by **Pareto front** over three axes, each measured on its own:
+2. Within a verdict, sort by **Pareto front** over three axes, each measured on its own. Fronts are
+   computed per verdict, so a trade in a later verdict never pushes back one in an earlier verdict:
    * the smaller side's lineup gain, in points
    * the asset-package ratio (0–1, higher means fairer)
    * certainty (minus the number of injury and missing-data flags)

@@ -55,8 +55,8 @@ RANKING_POLICY = (
     "Trades are ordered by verdict (sensible, sensible with concerns, unlikely to be mutually attractive, asset-fair "
     "without a lineup gain, one-sided, incomplete), then by Pareto front over three separately measured axes: the "
     "smaller side's projected starting-lineup gain (points), the asset-package ratio (smaller package as a share of "
-    "the larger, points above replacement) and certainty (fewer injury and missing-data flags). A trade is in a later "
-    "front only when another trade is at least as good on all three and better on one. Within a front the view's "
+    "the larger, points above replacement) and certainty (fewer injury and missing-data flags). Within a verdict a "
+    "trade is in a later front only when another trade is at least as good on all three and better on one. Within a front the view's "
     "own measure decides (e.g. the smaller side's gain), then the exact search order. No axis is converted into "
     "another and nothing estimates whether a manager would accept.")
 
@@ -206,7 +206,7 @@ def _key_change(side: dict, label: str, n: int) -> str:
         return text + "."
     if out and _starts(out[0]):
         u = out[0]
-        return f"{whose.capitalize()} lineup loses {_name(u)} ({u['position']}), who started {_starts(u)} of {n} weeks; " \
+        return f"{whose[:1].upper()}{whose[1:]} lineup loses {_name(u)} ({u['position']}), who started {_starts(u)} of {n} weeks; " \
                f"no incoming player starts."
     return f"No incoming player starts in {whose} lineup; the change is depth only."
 
@@ -285,6 +285,14 @@ def checks(mine: dict, theirs: dict, asset: dict, injuries: list[dict], phase: s
 
     if fa is None:
         out.append(_check("free_agent_alternative", NOT_APPLICABLE, "No free-agent comparison for this view."))
+    elif phase != "ros":
+        # The comparison is a rest-of-season figure (trade_practical): it is not a measure of a playoff or
+        # regular-season gain, so it does not judge those views.
+        out.append(_check("free_agent_alternative", NOT_APPLICABLE,
+                          "The free-agent comparison is a rest-of-season figure; it does not judge this phase."))
+    elif m is None or m <= 0:
+        out.append(_check("free_agent_alternative", NOT_APPLICABLE,
+                          "Your lineup does not gain from this trade, so there is no gain to compare with free agency."))
     elif fa.get("trade_advantage") is None:
         out.append(_check("free_agent_alternative", UNKNOWN,
                           "The free-agent comparison is unavailable (no free agent helps, or projections are missing)."))
@@ -344,8 +352,7 @@ def assess(mine: dict, theirs: dict, sends: list[int], receives: list[int], boar
     m, t = _delta(mine, phase), _delta(theirs, phase)
     losers = [lab for lab, v in zip(labels, (m, t)) if v is not None and v <= 0]
     v, text = verdict(cs, labels, losers)
-    downside = next((c["text"] for c in cs if c["status"] == FAIL), None) or \
-        next((c["text"] for c in cs if c["status"] == CONCERN), None)
+    downside = next((c["text"] for st in (FAIL, CONCERN, UNKNOWN) for c in cs if c["status"] == st), None)
     flags = len(injuries) + len(set(mine["incomplete"]["missing_players"]) | set(theirs["incomplete"]["missing_players"]))
     return {
         "phase": phase,
@@ -385,11 +392,17 @@ def pareto_fronts(axes: list[dict]) -> list[int | None]:
 
 
 def rank(rows: list[dict], primary, tiebreak) -> list[dict]:
-    """Rows carrying `dual_value`, ordered by verdict, Pareto front, then `primary(row)` (descending,
-    None last), then `tiebreak(row)` (the exact search order). Adds `dual_value.rank` to each row."""
-    fronts = pareto_fronts([x["dual_value"]["rank_axes"] for x in rows])
-    for x, f in zip(rows, fronts):
-        x["dual_value"]["rank"] = {"front": f, "policy": "verdict, then Pareto front, then the view's measure"}
+    """Rows carrying `dual_value`, ordered by verdict, Pareto front within that verdict, then
+    `primary(row)` (descending, None last), then `tiebreak(row)` (the exact search order). Fronts are
+    computed per verdict, so a row in a later verdict never pushes a row back within an earlier one.
+    Adds `dual_value.rank` to each row."""
+    by: dict[str, list[dict]] = {}
+    for x in rows:
+        by.setdefault(x["dual_value"]["plausibility"]["verdict"], []).append(x)
+    for group in by.values():
+        for x, f in zip(group, pareto_fronts([y["dual_value"]["rank_axes"] for y in group])):
+            x["dual_value"]["rank"] = {"front": f, "policy": "verdict, then Pareto front within the verdict, "
+                                                              "then the view's measure"}
 
     def key(x):
         dv = x["dual_value"]
