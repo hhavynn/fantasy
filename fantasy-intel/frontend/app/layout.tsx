@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Barlow_Condensed, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
 import { BrandMark, MobileNav, NavGroups, SubNav, TabBar } from "@/components/Nav";
@@ -15,9 +15,43 @@ import "./globals.css";
 
 export const dynamic = "force-dynamic";
 
-const display = Barlow_Condensed({ subsets: ["latin"], weight: ["500", "600"], variable: "--font-barlow-condensed" });
-const sans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-plex-sans" });
-const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono" });
+// Self-hosted (app/fonts, from @fontsource, see app/fonts/README.md) so `next build` never fetches Google Fonts.
+// Same files Google served (latin, preloaded; Plex Sans Greek on demand for "Δ"), weights, `swap` and CSS variables
+// as the old next/font/google setup. The metric-matched "… Fallback" faces live in globals.css.
+const barlowCondensed = localFont({
+  src: [
+    { path: "./fonts/barlow-condensed-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/barlow-condensed-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
+  display: "swap",
+  fallback: ["Barlow Condensed Fallback"],
+  adjustFontFallback: false,
+  variable: "--font-barlow-condensed",
+});
+const plexSans = localFont({
+  src: [{ path: "./fonts/ibm-plex-sans-latin-wght-normal.woff2", weight: "400 700", style: "normal" }],
+  display: "swap",
+  adjustFontFallback: false,
+  variable: "--font-plex-sans",
+});
+const plexSansGreek = localFont({
+  src: [{ path: "./fonts/ibm-plex-sans-greek-wght-normal.woff2", weight: "400 700", style: "normal" }],
+  declarations: [{ prop: "unicode-range", value: "U+0370-0377,U+037A-037F,U+0384-038A,U+038C,U+038E-03A1,U+03A3-03FF" }],
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+  variable: "--font-plex-sans-greek",
+});
+const plexMono = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
+  ],
+  display: "swap",
+  fallback: ["IBM Plex Mono Fallback"],
+  adjustFontFallback: false,
+  variable: "--font-plex-mono",
+});
 
 export const metadata: Metadata = {
   title: { default: "Fantasy Intel", template: "%s · Fantasy Intel" },
@@ -29,7 +63,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const s = status.data;
   return (
     // suppressHydrationWarning: the inline script below sets data-theme on <html> before React hydrates.
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${barlowCondensed.variable} ${plexSans.variable} ${plexSansGreek.variable} ${plexMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>

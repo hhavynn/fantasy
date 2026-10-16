@@ -20,7 +20,8 @@
   border: 1px solid var(--line-control); background: var(--surface); color: var(--ink-muted);
 }
 .exchangeList { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
-.exchangeList li { display: flex; min-width: 0; }
+.exchangeList li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.compareLink { flex: none; }
 .labels { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 16px 0 0; }
 
 .strips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }

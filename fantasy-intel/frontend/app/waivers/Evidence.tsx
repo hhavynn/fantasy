@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CompareLink } from "@/components/CompareLink";
 import { PlayerLink } from "@/components/PlayerLink";
 import { Pos, Rating } from "@/components/ui";
 import { label, num, when } from "@/lib/format";
@@ -17,6 +18,11 @@ export function Evidence({ row, decision: d }: { row: WaiverRow; decision: Decis
     <div className={styles.evidence}>
       <p><b>Roster move.</b> {d.roster_move.summary}</p>
       {drop && <p>Give up <PlayerLink id={drop.espn_player_id} name={drop.name} /> <Pos value={drop.position} /></p>}
+      <p>
+        <CompareLink a={row.espn_player_id} b={drop?.espn_player_id} aName={row.full_name} bName={drop?.name}>
+          {drop ? "Compare with the suggested drop" : "Compare"}
+        </CompareLink>
+      </p>
       {d.roster_move.status === "UNKNOWN" && <p>Missing drop information does not establish an open spot.</p>}
       {d.utility.stash && <p>Potential bench stash; the future role remains uncertain.</p>}
       <p><b>Cost.</b> {d.resources.summary}</p>
