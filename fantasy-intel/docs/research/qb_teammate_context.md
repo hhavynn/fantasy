@@ -8,9 +8,9 @@ especially in the weeks where those circumstances change?
 
 * **Expected starting QB can be identified before kickoff, and its quality matters most for QB rows.**
   * Pregame identification picks the actual starter 95.8% of the time when the evidence class is
-    `supported` (2,761 team-weeks). It is 68.7% for `probable` and 56.1% for `uncertain`.
+    `supported` (2,761 team-weeks). It is 68.7% for `probable` and 57.4% for `uncertain`.
   * Adding QB context to the QB model lowers QB MAE in all three windows: development -0.146
-    [-0.273, -0.003], confirmation -0.154 [-0.284, -0.014], replay -0.288 [-0.400, -0.182]. That is
+    [-0.273, -0.003], confirmation -0.159 [-0.292, -0.015], replay -0.291 [-0.406, -0.184]. That is
     2.4-4.4% of QB MAE, far larger than any earlier candidate.
   * The gain is concentrated where the QB situation changed: about -0.9 to -1.2 MAE on QB rows in the
     changed-QB cohort.
@@ -25,7 +25,7 @@ especially in the weeks where those circumstances change?
   * On 2023-24, pooled MAE over those positions improves by -0.019 [-0.032, -0.006], with RMSE, bias,
     starters-pool and Start/Sit guards all passing.
   * But on the cohorts the teammate group exists for (top target competitor out, RB1 out), RB MAE is
-    *worse* (+0.145, +0.122). That repeats the earlier `tm_transfer` finding. **Verdict:
+    *worse* (+0.147, +0.122). That repeats the earlier `tm_transfer` finding. **Verdict:
     `retain_baseline`.**
 * **Why the teammate-out cohorts fail on MAE: a mean-vs-median effect, not a wrong direction.**
   * ifp-2 *under*-projects those players (bias +0.7 to +1.8), and the challenger removes most of that bias.
@@ -198,20 +198,33 @@ first build showed that 40 of the 94 `supported` misses in 2020-22 were an injur
 The incumbent rule above was added, and its class is labelled `uncertain` because it starts only about
 half the time. Points labels played no part in it.
 
+**Re-run after code review (disclosed).** Review of the PR found three protocol defects, fixed in
+`ctx-0.1.1` / `ifp-ctx-0.1.1`. The original `ifp-ctx-0.1.0` frozen selection is kept unchanged on disk.
+1. A QB last seen for the team in a *previous* season (an offseason departure) could enter the
+   replacement candidates. He now needs current-season roster evidence.
+2. The confirmation's RMSE check (c3) was applied per position instead of pooled over the adopted
+   positions, as the rule states.
+3. The Start/Sit check (c6) included unchanged positions, which diluted any loss.
+
+Build, development and confirmation were re-run once with the fixes. The development selection and the
+verdict are identical. Every number below is from the re-run, and no figure moved by more than 0.04 MAE
+except two tiny QB-row cohorts (n = 39 and 108). The confirmation window has now been evaluated twice by
+this study, which is one more reason it is not a pristine holdout.
+
 ## 5. QB identification (build diagnostics, all seasons 2020-2026, team-weeks)
 
 | Evidence class | Team-weeks | Expected QB actually started |
 |---|---|---|
 | `supported` | 2,761 | 95.8% |
 | `probable` | 166 | 68.7% |
-| `uncertain` | 237 | 56.1% |
+| `uncertain` | 237 | 57.4% |
 | `unknown` (mostly week 1) | 224 | no expected QB |
 
 By reason:
 
 | Reason | Team-weeks | Expected QB started |
 |---|---|---|
-| Previous starter Out (replacement chosen) | 88 | 83% |
+| Previous starter Out (replacement chosen) | 88 | 84% |
 | Previous starter Questionable | 104 | 59% |
 | Previous starter Doubtful | 20 | 60% |
 | Relieved last game | 74 | 55% |
@@ -220,7 +233,7 @@ By reason:
 
 The actual starter differed from the previous game's starter in 272 of 3,164 team-weeks. The labels are
 ordinal and the start rates above are measured, not assumed. No probability-weighted scenario is used,
-because the `uncertain` class (56%) would need a calibrated two-QB model to support one. That is listed as
+because the `uncertain` class (57%) would need a calibrated two-QB model to support one. That is listed as
 next work.
 
 Missing data:
@@ -240,7 +253,7 @@ Penalties and recency weights are ifp-2's. Identical rows (n = 13,372). Week-clu
 | WR | 4.438 | +0.002 | -0.016 [-0.028, -0.003] | **-0.017 [-0.031, -0.002]** | -0.004 | **C** |
 | TE | 2.990 | +0.000 | +0.001 | +0.001 | +0.002 | **ifp2** |
 
-Frozen write-once: `frozen_selection_ifp-ctx-0.1.0.json` (QB ifp2, RB C, WR C, TE ifp2).
+Frozen write-once: `frozen_selection_ifp-ctx-0.1.1.json` (QB ifp2, RB C, WR C, TE ifp2), identical to the pre-review `frozen_selection_ifp-ctx-0.1.0.json`.
 
 ## 7. Confirmation (2023-24, run once) and the 2025-26 replay
 
@@ -249,7 +262,7 @@ Frozen write-once: `frozen_selection_ifp-ctx-0.1.0.json` (QB ifp2, RB C, WR C, T
 | Position | Baseline MAE | Challenger MAE | Difference | RMSE (base -> ctx) | Bias (base -> ctx) | 95% CI (week-clustered) |
 |---|---|---|---|---|---|---|
 | QB | 6.056 | 6.056 | 0.000 (not adopted) | 7.600 -> 7.600 | +0.167 -> +0.167 | n/a |
-| RB | 4.006 | 3.993 | -0.014 | 5.676 -> 5.651 | -0.020 -> -0.035 | [-0.034, +0.009] |
+| RB | 4.006 | 3.993 | -0.014 | 5.676 -> 5.652 | -0.020 -> -0.035 | [-0.034, +0.009] |
 | WR | 4.211 | 4.188 | -0.023 | 5.961 -> 5.936 | +0.034 -> +0.011 | [-0.036, -0.009] |
 | TE | 2.853 | 2.853 | 0.000 (not adopted) | 4.234 -> 4.234 | +0.088 -> +0.088 | n/a |
 | All | 4.016 | 4.004 | -0.013 | 5.716 -> 5.699 | +0.046 -> +0.033 | [-0.021, -0.004] |
@@ -258,11 +271,11 @@ The same window for each candidate on every position (descriptive; these numbers
 
 | Position | A (QB) | B (teammates) | C (A+B) | D (env) |
 |---|---|---|---|---|
-| QB | -0.154 [-0.284, -0.014] | +0.007 | -0.156 [-0.287, -0.020] | -0.013 |
+| QB | -0.159 [-0.292, -0.015] | +0.007 | -0.161 [-0.295, -0.020] | -0.013 |
 | RB | +0.001 | -0.014 [-0.034, +0.009] | -0.014 [-0.034, +0.009] | -0.001 |
 | WR | +0.003 | -0.024 [-0.037, -0.011] | -0.023 [-0.036, -0.009] | +0.001 |
 | TE | +0.003 | -0.010 [-0.021, +0.003] | -0.007 | +0.006 [+0.002, +0.009] |
-| All | -0.013 [-0.030, +0.004] | -0.015 [-0.023, -0.007] | -0.030 [-0.048, -0.011] | +0.000 |
+| All | -0.014 [-0.031, +0.004] | -0.015 [-0.023, -0.007] | -0.030 [-0.049, -0.011] | +0.000 |
 
 **Verdict (rules of section 4).** Pooled over the adopted positions (RB + WR): -0.019 [-0.032, -0.006].
 
@@ -270,11 +283,11 @@ The same window for each candidate on every position (descriptive; these numbers
 |---|---|
 | c1 pooled MAE diff < 0 with CI upper < 0 | pass |
 | c2 no adopted position significantly worse | pass |
-| c3 RMSE | pass |
+| c3 pooled RMSE over the adopted positions (5.853 -> 5.828) | pass |
 | c4 bias | pass |
 | c5 starters pool (RB 5.437 -> 5.429, WR 6.106 -> 6.086) | pass |
-| c6 Start/Sit pairs (65.57% -> 65.73%; close calls 60.52% -> 60.84%, regret 2.878 -> 2.842) | pass |
-| **c7 mechanism** | **fail**: RB top target competitor out +0.145, RB1 out +0.122. WR top competitor out -0.023 and changed QB -0.104 / -0.018 pass |
+| c6 Start/Sit pairs on the adopted positions' rows (66.04% -> 66.22%, regret 2.464 -> 2.443) | pass |
+| **c7 mechanism** | **fail**: RB top target competitor out +0.147, RB1 out +0.122. WR top competitor out -0.023 and changed QB -0.104 / -0.018 pass |
 
 Outcome: **`retain_baseline`.**
 
@@ -283,32 +296,32 @@ retrospective):
 
 | | A | B | C | D | composite |
 |---|---|---|---|---|---|
-| All (n = 8,645) | -0.029 [-0.042, -0.016] | -0.019 [-0.032, -0.004] | -0.048 [-0.063, -0.032] | -0.012 [-0.021, -0.004] | -0.020 [-0.031, -0.007] |
-| QB | -0.288 [-0.400, -0.182] | -0.010 | -0.301 [-0.410, -0.193] | -0.098 [-0.152, -0.048] | 0 |
+| All (n = 8,645) | -0.029 [-0.043, -0.016] | -0.019 [-0.032, -0.004] | -0.049 [-0.064, -0.032] | -0.012 [-0.021, -0.004] | -0.020 [-0.031, -0.007] |
+| QB | -0.291 [-0.406, -0.184] | -0.010 | -0.305 [-0.414, -0.196] | -0.098 [-0.152, -0.048] | 0 |
 | RB | -0.002 | -0.034 [-0.060, -0.008] | -0.036 [-0.067, -0.005] | -0.004 | -0.036 |
 | WR | 0.000 | -0.026 [-0.048, -0.002] | -0.026 [-0.045, -0.007] | -0.003 | -0.026 |
 | TE | -0.002 | +0.006 | +0.002 | -0.000 | 0 |
 
-By season: 2025 composite -0.025 [-0.038, -0.012]; 2026 weeks 1-6 0.000 [-0.017, +0.017].
+By season: 2025 composite -0.026 [-0.038, -0.012]; 2026 weeks 1-6 0.000 [-0.017, +0.017].
 
 **Context-specific cohorts** (C minus ifp-2 MAE, week-clustered CI; conf = 2023-24, expl = 2025-26):
 
 | Cohort | Rows | n conf / expl | conf | expl | Reading |
 |---|---|---|---|---|---|
-| Changed expected QB | QB | 232 / 130 | -0.89 [-1.30, -0.49] | -1.24 [-1.82, -0.69] | QB change is the clearest signal |
+| Changed expected QB | QB | 230 / 130 | -0.89 [-1.34, -0.46] | -1.25 [-1.85, -0.70] | QB change is the clearest signal |
 | Changed expected QB | WR | 996 / 706 | -0.10 [-0.15, -0.07] | -0.06 [-0.09, -0.03] | helps receivers too |
 | Changed expected QB | RB | 630 / 419 | -0.02 | -0.09 [-0.16, -0.03] | small |
-| Same QB | All | 10,240 / 6,303 | -0.016 | -0.024 | no harm |
-| Starting QB injured/absent (backup expected) | QB | 39 / 30 | -1.13 [-1.95, -0.31] | -0.02 | tiny samples |
-| Expected QB wrong (evaluation only) | QB | 111 / 50 | +0.69 [+0.17, +1.22] | +1.14 [+0.61, +1.82] | a wrong identification hurts: the feature is only as good as the ID |
-| QB uncertain/unknown | QB | 167 / 121 | +0.66 [+0.16, +1.02] | -0.18 | week 1 / unknown handling (below) |
-| Top target competitor out | All | 575 / 360 | +0.084 [+0.003, +0.165] (RMSE 6.59 -> 6.50, bias +0.69 -> +0.07) | +0.114 (RMSE 6.15 -> 6.05) | mean improves, MAE worsens |
+| Same QB | All | 10,242 / 6,303 | -0.017 | -0.024 | no harm |
+| Starting QB injured/absent (backup expected) | QB | 39 / 30 | -1.31 [-2.40, -0.28] | -0.02 | tiny samples |
+| Expected QB wrong (evaluation only) | QB | 108 / 50 | +0.73 [+0.15, +1.27] | +1.17 [+0.63, +1.86] | a wrong identification hurts: the feature is only as good as the ID |
+| QB uncertain/unknown | QB | 167 / 121 | +0.64 [+0.08, +1.01] | -0.18 | week 1 / unknown handling (below) |
+| Top target competitor out | All | 575 / 360 | +0.086 [+0.003, +0.166] (RMSE 6.59 -> 6.51, bias +0.69 -> +0.07) | +0.112 (RMSE 6.15 -> 6.05) | mean improves, MAE worsens |
 | Top target competitor returning | WR | 619 / 314 | -0.114 [-0.162, -0.067] | -0.186 [-0.265, -0.096] | reliable |
 | RB1 out | RB | 251 / 128 | +0.122 (RMSE 7.22 -> 6.97, bias +1.77 -> +0.42) | -0.167 (RMSE 6.63 -> 6.15) | mean improves, MAE mixed |
-| Low volume (< 5 opportunities) | All | 8,566 / 5,598 | -0.039 [-0.061, -0.014] | -0.052 [-0.068, -0.033] | |
+| Low volume (< 5 opportunities) | All | 8,566 / 5,598 | -0.041 [-0.063, -0.015] | -0.052 [-0.068, -0.034] | |
 | Starters pool | All | 5,616 / 3,588 | -0.022 [-0.042, -0.001] | -0.049 [-0.072, -0.024] | |
-| Changed NFL team | All | 2,957 / 1,796 | -0.050 [-0.092, -0.007] | -0.093 [-0.135, -0.044] | |
-| Early season / < 3 games | All | 3,292 / 3,211 | -0.016 | -0.033 [-0.061, -0.006] | |
+| Changed NFL team | All | 2,957 / 1,796 | -0.052 [-0.095, -0.008] | -0.094 [-0.136, -0.045] | |
+| Early season / < 3 games | All | 3,292 / 3,211 | -0.018 | -0.033 [-0.062, -0.006] | |
 
 Coverage and abstention are identical by construction: every model forecasts the same 97.7% of labeled
 rows, and abstains on players with no game in the last five. All numbers are conditional on appearing.
@@ -390,7 +403,7 @@ Next, by measured weakness:
 
 1. **Week-1 / unknown expected QB**: previous-season starter still on the latest roster, pre-registered.
    Biggest identified QB error source.
-2. **Calibrated two-QB scenarios**: for the `uncertain` class (56% start rate), mix the two QB profiles
+2. **Calibrated two-QB scenarios**: for the `uncertain` class (57% start rate), mix the two QB profiles
    with a probability fitted on the evidence classes (a logistic model on dev seasons). Do not hand-set it.
 3. **Mean-oriented gate for redistribution features**: teammate-out effects improve RMSE and bias but not
    MAE. `expected_points` needs a mean, so a future pre-registration should gate those cohorts on RMSE /
