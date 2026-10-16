@@ -85,11 +85,20 @@ def _clone_info(cfg) -> dict | None:
                                                 "recordings")} if rec else None}
 
 
+def spoken_voice(ep: Episode, timings: dict) -> tuple[str, dict]:
+    """The voice that actually spoke, as recorded at synthesis (a Short uses [shorts] voice, not [tts] voice), and
+    the episode's effective TTS settings."""
+    from .tts import tts_config
+    cfg = tts_config(ep)
+    return timings.get("voice") or cfg["voice"], cfg
+
+
 def build(ep: Episode) -> dict:
     cfg = ep.cfg
     script = read_json(ep.path("script.json"))
     snapshot = read_json(ep.path("snapshot.json"))
     timings = read_json(ep.path("audio/timings.json"))
+    voice, tts_cfg = spoken_voice(ep, timings)
     qc = read_json(ep.path("qc.json")) if ep.path("qc.json").exists() else None
     ffmpeg_version = _cmd("ffmpeg", "-version").splitlines()
     prompts = {p.name: p.read_text() for p in sorted(ep.path("prompts").glob("*.txt"))}
@@ -113,9 +122,9 @@ def build(ep: Episode) -> dict:
             },
             "tts": {
                 "engine": "Kokoro-82M", "repo": cfg["tts"]["repo"], "code_license": "Apache-2.0",
-                "weights_license": cfg["tts"]["license"], "voice": cfg["tts"]["voice"],
+                "weights_license": cfg["tts"]["license"], "voice": voice,
                 "voice_origin": "built-in Kokoro voice (not a clone of any person)",
-                "speed": cfg["tts"]["speed"], "files": kokoro_files(cfg["tts"]["repo"], cfg["tts"]["voice"]),
+                "speed": tts_cfg["speed"], "files": kokoro_files(cfg["tts"]["repo"], voice),
                 "g2p": {"misaki": "Apache-2.0",
                         "espeak-ng fallback": "GPL-3.0; run locally, never distributed; its output audio is "
                                               "not covered by the GPL",
