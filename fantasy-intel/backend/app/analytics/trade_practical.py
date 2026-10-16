@@ -63,10 +63,10 @@ LENSES = {
     "fair": {"label": "Fairer asset exchanges", "sections": (*SENSIBLE, "fair_no_lineup_gain"),
              "excluded": ("not_fair", "asset_unknown", "one_sided", "incomplete"), "measure": "asset_ratio"},
     "consolidation": {"label": "Consolidation deals",
-                      "sections": (*SENSIBLE, "unlikely_mutual", "one_sided", "incomplete"),
-                      "excluded": ("no_consolidating_gain", "fair_no_lineup_gain"), "measure": "lineup_min_side"},
-    "playoff": {"label": "Playoff-focused trades", "sections": (*SENSIBLE, "unlikely_mutual", "one_sided", "incomplete"),
-                "excluded": ("no_playoff_gain", "fair_no_lineup_gain"), "measure": "lineup_min_side"},
+                      "sections": (*SENSIBLE, "unlikely_mutual", "fair_no_lineup_gain", "one_sided", "incomplete"),
+                      "excluded": ("no_consolidating_gain",), "measure": "lineup_min_side"},
+    "playoff": {"label": "Playoff-focused trades", "sections": (*SENSIBLE, "unlikely_mutual", "fair_no_lineup_gain", "one_sided", "incomplete"),
+                "excluded": ("no_playoff_gain",), "measure": "lineup_min_side"},
 }
 LENS_LABELS = {"practical": "Practical trades", "mutual": "Mutual improvement", "upside": "Maximum upside",
                "all": "All candidates", **{k: v["label"] for k, v in LENSES.items()}}

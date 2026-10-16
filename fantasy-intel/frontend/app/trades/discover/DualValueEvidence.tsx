@@ -13,7 +13,7 @@ import styles from "./discover.module.css";
 
 type Names = Record<string, DName | undefined> | null | undefined;
 
-const SIDE: Record<string, string> = { You: "You send → they get", They: "They send → you get" };
+const SIDE: Record<string, string> = { You: "Team gives → partner receives", They: "Partner gives → team receives" };
 
 export function PlausibilityChecks({ dv }: { dv: DualValue }) {
   const { checks, criteria } = dv.plausibility;
@@ -183,7 +183,7 @@ export function RatingsEvidence({ ratings, sends, receives, names }: {
       </section>
     );
   }
-  const rows = [...sends.map((id) => ({ id, side: "You send" })), ...receives.map((id) => ({ id, side: "You receive" }))];
+  const rows = [...sends.map((id) => ({ id, side: "gives" })), ...receives.map((id) => ({ id, side: "receives" }))];
   return (
     <section className={styles.block} aria-label="Ratings">
       <h4>0–100 ratings</h4>

@@ -542,7 +542,7 @@ def test_discovery_api_is_read_only_and_defaults_to_my_team(tmp_path, monkeypatc
                                                     "sort": "min_side", "limit": 5}).json()
     assert other["anchor"]["team_id"] == 1 and {x["shape"] for x in other["results"]} <= {"1-for-1"}
     assert api.get("/api/trades/discover", params={"shapes": "4-for-4"}).status_code == 422
-    assert api.get("/api/trades/discover", params={"mode": "fair"}).status_code == 422
+    assert api.get("/api/trades/discover", params={"mode": "bogus"}).status_code == 422
     assert api.get("/api/trades/discover", params={"sort": "fairness"}).status_code == 422
     assert api.get("/api/trades/discover", params={"team_id": 99}).status_code == 404
     assert api.get("/api/trades/discover", params={"category": "MUTUAL_PROJECTED_IMPROVEMENT"}).status_code == 200
@@ -610,7 +610,7 @@ def test_discovery_split_endpoints_match_the_full_payload(tmp_path, monkeypatch)
     for path in ("context", "summary", "evidence"):
         extra = {"key": "x"} if path == "evidence" else {}
         assert api.get(f"/api/trades/discover/{path}", params={"shapes": "4-for-4", **extra}).status_code == 422
-        assert api.get(f"/api/trades/discover/{path}", params={"mode": "fair", **extra}).status_code == 422
+        assert api.get(f"/api/trades/discover/{path}", params={"mode": "bogus", **extra}).status_code == 422
         assert api.get(f"/api/trades/discover/{path}", params={"team_id": 99, **extra}).status_code == 404
     assert db_path.stat().st_mtime_ns == mtime                 # nothing written
 

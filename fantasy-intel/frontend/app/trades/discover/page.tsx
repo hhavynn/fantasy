@@ -41,7 +41,7 @@ const TIER_TONE: Record<string, string> = { practical: "good", concerns: "warn",
 const TIER_SHORT: Record<string, string> = { practical: "Practical", concerns: "Concerns", speculative: "Speculative" };
 /** Sort links shown instead of the column headers on phones, where each trade is a card. */
 const PHONE_SORTS: [string, string][] = [
-  ["verdict", "Verdict"], ["my_gain", "Your Δ"], ["their_gain", "Their Δ"], ["min_side", "Smaller side"], ["asset", "Asset balance"],
+  ["verdict", "Verdict"], ["my_gain", "Team Δ"], ["their_gain", "Partner Δ"], ["min_side", "Smaller side"], ["asset", "Asset balance"],
   ["partner", "Partner"], ["shape", "Shape"],
 ];
 const why = "Incomplete: a rostered player with an NFL team has no ESPN projection in some week (never treated as 0)";
@@ -184,7 +184,7 @@ function Filters({ d }: { d: DiscoveryContext }) {
           </select>
         </label>
         <fieldset className={styles.group}>
-          <legend>Trade shape (you give – you get)</legend>
+          <legend>Trade shape (gives – gets)</legend>
           <div className={styles.shapes}>
             {d.exact_shapes.map((x) => (
               <label key={x} className={styles.shape} title="Exact search: proven top list">
@@ -398,11 +398,11 @@ function Results({ d, rows, total, excluded, q, sp }: {
               <tr>
                 {th("shape", "Shape")}
                 {th("partner", "Partner")}
-                <th scope="col" title="What you send, and what they get">You send</th>
-                <th scope="col" title="What you receive, and what they give">You receive</th>
+                <th scope="col" title="What the team sends, and what the partner gets">Gives</th>
+                <th scope="col" title="What the team receives, and what the partner gives">Gets</th>
                 {th("asset", "Asset balance", { title: "Smaller package as a share of the larger, in points above replacement; who the imbalance favours" })}
-                {th("my_gain", "Your Δ", { align: "right", title: "Change in your projected starting points, rest of season" })}
-                {th("their_gain", "Their Δ", { align: "right", title: "Change in their projected starting points, rest of season" })}
+                {th("my_gain", "Team Δ", { align: "right", title: "Change in the team's projected starting points, rest of season" })}
+                {th("their_gain", "Partner Δ", { align: "right", title: "Change in the partner's projected starting points, rest of season" })}
                 {th("min_side", "Smaller side", { align: "right", title: "The smaller of the two rest-of-season deltas" })}
                 <th scope="col" title="The most important change to each starting lineup">Lineup change</th>
                 {th("verdict", "Verdict & checks", { title: "Sorted in the backend's verdict order, best first", defaultDir: "asc" })}
@@ -460,13 +460,13 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
           {mc && <span className={styles.subline}>{mc.trade_history.completed_trades} completed trades · {mc.trade_history.confidence.toLowerCase()} confidence</span>}
           <span className={styles.subline}><Link href={analyzerHref(r)} aria-label={`Analyze ${nm(r.sends)} for ${nm(r.receives)} in the trade analyzer`}>Analyze →</Link></span>
         </td>
-        <td className={styles.wrapCell} data-label="You send">
+        <td className={styles.wrapCell} data-label="Gives">
           <Players ids={r.sends} d={d} />
-          <SeenFromThem label="They get:" ids={r.sends} d={d} />
+          <SeenFromThem label="Partner gets:" ids={r.sends} d={d} />
         </td>
-        <td className={styles.wrapCell} data-label="You receive">
+        <td className={styles.wrapCell} data-label="Gets">
           <Players ids={r.receives} d={d} />
-          <SeenFromThem label="They give:" ids={r.receives} d={d} />
+          <SeenFromThem label="Partner gives:" ids={r.receives} d={d} />
         </td>
         <td className={`${styles.assetCell} ${styles.wide}`} data-label="Asset balance">
           <span title={b.note}><Badge value={b.text} tone={ASSET_TONE[b.label]} /></span>
@@ -475,8 +475,8 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
             : <span className={styles.subline}><span className="missing" title="A player's points above replacement are unknown (missing projections), so no total is shown">—</span> points above replacement incomplete</span>}
           {fav && <span className={styles.subline}><b>{fav}</b></span>}
         </td>
-        <td className="num" data-label="Your Δ"><DeltaCell v={r.mine} side={dv?.lineup.you} /></td>
-        <td className="num" data-label="Their Δ"><DeltaCell v={r.theirs} side={dv?.lineup.them} /></td>
+        <td className="num" data-label="Team Δ"><DeltaCell v={r.mine} side={dv?.lineup.you} /></td>
+        <td className="num" data-label="Partner Δ"><DeltaCell v={r.theirs} side={dv?.lineup.them} /></td>
         <td className="num" data-label="Smaller side">{r.min_side_ros_delta === null ? <span className="missing" title={why}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
         <td className={`${styles.changeCell} ${styles.wide}`} data-label="Lineup change">
           {dv?.you_change
@@ -543,14 +543,14 @@ function Managers({ d }: { d: DiscoverySummary }) {
   const nm = (ids: number[]) => ids.map((id) => d.names[id]?.name ?? `#${id}`).join(" + ");
   return (
     <Section title="By manager" flush
-      footnote={<>Your weaker starting positions (below the league median of projected points per slot): <b>{needText(d.my_needs)}</b>. A position need is a roster fact, not a willingness to trade.</>}>
+      footnote={<>{d.anchor.name}&apos;s weaker starting positions (below the league median of projected points per slot): <b>{needText(d.my_needs)}</b>. A position need is a roster fact, not a willingness to trade.</>}>
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Manager</th><th>Their weaker positions</th>
               <th>Best {d.query.mode === "practical" ? "practical " : ""}trade in this view</th>
-              <th className="num">You / them</th><th><VisuallyHidden>Filter to this manager</VisuallyHidden></th>
+              <th className="num">Team / partner</th><th><VisuallyHidden>Filter to this manager</VisuallyHidden></th>
             </tr>
           </thead>
           <tbody>

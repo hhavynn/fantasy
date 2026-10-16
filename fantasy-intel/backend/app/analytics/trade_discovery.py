@@ -69,8 +69,9 @@ CATEGORIES = {
     "MUTUAL_PROJECTED_IMPROVEMENT": "Both starting lineups project to gain.",
     "IMPROVES_MINE_COSTS_THEIRS": "Your lineup gains; theirs projects to lose starting points.",
     "IMPROVES_MINE_THEIRS_UNCHANGED": "Your lineup gains; theirs is projected unchanged.",
-    "CONSOLIDATION": "Two-for-one in which the side receiving one player upgrades its starting lineup; "
-                     "the other side's depth, displacement and forced drops are shown.",
+    "CONSOLIDATION": "Uneven trade (2-for-1, 3-for-1, 3-for-2 and the reverse) in which the side receiving fewer "
+                     "players upgrades its starting lineup; the other side's depth, displacement and forced drops are "
+                     "shown.",
     "PLAYOFF_FOCUSED": "Your playoff delta is positive while your regular-season delta is not.",
     "REGULAR_SEASON_FOCUSED": "Your regular-season delta is positive while your playoff delta is not.",
 }

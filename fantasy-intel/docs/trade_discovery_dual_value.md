@@ -132,8 +132,8 @@ bounds do not cover verdicts or Pareto fronts. `pool_rule`, `coverage.exact`/`co
 | `mutual_upgrades` | Best mutual upgrades | top 100 by `min_side` (phase variant), `MUTUAL_PROJECTED_IMPROVEMENT` for ROS | both phase deltas > 0, or unknown | sensible, sensible_with_concerns, unlikely_mutual, incomplete | smaller-side phase gain |
 | `fair` | Fairer asset exchanges | top 100 by `min_side`, no category | asset imbalance none/moderate | sensible, sensible_with_concerns, fair_no_lineup_gain | asset ratio |
 | `upside` | Maximum upside | unchanged (top K by `my_gain`) | unchanged | `results` (order unchanged; verdict labels added) | — |
-| `consolidation` | Consolidation deals | top 100 by `min_side`, `CONSOLIDATION` | consolidating side gains | sensible, sensible_with_concerns, unlikely_mutual, one_sided, incomplete | smaller-side gain |
-| `playoff` | Playoff-focused trades | top 100 by `min_side_playoff` | your playoff delta > 0 | sensible, sensible_with_concerns, unlikely_mutual, one_sided, incomplete | smaller-side playoff gain |
+| `consolidation` | Consolidation deals | top 100 by `min_side`, `CONSOLIDATION` | consolidating side gains | sensible, sensible_with_concerns, unlikely_mutual, fair_no_lineup_gain, one_sided, incomplete | smaller-side gain |
+| `playoff` | Playoff-focused trades | top 100 by `min_side_playoff` | your playoff delta > 0 | sensible, sensible_with_concerns, unlikely_mutual, fair_no_lineup_gain, one_sided, incomplete | smaller-side playoff gain |
 
 `practical`, `mutual` and `all` keep their exact behaviour, rows and order for existing deep links and
 callers. Their rows gain `dual_value` as additional evidence. `CONSOLIDATION` now also covers uneven
