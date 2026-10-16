@@ -77,7 +77,7 @@ _REBUILD = {
     4: ["player_week_usage"],   # external route columns added; external_* tables are never dropped
     5: [],                      # create-only: espn_projection_history + player_ros_projections
     6: ["team_week_lineup_projections", "team_ros_lineup_projections"],   # V2 lineup tables only
-    7: ["independent_projection_runs", "independent_player_projections"],  # participation columns added
+    7: [],                      # participation columns are ALTERed in (schema.sql): rebuilding would DROP stored runs
     # 8: create-only. independent_projection_rows is new, independent_projection_runs gains provenance columns
     #    (ALTER ... ADD COLUMN IF NOT EXISTS in schema.sql) and the legacy rows are copied by
     #    production_forecasts.migrate_legacy. These tables must NEVER be listed in a rebuild entry: the list DROPS.

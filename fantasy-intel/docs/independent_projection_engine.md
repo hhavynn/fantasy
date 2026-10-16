@@ -474,9 +474,12 @@ could be counted as evidence with no rows behind it. v8 fixes this with append-o
   data cutoff, model status and evaluation, participation fields) plus all rows (every legacy column;
   sorted by player; JSON columns parsed and key-sorted; floats and ints normalised). It excludes `run_id`,
   `created_at`, `nfl_synced_at` (operational stamps) and `kickoff`/`pregame` (annotations derived from the
-  schedule). `row_count` is the number of rows stored.
-* **Idempotent retry.** A write whose `content_sha256` equals an existing run of the same `(season, week,
-  model_version, scoring_fingerprint, artifact_id)` returns that run's id and writes nothing. Different
+  schedule). `row_count` is the number of rows stored. The hash detects loss and
+  corruption of rows; it does not prove authenticity, because `created_at` and `kickoff` are outside it
+  and anyone with write access to the database can rewrite a run and recompute its hash.
+* **Idempotent retry.** A write whose `content_sha256` equals the NEWEST existing run of the same `(season,
+  week, model_version, scoring_fingerprint, artifact_id)` returns that run's id and writes nothing (a
+  revert to an older run's content, A then B then A, is a new run so the newest computation stays newest). Different
   content (a source correction, a late injury report, a new artifact file) creates a NEW run; the old
   rows stay byte-identical and both are queryable.
 * **Pregame, per player.** `production_forecasts.pregame_forecasts(con, season, weeks, *, model_version,
@@ -504,7 +507,7 @@ could be counted as evidence with no rows behind it. v8 fixes this with append-o
   `forecast rows missing`. Legacy rows whose run row is missing are not invented; they are counted in
   `schema_meta['projection_rows_backfill']` (`orphan_legacy_rows`, `orphan_legacy_run_ids`,
   `runs_without_rows`). The pass is idempotent. The two tables must never be added to a `_REBUILD`
-  entry in `db/connection.py`: that list DROPS tables (a v6 database still rebuilds its v7 tables as before).
+  entry in `db/connection.py`: that list DROPS tables (a v6 database gets its participation columns by `ALTER` and keeps its runs and legacy rows).
 * **Publish.** `db/publish.py` replaces each hosted table with `CREATE OR REPLACE TABLE ... AS SELECT *` from
   the local file (read-only attach) in one transaction, so the new tables are copied as they are and
   publishing never writes the local history. The local file stays the system of record: publishing a local

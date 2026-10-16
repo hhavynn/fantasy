@@ -132,6 +132,46 @@ def test_run_provenance_columns(live):  # noqa: F811
     assert meta2["artifact_id"].startswith("dict:")
 
 
+def test_a_reverted_change_is_a_new_newest_run_but_an_immediate_retry_is_idempotent(live):  # noqa: F811
+    """A -> B -> A': the third computation equals the FIRST run's content but is the newest, so it must be stored
+    (else consumers keep serving B). Only the newest run counts as 'the same' for the retry rule."""
+    con, src, _ = live
+    thursday(con)
+    a, _, _ = store(con, src, BEFORE_ALL)
+    b, _, _ = store(con, src, datetime(2026, 9, 4, 12, 0), mutate=bump(6, 0.5))
+    c, _, _ = store(con, src, BETWEEN)                      # reverted: same content as A
+    assert c["created"] and c["run_id"] not in (a["run_id"], b["run_id"]) and c["content_sha256"] == a["content_sha256"]
+    assert latest_run(con, 2026, 6, model_version=MODEL, scoring_fingerprint=FP)["run_id"] == c["run_id"]
+    p6 = next(r for r in forecasts(con)[0] if r["espn_player_id"] == 6)
+    assert p6["run_id"] == c["run_id"] and p6["projected_points"] != 0.5
+    again, _, _ = store(con, src, BETWEEN)                  # immediate retry of C
+    assert again["run_id"] == c["run_id"] and again["created"] is False
+    assert con.execute("SELECT count(*) FROM independent_projection_runs").fetchone()[0] == 3
+
+
+def test_a_failed_readback_rolls_everything_back(live, monkeypatch):  # noqa: F811
+    import app.analytics.independent_projection_store as st
+    con, src, _ = live
+    real, calls = st.content_sha256, []
+
+    def flaky(meta, rows):
+        calls.append(1)
+        return "0" * 64 if len(calls) > 1 else real(meta, rows)      # the in-transaction re-read disagrees
+    monkeypatch.setattr(st, "content_sha256", flaky)
+    with pytest.raises(RuntimeError, match="reproduce"):
+        store(con, src, BEFORE_ALL)
+    assert con.execute("SELECT count(*) FROM independent_projection_runs").fetchone()[0] == 0
+    assert con.execute("SELECT count(*) FROM independent_projection_rows").fetchone()[0] == 0
+
+
+def test_a_run_without_created_at_gets_its_own_reason(live):  # noqa: F811
+    con, src, _ = live
+    a, _, _ = store(con, src, BEFORE_ALL)
+    con.execute("UPDATE independent_projection_runs SET created_at = NULL WHERE run_id = ?", [a["run_id"]])
+    rows, excluded = forecasts(con)
+    assert rows == [] and excluded[0]["reason"].startswith("run creation time unknown")
+
+
 # ----------------------------------------------------------------------------- pregame_forecasts
 
 
@@ -315,10 +355,37 @@ def test_v7_database_migrates_losslessly_and_keeps_the_legacy_table(live):  # no
     assert con.execute("SELECT count(*) FROM independent_projection_rows").fetchone()[0] == len(rows)
 
 
+def test_v6_database_keeps_its_runs_and_legacy_rows_through_the_upgrade(live):  # noqa: F811
+    """The old v7 rebuild DROPPED both projection tables. A v6-layout database (no participation columns, no v8
+    columns) now keeps every row and migrates it."""
+    import app.db.connection as db
+    con, src, _ = live
+    meta, rows = build_live(con, src, _artifact(src, created_at=FIT), 2026, 6)
+    meta["created_at"] = BEFORE_ALL
+    downgrade_to_v7(con)
+    db.upsert_rows(con, "independent_projection_runs", [{k: v for k, v in meta.items() if k != "artifact_id"}], ["run_id"])
+    db.replace_where(con, "independent_player_projections", rows, "season = 2026 AND week = 6")
+    for c in ("participation_version", "participation_status", "participation_evaluation"):
+        con.execute(f"ALTER TABLE independent_projection_runs DROP COLUMN {c}")
+    for c in ("p_play", "expected_points", "participation"):
+        con.execute(f"ALTER TABLE independent_player_projections DROP COLUMN {c}")
+    con.execute("UPDATE schema_meta SET value = '6' WHERE key = 'schema_version'")
+    n = con.execute("SELECT count(*) FROM independent_player_projections").fetchone()[0]
+    assert n == len(rows)
+    init_db(con)
+    assert con.execute("SELECT count(*) FROM independent_player_projections").fetchone()[0] == n
+    assert con.execute("SELECT count(*) FROM independent_projection_runs").fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM independent_projection_rows WHERE run_id = ?",
+                       [meta["run_id"]]).fetchone()[0] == n
+    assert {"p_play", "expected_points", "participation"} <= set(table_columns(con, "independent_player_projections"))
+    assert "participation_version" in table_columns(con, "independent_projection_runs")
+    assert latest_run(con, 2026, 6)["run_id"] == meta["run_id"]
+
+
 def test_new_tables_are_never_in_a_rebuild_entry():
     from app.db.connection import _REBUILD
     assert "independent_projection_rows" not in {t for tables in _REBUILD.values() for t in tables}
-    assert _REBUILD[8] == []
+    assert _REBUILD[7] == [] and _REBUILD[8] == []
 
 
 def test_reinitialising_a_v8_database_keeps_history(live):  # noqa: F811

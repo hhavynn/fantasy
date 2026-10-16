@@ -810,6 +810,11 @@ CREATE TABLE IF NOT EXISTS independent_projection_runs (
     migrated_from_legacy BOOLEAN      -- TRUE: backfilled from independent_player_projections (v7 layout)
 );
 -- Non-destructive upgrade of an existing v7 table (CREATE TABLE IF NOT EXISTS above is a no-op there).
+-- Participation columns (schema v7) for a v6 table: added in place, because the old v7 rebuild DROPPED these
+-- tables and with them every stored run.
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS participation_version VARCHAR;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS participation_status JSON;
+ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS participation_evaluation JSON;
 ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS artifact_id VARCHAR;
 ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS content_sha256 VARCHAR;
 ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS row_count INTEGER;
@@ -841,6 +846,10 @@ CREATE TABLE IF NOT EXISTS independent_player_projections (
     participation        JSON,        -- {p_play, status, depth_rank, explanation, flags, ...}
     PRIMARY KEY (season, week, espn_player_id)
 );
+
+ALTER TABLE independent_player_projections ADD COLUMN IF NOT EXISTS p_play DOUBLE;
+ALTER TABLE independent_player_projections ADD COLUMN IF NOT EXISTS expected_points DOUBLE;
+ALTER TABLE independent_player_projections ADD COLUMN IF NOT EXISTS participation JSON;
 
 -- LEGACY (schema v7): one row per (season, week, player), replaced by the next run of the same week, which is
 -- how an earlier run's forecasts were lost. Kept read-only for old readers and as the source of the v8 backfill;

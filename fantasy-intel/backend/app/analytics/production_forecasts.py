@@ -158,7 +158,7 @@ def migrate_legacy(con) -> dict:
     if not (table_exists(con, RUNS) and table_exists(con, ROWS)):
         return report
     pending = fetch_dicts(con, f"SELECT * FROM {RUNS} WHERE row_count IS NULL ORDER BY created_at, run_id")
-    if table_exists(con, LEGACY):
+    if table_exists(con, LEGACY) and "run_id" in table_columns(con, LEGACY):
         orphans = fetch_dicts(con, f"""SELECT run_id, count(*) AS n FROM {LEGACY}
                                        WHERE run_id IS NULL OR run_id NOT IN (SELECT run_id FROM {RUNS})
                                        GROUP BY 1 ORDER BY 1""")
@@ -174,8 +174,9 @@ def migrate_legacy(con) -> dict:
                 if kick:
                     con.executemany("INSERT INTO _v8_kickoff VALUES (?, ?, ?, ?)",
                                     [(s, w, t, k) for (s, w, t), k in kick.items()])
+                have = set(table_columns(con, LEGACY))      # an older legacy layout may lack some columns
                 cols = ", ".join(ROW_COLUMNS)
-                src = ", ".join(f"p.{c}" for c in ROW_COLUMNS)
+                src = ", ".join(f"p.{c}" if c in have else "NULL" for c in ROW_COLUMNS)
                 before = con.execute(f"SELECT count(*) FROM {ROWS}").fetchone()[0]
                 con.execute(f"""
                     INSERT INTO {ROWS} (run_id, {cols}, kickoff, pregame)
@@ -272,6 +273,8 @@ def _assess(con, season: int, weeks: set[int] | None, model_version: str, scorin
             reason = f"model {run['model_version']}, not {model_version}"
         elif run["scoring_fingerprint"] != scoring_fingerprint:
             reason = "made under different league scoring"
+        elif run.get("created_at") is None:
+            reason = "run creation time unknown (created_at is NULL), so no row can be shown to be pregame"
         elif not expected or not rows:
             reason = ("forecast rows missing: the run has no stored rows (row_count "
                       f"{'NULL' if expected is None else expected}); pre-v8 overwrite or unsealed run")

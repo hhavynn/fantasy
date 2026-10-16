@@ -261,8 +261,9 @@ def write_run(con, meta: dict, rows: list[dict]) -> dict:
 
     * `meta["run_id"]` already stored with the same content -> that run, nothing written;
     * `meta["run_id"]` already stored with different content -> ImmutableRunError (history is never rewritten);
-    * another run of the same (season, week, model_version, scoring_fingerprint, artifact_id) with the same
-      content_sha256 -> that run's id, nothing written (an idempotent retry);
+    * the NEWEST run of the same (season, week, model_version, scoring_fingerprint, artifact_id) has the same
+      content_sha256 -> that run's id, nothing written (an idempotent retry; a revert to an older run's
+      content after a change is a new run);
     * anything else (including a source correction that changes the forecasts) -> a NEW run.
     Stored rows are re-read inside the transaction and must reproduce the digest, else nothing is committed."""
     if not rows:
@@ -277,12 +278,16 @@ def write_run(con, meta: dict, rows: list[dict]) -> dict:
                                         "committed runs are write-once")
             result = {"run_id": run_id, "created": False}
         else:
+            # Only the NEWEST stored run of this (week, model, scoring, artifact) can be "the same": a later
+            # run that reverts to an older run's content (A, B, back to A) is a new computation and must be
+            # newest, or consumers would keep serving B.
             twin = fetch_dicts(con, f"""
-                SELECT run_id FROM {RUNS} WHERE season = ? AND week = ? AND model_version = ?
+                SELECT run_id, content_sha256 FROM {RUNS} WHERE season = ? AND week = ? AND model_version = ?
                   AND scoring_fingerprint IS NOT DISTINCT FROM ? AND artifact_id IS NOT DISTINCT FROM ?
-                  AND content_sha256 = ? ORDER BY created_at, run_id LIMIT 1""",
+                ORDER BY created_at DESC, run_id DESC LIMIT 1""",
                                [meta["season"], meta["week"], meta["model_version"], meta.get("scoring_fingerprint"),
-                                meta.get("artifact_id"), digest])
+                                meta.get("artifact_id")])
+            twin = [t for t in twin if t["content_sha256"] == digest]
             if twin:
                 result = {"run_id": twin[0]["run_id"], "created": False}
             else:
