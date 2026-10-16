@@ -20,6 +20,7 @@ define outcome-based diagnostic segments and are never features (tested).
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import math
 from dataclasses import dataclass
@@ -752,10 +753,37 @@ def preregistration_hash(doc_text: str) -> str:
     return hashlib.sha256(body.strip().encode()).hexdigest()
 
 
+# Functions and constants that turn the frozen grid points into candidate forecasts. Looked up by name at call
+# time (so a patched or edited definition is what gets hashed). `data_fingerprint` excludes this module on
+# purpose (editing the report code must not invalidate the frozen inputs), so the candidate code is bound
+# separately: `check_frozen` fails if any of it changed between `develop` and `confirm`.
+CANDIDATE_CODE = ("teammate_out_features", "attach_teammate_features", "opportunities_per_game",
+                  "shrink_toward_season_average", "_fit_rows", "candidate_predictions")
+CANDIDATE_CONSTANTS = ("CANDIDATE_GRIDS", "CANDIDATE_FEATURES", "HURDLE_RIDGE_LAM", "TEAMMATE_WINDOW_WEEKS",
+                       "UNAVAILABLE_STATUSES", "TEAMMATE_COLUMNS", "C_LAMBDA_RB")
+
+
+def candidate_code_fingerprint() -> str:
+    """sha256 of the source of the candidate functions (and `participation.fit_logit`, which `hurdle`
+    calls) plus the candidate constants. Any edit, including to comments, changes it: deliberately strict."""
+    from .participation import fit_logit
+
+    h = hashlib.sha256()
+    for name in CANDIDATE_CODE:
+        h.update(name.encode())
+        h.update(inspect.getsource(globals()[name]).encode())
+    h.update(b"participation.fit_logit")
+    h.update(inspect.getsource(fit_logit).encode())
+    for name in CANDIDATE_CONSTANTS:
+        h.update(name.encode())
+        h.update(json.dumps(globals()[name], sort_keys=True, default=str).encode())
+    return h.hexdigest()
+
+
 def frozen_config(selected: dict[str, dict], prereg_hash: str, source_fp: str) -> dict:
     """What `confirm` consumes: the grid points chosen on the development window, bound to the
-    preregistration text and the input data. Written once; `confirm` re-checks both bindings."""
-    return {"version": "rb-research-0.1.0", "development_window": list(DEVELOPMENT),
+    preregistration text, the input data and the candidate code. Written once; `confirm` re-checks all three."""
+    return {"version": "rb-research-0.1.0", "candidate_code_sha256": candidate_code_fingerprint(), "development_window": list(DEVELOPMENT),
             "confirmation_window": list(CONFIRMATION), "c_lambda": C_LAMBDA_RB, "selected": selected,
             "preregistration_sha256": prereg_hash, "source_fingerprint": source_fp, "model_version_compared": MODEL_VERSION,
             "grids": CANDIDATE_GRIDS, "seed": SEED, "resamples": RESAMPLES}
@@ -766,6 +794,9 @@ def check_frozen(cfg: dict, prereg_hash: str, source_fp: str) -> None:
         raise ValueError("the preregistration text changed after the candidates were frozen")
     if cfg.get("source_fingerprint") != source_fp:
         raise ValueError("the input data changed after the candidates were frozen")
+    if cfg.get("candidate_code_sha256") != candidate_code_fingerprint():
+        raise ValueError("the candidate code changed after the candidates were frozen (or the frozen "
+                         "configuration predates this check): rerun develop")
     if set(cfg.get("selected", {})) != set(CANDIDATE_GRIDS):
         raise ValueError("frozen configuration does not name exactly the preregistered candidates")
     for name, sel in cfg["selected"].items():
