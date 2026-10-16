@@ -75,6 +75,102 @@ export type AssetBalance = {
   thresholds: { balanced_ratio: number; significant_ratio: number; replacement_per_week: number };
 };
 
+// ------------------------------------------------------------------ dual value (Trade Discovery 2.0) --
+// analytics/trade_dual_value.py, docs/trade_discovery_dual_value.md. Every field below is additive: an older backend
+// (or a legacy mode) may omit it, so the page renders without it. Nothing here is an acceptance estimate.
+
+export type CheckStatus = "pass" | "concern" | "fail" | "unknown" | "not_applicable";
+export type Criterion = "lineup_gain" | "asset_balance" | "positional_fit" | "depth_cost" | "free_agent_alternative" | "uncertainty";
+export type DVCheckBrief = { criterion: string; status: CheckStatus };
+export type DVCheck = DVCheckBrief & { text?: string };
+
+export type LineupPoints = { ros: number | null; regular: number | null; playoff: number | null };
+export type DVSideSummary = {
+  before: LineupPoints; after: LineupPoints;
+  delta: LineupPoints & { known_ros: number | null };
+  average_weekly_delta: number | null;
+};
+export type DVAssetSummary = {
+  label: string; text: string; ratio: number | null; imbalance: "none" | "moderate" | "significant" | null;
+  favours: string | null; you_send_par: number | null; they_send_par: number | null;
+};
+/** A summary row's `dual_value_summary` (`GET /discover/summary`). */
+export type DualValueSummary = {
+  verdict: string; verdict_text: string; main_concern: string | null; front: number | null;
+  you_change: string | null; them_change: string | null;
+  asset: DVAssetSummary;
+  lineup: { you: DVSideSummary; them: DVSideSummary };
+  checks: DVCheckBrief[];
+};
+
+export type DVPlayerAsset = {
+  espn_player_id: number; name: string | null; position: string | null; par: number | null; known_par: number | null;
+  par_regular: number | null; par_playoff: number | null; position_rank: number | null; position_rank_of: number | null;
+  league_starters_at_position: number | null; starter_caliber: boolean | null; missing_weeks: number[];
+  nfl_ineligible_weeks: number[]; replacement_per_week: number | null;
+  from_side: string; to_side: string; starts_before: number | null; starts_after: number | null; weeks: number;
+  role_before: string | null; role_after: string | null; bench_asset: boolean;
+};
+export type DVBestAsset = { espn_player_id: number; name: string | null; position: string | null; par: number | null;
+  position_rank: number | null; starter_caliber: boolean | null };
+export type DVDepth = {
+  net_players: number; kind: "consolidates" | "adds depth" | "even";
+  forced_drops: { espn_player_id: number; name: string | null; position: string | null; par: number | null; starter_caliber: boolean }[];
+  forced_drop_par: number | null; forced_drop_lineup_cost: number | null; outgoing_non_starter_par: number | null;
+  open_roster_spots_after: number | null; empty_slots_after: { week: number; slot: string }[];
+};
+export type DVAsset = DVAssetSummary & {
+  per_week?: { you_send: number; they_send: number } | null; caveats: string[]; note: string;
+  you_send: DVPlayerAsset[]; you_receive: DVPlayerAsset[];
+  best_asset_surrendered: { you: DVBestAsset | null; them: DVBestAsset | null };
+  bench_assets: number[]; depth: { you: DVDepth; them: DVDepth };
+};
+
+export type DVWeekly = { week: number; phase: string | null; delta: number | null; known_delta?: number | null;
+  entered: number[]; exited: number[] };
+export type DVPlayerChange = { espn_player_id: number; name: string | null; position: string | null; weeks: number[]; incoming?: boolean };
+export type DVLineupSide = DVSideSummary & {
+  label: string; team_id: number; team_name: string | null;
+  weeks_improved: number; weeks_worsened: number; weeks_unchanged: number;
+  promoted: DVPlayerChange[]; displaced: DVPlayerChange[];
+  forced_drops: { espn_player_id: number; name: string | null; position: string | null }[];
+  forced_drop_lineup_cost: number | null;
+  missing: { weeks: number[]; players: number[]; weeks_incomplete: number };
+  weekly: DVWeekly[]; key_change: string | null;
+};
+export type DualValue = {
+  phase: string;
+  asset: DVAsset;
+  lineup: { you: DVLineupSide; them: DVLineupSide; weeks: number; basis: string };
+  plausibility: { verdict: string; verdict_text: string; checks: DVCheck[]; main_concern: string | null; criteria?: Record<string, string> };
+  rank_axes?: { lineup_min_side: number | null; asset_ratio: number | null; certainty: number | null };
+  rank?: { front: number | null; policy: string };
+  most_important_change?: string | null;
+  projection_source?: string;
+};
+
+/** 0-100 ratings (`trade_ratings.evidence`): supporting context only, never summed or compared across positions. */
+export type DVRating = {
+  position: string | null; opportunity_basis: string | null; games: number | null; rating_scale_version: string | null;
+  opportunity_score_100: number | null; production_score_100: number | null; value_score_100: number | null;
+};
+export type DRatings = {
+  available: boolean; reason: string | null; version: string | null; note?: string;
+  players: Record<string, DVRating | null>;
+  comparable_pairs: { you_send: number; you_receive: number; position: string | null }[];
+};
+export type DName = { name: string | null; position?: string | null; pro_team?: string | null };
+
+/** Top-level fields the dual-value backend adds to the context and summary payloads (all optional on an older backend). */
+export type DualValueTop = {
+  lens?: { mode: string; label: string; pool_rule: string } | null;
+  lens_note?: string | null;
+  ranking_policy?: string;
+  verdicts?: Record<string, string>;
+  criteria?: Record<string, string>;
+  projection_source?: { used: string; experimental_comparison: unknown; note: string };
+};
+
 export type DUsage = { espn_player_id: number; name: string | null; position: string | null; weeks_started: number[]; slots: Record<string, number> };
 export type DSide = {
   team_id: number; team_name: string | null; deltas: TradeDeltas;
@@ -103,6 +199,7 @@ export type DResult = DRow & {
   rationale: { trade_type: { kind: string; text: string }; points: string[]; concerns: string[] };
   manager_context: ManagerContext | null; need_notes: string[];
   trade_vs_free_agency?: TradeVsFreeAgency;
+  dual_value?: DualValue; ratings?: DRatings;
 };
 
 export type NeedRow = { slot_points_per_week: number | null; slots: number; surplus: number[]; league_rank: number | null;
@@ -120,7 +217,7 @@ export type DiscoveryV3 = {
   mode_text: string;
   sections: Record<string, DResult[]>;
   tiers: Record<string, string>;
-  excluded: { one_sided: number; lopsided: number };
+  excluded: Record<string, number | undefined>;
   pool_rule: string; pool_size: number;
   coverage: {
     exact: { candidates_considered: number; screened_out_by_upper_bound: number; fully_evaluated: number; matching_filters: number;
@@ -141,11 +238,11 @@ export type DiscoveryV3 = {
   modes: Record<string, string>; phases: string[]; strictness_options: Record<string, string>;
   categories: Record<string, string>; sorts: string[]; exact_shapes: string[]; heuristic_shapes: string[];
   kdst_policy: string; kdst_streaming?: KdstStreaming; availability_note: string; note: string; assumptions: string[]; limitations: string[];
-};
+} & DualValueTop;
 
 /** The page header and filters (`GET /api/trades/discover/context`): no search is run. */
 export type DiscoveryContext = Pick<DiscoveryV3, "league" | "anchor" | "teams" | "evaluation" | "query" | "mode_text" | "modes"
-  | "phases" | "strictness_options" | "categories" | "sorts" | "exact_shapes" | "heuristic_shapes">;
+  | "phases" | "strictness_options" | "categories" | "sorts" | "exact_shapes" | "heuristic_shapes"> & DualValueTop;
 
 /** One results-table row (`GET /api/trades/discover/summary`); the rest of the row is its `DEvidence`. */
 export type DSummaryRow = Pick<DRow, "key" | "shape" | "search_method" | "anchor_team_id" | "opponent_team_id" | "opponent_name"
@@ -154,6 +251,7 @@ export type DSummaryRow = Pick<DRow, "key" | "shape" | "search_method" | "anchor
   asset_balance: Pick<AssetBalance, "label" | "text" | "note" | "ratio" | "you_send_par" | "they_send_par">;
   rationale: { trade_type: { kind: string; text: string }; concerns: string[] };
   manager_context: { trade_history: Pick<ManagerContext["trade_history"], "completed_trades" | "confidence"> } | null;
+  dual_value_summary?: DualValueSummary | null;
 };
 
 /** `/discover` with each row cut to its table summary; `names` covers only the players shown. */
@@ -166,6 +264,8 @@ export type DEvidence = Pick<DResult, "key" | "search_method" | "opponent_name" 
   asset_balance: Pick<AssetBalance, "you_send" | "they_send" | "caveats">;
   mine_detail: Pick<DSide, "team_id" | "team_name" | "fit_notes">;
   theirs_detail: Pick<DSide, "team_id" | "team_name" | "fit_notes">;
+  /** Dual-value assessment, 0-100 ratings and the names of the players the weekly lineup changes mention. */
+  dual_value?: DualValue | null; ratings?: DRatings | null; names?: Record<string, DName>;
 };
 
 // ------------------------------------------------------- trade vs. free agency (V3.1) --

@@ -64,13 +64,41 @@ test("sorting keeps rows with missing values last in both directions", () => {
 });
 
 test("the page URL maps onto the backend query the context, summary and evidence endpoints share", () => {
-  assert.equal(discoverQuery({}).toString(), "");
+  assert.equal(discoverQuery({}).toString(), "mode=mutual_upgrades");
   assert.equal(
     discoverQuery({ team: "3", mode: "all", sort: "min_side", dir: "asc", kdst: "1", exact: "1", shape: ["1-for-1", "2-for-1"], limit: "20" }).toString(),
     "team_id=3&mode=all&limit=20&sort=min_side&include_kdst=true&heuristic=false&shapes=1-for-1%2C2-for-1",
   );
   // Table-only sorts and unknown keys never reach the API.
-  assert.equal(discoverQuery({ sort: "partner", kdst: "0", foo: "bar" }).toString(), "");
+  assert.equal(discoverQuery({ sort: "partner", kdst: "0", foo: "bar" }).toString(), "mode=mutual_upgrades");
+});
+
+test("a URL without a mode sends the page default; legacy and explicit modes pass through", () => {
+  assert.equal(discoverQuery({}).get("mode"), "mutual_upgrades");
+  assert.equal(discoverQuery({ mode: "" }).get("mode"), "mutual_upgrades");
+  assert.equal(discoverQuery({ mode: ["fair", "all"] }).get("mode"), "fair");
+  for (const m of ["practical", "mutual", "mutual_upgrades", "fair", "upside", "consolidation", "playoff", "all"]) {
+    assert.equal(discoverQuery({ mode: m }).get("mode"), m);
+  }
+  // The default does not disturb the other parameters or their order.
+  assert.equal(discoverQuery({ team: "3", limit: "20" }).toString(), "team_id=3&mode=mutual_upgrades&limit=20");
+});
+
+test("the verdict column sorts by the backend's verdict order, best first, with no verdict last", () => {
+  const V = (verdict: string | null) => T({ shape: verdict ?? "none", dual_value_summary: verdict ? { verdict } : null });
+  const rows = [V("one_sided"), V("sensible"), V(null), V("unlikely_mutual"), V("incomplete"), V("sensible_with_concerns"), V("fair_no_lineup_gain")];
+  const bySort = (dir: "asc" | "desc") => sortRows(rows.map((r, i) => ({ r, i })), (x) => sortValue(x.r, "verdict", x.i), dir).map((x) => x.r.shape);
+  assert.deepEqual(bySort("asc"), ["sensible", "sensible_with_concerns", "unlikely_mutual", "fair_no_lineup_gain", "one_sided", "incomplete", "none"]);
+  assert.deepEqual(bySort("desc"), ["incomplete", "one_sided", "fair_no_lineup_gain", "unlikely_mutual", "sensible_with_concerns", "sensible", "none"]);
+  assert.equal(sortValue(T(), "verdict", 0), null);                 // a legacy row without dual_value_summary
+  assert.deepEqual(resolveSort({ sort: "verdict", dir: "asc" }, "mutual_upgrades"), { key: "verdict", dir: "asc" });
+  assert.deepEqual(resolveSort({ sort: "verdict" }, "mutual_upgrades"), { key: "verdict", dir: "asc" });
+  assert.equal(isApiSort("verdict"), false);
+  assert.equal(discoverQuery({ mode: "fair", sort: "verdict" }).get("sort"), null);
+});
+
+test("lens modes default to the backend order", () => {
+  for (const m of ["mutual_upgrades", "fair", "upside", "consolidation", "playoff", "practical", "mutual"]) assert.deepEqual(defaultSort(m), { key: "rank", dir: "asc" });
 });
 
 test("a row's evidence request keeps the view's query and only known parameters reach the backend", () => {
