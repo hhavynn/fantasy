@@ -1,0 +1,13 @@
+# Pronunciation overrides for Kokoro (misaki phonemes). Keys are matched as whole words; keep each key a
+# single word so word timestamps stay one-to-one with the script.
+[words]
+Kincaid = "kɪnkˈAd"
+Oronde = "ɔɹˈɑndA"
+Gadsden = "ɡˈædzdən"
+Kolar = "kˈOlɑɹ"
+Braelon = "bɹˈAlən"
+Breece = "bɹˈis"
+Allen = "ˈælən"
+quadricep = "kwˈɑdɹəsˌɛp"
+"Gadsden's" = "ɡˈædzdənz"
+"Allen's" = "ˈælənz"
