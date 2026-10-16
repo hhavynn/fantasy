@@ -94,9 +94,9 @@ voice = "am_adam"
 # broadcast | auto. 'original' renders only final.mp4, exactly as before. Any other value ALSO renders
 # styles/<style>/final.mp4 with its own QC; final.mp4 is never replaced.
 style = "auto"
-# auto: preferred style per story angle; an angle with no preference (mystery, opportunity) uses auto_default.
-auto_default = "original"
+# auto: [graphics.auto] per-angle overrides first, then auto_default; a story with a scene the style has no
+# design for falls back to original.
+auto_default = "premium"          # the website's look for every story it has a design for
 
 [graphics.auto]
-vanishing_targets = "premium"
-fill_in = "broadcast"
+# Per-angle overrides, e.g. fill_in = "broadcast" or comparison = "pixel". Empty: premium everywhere.

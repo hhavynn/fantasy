@@ -165,6 +165,9 @@ def test_auto_style_prefers_by_angle_and_falls_back(monkeypatch):
     assert choose(Cfg, "mystery", ["mirror", "zoom_out"]) == "original"        # no preference for the angle
     assert choose(Cfg, "opportunity", ["giant_number", "carry_grid", "fork"]) == "pixel"
     assert choose(Cfg, "vanishing_targets", ["player_card", "not_a_scene"]) == "original"   # no design: fall back
+    Default = type("Default", (), {"raw": {"graphics": {"auto_default": "premium", "auto": {"fill_in": "broadcast"}}}})
+    assert choose(Default, "mystery", ["mirror", "zoom_out"]) == "premium"      # the default covers every angle
+    assert choose(Default, "fill_in", ["presence", "teammate_out"]) == "broadcast"
     for style in STYLES:
         assert set(SCENE_TYPES + FORMAT_TYPES) <= scene_types(style), style
         assert not unsupported(style, FORMAT_TYPES)

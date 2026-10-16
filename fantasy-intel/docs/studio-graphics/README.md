@@ -38,11 +38,9 @@ uv run make-episode --week 6 --format short --style premium
 ```toml
 [graphics]
 style = "auto"               # original | premium | pixel | broadcast | auto
-auto_default = "original"
+auto_default = "premium"     # every story angle, unless overridden below
 
-[graphics.auto]              # auto: a preference per story angle, not a rule
-vanishing_targets = "premium"
-fill_in = "broadcast"
+[graphics.auto]              # per-angle overrides, e.g. fill_in = "broadcast"
 ```
 
 `auto` picks by story angle and falls back to `original` when the chosen style has no design for one of the story's scenes. Every scene type has a design in all three styles, the mystery and opportunity formats included, so in practice `auto` uses `original` only for an angle with no preference. Mystery and opportunity have none yet; to style them, add a line each under `[graphics.auto]`, for example `mystery = "premium"` and `opportunity = "broadcast"`.
@@ -177,7 +175,7 @@ Format Shorts (Week 6, measured on the styled renders; both pass QC in every sty
 | Reusability | per-scene code | shared components | shared structure, own drawing | shared components |
 | Production efficiency | baseline | fastest vector style | fastest overall | slowest new style, still under 20 s |
 
-My recommendation, for you to confirm by watching: **premium** for usage deep dives (the `vanishing_targets` stories), **broadcast** for weekly reports and fill-in or injury stories, and **pixel** as an occasional change-up for head-to-head or fun stories rather than the default, since its novelty is its strength. The `auto` mapping in `config.toml` follows this and is now the default: usage deep dives render in premium, fill-in stories in broadcast, and everything else (including the mystery and opportunity formats, which have designs but no preference yet) stays original. The weekly `review.md` index lists each Short's styled video and its QC next to `final.mp4`. `final.mp4` is still rendered, and metadata, thumbnail and upload still point at it, so when publishing a styled Short, upload `styles/<style>/final.mp4` by hand.
+My recommendation, for you to confirm by watching: **premium** for usage deep dives (the `vanishing_targets` stories), **broadcast** for weekly reports and fill-in or injury stories, and **pixel** as an occasional change-up for head-to-head or fun stories rather than the default, since its novelty is its strength. Since 2026-10-15 the channel runs **premium for every story it has a design for**, so the Shorts and the website read as one brand; broadcast and pixel stay available through `--style` or a per-angle override. A story with a scene premium has no design for falls back to original (in Week 6: Mike Evans and Brenton Strange, whose newer scene types aren't on this branch). The weekly `review.md` index lists each Short's styled video and its QC next to `final.mp4`. `final.mp4` is still rendered, and metadata, thumbnail and upload still point at it, so when publishing a styled Short, upload `styles/<style>/final.mp4` by hand.
 
 ## Limitations and known issues
 

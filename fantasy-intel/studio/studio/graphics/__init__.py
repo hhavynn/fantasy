@@ -10,8 +10,8 @@ from __future__ import annotations
 STYLES = ("premium", "pixel", "broadcast")
 CHOICES = ("original", "auto") + STYLES
 
-# A preference, not a rule: the story angle suggests a style (config [graphics.auto] overrides).
-AUTO = {"vanishing_targets": "premium", "fill_in": "broadcast", "comparison": "pixel"}
+# Preferences live in config.toml: [graphics] auto_default for every angle, [graphics.auto] per-angle overrides.
+AUTO: dict[str, str] = {}
 
 
 def choose(cfg, story_angle: str, scene_types) -> str:
