@@ -709,6 +709,9 @@ def test_runs_from_write_run_feed_decisions_and_a_post_kickoff_rerun_is_never_cr
                                                         {2026: datetime(2027, 1, 1, tzinfo=UTC)})
     att = info["attached"]
     assert att["production_source"] == sse.PRODUCTION_SOURCE and att["ifp1_production"] > 0
+    # each production version is read under its own model version, never pooled: no ifp-2.0.0 run is stored here,
+    # so the production model gets nothing (it is not credited with the fallback's forecasts)
+    assert att["ifp2_production"] == 0 and not any("ifp2_production" in c["preds"] for c in cands)
     # the post-kickoff rerun contributes nothing, and its exclusion reason is passed through unchanged
     assert [e["run_id"] for e in att["production_exclusions"]] == [rerun["run_id"]]
     assert att["production_exclusions"][0]["reason"].startswith("post-kickoff")

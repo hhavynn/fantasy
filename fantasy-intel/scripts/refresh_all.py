@@ -1,9 +1,14 @@
-"""Full data refresh: ESPN -> nflverse -> analytics -> MotherDuck (only when MOTHERDUCK_TOKEN is
-set), then a check that this week's ESPN projections were snapshotted before the first kickoff,
-then the read-only "evidence" stage (injury freshness report, start/sit decision set, ESPN benchmark).
-launchd runs it on a weekly schedule (see README "Scheduled refresh"); it is also fine by hand:
+"""Full data refresh: ESPN -> nflverse -> analytics -> projection-performance report -> MotherDuck (only
+when MOTHERDUCK_TOKEN is set), then a check that this week's ESPN projections were snapshotted before the
+first kickoff, then the read-only "evidence" stage (injury freshness report, start/sit decision set, ESPN
+benchmark). launchd runs it on a weekly schedule (see README "Scheduled refresh"); it is also fine by hand:
 
-    cd backend && uv run python ../scripts/refresh_all.py [--no-publish] [--check-only] [--skip-evidence]
+    cd backend && uv run python ../scripts/refresh_all.py [--no-publish] [--check-only] [--skip-evidence] [--skip-report]
+
+Report step (docs/projection_performance.md): after the analytics step, scripts/projection_performance.py
+publish builds the accuracy scorecard from a read-only connection and inserts it as one write-once row, so the
+MotherDuck publish that follows carries it to the hosted site. It can never fail the refresh: a problem is
+logged as a WARNING and the publish still runs.
 
 Each step runs in its own process and the first failure stops the chain (exit 1). Every run writes
 data/logs/refresh-<UTC stamp>.log with each step's output.
@@ -34,6 +39,7 @@ BACKEND = _bootstrap.BACKEND
 LOG_DIR = DATA_DIR / "logs"
 STEPS = ("sync_espn.py", "sync_nfl.py", "compute_analytics.py")
 PUBLISH = "publish_motherduck.py"
+REPORT = "projection_performance.py"   # not in STEPS: run by run_report, whose failure never stops the chain
 EVIDENCE = "Evidence:"
 TIMED_OUT = -999                     # run_step's result for a step killed at its deadline
 EVIDENCE_TIMEOUT_S = 15 * 60         # per evidence step; REFRESH_EVIDENCE_TIMEOUT_S overrides
@@ -287,12 +293,31 @@ def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = 
     return problems
 
 
+def run_report(log: Log, timeout: float | None = None) -> str | None:
+    """Build and store the projection-performance report (one write-once row). Returns the problem, if any
+    (also logged as a WARNING). Never raises: the data is refreshed whatever happens here."""
+    timeout = evidence_timeout() if timeout is None else timeout
+    try:
+        code = run_step([sys.executable, str(SCRIPTS / REPORT), "publish"], log, timeout=timeout)
+    except Exception as e:
+        problem = f"{REPORT} could not run: {e!r}"
+    else:
+        if code == 0:
+            return None
+        problem = (f"{REPORT} timed out after {timeout:g}s and was killed" if code == TIMED_OUT else
+                   f"{REPORT} exited {code}; the previous report stays published")
+    log(f"WARNING: report: {problem}")
+    return problem
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--no-publish", action="store_true", help="skip MotherDuck even if MOTHERDUCK_TOKEN is set")
     parser.add_argument("--check-only", action="store_true", help="only run the pregame snapshot check")
     parser.add_argument("--skip-evidence", action="store_true",
                         help="skip the read-only evidence stage (injury report, start/sit record, ESPN benchmark)")
+    parser.add_argument("--skip-report", action="store_true",
+                        help="skip building the projection-performance report before the publish")
     args = parser.parse_args()
 
     log = Log(LOG_DIR / f"refresh-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.log")
@@ -302,6 +327,8 @@ def main() -> int:
             if PUBLISH not in steps:
                 log("MotherDuck publish skipped (" + ("--no-publish" if args.no_publish else "MOTHERDUCK_TOKEN not set") + ")")
             for step in steps:
+                if step == PUBLISH and not args.skip_report:
+                    run_report(log)          # after analytics, so the publish carries the new report
                 code = run_step([sys.executable, str(SCRIPTS / step)], log)
                 if code != 0:
                     log(f"FAILED: {step} exited {code}; later steps were not run. Log: {log.path}")
@@ -315,6 +342,8 @@ def main() -> int:
                         except Exception as e:
                             log(f"WARNING: {EVIDENCE} stage failed: {e!r}")
                     return 1
+            if PUBLISH not in steps and not args.skip_report:
+                run_report(log)              # local install: the local API serves the report
         try:
             check_pregame(log)
         except Exception as e:  # the data is refreshed; a broken check must still be visible

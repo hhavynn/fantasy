@@ -140,6 +140,21 @@ passed through verbatim as `reader_exclusions` and counted by reason in
 against the player's own kickoff, model, scoring, artifact before the first kickoff, crosswalk id): defence in
 depth that rows from `pregame_forecasts` pass as delivered.
 
+## Report summaries (published scorecard)
+
+`scorecard_and_rows` returns the scorecard together with the evaluation rows it was computed from (`scorecard` is
+that card alone). The Projection performance page's offline build ([projection_performance.md](projection_performance.md))
+summarises those same rows with three read-only helpers here, so its figures cannot disagree with the card:
+`weekly_errors` (MAE of ours and ESPN per fully final week and position on one comparison's population),
+`lead_times` (median hours before kickoff of our run and of ESPN's snapshot, the median paired gap and the
+`horizon_matched` share) and `version_comparison` (two model versions only on player-weeks where both have a valid
+pregame forecast, with ESPN on the same rows, the same gate and a week-clustered interval; verdicts
+`first_better` / `second_better`).
+
+A season with no ESPN history gives an empty, valid scorecard (`weeks: []`), and an ESPN-fallback row of a week that
+is not fully final carries ESPN's number as its consumer value, so the `preliminary` consumer-visible comparison is
+computed rather than failing the equal-population check.
+
 ## Reading the result honestly
 
 Different information times (a Tuesday run vs a Saturday ESPN snapshot) are visible in the horizon fields and

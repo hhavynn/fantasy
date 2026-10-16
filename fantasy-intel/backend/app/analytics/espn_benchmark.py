@@ -304,8 +304,8 @@ def evaluation_rows(con, season: int, weeks: Iterable[int] | None = None, *,
     fingerprint = scoring.fingerprint
     week_list = sorted({int(w) for w in weeks}) if weeks is not None else _all_weeks(con, season)
     meta = {"season": season, "weeks": week_list, "model_version": model_version, "scoring_fingerprint": fingerprint,
-            "forecast_source": source, "reader_exclusions": []}
-    if not week_list:
+            "forecast_source": source, "reader_exclusions": [], "fully_final_weeks": [], "partial_weeks": []}
+    if not week_list:          # nothing to score yet (no ESPN history): an empty, valid scorecard
         return [], meta
     if sources is None:
         sources = load_sources(con, scoring, [season])
@@ -399,8 +399,9 @@ def evaluation_rows(con, season: int, weeks: Iterable[int] | None = None, *,
                 rec["exclusion_reason"] = f"outcome_{status}"
             elif not final_weeks[rec["week"]]:
                 rec["exclusion_reason"] = "week_not_fully_final"
-        if rec["exclusion_reason"] is None and rec["ours_origin"] == ESPN:
-            rec["ours_consumer_pred"] = rec["espn_pred"]     # the consumer sees ESPN's number: no model credit
+        if rec["exclusion_reason"] in (None, "week_not_fully_final") and rec["ours_origin"] == ESPN:
+            # the consumer sees ESPN's number: no model credit (preliminary rows too, which `scorecard` compares)
+            rec["ours_consumer_pred"] = rec["espn_pred"]
         if rec["outcome_status"] not in wl.RESOLVED:
             rec["actual_points"] = None
     return [{k: r[k] for k in ROW_KEYS} for r in recs], meta
@@ -592,6 +593,16 @@ def scorecard(con, season: int, weeks: Iterable[int] | None = None, *, forecast_
               config: BenchmarkConfig | None = None, model_version: str = MODEL_VERSION, scoring=None,
               sources: Sources | None = None, fetched_at: datetime | dict | None = None) -> dict:
     """Read-only, deterministic scorecard (no wall-clock values): same inputs, same dict."""
+    return scorecard_and_rows(con, season, weeks, forecast_reader=forecast_reader, config=config,
+                              model_version=model_version, scoring=scoring, sources=sources, fetched_at=fetched_at)[0]
+
+
+def scorecard_and_rows(con, season: int, weeks: Iterable[int] | None = None, *,
+                       forecast_reader: ForecastReader | None = None, config: BenchmarkConfig | None = None,
+                       model_version: str = MODEL_VERSION, scoring=None, sources: Sources | None = None,
+                       fetched_at: datetime | dict | None = None) -> tuple[dict, list[dict]]:
+    """(scorecard, the evaluation rows it was computed from): the published performance report summarises the
+    same rows (weekly_errors, lead_times), so its per-week and lead-time figures can never disagree with the card."""
     cfg = config or BenchmarkConfig()
     base = {"schema_version": SCHEMA_VERSION, "season": season, "model_version": model_version, "notes": NOTES,
             "params": {**asdict(cfg), "espn_min_matched_per_position": PROMOTION_CRITERIA["espn_min_matched_per_position"]}}
@@ -600,7 +611,7 @@ def scorecard(con, season: int, weeks: Iterable[int] | None = None, *, forecast_
                                      scoring=scoring, sources=sources, fetched_at=fetched_at)
     except ValueError as err:     # unsupported league scoring: no labels can be computed
         return {**base, "available": False, "unavailable_reason": str(err), "weeks": [], "comparisons": {},
-                "coverage": None, "forecast_source": None, "reader_exclusions": []}
+                "coverage": None, "forecast_source": None, "reader_exclusions": []}, []
     base["params"]["scoring_fingerprint"] = meta["scoring_fingerprint"]
     early = [dict(r, exclusion_reason=None) for r in rows if r["exclusion_reason"] == "week_not_fully_final"]
     preliminary = {"weeks": sorted({r["week"] for r in early}),
@@ -614,7 +625,108 @@ def scorecard(con, season: int, weeks: Iterable[int] | None = None, *, forecast_
             "forecast_source": meta["forecast_source"],
             "coverage": {**coverage(rows),
                          "forecast_runs_excluded_by_reason": reader_exclusion_counts(meta["reader_exclusions"])},
-            "reader_exclusions": meta["reader_exclusions"]}
+            "reader_exclusions": meta["reader_exclusions"]}, rows
+
+
+# ----------------------------------------------------------------------------- report summaries
+
+
+def _mae(actual: list[float], pred: list[float]) -> float | None:
+    return round(sum(abs(a - p) for a, p in zip(actual, pred)) / len(actual), 3) if actual else None
+
+
+def weekly_errors(rows: list[dict], name: str = "pure_independent", cfg: BenchmarkConfig = BenchmarkConfig()) -> list[dict]:
+    """MAE of ours and ESPN per (fully final week, position) on one comparison's population: the rows `compare`
+    scores, so the n of a position summed over weeks equals its n in the scorecard. Descriptive only (one week is
+    far too few rows for a verdict)."""
+    pop, col = population(rows, name, cfg)
+    out = []
+    for week in sorted({r["week"] for r in pop}):
+        for pos in POSITIONS:
+            g = [r for r in pop if r["week"] == week and r["position"] == pos]
+            if g:
+                a = [r["actual_points"] for r in g]
+                out.append({"week": week, "position": pos, "n": len(g),
+                            "ours_mae": _mae(a, [r[col] for r in g]), "espn_mae": _mae(a, [r["espn_pred"] for r in g])})
+    return out
+
+
+def _median(xs: list[float]) -> float | None:
+    if not xs:
+        return None
+    s = sorted(xs)
+    m = len(s) // 2
+    return round(s[m] if len(s) % 2 else (s[m - 1] + s[m]) / 2, 2)
+
+
+def lead_times(rows: list[dict], cfg: BenchmarkConfig = BenchmarkConfig()) -> dict:
+    """Per position (and ALL) on the pure_independent population: median hours before kickoff of our run and of
+    ESPN's snapshot, the median paired gap (ours - ESPN: positive = our forecast was made EARLIER, with less
+    information), and how many rows fall inside the horizon_matched window."""
+    pop, _ = population(rows, "pure_independent", cfg)
+    out = {}
+    for pos in [*POSITIONS, "ALL"]:
+        g = [r for r in pop if pos == "ALL" or r["position"] == pos]
+        both = [r for r in g if r["ours_horizon_h"] is not None and r["espn_horizon_h"] is not None]
+        matched = [r for r in both if abs(r["ours_horizon_h"] - r["espn_horizon_h"]) <= cfg.horizon_window_h]
+        out[pos] = {"n": len(g), "ours_median_h": _median([r["ours_horizon_h"] for r in both]),
+                    "espn_median_h": _median([r["espn_horizon_h"] for r in both]),
+                    "median_gap_h": _median([r["ours_horizon_h"] - r["espn_horizon_h"] for r in both]),
+                    "horizon_matched_n": len(matched),
+                    "horizon_matched_share": round(len(matched) / len(g), 4) if g else None,
+                    "window_h": cfg.horizon_window_h}
+    return out
+
+
+VERSION_VERDICTS = ("insufficient_evidence", "no_significant_difference", "first_better", "second_better")
+
+
+def version_comparison(rows_by_version: dict[str, list[dict]], cfg: BenchmarkConfig = BenchmarkConfig()) -> dict:
+    """Two model versions on exactly the player-weeks where BOTH have a valid pregame forecast (each version's
+    pure_independent population: its own reader, kickoff, artifact and integrity rules; fallback rows never count),
+    with ESPN on the same rows. Never pools versions across weeks: weeks where only one version has forecasts are
+    listed per version, not compared. diff = MAE(first) - MAE(second), 95% week-clustered CI, the same evidence gate
+    as the ESPN comparison (first_better / second_better only when the CI excludes 0)."""
+    names = list(rows_by_version)
+    if len(names) != 2:
+        raise ValueError("version_comparison compares exactly two model versions")
+    first, second = names
+    pops = {v: {(r["week"], r["espn_player_id"]): r for r in population(rows_by_version[v], "pure_independent", cfg)[0]}
+            for v in names}
+    scored_weeks = {v: sorted({w for w, _ in pops[v]}) for v in names}
+    common = sorted(set(pops[first]) & set(pops[second]))
+    need_n = PROMOTION_CRITERIA["espn_min_matched_per_position"]
+    joined = [{"season": pops[first][k]["season"], "week": k[0], "position": pops[first][k]["position"],
+               "actual": pops[first][k]["actual_points"], "a": pops[first][k]["ours_independent_pred"],
+               "b": pops[second][k]["ours_independent_pred"], "espn": pops[first][k]["espn_pred"]} for k in common]
+    by = {}
+    for pos in [*POSITIONS, "ALL"]:
+        g = [r for r in joined if pos == "ALL" or r["position"] == pos]
+        weeks = len({(r["season"], r["week"]) for r in g})
+        stat = {"n": len(g), "weeks_covered": weeks, "required_n": need_n, "required_weeks": cfg.min_weeks,
+                "mae": {first: None, second: None, "espn": None}, "mae_diff": None, "ci95": None}
+        ci = None
+        if g:
+            a = [r["actual"] for r in g]
+            stat["mae"] = {first: _mae(a, [r["a"] for r in g]), second: _mae(a, [r["b"] for r in g]),
+                           "espn": _mae(a, [r["espn"] for r in g])}
+            df = pl.DataFrame({"label": a, "a": [r["a"] for r in g], "b": [r["b"] for r in g],
+                               "key": [r["season"] * 100 + r["week"] for r in g]})
+            boot = week_bootstrap_mae_diff(df, "a", "b", cfg.resamples, cfg.seed, exact=True)
+            stat["mae_diff"], stat["ci95"], ci = round(boot["diff"], 3), [round(x, 3) for x in boot["ci95"]], boot["ci95"]
+        v, why = verdict(len(g), weeks, ci, need_n, cfg.min_weeks)
+        v = {"ours_better": "first_better", "espn_better": "second_better"}.get(v, v)
+        why = why.replace("MAE(ours) - MAE(ESPN)", f"MAE({first}) - MAE({second})")
+        if pos == "ALL":
+            stat["descriptive_verdict"], stat["descriptive_verdict_reason"] = v, why
+        else:
+            stat["verdict"], stat["verdict_reason"] = v, why
+        by[pos] = stat
+    return {"versions": [first, second], "diff": f"MAE({first}) - MAE({second}); negative means {first} is closer",
+            "scored_weeks": scored_weeks, "common_weeks": sorted({w for w, _ in common}), "n": len(common),
+            "by_position": by,
+            "rule": "Only player-weeks where both versions have a valid pregame forecast are compared; a week with only "
+                    "one version's forecasts is listed for that version and never mixed into the comparison."}
 
 
 def to_json(card: dict) -> str:

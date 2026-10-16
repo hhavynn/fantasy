@@ -73,7 +73,11 @@ pregame and post-hoc). `pregame_roster_only` repeats the whole evaluation, with 
 verdicts, on team-weeks whose every roster row was synced before its player's kickoff. Read the verdict of
 the population you mean; the pooled one carries the post-hoc roster caveat. Default sets: `baselines`,
 `ifp_head_to_head` (espn, A1, ifp1_frozen, ifp2_frozen on one population: ifp-2 against the champion),
-`ifp1_production`, `ifp1_frozen`, `ifp2_frozen`.
+`ifp1_production`, `ifp2_production`, `ifp1_frozen`, `ifp2_frozen`. `ifp1_production` and `ifp2_production` are the
+production forecasts of each version (the fallback ifp-1.0.0 and the production ifp-2.0.0), each read by
+`production_forecasts.pregame_forecasts` under its own model version and never pooled; a row without expected points
+(the site shows ESPN there) has no value, so its decisions are not credited to the model. The Projection performance
+page reports the two production sets on the recorded pregame-roster population ([projection_performance.md](projection_performance.md)).
 
 ## 3. Using it
 

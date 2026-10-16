@@ -99,6 +99,7 @@ fantasy-intel/
 | `/start-sit`       | Your submitted lineup vs the best projected lineup that respects kickoff locks, each swap with its projected gain, availability alerts, bench and reserves; next week as a preview. ESPN projections, no invented numbers |
 | `/players`         | Search; per-player profile: underlying value vs box score, usage trend table, weekly snaps/targets/shares/aDOT/RZ/GL/xFP |
 | `/research`        | Research lab: the whole NFL WR/RB/TE pool. Expected points (xFP/G) against production (FPOE/G or PPR/G) over paired games for season, last 5 or last 3 games; position workload maps (WR target vs air-yard share, RB backfield share vs targets, TE snaps vs target share); role momentum (change in xFP vs change in PPR, with sample badges); a sortable leaderboard with a position-percentile heatmap; red-zone work with raw totals; and a weekly timeline that keeps byes and missed games distinct from zeros. URL-backed filters and selection. Descriptive research lists, no buy/sell calls. See `docs/research_lab.md` |
+| `/projection-performance` | Projection accuracy: the production model (ifp-2.0.0, production by owner override) against ESPN's pregame projections per position on fully final weeks only: MAE / RMSE / mean signed error, the paired MAE difference with its 95% week-clustered interval and the evidence gate (4 weeks, 300 matched observations per position), weekly trend, ifp-1 vs ifp-2 on weeks both forecast, Start/Sit decision utility from recorded pregame decision sets (8 weeks, 200 decisions), coverage, ESPN-fallback share and every exclusion. Served from a published, hash-verified report; see `docs/projection_performance.md` |
 | `/waivers`         | Available players ranked by local waiver score, with role trend, roster fit, league competition (LOW/MED/HIGH + likely competitors), recommendation, suggested drop. Filter by position / recommendation |
 | `/trades`          | Manual trade analyzer (any player counts up to 6 per side; teams switch instantly, Evaluate runs the URL-backed selection): both teams' optimal starting lineups rebuilt every remaining week before/after the trade on ESPN's projections; ROS / regular-season / playoff deltas, weekly table, starter changes, mandatory drop / open roster spot, hypothetical FA replacement, player context. No trade grade, no acceptance probability |
 | `/trades/discover` | Trade opportunity discovery: exact lineup impact for both teams across every 1-for-1 / 2-for-1 / 1-for-2 trade with every manager, sortable by projected gains, with categories, manager context and a link into the manual evaluator. No acceptance estimate |
@@ -521,8 +522,9 @@ the projection promotion tracker only counts snapshots taken **before kickoff**.
 a pregame sync has no ESPN baseline, so the refresh should run on a schedule. ESPN cookies live
 in your local `.env`, so it has to run on your Mac (not in GitHub Actions).
 
-`scripts/refresh_all.py` runs `sync_espn.py` → `sync_nfl.py` → `compute_analytics.py`, then
-`publish_motherduck.py` only if `MOTHERDUCK_TOKEN` is set. Each step runs in its own process,
+`scripts/refresh_all.py` runs `sync_espn.py` → `sync_nfl.py` → `compute_analytics.py`, then builds the
+projection-performance report (`projection_performance.py publish`, one write-once row; a failure is a `WARNING:`
+line, never a stop; `--skip-report` skips it), then `publish_motherduck.py` only if `MOTHERDUCK_TOKEN` is set. Each step runs in its own process,
 the first failure stops the chain and the script exits 1. Every run writes
 `data/logs/refresh-<UTC stamp>.log`. At the end it checks that the current week's ESPN
 projections were snapshotted before that week's first kickoff and prints a `WARNING:` line if
