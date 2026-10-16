@@ -55,7 +55,7 @@ def _real_refresh_log(refresh, monkeypatch, tmp_path, *argv, codes=None):
     """Run refresh_all.main() for real (its own Log, run_step and run_evidence) with tiny stand-in scripts, and
     return the log text. `codes` maps a script name to its exit code."""
     codes = {"sync_espn.py": 0, "sync_nfl.py": 0, "compute_analytics.py": 0, "injury_freshness.py": 0,
-             "start_sit_evaluation.py": 0, "espn_benchmark.py": 0, **(codes or {})}
+             "start_sit_evaluation.py": 0, "espn_benchmark.py": 0, "projection_performance.py": 0, **(codes or {})}
     for name, code in codes.items():
         # child output that imitates refresh_all's own markers must never be taken for them
         (tmp_path / name).write_text("print('WARNING: Evidence: fake child line')\nprint('Refresh complete.')\n"
@@ -90,7 +90,8 @@ def test_a_real_refresh_log_parses_step_by_step(refresh, monkeypatch, tmp_path):
     code, text = _real_refresh_log(refresh, monkeypatch, tmp_path)
     r = eh.parse_refresh_log(text)
     assert code == 0 and r["status"] == "complete" and r["failed"] is None
-    assert [s["name"] for s in r["steps"]] == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py"]
+    assert [s["name"] for s in r["steps"]] == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py",
+                                               "projection_performance.py"]   # the report step (never fatal)
     assert all(s["exit"] == 0 for s in r["steps"])
     ev = r["evidence"]
     assert ev["ran"] and ev["status"] == "ok" and ev["problems"] == []          # the child's fake WARNING is ignored

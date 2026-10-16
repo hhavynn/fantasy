@@ -473,6 +473,7 @@ DEFAULT_MODEL_SETS = {
     "baselines": ["espn", "A1", "A2"],
     "ifp_head_to_head": ["espn", "A1", "ifp1_frozen", "ifp2_frozen"],      # ifp-2 against the champion, same population
     "ifp1_production": ["espn", "A1", "ifp1_production"],
+    "ifp2_production": ["espn", "A1", "ifp2_production"],                 # the production model (owner override)
     "ifp1_frozen": ["espn", "A1", "ifp1_frozen"],
     "ifp2_frozen": ["espn", "A1", "ifp2_frozen"],
 }

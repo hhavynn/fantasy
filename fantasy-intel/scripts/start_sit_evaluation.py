@@ -6,7 +6,8 @@
 
 `report` scores decisions on the rosters in lineup_snapshots (roster at snapshot; labeled pregame only where
 every row was synced before its player's kickoff) and on recorded decision sets, for ESPN, the A1/A2
-baselines, the frozen research ledger and the production ifp-1 forecasts, each on an equal population.
+baselines, the frozen research ledger and the production forecasts (ifp-2.0.0 production and the ifp-1.0.0
+fallback, one model set per version), each on an equal population.
 Models with no genuine pregame evidence are listed as unavailable, never backfilled.
 
 `record` freezes this week's pregame decision set (rosters + every model's pregame predictions, no
@@ -36,9 +37,13 @@ from app.analytics.forecast_features import POSITIONS, Sources, features_for_wee
 from app.analytics.independent_projection_store import league_scoring
 from app.analytics.independent_projections import MODEL_VERSION, baseline_predictions
 from app.analytics.league_scoring import resolve_skill_scoring
+from app.analytics.projection_source import MODEL_VERSION as PRODUCTION_VERSION
 from app.config import REPO_ROOT, get_settings
 
-MODELS = ("espn", "A1", "A2", "ifp1_production", "ifp1_frozen", "ifp2_frozen")
+MODELS = ("espn", "A1", "A2", "ifp1_production", "ifp2_production", "ifp1_frozen", "ifp2_frozen")
+# Production forecasts per model version, each read with production_forecasts' pregame rules (never pooled):
+# ifp1_production = the retired previous production model (the fallback), ifp2_production = the production model.
+PRODUCTION_MODELS = {"ifp1_production": MODEL_VERSION, "ifp2_production": PRODUCTION_VERSION}
 
 
 def _path(env: str, default: str) -> Path:
@@ -157,14 +162,20 @@ def attach_predictions(cands: list[dict], live, src: Sources, scoring, season: i
     for name, lookup in ledger_lookup(ledger_dir).items():
         counts[name] = sse.attach_model(cands, name, lookup, gkey)
     reader, source = (forecast_reader, "injected reader") if forecast_reader is not None else sse.forecast_reader_for(live)
-    rows, excluded = ([], []) if reader is None else reader(
-        live, season, sorted({c["week"] for c in cands}) or None, model_version=MODEL_VERSION,
-        scoring_fingerprint=scoring.fingerprint)
-    counts["ifp1_production"] = sse.attach_model(cands, "ifp1_production", sse.production_lookup(rows),
-                                                 lambda c: (c["week"], c["espn_player_id"]))
     counts["production_source"] = source
-    counts["production_reader_exclusions"] = len(excluded)
-    counts["production_exclusions"] = excluded            # {run_id, week, reason}, passed through unchanged
+    for name, version in PRODUCTION_MODELS.items():
+        rows, excluded = ([], []) if reader is None else reader(
+            live, season, sorted({c["week"] for c in cands}) or None, model_version=version,
+            scoring_fingerprint=scoring.fingerprint)
+        # rows without expected points abstain (the consumer shows ESPN there): no value, never credited to the model
+        counts[name] = sse.attach_model(cands, name, sse.production_lookup(rows),
+                                        lambda c: (c["week"], c["espn_player_id"]))
+        if name == "ifp1_production":
+            counts["production_reader_exclusions"] = len(excluded)
+            counts["production_exclusions"] = excluded            # {run_id, week, reason}, passed through unchanged
+        else:
+            counts[f"{name}_reader_exclusions"] = len(excluded)
+            counts[f"{name}_exclusions"] = excluded
     return counts
 
 
@@ -282,7 +293,8 @@ def cmd_record(args) -> tuple[dict, int]:
     counts = attach_predictions(kept, live, src, scoring, args.season, ledger_dir=args.ledger_dir, as_of=cutoff)
     kept, _ = sse.drop_future_evidence(kept, cutoff)       # predictions captured after the cutoff are removed
     avail = sse.availability(kept, MODELS)
-    meta = {"scoring_fingerprint": scoring.fingerprint, "model_version": MODEL_VERSION, "attached": counts}
+    meta = {"scoring_fingerprint": scoring.fingerprint, "model_version": MODEL_VERSION,
+            "production_models": PRODUCTION_MODELS, "attached": counts}
     if overridden:
         meta["clock_override"] = {"requested_now": now.isoformat(), "wall_clock": wall.isoformat()}
     ds = sse.decision_set(args.season, args.week, kept, refused, settings, wall, models=MODELS,

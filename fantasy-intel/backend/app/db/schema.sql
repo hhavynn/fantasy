@@ -926,3 +926,17 @@ CREATE TABLE IF NOT EXISTS approved_artifacts (
     registered_at        TIMESTAMP,
     PRIMARY KEY (model_version, artifact_sha256)
 );
+
+-- Published projection-performance reports (create-only, no version bump). Built OFFLINE by
+-- scripts/projection_performance.py from the research-only ESPN comparison and the recorded Start/Sit decision sets
+-- (polars/numpy), so the hosted API can serve the scorecard with SQL alone (app/analytics/performance_report.py).
+-- Write-once: one row per distinct report, keyed by the sha256 of its canonical JSON text, inserted in one statement
+-- and never updated or deleted; readers recompute the hash and ignore a row that does not verify. Aggregates only:
+-- no player, roster, league or team identifiers. Never list this table in a connection._REBUILD entry.
+CREATE TABLE IF NOT EXISTS projection_performance_reports (
+    report_sha256        VARCHAR PRIMARY KEY,   -- sha256 of `payload` (UTF-8 bytes, exactly as stored)
+    season               INTEGER NOT NULL,
+    schema_version       VARCHAR NOT NULL,      -- performance_report.SCHEMA_VERSION
+    generated_at         TIMESTAMP NOT NULL,    -- naive UTC, also inside the payload
+    payload              VARCHAR NOT NULL       -- canonical JSON (sorted keys, no NaN)
+);
