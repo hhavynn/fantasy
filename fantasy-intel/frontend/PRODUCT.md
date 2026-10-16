@@ -35,6 +35,7 @@ Build pages from the shared primitives instead of one-off markup. UI primitives 
 - Data: `SortableTh` with `lib/sort.ts` (`parseSort`, `sortRows`) for URL-backed server-side sorting, `Delta` (signed change with glyph), `Badge`, `Pos`, `Score`, `TrendArrow`, `Sparkline`.
 - States: `Notice` (info, caution, negative, positive), `EmptyState`, `Skeleton`, `SkeletonTable`, `SkeletonStatStrip`, `BackendProblem` (backend offline, stale schema, HTTP error). `app/loading.tsx`, `app/error.tsx` and `app/not-found.tsx` cover the route states.
 - Charts: `LineChart`, `BarChart`, `ScatterChart`, coloured by the `--chart-1` to `--chart-6` tokens.
+- Interactive charts: `InteractiveScatter` (client) for scatter and bubble plots that need hover, focus and tap tooltips, keyboard-selectable markers and URL-backed selection (the Research lab). It measures its container so text and markers keep real pixel sizes on phones; `y = x` only when both axes share a unit. Server-rendered `ScatterChart` stays for static plots.
 - Helpers: `cx()` in `lib/cx.ts`, `plural()` in `lib/plural.ts`, number formatting in `lib/format.tsx` (`num`, `pct`, `signed`, `Missing`).
 - Also exported: `ToneIcon`, `VisuallyHidden`, `Callout` and `ErrorBox` (legacy wrappers over `Notice`).
 

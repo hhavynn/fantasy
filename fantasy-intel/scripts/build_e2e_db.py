@@ -18,6 +18,7 @@ import _bootstrap  # noqa: F401
 sys.path.insert(0, str(_bootstrap.BACKEND / "tests"))
 
 import synthetic_nfl as nfl  # noqa: E402
+import synthetic_research  # noqa: E402
 from espn_fixture import CURRENT, MY_SWID, SEASON, FakeEspnClient  # noqa: E402
 
 from app.analytics.pipeline import run_analytics  # noqa: E402
@@ -73,7 +74,11 @@ def build(db_path: Path) -> dict:
         # NFL schedule and defensive samples: weeks before CURRENT final, later weeks in the future.
         nfl.write(con, SEASON, nfl.schedule(18), set(range(1, CURRENT)))
         nfl.record_fetch(con)
-        return run_analytics(con, SEASON)
+        stats = run_analytics(con, SEASON)
+        # Research Lab pool (WR/RB/TE usage) on top of the league fixture; written after analytics so the
+        # ESPN-only pipeline leaves it alone.
+        stats["research"] = synthetic_research.write(con, SEASON)
+        return stats
     finally:
         con.close()
 

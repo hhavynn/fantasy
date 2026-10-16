@@ -1,0 +1,108 @@
+/* Fantasy Research Lab. Tokens only; see globals.css. */
+
+.lede { max-width: 92ch; margin: 0; color: var(--ink-muted); font-size: 14px; line-height: 21px; }
+.posLinks { display: flex; flex-wrap: wrap; gap: 8px; }
+.posLink {
+  display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; border-radius: 6px;
+  border: 1px solid var(--line-control); color: var(--ink); font-weight: 500;
+}
+.posLink:hover { text-decoration: none; background: var(--surface-hover); }
+
+/* ---------- Filters ---------- */
+.filters {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; padding: 12px 16px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+}
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-faint); min-width: 0; }
+.field select { min-width: 130px; }
+.filterActions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.pool { margin: 8px 0 0; color: var(--ink-muted); font-size: 13px; }
+
+/* ---------- Layout ---------- */
+.labGrid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); align-items: start; }
+.side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.chartSection { min-width: 0; }
+@media (max-width: 1100px) { .labGrid { grid-template-columns: minmax(0, 1fr); } }
+.viewTabs { margin: -4px 0 12px; }
+.figure { margin: 0; min-width: 0; }
+.question { margin: 0 0 8px; color: var(--ink); font-weight: 500; }
+.caption { margin: 10px 0 0; color: var(--ink-muted); font-size: 12.5px; line-height: 18px; max-width: 100ch; }
+
+.segmented { display: inline-flex; border: 1px solid var(--line-control); border-radius: 6px; overflow: hidden; }
+.segmented a { padding: 3px 10px; font-size: 12px; color: var(--ink-muted); }
+.segmented a + a { border-left: 1px solid var(--line-control); }
+.segmented a:hover { text-decoration: none; color: var(--ink); background: var(--surface-hover); }
+.segmented a[aria-current] { color: var(--ink); background: var(--accent-soft); font-weight: 600; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 8px 0 0; padding: 0; list-style: none; color: var(--ink-muted); font-size: 12px; line-height: 18px; }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.ringKey { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--accent); box-sizing: border-box; }
+.ringKeyCompare { border-color: var(--chart-4); border-style: dashed; }
+
+/* ---------- Research groups ---------- */
+.groups { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.group { min-width: 0; }
+.groupTitle { margin: 0 0 8px; font-size: 13px; letter-spacing: .02em; color: var(--ink); }
+.groupList { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: g; }
+.groupList li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 13px; counter-increment: g; }
+.groupList li::before { content: counter(g); width: 14px; color: var(--ink-faint); font-variant-numeric: tabular-nums; font-size: 12px; }
+.groupStat { color: var(--ink-muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+.groupRule { margin: 10px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
+.groupRule summary { cursor: pointer; color: var(--ink-muted); width: fit-content; }
+.groupRule summary:hover { color: var(--ink); }
+.groupRule p { margin: 6px 0 0; }
+.teamTag { margin-left: 6px; color: var(--ink-faint); font-size: 11px; font-weight: 500; letter-spacing: .03em; }
+
+/* ---------- Evidence ---------- */
+.evidenceTitle { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.evidenceTitle > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.evidenceMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0 0 10px; color: var(--ink-muted); font-size: 13px; }
+.groupLine { margin: 0 0 10px; }
+.evidenceStats { margin: 0 0 4px; }
+.h3 { display: flex; align-items: center; gap: 8px; margin: 16px 0 6px; font-size: 13px; color: var(--ink); }
+.kv { margin: 0; display: grid; gap: 3px; font-size: 13px; }
+.kv > div { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; border-bottom: 1px dashed var(--line); }
+.kv dt { color: var(--ink-muted); }
+.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.noteTight { margin: 8px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
+.groupNotes { margin: 12px 0 0; padding-left: 18px; color: var(--ink-muted); font-size: 12.5px; line-height: 18px; }
+.groupNotes li { margin: 4px 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; font-weight: 500; }
+
+.picker { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.picker + .picker { margin-top: 16px; }
+.pickerLabel { font-size: 12px; color: var(--ink-faint); }
+.pickerRow { display: flex; gap: 8px; }
+.pickerRow input { flex: 1 1 auto; min-width: 0; }
+.pickerMiss { margin: 0; color: var(--caution); font-size: 12px; }
+
+/* ---------- Timeline ---------- */
+.multiples { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); margin-bottom: 16px; }
+.multiples > div { min-width: 0; }
+
+/* ---------- Leaderboard heatmap: tint strength by position percentile; the number is always printed. ---------- */
+/* Cells contain the visually hidden percentile text, so it cannot widen the page; the pinned first column stays sticky. */
+.board td:not(:first-child) { min-width: 52px; position: relative; }
+.heat1 { background-color: color-mix(in srgb, var(--chart-1) 5%, var(--cell-bg, transparent)); }
+.heat2 { background-color: color-mix(in srgb, var(--chart-1) 13%, var(--cell-bg, transparent)); }
+.heat3 { background-color: color-mix(in srgb, var(--chart-1) 22%, var(--cell-bg, transparent)); }
+.heat4 { background-color: color-mix(in srgb, var(--chart-1) 34%, var(--cell-bg, transparent)); font-weight: 600; }
+.heatLegend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 0; padding: 0; list-style: none; font-size: 11px; color: var(--ink-faint); }
+.heatLegend li { display: inline-flex; align-items: center; gap: 4px; }
+.heatSwatch { width: 14px; height: 10px; border-radius: 2px; border: 1px solid var(--line); }
+.lowSample { color: var(--caution); cursor: help; }
+
+@media (max-width: 720px) {
+  .filters { padding: 12px; }
+  .field { flex: 1 1 calc(50% - 7px); }
+  .field select { min-width: 0; width: 100%; }
+  .filterActions { margin-left: 0; width: 100%; }
+  .filterActions button { flex: 1; }
+  .pickerRow input[type="search"] { min-width: 0; }
+}
+
+/* ---------- Overview glossary ---------- */
+.glossary { margin: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.glossary > div { min-width: 0; }
+.glossary dt { font-weight: 600; color: var(--ink); font-size: 13px; }
+.glossary dd { margin: 2px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
