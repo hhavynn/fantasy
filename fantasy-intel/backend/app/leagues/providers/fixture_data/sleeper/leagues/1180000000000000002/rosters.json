@@ -1,0 +1,81 @@
+[
+ {
+  "roster_id": 1,
+  "owner_id": "700000000000000101",
+  "co_owners": null,
+  "league_id": "1180000000000000002",
+  "players": [
+   "7001",
+   "4046",
+   "6794",
+   "DET"
+  ],
+  "starters": [
+   "4046",
+   "6794",
+   "0",
+   "7001",
+   "0",
+   "0",
+   "0",
+   "0",
+   "DET"
+  ],
+  "reserve": null,
+  "taxi": null,
+  "keepers": null,
+  "player_map": null,
+  "metadata": null,
+  "settings": {
+   "wins": 3,
+   "losses": 2,
+   "ties": 0,
+   "fpts": 520,
+   "fpts_decimal": 10,
+   "fpts_against": 400,
+   "fpts_against_decimal": 0,
+   "waiver_position": 1,
+   "waiver_budget_used": 0,
+   "total_moves": 2
+  }
+ },
+ {
+  "roster_id": 2,
+  "owner_id": "700000000000000201",
+  "co_owners": null,
+  "league_id": "1180000000000000002",
+  "players": [
+   "7002",
+   "7003",
+   "7564"
+  ],
+  "starters": [
+   "0",
+   "0",
+   "0",
+   "7002",
+   "7564",
+   "0",
+   "0",
+   "0",
+   "0"
+  ],
+  "reserve": null,
+  "taxi": null,
+  "keepers": null,
+  "player_map": null,
+  "metadata": null,
+  "settings": {
+   "wins": 2,
+   "losses": 3,
+   "ties": 0,
+   "fpts": 480,
+   "fpts_decimal": 10,
+   "fpts_against": 400,
+   "fpts_against_decimal": 0,
+   "waiver_position": 2,
+   "waiver_budget_used": 0,
+   "total_moves": 2
+  }
+ }
+]
