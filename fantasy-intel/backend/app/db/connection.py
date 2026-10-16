@@ -66,7 +66,7 @@ def connect_motherduck(database: str) -> duckdb.DuckDBPyConnection:
     return duckdb.connect(motherduck_dsn(database))
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # Derived tables whose definitions changed in each version. Raw ESPN/nflverse tables
 # are never dropped; derived ones are rebuilt by re-running the syncs/analytics.
@@ -77,7 +77,11 @@ _REBUILD = {
     4: ["player_week_usage"],   # external route columns added; external_* tables are never dropped
     5: [],                      # create-only: espn_projection_history + player_ros_projections
     6: ["team_week_lineup_projections", "team_ros_lineup_projections"],   # V2 lineup tables only
-    7: ["independent_projection_runs", "independent_player_projections"],  # participation columns added
+    7: [],                      # participation columns are ALTERed in (schema.sql): rebuilding would DROP stored runs
+    # 8: create-only. independent_projection_rows is new, independent_projection_runs gains provenance columns
+    #    (ALTER ... ADD COLUMN IF NOT EXISTS in schema.sql) and the legacy rows are copied by
+    #    production_forecasts.migrate_legacy. These tables must NEVER be listed in a rebuild entry: the list DROPS.
+    8: [],
 }
 _V2_REBUILD = _REBUILD[2]
 
@@ -92,6 +96,9 @@ def init_db(con: duckdb.DuckDBPyConnection) -> None:
             for t in tables:
                 con.execute(f"DROP TABLE IF EXISTS {t}")
     con.execute(SCHEMA_PATH.read_text())
+    if version < 8:
+        from ..analytics.production_forecasts import migrate_legacy   # SQL + stdlib only; lazy: it imports this module
+        migrate_legacy(con)
     con.execute("DELETE FROM schema_meta WHERE key = 'schema_version'")
     con.execute("INSERT INTO schema_meta VALUES ('schema_version', ?)", [str(SCHEMA_VERSION)])
 
@@ -191,6 +198,19 @@ def merge_columns(
         con.execute(f"UPDATE {table} t SET {sets} FROM {tmp} s WHERE {cond}")
         con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM {tmp} s "
                     f"WHERE NOT EXISTS (SELECT 1 FROM {table} t WHERE {cond})")
+    finally:
+        con.unregister(tmp)
+    return len(rows)
+
+
+def insert_rows(con: duckdb.DuckDBPyConnection, table: str, rows: Sequence[dict]) -> int:
+    """Append rows; never deletes or replaces. A key collision raises (the table's PRIMARY KEY)."""
+    if not rows:
+        return 0
+    tmp = f"_tmp_{uuid.uuid4().hex[:8]}"
+    con.register(tmp, _rows_to_arrow(con, table, rows))
+    try:
+        con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM {tmp}")
     finally:
         con.unregister(tmp)
     return len(rows)
