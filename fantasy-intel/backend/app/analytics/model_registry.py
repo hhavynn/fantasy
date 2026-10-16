@@ -124,18 +124,7 @@ def validate_manifest(m) -> list[str]:
         seen.add(v)
         if e.get("state") not in STATES:
             out.append(f"{v}: unknown state {e.get('state')!r}")
-        art = e.get("artifact")
-        if not isinstance(art, dict) or "path" not in art or "sha256" not in art:
-            out.append(f"{v}: artifact must be {{path, sha256}}")
-        elif art["sha256"] is not None and not _sha_ok(art["sha256"]):
-            out.append(f"{v}: artifact sha256 is not a full lowercase hex digest")
-        reps = e.get("validation_reports")
-        if not isinstance(reps, list):
-            out.append(f"{v}: validation_reports must be a list")
-        else:
-            for r in reps:
-                if not isinstance(r, dict) or r.get("kind") not in REPORT_KINDS or "path" not in r or "sha256" not in r:
-                    out.append(f"{v}: a validation report needs kind in {REPORT_KINDS}, path and sha256")
+        out += [f"{v}: {p}" for p in _entry_type_problems(e)]
         if not isinstance(e.get("reason"), str) or not e.get("reason", "").strip():
             out.append(f"{v}: a human-readable reason is required")
     approved = [e for e in models if isinstance(e, dict) and e.get("state") == APPROVED]
@@ -149,7 +138,8 @@ def validate_manifest(m) -> list[str]:
         out.append(f"production pointer {prod} does not name the approved_production model "
                    f"{approved[0].get('version')}")
     else:
-        ap = approved[0].get("approval") or {}
+        ap = approved[0].get("approval")
+        ap = ap if isinstance(ap, dict) else {}
         if ap.get("kind") not in APPROVAL_KINDS:
             out.append(f"{approved[0].get('version')}: approved_production without an approval record")
         elif ap["kind"] == INCUMBENT and not _is_initial_production(m, approved[0]["version"]):
@@ -162,6 +152,60 @@ def validate_manifest(m) -> list[str]:
         out.append("history must be a non-empty list")
     elif not all(isinstance(h, dict) for h in hist):
         out.append("every history event must be an object")
+    elif not all(isinstance(h.get("event"), str) and (h.get("production") is None or isinstance(h["production"], str))
+                 for h in hist):
+        out.append("every history event needs a string event and a string or null production")
+    return out
+
+
+def _ref_problems(ref, what: str, path_required: bool) -> list[str]:
+    if not isinstance(ref, dict) or "path" not in ref or "sha256" not in ref:
+        return [f"{what} must be {{path, sha256}}"]
+    out = []
+    path = ref["path"]
+    if not ((isinstance(path, str) and path.strip()) or (path is None and not path_required)):
+        out.append(f"{what} path must be a non-empty string{'' if path_required else ' or null'}")
+    if ref["sha256"] is not None and not _sha_ok(ref["sha256"]):
+        out.append(f"{what} sha256 is not a full lowercase hex digest")
+    if path is None and ref["sha256"] is not None:
+        out.append(f"{what} has a sha256 but no path")
+    return out
+
+
+def _entry_type_problems(e: dict) -> list[str]:
+    """Every field has the type the evaluator relies on, so malformed input is a validation
+    problem, never a crash."""
+    out = []
+    if not (isinstance(e.get("family"), str) and e["family"].strip()):
+        out.append("family must be a non-empty string")
+    out += _ref_problems(e.get("artifact"), "artifact", path_required=False)
+    if not isinstance(e.get("scoring_fingerprint"), str):
+        out.append("scoring_fingerprint must be a string")
+    cut = e.get("training_cutoff")
+    if cut is not None and not (isinstance(cut, dict) and all(type(cut.get(k)) is int for k in ("season", "week"))):
+        out.append("training_cutoff must be null or {season: int, week: int}")
+    ap = e.get("approval")
+    if ap is not None and not (isinstance(ap, dict) and ap.get("kind") in APPROVAL_KINDS):
+        out.append(f"approval must be null or an object with kind in {APPROVAL_KINDS}")
+    elif isinstance(ap, dict):
+        for k in ("approved_by", "approved_at"):
+            if ap.get(k) is not None and not isinstance(ap[k], str):
+                out.append(f"approval {k} must be a string")
+        if "evidence_sha256" in ap and not isinstance(ap["evidence_sha256"], dict):
+            out.append("approval evidence_sha256 must be an object")
+    reps = e.get("validation_reports")
+    if not isinstance(reps, list):
+        out.append("validation_reports must be a list")
+    else:
+        for r in reps:
+            if not isinstance(r, dict) or r.get("kind") not in REPORT_KINDS:
+                out.append(f"a validation report needs kind in {REPORT_KINDS}")
+            else:
+                out += _ref_problems(r, f"{r['kind']} report", path_required=True)
+    if e.get("rollback_to") is not None and not isinstance(e["rollback_to"], str):
+        out.append("rollback_to must be null or a version string")
+    if "retired" in e and not isinstance(e["retired"], dict):
+        out.append("retired must be an object")
     return out
 
 
@@ -259,7 +303,38 @@ def load_family_artifact(family: str, data: bytes) -> dict:
             raise RegistryError(f"the artifact's {pos} model is malformed")
         if not all(_num(v) for v in [*m.means, *m.stds, *m.coef, m.intercept, m.lam]) or any(v <= 0 for v in m.stds):
             raise RegistryError(f"the artifact's {pos} model has non-finite or invalid parameters")
+    problem = _intervals_problem(art.intervals)
+    if problem:
+        raise RegistryError(f"the artifact's intervals are malformed: {problem}")
     return raw
+
+
+def _intervals_problem(intervals) -> str | None:
+    """Published 80% intervals must have the shape interval_for reads, with finite numbers, and
+    interval_for must return finite bounds across the prediction range."""
+    from .independent_projections import interval_for
+
+    if not isinstance(intervals, dict):
+        return "not an object"
+    for pos, spec in intervals.items():
+        if pos not in POSITIONS:
+            return f"unknown position {pos!r}"
+        bands = spec.get("bands") if isinstance(spec, dict) else None
+        if not isinstance(bands, list) or not bands:
+            return f"{pos} has no bands"
+        for b in bands:
+            if not isinstance(b, dict) or not all(_num(b.get(k)) for k in ("q_low", "q_high")) \
+                    or not all(b.get(k) is None or _num(b.get(k)) for k in ("low", "high")) or "low" not in b \
+                    or "high" not in b or b["q_low"] > b["q_high"]:
+                return f"{pos} has a malformed band {b!r}"
+        try:
+            for pred in [x / 2 for x in range(0, 121)]:
+                iv = interval_for(intervals, pos, pred)
+                if iv is not None and not all(_num(v) for v in iv):
+                    return f"{pos} interval at {pred} is not finite"
+        except (TypeError, KeyError, AttributeError, ValueError) as err:
+            return f"{pos}: interval_for fails ({err.__class__.__name__})"
+    return None
 
 
 def artifact_identity_problem(data: bytes, version: str, live_fp: str | None, family: str = "ifp") -> str | None:
@@ -583,7 +658,32 @@ def _blocking(checks: list[dict]) -> list[str]:
     return [f"{c['name']}: {c['explanation']}" for c in checks if c["result"] not in (PASS, NOT_APPLICABLE)]
 
 
+_MALFORMED = (TypeError, AttributeError, KeyError, ValueError, IndexError)
+
+
+def _malformed(version, err: Exception) -> dict:
+    why = f"malformed input ({err.__class__.__name__}: {err})"
+    return {"version": version, "dry_run": True, "activates": False, "activatable": False,
+            "eligible_for_review": False, "checks": [_crit("input", FAIL, why)], "blocking": [why]}
+
+
 def review_candidate(m: dict, version: str, *, model_root: Path, live_scoring_fp: str | None) -> dict:
+    """Fail-closed wrapper: unexpected input shapes become a failed check, never a crash."""
+    try:
+        return _review_candidate(m, version, model_root=model_root, live_scoring_fp=live_scoring_fp)
+    except _MALFORMED as err:
+        return _malformed(version, err)
+
+
+def evaluate_promotion(old: dict, new: dict, *, model_root: Path, live_scoring_fp: str | None) -> dict:
+    """Fail-closed wrapper of _evaluate_promotion (see there)."""
+    try:
+        return _evaluate_promotion(old, new, model_root=model_root, live_scoring_fp=live_scoring_fp)
+    except _MALFORMED as err:
+        return _malformed(None, err)
+
+
+def _review_candidate(m: dict, version: str, *, model_root: Path, live_scoring_fp: str | None) -> dict:
     """Dry run on the CURRENT manifest: would `version` be eligible for human review, and what
     blocks it? A model that is not production can never be activatable here: activation needs a
     proposed manifest with an owner approval (evaluate_promotion)."""
@@ -606,7 +706,7 @@ def review_candidate(m: dict, version: str, *, model_root: Path, live_scoring_fp
             "blocking": _blocking(checks)}
 
 
-def evaluate_promotion(old: dict, new: dict, *, model_root: Path, live_scoring_fp: str | None) -> dict:
+def _evaluate_promotion(old: dict, new: dict, *, model_root: Path, live_scoring_fp: str | None) -> dict:
     """Gate for a FUTURE promotion: replacing manifest `old` (committed) by `new` (proposed).
     `activatable` only when the transition is valid, the new production model passed every
     evidence check against the model it replaces, and an owner approval cites the exact evidence.

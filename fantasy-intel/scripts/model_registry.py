@@ -82,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
             args.out = None
         if args.out:
             reg.write_once(args.out, result)
-    except (reg.RegistryError, OSError, ValueError) as err:
+    except (reg.RegistryError, OSError, ValueError, TypeError, AttributeError, KeyError) as err:
         print(str(err), file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2, default=str))

@@ -711,3 +711,73 @@ def test_duplicate_prospective_weeks_rejected(env):
     _repin(new, reg.PROSPECTIVE, _rewrite(root, "reports/prospective.json", dup))
     rep = _gate(env, new)
     assert not rep["activatable"] and _results(rep)["finalized_evaluation"] == reg.FAIL
+
+
+GOOD_BANDS = {"bands": [{"low": None, "high": 10.0, "q_low": -3.0, "q_high": 4.0},
+                        {"low": 10.0, "high": None, "q_low": -6.0, "q_high": 8.0}]}
+
+
+@pytest.mark.parametrize("intervals,ok", [
+    ({"QB": GOOD_BANDS, "WR": GOOD_BANDS}, True),
+    ({"QB": 1}, False),
+    ({"QB": {"bands": []}}, False),
+    ({"QB": {"bands": [{"low": None, "high": None, "q_low": -1.0}]}}, False),
+    ({"QB": {"bands": [{"low": None, "high": None, "q_low": 2.0, "q_high": 1.0}]}}, False),
+    ({"K": GOOD_BANDS}, False),
+    ([1], False),
+])
+def test_artifact_intervals_must_have_the_production_shape(env, intervals, ok):
+    root, _, new = env
+    art = _cand_artifact(root)
+    art["intervals"] = intervals
+    reg.entry(new, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json", art)
+    rep = _gate(env, new)
+    assert rep["activatable"] is ok
+    assert _results(rep)["artifact_loads"] == (reg.PASS if ok else reg.FAIL)
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda e: e["artifact"].update(path=7),
+    lambda e: e["validation_reports"][0].update(path=None),
+    lambda e: e["validation_reports"][0].update(path=["x"]),
+    lambda e: e.update(approval="owner"),
+    lambda e: e["approval"].update(approved_by=1),
+    lambda e: e["approval"].update(evidence_sha256=["x"]),
+    lambda e: e.update(training_cutoff="2026-16"),
+    lambda e: e.update(rollback_to=["ifp-1.0.0"]),
+    lambda e: e.update(family=None),
+    lambda e: e.update(scoring_fingerprint=1),
+])
+def test_malformed_entry_fields_fail_closed_without_crashing(env, mutate, tmp_path):
+    root, old, new = env
+    bad = deepcopy(new)
+    mutate(reg.entry(bad, CAND))
+    assert reg.validate_manifest(bad)
+    rep = _gate(env, bad)
+    assert not rep["activatable"] and rep["blocking"]
+    p = tmp_path / "bad.json"
+    p.write_text(json.dumps(bad))
+    with pytest.raises(reg.RegistryError):
+        reg.load_manifest(p)
+
+
+def test_evaluators_never_raise_on_malformed_input(env):
+    root, old, _ = env
+    for junk in ([], "x", {"schema": reg.SCHEMA, "models": "x", "production": {}, "history": [1]}):
+        assert reg.evaluate_promotion(old, junk, model_root=root, live_scoring_fp=FP)["activatable"] is False
+        assert reg.review_candidate(junk, CAND, model_root=root, live_scoring_fp=FP)["activatable"] is False
+
+
+def test_prospective_subject_comes_from_the_ledger_runs():
+    from app.analytics import weekly_learning as wl
+
+    def run(kind, champ, chal):
+        return {"kind": kind, "artifacts": {"champion": {"version": champ}, "challenger": {"version": chal}}}
+    one = wl.report_subject([run("pregame", MODEL_VERSION, CAND)] * 3 + [run("retrospective", "x", "y")], "pregame", FP)
+    assert (one["champion_version"], one["challenger_version"], one["runs"]) == (MODEL_VERSION, CAND, 3)
+    mixed = wl.report_subject([run("pregame", MODEL_VERSION, CAND), run("pregame", MODEL_VERSION, "ifp-2.0.0")],
+                              "pregame", FP)
+    assert mixed["challenger_version"] is None and mixed["challenger_versions_seen"] == ["ifp-2.0.0", CAND]
+    legacy = wl.report_subject([{"kind": "pregame"}], "pregame", FP)
+    assert legacy["champion_version"] is None and legacy["challenger_version"] is None
+    assert wl.report_subject([], "pregame", FP)["challenger_version"] is None

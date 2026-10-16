@@ -228,9 +228,9 @@ def cmd_predict(args, live, src, scoring, artifacts: dict | None = None, hist=No
 def cmd_evaluate(args, src, live=None, scoring=None, **_) -> dict:
     runs = wl.load_ledger(args.out)
     fetched = {args.season: _fetched_at(live, args.season)}
-    # which models the report compares (app/analytics/model_registry.py refuses a report without it)
-    subject = {"challenger_version": ch.CHALLENGER_VERSION, "champion_version": wl.MODEL_VERSION,
-               "scoring_fingerprint": None if scoring is None else scoring.fingerprint}
+    # which models the counted pregame runs actually used, from their recorded artifacts
+    # (app/analytics/model_registry.py refuses a report without a single consistent subject)
+    subject = wl.report_subject(runs, "pregame", None if scoring is None else scoring.fingerprint)
     rep = {"subject": subject, "pregame": wl.evaluate(runs, src, "pregame", fetched_at=fetched),
            "retrospective_not_evidence": wl.evaluate(runs, src, "retrospective", fetched_at=fetched)}
     d = args.out / "reports"
