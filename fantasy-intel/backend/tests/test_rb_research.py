@@ -476,6 +476,23 @@ def test_modified_candidate_code_changes_the_frozen_fingerprint_and_check_frozen
     with pytest.raises(ValueError, match="candidate code"):
         rb.check_frozen(cfg, "hash1", "fp1")
     monkeypatch.undo()
+    # the hurdle's logistic dependencies in participation.py are bound too
+    from app.analytics import participation as part
+
+    def sigmoid_changed(x):
+        return x
+    monkeypatch.setattr(part, "_sigmoid", sigmoid_changed)
+    assert rb.candidate_code_fingerprint() != cfg["candidate_code_sha256"]
+    monkeypatch.undo()
+    assert rb.candidate_code_fingerprint() == cfg["candidate_code_sha256"]
+
+    def predict_changed(self, df):
+        return self.logits(df)
+    monkeypatch.setattr(part.LogitModel, "predict", predict_changed)
+    assert rb.candidate_code_fingerprint() != cfg["candidate_code_sha256"]
+    with pytest.raises(ValueError, match="candidate code"):
+        rb.check_frozen(cfg, "hash1", "fp1")
+    monkeypatch.undo()
     legacy = {k: v for k, v in cfg.items() if k != "candidate_code_sha256"}
     with pytest.raises(ValueError, match="candidate code"):
         rb.check_frozen(legacy, "hash1", "fp1")

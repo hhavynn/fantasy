@@ -764,16 +764,20 @@ CANDIDATE_CONSTANTS = ("CANDIDATE_GRIDS", "CANDIDATE_FEATURES", "HURDLE_RIDGE_LA
 
 
 def candidate_code_fingerprint() -> str:
-    """sha256 of the source of the candidate functions (and `participation.fit_logit`, which `hurdle`
-    calls) plus the candidate constants. Any edit, including to comments, changes it: deliberately strict."""
-    from .participation import fit_logit
+    """sha256 of the source of the candidate functions (and `participation.fit_logit`, `_sigmoid` and the
+    `LogitModel` class, which `hurdle` calls) plus the candidate constants. Any edit, including to comments, changes it: deliberately strict."""
+    from . import participation
 
     h = hashlib.sha256()
     for name in CANDIDATE_CODE:
         h.update(name.encode())
         h.update(inspect.getsource(globals()[name]).encode())
-    h.update(b"participation.fit_logit")
-    h.update(inspect.getsource(fit_logit).encode())
+    for dep in ("fit_logit", "_sigmoid", "LogitModel"):      # what `hurdle` fits and predicts with
+        h.update(f"participation.{dep}".encode())
+        h.update(inspect.getsource(getattr(participation, dep)).encode())
+    for method in ("logits", "predict"):      # looked up on the class, so a patched method is hashed too
+        h.update(f"participation.LogitModel.{method}".encode())
+        h.update(inspect.getsource(getattr(participation.LogitModel, method)).encode())
     for name in CANDIDATE_CONSTANTS:
         h.update(name.encode())
         h.update(json.dumps(globals()[name], sort_keys=True, default=str).encode())
