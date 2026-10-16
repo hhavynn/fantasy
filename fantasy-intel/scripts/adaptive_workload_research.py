@@ -133,6 +133,8 @@ def cmd_run(args) -> dict:
     store_path = _out(args) / "store_aw.parquet"
     cfg = ch.ChallengerConfig.load()
     sel = json.loads((args.ifp_dir / "selection.json").read_text())
+    if sel.get("scoring_fingerprint") != scoring.fingerprint:
+        raise SystemExit("selection.json (frozen ifp-1.0.0 penalties) was made under different league scoring")
     qb = {"QB": [cfg.positions["QB"]["lam"]]}
     grid = {**qb, **{p: list(aw.LAMBDA_GRID) for p in ("RB", "WR", "TE")}}
 
