@@ -19,11 +19,11 @@ not an edge; the report repeats that note at the top.
 | `leagues` | `roster_slots` JSON (`QB`, `RB`, ..., `FLEX`, `BE`, `IR`) and `scoring_items`. | Slot counts drive the lineup optimiser and which cross-position pairs are real decisions. A league whose scoring fingerprint differs from the one the outcomes use is skipped and listed (CONTRACTS section 3). |
 | `analytics/lineup.py` | `lineup_slots`, `assign_lineup` (fixed slots first, exact search over flex slots), `eligible`, `FLEX_ELIGIBILITY`. | Reused unchanged: the same optimiser scores the model's lineup and the hindsight lineup. K and D/ST slots are dropped (no model projects them). |
 | `start_sit.py` | The product feature (ESPN default, opt-in source switch). | Not touched. |
-| `forecast_backtest.league_roster_pairs / pair_decisions / PAIR_POOL / CLOSE_PAIR_POINTS` | Same-position pairs from snapshots; accuracy and regret on the top-N pool by A1. | Semantics copied (ties, half credit, close = A1 within 3 points). Findings: `league_roster_pairs` groups by `team_id` without `league_id`, so a database with several leagues can pair players that never shared a roster; it does not check whether the snapshot was pregame; pairs include two players who both start (no real decision); and `pair_decisions` scores conditionally (players who appeared), unlike a real lineup where a sitter scores 0. The independent review confirmed the cross-league grouping (`league_id` is available but neither selected nor grouped); it is NOT changed here and is being handled separately, so the 1,012-pair figure should be read with that caveat. |
+| `forecast_backtest.league_roster_pairs / pair_decisions / PAIR_POOL / CLOSE_PAIR_POINTS` | Same-position pairs from snapshots; accuracy and regret on the top-N pool by A1. | Semantics copied (ties, half credit, close = A1 within 3 points). Findings: `league_roster_pairs` groups by `team_id` without `league_id`, so a database with several leagues can pair players that never shared a roster; it does not check whether the snapshot was pregame; pairs include two players who both start (no real decision); and `pair_decisions` scores conditionally (players who appeared), unlike a real lineup where a sitter scores 0. The cross-league grouping (`league_id` was neither selected nor grouped) was confirmed in review and is fixed on main by #63; figures quoted before that fix may include pairs that never shared a roster. |
 | `weekly_learning.frozen_rows` | Research ledger rows (ifp-1 refit champion, ifp-2 challenger) created strictly before kickoff. | Used for `ifp1_frozen` / `ifp2_frozen`, unconditional `expected_points`, `captured_at` = the run's creation time. |
 | `forecast_backtest.espn_pregame` | Latest ESPN snapshot before the player's kickoff, keyed by GSIS. | Re-implemented here keyed by ESPN id so the capture time is kept for the pregame check (the benchmark's `evaluation_rows` will own this). |
 | A1 / A2 | `baseline_predictions(features_for_week)`: recent and season average from games strictly before the week. | Point-in-time by construction (`point_in_time` flag); no capture time needed. |
-| Production ifp-1 | `independent_player_projections` (one run per week, replaced by the next run). | `legacy_forecast_reader` returns a row only if the run was created strictly before the player's kickoff, the model version and scoring fingerprint match and the artifact predates the week's first kickoff. Same signature as CONTRACTS section 5. |
+| Production ifp-1 | Since #68 every run is stored immutably in `independent_projection_runs` / `independent_projection_rows`; the old `independent_player_projections` table is frozen. | `production_forecasts.pregame_forecasts` (CONTRACTS section 5) is the default reader: per player the latest eligible run created strictly before his own kickoff. Its exclusions (`{run_id, week, reason}`) are passed through to the report with the reader's source label. `legacy_forecast_reader` is only the fallback for a database without the rows table (pre-v8) and is labeled as such. Production uses unconditional `expected_points`; a run without participation has none and abstains. |
 
 ## 2. Decisions and rules
 
@@ -109,8 +109,8 @@ No real database is available to the author, so these are structural expectation
 * Retrospective rosters are post-hoc for every completed week. Decisions are still comparable across models
   (all predictions are pregame) but carry the snapshot caveat; only the headline `pregame_roster_only`
   counts are free of it, and that will be ~0 until `record` has been running.
-* ifp-1 production: the table keeps only the latest run per week, so earlier forecasts are mostly gone
-  (Workstream A's immutable store fixes this). ifp-1/ifp-2 frozen: only weeks in the ledger. Expect these
+* ifp-1 production: runs are retained from the v8 store onwards (earlier weeks only if migrated from
+  the legacy table, which kept one run per week). ifp-1/ifp-2 frozen: only weeks in the ledger. Expect these
   sets unavailable or tiny now.
 * Prospective: with N leagues of ~12 teams, each recorded week yields on the order of ten lineups and
   ~50-100 same-position pairs per league. The decision threshold (200) is reachable in weeks; the week
@@ -123,8 +123,8 @@ Workstream B's `evaluation_rows` (CONTRACTS section 6) carries the same per play
 replace `espn_pregame_predictions` and the ledger/baseline attachments in the script with its rows
 (`ours_independent_pred`, `ours_conditional_pred`, `espn_pred`, `espn_captured_at`); the decision layer
 needs no change because a candidate only requires `{value, captured_at}` per model. Workstream A's
-`production_forecasts.pregame_forecasts` replaces `legacy_forecast_reader` (same signature, injected through
-`forecast_reader`). Nothing from either branch is imported here.
+`production_forecasts.pregame_forecasts` is already the default production reader (`forecast_reader_for`).
+Nothing from either branch is imported here.
 
 ## 6. Limits
 

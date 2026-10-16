@@ -642,6 +642,24 @@ def legacy_forecast_reader(con, season: int, weeks: Iterable[int] | None = None,
     return rows, [{"run_id": k[0], "week": k[1], "reason": k[2], "rows": n} for k, n in sorted(excl.items(), key=str)]
 
 
+PRODUCTION_SOURCE = "production_forecasts (immutable run-keyed rows)"
+LEGACY_SOURCE = "legacy_single_run_table (pre-v8 database, rows frozen)"
+
+
+def forecast_reader_for(con) -> tuple[Callable | None, str]:
+    """(reader, source label) for the champion production forecasts. The immutable store
+    (production_forecasts.pregame_forecasts, CONTRACTS section 5) is the default: since schema v8 new runs
+    are written only to `independent_projection_rows`, so a legacy-only reader would never see them. The
+    legacy single-run reader is an explicit fallback for a database without that table; with neither
+    there is no production evidence (reader None)."""
+    if table_exists(con, "independent_projection_rows"):
+        from .production_forecasts import pregame_forecasts
+        return pregame_forecasts, PRODUCTION_SOURCE
+    if table_exists(con, "independent_player_projections"):
+        return legacy_forecast_reader, LEGACY_SOURCE
+    return None, "none (no production forecast tables)"
+
+
 def production_lookup(rows: Iterable[Mapping]) -> dict:
     """(week, espn_player_id) -> unconditional expected points of the champion production run, with the
     run's creation time as the capture time. Rows without expected points abstain (no value)."""

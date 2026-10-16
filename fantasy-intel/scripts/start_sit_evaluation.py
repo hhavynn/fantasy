@@ -146,7 +146,7 @@ def ledger_lookup(ledger_dir: Path | None) -> dict:
 
 
 def attach_predictions(cands: list[dict], live, src: Sources, scoring, season: int, *, ledger_dir: Path | None,
-                       forecast_reader=sse.legacy_forecast_reader, as_of: datetime | None = None) -> dict:
+                       forecast_reader=None, as_of: datetime | None = None) -> dict:
     """Set preds[...] for every model on the candidates (a model with nothing stays absent). Returns counts."""
     gkey = lambda c: (c["season"], c["week"], c.get("gsis_id"))  # noqa: E731
     counts = {}
@@ -156,16 +156,20 @@ def attach_predictions(cands: list[dict], live, src: Sources, scoring, season: i
         counts[name] = sse.attach_model(cands, name, lookup, gkey)
     for name, lookup in ledger_lookup(ledger_dir).items():
         counts[name] = sse.attach_model(cands, name, lookup, gkey)
-    rows, excluded = forecast_reader(live, season, sorted({c["week"] for c in cands}) or None,
-                                     model_version=MODEL_VERSION, scoring_fingerprint=scoring.fingerprint)
+    reader, source = (forecast_reader, "injected reader") if forecast_reader is not None else sse.forecast_reader_for(live)
+    rows, excluded = ([], []) if reader is None else reader(
+        live, season, sorted({c["week"] for c in cands}) or None, model_version=MODEL_VERSION,
+        scoring_fingerprint=scoring.fingerprint)
     counts["ifp1_production"] = sse.attach_model(cands, "ifp1_production", sse.production_lookup(rows),
                                                  lambda c: (c["week"], c["espn_player_id"]))
+    counts["production_source"] = source
     counts["production_reader_exclusions"] = len(excluded)
+    counts["production_exclusions"] = excluded            # {run_id, week, reason}, passed through unchanged
     return counts
 
 
 def build_report_candidates(live, hist, src, scoring, season: int, weeks, ledger_dir, fetched_at,
-                            forecast_reader=sse.legacy_forecast_reader) -> tuple[list[dict], dict, dict]:
+                            forecast_reader=None) -> tuple[list[dict], dict, dict]:
     settings, skipped = comparable_leagues(live, season, scoring)
     cands = [c for c in sse.roster_candidates(live, season, weeks) if c["league_id"] in settings]
     attach_outcomes(cands, src, fetched_at)
@@ -238,6 +242,11 @@ def render(rep: dict) -> str:
         if not sec:
             continue
         lines.append(f"== {name}: {sec['basis']} ({sec['candidates']} roster players)")
+        att = sec.get("attached") or {}
+        if att:
+            lines.append(f"  production ifp-1 source: {att['production_source']}  "
+                         f"({att['production_reader_exclusions']} run exclusions: "
+                         f"{sorted({e['reason'].split(':')[0] for e in att['production_exclusions']})})")
         for m, a in sec["availability"].items():
             lines.append(f"  {m:16} pregame predictions {a['with_pregame_prediction']}/{a['candidates']}"
                          + ("  UNAVAILABLE" if a["unavailable"] else ""))

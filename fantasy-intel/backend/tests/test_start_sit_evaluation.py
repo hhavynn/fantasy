@@ -658,3 +658,76 @@ def test_no_other_app_module_references_the_evaluation_module():
     offenders = [str(f.relative_to(app)) for f in app.rglob("*.py")
                  if f.resolve() != me and re.search(r"\bstart_sit_evaluation\b", f.read_text())]
     assert offenders == []
+
+
+# ----------------------------------------------------------------------------- immutable production store (A)
+
+from app.analytics.independent_projection_store import build_live, write_run  # noqa: E402
+from test_independent_projections import SCORING, _artifact, live  # noqa: E402,F401  (live is a fixture)
+
+
+def _run(con, src, created, scale):
+    """One week-5 production run through the real writer; unconditional points = scale * conditional."""
+    meta, rows = build_live(con, src, _artifact(src, created_at="2026-09-01T00:00:00+00:00"), 2026, 5,
+                            artifact_sha256="a" * 64)
+    meta["created_at"] = created
+    for r in rows:
+        if r["projected_points"] is not None:
+            r["p_play"], r["expected_points"] = 0.9, round(r["projected_points"] * scale, 3)
+    return write_run(con, meta, rows)
+
+
+def test_production_reader_default_is_the_immutable_store_and_legacy_is_a_labeled_fallback(tmp_path):
+    con = connect(tmp_path / "r.duckdb")
+    init_db(con)
+    reader, label = sse.forecast_reader_for(con)
+    assert reader.__module__.endswith("production_forecasts") and label == sse.PRODUCTION_SOURCE
+    con.execute("DROP TABLE independent_projection_rows")                   # a pre-v8 database
+    reader, label = sse.forecast_reader_for(con)
+    assert reader is sse.legacy_forecast_reader and label == sse.LEGACY_SOURCE
+    con.execute("DROP TABLE independent_player_projections")
+    assert sse.forecast_reader_for(con) == (None, "none (no production forecast tables)")
+    con.close()
+
+
+def test_runs_from_write_run_feed_decisions_and_a_post_kickoff_rerun_is_never_credited(live, cli):  # noqa: F811
+    con, src, _ = live
+    # week 5 kicks off 2026-09-05 17:00 UTC in the synthetic schedule
+    early = _run(con, src, datetime(2026, 9, 4, 12), 1.0)
+    latest_pre = _run(con, src, datetime(2026, 9, 5, 10), 2.0)
+    rerun = _run(con, src, datetime(2026, 9, 5, 20), 50.0)                  # after the games started
+    assert len({early["run_id"], latest_pre["run_id"], rerun["run_id"]}) == 3
+    con.execute("UPDATE leagues SET roster_slots = ? WHERE league_id = 99",
+                [json.dumps({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "BE": 5})])
+    con.execute("INSERT INTO lineup_snapshots SELECT league_id, season, 5, team_id, espn_player_id, lineup_slot_id, "
+                "lineup_slot, is_starter, acquisition_type, acquisition_date, injury_status, points, projected_points, "
+                "TIMESTAMP '2026-09-04 12:00:00' FROM lineup_snapshots WHERE scoring_period = 6")
+    cands, settings, info = cli.build_report_candidates(con, None, src, SCORING, 2026, [5], None,
+                                                        {2026: datetime(2027, 1, 1, tzinfo=UTC)})
+    att = info["attached"]
+    assert att["production_source"] == sse.PRODUCTION_SOURCE and att["ifp1_production"] > 0
+    # the post-kickoff rerun contributes nothing, and its exclusion reason is passed through unchanged
+    assert [e["run_id"] for e in att["production_exclusions"]] == [rerun["run_id"]]
+    assert att["production_exclusions"][0]["reason"].startswith("post-kickoff")
+    # every player's value is the LATEST PRE-kickoff run's (scale 2.0), captured at that run's creation time
+    checked = 0
+    for c in cands:
+        p = c["preds"].get("ifp1_production")
+        if not p:
+            continue
+        stored = con.execute("SELECT expected_points FROM independent_projection_rows WHERE run_id = ? AND "
+                             "espn_player_id = ?", [latest_pre["run_id"], c["espn_player_id"]]).fetchone()[0]
+        assert p["value"] == stored and p["captured_at"] == datetime(2026, 9, 5, 10, tzinfo=UTC)
+        if stored is None:                                                      # the run abstained for him
+            assert sse.prediction(c, "ifp1_production")[1] == "no_prediction:ifp1_production"
+            continue
+        assert sse.prediction(c, "ifp1_production") == (stored, None)          # genuinely pregame
+        later = con.execute("SELECT expected_points FROM independent_projection_rows WHERE run_id = ? AND "
+                            "espn_player_id = ?", [rerun["run_id"], c["espn_player_id"]]).fetchone()[0]
+        assert later is None or p["value"] != later
+        checked += 1
+    assert checked > 0
+    d = sse.decisions(cands, ["A1", "ifp1_production"], settings, CFG)
+    assert len(d["pairs"]) > 0 and all(r["roster_basis"] == "pregame_snapshot" for r in d["pairs"])
+    res = sse.evaluate_sets(cands, settings, {"prod": ["A1", "ifp1_production"]}, CFG)["sets"]["prod"]
+    assert res["evaluated"] and res["pregame_roster_only"]["same_position"]["decisions"] == res["same_position"]["decisions"]
