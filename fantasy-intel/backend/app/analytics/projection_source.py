@@ -15,9 +15,11 @@ each number came from (`origin`):
              game, uncertain ID mapping, no participation estimate): ESPN's projection, labeled.
 
 The independent run must be the approved production model (MODEL_VERSION; the registry manifest) under the league's
-current scoring. A week with no production run falls back to the previous production model
-(FALLBACK_VERSION) and says so in `reason`; with neither the switch reports `available: false` and the
-consumer keeps ESPN. Runs are immutable: the newest run that still has its stored rows is used, read from
+current scoring and, made by an approved artifact (production_pin: an ifp-2.0.0 run must use an artifact registered in the
+database's approved_artifacts table, an ifp-1.0.0 run the sha pin once it is set; runs record the sha256 of the
+artifact file bytes in artifact_id; a database without that table is read unverified). A week with
+no production run falls back to the previous production model (FALLBACK_VERSION) and says so in `reason`;
+with neither the switch reports `available: false` and the consumer keeps ESPN. Runs are immutable: the newest run that still has its stored rows is used, read from
 independent_projection_rows (the legacy table only when the database has not been migrated to schema v8).
 """
 
@@ -34,6 +36,7 @@ ZERO_STATUSES = {"bye", "withheld_unavailable"}
 MODEL_VERSION = "ifp-2.0.0"     # approved production (registry manifest); app.analytics.challenger.CHALLENGER_VERSION
 FALLBACK_VERSION = "ifp-1.0.0"  # previous production (app.analytics.independent_projections.MODEL_VERSION), read
                                 # only for a week without a MODEL_VERSION run; numpy-free copies, tested
+# The approved-artifact pin (for MODEL_VERSION only) lives in the leaf module production_pin, read at call time.
 
 
 def normalize(source: str | None) -> str:
@@ -62,6 +65,11 @@ def _scoring_fingerprint(con, season: int) -> str | None:
     return scoring.fingerprint if scoring.supported else None
 
 
+def _unapproved(con, season: int, week: int, version: str) -> bool:
+    fp = _scoring_fingerprint(con, season)
+    return fp is not None and pf.unapproved_runs(con, season, week, version, fp) > 0
+
+
 def _run(con, season: int, week: int) -> dict | None:
     """Newest run of the production model under the league's current scoring that still has its rows, else
     the same for FALLBACK_VERSION (production_forecasts.latest_run; runs are immutable, a later run never
@@ -69,6 +77,8 @@ def _run(con, season: int, week: int) -> dict | None:
     fp = _scoring_fingerprint(con, season)
     if fp is None:
         return None
+    # latest_run applies the artifact rule of production_pin per version: MODEL_VERSION runs must use a registered
+    # artifact, FALLBACK_VERSION runs the sha pin once it is set; a rejected run is skipped like a run without rows
     for version in (MODEL_VERSION, FALLBACK_VERSION):
         run = pf.latest_run(con, season, week, model_version=version, scoring_fingerprint=fp)
         if run is not None:
@@ -85,9 +95,14 @@ def weekly(con, season: int, week: int, source: str) -> dict:
         return base
     run = _run(con, season, week)
     if run is None:
-        return {**base, "available": False,
-                "reason": f"No independent projection run of {MODEL_VERSION} (or {FALLBACK_VERSION}) under the current "
-                          f"league scoring is stored for week {week}, so ESPN projections are shown."}
+        if any(_unapproved(con, season, week, v) for v in (MODEL_VERSION, FALLBACK_VERSION)):
+            why = (f"No independent projection run of {MODEL_VERSION} (or {FALLBACK_VERSION}) with an approved artifact "
+                   f"is available for week {week}: a stored run was made by an artifact that is not approved "
+                   "(runs made by an artifact that is not approved are never shown), so ESPN projections are shown.")
+        else:
+            why = (f"No independent projection run of {MODEL_VERSION} (or {FALLBACK_VERSION}) under the current "
+                   f"league scoring is stored for week {week}, so ESPN projections are shown.")
+        return {**base, "available": False, "reason": why}
     values: dict[int, float | None] = dict(espn)
     origin: dict[int, str] = {pid: ESPN for pid in espn}
     counts = {OURS: 0, OURS_ZERO: 0, ESPN: 0}
@@ -102,10 +117,24 @@ def weekly(con, season: int, week: int, source: str) -> dict:
         counts[o] += 1
     status = run["model_status"]
     status = json.loads(status) if isinstance(status, str) else (status or {})
-    reason = None if run["model_version"] == MODEL_VERSION else (
-        f"No {MODEL_VERSION} run is stored for week {week} yet, so the previous model {run['model_version']} is shown.")
-    return {**base, "reason": reason, "values": values, "origin": origin, "counts": counts,
-            "run": {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"])},
+    if run["model_version"] == MODEL_VERSION:
+        reason = None
+    elif _unapproved(con, season, week, MODEL_VERSION):
+        reason = (f"The {MODEL_VERSION} run for week {week} was made by an artifact that is not approved, so the "
+                  f"previous model {run['model_version']} is shown.")
+    else:
+        reason = (f"No {MODEL_VERSION} run is stored for week {week} yet, so the previous model "
+                  f"{run['model_version']} is shown.")
+    run_info = {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"])}
+    check = run.get("artifact_check")
+    if check == "verified":     # artifact_verified only appears when verification ran (the response shape is otherwise unchanged)
+        run_info["artifact_verified"] = True
+    elif check == "unverified":     # fail OPEN: this database cannot say which artifacts are approved
+        run_info["artifact_verified"] = False
+        note = (f"The approval of this run's artifact could not be verified ({run.get('artifact_note') or 'unknown'}), "
+                "so the latest run is shown unverified.")
+        reason = f"{reason} {note}" if reason else note
+    return {**base, "reason": reason, "values": values, "origin": origin, "counts": counts, "run": run_info,
             "model_status": {p: (s or {}).get("status") for p, s in status.items()}}
 
 

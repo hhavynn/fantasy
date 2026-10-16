@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from typing import Iterable
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
+from . import production_pin
 from .projection_backtest import _kickoff, _utc
 
 RUNS = "independent_projection_runs"
@@ -48,6 +49,98 @@ META_JSON = ("model_status", "evaluation", "participation_status", "participatio
 META_INT = ("season", "week", "data_through_season", "data_through_week")
 META_STR = ("model_version", "scoring_fingerprint", "artifact_id", "artifact_created_at", "participation_version")
 HASHED_META = META_INT + META_STR + META_JSON
+
+
+NOT_APPROVED_ARTIFACT = "artifact not the approved production artifact"     # ifp-1.0.0 sha pin
+NOT_REGISTERED = "artifact not registered as approved"                      # ifp-2.0.0 approved_artifacts
+NO_TABLE = "no approved_artifacts table yet"                                 # why a run is "unverified"
+NO_ROWS = "no approved artifacts registered for this model yet"
+APPROVED = "approved_artifacts"
+_PIN = object()     # "use the production rule" for the model version (production_pin), as opposed to an explicit sha
+
+
+def _unchecked(run):
+    return "unchecked", None
+
+
+def artifact_gate(con, model_version: str | None, artifact_id=_PIN):
+    """check(run) -> (status, reason) for runs of `model_version`; status is one of:
+
+    * "unchecked"  no artifact rule applies (another version, or ifp-1.0.0 while unpinned): the run counts;
+    * "verified"   the run's artifact_id matches the pin / is registered in approved_artifacts: counts;
+    * "unverified" ifp-2.0.0 on a database WITHOUT approved_artifacts (an old local database or hosted copy),
+                   or whose approved_artifacts has NO row for the model yet (the table exists but nothing has
+                   been registered, as right after an upgrade): counts, but is marked unverified (fail OPEN:
+                   failing closed would blank production until the owner re-syncs, republishes or re-runs the
+                   cycle). Enforcement starts per model with its first registered artifact;
+    * "rejected"   excluded, with `reason`.
+
+    An explicit `artifact_id` (a sha, or None for no rule) overrides the per-version default."""
+    def pinned(sha):
+        def check(run):
+            if run.get("artifact_id") == sha:
+                return "verified", None
+            return "rejected", NOT_APPROVED_ARTIFACT
+        return check
+
+    if artifact_id is not _PIN:
+        return _unchecked if artifact_id is None else pinned(artifact_id)
+    if model_version == production_pin.PINNED_MODEL_VERSION:
+        sha = production_pin.APPROVED_ARTIFACT_SHA256
+        return _unchecked if sha is None else pinned(sha)
+    if model_version != production_pin.REGISTERED_MODEL_VERSION:
+        return _unchecked
+    if not table_exists(con, APPROVED):
+        return lambda run: ("unverified", NO_TABLE)
+    targets: dict[str, list[tuple]] = {}
+    for r in fetch_dicts(con, f"SELECT artifact_sha256, target_season, target_week, training_cutoff_key FROM {APPROVED} "
+                              "WHERE model_version = ?", [model_version]):
+        targets.setdefault(r["artifact_sha256"], []).append(
+            (r["target_season"], r["target_week"], r["training_cutoff_key"]))
+
+    if not targets:
+        return lambda run: ("unverified", NO_ROWS)
+
+    def covers(run, season, week, cutoff) -> bool:
+        """May this registered artifact make `run`? No target recorded: any week. A recorded data cutoff: the
+        run's season is the artifact's target season and the run's week lies strictly after the cutoff (the
+        artifact trained on nothing from that week on), so one weekly artifact also covers the rest-of-season
+        runs that reuse it. Without a cutoff, only the exact target week."""
+        if season is None or week is None:
+            return True
+        if cutoff is None:
+            return (season, week) == (run.get("season"), run.get("week"))
+        return run.get("season") == season and run.get("season") * 100 + run.get("week") > cutoff
+
+    def check(run):
+        t = targets.get(run.get("artifact_id"))
+        if t is None:
+            return "rejected", NOT_REGISTERED
+        if any(covers(run, *x) for x in t):
+            return "verified", None
+        return "rejected", f"{NOT_REGISTERED} for this target week"
+    return check
+
+
+def unapproved_runs(con, season: int, week: int, model_version: str, scoring_fingerprint: str | None) -> int:
+    """How many stored runs of `model_version` for the week the artifact rule rejects (they exist, but their
+    artifact is not approved), so a reader can say that instead of "no run is stored"."""
+    if not table_exists(con, RUNS):
+        return 0
+    gate = artifact_gate(con, model_version)
+    where, params = ["season = ?", "week = ?", "model_version = ?"], [season, week, model_version]
+    if scoring_fingerprint is not None:
+        where.append("scoring_fingerprint = ?")
+        params.append(scoring_fingerprint)
+    return sum(gate(r)[0] == "rejected"
+               for r in fetch_dicts(con, f"SELECT * FROM {RUNS} WHERE {' AND '.join(where)}", params))
+
+
+def gate_active(con, model_version: str | None) -> bool:
+    """Does a verifying artifact rule apply to `model_version` here (pin set, or approved_artifacts present)?"""
+    return artifact_gate(con, model_version)(
+        {"artifact_id": None}
+    )[0] not in ("unchecked", "unverified")
 
 
 class ImmutableRunError(ValueError):
@@ -214,10 +307,12 @@ def rows_source(con) -> str | None:
 
 
 def latest_run(con, season: int, week: int, *, model_version: str | None = None,
-               scoring_fingerprint: str | None = None) -> dict | None:
+               scoring_fingerprint: str | None = None, artifact_id=_PIN) -> dict | None:
     """Consumer view: the newest run (by created_at) for the week that still has all of its rows.
     A run whose rows are missing (destroyed by the pre-v8 overwrite) is skipped, not shown as an empty
-    forecast. With only the legacy table (unmigrated copy) it is the newest run, as before."""
+    forecast. With only the legacy table (unmigrated copy) it is the newest run, as before.
+    Runs the artifact rule rejects (artifact_gate) are skipped; the returned run carries `artifact_check`
+    ("unchecked" | "verified" | "unverified") and, when unverified, `artifact_note` (why)."""
     if not table_exists(con, RUNS) or rows_source(con) is None:
         return None
     where, params = ["season = ?", "week = ?"], [season, week]
@@ -227,14 +322,18 @@ def latest_run(con, season: int, week: int, *, model_version: str | None = None,
     if scoring_fingerprint is not None:
         where.append("scoring_fingerprint = ?")
         params.append(scoring_fingerprint)
+    gate = _unchecked if model_version is None else artifact_gate(con, model_version, artifact_id)
     runs = fetch_dicts(con, f"SELECT * FROM {RUNS} WHERE {' AND '.join(where)} ORDER BY created_at DESC, run_id DESC",
                        params)
-    if not table_exists(con, ROWS):
-        return runs[0] if runs else None
+    has_rows = table_exists(con, ROWS)
     for run in runs:
+        status, why = gate(run)
+        if status == "rejected":
+            continue
         n = run.get("row_count")
-        if n and con.execute(f"SELECT count(*) FROM {ROWS} WHERE run_id = ?", [run["run_id"]]).fetchone()[0] == n:
-            return run
+        if not has_rows or (n and con.execute(f"SELECT count(*) FROM {ROWS} WHERE run_id = ?",
+                                              [run["run_id"]]).fetchone()[0] == n):
+            return {**run, "artifact_check": status, "artifact_note": why}
     return None
 
 
@@ -245,9 +344,10 @@ def _aware(v):
     return _utc(v)
 
 
-def _assess(con, season: int, weeks: set[int] | None, model_version: str, scoring_fingerprint: str
-            ) -> tuple[list[dict], list[dict]]:
+def _assess(con, season: int, weeks: set[int] | None, model_version: str, scoring_fingerprint: str,
+            artifact_id=_PIN) -> tuple[list[dict], list[dict]]:
     """Classify every run of the season: (accepted [{run, rows}], exclusions [{run_id, week, reason}])."""
+    gate = artifact_gate(con, model_version, artifact_id)
     kick_first = first_kickoffs(con, season)
     sql = f"SELECT * FROM {RUNS} WHERE season = ?"
     params: list = [season]
@@ -273,6 +373,8 @@ def _assess(con, season: int, weeks: set[int] | None, model_version: str, scorin
             reason = f"model {run['model_version']}, not {model_version}"
         elif run["scoring_fingerprint"] != scoring_fingerprint:
             reason = "made under different league scoring"
+        elif gate(run)[0] == "rejected":
+            reason = gate(run)[1]
         elif run.get("created_at") is None:
             reason = "run creation time unknown (created_at is NULL), so no row can be shown to be pregame"
         elif not expected or not rows:
@@ -296,23 +398,28 @@ def _assess(con, season: int, weeks: set[int] | None, model_version: str, scorin
 
 
 def eligible_run_ids(con, season: int, model_version: str, scoring_fingerprint: str,
-                     weeks: Iterable[int] | None = None) -> tuple[list[str], list[dict]]:
-    """Runs whose rows may count as evidence (model, scoring, artifact-before-first-kickoff, integrity)."""
+                     weeks: Iterable[int] | None = None, *, artifact_id=_PIN) -> tuple[list[str], list[dict]]:
+    """Runs whose rows may count as evidence (model, scoring, approved artifact,
+    artifact-before-first-kickoff, integrity)."""
     if not table_exists(con, RUNS):
         return [], []
-    ok, excluded = _assess(con, season, None if weeks is None else set(weeks), model_version, scoring_fingerprint)
+    ok, excluded = _assess(con, season, None if weeks is None else set(weeks), model_version, scoring_fingerprint,
+                           artifact_id)
     return [a["run"]["run_id"] for a in ok], excluded
 
 
 def pregame_forecasts(con, season: int, weeks: Iterable[int] | None = None, *,
-                      model_version: str, scoring_fingerprint: str) -> tuple[list[dict], list[dict]]:
+                      model_version: str, scoring_fingerprint: str, artifact_id=_PIN
+                      ) -> tuple[list[dict], list[dict]]:
     """(rows, exclusions). Per (season, week, espn_player_id): the row from the LATEST eligible run whose
     run created_at < that player's own kickoff. Eligible run = model_version match, scoring_fingerprint match,
-    artifact_created_at < the week's first kickoff, integrity verified (row_count and content hash).
+    artifact_created_at < the week's first kickoff, integrity verified (row_count and content hash), and, once
+    the artifact rule of artifact_gate holds (ifp-1.0.0: the sha pin once set; ifp-2.0.0: registered in approved_artifacts).
     exclusions: [{run_id, week, reason}]. Rows are never returned from another model version or scoring."""
     if not table_exists(con, RUNS):
         return [], []
-    ok, excluded = _assess(con, season, None if weeks is None else set(weeks), model_version, scoring_fingerprint)
+    ok, excluded = _assess(con, season, None if weeks is None else set(weeks), model_version, scoring_fingerprint,
+                           artifact_id)
     now_kick = team_kickoffs(con, season)
     best: dict[tuple[int, int], tuple[tuple, dict]] = {}
     contributed: set[str] = set()

@@ -761,6 +761,9 @@ def store(con, src, created, **kw):
 def v8_world(live):
     con, src, _ = live
     record_fetch(con, FETCHED, season=2026)         # week 5 is final: the NFL data was fetched long after it
+    from app.analytics.independent_projection_store import register_approved_artifact
+    register_approved_artifact(con, model_version=MODEL_VERSION, artifact_sha256="a" * 64, target_season=None,
+                               target_week=None, source="manual_pin")   # the production model's artifacts are approved
     snap = datetime(2026, 9, 4, 18, 0)
     for pid in (1, 6, 9, 11):
         con.execute("INSERT INTO espn_projection_history VALUES (CAST(? AS DATE), 2026, ?, 5, ?, ?)",

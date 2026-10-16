@@ -25,11 +25,12 @@ from datetime import datetime
 
 import polars as pl
 
-from ..db.connection import fetch_dicts, table_exists
+from ..db.connection import fetch_dicts, table_columns, table_exists
 from .forecast_backtest import PROMOTION_CRITERIA, espn_comparison, espn_pregame
 from .forecast_features import POSITIONS, load_panel
 from .independent_projection_store import league_scoring
 from .independent_projections import MODEL_VERSION
+from . import production_forecasts as pf
 from .production_forecasts import ROWS, eligible_run_ids, pregame_forecasts
 from .production_forecasts import first_kickoffs as _first_kickoffs
 from .projection_backtest import _kickoff, _utc
@@ -65,10 +66,14 @@ def latest_run(con, season: int, fingerprint: str | None) -> dict | None:
     version or scoring carries another model's held-out status, so it is never shown here."""
     if fingerprint is None or not table_exists(con, "independent_projection_runs"):
         return None
-    rows = fetch_dicts(con, """SELECT run_id, week, model_version, created_at, model_status, evaluation
-                               FROM independent_projection_runs
-                               WHERE season = ? AND model_version = ? AND scoring_fingerprint = ?
-                               ORDER BY created_at DESC LIMIT 1""", [season, MODEL_VERSION, fingerprint])
+    gate = pf.artifact_gate(con, MODEL_VERSION)                # the artifact rule of production_pin for this model
+    has_artifact = "artifact_id" in table_columns(con, "independent_projection_runs")
+    rows = fetch_dicts(con, f"""SELECT run_id, week, model_version, created_at, model_status, evaluation
+                                {", artifact_id" if has_artifact else ""}
+                                FROM independent_projection_runs
+                                WHERE season = ? AND model_version = ? AND scoring_fingerprint = ?
+                                ORDER BY created_at DESC""", [season, MODEL_VERSION, fingerprint])
+    rows = [r for r in rows if gate(r)[0] != "rejected"]
     if not rows:
         return None
     run = rows[0]
@@ -78,13 +83,16 @@ def latest_run(con, season: int, fingerprint: str | None) -> dict | None:
 
 def _run_missing_reason(con, season: int, fingerprint: str | None) -> str:
     project = ("From backend/, run `uv run python ../scripts/backtest_independent_projections.py project --week N` "
-               "(it needs the fitted artifacts in data/models; see the runbook in docs/independent_projection_engine.md).")
+               "(for a manual ifp-2.0.0 run add `--model ifp-2.0.0 --register-artifact manual_pin` so its artifact is "
+               "approved; it needs the fitted artifacts in data/models; see the runbook in "
+               "docs/independent_projection_engine.md).")
     if fingerprint is None:
         return "League scoring is not supported by the independent model, so no held-out status applies."
     other = fetch_dicts(con, "SELECT count(*) AS n FROM independent_projection_runs WHERE season = ?",
                         [season])[0]["n"] if table_exists(con, "independent_projection_runs") else 0
     if other:
-        return (f"Stored runs are from another model version or league scoring, so the held-out status of "
+        pin = " or artifact (not an approved one)" if pf.gate_active(con, MODEL_VERSION) else ""
+        return (f"Stored runs are from another model version{pin} or league scoring, so the held-out status of "
                 f"{MODEL_VERSION} under the current scoring is not shown. {project}")
     return f"No independent projection run is stored for this season, so the held-out status is not shown. {project}"
 
@@ -115,13 +123,16 @@ def _legacy_eligible_runs(con, season: int, fingerprint: str) -> tuple[list[str]
     """Unmigrated database (no independent_projection_rows): the pre-v8 rule, run metadata only."""
     kick = first_kickoffs(con, season)
     keep, excluded = [], []
-    for r in fetch_dicts(con, """SELECT run_id, week, model_version, scoring_fingerprint, artifact_created_at
-                                 FROM independent_projection_runs WHERE season = ? ORDER BY week, run_id""", [season]):
+    gate = pf.artifact_gate(con, MODEL_VERSION)
+    for r in fetch_dicts(con, """SELECT * FROM independent_projection_runs WHERE season = ?
+                                 ORDER BY week, run_id""", [season]):
         fitted, first = _utc(r["artifact_created_at"]), kick.get(r["week"])
         if r["model_version"] != MODEL_VERSION:
             reason = f"model {r['model_version']}, not {MODEL_VERSION}"
         elif r["scoring_fingerprint"] != fingerprint:
             reason = "made under different league scoring"
+        elif gate(r)[0] == "rejected":
+            reason = gate(r)[1]
         elif fitted is None or first is None:
             reason = "artifact fit time or week kickoff unknown"
         elif fitted >= first:

@@ -15,6 +15,7 @@ import sys
 import pytest
 
 from app.analytics import model_registry as reg
+from app.analytics import production_pin
 from app.analytics import projection_source as ps
 from app.analytics.independent_projections import ARTIFACT_SCHEMA, MODEL_VERSION
 
@@ -493,6 +494,19 @@ def test_same_production_projections_before_and_after_registry(stored, env):  # 
     assert reg.production(reg.load_manifest())["version"] == ps.MODEL_VERSION
 
 
+def test_consumer_artifact_pin_is_a_tested_copy_of_the_registry_pin():
+    """production_pin.APPROVED_ARTIFACT_SHA256 (a stdlib-only leaf) is the hosted app's numpy-free, registry-free copy of the
+    production entry's artifact sha256. Pinning one without the other fails here (a reviewed change does both)."""
+    m = reg.load_manifest()
+    registry_pin = reg.entry(m, production_pin.PINNED_MODEL_VERSION)["artifact"]["sha256"]     # the ifp-1.0.0 entry
+    assert production_pin.APPROVED_ARTIFACT_SHA256 == registry_pin
+    assert production_pin.APPROVED_ARTIFACT_SHA256 is None or reg._sha_ok(production_pin.APPROVED_ARTIFACT_SHA256)
+    # the versions the two artifact rules belong to are tested copies of the switch's
+    assert production_pin.PINNED_MODEL_VERSION == ps.FALLBACK_VERSION
+    assert production_pin.REGISTERED_MODEL_VERSION == ps.MODEL_VERSION == reg.production(m)["version"]
+    assert reg.production(m)["artifact"]["sha256"] is None          # ifp-2.0.0 retrains weekly: approved in the database
+
+
 def test_hosted_app_never_reads_the_registry_or_research_packages():
     for path in APP.rglob("*.py"):
         if path.name != "model_registry.py":
@@ -524,6 +538,7 @@ def test_cli_status_is_read_only(tmp_path):
                      "--out", str(out)]) == 0
     rep = json.loads(out.read_text())
     assert rep["production"]["version"] == ps.MODEL_VERSION and rep["dry_run"] is True
+    assert rep["production"]["consumer_pin_matches"] is True       # both unpinned today
     assert cli.main(["status", "--models", str(tmp_path), "--live-db", str(tmp_path / "none.duckdb"),
                      "--out", str(out)]) == 2                       # write-once
     assert cli.main(["plan-rollback", "--reason", "r", "--by", "o", "--models", str(tmp_path),

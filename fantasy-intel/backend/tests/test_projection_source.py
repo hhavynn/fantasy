@@ -6,8 +6,9 @@ from datetime import timedelta
 
 import pytest
 
+from app.analytics import production_pin
 from app.analytics import projection_source as ps
-from app.analytics.independent_projection_store import build_live, write_live
+from app.analytics.independent_projection_store import build_live, register_approved_artifact, write_live
 from app.analytics.start_sit import load_start_sit_evaluation
 from app.db.connection import table_columns
 
@@ -77,12 +78,14 @@ def test_production_run_is_preferred_over_a_newer_fallback_run(live):  # noqa: F
     art = _artifact(src)
     prod = replace(art, version=ps.MODEL_VERSION,
                    models={p: replace(m, model="ifp2") for p, m in art.models.items()})
-    meta2, rows2 = build_live(con, src, prod, 2026, 6)
+    meta2, rows2 = build_live(con, src, prod, 2026, 6, artifact_sha256="d" * 64)
     assert {r["model"] for r in rows2 if r["coverage_status"] == "projected"} == {"ifp2_ridge"}
     for r in rows2:
         if r["coverage_status"] == "projected":
             r["expected_points"] = 30.0
     write_live(con, meta2, rows2)
+    register_approved_artifact(con, model_version=ps.MODEL_VERSION, artifact_sha256="d" * 64, target_season=2026,
+                               target_week=6, source="learning_cycle")
     meta1, rows1 = build_live(con, src, art, 2026, 6)
     meta1["created_at"] = meta2["created_at"] + timedelta(minutes=5)
     write_live(con, meta1, rows1)
@@ -123,6 +126,127 @@ def test_unmigrated_database_is_read_from_the_legacy_table(stored):
     legacy = ps.weekly(con, 2026, 6, "independent")
     assert legacy["available"] and legacy["run"]["run_id"] == ids[0]
     assert legacy["values"] == expected["values"] and legacy["origin"] == expected["origin"]
+
+
+# ----------------------------------------------------------------------------- approved artifacts
+
+SHA_A, SHA_B, SHA_C = "a" * 64, "b" * 64, "c" * 64
+
+
+def _runs(con, src, version, specs, week=6):
+    """Runs of `version` for the week, oldest first: specs = [(artifact sha, WR 1 points, minutes after the first)]."""
+    out = []
+    for sha, pts, minutes in specs:
+        art = replace(_artifact(src), version=version)
+        meta, rows = build_live(con, src, art, 2026, week, artifact_sha256=sha)
+        row = next(r for r in rows if r["espn_player_id"] == 1)
+        row["projected_points"] = row["expected_points"] = pts
+        meta["created_at"] = meta["created_at"] + timedelta(minutes=minutes)
+        write_live(con, meta, rows)
+        out.append(meta)
+    return out
+
+
+def _approve(con, meta, source="learning_cycle", week=...):
+    register_approved_artifact(con, model_version=meta["model_version"], artifact_sha256=meta["artifact_id"],
+                               target_season=meta["season"], target_week=meta["week"] if week is ... else week,
+                               source=source)
+
+
+def test_unpinned_fallback_model_serves_the_newest_run_and_the_shape_is_unchanged(live):  # noqa: F811
+    con, src, _ = live
+    assert production_pin.APPROVED_ARTIFACT_SHA256 is None
+    _, newer = _runs(con, src, ps.FALLBACK_VERSION, [(SHA_A, 21.0, 0), (SHA_B, 31.0, 5)])
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] and w["run"]["run_id"] == newer["run_id"] and w["values"][1] == 31.0
+    assert set(w["run"]) == {"run_id", "model_version", "created_at"}               # no artifact_verified: unchanged
+
+
+def test_a_pinned_fallback_artifact_serves_only_its_own_runs(live, monkeypatch):  # noqa: F811
+    con, src, _ = live
+    older, _ = _runs(con, src, ps.FALLBACK_VERSION, [(SHA_A, 21.0, 0), (SHA_B, 31.0, 5)])
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", SHA_A)
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] and w["run"]["run_id"] == older["run_id"] and w["run"]["artifact_verified"] is True
+    assert w["values"][1] == 21.0 and w["origin"][1] == "ours"       # the newer run of artifact B is ignored
+    assert ps.describe(w)["run"]["artifact_verified"] is True
+    assert ps.weekly(con, 2026, 6, "espn")["run"] is None             # ESPN stays the default and is unchanged
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", SHA_C)    # neither stored run used artifact C
+    espn = ps.weekly(con, 2026, 6, "espn")
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] is False and w["run"] is None and w["counts"] is None
+    assert "No independent projection run" in w["reason"] and "not approved" in w["reason"]
+    assert "ESPN projections are shown" in w["reason"]
+    assert w["values"] == espn["values"] and set(w["origin"].values()) == {"espn"}
+
+
+def test_a_run_without_a_recorded_artifact_is_not_the_pinned_artifact(live, monkeypatch):  # noqa: F811
+    con, src, _ = live
+    _runs(con, src, ps.FALLBACK_VERSION, [(SHA_A, 21.0, 0)])
+    con.execute("UPDATE independent_projection_runs SET artifact_id = NULL")
+    monkeypatch.setattr(production_pin, "APPROVED_ARTIFACT_SHA256", SHA_A)
+    assert ps.weekly(con, 2026, 6, "independent")["available"] is False
+
+
+def test_a_registered_production_artifact_is_served_and_an_unregistered_newer_one_is_not(live):  # noqa: F811
+    con, src, _ = live
+    older, newer = _runs(con, src, ps.MODEL_VERSION, [(SHA_A, 21.0, 0), (SHA_B, 31.0, 5)])
+    _approve(con, older)                                  # the cycle registered A; B was written by hand
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] and w["run"]["run_id"] == older["run_id"] and w["values"][1] == 21.0
+    assert w["run"]["artifact_verified"] is True and w["reason"] is None
+    _approve(con, newer, "manual_pin")                    # once B is registered too, the newest run wins again
+    assert ps.weekly(con, 2026, 6, "independent")["run"]["run_id"] == newer["run_id"]
+
+
+def test_an_unregistered_production_artifact_falls_back_per_the_existing_rules(live):  # noqa: F811
+    con, src, _ = live
+    [fallback] = _runs(con, src, ps.FALLBACK_VERSION, [(SHA_B, 11.0, 0)])
+    [hand_made] = _runs(con, src, ps.MODEL_VERSION, [(SHA_A, 99.0, 5)])
+    register_approved_artifact(con, model_version=ps.MODEL_VERSION, artifact_sha256=SHA_C, target_season=2026,
+                               target_week=6, source="learning_cycle")        # enforcement starts with a first row
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["run"]["run_id"] == fallback["run_id"] and w["values"][1] == 11.0           # ifp-1.0.0 fallback
+    assert ps.MODEL_VERSION in w["reason"] and ps.FALLBACK_VERSION in w["reason"]
+    con.execute("DELETE FROM independent_projection_rows WHERE run_id = ?", [fallback["run_id"]])
+    w = ps.weekly(con, 2026, 6, "independent")                 # nothing approved is left: ESPN, with a reason
+    assert w["available"] is False and w["run"] is None and "not approved" in w["reason"]
+    assert hand_made["run_id"] not in str(w)
+
+
+def test_an_artifact_registered_for_another_week_is_not_approved_for_this_one(live):  # noqa: F811
+    con, src, _ = live
+    [run] = _runs(con, src, ps.MODEL_VERSION, [(SHA_A, 21.0, 0)])
+    _approve(con, run, week=7)
+    assert ps.weekly(con, 2026, 6, "independent")["available"] is False
+    # the table is write-once: a later registration of the same artifact does not widen it to this week
+    register_approved_artifact(con, model_version=ps.MODEL_VERSION, artifact_sha256=SHA_A, target_season=None,
+                               target_week=None, source="manual_pin")
+    assert ps.weekly(con, 2026, 6, "independent")["available"] is False
+    [other] = _runs(con, src, ps.MODEL_VERSION, [(SHA_B, 41.0, 9)])
+    register_approved_artifact(con, model_version=ps.MODEL_VERSION, artifact_sha256=SHA_B, target_season=None,
+                               target_week=None, source="manual_pin")         # recorded without a target: any week
+    assert ps.weekly(con, 2026, 6, "independent")["run"]["run_id"] == other["run_id"]
+
+
+def test_without_the_table_the_view_fails_open_and_says_unverified(live):  # noqa: F811
+    """An old local database or hosted copy has no approved_artifacts: behave as before, but say so."""
+    con, src, _ = live
+    [run] = _runs(con, src, ps.MODEL_VERSION, [(SHA_A, 21.0, 0)])
+    w = ps.weekly(con, 2026, 6, "independent")           # table present but no row for the model yet: also unverified
+    assert w["available"] and w["run"]["artifact_verified"] is False and "could not be verified" in w["reason"]
+    con.execute("DROP TABLE approved_artifacts")
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] and w["run"]["run_id"] == run["run_id"] and w["values"][1] == 21.0
+    assert w["run"]["artifact_verified"] is False and "could not be verified" in w["reason"]
+
+
+def test_the_pin_module_is_a_leaf_that_imports_nothing():
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(production_pin))
+    assert not [n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]
 
 
 # ----------------------------------------------------------------------------- consumers
