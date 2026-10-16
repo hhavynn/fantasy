@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pathlib
 
+import numpy as np
 import polars as pl
 import pytest
 
@@ -321,3 +322,20 @@ def test_research_module_is_never_imported_by_the_app():
         if path.name == "adaptive_workload.py":
             continue
         assert "adaptive_workload" not in path.read_text(), path
+
+
+def test_exact_mode_skips_reporting_rounding_only():
+    from app.analytics import forecast_backtest as fb
+    a = np.array([1.0, 2.0, 3.0, 4.0])
+    p = a + 0.0004                                  # a regression far below the 3-decimal rounding step
+    assert fb.metrics(a, p)["mae"] == 0.0           # reported (rounded) value unchanged
+    assert fb.metrics(a, p, exact=True)["mae"] == pytest.approx(0.0004)
+    df = pl.DataFrame({"key": [1, 1, 2, 2], "label": a, "x": p, "y": a})
+    assert fb.week_bootstrap_mae_diff(df, "x", "y", 50, 0)["diff"] == 0.0
+    assert fb.week_bootstrap_mae_diff(df, "x", "y", 50, 0, exact=True)["diff"] == pytest.approx(0.0004)
+
+
+def test_a_sub_rounding_pooled_regression_still_rejects():
+    diag = _toy_report(3.99)
+    diag["ALL"]["minus_baseline_mae"]["X"]["diff"] = 0.0003     # rounds to 0.000 but is a regression
+    assert aw.decision(_toy_report(3.99), diag, "X")["rejections"]["pooled_mae_worse"]

@@ -355,7 +355,7 @@ def cohorts(df: pl.DataFrame) -> dict[str, pl.Expr]:
 
 
 def compare(preds: pl.DataFrame, models: dict[str, str], baseline: str = "ifp2", seed: int = 20261015,
-            resamples: int = 1000) -> dict:
+            resamples: int = 1000, exact: bool = False) -> dict:
     """Identical rows (every model non-null), per position and pooled, week-clustered CIs vs baseline,
     cohorts (MAE, bias, n) and Start/Sit pairs (accuracy and regret)."""
     p = preds.with_columns([pl.col(c).alias(f"pred_{n}") for n, c in models.items() if c != f"pred_{n}"])
@@ -367,21 +367,21 @@ def compare(preds: pl.DataFrame, models: dict[str, str], baseline: str = "ifp2",
         g = p if pos == "ALL" else p.filter(pl.col("position") == pos)
         a = _arr(g, "label")
         rep = {"n": g.height, "weeks": g.select("key").n_unique(),
-               "metrics": {n: metrics(a, _arr(g, f"pred_{n}")) for n in models},
-               "minus_baseline_mae": {n: week_bootstrap_mae_diff(g, f"pred_{n}", f"pred_{baseline}", resamples, seed)
+               "metrics": {n: metrics(a, _arr(g, f"pred_{n}"), exact) for n in models},
+               "minus_baseline_mae": {n: week_bootstrap_mae_diff(g, f"pred_{n}", f"pred_{baseline}", resamples, seed, exact)
                                       for n in models if n != baseline}}
         if pos == "ALL":
             rep["cohorts"] = {}
             for cname, expr in flt.items():
                 c = g.filter(expr.fill_null(False))
                 ac = _arr(c, "label")
-                rep["cohorts"][cname] = {"n": c.height, **{n: metrics(ac, _arr(c, f"pred_{n}")) for n in models}}
+                rep["cohorts"][cname] = {"n": c.height, **{n: metrics(ac, _arr(c, f"pred_{n}"), exact) for n in models}}
                 if c.height >= 30:
                     rep["cohorts"][cname]["minus_baseline_mae"] = {
-                        n: week_bootstrap_mae_diff(c, f"pred_{n}", f"pred_{baseline}", resamples, seed)
+                        n: week_bootstrap_mae_diff(c, f"pred_{n}", f"pred_{baseline}", resamples, seed, exact)
                         for n in models if n != baseline}
         out[pos] = rep
-    out["pairs"] = pair_decisions(p, cols)
+    out["pairs"] = pair_decisions(p, cols, exact=exact)
     return out
 
 

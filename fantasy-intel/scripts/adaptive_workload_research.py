@@ -84,11 +84,45 @@ def input_fingerprint(args, src, scoring_fingerprint: str, weeks) -> str:
     return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
+def final_weeks(args, src) -> list[tuple[int, int]]:
+    """Completed weeks that are also fully final and fully ingested (participation_calibration's
+    week_finality rule): a partly played or partly synced week would put an incomplete player pool
+    into the store, the diagnostics and the Start/Sit pairs."""
+    import duckdb
+    import participation_calibration as pcal
+
+    live = duckdb.connect(str(args.live_db), read_only=True)
+    hist = duckdb.connect(str(args.history_db), read_only=True) if args.history_db.exists() else None
+    try:
+        fetched = pcal.fetch_times(live, hist, args.season)
+    finally:
+        for c in (live, hist):
+            if c is not None:
+                c.close()
+    return pcal.fully_final_weeks(src, completed_weeks(src, list(range(ch.TRAIN_START, args.season + 1))), fetched)
+
+
+def _mae(actual, pred) -> float:
+    """Unrounded MAE over rows where both are present: the score penalties and candidates are
+    selected on (metrics() rounds to 3 decimals, which is for reporting only)."""
+    a, q = np.asarray(actual, dtype=float), np.asarray(pred, dtype=float)
+    ok = np.isfinite(a) & np.isfinite(q)
+    return float(np.abs(a[ok] - q[ok]).mean()) if ok.any() else float("inf")
+
+
+def _best_candidate(dev: pl.DataFrame, models: dict[str, str], names) -> str:
+    """The candidate with the lowest unrounded development MAE on compare()'s population (rows where
+    every model and the label are present); ties go to the first name alphabetically."""
+    cols = list(models.values())
+    pop = dev.filter(pl.all_horizontal([pl.col(c).is_not_null() for c in cols]) & pl.col("label").is_not_null())
+    return min(names, key=lambda n: (_mae(_arr(pop, "label"), _arr(pop, models[n])), n))
+
+
 def full_store(args, src, scoring_fingerprint: str) -> pl.DataFrame:
     """ifp-2 feature store + role features of every RoleConfig + evaluation columns. Cached with an
     input fingerprint; reused only when every input is unchanged (else rebuilt)."""
     path, meta = _out(args) / "store_aw.parquet", _out(args) / "store_aw.meta.json"
-    weeks = completed_weeks(src, list(range(ch.TRAIN_START, args.season + 1)))
+    weeks = final_weeks(args, src)
     fp = input_fingerprint(args, src, scoring_fingerprint, weeks)
     if path.exists() and meta.exists() and not args.rebuild and json.loads(meta.read_text()).get("fingerprint") == fp:
         return pl.read_parquet(path)
@@ -180,7 +214,7 @@ def cmd_run(args) -> dict:
         for pos in POSITIONS:
             cand_cols = [f"pred_{name}@{lam:g}" for lam in grid[pos]]
             g = dev.filter((pl.col("position") == pos) & pl.all_horizontal([pl.col(c).is_not_null() for c in cand_cols]))
-            scores = {lam: metrics(_arr(g, "label"), _arr(g, f"pred_{name}@{lam:g}"))["mae"] for lam in grid[pos]}
+            scores = {lam: _mae(_arr(g, "label"), _arr(g, f"pred_{name}@{lam:g}")) for lam in grid[pos]}
             best[name][pos] = min(scores, key=lambda lam: (scores[lam], -lam))
     dev = dev.with_columns([pl.coalesce([pl.when(pl.col("position") == pos).then(pl.col(f"pred_{n}@{lam:g}"))
                                          for pos, lam in by.items()]).alias(f"pred_{n}") for n, by in best.items()])
@@ -188,7 +222,7 @@ def cmd_run(args) -> dict:
     _check_qb_identical(dev, models)
     dev_rep = aw.compare(dev, models)
     selectable = [c.name for c in aw.CANDIDATES if c.selectable]
-    chosen = min(selectable, key=lambda n: dev_rep["ALL"]["metrics"][n]["mae"])
+    chosen = _best_candidate(dev, models, selectable)
 
     # ---- diagnostic windows (already inspected seasons): frozen development penalties
     diag_weeks = {w: ch.window_weeks(store, seasons) for w, seasons in zip(("2023-2024", "2025-2026"), aw.DIAGNOSTIC)}
@@ -212,7 +246,9 @@ def cmd_run(args) -> dict:
                "2025-2026": diag.filter(pl.col("season").is_in(list(aw.DIAGNOSTIC[1])))}
     diag_rep = {w: aw.compare(d, models) for w, d in windows.items()}
     diag_rep["pooled"] = aw.compare(diag, models)
-    decisions = {n: aw.decision(dev_rep, diag_rep["pooled"], n) for n in models if n not in ("C", "ifp2")}
+    # the pre-registered gates are applied to unrounded values (rounding is for reporting only)
+    gate_dev, gate_diag = aw.compare(dev, models, exact=True), aw.compare(diag, models, exact=True)
+    decisions = {n: aw.decision(gate_dev, gate_diag, n) for n in models if n not in ("C", "ifp2")}
     research_cfg = aw.research_config(next(c for c in aw.CANDIDATES if c.name == chosen), best[chosen], cfg,
                                       status=decisions[chosen]["outcome"])
     report = {"schema": "adaptive-workload-report/v1", "version": aw.AW_VERSION,

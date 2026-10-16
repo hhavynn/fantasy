@@ -145,7 +145,9 @@ tuned on it.
 * Every candidate keeps the ifp-2 feature set (C + flags + `xfpl_eb` + previous-season core,
   36-week half-life).
 * QB keeps ifp-2's QB model exactly. The harness asserts identical QB predictions.
-* Penalties are chosen per candidate and position on 2021-22 only.
+* Penalties are chosen per candidate and position on 2021-22 only, on unrounded MAE.
+* Only fully final, fully ingested weeks are used (every week in the current data is).
+* The decision rules are applied to unrounded values; the tables show them rounded.
 
 | Candidate | Change to RB/WR/TE features |
 |---|---|
@@ -162,18 +164,18 @@ rows; the selection rule picked AW_BX.
 | Window | C | ifp-2 | AW_E | AW_B | AW_BX | AW_B_noexp |
 |---|---|---|---|---|---|---|
 | Development 2021-22 (n = 13,372) | 4.216 | 4.202 | 4.203 (+0.000 [−0.000, +0.001]) | 4.203 (+0.000 [−0.002, +0.003]) | 4.202 (−0.001 [−0.004, +0.003]) | 4.204 (+0.001 [−0.001, +0.004]) |
-| 2023-24, inspected (n = 13,345) | 4.031 | 4.016 | 4.017 (+0.000) | 4.019 (+0.003) | 4.017 (+0.000) | 4.019 (+0.003) |
+| 2023-24, inspected (n = 13,345) | 4.031 | 4.016 | 4.017 (+0.000) | 4.019 (+0.003) | 4.017 (+0.001) | 4.019 (+0.003) |
 | 2025-26, inspected (n = 8,645) | 4.068 | 4.050 | 4.049 (−0.001) | 4.052 (+0.002) | 4.048 (−0.002) | 4.052 (+0.002) |
-| 2023-26 pooled (n = 21,990) | 4.045 | 4.030 | 4.029 (−0.000 [−0.001, +0.000]) | 4.032 (+0.003 [+0.001, +0.005]) | 4.029 (−0.001 [−0.002, +0.001]) | 4.032 (+0.003 [+0.001, +0.005]) |
+| 2023-26 pooled (n = 21,990) | 4.045 | 4.030 | 4.029 (−0.000 [−0.001, +0.000]) | 4.032 (+0.003 [+0.001, +0.005]) | 4.029 (−0.000 [−0.002, +0.001]) | 4.032 (+0.003 [+0.001, +0.005]) |
 
-RMSE and bias are unchanged to the second decimal (pooled RMSE 5.744-5.746, bias +0.009 to +0.016).
+RMSE and bias are unchanged to the second decimal (pooled RMSE 5.745-5.746, bias +0.009 to +0.015).
 
 Start/Sit pair accuracy and mean regret on 2023-26 pooled:
 
 * ifp-2: 65.47%, 2.492.
 * AW_E: 65.49%, 2.490.
 * AW_B: 65.45%, 2.494.
-* AW_BX: 65.47%, 2.495.
+* AW_BX: 65.46%, 2.496.
 
 **By position, 2023-26 pooled (candidate − ifp-2).** All differences are within ±0.004:
 
@@ -185,18 +187,18 @@ Start/Sit pair accuracy and mean regret on 2023-26 pooled:
 
 | Cohort | n | ifp-2 | AW_E | AW_B | AW_BX |
 |---|---|---|---|---|---|
-| RB starters pool | 2,832 | 5.582 | 5.584 | 5.585 | 5.579 |
-| RB high volume (healthy xFP ≥ 15) | 291 | 7.114 | 7.117 | 7.095 [−0.045, +0.005] | 7.091 [−0.047, −0.000] |
-| Injury return | 778 | 4.317 (−0.03) | 4.318 (−0.04) | 4.320 (−0.03) | 4.307 [−0.020, −0.000] |
-| Multiple early exits | 302 | 4.023 (−0.36) | 4.017 | 4.008 | 4.019 |
-| Unexplained role reduction | 1,682 | 3.120 (−0.11) | 3.122 | 3.128 [+0.001, +0.013] | 3.123 |
+| RB starters pool | 2,832 | 5.582 | 5.584 | 5.585 | 5.584 |
+| RB high volume (healthy xFP ≥ 15) | 291 | 7.114 | 7.117 | 7.095 [−0.045, +0.005] | 7.098 [−0.037, +0.002] |
+| Injury return | 778 | 4.317 (−0.03) | 4.318 (−0.04) | 4.320 (−0.03) | 4.311 [−0.017, +0.003] |
+| Multiple early exits | 302 | 4.023 (−0.36) | 4.017 | 4.008 | 4.020 |
+| Unexplained role reduction | 1,682 | 3.120 (−0.11) | 3.122 | 3.128 [+0.001, +0.013] | 3.124 |
 | Breakout regime (pregame streak ≥ +2) | 1,682 | 5.438 (+0.26) | 5.437 | 5.474 (+0.02) [+0.020, +0.051] | 5.443 |
 | Decline regime (pregame streak ≤ −2) | 3,790 | 3.022 (−0.06) | 3.024 | 2.993 (+0.05) [−0.035, −0.024] | 3.028 |
-| Team changed | 4,753 | 3.585 | 3.587 | 3.588 | 3.581 [−0.008, −0.001] |
-| Week 18 target | 1,173 | 4.180 | 4.180 | 4.185 | 4.177 |
-| After a Week-18 low game | 175 | 4.133 (+0.79) | 4.132 | 4.153 [+0.003, +0.043] | 4.134 |
-| Genuine demotion (outcome-defined) | 1,735 | 3.684 (−3.10) | 3.687 (−3.10) | 3.681 (−3.09) | 3.683 (−3.10) |
-| Breakout (outcome-defined) | 677 | 9.049 (+8.48) | 9.049 | 9.033 | 9.059 |
+| Team changed | 4,753 | 3.585 | 3.587 | 3.588 | 3.582 [−0.007, −0.000] |
+| Week 18 target | 1,173 | 4.180 | 4.180 | 4.185 | 4.179 |
+| After a Week-18 low game | 175 | 4.133 (+0.79) | 4.132 | 4.153 [+0.003, +0.043] | 4.132 |
+| Genuine demotion (outcome-defined) | 1,735 | 3.684 (−3.10) | 3.687 (−3.10) | 3.681 (−3.09) | 3.684 (−3.10) |
+| Breakout (outcome-defined) | 677 | 9.049 (+8.48) | 9.049 | 9.033 | 9.054 |
 | Limited history (< 3 games) | 1,032 | 3.059 | 3.059 | 3.068 [+0.006, +0.012] | 3.064 |
 
 The development cohorts (2021-22) show the same regime asymmetry for AW_B:
@@ -210,11 +212,12 @@ of +0.014 MAE, and no candidate moves it further.
 ## 6. Decision (`AW_DECISION_RULES`)
 
 * **AW_BX (selected on development): rejected.** It has no development gain (−0.001, CI
-  [−0.004, +0.003]). No diagnostic rule fires. Its 2023-26 numbers are the best of the four
-  (−0.001 pooled; TE, team-change and injury-return CIs below zero), but those seasons cannot select
+  [−0.004, +0.003]). No diagnostic rule fires. Its 2023-26 numbers tie AW_E's for the best of the four
+  (−0.000 pooled; TE and team-change CIs below zero), but those seasons cannot select
   a model.
 * **AW_E: rejected.** It has no development gain (+0.000, CI [−0.000, +0.001]).
 * **AW_B: rejected.** It has no development gain, and its 2023-26 pooled MAE is worse (+0.003).
+  WR is also significantly worse: its CI, shown as [+0.000, +0.006], is above zero before rounding.
 * **AW_B_noexp (ablation): rejected.** It is worse, and WR is significantly worse.
 
 How the Phase-5 rejection criteria came out:
@@ -258,10 +261,10 @@ Conditional projection if he plays:
 * ifp-2: 7.57.
 * AW_E: 7.90.
 * AW_B: 7.89.
-* AW_BX: 8.03.
+* AW_BX: 8.18.
 * AW_B_noexp: 7.16.
 
-The experimental workload restores about 1 more point of established xFP and 0.3-0.5 projected
+The experimental workload restores about 1 more point of established xFP and 0.3-0.6 projected
 points. That is still far below his healthy-game level. The main drag is `snap_trend` and the
 last-5 production features, not the workload estimate. This is one player-week and proves nothing
 about aggregate accuracy, which is unchanged (section 5).
