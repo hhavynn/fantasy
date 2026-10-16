@@ -72,11 +72,12 @@ explanation}`; `insufficient_data` is never a pass, and `activates` is always `f
 
 | Check | Passes only when |
 |---|---|
-| `transition` | `verify_transition`: both manifests valid, no model removed, no pinned artifact/report hash or scoring changed, history append-only, previous production retired, a `promotion` event and an owner approval |
+| `transition` | `verify_transition`: both manifests valid, no model removed, no pinned artifact/report hash or scoring changed, history append-only, previous production retired, a final `promotion` event with an owner approval, or a final `rollback` event whose `rollback_restore` target is the outgoing model's `rollback_to`, was production before and has a pinned artifact |
 | `artifact_integrity` | pinned sha256, a relative path inside the model directory, the file exists and its bytes hash to the pin (a newer file next to it never counts) |
 | `scoring_fingerprint` | manifest, artifact and live league agree, and the artifact names the registered version |
 | `training_cutoff` | recorded |
 | `prospective_shadow_evaluation_report` | exactly one, pinned and verified (a `historical_research` report never substitutes) |
+| `prospective_report_subject`, `heldout_report_subject`, `artifact_report_binding` | the prospective report's `subject` names this candidate, the model it replaces and the scoring (`scripts/weekly_learning.py evaluate` writes it); the held-out report's `model_version` and `scoring_fingerprint` are the candidate's; the artifact embeds that held-out result (`fit_final` copies it). A strong report about another model never counts |
 | `pregame_provenance` | the report's evidence kind is `pregame` (retrospective replays are never evidence) |
 | `finalized_evaluation` | every counted week is fully final and none is preliminary |
 | `<POS>:*` | `weekly_learning.shadow_criteria`, **recomputed** from the report's metrics per position: >= 8 prospective weeks, >= 400 matched appearances, champion-relative MAE CI upper < 0, bias guard, starters-pool non-inferiority, 80% interval coverage 75-85% |

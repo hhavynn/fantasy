@@ -42,7 +42,8 @@ def _prospective(weeks: int = 8) -> dict:
            "challenger_minus_champion_mae": {"diff": -0.2, "ci95": [-0.3, -0.1]},
            "interval80_coverage": {"champion": 0.79, "challenger": 0.80},
            "starters_pool": {"n": 200, "mae": {"champion": 5.0, "challenger": 4.8}}}
-    return {"pregame": {"kind": "pregame", "weeks": wk,
+    return {"subject": {"challenger_version": CAND, "champion_version": MODEL_VERSION, "scoring_fingerprint": FP},
+            "pregame": {"kind": "pregame", "weeks": wk,
                         "finality": {f"{s}-{w:02d}": {"fully_final": True} for s, w in wk},
                         "positions": {p: deepcopy(pos) for p in reg.POSITIONS}},
             "retrospective_not_evidence": {"kind": "retrospective"}}
@@ -51,9 +52,16 @@ def _prospective(weeks: int = 8) -> dict:
 def _heldout() -> dict:
     pos = {"common_support_n": 900, "relative_mae_improvement": 0.05,
            "primary_minus_best_baseline_mae": {"ci95": [-0.4, -0.1]}}
-    return {"positions": {p: dict(pos) for p in reg.POSITIONS},
+    return {"model_version": CAND, "scoring_fingerprint": FP, "positions": {p: dict(pos) for p in reg.POSITIONS},
             "espn_comparison": {"by_position": {p: {"n": 350, "primary": {"mae": 4.0}, "espn": {"mae": 4.1}}
                                                 for p in reg.POSITIONS}}}
+
+
+def _cand_artifact(**extra) -> dict:
+    held = _heldout()["positions"]
+    return {"version": CAND, "scoring_fingerprint": FP, **extra,
+            "evaluation": {p: {k: held[p][k] for k in ("common_support_n", "relative_mae_improvement")}
+                           for p in reg.POSITIONS}}
 
 
 @pytest.fixture
@@ -64,7 +72,7 @@ def env(tmp_path):
     champ_sha = _write(root, "independent_projections_ifp-1.0.0.json",
                        {"schema": "independent-projections-artifact/v1", "version": MODEL_VERSION,
                         "scoring_fingerprint": FP})
-    cand_sha = _write(root, f"candidates/{CAND}.json", {"version": CAND, "scoring_fingerprint": FP})
+    cand_sha = _write(root, f"candidates/{CAND}.json", _cand_artifact())
     pro_sha = _write(root, "reports/prospective.json", _prospective())
     held_sha = _write(root, "reports/heldout.json", _heldout())
     ledger = root / "weekly" / "ledger" / "s2026w08"
@@ -266,9 +274,9 @@ def test_tampered_artifact_rejected(env):
 def test_latest_artifact_is_not_approved(env):
     """A newer file next to the approved one changes nothing; replacing the approved one is rejected."""
     root, _, _ = env
-    _write(root, f"candidates/{CAND}-newer.json", {"version": CAND, "scoring_fingerprint": FP})
+    _write(root, f"candidates/{CAND}-newer.json", _cand_artifact())
     assert _gate(env)["activatable"]
-    _write(root, f"candidates/{CAND}.json", {"version": CAND, "scoring_fingerprint": FP, "retrained": True})
+    _write(root, f"candidates/{CAND}.json", _cand_artifact(retrained=True))
     assert not _gate(env)["activatable"]
 
 
@@ -279,7 +287,7 @@ def test_wrong_scoring_fingerprint_rejected(env):
     # the artifact itself trained under other scoring, though the manifest claims the league's
     bad = deepcopy(new)
     reg.entry(bad, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json",
-                                                         {"version": CAND, "scoring_fingerprint": "other"})
+                                                         {**_cand_artifact(), "scoring_fingerprint": "other"})
     rep = _gate(env, bad)
     assert not rep["activatable"] and _results(rep)["scoring_fingerprint"] == reg.FAIL
 
@@ -499,3 +507,59 @@ def test_malformed_report_fails_closed_without_crashing(env, kind, rel, mutate):
     _repin(new, kind, _rewrite(root, rel, mutate))
     rep = _gate(env, new)
     assert not rep["activatable"] and rep["blocking"]
+
+
+@pytest.mark.parametrize("kind,rel,mutate,check", [
+    (reg.PROSPECTIVE, "reports/prospective.json", lambda o: o["subject"].update(challenger_version="ifp-2.0.0"),
+     "prospective_report_subject"),
+    (reg.PROSPECTIVE, "reports/prospective.json", lambda o: o["subject"].update(champion_version="ifp-0.9.0"),
+     "prospective_report_subject"),
+    (reg.PROSPECTIVE, "reports/prospective.json", lambda o: o.pop("subject"), "prospective_report_subject"),
+    (reg.HELDOUT, "reports/heldout.json", lambda o: o.update(model_version=MODEL_VERSION), "heldout_report_subject"),
+    (reg.HELDOUT, "reports/heldout.json", lambda o: o.update(scoring_fingerprint="other"), "heldout_report_subject"),
+    (reg.HELDOUT, "reports/heldout.json", lambda o: o["positions"]["QB"].update(relative_mae_improvement=0.09),
+     "artifact_report_binding"),
+])
+def test_report_of_another_model_is_rejected(env, kind, rel, mutate, check):
+    """A hash-verified, strong report about a different model or artifact never counts."""
+    root, _, new = env
+    _repin(new, kind, _rewrite(root, rel, mutate))
+    rep = _gate(env, new)
+    assert not rep["activatable"] and _results(rep)[check] in (reg.FAIL, reg.INSUFFICIENT)
+
+
+def test_artifact_without_embedded_heldout_result_is_rejected(env):
+    root, _, new = env
+    reg.entry(new, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json",
+                                                         {"version": CAND, "scoring_fingerprint": FP})
+    rep = _gate(env, new)
+    assert not rep["activatable"] and _results(rep)["artifact_report_binding"] == reg.INSUFFICIENT
+
+
+def _hand_rollback(promoted: dict, target: str) -> dict:
+    """A hand-authored rollback manifest restoring `target` (bypassing plan_rollback)."""
+    new = deepcopy(promoted)
+    reg.entry(new, CAND)["state"] = reg.RETIRED
+    t = reg.entry(new, target)
+    t["state"] = reg.APPROVED
+    t["approval"] = {"kind": reg.ROLLBACK_RESTORE, "approved_by": "o", "approved_at": AT.isoformat()}
+    new["production"] = {"family": "ifp", "version": target}
+    new["history"].append({"at": AT.isoformat(), "event": "rollback", "from": CAND, "production": target,
+                           "by": "o", "reason": "r"})
+    return new
+
+
+def test_hand_authored_rollback_must_target_the_restorable_previous_model(env):
+    root, _, promoted = env
+    assert reg.verify_transition(promoted, _hand_rollback(promoted, MODEL_VERSION)) == []
+    problems = reg.verify_transition(promoted, _hand_rollback(promoted, "ifp-hgb-0.1.0"))   # experimental, unpinned
+    assert any("rollback_to" in p for p in problems)
+    assert any("never production" in p for p in problems)
+    assert any("no pinned artifact" in p for p in problems)
+    bad = _hand_rollback(promoted, MODEL_VERSION)
+    bad["history"][-1]["event"] = "promotion"
+    assert any("rollback` history event" in p for p in reg.verify_transition(promoted, bad))
+    unpinned = deepcopy(promoted)
+    reg.entry(unpinned, MODEL_VERSION)["artifact"]["sha256"] = None
+    assert any("no pinned artifact" in p for p in
+               reg.verify_transition(unpinned, _hand_rollback(unpinned, MODEL_VERSION)))

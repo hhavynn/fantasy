@@ -225,9 +225,10 @@ def _json_bytes(data: bytes, what: str):
 # ----------------------------------------------------------------------------- promotion checks
 
 
-def _artifact_checks(e: dict, root: Path, live_fp: str | None) -> list[dict]:
+def _artifact_checks(e: dict, root: Path, live_fp: str | None) -> tuple[list[dict], dict | None]:
+    """(checks, the verified artifact JSON or None)."""
     c, data = verify_file(root, e.get("artifact") or {}, "artifact")
-    out = [c]
+    out, art = [c], None
     fp = e.get("scoring_fingerprint")
     if live_fp is None:
         out.append(_crit("scoring_fingerprint", INSUFFICIENT, "the live league's scoring fingerprint is unknown or "
@@ -242,8 +243,10 @@ def _artifact_checks(e: dict, root: Path, live_fp: str | None) -> list[dict]:
         try:
             art = _json_bytes(data, "artifact")
         except RegistryError as err:
-            art = None
             out.append(_crit("scoring_fingerprint", FAIL, str(err), fp, live_fp))
+        if art is not None and not isinstance(art, dict):
+            art = None
+            out.append(_crit("scoring_fingerprint", FAIL, "artifact is not an object", fp, live_fp))
         if art is not None:
             inner = art.get("scoring_fingerprint") if isinstance(art, dict) else None
             ver = art.get("version") if isinstance(art, dict) else None
@@ -257,6 +260,46 @@ def _artifact_checks(e: dict, root: Path, live_fp: str | None) -> list[dict]:
     out.append(_crit("training_cutoff", PASS if isinstance(cut, dict) and cut.get("season") and cut.get("week")
                      else INSUFFICIENT, "training cutoff recorded" if isinstance(cut, dict) and cut.get("season")
                      and cut.get("week") else "no training cutoff {season, week} recorded", cut, "{season, week}"))
+    return out, art
+
+
+def report_identity_checks(e: dict, replaces: str, pros: dict | None, held: dict | None,
+                           art: dict | None) -> list[dict]:
+    """Evidence must be about THIS candidate: a hash-verified report of another model (or another
+    scoring) never counts. The prospective report's `subject` names the challenger, the champion it
+    was compared with and the scoring; the held-out report names its model_version and scoring, and
+    the candidate artifact must embed that held-out result (fit_final copies it), binding the
+    artifact to the report it was fitted from."""
+    v, fp, out = e.get("version"), e.get("scoring_fingerprint"), []
+    if pros is not None:
+        sub = pros.get("subject") if isinstance(pros.get("subject"), dict) else None
+        if sub is None:
+            out.append(_crit("prospective_report_subject", INSUFFICIENT, "the prospective report does not name the "
+                             "model it evaluates (`subject`), so it cannot be attributed to this candidate"))
+        else:
+            got = {k: sub.get(k) for k in ("challenger_version", "champion_version", "scoring_fingerprint")}
+            want = {"challenger_version": v, "champion_version": replaces, "scoring_fingerprint": fp}
+            out.append(_crit("prospective_report_subject", PASS if got == want else FAIL,
+                             "the report evaluates this candidate against the model it replaces" if got == want else
+                             f"the report evaluates {got}, not {want}", got, want))
+    if held is not None:
+        got = {"model_version": held.get("model_version"), "scoring_fingerprint": held.get("scoring_fingerprint")}
+        want = {"model_version": v, "scoring_fingerprint": fp}
+        out.append(_crit("heldout_report_subject", PASS if got == want else FAIL,
+                         "the held-out report evaluates this candidate" if got == want else
+                         f"the held-out report evaluates {got}, not {want}", got, want))
+        ev = art.get("evaluation") if isinstance(art, dict) else None
+        if not isinstance(ev, dict):
+            out.append(_crit("artifact_report_binding", INSUFFICIENT, "the artifact does not embed the held-out "
+                             "result it was fitted from (or did not verify)"))
+        else:
+            keys = ("common_support_n", "relative_mae_improvement")
+            pos = held.get("positions") if isinstance(held.get("positions"), dict) else {}
+            diff = [p for p in POSITIONS if not isinstance(ev.get(p), dict) or not isinstance(pos.get(p), dict)
+                    or any(ev[p].get(k) != pos[p].get(k) for k in keys)]
+            out.append(_crit("artifact_report_binding", FAIL if diff else PASS,
+                             f"the artifact's embedded held-out result differs from the report for {diff}" if diff
+                             else "the artifact embeds this held-out report's result", diff or None))
     return out
 
 
@@ -423,7 +466,8 @@ def _evidence(m: dict, e: dict, root: Path, live_fp: str | None, replaces: str) 
     """Every evidence check for candidate `e` (artifact, scoring, prospective, held-out, ESPN,
     rollback reference). Returns (checks, {report kind: verified sha256})."""
     checks = [_crit("registered", PASS, f"{e['version']} ({e.get('family')}) is registered", e.get("state"))]
-    checks += _artifact_checks(e, root, live_fp)
+    art_c, art = _artifact_checks(e, root, live_fp)
+    checks += art_c
     shas = {}
     pros_c, pros, shas[PROSPECTIVE] = _report(e, root, PROSPECTIVE)
     held_c, held, shas[HELDOUT] = _report(e, root, HELDOUT)
@@ -431,6 +475,7 @@ def _evidence(m: dict, e: dict, root: Path, live_fp: str | None, replaces: str) 
     checks += pros_c + _guarded("prospective_evidence", prospective_checks, pros)
     checks += held_c + _guarded("production_baseline", heldout_checks, held)
     checks += _guarded("espn_rule", espn_checks, held, bool(ap.get("start_sit_ready")))
+    checks += _guarded("report_identity", report_identity_checks, e, replaces, pros, held, art)
     checks += rollback_reference_checks(m, e, root, live_fp, replaces)
     return checks, shas
 
@@ -608,8 +653,23 @@ def verify_transition(old: dict, new: dict) -> list[str]:
         if not ev:
             out.append("production changed without a promotion or rollback history event")
         kind = (p.get("approval") or {}).get("kind")
+        last = added[-1] if added and isinstance(added[-1], dict) else {}
         if kind not in (OWNER_APPROVAL, ROLLBACK_RESTORE):
             out.append(f"production changed to {p['version']} without an owner approval or rollback record")
+        elif kind == OWNER_APPROVAL and last.get("event") != "promotion":
+            out.append("an owner approval must be recorded by a final `promotion` history event")
+        elif kind == ROLLBACK_RESTORE:
+            old_prod = entry(old, old["production"]["version"])
+            if old_prod.get("rollback_to") != p["version"]:
+                out.append(f"rollback target {p['version']} is not {old_prod['version']}'s rollback_to "
+                           f"({old_prod.get('rollback_to')!r})")
+            if not _was_approved(old, p["version"]):
+                out.append(f"rollback target {p['version']} was never production")
+            if not _sha_ok((p.get("artifact") or {}).get("sha256")):
+                out.append(f"rollback target {p['version']} has no pinned artifact to restore")
+            if last.get("event") != "rollback" or last.get("from") != old_prod["version"] \
+                    or last.get("production") != p["version"]:
+                out.append("a rollback must be recorded by a final `rollback` history event from the outgoing model")
         prev = entry(new, old["production"]["version"])
         if prev["state"] != RETIRED:
             out.append(f"previous production {prev['version']} must be retired, not {prev['state']}")

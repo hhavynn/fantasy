@@ -225,10 +225,13 @@ def cmd_predict(args, live, src, scoring, artifacts: dict | None = None, hist=No
             "runtime_seconds": round(time.time() - t, 2)}
 
 
-def cmd_evaluate(args, src, live=None, **_) -> dict:
+def cmd_evaluate(args, src, live=None, scoring=None, **_) -> dict:
     runs = wl.load_ledger(args.out)
     fetched = {args.season: _fetched_at(live, args.season)}
-    rep = {"pregame": wl.evaluate(runs, src, "pregame", fetched_at=fetched),
+    # which models the report compares (app/analytics/model_registry.py refuses a report without it)
+    subject = {"challenger_version": ch.CHALLENGER_VERSION, "champion_version": wl.MODEL_VERSION,
+               "scoring_fingerprint": None if scoring is None else scoring.fingerprint}
+    rep = {"subject": subject, "pregame": wl.evaluate(runs, src, "pregame", fetched_at=fetched),
            "retrospective_not_evidence": wl.evaluate(runs, src, "retrospective", fetched_at=fetched)}
     d = args.out / "reports"
     d.mkdir(parents=True, exist_ok=True)
