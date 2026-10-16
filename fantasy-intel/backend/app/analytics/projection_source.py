@@ -15,7 +15,9 @@ each number came from (`origin`):
              game, uncertain ID mapping, no participation estimate): ESPN's projection, labeled.
 
 The independent run must be the current model version under the league's current scoring; without
-one the switch reports `available: false` and the consumer keeps ESPN.
+one the switch reports `available: false` and the consumer keeps ESPN. Runs are immutable:
+the newest run that still has its stored rows is used, read from independent_projection_rows (the legacy
+table only when the database has not been migrated to schema v8).
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from __future__ import annotations
 import json
 
 from ..db.connection import fetch_dicts, table_exists
+from . import production_forecasts as pf
 
 SOURCES = ("espn", "independent")
 OURS, OURS_ZERO, ESPN = "ours", "ours_zero", "espn"
@@ -57,15 +60,12 @@ def _scoring_fingerprint(con, season: int) -> str | None:
 
 
 def _run(con, season: int, week: int) -> dict | None:
-    if not (table_exists(con, "independent_projection_runs") and table_exists(con, "independent_player_projections")):
-        return None
+    """Newest run of the current model under the league's current scoring that still has its rows
+    (production_forecasts.latest_run; runs are immutable, a later run never deletes an earlier one)."""
     fp = _scoring_fingerprint(con, season)
     if fp is None:
         return None
-    rows = fetch_dicts(con, """SELECT run_id, model_version, created_at, model_status FROM independent_projection_runs
-                               WHERE season = ? AND week = ? AND model_version = ? AND scoring_fingerprint = ?
-                               ORDER BY created_at DESC LIMIT 1""", [season, week, MODEL_VERSION, fp])
-    return rows[0] if rows else None
+    return pf.latest_run(con, season, week, model_version=MODEL_VERSION, scoring_fingerprint=fp)
 
 
 def weekly(con, season: int, week: int, source: str) -> dict:
@@ -83,8 +83,8 @@ def weekly(con, season: int, week: int, source: str) -> dict:
     values: dict[int, float | None] = dict(espn)
     origin: dict[int, str] = {pid: ESPN for pid in espn}
     counts = {OURS: 0, OURS_ZERO: 0, ESPN: 0}
-    for r in fetch_dicts(con, """SELECT espn_player_id, coverage_status, expected_points FROM independent_player_projections
-                                 WHERE run_id = ?""", [run["run_id"]]):
+    for r in fetch_dicts(con, f"""SELECT espn_player_id, coverage_status, expected_points FROM {pf.rows_source(con)}
+                                  WHERE run_id = ?""", [run["run_id"]]):
         pid = r["espn_player_id"]
         if r["coverage_status"] == "projected" and r["expected_points"] is not None:
             values[pid], origin[pid] = float(r["expected_points"]), OURS
