@@ -300,6 +300,12 @@ underconfident for backups); the extremes are well calibrated (0.96 predicted vs
 n = 508). RB's largest gaps are in sparse bins (0.1-0.2 and 0.3-0.4, n <= 49). Recalibration is a
 follow-up; the frozen statuses stand.
 
+Calibration research (`docs/research/participation_calibration.md`, shadow only): walk-forward
+Platt / shrunk Platt / isotonic maps fitted only on earlier out-of-sample predictions. Only QB
+isotonic passes the pre-registered rule (log loss and Brier CIs below 0, ECE 0.046 -> 0.015 in
+development); it does not improve unconditional fantasy points, so `ipm-1.0.0` is unchanged and the
+map is kept as a shadow candidate.
+
 Unconditional league points (actual = points if he appeared, else 0), same rows:
 
 | Pos | Conditional as-is | Out rule (Out -> 0) | Best baseline x conditional | **Expected points** | vs conditional (95% CI) | vs Out rule (95% CI) |
