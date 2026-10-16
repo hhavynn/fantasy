@@ -22,6 +22,7 @@ from .api.projection_performance import router as projection_performance_router
 from .api.weekly_recap import router as weekly_recap_router
 from .api.research import router as research_router
 from .api.player_compare import router as player_compare_router
+from .api.rankings import router as rankings_router
 from .api.leagues_v2 import router as leagues_v2_router
 from .api.kicker_projections import router as kicker_projections_router
 
@@ -70,6 +71,7 @@ app.include_router(projection_performance_router)
 app.include_router(weekly_recap_router)
 app.include_router(research_router)
 app.include_router(player_compare_router)
+app.include_router(rankings_router)
 app.include_router(leagues_v2_router)
 app.include_router(kicker_projections_router)
 
