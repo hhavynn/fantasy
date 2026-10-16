@@ -238,6 +238,7 @@ def test_weekly_pipeline_never_imports_into_consumers():
         # imported, see tests/test_model_registry.py::test_hosted_app_never_reads_the_registry_or_research_packages)
         if path.name in ("weekly_learning.py", "challenger.py", "source_provenance.py", "adaptive_workload.py",
                          "opportunity_efficiency.py",
+                         "espn_benchmark.py",   # research-only ESPN benchmark; reads label_outcomes (never imported)
                          "model_registry.py"):
             continue
         text = path.read_text()
