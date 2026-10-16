@@ -255,6 +255,47 @@ def stage_project(args, conns: list, log_path: Path) -> dict:
         return {}
 
 
+def stage_kicker(args, log_path: Path) -> dict:
+    """Kicker model (kfp-1.0.0, scripts/kicker_projections.py): fit and approve the season's artifact once (it trains on
+    finished seasons only, so one artifact serves every week of the season), then store the target week's kicker run
+    and every later regular-season week's (experimental) run. Called after `project` (the read connections are closed).
+    Never fails the cycle: run_cycle turns an error into a warning."""
+    base = [sys.executable, str(SCRIPTS / "kicker_projections.py")]
+    common = ["--season", str(args.season), "--live-db", str(args.live_db), "--history-db", str(args.history_db),
+              "--out", str(args.kicker_dir)]
+    out: dict = {}
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+
+    def run(cmd: list[str]) -> dict:
+        proc = subprocess.run(base + cmd + common, cwd=_bootstrap.BACKEND, capture_output=True, text=True, env=env)
+        with open(log_path, "a", encoding="utf-8") as log:
+            log.write(f"==> kicker_projections.py {cmd[0]} {datetime.now(timezone.utc).isoformat()}\n"
+                      f"{proc.stdout}{proc.stderr}")
+        if proc.returncode != 0:
+            raise RuntimeError(f"kicker_projections.py {cmd[0]} exited {proc.returncode}: {proc.stderr.strip()[-400:]}")
+        try:
+            return json.loads(proc.stdout)
+        except ValueError:
+            return {}
+
+    if not (Path(args.kicker_dir) / f"kfp-1.0.0_{args.season}.json").exists():
+        fit = run(["fit", "--register"])
+        out["fit"] = {k: fit.get(k) for k in ("artifact", "sha256", "registered")}
+    else:
+        # An artifact fitted without --register, a failed registration or a database restored apart from the model
+        # directory would otherwise never be approved; registering an approved artifact again is a no-op.
+        reg = run(["register"])
+        out["register"] = {k: reg.get(k) for k in ("artifact", "sha256", "registered")}
+    cmd = ["project", "--week", str(args.week)]
+    last = getattr(args, "last_week", None)
+    if last is not None and last > args.week and not getattr(args, "no_rest_of_season", False):
+        cmd += ["--through-week", str(last)]
+    pj = run(cmd)
+    out["runs"] = [{k: r.get(k) for k in ("week", "run_id", "created", "row_count", "coverage")} for r in pj.get("runs", [])]
+    return out
+
+
 def training_fingerprint(args, store, scoring) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
@@ -424,6 +465,16 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                 for r in ros:
                     if "error" in r:
                         report["warnings"].append(f"rest-of-season projection for week {r['week']} failed: {r['error']}")
+            if not args.no_kicker:      # (no stage entry when disabled: a report's stage list is unchanged)
+                t_k = time.monotonic()
+                try:     # the kicker model is separate: its failure is a warning, never a failed cycle
+                    report["kicker_projection"] = stage_kicker(args, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+                    report["stages"].append({"name": "kicker", "status": "ok", "seconds": round(time.monotonic() - t_k, 2)})
+                except Exception as err:      # noqa: BLE001
+                    report["stages"].append({"name": "kicker", "status": "failed_nonfatal",
+                                             "seconds": round(time.monotonic() - t_k, 2),
+                                             "error": f"{err.__class__.__name__}: {err}"})
+                    report["warnings"].append(f"kicker projection failed (skill-position run unaffected): {err}")
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):
@@ -474,6 +525,9 @@ def parse(argv=None):
                     help="do not store the production model's run in the live database after predict")
     ap.add_argument("--no-rest-of-season", action="store_true",
                     help="project only the target week, not every later regular-season week from the same artifact")
+    ap.add_argument("--no-kicker", action="store_true",
+                    help="do not fit/project the kicker model (kfp) after the skill-position projection")
+    ap.add_argument("--kicker-dir", type=Path, default=cli._path("KICKER_MODEL_DIR", "data/models/kicker"))
     ap.add_argument("--now", help="ISO timestamp to use as the current time (tests and audits only)")
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
     ap.add_argument("--history-db", type=Path, default=cli._path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
@@ -492,7 +546,8 @@ def main(argv=None) -> int:
         return 0
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
-            "training", "forecast", "projection", "evaluation", "missed_window", "warnings", "exit_code")
+            "training", "forecast", "projection", "kicker_projection", "evaluation", "missed_window", "warnings",
+            "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))
     return code
 

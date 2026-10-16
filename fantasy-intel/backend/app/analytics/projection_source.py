@@ -11,8 +11,13 @@ each number came from (`origin`):
              like ESPN's weekly projection, so the two are interchangeable in a lineup.
   ours_zero  the independent run says he cannot score this week: a bye, or withheld as unavailable
              (ESPN OUT / IR / suspension, NFL-ineligible, not on the active roster). 0.0, as ESPN does.
-  espn       no independent estimate exists for him (K and D/ST have no model; rookies without an NFL
+  espn       no independent estimate exists for him (D/ST has no model; rookies without an NFL
              game, uncertain ID mapping, no participation estimate): ESPN's projection, labeled.
+
+Kickers (K) are not in the skill-position run: they come from the separate kicker model's verified run
+(kicker_store.select_run: kfp-1.0.0, the league's kicker scoring, approved artifact, content hash), applied
+by `_kicker_overlay` only to players the skill run left on ESPN, and reported under `kicker_run`. A week
+without a verified kicker run keeps ESPN's kicker numbers.
 
 Which run consumers see (`select_run`, the one selection every consumer view uses: this switch, and
 GET /api/projections/independent):
@@ -217,6 +222,7 @@ def weekly(con, season: int, week: int, source: str) -> dict:
             values[pid], origin[pid] = float(r["expected_points"]), OURS
         elif r["coverage_status"] in ZERO_STATUSES:
             values[pid], origin[pid] = 0.0, OURS_ZERO
+    kicker_run = _kicker_overlay(con, season, week, values, origin)
     for o in origin.values():
         counts[o] += 1
     reason = _fallback_reason(week, run, sel["skipped"]) if sel["fallback"] else None
@@ -235,17 +241,31 @@ def weekly(con, season: int, week: int, source: str) -> dict:
         reason = f"{reason} {note}" if reason else note
     return {**base, **extra, "reason": reason, "values": values, "origin": origin, "counts": counts, "run": run_info,
             "model_status": consumer_status(run), "governance": governance(run["model_version"]),
-            "timing": timing(con, run, sel["rows"])}
+            "timing": timing(con, run, sel["rows"]), "kicker_run": kicker_run}
+
+
+def _kicker_overlay(con, season: int, week: int, values: dict, origin: dict) -> dict | None:
+    """Kicker values from the verified kfp run (kicker_store.overlay), only for players still on ESPN. Mutates
+    `values` / `origin`; returns the kicker run's info (None when no verified kicker run exists)."""
+    from . import kicker_store
+
+    k = kicker_store.overlay(con, season, week)
+    for pid, v in k["values"].items():
+        if origin.get(pid, ESPN) == ESPN:
+            values[pid], origin[pid] = v, k["origin"][pid]
+    return k["run"]
 
 
 def describe(w: dict) -> dict:
     """The part of `weekly` a response carries (no per-player maps)."""
-    keys = ("source", "available", "reason", "run", "model_status", "counts", "governance", "timing", "skipped")
+    keys = ("source", "available", "reason", "run", "model_status", "counts", "governance", "timing", "skipped",
+            "kicker_run")
     return {k: w[k] for k in keys if k in w}
 
 
 NOTE = ("Independent projections are Fantasy Intel's own model (expected points). The production model ifp-2.0.0 "
         "(retrained weekly) was approved by an owner override: it has not met its prospective promotion criteria, its "
         "research validation is historical only, and it is not shown to be better than ESPN. A week without an "
-        "eligible ifp-2.0.0 run shows the previous model ifp-1.0.0 as a labeled fallback. K and D/ST, and players the "
-        "model cannot project, keep ESPN's number and are marked.")
+        "eligible ifp-2.0.0 run shows the previous model ifp-1.0.0 as a labeled fallback. Kickers come from the separate "
+        "kicker model kfp-1.0.0 when a verified kicker run exists. D/ST, and players the models cannot project, keep "
+        "ESPN's number and are marked.")

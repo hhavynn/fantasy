@@ -73,3 +73,9 @@ test("every page appears once and every group has pages", () => {
     assert.ok(hrefs.includes(href), `${href} missing from navigation`);
   }
 });
+
+test("the kicker outlook sits in Players", () => {
+  assert.equal(getActiveRoute("/kickers").activeHref, "/kickers");
+  assert.equal(group("/kickers"), "Players");
+  assert.ok(ALL_NAV_PAGES.some((p) => p.href === "/kickers"));
+});

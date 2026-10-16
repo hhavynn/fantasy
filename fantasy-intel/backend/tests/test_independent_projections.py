@@ -197,7 +197,7 @@ def test_live_uses_only_weeks_before_target(live):
 # ----------------------------------------------------------------------------- API
 
 TOP_KEYS = {"schema_version", "league", "week", "notes", "available", "unavailable_reason", "run", "model_status", "governance",
-            "players"}
+            "players", "kicker_run"}
 PLAYER_KEYS = {"espn_player_id", "gsis_id", "name", "position", "nfl_team", "opponent", "is_home", "fantasy_team_id",
                "injury_status", "independent", "espn", "comparison"}
 INDEP_KEYS = {"projected_points", "interval_80", "model", "model_version", "model_status", "start_sit_ready",
@@ -367,7 +367,9 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "participation_calibration.py",   # P(appears) calibration research, shadow only (nothing imports it)
                "point_distributions.py",   # research-only point distributions (never imported by the app)
                "usage_signals.py",   # research-only FTN read / depth-chart signals (never imported by the app)
-               "roster_context.py", "context_challenger.py"}   # research-only QB/teammate context (never imported)
+               "roster_context.py", "context_challenger.py",   # research-only QB/teammate context (never imported)
+               # kicker model: reconciliation scores a kicker's rare offensive stats (fakes) with the skill weights
+               "kicker_scoring.py"}
     for f in APP.rglob("*"):
         if f.suffix not in (".py", ".sql") or f.name in allowed:
             continue

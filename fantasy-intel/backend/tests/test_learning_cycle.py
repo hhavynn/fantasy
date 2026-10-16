@@ -78,11 +78,13 @@ def env(base, tmp_path, lc):
     return tmp_path
 
 
-def _args(lc, env, now=PRE_W10, *extra, project=False):
-    """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it."""
+def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False):
+    """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it, and the kicker stage
+    (after project) only when a test asks for that too."""
     return lc.parse(["run", "--skip-sync", "--season", "2025", "--now", now, "--live-db", str(env / "live.duckdb"),
                      "--history-db", str(env / "history.duckdb"), "--ifp-dir", str(env / "models"),
-                     "--out", str(env / "out"), *([] if project else ["--no-project"]), *extra])
+                     "--out", str(env / "out"), "--kicker-dir", str(env / "kicker"),
+                     *([] if project else ["--no-project"]), *([] if kicker else ["--no-kicker"]), *extra])
 
 
 def _run(lc, env, now=PRE_W10, *extra):
@@ -407,6 +409,21 @@ def _espn_players(env):
                     "VALUES (?, ?, ?, ?, 1)", [pid, g, pos, team])
         con.execute("INSERT INTO player_id_map (espn_player_id, gsis_id, match_method, match_confidence) "
                     "VALUES (?, ?, 'espn_id:nfl_players', 'high')", [pid, g])
+    con.close()
+
+
+def test_kicker_stage_failure_never_fails_the_cycle_or_the_ifp_run(lc, env):
+    """The kicker stage runs after `project`; here it fails (the synthetic databases hold no kicker data), and the
+    cycle still exits OK with the ifp-2.0.0 run stored, the failure reported as a warning."""
+    _espn_players(env)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True, kicker=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    assert _stages(rep)[-3:] == [("predict", "ok"), ("project", "ok"), ("kicker", "failed_nonfatal")]
+    assert any("kicker projection failed" in w for w in rep["warnings"])
+    con = connect(env / "live.duckdb")
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.0.0'"
+                       ).fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM kicker_projection_runs").fetchone()[0] == 0
     con.close()
 
 

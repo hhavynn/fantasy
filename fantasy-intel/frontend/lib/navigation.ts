@@ -23,6 +23,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/movers", label: "Projection movers" },
       { href: "/projection-performance", label: "Projection accuracy" },
       { href: "/waivers", label: "Waivers" },
+      { href: "/kickers", label: "Kicker outlook" },
     ],
   },
   { label: "Trades", pages: [{ href: "/trades", label: "Analyzer" }, { href: "/trades/discover", label: "Discover" }] },
