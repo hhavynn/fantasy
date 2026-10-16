@@ -631,9 +631,9 @@ same direction (`tests/test_ros_projections.py`).
 
 | Signal | Horizon 0 | Horizon >= 1 |
 |---|---|---|
-| NFL reserve designation (`player_availability.derive`) | `unavailable_weeks` for `W` | `unavailable_weeks` for each `T` separately |
-| ESPN `INJURY_RESERVE` / `SUSPENSION` | withheld | withheld for every remaining week, "long-term unavailable; return date unknown" |
-| Weekly roster status not ACT/INA | withheld | withheld for every remaining week, same note |
+| NFL reserve designation (`player_availability.derive`) | `unavailable_weeks` for `W` | `unavailable_weeks` for each `T` separately; a reserve-list player (roster status RES/PUP/NFI, reserve rule code, so an earliest eligible week is derivable) is withheld before that week and projected from it ("returns from reserve (eligible week N)"), also when ESPN lists `INJURY_RESERVE` |
+| ESPN `INJURY_RESERVE` / `SUSPENSION` | withheld | withheld for every remaining week, "long-term unavailable; return date unknown" (unless a return week is derivable, see above) |
+| Weekly roster status not ACT/INA | withheld | withheld for every remaining week, same note (a reserve list with no derivable return, exempt, suspended, practice squad, released) |
 | ESPN `OUT` | withheld | ignored (flag: "describes the next game only") |
 | ESPN `DOUBTFUL` / `QUESTIONABLE` | flag, assumed to play | ignored (same flag) |
 | ESPN-status designation fallback for the participation model | used where nflverse has no report | never used |
@@ -644,8 +644,12 @@ experimental, not validated beyond the next week"; participation rows carry the 
 `bye` row, as today. A failure on one future week is listed under `projection.rest_of_season` and in `warnings` of the
 cycle report and does not stop the other weeks or change the cycle status (`--no-rest-of-season` skips all of it).
 
+Roster, fantasy-IR and participation-population state are read as of the cutoff week `W`, never later, so replaying a
+past `W` with `--through-week` sees no state posted since. The ESPN "next game only" flags are stored on the rows but
+left out of a horizon-k run's `content_sha256`, so an ESPN status flip does not store a new copy of every future week.
+
 **Evidence stays horizon 0.** `pregame_forecasts`, `eligible_run_ids`, the ESPN benchmark, the start/sit evaluation and the
-promotion tracker only ever use `coalesce(forecast_horizon, 0) = 0` runs. A horizon-k run is excluded with the reason
+promotion tracker and the prospective evidence audit (`scripts/evidence_audit.py`) only ever use `coalesce(forecast_horizon, 0) = 0` runs. A horizon-k run is excluded with the reason
 "rest-of-season forecast (horizon k), not evidence", **even when the week's horizon-0 run is missing**: a missed pregame run
 is never replaced by an earlier, less informed forecast. `promotion_tracker.latest_run` likewise never reports a
 future-week run as the latest. The **consumer** selection is the opposite by design: `production_forecasts.latest_run`

@@ -55,6 +55,10 @@ HASHED_META = META_INT + META_STR + META_JSON
 # digest it was sealed with and an unchanged rerun stays idempotent across the upgrade.
 HORIZON_META = ("forecast_horizon", "projected_from_week")
 HORIZON_NOTE = "rest-of-season forecast (horizon {k}): experimental, not validated beyond the next week"
+# Marker of the flag a horizon >= 1 row carries for an ESPN OUT / DOUBTFUL / QUESTIONABLE status (next game only, not
+# applied to the target week). Informational: a horizon-k run's digest ignores it, so a status flip does not make
+# every future week's run "different" and store a new copy of all of them.
+NEXT_GAME_ONLY = "describes the next game only"
 NOT_EVIDENCE = "rest-of-season forecast (horizon {k}), not evidence"
 
 
@@ -206,9 +210,16 @@ def content_sha256(meta: dict, rows: Iterable[dict]) -> str:
     """Digest of the run's canonicalised meta and rows. Independent of run_id, created_at, nfl_synced_at,
     row order, and of whether values come from Python objects or back from DuckDB."""
     skip = () if horizon_of(meta) > 0 else HORIZON_META
+    drop_flags = horizon_of(meta) > 0
+
+    def cell(c, r):
+        v = _canon(c, r.get(c))
+        if drop_flags and c == "flags" and isinstance(v, list):
+            v = [f for f in v if not (isinstance(f, str) and NEXT_GAME_ONLY in f)]
+        return v
+
     payload = {"meta": {k: _canon(k, meta.get(k)) for k in HASHED_META if k not in skip},
-               "rows": [[_canon(c, r.get(c)) for c in ROW_COLUMNS]
-                        for r in sorted(rows, key=lambda r: int(r["espn_player_id"]))]}
+               "rows": [[cell(c, r) for c in ROW_COLUMNS] for r in sorted(rows, key=lambda r: int(r["espn_player_id"]))]}
     text = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(text.encode()).hexdigest()
 

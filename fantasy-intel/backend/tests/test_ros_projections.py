@@ -33,15 +33,17 @@ PLAYERS = {
     2: ("Out RB", "RB", gsis("DDD", "RB1"), "OUT"),
     3: ("IR WR", "WR", gsis("EEE", "WR1"), "INJURY_RESERVE"),
     4: ("Suspended RB", "RB", gsis("FFF", "RB1"), "SUSPENSION"),
-    5: ("NFL reserve WR", "WR", gsis("BBB", "WR3"), "ACTIVE"),       # reserve from week 5: eligible from week 9
+    5: ("NFL reserve WR", "WR", gsis("BBB", "WR3"), "ACTIVE"),       # RES + R48 from week 4: eligible from week 8
     6: ("Practice squad RB", "RB", gsis("CCC", "RB2"), "ACTIVE"),    # roster status PRA: not ACT/INA
     7: ("Bye WR", "WR", gsis(BYE_TEAM, "WR1"), "ACTIVE"),
     8: ("Questionable WR", "WR", gsis("FFF", "WR1"), "QUESTIONABLE"),
     9: ("Healthy RB", "RB", gsis("BBB", "RB1"), "ACTIVE"),
     10: ("Healthy QB", "QB", gsis("AAA", "QB"), "ACTIVE"),
     11: ("Doubtful WR", "WR", gsis("GGG", "WR1"), "DOUBTFUL"),
+    12: ("Reserve RB, no rule code", "RB", gsis("CCC", "RB1"), "ACTIVE"),   # RES, code R99: no return derivable
+    13: ("Reserve + ESPN IR WR", "WR", gsis("DDD", "WR1"), "INJURY_RESERVE"),   # RES + R01 from week 5: eligible week 9
 }
-RESERVE_ID, PS_ID = 5, 6
+RESERVE_ID, PS_ID, OTHER_RES_ID, IR_RES_ID = 5, 6, 12, 13
 
 
 def artifact(src, created_at="2026-08-01T00:00:00+00:00"):
@@ -73,8 +75,12 @@ def build_world(path):
     for pid, (_, pos, g, _) in PLAYERS.items():
         for w in range(1, W + 1):
             status, abbr = "ACT", "A01"
-            if pid == RESERVE_ID and w >= 5:
-                status, abbr = "ACT", "R01"        # Reserve/Injured since week 5: misses 5, 6, 7, 8; eligible week 9
+            if pid == RESERVE_ID and w >= 4:
+                status, abbr = "RES", "R48"        # Reserve/Injured (designated for return) since week 4: eligible week 8
+            if pid == OTHER_RES_ID and w >= 5:
+                status, abbr = "RES", "R99"        # a reserve list with no minimum-games rule: no return date
+            if pid == IR_RES_ID and w >= 5:
+                status, abbr = "RES", "R01"        # Reserve/Injured since week 5: misses 5-8, eligible week 9
             if pid == PS_ID and w >= 5:
                 status, abbr = "PRA", "P01"
             roster.append({"season": 2026, "week": w, "gsis_id": g, "team": g.split("-")[1], "game_type": "REG",
@@ -228,11 +234,31 @@ def test_nfl_reserve_unavailable_weeks_are_respected_per_target_week(world):
     con, src = world
     art = artifact(src)
     status = {t: by_id(project(con, src, art, t)[1])[RESERVE_ID]["coverage_status"] for t in range(W, W + 8)}
-    # reserve since week 5, four games missed (5-8): ineligible weeks 6, 7, 8; eligible (unconfirmed) from week 9
-    assert [status[t] for t in (6, 7, 8)] == ["withheld_unavailable"] * 3
-    assert [status[t] for t in (9, 10, 11, 12, 13)] == ["projected"] * 5
+    # RES + R48 since week 4, four games missed (4-7): ineligible weeks 6 and 7, eligible (unconfirmed) from week 8
+    assert [status[t] for t in (6, 7)] == ["withheld_unavailable"] * 2
+    assert [status[t] for t in (8, 9, 10, 11, 12, 13)] == ["projected"] * 6
     row = by_id(project(con, src, art, 9)[1])[RESERVE_ID]
     assert row["projected_points"] is not None and "future week: no injury report yet" in row["flags"]
+    assert "returns from reserve (eligible week 8): return not confirmed, assumed available" in row["flags"]
+    early = by_id(project(con, src, art, 7)[1])[RESERVE_ID]
+    assert "Earliest eligible return week 8" in early["missing_inputs"][0]
+    # horizon 0 is unchanged: a roster status of RES withholds him whatever the eligible week
+    assert by_id(project(con, src, art, W)[1])[RESERVE_ID]["coverage_status"] == "withheld_unavailable"
+    # RES + ESPN INJURY_RESERVE with a dated return: withheld only until it, projected after
+    ir = {t: by_id(project(con, src, art, t)[1])[IR_RES_ID]["coverage_status"] for t in (6, 7, 8, 9, 10)}
+    assert [ir[t] for t in (6, 7, 8)] == ["withheld_unavailable"] * 3 and [ir[9], ir[10]] == ["projected"] * 2
+
+
+def test_a_reserve_player_with_no_derivable_return_is_withheld_for_every_week(world):
+    con, src = world
+    art = artifact(src)
+    for target in (W, W + 1, W + 3, W + 6, LAST):
+        if target == BYE_WEEK:
+            continue
+        r = by_id(project(con, src, art, target)[1])[OTHER_RES_ID]
+        assert r["coverage_status"] == "withheld_unavailable" and r["projected_points"] is None
+        if target > W:
+            assert r["missing_inputs"][0] == "long-term unavailable; return date unknown"
 
 
 # ----------------------------------------------------------------------------- participation
@@ -301,8 +327,8 @@ def snapshot_digest(path) -> dict:
 
 
 # Produced by snapshot_digest() on the code of origin/feat/production-artifact-pin (before rest-of-season support).
-HORIZON_ZERO_SNAPSHOT = {"plain": "0ed94eddc3385189b1121bdeef636223d9bd8f46dfd2fafe2697ad0c51eb0233",
-                         "participation": "c7a2418235911d07ee75844c99fb2db2e72d9725ce93ce5de541da83d2d996d7"}
+HORIZON_ZERO_SNAPSHOT = {"plain": "82af9af1110121880ce77ad5dd6c3b62fbbec0c77e9c8a5e738c70509de7ea83",
+                         "participation": "2c9857ecd7391cadb383e648b472289de6b51e73ec6983adb8c3684ebecd1007"}
 
 
 def test_horizon_zero_output_is_byte_identical_to_the_code_before_rest_of_season(tmp_path):
@@ -457,3 +483,121 @@ def test_legacy_runs_without_the_columns_still_read(world):
                                   artifact_id=None)
     assert {r["run_id"] for r in got} == {stored["run_id"]}
     assert pf.latest_run(con, 2026, W, model_version=MODEL_VERSION)["horizon"] == 0
+
+
+# ----------------------------------------------------------------------------- review fixes
+
+
+def test_next_game_only_espn_flags_do_not_change_a_future_run_digest(world):
+    """A QUESTIONABLE <-> ACTIVE flip must not store a new copy of every future week; a projection change must."""
+    con, src = world
+    art = artifact(src)
+    m, r = project(con, src, art, W + 2)
+    first = write_run(con, {**m, "created_at": CREATED}, r)
+    assert any(pf.NEXT_GAME_ONLY in f for row in r if row["espn_player_id"] == 8 for f in row["flags"])
+    con.execute("UPDATE fantasy_players SET injury_status = 'ACTIVE' WHERE espn_player_id IN (2, 8, 11)")
+    m2, r2 = project(con, src, art, W + 2)
+    assert not any(pf.NEXT_GAME_ONLY in f for row in r2 for f in row["flags"])
+    again = write_run(con, {**m2, "created_at": datetime(2026, 9, 2)}, r2)
+    assert not again["created"] and again["run_id"] == first["run_id"]
+    stored = con.execute("SELECT flags FROM independent_projection_rows WHERE run_id = ? AND espn_player_id = 8",
+                         [first["run_id"]]).fetchone()[0]
+    assert pf.NEXT_GAME_ONLY in stored                                  # the flag stays in the stored row
+    # a different projection IS a new run
+    boom = Sources(src.panel.with_columns(pl.when(pl.col("gsis_id") == PLAYERS[1][2]).then(pl.col("league_points") + 9)
+                                          .otherwise(pl.col("league_points")).alias("league_points")),
+                   src.games, src.defense, src.rosters, src.injuries)
+    m3, r3 = project(con, boom, art, W + 2)
+    assert write_run(con, {**m3, "created_at": datetime(2026, 9, 3)}, r3)["created"]
+    # a horizon-0 run still hashes its flags (its digest is unchanged)
+    m0, r0 = project(con, src, art, W)
+    flagged = pf.content_sha256(m0, r0)
+    con.execute("UPDATE fantasy_players SET injury_status = 'QUESTIONABLE' WHERE espn_player_id = 8")
+    m0b, r0b = project(con, src, art, W)
+    assert pf.content_sha256(m0b, r0b) != flagged
+
+
+def test_participation_at_a_future_week_keeps_the_injury_history_but_not_the_designations(world):
+    con, src = world
+    art, part = artifact(src), participation_artifact()
+    g = PLAYERS[1][2]
+    with_w_report = sources_with_injuries(src, [(W, g, "AAA", "Out")])
+    without = sources_with_injuries(src, [(W - 1, PLAYERS[10][2], "AAA", "Questionable")])
+    later = by_id(project(con, with_w_report, art, W + 1, part)[1])[1]
+    assert later["p_play"] == pytest.approx(1 / (1 + 2.718281828459045 ** -2.0), abs=1e-3)   # W's report not applied to T
+    # the participation population sees the same injury history as the point model: both get the full injuries frame
+    from app.analytics import participation as pm
+    seen = []
+    real = pm.features_for_week
+    pm.features_for_week = lambda sources, season, week, targets: (seen.append(sources.injuries), real(
+        sources, season, week, targets))[1]
+    try:
+        project(con, without, art, W + 1, part)
+    finally:
+        pm.features_for_week = real
+    assert seen and all(inj is without.injuries for inj in seen)
+
+
+def test_a_replayed_cutoff_week_reads_no_roster_rows_after_it(world):
+    """projected_from_week=W caps the roster / fantasy-IR / participation-population state at W, not T."""
+    con, src = world
+    art, part = artifact(src), participation_artifact()
+    base_meta, base = project(con, src, art, W + 3, part)
+    # rosters posted AFTER the cutoff: a trade of the healthy WR and a reserve placement, in weeks 7-8
+    g = PLAYERS[1][2]
+    con.execute("INSERT INTO nfl_rosters_weekly VALUES (2026, 7, ?, 'CCC', 'REG', 'WR', 'RES', 'R01')", [g])
+    con.execute("INSERT INTO nfl_rosters_weekly VALUES (2026, 8, ?, 'CCC', 'REG', 'WR', 'RES', 'R01')", [g])
+    con.execute("INSERT INTO lineup_snapshots (league_id, season, scoring_period, team_id, espn_player_id, "
+                "lineup_slot_id, is_starter) VALUES (99, 2026, 8, 1, 1, 21, false)")
+    src2 = load_sources(con, SCORING)
+    meta, rows = project(con, src2, art, W + 3, part)
+    strip = lambda rs: [{k: v for k, v in r.items() if k != "run_id"} for r in rs]  # noqa: E731
+    assert strip(rows) == strip(base)
+    assert pf.content_sha256(meta, rows) == pf.content_sha256(base_meta, base)
+
+
+def test_the_write_connection_is_opened_only_after_every_week_is_built(tmp_path, monkeypatch):
+    """The cycle's project process holds the DuckDB write lock only for the stores, not while (19 - W) weeks are
+    built; see test_learning_cycle for the end-to-end run."""
+    import argparse
+    import importlib.util
+    from pathlib import Path
+
+    from app.analytics import independent_projection_store as store
+    from app.db import connection
+
+    spec = importlib.util.spec_from_file_location(
+        "bip_lock", Path(__file__).resolve().parents[2] / "scripts" / "backtest_independent_projections.py")
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    con, src = build_world(tmp_path / "live.duckdb")
+    art = artifact(src)
+    con.close()
+    events = []
+    real_build, real_open = store.build_live, connection.open_db
+
+    def spy_build(*a, **k):
+        events.append(("build", a[4]))
+        return real_build(*a, **k)
+
+    def spy_open(path, read_only=False):
+        events.append(("open", "ro" if read_only else "rw"))
+        return real_open(path, read_only=read_only)
+
+    monkeypatch.setattr(store, "build_live", spy_build)
+    monkeypatch.setattr(connection, "open_db", spy_open)
+    monkeypatch.setattr(cli, "_project_artifact", lambda args, scoring: (art, b"x", None, None))
+    monkeypatch.setattr(cli, "_sources", lambda con_, hist, scoring: load_sources(con_, SCORING))
+    from app.analytics import weekly_learning as wl
+    monkeypatch.setattr(wl, "check_artifact", lambda *a, **k: None)      # the synthetic artifact has no provenance
+    args = argparse.Namespace(live_db=tmp_path / "live.duckdb", out=tmp_path, weekly_dir=tmp_path, season=2026,
+                              week=W, through_week=W + 3, artifact_week=None, model="ifp-2.0.0",
+                              register_artifact=None)
+    out = cli.cmd_project(args, None, SCORING)
+    assert [e for e in events if e[0] == "build"] == [("build", t) for t in range(W, W + 4)]
+    rw = events.index(("open", "rw"))
+    assert events.index(("open", "ro")) < min(i for i, e in enumerate(events) if e[0] == "build")
+    assert all(e[0] != "build" for e in events[rw:])                     # no build after the write connection opens
+    assert [r["week"] for r in out["rest_of_season"]] == [W + 1, W + 2, W + 3] and out["rest_of_season_failed"] == []

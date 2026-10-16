@@ -50,13 +50,14 @@ from .forecast_features import POSITIONS, Sources, features_for_week, key
 from .independent_projections import Artifact, flags_for, missing_inputs, predict_frame
 from .league_scoring import resolve_skill_scoring
 from .player_availability import RESTRICTED, derive
-from .production_forecasts import (HORIZON_NOTE, ROWS, RUNS, ImmutableRunError, annotate, content_sha256,
+from .production_forecasts import (HORIZON_NOTE, NEXT_GAME_ONLY, ROWS, RUNS, ImmutableRunError, annotate, content_sha256,
                                    horizon_of, team_kickoffs)
 
 WITHHELD_ESPN = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
 LONG_TERM_ESPN = {"INJURY_RESERVE", "SUSPENSION"}   # withheld for every remaining week; OUT is the next game only
 FUTURE_NO_REPORT = "future week: no injury report yet"
 LONG_TERM_UNAVAILABLE = "long-term unavailable; return date unknown"
+RESERVE_ROSTER = {"RES", "PUP", "NFI"}   # NFL reserve lists: player_availability.derive can date a return for these
 ACTIVE_ROSTER = {"ACT", "INA"}     # nflverse weekly roster: active 53 (INA = game-day inactive that week)
 SUPPORTED_MAPPING = "high"
 # Row `model` label per fitted model name: ifp-1.0.0 selects B or C per position, ifp-2.0.0 fits "ifp2" ridges.
@@ -172,8 +173,10 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     team_weeks: dict[str, list[int]] = {}
     for r in sources.games.filter(pl.col("season") == season).iter_rows(named=True):
         team_weeks.setdefault(r["team"], []).append(int(r["week"]))
-    rosters = _roster_rows(con, season, week)
-    on_ir = _fantasy_ir(con, season, week)
+    # roster and fantasy-IR state as of the cutoff week W, whatever the target week (a replay of a past W must not
+    # read rows posted since; live, nothing exists after W anyway)
+    rosters = _roster_rows(con, season, fw)
+    on_ir = _fantasy_ir(con, season, fw)
     rows, targets = [], []
     for c in candidates(con, season, week):
         rec = {"season": season, "week": week, "espn_player_id": c["espn_player_id"], "gsis_id": c["gsis_id"],
@@ -212,15 +215,25 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
         roster_status = (hist[-1].get("status") or "").upper() if hist else None
         if horizon:
             rec["flags"] += [FUTURE_NO_REPORT, HORIZON_NOTE.format(k=horizon)]
+        # Horizon >= 1: an NFL reserve-list player whose return derive() can date (reserve rule code -> earliest
+        # eligible week) is withheld only for the weeks in unavailable_weeks and projected after them, even when ESPN
+        # also lists INJURY_RESERVE; every other long-term status stays withheld for all remaining weeks.
+        dated_return = bool(horizon and roster_status in RESERVE_ROSTER and avail["status"] in RESTRICTED
+                            and avail["earliest_eligible_week"] is not None)
         # ESPN OUT is the next game only; INJURY_RESERVE / SUSPENSION last past it (horizon 0: all three withhold).
-        espn_withheld = espn_status in (LONG_TERM_ESPN if horizon else WITHHELD_ESPN)
+        espn_withheld = espn_status in (LONG_TERM_ESPN if horizon else WITHHELD_ESPN) \
+            and not (dated_return and espn_status == "INJURY_RESERVE")
         if (avail["status"] in RESTRICTED and week in avail["unavailable_weeks"]) or espn_withheld:
             rec["coverage_status"] = "withheld_unavailable"
             rec["missing_inputs"] = [w for w in avail["warnings"]] or [f"ESPN status {c['injury_status']}"]
             if horizon and espn_withheld:
                 rec["missing_inputs"] = [f"{LONG_TERM_UNAVAILABLE} (ESPN status {c['injury_status']})"]
             continue
-        if roster_status and roster_status not in ACTIVE_ROSTER:
+        # (a dated return not yet reached was withheld above; from the eligible week on he is projected)
+        if dated_return:
+            rec["flags"].append(f"returns from reserve (eligible week {avail['earliest_eligible_week']}): return "
+                                "not confirmed, assumed available")
+        elif roster_status and roster_status not in ACTIVE_ROSTER:
             # Exempt, suspended, practice squad, released, reserve of any kind: not on the active roster.
             rec["coverage_status"] = "withheld_unavailable"
             rec["missing_inputs"] = [f"not on the NFL active roster (weekly roster status {roster_status}, "
@@ -230,7 +243,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
             continue
         if horizon:
             if espn_status in WITHHELD_ESPN | {"QUESTIONABLE", "DOUBTFUL"}:
-                rec["flags"].append(f"ESPN injury status {c['injury_status']} describes the next game only; it is "
+                rec["flags"].append(f"ESPN injury status {c['injury_status']} {NEXT_GAME_ONLY}; it is "
                                     f"not applied to week {week}")
         elif espn_status in ("QUESTIONABLE", "DOUBTFUL"):
             rec["flags"].append(f"ESPN injury status {c['injury_status']}: projection assumes he plays")

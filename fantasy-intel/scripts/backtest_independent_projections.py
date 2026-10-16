@@ -311,9 +311,28 @@ def cmd_project(args, hist, scoring) -> dict:
     art_sha = hashlib.sha256(art_bytes).hexdigest()
     ppath = args.out / f"participation_{pm.PARTICIPATION_VERSION}.json"
     part = pm.ParticipationArtifact.from_dict(json.loads(ppath.read_text())) if ppath.exists() else None
-    with open_db(args.live_db) as con:
+    # Phase 1, read-only: build every target week's rows. Nothing is written and the DuckDB write lock (which makes the
+    # local API answer 503) is not held while the (19 - W) weeks are computed.
+    t = time.time()
+    built, ros = [], []
+    with open_db(args.live_db, read_only=True) as con:
         src = _sources(con, hist, scoring).with_exits(exits)
-        t = time.time()
+        for target in weeks:
+            t0 = time.time()
+            try:
+                if rest_of_season:     # the same artifact, whatever the horizon: its cutoff must precede the target
+                    wl.check_artifact(art, args.season, target, scoring.fingerprint)
+                meta, rows = build_live(con, src, art, args.season, target, participation=part,
+                                        artifact_sha256=art_sha, projected_from_week=from_week)
+                built.append((target, meta, rows, t0))
+            except Exception as err:      # noqa: BLE001 - a later week's failure is reported, the others still run
+                if target == target0:
+                    raise
+                ros.append({"week": target, "forecast_horizon": target - from_week, "error": f"{type(err).__name__}: {err}"})
+                print(f"WARNING: rest-of-season projection for week {target} failed: {err}", file=sys.stderr)
+    # Phase 2, read-write, opened once: register the artifact, then one write_run (one transaction) per week.
+    results = []
+    with open_db(args.live_db) as con:
         registered = backfill = None
         if args.register_artifact:       # ifp-2.0.0 only: approve the write-once store artifact this run uses
             if art_path is None:
@@ -334,17 +353,11 @@ def cmd_project(args, hist, scoring) -> dict:
                                      "artifact is not registered alone (that would start enforcement with the older "
                                      f"store artifacts unregistered): {backfill['error']}") from err
             registered = wl.register_saved_artifact(con, art, art_path, args.weekly_dir, args.register_artifact)
-        results, ros = [], []
-        for target in weeks:
-            t0 = time.time()
+        for target, meta, rows, t0 in built:
             try:
-                if rest_of_season:     # the same artifact, whatever the horizon: its cutoff must precede the target
-                    wl.check_artifact(art, args.season, target, scoring.fingerprint)
-                meta, rows = build_live(con, src, art, args.season, target, participation=part,
-                                        artifact_sha256=art_sha, projected_from_week=from_week)
                 stored = write_run(con, meta, rows)   # append-only: an identical retry returns the existing run
                 results.append(_summary(meta, rows, stored, art, art_sha, t0))
-            except Exception as err:      # noqa: BLE001 - a later week's failure is reported, the others still run
+            except Exception as err:      # noqa: BLE001
                 if target == target0:
                     raise
                 ros.append({"week": target, "forecast_horizon": target - from_week, "error": f"{type(err).__name__}: {err}"})
