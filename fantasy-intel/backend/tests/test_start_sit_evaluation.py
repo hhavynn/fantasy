@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -212,7 +213,7 @@ def test_manager_lineup_reference_and_roster_basis_labels():
     (row,) = sse.decisions(late, ["espn", "A1"], {1: {"RB": 1}}, CFG)["lineups"]
     assert row["roster_basis"] == "post_hoc_snapshot"
     ev = sse.evaluate(late, ["espn", "A1"], {1: {"RB": 1}}, CFG)
-    assert ev["pregame_roster_only"]["lineups"] == 0 and ev["lineups"]["by_roster_basis"] == {"post_hoc_snapshot": 1}
+    assert ev["roster_basis_counts"]["lineups"] == 0 and ev["lineups"]["by_roster_basis"] == {"post_hoc_snapshot": 1}
 
 
 # ----------------------------------------------------------------------------- statistics
@@ -286,7 +287,8 @@ def test_post_kickoff_players_are_refused_when_recording():
     unknown = dict(cand(3, "RB", 0, {"espn": 1.0}), kickoff=None)
     kept, refused = sse.refuse_post_kickoff([thu, sun, unknown], now)
     assert [c["espn_player_id"] for c in kept] == [2]
-    assert refused == [{"espn_player_id": 1, "reason": "kicked_off"}, {"espn_player_id": 3, "reason": "unknown_kickoff"}]
+    assert [(r["espn_player_id"], r["reason"]) for r in refused] == [(1, "kicked_off"), (3, "unknown_kickoff")]
+    assert refused[0]["league_id"] == 1 and refused[0]["fantasy_team_id"] == 1 and refused[0]["week"] == 7
     assert sse.refuse_post_kickoff([thu], THU)[1][0]["reason"] == "kicked_off"       # at kickoff is already too late
 
 
@@ -296,16 +298,17 @@ def test_decision_sets_are_write_once_content_addressed_and_idempotent(tmp_path)
         c.pop("actual_points"), c.pop("outcome_status")
     first = _set(cands, SUN - timedelta(days=1))
     path, created = sse.write_decision_set(tmp_path, first)
-    assert created and path.parent == tmp_path / "decision_sets" and first["sha"][:16] in path.name
+    assert created and path.parent == tmp_path / "decision_sets" and first["content_sha"][:16] in path.name
     again = _set(cands, SUN - timedelta(hours=5))          # same content, recorded later
-    assert again["sha"] == first["sha"] and again["recorded_at"] != first["recorded_at"]
+    assert again["content_sha"] == first["content_sha"] and again["recorded_at"] != first["recorded_at"]
+    assert again["sha"] != first["sha"]                 # the file hash covers the recording time
     path2, created2 = sse.write_decision_set(tmp_path, again)
     assert path2 == path and created2 is False
     assert json.loads(path.read_text())["recorded_at"] == first["recorded_at"]        # never rewritten
     assert len(list((tmp_path / "decision_sets").glob("*.json"))) == 1
     assert "actual_points" not in json.dumps(first)                                     # no outcomes in a frozen set
     changed = _set(cands[:1], SUN - timedelta(hours=5))
-    assert changed["sha"] != first["sha"] and sse.write_decision_set(tmp_path, changed)[1]
+    assert changed["content_sha"] != first["content_sha"] and sse.write_decision_set(tmp_path, changed)[1]
     assert len(sse.load_decision_sets(tmp_path)) == 2
 
 
@@ -460,15 +463,20 @@ def test_report_builds_equal_population_decisions_from_real_tables(env, cli):
     sub = sse.evaluate(cands, ["espn", "A1"], settings, sse.EvalConfig(min_decisions=1, min_weeks=1, resamples=50,
                                                                        roster_policy="valid_subset"))
     assert sub["lineups"]["decisions"] == 2 and sub["lineups"]["by_roster_basis"] == {"post_hoc_snapshot": 2}
-    assert sub["pregame_roster_only"]["lineups"] == 0
+    assert sub["roster_basis_counts"]["lineups"] == 0
 
 
-def test_record_cli_is_write_once_and_refuses_after_kickoff(env, cli, tmp_path, capsys):
+def _clock(cli, monkeypatch, iso):
+    monkeypatch.setattr(cli, "_wall_clock", lambda: datetime.fromisoformat(iso))
+
+
+def test_record_cli_is_write_once_and_refuses_after_kickoff(env, cli, tmp_path, capsys, monkeypatch):
     path = env
     out = tmp_path / "ss"
     before = ["--season", "2025", "--week", "10", "--live-db", str(path), "--history-db", str(tmp_path / "none.duckdb"),
               "--out", str(out), "--ledger-dir", str(tmp_path / "noledger")]
     now = "2025-09-09T12:00:00+00:00"                                   # day before week 10 kicks off
+    _clock(cli, monkeypatch, now)
     assert cli.main(["record", *before, "--now", now]) == 0
     first = json.loads(capsys.readouterr().out)
     assert first["recorded"] and first["created"] and first["players"] == 7 and first["refused"] == 0
@@ -480,6 +488,7 @@ def test_record_cli_is_write_once_and_refuses_after_kickoff(env, cli, tmp_path, 
     assert sse.verify_decision_set(ds) and "actual_points" not in json.dumps(ds)
     assert {c["espn_player_id"] for c in ds["candidates"]} == set(range(1000, 1007))
     # after the games kicked off nothing may be recorded for them
+    _clock(cli, monkeypatch, "2025-09-10T18:00:00+00:00")
     assert cli.main(["record", *before, "--now", "2025-09-10T18:00:00+00:00"]) == 2
     refused = json.loads(capsys.readouterr().out)
     assert refused["recorded"] is False and refused["refused"] == 7
@@ -508,3 +517,144 @@ def test_report_cli_runs_read_only_and_prints_unavailable_models(env, cli, capsy
     assert cli.main([*args, "--json", "--source", "snapshot"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert "recorded" not in data and data["snapshot"]["availability"]["ifp2_frozen"]["unavailable"]
+
+
+# ----------------------------------------------------------------------------- review fixes
+
+
+def _neg_roster(flex_actual):
+    return [cand(1, "QB", 20, {"espn": 18, "A1": 15}), cand(2, "RB", 15, {"espn": 12, "A1": 14}),
+            cand(3, "RB", 9, {"espn": 13, "A1": 8}), cand(4, "WR", 14, {"espn": 10, "A1": 12}),
+            cand(5, "WR", 12, {"espn": 11, "A1": 13}), cand(6, "TE", 8, {"espn": 7, "A1": 9}),
+            cand(7, "WR", flex_actual, {"espn": 9, "A1": 6})]
+
+
+NEG_SETTINGS = {1: {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1}}
+
+
+def test_fillability_never_depends_on_outcomes_a_negative_flex_score_keeps_the_lineup():
+    for flex in (0.5, -1.5):
+        d = sse.decisions(_neg_roster(flex), ["espn", "A1"], NEG_SETTINGS, sse.EvalConfig())
+        assert len(d["lineups"]) == 1 and d["exclusions"]["lineups"] == {}
+    (row,) = d["lineups"]
+    # hindsight: QB 20, RB 15 + 9, WR 14 + 12, TE 8, FLEX = the only left-over WR at -1.5
+    assert row["hindsight_points"] == 20 + 15 + 9 + 14 + 12 + 8 - 1.5 == 76.5
+    assert row["regret"]["espn"] >= 0 and row["regret"]["A1"] >= 0
+
+
+def test_negative_predictions_below_the_optimiser_floor_are_handled_too():
+    roster = _neg_roster(3.0)
+    roster[6]["preds"]["espn"]["value"] = -5.0
+    roster[5]["preds"]["espn"]["value"] = -9.0          # flex sums far below -1 for the ESPN lineup
+    (row,) = sse.decisions(roster, ["espn", "A1"], NEG_SETTINGS, sse.EvalConfig())["lineups"]
+    assert row["points"]["espn"] > 0 and row["slots"] == 7
+
+
+def test_a_roster_that_cannot_fill_by_position_is_still_excluded_whatever_the_scores():
+    two_wr = [cand(1, "WR", -2.0, {"espn": 1.0, "A1": 1.0}), cand(2, "WR", -3.0, {"espn": 2.0, "A1": 2.0})]
+    d = sse.decisions(two_wr, ["espn", "A1"], {1: {"WR": 3}}, sse.EvalConfig())
+    assert d["lineups"] == [] and d["exclusions"]["lineups"] == {"roster_cannot_fill_slots": 1}
+
+
+def test_recorded_at_is_inside_the_hash_and_editing_it_fails_verification(tmp_path):
+    ds = _set([dict(cand(1, "RB", 0, {"espn": 5.0}))], SUN - timedelta(days=1))
+    assert sse.verify_decision_set(ds)
+    moved = dict(ds, recorded_at=(SUN - timedelta(days=30)).isoformat())
+    assert sse.verify_decision_set(moved) is False
+    path, _ = sse.write_decision_set(tmp_path, moved)
+    assert sse.load_decision_sets(tmp_path) == []
+
+
+def test_future_evidence_is_dropped_at_recording_time():
+    t = SUN - timedelta(days=1)
+    ok = cand(1, "RB", 0, {"espn": 5.0}, synced=t - timedelta(hours=1))
+    late_roster = cand(2, "RB", 0, {"espn": 5.0}, synced=t + timedelta(hours=1))
+    late_pred = cand(3, "RB", 0, {"espn": 5.0, "A1": 4.0}, synced=t - timedelta(hours=1))
+    late_pred["preds"]["espn"]["captured_at"] = t + timedelta(minutes=5)
+    late_pred["preds"]["A1"] = {"value": 4.0, "captured_at": None, "point_in_time": True}
+    kept, refused = sse.drop_future_evidence([ok, late_roster, late_pred], t)
+    assert [c["espn_player_id"] for c in kept] == [1, 3] and refused[0]["reason"] == "roster_synced_after_record"
+    assert set(kept[1]["preds"]) == {"A1"}                 # the late ESPN capture is removed, the baseline stays
+    # and defensively when reading a set back: a row claiming evidence from after its recording is unusable
+    bad = _set([dict(late_roster)], t)
+    assert sse.candidates_from_sets([bad])[0] == []
+
+
+def test_the_latest_pregame_set_defines_the_roster_and_earlier_rows_survive_only_for_kicked_off_players():
+    thu, sat = SUN - timedelta(days=3), SUN - timedelta(days=1)
+    a, b, c = (cand(1, "WR", 10, {"espn": 9.0}, synced=THU - timedelta(days=2)), cand(2, "WR", 0, {"espn": 8.0}, synced=THU - timedelta(days=2)),
+               cand(3, "WR", 7, {"espn": 6.0}))
+    early = sse.decision_set(2026, 7, [a, b], [], {1: {"WR": 1}}, thu, models=["espn"])
+    late = sse.decision_set(2026, 7, [a, c], [], {1: {"WR": 1}}, sat, models=["espn"])          # B dropped, C added
+    cands, _ = sse.candidates_from_sets([early, late])
+    assert sorted(x["espn_player_id"] for x in cands) == [1, 3]                       # no phantom roster
+    # a player who kicked off before the later set keeps his earlier pregame row
+    thu_game = dict(b, kickoff=THU, preds={"espn": {"value": 8.0, "captured_at": THU - timedelta(hours=5), "point_in_time": False}},
+                    roster_synced_at=THU - timedelta(days=1))
+    first = sse.decision_set(2026, 7, [a, thu_game], [], {1: {"WR": 1}}, THU - timedelta(hours=3), models=["espn"])
+    kept, refused = sse.refuse_post_kickoff([dict(thu_game), dict(a)], THU + timedelta(days=1))
+    assert [r["reason"] for r in refused] == ["kicked_off"]
+    second = sse.decision_set(2026, 7, kept, refused, {1: {"WR": 1}}, THU + timedelta(days=1), models=["espn"])
+    cands, _ = sse.candidates_from_sets([first, second])
+    assert sorted(x["espn_player_id"] for x in cands) == [1, 2]
+    assert next(x for x in cands if x["espn_player_id"] == 2)["kickoff"] == THU
+
+
+def test_audit_only_sets_are_ignored_as_prospective_evidence():
+    ds = sse.decision_set(2026, 7, [dict(cand(1, "RB", 0, {"espn": 5.0}))], [], {1: FULL}, SUN - timedelta(days=1),
+                          models=["espn"], audit_only=True)
+    assert sse.verify_decision_set(ds) and ds["audit_only"] is True
+    assert sse.candidates_from_sets([ds]) == ([], {})
+
+
+def test_record_under_an_overridden_clock_refuses_stale_rosters_and_tags_the_rest_audit_only(env, cli, tmp_path, capsys):
+    base = ["--live-db", str(env), "--history-db", str(tmp_path / "x"), "--ledger-dir", str(tmp_path / "noledger")]
+    # week 9 roster rows were synced AFTER kickoff: a backdated record must not turn them into a pregame set
+    out = tmp_path / "a"
+    assert cli.main(["record", "--season", "2025", "--week", "9", *base, "--out", str(out),
+                     "--now", "2025-09-08T12:00:00+00:00"]) == 2
+    assert not (out / "decision_sets").exists()
+    capsys.readouterr()
+    # week 10 rows are pregame at that time, but the real clock is later: audit-only, never scored as recorded
+    out = tmp_path / "b"
+    assert cli.main(["record", "--season", "2025", "--week", "10", *base, "--out", str(out),
+                     "--now", "2025-09-09T12:00:00+00:00"]) == 0
+    res = json.loads(capsys.readouterr().out)
+    assert res["audit_only"] is True
+    ds = json.loads(Path(res["path"]).read_text())
+    assert ds["audit_only"] and ds["meta"]["clock_override"]["requested_now"].startswith("2025-09-09T12")
+    assert sse.candidates_from_sets(sse.load_decision_sets(out))[0] == []
+
+
+def test_a_now_in_the_future_of_the_real_clock_is_refused(env, cli, tmp_path):
+    with pytest.raises(SystemExit):
+        cli.main(["record", "--season", "2025", "--week", "10", "--live-db", str(env), "--history-db",
+                  str(tmp_path / "x"), "--out", str(tmp_path / "c"), "--now", "2999-01-01T00:00:00+00:00"])
+
+
+def test_pregame_roster_population_is_reported_separately_with_its_own_verdicts():
+    pre = [cand(i, "RB", a, {"espn": e, "A1": b}, tm=1) for i, (a, e, b) in enumerate([(10, 1.0, 9.0), (4, 9.0, 1.0)], 1)]
+    post = [dict(cand(10 + i, "RB", a, {"espn": e, "A1": b}, tm=2), roster_synced_at=SUN + timedelta(days=1))
+            for i, (a, e, b) in enumerate([(10, 1.0, 9.0), (4, 9.0, 1.0)], 1)]
+    res = sse.evaluate_sets(pre + post, {1: FULL}, {"s": ["espn", "A1"]}, CFG)["sets"]["s"]
+    assert res["same_position"]["decisions"] == 2 and "pooled" in res["population"]
+    only = res["pregame_roster_only"]
+    assert only["same_position"]["decisions"] == 1 and "before its player's kickoff" in only["population"]
+    assert only["exclusions"]["candidates"] == {"other_roster_basis": 2}
+
+
+def test_ifp2_has_a_head_to_head_set_with_the_champion_on_one_population():
+    assert set(sse.DEFAULT_MODEL_SETS["ifp_head_to_head"]) == {"espn", "A1", "ifp1_frozen", "ifp2_frozen"}
+    roster = rb_roster((10, {"espn": 1.0, "A1": 2.0, "ifp1_frozen": 3.0, "ifp2_frozen": 9.0}),
+                       (4, {"espn": 2.0, "A1": 1.0, "ifp1_frozen": 9.0, "ifp2_frozen": 1.0}))
+    ev = sse.evaluate_sets(roster, {1: FULL}, config=CFG)["sets"]["ifp_head_to_head"]
+    assert ev["evaluated"] and ev["same_position"]["stats"]["ifp2_frozen"]["accuracy"] == 1.0
+    assert ev["same_position"]["stats"]["ifp1_frozen"]["accuracy"] == 0.0
+
+
+def test_no_other_app_module_references_the_evaluation_module():
+    app = Path(__file__).resolve().parents[1] / "app"
+    me = Path(sse.__file__).resolve()
+    offenders = [str(f.relative_to(app)) for f in app.rglob("*.py")
+                 if f.resolve() != me and re.search(r"\bstart_sit_evaluation\b", f.read_text())]
+    assert offenders == []

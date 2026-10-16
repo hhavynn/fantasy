@@ -23,7 +23,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import _bootstrap  # noqa: F401
@@ -50,9 +50,14 @@ def _ro(path: Path):
     return duckdb.connect(str(path), read_only=True) if path is not None and Path(path).exists() else None
 
 
+def _wall_clock() -> datetime:
+    """The real current time (tests replace it). `record` stamps this, never --now."""
+    return datetime.now(timezone.utc)
+
+
 def _now(args) -> datetime:
     if not args.now:
-        return datetime.now(timezone.utc)
+        return _wall_clock()
     t = datetime.fromisoformat(args.now)
     return t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t.astimezone(timezone.utc)
 
@@ -204,9 +209,26 @@ def cmd_report(args) -> dict:
         sets = sse.load_decision_sets(args.out)
         cands, settings = sse.candidates_from_sets(sets)
         attach_outcomes(cands, src, fetched)
-        out["recorded"] = {"basis": "decision sets frozen before kickoff", "sets": len(sets), "candidates": len(cands),
+        out["recorded"] = {"basis": "decision sets frozen before kickoff", "sets": len(sets),
+                           "audit_only_sets_ignored": sum(1 for d in sets if d.get("audit_only")),
+                           "candidates": len(cands),
                            **sse.evaluate_sets(cands, settings, config=cfg)}
     return out
+
+
+def _render_set(lines: list, sname: str, s: dict, label: str) -> None:
+    lines.append(f"  [{sname}] {label}: same-position pairs {s['same_position']['decisions']} "
+                 f"(weeks {s['same_position']['weeks']}), flex pairs {s['flex']['decisions']}, "
+                 f"close calls {s['close_calls']['decisions']}, lineups {s['lineups']['decisions']}")
+    for m in s["models"]:
+        st, lr = s["same_position"]["stats"][m], s["lineups"]["regret"][m]
+        lines.append(f"      {m:16} accuracy {st['accuracy']}  regret/pair {st['mean_regret']}  "
+                     f"lineup regret mean {lr['mean']} p90 {lr['p90']} max {lr['max']}")
+        for ref, c in (s["same_position"]["accuracy_difference"].get(m) or {}).items():
+            lines.append(f"        accuracy {ref}: {c['difference']} CI {c['ci95']}  {c['verdict']}")
+        for ref, c in (s["lineups"]["regret_difference"].get(m) or {}).items():
+            lines.append(f"        lineup regret {ref}: {c['difference']} CI {c['ci95']}  {c['verdict']}")
+    lines.append(f"      exclusions: pairs {s['exclusions']['pairs']}  lineups {s['exclusions']['lineups']}")
 
 
 def render(rep: dict) -> str:
@@ -223,18 +245,8 @@ def render(rep: dict) -> str:
             if not s["evaluated"]:
                 lines.append(f"  [{sname}] not evaluated: unavailable {', '.join(s['unavailable_models'])}")
                 continue
-            lines.append(f"  [{sname}] same-position pairs {s['same_position']['decisions']} "
-                         f"(weeks {s['same_position']['weeks']}), flex pairs {s['flex']['decisions']}, "
-                         f"close calls {s['close_calls']['decisions']}, lineups {s['lineups']['decisions']}")
-            for m in s["models"]:
-                st, lr = s["same_position"]["stats"][m], s["lineups"]["regret"][m]
-                lines.append(f"      {m:16} accuracy {st['accuracy']}  regret/pair {st['mean_regret']}  "
-                             f"lineup regret mean {lr['mean']} p90 {lr['p90']} max {lr['max']}")
-                for ref, c in (s["same_position"]["accuracy_difference"].get(m) or {}).items():
-                    lines.append(f"        accuracy {ref}: {c['difference']} CI {c['ci95']}  {c['verdict']}")
-                for ref, c in (s["lineups"]["regret_difference"].get(m) or {}).items():
-                    lines.append(f"        lineup regret {ref}: {c['difference']} CI {c['ci95']}  {c['verdict']}")
-            lines.append(f"      exclusions: pairs {s['exclusions']['pairs']}  lineups {s['exclusions']['lineups']}")
+            _render_set(lines, sname, s, "POOLED roster snapshots (pregame + post-hoc)")
+            _render_set(lines, sname, s["pregame_roster_only"], "PREGAME-ROSTER-ONLY")
     return "\n".join(lines)
 
 
@@ -243,23 +255,33 @@ def cmd_record(args) -> tuple[dict, int]:
     if live is None:
         raise SystemExit(f"live database {args.live_db} not found")
     hist = _ro(args.history_db)
+    wall = _wall_clock()
     now = _now(args)
+    overridden = now < wall - timedelta(seconds=60)
+    if now > wall + timedelta(seconds=60):
+        raise SystemExit("--now is in the future of the real clock; refusing")
+    cutoff = min(now, wall)                 # nothing synced or captured after this may enter the set
     src, scoring = load_context(live, hist, args.season)
     settings, skipped = comparable_leagues(live, args.season, scoring)
     cands = [c for c in sse.roster_candidates(live, args.season, [args.week]) if c["league_id"] in settings]
-    kept, refused = sse.refuse_post_kickoff(cands, now)
+    kept, refused = sse.refuse_post_kickoff(cands, cutoff)
+    kept, late = sse.drop_future_evidence(kept, cutoff)
+    refused += late
     if not kept:
-        return {"recorded": False, "reason": "no player of any roster has a known kickoff after now",
+        return {"recorded": False, "reason": "no roster row is both pregame (game not started) and synced before now",
                 "refused": len(refused), "skipped_leagues": skipped}, 2
-    counts = attach_predictions(kept, live, src, scoring, args.season, ledger_dir=args.ledger_dir, as_of=now)
+    counts = attach_predictions(kept, live, src, scoring, args.season, ledger_dir=args.ledger_dir, as_of=cutoff)
+    kept, _ = sse.drop_future_evidence(kept, cutoff)       # predictions captured after the cutoff are removed
     avail = sse.availability(kept, MODELS)
-    ds = sse.decision_set(args.season, args.week, kept, refused, settings, now, models=MODELS,
-                          unavailable=[m for m, a in avail.items() if a["unavailable"]],
-                          meta={"scoring_fingerprint": scoring.fingerprint, "model_version": MODEL_VERSION,
-                                "attached": counts})
+    meta = {"scoring_fingerprint": scoring.fingerprint, "model_version": MODEL_VERSION, "attached": counts}
+    if overridden:
+        meta["clock_override"] = {"requested_now": now.isoformat(), "wall_clock": wall.isoformat()}
+    ds = sse.decision_set(args.season, args.week, kept, refused, settings, wall, models=MODELS,
+                          unavailable=[m for m, a in avail.items() if a["unavailable"]], meta=meta,
+                          audit_only=overridden)
     path, created = sse.write_decision_set(args.out, ds)
     return {"recorded": True, "created": created, "path": str(path), "sha": ds["sha"], "players": len(kept),
-            "refused": len(refused), "unavailable_models": ds["unavailable_models"],
+            "refused": len(refused), "unavailable_models": ds["unavailable_models"], "audit_only": overridden,
             "skipped_leagues": skipped}, 0
 
 

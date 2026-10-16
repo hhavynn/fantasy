@@ -138,13 +138,16 @@ def candidate_state(c: Mapping, models: Sequence[str]) -> dict:
     return {"ok": True, "actual": actual, "values": vals}
 
 
+PREGAME_SNAPSHOT, POST_HOC_SNAPSHOT = "pregame_snapshot", "post_hoc_snapshot"
+
+
 def roster_basis(cands: Iterable[Mapping]) -> str:
     """`pregame_snapshot` only if every roster row was synced strictly before its player's kickoff."""
     for c in cands:
         s, ko = aware(c.get("roster_synced_at")), aware(c.get("kickoff"))
         if s is None or ko is None or s >= ko:
-            return "post_hoc_snapshot"
-    return "pregame_snapshot"
+            return POST_HOC_SNAPSHOT
+    return PREGAME_SNAPSHOT
 
 
 # ----------------------------------------------------------------------------- decisions
@@ -183,7 +186,7 @@ def _pair_score(pi: float, pj: float, ai: float, aj: float) -> tuple[float, floa
 
 
 def decisions(cands: Iterable[Mapping], models: Sequence[str], settings: Mapping[Any, Mapping[str, int]],
-              config: EvalConfig = EvalConfig()) -> dict:
+              config: EvalConfig = EvalConfig(), roster_basis_only: str | None = None) -> dict:
     """Pair rows (same-position and flex), lineup rows and the exclusion counts for ONE equal population:
     every decision here has a valid pregame prediction from every model in `models`."""
     models = list(models)
@@ -193,6 +196,9 @@ def decisions(cands: Iterable[Mapping], models: Sequence[str], settings: Mapping
     for (lg, tm, season, week), roster in sorted(_team_weeks(cands).items(), key=lambda kv: str(kv[0])):
         slots_cfg = settings.get(lg)
         basis = roster_basis(roster)
+        if roster_basis_only and basis != roster_basis_only:
+            ex["candidates"]["other_roster_basis"] += len(roster)
+            continue
         live, states = [], {}
         for c in roster:
             if c.get("slot") == "IR":
@@ -261,15 +267,22 @@ def _lineup_row(live, states, models, slots_cfg, key, basis, config, excl: Count
     actual = {pid(c): states[id(c)]["actual"] for c in use}
 
     def total(value_of):
-        picks = assign_lineup([{"espn_player_id": pid(c), "position": c["position"], "value": value_of(c)} for c in use],
-                              slots)
+        """Best lineup by `value_of`, scored in real actual points. The optimiser's flex search starts
+        from -1.0 and would leave a slot empty when the best remaining flex sum is below that, so values
+        are shifted to be >= 1 (a constant per slot: the optimal set is unchanged)."""
+        vals = {pid(c): value_of(c) for c in use}
+        low = min(vals.values(), default=0.0)
+        picks = assign_lineup([{"espn_player_id": pid(c), "position": c["position"], "value": vals[pid(c)] - low + 1.0}
+                               for c in use], slots)
         ids = [p["player_id"] for p in picks if p["player_id"] is not None]
         return ids, sum(actual[i] for i in ids)
 
-    hind_ids, hind = total(lambda c: states[id(c)]["actual"])
-    if len(hind_ids) < len(slots):
+    # Fillability depends on positions and slots only, never on outcomes or predictions.
+    probe = assign_lineup([{"espn_player_id": pid(c), "position": c["position"], "value": 1.0} for c in use], slots)
+    if sum(1 for p in probe if p["player_id"] is not None) < len(slots):
         excl["roster_cannot_fill_slots"] += 1
         return None
+    _, hind = total(lambda c: states[id(c)]["actual"])
     row = {"season": key[2], "week": key[3], "league_id": key[0], "fantasy_team_id": key[1], "roster_basis": basis,
            "slots": len(slots), "dropped_players": len(live) - len(use), "hindsight_points": hind,
            "points": {}, "regret": {}, "manager_points": None}
@@ -368,18 +381,21 @@ def _comparisons(rows: Sequence[Mapping], models: Sequence[str], metric: Callabl
 
 
 def evaluate(cands: Sequence[Mapping], models: Sequence[str], settings: Mapping[Any, Mapping[str, int]],
-             config: EvalConfig = EvalConfig()) -> dict:
+             config: EvalConfig = EvalConfig(), roster_basis_only: str | None = None) -> dict:
     """The full evaluation of ONE equal population (see `decisions`). `models` must include the reference
     models to be compared against (ESPN, A1); a model is only ever compared on decisions all models share."""
     models = list(models)
-    d = decisions(cands, models, settings, config)
+    d = decisions(cands, models, settings, config, roster_basis_only)
     same = [r for r in d["pairs"] if r["kind"] == "same_position"]
     flex = [r for r in d["pairs"] if r["kind"] == "flex"]
     refs = [r for r in REFERENCE_MODELS if r in models]
     sections = {"same_position": same, "flex": flex,
                 "close_calls": [r for r in same + flex if r["close"]],
                 "contested": [r for r in same if r["contested"]]}
-    out: dict[str, Any] = {"models": models, "config": {
+    out: dict[str, Any] = {"models": models, "population": (
+        "all roster snapshots pooled (pregame and post-hoc)" if roster_basis_only is None else
+        f"only team-weeks whose every roster row was synced before its player's kickoff ({roster_basis_only})"),
+        "config": {
         "min_decisions": config.min_decisions, "min_weeks": config.min_weeks, "resamples": config.resamples,
         "seed": config.seed, "close_points": config.close_points, "close_basis": config.close_basis,
         "roster_policy": config.roster_policy}}
@@ -407,7 +423,7 @@ def evaluate(cands: Sequence[Mapping], models: Sequence[str], settings: Mapping[
             "difference": _round(b["mean"]), "ci95": None if b["ci95"] is None else [_round(b["ci95"][0]), _round(b["ci95"][1])],
             "n": b["n"], "weeks": b["weeks"],
             "verdict": verdict(b, higher_is_better=True, min_decisions=config.min_decisions, min_weeks=config.min_weeks)}
-    out["pregame_roster_only"] = _pregame_roster_counts(d)
+    out["roster_basis_counts"] = _pregame_roster_counts(d)
     out["exclusions"] = d["exclusions"]
     out["notes"] = [KNOWN_PAIR_NOTE,
                     "Lineups cover skill slots only (QB/RB/WR/TE and flex); K and D/ST are not modelled.",
@@ -455,6 +471,7 @@ def availability(cands: Sequence[Mapping], models: Sequence[str]) -> dict:
 
 DEFAULT_MODEL_SETS = {
     "baselines": ["espn", "A1", "A2"],
+    "ifp_head_to_head": ["espn", "A1", "ifp1_frozen", "ifp2_frozen"],      # ifp-2 against the champion, same population
     "ifp1_production": ["espn", "A1", "ifp1_production"],
     "ifp1_frozen": ["espn", "A1", "ifp1_frozen"],
     "ifp2_frozen": ["espn", "A1", "ifp2_frozen"],
@@ -472,7 +489,9 @@ def evaluate_sets(cands: Sequence[Mapping], settings: Mapping[Any, Mapping[str, 
     for name, ms in model_sets.items():
         missing = [m for m in ms if avail[m]["unavailable"]]
         sets[name] = ({"models": list(ms), "unavailable_models": missing, "evaluated": False}
-                      if missing else {"evaluated": True, **evaluate(cands, ms, settings, config)})
+                      if missing else {"evaluated": True, **evaluate(cands, ms, settings, config),
+                                       # the pregame-roster population on its own, with its own verdicts
+                                       "pregame_roster_only": evaluate(cands, ms, settings, config, PREGAME_SNAPSHOT)})
     return {"availability": avail, "sets": sets}
 
 
@@ -633,18 +652,40 @@ def production_lookup(rows: Iterable[Mapping]) -> dict:
 # ----------------------------------------------------------------------------- decision sets (prospective)
 
 
+def _refusal(c: Mapping, reason: str) -> dict:
+    return {"league_id": c.get("league_id"), "fantasy_team_id": c.get("fantasy_team_id"), "season": c.get("season"),
+            "week": c.get("week"), "espn_player_id": c.get("espn_player_id"), "reason": reason}
+
+
 def refuse_post_kickoff(cands: Iterable[Mapping], now: datetime) -> tuple[list[dict], list[dict]]:
     """(kept, refused). A player whose own game has started (kickoff <= now) or whose kickoff is unknown is
-    refused: a set recorded now cannot be a pregame record for him."""
+    refused: a set recorded now cannot be a pregame record for him. Refusals carry league and team so a
+    later set can keep the earlier pregame row of exactly these players."""
     t, kept, refused = aware(now), [], []
     for c in cands:
         ko = aware(c.get("kickoff"))
         if ko is None:
-            refused.append({"espn_player_id": c.get("espn_player_id"), "reason": "unknown_kickoff"})
+            refused.append(_refusal(c, "unknown_kickoff"))
         elif ko <= t:
-            refused.append({"espn_player_id": c.get("espn_player_id"), "reason": "kicked_off"})
+            refused.append(_refusal(c, "kicked_off"))
         else:
             kept.append(dict(c))
+    return kept, refused
+
+
+def drop_future_evidence(cands: Iterable[Mapping], cutoff: datetime) -> tuple[list[dict], list[dict]]:
+    """(kept, refused) at `cutoff` (the actual time of recording). A roster row synced after the cutoff
+    is refused; a prediction captured after it is removed (that model is then missing for him)."""
+    t, kept, refused = aware(cutoff), [], []
+    for c in cands:
+        synced = aware(c.get("roster_synced_at"))
+        if synced is None or synced > t:
+            refused.append(_refusal(c, "roster_synced_after_record" if synced else "roster_sync_time_unknown"))
+            continue
+        c = dict(c)
+        c["preds"] = {m: p for m, p in (c.get("preds") or {}).items()
+                      if p.get("point_in_time") or (aware(p.get("captured_at")) is not None and aware(p["captured_at"]) <= t)}
+        kept.append(c)
     return kept, refused
 
 
@@ -662,35 +703,48 @@ def _canonical(obj: Any) -> str:
     return json.dumps(_jsonable(obj), sort_keys=True, separators=(",", ":"), default=str)
 
 
+def _sha(obj: Any) -> str:
+    return hashlib.sha256(_canonical(obj).encode()).hexdigest()
+
+
 def decision_set(season: int, week: int, cands: Sequence[Mapping], refused: Sequence[Mapping],
                  settings: Mapping, recorded_at: datetime, *, models: Sequence[str], unavailable: Sequence[str] = (),
-                 meta: Mapping | None = None) -> dict:
+                 meta: Mapping | None = None, audit_only: bool = False) -> dict:
     """A frozen pregame decision set: roster candidates with each model's pregame prediction and its
-    capture time. No outcomes. `sha` covers the content and not `recorded_at`, so an identical re-record
-    is the same set."""
+    capture time. No outcomes. `recorded_at` must be the real wall-clock time of recording; it is part of
+    `sha` (editing it breaks verification). `content_sha` leaves it out so that recording identical
+    content again resolves to the existing file. `audit_only` marks a set recorded under an overridden
+    clock: it is never scored as prospective evidence."""
     keep = ("league_id", "fantasy_team_id", "season", "week", "espn_player_id", "gsis_id", "position", "team",
             "kickoff", "slot", "is_starter", "roster_synced_at", "preds")
     rows = sorted(({k: c.get(k) for k in keep} for c in cands),
                   key=lambda r: (str(r["league_id"]), str(r["fantasy_team_id"]), str(r["espn_player_id"])))
     content = {"schema": DECISION_SET_SCHEMA, "season": season, "week": week, "models": sorted(models),
-               "unavailable_models": sorted(unavailable),
+               "unavailable_models": sorted(unavailable), "audit_only": bool(audit_only),
                "slot_settings": {str(k): dict(v) for k, v in sorted(settings.items(), key=lambda kv: str(kv[0]))},
-               "candidates": _jsonable(rows), "refused": sorted(({k: v for k, v in r.items()} for r in refused),
-                                                                 key=lambda r: (str(r.get("espn_player_id")), r["reason"])),
+               "candidates": _jsonable(rows),
+               "refused": sorted((dict(r) for r in refused),
+                                 key=lambda r: (str(r.get("league_id")), str(r.get("fantasy_team_id")),
+                                                str(r.get("espn_player_id")), r["reason"])),
                "meta": dict(meta or {})}
-    sha = hashlib.sha256(_canonical(content).encode()).hexdigest()
-    return {**content, "sha": sha, "recorded_at": aware(recorded_at).isoformat()}
+    content_sha = _sha(content)
+    full = {**content, "recorded_at": aware(recorded_at).isoformat(), "content_sha": content_sha}
+    return {**full, "sha": _sha(full)}
 
 
 def verify_decision_set(ds: Mapping) -> bool:
-    content = {k: v for k, v in ds.items() if k not in ("sha", "recorded_at")}
-    return hashlib.sha256(_canonical(content).encode()).hexdigest() == ds.get("sha")
+    """Both hashes must match: content (without recorded_at) and the whole file (with recorded_at)."""
+    if "recorded_at" not in ds:
+        return False
+    body = {k: v for k, v in ds.items() if k != "sha"}
+    content = {k: v for k, v in body.items() if k not in ("recorded_at", "content_sha")}
+    return _sha(body) == ds.get("sha") and _sha(content) == ds.get("content_sha")
 
 
 def write_decision_set(out_dir: Path, ds: Mapping) -> tuple[Path, bool]:
-    """Write-once, content-addressed file `s<season>w<week>-<sha16>.json`. An existing file is never
-    changed (an identical re-record returns it with created=False)."""
-    path = Path(out_dir) / "decision_sets" / f"s{ds['season']}w{int(ds['week']):02d}-{ds['sha'][:16]}.json"
+    """Write-once file `s<season>w<week>-<content_sha16>.json`. Identical content (whenever recorded)
+    resolves to the existing file, which is never changed (created=False)."""
+    path = Path(out_dir) / "decision_sets" / f"s{ds['season']}w{int(ds['week']):02d}-{ds['content_sha'][:16]}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with open(path, "x", encoding="utf-8") as f:
@@ -701,8 +755,8 @@ def write_decision_set(out_dir: Path, ds: Mapping) -> tuple[Path, bool]:
 
 
 def load_decision_sets(out_dir: Path) -> list[dict]:
-    """All verified decision sets under out_dir (a file whose content no longer matches its sha is
-    skipped and reported by `unverified_decision_sets`)."""
+    """All verified decision sets under out_dir (a file whose content no longer matches its hashes, for
+    example an edited recorded_at, is skipped)."""
     sets = []
     for f in sorted((Path(out_dir) / "decision_sets").glob("s*.json")):
         try:
@@ -714,27 +768,45 @@ def load_decision_sets(out_dir: Path) -> list[dict]:
     return sets
 
 
+def _restore(c: Mapping, rec: datetime) -> dict | None:
+    """A recorded row with datetimes restored; None if it claims evidence from after its own recording."""
+    c = dict(c)
+    c["kickoff"], c["roster_synced_at"] = aware(c.get("kickoff")), aware(c.get("roster_synced_at"))
+    if c["kickoff"] is None or rec >= c["kickoff"] or c["roster_synced_at"] is None or c["roster_synced_at"] > rec:
+        return None
+    preds = {m: {**p, "captured_at": aware(p.get("captured_at"))} for m, p in (c.get("preds") or {}).items()}
+    c["preds"] = {m: p for m, p in preds.items()
+                  if p.get("point_in_time") or (p["captured_at"] is not None and p["captured_at"] <= rec)}
+    return c
+
+
 def candidates_from_sets(sets: Iterable[Mapping]) -> tuple[list[dict], dict]:
-    """Candidates of recorded sets for scoring. Per (league, fantasy team, season, week, player) the set
-    recorded latest but still strictly before the player's kickoff wins; later sets cannot rewrite a past
-    one. Datetimes are restored; outcomes are attached afterwards."""
-    best: dict[tuple, tuple] = {}
+    """Candidates of recorded sets for scoring. Audit-only sets (recorded under an overridden clock) are
+    ignored. Per (league, fantasy team, season, week) the roster is the one in the LATEST set that covers
+    the team: players it dropped are gone. Earlier rows survive only for players the later set refused as
+    kicked_off (their pregame row is the only one that can exist). A row is used only if its set was
+    recorded strictly before the player's kickoff and carries no evidence from after the recording."""
+    valid = sorted((ds for ds in sets if not ds.get("audit_only") and aware(ds.get("recorded_at")) is not None),
+                   key=lambda ds: aware(ds["recorded_at"]))
+    current: dict[tuple, dict] = {}             # team-week -> {espn_player_id: row}
     settings: dict = {}
-    for ds in sets:
-        rec = aware(ds.get("recorded_at"))
+    for ds in valid:
+        rec = aware(ds["recorded_at"])
         settings.update({int(k) if str(k).lstrip("-").isdigit() else k: v
                          for k, v in (ds.get("slot_settings") or {}).items()})
+        fresh: dict[tuple, dict] = defaultdict(dict)
         for c in ds["candidates"]:
-            ko = aware(c.get("kickoff"))
-            if rec is None or ko is None or rec >= ko:
-                continue
-            k = (c["league_id"], c["fantasy_team_id"], c["season"], c["week"], c["espn_player_id"])
-            if k not in best or rec > best[k][0]:
-                best[k] = (rec, c)
-    out = []
-    for _, c in best.values():
-        c = dict(c)
-        c["kickoff"], c["roster_synced_at"] = aware(c.get("kickoff")), aware(c.get("roster_synced_at"))
-        c["preds"] = {m: {**p, "captured_at": aware(p.get("captured_at"))} for m, p in (c.get("preds") or {}).items()}
-        out.append(c)
-    return out, settings
+            tw = (c["league_id"], c["fantasy_team_id"], c["season"], c["week"])
+            row = _restore(c, rec)
+            if row is not None:          # an unusable row (claims later evidence) neither joins nor covers
+                fresh[tw][c["espn_player_id"]] = row
+        kicked: dict[tuple, set] = defaultdict(set)
+        for r in ds.get("refused") or []:
+            tw = (r.get("league_id"), r.get("fantasy_team_id"), r.get("season"), r.get("week"))
+            fresh[tw]
+            if r.get("reason") == "kicked_off":
+                kicked[tw].add(r.get("espn_player_id"))
+        for tw, members in fresh.items():
+            old = current.get(tw, {})
+            current[tw] = {**{pid: row for pid, row in old.items() if pid in kicked[tw]}, **members}
+    return [row for members in current.values() for row in members.values()], settings

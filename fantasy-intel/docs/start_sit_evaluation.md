@@ -19,7 +19,7 @@ not an edge; the report repeats that note at the top.
 | `leagues` | `roster_slots` JSON (`QB`, `RB`, ..., `FLEX`, `BE`, `IR`) and `scoring_items`. | Slot counts drive the lineup optimiser and which cross-position pairs are real decisions. A league whose scoring fingerprint differs from the one the outcomes use is skipped and listed (CONTRACTS section 3). |
 | `analytics/lineup.py` | `lineup_slots`, `assign_lineup` (fixed slots first, exact search over flex slots), `eligible`, `FLEX_ELIGIBILITY`. | Reused unchanged: the same optimiser scores the model's lineup and the hindsight lineup. K and D/ST slots are dropped (no model projects them). |
 | `start_sit.py` | The product feature (ESPN default, opt-in source switch). | Not touched. |
-| `forecast_backtest.league_roster_pairs / pair_decisions / PAIR_POOL / CLOSE_PAIR_POINTS` | Same-position pairs from snapshots; accuracy and regret on the top-N pool by A1. | Semantics copied (ties, half credit, close = A1 within 3 points). Findings: `league_roster_pairs` groups by `team_id` without `league_id`, so a database with several leagues can pair players that never shared a roster; it does not check whether the snapshot was pregame; pairs include two players who both start (no real decision); and `pair_decisions` scores conditionally (players who appeared), unlike a real lineup where a sitter scores 0. |
+| `forecast_backtest.league_roster_pairs / pair_decisions / PAIR_POOL / CLOSE_PAIR_POINTS` | Same-position pairs from snapshots; accuracy and regret on the top-N pool by A1. | Semantics copied (ties, half credit, close = A1 within 3 points). Findings: `league_roster_pairs` groups by `team_id` without `league_id`, so a database with several leagues can pair players that never shared a roster; it does not check whether the snapshot was pregame; pairs include two players who both start (no real decision); and `pair_decisions` scores conditionally (players who appeared), unlike a real lineup where a sitter scores 0. The independent review confirmed the cross-league grouping (`league_id` is available but neither selected nor grouped); it is NOT changed here and is being handled separately, so the 1,012-pair figure should be read with that caveat. |
 | `weekly_learning.frozen_rows` | Research ledger rows (ifp-1 refit champion, ifp-2 challenger) created strictly before kickoff. | Used for `ifp1_frozen` / `ifp2_frozen`, unconditional `expected_points`, `captured_at` = the run's creation time. |
 | `forecast_backtest.espn_pregame` | Latest ESPN snapshot before the player's kickoff, keyed by GSIS. | Re-implemented here keyed by ESPN id so the capture time is kept for the pregame check (the benchmark's `evaluation_rows` will own this). |
 | A1 / A2 | `baseline_predictions(features_for_week)`: recent and season average from games strictly before the week. | Point-in-time by construction (`point_in_time` flag); no capture time needed. |
@@ -51,7 +51,11 @@ roster_synced_at` and `preds[model] = {value, captured_at, point_in_time}`.
   won or lost against the ESPN-recommended lineup; and, as reference only, against the lineup the manager
   set (a completed week's snapshot already holds the final lineup, so it is not a pregame decision).
   Policy `complete` (default) drops a lineup if any live roster player is unusable; `valid_subset` scores the
-  usable players and reports `dropped_players`.
+  usable players and reports `dropped_players`. Whether a lineup can be filled is decided from positions and
+  slots alone (never from scores or predictions), and the optimiser is fed values shifted to be at least 1
+  (a constant per slot, so the optimal set is unchanged) because `lineup.assign_lineup` starts its flex
+  search from -1.0 and would otherwise leave a slot empty when the best flex sum is below that. Points are
+  always summed from the real actual scores.
 * d. Close calls: A1 within 3 points, A1 being a pregame quantity identical for every model.
 
 Statistics: seeded bootstrap that resamples whole (season, week) clusters, for differences vs ESPN and vs A1
@@ -59,6 +63,13 @@ Statistics: seeded bootstrap that resamples whole (season, week) clusters, for d
 `min_decisions` (200) or `min_weeks` (8); `no_significant_difference` if the 95% CI covers 0; else `better`
 or `worse` by the metric's direction. The same real player pair on several rosters counts once per roster
 (reported as `unique_player_pairs`); week clustering covers that correlation.
+
+Populations: every model set is reported twice and labeled. The headline is POOLED (all roster snapshots,
+pregame and post-hoc). `pregame_roster_only` repeats the whole evaluation, with its own counts, intervals and
+verdicts, on team-weeks whose every roster row was synced before its player's kickoff. Read the verdict of
+the population you mean; the pooled one carries the post-hoc roster caveat. Default sets: `baselines`,
+`ifp_head_to_head` (espn, A1, ifp1_frozen, ifp2_frozen on one population: ifp-2 against the champion),
+`ifp1_production`, `ifp1_frozen`, `ifp2_frozen`.
 
 ## 3. Using it
 
@@ -70,12 +81,23 @@ uv run python ../scripts/start_sit_evaluation.py record --season 2026 --week 7 [
 
 `report` opens databases read-only. `record` freezes a decision set (rosters at the pregame snapshot plus every
 model's pregame prediction and capture time, no outcomes) as
-`OUT/decision_sets/s<season>w<week>-<sha16>.json`, default `data/models/start_sit` (git-ignored). The file is
-content-addressed and written exclusively: re-recording identical content returns the existing file; the
-hash excludes `recorded_at`. Players whose game already kicked off (or whose kickoff is unknown) are refused;
-nothing is written if no player remains (exit 2). Run it once per week before the first kickoff, after the
-ESPN and weekly-learning refreshes. When scoring, per player the latest set recorded strictly before his
-kickoff is used and a tampered file is ignored. Outcomes are joined at report time.
+`OUT/decision_sets/s<season>w<week>-<content_sha16>.json`, default `data/models/start_sit` (git-ignored).
+The file is written exclusively: recording identical content again (whenever) returns the existing file.
+`recorded_at` is the REAL wall-clock time and sits inside the file hash `sha`, so editing it fails
+verification; `content_sha` leaves it out, which is what makes a re-record idempotent. Players whose game
+already kicked off (or whose kickoff is unknown) are refused, as is any roster row synced after the cutoff,
+and predictions captured after it are removed; nothing is written if no player remains (exit 2).
+`--now` may only move the evaluation time into the past: a `--now` earlier than the real clock produces a set
+tagged `audit_only` (with `meta.clock_override`) that the `recorded` source ignores and counts as
+`audit_only_sets_ignored`; a `--now` in the future is refused. Run it once per week before the first kickoff,
+after the ESPN and weekly-learning refreshes.
+
+Scoring recorded sets: audit-only sets are ignored. Per (league, fantasy team, week) the roster is the one in
+the LATEST usable set that covers the team, so a player dropped between two sets is gone (no phantom roster).
+An earlier row survives only for a player the later set refused as `kicked_off` (refusals carry league and
+team for this). A row is used only if its set was recorded before the player's kickoff and holds no roster
+sync or prediction from after its own recording. A tampered file is ignored. Outcomes are joined at report
+time.
 
 ## 4. Expected real-data coverage
 
