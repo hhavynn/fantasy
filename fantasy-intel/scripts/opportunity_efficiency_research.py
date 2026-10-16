@@ -240,13 +240,15 @@ def cmd_run(args) -> dict:
               "prospective": "no frozen prospective weeks with outcomes exist yet for this method (2026 week 6 "
                              "is not final); nothing here is confirmation evidence",
               "runtime_seconds": round(time.time() - t0, 1)}
+    apath = _out(args) / f"research_artifact_{oe.OE_VERSION}.json"
+    apath.unlink(missing_ok=True)       # an earlier run's artifact never outlives a rerun that rejects it
     if decisions[chosen]["outcome"] == "continue_research":
         cand = next(c for c in oe.CANDIDATES if c.name == chosen)
         cut = int(store["key"].max()) + 1
         art = oe.fit_artifact(store, cut, cand, {p: {"opp": lo, "eff": le} for p, (lo, le) in best[chosen].items()},
                               cfg, report["created_at"], scoring.fingerprint, cov,
                               {"development": dev_rep["ALL"]["metrics"], "decision": decisions[chosen]})
-        (_out(args) / f"research_artifact_{oe.OE_VERSION}.json").write_text(json.dumps(art.to_dict(), default=str))
+        apath.write_text(json.dumps(art.to_dict(), default=str))
         report["artifact_hash"] = art.hash()
     (_out(args) / "report.json").write_text(json.dumps(ch.round_floats(report), indent=1, default=str))
     return {"selected": chosen, "decision": decisions[chosen], "best_lambda": best,
