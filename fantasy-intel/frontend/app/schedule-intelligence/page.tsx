@@ -109,7 +109,7 @@ function Body({ d, detail, position, phase, sp }: { d: ScheduleIntelligence; det
       <Section>
         <form action="/schedule-intelligence" className={styles.controls}>
           <label>Team <select name="team" defaultValue={d.query.team_id ?? ""}>
-            {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
+            {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (default)" : ""}</option>)}
           </select></label>
           <label>Position <select name="position" defaultValue={position}>
             {["all", "QB", "RB", "WR", "TE"].map((p) => <option key={p} value={p}>{p === "all" ? "QB/RB/WR/TE" : p}</option>)}

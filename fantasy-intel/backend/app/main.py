@@ -22,6 +22,7 @@ from .api.projection_performance import router as projection_performance_router
 from .api.projection_movers import router as projection_movers_router
 from .api.weekly_recap import router as weekly_recap_router
 from .api.research import router as research_router
+from .api.leagues_v2 import router as leagues_v2_router
 
 app = FastAPI(title="fantasy-intel", version="0.1.0")
 app.add_middleware(
@@ -43,6 +44,16 @@ async def require_api_key(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def hide_v2_when_disabled(request: Request, call_next):
+    """With MULTILEAGUE_ENABLED off, every /v2 path, method and trailing-slash variant is a plain 404,
+    so a disabled deployment does not reveal (via 405s or redirects) that the routes exist."""
+    path = request.url.path
+    if (path == "/v2" or path.startswith("/v2/")) and not get_settings().multileague_enabled:
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return await call_next(request)
+
+
 app.include_router(router)
 app.include_router(manager_scouting_router)
 app.include_router(trade_discovery_router)
@@ -58,6 +69,7 @@ app.include_router(projection_performance_router)
 app.include_router(projection_movers_router)
 app.include_router(weekly_recap_router)
 app.include_router(research_router)
+app.include_router(leagues_v2_router)
 
 
 @app.get("/health")
