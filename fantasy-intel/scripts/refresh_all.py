@@ -305,6 +305,15 @@ def main() -> int:
                 code = run_step([sys.executable, str(SCRIPTS / step)], log)
                 if code != 0:
                     log(f"FAILED: {step} exited {code}; later steps were not run. Log: {log.path}")
+                    if step != PUBLISH:
+                        return 1
+                    # Publishing is a network step unrelated to the local data, which is fully refreshed:
+                    # still capture the pregame evidence (lost for games that kick off before the next run).
+                    if not args.skip_evidence:
+                        try:
+                            run_evidence(log)
+                        except Exception as e:
+                            log(f"WARNING: {EVIDENCE} stage failed: {e!r}")
                     return 1
         try:
             check_pregame(log)

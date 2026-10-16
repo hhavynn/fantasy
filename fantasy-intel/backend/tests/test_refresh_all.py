@@ -333,3 +333,38 @@ def test_an_evidence_exception_never_changes_the_exit_status(refresh, monkeypatc
     log = next((tmp_path / "logs").glob("refresh-*.log")).read_text()
     assert "WARNING: Evidence: stage failed: RuntimeError('evidence blew up')" in log
     assert "Refresh complete." in log
+
+
+def test_a_failed_publish_still_runs_evidence_and_keeps_its_exit_code(refresh, monkeypatch, tmp_path):
+    events = []
+
+    def fake_step(cmd, log, timeout=None):
+        events.append(Path(cmd[1]).name)
+        return 7 if Path(cmd[1]).name == "publish_motherduck.py" else 0
+
+    monkeypatch.setenv("MOTHERDUCK_TOKEN", "tok")
+    monkeypatch.setattr(refresh, "LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(refresh, "run_step", fake_step)
+    monkeypatch.setattr(refresh, "check_pregame", lambda log: events.append("pregame_check"))
+    monkeypatch.setattr(refresh, "run_evidence", lambda log: events.append("evidence") or [])
+    monkeypatch.setattr(sys, "argv", ["refresh_all.py"])
+    assert refresh.main() == 1                                   # the publish failure still fails the refresh
+    assert events == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py", "publish_motherduck.py", "evidence"]
+    assert "FAILED: publish_motherduck.py exited 7" in next((tmp_path / "logs").glob("refresh-*.log")).read_text()
+
+    events.clear()                                               # --skip-evidence is still honoured
+    monkeypatch.setattr(refresh, "LOG_DIR", tmp_path / "logs2")
+    monkeypatch.setattr(sys, "argv", ["refresh_all.py", "--skip-evidence"])
+    assert refresh.main() == 1 and "evidence" not in events
+
+
+def test_a_failed_local_step_still_skips_evidence_with_publish_enabled(refresh, monkeypatch, tmp_path):
+    events = []
+    monkeypatch.setenv("MOTHERDUCK_TOKEN", "tok")
+    monkeypatch.setattr(refresh, "LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: events.append(Path(cmd[1]).name) or (
+        3 if Path(cmd[1]).name == "compute_analytics.py" else 0))
+    monkeypatch.setattr(refresh, "run_evidence", lambda log: events.append("evidence") or [])
+    monkeypatch.setattr(sys, "argv", ["refresh_all.py"])
+    assert refresh.main() == 1
+    assert events == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py"]

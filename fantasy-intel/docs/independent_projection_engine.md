@@ -439,8 +439,9 @@ ESPN sync, nflverse sync and analytics have finished and the pregame snapshot ch
   is an `INFO` line. Each evidence step has a 15 minute deadline (`REFRESH_EVIDENCE_TIMEOUT_S`
   overrides, in seconds): a step still running then is killed with its process group and logged as
   `timed out`, so a stuck step cannot block the next scheduled refresh. The sync steps have no
-  deadline. The injury report is printed into the same log. After a failed sync step the stage does
-  not run.
+  deadline. The injury report is printed into the same log. After a failed sync or analytics step
+  the stage does not run; after a failed MotherDuck publish alone it does (the local data is fresh,
+  and a skipped start/sit record cannot be redone once games kick off), and the refresh still exits 1.
 * `--skip-evidence` skips the stage; `--check-only` implies it.
 
 ## Projection switch (opt-in weekly view)
