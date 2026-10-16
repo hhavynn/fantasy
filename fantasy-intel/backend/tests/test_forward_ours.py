@@ -17,6 +17,7 @@ from app.db.connection import connect, init_db
 SEASON, CURRENT, FINAL, LAST_REG = 2026, 6, 17, 14
 KC_BYE = 9
 CREATED = datetime(2026, 10, 14, 12, 0)
+APPROVED = "sha-approved"
 PLAYERS = {1: ("Ace WR", "WR", "KC"), 2: ("Kicker K", "K", "KC"), 3: ("Zed RB", "RB", "BUF")}
 
 
@@ -42,6 +43,9 @@ def populate(con, *, run_weeks=range(CURRENT, LAST_REG + 1), horizon_col=True, s
     for w in range(1, 19):
         home, away = ("KC", "BUF") if w != KC_BYE else ("BUF", "DEN")
         con.execute("INSERT INTO nfl_schedules VALUES (?, ?, 'REG', ?, ?, ?, NULL, NULL)", [SEASON, w, f"g{w}", home, away])
+    # the week-6 ifp-2.0.0 artifact is registered, with a data cutoff before week 6: it covers every later week too
+    con.execute("INSERT INTO approved_artifacts VALUES (?, ?, ?, ?, ?, NULL, 'learning_cycle', '2026-10-14 00:00:00')",
+                [ps.MODEL_VERSION, APPROVED, SEASON, CURRENT, SEASON * 100 + CURRENT - 1])
     if horizon_col:
         con.execute("ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS forecast_horizon INTEGER")
         con.execute("ALTER TABLE independent_projection_runs ADD COLUMN IF NOT EXISTS projected_from_week INTEGER")
@@ -49,7 +53,7 @@ def populate(con, *, run_weeks=range(CURRENT, LAST_REG + 1), horizon_col=True, s
         add_run(con, w, skip=(skip or {}).get(w), horizon_col=horizon_col)
 
 
-def add_run(con, week, *, version=ps.MODEL_VERSION, created=CREATED, skip=None, horizon_col=True):
+def add_run(con, week, *, version=ps.MODEL_VERSION, created=CREATED, skip=None, horizon_col=True, artifact=APPROVED):
     """One run for `week` with a row per player: WR 1 projected (or bye on KC's bye week), K 2 unsupported,
     RB 3 projected. `skip`: player ids left out of the run's rows."""
     rows = []
@@ -62,10 +66,10 @@ def add_run(con, week, *, version=ps.MODEL_VERSION, created=CREATED, skip=None, 
             rows.append((pid, "bye", None))
         else:
             rows.append((pid, "projected", ours_value(week, pid)))
-    run_id = f"run-{version}-{week}-{created:%H%M}"
+    run_id = f"run-{version}-{week}-{created:%H%M}-{artifact}"
     horizon = week - CURRENT
-    cols = "run_id, season, week, model_version, scoring_fingerprint, model_status, created_at, row_count"
-    vals = [run_id, SEASON, week, version, "fp", json.dumps({"WR": {"status": "experimental"}}), created, len(rows)]
+    cols = "run_id, season, week, model_version, scoring_fingerprint, model_status, created_at, row_count, artifact_id"
+    vals = [run_id, SEASON, week, version, "fp", json.dumps({"WR": {"status": "experimental"}}), created, len(rows), artifact]
     if horizon_col:
         cols += ", forecast_horizon, projected_from_week"
         vals += [horizon, CURRENT]
@@ -193,7 +197,7 @@ def test_newest_run_of_a_week_wins(con):
     populate(con)
     add_run(con, 8, created=CREATED + timedelta(hours=1))   # a later cycle re-ran week 8
     con.execute("UPDATE independent_projection_rows SET expected_points = 99.0 WHERE week = 8 AND espn_player_id = 1 "
-                "AND run_id LIKE '%1300'")
+                "AND run_id LIKE '%1300%'")
     o = ours_for(con)["ours"]
     assert by_week(o)[8]["value"] == 99.0 and o["run_created_at"] == str(CREATED + timedelta(hours=1))
 
@@ -230,6 +234,25 @@ class Counting:
         return getattr(self.con, name)
 
 
+def check_equal_to_the_switch(con, pids=(1, 2, 3)):
+    """The batched per-player weeks equal projection_source.weekly() for each week (value, origin, run, reason)."""
+    weeks = list(range(CURRENT, LAST_REG + 1))
+    counting = Counting(con)
+    got = {pid: player_weeks(counting, SEASON, pid, weeks) for pid in pids}
+    assert counting.n <= len(pids) * 15, counting.n
+    for week in weeks:
+        ref = ps.weekly(con, SEASON, week, "independent")
+        for pid in pids:
+            g = got[pid][week]
+            assert g["origin"] == ref["origin"].get(pid, ps.ESPN) and g["value"] == ref["values"].get(pid), (pid, week)
+            assert (g["run"] or {}).get("run_id") == (ref["run"] or {}).get("run_id"), (pid, week)
+            assert g["reason"] == (ref["reason"] if ref["available"] else None), (pid, week, g["reason"], ref["reason"])
+            if g["run"]:
+                verified = {"verified": True, "unverified": False}.get(g["run"]["artifact_check"])
+                assert ref["run"].get("artifact_verified") == verified, (pid, week)
+    return got
+
+
 def test_queries_are_bounded_and_equal_the_per_week_switch(con):
     populate(con, run_weeks=[w for w in range(CURRENT, LAST_REG + 1) if w != 11])   # week 11: ESPN fallback
     add_run(con, 8, version=ps.FALLBACK_VERSION, created=CREATED + timedelta(hours=2))   # older-model, newer run
@@ -237,19 +260,63 @@ def test_queries_are_bounded_and_equal_the_per_week_switch(con):
     # a newest run whose rows were lost is skipped, like production_forecasts.latest_run
     lost = add_run(con, 12, created=CREATED + timedelta(hours=3))
     con.execute("DELETE FROM independent_projection_rows WHERE run_id = ?", [lost])
-    weeks = list(range(CURRENT, LAST_REG + 1))
-    counting = Counting(con)
-    got = {pid: player_weeks(counting, SEASON, pid, weeks) for pid in (1, 2, 3)}
-    assert counting.n <= 3 * 15, counting.n
-    for pid in (1, 2, 3):
-        for week in weeks:
-            ref = ps.weekly(con, SEASON, week, "independent")
-            g = got[pid][week]
-            assert g["origin"] == ref["origin"].get(pid, ps.ESPN) and g["value"] == ref["values"].get(pid)
-            assert (g["run"] or {}).get("run_id") == (ref["run"] or {}).get("run_id")
+    got = check_equal_to_the_switch(con)
+    assert got[1][12]["run"]["artifact_check"] == "verified"        # a week-12 run served by the week-6 artifact
     one = Counting(con)
     ours_forward(one, SEASON, 1, espn_baseline(con)["weeks"], source="independent")
     assert one.n < 15, one.n                      # was ~12 per week before batching
+
+
+def test_unregistered_ifp2_artifact_falls_back_like_the_switch(con):
+    populate(con, run_weeks=[])
+    for w in range(CURRENT, LAST_REG + 1):
+        add_run(con, w, version=ps.FALLBACK_VERSION)
+    add_run(con, 7, artifact="rogue", created=CREATED + timedelta(hours=1))          # ifp-2.0.0 but not registered
+    add_run(con, 8, artifact=APPROVED, created=CREATED + timedelta(hours=1))          # registered
+    got = check_equal_to_the_switch(con)
+    assert got[1][7]["run"]["model_version"] == ps.FALLBACK_VERSION and "not approved" in got[1][7]["reason"]
+    assert got[1][8]["run"]["model_version"] == ps.MODEL_VERSION and got[1][8]["reason"] is None
+    o = ours_for(con)["ours"]
+    assert by_week(o)[7]["model_version"] == ps.FALLBACK_VERSION and by_week(o)[8]["artifact_verified"] is True
+    assert "not approved" in o["reason"] and o["ros_projected_points"] is None
+
+
+def test_only_unregistered_runs_means_unavailable_and_says_not_approved(con):
+    populate(con, run_weeks=[])
+    for w in range(CURRENT, LAST_REG + 1):
+        add_run(con, w, artifact="rogue")
+    check_equal_to_the_switch(con)
+    o = ours_for(con)["ours"]
+    assert o["available"] is False and "not approved" in o["reason"]
+
+
+def test_artifact_registered_for_a_later_cutoff_does_not_cover_an_earlier_week(con):
+    """The cutoff rule: a run's week must lie strictly after the artifact's training cutoff."""
+    populate(con, run_weeks=[w for w in range(CURRENT, LAST_REG + 1) if w != 8])
+    con.execute("INSERT INTO approved_artifacts VALUES (?, 'late', ?, 10, ?, NULL, 'learning_cycle', NULL)",
+                [ps.MODEL_VERSION, SEASON, SEASON * 100 + 9])
+    add_run(con, 8, artifact="late")         # week 8 <= cutoff week 9: not covered
+    add_run(con, 12, artifact="late", created=CREATED + timedelta(hours=1))      # week 12 > 9: covered
+    got = check_equal_to_the_switch(con)
+    assert got[1][8]["run"] is None and got[1][12]["run"]["artifact_id"] == "late"
+
+
+def test_a_database_with_no_registered_artifacts_fails_open_and_says_unverified(con):
+    populate(con)
+    con.execute("DELETE FROM approved_artifacts")
+    got = check_equal_to_the_switch(con)
+    assert got[1][7]["run"]["artifact_check"] == "unverified"
+    o = ours_for(con)["ours"]
+    assert o["available"] and all(e["artifact_verified"] is False for e in o["weeks"])
+    assert "could not be verified" in o["reason"] and o["reason"].count("could not be verified") == 1   # deduped
+    assert o["ros_complete"] and o["ros_projected_points"] is not None            # still served (fail open)
+
+
+def test_a_missing_approved_artifacts_table_is_read_unverified(con):
+    populate(con)
+    con.execute("DROP TABLE approved_artifacts")
+    got = check_equal_to_the_switch(con)
+    assert got[1][7]["run"]["artifact_check"] == "unverified"
 
 
 # ----------------------------------------------------------------------------- ESPN stays the default

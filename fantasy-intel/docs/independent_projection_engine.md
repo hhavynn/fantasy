@@ -524,6 +524,11 @@ requires an explicit `source`):
   remaining regular-season week is `ours` or `ours_zero` from that model. An ESPN-fallback week
   (`fallback_weeks`, `missing_weeks`) or a week shown from the previous model (`other_model_weeks`) makes
   it NULL, so a total never mixes models. A bye is not expected and adds nothing;
+* `artifact_verified` per week: the weekly switch's approved-artifact rule applies (`production_forecasts.artifact_gate`:
+  an ifp-2.0.0 run's artifact must be registered in `approved_artifacts` for a later week than its training cutoff;
+  a rejected run is skipped and the week falls back with a "not approved" reason; with no registered artifacts
+  it fails open and the week is `artifact_verified: false`). `forward_ours` reads all remaining weeks in a fixed
+  number of queries and a test pins it equal to `projection_source.weekly()` per week;
 * `model_versions` / `mixed_models` / `label`: the model versions actually shown, per-week
   `model_version`, and a `reason` the UI prints as a notice (a previous-model week gets an "ifp-1" badge).
 * `available: false` with a `reason` when no remaining week has a stored run;

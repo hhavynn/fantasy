@@ -159,6 +159,8 @@ export type OursWeek = {
   week: number; value: number | null; origin: OursOrigin; on_bye: boolean | null;
   run_id: string | null; model_version: string | null; run_created_at: string | null;
   horizon: number | null; projected_from_week: number | null; experimental: boolean;
+  /** true: the run's artifact is approved; false: approval could not be verified (shown anyway); null: no run or no rule. */
+  artifact_verified?: boolean | null;
 };
 
 /** Fantasy Intel's production model for the rest of the regular season. `ros_projected_points` is null unless complete. */
