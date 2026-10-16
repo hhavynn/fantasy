@@ -23,6 +23,7 @@ from .api.projection_movers import router as projection_movers_router
 from .api.weekly_recap import router as weekly_recap_router
 from .api.research import router as research_router
 from .api.player_compare import router as player_compare_router
+from .api.rankings import router as rankings_router
 from .api.leagues_v2 import router as leagues_v2_router
 
 app = FastAPI(title="fantasy-intel", version="0.1.0")
@@ -71,6 +72,7 @@ app.include_router(projection_movers_router)
 app.include_router(weekly_recap_router)
 app.include_router(research_router)
 app.include_router(player_compare_router)
+app.include_router(rankings_router)
 app.include_router(leagues_v2_router)
 
 
