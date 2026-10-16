@@ -34,8 +34,9 @@ Two different things are shown and never mixed:
   from `nfl_schedules`, never from a 0.
 * **Rest of season** horizon = the **remaining regular-season weeks** (league `current_week` ..
   last regular-season scoring period), the same window for every player and both sources, so totals are
-  comparable. A total is null unless every week in the window is available (ESPN: a projection row, byes
-  included as ESPN's own value; Ours: `forward_ours` complete-or-null rule). When the end of the regular
+  comparable. A total is null unless every required week in the window is available (ESPN: a projection row;
+  Ours: the `forward_ours` complete-or-null rule). A schedule bye is never required: ESPN's own row for it
+  (usually 0) counts when present, and a bye without one is not a gap. When the end of the regular
   season can't be derived, ESPN uses the full window (`current .. final_scoring_period`), the response says
   so, and Ours is unavailable. Playoff weeks are not ranked.
 * **Source**: ESPN is the default everywhere (the ESPN-first policy). `source=independent` (UI "Ours", also
@@ -86,7 +87,7 @@ changes.
 | `horizon` | `week` `ros` | `week` |
 | `source` | `espn` `independent` | `espn` |
 | `sort` | `rank` `name` `espn` `ours` `rating` `opportunity` `production` `xfp` `ppr` `consistency` `trend` | `rank` |
-| `dir` | `asc` `desc` | `asc` for rank/name, else `desc` |
+| `dir` | `asc` `desc` | `asc` for rank / name / consistency (lower SD = steadier), else `desc` |
 | `q` | name search (accent- and case-insensitive substring) | `""` |
 | `status` | `all` `rostered` `available` (FREE_AGENT or WAIVERS) | `all` |
 | `limit` / `offset` | 1..300 / ≥0 | 100 / 0 |
