@@ -9,7 +9,7 @@ import duckdb
 from fastapi import HTTPException
 
 from ..config import get_settings
-from ..db.connection import SCHEMA_VERSION, DatabaseBusy, connect, connect_motherduck, fetch_dicts, schema_version
+from ..db.connection import MIN_READ_SCHEMA_VERSION, SCHEMA_VERSION, DatabaseBusy, connect, connect_motherduck, fetch_dicts, schema_version
 
 JSON_COLUMNS = {"components", "reasons", "competitors", "roster_slots", "owner_ids", "matchup_acquisitions",
                 "stats", "details", "eligible_slots", "scoring_items", "waiver_process_days",
@@ -60,7 +60,7 @@ def db() -> Iterator[Any]:
             # guard: the API's read-only connection holds DuckDB's file lock, so no sync can commit.
             con.execute("BEGIN TRANSACTION")
         version = schema_version(con)
-        if version is not None and version < SCHEMA_VERSION or (version is None and _has_tables(con)):
+        if version is not None and version < MIN_READ_SCHEMA_VERSION or (version is None and _has_tables(con)):
             raise HTTPException(503, f"Database schema v{version or 1} is older than v{SCHEMA_VERSION}. Run "
                                      "`uv run python ../scripts/sync_nfl.py` (and sync_espn.py) to migrate and rebuild.")
         yield con
