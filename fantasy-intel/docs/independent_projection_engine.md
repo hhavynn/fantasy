@@ -887,6 +887,14 @@ penalty and rows match, and no separate penalty or feature split beats ifp-2 on 
 appearance in a covered team-week is a measured zero; treating it as missing biases any xFP-target
 model by about -0.9 points.
 
+### Shallow gradient boosting (research, retain ridge)
+
+`docs/research/hgb_challenger.md`: per-position HistGradientBoosting on ifp-2's features (`ifp-hgb-0.1.0`,
+research only, scikit-learn in the `research` dependency group) is worse than ifp-2 on development
+(+0.025 MAE, CI [+0.003, +0.045]) and not better on the 2023-26 replay; ridge is retained. Its frozen
+configuration writes write-once pregame research forecasts (`hgb_research.py predict`) as prospective
+evidence only.
+
 ### Model registry (approval manifest, research only)
 
 `docs/model_registry.md`: `backend/app/analytics/model_registry.json` records the approved

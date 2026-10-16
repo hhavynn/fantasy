@@ -18,7 +18,10 @@ dependencies = [
 
 [dependency-groups]
 sync = ["espn-api>=1.0.1", "nflreadpy>=0.1.5", "polars>=1.0"]
-dev = [{include-group = "sync"}, "pytest>=8", "httpx>=0.27"]
+# Offline research only (scripts/hgb_research.py). Never imported by the API; Vercel's
+# `uv sync --no-dev` skips it, and tests/test_hgb_research.py asserts the API never loads sklearn.
+research = ["scikit-learn>=1.5"]
+dev = [{include-group = "sync"}, {include-group = "research"}, "pytest>=8", "httpx>=0.27"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
