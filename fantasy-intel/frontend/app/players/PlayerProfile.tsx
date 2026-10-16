@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CompareLink } from "@/components/CompareLink";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
 import { Badge, Notice, PageHeader, Pos, Score, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
 import { label, num, pct, signed } from "@/lib/format";
@@ -84,7 +85,7 @@ function ProfileHeader({ d, q }: { d: Detail; q: string }) {
           {hasInjuryDesignation(p.injury_status) && <Badge value={p.injury_status} title="ESPN injury designation" />}
         </span>
       }
-      actions={<SearchForm q={q} compact />}
+      actions={<><CompareLink a={p.espn_player_id} aName={p.full_name} /><SearchForm q={q} compact /></>}
     >
       <ul className={styles.facts}>
         <li>{num(p.percent_owned, 1)}% owned ESPN-wide ({signed(p.percent_change)} this week)</li>

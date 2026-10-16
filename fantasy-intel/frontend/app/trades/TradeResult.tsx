@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BarChart, type BarDatum } from "@/components/charts";
+import { CompareLink } from "@/components/CompareLink";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
@@ -22,7 +23,7 @@ const why = "Incomplete: a rostered player with an NFL team has no ESPN projecti
 const IR_HOLD_NOTE = "Current IR status is held constant for this hypothetical evaluation. This does not predict when a "
   + "player will return. Activation upside is shown separately and may require a roster move.";
 
-function Players({ r, ids }: { r: TradeResult; ids: number[] }) {
+function Players({ r, ids, links = false }: { r: TradeResult; ids: number[]; links?: boolean }) {
   if (ids.length === 0) return <span className="faint">nobody</span>;
   return (
     <ul className={styles.exchangeList}>
@@ -31,6 +32,7 @@ function Players({ r, ids }: { r: TradeResult; ids: number[] }) {
         return (
           <li key={id}>
             <PlayerIdentity id={id} name={n?.name ?? null} position={n?.position} team={n?.pro_team ?? null} />
+            {links && <CompareLink a={id} aName={n?.name} className={styles.compareLink} />}
           </li>
         );
       })}
@@ -94,6 +96,8 @@ function TeamStrip({ r, s, side }: { r: TradeResult; s: TradeSide; side: "a" | "
 function Verdict({ r }: { r: TradeResult }) {
   const A = r.team_a, B = r.team_b;
   const an = A.team_name ?? "Team A", bn = B.team_name ?? "Team B";
+  // A 1-for-1 has one obvious pair; a larger trade links each player on his own.
+  const oneForOne = A.sends.length === 1 && B.sends.length === 1;
   return (
     <Section
       title={`Trade · ${r.trade.shape}`}
@@ -106,19 +110,20 @@ function Verdict({ r }: { r: TradeResult }) {
       <div className={styles.exchange}>
         <div className={`${styles.exchangeSide} ${styles.sideA}`}>
           <span className={styles.eyebrow}>{an} sends</span>
-          <Players r={r} ids={A.sends} />
+          <Players r={r} ids={A.sends} links={!oneForOne} />
         </div>
         <span className={styles.exchangeArrow} aria-hidden="true">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h11l-3-3" /><path d="M15 12H4l3 3" /></svg>
         </span>
         <div className={`${styles.exchangeSide} ${styles.sideB}`}>
           <span className={styles.eyebrow}>{bn} sends</span>
-          <Players r={r} ids={B.sends} />
+          <Players r={r} ids={B.sends} links={!oneForOne} />
         </div>
       </div>
       <p className={`${styles.labels} ${styles.muted} ${styles.small}`}>
         <span>Regular season: {resultText(r.result.regular_season_label, an, bn)}</span>
         <span>Playoffs: {resultText(r.result.playoff_label, an, bn)}</span>
+        {oneForOne && <CompareLink a={A.sends[0]} b={B.sends[0]} aName={nameOf(r, A.sends[0])} bName={nameOf(r, B.sends[0])}>Compare these players</CompareLink>}
       </p>
       <div className={styles.strips}>
         <TeamStrip r={r} s={A} side="a" />

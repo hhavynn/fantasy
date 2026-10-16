@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
+import { CompareLink } from "@/components/CompareLink";
 import { PlayerLink } from "@/components/PlayerLink";
 import { OriginTag, ProjectionNotice } from "@/components/ProjectionNotice";
 import {
@@ -258,6 +259,8 @@ function PlayerList({ players, ours }: { players: DecisionPlayer[]; ours: boolea
 
 function Move({ move, ours }: { move: StartSitDecision; ours: boolean }) {
   const badge = actionabilityBadge(move.actionability);
+  // A plain 1-for-1 swap has an obvious pair to compare; a multi-player cascade does not.
+  const pair = move.start_players.length === 1 && move.bench_players.length === 1 ? [move.start_players[0], move.bench_players[0]] : null;
   return (
     <li className={styles.move}>
       <div>
@@ -279,6 +282,7 @@ function Move({ move, ours }: { move: StartSitDecision; ours: boolean }) {
           <Badge value={move.action === "COORDINATED_SWAP" ? "FLEX cascade" : "1-for-1 swap"} tone="" />
         </span>
         {move.target_slot && <span className={styles.slotNote}>Slot: {move.target_slot}</span>}
+        {pair && <CompareLink a={pair[0].id} b={pair[1].id} aName={pair[0].name} bName={pair[1].name} />}
       </div>
     </li>
   );
@@ -301,6 +305,9 @@ function OppCell({ r }: { r: Pick<LineupPlayer, "opponent" | "is_home" | "lock_s
 function LineupTable({ recommended, actual, ours, projLabel }: { recommended: LineupPlayer[]; actual: LineupPlayer[]; ours: boolean; projLabel: string }) {
   const kept = new Set(recommended.map((r) => r.player_id).filter((id): id is number => id !== null));
   const leaving = actual.filter((a) => a.player_id !== null && !kept.has(a.player_id));
+  // Who takes a leaving player's place is only unambiguous with one swap; otherwise link the leaving player alone.
+  const promoted = recommended.filter((r) => r.player_id !== null && !r.is_currently_starting);
+  const partner = leaving.length === 1 && promoted.length === 1 ? promoted[0] : null;
   return (
     <div className="table-wrap">
       <table>
@@ -355,7 +362,10 @@ function LineupTable({ recommended, actual, ours, projLabel }: { recommended: Li
                   </span>
                 </td>
                 <td><OppCell r={a} /></td>
-                <td>To bench</td>
+                <td>
+                  To bench{" "}
+                  <CompareLink a={partner?.player_id ?? (a.player_id as number)} b={partner ? (a.player_id as number) : undefined} aName={partner?.name ?? a.name} bName={partner ? a.name : undefined} />
+                </td>
                 <td className="num"><OriginTag origin={a.projection_origin} ours={ours} /> {num(a.projected_points, 1)}</td>
               </tr>
             ))}
