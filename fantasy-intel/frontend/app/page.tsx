@@ -5,11 +5,12 @@ import { MovesTable } from "@/components/MovesTable";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
-  Badge, EmptyState, Method, Notice, PageHeader, Pos, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
+  Badge, EmptyState, Method, Notice, PageHeader, Pos, Rating, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { StartSitInput, WaiverInput } from "@/lib/action-items";
 import { num } from "@/lib/format";
+import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
 import { ordinal } from "@/lib/matchup";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
@@ -124,9 +125,9 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
               <table>
                 <thead>
                   <tr>
-                    <th>Pos</th><th>Need</th>
+                    <th>Pos</th><th title="Positional need, 0–10 scale (not a player rating)">Need</th>
                     <th className="num" title="Availability-weighted bodies vs depth target">Avail</th>
-                    <th className="num" title="Your starters' value at the position vs the league average starter">Value / avg</th>
+                    <th className="num" title="Your starters' internal 0–10 value at the position vs the league average starter (not the 0–100 value rating)">Value / avg</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -250,7 +251,7 @@ function RosterTable({ rows }: { rows: RosterPlayer[] }) {
           <tr>
             <th>Slot</th><th>Player</th><th>Status</th><th title="Season PPR/game (nflverse)" className="num">PPR/g</th>
             <th title="Expected PPR/game from role (nflverse xFP)" className="num">xFP/g</th><th>Trend</th><th title="Market signal (BUY needs a meaningful absolute role)">Signal</th>
-            <th title="0-10 rest-of-season value proxy">Value</th>
+            <th title={`Value rating, 0–100: ${RATING_DESCRIPTION.value}. ${RATING_CAVEAT}`}>Value</th>
           </tr>
         </thead>
         {groups.map(([title, ps]) => (
@@ -269,7 +270,7 @@ function RosterTable({ rows }: { rows: RosterPlayer[] }) {
                 <td className="num">{num(p.xfp_per_game, 1, p.gsis_id ? "No games" : "No NFL id match")}</td>
                 <td><TrendArrow label={p.trend_label} /></td>
                 <td><Badge value={p.market_signal} /></td>
-                <td><Score value={p.value_score} /></td>
+                <td><Rating rating={ratingFor(p, "value")} kind="value" /></td>
               </tr>
             ))}
           </tbody>

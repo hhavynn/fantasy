@@ -15,7 +15,7 @@ from ..db.connection import fetch_dicts, replace_where, table_exists, utcnow
 from ..espn.constants import FANTASY_POSITIONS, IR_SLOT
 from .availability import ESPN_STATUS, NFL_REPORT_STATUS, availability, latest_injuries
 from .lineup import FIXED_SLOTS, assign_lineup, lineup_gain, lineup_slots
-from .player_scores import percentile_scores
+from .player_scores import percentile_scores, percentile_scores_100
 from .waiver_roster import plan_roster_move
 from .waiver_decisions import acquisition_utility, classify_action, evaluate_streaming, resource_diagnostics
 from .waiver_data import (attach_roster_evidence, comparable_free_agents, load_waiver_context, select_candidates,
@@ -61,6 +61,10 @@ class PlayerValue:
     gsis_id: str | None = None
     games: int | None = None
     extras: dict = field(default_factory=dict)
+    # 0-100.0 display ratings (ratings-100.v1). Never read by a decision, threshold or score; None = not computed.
+    opportunity_100: float | None = None
+    production_100: float | None = None
+    value_100: float | None = None
 
 
 # ------------------------------------------------------- lineup + needs --
@@ -80,6 +84,7 @@ def team_state(roster: list[dict], values: dict[int, PlayerValue], roster_slots:
             "injury_status": p.get("injury_status"), "nfl_report_status": p.get("nfl_report_status"),
             "lineup_slot_id": p.get("lineup_slot_id"), "raw_value": raw,
             "value": round((raw or 0.0) * av["weight"], 3), "available": av["weight"] > 0, "availability": av,
+            "raw_value_100": v.value_100 if v is not None else None,   # display text only
         })
     slots = lineup_slots(roster_slots)
     return {"players": players, "slots": slots, "roster_slots": roster_slots, "lineup": assign_lineup(players, slots)}
@@ -231,7 +236,13 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
     trend_adj = {"UP": 1.0, "DOWN": -1.0}.get(cv.trend_label or "", 0.0)
     injury_adj = INJURY_ADJ.get(av["status"], 0.0)
     opportunity = round(clamp((base or 0.0) + trend_adj + injury_adj, 0, 10), 1) if base is not None else None
-    if base is not None:
+    # Display twin on 0-100 (same selection rule keyed on the legacy None-ness; adjustments scaled x10). Nothing reads it.
+    base100 = cv.opportunity_100 if cv.opportunity is not None else cv.value_100
+    opportunity_100 = (round(clamp(base100 + 10 * trend_adj + 10 * injury_adj, 0, 100), 1)
+                       if base100 is not None else None)
+    if base100 is not None:
+        reasons.append(f"Opportunity {base100:.1f}/100 at {pos}: {BASIS_TEXT[basis]}")
+    elif base is not None:
         reasons.append(f"Opportunity {base:.1f}/10 at {pos}: {BASIS_TEXT[basis]}")
     else:
         reasons.append(f"Opportunity unknown: {BASIS_TEXT['unavailable']}")
@@ -375,6 +386,7 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
         "position": pos,
         "availability_status": c.get("availability_status"),
         "opportunity_score": opportunity,
+        "opportunity_score_100": opportunity_100,
         "roster_fit_score": fit,
         "league_interest": league_interest,
         "interest_score": interest_score,
@@ -383,8 +395,10 @@ def evaluate_candidate(c: dict, cv: PlayerValue, *, my_team_id: int, needs: dict
         "suggested_drop_id": drop["espn_player_id"] if drop else None,
         "components": {
             "player": {"basis": basis, "basis_description": BASIS_TEXT[basis], "base_opportunity": base,
+                       "base_opportunity_100": round(base100, 1) if base100 is not None else None,
                        "trend_label": cv.trend_label, "trend_adj": trend_adj, "availability": av,
-                       "injury_adj": injury_adj, "value": cv.value, "classification": cv.classification,
+                       "injury_adj": injury_adj, "value": cv.value, "value_100": cv.value_100,
+                       "classification": cv.classification,
                        "percent_owned": c.get("percent_owned"), "percent_change": c.get("percent_change"),
                        **cv.extras},
             "roster": {"need": need, "my_starter_value": my_need.get("starter_value"),
@@ -419,7 +433,9 @@ def load_values(con, season: int, current_week: int) -> dict[int, PlayerValue]:
     """, [season]):
         values[r["espn_player_id"]] = PlayerValue(
             r["espn_player_id"], r["position"], r["value_score"], r["opportunity_score"], r["production_score"],
-            r["role_trend"], r["market_signal"], r["opportunity_basis"] or "unavailable", r["gsis_id"], r["games"])
+            r["role_trend"], r["market_signal"], r["opportunity_basis"] or "unavailable", r["gsis_id"], r["games"],
+            opportunity_100=r.get("opportunity_score_100"), production_100=r.get("production_score_100"),
+            value_100=r.get("value_score_100"))
     # Fallback: recent ESPN league points percentile within position.
     pts = fetch_dicts(con, """
         SELECT p.espn_player_id, fp.position, avg(p.actual_points) AS ppg, count(*) AS n
@@ -433,10 +449,12 @@ def load_values(con, season: int, current_week: int) -> dict[int, PlayerValue]:
     for r in pts:
         by_pos[r["position"]][r["espn_player_id"]] = r["ppg"]
     for pos, d in by_pos.items():
+        pct100 = percentile_scores_100(d)
         for pid, pct in percentile_scores(d).items():
             if pid not in values or values[pid].value is None:
                 values[pid] = PlayerValue(pid, pos, pct, None, pct, None, None, "espn_points",
-                                          extras={"recent_league_ppg": round(d[pid], 2)})
+                                          extras={"recent_league_ppg": round(d[pid], 2)},
+                                          production_100=round(pct100[pid], 1), value_100=round(pct100[pid], 1))
     return values
 
 

@@ -145,7 +145,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         <div className={styles.method}>
           <p>
             Advice combines four separate pieces of evidence. The existing opportunity, fit and waiver scores stay as compatibility diagnostics;
-            the recommendation itself does not come from the blended score.
+            the recommendation itself does not come from the blended score. The waiver score stays on its own 0–10 scale; the opportunity and value ratings in the evidence are 0–100 relative ranks (legacy 0–10 values are labelled as such).
           </p>
           <ol>
             <li><b>Player quality.</b> Historical opportunity and production, role trend, stored forward ESPN projections and context headlines. Unknown value stays unknown in a comparison.</li>
@@ -154,8 +154,8 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
             <li><b>Resources.</b> Free agent, waiver priority, FAAB or unknown rules. Priority in the top three is preserved for marginal gains. No precise bids and no claim-success probabilities.</li>
           </ol>
           <p>
-            Thresholds are decision aids, not calibrated probabilities: a historical starter gain of at least 1 on the 0–10 value scale, a fully comparable forward gain of at least
-            1 ESPN point per week, and for a stash a value of at least 6 with a same-position depth gain of at least 1 plus a real need or a rising role. Strong but unproven value stays at Monitor.
+            Thresholds are decision aids, not calibrated probabilities: a historical starter gain of at least 1 on the internal 0–10 value scale (about 10 points of the 0–100 value rating), a fully comparable forward gain of at least
+            1 ESPN point per week, and for a stash an internal value of at least 6 on that 0–10 scale with a same-position depth gain of at least 1 plus a real need or a rising role. Strong but unproven value stays at Monitor.
           </p>
           <p>
             Kickers and defenses are compared forward against your weakest required starter. A gain of at least 1 upcoming point is a short-term stream; gains in two of the next three matchups make a multiweek hold.

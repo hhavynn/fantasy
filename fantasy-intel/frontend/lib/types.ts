@@ -31,6 +31,9 @@ export type PlayerCore = {
   market_signal: string | null;
   production_sustainability: string | null;   // production vs xFP baseline: regression evidence, not a trade call
   fantasy_team?: string | null;
+  // 0–100.0 ratings (ratings-100.v1). Null = not computed; absent on a database written before the scale.
+  opportunity_score_100?: number | null; production_score_100?: number | null; value_score_100?: number | null;
+  rating_scale_version?: string | null;
 };
 
 export type RosterPlayer = PlayerCore & {
