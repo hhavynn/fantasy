@@ -103,7 +103,7 @@ def cache_save(path: Path, df: pl.DataFrame, fp: str, config: dict) -> None:
 
 # The league's ESPN scoring items (full PPR, 4-point passing TD, -2 INT / fumble lost, 2-point conversions,
 # return TDs). Same items as tests/synthetic_forecast.SCORING_ITEMS; the resolved fingerprint equals the
-# production fingerprint recorded in model_registry.json, which `prepare` asserts. No live league database
+# production fingerprint of ifp-1.0.0 (PRODUCTION_SCORING_FINGERPRINT), which `prepare` asserts. No live league database
 # is needed (and none exists in the research container).
 SCORING_ITEMS = [
     {"statId": 3, "points": 0.04, "pointsOverrides": {}}, {"statId": 4, "points": 4.0, "pointsOverrides": {}},
