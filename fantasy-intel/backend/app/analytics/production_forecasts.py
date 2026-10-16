@@ -50,6 +50,23 @@ META_STR = ("model_version", "scoring_fingerprint", "artifact_id", "artifact_cre
 HASHED_META = META_INT + META_STR + META_JSON
 
 
+NOT_APPROVED_ARTIFACT = "artifact not the approved production artifact"
+_PIN = object()     # "use the production pin": projection_source.APPROVED_ARTIFACT_SHA256, for the production model only
+
+
+def approved_artifact(model_version: str | None, artifact_id=_PIN) -> str | None:
+    """The artifact sha256 a read of `model_version` is restricted to, or None for no restriction.
+
+    An explicit `artifact_id` argument wins. By default only the production model (projection_source.
+    MODEL_VERSION) is pinned, and only once projection_source.APPROVED_ARTIFACT_SHA256 is set (a reviewed
+    change that also updates the registry); another model version (the ifp-2 shadow) is never filtered."""
+    if artifact_id is not _PIN:
+        return artifact_id
+    from . import projection_source as ps     # lazy: projection_source imports this module
+
+    return ps.APPROVED_ARTIFACT_SHA256 if model_version == ps.MODEL_VERSION else None
+
+
 class ImmutableRunError(ValueError):
     """An attempt to store different content under a run_id that already exists."""
 
@@ -214,10 +231,11 @@ def rows_source(con) -> str | None:
 
 
 def latest_run(con, season: int, week: int, *, model_version: str | None = None,
-               scoring_fingerprint: str | None = None) -> dict | None:
+               scoring_fingerprint: str | None = None, artifact_id=_PIN) -> dict | None:
     """Consumer view: the newest run (by created_at) for the week that still has all of its rows.
     A run whose rows are missing (destroyed by the pre-v8 overwrite) is skipped, not shown as an empty
-    forecast. With only the legacy table (unmigrated copy) it is the newest run, as before."""
+    forecast. With only the legacy table (unmigrated copy) it is the newest run, as before.
+    When the production artifact is pinned (approved_artifact), only runs whose artifact_id equals it count."""
     if not table_exists(con, RUNS) or rows_source(con) is None:
         return None
     where, params = ["season = ?", "week = ?"], [season, week]
@@ -227,6 +245,12 @@ def latest_run(con, season: int, week: int, *, model_version: str | None = None,
     if scoring_fingerprint is not None:
         where.append("scoring_fingerprint = ?")
         params.append(scoring_fingerprint)
+    pinned = approved_artifact(model_version, artifact_id)
+    if pinned is not None:
+        if "artifact_id" not in table_columns(con, RUNS):    # a copy that never recorded artifacts: none can match
+            return None
+        where.append("artifact_id = ?")
+        params.append(pinned)
     runs = fetch_dicts(con, f"SELECT * FROM {RUNS} WHERE {' AND '.join(where)} ORDER BY created_at DESC, run_id DESC",
                        params)
     if not table_exists(con, ROWS):
@@ -245,9 +269,10 @@ def _aware(v):
     return _utc(v)
 
 
-def _assess(con, season: int, weeks: set[int] | None, model_version: str, scoring_fingerprint: str
-            ) -> tuple[list[dict], list[dict]]:
+def _assess(con, season: int, weeks: set[int] | None, model_version: str, scoring_fingerprint: str,
+            artifact_id=_PIN) -> tuple[list[dict], list[dict]]:
     """Classify every run of the season: (accepted [{run, rows}], exclusions [{run_id, week, reason}])."""
+    pinned = approved_artifact(model_version, artifact_id)
     kick_first = first_kickoffs(con, season)
     sql = f"SELECT * FROM {RUNS} WHERE season = ?"
     params: list = [season]
@@ -273,6 +298,8 @@ def _assess(con, season: int, weeks: set[int] | None, model_version: str, scorin
             reason = f"model {run['model_version']}, not {model_version}"
         elif run["scoring_fingerprint"] != scoring_fingerprint:
             reason = "made under different league scoring"
+        elif pinned is not None and run.get("artifact_id") != pinned:
+            reason = NOT_APPROVED_ARTIFACT
         elif run.get("created_at") is None:
             reason = "run creation time unknown (created_at is NULL), so no row can be shown to be pregame"
         elif not expected or not rows:
@@ -296,23 +323,28 @@ def _assess(con, season: int, weeks: set[int] | None, model_version: str, scorin
 
 
 def eligible_run_ids(con, season: int, model_version: str, scoring_fingerprint: str,
-                     weeks: Iterable[int] | None = None) -> tuple[list[str], list[dict]]:
-    """Runs whose rows may count as evidence (model, scoring, artifact-before-first-kickoff, integrity)."""
+                     weeks: Iterable[int] | None = None, *, artifact_id=_PIN) -> tuple[list[str], list[dict]]:
+    """Runs whose rows may count as evidence (model, scoring, approved artifact when pinned,
+    artifact-before-first-kickoff, integrity)."""
     if not table_exists(con, RUNS):
         return [], []
-    ok, excluded = _assess(con, season, None if weeks is None else set(weeks), model_version, scoring_fingerprint)
+    ok, excluded = _assess(con, season, None if weeks is None else set(weeks), model_version, scoring_fingerprint,
+                           artifact_id)
     return [a["run"]["run_id"] for a in ok], excluded
 
 
 def pregame_forecasts(con, season: int, weeks: Iterable[int] | None = None, *,
-                      model_version: str, scoring_fingerprint: str) -> tuple[list[dict], list[dict]]:
+                      model_version: str, scoring_fingerprint: str, artifact_id=_PIN
+                      ) -> tuple[list[dict], list[dict]]:
     """(rows, exclusions). Per (season, week, espn_player_id): the row from the LATEST eligible run whose
     run created_at < that player's own kickoff. Eligible run = model_version match, scoring_fingerprint match,
-    artifact_created_at < the week's first kickoff, integrity verified (row_count and content hash).
+    artifact_created_at < the week's first kickoff, integrity verified (row_count and content hash), and, once
+    the production artifact is pinned (approved_artifact), artifact_id equal to the pinned sha256.
     exclusions: [{run_id, week, reason}]. Rows are never returned from another model version or scoring."""
     if not table_exists(con, RUNS):
         return [], []
-    ok, excluded = _assess(con, season, None if weeks is None else set(weeks), model_version, scoring_fingerprint)
+    ok, excluded = _assess(con, season, None if weeks is None else set(weeks), model_version, scoring_fingerprint,
+                           artifact_id)
     now_kick = team_kickoffs(con, season)
     best: dict[tuple[int, int], tuple[tuple, dict]] = {}
     contributed: set[str] = set()

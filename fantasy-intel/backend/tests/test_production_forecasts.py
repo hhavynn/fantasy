@@ -11,8 +11,9 @@ import duckdb
 import pytest
 
 from app.analytics.independent_projection_store import build_live, write_live, write_run
-from app.analytics.production_forecasts import (ImmutableRunError, content_sha256, latest_run, migrate_legacy,
-                                                pregame_forecasts)
+from app.analytics import projection_source
+from app.analytics.production_forecasts import (NOT_APPROVED_ARTIFACT, ImmutableRunError, content_sha256,
+                                                eligible_run_ids, latest_run, migrate_legacy, pregame_forecasts)
 from app.db.connection import SCHEMA_VERSION, init_db, table_columns, table_exists
 
 from test_independent_projections import SCORING, _artifact, live  # noqa: F401  (live is a fixture)
@@ -260,6 +261,41 @@ def test_mismatched_runs_are_excluded_with_a_reason(live):  # noqa: F811
     assert not {late_fit["run_id"], other_model["run_id"], other_fp["run_id"]} & {r["run_id"] for r in rows}
     # asking for another model or scoring never returns this model's rows
     assert forecasts(con, model="ifp-9")[0] == [] and forecasts(con, fp="nope")[0] == []
+
+
+def test_pinned_artifact_excludes_other_artifacts_with_a_reason(live, monkeypatch):  # noqa: F811
+    con, src, _ = live
+    thursday(con)       # run B (BETWEEN) is post-kickoff for the Thursday player 1, so run A still supplies his row
+    a, _, _ = store(con, src, BEFORE_ALL, sha="a" * 64)
+    b, _, _ = store(con, src, BETWEEN, sha="b" * 64, mutate=bump(1, 77.0))
+    # unpinned (today): both artifacts are legitimate evidence and the latest eligible run wins per player
+    assert projection_source.APPROVED_ARTIFACT_SHA256 is None
+    rows, excluded = forecasts(con)
+    assert {r["run_id"] for r in rows} == {a["run_id"], b["run_id"]} and not excluded
+    assert sorted(eligible_run_ids(con, 2026, MODEL, FP)[0]) == sorted([a["run_id"], b["run_id"]])
+    # pinned to artifact A: B's run is excluded with the reason and none of its rows is returned
+    monkeypatch.setattr(projection_source, "APPROVED_ARTIFACT_SHA256", "a" * 64)
+    rows, excluded = forecasts(con)
+    assert {r["run_id"] for r in rows} == {a["run_id"]} and {r["artifact_id"] for r in rows} == {"a" * 64}
+    assert [(e["run_id"], e["reason"]) for e in excluded] == [(b["run_id"], NOT_APPROVED_ARTIFACT)]
+    assert NOT_APPROVED_ARTIFACT == "artifact not the approved production artifact"
+    run_ids, excluded = eligible_run_ids(con, 2026, MODEL, FP)
+    assert run_ids == [a["run_id"]] and excluded[0]["reason"] == NOT_APPROVED_ARTIFACT
+    assert latest_run(con, 2026, 6, model_version=MODEL)["run_id"] == a["run_id"]
+    # pinned to an artifact nobody used: no evidence at all, every run excluded with the reason
+    monkeypatch.setattr(projection_source, "APPROVED_ARTIFACT_SHA256", "c" * 64)
+    rows, excluded = forecasts(con)
+    assert rows == [] and {e["reason"] for e in excluded} == {NOT_APPROVED_ARTIFACT} and len(excluded) == 2
+    assert latest_run(con, 2026, 6, model_version=MODEL) is None
+
+
+def test_the_pin_applies_to_the_production_model_only(live, monkeypatch):  # noqa: F811
+    """The pin names ifp-1.0.0's artifact; another model version (the ifp-2 shadow) is never filtered by it."""
+    con, src, _ = live
+    store(con, src, BEFORE_ALL, sha="a" * 64, meta_over={"model_version": "ifp-2.0.0"})
+    monkeypatch.setattr(projection_source, "APPROVED_ARTIFACT_SHA256", "c" * 64)
+    rows, excluded = forecasts(con, model="ifp-2.0.0")
+    assert rows and not excluded
 
 
 def test_runs_without_rows_or_with_altered_rows_are_excluded(live):  # noqa: F811

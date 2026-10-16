@@ -14,8 +14,9 @@ each number came from (`origin`):
   espn       no independent estimate exists for him (K and D/ST have no model; rookies without an NFL
              game, uncertain ID mapping, no participation estimate): ESPN's projection, labeled.
 
-The independent run must be the current model version under the league's current scoring; without
-one the switch reports `available: false` and the consumer keeps ESPN. Runs are immutable:
+The independent run must be the current model version under the league's current scoring and, once
+APPROVED_ARTIFACT_SHA256 is pinned, made by exactly that artifact file (runs record the sha256 of the file bytes
+in artifact_id); without one the switch reports `available: false` and the consumer keeps ESPN. Runs are immutable:
 the newest run that still has its stored rows is used, read from independent_projection_rows (the legacy
 table only when the database has not been migrated to schema v8).
 """
@@ -31,6 +32,10 @@ SOURCES = ("espn", "independent")
 OURS, OURS_ZERO, ESPN = "ours", "ours_zero", "espn"
 ZERO_STATUSES = {"bye", "withheld_unavailable"}
 MODEL_VERSION = "ifp-1.0.0"     # app.analytics.independent_projections.MODEL_VERSION (numpy-free copy, tested)
+# sha256 of the approved production artifact file; None = not pinned, any run of MODEL_VERSION is served.
+# Numpy-free, registry-free copy of the approval registry's production `artifact.sha256` (the hosted app never
+# reads the registry); tested equal. Pinning is one reviewed change to BOTH (see the registry doc).
+APPROVED_ARTIFACT_SHA256: str | None = None
 
 
 def normalize(source: str | None) -> str:
@@ -65,7 +70,8 @@ def _run(con, season: int, week: int) -> dict | None:
     fp = _scoring_fingerprint(con, season)
     if fp is None:
         return None
-    return pf.latest_run(con, season, week, model_version=MODEL_VERSION, scoring_fingerprint=fp)
+    return pf.latest_run(con, season, week, model_version=MODEL_VERSION, scoring_fingerprint=fp,
+                         artifact_id=APPROVED_ARTIFACT_SHA256)
 
 
 def weekly(con, season: int, week: int, source: str) -> dict:
@@ -77,8 +83,10 @@ def weekly(con, season: int, week: int, source: str) -> dict:
         return base
     run = _run(con, season, week)
     if run is None:
+        pin = (f" made by the approved production artifact (sha256 {APPROVED_ARTIFACT_SHA256[:12]}...)"
+               if APPROVED_ARTIFACT_SHA256 else "")
         return {**base, "available": False,
-                "reason": f"No independent projection run of {MODEL_VERSION} under the current league scoring is "
+                "reason": f"No independent projection run of {MODEL_VERSION}{pin} under the current league scoring is "
                           f"stored for week {week}, so ESPN projections are shown."}
     values: dict[int, float | None] = dict(espn)
     origin: dict[int, str] = {pid: ESPN for pid in espn}
@@ -95,7 +103,8 @@ def weekly(con, season: int, week: int, source: str) -> dict:
     status = run["model_status"]
     status = json.loads(status) if isinstance(status, str) else (status or {})
     return {**base, "values": values, "origin": origin, "counts": counts,
-            "run": {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"])},
+            "run": {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"]),
+                    "artifact_pinned": APPROVED_ARTIFACT_SHA256 is not None},
             "model_status": {p: (s or {}).get("status") for p, s in status.items()}}
 
 

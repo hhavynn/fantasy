@@ -8,6 +8,7 @@ import polars as pl
 import pytest
 from fastapi.testclient import TestClient
 
+from app.analytics import projection_source
 from app.analytics.forecast_backtest import PROMOTION_CRITERIA
 from app.analytics.forecast_features import load_panel
 from app.analytics.independent_projection_store import build_live, write_live
@@ -112,6 +113,26 @@ def test_other_model_versions_do_not_count(tracked):
     assert t["run"] is None and "another model version" in t["run_missing_reason"]
     assert all(p["model"]["status"] is None for p in t["positions"])
     assert t["espn"]["excluded_runs"][0]["reason"].startswith("model ifp-0.0.0")
+
+
+def test_pinned_artifact_gates_the_tracker(tracked, monkeypatch):
+    con, _, _ = tracked
+    sha = con.execute("SELECT artifact_id FROM independent_projection_runs").fetchone()[0]
+    assert projection_source.APPROVED_ARTIFACT_SHA256 is None
+    unpinned = build_tracker(con)
+    monkeypatch.setattr(projection_source, "APPROVED_ARTIFACT_SHA256", sha)    # the stored run's own artifact
+    assert build_tracker(con) == unpinned
+    monkeypatch.setattr(projection_source, "APPROVED_ARTIFACT_SHA256", "f" * 64)
+    t = build_tracker(con)
+    assert t["espn"]["matched_observations"] == 0 and t["run"] is None
+    assert "approved production artifact" in t["run_missing_reason"]
+    assert all(p["model"]["status"] is None for p in t["positions"])
+    [ex] = t["espn"]["excluded_runs"]
+    assert ex["reason"] == "artifact not the approved production artifact"
+    # unmigrated database: the run-level legacy rule applies the same pin
+    con.execute("DROP TABLE independent_projection_rows")
+    [ex] = build_tracker(con)["espn"]["excluded_runs"]
+    assert ex["reason"] == "artifact not the approved production artifact"
 
 
 def test_artifact_fitted_after_the_week_does_not_count(tracked):

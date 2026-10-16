@@ -23,9 +23,66 @@ consumer value is unchanged: the projection switch keeps reading `projection_sou
 | Trades, waivers, team value, playoff race, player scores, lineups | ESPN only | never import independent projections (`test_canonical_espn_systems_do_not_read_independent_projections`) |
 | ifp-2.0.0 challenger, weekly ledger, research models | nothing consumer-facing | shadow only (`test_weekly_pipeline_never_imports_into_consumers`) |
 
-So a production switch would touch three places, all in one reviewed change: `MODEL_VERSION` in
-`projection_source.py` (and its tested copy in `independent_projections.py`), the artifact that
-`project` loads, and the registry manifest. The registry alone changes none of them.
+So a production switch would touch three places, all in one reviewed change: `MODEL_VERSION` and
+`APPROVED_ARTIFACT_SHA256` in `projection_source.py` (and the tested copy of the version in
+`independent_projections.py`), the artifact that `project` loads, and the registry manifest. The registry alone changes none of them.
+
+## Pinning the production artifact (consumer pin)
+
+By default the opt-in projection switch serves the newest run of `ifp-1.0.0` under the league's scoring,
+whichever artifact file produced it. Once the incumbent's artifact is pinned, the switch serves only runs
+made by exactly that file. Every run records `independent_projection_runs.artifact_id`, the sha256 of the
+artifact **file bytes** (`dict:` + digest when no file was used, which never matches a pin).
+
+The pin lives in two places that must agree, because the hosted app never reads the registry:
+
+| Place | Field | Today |
+|---|---|---|
+| `backend/app/analytics/model_registry.json` | production entry `artifact.sha256` | `null` |
+| `backend/app/analytics/projection_source.py` | `APPROVED_ARTIFACT_SHA256` (numpy-free, registry-free copy) | `None` |
+
+`test_consumer_artifact_pin_is_a_tested_copy_of_the_registry_pin` fails CI if one is pinned without the
+other, the same way the `MODEL_VERSION` copy is tested. `scripts/model_registry.py status` also reports
+`consumer_pin_matches` for the production entry.
+
+**Unpinned (`None`, the committed state): behaviour is exactly as before.** ESPN stays the default
+source in any case.
+
+**Pinned:** the following consider only runs whose `artifact_id` equals the pin:
+
+* the projection switch (`projection_source.weekly`, so Start/Sit, Matchup and Home with
+  `source=independent`);
+* evidence: `production_forecasts.pregame_forecasts`, `eligible_run_ids` and `latest_run` (and so the
+  ESPN benchmark and the Start/Sit evaluation, which read them) for the production model version only;
+  the ifp-2 shadow and other model versions are never filtered by this pin;
+* the promotion tracker (latest run, eligible runs and stored projections, including the pre-v8 path).
+
+Other runs are excluded with the reason `artifact not the approved production artifact`. When no run of
+the pinned artifact exists for the week the switch reports `available: false` with a reason that names
+the pin, and the consumer keeps ESPN. Response shapes are unchanged except for an optional
+`run.artifact_pinned` boolean in the switch's `run` block. `GET /api/projections/independent` is a
+research view of the latest stored run and is not filtered by the pin.
+
+**To pin (a reviewed change, one commit, owner-approved):**
+
+1. On the machine that holds the artifact, from the repo root, compute the digest of the exact file the
+   `project` command loads (`INDEPENDENT_MODEL_DIR`, default `data/models`):
+
+   ```
+   shasum -a 256 data/models/independent_projections_ifp-1.0.0.json
+   ```
+
+   (`sha256sum` on Linux). The registry script has no hashing command; its `status` output shows the
+   digest it computed for the pinned file as `production.artifact_check.observed` once a pin exists.
+2. Put the 64-character lowercase hex digest in **both** `model_registry.json` (production entry
+   `artifact.sha256`) and `APPROVED_ARTIFACT_SHA256` in `projection_source.py`.
+3. `cd backend && uv run python ../scripts/model_registry.py status` must show `artifact_pinned: true`,
+   `consumer_pin_matches: true` and an `artifact_check` that passes; run the backend tests.
+4. Runs already stored by a different file stop being served and stop counting as evidence. Re-run
+   `project` from the pinned file to produce a serving run; earlier runs are never deleted.
+
+To unpin or roll the pin to another artifact, change both places in the same reviewed commit. A promotion
+or rollback (below) changes the pin together with `MODEL_VERSION`.
 
 ## The manifest
 
@@ -88,9 +145,11 @@ explanation}`; `insufficient_data` is never a pass, and `activates` is always `f
 
 ## Future promotion process (not executed)
 
-1. Pin the incumbent: a reviewed change that fills `ifp-1.0.0`'s artifact sha256 (`sha256sum
-   data/models/independent_projections_ifp-1.0.0.json`), training cutoff and held-out report hash.
-   Pinning changes no behaviour, and from then on the file can never be swapped silently.
+1. Pin the incumbent: a reviewed change that fills `ifp-1.0.0`'s artifact sha256 (`shasum -a 256
+   data/models/independent_projections_ifp-1.0.0.json`), training cutoff and held-out report hash, and
+   sets `projection_source.APPROVED_ARTIFACT_SHA256` to the same digest (see "Pinning the production
+   artifact"). From then on the file can never be swapped silently, and the switch serves only runs made
+   by exactly that file.
 2. Keep the challenger in the frozen pregame ledger until `scripts/weekly_learning.py evaluate`
    has >= 8 fully final prospective weeks; freeze that report (never edit it) and note its sha256.
 3. Fit the candidate's single production artifact under the league scoring and copy it to a new,

@@ -467,6 +467,14 @@ def test_same_production_projections_before_and_after_registry(stored, env):  # 
     assert before["independent"]["run"]["model_version"] == MODEL_VERSION == reg.production(reg.load_manifest())["version"]
 
 
+def test_consumer_artifact_pin_is_a_tested_copy_of_the_registry_pin():
+    """projection_source.APPROVED_ARTIFACT_SHA256 is the hosted app's numpy-free, registry-free copy of the
+    production entry's artifact sha256. Pinning one without the other fails here (a reviewed change does both)."""
+    registry_pin = reg.production(reg.load_manifest())["artifact"]["sha256"]
+    assert ps.APPROVED_ARTIFACT_SHA256 == registry_pin
+    assert ps.APPROVED_ARTIFACT_SHA256 is None or reg._sha_ok(ps.APPROVED_ARTIFACT_SHA256)
+
+
 def test_hosted_app_never_reads_the_registry_or_research_packages():
     for path in APP.rglob("*.py"):
         if path.name != "model_registry.py":
@@ -498,6 +506,7 @@ def test_cli_status_is_read_only(tmp_path):
                      "--out", str(out)]) == 0
     rep = json.loads(out.read_text())
     assert rep["production"]["version"] == MODEL_VERSION and rep["dry_run"] is True
+    assert rep["production"]["consumer_pin_matches"] is True       # both unpinned today
     assert cli.main(["status", "--models", str(tmp_path), "--live-db", str(tmp_path / "none.duckdb"),
                      "--out", str(out)]) == 2                       # write-once
     assert cli.main(["plan-rollback", "--reason", "r", "--by", "o", "--models", str(tmp_path),

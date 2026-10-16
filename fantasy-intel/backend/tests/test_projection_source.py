@@ -101,6 +101,64 @@ def test_unmigrated_database_is_read_from_the_legacy_table(stored):
     assert legacy["values"] == expected["values"] and legacy["origin"] == expected["origin"]
 
 
+# ----------------------------------------------------------------------------- pinned production artifact
+
+SHA_A, SHA_B, SHA_C = "a" * 64, "b" * 64, "c" * 64
+
+
+def _two_runs(con, src):
+    """Week 6: an OLDER run by artifact A (WR 1 = 21.0) and a NEWER run by artifact B (WR 1 = 31.0)."""
+    out = []
+    for sha, pts, minutes in ((SHA_A, 21.0, 0), (SHA_B, 31.0, 5)):
+        meta, rows = build_live(con, src, _artifact(src), 2026, 6, artifact_sha256=sha)
+        row = next(r for r in rows if r["espn_player_id"] == 1)
+        row["projected_points"] = row["expected_points"] = pts
+        meta["created_at"] = meta["created_at"] + timedelta(minutes=minutes)
+        write_live(con, meta, rows)
+        out.append(meta)
+    return out
+
+
+def test_the_pin_is_unset_by_default_and_the_unpinned_path_serves_the_newest_run(live):  # noqa: F811
+    con, src, _ = live
+    assert ps.APPROVED_ARTIFACT_SHA256 is None
+    _, newer = _two_runs(con, src)
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] and w["run"]["run_id"] == newer["run_id"] and w["values"][1] == 31.0
+    assert w["run"]["artifact_pinned"] is False
+
+
+def test_a_pinned_artifact_serves_only_its_own_runs(live, monkeypatch):  # noqa: F811
+    con, src, _ = live
+    older, _ = _two_runs(con, src)
+    monkeypatch.setattr(ps, "APPROVED_ARTIFACT_SHA256", SHA_A)
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] and w["run"]["run_id"] == older["run_id"] and w["run"]["artifact_pinned"] is True
+    assert w["values"][1] == 21.0 and w["origin"][1] == "ours"       # the newer run of artifact B is ignored
+    assert ps.describe(w)["run"]["artifact_pinned"] is True
+    assert ps.weekly(con, 2026, 6, "espn")["run"] is None             # ESPN stays the default and is unchanged
+
+
+def test_a_newer_run_of_another_artifact_means_espn_with_a_reason(live, monkeypatch):  # noqa: F811
+    con, src, _ = live
+    _two_runs(con, src)
+    espn = ps.weekly(con, 2026, 6, "espn")
+    monkeypatch.setattr(ps, "APPROVED_ARTIFACT_SHA256", SHA_C)       # neither stored run was made by artifact C
+    w = ps.weekly(con, 2026, 6, "independent")
+    assert w["available"] is False and w["run"] is None and w["counts"] is None
+    assert "No independent projection run" in w["reason"] and "approved production artifact" in w["reason"]
+    assert SHA_C[:12] in w["reason"] and "ESPN projections are shown" in w["reason"]
+    assert w["values"] == espn["values"] and set(w["origin"].values()) == {"espn"}
+
+
+def test_a_run_without_a_recorded_artifact_is_not_the_pinned_artifact(live, monkeypatch):  # noqa: F811
+    con, src, _ = live
+    _two_runs(con, src)
+    con.execute("UPDATE independent_projection_runs SET artifact_id = NULL")
+    monkeypatch.setattr(ps, "APPROVED_ARTIFACT_SHA256", SHA_A)
+    assert ps.weekly(con, 2026, 6, "independent")["available"] is False
+
+
 # ----------------------------------------------------------------------------- consumers
 
 BUMP = 5.0

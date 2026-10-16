@@ -420,7 +420,18 @@ A header toggle (**ESPN | Ours**, in the menu drawer on phones) stores the visit
 
 Only a run of the current model version under the league's current scoring is used (the newest one
 that still has all of its stored rows; a run whose rows were lost is skipped); otherwise the
-response says `available: false` and shows ESPN. Start/Sit and Matchup rerun the same lineup
+response says `available: false` and shows ESPN.
+
+**Artifact pin.** `projection_source.APPROVED_ARTIFACT_SHA256` is `None` today, which changes nothing.
+When it holds a sha256, only runs whose `artifact_id` (the sha256 of the artifact file the `project`
+command loaded) equals it are served, and only those count as evidence in `pregame_forecasts`,
+`eligible_run_ids` and the promotion tracker; other runs are excluded with the reason "artifact not the
+approved production artifact", and a week with no matching run falls back to ESPN with `available: false`
+and a reason naming the pin. Pinning is a reviewed manifest change that updates BOTH the registry
+(`model_registry.json`, production `artifact.sha256`) and the constant in the same commit; a test fails if
+they disagree. Compute the digest on the machine that holds the artifact with
+`shasum -a 256 data/models/independent_projections_ifp-1.0.0.json`. The full workflow is in
+[model_registry.md](model_registry.md) ("Pinning the production artifact"). Start/Sit and Matchup rerun the same lineup
 optimizer on these numbers (Matchup computes both teams' lineups on the fly instead of reading
 `team_week_lineup_projections`). Availability warnings still quote ESPN's number, because they say
 so by name. Rest-of-season features (trades, waivers, team value, playoff race) stay on ESPN: the

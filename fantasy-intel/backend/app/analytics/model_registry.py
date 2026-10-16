@@ -733,28 +733,32 @@ def _evaluate_promotion(old: dict, new: dict, *, model_root: Path, live_scoring_
             "blocking": blocking}
 
 
-def production_status(m: dict, *, model_root: Path, live_scoring_fp: str | None, consumer_version: str) -> dict:
-    """The approved production model and whether the runtime switch reads exactly it."""
+def production_status(m: dict, *, model_root: Path, live_scoring_fp: str | None, consumer_version: str,
+                      consumer_artifact_sha256: str | None = None) -> dict:
+    """The approved production model and whether the runtime switch reads exactly it (version, and the
+    artifact pin: projection_source.APPROVED_ARTIFACT_SHA256 must equal the registry's artifact sha256)."""
     p = production(m)
     c, _ = verify_file(Path(model_root), p["artifact"], "artifact")
     pinned = _sha_ok(p["artifact"].get("sha256"))
     return {"family": p["family"], "version": p["version"], "approval_kind": p["approval"]["kind"],
             "consumer_version": consumer_version, "consumers_match": consumer_version == p["version"],
             "scoring_matches_league": live_scoring_fp is not None and p["scoring_fingerprint"] == live_scoring_fp,
-            "artifact_pinned": pinned, "artifact_check": c,
+            "artifact_pinned": pinned, "consumer_artifact_sha256": consumer_artifact_sha256,
+            "consumer_pin_matches": consumer_artifact_sha256 == p["artifact"].get("sha256"), "artifact_check": c,
             "note": None if pinned else ("the incumbent's artifact hash is not pinned yet: pin it (a reviewed manifest "
                                          "change) before any promotion, so a rollback can restore its exact bytes")}
 
 
 def dry_run_report(m: dict, *, model_root: Path, live_scoring_fp: str | None, consumer_version: str,
-                   now: datetime | None = None) -> dict:
+                   now: datetime | None = None, consumer_artifact_sha256: str | None = None) -> dict:
     """Production status plus a promotion evaluation of every other registered model. Read-only."""
     now = now or datetime.now(timezone.utc)
     return {"schema": "model-registry-dry-run/v1", "created_at": now.isoformat(), "dry_run": True,
             "note": "Read-only. Nothing here promotes, activates or rolls back a model; production changes only by a "
                     "separate, explicitly approved change to model_registry.json and the consumer wiring.",
             "production": production_status(m, model_root=model_root, live_scoring_fp=live_scoring_fp,
-                                             consumer_version=consumer_version),
+                                             consumer_version=consumer_version,
+                                             consumer_artifact_sha256=consumer_artifact_sha256),
             "candidates": [review_candidate(m, e["version"], model_root=model_root, live_scoring_fp=live_scoring_fp)
                            for e in m["models"] if e["version"] != m["production"]["version"]]}
 
