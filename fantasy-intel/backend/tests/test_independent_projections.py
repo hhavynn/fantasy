@@ -311,7 +311,8 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "challenger.py", "weekly_learning.py",
                "source_provenance.py",   # pregame source snapshots of the weekly pipeline (research only)
                "model_registry.py",   # research-only approval manifest + dry-run promotion gate (never imported)
-               "participation_calibration.py"}   # P(appears) calibration research, shadow only (nothing imports it)
+               "participation_calibration.py",   # P(appears) calibration research, shadow only (nothing imports it)
+               "point_distributions.py"}   # research-only point distributions (never imported by the app)
     for f in APP.rglob("*"):
         if f.suffix not in (".py", ".sql") or f.name in allowed:
             continue
