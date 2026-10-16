@@ -230,11 +230,14 @@ def test_weekly_pipeline_never_imports_into_consumers():
     import pathlib
     root = pathlib.Path(__file__).resolve().parents[1] / "app"
     for path in root.rglob("*.py"):
+        # adaptive_workload.py: research-only ifp-aw estimator built on the challenger (never imported, see
+        # tests/test_adaptive_workload.py::test_research_module_is_never_imported_by_the_app)
         # hgb_research.py: research-only gradient-boosting challenger built on the challenger (never imported,
         # see tests/test_hgb_research.py::test_research_model_cannot_silently_become_production)
         # model_registry.py: research-only dry-run promotion gate that reads weekly_learning's criteria (never
         # imported, see tests/test_model_registry.py::test_hosted_app_never_reads_the_registry_or_research_packages)
-        if path.name in ("weekly_learning.py", "challenger.py", "source_provenance.py", "hgb_research.py",
+        if path.name in ("weekly_learning.py", "challenger.py", "source_provenance.py", "adaptive_workload.py",
+                         "hgb_research.py",
                          "model_registry.py"):
             continue
         text = path.read_text()
