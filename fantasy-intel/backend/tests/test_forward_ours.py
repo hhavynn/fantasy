@@ -266,6 +266,9 @@ def check_equal_to_the_switch(con, pids=(1, 2, 3)):
             assert g["reason"] == (ref["reason"] if ref["available"] else None), (pid, week, g["reason"], ref["reason"])
             assert g["skipped"] == ref["skipped"], (pid, week)
             if g["run"]:
+                for key in ("forecast_horizon", "projected_from_week", "horizon_note"):
+                    mine = pf.horizon_of(g["run"]) if key == "forecast_horizon" else g["run"].get(key)
+                    assert mine == ref["run"][key], (pid, week, key)
                 verified = {"verified": True, "unverified": False}.get(g["run"]["artifact_check"])
                 assert ref["run"].get("artifact_verified") == verified, (pid, week)
     return got
@@ -328,6 +331,10 @@ def test_horizon_zero_and_horizon_k_runs_of_a_week_coexist_and_the_newest_wins(c
     assert got[1][9]["run"]["run_id"] == hk and got[1][9]["run"]["horizon_note"]
     e = by_week(ours_for(con)["ours"])[9]
     assert e["run_id"] == hk and e["horizon"] == 3 and e["experimental"] is True
+    ref = ps.weekly(con, SEASON, 9, "independent")["run"]       # the entry carries the switch's three horizon fields
+    assert (e["forecast_horizon"], e["projected_from_week"], e["horizon_note"]) == (
+        ref["forecast_horizon"], ref["projected_from_week"], ref["horizon_note"]) == (3, CURRENT, e["horizon_note"])
+    assert "horizon 3" in e["horizon_note"]
     # the other way round: a newer horizon-0 run is not hidden behind an older rest-of-season run
     h0b = add_run(con, 9, horizon=0, created=CREATED + timedelta(hours=2), artifact=APPROVED)
     got = check_equal_to_the_switch(con)

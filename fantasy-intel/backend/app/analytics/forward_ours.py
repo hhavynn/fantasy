@@ -169,7 +169,10 @@ def ours_forward(con, season: int, pid: int, weeks: list[dict], *, source: str) 
             "week": w["week"], "value": value, "origin": origin, "on_bye": on_bye,
             "run_id": run["run_id"] if run else None, "model_version": run["model_version"] if run else None,
             "run_created_at": str(run["created_at"]) if run else None,
-            "horizon": horizon, "projected_from_week": run.get("projected_from_week") if run else None,
+            # the same three fields projection_source.weekly puts on its run object (forecast_horizon: NULL reads 0)
+            "horizon": horizon, "forecast_horizon": horizon,
+            "projected_from_week": run.get("projected_from_week") if run else None,
+            "horizon_note": run["horizon_note"] if run else None,
             "experimental": bool(run and run.get("horizon_note")),
             # True: the run's artifact is registered / pinned; False: could not be verified (fail open); None: no rule
             "artifact_verified": {"verified": True, "unverified": False}.get(run.get("artifact_check")) if run else None,

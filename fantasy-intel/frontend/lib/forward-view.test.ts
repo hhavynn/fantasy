@@ -9,7 +9,7 @@ const week = (n: number, phase: "regular" | "playoff" = "regular", on_bye = fals
 });
 const ow = (n: number, origin: OursWeek["origin"], value: number | null, over: Partial<OursWeek> = {}): OursWeek => ({
   week: n, value, origin, on_bye: false, run_id: "r", model_version: "ifp-2.0.0", run_created_at: "2026-10-14 12:00:00",
-  horizon: n - 6, projected_from_week: 6, experimental: n > 6, ...over,
+  horizon: n - 6, forecast_horizon: n - 6, projected_from_week: 6, horizon_note: n > 6 ? `rest-of-season forecast (horizon ${n - 6})` : null, experimental: n > 6, ...over,
 });
 const ours = (weeks: OursWeek[], over: Partial<OursForward> = {}): OursForward => ({
   available: true, reason: null, label: "Fantasy Intel projections (ifp-2.0.0); experimental beyond next week",

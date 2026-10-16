@@ -158,7 +158,8 @@ export type OursOrigin = "ours" | "ours_zero" | "espn" | "bye";
 export type OursWeek = {
   week: number; value: number | null; origin: OursOrigin; on_bye: boolean | null;
   run_id: string | null; model_version: string | null; run_created_at: string | null;
-  horizon: number | null; projected_from_week: number | null; experimental: boolean;
+  horizon: number | null; forecast_horizon: number | null; projected_from_week: number | null;
+  horizon_note: string | null; experimental: boolean;
   /** true: the run's artifact is approved; false: approval could not be verified (shown anyway); null: no run or no rule. */
   artifact_verified?: boolean | null;
 };
