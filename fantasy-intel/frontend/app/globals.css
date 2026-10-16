@@ -415,6 +415,7 @@ tr.group:hover td { background: var(--bg); }
 /* ---------- Score meter: number + ten ticks ---------- */
 .score { display: inline-flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .score .v { min-width: 28px; text-align: right; }
+.score .unit { color: var(--ink-faint); }
 .ticks { display: inline-grid; grid-template-columns: repeat(10, 4px); gap: 2px; }
 .ticks i { height: 10px; border-radius: 1px; background: var(--line); }
 .ticks i.on { background: var(--accent); }

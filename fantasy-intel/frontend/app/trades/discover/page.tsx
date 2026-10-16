@@ -39,7 +39,7 @@ const TIER_TONE: Record<string, string> = { practical: "good", concerns: "warn",
 const TIER_SHORT: Record<string, string> = { practical: "Practical", concerns: "Concerns", speculative: "Speculative" };
 /** Sort links shown instead of the column headers on phones, where each trade is a card. */
 const PHONE_SORTS: [string, string][] = [
-  ["my_gain", "Your Δ"], ["their_gain", "Their Δ"], ["min_side", "Smaller side"], ["asset", "Asset balance"], ["partner", "Partner"], ["shape", "Shape"],
+  ["my_gain", "Team Δ"], ["their_gain", "Partner Δ"], ["min_side", "Smaller side"], ["asset", "Asset balance"], ["partner", "Partner"], ["shape", "Shape"],
 ];
 const why = "Incomplete: a rostered player with an NFL team has no ESPN projection in some week (never treated as 0)";
 
@@ -177,7 +177,7 @@ function Filters({ d }: { d: DiscoveryContext }) {
           </select>
         </label>
         <fieldset className={styles.group}>
-          <legend>Trade shape (you give – you get)</legend>
+          <legend>Trade shape (gives – gets)</legend>
           <div className={styles.shapes}>
             {d.exact_shapes.map((x) => (
               <label key={x} className={styles.shape} title="Exact search: proven top list">
@@ -206,7 +206,7 @@ function Filters({ d }: { d: DiscoveryContext }) {
           <div className={styles.row}>
             <label className={styles.field}>Team
               <select name="team" defaultValue={qy.team_id}>
-                {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
+                {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (default)" : ""}</option>)}
               </select>
             </label>
             {qy.mode !== "upside" && qy.mode !== "all" && (
@@ -250,7 +250,7 @@ function Filters({ d }: { d: DiscoveryContext }) {
           </fieldset>
           <p className={styles.footnote}>
             * Larger shapes come from a bounded beam search: every listed trade is evaluated exactly, but the list is not a proven top list.
-            Shapes are from {d.anchor.name}&apos;s side: 3-for-1 = you send three, receive one.
+            Shapes are from {d.anchor.name}&apos;s side: 3-for-1 = {d.anchor.name} sends three, receives one.
           </p>
         </div>
       </details>
@@ -371,10 +371,10 @@ function Results({ d, rows, total, excluded, q, sp }: {
               <tr>
                 {th("shape", "Shape")}
                 {th("partner", "Partner")}
-                <th scope="col">You give</th>
-                <th scope="col">You get</th>
-                {th("my_gain", "Your Δ", { align: "right", title: "Change in your projected starting points, rest of season" })}
-                {th("their_gain", "Their Δ", { align: "right", title: "Change in their projected starting points, rest of season" })}
+                <th scope="col">Gives</th>
+                <th scope="col">Gets</th>
+                {th("my_gain", "Team Δ", { align: "right", title: "Change in the analyzed team's projected starting points, rest of season" })}
+                {th("their_gain", "Partner Δ", { align: "right", title: "Change in the trade partner's projected starting points, rest of season" })}
                 {th("min_side", "Smaller side", { align: "right", title: "The smaller of the two rest-of-season deltas" })}
                 {th("asset", "Asset balance", { title: "Smaller package as a share of the larger, in points above replacement" })}
                 <th scope="col">Type</th>
@@ -401,14 +401,14 @@ function TradeRows({ tier, r, d, q }: { tier: string; r: DSummaryRow; d: Discove
           <Link href={`/managers/${r.opponent_team_id}`}>{r.opponent_name}</Link>
           {mc && <span className={styles.subline}>{mc.trade_history.completed_trades} completed trades · {mc.trade_history.confidence.toLowerCase()} confidence</span>}
         </td>
-        <td className={styles.wrapCell} data-label="You give"><Players ids={r.sends} d={d} /></td>
-        <td className={styles.wrapCell} data-label="You get"><Players ids={r.receives} d={d} /></td>
-        <td className="num" data-label="Your Δ"><DeltaCell v={r.mine} /></td>
-        <td className="num" data-label="Their Δ"><DeltaCell v={r.theirs} /></td>
+        <td className={styles.wrapCell} data-label="Gives"><Players ids={r.sends} d={d} /></td>
+        <td className={styles.wrapCell} data-label="Gets"><Players ids={r.receives} d={d} /></td>
+        <td className="num" data-label="Team Δ"><DeltaCell v={r.mine} /></td>
+        <td className="num" data-label="Partner Δ"><DeltaCell v={r.theirs} /></td>
         <td className="num" data-label="Smaller side">{r.min_side_ros_delta === null ? <span className="missing" title={why}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
         <td className={styles.assetCell} data-label="Asset balance">
           <span title={b.note}><Badge value={b.text} tone={ASSET_TONE[b.label]} /></span>
-          {b.you_send_par !== null && <span className={styles.subline}>you give {b.you_send_par.toFixed(0)} · they give {b.they_send_par?.toFixed(0)} pts above replacement</span>}
+          {b.you_send_par !== null && <span className={styles.subline}>gives {b.you_send_par.toFixed(0)} · partner gives {b.they_send_par?.toFixed(0)} pts above replacement</span>}
         </td>
         <td className={styles.typeCell} data-label="Type">
           <div className={styles.tags}>
@@ -443,14 +443,14 @@ function Managers({ d }: { d: DiscoverySummary }) {
   const nm = (ids: number[]) => ids.map((id) => d.names[id]?.name ?? `#${id}`).join(" + ");
   return (
     <Section title="By manager" flush
-      footnote={<>Your weaker starting positions (below the league median of projected points per slot): <b>{needText(d.my_needs)}</b>. A position need is a roster fact, not a willingness to trade.</>}>
+      footnote={<>The analyzed team&apos;s weaker starting positions (below the league median of projected points per slot): <b>{needText(d.my_needs)}</b>. A position need is a roster fact, not a willingness to trade.</>}>
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Manager</th><th>Their weaker positions</th>
               <th>Best {d.query.mode === "practical" ? "practical " : ""}trade in this view</th>
-              <th className="num">You / them</th><th><VisuallyHidden>Filter to this manager</VisuallyHidden></th>
+              <th className="num" title="Rest-of-season change: analyzed team / partner">Team / partner</th><th><VisuallyHidden>Filter to this manager</VisuallyHidden></th>
             </tr>
           </thead>
           <tbody>

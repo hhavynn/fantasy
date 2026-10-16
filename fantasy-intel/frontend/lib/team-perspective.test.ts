@@ -1,0 +1,88 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { ALL_NAV_PAGES } from "./navigation.ts";
+import {
+  isTeamScoped, isUnknownTeam, perspectiveHref, readTeamSelection, selectedTeamId, teamOptionLabel, teamParamFrom,
+  TEAM_SCOPED_PATHS, withTeam, withTeamId,
+} from "./team-perspective.ts";
+
+test("no team in the URL keeps the owner's default", () => {
+  assert.deepEqual(readTeamSelection({}), { kind: "default" });
+  assert.deepEqual(readTeamSelection({ team: "" }), { kind: "default" });
+  assert.equal(selectedTeamId(readTeamSelection({})), null);
+  assert.equal(withTeamId("/api/overview", readTeamSelection({})), "/api/overview");
+});
+
+test("?team= selects a team; the legacy ?team_id= still works but ?team wins", () => {
+  assert.deepEqual(readTeamSelection({ team: "7" }), { kind: "team", id: 7 });
+  assert.deepEqual(readTeamSelection({ team_id: "3" }), { kind: "team", id: 3 });
+  assert.deepEqual(readTeamSelection({ team: "4", team_id: "3" }), { kind: "team", id: 4 });
+  assert.deepEqual(readTeamSelection({ team: ["5", "6"] }), { kind: "team", id: 5 });
+});
+
+test("a team param that is not an id is invalid and never reaches the backend", () => {
+  assert.deepEqual(readTeamSelection({ team: "abc" }), { kind: "invalid", raw: "abc" });
+  assert.deepEqual(readTeamSelection({ team: "-1" }), { kind: "invalid", raw: "-1" });
+  assert.deepEqual(readTeamSelection({ team: "1;drop" }), { kind: "invalid", raw: "1;drop" });
+  assert.equal(selectedTeamId(readTeamSelection({ team: "abc" })), null);
+});
+
+test("backend paths get team_id, keeping their own query", () => {
+  const sel = readTeamSelection({ team: "9" });
+  assert.equal(withTeamId("/api/overview", sel), "/api/overview?team_id=9");
+  assert.equal(withTeamId("/api/waivers?view=BEST&limit=3", sel), "/api/waivers?view=BEST&limit=3&team_id=9");
+  assert.equal(withTeamId("/api/matchup?team_id=2", 9), "/api/matchup?team_id=9");      // never two teams in one call
+});
+
+test("every team-scoped page is a nav page, and league-wide pages are not team-scoped", () => {
+  const nav = new Set(ALL_NAV_PAGES.map((p) => p.href));
+  for (const p of TEAM_SCOPED_PATHS) assert.ok(nav.has(p), p);
+  for (const p of ["/players", "/research", "/projection-performance", "/weekly-recap", "/managers"]) {
+    assert.equal(isTeamScoped(p), false, p);
+  }
+  assert.equal(isTeamScoped("/waivers/"), true);
+});
+
+test("links keep the selected team only between team-scoped pages", () => {
+  assert.equal(withTeam("/waivers", "4"), "/waivers?team=4");
+  assert.equal(withTeam("/waivers?pos=RB", "4"), "/waivers?pos=RB&team=4");
+  assert.equal(withTeam("/", "4"), "/?team=4");
+  assert.equal(withTeam("/players", "4"), "/players");
+  assert.equal(withTeam("/managers/3", "4"), "/managers/3");
+  assert.equal(withTeam("/waivers?team=2", "4"), "/waivers?team=2");          // a link naming a team keeps it
+  assert.equal(withTeam("/waivers", null), "/waivers");
+  assert.equal(withTeam("https://espn.com/waivers", "4"), "https://espn.com/waivers");
+  assert.equal(withTeam("/start-sit#moves", "4"), "/start-sit?team=4#moves");
+});
+
+test("the current team is read from the URL for propagation, ignoring junk", () => {
+  assert.equal(teamParamFrom(new URLSearchParams("team=6&week=3")), "6");
+  assert.equal(teamParamFrom(new URLSearchParams("team_id=6")), "6");
+  assert.equal(teamParamFrom(new URLSearchParams("team=x")), null);
+  assert.equal(teamParamFrom(new URLSearchParams("")), null);
+  assert.equal(teamParamFrom(null), null);
+});
+
+test("switching team keeps view params, drops the old team's own params, and the default has no param", () => {
+  const sp = { team: "2", week: "6", pos: "RB", opponent: "5", offset: "25", vs: "3" };
+  assert.equal(perspectiveHref("/waivers", sp, 4), "/waivers?week=6&pos=RB&team=4");
+  assert.equal(perspectiveHref("/waivers", sp, null), "/waivers?week=6&pos=RB");
+  assert.equal(perspectiveHref("/", {}, null), "/");
+  assert.equal(perspectiveHref("/start-sit", { team_id: "2", week: "7" }, 3), "/start-sit?week=7&team=3");
+  assert.equal(perspectiveHref("/x", new URLSearchParams("team=1&sort=a"), 2), "/x?sort=a&team=2");
+});
+
+test("picker labels mark the default team without claiming the viewer owns it", () => {
+  assert.equal(teamOptionLabel({ name: "Blue", is_owner_default: true }), "Blue (default)");
+  assert.equal(teamOptionLabel({ name: "Red", is_owner_default: false }), "Red");
+  assert.equal(teamOptionLabel({ name: "Blue", is_mine: true }), "Blue (default)");
+  assert.ok(!teamOptionLabel({ name: "Blue", is_mine: true }).includes("you"));
+});
+
+test("only a 404 about a requested team counts as an unknown team", () => {
+  const sel = readTeamSelection({ team: "99" });
+  assert.equal(isUnknownTeam({ ok: false, status: 404, error: "Team 99 is not in League (2026)." }, sel), true);
+  assert.equal(isUnknownTeam({ ok: false, status: 503, error: "busy" }, sel), false);
+  assert.equal(isUnknownTeam({ ok: false, status: 404, error: "Team 99 is not in League" }, { kind: "default" }), false);
+  assert.equal(isUnknownTeam({ ok: true }, sel), false);
+});

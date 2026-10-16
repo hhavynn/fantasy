@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
-import { Badge, Notice, PageHeader, Pos, Score, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
+import { Badge, Notice, PageHeader, Pos, Rating, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
 import { label, num, pct, signed } from "@/lib/format";
+import { RATING_CAVEAT, ratingFor } from "@/lib/ratings";
 import { metricLabel, tidyReason } from "@/lib/reason-text";
 import { BASIS_LABEL } from "@/lib/types";
 import { ForwardView } from "./ForwardView";
@@ -126,6 +127,7 @@ function KeyNumbers({ d, hasUsage }: { d: Detail; hasUsage: boolean }) {
     );
   }
   const gap = p.fp_minus_xfp;
+  const valueRating = ratingFor(p, "value");
   return (
     <StatStrip>
       <Stat label="PPR / game" value={num(p.fp_per_game, 1, "No games / no NFL id")} note={p.games !== null ? `${p.games} ${p.games === 1 ? "game" : "games"}` : undefined} />
@@ -136,7 +138,7 @@ function KeyNumbers({ d, hasUsage }: { d: Detail; hasUsage: boolean }) {
         tone={gap === null || gap === undefined || gap === 0 ? undefined : gap > 0 ? "positive" : "negative"}
         note={p.value_gap_label ? label(p.value_gap_label) : undefined}
       />
-      <Stat label="Value score" value={num(p.value_score, 1, "Not computed")} note="0–10 rest-of-season proxy" />
+      <Stat label="Value rating" value={<Rating rating={valueRating} kind="value" variant="text" why="Not computed" />} note={valueRating?.scale === 10 ? "legacy 0–10 value; 0–100 not computed yet" : "relative rating, 0–100"} />
       <Stat label="Market signal" value={p.market_signal ? label(p.market_signal) : num(null, 1, "Not computed")} note={p.opportunity_tier ? `${label(p.opportunity_tier)} role` : undefined} />
       <Stat
         label="Usage trend"
@@ -165,19 +167,20 @@ function ValueAndTrends({ d }: { d: Detail }) {
           />
         </div>
         <div className="kv">
-          <span className="k">Opportunity score</span>
-          <span><Score value={p.opportunity_score} /> <span className="faint">basis: {BASIS_LABEL[p.opportunity_basis ?? "unavailable"] ?? p.opportunity_basis}</span></span>
-          <span className="k">Production score</span><Score value={p.production_score} />
+          <span className="k">Opportunity rating</span>
+          <span><Rating rating={ratingFor(p, "opportunity")} kind="opportunity" /> <span className="faint">basis: {BASIS_LABEL[p.opportunity_basis ?? "unavailable"] ?? p.opportunity_basis}</span></span>
+          <span className="k">Production rating</span><Rating rating={ratingFor(p, "production")} kind="production" />
           <span className="k">Usage trend score</span><span>{signed(p.usage_trend_score, 2)} <span className="faint">(−1…+1)</span></span>
           <span className="k">PPR / game</span><span>{num(p.fp_per_game)}</span>
           <span className="k">Expected PPR / game</span><span>{num(p.xfp_per_game)} <span className="faint">(nflverse xFP)</span></span>
           <span className="k">Actual − expected</span><span>{signed(p.fp_minus_xfp)}</span>
-          <span className="k">Value score</span><Score value={p.value_score} />
+          <span className="k">Value rating</span><Rating rating={ratingFor(p, "value")} kind="value" />
         </div>
         <ul className={styles.reasons}>{score.reasons.map((r, i) => <li key={i}>{tidyReason(r)}</li>)}</ul>
         <p className={styles.note}>
           Opportunity basis: {BASIS_LABEL[score.components.opportunity_basis] ?? score.components.opportunity_basis}, weeks {score.components.recent_weeks.join(", ")}. {score.components.value_formula}.
         </p>
+        <p className={styles.noteTight}>{RATING_CAVEAT} Opportunity ratings with different bases are ranked in separate pools.</p>
       </Section>
 
       <Section title="Usage trends (recent vs baseline games)" flush>

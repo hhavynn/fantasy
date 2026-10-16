@@ -72,7 +72,7 @@ export function ScheduleSelector({
           {teams.map((t) => (
             <option key={t.team_id} value={t.team_id}>
               {t.name}
-              {t.is_mine ? " (you)" : ""}
+              {t.is_mine ? " (default)" : ""}
             </option>
           ))}
         </select>

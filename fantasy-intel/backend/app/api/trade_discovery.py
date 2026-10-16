@@ -37,7 +37,8 @@ NEED_HIGH_BAND = 0.66      # the manager-scouting "high need" display band (anal
 
 def _search(con, state, anchor: int, shapes: tuple[str, ...], positions: tuple[str, ...]) -> TradeSearch:
     reason = state.start_week_reason or {}
-    key = (data_version(con), anchor, shapes, positions, state.start_week, bool(reason.get("uncertain")),
+    # League identity and the anchor team are in every key: a search for one team is never served for another.
+    key = (data_version(con), state.league_id, state.season, anchor, shapes, positions, state.start_week, bool(reason.get("uncertain")),
            streaming_enabled(state))
     if key in _CACHE:
         _CACHE.move_to_end(key)
@@ -163,7 +164,7 @@ def _resolve(con, p: DiscoverParams) -> _Resolved:
             raise HTTPException(422, "No team is marked as yours (is_mine); pass team_id.")
         team_id = mine[0]["team_id"]
     if team_id not in {t["team_id"] for t in teams}:
-        raise HTTPException(404, "Unknown team")
+        raise HTTPException(404, f"Team {team_id} is not in {lg['name'] or 'this league'} ({lg['season']}).")
     if p.mode not in MODES or p.phase not in PHASES or p.strictness not in STRICTNESS:
         raise HTTPException(422, f"mode must be one of {', '.join(MODES)}; phase one of {', '.join(PHASES)}; "
                                  f"strictness one of {', '.join(STRICTNESS)}")
@@ -260,7 +261,7 @@ def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
 def _view(con, r: _Resolved, p: DiscoverParams) -> dict:
     """The full discovery payload, memoized per database version, evaluation window and query. Treat as read-only."""
     reason = r.state.start_week_reason or {}
-    key = (data_version(con), r.team_id, r.shape_list, r.pos, r.state.start_week, bool(reason.get("uncertain")),
+    key = (data_version(con), r.lg["league_id"], r.lg["season"], r.team_id, r.shape_list, r.pos, r.state.start_week, bool(reason.get("uncertain")),
            reason.get("reason"), reason.get("warning"), p.mode, p.phase, p.strictness, p.sort, p.category, p.opponent,
            p.limit, p.heuristic, p.kdst_streaming)
     with _VIEWS_LOCK:

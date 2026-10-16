@@ -74,7 +74,7 @@ function Body({ d, q }: { d: PlayoffRace; q: Q }) {
             {d.league.last_regular_season_week !== null && <> (through week {d.league.last_regular_season_week})</>}</>}
           {" "}· playoff spots {d.league.playoff_teams ?? <b>unknown</b>} (league settings)
           {" "}· first projectable week {d.window.first_actionable_week ?? "none"}
-          {focus && <> · spotlight <b>{focus.name}</b>{focus.is_mine ? " (you)" : ""}</>}
+          {focus && <> · spotlight <b>{focus.name}</b>{focus.is_mine ? " (default team)" : ""}</>}
           . Deterministic scenarios from ESPN projections, not probabilities.
         </>}
         actions={
@@ -82,7 +82,7 @@ function Body({ d, q }: { d: PlayoffRace; q: Q }) {
             {q.base !== "projected" && <input type="hidden" name="base" value={q.base} />}
             {Object.entries(q.o).map(([mid, out]) => <input key={mid} type="hidden" name="o" value={`${mid}:${out}`} />)}
             <label>Spotlight <select name="team" defaultValue={d.focus_team_id ?? ""}>
-              {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
+              {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (default)" : ""}</option>)}
             </select></label>
             <button type="submit">Show</button>
           </form>
