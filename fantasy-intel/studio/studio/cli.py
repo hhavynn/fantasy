@@ -38,6 +38,17 @@ def finish(ep: Episode) -> bool:
     return passed
 
 
+def editorial_media(ep: Episode, cfg: Config) -> None:
+    """Optional, experimental: the Short re-edited with real photography (stages/editorial_media.py), written to
+    <slug>-editorial beside it. final.mp4 and everything else in the episode are only read."""
+    mode = (cfg.raw.get("editorial_media") or {}).get("mode", "off")
+    if mode == "off":
+        return
+    from .stages import editorial_media as em
+    out = ep.dir.with_name(ep.dir.name + "-editorial")
+    print(f"  editorial_media ({mode}): {em.make(ep.dir, out, cfg, preview=mode == 'preview')}")
+
+
 def run_stages(ep: Episode, stages, hook: str | None = None) -> None:
     for name, stage in stages:
         t0 = time.time()
@@ -99,6 +110,8 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
         if passed and presenter_mode != "off":       # optional AI host layer; never touches final.mp4
             from . import presenter
             presenter.present(ep, presenter_mode)
+        if passed:
+            editorial_media(ep, cfg)
         results.append((ep, story, passed))
     index = ["# Shorts for review", "", f"Week {week}, {season}. Watch each, read its review.md, then publish by hand.", ""]
     for ep, story, passed in results:
@@ -169,6 +182,8 @@ def make_flame_praise(cfg: Config, season: int, week: int, force: set[str], only
             from . import series_audio          # before QC, so the pacing gate can hear each effect in the mix
             print(f"  comparison mix without meme effects: {series_audio.write_nosfx(ep)}")
         results.append((ep, c, finish(ep)))
+        if results[-1][2]:
+            editorial_media(ep, cfg)
     failed = [ep.id for ep, _, ok in results if not ok]
     for ep, c, ok in results:
         print(f"{c['kind']}: {c['name']}: QC {'passed' if ok else 'FAILED'}. {ep.path('final.mp4')}")
@@ -201,8 +216,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--presenter", choices=["off", "hook", "hybrid"],
                     help="Shorts only, EXPERIMENTAL: also write final_presenter_<mode>.mp4 with the AI host "
                          "(default: config.toml [presenter] mode, which is off)")
+    ap.add_argument("--editorial-media", choices=["off", "preview", "render"],
+                    help="Shorts only, EXPERIMENTAL: also write <slug>-editorial, the Short re-edited with real "
+                         "photography (preview = storyboard only). Default: config.toml [editorial_media] mode")
     args = ap.parse_args(argv)
     cfg = Config.load()
+    if args.editorial_media:
+        cfg.raw["editorial_media"] = {**(cfg.raw.get("editorial_media") or {}), "mode": args.editorial_media}
     presenter_mode = args.presenter or (cfg.raw.get("presenter") or {}).get("mode", "off")
     if args.voice:
         cfg.raw["shorts"] = {**cfg.raw["shorts"], "voice_clone": args.voice}

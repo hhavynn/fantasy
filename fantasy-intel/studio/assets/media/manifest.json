@@ -1,0 +1,1346 @@
+{
+  "about": "Rights-tracked media for the Shorts studio (studio/media_library.py). Files are cached in assets/media/cache/ and never committed.",
+  "entries": [
+    {
+      "id": "allen-hs-2019",
+      "type": "rush_photo",
+      "path": "allen-hs-2019.jpg",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Royalbroil",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/4/44/BraelonAllenRushingFdL2019.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:BraelonAllenRushingFdL2019.jpg",
+        "title": "File:BraelonAllenRushingFdL2019.jpg",
+        "author": "Royalbroil",
+        "credit": "Own work",
+        "description": "Fond du Lac Cardinal's high school football running back Braelon Allen #1 playing in a playoff game.",
+        "license_name": "CC BY-SA 4.0",
+        "original_size": [
+          604,
+          653
+        ],
+        "fetched": "2026-10-16T18:34:56+00:00"
+      },
+      "player_id": "00-0039794",
+      "espn_id": null,
+      "name": "Braelon Allen",
+      "team": "HS",
+      "season": 2019,
+      "date": "2019-10-25",
+      "jersey": null,
+      "width": 604,
+      "height": 653,
+      "video": null,
+      "sha256": "d9dde6bfa7e14cdd94b74eeb18ed5bbb79ebd2f6f9d148448a320abbeb062ee2",
+      "subject": {
+        "box": [
+          0.2,
+          0.1,
+          0.8,
+          0.95
+        ],
+        "face": null,
+        "people": 0,
+        "method": "apple_vision"
+      },
+      "relevance": [
+        "high_school",
+        "rushing"
+      ],
+      "context": "Fond du Lac High School playoff game, 2019 (not an NFL uniform)",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": "High-school uniform: blocked for current analysis; listed to document the gap."
+    },
+    {
+      "id": "broll-measuring-tape",
+      "type": "context_broll",
+      "path": "broll-measuring-tape.jpg",
+      "license": "PD",
+      "attribution": "Evan-Amos",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/1/17/Measuring-tape.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Measuring-tape.jpg",
+        "title": "File:Measuring-tape.jpg",
+        "author": "Evan-Amos",
+        "credit": "Own work",
+        "description": "A standard measuring tape.",
+        "license_name": "Public domain",
+        "original_size": [
+          3380,
+          2160
+        ],
+        "fetched": "2026-10-16T18:35:08+00:00"
+      },
+      "player_id": null,
+      "espn_id": null,
+      "name": null,
+      "team": null,
+      "season": 2010,
+      "date": "2010-08-25",
+      "jersey": null,
+      "width": 2400,
+      "height": 1534,
+      "video": null,
+      "sha256": "d3060f09a0171c4988ec8ca7fa6226fe09942cafbe6bc3ed349546f8541305aa",
+      "subject": {
+        "box": [
+          0.0,
+          0.62,
+          0.32,
+          1.0
+        ],
+        "face": null,
+        "people": 0,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "measure",
+        "tape_measure"
+      ],
+      "context": "measuring tape, studio shot",
+      "depicts_injury": false,
+      "illustrative": true,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "broll-stadium-lights",
+      "type": "context_broll",
+      "path": "broll-stadium-lights.jpg",
+      "license": "CC-BY-4.0",
+      "attribution": "Paweł Pokrzywiński",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/d/de/Paris_Lights_vs_Panthers_Wroc%C5%82aw_04.07.2026_03.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Paris_Lights_vs_Panthers_Wroc%C5%82aw_04.07.2026_03.jpg",
+        "title": "File:Paris Lights vs Panthers Wrocław 04.07.2026 03.jpg",
+        "author": "Paweł Pokrzywiński",
+        "credit": "Own work",
+        "description": "Paris Lights 27 - 38 Panthers Wrocław, 4th July 2026, Week 7 of The League Europe, Olympic Stadium, Wrocław (Poland).",
+        "license_name": "CC BY 4.0",
+        "original_size": [
+          4080,
+          3072
+        ],
+        "fetched": "2026-10-16T18:35:16+00:00"
+      },
+      "player_id": null,
+      "espn_id": null,
+      "name": null,
+      "team": null,
+      "season": 2026,
+      "date": "2026-07-04",
+      "jersey": null,
+      "width": 2400,
+      "height": 1807,
+      "video": null,
+      "sha256": "590a0ebc88281f1eb0117efcaaf2ed24dd7fcdc1b0db64a27a95bff992dc38ae",
+      "subject": {
+        "box": [
+          0.2,
+          0.1,
+          0.8,
+          0.95
+        ],
+        "face": null,
+        "people": 0,
+        "method": "apple_vision"
+      },
+      "relevance": [
+        "stadium",
+        "night",
+        "football",
+        "crowd"
+      ],
+      "context": "European League of Football game, 2026 (not the NFL)",
+      "depicts_injury": false,
+      "illustrative": true,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "broll-tape-measure",
+      "type": "context_broll",
+      "path": "broll-tape-measure.jpg",
+      "license": "CC0",
+      "attribution": "Junkyardsparkle",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/3/33/Lufkin_Universal_50_ft_tape_measure.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Lufkin_Universal_50_ft_tape_measure.jpg",
+        "title": "File:Lufkin Universal 50 ft tape measure.jpg",
+        "author": "Junkyardsparkle",
+        "credit": "Own work",
+        "description": "A 50-foot (15 m) tape measure produced by the Lufkin Rule Co. in Saginaw, Michigan at some point after 1929 (patent 1,713,807).",
+        "license_name": "CC0",
+        "original_size": [
+          2400,
+          2400
+        ],
+        "fetched": "2026-10-16T18:35:05+00:00"
+      },
+      "player_id": null,
+      "espn_id": null,
+      "name": null,
+      "team": null,
+      "season": 2014,
+      "date": "2014-08-15",
+      "jersey": null,
+      "width": 2400,
+      "height": 2400,
+      "video": null,
+      "sha256": "fb695d009da004f175f9e9d93d4842103ef59295419598f435daf0c8642ca50d",
+      "subject": {
+        "box": [
+          0.14,
+          0.12,
+          0.8,
+          0.95
+        ],
+        "face": null,
+        "people": 0,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "measure",
+        "ruler",
+        "tape_measure"
+      ],
+      "context": "tape measure, studio shot",
+      "depicts_injury": false,
+      "illustrative": true,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "broll-wooden-ruler",
+      "type": "context_broll",
+      "path": "broll-wooden-ruler.jpg",
+      "license": "CC-BY-2.0",
+      "attribution": "Biking Nikon Maui from Sort of near San Francisco",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/7/7c/Ruler_-_Wooden%3B_Why_no_%22Inches%22_label%3F_%282606645766%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Ruler_-_Wooden;_Why_no_%22Inches%22_label%3F_(2606645766).jpg",
+        "title": "File:Ruler - Wooden; Why no \"Inches\" label? (2606645766).jpg",
+        "author": "Biking Nikon Maui from Sort of near San Francisco",
+        "credit": "Ruler - Wooden; Why no \"Inches\" label?",
+        "description": "This is the other end of the ruler in the adjacent photo. Here, there is no indication of the scale of the imperial markings. The other end says mm, but this end says nothing. Ahhh ... even mere consistency would be a good start! Please make it easier for students to learn &amp; use!",
+        "license_name": "CC BY 2.0",
+        "original_size": [
+          2746,
+          1734
+        ],
+        "fetched": "2026-10-16T18:35:10+00:00"
+      },
+      "player_id": null,
+      "espn_id": null,
+      "name": null,
+      "team": null,
+      "season": 2008,
+      "date": "2008-06-23",
+      "jersey": null,
+      "width": 2400,
+      "height": 1516,
+      "video": null,
+      "sha256": "d350ad458e972da151b9fe3f31779027d1b430dcb6658e6ab5ca3294168035b5",
+      "subject": {
+        "box": [
+          0.02,
+          0.05,
+          0.42,
+          0.62
+        ],
+        "face": null,
+        "people": 0,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "measure",
+        "ruler"
+      ],
+      "context": "wooden ruler close-up",
+      "depicts_injury": false,
+      "illustrative": true,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "broncos-runout-2025",
+      "type": "team_photo",
+      "path": "broncos-runout-2025.jpg",
+      "license": "CC-BY-4.0",
+      "attribution": "Tennessee Titans",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/3/3c/Titans_at_Broncos_1.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Titans_at_Broncos_1.png",
+        "title": "File:Titans at Broncos 1.png",
+        "author": "Tennessee Titans",
+        "credit": "YouTube: https://www.youtube.com/watch?v=VfvTFrxFC4o&amp;ab_channel=TennesseeTitans – View/save archived versions on archive.org",
+        "description": "Week 1 - Tennessee Titans at Denver Broncos",
+        "license_name": "CC BY 4.0",
+        "original_size": [
+          1920,
+          1079
+        ],
+        "fetched": "2026-10-16T18:34:53+00:00"
+      },
+      "player_id": null,
+      "espn_id": null,
+      "name": null,
+      "team": "DEN",
+      "season": 2025,
+      "date": "2025-09-13",
+      "jersey": null,
+      "width": 1920,
+      "height": 1079,
+      "video": null,
+      "sha256": "5605300be1b15245c05b97ef1dc5b3930128ebd9a0cc745cca15dc26251c53dc",
+      "subject": {
+        "box": [
+          0.3,
+          0.3,
+          0.66,
+          0.86
+        ],
+        "face": null,
+        "people": 2,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "team",
+        "runout",
+        "smoke"
+      ],
+      "context": "Broncos take the field vs TEN, 2025 Week 1",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "espn-4426338",
+      "type": "headshot_fallback",
+      "path": "espn-4426338.png",
+      "license": "espn_override",
+      "attribution": "ESPN (owner override)",
+      "source": {
+        "kind": "espn_headshot",
+        "url": "https://a.espncdn.com/i/headshots/nfl/players/full/4426338.png",
+        "rights": "ESPN headshot; not licensed to this channel; used at the channel owner's direction"
+      },
+      "player_id": "00-0039732",
+      "espn_id": 4426338,
+      "name": "Bo Nix",
+      "team": "DEN",
+      "season": 2026,
+      "date": null,
+      "jersey": "10",
+      "width": 600,
+      "height": 436,
+      "video": null,
+      "sha256": "94b74c0eaa98e068ab9e25177e58f0c354c76c89b80c9dc38aca7fe983e75e1b",
+      "subject": {
+        "box": [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        "face": [
+          0.3,
+          0.12,
+          0.7,
+          0.55
+        ],
+        "method": "headshot_layout"
+      },
+      "relevance": [
+        "portrait"
+      ],
+      "context": "",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "approved",
+        "by": "owner override (config shorts.headshots)"
+      },
+      "notes": ""
+    },
+    {
+      "id": "espn-4426515",
+      "type": "headshot_fallback",
+      "path": "espn-4426515.png",
+      "license": "espn_override",
+      "attribution": "ESPN (owner override)",
+      "source": {
+        "kind": "espn_headshot",
+        "url": "https://a.espncdn.com/i/headshots/nfl/players/full/4426515.png",
+        "rights": "ESPN headshot; not licensed to this channel; used at the channel owner's direction"
+      },
+      "player_id": "00-0039075",
+      "espn_id": 4426515,
+      "name": "Puka Nacua",
+      "team": "LA",
+      "season": 2026,
+      "date": null,
+      "jersey": "12",
+      "width": 600,
+      "height": 436,
+      "video": null,
+      "sha256": "ab48c1fc2fd49b0484a02621a3ee20fbb11fda3239017059354e9027dd4dfdf7",
+      "subject": {
+        "box": [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        "face": [
+          0.3,
+          0.12,
+          0.7,
+          0.55
+        ],
+        "method": "headshot_layout"
+      },
+      "relevance": [
+        "portrait"
+      ],
+      "context": "",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "approved",
+        "by": "owner override (config shorts.headshots)"
+      },
+      "notes": ""
+    },
+    {
+      "id": "espn-4427366",
+      "type": "headshot_fallback",
+      "path": "espn-4427366.png",
+      "license": "espn_override",
+      "attribution": "ESPN (owner override)",
+      "source": {
+        "kind": "espn_headshot",
+        "url": "https://a.espncdn.com/i/headshots/nfl/players/full/4427366.png",
+        "rights": "ESPN headshot; not licensed to this channel; used at the channel owner's direction"
+      },
+      "player_id": "00-0038120",
+      "espn_id": 4427366,
+      "name": "Breece Hall",
+      "team": "NYJ",
+      "season": 2026,
+      "date": null,
+      "jersey": "20",
+      "width": 600,
+      "height": 436,
+      "video": null,
+      "sha256": "6a80137410c39002d777137671093b63d6ff2dffcd5417ec033416817f6c3800",
+      "subject": {
+        "box": [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        "face": [
+          0.3,
+          0.12,
+          0.7,
+          0.55
+        ],
+        "method": "headshot_layout"
+      },
+      "relevance": [
+        "portrait"
+      ],
+      "context": "",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "approved",
+        "by": "owner override (config shorts.headshots)"
+      },
+      "notes": ""
+    },
+    {
+      "id": "espn-4685247",
+      "type": "headshot_fallback",
+      "path": "espn-4685247.png",
+      "license": "espn_override",
+      "attribution": "ESPN (owner override)",
+      "source": {
+        "kind": "espn_headshot",
+        "url": "https://a.espncdn.com/i/headshots/nfl/players/full/4685247.png",
+        "rights": "ESPN headshot; not licensed to this channel; used at the channel owner's direction"
+      },
+      "player_id": "00-0039794",
+      "espn_id": 4685247,
+      "name": "Braelon Allen",
+      "team": "NYJ",
+      "season": 2026,
+      "date": null,
+      "jersey": "",
+      "width": 600,
+      "height": 436,
+      "video": null,
+      "sha256": "cab7cecaa17d4cbce792787ee142203a176f3a813f36fa042babfe2205a1e466",
+      "subject": {
+        "box": [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        "face": [
+          0.3,
+          0.12,
+          0.7,
+          0.55
+        ],
+        "method": "headshot_layout"
+      },
+      "relevance": [
+        "portrait"
+      ],
+      "context": "",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "approved",
+        "by": "owner override (config shorts.headshots)"
+      },
+      "notes": ""
+    },
+    {
+      "id": "hall-jets-2026",
+      "type": "interview_still",
+      "path": "hall-jets-2026.jpg",
+      "license": "CC-BY-4.0",
+      "attribution": "New York Jets",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/5/51/2026_NYJ_Media_-_Breece_Hall.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:2026_NYJ_Media_-_Breece_Hall.png",
+        "title": "File:2026 NYJ Media - Breece Hall.png",
+        "author": "New York Jets",
+        "credit": "YouTube: These Guys LOVE to Yap (Time: 4s) – View/save archived versions on archive.org",
+        "description": "During New York Jets 2026 offseason, running back Breece Hall is asked which of his teammates is most talkative. Image is a screen shot of Youtube video ~ 00:04",
+        "license_name": "CC BY 4.0",
+        "original_size": [
+          1080,
+          1480
+        ],
+        "fetched": "2026-10-16T18:34:58+00:00"
+      },
+      "player_id": "00-0038120",
+      "espn_id": null,
+      "name": "Breece Hall",
+      "team": "NYJ",
+      "season": 2026,
+      "date": "2026-07-11",
+      "jersey": "20",
+      "width": 1080,
+      "height": 1480,
+      "video": null,
+      "sha256": "32676455ef833b659e22267cc7676a5632c94e712bec8f9b179b8dc342a21803",
+      "subject": {
+        "box": [
+          0.01969999999999994,
+          0.08619999999999998,
+          0.9134000000000001,
+          1
+        ],
+        "face": [
+          0.3176,
+          0.1732,
+          0.6155,
+          0.3907
+        ],
+        "people": 0,
+        "method": "apple_vision"
+      },
+      "relevance": [
+        "portrait",
+        "jets_uniform"
+      ],
+      "context": "Jets team video, 2026",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "hall-vs-bills-2023",
+      "type": "action_photo",
+      "path": "hall-vs-bills-2023.jpg",
+      "license": "PD",
+      "attribution": "Jim Greenhill",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/7/77/Breece_Hall_vs_Bills_2023.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Breece_Hall_vs_Bills_2023.jpg",
+        "title": "File:Breece Hall vs Bills 2023.jpg",
+        "author": "Jim Greenhill",
+        "credit": "https://www.flickr.com/photos/jimgreenhill/53331968776/",
+        "description": "Army Gen. Daniel Hokanson, chief, National Guard Bureau, attends the New York Jets versus Buffalo Bills NFL football game to participate in activities commemorating the 22nd anniversary of the Sept. 11th attacks and honor a veteran, MetLife Stadium, East Rutherford, New Jersey, Sept. 11, 2023. This image was acquired with a cellular device. (U.S. Army National Guard photo by Master Sgt. Jim Greenh",
+        "license_name": "Public domain",
+        "original_size": [
+          491,
+          779
+        ],
+        "fetched": "2026-10-16T18:35:00+00:00"
+      },
+      "player_id": "00-0038120",
+      "espn_id": null,
+      "name": "Breece Hall",
+      "team": "NYJ",
+      "season": 2023,
+      "date": "2023-09-11",
+      "jersey": "20",
+      "width": 491,
+      "height": 779,
+      "video": null,
+      "sha256": "6d52e342229863f4f0bc2e50240897b8c44b6d87871715e8601e85b8a2168c2d",
+      "subject": {
+        "box": [
+          0.17,
+          0.36,
+          0.64,
+          0.97
+        ],
+        "face": null,
+        "people": 0,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "game",
+        "pre_snap"
+      ],
+      "context": "Jets vs Bills, 2023-09-11",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "jets-stadium-2023",
+      "type": "team_photo",
+      "path": "jets-stadium-2023.jpg",
+      "license": "PD",
+      "attribution": "Jim Greenhill",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/4/41/Buffalo_Bills_at_New_York_Jets_SEP2023.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Buffalo_Bills_at_New_York_Jets_SEP2023.jpg",
+        "title": "File:Buffalo Bills at New York Jets SEP2023.jpg",
+        "author": "Jim Greenhill",
+        "credit": "https://www.flickr.com/photos/jimgreenhill/53332308779/",
+        "description": "Army Gen. Daniel Hokanson, chief, National Guard Bureau, attends the New York Jets versus Buffalo Bills NFL football game to participate in activities commemorating the 22nd anniversary of the Sept. 11th attacks and honor a veteran, MetLife Stadium, East Rutherford, New Jersey, Sept. 11, 2023. This image was acquired with a cellular device. (U.S. Army National Guard photo by Master Sgt. Jim Greenh",
+        "license_name": "Public domain",
+        "original_size": [
+          3300,
+          1856
+        ],
+        "fetched": "2026-10-16T18:35:03+00:00"
+      },
+      "player_id": null,
+      "espn_id": null,
+      "name": null,
+      "team": "NYJ",
+      "season": 2023,
+      "date": "2023-09-11",
+      "jersey": null,
+      "width": 2400,
+      "height": 1350,
+      "video": null,
+      "sha256": "ac22e59da4cf245d8349e2e5b9e836c6b0a6967f5687d13560a8a2611bb904aa",
+      "subject": {
+        "box": [
+          0.12,
+          0.45,
+          0.9,
+          0.85
+        ],
+        "face": null,
+        "people": 0,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "team",
+        "stadium",
+        "wide"
+      ],
+      "context": "Bills at Jets, MetLife Stadium, 2023-09-11",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "nix-camp-2025",
+      "type": "practice_photo",
+      "path": "nix-camp-2025.jpg",
+      "license": "PD",
+      "attribution": "U.S. Space Force photo by Tech. Sgt. Jordan Thompson",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/b/b6/Buckley_Participates_in_USAA_Salute_to_Service_Training_Camp_%289328062%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Buckley_Participates_in_USAA_Salute_to_Service_Training_Camp_(9328062).jpg",
+        "title": "File:Buckley Participates in USAA Salute to Service Training Camp (9328062).jpg",
+        "author": "U.S. Space Force photo by Tech. Sgt. Jordan Thompson",
+        "credit": "This image was released by the United States Space Force with the ID 250821-X-OP274-1162 (next). This tag does not indicate the copyright status of the attached work. A normal copyright tag is still required. See Commons:Licensing. العربية ∙ বাংলা ∙ Bahasa Indonesia ∙ Bahaso Jambi ∙ Deutsch ∙ Deutsch (Sie-Form) ∙ English ∙ español ∙ euskara ∙ فارسی ∙ français ∙ italiano ∙ 日本語 ∙ 한국어 ∙ македонски ∙ മലയാളം ∙ Plattdüütsch ∙ Nederlands ∙ polski ∙ پښتو ∙ português ∙ русский ∙ slovenščina ∙ svenska ∙ Türkçe ∙ українська ∙ 简体中文 ∙ 繁體中文 ∙ +/−",
+        "description": "Bo Nix, Denver Broncos quarterback, signs autographs for service members at the USAA Salute to Service Training Camp, at Broncos Park, Englewood, Colorado August 21, 2025. The event highlights the support our service members receive from the Colorado community, with USAA and the Denver Broncos, partnering to honor them. (U.S. Space Force photo by Tech. Sgt. Jordan Thompson)",
+        "license_name": "Public domain",
+        "original_size": [
+          8245,
+          5497
+        ],
+        "fetched": "2026-10-16T18:34:51+00:00"
+      },
+      "player_id": "00-0039732",
+      "espn_id": null,
+      "name": "Bo Nix",
+      "team": "DEN",
+      "season": 2025,
+      "date": "Taken on 2",
+      "jersey": "10",
+      "width": 2400,
+      "height": 1600,
+      "video": null,
+      "sha256": "73068221df7602aeffe9cc97d50c7da4ac772426447e7aba457bd2ba4896ea71",
+      "subject": {
+        "box": [
+          0.42,
+          0.18,
+          0.74,
+          1.0
+        ],
+        "face": [
+          0.52,
+          0.22,
+          0.61,
+          0.35
+        ],
+        "people": 3,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "practice",
+        "autographs",
+        "fans"
+      ],
+      "context": "Broncos USAA Salute to Service training camp, 2025-08",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "nix-dropback-2025",
+      "type": "action_photo",
+      "path": "nix-dropback-2025.jpg",
+      "license": "CC-BY-4.0",
+      "attribution": "Tennessee Titans",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Bo_Nix_2025_week_1.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Bo_Nix_2025_week_1.png",
+        "title": "File:Bo Nix 2025 week 1.png",
+        "author": "Tennessee Titans",
+        "credit": "YouTube: First Look at the 2025 Titans in Denver | Sideline Sounds (Time: 2m35s) – View/save archived versions on archive.org",
+        "description": "September 2025, Week 1 - Tennessee Titans at Denver Broncos",
+        "license_name": "CC BY 4.0",
+        "original_size": [
+          750,
+          965
+        ],
+        "fetched": "2026-10-16T18:34:43+00:00"
+      },
+      "player_id": "00-0039732",
+      "espn_id": null,
+      "name": "Bo Nix",
+      "team": "DEN",
+      "season": 2025,
+      "date": "2025-09-13",
+      "jersey": "10",
+      "width": 750,
+      "height": 965,
+      "video": null,
+      "sha256": "fe269ec8e4922e7bdd456beb50367d8a96a62220fb90bad173b3d9bfefca3d34",
+      "subject": {
+        "box": [
+          0.05,
+          0.0,
+          0.98,
+          1.0
+        ],
+        "face": [
+          0.55,
+          0.0,
+          0.86,
+          0.24
+        ],
+        "people": 1,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "dropback",
+        "throwing",
+        "game"
+      ],
+      "context": "2025 Week 1 vs TEN",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "nix-handoff-2025",
+      "type": "action_photo",
+      "path": "nix-handoff-2025.jpg",
+      "license": "CC-BY-4.0",
+      "attribution": "Tennessee Titans",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/2/26/Titans_at_Broncos_18.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Titans_at_Broncos_18.png",
+        "title": "File:Titans at Broncos 18.png",
+        "author": "Tennessee Titans",
+        "credit": "YouTube: First Look at the 2025 Titans in Denver | Sideline Sounds (Time: 2m35s) – View/save archived versions on archive.org",
+        "description": "September 2025, Week 1 - Tennessee Titans at Denver Broncos",
+        "license_name": "CC BY 4.0",
+        "original_size": [
+          1920,
+          1079
+        ],
+        "fetched": "2026-10-16T18:34:45+00:00"
+      },
+      "player_id": "00-0039732",
+      "espn_id": null,
+      "name": "Bo Nix",
+      "team": "DEN",
+      "season": 2025,
+      "date": "2025-09-13",
+      "jersey": "10",
+      "width": 1920,
+      "height": 1079,
+      "video": null,
+      "sha256": "987927c86fb4e29ee97facc4a01bfa841fff73d585466d2fc2af18c1931444fc",
+      "subject": {
+        "box": [
+          0.18,
+          0.08,
+          0.56,
+          0.97
+        ],
+        "face": [
+          0.36,
+          0.08,
+          0.48,
+          0.3
+        ],
+        "people": 0,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "handoff",
+        "game",
+        "name_on_jersey"
+      ],
+      "context": "2025 Week 1 vs TEN",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "nix-scramble-2025",
+      "type": "action_photo",
+      "path": "nix-scramble-2025.jpg",
+      "license": "CC-BY-4.0",
+      "attribution": "Tennessee Titans",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/d/d0/Bo_Nix_scramble.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Bo_Nix_scramble.png",
+        "title": "File:Bo Nix scramble.png",
+        "author": "Tennessee Titans",
+        "credit": "YouTube: Titans Battle Broncos in Season Opener Week 1 Recap | Titans Football With Brian Callahan (Time: 1m35s) – View/save archived versions on archive.org",
+        "description": "Bo Nix scrambling in Week 1 2025",
+        "license_name": "CC BY 4.0",
+        "original_size": [
+          454,
+          650
+        ],
+        "fetched": "2026-10-16T18:34:40+00:00"
+      },
+      "player_id": "00-0039732",
+      "espn_id": null,
+      "name": "Bo Nix",
+      "team": "DEN",
+      "season": 2025,
+      "date": "2025-09-09",
+      "jersey": "10",
+      "width": 454,
+      "height": 650,
+      "video": null,
+      "sha256": "6d3205910a42e95029caf0cc381add37934edffbb01c46ea713ea20b55272814",
+      "subject": {
+        "box": [
+          0.12,
+          0.02,
+          0.93,
+          0.98
+        ],
+        "face": [
+          0.18,
+          0.03,
+          0.46,
+          0.22
+        ],
+        "people": 1,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "scramble",
+        "ball_in_hand",
+        "game"
+      ],
+      "context": "2025 Week 1 vs TEN",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "nix-under-center-2025",
+      "type": "action_photo",
+      "path": "nix-under-center-2025.jpg",
+      "license": "CC-BY-4.0",
+      "attribution": "Tennessee Titans",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/9/93/Titans_at_Broncos_30.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Titans_at_Broncos_30.png",
+        "title": "File:Titans at Broncos 30.png",
+        "author": "Tennessee Titans",
+        "credit": "https://www.youtube.com/watch?v=VfvTFrxFC4o&amp;ab_channel=TennesseeTitans",
+        "description": "September 2025, Week 1 - Tennessee Titans at Denver Broncos",
+        "license_name": "CC BY 4.0",
+        "original_size": [
+          1920,
+          1079
+        ],
+        "fetched": "2026-10-16T18:34:48+00:00"
+      },
+      "player_id": "00-0039732",
+      "espn_id": null,
+      "name": "Bo Nix",
+      "team": "DEN",
+      "season": 2025,
+      "date": "2025-09-13",
+      "jersey": "10",
+      "width": 1920,
+      "height": 1079,
+      "video": null,
+      "sha256": "370adab38c3ac7a02daa569785846aa3e605b2fdf27909c1a216a82c8c3ec406",
+      "subject": {
+        "box": [
+          0.36,
+          0.1,
+          0.64,
+          0.78
+        ],
+        "face": [
+          0.44,
+          0.1,
+          0.54,
+          0.25
+        ],
+        "people": 0,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "under_center",
+        "line_of_scrimmage",
+        "game",
+        "wide"
+      ],
+      "context": "2025 Week 1 vs TEN",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": "Nix is small in a wide frame: a tight crop upscales ~2x."
+    },
+    {
+      "id": "puka-byu-2021",
+      "type": "action_photo",
+      "path": "puka-byu-2021.jpg",
+      "license": "CC-BY-SA-2.0",
+      "attribution": "Ken Lund from Reno, Nevada, USA",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/2/2a/Zach_Wilson_and_Puka_Nacua%2C_Vegas_Kickoff_Classic%2C_Brigham_Young_University_%28BYU%29_Cougars_24%2C_University_of_Arizona_Wildcats_16%2C_Allegiant_Stadium%2C_Las_Vegas%2C_Nevada_%2851427825570%29_%28cropped%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Zach_Wilson_and_Puka_Nacua,_Vegas_Kickoff_Classic,_Brigham_Young_University_(BYU)_Cougars_24,_University_of_Arizona_Wildcats_16,_Allegiant_Stadium,_Las_Vegas,_Nevada_(51427825570)_(cropped).jpg",
+        "title": "File:Zach Wilson and Puka Nacua, Vegas Kickoff Classic, Brigham Young University (BYU) Cougars 24, University of Arizona Wildcats 16, Allegiant Stadium, Las Vegas, Nevada (51427825570) (cropped).jpg",
+        "author": "Ken Lund from Reno, Nevada, USA",
+        "credit": "Zach Wilson and Puka Nacua, Vegas Kickoff Classic, Brigham Young University (BYU) Cougars 24, University of Arizona Wildcats 16, Allegiant Stadium, Las Vegas, Nevada",
+        "description": "Zach Wilson and Puka Nacua, Vegas Kickoff Classic, Brigham Young University (BYU) Cougars 24, University of Arizona Wildcats 16, Allegiant Stadium, Las Vegas, Nevada",
+        "license_name": "CC BY-SA 2.0",
+        "original_size": [
+          829,
+          1442
+        ],
+        "fetched": "2026-10-16T18:34:32+00:00"
+      },
+      "player_id": "00-0039075",
+      "espn_id": null,
+      "name": "Puka Nacua",
+      "team": "BYU",
+      "season": 2021,
+      "date": "2021-09-04",
+      "jersey": null,
+      "width": 829,
+      "height": 1442,
+      "video": null,
+      "sha256": "8206ab03728093fd7506b1ce07879bed817e5d9ee460f3fdb1580cae6a842583",
+      "subject": {
+        "box": [
+          0.1504,
+          0.0592,
+          0.9682,
+          0.972
+        ],
+        "face": [
+          0.2082,
+          0.0493,
+          0.3179,
+          0.1124
+        ],
+        "people": 2,
+        "method": "apple_vision"
+      },
+      "relevance": [
+        "college",
+        "game"
+      ],
+      "context": "BYU vs Arizona, 2021-09-04 (college uniform)",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": "BYU uniform: blocked for current analysis (wrong-team check)."
+    },
+    {
+      "id": "puka-camp-2023",
+      "type": "practice_photo",
+      "path": "puka-camp-2023.jpg",
+      "license": "CC-BY-SA-4.0",
+      "attribution": "Sewageboy",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/8/82/Nacua_731.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Nacua_731.jpg",
+        "title": "File:Nacua 731.jpg",
+        "author": "Sewageboy",
+        "credit": "Own work",
+        "description": "Photo taken during the Los Angeles Rams training camp at UC Irvine on July 31, 2023.",
+        "license_name": "CC BY-SA 4.0",
+        "original_size": [
+          2850,
+          2068
+        ],
+        "fetched": "2026-10-16T18:34:28+00:00"
+      },
+      "player_id": "00-0039075",
+      "espn_id": null,
+      "name": "Puka Nacua",
+      "team": "LA",
+      "season": 2023,
+      "date": "2023-07-31",
+      "jersey": "17",
+      "width": 2400,
+      "height": 1741,
+      "video": null,
+      "sha256": "babc33c0372823b78e0573e1ec6e41da5ae0be07bd919bb27dba0704cc44d6d2",
+      "subject": {
+        "box": [
+          0.294,
+          0.1327,
+          0.7553,
+          1.0
+        ],
+        "face": [
+          0.4848,
+          0.2611,
+          0.5862,
+          0.4008
+        ],
+        "people": 2,
+        "method": "apple_vision"
+      },
+      "relevance": [
+        "practice",
+        "smile",
+        "helmet"
+      ],
+      "context": "Rams training camp, UC Irvine, 2023-07-31",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "puka-fanduel-2024",
+      "type": "interview_still",
+      "path": "puka-fanduel-2024.jpg",
+      "license": "CC-BY-3.0",
+      "attribution": "FanDuel",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/1/1b/Puka_Nacua_FanDuel_Interview.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:Puka_Nacua_FanDuel_Interview.png",
+        "title": "File:Puka Nacua FanDuel Interview.png",
+        "author": "FanDuel",
+        "credit": "YouTube: Puka Nacua Talks Incredible Rookie Season &amp; Heartbreaking Playoff Loss – View/save archived versions on archive.org",
+        "description": "On an episode of 'Run It Back' on FanDuel TV LIVE co-hosts Michelle Beadle, Shams Charania, Lou Williams, and Chandler Parsons are joined by Los Angeles Rams wide receiver, Puka Nacua, to talk about his rookie season in the NFL along with his love for basketball. Image is a screen shot of Youtube video ~ 03:00.",
+        "license_name": "CC BY 3.0",
+        "original_size": [
+          1280,
+          720
+        ],
+        "fetched": "2026-10-16T18:34:30+00:00"
+      },
+      "player_id": "00-0039075",
+      "espn_id": null,
+      "name": "Puka Nacua",
+      "team": "LA",
+      "season": 2024,
+      "date": "2024-02-09",
+      "jersey": null,
+      "width": 1280,
+      "height": 720,
+      "video": null,
+      "sha256": "969dfcfd69b481cb7b416b262204b9ba7ce9b6d4c4242b6a763a6262304f8c51",
+      "subject": {
+        "box": [
+          0.22,
+          0.08,
+          0.86,
+          0.66
+        ],
+        "face": [
+          0.42,
+          0.21,
+          0.58,
+          0.5
+        ],
+        "people": 1,
+        "method": "manual_review",
+        "detected": "apple_vision",
+        "avoid": [
+          0.1,
+          0.68,
+          0.8,
+          0.86
+        ]
+      },
+      "relevance": [
+        "interview",
+        "talking"
+      ],
+      "context": "FanDuel TV 'Run It Back' interview, Feb 2024 (TV lower-third in frame)",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": "FanDuel TV lower-third burned into the frame: crops keep it out (subject.avoid)."
+    },
+    {
+      "id": "rams-runout-2025",
+      "type": "team_photo",
+      "path": "rams-runout-2025.jpg",
+      "license": "CC-BY-3.0",
+      "attribution": "Tennessee Titans",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/0/08/2025_LA_Rams_at_Tennessee_Titans.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:2025_LA_Rams_at_Tennessee_Titans.png",
+        "title": "File:2025 LA Rams at Tennessee Titans.png",
+        "author": "Tennessee Titans",
+        "credit": "YouTube: Every Moment from Titans vs Rams Home Opener | Sideline Sounds (Time: 23s) – View/save archived versions on archive.org",
+        "description": "Los Angeles Rams players running onto the field for a game against the Tennessee Titans at Nissan Stadium on September 14, 2025. Image is a screen shot of Youtube video ~ 00:23.",
+        "license_name": "CC BY 3.0",
+        "original_size": [
+          1920,
+          1080
+        ],
+        "fetched": "2026-10-16T18:34:35+00:00"
+      },
+      "player_id": null,
+      "espn_id": null,
+      "name": null,
+      "team": "LA",
+      "season": 2025,
+      "date": "2025-09-20",
+      "jersey": null,
+      "width": 1920,
+      "height": 1080,
+      "video": null,
+      "sha256": "379a8e57e135a213183357d0bcd45395bd4b764f0b7c89eb19523764dfb9479b",
+      "subject": {
+        "box": [
+          0.04,
+          0.1,
+          0.86,
+          0.97
+        ],
+        "face": null,
+        "people": 6,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "team",
+        "runout"
+      ],
+      "context": "Rams take the field at Tennessee, 2025-09-14",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    },
+    {
+      "id": "rams-sideline-2025",
+      "type": "team_photo",
+      "path": "rams-sideline-2025.jpg",
+      "license": "CC-BY-3.0",
+      "attribution": "Tennessee Titans",
+      "source": {
+        "kind": "wikimedia_commons",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/3/36/2025_Titans_vs_Rams_-_Rams_Sideline_2-13_screenshot.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "page": "https://commons.wikimedia.org/wiki/File:2025_Titans_vs_Rams_-_Rams_Sideline_2-13_screenshot.png",
+        "title": "File:2025 Titans vs Rams - Rams Sideline 2-13 screenshot.png",
+        "author": "Tennessee Titans",
+        "credit": "YouTube: Every Moment from Titans vs Rams Home Opener | Sideline Sounds (Time: 2m13s) – View/save archived versions on archive.org",
+        "description": "Los Angeles Rams sideline during a game against the Tennessee Titans at Nissan Stadium on September 14, 2025. Image is a screen shot of Youtube video ~ 02:13.",
+        "license_name": "CC BY 3.0",
+        "original_size": [
+          1920,
+          1080
+        ],
+        "fetched": "2026-10-16T18:34:38+00:00"
+      },
+      "player_id": null,
+      "espn_id": null,
+      "name": null,
+      "team": "LA",
+      "season": 2025,
+      "date": "2025-09-20",
+      "jersey": null,
+      "width": 1920,
+      "height": 1080,
+      "video": null,
+      "sha256": "ba7f86b04e7d459dc3abdf031917dd96e2a3a2ee938cdb8c7f5c70d90fd160f7",
+      "subject": {
+        "box": [
+          0.3,
+          0.02,
+          0.86,
+          1.0
+        ],
+        "face": null,
+        "people": 6,
+        "method": "manual_review",
+        "detected": "apple_vision"
+      },
+      "relevance": [
+        "team",
+        "sideline"
+      ],
+      "context": "Rams sideline at Tennessee, 2025-09-14",
+      "depicts_injury": false,
+      "illustrative": false,
+      "license_ref": "",
+      "review": {
+        "status": "pending"
+      },
+      "notes": ""
+    }
+  ]
+}
