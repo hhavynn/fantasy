@@ -103,7 +103,7 @@ function namesFromAssets(dv: NonNullable<DEvidence["dual_value"]>): Record<strin
 
 /** The classic asset table (no dual-value block in the payload). */
 function AssetTable({ e }: { e: DEvidence }) {
-  const rows = [...e.asset_balance.you_send.map((p) => ({ p, who: "you send" })), ...e.asset_balance.they_send.map((p) => ({ p, who: "they send" }))];
+  const rows = [...e.asset_balance.you_send.map((p) => ({ p, who: "gives" })), ...e.asset_balance.they_send.map((p) => ({ p, who: "receives" }))];
   return (
     <div>
       <div className="table-wrap">

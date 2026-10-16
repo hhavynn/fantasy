@@ -96,7 +96,7 @@ export function AssetEvidence({ dv }: { dv: DualValue }) {
     <section className={styles.block} aria-label="Asset value">
       <h4>Asset value</h4>
       <p className={styles.small}>
-        {a.text}: you send {parText(a.you_send_par)} · they send {parText(a.they_send_par)} points above replacement
+        {a.text}: gives {parText(a.you_send_par)} · gets {parText(a.they_send_par)} points above replacement
         (the smaller package is {ratioText(a.ratio)} of the larger){fav ? <> · <b>{fav}</b></> : null}.
         {" "}{a.note}
       </p>

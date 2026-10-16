@@ -76,6 +76,7 @@ PROJECTION_SOURCE = {
     "note": "ESPN is the only canonical projection source for trade evaluation. The independent model (ifp-2) is not "
             "wired into the trade state for long horizons and is unvalidated there, so it is never mixed into a "
             "scenario and never the default; no comparison is shown."}
+PHASE_TEXT = {"ros": "rest-of-season", "regular": "regular-season", "playoff": "fantasy-playoff"}
 PHASES = {"ros": ("min_side", "ros_delta"), "regular": ("min_side_regular", "regular_season_delta"),
           "playoff": ("min_side_playoff", "playoff_delta")}
 STRICTNESS = {
@@ -403,7 +404,7 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
                      + (" among mutual-improvement trades" if phase == "ros" else "") + heur_text(heur_search))
     elif lens:
         pool_category = {"mutual_upgrades": mutual if phase == "ros" else None, "consolidation": "CONSOLIDATION"}.get(mode)
-        pool_rule = (f"the exact top {PRACTICAL_POOL} by smaller-side {phase} gain"
+        pool_rule = (f"the exact top {PRACTICAL_POOL} by smaller-side {PHASE_TEXT[phase]} gain"
                      + {"mutual_upgrades": " among mutual-improvement trades" if phase == "ros" else "",
                         "consolidation": " among consolidation trades"}.get(mode, ""))
         no_playoff = mode == "playoff" and (not ts.split or not ts.po)
@@ -414,9 +415,9 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
         else:
             rows, exact_search, heur_search = _pool(ts, phase_sort, pool_category, opponent, PRACTICAL_POOL, heuristic)
         pool_rule += heur_text(heur_search) + {
-            "mutual_upgrades": f"; kept when both {phase} lineup deltas are positive or unknown",
+            "mutual_upgrades": f"; kept when both {PHASE_TEXT[phase]} lineup deltas are positive or unknown",
             "fair": "; kept when the asset imbalance is none or moderate",
-            "consolidation": f"; kept when the side receiving fewer players gains in the {phase} phase",
+            "consolidation": f"; kept when the side receiving fewer players gains in its {PHASE_TEXT[phase]} lineup",
             "playoff": "; kept when your playoff delta is positive"}[mode]
     elif mode == "mutual":
         if phase == "ros":

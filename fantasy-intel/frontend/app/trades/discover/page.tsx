@@ -471,7 +471,7 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
         <td className={`${styles.assetCell} ${styles.wide}`} data-label="Asset balance">
           <span title={b.note}><Badge value={b.text} tone={ASSET_TONE[b.label]} /></span>
           {b.you_send_par !== null && b.they_send_par !== null
-            ? <span className={styles.subline}>you send {b.you_send_par.toFixed(0)} · they send {b.they_send_par.toFixed(0)} pts above replacement</span>
+            ? <span className={styles.subline}>gives {b.you_send_par.toFixed(0)} · gets {b.they_send_par.toFixed(0)} pts above replacement</span>
             : <span className={styles.subline}><span className="missing" title="A player's points above replacement are unknown (missing projections), so no total is shown">—</span> points above replacement incomplete</span>}
           {fav && <span className={styles.subline}><b>{fav}</b></span>}
         </td>
