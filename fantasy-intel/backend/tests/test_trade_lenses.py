@@ -100,6 +100,19 @@ def test_fronts_are_per_verdict_and_missing_axes_have_no_front(market):
             assert min(f for f in fronts if f is not None) == 0           # fronts restart inside every verdict
 
 
+def test_free_agent_check_judges_only_rest_of_season_gains_and_incomplete_rows_name_a_concern():
+    st = market_league()
+    st.projections[307].pop(11)
+    ts = TradeSearch(st, 1, tuple(SHAPES), opponents=[3])
+    po = discover(ts, "playoff", opponent=3, limit=50)
+    assert shown(po)
+    for x in shown(po):
+        fa = next(c for c in x["dual_value"]["plausibility"]["checks"] if c["criterion"] == "free_agent_alternative")
+        assert fa["status"] == "not_applicable"                    # a playoff view is not a rest-of-season comparison
+    inc = discover(ts, "mutual_upgrades", phase="regular", opponent=3, limit=50)["sections"]["incomplete"]
+    assert inc and all(x["dual_value"]["plausibility"]["main_concern"] for x in inc)      # the unknown check, not null
+
+
 def test_mutual_upgrades_keeps_both_phase_deltas_positive_or_unknown(market):
     for phase, key in (("ros", "ros_delta"), ("regular", "regular_season_delta"), ("playoff", "playoff_delta")):
         out = discover(market, "mutual_upgrades", phase=phase, limit=50)

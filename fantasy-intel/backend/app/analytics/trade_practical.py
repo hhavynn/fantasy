@@ -475,11 +475,9 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
                 kept.append(x)
         measure = {"lineup_min_side": lambda x: x["dual_value"]["rank_axes"]["lineup_min_side"],
                    "asset_ratio": lambda x: x["dual_value"]["asset"]["ratio"]}[lens["measure"]]
-        # Verdict tier first; the Pareto fronts are computed WITHIN a verdict, so a row's front never depends on
-        # trades with a different verdict; then the lens's measure, then the exact search order.
-        assessed = []
-        for v in dual.VERDICTS:
-            assessed += dual.rank([x for x in kept if x["tier"] == v], measure, _rank_key(phase_sort))
+        # trade_dual_value.rank: verdict tier first, the Pareto front within the verdict, then the lens's measure,
+        # then the exact search order. The ranking only orders this pool; it never reaches the search.
+        assessed = dual.rank(kept, measure, _rank_key(phase_sort))
         sections = _lens_sections(mode, assessed, limit, excluded)
     elif mode == "practical":
         def _practical_sort_key(x):
