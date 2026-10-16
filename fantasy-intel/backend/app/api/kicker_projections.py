@@ -13,7 +13,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics import kicker_store as ks
 from ..db.connection import fetch_dicts, table_exists
-from .deps import db, one
+from .deps import db
+from .independent_projections import latest_league
 
 router = APIRouter(prefix="/api", tags=["kicker projections"])
 
@@ -54,8 +55,7 @@ def player(r: dict, fantasy: dict, espn: dict) -> dict:
 
 
 def build_response(con, week: int | None, team_id: int | None) -> dict:
-    lg = one(con, "SELECT league_id, season, current_week FROM leagues ORDER BY synced_at DESC LIMIT 1") \
-        if table_exists(con, "leagues") else None
+    lg = latest_league(con)
     if lg is None:
         raise LookupError("No ESPN league synced yet.")
     week = week or lg["current_week"]

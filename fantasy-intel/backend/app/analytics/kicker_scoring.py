@@ -251,16 +251,11 @@ STAT_COLUMNS = ("fg_made", "fg_missed", "fg_blocked", "fg_made_list", "fg_missed
 
 
 def league_items(con, season: int) -> list[dict] | None:
-    from ..db.connection import fetch_dicts, table_exists
+    """The live league's scoring items, read through projection_source (the same league its skill-position check
+    reads; no separate league selector here)."""
+    from .projection_source import league_scoring_items
 
-    if not table_exists(con, "leagues"):
-        return None
-    rows = fetch_dicts(con, "SELECT scoring_items FROM leagues WHERE season = ? ORDER BY synced_at DESC LIMIT 1",
-                       [season])
-    if not rows:
-        return None
-    items = rows[0]["scoring_items"]
-    return json.loads(items) if isinstance(items, str) else items
+    return league_scoring_items(con, season)
 
 
 def reconcile_with_espn(con, season: int, scoring: KickerScoring, scoring_items: list[dict] | None = None,

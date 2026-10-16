@@ -105,9 +105,14 @@ def _comparability(indep: float | None, espn: float | None) -> dict:
     return {"comparable": True, "comparability_note": None}
 
 
-def build_response(con, week: int | None, position: str | None, team_id: int | None) -> dict:
-    lg = one(con, "SELECT league_id, season, current_week FROM leagues ORDER BY synced_at DESC LIMIT 1") \
+def latest_league(con) -> dict | None:
+    """The legacy single-league selector (also used by /api/projections/kickers, so both read the same league)."""
+    return one(con, "SELECT league_id, season, current_week FROM leagues ORDER BY synced_at DESC LIMIT 1") \
         if table_exists(con, "leagues") else None
+
+
+def build_response(con, week: int | None, position: str | None, team_id: int | None) -> dict:
+    lg = latest_league(con)
     if lg is None:
         raise LookupError("No ESPN league synced yet.")
     week = week or lg["current_week"]
