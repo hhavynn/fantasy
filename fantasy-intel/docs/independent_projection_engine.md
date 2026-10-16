@@ -50,7 +50,8 @@ from 2026 week 6 onward count as evidence for it.
 | `backend/app/analytics/forecast_features.py` | Point-in-time panel + features |
 | `backend/app/analytics/independent_projections.py` | Baselines, ridge models, artifact, explanations |
 | `backend/app/analytics/forecast_backtest.py` | Walk-forward validation, selection, held-out evaluation, ESPN matching |
-| `backend/app/analytics/independent_projection_store.py` | Live week-W run with availability/ID guards |
+| `backend/app/analytics/independent_projection_store.py` | Live week-W run with availability/ID guards; `write_run` stores it append-only |
+| `backend/app/analytics/production_forecasts.py` | SQL-only (hosted-safe) immutable-run reader: `pregame_forecasts`, `latest_run`, content hash, v8 backfill |
 | `backend/app/api/independent_projections.py` | Read-only `GET /api/projections/independent` |
 | `backend/app/analytics/participation.py` | Roster population, participation features, logistic model, walk-forward evaluation, live P(appears) |
 | `backend/app/analytics/promotion_tracker.py`, `backend/app/api/projection_promotion.py` | Read-only `GET /api/projections/independent/promotion` (the tracker on `/data`) |
@@ -221,6 +222,11 @@ TE 80.0%. Intervals are prediction intervals for one week's score, not confidenc
 contemporaneous lineup snapshots, 1,012 pairs): recent 64.6%, season 62.3%, opportunity 65.0%,
 context 64.7%. No meaningful edge on this small sample.
 
+*Note:* this pair set was built before `league_roster_pairs` keyed rosters by `(league_id, team_id)`; ESPN team
+ids restart at 1 in every league, so with several synced leagues it also paired players from different leagues'
+team 1s. All models were scored on the same set, so the comparison between them is unaffected, but N (1,012) may
+be overstated. Rerun `backtest_independent_projections.py evaluate` on the real database to restate N.
+
 **ESPN comparison: 0 matched observations.** Nothing is claimed about ESPN.
 
 Runtime (Apple silicon laptop): history ingestion 17 s; feature store 42.7k rows in 3.3 s;
@@ -366,9 +372,12 @@ history only began on 2026-10-14. Nothing backfills a missed week, so every week
    "Runbook"): `uv run python ../scripts/backtest_independent_projections.py project --week N`.
    Its features use only games completed before week N, but its weights come from the artifact:
    `fit` trains on every completed week. A run therefore counts as evidence only if its artifact
-   was fitted **before week N's first kickoff** (and under the current model version and league
-   scoring); a backfill with a later artifact is listed as excluded. Without a counted run a week
-   contributes no matched observation to the tracker.
+   was fitted **before week N's first kickoff**, it was created **before the player's own kickoff**,
+   its stored rows still reproduce its content hash, and it is of the current model version under
+   the current league scoring. Every other run is listed as excluded with a reason (including a
+   run made after kickoff and a run whose rows are missing). Rerunning `project` for the same week
+   adds a run; it never replaces one (see "Live runs and abstention", Storage). Without a counted
+   run a week contributes no matched observation to the tracker.
 3. After the week's games are final and nflverse is synced (`sync_nfl.py`), the tracker counts the
    new matched player-weeks automatically.
 
@@ -380,7 +389,9 @@ The **Data quality page (`/data`) section "Independent projections: path to prom
   model version under the current league scoring (nothing is recomputed; with no such run these
   are null and the page says why);
 * matched pregame-ESPN observations so far vs `espn_min_matched_per_position`, computed with
-  `espn_pregame` + `espn_comparison` on counted stored weekly projections (`pred_primary`; see step 2)
+  `espn_pregame` + `espn_comparison` on counted stored weekly projections (`pred_primary` = the
+  player's row from the latest eligible run created before his own kickoff,
+  `production_forecasts.pregame_forecasts`; see step 2)
   and completed
   appearances (league points from nflverse box scores), plus the pool of completed player-weeks
   with a pregame ESPN snapshot whether or not a projection was stored; MAE ours vs ESPN once
@@ -407,7 +418,8 @@ A header toggle (**ESPN | Ours**, in the menu drawer on phones) stores the visit
 * `espn`: ESPN's number where no independent estimate exists (K, D/ST, abstentions, uncertain ID
   mapping, no participation estimate), tagged "ESPN" in the UI.
 
-Only a run of the current model version under the league's current scoring is used; otherwise the
+Only a run of the current model version under the league's current scoring is used (the newest one
+that still has all of its stored rows; a run whose rows were lost is skipped); otherwise the
 response says `available: false` and shows ESPN. Start/Sit and Matchup rerun the same lineup
 optimizer on these numbers (Matchup computes both teams' lineups on the fly instead of reading
 `team_week_lineup_projections`). Availability warnings still quote ESPN's number, because they say
@@ -443,6 +455,69 @@ P 0.05, expected 0.58 (conditional 10.77). Tyler Huntley (BAL): P 0.71, expected
 0. On the 313 rows where ESPN projects > 0 the mean absolute gap to ESPN rises slightly (1.19
 conditional -> 1.35 expected): ESPN's positive projections behave more like "if he plays". None
 of this is an accuracy claim; no week-6 game is final.
+
+### Storage: immutable, run-keyed production forecasts (schema v8)
+
+Before v8, `independent_player_projections` had `PRIMARY KEY (season, week, espn_player_id)` and the
+writer replaced the whole week, so a second `project --week N` deleted the first run's player rows
+while its `independent_projection_runs` row survived: earlier forecasts were unrecoverable and a run id
+could be counted as evidence with no rows behind it. v8 fixes this with append-only storage:
+
+| Table | Key | Role |
+|---|---|---|
+| `independent_projection_runs` | `run_id` | run metadata, written once, plus `artifact_id`, `content_sha256`, `row_count`, `migrated_from_legacy` |
+| `independent_projection_rows` | `(run_id, espn_player_id)` | every column of the legacy table plus `kickoff` (the player's own team kickoff, naive UTC, from `nfl_schedules`) and `pregame` (`run created_at < kickoff`; unknown kickoff = false) |
+| `independent_player_projections` | `(season, week, espn_player_id)` | LEGACY. Never written, dropped or modified by v8; read only as a fallback and as the backfill source |
+
+* **Write-once.** `independent_projection_store.write_run` never deletes or updates a committed run or
+  its rows. A run id that exists with different content raises `ImmutableRunError`. The rows written are
+  read back inside the same transaction and must reproduce the digest or nothing is committed.
+* **Provenance.** `artifact_id` is the sha256 of the artifact **file bytes** that `project` loaded (the
+  digest `model_registry.json` pins, so a later consumer can compare them; callers without a file get a
+  `dict:`-prefixed digest of the canonical artifact JSON that can never collide with it). `content_sha256`
+  is the sha256 of the canonicalised run meta (season, week, model/scoring/artifact ids, artifact time,
+  data cutoff, model status and evaluation, participation fields) plus all rows (every legacy column;
+  sorted by player; JSON columns parsed and key-sorted; floats and ints normalised). It excludes `run_id`,
+  `created_at`, `nfl_synced_at` (operational stamps) and `kickoff`/`pregame` (annotations derived from the
+  schedule). `row_count` is the number of rows stored. The hash detects loss and
+  corruption of rows; it does not prove authenticity, because `created_at` and `kickoff` are outside it
+  and anyone with write access to the database can rewrite a run and recompute its hash.
+* **Idempotent retry.** A write whose `content_sha256` equals the NEWEST existing run of the same `(season,
+  week, model_version, scoring_fingerprint, artifact_id)` returns that run's id and writes nothing (a
+  revert to an older run's content, A then B then A, is a new run so the newest computation stays newest). Different
+  content (a source correction, a late injury report, a new artifact file) creates a NEW run; the old
+  rows stay byte-identical and both are queryable.
+* **Pregame, per player.** `production_forecasts.pregame_forecasts(con, season, weeks, *, model_version,
+  scoring_fingerprint)` returns `(rows, exclusions)`: per `(week, espn_player_id)` the row of the latest
+  eligible run created strictly before that player's own kickoff (a Thursday player can keep Wednesday's
+  run while Sunday players use Saturday's). The kickoff is the earlier of the stored one and the current
+  schedule's (a flexed game can only make a row less eligible); an unknown kickoff is never pregame.
+  Eligible run = model and scoring match, artifact fitted before the week's first kickoff, integrity
+  verified. Exclusions are `{run_id, week, reason}` and the tracker shows them: model/scoring mismatch,
+  artifact fitted after the first kickoff or unknown time, `forecast rows missing` (`row_count` NULL/0, or
+  a run whose rows the old overwrite destroyed), `integrity` (row count differs, no content hash, hash
+  mismatch), `post-kickoff` (no row was made before its player's kickoff). The module is SQL + stdlib so
+  the hosted API imports it.
+* **Readers.** `projection_source`, `GET /api/projections/independent` and the promotion tracker read
+  `independent_projection_rows`; the consumer views show the newest run that still has its rows and keep
+  their response shapes, ESPN default and origin labels. If `independent_projection_rows` does not exist
+  (an old DB, or a hosted copy published before the migration) they read the legacy table read-only; the
+  tracker then uses run-level eligibility only (no per-player kickoff check).
+* **Migration (`SCHEMA_VERSION` 8, create-only).** `init_db` adds the new table and the four run columns
+  (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`), then `production_forecasts.migrate_legacy` copies every
+  legacy row whose run exists into the new table under its original `run_id` (`ON CONFLICT DO NOTHING`),
+  computes `kickoff`/`pregame` where `nfl_schedules` allows, sets `row_count` and `migrated_from_legacy =
+  TRUE` and, when rows exist, seals the run with a `content_sha256` (its `artifact_id` stays NULL: the file
+  was not recorded). A run whose rows were destroyed keeps `row_count = 0`, no hash, and is excluded with
+  `forecast rows missing`. Legacy rows whose run row is missing are not invented; they are counted in
+  `schema_meta['projection_rows_backfill']` (`orphan_legacy_rows`, `orphan_legacy_run_ids`,
+  `runs_without_rows`). The pass is idempotent. The two tables must never be added to a `_REBUILD`
+  entry in `db/connection.py`: that list DROPS tables (a v6 database gets its participation columns by `ALTER` and keeps its runs and legacy rows).
+* **Publish.** `db/publish.py` replaces each hosted table with `CREATE OR REPLACE TABLE ... AS SELECT *` from
+  the local file (read-only attach) in one transaction, so the new tables are copied as they are and
+  publishing never writes the local history. The local file stays the system of record: publishing a local
+  DB that lacks a run removes it from the hosted copy, so never publish from a restored older file.
+  (`tests/test_production_forecasts.py::test_publish_copies_the_run_tables_as_is_and_cannot_touch_local_history`.)
 
 ## API contract (`independent-projections/v2`)
 

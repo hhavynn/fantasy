@@ -9,7 +9,10 @@ forecast_backtest. Nothing here decides or changes a status:
   before the player's kickoff) and forecast_backtest.espn_comparison (the frozen >= N matched
   observations and MAE <= ESPN rule). "Ours" is the stored weekly-run projection of the primary
   model (features from games before the week only); the label is the league points of a
-  completed appearance, the same population as the frozen criterion.
+  completed appearance, the same population as the frozen criterion. Runs are immutable and
+  run-keyed (production_forecasts): each player's number is the latest eligible run created strictly
+  before his own kickoff, from a run whose stored rows reproduce its content hash. Databases not yet
+  migrated to schema v8 fall back to the legacy one-row-per-week table (no per-player kickoff check).
 
 Promotion still needs a rerun of `evaluate` and the user's approval; independent projections
 are not read by lineups, start/sit, trades or waivers.
@@ -27,6 +30,8 @@ from .forecast_backtest import PROMOTION_CRITERIA, espn_comparison, espn_pregame
 from .forecast_features import POSITIONS, load_panel
 from .independent_projection_store import league_scoring
 from .independent_projections import MODEL_VERSION
+from .production_forecasts import ROWS, eligible_run_ids, pregame_forecasts
+from .production_forecasts import first_kickoffs as _first_kickoffs
 from .projection_backtest import _kickoff, _utc
 
 SCHEMA_VERSION = "independent-promotion/v1"
@@ -103,24 +108,11 @@ def model_evidence(run: dict | None, position: str) -> dict:
 
 
 def first_kickoffs(con, season: int) -> dict[int, datetime]:
-    if not table_exists(con, "nfl_schedules"):
-        return {}
-    out: dict[int, datetime] = {}
-    for g in fetch_dicts(con, "SELECT week, gameday, gametime FROM nfl_schedules WHERE season = ? AND game_type = 'REG'",
-                         [season]):
-        k = _kickoff(g)
-        if k is not None and (g["week"] not in out or k < out[g["week"]]):
-            out[g["week"]] = k
-    return out
+    return _first_kickoffs(con, season)
 
 
-def eligible_runs(con, season: int, fingerprint: str) -> tuple[list[str], list[dict]]:
-    """Runs whose projections may count as evidence: the current model, the league's current scoring,
-    and an artifact fitted before the target week's first kickoff (`fit` trains on every completed
-    week, so a later artifact has seen the results it would be judged on). Returns (run ids,
-    excluded runs with a reason)."""
-    if not table_exists(con, "independent_projection_runs"):
-        return [], []
+def _legacy_eligible_runs(con, season: int, fingerprint: str) -> tuple[list[str], list[dict]]:
+    """Unmigrated database (no independent_projection_rows): the pre-v8 rule, run metadata only."""
     kick = first_kickoffs(con, season)
     keep, excluded = [], []
     for r in fetch_dicts(con, """SELECT run_id, week, model_version, scoring_fingerprint, artifact_created_at
@@ -141,17 +133,43 @@ def eligible_runs(con, season: int, fingerprint: str) -> tuple[list[str], list[d
     return keep, excluded
 
 
-def _stored_projections(con, season: int, run_ids: list[str]) -> pl.DataFrame:
+def eligible_runs(con, season: int, fingerprint: str) -> tuple[list[str], list[dict]]:
+    """Runs whose projections may count as evidence: the current model, the league's current scoring,
+    an artifact fitted before the target week's first kickoff (`fit` trains on every completed
+    week, so a later artifact has seen the results it would be judged on), and stored rows that
+    reproduce the run's content hash. Returns (run ids, excluded runs with a reason)."""
+    if not table_exists(con, "independent_projection_runs"):
+        return [], []
+    if not table_exists(con, ROWS):
+        return _legacy_eligible_runs(con, season, fingerprint)
+    return eligible_run_ids(con, season, MODEL_VERSION, fingerprint)
+
+
+def _stored_projections(con, season: int, fingerprint: str) -> tuple[pl.DataFrame, list[dict]]:
+    """Per player-week, the projected_points of the latest eligible run created before his own kickoff."""
     schema = {"season": pl.Int64, "week": pl.Int64, "gsis_id": pl.String, "pred_primary": pl.Float64}
-    if not run_ids or not table_exists(con, "independent_player_projections"):
-        return pl.DataFrame(schema=schema)
-    rows = fetch_dicts(con, """
-        SELECT season, week, gsis_id, any_value(projected_points) AS pred_primary
-        FROM independent_player_projections
-        WHERE season = ? AND run_id IN (SELECT unnest(?)) AND coverage_status = 'projected'
-          AND projected_points IS NOT NULL AND gsis_id IS NOT NULL
-        GROUP BY 1, 2, 3 HAVING count(*) = 1""", [season, run_ids])
-    return pl.DataFrame(rows, schema=schema) if rows else pl.DataFrame(schema=schema)
+    if not table_exists(con, "independent_projection_runs"):
+        return pl.DataFrame(schema=schema), []
+    if not table_exists(con, ROWS):   # unmigrated copy: legacy table, read-only, run-level eligibility only
+        run_ids, excluded = _legacy_eligible_runs(con, season, fingerprint)
+        if not run_ids or not table_exists(con, "independent_player_projections"):
+            return pl.DataFrame(schema=schema), excluded
+        rows = fetch_dicts(con, """
+            SELECT season, week, gsis_id, any_value(projected_points) AS pred_primary
+            FROM independent_player_projections
+            WHERE season = ? AND run_id IN (SELECT unnest(?)) AND coverage_status = 'projected'
+              AND projected_points IS NOT NULL AND gsis_id IS NOT NULL
+            GROUP BY 1, 2, 3 HAVING count(*) = 1""", [season, run_ids])
+        return (pl.DataFrame(rows, schema=schema) if rows else pl.DataFrame(schema=schema)), excluded
+    forecasts, excluded = pregame_forecasts(con, season, None, model_version=MODEL_VERSION,
+                                            scoring_fingerprint=fingerprint)
+    seen: dict[tuple, list] = {}
+    for r in forecasts:
+        if r["coverage_status"] == "projected" and r["projected_points"] is not None and r["gsis_id"]:
+            seen.setdefault((r["season"], r["week"], r["gsis_id"]), []).append(float(r["projected_points"]))
+    rows = [{"season": k[0], "week": k[1], "gsis_id": k[2], "pred_primary": v[0]}
+            for k, v in sorted(seen.items()) if len(v) == 1]     # a gsis id on two ESPN ids is ambiguous: dropped
+    return (pl.DataFrame(rows, schema=schema) if rows else pl.DataFrame(schema=schema)), excluded
 
 
 def espn_evidence(con, season: int, scoring) -> dict:
@@ -170,8 +188,8 @@ def espn_evidence(con, season: int, scoring) -> dict:
     labels = panel.select("season", "week", "gsis_id", "position", pl.col("league_points").alias("label"))
     espn = espn_pregame(con, season)
     pool = labels.join(espn, on=["season", "week", "gsis_id"], how="inner")
-    run_ids, excluded = eligible_runs(con, season, scoring.fingerprint)
-    preds = labels.join(_stored_projections(con, season, run_ids), on=["season", "week", "gsis_id"], how="inner")
+    stored, excluded = _stored_projections(con, season, scoring.fingerprint)
+    preds = labels.join(stored, on=["season", "week", "gsis_id"], how="inner")
     comp = espn_comparison(preds, espn)
     matched = preds.join(espn, on=["season", "week", "gsis_id"], how="inner")
     by_pos = {}
