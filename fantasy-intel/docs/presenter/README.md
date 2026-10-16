@@ -66,7 +66,7 @@ Measurements for the verdict window (s05, 6.1 s):
 
 How to read these:
 - **Detail** is the clear win: hq triples it, and stubble is visible again in the zoom.
-- **Motion** is real but small: only idle_03's first 2 s passes the audit, so the 6.1 s line loops that stretch forward and back.
+- **Motion** (library pass 1, in this table) is real but small: only idle_03's first 2 s passed the audit, so the 6.1 s line looped that stretch forward and back. See "Library pass 2" below for the re-render with the fuller library.
 - **Jitter and identity drift** rise a little with real motion, which is expected: these are a description, not a pass mark.
 - **The teeth gap index** doesn't separate the variants, and neither do your eyes: the gap is in all four. It stays uncalibrated until a render without the gap exists.
 - **The loop-seam ratio** (recorded too) only catches jumps, not the velocity reversal of a ping-pong loop, so it isn't a useful gate yet.
@@ -86,7 +86,7 @@ All variants pass the existing presenter QC; no gate was loosened. The Gadsden l
 
 | Step | Time |
 |---|---|
-| Wan2.2 library clip (81 frames, 704×1280, 30 steps) | about 20 min to denoise and 9–17 min to decode, once per clip |
+| Wan2.2 library clip (81 frames, 704×1280, 30 steps) | about 20 min to denoise and 8–17 min to decode, once per clip (pass 2: 1153–1285 s and 453–518 s) |
 | Decode | each clip in its own process (VAE only), with decoded tiles moved to the CPU, otherwise 48 GB runs out |
 | hq lip sync | about 1.2–2× the time of the original MuseTalk path, per the table above |
 
