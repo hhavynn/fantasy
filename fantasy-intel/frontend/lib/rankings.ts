@@ -22,7 +22,7 @@ export const PAGE_SIZE = 100;
 /** The longest name search the page sends. */
 const MAX_QUERY = 60;
 /** Sorts that start ascending when no direction is given (best first / A to Z); every other column starts high to low. */
-const ASC_FIRST = new Set(["rank", "name"]);
+const ASC_FIRST = new Set(["rank", "name", "consistency"]);   // lower SD = steadier
 
 export type RankingsFilters = {
   pos: RankPosition;

@@ -92,6 +92,10 @@ changes.
 | `status` | `all` `rostered` `available` (FREE_AGENT or WAIVERS) | `all` |
 | `limit` / `offset` | 1..300 / ≥0 | 100 / 0 |
 
+Sort keys: `espn` / `ours` = that source's projected points, `rating` / `opportunity` / `production` = the
+0–100.0 ratings, `xfp` = xFP per game, `ppr` = PPR per game, `consistency` = weekly PPR SD, `trend` = role
+trend (UP > FLAT > DOWN).
+
 422 on a bad value; 503 when the league isn't synced (or its current week is unknown). Nulls always sort last
 in both directions; ties keep rank order. Query count is constant in the number of players.
 
