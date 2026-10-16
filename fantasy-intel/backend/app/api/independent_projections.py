@@ -211,10 +211,13 @@ def _kicker_overlay(con, season: int, week: int, players: list[dict]) -> dict | 
                                               "flags": [], "note": None, "expected_points_status": None,
                                               "depth_rank": None},
                             "stat_line": k["stat_line"], "kicking_context": k["context"]}
-        espn = p["espn"]["projected_points"]
-        exp = k["expected_points"]
-        p["comparison"]["expected_minus_espn"] = round(exp - espn, 2) if exp is not None and espn is not None else None
-        p["comparison"]["expected_comparable"] = p["comparison"]["expected_minus_espn"] is not None
+        # The comparison was built from the unsupported ifp row (no estimate): rebuild every field from the kicker row.
+        espn, indep, exp = p["espn"]["projected_points"], k["projected_points"], k["expected_points"]
+        diff = round(indep - espn, 2) if indep is not None and espn is not None else None
+        exp_diff = round(exp - espn, 2) if exp is not None and espn is not None else None
+        p["comparison"] = {"independent_minus_espn": diff, **_comparability(indep, espn),
+                           "expected_minus_espn": exp_diff, "expected_comparable": exp_diff is not None,
+                           "evidence": _evidence(k, diff)}
     run = sel["run"]
     return {"available": True, "run_id": run["run_id"], "model_version": run["model_version"],
             "created_at": str(run["created_at"]), "artifact_verified": run.get("artifact_check") == "verified"}

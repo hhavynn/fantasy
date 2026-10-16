@@ -565,3 +565,17 @@ def test_kicker_overlay_never_replaces_a_skill_estimate_and_needs_kicker_scoring
     w = ps.weekly(stored, 2026, 6, "independent")
     assert w["available"] and w["kicker_run"] is None and w["origin"][5] == "espn"
     assert "kicker scoring" in ks.select_run(stored, 2026, 6)["unavailable_reason"]
+
+
+def test_the_independent_api_rebuilds_every_comparison_field_for_an_overlaid_kicker(stored):
+    """Codex review on #96: the K row's comparison was built from the unsupported ifp row (no estimate) and only the
+    expected-points fields were updated, so independent_minus_espn/comparable/evidence contradicted the overlay."""
+    from app.api import independent_projections as ip
+
+    _kicker_run(stored, 5)
+    k = next(p for p in ip.build_response(stored, 6, None, None)["players"] if p["espn_player_id"] == 5)
+    espn, c = k["espn"]["projected_points"], k["comparison"]
+    assert k["independent"]["projected_points"] == 7.3 and espn is not None
+    assert c["independent_minus_espn"] == round(7.3 - espn, 2) and c["expected_minus_espn"] == round(7.3 - espn, 2)
+    assert c["comparable"] is (espn != 0) and c["expected_comparable"] is True
+    assert c["comparability_note"] is None or espn == 0

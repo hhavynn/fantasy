@@ -282,6 +282,11 @@ def stage_kicker(args, log_path: Path) -> dict:
     if not (Path(args.kicker_dir) / f"kfp-1.0.0_{args.season}.json").exists():
         fit = run(["fit", "--register"])
         out["fit"] = {k: fit.get(k) for k in ("artifact", "sha256", "registered")}
+    else:
+        # An artifact fitted without --register, a failed registration or a database restored apart from the model
+        # directory would otherwise never be approved; registering an approved artifact again is a no-op.
+        reg = run(["register"])
+        out["register"] = {k: reg.get(k) for k in ("artifact", "sha256", "registered")}
     cmd = ["project", "--week", str(args.week)]
     last = getattr(args, "last_week", None)
     if last is not None and last > args.week and not getattr(args, "no_rest_of_season", False):

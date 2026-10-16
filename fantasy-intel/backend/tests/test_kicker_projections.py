@@ -568,3 +568,41 @@ def test_backfill_script_replaces_only_its_seasons(tmp_path):
                      ).fetchone()[0] == "ok"
     c.close()
     assert again["seasons"][2025]["kicks"] == 3
+
+
+def test_register_command_approves_an_existing_artifact_idempotently(tmp_path, monkeypatch):
+    """Codex review on #96: an artifact fitted without --register (or a database restored apart from the model
+    directory) must be approvable without refitting; the learning cycle runs `register` when the file exists."""
+    import argparse
+    import importlib.util
+    from pathlib import Path
+
+    from app.db.connection import connect, init_db
+
+    script = Path(__file__).resolve().parents[2] / "scripts" / "kicker_projections.py"
+    monkeypatch.syspath_prepend(str(script.parent))                     # the CLI imports scripts/_bootstrap
+    spec = importlib.util.spec_from_file_location("kicker_projections_cli", script)
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    db = tmp_path / "live.duckdb"
+    c = connect(db)
+    init_db(c)
+    c.close()
+    out = tmp_path / "kicker"
+    out.mkdir()
+    art = out / f"{km.MODEL_VERSION}_2026.json"
+    art.write_text(json.dumps({"version": km.MODEL_VERSION, "created_at": "2026-09-01T00:00:00+00:00",
+                               "data_cutoff_key": 202599}))
+    args = argparse.Namespace(season=2026, live_db=db, out=out, artifact=None)
+    first = cli.cmd_register(args)
+    assert first["registered"] is True and first["sha256"] == hashlib.sha256(art.read_bytes()).hexdigest()
+    assert cli.cmd_register(args)["registered"] is False                 # approving it again creates nothing
+    c = connect(db, read_only=True)
+    assert c.execute("SELECT model_version, artifact_sha256, target_season, training_cutoff_key FROM approved_artifacts"
+                     ).fetchall() == [(km.MODEL_VERSION, first["sha256"], 2026, 202599)]
+    c.close()
+    art.write_text(json.dumps({"version": "ifp-2.0.0"}))
+    with pytest.raises(SystemExit):
+        cli.cmd_register(args)
+    with pytest.raises(SystemExit):
+        cli.cmd_register(argparse.Namespace(season=2027, live_db=db, out=out, artifact=None))

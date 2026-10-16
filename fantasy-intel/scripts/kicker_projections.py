@@ -4,6 +4,7 @@
     uv run python ../scripts/kicker_projections.py reconcile                       # league kicker scoring vs ESPN
     uv run python ../scripts/kicker_projections.py evaluate                        # validation selection + test report
     uv run python ../scripts/kicker_projections.py fit [--register]                # artifact for the live season
+    uv run python ../scripts/kicker_projections.py register                        # approve an existing artifact file
     uv run python ../scripts/kicker_projections.py project [--week W] [--through-week T] [--no-weather]
 
 Data: the history DB (NFL_HISTORY_DB_PATH, finished seasons) and the live DB (FANTASY_DB_PATH). Both need the
@@ -253,6 +254,25 @@ def cmd_fit(args) -> dict:
     return out
 
 
+def cmd_register(args) -> dict:
+    """Approve an existing artifact file (the season's, or --artifact) by its sha256. Idempotent: approving an
+    already-approved artifact creates nothing. For an artifact fitted without --register, a failed registration,
+    or a database restored separately from the model directory; refitting would write a different file."""
+    from app.analytics.kicker_store import register_artifact
+    path = args.artifact or args.out / f"{km.MODEL_VERSION}_{args.season}.json"
+    if not path.exists():
+        raise SystemExit(f"{path} does not exist; run `fit --register` first")
+    art = json.loads(path.read_text())
+    if art.get("version") != km.MODEL_VERSION:
+        raise SystemExit(f"{path} is a {art.get('version')!r} artifact, not {km.MODEL_VERSION}")
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    with open_db(args.live_db) as con:
+        created = register_artifact(con, model_version=km.MODEL_VERSION, artifact_sha256=sha, target_season=args.season,
+                                    training_cutoff_key=art.get("data_cutoff_key"),
+                                    artifact_created_at=art.get("created_at"))
+    return {"artifact": str(path), "sha256": sha, "registered": created}
+
+
 def next_week(con, season: int) -> int | None:
     from app.analytics.production_forecasts import first_kickoffs
     now = datetime.now(timezone.utc)
@@ -294,7 +314,7 @@ def kb_write(con, meta, rows, write_run):
 def main(argv=None) -> int:
     s = get_settings()
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=("reconcile", "evaluate", "fit", "project"))
+    ap.add_argument("command", choices=("reconcile", "evaluate", "fit", "register", "project"))
     ap.add_argument("--season", type=int, default=s.nfl_season)
     ap.add_argument("--week", type=int, default=None)
     ap.add_argument("--through-week", type=int, default=None)
@@ -306,7 +326,8 @@ def main(argv=None) -> int:
     ap.add_argument("--overwrite", action="store_true")
     ap.add_argument("--no-weather", action="store_true", help="project: use cached forecasts only, never fetch")
     args = ap.parse_args(argv)
-    fn = {"reconcile": cmd_reconcile, "evaluate": cmd_evaluate, "fit": cmd_fit, "project": cmd_project}[args.command]
+    fn = {"reconcile": cmd_reconcile, "evaluate": cmd_evaluate, "fit": cmd_fit, "register": cmd_register,
+          "project": cmd_project}[args.command]
     print(json.dumps(_clean(fn(args)), indent=2, default=str))
     return 0
 

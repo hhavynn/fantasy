@@ -17,7 +17,7 @@ ESPN projections are never an input.
 | Live runs | `app/analytics/kicker_live.py` | expected kicker, guards, weather, explanations, participation |
 | Storage + read side | `app/analytics/kicker_store.py` | `kicker_projection_runs` / `kicker_projection_rows`, hash, gate, `select_run`, `overlay` (SQL + stdlib, hosted-safe) |
 | Consumers | `projection_source.weekly` (K overlay), `forward_ours`, `GET /api/projections/kickers`, K rows of `GET /api/projections/independent`, `/kickers` page |
-| CLI | `scripts/kicker_projections.py` | `reconcile`, `evaluate`, `fit [--register]`, `project [--week] [--through-week]` |
+| CLI | `scripts/kicker_projections.py` | `reconcile`, `evaluate`, `fit [--register]`, `register`, `project [--week] [--through-week]` |
 | Automation | `scripts/learning_cycle.py` stage `kicker` | after `project`; fits the season artifact once, then projects the target week and the rest of the season. A failure is a warning, never a failed cycle |
 
 ### Why parallel tables, not `independent_projection_runs`
@@ -247,11 +247,14 @@ uv run python ../scripts/sync_kicking_pbp.py --live                          # o
 uv run python ../scripts/kicker_projections.py reconcile
 uv run python ../scripts/kicker_projections.py evaluate                      # writes data/models/kicker/kfp_evaluation.json
 uv run python ../scripts/kicker_projections.py fit --register                # the season's artifact, approved
+uv run python ../scripts/kicker_projections.py register                      # approve an existing artifact file (idempotent)
 uv run python ../scripts/kicker_projections.py project --through-week 18
 ```
 
-After the one-time backfill, the weekly learning cycle does `fit` (once per season) and `project` automatically, and
-the refresh publishes the tables.
+After the one-time backfill, the weekly learning cycle does `fit --register` (once per season) and `project`
+automatically, and the refresh publishes the tables. When the season's artifact file already exists, the cycle runs
+`register` instead (a no-op once approved), so an artifact fitted without `--register`, a failed registration or a
+database restored apart from the model directory is approved on the next cycle without refitting.
 
 ## 7. Limitations and follow-ups
 
