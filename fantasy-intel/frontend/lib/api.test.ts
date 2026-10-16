@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { api, classifyHttpError } from "./api.ts";
+import { api, apiRequest, classifyHttpError, formatDetail } from "./api.ts";
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -57,4 +57,47 @@ test("api: POST sends a JSON body", async () => {
   await api("/x", { a: 1 });
   assert.equal(seen?.method, "POST");
   assert.equal(seen?.body, '{"a":1}');
+});
+
+test("apiRequest: defaults to GET, sends extra headers and keeps the API key", async () => {
+  let seen: RequestInit | undefined;
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => { seen = init; return new Response("{}"); }) as typeof fetch;
+  await apiRequest("/x", { headers: { "X-Fantasy-User-Assertion": "v1.a.b" } });
+  assert.equal(seen?.method, "GET");
+  assert.equal(seen?.body, undefined);
+  assert.deepEqual(seen?.headers, { "X-Fantasy-User-Assertion": "v1.a.b" });
+});
+
+test("apiRequest: PUT and DELETE keep their method; a body adds a JSON content type", async () => {
+  let seen: RequestInit | undefined;
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => { seen = init; return new Response("{}"); }) as typeof fetch;
+  await apiRequest("/x", { method: "PUT", body: { a: 1 } });
+  assert.equal(seen?.method, "PUT");
+  assert.equal(seen?.body, '{"a":1}');
+  assert.deepEqual(seen?.headers, { "Content-Type": "application/json" });
+  await apiRequest("/x", { method: "DELETE" });
+  assert.equal(seen?.method, "DELETE");
+});
+
+test("apiRequest: a 204 is ok with null data", async () => {
+  globalThis.fetch = (async () => new Response(null, { status: 204 })) as typeof fetch;
+  assert.deepEqual(await apiRequest("/x", { method: "DELETE" }), { ok: true, data: null, error: null });
+});
+
+test("apiRequest: errors carry the backend detail, including validation lists", async () => {
+  globalThis.fetch = respond(404, { detail: "League not found" });
+  assert.deepEqual(await apiRequest("/x"), { ok: false, data: null, error: "League not found", kind: "http", status: 404 });
+  globalThis.fetch = respond(422, { detail: [{ loc: ["body", "season"], msg: "Input should be a valid integer" }] });
+  const res = await apiRequest("/x", { method: "POST", body: {} });
+  assert.equal(res.ok === false && res.error, "Input should be a valid integer");
+  globalThis.fetch = (async () => { throw new TypeError("fetch failed"); }) as typeof fetch;
+  const off = await apiRequest("/x");
+  assert.equal(off.ok === false && off.kind, "offline");
+});
+
+test("formatDetail: strings, lists and anything else", () => {
+  assert.equal(formatDetail("nope"), "nope");
+  assert.equal(formatDetail([{ msg: "a" }, { msg: "b" }]), "a; b");
+  assert.equal(formatDetail({ x: 1 }), null);
+  assert.equal(formatDetail(""), null);
 });

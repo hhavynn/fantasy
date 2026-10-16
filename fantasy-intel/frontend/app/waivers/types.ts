@@ -1,3 +1,5 @@
+import type { Perspective } from "@/lib/team-perspective";
+
 export type Coverage = { eligible: number; evaluated: number; excluded_by_limit: number; limitation: string };
 type Drop = { espn_player_id: number; name: string; position: string; sacrifice: string[] };
 export type Decision = {
@@ -18,10 +20,16 @@ export type WaiverRow = {
   espn_player_id: number; full_name: string; position: string; pro_team: string | null;
   availability_status: string; injury_status: string | null; percent_owned: number | null; percent_change: number | null;
   opportunity_score: number | null; waiver_score: number; interest_score: number | null;
+  opportunity_score_100?: number | null;   // 0–100 rating; absent on older data. waiver_score stays a 0–10 heuristic
   league_interest: string; recommendation: string; reasons: string[]; role_trend: string | null;
   competitors: Competitor[];
-  components: { player: { basis: string; basis_description?: string; value: number | null }; decision?: Decision };
+  /** Whether the suggested drop is still on the team's latest synced roster (null: no drop). */
+  drop_on_roster?: boolean | null;
+  components: { player: { basis: string; basis_description?: string; value: number | null; value_100?: number | null }; decision?: Decision };
 };
 export type WaiversResponse = {
   players: WaiverRow[]; computed_at: string | null; coverage: Coverage | null; total: number;
+  perspective?: Perspective | null;
+  /** The team's roster was re-synced after these suggestions were computed. */
+  roster_newer_than_analysis?: boolean;
 };

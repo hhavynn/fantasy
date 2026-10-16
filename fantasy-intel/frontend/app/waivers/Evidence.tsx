@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { PlayerLink } from "@/components/PlayerLink";
-import { Pos } from "@/components/ui";
+import { Pos, Rating } from "@/components/ui";
 import { label, num, when } from "@/lib/format";
+import { ratingFor } from "@/lib/ratings";
 import type { Decision, WaiverRow } from "./types";
 import styles from "./waivers.module.css";
 
@@ -30,8 +31,9 @@ export function Evidence({ row, decision: d }: { row: WaiverRow; decision: Decis
       )}
 
       <p>
-        <b>Player quality.</b> {row.components.player.basis_description ?? row.components.player.basis}; opportunity {num(row.opportunity_score)}/10,
-        historical value {num(row.components.player.value)}/10. These are heuristics, not claim-success probabilities.
+        <b>Player quality.</b> {row.components.player.basis_description ?? row.components.player.basis}; opportunity <Rating rating={ratingFor({ opportunity_score_100: row.opportunity_score_100, opportunity_score: row.opportunity_score }, "opportunity")} kind="opportunity" variant="text" />,
+        historical value <Rating rating={ratingFor({ value_score_100: row.components.player.value_100, value_score: row.components.player.value }, "value")} kind="value" variant="text" />.
+        Ratings are relative ranks, and these are heuristics, not claim-success probabilities.
       </p>
       <ul>{row.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
 
@@ -101,7 +103,7 @@ export function Evidence({ row, decision: d }: { row: WaiverRow; decision: Decis
         <b>Known capacity:</b> {d.roster_move.active_count}/{d.roster_move.capacity ?? "unknown"} active players. IR is excluded from active capacity.
         Position limits: {Object.entries(d.roster_move.position_limits).map(([p, n]) => `${p} ${n}`).join(", ") || "none supplied"}.
       </p>
-      <p>Each pickup is a separate scenario against your current roster. Refresh after making a move; these are not a combined claim queue.</p>
+      <p>Each pickup is a separate scenario against the team&apos;s current roster. Refresh after making a move; these are not a combined claim queue.</p>
     </div>
   );
 }

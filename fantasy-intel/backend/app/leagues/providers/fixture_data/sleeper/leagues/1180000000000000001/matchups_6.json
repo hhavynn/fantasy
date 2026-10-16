@@ -1,0 +1,42 @@
+[
+ {
+  "roster_id": 1,
+  "matchup_id": 1,
+  "points": 101.5,
+  "custom_points": null,
+  "starters": [],
+  "players": [],
+  "starters_points": [],
+  "players_points": {}
+ },
+ {
+  "roster_id": 2,
+  "matchup_id": 1,
+  "points": 98.25,
+  "custom_points": null,
+  "starters": [],
+  "players": [],
+  "starters_points": [],
+  "players_points": {}
+ },
+ {
+  "roster_id": 3,
+  "matchup_id": 2,
+  "points": 80.0,
+  "custom_points": null,
+  "starters": [],
+  "players": [],
+  "starters_points": [],
+  "players_points": {}
+ },
+ {
+  "roster_id": 4,
+  "matchup_id": 2,
+  "points": 75.5,
+  "custom_points": null,
+  "starters": [],
+  "players": [],
+  "starters_points": [],
+  "players_points": {}
+ }
+]

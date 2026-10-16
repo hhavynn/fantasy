@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TeamLink } from "@/components/TeamLink";
 import { ShareBar } from "@/components/matchup/ShareBar";
 import { Delta, Notice, Section } from "@/components/ui";
 import type { ApiResult } from "@/lib/api";
@@ -12,7 +13,7 @@ import styles from "./home.module.css";
 function Side({ side, h, status, mine, leads }: { side: TeamSide; h: Headline; status: Matchup["status"]; mine: boolean; leads: boolean }) {
   return (
     <div className={cx(styles.side, mine ? styles.sideMe : styles.sideOpp)}>
-      <p className={styles.sideLabel}>{mine ? "You" : "Opponent"}</p>
+      <p className={styles.sideLabel}>{mine ? "Selected team" : "Opponent"}</p>
       <p className={styles.teamName}>
         <Link href={`/managers/${side.team_id}`}>{side.name}</Link>
       </p>
@@ -29,7 +30,7 @@ function Side({ side, h, status, mine, leads }: { side: TeamSide; h: Headline; s
 
 /** Compact matchup scoreboard: both teams, totals, margin and share. Degrades to a notice when the call failed. */
 export function MatchupCard({ result }: { result: ApiResult<Matchup> }) {
-  const link = <Link className={styles.cardLink} href="/matchup">Full matchup →</Link>;
+  const link = <TeamLink className={styles.cardLink} href="/matchup">Full matchup →</TeamLink>;
   if (!result.ok) {
     return (
       <Section title="This week" actions={link}>

@@ -4,7 +4,7 @@ export const RECS = ["ALL", "CLAIM", "WAIT", "IGNORE"] as const;
 export const REC_LABEL: Record<string, string> = { ALL: "Any", CLAIM: "Claim", WAIT: "Wait", IGNORE: "Ignore" };
 
 export const VIEWS: Record<string, string> = {
-  BEST: "Best moves for my team", FREE_AGENTS: "Free-agent adds", CLAIMS: "Waiver claims",
+  BEST: "Best moves for this team", FREE_AGENTS: "Free-agent adds", CLAIMS: "Waiver claims",
   STREAMING: "Streaming options", WATCHLIST: "Stashes / watchlist", ALL: "All evaluated",
 };
 

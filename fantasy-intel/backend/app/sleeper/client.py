@@ -190,6 +190,13 @@ class SleeperClient:
     def _fresh(self, fetched_at: float | None, now: float) -> bool:
         return fetched_at is not None and 0 <= now - fetched_at < self.players_max_age
 
+    def get_json(self, path: str) -> Any:
+        """GET any read-only API path (e.g. "/league/<id>/matchups/3") through the same TTL cache,
+        retry and error handling as the typed methods. `path` starts with "/"."""
+        if not path.startswith("/") or ".." in path:
+            raise ValueError("Sleeper API paths start with / and never contain ..")
+        return self._get_cached(path)
+
     def _get_cached(self, path: str) -> Any:
         now = self.clock()
         with self._lock:

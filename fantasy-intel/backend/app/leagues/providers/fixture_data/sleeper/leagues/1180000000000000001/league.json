@@ -1,0 +1,10 @@
+{"name": "Fixture Dynasty League", "status": "in_season", "sport": "nfl", "season_type": "regular",
+ "season": "2026", "total_rosters": 4, "league_id": "1180000000000000001",
+ "previous_league_id": "1050000000000000002", "draft_id": "1180000000000000003",
+ "bracket_id": 1404207029957996999, "loser_bracket_id": 1404207029957997001,
+ "roster_positions": ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "SUPER_FLEX", "K", "DEF", "BN", "BN", "BN"],
+ "scoring_settings": {"rec": 0.5, "pass_td": 4.0, "rush_yd": 0.1},
+ "settings": {"type": 2, "playoff_teams": 4, "playoff_week_start": 15, "playoff_round_type": 0,
+              "start_week": 1, "waiver_type": 2, "waiver_budget": 100, "reserve_slots": 1,
+              "taxi_slots": 1, "trade_deadline": 11, "leg": 6, "num_teams": 4},
+ "metadata": {}, "avatar": null}
