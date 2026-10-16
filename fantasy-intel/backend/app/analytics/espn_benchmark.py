@@ -44,6 +44,7 @@ import numpy as np
 import polars as pl
 
 from ..db.connection import fetch_dicts, table_exists
+from . import production_forecasts as pf
 from . import weekly_learning as wl
 from .forecast_backtest import PROMOTION_CRITERIA, metrics, week_bootstrap_mae_diff
 from .forecast_features import POSITIONS, Sources, load_sources
@@ -77,6 +78,8 @@ EXCLUSIONS = (
     "outcome_missing_ingestion", "outcome_bye", "outcome_unresolved_identity", "week_not_fully_final")
 
 NOTES = [
+    "Forecasts come from production_forecasts.pregame_forecasts (the immutable run-keyed store); only a pre-v8 "
+    "database falls back to the legacy table, and the scorecard says which (`forecast_source`).",
     "Read-only. Nothing here promotes a model or changes a projection; ESPN stays the default source.",
     "MAE difference = MAE(ours) - MAE(ESPN); negative means the independent model is closer. Bias is "
     "mean(actual - prediction): positive means under-projection (forecast_backtest.metrics convention).",
@@ -106,7 +109,8 @@ class BenchmarkConfig:
 
 def legacy_forecast_reader(con, season: int, weeks: Iterable[int] | None = None, *, model_version: str,
                            scoring_fingerprint: str) -> tuple[list[dict], list[dict]]:
-    """production_forecasts.pregame_forecasts contract over the CURRENT tables
+    """Pre-v8 FALLBACK only (the default reader is production_forecasts.pregame_forecasts whenever
+    independent_projection_rows exists): the same contract over the legacy tables
     (independent_projection_runs + independent_player_projections), kickoff-checked per player.
 
     The legacy table keeps one row per (season, week, player): a later `project --week N` replaces
@@ -287,14 +291,19 @@ def evaluation_rows(con, season: int, weeks: Iterable[int] | None = None, *,
     forecast reader, with `exclusion_reason` set for every row that must not be scored.
     Returns (rows with exactly ROW_KEYS, meta). `scoring`: a resolved SkillScoring (default: the
     league's); `sources`/`fetched_at` can be injected (tests) and default to the database's."""
-    reader = forecast_reader or legacy_forecast_reader
+    if forecast_reader is not None:
+        reader, source = forecast_reader, "injected"
+    elif table_exists(con, pf.ROWS):      # schema v8: new production runs go only to the run-keyed table
+        reader, source = pf.pregame_forecasts, "production_forecasts"
+    else:                                 # pre-v8 database: the legacy table is all there is
+        reader, source = legacy_forecast_reader, "legacy"
     if scoring is None:
         _, scoring = league_scoring(con, season)
     scoring.require_supported()
     fingerprint = scoring.fingerprint
     week_list = sorted({int(w) for w in weeks}) if weeks is not None else _all_weeks(con, season)
     meta = {"season": season, "weeks": week_list, "model_version": model_version, "scoring_fingerprint": fingerprint,
-            "reader_exclusions": []}
+            "forecast_source": source, "reader_exclusions": []}
     if not week_list:
         return [], meta
     if sources is None:
@@ -543,6 +552,14 @@ def _count(rows: list[dict], field: str, order: Iterable[str] | None = None) -> 
     return {k: c[k] for k in keys}
 
 
+def reader_exclusion_counts(exclusions: list[dict]) -> dict:
+    """Forecast runs the reader dropped, by reason (run-specific reasons are kept verbatim)."""
+    c: dict[str, int] = {}
+    for e in exclusions:
+        c[e["reason"]] = c.get(e["reason"], 0) + 1
+    return dict(sorted(c.items()))
+
+
 def coverage(rows: list[dict]) -> dict:
     """Exclusion and outcome diagnostics, in total and per week and position."""
     cells = []
@@ -582,7 +599,7 @@ def scorecard(con, season: int, weeks: Iterable[int] | None = None, *, forecast_
                                      scoring=scoring, sources=sources, fetched_at=fetched_at)
     except ValueError as err:     # unsupported league scoring: no labels can be computed
         return {**base, "available": False, "unavailable_reason": str(err), "weeks": [], "comparisons": {},
-                "coverage": None, "reader_exclusions": []}
+                "coverage": None, "forecast_source": None, "reader_exclusions": []}
     base["params"]["scoring_fingerprint"] = meta["scoring_fingerprint"]
     early = [dict(r, exclusion_reason=None) for r in rows if r["exclusion_reason"] == "week_not_fully_final"]
     preliminary = {"weeks": sorted({r["week"] for r in early}),
@@ -593,7 +610,10 @@ def scorecard(con, season: int, weeks: Iterable[int] | None = None, *, forecast_
             "fully_final_weeks": meta["fully_final_weeks"], "partial_weeks": meta["partial_weeks"],
             "comparisons": {name: compare(rows, name, cfg) for name in COMPARISONS},
             "preliminary": preliminary,
-            "coverage": coverage(rows), "reader_exclusions": meta["reader_exclusions"]}
+            "forecast_source": meta["forecast_source"],
+            "coverage": {**coverage(rows),
+                         "forecast_runs_excluded_by_reason": reader_exclusion_counts(meta["reader_exclusions"])},
+            "reader_exclusions": meta["reader_exclusions"]}
 
 
 def to_json(card: dict) -> str:

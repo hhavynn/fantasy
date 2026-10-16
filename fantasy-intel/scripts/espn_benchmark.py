@@ -51,7 +51,8 @@ def _config(args) -> eb.BenchmarkConfig:
 def _table(card: dict) -> str:
     if not card["available"]:
         return f"Benchmark unavailable: {card['unavailable_reason']}"
-    lines = [f"ESPN benchmark, season {card['season']}, weeks {card['weeks']}, model {card['model_version']}"]
+    lines = [f"ESPN benchmark, season {card['season']}, weeks {card['weeks']}, model {card['model_version']}, "
+             f"forecast source {card['forecast_source']}"]
     need = card["params"]["espn_min_matched_per_position"]
     lines.append(f"evidence gate (per position): >= {need} model-covered rows and >= {card['params']['min_weeks']} "
                  f"fully final weeks (counted: {card['fully_final_weeks']}); MAE diff = ours - ESPN (negative: ours closer)")
@@ -72,7 +73,7 @@ def _table(card: dict) -> str:
     lines.append("exclusions: " + json.dumps(cov["by_exclusion_reason"]))
     lines.append("outcomes:   " + json.dumps(cov["by_outcome_status"]))
     if card["reader_exclusions"]:
-        lines.append(f"{len(card['reader_exclusions'])} forecast run/row exclusions from the reader (see --json)")
+        lines.append("forecast runs excluded: " + json.dumps(cov["forecast_runs_excluded_by_reason"]))
     return "\n".join(lines)
 
 

@@ -116,12 +116,25 @@ contract of `production_forecasts.pregame_forecasts` (CONTRACTS section 5). Rows
 espn_player_id, gsis_id, position, run_id, run_created_at, model_version, artifact_id, artifact_created_at,
 scoring_fingerprint, nfl_team, kickoff, pregame, coverage_status, projected_points, p_play, expected_points`.
 
-`legacy_forecast_reader` (the current default) reads `independent_projection_runs` +
-`independent_player_projections` and applies the kickoff and artifact checks itself. Limitation: the legacy
-table keeps one row per player-week and a later `project --week N` replaces the rows of an earlier run, so only
-the surviving run's forecast can be recovered; earlier pregame forecasts are lost, which makes legacy results a
-lower bound on coverage. End-to-end integration with the immutable store is blocked on Workstream A: when
-`production_forecasts.pregame_forecasts` lands, pass it as `forecast_reader` and make it the default.
+**Integration with the immutable store is complete.** The default reader is
+`production_forecasts.pregame_forecasts` (schema v8, `independent_projection_rows`, written by
+`independent_projection_store.write_run`): per player-week, the row of the LATEST eligible run created strictly
+before that player's own kickoff, so a rerun after kickoff is never credited and an earlier pre-kickoff run is not
+lost when a later one exists. The scorecard says where forecasts came from in `forecast_source`:
+
+* `production_forecasts`: the run-keyed table exists (every schema v8 database). The frozen legacy table is not read.
+* `legacy`: only a pre-v8 database (no `independent_projection_rows`) falls back to `legacy_forecast_reader`, which
+  reads `independent_projection_runs` + `independent_player_projections` and applies the kickoff and artifact checks
+  itself. The legacy table keeps one row per player-week and a later `project --week N` replaced the rows of an
+  earlier run, so only the surviving run's forecast is recoverable: coverage is a lower bound.
+* `injected`: a `forecast_reader` passed by the caller.
+
+The reader's run-level exclusions (other model or scoring, artifact fitted after the first kickoff, integrity
+failures, runs whose rows were destroyed by the pre-v8 overwrite, runs created after every player's kickoff) are
+passed through verbatim as `reader_exclusions` and counted by reason in
+`coverage.forecast_runs_excluded_by_reason`. `evaluation_rows` still re-verifies every returned row (pregame
+against the player's own kickoff, model, scoring, artifact before the first kickoff, crosswalk id): defence in
+depth that rows from `pregame_forecasts` pass as delivered.
 
 ## Reading the result honestly
 

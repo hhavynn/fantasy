@@ -26,8 +26,13 @@ from app.analytics.forecast_features import load_panel
 from app.analytics.independent_projections import MODEL_VERSION
 from app.analytics.league_scoring import resolve_skill_scoring
 
+from app.analytics import production_forecasts as pf
+from app.db.connection import fetch_dicts, insert_rows
+
 from synthetic_forecast import SCORING_ITEMS, SLOTS, TEAMS, add_league, database, gsis
 from synthetic_nfl import record_fetch
+from test_independent_projections import live  # noqa: F401  (fixture: schema-v8 database with a week-5 history)
+from test_production_forecasts import store
 
 UTC = timezone.utc
 SCORING = resolve_skill_scoring(SCORING_ITEMS)
@@ -57,7 +62,10 @@ def world(tmp_path):
 
 
 def make_world(path, absent=(), skip_stats_teams=()):
+    """A PRE-v8 database: runs live in the legacy per-week table only (the run-keyed table does not exist), so the
+    default reader is the legacy fallback. Schema-v8 behaviour is tested against write_run below."""
     con = database(path, [2026], unfinished={2026: 7})
+    con.execute("DROP TABLE independent_projection_rows")
     add_league(con, 2026, 7)
     record_fetch(con, FETCHED, season=2026)
     roster = [{"season": 2026, "week": w, "gsis_id": gsis(t, s), "team": t, "game_type": "REG", "position": pos,
@@ -727,3 +735,94 @@ def test_app_modules_never_reference_the_benchmark():
     offenders = [p.relative_to(app).as_posix() for p in app.rglob("*") if p.suffix in (".py", ".sql")
                  and p.name != "espn_benchmark.py" and "espn_benchmark" in p.read_text()]
     assert offenders == []
+
+
+# ----------------------------------------------------------------------------- schema v8: production_forecasts
+
+
+# Week 5 of the `live` fixture kicks off 2026-09-05 17:00 UTC; the artifact is fitted 2026-09-01 (store's FIT).
+W5_PRE_A, W5_PRE_B, W5_POST = datetime(2026, 9, 4, 12, 0), datetime(2026, 9, 5, 12, 0), datetime(2026, 9, 5, 18, 0)
+
+
+def with_participation(values):
+    """Give every projected row a participation estimate: expected points = values.get(player, 5.0)."""
+    def fn(rows):
+        for r in rows:
+            if r["coverage_status"] == "projected":
+                r["p_play"], r["expected_points"] = 0.9, values.get(r["espn_player_id"], 5.0)
+    return fn
+
+
+def v8_world(live):
+    con, src, _ = live
+    record_fetch(con, FETCHED, season=2026)         # week 5 is final: the NFL data was fetched long after it
+    snap = datetime(2026, 9, 4, 18, 0)
+    for pid in (1, 6, 9, 11):
+        con.execute("INSERT INTO espn_projection_history VALUES (CAST(? AS DATE), 2026, ?, 5, ?, ?)",
+                    [snap.date(), pid, 10.0 + pid, snap])
+    return con, src
+
+
+def test_end_to_end_over_write_run_uses_each_players_latest_pregame_run(live):  # noqa: F811
+    con, src = v8_world(live)
+    first, _, _ = store(con, src, W5_PRE_A, week=5, mutate=with_participation({1: 20.0}))
+    second, _, _ = store(con, src, W5_PRE_B, week=5, mutate=with_participation({1: 21.0}))
+    rerun, _, _ = store(con, src, W5_POST, week=5, mutate=with_participation({1: 99.0, 6: 99.0}))
+    assert len({first["run_id"], second["run_id"], rerun["run_id"]}) == 3
+    rows, meta = rows_of(con, weeks=[5])
+    assert meta["forecast_source"] == "production_forecasts"
+    r1, r6 = pid_row(rows, 5, 1), pid_row(rows, 5, 6)
+    assert r1["exclusion_reason"] is None and r6["exclusion_reason"] is None
+    assert r1["run_id"] == second["run_id"] and r1["ours_independent_pred"] == 21.0         # latest PRE-kickoff run
+    assert r1["ours_horizon_h"] == 5.0 and r1["espn_horizon_h"] == 23.0 and r1["ours_origin"] == "ours"
+    assert r6["run_id"] == second["run_id"] and r6["ours_independent_pred"] == 5.0           # the 99.0 rerun is never used
+    assert rerun["run_id"] not in {r["run_id"] for r in rows}
+    assert not any(r["ours_independent_pred"] == 99.0 for r in rows)
+    [ex] = [e for e in meta["reader_exclusions"] if e["run_id"] == rerun["run_id"]]
+    assert ex["week"] == 5 and ex["reason"].startswith("post-kickoff")
+    # the reader's rows pass the benchmark's own re-check as delivered (aware UTC, pregame, artifact file sha)
+    fc, _ = pf.pregame_forecasts(con, 2026, [5], model_version=MODEL_VERSION, scoring_fingerprint=FP)
+    assert fc and all(f["pregame"] is True and f["artifact_id"] == "a" * 64 and f["run_created_at"].tzinfo
+                      and f["kickoff"].tzinfo and f["artifact_created_at"].tzinfo for f in fc)
+    # a score from the stored runs: ESPN pre-game snapshots exist for 4 players
+    card = eb.scorecard(con, 2026, [5], scoring=SCORING)
+    # (the synthetic artifact has no TE model: player 9 is an ESPN-fallback row, in the consumer view only)
+    assert card["forecast_source"] == "production_forecasts" and card["comparisons"]["pure_independent"]["n"] == 3
+    assert card["comparisons"]["consumer_visible"]["n"] == 4
+    assert card["comparisons"]["consumer_visible"]["fallback_share"] == 0.25
+    assert card["coverage"]["forecast_runs_excluded_by_reason"] == {ex["reason"]: 1}
+    assert eb.scorecard(con, 2026, [5], scoring=SCORING) == card
+
+
+def test_a_destroyed_legacy_run_is_excluded_with_its_reason(live):  # noqa: F811
+    con, src = v8_world(live)
+    good, _, _ = store(con, src, W5_PRE_A, week=5, mutate=with_participation({1: 20.0}))
+    run = fetch_dicts(con, "SELECT * FROM independent_projection_runs WHERE run_id = ?", [good["run_id"]])[0]
+    # what the pre-v8 per-week overwrite left behind after migration: a run row whose rows are gone, and
+    # that is newer than the good run (so a naive reader would show an empty forecast)
+    insert_rows(con, "independent_projection_runs", [{**run, "run_id": "ifp-destroyed", "created_at": W5_PRE_B,
+                                                      "row_count": 0, "content_sha256": None,
+                                                      "migrated_from_legacy": True}])
+    rows, meta = rows_of(con, weeks=[5])
+    assert pid_row(rows, 5, 1)["run_id"] == good["run_id"] and pid_row(rows, 5, 1)["ours_independent_pred"] == 20.0
+    [ex] = [e for e in meta["reader_exclusions"] if e["run_id"] == "ifp-destroyed"]
+    assert ex["week"] == 5 and ex["reason"].startswith("forecast rows missing")
+    assert "ifp-destroyed" not in {r["run_id"] for r in rows}
+    card = eb.scorecard(con, 2026, [5], scoring=SCORING)
+    assert ex["reason"] in card["coverage"]["forecast_runs_excluded_by_reason"]
+    assert ex in card["reader_exclusions"]
+
+
+def test_forecast_source_is_labelled_and_legacy_is_only_the_pre_v8_fallback(live, tmp_path):  # noqa: F811
+    con, src = v8_world(live)
+    assert eb.scorecard(con, 2026, [5], scoring=SCORING)["forecast_source"] == "production_forecasts"
+    # a v8 database never reads the frozen legacy table, even when it still holds rows
+    con.execute("INSERT INTO independent_projection_runs (run_id, season, week, model_version, scoring_fingerprint, "
+                "artifact_created_at, created_at) VALUES ('legacy-run', 2026, 5, ?, ?, ?, ?)",
+                [MODEL_VERSION, FP, "2026-09-01T00:00:00+00:00", W5_PRE_A])
+    rows, meta = rows_of(con, weeks=[5])
+    assert meta["forecast_source"] == "production_forecasts" and all(r["run_id"] is None for r in rows)
+    injected = eb.scorecard(con, 2026, [5], scoring=SCORING, forecast_reader=eb.legacy_forecast_reader)
+    assert injected["forecast_source"] == "injected"
+    pre_v8 = make_world(tmp_path / "pre.duckdb")
+    assert eb.scorecard(pre_v8, 2026, scoring=SCORING)["forecast_source"] == "legacy"
