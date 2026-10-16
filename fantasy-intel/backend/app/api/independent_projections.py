@@ -4,6 +4,11 @@ GET /api/projections/independent?week=7[&position=WR][&team_id=3]
 
 No training, no syncs, no ESPN calls and no writes. Independent estimates and ESPN projections
 are separate fields; an independent value is never replaced by ESPN's, and unknown is null.
+
+The run shown is the one every consumer view shows (projection_source.select_run): the production model
+(ifp-2.0.0) under the league's current scoring, else the labeled ifp-1.0.0 fallback, and only a run whose stored
+rows verify against its content hash and whose artifact is approved. Players are served from exactly the rows
+that were verified. `governance` says what the served model's approval does and does not establish.
 """
 
 from __future__ import annotations
@@ -11,8 +16,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics import production_forecasts as pf
-from ..db.connection import table_exists
-from .deps import db, one, rows
+from ..analytics import projection_source as ps
+from ..db.connection import fetch_dicts, table_exists
+from .deps import db, one
 
 router = APIRouter(prefix="/api", tags=["independent projections"])
 
@@ -26,9 +32,11 @@ NOTES = [
     "participation.p_play * projected_points is the unconditional expectation (null without a participation estimate).",
     "Compare ESPN with expected_points (comparison.expected_minus_espn): both are unconditional. "
     "independent_minus_espn compares a conditional estimate and is marked not comparable when ESPN projects 0.",
-    "Experimental positions are research output: do not treat them as better than ESPN.",
-    "This view shows the latest stored run and is not restricted to the approved production artifact; the opt-in "
-    "projection switch and the evidence readers are.",
+    "The production model ifp-2.0.0 was approved by an owner override, not by evidence: its validation is "
+    "historical research only and it is not shown to be better than ESPN (see governance). No position is "
+    "Start/Sit-ready. A week without an eligible ifp-2.0.0 run shows the ifp-1.0.0 fallback, labeled.",
+    "This is the live view (the newest verified run). independent.pregame says whether a row was made before the "
+    "player's own kickoff; only pregame rows are ever used as accuracy evidence.",
 ]
 
 
@@ -45,9 +53,9 @@ def _evidence(p: dict, diff: float | None) -> list[dict]:
     return out
 
 
-def _player(p: dict, run: dict | None) -> dict:
-    status = (run or {}).get("model_status") or {}
-    pos_status = status.get(p["position"]) or {}
+def _player(p: dict, run: dict | None, status: dict) -> dict:
+    allowed = ps.GOVERNANCE.get((run or {}).get("model_version"), {}).get("start_sit_ready", False)
+    pos_status = ((run or {}).get("model_status") or {}).get(p["position"]) or {}
     indep = p.get("projected_points")
     espn = p.get("espn_projected_points")
     diff = round(indep - espn, 2) if indep is not None and espn is not None else None
@@ -64,8 +72,9 @@ def _player(p: dict, run: dict | None) -> dict:
         "independent": {
             "projected_points": indep, "interval_80": interval, "model": p.get("model"),
             "model_version": (run or {}).get("model_version"),
-            "model_status": pos_status.get("status") if p["position"] in ("QB", "RB", "WR", "TE") else "unsupported",
-            "start_sit_ready": bool(pos_status.get("start_sit_ready")),
+            "model_status": status.get(p["position"]) if p["position"] in ps.POSITIONS else "unsupported",
+            "start_sit_ready": bool(allowed and pos_status.get("start_sit_ready")),
+            "pregame": p.get("pregame"),
             "coverage_status": p.get("coverage_status"), "games_used": p.get("games_used"),
             "latest_usage": ({"season": p["latest_usage_season"], "week": p["latest_usage_week"]}
                              if p.get("latest_usage_week") is not None else None),
@@ -105,42 +114,53 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
     if position and position not in POSITIONS:
         raise ValueError(f"position must be one of {', '.join(POSITIONS)}")
     base = {"schema_version": SCHEMA_VERSION, "league": {"id": lg["league_id"], "season": lg["season"]},
-            "week": week, "notes": NOTES}
-    rows_table = pf.rows_source(con)
-    if not (table_exists(con, "independent_projection_runs") and rows_table):
+            "week": week, "notes": NOTES, "governance": ps.governance(None)}
+    if not (table_exists(con, pf.RUNS) and pf.rows_source(con)):
         return {**base, "available": False, "unavailable_reason": "Independent projections have not been computed "
                 "(run scripts/backtest_independent_projections.py project).", "run": None, "model_status": None,
                 "players": []}
-    run = pf.latest_run(con, lg["season"], week)   # newest run that still has its rows; runs are immutable
+    sel = ps.select_run(con, lg["season"], week)
+    run = sel["run"]
     if run is None:
-        return {**base, "available": False, "unavailable_reason": f"No independent projection run for week {week}.",
-                "run": None, "model_status": None, "players": []}
+        return {**base, "available": False, "unavailable_reason": sel["unavailable_reason"], "run": None,
+                "model_status": None, "players": []}
     import json
     for k in ("model_status", "evaluation", "participation_status", "participation_evaluation"):
         if isinstance(run.get(k), str):
             run[k] = json.loads(run[k])
-    where, params = ["p.season = ?", "p.week = ?", "p.run_id = ?"], [lg["season"], week, run["run_id"]]
-    if position:
-        where.append("p.position = ?")
-        params.append(position)
-    if team_id is not None:
-        where.append("fp.on_team_id = ?")
-        params.append(team_id)
-    players = rows(con, f"""
-        SELECT p.*, fp.full_name, fp.on_team_id, fp.injury_status,
-               e.projected_points AS espn_projected_points, e.synced_at AS espn_synced_at
-        FROM {rows_table} p
-        LEFT JOIN fantasy_players fp ON fp.espn_player_id = p.espn_player_id
-        LEFT JOIN espn_player_weekly_points e ON e.espn_player_id = p.espn_player_id
-             AND e.season = p.season AND e.scoring_period = p.week
-        WHERE {' AND '.join(where)}
-        ORDER BY p.projected_points DESC NULLS LAST, p.espn_player_id""", params)
-    for p in players:
+    now_kick = pf.team_kickoffs(con, lg["season"], week)
+    players = []
+    for r in sel["rows"]:
+        if position and r["position"] != position:
+            continue
+        p = dict(r)
         for k in ("missing_inputs", "flags", "explanation", "participation"):
             if isinstance(p.get(k), str):
                 p[k] = json.loads(p[k])
+        p["pregame"] = pf.is_pregame(run["created_at"], pf.own_kickoff(r, week, now_kick))
+        players.append(p)
+    ids = [p["espn_player_id"] for p in players]
+    fantasy = {f["espn_player_id"]: f for f in fetch_dicts(
+        con, "SELECT espn_player_id, full_name, on_team_id, injury_status FROM fantasy_players "
+             "WHERE espn_player_id IN (SELECT unnest(?))", [ids])} if ids and table_exists(con, "fantasy_players") else {}
+    espn = {e["espn_player_id"]: e for e in fetch_dicts(
+        con, "SELECT espn_player_id, projected_points, synced_at FROM espn_player_weekly_points "
+             "WHERE season = ? AND scoring_period = ? AND espn_player_id IN (SELECT unnest(?))",
+        [lg["season"], week, ids])} if ids and table_exists(con, "espn_player_weekly_points") else {}
+    for p in players:
+        f, e = fantasy.get(p["espn_player_id"]) or {}, espn.get(p["espn_player_id"]) or {}
+        p.update(full_name=f.get("full_name"), on_team_id=f.get("on_team_id"), injury_status=f.get("injury_status"),
+                 espn_projected_points=e.get("projected_points"), espn_synced_at=e.get("synced_at"))
+    if team_id is not None:
+        players = [p for p in players if p["on_team_id"] == team_id]
+    players.sort(key=lambda p: (p["projected_points"] is None, -(p["projected_points"] or 0), p["espn_player_id"]))
+    status = ps.consumer_status(run)
     return {**base, "available": True, "unavailable_reason": None,
-            "run": {"run_id": run["run_id"], "model_version": run["model_version"],
+            "governance": ps.governance(run["model_version"]),
+            "run": {"run_id": run["run_id"], "model_version": run["model_version"], "is_fallback": sel["fallback"],
+                    "fallback_reason": (f"No eligible {ps.MODEL_VERSION} run for week {week}; the retired previous "
+                                        f"model {run['model_version']} is shown.") if sel["fallback"] else None,
+                    "skipped_runs": sel["skipped"],
                     "artifact_created_at": run["artifact_created_at"], "created_at": str(run["created_at"]),
                     "scoring_fingerprint": run["scoring_fingerprint"],
                     "artifact_id": run.get("artifact_id"), "content_sha256": run.get("content_sha256"),
@@ -148,12 +168,28 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
                                        "data_through_week": run["data_through_week"],
                                        "rule": "only NFL games completed before the target week"},
                     "nfl_synced_at": str(run["nfl_synced_at"]) if run.get("nfl_synced_at") else None,
+                    "artifact_model_status": run["model_status"],
                     "heldout_evaluation": run.get("evaluation"),
                     "participation": ({"model_version": run["participation_version"],
                                        "status": run.get("participation_status"),
                                        "heldout_evaluation": run.get("participation_evaluation")}
                                       if run.get("participation_version") else None)},
-            "model_status": run["model_status"], "players": [_player(p, run) for p in players]}
+            "model_status": _status_detail(run, status), "players": [_player(p, run, status) for p in players]}
+
+
+def _status_detail(run: dict, status: dict) -> dict:
+    """Per position {status, start_sit_ready, validated_for, reasons} as consumers may state it. The run's own
+    stored status (frozen at training time) is under run.artifact_model_status."""
+    g = ps.GOVERNANCE.get(run["model_version"], {})
+    out = {}
+    for pos in ps.POSITIONS:
+        stored = (run.get("model_status") or {}).get(pos) or {}
+        override = status.get(pos) == ps.OVERRIDE_STATUS
+        out[pos] = {"status": status.get(pos),
+                    "start_sit_ready": bool(g.get("start_sit_ready") and stored.get("start_sit_ready")),
+                    "validated_for": None if override else stored.get("validated_for"),
+                    "reasons": [g["status_note"]] if override else (stored.get("reasons") or [])}
+    return out
 
 
 @router.get("/projections/independent")
