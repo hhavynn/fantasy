@@ -619,11 +619,12 @@ def scene_hx_rank(img, t, dur, spec, c):
         f2.putalpha(ImageChops.multiply(f2.getchannel("A"), mask))
         M.paste(img, f2, cx, cy, 1.0, M.clamp(open_k * 2))
     pos = POS_WORD.get(c.p["position"], "player").upper()
-    k2 = M.clamp((t - t_open - 0.2) * 4)                             # the headline turns into the verdict, up top
-    M.put_text(img, f"{c.d(spec['games'])} {pos} GAMES THIS SEASON", M.CENTER_X, 300, size=58, fill=K.WHITE,
-               stroke=5, max_width=960, alpha=1 - k2)
-    M.put_text(img, "NOBODY'S SEEN MORE" if spec.get("rank1") else f"{c.d(spec['rank']).upper()}-MOST",
-               M.CENTER_X, 300, size=96, fill=GOLD, stroke=9, alpha=k2, max_width=960, scale=0.8 + 0.2 * k2)
+    swap = t_open + 0.2                                              # the headline is replaced by the verdict, up top
+    if t < swap - 0.02:
+        M.put_text(img, f"{c.d(spec['games'])} {pos} GAMES THIS SEASON", M.CENTER_X, 300, size=58, fill=K.WHITE,
+                   stroke=5, max_width=960)
+    K.slam(img, "NOBODY'S SEEN MORE" if spec.get("rank1") else f"{c.d(spec['rank']).upper()}-MOST",
+           M.CENTER_X, 300, t, swap, 96, fill=GOLD, stroke=9)
     K.burst(img, cx, cy, K.hit_strength(t, [hit], 0.3), GOLD, rays=28, r0=r + 20)
     _finish(img, t, dur, spec, c, praise=True)
 
