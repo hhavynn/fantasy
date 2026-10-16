@@ -70,7 +70,7 @@ def input_fingerprint(args, src, scoring_fingerprint: str, weeks) -> str:
     parts = {"season": args.season, "weeks": weeks, "scoring": scoring_fingerprint, "version": aw.AW_VERSION,
              "configs": {k: asdict(c) for k, c in aw.CONFIGS.items()}, "polars": pl.__version__,
              "code": hashlib.sha256(b"".join(code)).hexdigest()[:16],
-             **{n: _frame_hash(getattr(src, n)) for n in ("panel", "games", "injuries", "exits", "rosters")}}
+             **{n: _frame_hash(getattr(src, n)) for n in ("panel", "games", "defense", "injuries", "exits", "rosters")}}
     return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
