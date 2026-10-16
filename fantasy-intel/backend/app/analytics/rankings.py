@@ -30,6 +30,7 @@ from ..db.connection import fetch_dicts
 from . import forward_ours
 from . import projection_source as ps
 from .availability import availability, latest_injuries
+from .legacy_league import latest_league
 from .projections import league_window, load_schedule
 from .ratings_adapter import CONTRACT, public_rating
 
@@ -363,10 +364,10 @@ def build_rankings(con, *, position: str = "ALL", horizon: str = "week", source:
     the league is not synced or its current week is unknown."""
     position, horizon, source, sort_key, direction, needle, status, limit, offset = _validate(
         position, horizon, source, sort, dir, q, status, limit, offset)
-    lg = fetch_dicts(con, """SELECT league_id, season, name FROM leagues ORDER BY synced_at DESC LIMIT 1""")
-    if not lg:
+    lg = latest_league(con, ["league_id", "season", "name"])
+    if lg is None:
         raise RankingsUnavailable("ESPN league not synced yet. Run scripts/sync_espn.py.")
-    league_id, season = lg[0]["league_id"], lg[0]["season"]
+    league_id, season = lg["league_id"], lg["season"]
     lw = league_window(con, season)
     if lw is None:
         raise RankingsUnavailable("The league's current scoring period is unknown. Run scripts/sync_espn.py.")
@@ -511,7 +512,7 @@ def build_rankings(con, *, position: str = "ALL", horizon: str = "week", source:
         "scoring": {"projection_units": "league scoring", "rating_units": "full PPR (nflverse)",
                     "ours_supported": fp is not None,
                     "ours_reason": None if fp is not None else f"No independent projections: {why_scoring}."},
-        "league_context": {"available": bool(teams), "league_name": lg[0]["name"], "teams": len(teams) or None,
+        "league_context": {"available": bool(teams), "league_name": lg["name"], "teams": len(teams) or None,
                            "my_team_id": my_team},
         "freshness": {"espn_projections_synced_at": _newest(espn_synced),
                       "player_scores_computed_at": _newest(p["scores_computed_at"] for p in scored),
