@@ -871,6 +871,16 @@ Feature store 2020-2026 (42.7k rows, with classification) 6.4 s; development gri
 penalties 16 s (parallel); confirmation 2.8 s; weekly `train` ~10 s; `predict` ~1 s; play-by-play
 sync ~0.5 s per season (nflverse cache). Artifacts ~30 KB each, ledger runs ~0.7 MB per week (436 players in week 6).
 
+## Point distributions (research, ifpd-0.1.0)
+
+`docs/research/fantasy_point_distributions.md`: calibrated P10/P50/P90, P(points >= 10/15/20) and
+unconditional mixtures around the unchanged ifp-1.0.0 mean (`app/analytics/point_distributions.py`,
+`scripts/point_distribution_research.py`; never imported by the app). Conditional ranges pass the
+pre-registered bar at every position on 2023-24 and beat the existing tercile bands on CRPS for
+RB/WR/TE; unconditional ranges are publishable in research terms for WR/TE only (QB/RB participation
+is experimental). The existing `interval_80` and its QB withholding are unchanged; nothing is wired
+into the API, Start/Sit or the website.
+
 ## Known biases and unsupported populations
 
 * **`projected_points` is still conditional on playing**; use `expected_points` for an

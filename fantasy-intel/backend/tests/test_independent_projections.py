@@ -309,7 +309,8 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                # ifp-2 research challenger + weekly learning pipeline (shadow only; nothing imports them,
                # see tests/test_weekly_learning.py::test_weekly_pipeline_never_imports_into_consumers)
                "challenger.py", "weekly_learning.py",
-               "source_provenance.py"}   # pregame source snapshots of the weekly pipeline (research only)
+               "source_provenance.py",   # pregame source snapshots of the weekly pipeline (research only)
+               "point_distributions.py"}   # research-only point distributions (never imported by the app)
     for f in APP.rglob("*"):
         if f.suffix not in (".py", ".sql") or f.name in allowed:
             continue
