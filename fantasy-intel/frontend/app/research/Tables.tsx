@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PlayerPhoto } from "@/components/PlayerPhoto";
 import { Badge, Section, SortableTh, TrendArrow, VisuallyHidden } from "@/components/ui";
 import { sortRows, type SortState } from "@/lib/sort";
 import {
@@ -47,7 +48,9 @@ export function Leaderboard({ slug, r, state, sort }: { slug: Slug; r: Opportuni
               <tr key={p.gsis_id} className={p.gsis_id === state.sel ? "mine" : undefined}>
                 <td>
                   <Link className="player-link" href={researchHref(slug, state, { sel: p.gsis_id })} scroll={false}
-                        aria-current={p.gsis_id === state.sel ? "true" : undefined}>{p.name}</Link>
+                        aria-current={p.gsis_id === state.sel ? "true" : undefined}>
+                    {p.espn_player_id !== null && <PlayerPhoto id={p.espn_player_id} name={p.name} inline />}{p.name}
+                  </Link>
                   <span className={styles.teamTag}>{p.team ?? "—"}</span>
                 </td>
                 {cols.map((c) => <Cell key={c.key} p={p} col={c.key} format={c.format} heat={!!c.heat} />)}

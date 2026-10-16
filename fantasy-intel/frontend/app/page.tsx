@@ -286,7 +286,7 @@ const TOOLS = [
     icon: <><path d="M9 3.5v11M3.5 9h11" /></> },
   { href: "/trades", title: "Trade analyzer", text: "Exact lineup impact of any trade, week by week.",
     icon: <><path d="M3 6h11l-3-3" /><path d="M15 12H4l3 3" /></> },
-  { href: "/players", title: "Player research", text: "Usage, expected points and role trends beneath the box score.",
+  { href: "/research", title: "Research lab", text: "Who has the biggest roles, and whether production is keeping up.",
     icon: <><circle cx="8" cy="8" r="4.5" /><path d="m11.5 11.5 3.5 3.5" /></> },
 ] as const;
 
