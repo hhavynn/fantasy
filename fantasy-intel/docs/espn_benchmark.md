@@ -6,6 +6,9 @@ It never promotes a model, changes a projection, writes the database, trains, or
 source. Nothing imports it (`app/analytics/espn_benchmark.py`, `scripts/espn_benchmark.py`,
 `tests/test_espn_benchmark.py`).
 
+`scripts/refresh_all.py` runs `record` for the latest fully final week at the end of every refresh
+(see "Weekly evidence routine (automated)" in `independent_projection_engine.md`); `--skip-evidence` turns it off.
+
 ```
 cd backend
 uv run python ../scripts/espn_benchmark.py score  --season 2026 [--weeks 1-6] [--json]
