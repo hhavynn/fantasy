@@ -59,7 +59,8 @@ def write(con, season: int) -> dict:
                 r = _row(pos, i, w)
                 if r:
                     rows.append({"season": season, "week": w, "gsis_id": g, "opponent": "OPP", **r})
-    replace_where(con, "player_week_usage", rows, "season = ?", [season])
+    # Only the synthetic ids are replaced: any other usage in the database stays as it is.
+    replace_where(con, "player_week_usage", rows, "season = ? AND gsis_id LIKE '00-SYN%'", [season])
     con.execute("DELETE FROM nfl_players WHERE gsis_id LIKE '00-SYN%'")
     replace_where(con, "nfl_players", players, "gsis_id LIKE '00-SYN%'")
     for g, espn in ESPN_LINKS.items():

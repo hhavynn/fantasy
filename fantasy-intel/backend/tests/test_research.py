@@ -240,3 +240,18 @@ def test_team_totals_fall_back_to_usage_rows_without_raw_stats(con):
     a = next(p for p in out["players"] if p["gsis_id"] == "WR-A")
     assert a["window"]["target_share"] == pytest.approx(0.6) and a["window"]["air_yards_share"] == pytest.approx(0.75)
     assert out["data"]["team_totals_source"] == "player_week_usage"
+
+
+def test_adot_pairs_air_yards_with_targets():
+    rows = [usage("WR-A", 1, targets=10, air_yards=100.0), usage("WR-A", 2, targets=10, air_yards=None)]
+    s = summarize_window(rows, "WR")
+    assert s["adot"] == pytest.approx(10.0)          # week 2's targets don't dilute the average depth
+    assert s["coverage"]["adot"] == 1
+
+
+def test_team_comes_from_latest_played_game_even_without_xfp(con):
+    rows = [usage("WR-A", w, team="KC") for w in (1, 2, 3)] + [usage("WR-A", 4, team="BUF", xfp=None)]
+    seed(con, rows)
+    p = build_opportunity(con, SEASON, "WR", min_games=1, min_volume=0)["players"][0]
+    assert p["team"] == "BUF" and p["window"]["weeks"] == [1, 2, 3]
+    assert build_opportunity(con, SEASON, "WR", min_volume=0, team="BUF")["players"][0]["gsis_id"] == "WR-A"

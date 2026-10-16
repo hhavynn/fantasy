@@ -292,9 +292,12 @@ def summarize_window(games: list[dict], position: str) -> dict:
     if position in ("WR", "TE"):
         rate("air_yards_pg", "air_yards")
         share("air_yards_share", "air_yards", "team_air_yards")
-        tgt = _total(games, "targets")
-        air = sum(g["air_yards"] for g in games if g.get("air_yards") is not None and g.get("targets") is not None)
-        out["adot"] = air / tgt if tgt else None
+        # aDOT pairs numerator and denominator: only games that report both air yards and targets.
+        paired = [g for g in games if g.get("air_yards") is not None and g.get("targets") is not None]
+        tgt = sum(g["targets"] for g in paired)
+        out["adot"] = sum(g["air_yards"] for g in paired) / tgt if tgt else None
+        if len(paired) < n:
+            coverage["adot"] = len(paired)
         ts, ays = out["target_share"], out["air_yards_share"]
         out["wopr"] = 1.5 * ts + 0.7 * ays if ts is not None and ays is not None else None
     if position == "RB":
@@ -455,7 +458,8 @@ def build_player(gsis: str, rows: list[dict], window: str, ctx: dict) -> dict | 
     s = summarize_window(games, position)
     mapping = ctx["mapping"].get(gsis, {"espn_player_id": None, "status": "unmapped"})
     espn_id = mapping.get("espn_player_id")
-    last = (games or rows)[-1]
+    # Current team from the latest played game, even one excluded for missing xFP (a trade shows at once).
+    last = ([r for r in rows if played(r)] or rows)[-1]
     player = {
         "gsis_id": gsis,
         "name": ctx["names"].get(gsis) or gsis,
