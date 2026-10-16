@@ -43,10 +43,11 @@ export function PromotionSection({ t }: { t: PromotionTracker }) {
     >
       <div className={styles.block}>
         <p className={styles.meta}>
-          Model <b>{t.model_version}</b> is research output. A position becomes a Start/Sit candidate only after it passes the
-          frozen criteria (held-out improvement of at least {barText} over the better trailing baseline with a 95% CI
-          below 0, then at least {c.espn_min_matched_per_position} matched pregame ESPN observations with MAE no worse than
-          ESPN) and you approve it.
+          Model <b>{t.model_version}</b> is production by owner override, not by these criteria: its validation so far is
+          historical research only and it is not shown to be better than ESPN. A position can be called Start/Sit-ready only
+          after it passes the frozen criteria (held-out improvement of at least {barText} over the better trailing baseline
+          with a 95% CI below 0, then at least {c.espn_min_matched_per_position} matched pregame ESPN observations with MAE
+          no worse than ESPN).
         </p>
         <div className={styles.padded}><SnapshotNotice t={t} /></div>
         {t.run_missing_reason && <div className={styles.padded}><Notice tone="caution" title="No stored held-out status">{t.run_missing_reason}</Notice></div>}
