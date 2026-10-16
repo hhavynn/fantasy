@@ -60,8 +60,7 @@ def _heldout() -> dict:
 def _cand_artifact(**extra) -> dict:
     held = _heldout()["positions"]
     return {"version": CAND, "scoring_fingerprint": FP, **extra,
-            "evaluation": {p: {k: held[p][k] for k in ("common_support_n", "relative_mae_improvement")}
-                           for p in reg.POSITIONS}}
+            "evaluation": {p: {k: deepcopy(held[p][k]) for k in reg.BOUND_HELDOUT_KEYS} for p in reg.POSITIONS}}
 
 
 @pytest.fixture
@@ -519,6 +518,10 @@ def test_malformed_report_fails_closed_without_crashing(env, kind, rel, mutate):
     (reg.HELDOUT, "reports/heldout.json", lambda o: o.update(scoring_fingerprint="other"), "heldout_report_subject"),
     (reg.HELDOUT, "reports/heldout.json", lambda o: o["positions"]["QB"].update(relative_mae_improvement=0.09),
      "artifact_report_binding"),
+    (reg.HELDOUT, "reports/heldout.json", lambda o: o["positions"]["RB"]["primary_minus_best_baseline_mae"].update(
+        ci95=[-0.9, -0.5]), "artifact_report_binding"),
+    (reg.HELDOUT, "reports/heldout.json", lambda o: o["espn_comparison"].update(matched_observations=1400),
+     "artifact_report_binding"),
 ])
 def test_report_of_another_model_is_rejected(env, kind, rel, mutate, check):
     """A hash-verified, strong report about a different model or artifact never counts."""
@@ -563,3 +566,51 @@ def test_hand_authored_rollback_must_target_the_restorable_previous_model(env):
     reg.entry(unpinned, MODEL_VERSION)["artifact"]["sha256"] = None
     assert any("no pinned artifact" in p for p in
                reg.verify_transition(unpinned, _hand_rollback(unpinned, MODEL_VERSION)))
+
+
+def test_artifact_report_binding_covers_gate_fields(env):
+    """An artifact embedding a FAILING bootstrap CI cannot be paired with a report showing a passing one."""
+    root, _, new = env
+    art = _cand_artifact()
+    art["evaluation"]["WR"]["primary_minus_best_baseline_mae"] = {"ci95": [-0.2, 0.3]}
+    reg.entry(new, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json", art)
+    rep = _gate(env, new)
+    assert not rep["activatable"] and "WR.primary_minus_best_baseline_mae" in str(
+        next(c for c in rep["checks"] if c["name"] == "artifact_report_binding")["observed"])
+    art = _cand_artifact()
+    del art["evaluation"]["TE"]["primary_minus_best_baseline_mae"]
+    reg.entry(new, CAND)["artifact"]["sha256"] = _write(root, f"candidates/{CAND}.json", art)
+    assert _results(_gate(env, new))["artifact_report_binding"] == reg.FAIL
+
+
+@pytest.mark.parametrize("field,value", [("from", "ifp-2.0.0"), ("at", "2027-02-01T00:00:00+00:00"),
+                                         ("by", "someone-else"), ("reason", ""), ("from", None)])
+def test_promotion_history_event_must_match_the_approval(env, field, value):
+    _, old, new = env
+    bad = deepcopy(new)
+    if value is None:
+        bad["history"][-1].pop(field)
+    else:
+        bad["history"][-1][field] = value
+    assert any("final history event" in p for p in reg.verify_transition(old, bad))
+    assert not _gate(env, bad)["activatable"]
+
+
+def test_hand_authored_rollback_event_must_match_its_record(env):
+    _, _, promoted = env
+    bad = _hand_rollback(promoted, MODEL_VERSION)
+    bad["history"][-1]["by"] = "someone-else"
+    assert any("rollback` history event" in p for p in reg.verify_transition(promoted, bad))
+
+
+@pytest.mark.parametrize("value", ["ifp-9.0.0", ["ifp", CAND], None, 7])
+def test_malformed_production_value_fails_closed(env, value):
+    _, old, new = env
+    bad = deepcopy(new)
+    bad["production"] = value
+    assert any("production must be an object" in p for p in reg.validate_manifest(bad))
+    rep = _gate(env, bad)
+    assert not rep["activatable"] and rep["blocking"]
+    bad = deepcopy(new)
+    bad["history"].append("promotion")
+    assert any("history event must be an object" in p for p in reg.validate_manifest(bad))

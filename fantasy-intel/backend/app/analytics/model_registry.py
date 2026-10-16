@@ -55,6 +55,8 @@ APPROVAL_KINDS = (INCUMBENT, OWNER_APPROVAL, ROLLBACK_RESTORE)
 PROSPECTIVE, HELDOUT, HISTORICAL = "prospective_shadow_evaluation", "heldout_backtest", "historical_research"
 REPORT_KINDS = (PROSPECTIVE, HELDOUT, HISTORICAL)
 REQUIRED_REPORTS = (PROSPECTIVE, HELDOUT)
+# held-out fields the gate reads; the candidate artifact must embed them and they must match the report
+BOUND_HELDOUT_KEYS = ("common_support_n", "relative_mae_improvement", "primary_minus_best_baseline_mae")
 
 PASS, FAIL, INSUFFICIENT, NOT_APPLICABLE = "pass", "fail", "insufficient_data", "not_applicable"
 MODEL_FIELDS = ("family", "version", "state", "artifact", "scoring_fingerprint", "training_cutoff", "approval",
@@ -133,7 +135,10 @@ def validate_manifest(m) -> list[str]:
         if not isinstance(e.get("reason"), str) or not e.get("reason", "").strip():
             out.append(f"{v}: a human-readable reason is required")
     approved = [e for e in models if isinstance(e, dict) and e.get("state") == APPROVED]
-    prod = m.get("production") or {}
+    prod = m.get("production")
+    if not isinstance(prod, dict):
+        out.append("production must be an object {family, version}")
+        prod = {}
     if len(approved) != 1:
         out.append(f"{len(approved)} approved_production models (exactly one required)")
     elif (prod.get("family"), prod.get("version")) != (approved[0].get("family"), approved[0].get("version")):
@@ -151,6 +156,8 @@ def validate_manifest(m) -> list[str]:
     hist = m.get("history")
     if not isinstance(hist, list) or not hist:
         out.append("history must be a non-empty list")
+    elif not all(isinstance(h, dict) for h in hist):
+        out.append("every history event must be an object")
     return out
 
 
@@ -293,12 +300,20 @@ def report_identity_checks(e: dict, replaces: str, pros: dict | None, held: dict
             out.append(_crit("artifact_report_binding", INSUFFICIENT, "the artifact does not embed the held-out "
                              "result it was fitted from (or did not verify)"))
         else:
-            keys = ("common_support_n", "relative_mae_improvement")
             pos = held.get("positions") if isinstance(held.get("positions"), dict) else {}
-            diff = [p for p in POSITIONS if not isinstance(ev.get(p), dict) or not isinstance(pos.get(p), dict)
-                    or any(ev[p].get(k) != pos[p].get(k) for k in keys)]
+            diff = []
+            for p in POSITIONS:
+                a, r = ev.get(p), pos.get(p)
+                if not isinstance(a, dict) or not isinstance(r, dict) or any(k not in a for k in BOUND_HELDOUT_KEYS):
+                    diff.append(f"{p} (missing)")
+                    continue
+                # every embedded field (fit_final copies them verbatim), the gate-critical ones required
+                diff += [f"{p}.{k}" for k in sorted(a) if a[k] != r.get(k)]
+            espn = (held.get("espn_comparison") or {}).get("matched_observations")
+            if ev.get("espn_matched_observations", 0) != (espn or 0):
+                diff.append("espn_matched_observations")
             out.append(_crit("artifact_report_binding", FAIL if diff else PASS,
-                             f"the artifact's embedded held-out result differs from the report for {diff}" if diff
+                             f"the artifact's embedded held-out result differs from the report: {diff}" if diff
                              else "the artifact embeds this held-out report's result", diff or None))
     return out
 
@@ -656,8 +671,13 @@ def verify_transition(old: dict, new: dict) -> list[str]:
         last = added[-1] if added and isinstance(added[-1], dict) else {}
         if kind not in (OWNER_APPROVAL, ROLLBACK_RESTORE):
             out.append(f"production changed to {p['version']} without an owner approval or rollback record")
-        elif kind == OWNER_APPROVAL and last.get("event") != "promotion":
-            out.append("an owner approval must be recorded by a final `promotion` history event")
+        elif kind == OWNER_APPROVAL:
+            ap = p["approval"]
+            want = {"event": "promotion", "from": old["production"]["version"], "production": p["version"],
+                    "at": ap.get("approved_at"), "by": ap.get("approved_by")}
+            got = {k: last.get(k) for k in want}
+            if got != want or not (isinstance(last.get("reason"), str) and last["reason"].strip()):
+                out.append(f"the final history event must be a promotion {want} with a reason; got {got}")
         elif kind == ROLLBACK_RESTORE:
             old_prod = entry(old, old["production"]["version"])
             if old_prod.get("rollback_to") != p["version"]:
@@ -667,9 +687,12 @@ def verify_transition(old: dict, new: dict) -> list[str]:
                 out.append(f"rollback target {p['version']} was never production")
             if not _sha_ok((p.get("artifact") or {}).get("sha256")):
                 out.append(f"rollback target {p['version']} has no pinned artifact to restore")
-            if last.get("event") != "rollback" or last.get("from") != old_prod["version"] \
-                    or last.get("production") != p["version"]:
-                out.append("a rollback must be recorded by a final `rollback` history event from the outgoing model")
+            ap = p["approval"]
+            want = {"event": "rollback", "from": old_prod["version"], "production": p["version"],
+                    "at": ap.get("approved_at"), "by": ap.get("approved_by")}
+            if {k: last.get(k) for k in want} != want or not (isinstance(last.get("reason"), str)
+                                                              and last["reason"].strip()):
+                out.append(f"a rollback must be recorded by a final `rollback` history event {want} with a reason")
         prev = entry(new, old["production"]["version"])
         if prev["state"] != RETIRED:
             out.append(f"previous production {prev['version']} must be retired, not {prev['state']}")
