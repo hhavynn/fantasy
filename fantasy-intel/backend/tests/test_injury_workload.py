@@ -447,7 +447,7 @@ def test_research_modules_write_nothing():
 def test_app_never_imports_the_injury_research_modules():
     root = pathlib.Path(__file__).resolve().parents[1] / "app"
     for path in root.rglob("*.py"):
-        if path.name in ("injury_workload.py", "injury_challenger.py"):
+        if path.name in ("injury_workload.py", "injury_challenger.py", "ros_availability.py"):   # research only
             continue
         text = path.read_text()
         assert "injury_workload" not in text and "injury_challenger" not in text, path

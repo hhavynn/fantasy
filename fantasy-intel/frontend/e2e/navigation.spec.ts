@@ -297,11 +297,18 @@ test("phone tab bar does not cover the end of the page", async ({ page }) => {
   test.skip(!isPhone(), "the tab bar is the phone layout");
   await page.goto("/rankings");
   await loaded(page);
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(page.locator(".tabbar")).toBeVisible();
   const last = page.locator("main > *").last();
-  const box = await last.boundingBox();
-  const tabs = await page.locator(".tabbar").boundingBox();
-  expect(box && tabs && box.y + box.height <= tabs.y + 1, "last section hidden under the tab bar").toBe(true);
+  await expect(last).toBeVisible();
+  // Scroll and measure together, retried: a late layout shift can leave the old bottom in view.
+  await expect
+    .poll(async () => {
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const box = await last.boundingBox();
+      const tabs = await page.locator(".tabbar").boundingBox();
+      return !!box && !!tabs && box.y + box.height <= tabs.y + 1;
+    }, { message: "last section hidden under the tab bar" })
+    .toBe(true);
 });
 
 test("a shared power-rankings card links back to the board for the card's team, not a stored one", async ({ page }) => {
