@@ -381,8 +381,12 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "injury_workload.py", "injury_challenger.py",   # injury timeline / workload handoff (ifp-2.1.0 + research)
                "injury_model.py",   # the production model ifp-2.1.0 (trained and projected offline, never by the API)
                "returning_context.py",   # research-only returning-teammate challenger ifp-ret (never imported)
+               "ros_availability.py",   # research-only ROS p_play for players injured at the cutoff (never imported)
                # kicker model: reconciliation scores a kicker's rare offensive stats (fakes) with the skill weights
-               "kicker_scoring.py"}
+               "kicker_scoring.py",
+               # local-only writer of the final-designation re-projection run (never imported by the app, see
+               # tests/test_final_reprojection.py::test_the_app_never_imports_the_reprojection_writer)
+               "final_reprojection.py"}
     for f in APP.rglob("*"):
         if f.suffix not in (".py", ".sql") or f.name in allowed:
             continue

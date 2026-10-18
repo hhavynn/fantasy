@@ -449,7 +449,7 @@ def test_research_modules_write_nothing():
 # Only the production model ifp-2.1.0 (injury_model) and the offline pipeline that trains and stores it import the
 # handoff modules; the hosted API (app.main) never loads them.
 PIPELINE_IMPORTERS = {"injury_workload.py", "injury_challenger.py", "injury_model.py", "independent_projection_store.py",
-                      "weekly_learning.py"}
+                      "weekly_learning.py", "ros_availability.py"}   # ros_availability: research only
 
 
 def test_only_the_model_pipeline_imports_the_injury_modules():

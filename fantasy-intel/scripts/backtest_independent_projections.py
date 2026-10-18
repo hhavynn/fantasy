@@ -13,6 +13,7 @@
     uv run python ../scripts/backtest_independent_projections.py project --week 7 --model ifp-2.0.0   # previous model
     uv run python ../scripts/backtest_independent_projections.py project --week 10 --artifact-week 7   # week 10 from week 7's artifact
     uv run python ../scripts/backtest_independent_projections.py project --week 7 --through-week 18   # rest of the season
+    uv run python ../scripts/backtest_independent_projections.py reproject   # week in progress, final injury reports
 
 Inputs: the live DB (FANTASY_DB_PATH, opened read-only except by `project`) and the optional
 history DB from scripts/sync_nfl_history.py (NFL_HISTORY_DB_PATH, default data/nfl_history.duckdb).
@@ -32,6 +33,12 @@ week T with week W's artifact (features as of W, T's opponent; projected_from_we
 `--week W --through-week L` does that for every week W..L in one process (one source load, one artifact
 registration; a failure on a later week is reported in the output's rest_of_season list and does not stop the others;
 a failure on week W itself is an error). Both apply to the weekly-trained models (ifp-2.1.0, ifp-2.0.0) only.
+
+`reproject` (docs/independent_projection_engine.md, "Final-designation re-projection"; learning_cycle.py reproject runs
+it after sync_nfl.py): a NEW run of the week in progress (or --week) made with the artifact FILE of that week's newest
+verified production-model run, so the late-week injury reports reach expected_points. Teams whose kickoff has passed
+keep their base-run rows (carried, flagged); nothing is written when no re-projected row changed. Exit 2 when it is
+refused.
 """
 
 from __future__ import annotations
@@ -378,16 +385,76 @@ def cmd_project(args, hist, scoring) -> dict:
     return out
 
 
+def _artifact_by_sha(weekly_dir: Path, version: str, season: int, week: int, sha: str) -> tuple[Artifact, bytes, Path]:
+    """The week's write-once store artifact whose FILE bytes hash to `sha` (a stored run's artifact_id)."""
+    from app.analytics import weekly_learning as wl
+    for f in sorted((weekly_dir / "artifacts" / version).glob(f"s{season}w{week:02d}-*.json")):
+        data = f.read_bytes()
+        if hashlib.sha256(data).hexdigest() == sha:
+            return wl.load_artifact(f), data, f
+    raise ValueError(f"no {version} artifact file with sha256 {sha[:12]} for {season} week {week} in "
+                     f"{weekly_dir / 'artifacts' / version}: the base run's artifact must be re-used, never replaced")
+
+
+def cmd_reproject(args, hist, scoring, now: datetime | None = None) -> dict:
+    """Final-designation re-projection (app/analytics/final_reprojection.py): a NEW run of the week in progress with
+    the artifact of its newest verified run, after the late-week injury reports. Teams already kicked off keep their
+    base-run rows (carried, flagged). Phase 1 read-only, phase 2 one write_run. Production model only."""
+    from app.analytics import final_reprojection as fr
+    from app.analytics import weekly_learning as wl
+    from app.db.connection import open_db
+    from app.nfl import pbp_exits
+
+    if args.model != CONSUMER_VERSION:
+        raise ValueError(f"reproject applies to the production model ({CONSUMER_VERSION}) only")
+    t = time.time()
+    now = now or datetime.now(timezone.utc)
+    scoring = scoring.require_supported()
+    with open_db(args.live_db, read_only=True) as con:
+        week = args.week or fr.in_progress_week(con, args.season, now)
+        if week is None:
+            raise fr.ReprojectRefused(f"no {args.season} regular-season kickoff is ahead of {now.isoformat()}")
+        base = fr.base_run(con, args.season, week, args.model, scoring.fingerprint)
+        sha = fr.check_base(base, args.season, week, args.model)
+        art, data, path = _artifact_by_sha(args.weekly_dir, args.model, args.season, week, sha)
+        wl.check_artifact(art, args.season, week, scoring.fingerprint)
+        exits = pbp_exits.load_dir(args.weekly_dir / "pbp_exits")
+        if exits is None and art.config["provenance"].get("pbp_exits_through_week") is not None:
+            raise ValueError(f"{path.name} was trained with play-by-play injury evidence, but "
+                             f"{args.weekly_dir / 'pbp_exits'} has none (scripts/weekly_learning.py sync-exits)")
+        # the participation model the base run recorded (not whatever version is current); build refuses when
+        # it is missing, so a re-projection never silently drops p_play / expected_points
+        recorded = base["run"].get("participation_version")
+        ppath = args.out / f"participation_{recorded}.json" if recorded else None
+        part = (pm.ParticipationArtifact.from_dict(json.loads(ppath.read_text()))
+                if ppath is not None and ppath.exists() else None)
+        src = _sources(con, hist, scoring).with_exits(exits)
+        built = fr.build(con, src, art, args.season, week, base=base, participation=part,
+                         artifact_sha256=hashlib.sha256(data).hexdigest())
+    if built["status"] == fr.WRITTEN:
+        with open_db(args.live_db) as con:
+            stored = fr.store(con, built)
+    else:
+        stored = fr.store(None, built)
+    keys = ("base_run_id", "base_run_created_at", "kicked_off_teams", "unknown_kickoff_teams",
+            "missing_from_schedule_teams", "reprojected", "carried",
+            "dropped_post_kickoff", "changes", "injury_freshness")
+    return {"schema": fr.SCHEMA, "season": args.season, "week": week, "model_version": art.version,
+            "artifact_id": sha, "artifact_file": path.name, **stored, **{k: built[k] for k in keys},
+            "runtime_seconds": round(time.time() - t, 2)}
+
+
 def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["audit", "select", "evaluate", "fit", "project", "participation-select",
+    parser.add_argument("command", choices=["audit", "select", "evaluate", "fit", "project", "reproject",
+                                            "participation-select",
                                             "participation-evaluate", "participation-fit", "snap-ablation"])
     parser.add_argument("--live-db", type=Path, default=settings.db_path)
     parser.add_argument("--history-db", type=Path, default=_path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
     parser.add_argument("--out", type=Path, default=_path("INDEPENDENT_MODEL_DIR", "data/models"))
     parser.add_argument("--season", type=int, default=settings.nfl_season, help="live season")
-    parser.add_argument("--week", type=int, help="target NFL week (project)")
+    parser.add_argument("--week", type=int, help="target NFL week (project; reproject: default the week in progress)")
     parser.add_argument("--artifact-week", type=int, dest="artifact_week",
                         help="project --week T with the weekly artifact of this EARLIER week W (rest-of-season "
                              "projection: features as of W, T's opponent; forecast_horizon = T - W)")
@@ -407,9 +474,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     protocol = Protocol(heldout_seasons=(2025, args.season) if args.season > 2025 else (2025,))
     hist = _ro(args.history_db)
-    live = _ro(args.live_db) if args.command != "project" else None
+    writes = args.command in ("project", "reproject")
+    live = _ro(args.live_db) if not writes else None
     try:
-        scoring_con = live or (_ro(args.live_db) if args.command == "project" else None)
+        scoring_con = live or (_ro(args.live_db) if writes else None)
         if scoring_con is None:
             print("A live database with league scoring settings is required.", file=sys.stderr)
             return 2
@@ -420,6 +488,9 @@ def main(argv: list[str] | None = None) -> int:
                 print("--week is required for project", file=sys.stderr)
                 return 2
             result = cmd_project(args, hist, scoring)
+        elif args.command == "reproject":
+            scoring_con.close()
+            result = cmd_reproject(args, hist, scoring)
         elif args.command == "audit":
             result = cmd_audit(args, live, hist, scoring)
         else:

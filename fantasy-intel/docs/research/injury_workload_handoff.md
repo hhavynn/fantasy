@@ -80,7 +80,7 @@ The ten questions from the brief:
 | 7 | ROS reuses stale injury and role assumptions? | **Confirmed limitation (by design, labeled experimental).** Features are frozen at the cutoff week for every target week: a temporary starter keeps his role all season, and a player Out at the cutoff gets an *undesignated* p_play for every later week. Section 6 measures the second effect. |
 | 8 | Participation suppresses the conditional projection? | **No.** `projected_points` is conditional; p_play multiplies only `expected_points`. |
 | 9 | Fantasy IR confused with NFL IR? | **No.** `player_availability` keeps ESPN status, NFL reserve, fantasy IR slot and eligibility separate; build_live only flags the fantasy IR slot (`test_ir_semantics.py`). |
-| 10 | Cached forecasts or stale sync? | **Confirmed operational gap (not changed here).** The learning cycle freezes the production run Tue-Thu before the first kickoff. Friday's final game designations never reach that run: Saquon's stored week-6 row used ESPN's mid-week QUESTIONABLE (p_play 0.29) although the nflverse week-6 report now says Out. A later re-projection for teams still pregame is a follow-up (section 9). |
+| 10 | Cached forecasts or stale sync? | **Confirmed operational gap (not changed here).** The learning cycle freezes the production run Tue-Thu before the first kickoff. Friday's final game designations never reach that run: Saquon's stored week-6 row used ESPN's mid-week QUESTIONABLE (p_play 0.29) although the nflverse week-6 report now says Out. A later re-projection for teams still pregame is now `learning_cycle.py reproject` (`docs/independent_projection_engine.md`, "Final-designation re-projection"; not scheduled until the owner approves a launchd entry). |
 
 ## 2. Correctness fixes (shipped)
 
@@ -301,7 +301,7 @@ follow-up work (section 9). The ROS p_play finding in section 6 is the larger un
 | Horizon guard in `build_live` (no horizon-0 run past the next unplayed week) | **live** (correctness) |
 | Injury timeline, established role, workload handoff, return-rate table | **live in ifp-2.1.0** (2026-10-18, owner decision); explanation metadata still research |
 | ifp-iwh challenger | research verdict `retain_baseline` (failed c7); shipped with the c7 fix (iwh-0.1.1) as ifp-2.1.0 by owner override |
-| ROS p_play from the empirical return table; ROS teammate-return scenarios | **live in ifp-2.1.0** (table refitted per weekly artifact on all pre-cutoff episodes, horizons 1-8) |
+| ROS p_play from the empirical return table; ROS teammate-return scenarios | 0.1.0 table evaluated in `ros_availability.md`: `retain_current` (better at h = 1, worse at h >= 3). **ifp-2.1.0 ships its pre-registered ros-avail-0.1.1 design** (matched fit population, h = 1-2 only, refit every cutoff); the prospective ledger still judges it |
 | Re-projection after Friday's final reports | not changed; follow-up |
 
 **Real 2026 cases** (`cases` command; "old" = the stored production ifp-2 row; "refit" = ifp-2 refitted on the
