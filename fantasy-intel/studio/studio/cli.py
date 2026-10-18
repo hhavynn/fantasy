@@ -119,17 +119,27 @@ def editorial_pick(cfg: Config, snap: dict, season: int, week: int, recent: set[
 
 def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str | None,
                 hook: str | None = None, slug_suffix: str = "", presenter_mode: str = "off",
-                style: str = "original", show: str | None = None, trend: Path | None = None) -> int:
+                style: str = "original", show: str | None = None, trend: Path | None = None, *,
+                frozen_snapshot: bool = False, alternates: list[str] | None = None) -> int:
     week_ep = Episode(season, week, "short", cfg, force=force)
     week_ep.dir.mkdir(parents=True, exist_ok=True)
-    snapshot.run(week_ep)
+    if not (frozen_snapshot and week_ep.path("snapshot.json").exists()):
+        snapshot.run(week_ep)
+    else:                       # re-make an earlier week's Shorts from its archived data, not today's database
+        print(f"  snapshot: frozen ({week_ep.path('snapshot.json')})")
     snap = read_json(week_ep.path("snapshot.json"))
     recent = facts.recent_featured_players(cfg.episodes_dir / "history.jsonl",
                                            cfg["selection"]["recent_episode_window"], week, season, fmt="short")
     stories = editorial_pick(cfg, snap, season, week, recent, week_ep)
     write_json(week_ep.path("stories.json"), stories)
     if only:      # an explicitly requested player isn't limited by the weekly quota, only by the selection rules
-        stories = facts.pick_stories(snap, 0, 0, recent, only=only)[:1]
+        stories = []
+        for slug in [only, *(alternates or [])]:      # a trend package names fallbacks, best first
+            stories = facts.pick_stories(snap, 0, 0, recent, only=slug)[:1]
+            if stories:
+                if slug != only:
+                    print(f"  {only!r} is not a usage story this week; using the trend's next player {slug!r}")
+                break
         planned = {d["slug"]: d["show"] for d in read_json(week_ep.path("shows.json"))}
         if stories and planned.get(stories[0]["slug"]):
             stories[0]["show"] = planned[stories[0]["slug"]]
@@ -269,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--storyboard", action="store_true",
                     help="flame/praise only: brief, script and storyboard.png, no narration or render")
     ap.add_argument("--frozen-snapshot", action="store_true",
-                    help="flame/praise only: reuse the week's archived snapshot.json instead of rebuilding it")
+                    help="Shorts and flame/praise: reuse the week's archived snapshot.json instead of rebuilding it")
     ap.add_argument("--compare-mix", action="store_true",
                     help="flame/praise only: also write final_nosfx.mp4 (same picture, no meme effects)")
     ap.add_argument("--editorial-media", choices=["off", "preview", "render"],
@@ -303,12 +313,14 @@ def main(argv: list[str] | None = None) -> int:
             print("the trend package has no lead player with usage data; use it as a manual script brief")
             return 2
         args.player = handoff["player_slug"]
+        alternates = [a["slug"] for a in handoff.get("alternates") or [] if a.get("slug")]
     if args.format == "short":
         suffix = ((f"-hook-{args.hook}" if args.hook else "") + (f"-voice-{args.voice}" if args.voice else "")
                   + (f"-show-{args.show}" if args.show else ""))
         style = args.style or (cfg.raw.get("graphics") or {}).get("style", "original")
         return make_shorts(cfg, season, args.week, force, args.player, args.hook, suffix, presenter_mode, style,
-                           args.show, args.trend.resolve() if args.trend else None)
+                           args.show, args.trend.resolve() if args.trend else None,
+                           frozen_snapshot=args.frozen_snapshot, alternates=alternates if args.trend else None)
     ep = Episode(season, args.week, "long", cfg, force=force)
     ep.dir.mkdir(parents=True, exist_ok=True)
     print(f"episode {ep.id} -> {ep.dir}")

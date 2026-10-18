@@ -132,3 +132,15 @@ def test_migrates_v1_database(tmp_path):
         assert s.con.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0] == "2"
     finally:
         s.close()
+
+
+def test_studio_subject_for_out_player_is_the_replacement():
+    lead = {"name": "Roman Wilson", "team": "PIT", "position": "WR", "roster_status": "ACT", "gsis_id": "g1",
+            "injury": {"week": 6, "report_status": "Out"}, "data_direction": "down"}
+    repl = {"name": "Germie Bernard", "team": "PIT", "position": "WR", "roster_status": "ACT", "gsis_id": "g2",
+            "data_direction": "up"}
+    cluster = {"enrichment": {"players": [lead, repl], "upcoming_week": 6}, "top_posts": []}
+    subjects, why = cli.studio_subjects({"format": "injury_ripple"}, cluster)
+    assert [p["name"] for p in subjects] == ["Germie Bernard", "Roman Wilson"] and "out" in why
+    subjects, _ = cli.studio_subjects({"format": "opinion_vs_numbers"}, cluster)
+    assert subjects[0]["name"] == "Roman Wilson"

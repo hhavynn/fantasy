@@ -254,21 +254,47 @@ def cmd_idea(eng: Engine, args) -> int:
     return 0
 
 
+def _slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")  # the studio's slug rule (facts.pick_stories)
+
+
+def studio_subjects(idea: dict[str, Any], cluster: dict[str, Any] | None) -> tuple[list[dict[str, Any]], str]:
+    """Players the studio could build this idea's Short about, best first, and why the first one. An
+    injury idea about a player who is out is told through the replacement (the studio's fill-in story),
+    not through the player who isn't playing."""
+    enr = (cluster or {}).get("enrichment") or {}
+    players = [p for p in enr.get("players") or [] if p.get("name")]
+    if not players:
+        return [], "no player analytics"
+    lead = players[0]
+    if idea.get("format") == "injury_ripple" and cluster and \
+            ideas_mod.availability(lead, enr.get("upcoming_week"), enr.get("status_cues")) == "out":
+        who, _, _ = ideas_mod.replacement(cluster)
+        repl = next((p for p in players if p["name"] == who), None)
+        if repl:
+            return [repl] + [p for p in players if p is not repl], f"{lead['name']} is out: the story is {who}"
+    return players, "the idea's lead player"
+
+
 def research_package(eng: Engine, idea: dict[str, Any]) -> dict[str, Any]:
     rows = eng.store.latest_ranking(eng.sport)
     cluster = next((c for c in rows if c["cluster_id"] == idea["cluster_id"]), None)
-    lead = ((cluster or {}).get("enrichment", {}).get("players") or [{}])[0]
     week = (cluster or {}).get("enrichment", {}).get("upcoming_week")
-    slug = re.sub(r"[^a-z0-9]+", "-", lead.get("name", "").lower()).strip("-") if lead else ""
-    direction = ((cluster or {}).get("enrichment", {}).get("verdicts") or [{}])[0].get("data")
+    subjects, why = studio_subjects(idea, cluster)
+    first = subjects[0] if subjects else {}
+    slug = _slug(first.get("name", "")) if first else ""
+    direction = first.get("data_direction")
     handoff = {
         "week": week,
         "player_slug": slug or None,
-        "gsis_id": lead.get("gsis_id"),
+        "gsis_id": first.get("gsis_id"),
         "role": {"up": "riser", "down": "faller"}.get(direction),
+        "subject_reason": why,
+        # tried in order when the first player is not a usage story the studio can make this week
+        "alternates": [{"slug": _slug(p["name"]), "gsis_id": p.get("gsis_id")} for p in subjects[1:]],
         "command": (f"uv run make-episode --week {week} --trend {{package}}" if slug and week else None),
         "note": ("The studio builds the Short from its own usage data and QC; this package adds the social "
-                 "context to review.md. If the player does not qualify as a usage story this week the studio "
+                 "context to review.md. If none of the players qualifies as a usage story this week the studio "
                  "says so, and the package serves as a manual script brief."),
     }
     return {"contract_version": CONTRACT_VERSION, "generated_at": iso(utcnow()), "idea": idea,
