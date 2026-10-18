@@ -71,7 +71,7 @@ test("every page appears once and every group has pages", () => {
   assert.deepEqual(NAV_GROUPS.map((g) => g.label), ["My team", "Players", "Trades", "League"]);
   assert.ok(NAV_GROUPS.every((g) => g.pages.length > 0));
   for (const href of ["/", "/matchup", "/start-sit", "/my-team/value", "/players", "/compare", "/movers", "/waivers", "/trades", "/trades/discover",
-    "/schedule-intelligence", "/weekly-recap", "/luck-lab", "/playoff-race", "/managers"]) {
+    "/schedule-intelligence", "/weekly-recap", "/luck-lab", "/playoff-race", "/managers", "/power-rankings"]) {
     assert.ok(hrefs.includes(href), `${href} missing from navigation`);
   }
 });
@@ -165,4 +165,10 @@ test("stored tab memory is parsed defensively", () => {
     League: { href: "https://evil.example", team: null },
     "My team": { href: "/waivers", team: 4 },
   })), { Players: { href: "/rankings?pos=WR", team: null } });
+});
+
+test("power rankings sit in League right after the weekly recap, and a team card highlights them", () => {
+  assert.equal(group("/power-rankings"), "League");
+  assert.deepEqual(NAV_GROUPS[3].pages.map((p) => p.href).slice(0, 2), ["/weekly-recap", "/power-rankings"]);
+  assert.equal(getActiveRoute("/power-rankings/4").activeHref, "/power-rankings");
 });
