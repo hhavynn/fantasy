@@ -78,13 +78,14 @@ def env(base, tmp_path, lc):
     return tmp_path
 
 
-def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False):
+def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False):
     """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it, and the kicker stage
-    (after project) only when a test asks for that too."""
+    (after project) and the ifp-ctx-p1 shadow stage only when a test asks for them too."""
     return lc.parse(["run", "--skip-sync", "--season", "2025", "--now", now, "--live-db", str(env / "live.duckdb"),
                      "--history-db", str(env / "history.duckdb"), "--ifp-dir", str(env / "models"),
-                     "--out", str(env / "out"), "--kicker-dir", str(env / "kicker"),
-                     *([] if project else ["--no-project"]), *([] if kicker else ["--no-kicker"]), *extra])
+                     "--out", str(env / "out"), "--kicker-dir", str(env / "kicker"), "--ctx-dir", str(env / "ctx"),
+                     *([] if project else ["--no-project"]), *([] if kicker else ["--no-kicker"]),
+                     *([] if ctx_shadow else ["--no-ctx-shadow"]), *extra])
 
 
 def _run(lc, env, now=PRE_W10, *extra):
@@ -603,3 +604,57 @@ def test_project_cli_refuses_a_week_without_an_ifp2_artifact(lc, env):
     assert cli.main(["project", "--season", "2025", "--week", "11", "--live-db", str(env / "live.duckdb"),
                      "--history-db", str(env / "history.duckdb"), "--out", str(env / "models"),
                      "--weekly-dir", str(env / "out")]) == 2
+
+
+# ----------------------------------------------------------------------------- ifp-ctx-p1 research shadow stage
+
+
+def test_ctx_shadow_stage_runs_last_and_is_a_no_op_before_the_prospective_window(lc, env):
+    """The real scripts/ctx_shadow.py subprocess on the synthetic 2025 world: before the pre-registered 2026 week-7
+    start nothing is forecast, and there are no ledgers to score, so it changes nothing and reports no warning."""
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    assert _stages(rep)[-3:] == [("predict", "ok"), ("project", "skipped"), ("ctx_shadow", "ok")]
+    cs = rep["ctx_shadow"]
+    assert (cs["status"], cs["pregame"]["status"], cs["score"]["status"]) == (
+        "ok", "before_prospective_start", "no_ledgers")
+    assert not [w for w in rep["warnings"] if "ifp-ctx-p1" in w]
+    assert not (env / "ctx").exists()                       # nothing written anywhere
+
+
+def test_ctx_shadow_failure_never_fails_the_cycle_or_the_production_run(lc, env, monkeypatch):
+    _espn_players(env)
+
+    def boom(args, conns, log_path):
+        raise RuntimeError("ctx_shadow.py exited 1: MemoryError")
+
+    monkeypatch.setattr(lc, "stage_ctx_shadow", boom)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True, ctx_shadow=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert _stages(rep)[-3:] == [("predict", "ok"), ("project", "ok"), ("ctx_shadow", "failed_nonfatal")]
+    assert any("ifp-ctx-p1 shadow stage failed" in w for w in rep["warnings"])
+    con = connect(env / "live.duckdb")
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.0.0'"
+                       ).fetchone()[0] == 1
+    con.close()
+
+
+def test_ctx_shadow_warnings_reach_the_cycle_report(lc, env, monkeypatch):
+    monkeypatch.setattr(lc, "stage_ctx_shadow", lambda args, conns, log_path: {
+        "status": "ok", "warnings": ["the week's nflverse injury report is not ingested yet"]})
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen"
+    assert "ifp-ctx-p1 shadow: the week's nflverse injury report is not ingested yet" in rep["warnings"]
+    stored = json.loads((env / "out" / "status" / "latest-cycle.json").read_text())
+    assert stored["ctx_shadow"]["warnings"] and stored["stages"][-1]["name"] == "ctx_shadow"
+
+
+def test_ctx_shadow_still_scores_when_no_week_is_left(lc, env, monkeypatch):
+    """After the season's last kickoff the cycle stops with no_upcoming_week (exit 0), but the shadow stage still runs
+    first, so the last frozen week is scored once it is final."""
+    calls = []
+    monkeypatch.setattr(lc, "stage_ctx_shadow", lambda args, conns, log_path: calls.append(args.week) or {
+        "status": "ok", "warnings": []})
+    code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", ctx_shadow=True))
+    assert code == lc.EXIT_OK and rep["status"] == "no_upcoming_week", rep["errors"]
+    assert calls == [None] and ("ctx_shadow", "ok") in _stages(rep)
