@@ -235,7 +235,7 @@ def _big_week(dl, tmp_path, artifact, n=450, season=2026, week=7):
     return a
 
 
-def _labeller(final=True, scale=1.0, seed=5, pending=()):
+def _labeller(final=True, scale=1.0, seed=5, pending=(), always_plays=False):
     """Outcomes drawn from each row's own frozen ifp-1.0.0 distribution (calibrated by construction), absences drawn
     from p_play; `scale` widens the outcomes around the mean (a miscalibrated world)."""
     def label(args, ledgers):
@@ -246,7 +246,7 @@ def _labeller(final=True, scale=1.0, seed=5, pending=()):
                 d = r["distributions"]["ifp-1.0.0"]
                 qf = pd_.QuantileFunction(tuple(pd_.TAUS.tolist()), tuple(d["q"]))
                 y = d["mean"] + scale * (qf.quantile(float(rng.uniform(0.005, 0.995))) - d["mean"])
-                played = rng.uniform() < r["p_play"]
+                played = always_plays or rng.uniform() < r["p_play"]
                 status = wl.PENDING_GAME if r["gsis_id"] in pending else wl.APPEARED if played else wl.CONFIRMED_ABSENT
                 recs.append({"season": led["season"], "week": led["week"], "key": led["season"] * 100 + led["week"],
                              "_i": i, "_j": j, "outcome_status": status,
@@ -281,6 +281,18 @@ def test_miscalibrated_outcomes_fall_outside_the_bounds(dl, tmp_path, artifact):
     a = _big_week(dl, tmp_path, artifact, n=600)
     c = dl.run_score(a, labeller=_labeller(scale=2.0))["scores"]["by_mean"]["ifp-1.0.0"]["positions"]["WR"]["conditional"]
     assert c["coverage80"] < 0.75 and c["bounds"]["status"] == "outside_bounds"
+
+
+def test_miscalibrated_absences_are_reported_not_a_crash(dl, tmp_path, artifact):
+    """Everyone plays although p_play averages 0.8: the unconditional block is outside its absence tolerance, and the
+    reason names the pre-registered tolerance (UNCONDITIONAL_CRITERIA['absence_calibration_tolerance'])."""
+    a = _big_week(dl, tmp_path, artifact, n=500)
+    rec = dl.run_score(a, labeller=_labeller(always_plays=True))
+    assert rec["status"] == "scored", rec
+    u = rec["scores"]["by_mean"]["ifp-1.0.0"]["positions"]["WR"]["unconditional"]
+    assert u["bounds"]["status"] == "outside_bounds"
+    tol = pd_.UNCONDITIONAL_CRITERIA["absence_calibration_tolerance"]
+    assert any(f"absence rate" in r and f"(tolerance {tol})" in r for r in u["bounds"]["reasons"]), u["bounds"]
 
 
 def test_weeks_that_are_not_fully_final_are_never_scored(dl, tmp_path, artifact):

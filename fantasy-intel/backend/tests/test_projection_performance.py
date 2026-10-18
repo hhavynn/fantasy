@@ -748,3 +748,31 @@ def test_reader_checks_the_rb_split_and_accepts_reports_without_it(tmp_path, gat
     g = bad["rb_volume_split"]["comparisons"]["conditional"]["by_group"]["low_volume"]
     g.update(verdict="ours_better", statement=pr.STATEMENTS["ours_better"], ci95=[-1.0, 0.5])
     assert "without a 95% interval that excludes 0" in pr.validate(bad, season=2026)
+
+
+def test_reader_group_list_matches_the_builder():
+    assert pr.RB_VOLUME_GROUPS == eb.RB_VOLUME_GROUPS
+
+
+@pytest.mark.parametrize("mutate, needle", [
+    (lambda s: s["comparisons"].pop("conditional"), "exactly the comparisons"),
+    (lambda s: s["comparisons"]["pure_independent"]["by_group"].pop("volume"), "every group"),
+    (lambda s: s["comparisons"]["conditional"]["by_group"].update(extra=dict(s["comparisons"]["conditional"]["by_group"]["volume"])),
+     "every group"),
+    (lambda s: s.update(groups=["volume", "low_volume", "no_recent_games"]), "groups must be"),
+    (lambda s: s.pop("threshold"), "numeric threshold"),
+    (lambda s: s["comparisons"]["pure_independent"]["by_group"].update(volume=None), "malformed group"),
+    (lambda s: s["comparisons"]["pure_independent"]["by_group"]["volume"]["ours"].update(mae="1.0"), "malformed ours"),
+    (lambda s: s["comparisons"]["pure_independent"]["by_group"]["volume"].update(ci95=[0.1]), "malformed 95% interval"),
+    (lambda s: s["comparisons"]["pure_independent"]["by_group"]["volume"].update(n=10**6), "do not add up"),
+    (lambda s: s["comparisons"].update(conditional=[]), "every group"),
+])
+def test_store_refuses_an_incomplete_rb_split(tmp_path, mutate, needle):
+    """The page reads every declared group of both comparisons: a split missing any of it is refused before it is
+    stored, never half-rendered."""
+    p = build(make_world(tmp_path / "w.duckdb"))
+    bad = json.loads(json.dumps(p))
+    mutate(bad["rb_volume_split"])
+    assert needle in (pr.validate(bad, season=2026) or "")
+    with pytest.raises(ValueError, match="refusing to store"):
+        pr.store_report(fresh_db(tmp_path, "s.duckdb"), {**bad, "synthetic": True})

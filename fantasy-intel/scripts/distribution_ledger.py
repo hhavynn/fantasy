@@ -459,7 +459,7 @@ def unconditional_block(y, p, played, mean, q, keys) -> dict:
     if out["bounds"]["status"] != "insufficient_data" and gap > crit["absence_calibration_tolerance"]:
         out["bounds"] = {"status": "outside_bounds", "reasons": out["bounds"]["reasons"] + [
             f"absence rate: predicted {round(b['absence']['predicted'], 4)} vs observed "
-            f"{round(b['absence']['observed'], 4)} (tolerance {crit['absence_rate_tolerance']})"]}
+            f"{round(b['absence']['observed'], 4)} (tolerance {crit['absence_calibration_tolerance']})"]}
     return out
 
 
