@@ -161,16 +161,24 @@ def check_horizon(sources: Sources, season: int, cutoff_week: int) -> None:
     ESPN designation fallback and the latest roster row describe the NEXT game only; a horizon-0 run for week 7
     made while week 6 is unplayed would apply week 6's OUT/DOUBTFUL to week 7 (an injury carried forward a
     week). Such a target week is a rest-of-season target: pass projected_from_week = the first unplayed week.
-    The next unplayed week is the week after the latest week with any final game (a postponed or cancelled game
-    in an otherwise final week does not block); with no final game this season it is the season's first week."""
-    played = sources.games.filter((pl.col("season") == season) & pl.col("points_for").is_not_null())
-    if played.height:
-        nxt = int(played["week"].max()) + 1
-    else:
-        weeks = sources.games.filter(pl.col("season") == season)["week"]
-        if weeks.len() == 0:
-            return
-        nxt = int(weeks.min())
+
+    The next unplayed week is the earliest week with an outstanding game, judged over the whole slate (a final
+    Thursday game does not end its week). A game without a final score is outstanding unless a game with a
+    strictly later scheduled kickoff (week, gameday, gametime) is already final: then it was postponed or
+    cancelled and does not block. No wall clock is read. With every game final nothing is left to refuse."""
+    g = sources.games.filter(pl.col("season") == season)
+    if g.height == 0:
+        return
+    g = g.with_columns(pl.concat_str([pl.col("week").cast(pl.String).str.zfill(3), pl.col("gameday").fill_null(""),
+                                      pl.col("gametime").fill_null("")], separator=" ").alias("_kick"))
+    finals = g.filter(pl.col("points_for").is_not_null())
+    last_final = finals["_kick"].max() if finals.height else None
+    pending = g.filter(pl.col("points_for").is_null())
+    if last_final is not None:
+        pending = pending.filter(pl.col("_kick") >= last_final)    # a game in the same slot is concurrent
+    if pending.height == 0:
+        return
+    nxt = int(pending["week"].min())
     if cutoff_week > nxt:
         raise HorizonError(f"cutoff week {cutoff_week} is after the next unplayed week {nxt} of {season}: current "
                            f"injury and roster status describe week {nxt}'s game, not week {cutoff_week}'s; project "

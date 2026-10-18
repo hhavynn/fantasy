@@ -656,3 +656,41 @@ def test_a_horizon_zero_run_beyond_the_next_unplayed_week_is_refused(world):
     check_horizon(src, 2026, W)                 # the next unplayed week itself is fine
     meta, _ = project(con, src, art, W + 1, from_week=W)
     assert meta["forecast_horizon"] == 1
+
+
+def test_the_next_unplayed_week_is_judged_over_the_whole_slate(world):
+    """Codex review on #103: a final Thursday game must not end its week. While week W's other games are unplayed,
+    a horizon-0 run for W+1 is still refused; a postponed game in an earlier week (a later-kickoff game is final)
+    never blocks; a Monday game left in week W keeps W open until it is final."""
+    from app.analytics.independent_projection_store import HorizonError, check_horizon
+
+    _, src = world
+    g = src.games
+    week_w = g.filter((pl.col("season") == 2026) & (pl.col("week") == W))
+    first = week_w.sort(["gameday", "gametime", "game_id"])["game_id"][0]
+    last = week_w.sort(["gameday", "gametime", "game_id"])["game_id"][-1]
+
+    def score(frame, done):
+        return frame.with_columns(*[pl.when(done & pl.col(c).is_null()).then(pl.lit(0.0)).otherwise(pl.col(c)).alias(c)
+                                    for c in ("points_for", "points_against")])
+
+    thursday_final = Sources(src.panel, score(g, pl.col("game_id") == first), src.defense, src.rosters,
+                             src.injuries, src.exits)
+    with pytest.raises(HorizonError):
+        check_horizon(thursday_final, 2026, W + 1)        # the rest of week W is still to play
+    check_horizon(thursday_final, 2026, W)
+
+    played = played_through(src, W + 1)                     # every game through week W final
+    check_horizon(played, 2026, W + 1)
+    monday_left = Sources(src.panel, played.games.with_columns(
+        *[pl.when(pl.col("game_id") == last).then(None).otherwise(pl.col(c)).alias(c)
+          for c in ("points_for", "points_against")]), src.defense, src.rosters, src.injuries, src.exits)
+    if week_w.select(pl.col("game_id").n_unique()).item() > 1:
+        with pytest.raises(HorizonError):
+            check_horizon(monday_left, 2026, W + 1)       # week W's last game is not final yet
+
+    earlier = g.filter((pl.col("season") == 2026) & (pl.col("week") == W - 1))["game_id"][0]
+    postponed = Sources(src.panel, played.games.with_columns(
+        *[pl.when(pl.col("game_id") == earlier).then(None).otherwise(pl.col(c)).alias(c)
+          for c in ("points_for", "points_against")]), src.defense, src.rosters, src.injuries, src.exits)
+    check_horizon(postponed, 2026, W + 1)                   # week W-1's unplayed game was postponed: no block
