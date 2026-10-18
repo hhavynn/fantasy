@@ -4,23 +4,13 @@ import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { plural } from "@/lib/plural";
 import { POSITIONS, headline, weeksText, type PerformanceResponse } from "@/lib/projection-performance";
-import { Coverage, EspnComparison, Methodology, ModelVersions, PositionCards, StartSit, WeeklyTrend } from "./sections";
+import { Coverage, EspnComparison, Methodology, ModelVersions, PositionCards, RbVolume, StartSit, WeeklyTrend } from "./sections";
 import styles from "./performance.module.css";
 
 export const metadata = { title: "Projection performance" };
 
 const TITLE = "Projection performance";
 const META = "Fantasy Intel's production projections against ESPN's pregame projections, scored only on fully final NFL weeks.";
-
-function Governance({ g }: { g: PerformanceResponse["governance"] }) {
-  if (g.espn_superiority_established) return null;
-  return (
-    <Notice tone="info" title={`${g.production_version} is production by owner override, not by evidence`}>
-      Better accuracy than ESPN is not established{g.start_sit_ready ? "" : ", and no position is Start/Sit-ready"}. The override
-      is a product decision; the figures below are the only accuracy evidence, and they are shown whichever way they point.
-    </Notice>
-  );
-}
 
 export default async function ProjectionPerformancePage() {
   const res = await api<PerformanceResponse>("/api/projections/performance");
@@ -41,7 +31,6 @@ export default async function ProjectionPerformancePage() {
       <div className="stack">
         <PageHeader eyebrow="Projections" title={TITLE} meta={META} />
         <Notice tone={h.tone} title={h.title}>{h.body}</Notice>
-        <Governance g={d.governance} />
         {d.rejected.length > 0 && (
           <Notice tone="caution" title={`${d.rejected.length} published ${plural(d.rejected.length, "report")} failed verification`}>
             {d.rejected.map((x) => x.reason).join("; ")}. Nothing from {d.rejected.length === 1 ? "it" : "them"} is shown.
@@ -70,7 +59,6 @@ export default async function ProjectionPerformancePage() {
         </Notice>
       )}
       <Notice tone={h.tone} title={h.title}>{h.body}</Notice>
-      <Governance g={d.governance} />
       {d.stale && (
         <Notice tone="caution" title="This report may be out of date">
           {d.stale_reasons.join("; ")}. It was built {when(r.generated_at)}; the next scheduled refresh rebuilds it.
@@ -98,6 +86,7 @@ export default async function ProjectionPerformancePage() {
 
       <PositionCards r={r} />
       <EspnComparison r={r} />
+      <RbVolume r={r} />
       <WeeklyTrend r={r} />
       <ModelVersions r={r} />
       <StartSit r={r} />

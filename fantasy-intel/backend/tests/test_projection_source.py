@@ -470,7 +470,7 @@ def test_hosted_selection_needs_no_research_packages():
             "body = projection_promotion()\n"
             "assert body['available'] is False and body['governance']['production_approval'] == 'owner_override'\n"
             "assert body['governance']['espn_superiority_established'] is False\n"
-            "assert 'owner override' in body['unavailable_reason']\n")
+            "assert 'research packages' in body['unavailable_reason']\n")
     subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], check=True)
 
 

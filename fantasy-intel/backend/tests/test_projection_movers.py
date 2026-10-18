@@ -350,14 +350,15 @@ def test_ours_changes_split_into_availability_and_per_game(con):
     assert by_id(r)[3]["components"] == {"availability": 0.0, "per_game": 0.0} and by_id(r)[3]["direction"] == "flat"
 
 
-def test_ours_is_experimental_and_carries_governance_that_does_not_claim_superiority(con):
+def test_ours_carries_governance_and_plain_notes(con):
     two_cycles(con)
     r = ours(con)
     assert r["experimental"] is True
     g = r["governance"]
     assert g["espn_superiority_established"] is False and g["start_sit_ready"] is False
     assert g["served_version"] == ps.MODEL_VERSION and g["production_version"] == ps.MODEL_VERSION
-    assert any("not shown to be better than ESPN" in n for n in r["notes"]) and any("experimental" in n for n in r["notes"])
+    assert any("made further ahead than the latest" in n for n in r["notes"])
+    assert not any(w in n.lower() for n in r["notes"] for w in ("experimental", "owner override", "better than espn"))
     first, last = by_id(r)[1]["weeks"][0], by_id(r)[1]["weeks"][-1]
     assert (first["horizon_before"], first["horizon_after"]) == (1, 0)       # week 7: forecast from week 6, then from week 7
     assert (last["horizon_before"], last["horizon_after"]) == (8, 7)

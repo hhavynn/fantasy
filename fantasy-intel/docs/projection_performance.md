@@ -26,7 +26,7 @@ page        /projection-performance
 * **Integrity-checked:** the row stores the canonical JSON text and the sha256 of exactly those bytes
   (`report_sha256`). The reader recomputes the hash on every request and also re-checks the claims the page relies
   on: four positions, known verdicts, statement matching verdict, a directional verdict only with an interval on one
-  side of 0, no identifier fields, not synthetic. A row that fails any check is listed under `rejected` with its
+  side of 0 (the same checks for every RB volume group when present), no identifier fields, not synthetic. A row that fails any check is listed under `rejected` with its
   reason and the newest row that verifies is served instead. If none verifies, the API answers
   `available: false, status: integrity_failed` and the page shows no figures.
 * **Safe against partial publication:** the report is one row inserted by one statement (`ON CONFLICT DO NOTHING`,
@@ -59,6 +59,7 @@ No player, roster, league or fantasy-team identifier is ever published; only cou
 | `positions` | benchmark `pure_independent` (headline), `consumer_visible`, `conditional`, `lead_times` | Per QB/RB/WR/TE: production model version, fully final weeks, paired n, ESPN and ours MAE / RMSE / mean signed error (`bias` = mean(actual - projection)), MAE(ours) - MAE(ESPN) with the 95% week-clustered interval, verdict and its one-sentence statement, coverage and ESPN-fallback share, lead times, excluded observations by reason |
 | `comparisons` | the scorecard's comparisons, unchanged | `pure_independent`, `consumer_visible`, `conditional`, `unconditional`, `horizon_matched` |
 | `weekly` | `espn_benchmark.weekly_errors` | MAE per fully final week and position on the headline population; the build refuses to publish if the weekly n do not add up to the position's paired n |
+| `rb_volume_split` | `espn_benchmark.rb_volume_split` on the scorecard's own rows | RB accuracy split by pregame volume (carries + targets per game over the back's last <= 5 games of the season before the week): `low_volume` (< 4), `volume` (>= 4), `no_recent_games`. For `pure_independent` (headline) and `conditional`, each group has the same statistics, evidence gate and statement as a position; the build refuses to publish if the groups do not add up to the RB rows. Why: `docs/research/rb_projection_diagnostics.md` (the model loses to a season average on low-volume backs and wins with volume, so the pooled RB number mixes two effects). Optional for the reader: reports built before the split still verify |
 | `preliminary` | scorecard `preliminary` | Resolved rows of weeks that are not fully final: descriptive, never a verdict |
 | `model_versions` | `espn_benchmark.version_comparison`, `projection_source.select_run` | ifp-2.0.0 vs ifp-1.0.0 only on player-weeks where BOTH have a valid pregame forecast (each version read by its own reader rules; reconstructed or legacy-destroyed runs never pass them); per-week pregame counts per version, never pooled; what the site shows now for each week |
 | `start_sit` | `start_sit_evaluation.evaluate_sets` on recorded pregame decision sets | Pregame-roster population only; one model set per production version (`ifp2_production`, `ifp1_production`), each with ESPN and A1 |

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   DECISION_TEXT, POSITIONS, VERDICT_BADGE, VERDICT_TEXT, exclusionLabel, exclusionRows, headline, intervalRows,
-  intervalText, leadGapText, signedNum, weeklySeries, weeksText,
+  intervalText, leadGapText, rbVolumeLabel, rbVolumeRows, signedNum, weeklySeries, weeksText,
   type PerformanceResponse,
 } from "./projection-performance.ts";
 
@@ -94,9 +94,9 @@ test("all-insufficient report says so and never implies a winner", () => {
   }
   all.report!.status.verdict = "insufficient_evidence";
   const h = headline(all);
-  assert.equal(h.title, "Insufficient prospective evidence");
+  assert.equal(h.title, "Still collecting weeks");
   assert.equal(h.tone, "info");
-  assert.match(h.body, /not established/);
+  assert.match(h.body, /once a position clears/);
   assert.doesNotMatch(h.body, /more accurate/);
 });
 
@@ -138,4 +138,24 @@ test("the published report carries no player, roster or league identifiers", () 
   for (const key of ["espn_player_id", "gsis_id", "league_id", "fantasy_team_id", "player_name"]) {
     assert.ok(!text.includes(`"${key}"`), key);
   }
+});
+
+test("the RB volume table shows the published groups unchanged and they add up to the RB rows", () => {
+  const s = report.rb_volume_split!;
+  for (const comparison of ["pure_independent", "conditional"] as const) {
+    const rows = rbVolumeRows(report, comparison);
+    assert.deepEqual(rows.map((r) => r.group), s.groups);
+    const total = rows.reduce((a, r) => a + r.n, 0);
+    assert.equal(total, comparison === "pure_independent" ? report.positions.RB.paired_n : report.positions.RB.conditional.n);
+    for (const r of rows) {
+      const g = s.comparisons[comparison].by_group[r.group];
+      assert.equal(r.mae_diff, g.mae_diff);
+      assert.deepEqual(r.ci95, g.ci95);
+      assert.equal(VERDICT_TEXT[r.verdict], r.statement);
+    }
+  }
+  assert.equal(rbVolumeLabel("low_volume", s.threshold), "Under 4 opportunities a game");
+  assert.equal(rbVolumeLabel("volume", s.threshold), "4+ opportunities a game");
+  // a report built before the split existed renders no table rather than inventing one
+  assert.deepEqual(rbVolumeRows({ ...report, rb_volume_split: undefined }, "pure_independent"), []);
 });

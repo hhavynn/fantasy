@@ -10,14 +10,14 @@ export function ProjectionNotice({ detail, className }: { detail: ProjectionSour
   const c = detail.counts;
   const title = detail.governance?.is_fallback
     ? "Showing Fantasy Intel projections (fallback model)"
-    : "Showing Fantasy Intel projections (not proven against ESPN)";
+    : "Showing Fantasy Intel projections";
   return (
     <Notice tone="info" title={title} className={className}>
       {modelStatusLine(detail)} Players marked <OriginTag origin="espn" ours /> keep ESPN&apos;s number: K, D/ST and anyone the model
       can&apos;t project.
       {c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable), {c.espn} from ESPN.</>}
       {detail.reason && <> {detail.reason}</>}
-      {horizonCaution(detail) && <> <strong>Caution: {horizonCaution(detail)}</strong></>}
+      {horizonCaution(detail) && <> {horizonCaution(detail)}</>}
     </Notice>
   );
 }

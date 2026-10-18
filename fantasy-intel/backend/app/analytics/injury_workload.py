@@ -1,10 +1,9 @@
 """Week-specific injury timeline, established healthy role and team workload handoff.
 
-Feeds the production model ifp-2.1.0 (app.analytics.injury_model, with the iwh-0.1.1 participation fix:
-`listing_absence=True`) and the research challenger `ifp-iwh` (scripts/injury_workload_research.py, iwh-0.1.0,
-the defaults here, kept byte-identical so the evaluated research reproduces). ifp-1.0.0 and ifp-2.0.0 never read it.
-The hosted API never imports it (numpy/polars). See docs/research/injury_workload_handoff.md for every definition
-and the evidence.
+Feeds the production model ifp-2.1.0 (app.analytics.injury_model, trained and projected offline) and the research
+challenger `ifp-iwh` (scripts/injury_workload_research.py). The hosted API never imports it
+(tests/test_injury_workload.py); ifp-1.0.0 and ifp-2.0.0 never read it.
+See docs/research/injury_workload_handoff.md for every definition and the evidence.
 
 Three layers, each point-in-time for a forecast of (season S, target week T) made at cutoff week W <= T:
 
@@ -27,6 +26,10 @@ Three layers, each point-in-time for a forecast of (season S, target week T) mad
 
    A player's claim is his established share x his recent participation (games played OR missed injured, over
    the team's recent games): an injury absence keeps the claim, a healthy scratch or a new demotion lowers it.
+   A missed game is an injury absence when he was on that week's report with any injury listing (Out, Doubtful,
+   Questionable, or a practice listing without a game status; never "not injury related") or on a reserve list.
+   iwh-0.1.0 counted only Out/Doubtful/reserve weeks, which read a Questionable-then-inactive game as a role
+   absence (docs/research/injury_workload_handoff.md section 7.3); iwh-0.1.1 is that pre-registered fix.
    Unavailable players' claims leave the pool and the rest absorb them in proportion to their claims, then
    toward what they actually received in the team's earlier games without those players (shrunk by
    ABSENCE_SHRINK_GAMES). A returning starter re-enters the pool with his established claim, which takes the
@@ -54,8 +57,12 @@ import polars as pl
 from ..db.connection import table_columns, table_exists
 from .forecast_features import Sources, classify_games, key
 
-WORKLOAD_VERSION = "iwh-0.1.0"          # the evaluated research version (defaults below)
-WORKLOAD_VERSION_FIXED = "iwh-0.1.1"    # + listing_absence: the pre-registered fix of section 7.3 (production)
+WORKLOAD_VERSION = "iwh-0.1.1"
+# Version history (docs/research/injury_workload_handoff.md):
+#   iwh-0.1.0  missed game = injury absence only when Out/Doubtful or on a reserve list. The historical
+#              development/confirmation verdict (retain_baseline, failed c7) was made with this version.
+#   iwh-0.1.1  missed game = injury absence when on that week's report with ANY injury listing, or on a reserve
+#              list (section 7.3 fix). Judged on prospective pregame ledgers only, from 2026 week 7.
 
 # Fixed before any backtest; derivations in docs/research/injury_workload_handoff.md.
 HEALTHY_WINDOW = 8           # established role: the last <= 8 healthy games in the lookback
@@ -95,8 +102,9 @@ TIMELINE_DOCS: dict[str, str] = {
     "last_healthy_season/week": "his last appearance that was not an injury exit",
     "last_game_injury_exit": "1 if the last appearance is classified injury_exit (forecast_features.classify_games)",
     "missed_team_games": "his current team's final games this season after his last appearance, before W",
-    "missed_injured": "of those, games he was designated Out/Doubtful or on a reserve list for (injury absences); "
-                      "iwh-0.1.1 (listing_absence): any injury listing that week",
+    "missed_injured": "of those, games he was on that week's report with an injury listing (Out, Doubtful, "
+                      "Questionable or a practice listing; not 'not injury related') or on a reserve list for "
+                      "(injury absences; iwh-0.1.0 counted Out/Doubtful/reserve only)",
     "return_evidence": "pregame evidence after missed games: listed_without_designation | questionable | "
                        "activated_from_reserve | none",
     "status_class": "available | available_returning | uncertain | unavailable | unknown (see status_reason)",
@@ -137,19 +145,17 @@ class _Cut:
     team_games: dict[str, list[int]]     # team -> final game weeks this season before W, ascending
     schedule: dict[str, list[int]]       # team -> all scheduled REG weeks this season (for reserve windows)
     listed: dict[tuple[str, int], str]   # (gsis, week) -> report_status for weeks <= W (injury listings only)
-    played: dict[str, set[int]]          # gsis -> weeks of this season (before W) he appeared in
-    listing_absence: bool = False        # iwh-0.1.1: any injury listing makes a missed game an injury absence
 
     def injured_absence(self, g: str, week: int, roster_row: dict | None) -> bool:
-        """Was a missed game an injury absence? Designated Out/Doubtful (iwh-0.1.0) or, with listing_absence
-        (iwh-0.1.1), on that week's report with ANY injury listing; or on a reserve list that week."""
-        listed = (g, week) in self.listed if self.listing_absence \
-            else self.listed.get((g, week)) in UNAVAILABLE_DESIGNATIONS
-        return listed or (roster_row or {}).get("status") in RESERVE_ROSTER
+        """A missed game counts as an injury absence (iwh-0.1.1): he was on that week's report with any injury
+        listing (Out, Doubtful, Questionable, or a practice listing without a game status; `listed` already drops
+        "not injury related" rows), or on a reserve list that week."""
+        return (g, week) in self.listed or (roster_row or {}).get("status") in RESERVE_ROSTER
+    played: dict[str, set[int]]          # gsis -> weeks of this season (before W) he appeared in
 
 
 def _cut(sources: Sources, season: int, target: int, cutoff: int | None,
-         roster_codes: pl.DataFrame | None = None, listing_absence: bool = False) -> _Cut:
+         roster_codes: pl.DataFrame | None = None) -> _Cut:
     w = target if cutoff is None else cutoff
     if w > target:
         raise ValueError(f"cutoff week {w} is after the target week {target}")
@@ -201,7 +207,7 @@ def _cut(sources: Sources, season: int, target: int, cutoff: int | None,
     for g, wk in p.filter(pl.col("season") == season).select("gsis_id", "week").iter_rows():
         played[g].add(int(wk))
     return _Cut(season, target, w, p, report, report_teams, roster_last, dict(roster_rows), dict(team_games),
-                dict(schedule), listed, dict(played), listing_absence)
+                dict(schedule), listed, dict(played))
 
 
 # ----------------------------------------------------------------------------- 1. injury timeline
@@ -344,11 +350,10 @@ def _status(rec: dict, cur_st: str, horizon: int) -> tuple[str, str]:
 
 
 def injury_timeline(sources: Sources, season: int, target_week: int, cutoff_week: int | None = None,
-                    roster_codes: pl.DataFrame | None = None, listing_absence: bool = False) -> pl.DataFrame:
+                    roster_codes: pl.DataFrame | None = None) -> pl.DataFrame:
     """Player-by-week injury timeline for (season, target_week) as known at `cutoff_week` (default: the target
-    week itself, horizon 0). One row per QB/RB/WR/TE with a lookback appearance or a roster row before W.
-    `listing_absence`: the iwh-0.1.1 rule for `missed_injured` (_Cut.injured_absence)."""
-    cut = _cut(sources, season, target_week, cutoff_week, roster_codes, listing_absence)
+    week itself, horizon 0). One row per QB/RB/WR/TE with a lookback appearance or a roster row before W."""
+    cut = _cut(sources, season, target_week, cutoff_week, roster_codes)
     rows = _timeline_rows(cut)
     return pl.DataFrame(rows, schema=TIMELINE_SCHEMA, orient="row") if rows else pl.DataFrame(schema=TIMELINE_SCHEMA)
 
@@ -495,13 +500,10 @@ def _xfpl_rates(p: pl.DataFrame) -> dict[str, tuple[float, float, float]]:
 
 
 def _participation(cut: _Cut, g: str, team: str) -> float:
-    """Share of the team's last <= TEAM_WINDOW final games the player either played or missed injured (designated
-    Out/Doubtful, or on a reserve list that week), counting only weeks he was on the team's roster when roster
-    rows exist. An injury absence keeps the role; a healthy absence (scratch, demotion) lowers it.
-
-    With cut.listing_absence (iwh-0.1.1, docs section 7.3) a missed game also counts as an injury absence when the player
-    was on that week's report with ANY injury listing (Questionable, or the practice report without a game status),
-    so a Questionable-and-inactive game is not read as a role absence. iwh-0.1.0 (False) counted Out/Doubtful only."""
+    """Share of the team's last <= TEAM_WINDOW final games the player either played or missed injured (on that
+    week's report with any injury listing, or on a reserve list: _Cut.injured_absence), counting only weeks he was
+    on the team's roster when roster rows exist. An injury absence keeps the role; a healthy absence (scratch,
+    demotion) lowers it. iwh-0.1.0 counted only Out/Doubtful/reserve weeks here."""
     weeks = cut.team_games.get(team, [])[-TEAM_WINDOW:]
     if not weeks:
         return 1.0
@@ -588,7 +590,7 @@ def _room_evidence(games: list[tuple[int, dict[str, float]]], first: dict[str, i
 
 def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_week: int | None = None, *,
                      timeline: pl.DataFrame | None = None, return_rates: dict | None = None,
-                     roster_codes: pl.DataFrame | None = None, listing_absence: bool = False) -> pl.DataFrame:
+                     roster_codes: pl.DataFrame | None = None) -> pl.DataFrame:
     """Expected opportunities of every RB/WR/TE in week T (layer 3 of the module docstring), one row per player.
 
     Horizon 0: Out/Doubtful/reserve/inactive players leave the pool; Questionable players stay (conditional on
@@ -596,10 +598,8 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
     Horizon >= 1 (T after the cutoff): a player injured at the cutoff is `uncertain`. With `return_rates`
     ({(position, missed_bucket, horizon): rate} from `fit_return_rates`, an empirical frequency fitted on earlier
     seasons) the expected shares are the probability-weighted mixture over his presence/absence scenarios;
-    without it he stays out of the pool and every row reports ho_scenarios = 0 (status quo, labeled).
-    `listing_absence`: the iwh-0.1.1 rule (_Cut.injured_absence: participation and missed_injured); False is the
-    evaluated iwh-0.1.0."""
-    cut = _cut(sources, season, target_week, cutoff_week, roster_codes, listing_absence)
+    without it he stays out of the pool and every row reports ho_scenarios = 0 (status quo, labeled)."""
+    cut = _cut(sources, season, target_week, cutoff_week, roster_codes)
     tl = timeline if timeline is not None else pl.DataFrame(_timeline_rows(cut), schema=TIMELINE_SCHEMA, orient="row")
     tl = tl.filter(pl.col("position").is_in(SKILL))
     if tl.height == 0:
@@ -781,9 +781,10 @@ def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...
     (h = 1..max_horizon, byes skipped). Only episodes whose outcome game is strictly before `through_key` count, so
     a table fitted for a forecast made at week W uses no outcome at or after W.
 
-    `active_roster_only` (ros-avail-0.1.1, docs/research/ros_availability.md): an episode counts only if the player's
-    latest weekly roster row with week <= W is ACT/INA, the population a rest-of-season run applies the table to
-    (reserve-list players are withheld and never get a rest-of-season p_play; mixing them in under-predicts returns)."""
+    `active_roster_only` (ros-avail-0.1.1, docs/research/ros_availability.md; the production model ifp-2.1.0): an
+    episode counts only if the player's latest weekly roster row with week <= W is ACT/INA, the population a
+    rest-of-season run applies the table to (reserve-list players are withheld and never get a rest-of-season
+    p_play; mixing them in under-predicts returns)."""
     if sources.injuries is None:
         return {}
     inj = sources.injuries.filter(pl.col("report_status").str.to_lowercase().is_in(list(UNAVAILABLE_DESIGNATIONS))

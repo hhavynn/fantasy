@@ -24,7 +24,7 @@ test("showingOurs needs an available independent run", () => {
   assert.equal(showingOurs(undefined), false);
 });
 
-test("modelStatusLine never claims more than the backend's governance", () => {
+test("modelStatusLine names the model behind the numbers, plainly", () => {
   const governance = {
     production_version: "ifp-2.0.0", fallback_version: "ifp-1.0.0", served_version: "ifp-2.0.0", is_fallback: false,
     production_approval: "owner_override", espn_superiority_established: false, start_sit_ready: false,
@@ -34,24 +34,23 @@ test("modelStatusLine never claims more than the backend's governance", () => {
     run: { run_id: "r", model_version: "ifp-2.0.0", created_at: "t" },
     model_status: { QB: "owner_override", RB: "owner_override", WR: "owner_override", TE: "owner_override" } };
   const line = modelStatusLine(prod);
-  assert.match(line, /owner override/);
-  assert.match(line, /not shown to be better than ESPN/);
-  assert.doesNotMatch(line, /\bvalidated\b/);
+  assert.equal(line, "Expected points from ifp-2.0.0, Fantasy Intel's own projection model.");
+  assert.doesNotMatch(line, /owner override|experimental|validated|better than ESPN/i);
   const fallback = { ...prod, run: { ...prod.run, model_version: "ifp-1.0.0" },
     governance: { ...governance, served_version: "ifp-1.0.0", is_fallback: true },
     model_status: { QB: "validated", RB: "experimental", WR: "experimental", TE: "experimental" } };
-  assert.match(modelStatusLine(fallback), /^Fallback model ifp-1\.0\.0 \(no eligible ifp-2\.0\.0 run this week\)/);
-  assert.match(modelStatusLine(fallback), /nothing is validated against ESPN/);
+  assert.equal(modelStatusLine(fallback), "Fallback model ifp-1.0.0 (no eligible ifp-2.0.0 run this week).");
 });
 
-test("horizonCaution shows the experimental label only for a rest-of-season run shown as ours", () => {
+test("horizonCaution notes a rest-of-season run only when it is shown as ours", () => {
   const base = { source: "independent" as const, available: true, reason: null, counts: null, model_status: null };
   const next = { ...base, run: { run_id: "r", model_version: "ifp-2.0.0", created_at: "t", forecast_horizon: 0, horizon_note: null } };
   assert.equal(horizonCaution(next), null);
   assert.equal(horizonCaution({ ...base, run: { run_id: "r", model_version: "ifp-2.0.0", created_at: "t" } }), null);
   const later = { ...base, run: { ...next.run, forecast_horizon: 3, horizon_note: "rest-of-season forecast (horizon 3): experimental, not validated beyond the next week" } };
-  assert.match(horizonCaution(later) ?? "", /not validated beyond the next week/);
-  assert.match(horizonCaution({ ...later, run: { ...later.run, horizon_note: null } }) ?? "", /experimental/);
+  assert.equal(horizonCaution(later), "This is a rest-of-season forecast made 3 weeks ahead; it refreshes once a newer run is in.");
+  assert.match(horizonCaution({ ...later, run: { ...later.run, forecast_horizon: 1, projected_from_week: 5 } }) ?? "", /made 1 week ahead \(from week 5\)/);
+  assert.doesNotMatch(horizonCaution(later) ?? "", /experimental|validated/);
   assert.equal(horizonCaution({ ...later, source: "espn" }), null);
   assert.equal(horizonCaution({ ...later, available: false }), null);
   assert.equal(horizonCaution(null), null);

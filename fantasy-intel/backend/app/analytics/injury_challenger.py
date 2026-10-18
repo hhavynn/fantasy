@@ -27,7 +27,16 @@ from .challenger import ChallengerConfig, fit_linear, train_rows
 from .forecast_features import POSITIONS, key
 from .independent_projections import MIN_TRAIN_ROWS, RidgeModel
 
-IWH_VERSION = "ifp-iwh-0.1.0"
+IWH_VERSION = "ifp-iwh-0.1.1"
+# Versions (docs/research/injury_workload_handoff.md, sections 7 and 10):
+#   ifp-iwh-0.1.0  handoff iwh-0.1.0. The only historically adjudicated version: development 2021-22 adopted RB,
+#                  WR and TE; confirmation 2023-24 -> retain_baseline (failed c7 on the returning player). Its frozen
+#                  adoption (frozen_adoption_ifp-iwh-0.1.0.json) and evaluation stand as written; the code that
+#                  produced them is commit d6fed66 (merge of PR #103).
+#   ifp-iwh-0.1.1  handoff iwh-0.1.1 (section 7.3 fix). Same features, same adoption, judged ONLY on prospective
+#                  write-once pregame ledgers from 2026 week 7 (injury_prospective.PROSPECTIVE_RULES); no historical
+#                  window is re-run.
+HISTORICAL_VERSION = "ifp-iwh-0.1.0"
 IWH_STATUS = "research_only"
 WINDOWS = {"development": (2021, 2022), "confirmation": (2023, 2024), "exploratory": (2025, 2026)}
 SEED = 20261017

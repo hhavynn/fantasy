@@ -5,7 +5,7 @@ import { Missing, num, pct, when } from "@/lib/format";
 import { plural } from "@/lib/plural";
 import {
   DECISION_BADGE, POSITIONS, VERDICT_BADGE, decisionModels, exclusionRows, intervalRows, intervalText, leadGapText,
-  signedNum, versionVerdictText, weeklySeries, weeksText,
+  rbVolumeRows, signedNum, versionVerdictText, weeklySeries, weeksText,
   type DecisionModel, type DecisionSection, type PerformanceReport, type PositionSummary, type Verdict,
 } from "@/lib/projection-performance";
 import styles from "./performance.module.css";
@@ -154,6 +154,60 @@ export function EspnComparison({ r }: { r: PerformanceReport }) {
   );
 }
 
+// ----------------------------------------------------------------------------- 3b. RB by volume
+
+function RbVolumeTable({ r, comparison }: { r: PerformanceReport; comparison: "pure_independent" | "conditional" }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Pregame volume</th>
+            <th className="num" title="Paired RB player-weeks in this group">n</th>
+            <th className="num">MAE ours</th><th className="num">MAE ESPN</th>
+            <th className="num" title="MAE(ours) − MAE(ESPN); negative means ours closer">Diff</th>
+            <th>95% CI</th>
+            <th>Verdict</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rbVolumeRows(r, comparison).map((g) => (
+            <tr key={g.group}>
+              <td>{g.label}</td>
+              <td className="num">{g.n}</td>
+              <td className="num">{num(g.ours.mae, 2, "No paired observations")}</td>
+              <td className="num">{num(g.espn.mae, 2, "No paired observations")}</td>
+              <td className="num">{signedNum(g.mae_diff, 2) ?? <Missing why="No paired observations" />}</td>
+              <td className={styles.nowrap}>{intervalText(g.ci95) ?? <Missing why="No interval without paired observations" />}</td>
+              <td><VerdictBadge verdict={g.verdict} reason={g.verdict_reason} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function RbVolume({ r }: { r: PerformanceReport }) {
+  const s = r.rb_volume_split;
+  if (!s) return null;
+  return (
+    <Section title="Running backs by volume" flush
+      subtitle={`RB accuracy split at ${s.threshold} carries + targets a game, paired with ESPN on the same player-weeks`}
+      footnote={`Opportunities are carries plus targets per game over the back's last five games this season (or fewer), all before ` +
+        "the week being scored. Each group needs the same evidence as a position before it gets a verdict."}>
+      <p className={styles.plain}>
+        Our model is expected to lose to simpler forecasts on backs who rarely touch the ball and to win on backs with real
+        volume, so the pooled RB figure above mixes two opposite effects.
+      </p>
+      <h3 className={styles.subhead}>Unconditional (headline): every resolved player-week, a back who did not play scores 0</h3>
+      <RbVolumeTable r={r} comparison="pure_independent" />
+      <h3 className={styles.subhead}>Conditional on playing: only backs who appeared</h3>
+      <RbVolumeTable r={r} comparison="conditional" />
+    </Section>
+  );
+}
+
 // ----------------------------------------------------------------------------- 4. weekly trend
 
 export function WeeklyTrend({ r }: { r: PerformanceReport }) {
@@ -233,7 +287,7 @@ export function ModelVersions({ r }: { r: PerformanceReport }) {
                     <td>
                       {s?.served_version ? <>{s.served_version}{s.fallback ? <> <Badge value="Fallback" tone="warn" /></> : null}</> : <span className="faint" title={s?.note ?? undefined}>ESPN</span>}
                       {s?.forecast_horizon ? (
-                        <span className={cx("faint", styles.small)} title={s.horizon_note ?? undefined}>
+                        <span className={cx("faint", styles.small)}>
                           rest-of-season forecast, {s.forecast_horizon} {plural(s.forecast_horizon, "week")} ahead (not scored)
                         </span>
                       ) : null}
@@ -476,7 +530,6 @@ export function Methodology({ r, sha }: { r: PerformanceReport; sha: string | nu
         <li>Interval: {g.interval} ({g.resamples} resamples, fixed seed). A verdict in either direction needs the whole interval on one side of 0.</li>
         <li>Start/Sit: at least {g.start_sit_min_decisions} decisions and {g.start_sit_min_weeks} weeks before any verdict.</li>
         {r.notes.map((n) => <li key={n}>{n}</li>)}
-        <li>{r.production.production_evidence}</li>
       </ul>
       <Method title="Report provenance">
         <ul className={styles.list}>

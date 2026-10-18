@@ -19,6 +19,10 @@ TE**: their base probabilities are kept.
 candidate (artifact below) and re-test it on prospective weeks; do not deploy it. It makes QB
 probabilities more honest, but it does not yet make QB projections more accurate.
 
+**Now collected** ("Prospective re-test" below): the QB map is frozen write-once, and every week it is
+applied to the P(appears) that production froze before kickoff. It is then scored against ipm-1.0.0
+on each new fully final week from 2026 week 7.
+
 ## Data and reproduction
 
 nflverse 2019-2025 (`sync_nfl_history.py`) and 2026 weeks 1-5 (`sync_nfl.py`, nflreadpy 0.1.5),
@@ -258,8 +262,66 @@ base model identity (`ipm-1.0.0`, penalties, conditional spec, participation-sel
 position the selected map (QB isotonic with 31 knots, every block >= 50 rows; RB/WR/TE method
 `none`), training cutoff (last out-of-sample week, 2026 week 5), calibration sample counts (QB
 6,440, RB 10,930, WR 16,299, TE 9,644), scoring fingerprint, data hash and the development
-selection. `CalibrationArtifact.from_dict` refuses any status other than `shadow`. Nothing loads
-it: not the API, not `weekly_learning`, not ESPN/Ours, not Start/Sit (tested).
+selection. `CalibrationArtifact.from_dict` refuses any status other than `shadow`. No production path
+loads it: not the API, not `weekly_learning`, not ESPN/Ours, not Start/Sit (tested). The only reader is
+the research re-test below, which loads a frozen copy.
+
+## Prospective re-test (what is now collected)
+
+`scripts/participation_cal_shadow.py` re-tests the QB isotonic map on weeks it has never seen. It is
+research only: `participation.py` and the production `ipm-1.0.0` artifact are unchanged, and nothing in
+the app reads its output (tested).
+
+**Freeze.** The first run copies the shadow artifact write-once into `frozen_ipm-cal-0.1.0.json`. If the
+artifact is missing, it first runs `participation_calibration.py run`, which is this study's own
+selection and fit. The copy is bound to:
+* the source file's sha256;
+* the base participation version (`ipm-1.0.0`);
+* the QB method, window and knots;
+* the training cutoff, the scoring fingerprint and the data hash.
+
+Only a fitted QB isotonic map with shadow status can be frozen. The copy is verified on every run: its
+content hash, then its knots against the binding. A hand-edited copy is refused, and the refusal is
+recorded. If `participation_calibration.py run` is re-run later and overwrites the source, the run notes
+it, and the frozen copy is still the one scored. On the 2026-10-17 snapshot the rebuilt artifact selects
+QB isotonic (expanding), with training cutoff 2026 week 5.
+
+**What is compared.** The base is the `p_play` that production froze before kickoff. That is the
+weekly-ledger pregame row (`weekly_learning.frozen_rows`) made by `ipm-1.0.0`. The calibrated probability
+is the frozen map applied to that same number. Because the map is a fixed function of a frozen pregame
+probability, the calibrated value is pregame too: nothing is re-forecast or backfilled.
+
+**Rule** (pre-registered in the script before any prospective week is scored).
+* **A row counts** when all of these hold:
+  * it is a QB row from 2026 week 7 on, after the map's training cutoff;
+  * the pregame run used the bound base version (other versions are counted and excluded);
+  * its kickoff is after the freeze;
+  * its week is fully final (`week_finality`).
+* **Outcomes** come from `label_outcomes`: appeared or confirmed absent. Unresolved players never become
+  absences.
+* **The re-test passes** under this study's own `SELECTION_RULES`:
+  * at least 8 such weeks and at least 400 rows;
+  * week-clustered 95% CIs of both the log-loss and the Brier difference (calibrated minus base) below 0;
+  * unconditional MAE not worse by more than 0.5%. That is P x the frozen ifp-1.0.0 conditional points,
+    as in this study. P x the frozen production ifp-2.0.0 points is reported, never gating.
+
+A pass is a reason to review the map, never a deployment.
+
+**Who runs it.** No new scheduler. `learning_cycle.py`'s non-fatal `ipm_cal_shadow` stage (Tue-Thu,
+after `ctx_shadow`) and `refresh_all.py`'s read-only evidence stage both run `cycle`: freeze once, then
+score. A failure is a warning, never a failed cycle or refresh. Skip it with `--no-ipm-cal-shadow`.
+
+**Files.** Everything is under `<models>/research/participation_cal_shadow/`, which is git-ignored:
+* the frozen copy, which is write-once;
+* `weeks/s<S>w<WW>.json`, write-once: each counted row's base and calibrated probability as first scored;
+* `runs/`, write-once;
+* `scores.json`, replaced on every run: per-week and pooled Brier, log loss, ECE, reliability, the
+  week-clustered differences, the gate, and the excluded counts.
+
+```
+uv run python ../scripts/participation_cal_shadow.py cycle     # freeze (once), then score
+uv run python ../scripts/participation_cal_shadow.py status
+```
 
 ## Limitations
 

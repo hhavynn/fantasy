@@ -2,7 +2,7 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { Badge, EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
-import { DISTANCES, conditions, headline, splitPlayers, statusText, type KickerPlayer, type KickerResponse } from "@/lib/kickers";
+import { DISTANCES, conditions, headline, rowFlags, splitPlayers, statusText, type KickerPlayer, type KickerResponse } from "@/lib/kickers";
 import styles from "./kickers.module.css";
 
 export const metadata = { title: "Kicker outlook" };
@@ -49,7 +49,7 @@ function Row({ p, rank }: { p: KickerPlayer; rank: number }) {
             ))}
           </ul>
         )}
-        {i.flags.length > 0 && <span className={styles.sub}>{i.flags.join("; ")}</span>}
+        {rowFlags(i.flags).length > 0 && <span className={styles.sub}>{rowFlags(i.flags).join("; ")}</span>}
       </td>
     </tr>
   );
@@ -94,14 +94,14 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
   return (
     <div className="stack">
       <PageHeader eyebrow="Projections" title={TITLE} meta={meta} actions={weekForm} />
-      <Notice tone="info" title="Historical validation only">
-        {d.governance.status_note} Run {d.run.run_id} made {when(d.run.created_at)} from data through{" "}
+      <Notice tone="info" title="This week's run">
+        Run {d.run.run_id} made {when(d.run.created_at)} from data through{" "}
         {d.run.feature_cutoff.data_through_season} week {d.run.feature_cutoff.data_through_week}
         {d.run.artifact_verified ? "" : ` (artifact approval unverified: ${d.run.artifact_note ?? "unknown"})`}.
       </Notice>
       {d.run.forecast_horizon > 0 && (
-        <Notice tone="caution" title="Rest-of-season forecast">
-          Made {d.run.forecast_horizon} week(s) ahead with no injury report or weather: experimental.
+        <Notice tone="info" title="Rest-of-season forecast">
+          Made {d.run.forecast_horizon} week(s) ahead, before that week&apos;s injury report and weather are out.
         </Notice>
       )}
       <Section title={`Projected kickers (${projected.length})`}

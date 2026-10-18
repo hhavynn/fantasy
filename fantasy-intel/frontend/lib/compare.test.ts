@@ -176,8 +176,8 @@ test("missing scoring settings: label falls back, nothing throws", () => {
 test("projectionSourceLine names the source in use", () => {
   assert.equal(projectionSourceLine("espn"), "Projections: ESPN");
   assert.equal(projectionSourceLine(undefined), "Projections: ESPN");
-  assert.equal(projectionSourceLine("independent"), "Projections: ESPN + Ours (experimental beyond next week)");
-  assert.equal(projectionSourceLine("ours"), "Projections: ESPN + Ours (experimental beyond next week)");
+  assert.equal(projectionSourceLine("independent"), "Projections: ESPN + Ours");
+  assert.equal(projectionSourceLine("ours"), "Projections: ESPN + Ours");
 });
 
 // ------------------------------------------------------------------------------------- edges --

@@ -56,8 +56,7 @@ def test_versions_are_wired_consistently():
     assert production_pin.REGISTERED_MODEL_VERSIONS == ps.CONSUMER_VERSIONS
     assert production_pin.REGISTERED_MODEL_VERSION == ps.MODEL_VERSION
     assert production_pin.PINNED_MODEL_VERSION == ps.RETIRED_VERSION == "ifp-1.0.0"
-    assert im.WORKLOAD_VERSION == iw.WORKLOAD_VERSION_FIXED == "iwh-0.1.1"
-    assert iw.WORKLOAD_VERSION == "iwh-0.1.0"        # the evaluated research version is unchanged
+    assert im.WORKLOAD_VERSION == iw.WORKLOAD_VERSION == "iwh-0.1.1"
 
 
 def test_governance_notes_are_short_and_neutral():
@@ -98,22 +97,15 @@ def test_both_weekly_versions_are_gated_by_approved_artifacts(trained):
 
 
 def test_a_questionable_and_inactive_game_is_an_injury_absence_in_0_1_1():
-    """STAR was listed Questionable for week 4 and did not play: iwh-0.1.0 read that as a role absence (claim cut),
-    iwh-0.1.1 as an injury absence (claim kept). An unlisted missed game still lowers the claim in both."""
+    """STAR was listed Questionable for week 4 and did not play: iwh-0.1.1 keeps his claim (an injury absence, not
+    a role absence). An unlisted missed game (a healthy scratch) still lowers it."""
     rows = tiw.report(4, tiw.inj(tiw.STAR, "Questionable", 4, practice="Limited Participation in Practice"))
     src = tiw.world(range(1, 6), skip={tiw.STAR: (4,)}, injuries=rows)
-    old = tiw.rows_by_id(iw.workload_handoff(src, tiw.S, 6))[tiw.STAR]
-    new = tiw.rows_by_id(im.handoff(src, tiw.S, 6))[tiw.STAR]
-    assert old["ho_participation"] == pytest.approx(0.75) and new["ho_participation"] == pytest.approx(1.0)
-    assert new["ho_car_share"] > old["ho_car_share"]
+    listed = tiw.rows_by_id(im.handoff(src, tiw.S, 6))[tiw.STAR]
     healthy_scratch = tiw.world(range(1, 6), skip={tiw.STAR: (4,)}, injuries=tiw.report(4))
-    assert tiw.rows_by_id(im.handoff(healthy_scratch, tiw.S, 6))[tiw.STAR]["ho_participation"] == pytest.approx(0.75)
-
-
-def test_the_research_defaults_are_unchanged():
-    src = tiw.world(range(1, 6), skip={tiw.STAR: (4,)},
-                    injuries=tiw.report(4, tiw.inj(tiw.STAR, "Questionable", 4)))
-    assert iw.workload_handoff(src, tiw.S, 6).equals(iw.workload_handoff(src, tiw.S, 6, listing_absence=False))
+    scratch = tiw.rows_by_id(im.handoff(healthy_scratch, tiw.S, 6))[tiw.STAR]
+    assert listed["ho_participation"] == pytest.approx(1.0) and scratch["ho_participation"] == pytest.approx(0.75)
+    assert listed["ho_car_share"] > scratch["ho_car_share"]
 
 
 # ----------------------------------------------------------------------------- return-rate table

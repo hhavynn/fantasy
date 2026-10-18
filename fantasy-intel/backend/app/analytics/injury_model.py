@@ -9,7 +9,7 @@ docs/research/injury_workload_handoff.md):
    this week) and `ho_shift_pg` (expected carries + targets minus the raw last-5 average). QB keeps ifp-2.0.0's
    features. The handoff is iwh-0.1.1: iwh-0.1.0 (the evaluated research version) with the pre-registered fix of
    section 7.3, so a Questionable-and-inactive game counts as an injury absence, not a role absence
-   (injury_workload.workload_handoff(listing_absence=True)).
+   (injury_workload._Cut.injured_absence).
 2. Rest-of-season P(plays) for a player designated Out or Doubtful at the cutoff week W, ros-avail-0.1.1
    (docs/research/ros_availability.md, its pre-registered next candidate). A run for a later week T used to give
    him an undesignated P(plays) (about 0.91 on 2023-24 while 41% played the next game). For his team's next
@@ -42,7 +42,7 @@ from .forecast_features import POSITIONS, Sources, key
 MODEL_VERSION = "ifp-2.1.0"
 BASE_VERSION = ch.CHALLENGER_VERSION          # ifp-2.0.0: the frozen spec this model extends
 MODEL_NAME = "ifp21"                         # RidgeModel.model of every position
-WORKLOAD_VERSION = iw.WORKLOAD_VERSION_FIXED  # iwh-0.1.1
+WORKLOAD_VERSION = iw.WORKLOAD_VERSION        # iwh-0.1.1
 GROUP = {p: list(ic.GROUP[p]) for p in POSITIONS}
 HANDOFF_FEATURES = ("ho_exp_xfpl", "ho_shift_pg")
 FEATURE_DECIMALS = 9                         # handoff features are rounded (see handoff)
@@ -58,7 +58,7 @@ RETURN_RATE_MODEL = "return-rate-table"      # participation.model_version of a 
 def config(cfg: ch.ChallengerConfig) -> dict:
     """The frozen model definition stored in every artifact (and hashed into its config_hash)."""
     return {"version": MODEL_VERSION, "base": BASE_VERSION, "base_config_hash": cfg.hash(),
-            "workload_version": WORKLOAD_VERSION, "group": GROUP, "listing_absence": True,
+            "workload_version": WORKLOAD_VERSION, "group": GROUP, "listing_absence": True,   # iwh-0.1.1 rule
             "return_rate_horizons": RETURN_HORIZON, "return_rate_min_n": iw.RETURN_MIN_N,
             "return_rate_population": "Out/Doubtful at the cutoff, latest roster row <= cutoff ACT/INA",
             "ros_availability": ROS_AVAILABILITY_VERSION, "p_play_horizons": PPLAY_HORIZONS,
@@ -87,7 +87,7 @@ def handoff(sources: Sources, season: int, target_week: int, cutoff_week: int | 
     features are rounded to FEATURE_DECIMALS: polars' parallel sums differ by ~1e-15 between identical calls, and the
     training data hash and content-addressed artifact id must reproduce on identical inputs."""
     ho = iw.workload_handoff(sources, season, target_week, cutoff_week, return_rates=return_rates,
-                             roster_codes=roster_codes, listing_absence=True)
+                             roster_codes=roster_codes)
     return ho.with_columns(*[pl.col(c).round(FEATURE_DECIMALS) for c in HANDOFF_FEATURES])
 
 
@@ -179,7 +179,7 @@ def team_games_after(sources: Sources, season: int, team: str, cutoff_week: int,
 def cutoff_injured(sources: Sources, season: int, cutoff_week: int, roster_codes: pl.DataFrame | None = None) -> dict:
     """{gsis_id: timeline row} of every player designated Out or Doubtful for the cutoff week's game (the cutoff
     report, including the ESPN status fallback the caller merged into `sources`)."""
-    tl = iw.injury_timeline(sources, season, cutoff_week, roster_codes=roster_codes, listing_absence=True)
+    tl = iw.injury_timeline(sources, season, cutoff_week, roster_codes=roster_codes)
     return {r["gsis_id"]: r for r in tl.filter(pl.col("designation").is_in(list(UNAVAILABLE))).iter_rows(named=True)}
 
 
