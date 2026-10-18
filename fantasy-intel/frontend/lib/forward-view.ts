@@ -37,7 +37,7 @@ export function oursCell(w: OursWeek | undefined, primary = ""): OursCell {
   const model = primary ? modelBadge(w.model_version, primary) : null;
   switch (w.origin) {
     case "ours":
-      return { value: w.value, kind: "ours", experimental, model, title: experimental ? "Experimental: not validated beyond the next week" : "Fantasy Intel projection" };
+      return { value: w.value, kind: "ours", experimental, model, title: "Fantasy Intel projection" };
     case "ours_zero":
       return { value: w.value ?? 0, kind: "zero", experimental, model, title: "Our model projects 0: bye or unavailable" };
     case "espn":
@@ -64,7 +64,7 @@ export function oursByWeek(ours: OursForward): Map<number, OursWeek> {
  * fallback weeks are named differently (both are in `missing_weeks`). */
 export function oursTotalNote(ours: OursForward): string {
   const span = `${ours.ros_weeks_available}/${ours.ros_weeks_expected} wk`;
-  if (ours.ros_complete) return `${span} · experimental beyond next week`;
+  if (ours.ros_complete) return span;
   const other = new Set(ours.other_model_weeks);
   const espn = ours.missing_weeks.filter((w) => !other.has(w));
   const parts: string[] = [];

@@ -119,8 +119,8 @@ def test_ours_value_per_remaining_regular_season_week(con):
     populate(con)
     out = ours_for(con)
     o = out["ours"]
-    assert o["available"] and o["label"] == LABEL and "experimental beyond next week" in o["label"]
-    assert o["label"] == "Fantasy Intel projections (ifp-2.0.0); experimental beyond next week"
+    assert o["available"] and o["label"] == LABEL
+    assert o["label"] == "Fantasy Intel projections (ifp-2.0.0)"
     assert [e["week"] for e in o["weeks"]] == list(range(CURRENT, LAST_REG + 1))   # regular season only
     w = by_week(o)
     for week in (6, 7, 12, 14):

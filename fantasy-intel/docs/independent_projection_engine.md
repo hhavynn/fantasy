@@ -451,13 +451,14 @@ the projection tables. The hosted API bundle ships without polars, so there the 
 `scripts/refresh_all.py` (launchd: Thu 15:00, Sun 08:00, Mon 15:00, Tue 08:00 Pacific) now also runs
 the prospective-evidence capture, so no step above depends on remembering to run a script. After the
 ESPN sync, nflverse sync and analytics have finished and the pregame snapshot check has printed, an
-**evidence stage** runs five existing scripts, each as its own process:
+**evidence stage** runs six existing scripts, each as its own process:
 
 | Step | When | Week |
 | --- | --- | --- |
 | `injury_freshness.py report` | every run | the upcoming week |
 | `start_sit_evaluation.py record` | every run with an upcoming week | the upcoming week |
 | `ctx_shadow.py pregame` | every run with an upcoming week (research shadow, `docs/research/ifp_ctx_shadow_automation.md`) | the upcoming week |
+| `dst_shadow.py pregame` | every run with an upcoming week (D/ST research shadow, `docs/research/dst_projection_model.md` section 7) | the upcoming week |
 | `signal_shadows.py pregame` | every run with an upcoming week (research shadows ifp-fr-p1 / ifp-dct-p1 / ifp-awd-p1, `docs/research/signal_shadows.md`) | the upcoming week |
 | `espn_benchmark.py record` | when a fully final week exists | the latest fully final week |
 
@@ -473,7 +474,8 @@ ESPN sync, nflverse sync and analytics have finished and the pregame snapshot ch
 * **Safety.** The stage starts only after every write connection has closed (each sync runs in its own
   process), opens the database read-only, runs no sync, writes no live table, never touches
   MotherDuck and changes no model. Outputs go to the existing git-ignored defaults
-  (`data/models/start_sit`, `data/models/espn_benchmark`).
+  (`data/models/start_sit`, `data/models/espn_benchmark`, and the research shadows' directories). The one
+  network read is `dst_shadow.py` refreshing its git-ignored ESPN D/ST statistics cache when it misses a final game.
 * **Failures never fail the refresh.** A step that exits non-zero (for example `start_sit_evaluation`
   `espn_benchmark` exit 3 when not ready, or a DuckDB lock held by the learning cycle) or cannot
   start is logged as `WARNING: Evidence: ...` in `data/logs/refresh-<UTC stamp>.log`, and
@@ -928,6 +930,65 @@ Tue-Thu morning cover most delays, but if nflverse publishes after the Thursday 
 Thursday-night kickoff, run `learning_cycle.py run` by hand. If the refresh and the cycle start
 together, the cycle's sync fails on DuckDB's write lock and the next attempt retries. The
 participation artifact is not retrained (unchanged); the challenger stays shadow-only.
+
+### Final-designation re-projection (`learning_cycle.py reproject`)
+
+**The gap.** The cycle above stores the week's production run Tue-Thu, before the first kickoff. The final game
+designations (the nflverse injury report's Out / Doubtful / Questionable) are published on Friday, so they never
+reached production: Saquon Barkley's stored week-6 row kept ESPN's mid-week QUESTIONABLE (p_play 0.29, expected
+2.19) although the nflverse week-6 report says Out (`docs/research/injury_workload_handoff.md`, section 1 item 10).
+
+**The step** (`learning_cycle.py reproject`, which runs `backtest_independent_projections.py reproject` after
+`sync_nfl.py`; logic in `app/analytics/final_reprojection.py`):
+
+1. Lock (the cycle's lock, so it never overlaps a cycle), preflight, `sync_nfl.py` (`--skip-sync` skips it).
+2. Week = the week of the next team kickoff after now (`final_reprojection.in_progress_week`: after Thursday night
+   it is still that week; `--week` overrides).
+3. **Base run** = the newest horizon-0 `ifp-2.0.0` run of that week under the league's scoring that the consumer
+   rules accept (`production_forecasts.verified_runs`: approved artifact, rows match the content hash). None ->
+   refused (exit 3); a week the cycle never froze is not backfilled.
+4. **Same artifact.** The artifact FILE whose sha256 equals the base run's `artifact_id` is loaded from the
+   write-once weekly store (never "the newest artifact"); a base run without a file sha is refused. Only inputs that
+   changed since the base run (the nflverse report, rosters, ESPN status, the ESPN-status fallback) can move a number.
+5. `build_live` re-projects the week (unchanged code, so the final nflverse report now drives participation and the
+   ESPN-status fallback only covers teams that still have no nflverse designation).
+6. **Kicked-off teams are not re-projected** (`build_live` itself has no clock and would). Every team whose kickoff
+   (`injury_freshness.scheduled_kickoffs`, nflverse US Eastern) is at or before the new run's `created_at`, and every
+   team whose kickoff is unknown, keeps its players' rows **byte-for-byte from the base run**, with one flag added:
+   `kickoff passed before this re-projection: row carried unchanged from run <base>` (a row carried again by a later
+   re-projection keeps the original run's flag). A player of such a team with no base row is left out. `write_run`
+   stamps carried rows `pregame = false`, so they can never count as forecasts made after kickoff, while the consumer
+   view keeps showing the pregame number, labeled.
+7. **Nothing changed -> nothing written.** When every re-projected row equals the base run's row (content hash of
+   the pregame part), the step reports `unchanged` and writes no run. Otherwise it stores a **new run** with
+   `independent_projection_store.write_run` (append-only, content-hashed; an identical retry is a no-op).
+8. **Injury retrieval times** are reported per team from `injury_freshness.team_freshness` (source used, retrieval
+   time, provider time, pregame label, and whether the evidence was retrieved after the base run was made):
+   informational, never a gate or a model input, as everywhere else.
+
+Reports: `<out>/reports/reproject-<stamp>-<pid>.json` (write-once) and `<out>/status/latest-reproject.json`:
+base run, kicked-off and unknown-kickoff teams, rows re-projected / carried / dropped, aggregate changes (rows whose
+expected points or coverage status moved, by team; no player names), injury freshness. Exit codes: 0 written or
+unchanged, 3 refused, 4 locked, 5 configuration (including `--now`: a writing step never runs on a simulated
+clock), 1 failure.
+
+**What does not change.** No stored run, row or hash is modified (tests compare every earlier run and row byte for
+byte). The weekly-learning ledger, the ctx shadow ledger, artifacts and `approved_artifacts` are not touched (the
+artifact is already registered). The evidence readers are unchanged: `pregame_forecasts` already takes, per player,
+the latest eligible run created before that player's own kickoff, so a Sunday player's evidence row becomes the
+re-projection's (made before his kickoff, the better-informed pregame forecast) while a Thursday player's stays the
+base run's (his carried row is not pregame). `projection_source.select_run` serves the new run because it is the
+newest verified run; `timing` counts the carried rows as not pregame. The next `refresh_all.py` publishes it.
+
+**Schedule (not installed: needs the owner's OK).** `reproject` is a manual command until a launchd entry is
+approved; nothing in `scripts/launchd/` changed and the merge coordinator must be told before production scheduling
+is touched. Proposed: a separate agent (or two `StartCalendarInterval` entries) at **Sat 07:00 PT** (Friday's final
+reports are out; before Saturday games late in the season) and **Sun 05:30 PT** (before a 09:30 ET London kickoff).
+Each attempt is idempotent; a team already kicked off is carried, never recomputed.
+
+**Limitations.** ESPN status comes from the last `sync_espn.py` (`refresh_all.py`, Thu 15:00 / Sun 08:00 PT); the
+step does not sync ESPN. Game-day inactives (90 minutes before kickoff) are not covered. The kicker model
+(`kfp-1.0.0`, `kicker_live`) uses the same week / horizon pattern and is not re-projected here (follow-up).
 
 ### Pregame source provenance (`app/analytics/source_provenance.py`)
 

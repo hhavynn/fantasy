@@ -204,3 +204,67 @@ def test_sync_run_finish_joins_an_open_transaction(con):
     assert con.execute("SELECT status FROM sync_runs WHERE run_id = ?", [run.run_id]).fetchall() == [("running",)]
     run.finish("ok")
     assert con.execute("SELECT status FROM sync_runs WHERE run_id = ?", [run.run_id]).fetchall() == [("ok",)]
+
+
+# ------------------------------------------------------------- roster history --
+
+def _history(con):
+    return con.execute("SELECT snapshot_date, team_id, espn_player_id, lineup_slot_id, synced_at FROM roster_history "
+                       "ORDER BY snapshot_date, team_id, espn_player_id").fetchall()
+
+
+def test_sync_appends_todays_current_period_rosters_to_roster_history(con):
+    from datetime import date
+
+    from espn_fixture import LEAGUE_ID, ROSTERS, SEASON
+    stats = write_all(con, fetch_all(FakeEspnClient()), swid=MY_SWID, my_team_id=None)
+    rows = _history(con)
+    assert stats["roster_history"]["rows"] == len(rows) == sum(len(v) for v in ROSTERS.values())
+    assert {r[0] for r in rows} == {date.today()}
+    assert {(r[1], r[2], r[3]) for r in rows} == {(t, pid, slot) for t, ps in ROSTERS.items() for pid, slot in ps}
+    assert con.execute("SELECT DISTINCT league_id, season FROM roster_history").fetchall() == [(LEAGUE_ID, SEASON)]
+    # Same as the current period's lineup_snapshots rows.
+    assert {(r[1], r[2], r[3]) for r in rows} == set(con.execute(
+        "SELECT team_id, espn_player_id, lineup_slot_id FROM lineup_snapshots WHERE scoring_period = ?",
+        [CURRENT]).fetchall())
+
+
+def test_roster_history_keeps_the_latest_sync_of_each_day_and_never_touches_earlier_days(con, monkeypatch):
+    from datetime import date, datetime
+
+    from app.analytics import production_forecasts
+    from app.espn.sync import write_roster_history
+    monkeypatch.setattr(production_forecasts, "first_kickoffs", lambda con, season: {})
+    day1, day2 = date(2026, 9, 29), date(2026, 9, 30)
+    a = [{"team_id": 1, "espn_player_id": 10, "lineup_slot_id": 0}, {"team_id": 2, "espn_player_id": 20, "lineup_slot_id": 2}]
+    b = [{"team_id": 1, "espn_player_id": 10, "lineup_slot_id": 0}, {"team_id": 2, "espn_player_id": 21, "lineup_slot_id": 2},
+         {"team_id": 2, "espn_player_id": None, "lineup_slot_id": 2}]   # an empty slot is not a player
+    write_roster_history(con, a, league_id=1, season=2026, day=day1, now=datetime(2026, 9, 29, 8))
+    write_roster_history(con, a, league_id=1, season=2026, day=day2, now=datetime(2026, 9, 30, 8))
+    res = write_roster_history(con, b, league_id=1, season=2026, day=day2, now=datetime(2026, 9, 30, 20))
+    assert res == {"snapshot_date": "2026-09-30", "rows": 2, "locked": False}
+    assert _history(con) == [(day1, 1, 10, 0, datetime(2026, 9, 29, 8)), (day1, 2, 20, 2, datetime(2026, 9, 29, 8)),
+                             (day2, 1, 10, 0, datetime(2026, 9, 30, 20)), (day2, 2, 21, 2, datetime(2026, 9, 30, 20))]
+
+
+def test_roster_history_never_replaces_a_pre_kickoff_snapshot_with_a_later_sync_that_day(con, monkeypatch):
+    from datetime import date, datetime, timezone
+
+    from app.analytics import production_forecasts
+    from app.espn.sync import write_roster_history
+    kickoff = datetime(2026, 10, 1, 17, tzinfo=timezone.utc)
+    monkeypatch.setattr(production_forecasts, "first_kickoffs", lambda con, season: {4: kickoff})
+    day = date(2026, 10, 1)
+    before = [{"team_id": 1, "espn_player_id": 10, "lineup_slot_id": 0}]
+    after = [{"team_id": 1, "espn_player_id": 11, "lineup_slot_id": 0}]
+    write_roster_history(con, before, league_id=1, season=2026, day=day, now=datetime(2026, 10, 1, 12))
+    write_roster_history(con, before, league_id=1, season=2026, day=day, now=datetime(2026, 10, 1, 16))  # still pregame
+    res = write_roster_history(con, after, league_id=1, season=2026, day=day, now=datetime(2026, 10, 1, 21))
+    assert res["locked"] and res["rows"] == 0
+    assert _history(con) == [(day, 1, 10, 0, datetime(2026, 10, 1, 16))]
+    # The next day's snapshot is written as usual.
+    write_roster_history(con, after, league_id=1, season=2026, day=date(2026, 10, 2), now=datetime(2026, 10, 2, 9))
+    assert [r[2] for r in _history(con)] == [10, 11]
+    # Another league's snapshot that day is independent.
+    write_roster_history(con, after, league_id=2, season=2026, day=day, now=datetime(2026, 10, 1, 21))
+    assert con.execute("SELECT count(*) FROM roster_history WHERE league_id = 2").fetchone()[0] == 1

@@ -31,7 +31,7 @@ export function RankingsTable({ rows, sort, sp, showOurs, windowLabel, basis }: 
             <SortableTh sortKey="name" label="Player" current={sort} searchParams={sp} defaultDir="asc" className={styles.playerCol} title="Player name, A to Z" />
             <th scope="col" title="Opponent in the ranked week">Opp</th>
             <SortableTh sortKey="espn" label="ESPN pts" align="right" current={sort} searchParams={sp} title={projTitle("ESPN's")} />
-            {showOurs && <SortableTh sortKey="ours" label="Ours pts" align="right" current={sort} searchParams={sp} title={`${projTitle("Fantasy Intel's")} Opt-in and experimental.`} />}
+            {showOurs && <SortableTh sortKey="ours" label="Ours pts" align="right" current={sort} searchParams={sp} title={projTitle("Fantasy Intel's")} />}
             <SortableTh sortKey="rating" label="Rating" align="right" current={sort} searchParams={sp} title={RATING_TITLE} />
             <SortableTh sortKey="opportunity" label="Opportunity" align="right" current={sort} searchParams={sp}
               title="Opportunity rating, 0–100.0: percentile of recent expected points (xFP) within the position, full PPR. Position-relative, not a price." />

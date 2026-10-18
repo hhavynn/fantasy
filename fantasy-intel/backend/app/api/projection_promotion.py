@@ -31,8 +31,7 @@ def projection_promotion():
                 "governance": governance(MODEL_VERSION),
                 "unavailable_reason": f"The promotion tracker needs the research packages ({err.name}), which this "
                                       f"API deployment does not include, so evidence progress is not shown here. "
-                                      f"{MODEL_VERSION} is production by owner override and is not shown to be "
-                                      "better than ESPN. Open the Data quality page on a local backend."}
+                                      "Open the Data quality page on a local backend."}
     with db() as con:
         try:
             return build_tracker(con)

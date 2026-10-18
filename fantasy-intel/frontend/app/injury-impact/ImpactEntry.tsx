@@ -76,7 +76,7 @@ function TeammateTable({ e }: { e: InjuryEntry }) {
             <th scope="col">Teammate</th>
             <th scope="col" className="num" title={`${e.impact.unit_label} per game with him → without him, and the games behind each side`}>With → w/o</th>
             <th scope="col" className="num" title="Observed change per game without him">Change</th>
-            <th scope="col" title={`Pro-rata share of his recent volume and the extra ${unit} per game it implies. Not validated.`}>Pro-rata</th>
+            <th scope="col" title={`Pro-rata share of his recent volume and the extra ${unit} per game it implies.`}>Pro-rata</th>
             <th scope="col" className="num" title={`${e.impact.unit_label} per game over the team's last 3 games`}>Recent/g</th>
             <th scope="col" className="num" title="Rank at his position on the team's latest depth chart">Depth</th>
             <th scope="col" className="num" title="ESPN's weekly projection (ESPN's model, league scoring)">ESPN</th>

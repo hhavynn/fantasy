@@ -25,6 +25,10 @@ Three layers, each point-in-time for a forecast of (season S, target week T) mad
 
    A player's claim is his established share x his recent participation (games played OR missed injured, over
    the team's recent games): an injury absence keeps the claim, a healthy scratch or a new demotion lowers it.
+   A missed game is an injury absence when he was on that week's report with any injury listing (Out, Doubtful,
+   Questionable, or a practice listing without a game status; never "not injury related") or on a reserve list.
+   iwh-0.1.0 counted only Out/Doubtful/reserve weeks, which read a Questionable-then-inactive game as a role
+   absence (docs/research/injury_workload_handoff.md section 7.3); iwh-0.1.1 is that pre-registered fix.
    Unavailable players' claims leave the pool and the rest absorb them in proportion to their claims, then
    toward what they actually received in the team's earlier games without those players (shrunk by
    ABSENCE_SHRINK_GAMES). A returning starter re-enters the pool with his established claim, which takes the
@@ -52,7 +56,12 @@ import polars as pl
 from ..db.connection import table_columns, table_exists
 from .forecast_features import Sources, classify_games, key
 
-WORKLOAD_VERSION = "iwh-0.1.0"
+WORKLOAD_VERSION = "iwh-0.1.1"
+# Version history (docs/research/injury_workload_handoff.md):
+#   iwh-0.1.0  missed game = injury absence only when Out/Doubtful or on a reserve list. The historical
+#              development/confirmation verdict (retain_baseline, failed c7) was made with this version.
+#   iwh-0.1.1  missed game = injury absence when on that week's report with ANY injury listing, or on a reserve
+#              list (section 7.3 fix). Judged on prospective pregame ledgers only, from 2026 week 7.
 
 # Fixed before any backtest; derivations in docs/research/injury_workload_handoff.md.
 HEALTHY_WINDOW = 8           # established role: the last <= 8 healthy games in the lookback
@@ -92,7 +101,9 @@ TIMELINE_DOCS: dict[str, str] = {
     "last_healthy_season/week": "his last appearance that was not an injury exit",
     "last_game_injury_exit": "1 if the last appearance is classified injury_exit (forecast_features.classify_games)",
     "missed_team_games": "his current team's final games this season after his last appearance, before W",
-    "missed_injured": "of those, games he was designated Out/Doubtful or on a reserve list for (injury absences)",
+    "missed_injured": "of those, games he was on that week's report with an injury listing (Out, Doubtful, "
+                      "Questionable or a practice listing; not 'not injury related') or on a reserve list for "
+                      "(injury absences; iwh-0.1.0 counted Out/Doubtful/reserve only)",
     "return_evidence": "pregame evidence after missed games: listed_without_designation | questionable | "
                        "activated_from_reserve | none",
     "status_class": "available | available_returning | uncertain | unavailable | unknown (see status_reason)",
@@ -133,6 +144,12 @@ class _Cut:
     team_games: dict[str, list[int]]     # team -> final game weeks this season before W, ascending
     schedule: dict[str, list[int]]       # team -> all scheduled REG weeks this season (for reserve windows)
     listed: dict[tuple[str, int], str]   # (gsis, week) -> report_status for weeks <= W (injury listings only)
+
+    def injured_absence(self, g: str, week: int, roster_row: dict | None) -> bool:
+        """A missed game counts as an injury absence (iwh-0.1.1): he was on that week's report with any injury
+        listing (Out, Doubtful, Questionable, or a practice listing without a game status; `listed` already drops
+        "not injury related" rows), or on a reserve list that week."""
+        return (g, week) in self.listed or (roster_row or {}).get("status") in RESERVE_ROSTER
     played: dict[str, set[int]]          # gsis -> weeks of this season (before W) he appeared in
 
 
@@ -251,8 +268,7 @@ def _timeline_rows(cut: _Cut) -> list[dict]:
         rec["missed_team_games"] = len(after)
         rows = cut.roster_rows.get(g, [])
         by_week = {r["week"]: r for r in rows}
-        inj = sum(1 for w in after if cut.listed.get((g, w)) in UNAVAILABLE_DESIGNATIONS
-                  or (by_week.get(w) or {}).get("status") in RESERVE_ROSTER)
+        inj = sum(1 for w in after if cut.injured_absence(g, w, by_week.get(w)))
         rec["missed_injured"] = inj
         prev = tg[-1] if tg else None
         rec["prev_game_out"] = None if prev is None else int(cut.listed.get((g, prev)) in UNAVAILABLE_DESIGNATIONS)
@@ -483,9 +499,10 @@ def _xfpl_rates(p: pl.DataFrame) -> dict[str, tuple[float, float, float]]:
 
 
 def _participation(cut: _Cut, g: str, team: str) -> float:
-    """Share of the team's last <= TEAM_WINDOW final games the player either played or missed injured (designated
-    Out/Doubtful, or on a reserve list that week), counting only weeks he was on the team's roster when roster
-    rows exist. An injury absence keeps the role; a healthy absence (scratch, demotion) lowers it."""
+    """Share of the team's last <= TEAM_WINDOW final games the player either played or missed injured (on that
+    week's report with any injury listing, or on a reserve list: _Cut.injured_absence), counting only weeks he was
+    on the team's roster when roster rows exist. An injury absence keeps the role; a healthy absence (scratch,
+    demotion) lowers it. iwh-0.1.0 counted only Out/Doubtful/reserve weeks here."""
     weeks = cut.team_games.get(team, [])[-TEAM_WINDOW:]
     if not weeks:
         return 1.0
@@ -497,7 +514,7 @@ def _participation(cut: _Cut, g: str, team: str) -> float:
         if rows and (r is None or r["team"] != team or r["status"] not in (*ACTIVE_ROSTER, *RESERVE_ROSTER)):
             continue      # not on this team's roster that week (practice squad, another team): not counted
         den += 1
-        if w in played or cut.listed.get((g, w)) in UNAVAILABLE_DESIGNATIONS or (r or {}).get("status") in RESERVE_ROSTER:
+        if w in played or cut.injured_absence(g, w, r):
             num += 1
     return num / den if den else 1.0
 

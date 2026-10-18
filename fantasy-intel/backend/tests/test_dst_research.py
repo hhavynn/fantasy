@@ -1,5 +1,6 @@
 """D/ST projection research (dfp-r1): league scoring, ESPN payloads, game table, point-in-time ratings, the stack,
-metrics and the adoption gate. Synthetic, deterministic fixtures only; no test makes a network request."""
+metrics and the adoption gate, and the isolation of the model (research script + prospective shadow only). Synthetic,
+deterministic fixtures only; no test makes a network request."""
 
 from __future__ import annotations
 
@@ -336,4 +337,21 @@ def test_research_module_is_never_imported_by_the_app():
     app = Path(__file__).resolve().parents[1] / "app"
     for f in app.rglob("*.py"):
         if f.name != "dst_research.py":
-            assert "dst_research" not in f.read_text(), f
+            text = f.read_text()
+            assert "dst_research" not in text and "dst_shadow" not in text and "dfp-r1" not in text, f
+
+
+def test_dfp_r1_runs_only_as_a_research_shadow_and_dst_stays_espn():
+    """Only the research script and the shadow script import the model. learning_cycle.py / refresh_all.py launch
+    the shadow as a separate process (never an import), and the production projection source keeps D/ST on ESPN."""
+    root = Path(__file__).resolve().parents[2]
+    scripts = root / "scripts"
+    importers = {f.name for f in scripts.rglob("*.py") if "dst_research" in f.read_text()}
+    assert importers == {"dst_research.py", "dst_shadow.py"}
+    for name in ("learning_cycle.py", "refresh_all.py"):
+        text = (scripts / name).read_text()
+        assert '"dst_shadow.py"' in text and "import dst_shadow" not in text and "from dst_shadow" not in text
+    callers = {f.name for f in scripts.rglob("*.py") if "dst_shadow" in f.read_text()}
+    assert callers == {"dst_shadow.py", "learning_cycle.py", "refresh_all.py"}
+    source = (root / "backend" / "app" / "analytics" / "projection_source.py").read_text()
+    assert "D/ST has no model" in source and "dfp" not in source

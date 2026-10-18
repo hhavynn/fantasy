@@ -137,7 +137,7 @@ source field or ID is lost (archived under `data/raw/espn/<run>/`).
 | League name, settings, scoring items, roster slots, FAAB, trade deadline | `mSettings` | `leagues` |
 | Teams, owners, record, standings, waiver rank, FAAB spent, ESPN transaction counters (adds/drops/trades/IR moves, adds per matchup period) | `mTeam`, `mStandings` | `fantasy_teams`, `league_members` |
 | Matchups / scores | `mMatchup` | `matchups` |
-| Roster + lineup slot **per scoring period** (weekly lineups) | `mRoster` + `scoringPeriodId` | `lineup_snapshots` |
+| Roster + lineup slot **per scoring period** (weekly lineups) | `mRoster` + `scoringPeriodId` | `lineup_snapshots`, `roster_history` (current period, one append-only snapshot per day) |
 | Transactions (FA adds, waiver claims, drops, trades, lineup moves incl. IR), with timestamps and bids | `mTransactions2` per period | `transactions`, `transaction_items` |
 | Activity feed (adds/drops/trade legs) | `kona_league_communication` | `activity_messages` |
 | Free agents / waivers with % owned, % change, injury status | `kona_player_info` | `fantasy_players`, `player_ownership_history` |

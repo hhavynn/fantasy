@@ -228,11 +228,11 @@ export function headline(res: PerformanceResponse): Headline {
     const weeks = r.weeks.fully_final.length;
     return {
       tone: "info",
-      title: "Insufficient prospective evidence",
+      title: "Still collecting weeks",
       body: `No position has reached the evidence bar yet (at least ${r.evidence_gate.min_weeks} fully final weeks and ` +
         `${r.evidence_gate.min_matched_per_position} matched observations per position). ` +
         `${weeks === 0 ? "No week is fully final yet." : `${weeks} fully final ${weeks === 1 ? "week" : "weeks"} so far.`} ` +
-        "Whether Fantasy Intel beats ESPN is not established.",
+        "The head-to-head call against ESPN shows up here once a position clears it.",
     };
   }
   const parts: string[] = [];
