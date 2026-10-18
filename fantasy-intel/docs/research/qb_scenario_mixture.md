@@ -39,6 +39,9 @@ development. Can we keep the QB signal and remove that bias? This study tests tw
 * **Recommendation.** Do not adopt p2, and change nothing in production. S2 at QB is worth a separately
   pre-registered prospective shadow, gated on bias exactly like p1. It must not be re-selected on these
   historical windows (section 7).
+* **Now collected** (section 8): that shadow, `ifp-ctx-p2q` (QB S2, RB/WR/TE ifp-2), freezes a write-once
+  pregame ledger every week from 2026 week 7 and is scored weekly under p1's gate, together with the
+  start-probability calibration.
 
 Code (new files only):
 * `scripts/qb_scenarios.py`: candidates, start model, P(start | appears), scenario columns, mixing,
@@ -313,13 +316,93 @@ But it fails the development bias guard. Its residual bias is a starter-level sh
 window. And confirmation 2023-24 has now been evaluated by this study family three times, after a
 decomposition that looked at every window. Historical replay cannot settle it.
 
-**Suggested next step** (not done here, because it touches the shadow automation another session owns):
+**Suggested next step** (done since: section 8):
 * Pre-register a QB-only prospective candidate (QB S2; RB/WR/TE ifp-2, or p1's choices) with p1's gate.
   That means at least 8 final prospective weeks and at least 400 matched appearances, a CI upper bound
   below 0, |bias| within 0.15 and a starters pool not worse.
 * Add a write-once pregame ledger for it, next to p1's.
 * Report the start-probability calibration prospectively as well. Week-W roster snapshots would make the
   week-1 candidate rule verifiable.
+
+## 8. Prospective shadow `ifp-ctx-p2q` (what is now collected)
+
+`scripts/qb_scenario_shadow.py` runs the QB-only candidate prospectively. It is research shadow output only:
+nothing in production, the API or the frontend reads it, and `projection_source.py` / `participation.py` are
+unchanged.
+
+**Candidate.** S2 at QB, exactly this study's model: `qb_scenarios.py` called through
+`qb_scenario_research.py`'s own `build`, then `walk_forward_p2` for the target week. RB/WR/TE are ifp-2, so only QB
+rows are frozen and gated. Neither p2 file is edited, because both are bound into p2's frozen selection
+(`evaluator_hash`).
+
+**Pre-registration.** The spec is frozen write-once into `frozen_ifp-ctx-p2q.json` on the first run, before any
+prospective week and before this study's results are revisited. It holds:
+* the candidate and the start-model constants;
+* the gate and the rules;
+* the freeze-rule constants and the first prospective week (2026 week 7).
+
+Like the p2 selection, it is bound to the ifp-2 config hash, the league scoring, the roster-context version and the
+sha256 of `qb_scenarios.py`. Any later difference in the spec or the binding is refused, and the error names the
+key. The p2 study's frozen selection, when it is present, is recorded as provenance but not bound, so the shadow
+does not depend on the study's directory. (Adding the new scripts changes `hgb_research.code_hash`, which covers
+every script, so p2's store fingerprint changes too. As before, reproduce the study at PR #102's commit.)
+
+**The ledger.** It is frozen once per week, by p1's freeze rule (`ctx_shadow.py`, unchanged), because the start
+model reads the same nflverse week-W designations: at least 90% of open teams with fresh designations, or the main
+slate within 6 h. `ledger/s<S>w<WW>-pregame.json` is write-once. For every open QB it holds:
+* the S2 and same-run ifp-2 points;
+* `pi_start` and the fallback flag.
+
+For every open team it holds the start-probability candidates: `p_start`, `pi_start`, rank, first game, p1's
+expected QB and class, and the report flags. It also holds:
+* the fitted start model, the source hashes and the shadow script's sha256;
+* the teams that had already kicked off, which are excluded.
+
+Kickoffs are re-checked at write time. A week whose games all start without a ledger is recorded under `missed/`
+and never backfilled.
+
+**Scoring, weekly.** A ledger counts when it is from 2026 week 7 on, was made under the frozen spec, and was created
+after the spec froze. Once its week is fully final, `prospective.json` is rebuilt with three parts.
+* **The gate**, p1's `challenger.SHADOW_GATE` on QB: S2 against the ifp-2 refit frozen in the same ledger, on
+  identical rows.
+  * at least 8 fully final weeks and at least 400 matched QB appearances;
+  * a week-clustered MAE-difference CI with upper bound below 0;
+  * |bias(S2)| <= |bias(ifp-2)| + 0.15;
+  * starters-pool MAE not worse.
+
+  Status is `insufficient_data`, `fails_gate` or `meets_gate`. A pass is a reason to review, never a promotion.
+* **Alongside production:** MAE and bias against the production ifp-2.0.0 frozen in the weekly ledger, as
+  `ctx_shadow.py` reports for p1.
+* **Start-probability calibration**, reported and never gating, with section 3's definitions. Per team-week Brier,
+  log loss and top-1 accuracy against the realized starter, with p1's committed expected QB as the comparator.
+  Also the candidate-level reliability bins, the first-game subset and the P(start | appears) Brier on QBs who
+  appeared. Week-1 roster snapshots are not collected yet (the season is past week 1).
+
+**Who runs it.** No new scheduler. `refresh_all.py`'s evidence stage runs `pregame` for the upcoming week (the
+freeze, normally Sunday morning). `learning_cycle.py`'s non-fatal `qb_scenario_shadow` stage, right after
+`ctx_shadow`, runs `cycle`: score, missed-week check, then a freeze attempt. A failure is a warning, never a failed
+cycle or refresh. Skip it with `--no-qb-scenario-shadow`.
+
+**Files.** Everything is under `<IFP_MODEL_DIR>/research/qb_scenario_shadow/`, which is git-ignored:
+* the frozen spec, `ledger/`, `runs/`, `freeze/` and `missed/`, all write-once;
+* `_research/`, a cache: p1's store and the p2 candidates, rebuilt by the study's code;
+* `prospective.json`, which is replaced on every run.
+
+The shadow never writes `research/context/` (p1) or `research/qb_scenarios/` (this study).
+
+Smoke test on the 2026-10-17 snapshot, into a scratch directory, week 7 with `--allow-no-report`:
+* 77 open-team QB rows and 61 forecasts; the rest have no recent game;
+* start probabilities sum to 1 for all 28 teams;
+* S2 minus ifp-2 averages +0.01 points.
+
+That ledger was not kept. The real one is frozen by the scheduled runs.
+
+```
+uv run python ../scripts/qb_scenario_shadow.py pregame --week W        # the gated freeze (what refresh_all runs)
+uv run python ../scripts/qb_scenario_shadow.py cycle   --week W        # what learning_cycle runs
+uv run python ../scripts/qb_scenario_shadow.py score                   # gate + start-probability calibration
+uv run python ../scripts/qb_scenario_shadow.py status
+```
 
 ## Reproduce
 

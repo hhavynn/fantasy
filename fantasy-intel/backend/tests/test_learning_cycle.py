@@ -78,14 +78,15 @@ def env(base, tmp_path, lc):
     return tmp_path
 
 
-def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False):
+def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False, research_shadows=False):
     """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it, and the kicker stage
-    (after project) and the ifp-ctx-p1 shadow stage only when a test asks for them too."""
+    (after project), the ifp-ctx-p1 shadow stage and the other research shadows only when a test asks for them too."""
     return lc.parse(["run", "--skip-sync", "--season", "2025", "--now", now, "--live-db", str(env / "live.duckdb"),
                      "--history-db", str(env / "history.duckdb"), "--ifp-dir", str(env / "models"),
                      "--out", str(env / "out"), "--kicker-dir", str(env / "kicker"), "--ctx-dir", str(env / "ctx"),
                      *([] if project else ["--no-project"]), *([] if kicker else ["--no-kicker"]),
-                     *([] if ctx_shadow else ["--no-ctx-shadow"]), *extra])
+                     *([] if ctx_shadow else ["--no-ctx-shadow"]),
+                     *([] if research_shadows else ["--no-qb-scenario-shadow", "--no-ipm-cal-shadow"]), *extra])
 
 
 def _run(lc, env, now=PRE_W10, *extra):
@@ -658,3 +659,45 @@ def test_ctx_shadow_still_scores_when_no_week_is_left(lc, env, monkeypatch):
     code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", ctx_shadow=True))
     assert code == lc.EXIT_OK and rep["status"] == "no_upcoming_week", rep["errors"]
     assert calls == [None] and ("ctx_shadow", "ok") in _stages(rep)
+
+
+# ----------------------------------------------------------------------------- the other research shadow stages
+
+
+def test_research_shadow_stages_follow_ctx_shadow_and_are_no_ops_in_a_dry_cycle(lc, env):
+    """The real qb_scenario_shadow.py / participation_cal_shadow.py subprocesses on the synthetic 2025 world under a
+    simulated clock (a dry run): before the 2026 week-7 start nothing is forecast, there is no ipm-cal artifact to
+    freeze, nothing is built, and nothing is written."""
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, research_shadows=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    assert _stages(rep)[-3:] == [("ctx_shadow", "ok"), ("qb_scenario_shadow", "ok"), ("ipm_cal_shadow", "ok")]
+    qs, ipm = rep["qb_scenario_shadow"], rep["ipm_cal_shadow"]
+    assert (qs["status"], qs["pregame"]["status"], qs["score"]["status"]) == (
+        "ok", "before_prospective_start", "no_ledgers")
+    assert (ipm["status"], ipm["freeze"]["status"], ipm["score"]["status"]) == ("ok", "would_build", "not_frozen")
+    assert not [w for w in rep["warnings"] if "shadow" in w]
+    assert not (env / "ctx").exists()
+
+
+def test_a_research_shadow_failure_never_fails_the_cycle_or_the_other_shadows(lc, env, monkeypatch):
+    seen = []
+
+    def stage(args, conns, log_path, script="ctx_shadow.py"):
+        seen.append(script)
+        if script == "qb_scenario_shadow.py":
+            raise RuntimeError("qb_scenario_shadow.py exited 1: MemoryError")
+        return {"status": "ok", "warnings": ["stale"] if script == "participation_cal_shadow.py" else []}
+
+    monkeypatch.setattr(lc, "stage_ctx_shadow", stage)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, research_shadows=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert seen == ["ctx_shadow.py", "qb_scenario_shadow.py", "participation_cal_shadow.py"]
+    assert _stages(rep)[-3:] == [("ctx_shadow", "ok"), ("qb_scenario_shadow", "failed_nonfatal"),
+                                 ("ipm_cal_shadow", "ok")]
+    assert any("ifp-ctx-p2q shadow stage failed" in w for w in rep["warnings"])
+    assert "ipm-cal-0.1.0 shadow: stale" in rep["warnings"]
+    # each is skipped on its own flag, and still runs after the season's last week (scoring only)
+    seen.clear()
+    code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", "--no-ipm-cal-shadow", ctx_shadow=True,
+                                   research_shadows=True))
+    assert rep["status"] == "no_upcoming_week" and seen == ["ctx_shadow.py", "qb_scenario_shadow.py"]
