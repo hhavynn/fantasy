@@ -46,8 +46,9 @@ def thursday(con):
                 "WHERE season = 2026 AND week = 6 AND away_team = 'AAA'")
 
 
-def store(con, src, created, *, fit=FIT, mutate=None, meta_over=None, week=6, sha="a" * 64):
-    meta, rows = build_live(con, src, _artifact(src, created_at=fit), 2026, week, artifact_sha256=sha)
+def store(con, src, created, *, fit=FIT, mutate=None, meta_over=None, week=6, sha="a" * 64, from_week=None):
+    meta, rows = build_live(con, src, _artifact(src, created_at=fit), 2026, week, artifact_sha256=sha,
+                            projected_from_week=from_week)
     meta["created_at"] = created
     if mutate:
         mutate(rows)
