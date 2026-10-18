@@ -9,7 +9,7 @@ const LEGACY_TEAM_PARAM = "team_id";
 /** Pages whose numbers depend on the selected team. Navigating between them keeps the selection. */
 export const TEAM_SCOPED_PATHS = [
   "/", "/matchup", "/start-sit", "/my-team/value", "/waivers", "/trades", "/trades/discover",
-  "/schedule-intelligence", "/luck-lab", "/playoff-race",
+  "/schedule-intelligence", "/luck-lab", "/playoff-race", "/injury-impact",
 ] as const;
 
 /** Params that only make sense for one team (an opponent, a counterfactual schedule, a page offset) and are
