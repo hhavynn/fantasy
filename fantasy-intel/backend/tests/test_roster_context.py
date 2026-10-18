@@ -441,6 +441,6 @@ def test_app_never_imports_the_research_context_modules():
             "'app.analytics.context_challenger') if m in sys.modules]; assert not bad, bad")
     subprocess.run([sys.executable, "-c", code], cwd=backend, check=True)
     for path in (backend / "app").rglob("*.py"):
-        if path.name not in ("roster_context.py", "context_challenger.py"):
+        if path.name not in ("roster_context.py", "context_challenger.py", "returning_context.py"):   # research only
             text = path.read_text()
             assert "roster_context" not in text and "context_challenger" not in text, path
