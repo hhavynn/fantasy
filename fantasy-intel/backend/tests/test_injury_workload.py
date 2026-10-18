@@ -15,6 +15,7 @@ import polars as pl
 import pytest
 
 from app.analytics import injury_challenger as ic
+from app.analytics import injury_prospective as ip
 from app.analytics import injury_workload as iw
 from app.analytics.forecast_features import INJURY_SCHEMA, PANEL_COLUMNS, ROSTER_SCHEMA, Sources, _panel_schema
 
@@ -438,7 +439,7 @@ def test_preregistered_rules_and_features_exist():
 
 
 def test_research_modules_write_nothing():
-    for mod in (iw, ic):
+    for mod in (iw, ic, ip):
         text = pathlib.Path(mod.__file__).read_text().upper()
         for verb in ("INSERT ", "UPDATE ", "DELETE ", "CREATE TABLE", "WRITE_PARQUET", "WRITE_TEXT"):
             assert verb not in text, (mod.__name__, verb)
@@ -447,12 +448,13 @@ def test_research_modules_write_nothing():
 def test_app_never_imports_the_injury_research_modules():
     root = pathlib.Path(__file__).resolve().parents[1] / "app"
     for path in root.rglob("*.py"):
-        if path.name in ("injury_workload.py", "injury_challenger.py"):
+        if path.name in ("injury_workload.py", "injury_challenger.py", "injury_prospective.py"):
             continue
         text = path.read_text()
-        assert "injury_workload" not in text and "injury_challenger" not in text, path
+        assert not any(m in text for m in ("injury_workload", "injury_challenger", "injury_prospective")), path
     code = ("import sys, app.main; bad = [m for m in ('app.analytics.injury_workload', "
-            "'app.analytics.injury_challenger') if m in sys.modules]; print(bad); sys.exit(1 if bad else 0)")
+            "'app.analytics.injury_challenger', 'app.analytics.injury_prospective') if m in sys.modules]; "
+            "print(bad); sys.exit(1 if bad else 0)")
     assert subprocess.run([sys.executable, "-c", code], cwd=root.parent, capture_output=True).returncode == 0
 
 
@@ -517,16 +519,16 @@ def test_a_mixed_absence_counts_each_week_on_its_own_listing():
 def test_prospective_rules_are_preregistered_from_shadow_gate_and_decision_rules():
     from app.analytics.challenger import SHADOW_GATE
 
-    assert ic.PROSPECTIVE_FIRST_WEEK == (2026, 7)
-    assert ic.PROSPECTIVE_ADOPTED == {"QB": False, "RB": True, "WR": True, "TE": True}
-    t = ic.PROSPECTIVE_THRESHOLDS
+    assert ip.PROSPECTIVE_FIRST_WEEK == (2026, 7)
+    assert ip.PROSPECTIVE_ADOPTED == {"QB": False, "RB": True, "WR": True, "TE": True}
+    t = ip.PROSPECTIVE_THRESHOLDS
     for k in ("min_prospective_weeks", "min_matched_appearances_per_position", "mae_ci95_upper_below",
               "bias_tolerance_points", "starters_pool_mae_tolerance"):
         assert t[k] == SHADOW_GATE[k]
     assert t["mechanism_min_n"] == ic.MECHANISM_MIN_N and ic.BIAS_TOLERANCE == SHADOW_GATE["bias_tolerance_points"]
     assert {"evidence", "first_week", "shadow_gate", "mse_bias_gate", "self_returning", "outcome", "never"} <= set(
-        ic.PROSPECTIVE_RULES)
-    assert "promotion" in ic.PROSPECTIVE_RULES["never"]
+        ip.PROSPECTIVE_RULES)
+    assert "promotion" in ip.PROSPECTIVE_RULES["never"]
 
 
 def gate_frame(weeks=8, per_week=60, better=True, returning=15, seed=7):
@@ -554,14 +556,14 @@ def gate_frame(weeks=8, per_week=60, better=True, returning=15, seed=7):
 
 
 def test_prospective_gate_outcomes():
-    ok = ic.prospective_gate(gate_frame())
+    ok = ip.prospective_gate(gate_frame())
     assert ok["weeks"] == 8 and ok["outcome"] == "meets_gate", ok["pooled_checks"]
     assert all(all(v["checks"].values()) for v in ok["per_position"].values())
     assert ok["mechanism"]["self_returning_any"]["n"] == 360 and ok["mechanism"]["self_returning_any"]["gating"]
-    assert ic.prospective_gate(gate_frame(better=False))["outcome"] == "fails_gate"
-    short = ic.prospective_gate(gate_frame(weeks=3, per_week=200))
+    assert ip.prospective_gate(gate_frame(better=False))["outcome"] == "fails_gate"
+    short = ip.prospective_gate(gate_frame(weeks=3, per_week=200))
     assert short["outcome"] == "insufficient_data" and not short["per_position"]["RB"]["checks"]["weeks"]
-    few_returning = ic.prospective_gate(gate_frame(returning=1))        # 24 returning rows: below 100
+    few_returning = ip.prospective_gate(gate_frame(returning=1))        # 24 returning rows: below 100
     assert few_returning["outcome"] == "insufficient_data"
     assert not few_returning["pooled_checks"]["self_returning_n"]
     assert not few_returning["mechanism"]["self_returning_any"]["gating"]
@@ -620,7 +622,7 @@ def test_prospective_spec_is_frozen_write_once_and_scoring_never_creates_it(iwr,
     assert iwr.frozen_prospective(args, "cfg", "score", create=False)["frozen_at"] == first["frozen_at"]
     with pytest.raises(SystemExit, match="different spec"):
         iwr.frozen_prospective(args, "other-ifp2-config", "score", create=True)
-    monkeypatch.setitem(ic.PROSPECTIVE_THRESHOLDS, "self_returning_min_n", 50)    # a rule edited after freezing
+    monkeypatch.setitem(ip.PROSPECTIVE_THRESHOLDS, "self_returning_min_n", 50)    # a rule edited after freezing
     with pytest.raises(SystemExit, match="different spec"):
         iwr.frozen_prospective(args, "cfg", "score", create=False)
 

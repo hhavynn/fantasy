@@ -11,7 +11,7 @@ docs/research/injury_workload_handoff.md). Offline, read-only on both databases.
     uv run python ../scripts/injury_workload_research.py prospective        # score ledgers of fully final weeks
 
 ifp-iwh-0.1.0 was adjudicated once (retain_baseline); its code is commit d6fed66. ifp-iwh-0.1.1 is judged only
-on write-once pregame ledgers from 2026 week 7 (injury_challenger.PROSPECTIVE_RULES), so `develop` and
+on write-once pregame ledgers from 2026 week 7 (injury_prospective.PROSPECTIVE_RULES), so `develop` and
 `evaluate` refuse to run under it: re-running either would re-adjudicate a historical window.
 
 Outputs: <ifp-dir>/research/injury_workload/ (git-ignored). Never writes ifp-1/ifp-2 artifacts, the weekly
@@ -41,6 +41,7 @@ import polars as pl  # noqa: E402
 
 from app.analytics import challenger as ch  # noqa: E402
 from app.analytics import injury_challenger as ic  # noqa: E402
+from app.analytics import injury_prospective as ip  # noqa: E402
 from app.analytics import injury_workload as iw  # noqa: E402
 from app.analytics.forecast_backtest import pair_decisions  # noqa: E402
 from app.analytics.forecast_features import POSITIONS  # noqa: E402
@@ -409,17 +410,17 @@ def _ledger_dir(args) -> Path:
 
 
 def prospective_spec(cfg_hash: str, scoring_fp: str) -> dict:
-    """The pre-registered prospective spec (injury_challenger.PROSPECTIVE_*), hashed. Any edit to the rules,
+    """The pre-registered prospective spec (injury_prospective.PROSPECTIVE_*), hashed. Any edit to the rules,
     thresholds, gate or cohort code, adoption, feature group, handoff version or the ifp-2 config/scoring changes
     config_hash."""
     import inspect
 
-    gate_code = hashlib.sha256("".join([inspect.getsource(ic.prospective_gate), inspect.getsource(ic.cohorts),
+    gate_code = hashlib.sha256("".join([inspect.getsource(ip), inspect.getsource(ic.cohorts),
                                         repr(ic.MECHANISM_COHORTS)]).encode()).hexdigest()[:16]
     spec = {"version": ic.IWH_VERSION, "status": ic.IWH_STATUS, "workload_version": iw.WORKLOAD_VERSION,
             "gate_code": gate_code,
-            "adopted": ic.PROSPECTIVE_ADOPTED, "group": ic.GROUP, "rules": ic.PROSPECTIVE_RULES,
-            "thresholds": ic.PROSPECTIVE_THRESHOLDS, "first_week": list(ic.PROSPECTIVE_FIRST_WEEK),
+            "adopted": ip.PROSPECTIVE_ADOPTED, "group": ic.GROUP, "rules": ip.PROSPECTIVE_RULES,
+            "thresholds": ip.PROSPECTIVE_THRESHOLDS, "first_week": list(ip.PROSPECTIVE_FIRST_WEEK),
             "ifp2_config_hash": cfg_hash, "scoring_fingerprint": scoring_fp}
     spec["config_hash"] = hashlib.sha256(json.dumps(spec, sort_keys=True, default=str).encode()).hexdigest()[:16]
     return spec
@@ -442,9 +443,9 @@ def frozen_prospective(args, cfg_hash: str, scoring_fp: str, *, create: bool) ->
 
 
 def check_prospective_week(season: int, week: int) -> None:
-    if (season, week) < tuple(ic.PROSPECTIVE_FIRST_WEEK):
-        raise SystemExit(f"{ic.IWH_VERSION} is pre-registered from {ic.PROSPECTIVE_FIRST_WEEK[0]} week "
-                         f"{ic.PROSPECTIVE_FIRST_WEEK[1]}; refusing a ledger for {season} week {week}")
+    if (season, week) < tuple(ip.PROSPECTIVE_FIRST_WEEK):
+        raise SystemExit(f"{ic.IWH_VERSION} is pre-registered from {ip.PROSPECTIVE_FIRST_WEEK[0]} week "
+                         f"{ip.PROSPECTIVE_FIRST_WEEK[1]}; refusing a ledger for {season} week {week}")
 
 
 def open_teams(kickoffs: dict, now: datetime) -> list[str]:
@@ -613,7 +614,7 @@ def matched_rows(store: pl.DataFrame, ledgers: list[dict], config_hash: str) -> 
 
 
 def cmd_prospective(args) -> dict:
-    """Score the write-once ledgers of fully final weeks with the pre-registered gate (ic.prospective_gate)."""
+    """Score the write-once ledgers of fully final weeks with the pre-registered gate (ip.prospective_gate)."""
     store, prov = build(args)
     cfg = ch.ChallengerConfig.load()
     frozen = frozen_prospective(args, cfg.hash(), prov["scoring_fingerprint"], create=False)
@@ -621,7 +622,7 @@ def cmd_prospective(args) -> dict:
     p, status = matched_rows(store, [json.loads(x.read_text()) for x in paths], frozen["config_hash"])
     if p is None:
         return {"ledgers": len(paths), "weeks": status, "scored_weeks": 0, "outcome": "insufficient_data"}
-    gate = ic.prospective_gate(p)
+    gate = ip.prospective_gate(p)
     out = {"version": ic.IWH_VERSION, "config_hash": frozen["config_hash"], "weeks": status, "gate": gate,
            "report": report(p), **prov}
     (_out(args) / f"prospective_{ic.IWH_VERSION}.json").write_text(json.dumps(out, indent=1, default=str))

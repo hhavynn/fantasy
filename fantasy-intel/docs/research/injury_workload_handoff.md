@@ -20,9 +20,8 @@ takes it back on a return, make ifp-2's conditional projections more accurate?
     to 5.45; backups whose lead returns improve by 0.25 MAE.
   * It **fails** the pre-registered mechanism check on the returning player himself (MSE +0.04, bias +0.34 ->
     +0.50, n = 185). Diagnosed (section 7.3): the participation factor treats a Questionable-and-inactive game
-    as a role absence. **Verdict by the frozen rules: `retain_baseline`.** The fix, **ifp-iwh-0.1.1**, is
-    implemented and judged only on write-once pregame ledgers from 2026 week 7 (section 10); no historical
-    window is re-run.
+    as a role absence. **Verdict by the frozen rules: `retain_baseline`.** A fixed v0.1.1 is pre-registered
+    for prospective evaluation only.
 * **Rest of season is badly calibrated for injured players.** For players Out/Doubtful at the cutoff, the
   current ROS path's P(plays next week) averages **0.91; they actually played 39% of the time** (n = 409,
   2023-24; Brier 0.514). A simple empirical return-rate table fitted on 2019-22 averages 0.34 (Brier 0.239).
@@ -33,9 +32,7 @@ Code:
 * `backend/app/analytics/injury_workload.py`: week-specific injury timeline, established healthy role,
   workload handoff, empirical return rates, explanation metadata.
 * `backend/app/analytics/injury_challenger.py`: the challenger, pre-registered rules, cohorts.
-* `scripts/injury_workload_research.py`: `build`, `develop`, `evaluate`, `ros`, `cases`, and for the prospective
-  shadow of ifp-iwh-0.1.1, `predict --week W` and `prospective` (section 10). `develop` and `evaluate` refuse to
-  run under 0.1.1.
+* `scripts/injury_workload_research.py`: `build`, `develop`, `evaluate`, `ros`, `cases`.
 * Tests: `backend/tests/test_injury_workload.py` (the mandatory Week 6 / Week 7 scenarios plus edge cases).
 
 Nothing in the app imports these modules (tested). ifp-1.0.0, ifp-2.0.0, the model registry, approved
@@ -300,8 +297,7 @@ follow-up work (section 9). The ROS p_play finding in section 6 is the larger un
 |---|---|
 | Horizon guard in `build_live` (no horizon-0 run past the next unplayed week) | **live** (correctness) |
 | Injury timeline, established role, workload handoff, return-rate table, explanation metadata | research module, not imported by the app |
-| ifp-iwh-0.1.0 challenger | `retain_baseline` (failed c7); not promoted, no registry change, ifp-2.0.0 unchanged |
-| ifp-iwh-0.1.1 (section 7.3 fix) | research; prospective pregame shadow ledger from 2026 week 7 (section 10) |
+| ifp-iwh challenger | `retain_baseline` (failed c7); not promoted, no registry change, ifp-2.0.0 unchanged |
 | ROS p_play from the empirical return table; ROS teammate-return scenarios | evidence only; needs a gated proposal and owner review |
 | Re-projection after Friday's final reports | not changed; follow-up |
 
@@ -350,8 +346,8 @@ Limitations:
 
 Next work, by expected value:
 
-1. **Prospective shadow of iwh-0.1.1**: implemented (section 10). Remaining: run `predict` each week once the
-   report is synced (manually for now; not wired into `learning_cycle.py` like ifp-ctx-p1's `ctx_shadow.py`).
+1. **Prospective shadow of iwh-0.1.1** (participation fix of 7.3), write-once pregame ledger from week 7, with
+   the existing `SHADOW_GATE` thresholds; owner review only if it passes.
 2. **ROS availability**: replace the undesignated p_play for players injured at the cutoff with the empirical
    return table (refit per season), plus the teammate-return scenarios; pre-register calibration (Brier, ECE)
    on 2023-24 and a prospective check, then propose to the owner.
@@ -385,7 +381,7 @@ Re-running either window with the fix would select or adjudicate on weeks that w
 out: their injury reports carry no timestamp.
 
 **Pre-registered in code before any prospective week was forecast or scored**
-(`injury_challenger.PROSPECTIVE_RULES`, `PROSPECTIVE_THRESHOLDS`, `prospective_gate`):
+(`injury_prospective.PROSPECTIVE_RULES`, `PROSPECTIVE_THRESHOLDS`, `prospective_gate`):
 
 * Adoption: RB, WR and TE, ifp-iwh-0.1.0's development result unchanged (no reselection). QB keeps ifp2.
 * Evidence: write-once pregame ledger rows from **2026 week 7**, scored once the week is fully final; ifp2 and
@@ -424,6 +420,16 @@ instead of re-scoring it.
 frozen spec and whose rows still match their hash. Cohort columns come from the ledger, never recomputed after
 the fact. Output: `prospective_ifp-iwh-0.1.1.json` (gate plus the usual cohort report).
 
+Code: `injury_workload.py` (`_Cut.injured_absence`), `injury_prospective.py` (rules and gate, research only, not
+imported by the app), `scripts/injury_workload_research.py` (`predict`, `prospective`; `develop` and `evaluate`
+refuse under 0.1.1, reproduce 0.1.0 at commit d6fed66). Status: research; no promotion, no registry change.
+
+```
+cd backend
+uv run python ../scripts/injury_workload_research.py predict --week 7   # each week, after the report sync
+uv run python ../scripts/injury_workload_research.py prospective
+```
+
 ## Reproduce
 
 ```
@@ -433,7 +439,4 @@ uv run python ../scripts/injury_workload_research.py develop     # writes the fr
 uv run python ../scripts/injury_workload_research.py evaluate    # confirmation + exploratory
 uv run python ../scripts/injury_workload_research.py ros
 uv run python ../scripts/injury_workload_research.py cases
-# ifp-iwh-0.1.1 prospective shadow (develop / evaluate above refuse under 0.1.1; use commit d6fed66 for 0.1.0)
-uv run python ../scripts/injury_workload_research.py predict --week 7   # each week, after the report sync
-uv run python ../scripts/injury_workload_research.py prospective
 ```
