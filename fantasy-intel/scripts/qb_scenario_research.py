@@ -249,11 +249,13 @@ def cmd_calibration(args) -> dict:
 
 
 def _preds(args, st, cands, weeks, cfg, per_position=None) -> pl.DataFrame:
-    """ifp2, p1's A-D (context_challenger.walk_forward) and p2's A2 / C2 / A2h (+ ctx2) on the same rows."""
+    """ifp2, p1's A-D (context_challenger.walk_forward) and p2's S2 / SC2 / S2h (+ ctx2) on the same rows."""
     sc, _ = with_scenarios(args, st, cands, weeks)
     p1 = cc.walk_forward(st, weeks, cfg, per_position=P1_SPEC)
     p2 = qs.walk_forward_p2(sc, weeks, cfg, per_position=per_position)
     rows = sc.filter(pl.col("key").is_in([s * 100 + w for s, w in weeks]))
+    clash = (set(p1.columns) | set(p2.columns)) - {"key", "gsis_id"} & set(rows.columns)
+    assert not clash, f"prediction columns collide with store columns: {clash}"   # e.g. the store's pred_A2
     return rows.join(p1.rename({"pred_ctx": "pred_p1"}), on=["key", "gsis_id"]).join(p2, on=["key", "gsis_id"])
 
 
@@ -293,7 +295,7 @@ def cmd_develop(args) -> dict:
         if prev["config_hash"] != frozen["config_hash"]:
             raise SystemExit(f"{path} already frozen with a different selection ({prev['per_position']})")
     rep = ctxr.report(dev, models)
-    out = {"report": rep, "selection": why, "qb_cells": qb_cells(dev, ["ifp2", "A", "A2", "A2h"]), **prov}
+    out = {"report": rep, "selection": why, "qb_cells": qb_cells(dev, ["ifp2", "A", "S2", "S2h"]), **prov}
     (_out(args) / "development.json").write_text(json.dumps(out, indent=1, default=str))
     return {"per_position": chosen, "selection": why}
 
@@ -368,7 +370,7 @@ def cmd_evaluate(args) -> dict:
             _out(args) / f"{name}_preds.parquet")
         exact = ctxr.report(p, models, exact=True)
         out[name] = ctxr.report(p, models)
-        out[name]["qb_cells"] = qb_cells(p, ["ifp2", "A", "A2", "A2h"])
+        out[name]["qb_cells"] = qb_cells(p, ["ifp2", "A", "S2", "S2h"])
         out[name]["bias_guards"] = bias_guards(exact, p, ["A", "C", "p1", *qs.P2_CANDIDATES, *qs.ABLATIONS, "ctx2"])
         if name == "confirmation":
             out["verdict"] = verdict(exact, p, chosen)

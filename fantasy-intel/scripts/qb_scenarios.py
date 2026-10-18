@@ -80,17 +80,17 @@ QB2_GROUP = {"QB": ["s_start", "qb_self_epa"], "RB": list(GROUPS["qb"]["RB"]), "
 RECEIVER_QB_FEATURES = ["qb_epa_delta", "qb_cpoe_delta", "qb_changed"]
 assert all(QB2_GROUP[p] == RECEIVER_QB_FEATURES for p in ("RB", "WR", "TE"))
 
-# A2: the scenario QB group. C2: A2 + p1's teammate group (unchanged). A2h (ablation, descriptive only):
+# S2: the scenario QB group. SC2: S2 + p1's teammate group (unchanged). S2h (ablation, descriptive only):
 # the same models with a hard top-1 starter instead of the mixture.
-P2_CANDIDATES = {"A2": ("qb2",), "C2": ("qb2", "tm")}
-ABLATIONS = {"A2h": ("qb2",)}
+P2_CANDIDATES = {"S2": ("qb2",), "SC2": ("qb2", "tm")}
+ABLATIONS = {"S2h": ("qb2",)}
 MECHANISM_GROUPS = {"qb2": "qb", "tm": "tm"}
 
 P2_RULES = {
     "pre_registration": "start-model features, penalty, candidate sets, scenario rule and the selection / confirmation "
                         "rules below were fixed in this file before the first p2 points backtest; the start model's "
                         "calibration was inspected first (it uses no points labels)",
-    "selection": "development 2021-2022 only, per position, candidates A2 and C2, exactly p1's rule: MAE(candidate) - "
+    "selection": "development 2021-2022 only, per position, candidates S2 and SC2, exactly p1's rule: MAE(candidate) - "
                  "MAE(ifp2) <= -0.010 with week-clustered 95% CI upper < 0 and |bias| not worse by more than 0.15; the "
                  "lowest-MAE eligible candidate is adopted, else ifp2. The composite is 'ctx2'.",
     "confirmation": "2023-2024, p1's checks c1-c7 on the adopted positions (c7: changed expected QB cohort for qb2; top "
@@ -478,7 +478,7 @@ def walk_forward_p2(store: pl.DataFrame, weeks: list[tuple[int, int]], cfg: Chal
                     if cand == "ifp2":
                         cols[f"pred_{n}"] = np.where(ok, base, np.nan)
                         continue
-                    gcand = cand if cand in P2_CANDIDATES else "A2"     # A2h reuses A2's fit
+                    gcand = cand if cand in P2_CANDIDATES else "S2"     # S2h reuses S2's fit
                     if gcand not in fitted:
                         fitted[gcand] = fit_p2(train, cfg, pos, gcand, k)
                     pred = mix_predict(fitted[gcand], rows, pos, hard=(cand in ABLATIONS))
