@@ -262,7 +262,7 @@ def test_a_weekly_artifact_also_covers_the_rest_of_the_season_runs_that_reuse_it
     assert status == "rejected" and reason.startswith(NOT_REGISTERED)
     assert at(2026, 7, "f" * 64) == ("rejected", NOT_REGISTERED)                     # an unregistered artifact
     # through the readers: the week-7 run of the week-6 artifact is served
-    w7, _, _ = store(con, src, BEFORE_ALL, sha="a" * 64, week=7, meta_over={"model_version": PROD})
+    w7, _, _ = store(con, src, BEFORE_ALL, sha="a" * 64, week=7, from_week=6, meta_over={"model_version": PROD})
     assert latest_run(con, 2026, 7, model_version=PROD)["run_id"] == w7["run_id"]
     # no recorded cutoff: only the exact target week; no recorded target: any week
     register_approved_artifact(con, model_version=PROD, artifact_sha256="b" * 64, target_season=2026, target_week=6,
