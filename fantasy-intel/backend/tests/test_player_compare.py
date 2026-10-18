@@ -355,7 +355,7 @@ def test_ros_ours_is_experimental_and_complete_only(con):
     assert ros["ours_experimental"] is True and ros["ours_available"] is True
     assert ros["ours"] == round(sum(ours_value(wk, ACE) for wk in range(6, 15) if wk != KC_BYE), 2)
     assert ros["ours_weeks_available"] == ros["ours_weeks_expected"] == 8
-    assert "Experimental" in row(out, "ros_ours")["note"]
+    assert row(out, "ros_ours")["note"] == "Remaining regular-season weeks only"
 
 
 def test_ros_ours_null_when_a_week_has_no_run(con):
