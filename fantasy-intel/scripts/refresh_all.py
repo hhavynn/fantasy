@@ -10,15 +10,23 @@ publish builds the accuracy scorecard from a read-only connection and inserts it
 MotherDuck publish that follows carries it to the hosted site. It can never fail the refresh: a problem is
 logged as a WARNING and the publish still runs.
 
-Each step runs in its own process and the first failure stops the chain (exit 1). Every run writes
-data/logs/refresh-<UTC stamp>.log with each step's output.
+Each step runs in its own process. The two syncs are separate sources, so a failed ESPN sync still runs the nflverse
+sync (and the other way round); a failure skips every step that needs the failed one (analytics, report, publish,
+pregame check) and the run exits 1. Every run writes data/logs/refresh-<UTC stamp>.log with each step's output.
+
+DuckDB lock (one writer, and a writer cannot open while any other process holds the file, even read-only, e.g. the
+social-trends job): every step is launched with FANTASY_DB_LOCK_WAIT_S (default LOCK_WAIT_S), so app.db.connection
+waits that long for the lock with backoff; a step that still fails on the lock is run again after
+LOCK_RETRY_DELAYS_S (the syncs are idempotent upserts).
 
 Evidence stage (docs/independent_projection_engine.md, "Weekly evidence routine (automated)"): it runs
 only after every sync and analytics step has exited, so no write connection is open; it opens the
 database read-only (here and in the four scripts it launches) and runs no sync. It can never fail the
 refresh: each step's problem is logged as a WARNING and the exit code is unchanged. One of them is the
 research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py pregame): it freezes that week's
-write-once pregame ledger once the final injury reports are in, or the main slate is within 6 hours.
+write-once pregame ledger once the final injury reports are in, or the main slate is within 6 hours. The research
+shadows' pregame freezes (evidence steps labelled "<name> pregame week W") also run after a failed sync, on the data already stored: a missed pregame freeze is never
+backfilled, and each shadow's own freeze gate decides whether the injury evidence is good enough.
 """
 
 import argparse
@@ -35,6 +43,7 @@ from typing import Callable
 import _bootstrap  # noqa: F401
 
 from app.config import DATA_DIR, get_settings
+from app.db.connection import LOCK_WAIT_ENV
 
 SCRIPTS = Path(__file__).resolve().parent
 BACKEND = _bootstrap.BACKEND
@@ -47,6 +56,12 @@ TIMED_OUT = -999                     # run_step's result for a step killed at it
 EVIDENCE_TIMEOUT_S = 15 * 60         # per evidence step; REFRESH_EVIDENCE_TIMEOUT_S overrides
 START_SIT_NOTHING_ELIGIBLE = 2       # start_sit_evaluation record: no pregame roster row to freeze
 CTX_SHADOW_WARNINGS = 3              # ctx_shadow.py: ran and printed missing/stale injury-evidence WARNING lines
+SYNCS = ("sync_espn.py", "sync_nfl.py")  # separate sources: one failing never stops the other
+LOCK_WAIT_S = 120                    # FANTASY_DB_LOCK_WAIT_S for every step, unless the environment sets it
+LOCK_RETRY_DELAYS_S = (60, 180)      # a step that still failed on the DuckDB lock runs again after each delay
+LOCK_MARKERS = ("DatabaseBusy", "Could not set lock", "Conflicting lock")
+SHADOW_STEP = " pregame week "       # label of a research shadow's pregame freeze ("<name> pregame week W"): these
+                                     # evidence steps also run after a failed sync (shadows_only)
 
 
 def plan(publish: bool) -> list[str]:
@@ -60,11 +75,19 @@ class Log:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path, self._f = path, path.open("a", encoding="utf-8")
+        self.lines = 0
+        self._recent: list[str] = []       # the last lines, for run_db_step's lock check
 
     def __call__(self, line: str = "") -> None:
         print(line, flush=True)
+        self.lines += 1
+        self._recent = [*self._recent[-199:], line]
         self._f.write(line + "\n")
         self._f.flush()
+
+    def since(self, mark: int) -> list[str]:
+        """The lines logged after `mark` (an earlier `lines` value), up to the last 200."""
+        return self._recent[-min(self.lines - mark, len(self._recent)):] if self.lines > mark else []
 
     def close(self) -> None:
         self._f.close()
@@ -77,6 +100,7 @@ def run_step(cmd: list[str], log: Log, timeout: float | None = None) -> int:
     started = time.monotonic()
     log(f"==> {Path(cmd[1]).name}  ({datetime.now().astimezone():%Y-%m-%d %H:%M %Z})")
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    env.setdefault(LOCK_WAIT_ENV, str(LOCK_WAIT_S))
     if timeout is None:
         with subprocess.Popen(cmd, cwd=BACKEND, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) as proc:
@@ -110,6 +134,29 @@ def run_step(cmd: list[str], log: Log, timeout: float | None = None) -> int:
         return TIMED_OUT
     log(f"<== exit {proc.returncode} after {time.monotonic() - started:.0f}s")
     return proc.returncode
+
+
+def lock_failure(lines: list[str]) -> bool:
+    return any(m in line for line in lines for m in LOCK_MARKERS)
+
+
+def run_db_step(cmd: list[str], log: Log) -> int:
+    """run_step for a step that writes the database: when it failed only because another process held the DuckDB lock
+    (past the FANTASY_DB_LOCK_WAIT_S wait inside the step), run it again after each LOCK_RETRY_DELAYS_S delay."""
+    name = Path(cmd[1]).name
+    for attempt in range(len(LOCK_RETRY_DELAYS_S) + 1):
+        mark = log.lines
+        code = run_step(cmd, log)
+        if code == 0 or not lock_failure(log.since(mark)):
+            return code
+        if attempt == len(LOCK_RETRY_DELAYS_S):
+            log(f"WARNING: {name} still could not take the DuckDB lock after {attempt + 1} attempts")
+            return code
+        delay = LOCK_RETRY_DELAYS_S[attempt]
+        log(f"WARNING: {name} could not take the DuckDB lock (another process holds it); "
+            f"retry {attempt + 1}/{len(LOCK_RETRY_DELAYS_S)} in {delay:g}s")
+        time.sleep(delay)
+    return code
 
 
 def pregame_warning(snap: dict, now: datetime) -> str | None:
@@ -225,10 +272,16 @@ def select_evidence(con, season: int, now: datetime, final: Callable | None = No
     return {"season": season, "week": upcoming, "final_week": final_week, "notes": notes}
 
 
+def is_shadow(label: str) -> bool:
+    """A research shadow's pregame freeze (label "<name> pregame week W")."""
+    return SHADOW_STEP in label
+
+
 def evidence_steps(sel: dict) -> list[tuple[str, list[str]]]:
     """(label, command) in run order. The scripts open the database read-only and write only their
     git-ignored default output dirs (start_sit_evaluation, espn_benchmark, ctx_shadow under
-    data/models/research/context; injury_freshness `report` writes nothing)."""
+    data/models/research/context; injury_freshness `report` writes nothing). A research shadow's pregame freeze is
+    labelled "<name> pregame week W" (is_shadow): those steps also run after a failed sync."""
     py, season = sys.executable, str(sel["season"])
     steps = []
     if sel["week"] is not None:
@@ -254,10 +307,12 @@ def evidence_timeout() -> float:
         return EVIDENCE_TIMEOUT_S
 
 
-def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = None) -> list[str]:
+def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = None,
+                 shadows_only: bool = False) -> list[str]:
     """Run the evidence stage; returns its problems (each also logged as a WARNING). Never raises.
     Each step gets `timeout` seconds (default 15 min) and is killed after that, so a stuck step cannot
-    keep the refresh running into the next scheduled launch."""
+    keep the refresh running into the next scheduled launch. `shadows_only`: only the research shadows' pregame
+    freezes (what still runs after a failed sync)."""
     problems: list[str] = []
     timeout = evidence_timeout() if timeout is None else timeout
 
@@ -265,8 +320,9 @@ def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = 
         problems.append(msg)
         log(f"WARNING: {EVIDENCE} {msg}")
 
-    log(f"==> {EVIDENCE} read-only stage (injury freshness, start/sit decision set, "
-        "ifp-ctx-p1 shadow, ESPN benchmark)")
+    log(f"==> {EVIDENCE} " + ("research shadows only, on the data already stored (a sync failed)" if shadows_only else
+                              "read-only stage (injury freshness, start/sit decision set, ifp-ctx-p1 shadow, "
+                              "ESPN benchmark)"))
     try:
         from app.db.connection import open_db, table_exists
 
@@ -277,7 +333,7 @@ def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = 
                 row = con.execute("SELECT season FROM leagues ORDER BY synced_at DESC LIMIT 1").fetchone()
                 season = int(row[0]) if row else season
             sel = select_evidence(con, season, now or datetime.now(timezone.utc))
-        steps = evidence_steps(sel)
+        steps = [s for s in evidence_steps(sel) if is_shadow(s[0]) or not shadows_only]
     except Exception as e:
         warn(f"could not choose the season and week: {e!r}")
         return problems
@@ -302,6 +358,14 @@ def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = 
             warn(f"{label} exited {code} (output above; the refresh exit code is unchanged)")
     log(f"{EVIDENCE} " + (f"{len(problems)} problem(s), see the WARNING lines above" if problems else "all steps ok"))
     return problems
+
+
+def run_shadows(log: Log) -> None:
+    """The research shadows' pregame freezes after a failed sync. Never raises; never changes the exit code."""
+    try:
+        run_evidence(log, shadows_only=True)
+    except Exception as e:  # run_evidence handles its own errors; this is the last guard
+        log(f"WARNING: {EVIDENCE} research shadows failed: {e!r}")
 
 
 def run_report(log: Log, timeout: float | None = None) -> str | None:
@@ -337,14 +401,20 @@ def main() -> int:
             steps = plan(publish=not args.no_publish)
             if PUBLISH not in steps:
                 log("MotherDuck publish skipped (" + ("--no-publish" if args.no_publish else "MOTHERDUCK_TOKEN not set") + ")")
+            failed: list[str] = []
             for step in steps:
+                if failed and step not in SYNCS:
+                    log(f"SKIPPED: {step} (needs {', '.join(failed)}, which failed)")
+                    continue
                 if step == PUBLISH and not args.skip_report:
                     run_report(log)          # after analytics, so the publish carries the new report
-                code = run_step([sys.executable, str(SCRIPTS / step)], log)
+                code = run_db_step([sys.executable, str(SCRIPTS / step)], log)
                 if code != 0:
-                    log(f"FAILED: {step} exited {code}; later steps were not run. Log: {log.path}")
                     if step != PUBLISH:
-                        return 1
+                        log(f"FAILED: {step} exited {code}; the steps that need it are not run. Log: {log.path}")
+                        failed.append(step)
+                        continue
+                    log(f"FAILED: {step} exited {code}; later steps were not run. Log: {log.path}")
                     # Publishing is a network step unrelated to the local data, which is fully refreshed:
                     # still capture the pregame evidence (lost for games that kick off before the next run).
                     if not args.skip_evidence:
@@ -353,6 +423,12 @@ def main() -> int:
                         except Exception as e:
                             log(f"WARNING: {EVIDENCE} stage failed: {e!r}")
                     return 1
+            if failed:
+                # A pregame freeze missed now is never backfilled: the research shadows still run on the stored data
+                # (each one's freeze gate checks the injury evidence); the rest of the evidence stage waits.
+                if not args.skip_evidence:
+                    run_shadows(log)
+                return 1
             if PUBLISH not in steps and not args.skip_report:
                 run_report(log)              # local install: the local API serves the report
         try:

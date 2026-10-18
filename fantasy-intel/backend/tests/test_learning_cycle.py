@@ -658,3 +658,127 @@ def test_ctx_shadow_still_scores_when_no_week_is_left(lc, env, monkeypatch):
     code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", ctx_shadow=True))
     assert code == lc.EXIT_OK and rep["status"] == "no_upcoming_week", rep["errors"]
     assert calls == [None] and ("ctx_shadow", "ok") in _stages(rep)
+
+
+# ----------------------------------------------------------------------------- side stages when the cycle stops early
+
+
+def _record_side_stages(lc, monkeypatch):
+    """Stub the kicker and ctx_shadow stages; record (name, target week, read connections still open for ctx_shadow)."""
+    calls = []
+
+    def kicker(args, log_path):
+        calls.append(("kicker", args.week, None))
+        return {"runs": []}
+
+    def ctx(args, conns, log_path):
+        calls.append(("ctx_shadow", args.week, len(conns)))
+        return {"status": "ok", "warnings": ["ctx_shadow warning"]}
+
+    monkeypatch.setattr(lc, "stage_kicker", kicker)
+    monkeypatch.setattr(lc, "stage_ctx_shadow", ctx)
+    return calls
+
+
+def test_waiting_for_data_still_runs_the_kicker_and_the_ctx_shadow(lc, env, monkeypatch):
+    """Week 9 is not ready (a team's snap counts are missing), so the ifp stages wait; the kicker model and the
+    ifp-ctx-p1 shadow (scoring + freeze retry) do not need that data and still run, after the cycle's read-only
+    connections are closed. The cycle's status and exit code are unchanged."""
+    _sql(env, "DELETE FROM nfl_snap_counts WHERE season = 2025 AND week = 9 AND team = 'AAA'")
+    calls = _record_side_stages(lc, monkeypatch)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, project=True, kicker=True, ctx_shadow=True))
+    assert code == lc.EXIT_NOT_READY and rep["status"] == "waiting_for_data"
+    assert calls == [("kicker", 10, None), ("ctx_shadow", 10, 0)]
+    assert _stages(rep)[-3:] == [("readiness", "not_ready"), ("kicker", "ok"), ("ctx_shadow", "ok")]
+    assert [s.get("after") for s in rep["stages"][-2:]] == ["waiting_for_data", "waiting_for_data"]
+    assert "ifp-ctx-p1 shadow: ctx_shadow warning" in rep["warnings"]
+    assert rep["kicker_projection"] == {"runs": []} and rep["ctx_shadow"]["status"] == "ok"
+    names = [s["name"] for s in rep["stages"]]
+    assert "train" not in names and "predict" not in names and "project" not in names
+    assert _files(env, "artifacts") == [] and _files(env, "ledger") == []
+    stored = json.loads((env / "out" / "status" / "latest-cycle.json").read_text())
+    assert stored["status"] == "waiting_for_data" and stored["stages"][-1]["name"] == "ctx_shadow"
+
+
+def test_waiting_for_data_side_stage_failure_is_still_only_a_warning(lc, env, monkeypatch):
+    _sql(env, "DELETE FROM nfl_snap_counts WHERE season = 2025 AND week = 9 AND team = 'AAA'")
+    monkeypatch.setattr(lc, "stage_ctx_shadow", lambda args, conns, log_path: (_ for _ in ()).throw(
+        RuntimeError("ctx_shadow.py exited 1: boom")))
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True))
+    assert code == lc.EXIT_NOT_READY and rep["status"] == "waiting_for_data"
+    assert _stages(rep)[-1] == ("ctx_shadow", "failed_nonfatal")
+    assert any("ifp-ctx-p1 shadow stage failed" in w for w in rep["warnings"])
+
+
+def test_waiting_for_data_with_no_project_skips_the_kicker_write(lc, env, monkeypatch):
+    """--no-project keeps the cycle off the live database, and the kicker run is a live-database write."""
+    _sql(env, "DELETE FROM nfl_snap_counts WHERE season = 2025 AND week = 9 AND team = 'AAA'")
+    calls = _record_side_stages(lc, monkeypatch)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, kicker=True, ctx_shadow=True))
+    assert code == lc.EXIT_NOT_READY and [c[0] for c in calls] == ["ctx_shadow"]
+    assert "kicker" not in [s["name"] for s in rep["stages"]]
+
+
+def test_a_failed_production_stage_still_runs_the_read_only_shadow_but_not_the_kicker(lc, env, monkeypatch):
+    calls = _record_side_stages(lc, monkeypatch)
+    monkeypatch.setattr(lc.cli, "cmd_evaluate", lambda *a, **k: (_ for _ in ()).throw(ValueError("bad ledger")))
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, project=True, kicker=True, ctx_shadow=True))
+    assert code == lc.EXIT_FAILED and rep["status"] == "failed"
+    assert calls == [("ctx_shadow", 10, 2)]          # handed the open read connections: stage_ctx_shadow closes them
+    assert _stages(rep)[-2:] == [("evaluate", "failed"), ("ctx_shadow", "ok")]
+    assert rep["stages"][-1]["after"] == "failed"
+
+
+def test_a_sync_failure_still_runs_the_shadow_without_a_target_week(lc, env, monkeypatch):
+    """sync_nfl.py lost the DuckDB lock: no target week is known yet, so ctx_shadow.py picks its own (no --week)."""
+    calls = _record_side_stages(lc, monkeypatch)
+    monkeypatch.setattr(lc, "stage_sync_nfl", lambda args, log: (_ for _ in ()).throw(RuntimeError("lock held")))
+    args = _args(lc, env, PRE_W10, project=True, kicker=True, ctx_shadow=True)
+    args.skip_sync = False
+    code, rep = lc.run_cycle(args)
+    assert code == lc.EXIT_FAILED and calls == [("ctx_shadow", None, 0)]
+    assert _stages(rep) == [("sync_nfl", "failed"), ("ctx_shadow", "ok")]
+
+
+def test_a_refused_lock_runs_no_side_stage(lc, env, monkeypatch):
+    calls = _record_side_stages(lc, monkeypatch)
+    lock = env / "out" / "locks" / "cycle.lock"
+    lock.parent.mkdir(parents=True)
+    lock.write_text(json.dumps({"pid": os.getpid(), "host": lc.socket.gethostname(),
+                                "started_at": datetime.now(UTC).isoformat()}))
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, project=True, kicker=True, ctx_shadow=True))
+    assert code == lc.EXIT_LOCKED and calls == [] and rep["stages"] == []
+
+
+def test_the_side_stages_run_once_after_a_successful_cycle(lc, env, monkeypatch):
+    _espn_players(env)
+    calls = _record_side_stages(lc, monkeypatch)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True, kicker=True,
+                                   ctx_shadow=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert calls == [("kicker", 10, None), ("ctx_shadow", 10, 0)]
+    assert _stages(rep)[-3:] == [("project", "ok"), ("kicker", "ok"), ("ctx_shadow", "ok")]
+    assert all("after" not in s for s in rep["stages"])
+
+
+def test_the_kicker_after_waiting_for_data_runs_with_the_read_connections_closed(lc, env, monkeypatch):
+    """The kicker subprocess writes the live database, so the cycle's own read-only connections must be closed."""
+    _sql(env, "DELETE FROM nfl_snap_counts WHERE season = 2025 AND week = 9 AND team = 'AAA'")
+    seen = []
+
+    def kicker(args, log_path):
+        con = connect(env / "live.duckdb")           # a writer in this process: fails if a read connection is open
+        con.close()
+        seen.append(args.week)
+        return {"runs": []}
+
+    monkeypatch.setattr(lc, "stage_kicker", kicker)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, project=True, kicker=True))
+    assert code == lc.EXIT_NOT_READY and seen == [10] and _stages(rep)[-1] == ("kicker", "ok")
+
+
+def test_every_stage_process_gets_the_lock_wait(lc, monkeypatch):
+    monkeypatch.delenv(lc.LOCK_WAIT_ENV, raising=False)
+    assert lc.child_env()[lc.LOCK_WAIT_ENV] == str(lc.LOCK_WAIT_S)
+    monkeypatch.setenv(lc.LOCK_WAIT_ENV, "9")
+    assert lc.child_env()[lc.LOCK_WAIT_ENV] == "9" and lc.child_env()["PYTHONUNBUFFERED"] == "1"

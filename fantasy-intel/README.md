@@ -527,7 +527,11 @@ in your local `.env`, so it has to run on your Mac (not in GitHub Actions).
 `scripts/refresh_all.py` runs `sync_espn.py` → `sync_nfl.py` → `compute_analytics.py`, then builds the
 projection-performance report (`projection_performance.py publish`, one write-once row; a failure is a `WARNING:`
 line, never a stop; `--skip-report` skips it), then `publish_motherduck.py` only if `MOTHERDUCK_TOKEN` is set. Each step runs in its own process,
-the first failure stops the chain and the script exits 1. Every run writes
+and a failure skips every step that needs the failed one, and the script exits 1. The two syncs are separate sources: a
+failed ESPN sync still runs the nflverse sync (and the other way round), and the research shadows' pregame freezes
+(evidence steps labelled `<name> pregame week W`) still run on the stored data, since a missed freeze is never backfilled. Every step waits up to
+`FANTASY_DB_LOCK_WAIT_S` (default 120 s) for another process's DuckDB lock (a read-only reader such as the
+social-trends job blocks a writer), and a step that still fails on the lock is run again after 1 and 3 minutes. Every run writes
 `data/logs/refresh-<UTC stamp>.log`. At the end it checks that the current week's ESPN
 projections were snapshotted before that week's first kickoff and prints a `WARNING:` line if
 not (`/data` shows the same check under "Independent projections: path to promotion"). It then

@@ -26,7 +26,10 @@ After the production run, two separate models run as non-fatal stages (a failure
 `kicker` (kfp-1.0.0) and `ctx_shadow`, the research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py
 cycle: scores its frozen pregame ledgers against actuals alongside ifp-2 and tries the gated write-once freeze; it
 writes only <ifp-dir>/research/context/). Skip them with --no-kicker / --no-ctx-shadow.
-A stage failure stops every later stage. Nothing is backdated, overwritten or replayed: a week whose
+Neither needs the target week's new data, so they also run when the cycle stops early: both after `waiting_for_data`
+(the kicker only when it may write, i.e. without --no-project), and ctx_shadow (read-only) also after
+`no_upcoming_week` and after a failed production stage. Their status and exit code stay the cycle's.
+A stage failure stops every later production stage. Nothing is backdated, overwritten or replayed: a week whose
 first kickoff passed without a frozen pregame forecast is recorded under <out>/missed/.
 
 Injury-retrieval freshness (docs/injury_freshness.md section 5) is reported as `warnings` /
@@ -60,12 +63,14 @@ import weekly_learning as cli  # noqa: E402  (the existing weekly_learning.py co
 from app.analytics import challenger as ch  # noqa: E402
 from app.analytics import weekly_learning as wl  # noqa: E402
 from app.config import get_settings  # noqa: E402
+from app.db.connection import LOCK_WAIT_ENV  # noqa: E402
 
 SCHEMA = "weekly-learning-cycle/v1"
 EASTERN = ZoneInfo("America/New_York")
 EXIT_OK, EXIT_FAILED, EXIT_NOT_READY, EXIT_LOCKED, EXIT_CONFIG = 0, 1, 3, 4, 5
 STALE_LOCK = timedelta(hours=6)
 LOCK_NAME = "cycle.lock"
+LOCK_WAIT_S = 300                    # FANTASY_DB_LOCK_WAIT_S for the stage processes (seconds)
 
 
 class CycleStop(Exception):
@@ -206,6 +211,12 @@ def nfl_synced_at(con) -> str | None:
 # ----------------------------------------------------------------------------- stages
 
 
+def child_env() -> dict:
+    """Environment of every stage process: unbuffered output, and FANTASY_DB_LOCK_WAIT_S (LOCK_WAIT_S unless set) so
+    a stage waits out another process's DuckDB lock (refresh_all.py, the social-trends job's read-only reads)."""
+    return {**os.environ, "PYTHONUNBUFFERED": "1", LOCK_WAIT_ENV: os.getenv(LOCK_WAIT_ENV) or str(LOCK_WAIT_S)}
+
+
 def stage_sync_nfl(args, log_path: Path) -> dict:
     """The existing nflverse sync (writes the live DB, as refresh_all.py does). Output -> log file."""
     started = time.monotonic()
@@ -214,7 +225,7 @@ def stage_sync_nfl(args, log_path: Path) -> dict:
         log.write(f"==> sync_nfl.py {datetime.now(timezone.utc).isoformat()}\n")
         log.flush()
         # sync_nfl.py reads its database and season from the environment: pass this cycle's choices
-        env = {**os.environ, "PYTHONUNBUFFERED": "1", "FANTASY_DB_PATH": str(Path(args.live_db).resolve()),
+        env = {**child_env(), "FANTASY_DB_PATH": str(Path(args.live_db).resolve()),
                "NFL_SEASON": str(args.season)}
         code = subprocess.run([sys.executable, str(SCRIPTS / "sync_nfl.py")], cwd=_bootstrap.BACKEND,
                               stdout=log, stderr=subprocess.STDOUT, env=env).returncode
@@ -245,8 +256,7 @@ def stage_project(args, conns: list, log_path: Path) -> dict:
     if last is not None and last > args.week and not getattr(args, "no_rest_of_season", False):
         cmd += ["--through-week", str(last)]
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
-    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True, env=env)
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True, env=child_env())
     out, err = getattr(proc, "stdout", "") or "", getattr(proc, "stderr", "") or ""
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(f"==> backtest_independent_projections.py project {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
@@ -262,14 +272,16 @@ def stage_project(args, conns: list, log_path: Path) -> dict:
 def stage_kicker(args, log_path: Path) -> dict:
     """Kicker model (kfp-1.0.0, scripts/kicker_projections.py): fit and approve the season's artifact once (it trains on
     finished seasons only, so one artifact serves every week of the season), then store the target week's kicker run
-    and every later regular-season week's (experimental) run. Called after `project` (the read connections are closed).
-    Never fails the cycle: run_cycle turns an error into a warning."""
+    and every later regular-season week's (experimental) run. Called after `project`, or after the cycle stopped at
+    waiting_for_data (the kicker model does not need the ifp readiness gate; an identical rerun is a no-op and a later
+    cycle's run on newer data supersedes it), with the cycle's read connections closed. Never fails the cycle:
+    run_cycle turns an error into a warning."""
     base = [sys.executable, str(SCRIPTS / "kicker_projections.py")]
     common = ["--season", str(args.season), "--live-db", str(args.live_db), "--history-db", str(args.history_db),
               "--out", str(args.kicker_dir)]
     out: dict = {}
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    env = child_env()
 
     def run(cmd: list[str]) -> dict:
         proc = subprocess.run(base + cmd + common, cwd=_bootstrap.BACKEND, capture_output=True, text=True, env=env)
@@ -325,7 +337,7 @@ def stage_ctx_shadow(args, conns: list, log_path: Path) -> dict:
         cmd += ["--now", str(args.now)]
     log_path.parent.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
-                          env={**os.environ, "PYTHONUNBUFFERED": "1"}, timeout=CTX_SHADOW_TIMEOUT_S)
+                          env=child_env(), timeout=CTX_SHADOW_TIMEOUT_S)
     out, err = proc.stdout or "", proc.stderr or ""
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(f"==> ctx_shadow.py cycle {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
@@ -435,20 +447,44 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         report["stages"].append({"name": name, "status": "ok", "seconds": round(time.monotonic() - t, 2)})
         return out
 
-    def ctx_shadow():
-        """Research shadow (ifp-ctx-p1), after the production stages: a failure is a warning, never a failed cycle."""
+    def kicker(after=None):
+        """Kicker model (kfp), after `project` or a waiting_for_data stop: a failure is a warning, never a failed cycle.
+        A live-database write, so never with --no-project; needs the target week. `after`: the early stop it follows."""
+        if args.no_kicker or args.no_project or args.week is None:
+            return                      # (no stage entry when disabled: a report's stage list is unchanged)
+        for con in conns:               # DuckDB allows one writing process: close the cycle's read connections
+            if con is not None:
+                con.close()
+        conns.clear()
+        t_k = time.monotonic()
+        tag = {"after": after} if after else {}
+        try:     # the kicker model is separate: its failure is a warning, never a failed cycle
+            report["kicker_projection"] = stage_kicker(args, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+            report["stages"].append({"name": "kicker", "status": "ok", "seconds": round(time.monotonic() - t_k, 2),
+                                     **tag})
+        except Exception as err:      # noqa: BLE001
+            report["stages"].append({"name": "kicker", "status": "failed_nonfatal",
+                                     "seconds": round(time.monotonic() - t_k, 2),
+                                     "error": f"{err.__class__.__name__}: {err}", **tag})
+            report["warnings"].append(f"kicker projection failed (skill-position run unaffected): {err}")
+
+    def ctx_shadow(after=None):
+        """Research shadow (ifp-ctx-p1), after the production stages: a failure is a warning, never a failed cycle.
+        `after`: the early stop (waiting_for_data, failed) it follows."""
         if args.no_ctx_shadow:
             return
         t_c = time.monotonic()
+        tag = {"after": after} if after else {}
         try:
             cs = stage_ctx_shadow(args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log")
             report["ctx_shadow"] = cs
-            report["stages"].append({"name": "ctx_shadow", "status": "ok", "seconds": round(time.monotonic() - t_c, 2)})
+            report["stages"].append({"name": "ctx_shadow", "status": "ok", "seconds": round(time.monotonic() - t_c, 2),
+                                     **tag})
             report["warnings"] += [f"ifp-ctx-p1 shadow: {w}" for w in cs.get("warnings") or []]
         except Exception as err:      # noqa: BLE001
             report["stages"].append({"name": "ctx_shadow", "status": "failed_nonfatal",
                                      "seconds": round(time.monotonic() - t_c, 2),
-                                     "error": f"{err.__class__.__name__}: {err}"})
+                                     "error": f"{err.__class__.__name__}: {err}", **tag})
             report["warnings"].append(f"ifp-ctx-p1 shadow stage failed (production runs unaffected): {err}")
 
     try:
@@ -523,22 +559,19 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                 for r in ros:
                     if "error" in r:
                         report["warnings"].append(f"rest-of-season projection for week {r['week']} failed: {r['error']}")
-            if not args.no_kicker:      # (no stage entry when disabled: a report's stage list is unchanged)
-                t_k = time.monotonic()
-                try:     # the kicker model is separate: its failure is a warning, never a failed cycle
-                    report["kicker_projection"] = stage_kicker(args, Path(args.out) / "logs" / f"cycle-{stamp}.log")
-                    report["stages"].append({"name": "kicker", "status": "ok", "seconds": round(time.monotonic() - t_k, 2)})
-                except Exception as err:      # noqa: BLE001
-                    report["stages"].append({"name": "kicker", "status": "failed_nonfatal",
-                                             "seconds": round(time.monotonic() - t_k, 2),
-                                             "error": f"{err.__class__.__name__}: {err}"})
-                    report["warnings"].append(f"kicker projection failed (skill-position run unaffected): {err}")
+            kicker()
         ctx_shadow()
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):
             report["errors"].append(str(stop))
         report["required_actions"] += stop.actions
+        # The separate models do not need the target week's new data: they still run after an early stop (never after
+        # a refused lock or a configuration error; no_upcoming_week already ran ctx_shadow above).
+        if lock is not None and stop.status in ("waiting_for_data", "failed"):
+            if stop.status == "waiting_for_data":
+                kicker(after=stop.status)
+            ctx_shadow(after=stop.status)
     except Exception as err:          # outside a stage: still report, release the lock, exit 1
         report["status"], code = "failed", EXIT_FAILED
         report["errors"].append(f"{err.__class__.__name__}: {err}")

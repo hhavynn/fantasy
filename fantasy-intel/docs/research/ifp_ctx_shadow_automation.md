@@ -10,8 +10,29 @@ No new scheduler. Two existing jobs call `ctx_shadow.py`, which decides *when* t
 
 | Job (existing) | When | Runs | Does |
 |---|---|---|---|
-| `refresh_all.py` read-only evidence stage (launchd `com.fantasy-intel.refresh`, and every `pregame-guard` run) | Thu 15:00, Sun 08:00, Mon 15:00, Tue 08:00 PT, plus within 6 h of any kickoff the fixed times miss | `ctx_shadow.py pregame --week <upcoming>` | the gated, write-once pregame freeze |
-| `learning_cycle.py`, stage `ctx_shadow` after `kicker` (launchd `com.fantasy-intel.weekly-learning`) | Tue/Wed/Thu 07:00 PT | `ctx_shadow.py cycle --week <target>` | scores every fully final frozen week, records a missed week, retries the freeze (normally deferred mid-week) |
+| `refresh_all.py` read-only evidence stage (launchd `com.fantasy-intel.refresh`, and every `pregame-guard` run) | Thu 15:00, Sun 08:00, Mon 15:00, Tue 08:00 PT, plus within 6 h of any kickoff the fixed times miss | `ctx_shadow.py pregame --week <upcoming>` | the gated, write-once pregame freeze; also after a failed sync |
+| `learning_cycle.py`, side stage `ctx_shadow` after `kicker` (launchd `com.fantasy-intel.weekly-learning`) | Tue/Wed/Thu 07:00 PT | `ctx_shadow.py cycle --week <target>` | scores every fully final frozen week, records a missed week, retries the freeze (normally deferred mid-week); also when the cycle stops at `waiting_for_data`, `no_upcoming_week` or a failed production stage |
+
+**Surviving a failed run.** A missed freeze is never backfilled, so the freeze does not depend on the rest of the
+pipeline succeeding:
+
+* *DuckDB lock.* On 2026-10-18 at 08:00 `sync_espn.py` could not open the database, because the social-trends launchd
+  job (`uv run trends run` every 20 minutes, read-only) held it. A read-only reader still blocks a writer, and
+  `connect()` only retried for 5 s. Now every `refresh_all.py` and `learning_cycle.py` step process waits up to
+  `FANTASY_DB_LOCK_WAIT_S` for the lock, with backoff (`app/db/connection.py`; 120 s in refresh steps, 300 s in cycle
+  stages). A refresh step that still fails on the lock is run again after 1 and then 3 minutes.
+* *Failed sync.* `refresh_all.py` keeps running the other, independent sync. It skips analytics, the report, the
+  publish and the full evidence stage, but it still runs every research shadow's pregame freeze (an evidence step
+  labelled `<name> pregame week W`) on the stored data. The shadow's own freeze gate decides whether that injury evidence is good enough.
+* *Data not ready.* `learning_cycle.py`'s separate models (the `kicker()` and `ctx_shadow()` stages) do not wait for
+  the ifp readiness gate.
+  When the cycle stops at `waiting_for_data`, both still run. The read-only ctx_shadow also runs after
+  `no_upcoming_week` and after a failed production stage. The cycle's status and exit code never change.
+
+A new research shadow plugs in the same way. In `refresh_all.py`, add an evidence step labelled
+`<name> pregame week W`; `is_shadow` then also runs it after a failed sync. In `learning_cycle.py`, add a closure like
+`ctx_shadow(after=None)` and call it next to `ctx_shadow()` in both places: after the production stages, and in the
+early-stop block of the `CycleStop` handler.
 
 **Freeze rule** (fixed in `ctx_shadow.py` before any prospective week exists). The ledger is write-once, and
 the QB and teammate features read the week-W designations (Out / Doubtful / Questionable). A mid-week practice
@@ -28,8 +49,30 @@ too). Teams that already kicked off are excluded by `predict` itself. In practic
 Sunday-morning refresh (or the pregame-guard run before an early international game), after the Friday and
 Saturday final reports. **Thursday games, and international games that kick off before that run, therefore
 usually fall outside the ledger.** One write-once file per week cannot hold them without freezing the Sunday
-teams on a practice report. Per-slot ledgers would need a ledger-format change in `context_research.py`
-(follow-up). Weeks before 2026 week 7 (the pre-registered start) are never frozen.
+teams on a practice report. Weeks before 2026 week 7 (the pre-registered start) are never frozen.
+
+**Early international games are covered once the pregame guard is installed.** The guard
+(`scripts/launchd/com.fantasy-intel.pregame-guard.plist`; install it with
+`evidence_health.py launchd install --apply --jobs pregame-guard`) runs a refresh within 6 h of a kickoff that no fixed
+run precedes, e.g. overnight before a 09:30 ET Sunday game. That refresh syncs nflverse first. By then Friday's final
+reports are in, so the freeze rule usually freezes the whole Sunday slate, the international teams included. Without
+the guard, the Sunday 08:00 run is after those kickoffs and drops those teams.
+
+**Per-slot ledgers (Thursday, and Friday/Saturday late in the season): not implemented, open follow-up.** It was
+judged not cheap for 2026-10-18, so it is not done here. A Thursday team gets its final designations days before the
+Sunday teams, so a correct freeze for it needs its own write-once file. That changes the pre-registered ledger
+contract in more than one place:
+
+* `context_research.py predict`: a team subset and a slot-named path such as `s<S>w<WW>-<slot>-pregame.json`. The main
+  ledger must also exclude every team already frozen in a slot ledger, not just the teams that kicked off: a guard
+  run can freeze the main slate before an international kickoff.
+* `prospective`: it globs `s*-pregame.json`, so the rows of one week must stay disjoint across files.
+* `ctx_shadow.py`: `ledger_path` / `already_frozen`, `check_missed` (a week is missed only if no file covers a team)
+  and `score_alongside` (one entry per week, not per file).
+* The freeze rule needs to be evaluated per slot.
+
+Until that lands, the Thursday game's teams are excluded every week. That is about 2 of 28 teams; it slows the
+evidence, it does not invalidate it. Week 7's Thursday game (2026-10-22) is the first one affected.
 
 **Warnings.** When injury data is missing or stale, `ctx_shadow.py` does not forecast silently:
 
