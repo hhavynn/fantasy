@@ -647,3 +647,14 @@ def test_ctx_shadow_warnings_reach_the_cycle_report(lc, env, monkeypatch):
     assert "ifp-ctx-p1 shadow: the week's nflverse injury report is not ingested yet" in rep["warnings"]
     stored = json.loads((env / "out" / "status" / "latest-cycle.json").read_text())
     assert stored["ctx_shadow"]["warnings"] and stored["stages"][-1]["name"] == "ctx_shadow"
+
+
+def test_ctx_shadow_still_scores_when_no_week_is_left(lc, env, monkeypatch):
+    """After the season's last kickoff the cycle stops with no_upcoming_week (exit 0), but the shadow stage still runs
+    first, so the last frozen week is scored once it is final."""
+    calls = []
+    monkeypatch.setattr(lc, "stage_ctx_shadow", lambda args, conns, log_path: calls.append(args.week) or {
+        "status": "ok", "warnings": []})
+    code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", ctx_shadow=True))
+    assert code == lc.EXIT_OK and rep["status"] == "no_upcoming_week", rep["errors"]
+    assert calls == [None] and ("ctx_shadow", "ok") in _stages(rep)

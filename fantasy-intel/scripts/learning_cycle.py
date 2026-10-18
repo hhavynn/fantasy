@@ -315,10 +315,14 @@ def stage_ctx_shadow(args, conns: list, log_path: Path) -> dict:
             con.close()
     conns.clear()
     cmd = [sys.executable, str(SCRIPTS / "ctx_shadow.py"), "cycle", "--season", str(args.season),
-           "--week", str(args.week), "--live-db", str(args.live_db), "--history-db", str(args.history_db),
+           "--live-db", str(args.live_db), "--history-db", str(args.history_db),
            "--weekly-dir", str(args.out), "--exits-dir", str(args.out)]
+    if args.week is not None:          # None after the season's last week: score only (and check that week)
+        cmd += ["--week", str(args.week)]
     if getattr(args, "ctx_dir", None) is not None:
         cmd += ["--ifp-dir", str(args.ctx_dir)]
+    if getattr(args, "now", None):     # a simulated cycle clock: ctx_shadow.py then decides only (dry run, no writes)
+        cmd += ["--now", str(args.now)]
     log_path.parent.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
                           env={**os.environ, "PYTHONUNBUFFERED": "1"}, timeout=CTX_SHADOW_TIMEOUT_S)
@@ -431,6 +435,22 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         report["stages"].append({"name": name, "status": "ok", "seconds": round(time.monotonic() - t, 2)})
         return out
 
+    def ctx_shadow():
+        """Research shadow (ifp-ctx-p1), after the production stages: a failure is a warning, never a failed cycle."""
+        if args.no_ctx_shadow:
+            return
+        t_c = time.monotonic()
+        try:
+            cs = stage_ctx_shadow(args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+            report["ctx_shadow"] = cs
+            report["stages"].append({"name": "ctx_shadow", "status": "ok", "seconds": round(time.monotonic() - t_c, 2)})
+            report["warnings"] += [f"ifp-ctx-p1 shadow: {w}" for w in cs.get("warnings") or []]
+        except Exception as err:      # noqa: BLE001
+            report["stages"].append({"name": "ctx_shadow", "status": "failed_nonfatal",
+                                     "seconds": round(time.monotonic() - t_c, 2),
+                                     "error": f"{err.__class__.__name__}: {err}"})
+            report["warnings"].append(f"ifp-ctx-p1 shadow stage failed (production runs unaffected): {err}")
+
     try:
         preflight(args)
         lock = acquire_lock(args.out, now)
@@ -450,6 +470,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                               default=None)}
         report["missed_window"] = missed_window(args, last_started, kick, now)
         if target is None:
+            ctx_shadow()                # the season's last frozen week still needs scoring once it is final
             raise CycleStop("no_upcoming_week", EXIT_OK, f"no {args.season} regular-season week kicks off after "
                             f"{now.isoformat()}")
         args.week, args.last_week = target, max(kick)
@@ -512,18 +533,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                              "seconds": round(time.monotonic() - t_k, 2),
                                              "error": f"{err.__class__.__name__}: {err}"})
                     report["warnings"].append(f"kicker projection failed (skill-position run unaffected): {err}")
-        if not args.no_ctx_shadow:      # research shadow (ifp-ctx-p1): a failure is a warning, never a failed cycle
-            t_c = time.monotonic()
-            try:
-                cs = stage_ctx_shadow(args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log")
-                report["ctx_shadow"] = cs
-                report["stages"].append({"name": "ctx_shadow", "status": "ok", "seconds": round(time.monotonic() - t_c, 2)})
-                report["warnings"] += [f"ifp-ctx-p1 shadow: {w}" for w in cs.get("warnings") or []]
-            except Exception as err:      # noqa: BLE001
-                report["stages"].append({"name": "ctx_shadow", "status": "failed_nonfatal",
-                                         "seconds": round(time.monotonic() - t_c, 2),
-                                         "error": f"{err.__class__.__name__}: {err}"})
-                report["warnings"].append(f"ifp-ctx-p1 shadow stage failed (production runs unaffected): {err}")
+        ctx_shadow()
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):

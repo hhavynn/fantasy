@@ -333,9 +333,41 @@ def test_cycle_stage_command_and_failure_handling(lc, tmp_path, monkeypatch):
     conns = []
     assert lc.stage_ctx_shadow(ns, conns, tmp_path / "log.txt") == {"status": "ok", "warnings": ["stale"]}
     cmd, kw = seen[0]
-    assert Path(cmd[1]).name == "ctx_shadow.py" and cmd[2:6] == ["cycle", "--season", "2026", "--week"]
+    assert Path(cmd[1]).name == "ctx_shadow.py" and cmd[2:5] == ["cycle", "--season", "2026"]
+    assert cmd[cmd.index("--week") + 1] == "7"
     assert cmd[cmd.index("--ifp-dir") + 1] == str(tmp_path / "m") and kw["timeout"] == lc.CTX_SHADOW_TIMEOUT_S
     assert "WARNING: stale" in (tmp_path / "log.txt").read_text()
+    assert "--now" not in cmd
     monkeypatch.setattr(lc.subprocess, "run", lambda cmd, **kw: _Proc(1, "", "Traceback ... MemoryError"))
     with pytest.raises(RuntimeError, match="ctx_shadow.py exited 1"):
         lc.stage_ctx_shadow(ns, [], tmp_path / "log.txt")
+
+
+def test_cycle_stage_forwards_the_simulated_clock_and_omits_a_missing_week(lc, tmp_path, monkeypatch):
+    """A `--now` audit cycle must not let the shadow act on wall-clock time: ctx_shadow.py gets the same clock,
+    which makes it a dry run. After the last week there is no target week, so only scoring runs."""
+    ns = lc.parse(["run", "--season", "2026", "--now", "2027-01-20T12:00:00+00:00", "--out", str(tmp_path / "w")])
+    seen = []
+    monkeypatch.setattr(lc.subprocess, "run", lambda cmd, **kw: seen.append(cmd) or _Proc(0, "{}"))
+    lc.stage_ctx_shadow(ns, [], tmp_path / "log.txt")
+    assert seen[0][seen[0].index("--now") + 1] == "2027-01-20T12:00:00+00:00" and "--week" not in seen[0]
+
+
+def test_a_dry_run_never_runs_the_prospective_scorer(cs, args):
+    _scoring_world(args)
+    args.write = False
+    rec = cs.run_score(args, now=SUN, prospective=lambda a: pytest.fail("prospective writes prospective.json"))
+    assert rec["status"] == "would_score" and _runs(args) == []
+    assert not (args.ifp_dir / "research" / "context" / "shadow" / "scores.json").exists()
+
+
+def test_after_the_last_week_the_cycle_scores_and_checks_that_week(cs, args, monkeypatch):
+    monkeypatch.setattr(cs, "_target_week", lambda a, now: None)
+    monkeypatch.setattr(cs, "_last_week", lambda a: 18)
+    checked = []
+    monkeypatch.setattr(cs, "check_missed", lambda a, s, w, now=None: checked.append(w))
+    _scoring_world(args)
+    monkeypatch.setattr(cs, "default_prospective", lambda a: {"scored_weeks": 1, "gate": {}})
+    out = cs.cmd_cycle(args, SUN + timedelta(days=90))
+    assert out["score"]["status"] == "scored" and out["pregame"]["status"] == "no_upcoming_week"
+    assert checked == [18] and out["status"] == "ok"

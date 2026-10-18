@@ -374,6 +374,9 @@ def run_score(args, *, now: datetime | None = None, prospective=None) -> dict:
         if not ledgers:
             rec.update(status="no_ledgers", notes=["no ifp-ctx-p1 ledger frozen yet: nothing to score"])
             return rec                                  # not recorded: nothing was attempted
+        if not args.write:              # prospective writes prospective.json: a dry run only reports what exists
+            rec.update(status="would_score", ledgers=[p.name for p in ledgers])
+            return rec
         rec["prospective"] = prospective(args)
         rec["alongside_production"] = score_alongside(args)
         rec["status"] = "scored"
@@ -424,6 +427,18 @@ def _target_week(args, now: datetime) -> int | None:
     return None
 
 
+def _last_week(args) -> int | None:
+    import duckdb
+
+    con = duckdb.connect(str(args.live_db), read_only=True)
+    try:
+        row = con.execute("SELECT max(week) FROM nfl_schedules WHERE season = ? AND game_type = 'REG'",
+                          [args.season]).fetchone()
+    finally:
+        con.close()
+    return None if row is None or row[0] is None else int(row[0])
+
+
 def cmd_pregame(args, now: datetime) -> dict:
     week = args.week if args.week is not None else _target_week(args, now)
     if week is None:
@@ -440,7 +455,9 @@ def cmd_cycle(args, now: datetime) -> dict:
     target week's pregame freeze (usually deferred on Tue-Thu: the final reports land Friday)."""
     week = args.week if args.week is not None else _target_week(args, now)
     out = {"score": _summary(run_score(args, now=now))}
-    missed = check_missed(args, args.season, week - 1, now=now) if week else None
+    # the week before the target, or after the season's last week has started, that last week
+    prev = week - 1 if week else _last_week(args)
+    missed = check_missed(args, args.season, prev, now=now) if prev else None
     out["missed"] = missed
     out["pregame"] = (_summary(run_pregame(args, args.season, week, now=now)) if week
                       else {"status": "no_upcoming_week", "warnings": [], "notes": []})
