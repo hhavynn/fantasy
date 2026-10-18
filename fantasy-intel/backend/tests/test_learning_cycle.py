@@ -682,13 +682,15 @@ def test_research_shadow_stages_follow_ctx_shadow_and_are_no_ops_in_a_dry_cycle(
 def test_a_research_shadow_failure_never_fails_the_cycle_or_the_other_shadows(lc, env, monkeypatch):
     seen = []
 
-    def stage(args, conns, log_path, script="ctx_shadow.py"):
+    def stage(args, conns, log_path, script):
         seen.append(script)
         if script == "qb_scenario_shadow.py":
             raise RuntimeError("qb_scenario_shadow.py exited 1: MemoryError")
         return {"status": "ok", "warnings": ["stale"] if script == "participation_cal_shadow.py" else []}
 
-    monkeypatch.setattr(lc, "stage_ctx_shadow", stage)
+    monkeypatch.setattr(lc, "stage_ctx_shadow", lambda args, conns, log_path: seen.append("ctx_shadow.py") or {
+        "status": "ok", "warnings": []})
+    monkeypatch.setattr(lc, "stage_research_shadow", stage)
     code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, research_shadows=True))
     assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
     assert seen == ["ctx_shadow.py", "qb_scenario_shadow.py", "participation_cal_shadow.py"]
@@ -701,3 +703,26 @@ def test_a_research_shadow_failure_never_fails_the_cycle_or_the_other_shadows(lc
     code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", "--no-ipm-cal-shadow", ctx_shadow=True,
                                    research_shadows=True))
     assert rep["status"] == "no_upcoming_week" and seen == ["ctx_shadow.py", "qb_scenario_shadow.py"]
+
+
+def test_research_shadow_stage_command_and_failure_handling(lc, env, monkeypatch, tmp_path):
+    ns = _args(lc, env, PRE_W10)
+    ns.week = 10
+    seen = []
+
+    class P:
+        def __init__(self, code, out="", err=""):
+            self.returncode, self.stdout, self.stderr = code, out, err
+
+    monkeypatch.setattr(lc.subprocess, "run", lambda cmd, **kw: seen.append((cmd, kw)) or P(
+        3, json.dumps({"status": "ok", "warnings": ["stale"]}), "WARNING: stale"))
+    log = tmp_path / "log.txt"
+    assert lc.stage_research_shadow(ns, [], log, "qb_scenario_shadow.py") == {"status": "ok", "warnings": ["stale"]}
+    cmd, kw = seen[0]
+    assert Path(cmd[1]).name == "qb_scenario_shadow.py" and cmd[2:5] == ["cycle", "--season", "2025"]
+    assert cmd[cmd.index("--week") + 1] == "10" and cmd[cmd.index("--now") + 1] == PRE_W10
+    assert cmd[cmd.index("--ifp-dir") + 1] == str(env / "ctx") and kw["timeout"] == lc.CTX_SHADOW_TIMEOUT_S
+    assert "qb_scenario_shadow.py cycle" in log.read_text()
+    monkeypatch.setattr(lc.subprocess, "run", lambda cmd, **kw: P(1, "", "Traceback ... MemoryError"))
+    with pytest.raises(RuntimeError, match="participation_cal_shadow.py exited 1"):
+        lc.stage_research_shadow(ns, [], log, "participation_cal_shadow.py")

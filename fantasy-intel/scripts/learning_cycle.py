@@ -309,7 +309,7 @@ RESEARCH_SHADOWS = (("qb_scenario_shadow", "qb_scenario_shadow.py", "no_qb_scena
                     ("ipm_cal_shadow", "participation_cal_shadow.py", "no_ipm_cal_shadow", "ipm-cal-0.1.0 shadow"))
 
 
-def stage_ctx_shadow(args, conns: list, log_path: Path, script: str = "ctx_shadow.py") -> dict:
+def stage_ctx_shadow(args, conns: list, log_path: Path) -> dict:
     """Research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py `cycle`, own process): score every
     fully final frozen week against actuals alongside ifp-2, record a week missed without a ledger, and try the target
     week's write-once pregame freeze (usually deferred on Tue-Thu: the final injury reports land Friday, and
@@ -320,7 +320,7 @@ def stage_ctx_shadow(args, conns: list, log_path: Path, script: str = "ctx_shado
         if con is not None:
             con.close()
     conns.clear()
-    cmd = [sys.executable, str(SCRIPTS / script), "cycle", "--season", str(args.season),
+    cmd = [sys.executable, str(SCRIPTS / "ctx_shadow.py"), "cycle", "--season", str(args.season),
            "--live-db", str(args.live_db), "--history-db", str(args.history_db),
            "--weekly-dir", str(args.out), "--exits-dir", str(args.out)]
     if args.week is not None:          # None after the season's last week: score only (and check that week)
@@ -328,6 +328,36 @@ def stage_ctx_shadow(args, conns: list, log_path: Path, script: str = "ctx_shado
     if getattr(args, "ctx_dir", None) is not None:
         cmd += ["--ifp-dir", str(args.ctx_dir)]
     if getattr(args, "now", None):     # a simulated cycle clock: ctx_shadow.py then decides only (dry run, no writes)
+        cmd += ["--now", str(args.now)]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
+                          env={**os.environ, "PYTHONUNBUFFERED": "1"}, timeout=CTX_SHADOW_TIMEOUT_S)
+    out, err = proc.stdout or "", proc.stderr or ""
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"==> ctx_shadow.py cycle {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
+    if proc.returncode not in (0, 3):
+        raise RuntimeError(f"ctx_shadow.py exited {proc.returncode}: {err.strip()[-400:]} (see {log_path})")
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {}
+
+
+def stage_research_shadow(args, conns: list, log_path: Path, script: str) -> dict:
+    """One of RESEARCH_SHADOWS (`scripts/<script> cycle`, own process), with ctx_shadow's contract: the same arguments,
+    read-only databases, writes only under the model directory's research/, exit 3 = ran with warnings (returned)."""
+    for con in conns:
+        if con is not None:
+            con.close()
+    conns.clear()
+    cmd = [sys.executable, str(SCRIPTS / script), "cycle", "--season", str(args.season),
+           "--live-db", str(args.live_db), "--history-db", str(args.history_db),
+           "--weekly-dir", str(args.out), "--exits-dir", str(args.out)]
+    if args.week is not None:
+        cmd += ["--week", str(args.week)]
+    if getattr(args, "ctx_dir", None) is not None:
+        cmd += ["--ifp-dir", str(args.ctx_dir)]
+    if getattr(args, "now", None):     # a simulated cycle clock: the script then decides only (dry run, no writes)
         cmd += ["--now", str(args.now)]
     log_path.parent.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
@@ -464,7 +494,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                 continue
             t_c = time.monotonic()
             try:
-                rs = stage_ctx_shadow(args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log", script=script)
+                rs = stage_research_shadow(args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log", script)
                 report[name] = rs
                 report["stages"].append({"name": name, "status": "ok", "seconds": round(time.monotonic() - t_c, 2)})
                 report["warnings"] += [f"{label}: {w}" for w in rs.get("warnings") or []]
