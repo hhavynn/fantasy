@@ -67,8 +67,7 @@ ABSENCE_COVERAGE = 0.70      # ... largest such claims first, until they cover 7
 XFPL_SHRINK_GAMES = 3.0      # player expected-points-per-opportunity multiplier shrinks toward 1
 MAX_SCENARIO_PLAYERS = 3     # horizon >= 1: uncertain teammates enumerated as scenarios (largest claims first)
 NEWCOMER_FALLBACK = {"RB": (0.05, 0.03, 0.05), "WR": (0.0, 0.06, 0.0), "TE": (0.0, 0.04, 0.0)}
-STARTER_SHARE = 0.40         # cohort labels only: an RB with >= 40% established carry share is a lead back
-TARGET_LEADER_SHARE = 0.18   # cohort labels only: a WR/TE with >= 18% established target share is a WR1/TE1
+LEAD_SHARE = {"RB": 0.40, "WR": 0.18, "TE": 0.12}   # cohort labels only: established share of a lead back / WR1 / TE1
 
 SKILL = ("RB", "WR", "TE")
 ACTIVE_ROSTER = ("ACT", "INA")
@@ -302,12 +301,13 @@ def _status(rec: dict, cur_st: str, horizon: int) -> tuple[str, str]:
                 return UNAVAILABLE, f"NFL reserve list: not eligible before week {earliest}"
             if horizon and earliest is not None:
                 return UNCERTAIN, f"NFL reserve list: eligible from week {earliest}, return not confirmed"
-            if d in ("listed", "questionable", "not_listed") and rec["designation"] != "not_listed":
+            if d in ("listed", "questionable"):
                 return UNCERTAIN, "on a reserve list before this week but on this week's report without Out"
             return UNAVAILABLE, "NFL reserve list (no activation before the cutoff)"
         return UNAVAILABLE, f"not on the NFL active roster (status {rs})"
     if horizon:
-        if cur_st in UNAVAILABLE_DESIGNATIONS or (missed and inj):
+        back = rec["return_evidence"] not in (None, "none")
+        if cur_st in UNAVAILABLE_DESIGNATIONS or (missed and inj and not back):
             return UNCERTAIN, (f"injured as of the week-{rec['cutoff_week']} cutoff; no week-{target} report exists "
                                "yet (return neither assumed nor ruled out)")
         return AVAILABLE, f"no injury evidence as of the week-{rec['cutoff_week']} cutoff (no week-{target} report yet)"
@@ -538,24 +538,36 @@ def _allocate(claims: dict[str, float], pool: set[str], group_share: float,
     return {i: group_share * v / s for i, v in raw.items()} if s > 0 else prop
 
 
-def _absence_evidence(cut: _Cut, team: str, absent: list[str], metric: str) -> dict[str, tuple[int, float]]:
-    """For each player: (games, mean share) over the team's lookback games in which every `absent` player was
-    missing, counted from the first game any of them played for the team (earlier games describe a different
-    room). Only games he played count toward his own evidence."""
-    if not absent:
-        return {}
-    tp = cut.panel.filter(pl.col("team") == team)
-    keys = tp.select((pl.col("season") * 100 + pl.col("week")).alias("k"), "gsis_id", metric)
-    first = keys.filter(pl.col("gsis_id").is_in(absent))["k"].min()
-    if first is None:
-        return {}
-    k = keys.filter(pl.col("k") >= first)
-    present = set(k.filter(pl.col("gsis_id").is_in(absent))["k"].to_list())
-    games = k.filter(~pl.col("k").is_in(list(present)))
-    if games.height == 0:
-        return {}
-    agg = games.group_by("gsis_id").agg(pl.len().alias("n"), pl.col(metric).drop_nulls().mean().alias("s"))
-    return {g: (int(n), float(s)) for g, n, s in agg.iter_rows() if s is not None}
+def _team_game_shares(cut: _Cut, team: str, metric: str) -> tuple[list[tuple[int, dict[str, float]]], dict[str, int]]:
+    """The team's lookback games as [(key, {player: share})] (ascending) and each player's first game key for it."""
+    tp = cut.panel.filter(pl.col("team") == team).select((pl.col("season") * 100 + pl.col("week")).alias("k"),
+                                                         "gsis_id", metric).sort("k")
+    games: dict[int, dict[str, float]] = defaultdict(dict)
+    first: dict[str, int] = {}
+    for k, g, v in tp.iter_rows():
+        games[k][g] = v
+        first.setdefault(g, k)
+    return sorted(games.items()), first
+
+
+def _room_evidence(games: list[tuple[int, dict[str, float]]], first: dict[str, int], pool: set[str],
+                   present: set[str], absent: list[str]) -> dict[str, tuple[int, float]]:
+    """Per pool player: (games, mean share) over the team's lookback games that look like this week's room: every
+    OTHER material present player played, none of the key absentees did (counted from the first game any of them
+    played for the team: earlier games describe a different room), and he played. This is how the team actually
+    split the work without the absent players and with the present ones, e.g. a backup's share in the games his
+    lead missed, or his share once the lead is back."""
+    start = min((first[a] for a in absent if a in first), default=None)
+    acc: dict[str, list[float]] = defaultdict(list)
+    for k, sh in games:
+        if (start is not None and k < start) or any(a in sh for a in absent):
+            continue
+        for i in pool:
+            v = sh.get(i)
+            if v is None or any(p not in sh for p in present if p != i):
+                continue
+            acc[i].append(v)
+    return {i: (len(v), sum(v) / len(v)) for i, v in acc.items() if v}
 
 
 def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_week: int | None = None, *,
@@ -600,8 +612,9 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
         for g in members:
             r = role.get(g)
             part[g] = _participation(cut, g, team)
-            if r is None:   # no healthy game in the lookback: the newcomer prior
+            if r is None:   # no healthy game in the lookback: the newcomer prior (no role yet for a scratch to cut)
                 cs, ts, gls = newcomer[info[g]["position"]]
+                part[g] = 1.0
             else:
                 cs, ts, gls = r["role_car_share"], r["role_tgt_share"], r["role_gl_share"]
             claims["car"][g], claims["tgt"][g], claims["gl"][g] = cs * part[g], ts * part[g], gls * part[g]
@@ -614,9 +627,22 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
             uncertain_mix = uncertain if return_rates is not None else set()
             out_now |= (uncertain - uncertain_mix)
         returning_now = {g for g in members if status[g] == RETURNING}
-        # unavailable for a non-injury reason (practice squad, released, exempt...): not part of the healthy room, so
-        # not in the everyone-available baseline either (an injured player is)
-        not_in_room = {g for g in out_now if not _injury_absent(info[g])}
+        # unavailable for a non-injury reason (practice squad, released, exempt...) or out for TEAM_WINDOW+ team games
+        # (long-term reserve): not part of the recent room, so not in the everyone-available baseline either (a
+        # recently injured player is)
+        not_in_room = {g for g in out_now if not _injury_absent(info[g])
+                       or (info[g]["missed_team_games"] or 0) >= TEAM_WINDOW}
+        room_games = {"car": _team_game_shares(cut, team, "car_sh"), "tgt": _team_game_shares(cut, team, "tgt_sh")}
+        cache: dict[tuple, tuple[dict, dict]] = {}
+
+        def room(metric, cl, pool, absent, gshare, games, first):
+            k = (metric, pool, absent, gshare)
+            if k not in cache:
+                present = {i for i in pool if cl[i] >= MATERIAL_CLAIM}
+                ev = _room_evidence(games, first, set(pool), present, sorted(absent))
+                cache[k] = (_allocate(cl, set(pool), gshare, ev), ev)
+            return cache[k]
+
         for g in members:
             pos = info[g]["position"]
             groups = {"car": [m for m in members if info[m]["position"] == "RB"] if pos == "RB" else [],
@@ -640,18 +666,17 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
                     scenarios = [(s + ((m, True),), w * p) for s, w in scenarios] + \
                                 [(s + ((m, False),), w * (1 - p)) for s, w in scenarios]
                 scen_n = max(scen_n, len(mix))
+                games, first = room_games[metric]
                 exp = 0.0
                 for s, wgt in scenarios:
                     absent = set(fixed_out) | {m for m, back in s if not back}
-                    pool = set(mem) - absent
-                    pool.add(g)
-                    material = _key_absentees(cl, absent)
-                    ev = _absence_evidence(cut, team, material, "car_sh" if metric == "car" else "tgt_sh")
-                    if g in ev:
+                    pool = (set(mem) - absent) | {g}
+                    alloc, ev = room(metric, cl, frozenset(pool), frozenset(_key_absentees(cl, absent)), gshare,
+                                     games, first)
+                    if g in ev and absent:
                         n_abs_used = max(n_abs_used, ev[g][0])
-                    alloc = _allocate(cl, pool, gshare, {i: v for i, v in ev.items() if i in pool})
                     exp += wgt * alloc.get(g, 0.0)
-                base = _allocate(cl, (set(mem) - not_in_room) | {g}, gshare, {})
+                base, _ = room(metric, cl, frozenset((set(mem) - not_in_room) | {g}), frozenset(), gshare, games, first)
                 res[metric] = (exp, base.get(g, 0.0), gshare)
             car, tgt = res["car"], res["tgt"]
             rec = {c: None for c in HANDOFF_SCHEMA}
@@ -688,7 +713,7 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
                     "role_car_share" if pos == "RB" else "role_tgt_share"))
             if back:
                 rec["ho_top_returning"] = back[0]
-            lead_share = STARTER_SHARE if pos == "RB" else TARGET_LEADER_SHARE
+            lead_share = LEAD_SHARE[pos]
             share_of = (lambda m: (role.get(m) or {}).get("role_car_share" if pos == "RB" else "role_tgt_share") or 0.0)
             leads = [m for m in mem if share_of(m) >= lead_share]
             rec["ho_is_lead"] = int(g in leads)
