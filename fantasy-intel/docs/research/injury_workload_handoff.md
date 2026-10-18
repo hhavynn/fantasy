@@ -263,6 +263,11 @@ Reading it:
   measure for players whose room changed weeks ago (long-term absences, departures), which ifp-2's own
   window catches only slowly.
 
+**Against the earlier teammate candidates on the same store and weeks** (confirmation 2023-24, all positions,
+MAE minus ifp-2): ifp-ctx B (teammate budget, `qb_teammate_context.md`) -0.015; ifp-ret (returning teammates only,
+`returning_teammate_features.md`) about 0 (-0.005); **ifp-iwh -0.036**. ifp-ret's RB-when-RB1-returns gain (-0.37)
+is larger than ifp-iwh's on the comparable cohort (-0.25), so the two are complementary rather than redundant.
+
 ### 7.3 Why the returning-player check failed (diagnosed after the verdict; changes nothing above)
 
 On the confirmation returning cohort the candidate *lowers* projections (mean -0.18), concentrated in rows
