@@ -19,6 +19,8 @@ database read-only (here and in the four scripts it launches) and runs no sync. 
 refresh: each step's problem is logged as a WARNING and the exit code is unchanged. One of them is the
 research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py pregame): it freezes that week's
 write-once pregame ledger once the final injury reports are in, or the main slate is within 6 hours.
+Another is the D/ST research shadow of dfp-r1 (scripts/dst_shadow.py pregame): it freezes that week's write-once
+D/ST ledger once the lines and the previous week's ESPN statistics are in, if the learning cycle has not already.
 """
 
 import argparse
@@ -47,6 +49,7 @@ TIMED_OUT = -999                     # run_step's result for a step killed at it
 EVIDENCE_TIMEOUT_S = 15 * 60         # per evidence step; REFRESH_EVIDENCE_TIMEOUT_S overrides
 START_SIT_NOTHING_ELIGIBLE = 2       # start_sit_evaluation record: no pregame roster row to freeze
 CTX_SHADOW_WARNINGS = 3              # ctx_shadow.py: ran and printed missing/stale injury-evidence WARNING lines
+DST_SHADOW_WARNINGS = 3              # dst_shadow.py: ran and printed missing-input WARNING lines
 
 
 def plan(publish: bool) -> list[str]:
@@ -228,7 +231,7 @@ def select_evidence(con, season: int, now: datetime, final: Callable | None = No
 def evidence_steps(sel: dict) -> list[tuple[str, list[str]]]:
     """(label, command) in run order. The scripts open the database read-only and write only their
     git-ignored default output dirs (start_sit_evaluation, espn_benchmark, ctx_shadow under
-    data/models/research/context; injury_freshness `report` writes nothing)."""
+    data/models/research/context, dst_shadow under data/models/dst; injury_freshness `report` writes nothing)."""
     py, season = sys.executable, str(sel["season"])
     steps = []
     if sel["week"] is not None:
@@ -240,6 +243,9 @@ def evidence_steps(sel: dict) -> list[tuple[str, list[str]]]:
         # research shadow (ifp-ctx-p1): gated write-once pregame ledger under data/models/research/context/
         steps.append((f"ctx_shadow pregame week {week}",
                       [py, str(SCRIPTS / "ctx_shadow.py"), "pregame", "--season", season, "--week", week]))
+        # research shadow (dfp-r1 D/ST): gated write-once pregame ledger under data/models/dst/shadow/
+        steps.append((f"dst_shadow pregame week {week}",
+                      [py, str(SCRIPTS / "dst_shadow.py"), "pregame", "--season", season, "--week", week]))
     if sel["final_week"] is not None:
         week = str(sel["final_week"])
         steps.append((f"espn_benchmark week {week}",
@@ -298,6 +304,8 @@ def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = 
             # research shadow only: its injury-evidence warnings are its own WARNING lines above and its run record,
             # never an evidence-stage problem (evidence health must not report a production capture as failed)
             log(f"INFO: {EVIDENCE} {label} reported injury-evidence warnings for the research shadow (see above)")
+        elif code == DST_SHADOW_WARNINGS and label.startswith("dst_shadow"):
+            log(f"INFO: {EVIDENCE} {label} reported missing-input warnings for the D/ST research shadow (see above)")
         elif code != 0:
             warn(f"{label} exited {code} (output above; the refresh exit code is unchanged)")
     log(f"{EVIDENCE} " + (f"{len(problems)} problem(s), see the WARNING lines above" if problems else "all steps ok"))
