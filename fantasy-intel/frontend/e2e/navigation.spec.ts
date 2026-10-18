@@ -20,8 +20,14 @@ const sections = (page: Page) => page.getByRole("navigation", { name: "Sections"
 const subnav = (page: Page, group: string) => page.getByRole("navigation", { name: `${group} pages` });
 
 async function loaded(page: Page) {
-  await page.waitForLoadState("networkidle");
-  await expect(page.locator("h1")).toHaveCount(1);
+  // Ready = the page's real heading. Network idle is not a signal here: a streamed page can still show the route
+  // skeleton (whose h1 is only a placeholder bar with no text) after it, and link prefetches can keep it from ever
+  // settling. Sections that stream on their own (Overview's week band) are not waited for.
+  // Until the stream finishes, React can keep a hidden copy (the swapped-out skeleton or the not-yet-revealed page)
+  // in the DOM, so this checks the heading people see. The DOM-wide "exactly one h1" rule is routes.spec.ts's job,
+  // which reads each page after the network is idle.
+  await expect(page.locator("main h1:visible"), "page heading still loading").toHaveText(/\S/, { timeout: 20_000 });
+  await expect(page.locator("h1:visible"), "exactly one visible h1").toHaveCount(1);
   await expect(page.locator("main")).not.toContainText(FAILURE_TEXT);
 }
 
