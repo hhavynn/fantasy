@@ -20,8 +20,10 @@ export type Roster = {
   percent_owned: number | null;
 };
 
+/** A teammate's usage over the team games he was available for; a game he did not play counts as zero. */
 export type UsageSide = {
   games: number;
+  played: number;
   volume_per_game: number | null;
   snap_share: number | null;
   target_share: number | null;
@@ -223,29 +225,30 @@ function pickupWeight(m: Teammate): number {
 /**
  * The decision list for the selected roster, over games still to play and absences that are not yet long-term:
  * your injured players (start/sit), your healthy teammates of an injured player who could gain, and available
- * teammates (free agent or waivers) who could gain. A player appears once per list.
+ * teammates (free agent or waivers) who could gain. A teammate who could gain from several absences appears once,
+ * with his strongest reason (the largest of the estimated and observed extra volume).
  */
 export function rosterActions(entries: InjuryEntry[]): { myInjured: RosterAction[]; myGainers: RosterAction[]; pickups: RosterAction[] } {
   const live = entries.filter((e) => !e.game.started && !e.game.on_bye && e.absence.kind !== "long_term");
   const myInjured = live.filter((e) => e.roster.is_mine).map((entry) => ({ kind: "my_injured" as const, entry, mate: null }));
-  const seen = new Set<string>();
-  const myGainers: RosterAction[] = [];
-  const pickups: RosterAction[] = [];
+  const best = new Map<string, { entry: InjuryEntry; mate: Teammate }>();
   for (const entry of live) {
     if (entry.position === "QB") continue;   // a QB absence has no pro-rata split; receivers lose, the backup is listed
     for (const mate of entry.impact.teammates) {
-      if (!gains(mate) || seen.has(mate.gsis_id)) continue;
-      if (mate.roster.is_mine) {
-        seen.add(mate.gsis_id);
-        myGainers.push({ kind: "my_gainer", entry, mate });
-      } else if (mate.roster.status === "FREE_AGENT" || mate.roster.status === "WAIVERS") {
-        seen.add(mate.gsis_id);
-        pickups.push({ kind: "pickup", entry, mate });
-      }
+      if (!gains(mate)) continue;
+      const mine = mate.roster.is_mine;
+      const available = mate.roster.status === "FREE_AGENT" || mate.roster.status === "WAIVERS";
+      if (!mine && !available) continue;
+      const prev = best.get(mate.gsis_id);
+      if (!prev || pickupWeight(mate) > pickupWeight(prev.mate)) best.set(mate.gsis_id, { entry, mate });
     }
   }
-  pickups.sort((a, b) => pickupWeight(b.mate as Teammate) - pickupWeight(a.mate as Teammate));
-  return { myInjured, myGainers, pickups };
+  const ranked = [...best.values()].sort((a, b) => pickupWeight(b.mate) - pickupWeight(a.mate));
+  return {
+    myInjured,
+    myGainers: ranked.filter((a) => a.mate.roster.is_mine).map((a) => ({ kind: "my_gainer" as const, ...a })),
+    pickups: ranked.filter((a) => !a.mate.roster.is_mine).map((a) => ({ kind: "pickup" as const, ...a })),
+  };
 }
 
 // ----------------------------------------------------------------------------- labels

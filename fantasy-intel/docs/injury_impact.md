@@ -30,7 +30,11 @@ first, long-term absences and games already kicked off / on a bye in collapsed g
   attempts (QB), target / backfield share, xFP and PPR per game, the role trend from `player_scores`, and a weekly
   snap-share series where a missed game is a gap, never a zero;
 * each teammate's volume per game in team games the injured player played versus missed, with the games behind each
-  side, and the change. Volume is carries + targets for an RB absence (RB teammates) and targets for a WR or TE absence
+  side, and the change. "Missed" means team games while he was on the team (`nfl_rosters_weekly`, any status but
+  released / retired / traded; without roster data, from his first game for the team on): games before he joined are
+  not absences. A teammate's side averages over the games he was available for (on the roster and not on a reserve
+  list, or he played), and a game he did not play counts as **zero**. A backup with no snaps while the starter played
+  therefore has a real 0 baseline instead of a missing one. A week he was not on the team stays out of the sample. Volume is carries + targets for an RB absence (RB teammates) and targets for a WR or TE absence
   (WR, TE and RB teammates).
 
 **Estimate** (labelled, dashed in the UI, never called a projection):

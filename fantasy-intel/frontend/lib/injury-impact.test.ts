@@ -89,6 +89,22 @@ test("roster actions: my injured, my gainers, pickups ordered by the larger of e
   assert.deepEqual(actions.pickups.map((a) => a.mate?.gsis_id), ["fa-observed", "wv-big"]);
 });
 
+test("a teammate helped by two absences keeps his strongest reason, not the first one listed", () => {
+  const weak = mate("rb2", { estimate: { share: 0.3, extra_per_game: 2.5, basis_volume_per_game: 3, basis_weeks: [] },
+    roster: roster({ status: "FREE_AGENT" }) });
+  const strong = mate("rb2", { estimate: { share: 0.9, extra_per_game: 12, basis_volume_per_game: 9, basis_weeks: [] },
+    roster: roster({ status: "FREE_AGENT" }) });
+  const other = mate("wr3", { estimate: { share: 0.5, extra_per_game: 5, basis_volume_per_game: 4, basis_weeks: [] },
+    roster: roster({ status: "WAIVERS" }) });
+  const actions = rosterActions([
+    entry("first-listed", { impact: { ...entry("x").impact, teammates: [weak, other] } }),
+    entry("bigger-role", { impact: { ...entry("x").impact, teammates: [strong] } }),
+  ]);
+  assert.deepEqual(actions.pickups.map((a) => [a.mate?.gsis_id, a.entry.gsis_id]),
+    [["rb2", "bigger-role"], ["wr3", "first-listed"]]);
+  assert.equal(actions.pickups[0].mate?.estimate?.extra_per_game, 12);
+});
+
 test("a QB absence never produces pickups from the pro-rata split", () => {
   const qb = entry("qb", { position: "QB", impact: { ...entry("x").impact, unit: "pass_attempts",
     teammates: [mate("backup", { roster: roster({ status: "FREE_AGENT" }) })] } });

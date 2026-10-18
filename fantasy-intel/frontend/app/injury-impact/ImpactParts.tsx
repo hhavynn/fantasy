@@ -31,17 +31,18 @@ export function Who({ id, name, position, team, meta }: {
   return <PlayerIdentity id={id} name={name} position={position} team={team} meta={meta} />;
 }
 
-/** "4.0 → 10.0" with the games behind each side; a dash when a side has no game. */
+/** "4.0 → 10.0" with the games behind each side (games he was available for; not playing counts as 0); a dash
+ *  when a side has no game. */
 export function WithWithout({ withV, withoutV, withGames, withoutGames, digits = 1 }: {
   withV: number | null | undefined; withoutV: number | null | undefined;
   withGames: number | null | undefined; withoutGames: number | null | undefined; digits?: number;
 }) {
   if (withoutGames === null || withoutGames === undefined || withoutV === null || withoutV === undefined) {
-    return <Missing why="No team game without him this season in which this player played" />;
+    return <Missing why="No team game without him while this player was on the roster and available" />;
   }
   return (
     <span className={styles.split}>
-      <span>{num(withV ?? null, digits, "Did not play alongside him")}</span>
+      <span>{num(withV ?? null, digits, "Not on the roster, or unavailable, in the games with him")}</span>
       <span aria-hidden="true" className={styles.arrow}>→</span>
       <VisuallyHidden> without him: </VisuallyHidden>
       <strong>{num(withoutV, digits)}</strong>

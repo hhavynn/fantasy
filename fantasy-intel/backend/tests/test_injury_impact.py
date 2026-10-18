@@ -277,6 +277,73 @@ def test_ongoing_absence_splits_by_the_role_before_he_went_out(tmp_path):
     c.close()
 
 
+def add_rosters(con, overrides=None):
+    """Weekly NFL rosters: every listed player ACT on his team in weeks 1-6, except `overrides`
+    {pid: {week: status | None}} (None = not on the team that week)."""
+    con.execute("CREATE TABLE nfl_rosters_weekly (season INT, week INT, game_type VARCHAR, team VARCHAR, "
+                "gsis_id VARCHAR, status VARCHAR)")
+    for pid, (_, _, team, *_rest) in PLAYERS.items():
+        for w in WEEKS:
+            status = (overrides or {}).get(pid, {}).get(w, "ACT")
+            if status is not None:
+                con.execute("INSERT INTO nfl_rosters_weekly VALUES (?, ?, 'REG', ?, ?, ?)", [SEASON, w, team, G[pid], status])
+
+
+def test_zero_snap_backup_counts_as_zero_with_him_not_missing(tmp_path):
+    """A backup who never touched the ball while the starter played, then took over: 'with' is 0 per game over the
+    games he was active for, so his observed gain is real, not hidden behind a missing baseline."""
+    c = fresh_db(tmp_path)
+    c.execute("DELETE FROM player_week_usage WHERE gsis_id = ? AND week IN (5, 6)", [G[101]])     # Ace misses 5-6
+    c.execute("DELETE FROM player_week_usage WHERE gsis_id = ? AND week <= 4", [G[103]])          # Third RB: no snaps
+    c.execute("UPDATE player_week_usage SET carries = 16, opportunities = 16 WHERE gsis_id = ? AND week IN (5, 6)",
+              [G[103]])
+    add_rosters(c, {103: {1: "RES"}})        # on injured reserve in week 1: unavailable, not a zero
+    third = mates(by_id(get(c))[101])[103]
+    assert third["observed"]["with"] == {"games": 3, "played": 0, "volume_per_game": 0.0, "snap_share": 0.0,
+                                         "target_share": 0.0, "ppr_per_game": 0.0}
+    assert third["observed"]["without"]["volume_per_game"] == 16.0 and third["observed"]["without"]["played"] == 2
+    assert third["observed"]["delta_per_game"] == 16.0
+    c.close()
+
+
+def test_a_player_not_on_the_team_is_missing_not_zero(tmp_path):
+    """No roster row and no usage = not on the team that week: left out of the sample, never counted as zero."""
+    c = fresh_db(tmp_path)
+    c.execute("DELETE FROM player_week_usage WHERE gsis_id = ? AND week <= 3", [G[202]])
+    add_rosters(c, {202: {1: None, 2: None, 3: None}})       # Slot WR joined KC in week 4
+    slot = mates(by_id(get(c))[201])[202]
+    # Wide WR missed week 3, before Slot WR arrived: the only game without him has no Slot WR sample.
+    assert slot["observed"]["without"] is None and slot["observed"]["delta_per_game"] is None
+    assert slot["observed"]["with"]["games"] == 3
+    c.close()
+
+
+@pytest.mark.parametrize("with_rosters", [True, False])
+def test_games_before_he_joined_the_team_are_not_absences(tmp_path, with_rosters):
+    """A week-4 arrival who played weeks 4-6 has no game 'without him': weeks 1-3 predate his tenure."""
+    c = fresh_db(tmp_path)
+    c.execute("DELETE FROM player_week_usage WHERE gsis_id = ? AND week <= 3", [G[101]])
+    if with_rosters:
+        add_rosters(c, {101: {1: None, 2: None, 3: None}})
+    ace = by_id(get(c))[101]
+    assert ace["impact"]["team_games_without"] == 0
+    assert ace["impact"]["clarity"]["label"] == "no_history"
+    assert ace["workload"]["team_games"] == 3 and [p["week"] for p in ace["workload"]["weekly"]] == [4, 5, 6]
+    assert all(m["observed"]["without"] is None for m in ace["impact"]["teammates"])
+    c.close()
+
+
+def test_games_he_missed_while_on_the_team_are_absences(tmp_path):
+    """On the roster (inactive or on reserve) and not playing: those games are genuine absences."""
+    c = fresh_db(tmp_path)
+    c.execute("DELETE FROM player_week_usage WHERE gsis_id = ? AND week IN (2, 3)", [G[101]])
+    add_rosters(c, {101: {2: "INA", 3: "RES"}})
+    ace = by_id(get(c))[101]
+    assert ace["impact"]["team_games_without"] == 2
+    assert mates(ace)[102]["observed"]["without"]["games"] == 2
+    c.close()
+
+
 def test_never_names_a_single_winner(league):
     body = get(league)
     for e in body["players"]:

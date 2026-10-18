@@ -115,6 +115,54 @@ def _pass_attempts(con, season: int, week: int) -> dict[tuple[str, int], int]:
         WHERE season = ? AND week <= ? AND position = 'QB' {gt}""", [season, week])}
 
 
+_OFF_TEAM = ("CUT", "RET", "TRD", "TRT")        # weekly-roster statuses that mean he no longer belongs to the team
+_RESERVE = ("RES", "SUS", "PUP", "NFI", "EXE")   # on the team but unable to play (IR, suspended, ...)
+
+
+class _Rosters:
+    """Weekly NFL rosters: which team games a player belonged to the team, and which he could have played."""
+
+    def __init__(self, rows: list[dict]):
+        self.status: dict[tuple[str, str], dict[int, str]] = defaultdict(dict)
+        self.covered: set[int] = set()
+        for r in rows:
+            self.status[(r["gsis_id"], r["team"])][r["week"]] = r["status"]
+            self.covered.add(r["week"])
+
+    def tenure(self, t: "_Team", gsis: str) -> list[int]:
+        """Team games he belonged to the team: a weekly-roster row that is not released / retired / traded. A week
+        with no roster data at all falls back to "from his first usage row for the team on"; a game he played
+        always counts."""
+        first = min(t.rows[gsis], default=None)
+        weeks = self.status.get((gsis, t.team), {})
+        out = []
+        for w in t.weeks:
+            if _played(t.rows[gsis].get(w)):
+                out.append(w)
+            elif w in self.covered:
+                if w in weeks and weeks[w] not in _OFF_TEAM:
+                    out.append(w)
+            elif first is not None and w >= first:
+                out.append(w)
+        return out
+
+    def available(self, t: "_Team", gsis: str) -> set[int]:
+        """Team games he could have played: in his tenure and not on a reserve list, or he played."""
+        weeks = self.status.get((gsis, t.team), {})
+        return {w for w in self.tenure(t, gsis) if _played(t.rows[gsis].get(w)) or weeks.get(w) not in _RESERVE}
+
+
+def _roster_rows(con, season: int, week: int) -> list[dict]:
+    if not table_exists(con, "nfl_rosters_weekly"):
+        return []
+    cols = set(table_columns(con, "nfl_rosters_weekly"))
+    if not {"season", "week", "team", "gsis_id", "status"} <= cols:
+        return []
+    gt = "AND game_type = 'REG'" if "game_type" in cols else ""
+    return fetch_dicts(con, f"""SELECT DISTINCT week, team, gsis_id, status FROM nfl_rosters_weekly
+                                WHERE season = ? AND week <= ? AND gsis_id IS NOT NULL {gt}""", [season, week])
+
+
 def _players(con) -> list[dict]:
     """ESPN universe (skill positions) with the best gsis mapping."""
     if not table_exists(con, "fantasy_players"):
@@ -239,22 +287,29 @@ def _teams(usage: list[dict]) -> tuple[dict[str, _Team], dict[str, str], dict[st
     return teams, {g: t for g, (_, t) in latest_team.items()}, pos
 
 
-def _side(t: _Team, gsis: str, weeks: list[int], unit: str, attempts: dict) -> dict | None:
-    """A player's usage over `weeks` (only the ones he played): per-game volume, snap / target share, PPR."""
-    rows = [t.rows[gsis].get(w) for w in weeks]
-    played = [r for r in rows if _played(r)]
-    if not played:
+def _side(t: _Team, gsis: str, weeks: list[int], unit: str, attempts: dict, available: set[int]) -> dict | None:
+    """A player's usage over the team games in `weeks` he was available for (on the roster, not on a reserve
+    list): per-game volume, snap / target share and PPR, where a game he did not play counts as zero. Conditioning
+    on games he played would hide a backup who only got snaps once the starter was out."""
+    sample = [w for w in weeks if w in available]
+    if not sample:
         return None
-    return {"games": len(played),
-            "volume_per_game": _r(sum(_volume(r, unit, attempts, gsis) for r in played) / len(played), 2),
-            "snap_share": _r(_mean(r.get("offense_pct") for r in played)),
-            "target_share": _r(_mean(r.get("target_share") for r in played)),
-            "ppr_per_game": _r(_mean(r.get("fantasy_points_ppr") for r in played), 2)}
+    rows = [t.rows[gsis].get(w) for w in sample]
+
+    def per_game(key):
+        return _r(sum(float(r.get(key) or 0) if _played(r) else 0.0 for r in rows) / len(rows))
+
+    return {"games": len(sample), "played": sum(1 for r in rows if _played(r)),
+            "volume_per_game": _r(sum(_volume(r, unit, attempts, gsis) for r in rows) / len(rows), 2),
+            "snap_share": per_game("offense_pct"), "target_share": per_game("target_share"),
+            "ppr_per_game": _r(sum(float(r.get("fantasy_points_ppr") or 0) if _played(r) else 0.0
+                                   for r in rows) / len(rows), 2)}
 
 
-def _workload(t: _Team, gsis: str, position: str, attempts: dict, trend: str | None) -> dict | None:
+def _workload(t: _Team, gsis: str, position: str, attempts: dict, trend: str | None, rosters: _Rosters) -> dict | None:
     """The injured player's observed role in the games he played for this team."""
-    games = [w for w in t.weeks if _played(t.rows[gsis].get(w))]
+    tenure = rosters.tenure(t, gsis)
+    games = [w for w in tenure if _played(t.rows[gsis].get(w))]
     if not games:
         return None
     rows = [t.rows[gsis][w] for w in games]
@@ -262,14 +317,14 @@ def _workload(t: _Team, gsis: str, position: str, attempts: dict, trend: str | N
     rrows = [t.rows[gsis][w] for w in recent]
     att = [attempts.get((gsis, w)) for w in games]
     weekly = []
-    for w in t.weeks:
+    for w in tenure:
         r = t.rows[gsis].get(w)
         played = _played(r)
         weekly.append({"week": w, "played": played,
                        "snap_share": _r(_num(r.get("offense_pct"))) if played else None,
                        "opportunities": (int((r.get("targets") or 0) + (r.get("carries") or 0)) if played else None)})
     return {
-        "games": len(games), "team_games": len(t.weeks), "last_played_week": games[-1],
+        "games": len(games), "team_games": len(tenure), "last_played_week": games[-1],
         "snap_share": _r(_mean(r.get("offense_pct") for r in rows)),
         "recent_snap_share": _r(_mean(r.get("offense_pct") for r in rrows)),
         "recent_weeks": recent,
@@ -293,8 +348,8 @@ def _meaningful(w: dict, position: str) -> bool:
     return snap >= MIN_SNAP_SHARE or opps >= MIN_OPPS_PER_GAME
 
 
-def _absence(t: _Team, w: dict) -> dict:
-    missed = sum(1 for wk in t.weeks if wk > w["last_played_week"])
+def _absence(w: dict) -> dict:
+    missed = sum(1 for p in w["weekly"] if p["week"] > w["last_played_week"])
     kind = "new" if missed == 0 else "long_term" if missed >= LONG_TERM_MISSED else "ongoing"
     return {"kind": kind, "last_played_week": w["last_played_week"], "consecutive_team_games_missed": missed}
 
@@ -323,11 +378,18 @@ def _clarity(n_without: int, mates: list[dict]) -> dict:
             "players, or the observed games and the estimate disagree. No clear single beneficiary."}
 
 
+def _split_weeks(t: _Team, injured: str, rosters: _Rosters) -> tuple[list[int], list[int]]:
+    """(team games he played, team games he missed while on the team). Games before he joined the team are
+    neither: they are not absences."""
+    tenure = rosters.tenure(t, injured)
+    played = [w for w in tenure if _played(t.rows[injured].get(w))]
+    return played, [w for w in tenure if w not in played]
+
+
 def _teammates(t: _Team, injured: str, position: str, *, team_of: dict, pos_of: dict, depth: dict,
                status_of: dict, people: dict, attempts: dict, espn: dict, teams_by_id: dict, vacated: float | None,
-               unit: str, pool_positions: tuple[str, ...]) -> tuple[list[dict], int]:
-    with_weeks = [w for w in t.weeks if _played(t.rows[injured].get(w))]
-    without_weeks = [w for w in t.weeks if w not in with_weeks]
+               unit: str, pool_positions: tuple[str, ...], rosters: _Rosters) -> tuple[list[dict], int]:
+    with_weeks, without_weeks = _split_weeks(t, injured, rosters)
     recent_weeks = t.weeks[-POOL_WEEKS:]
     # The split uses each teammate's role in the last games the injured player DID play: after he has already
     # missed time, teammates' recent usage includes the volume they absorbed, and splitting it again would count
@@ -348,8 +410,9 @@ def _teammates(t: _Team, injured: str, position: str, *, team_of: dict, pos_of: 
         healthy = st["status"] not in OUT_LEVELS
         recent = sum(_volume(t.rows[g].get(w), unit, attempts, g) for w in recent_weeks) / max(len(recent_weeks), 1)
         basis = sum(_volume(t.rows[g].get(w), unit, attempts, g) for w in basis_weeks) / max(len(basis_weeks), 1)
-        w_side = _side(t, g, with_weeks, unit, attempts)
-        wo_side = _side(t, g, without_weeks, unit, attempts)
+        avail = rosters.available(t, g)
+        w_side = _side(t, g, with_weeks, unit, attempts, avail)
+        wo_side = _side(t, g, without_weeks, unit, attempts, avail)
         delta = None
         if w_side and wo_side:
             delta = _r(wo_side["volume_per_game"] - w_side["volume_per_game"], 2)
@@ -390,16 +453,15 @@ def _teammates(t: _Team, injured: str, position: str, *, team_of: dict, pos_of: 
     else:
         out.sort(key=key)
     relevant = [m for m in out if (m["recent_volume_per_game"] or 0) > 0 or (m["depth_rank"] or 99) <= 3
-                or m["observed"]["without"]]
+                or (m["observed"]["without"] or {}).get("played")]
     return relevant[:MAX_TEAMMATES], len(without_weeks)
 
 
 def _qb_receivers(t: _Team, injured: str, *, team_of: dict, pos_of: dict, people: dict, attempts: dict,
-                  espn: dict, status_of: dict, teams_by_id: dict) -> list[dict]:
+                  espn: dict, status_of: dict, teams_by_id: dict, rosters: _Rosters) -> list[dict]:
     """A QB's top three pass catchers by recent targets, with their observed PPR with / without him."""
     recent_weeks = t.weeks[-POOL_WEEKS:]
-    with_weeks = [w for w in t.weeks if _played(t.rows[injured].get(w))]
-    without_weeks = [w for w in t.weeks if w not in with_weeks]
+    with_weeks, without_weeks = _split_weeks(t, injured, rosters)
     out = []
     for g in t.rows:
         if team_of.get(g) != t.team or pos_of.get(g) not in ("WR", "TE", "RB"):
@@ -408,8 +470,9 @@ def _qb_receivers(t: _Team, injured: str, *, team_of: dict, pos_of: dict, people
         if tg <= 0:
             continue
         person = people.get(g, {})
-        w_side = _side(t, g, with_weeks, "targets", attempts)
-        wo_side = _side(t, g, without_weeks, "targets", attempts)
+        avail = rosters.available(t, g)
+        w_side = _side(t, g, with_weeks, "targets", attempts, avail)
+        wo_side = _side(t, g, without_weeks, "targets", attempts, avail)
         out.append({
             "gsis_id": g, "espn_player_id": person.get("espn_player_id"), "full_name": person.get("full_name") or g,
             "position": pos_of.get(g), "availability": status_of.get(g, {"status": AVAILABLE})["status"],
@@ -462,6 +525,7 @@ def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team
     usage = _usage(con, season, week)
     attempts = _pass_attempts(con, season, week)
     teams, team_of, pos_of = _teams(usage)
+    rosters = _Rosters(_roster_rows(con, season, week))
     depth = _depth(con, season)
     espn, espn_synced = _espn_projections(con, season, week)
     trends = _role_trends(con, season)
@@ -508,7 +572,7 @@ def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team
         if t is None:
             skipped["no_team" if not team else "no_games"] += 1
             continue
-        w = _workload(t, g, pos, attempts, trends.get(g))
+        w = _workload(t, g, pos, attempts, trends.get(g), rosters)
         roster = _roster(p, teams_by_id)
         if w is None:
             skipped["no_games"] += 1
@@ -516,21 +580,21 @@ def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team
         if not _meaningful(w, pos) and roster["status"] != "ROSTERED":
             skipped["small_role"] += 1
             continue
-        absence = _absence(t, w)
+        absence = _absence(w)
         if pos == "QB":
             unit, vacated = "pass_attempts", w["pass_attempts_per_game"]
             mates, n_without = _teammates(t, g, pos, team_of=team_of, pos_of=pos_of, depth=depth, status_of=status_of,
                                           people=people, attempts=attempts, espn=espn, teams_by_id=teams_by_id, vacated=None, unit=unit,
-                                          pool_positions=("QB",))
+                                          pool_positions=("QB",), rosters=rosters)
             receivers = _qb_receivers(t, g, team_of=team_of, pos_of=pos_of, people=people, attempts=attempts,
-                                      espn=espn, status_of=status_of, teams_by_id=teams_by_id)
+                                      espn=espn, status_of=status_of, teams_by_id=teams_by_id, rosters=rosters)
         else:
             pool_positions, unit = _POOL[pos]
             recent = [t.rows[g][wk] for wk in w["recent_weeks"]]
             vacated = _r(sum(_volume(r, unit, attempts, g) for r in recent) / len(recent), 2)
             mates, n_without = _teammates(t, g, pos, team_of=team_of, pos_of=pos_of, depth=depth, status_of=status_of,
                                           people=people, attempts=attempts, espn=espn, teams_by_id=teams_by_id, vacated=vacated, unit=unit,
-                                          pool_positions=pool_positions)
+                                          pool_positions=pool_positions, rosters=rosters)
             receivers = []
         gm = game_of.get(team)
         kickoff = fresh.naive_utc(gm["kickoff"]) if gm else None
