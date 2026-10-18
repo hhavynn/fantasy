@@ -1,0 +1,205 @@
+{
+ "code": 200,
+ "results": [
+  {
+   "type": "status",
+   "url": "https://x.com/espn/status/2111605289950548473",
+   "id": "2111605289950548473",
+   "text": "Auburn K Alex McPherson was diagnosed with ulcerative colitis in the spring of 2024 and had his large intestine removed along with part of his colon.\n\nTwo years later, he made the game-winning kick to knock off No. 1 Georgia \u2764\ufe0f",
+   "raw_text": {
+    "text": "Auburn K Alex McPherson was diagnosed with ulcerative colitis in the spring of 2024 and had his large intestine removed along with part of his colon.\n\nTwo years later, he made the game-winning kick to knock off No. 1 Georgia \u2764\ufe0f https://t.co/cuWu6O1BfW",
+    "display_text_range": [
+     0,
+     227
+    ],
+    "facets": [
+     {
+      "type": "media",
+      "indices": [
+       228,
+       251
+      ],
+      "id": "2111605286402150400",
+      "display": "pic.x.com/cuWu6O1BfW",
+      "original": "https://t.co/cuWu6O1BfW",
+      "replacement": "https://x.com/espn/status/2111605289950548473/photo/1"
+     }
+    ]
+   },
+   "author": {
+    "screen_name": "espn",
+    "name": "ESPN",
+    "followers": 58627476
+   },
+   "replies": 91,
+   "reposts": 719,
+   "likes": 6922,
+   "bookmarks": 165,
+   "quotes": 80,
+   "created_at": "Sat Oct 17 23:48:27 +0000 2026",
+   "created_timestamp": 1792280907,
+   "possibly_sensitive": false,
+   "views": 328748,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "provider": "twitter"
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/AdamSchefter/status/2111593789433516063",
+   "id": "2111593789433516063",
+   "text": "For the first time since 1990, the No. 1 ranked team lost to an unranked team in back-to-back weeks.",
+   "raw_text": {
+    "text": "For the first time since 1990, the No. 1 ranked team lost to an unranked team in back-to-back weeks. https://t.co/jtyNEL17SQ",
+    "display_text_range": [
+     0,
+     100
+    ],
+    "facets": [
+     {
+      "type": "media",
+      "indices": [
+       101,
+       124
+      ],
+      "id": "2111593783838093312",
+      "display": "pic.x.com/jtyNEL17SQ",
+      "original": "https://t.co/jtyNEL17SQ",
+      "replacement": "https://x.com/AdamSchefter/status/2111593789433516063/photo/1"
+     }
+    ]
+   },
+   "author": {
+    "screen_name": "AdamSchefter",
+    "name": "Adam Schefter",
+    "followers": 11810879
+   },
+   "replies": 226,
+   "reposts": 757,
+   "likes": 7608,
+   "bookmarks": 189,
+   "quotes": 107,
+   "created_at": "Sat Oct 17 23:02:45 +0000 2026",
+   "created_timestamp": 1792278165,
+   "possibly_sensitive": false,
+   "views": 490010,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "provider": "twitter"
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/Broncos/status/2111568289683906886",
+   "id": "2111568289683906886",
+   "text": "We're saddened by the loss of former Broncos General Manager John Beake, who passed away at the age of 87.\n\nBeake, who was with the Broncos from 1979-2000, guided the organization's front office to five Super Bowl appearances, including our back-to-back victories in SB XXXII & SB XXXIII.\n\n\ud83d\udcf0 \u00bb https://buff.ly/IFTCBtc",
+   "raw_text": {
+    "text": "We're saddened by the loss of former Broncos General Manager John Beake, who passed away at the age of 87.\n\nBeake, who was with the Broncos from 1979-2000, guided the organization's front office to five Super Bowl appearances, including our back-to-back victories in SB XXXII & SB XXXIII.\n\n\ud83d\udcf0 \u00bb https://t.co/k6JInSyCWt",
+    "display_text_range": [
+     0,
+     318
+    ],
+    "facets": [
+     {
+      "type": "media",
+      "indices": [
+       285,
+       308
+      ],
+      "id": "2111568286907314176",
+      "display": "pic.x.com/8jwvxpSxez",
+      "original": "https://t.co/8jwvxpSxez",
+      "replacement": "https://x.com/Broncos/status/2111568289683906886/photo/1"
+     },
+     {
+      "type": "url",
+      "indices": [
+       294,
+       317
+      ],
+      "original": "https://t.co/k6JInSyCWt",
+      "replacement": "https://buff.ly/IFTCBtc",
+      "display": "buff.ly/IFTCBtc"
+     }
+    ]
+   },
+   "author": {
+    "screen_name": "Broncos",
+    "name": "Denver Broncos",
+    "followers": 2654336
+   },
+   "replies": 24,
+   "reposts": 156,
+   "likes": 1365,
+   "bookmarks": 28,
+   "quotes": 12,
+   "created_at": "Sat Oct 17 21:21:25 +0000 2026",
+   "created_timestamp": 1792272085,
+   "possibly_sensitive": false,
+   "views": 222626,
+   "is_note_tweet": true,
+   "community_note": null,
+   "lang": "en",
+   "provider": "twitter"
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/AdamSchefter/status/2111560617534591400",
+   "id": "2111560617534591400",
+   "text": "More about the Bears planning to start QB Caleb Williams vs. the Falcons on Sunday:\n\nhttps://www.espn.com/nfl/story/_/id/50201828/sources-bears-plan-start-qb-caleb-williams-vs-falcons",
+   "raw_text": {
+    "text": "More about the Bears planning to start QB Caleb Williams vs. the Falcons on Sunday:\n\nhttps://t.co/Sjb5YTwkBw",
+    "display_text_range": [
+     0,
+     108
+    ],
+    "facets": [
+     {
+      "type": "url",
+      "indices": [
+       85,
+       108
+      ],
+      "original": "https://t.co/Sjb5YTwkBw",
+      "replacement": "https://www.espn.com/nfl/story/_/id/50201828/sources-bears-plan-start-qb-caleb-williams-vs-falcons",
+      "display": "espn.com/nfl/story/_/id\u2026"
+     }
+    ]
+   },
+   "author": {
+    "screen_name": "AdamSchefter",
+    "name": "Adam Schefter",
+    "followers": 11810879
+   },
+   "replies": 44,
+   "reposts": 37,
+   "likes": 524,
+   "bookmarks": 10,
+   "quotes": 7,
+   "created_at": "Sat Oct 17 20:50:56 +0000 2026",
+   "created_timestamp": 1792270256,
+   "possibly_sensitive": false,
+   "views": 612188,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "card": {
+    "url": "https://www.espn.com/nfl/story/_/id/50201828/sources-bears-plan-start-qb-caleb-williams-vs-falcons",
+    "title": "Sources: Bears plan to start QB Williams in Week 6 vs. Falcons",
+    "description": "The Bears are planning to start Caleb Williams against the Falcons after the star QB missed the last three games, sources told NFL Network and ESPN.",
+    "domain": "www.espn.com",
+    "image": {
+     "width": 800,
+     "height": 419,
+     "url": "https://pbs.twimg.com/card_img/2111555646755569664/TW4aN6fa?format=jpg&name=800x419"
+    }
+   },
+   "provider": "twitter"
+  }
+ ],
+ "cursor": {
+  "top": "DAAHCgABHU4BPuvAJxELAAIAAAATMjExMTYwNTgyNTQ4Mzc2Mzc1MQgAAwAAAAEAAA",
+  "bottom": "DAAHCgABHU4BPuu__-wLAAIAAAATMjExMTUwNTU0NjY4Mzg0MjY0MQgAAwAAAAIAAA"
+ }
+}

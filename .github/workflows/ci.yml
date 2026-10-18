@@ -45,6 +45,39 @@ jobs:
       - name: Run backend pytest suite
         run: uv run pytest
 
+  social:
+    name: Social trend engine (Python 3.12)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fantasy-intel/social
+    env:
+      TZ: UTC
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "fantasy-intel/social/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Lint
+        run: uv run ruff check social_intel tests
+
+      - name: Run tests (fixtures only, no network)
+        run: uv run pytest
+
   frontend:
     name: Frontend (Node.js 22)
     runs-on: ubuntu-latest

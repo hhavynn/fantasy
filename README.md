@@ -14,3 +14,5 @@ cd ../frontend && npm ci && npm test              # frontend
 ```
 
 Full setup, data sources, sync scripts and CI notes: [`fantasy-intel/README.md`](fantasy-intel/README.md).
+Social trend engine for the video studio (public NFL discussion -> ranked trends -> video ideas):
+[`fantasy-intel/social/README.md`](fantasy-intel/social/README.md).
