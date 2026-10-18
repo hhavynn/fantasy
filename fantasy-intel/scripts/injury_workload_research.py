@@ -268,10 +268,55 @@ def cmd_ros(args) -> dict:
                          "test_n": test.get(k, {}).get("n", 0)})
     out = {"table": rows, "by_position_h1": {k[0]: {"bucket": k[1], "rate": round(v["rate"], 3), "n": v["n"]}
                                              for k, v in rates.items() if k[2] == 1 and k[0] != "ALL"}}
+    out["ros_p_play_calibration"] = _ros_calibration(args, src, rates)
     (_out(args) / "ros_return_rates.json").write_text(json.dumps(
         {"fit": {"|".join(map(str, k)): v for k, v in rates.items()},
          "test": {"|".join(map(str, k)): v for k, v in test.items()}, "summary": out}, indent=1))
     return out
+
+
+def _ros_calibration(args, src, rates: dict) -> dict:
+    """For players designated Out/Doubtful at cutoff week W (2023-2024), P(appears in week W+1) as the current
+    rest-of-season path computes it (participation.predict_week with feature_week=W: no week-W+1 report, so
+    undesignated) vs the empirical return-rate table (fitted on 2019-2022) vs what happened. Players whose team is
+    on a bye in W+1 are skipped. Descriptive: the participation artifact's own training seasons may overlap."""
+    from app.analytics.participation import ParticipationArtifact, predict_week
+
+    part_path = args.ifp_dir / "participation_ipm-1.0.0.json"
+    if not part_path.exists() or src.injuries is None:
+        return {"note": "participation artifact or injury reports unavailable"}
+    part = ParticipationArtifact.from_dict(json.loads(part_path.read_text()))
+    apps = set(src.panel.select("season", "week", "gsis_id").iter_rows())
+    rows = []
+    for season in (2023, 2024):
+        for w in range(2, 18):
+            tl = iw.injury_timeline(src, season, w)
+            hurt = tl.filter(pl.col("designation").is_in(["out", "doubtful"]) & pl.col("position").is_in(list(iw.SKILL)))
+            if hurt.height == 0:
+                continue
+            nxt = src.games.filter((pl.col("season") == season) & (pl.col("week") == w + 1))
+            playing = set(nxt["team"].to_list())
+            pp = predict_week(src, part, season, w + 1, feature_week=w)
+            for r in hurt.iter_rows(named=True):
+                if r["team"] not in playing or r["gsis_id"] not in pp:
+                    continue
+                rows.append({"position": r["position"], "missed": iw.missed_bucket(r["missed_team_games"]),
+                             "p_ros": pp[r["gsis_id"]]["p_play"], "p_rate": iw._return_rate(rates, r, 1),
+                             "appeared": int((season, w + 1, r["gsis_id"]) in apps)})
+    if not rows:
+        return {"n": 0}
+    df = pl.DataFrame(rows)
+
+    def summ(g):
+        y = g["appeared"].to_numpy()
+        return {"n": g.height, "actual_rate": round(float(y.mean()), 3),
+                "mean_p_current_ros": round(float(g["p_ros"].mean()), 3),
+                "mean_p_return_table": round(float(g["p_rate"].mean()), 3),
+                "brier_current_ros": round(float(((g["p_ros"].to_numpy() - y) ** 2).mean()), 4),
+                "brier_return_table": round(float(((g["p_rate"].to_numpy() - y) ** 2).mean()), 4)}
+
+    return {"all": summ(df), "by_missed_bucket": {b[0]: summ(g) for b, g in df.group_by("missed")},
+            "by_position": {p[0]: summ(g) for p, g in df.group_by("position")}}
 
 
 # ----------------------------------------------------------------------------- live cases

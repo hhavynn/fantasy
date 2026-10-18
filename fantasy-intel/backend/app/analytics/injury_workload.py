@@ -812,7 +812,7 @@ def explain(timeline_row: dict, handoff_row: dict | None, *, names: dict[str, st
     if (t.get("missed_team_games") or 0) >= 2 and st != UNAVAILABLE and t.get("last_healthy_week") is not None:
         lines.append(f"Historical healthy workload retained despite {t['missed_team_games']} missed games "
                      f"(last healthy game {t['last_healthy_season']} week {t['last_healthy_week']}).")
-    if delta is not None and h.get("ho_top_absent") and delta >= 0.03:
+    if delta is not None and h.get("ho_top_absent") and delta >= 0.03 and st != UNAVAILABLE:
         lines.append(f"Potential expanded role while {who(h['ho_top_absent'])} is unavailable: expected share "
                      f"{cur:.0%} of team {unit} vs {base:.0%} with everyone available, from prior usage and the "
                      "remaining competition.")

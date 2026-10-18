@@ -245,7 +245,9 @@ def test_weekly_pipeline_never_imports_into_consumers():
         if path.name in ("weekly_learning.py", "challenger.py", "source_provenance.py", "adaptive_workload.py",
                          "hgb_research.py", "opportunity_efficiency.py",
                          "espn_benchmark.py",   # research-only ESPN benchmark; reads label_outcomes (never imported)
-                         "model_registry.py", "usage_signals.py", "context_challenger.py"):
+                         "model_registry.py", "usage_signals.py", "context_challenger.py",
+                         "injury_challenger.py"):   # research-only workload handoff challenger (never imported, see
+            # tests/test_injury_workload.py::test_app_never_imports_the_injury_research_modules)
             continue
         text = path.read_text()
         assert "weekly_learning" not in text and "from .challenger" not in text, path
