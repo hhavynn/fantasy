@@ -105,6 +105,29 @@ def test_cohort_skips_players_the_current_path_does_not_cover():
     assert ra.cohort(src, S, lambda w, t: {}, rates, cutoffs=(5,)).height == 0
 
 
+def test_non_injury_absences_are_not_in_the_table_population():
+    """fit_return_rates drops not_injury rows, so a personal absence designated Out is neither scored nor replaced."""
+    personal = {**inj(STAR, "Out", 5, injury="Personal"), "not_injury": True}
+    src = world(range(1, 8), skip={STAR: (5,)}, injuries=report(5, personal))
+    rates = {("ALL", "ALL", h): {"rate": 0.4, "n": 500} for h in range(1, 5)}
+    assert ra.non_injury_ids(src, S, 5) == {STAR}
+    assert ra.cohort(src, S, lambda w, t: {STAR: 0.9}, rates, cutoffs=(5,)).height == 0
+    assert ra.ros_p_play(0.9, designation="out", position="RB", missed_team_games=0, h=1, rates=rates,
+                         not_injury=True) == (0.9, "participation_undesignated")
+
+
+def test_a_player_traded_in_the_cutoff_week_follows_his_new_teams_schedule():
+    """STAR's roster rows before week 5 say AAA; the week-5 roster (the current path's snapshot) says CCC. AAA is on
+    a bye in week 6, CCC is not: his first game after the cutoff is CCC's week 6."""
+    src = world(range(1, 8), roster={(STAR, 5): ("CCC", "ACT")}, byes={"AAA": 6},
+                injuries=report(5, inj(STAR, "Out", 5, team="CCC")))
+    assert ra.cutoff_teams(src, S, 5)[STAR] == "CCC" and ra.cutoff_teams(src, S, 4)[STAR] == "AAA"
+    rates = {("ALL", "ALL", h): {"rate": 0.4, "n": 500} for h in range(1, 5)}
+    df = ra.cohort(src, S, lambda w, t: {STAR: 0.9}, rates, cutoffs=(5,))
+    first = df.filter(pl.col("h") == 1).to_dicts()[0]
+    assert first["team"] == "CCC" and first["target_week"] == 6
+
+
 def test_cohort_counts_byes_as_no_game():
     src = world(range(1, 8), skip={STAR: (5,)}, byes={"AAA": 6}, injuries=report(5, inj(STAR, "Out", 5)))
     rates = {("ALL", "ALL", h): {"rate": 0.4, "n": 500} for h in range(1, 5)}

@@ -9,23 +9,23 @@ PR hhavynn/fantasy#103) be a better p_play for those players, at horizons 1-4 an
 **Answer: not as pre-registered. The verdict is `retain_current`, so there is no promotion proposal.** Production is
 unchanged.
 
-* **h = 1 (next team game): the table is far better.** Brier 0.496 -> 0.246, diff -0.250 [-0.297, -0.194], better
+* **h = 1 (next team game): the table is far better.** Brier 0.495 -> 0.245, diff -0.250 [-0.297, -0.194], better
   in both seasons and in every subgroup. It still fails the calibration gate narrowly: ECE 0.068 > 0.06, because it
   under-predicts (mean 0.34 vs observed 0.41).
-* **h = 2: better Brier** (-0.048 [-0.088, -0.007]). It fails ECE (0.129), max bin gap (0.144) and one subgroup
+* **h = 2: better Brier** (-0.046 [-0.088, -0.003]). It fails ECE (0.131), max bin gap (0.142) and one subgroup
   (missed 2-3 games).
-* **h = 3 and 4: worse than the current path** (Brier +0.025 and +0.020). Observed return rates (0.78, 0.79) are far
+* **h = 3 and 4: worse than the current path** (Brier +0.028 and +0.023). Observed return rates (0.78, 0.79) are far
   above the table (0.60, 0.63). The current path's 0.91 is closer.
-* **ROS totals (next 4 games): MAE -0.37 [-1.17, +0.48], not significant.** The bias flips from -5.4 (current
-  over-projects) to +5.6 (candidate under-projects).
+* **ROS totals (next 4 games): MAE -0.31 [-1.13, +0.58], not significant.** The bias flips from -5.3 (current
+  over-projects) to +5.7 (candidate under-projects).
 * **Why (diagnosed after the verdict; changes nothing above).**
   * The table was fitted on every Out/Doubtful episode. 12-24% of those players were already on a reserve list
     at W. They almost never return within two games, and `build_live` withholds them anyway, so they never
     receive a ROS p_play. Mixing them in pulls the table down.
   * Even with matched populations, return rates at h >= 2 rose steadily from 2019 to 2024 (h = 3: 0.59 -> 0.80).
     A table pooled over earlier seasons lags that trend.
-* **Exploratory 2025 replay (not gated): the candidate wins everywhere,** including ROS totals (MAE -3.97
-  [-5.08, -2.88]). 2025 return rates fell back toward the 2019-22 level. The h >= 3 rates move too much from
+* **Exploratory 2025 replay (not gated): the candidate wins everywhere,** including ROS totals (MAE -3.95
+  [-5.06, -2.85]). 2025 return rates fell back toward the 2019-22 level. The h >= 3 rates move too much from
   season to season for a pooled table to be reliable there.
 
 **Next.** `ros-avail-0.1.1` is pre-registered in code (`ros_availability.NEXT_CANDIDATE`, hash pinned in tests).
@@ -84,16 +84,16 @@ week-W features against week T's opponent. It is identical under both paths, so 
 
 | h | n | Observed | Mean p | Brier | Brier diff [95% CI] | ECE | Max bin gap |
 |---|---|---|---|---|---|---|---|
-| 1 | 445 | 0.409 | 0.908 / 0.341 | 0.496 / **0.246** | **-0.250 [-0.297, -0.194]** | 0.499 / 0.068 | 0.544 / 0.090 |
-| 2 | 412 | 0.653 | 0.909 / 0.525 | 0.290 / **0.242** | **-0.048 [-0.088, -0.007]** | 0.258 / 0.129 | 0.284 / 0.144 |
-| 3 | 375 | 0.779 | 0.909 / 0.598 | **0.181** / 0.206 | +0.025 [-0.002, +0.051] | **0.136** / 0.180 | 0.139 / 0.218 |
-| 4 | 346 | 0.786 | 0.910 / 0.628 | **0.173** / 0.193 | +0.020 [-0.012, +0.048] | **0.130** / 0.159 | 0.168 / 0.206 |
-| 5* | 317 | 0.786 | 0.911 / 0.628 | 0.169 / 0.193 | +0.024 | 0.129 / 0.157 | |
-| 6* | 289 | 0.775 | 0.914 / 0.630 | 0.176 / 0.196 | +0.020 | 0.139 / 0.146 | |
-| 7* | 253 | 0.787 | 0.914 / 0.631 | 0.166 / 0.192 | +0.026 | 0.128 / 0.155 | |
-| 8* | 219 | 0.817 | 0.914 / 0.633 | 0.144 / 0.184 | +0.040 | 0.103 / 0.185 | |
+| 1 | 440 | 0.409 | 0.908 / 0.341 | 0.495 / **0.245** | **-0.250 [-0.297, -0.194]** | 0.499 / 0.068 | 0.541 / 0.083 |
+| 2 | 408 | 0.654 | 0.908 / 0.525 | 0.288 / **0.242** | **-0.046 [-0.088, -0.003]** | 0.256 / 0.131 | 0.279 / 0.142 |
+| 3 | 371 | 0.782 | 0.909 / 0.598 | **0.178** / 0.205 | +0.028 [-0.000, +0.056] | **0.133** / 0.183 | 0.149 / 0.224 |
+| 4 | 342 | 0.790 | 0.910 / 0.627 | **0.170** / 0.192 | +0.023 [-0.011, +0.052] | **0.126** / 0.162 | 0.179 / 0.206 |
+| 5* | 313 | 0.789 | 0.911 / 0.628 | 0.165 / 0.192 | +0.027 | 0.126 / 0.161 | |
+| 6* | 285 | 0.775 | 0.914 / 0.629 | 0.175 / 0.196 | +0.021 | 0.138 / 0.146 | |
+| 7* | 249 | 0.791 | 0.914 / 0.631 | 0.162 / 0.190 | +0.028 | 0.123 / 0.160 | |
+| 8* | 215 | 0.814 | 0.914 / 0.632 | 0.147 / 0.185 | +0.038 | 0.106 / 0.182 | |
 
-\* Descriptive only (h = 4 cell reused, as production would). Log loss at h = 1: 1.856 / 0.685.
+\* Descriptive only (h = 4 cell reused, as production would). Log loss at h = 1: 1.853 / 0.685.
 
 | Gate | h = 1 | h = 2 | h = 3 | h = 4 |
 |---|---|---|---|---|
@@ -102,23 +102,23 @@ week-W features against week T's opponent. It is identical under both paths, so 
 | c3 max bin gap | pass | fail | fail | fail |
 | c4 ECE < current | pass | pass | fail | fail |
 | c5 each season | pass | pass | fail | fail |
-| c6 subgroups | pass | fail (missed 2-3: 0.198 -> 0.251) | fail (all) | fail (all) |
+| c6 subgroups | pass | fail (missed 2-3: 0.198 -> 0.251) | fail (all 8) | fail (7 of 8; missed 0 within tolerance) |
 
-**ROS totals** (next 4 team games, n = 346 episodes, actual mean 19.2 points): r1 and r2 both fail.
+**ROS totals** (next 4 team games, n = 342 episodes, actual mean 19.4 points): r1 and r2 both fail.
 
 | | Mean total | MAE | RMSE | Bias (actual - predicted) |
 |---|---|---|---|---|
-| Current | 24.6 | 11.84 | 16.66 | -5.40 |
-| Candidate | 13.7 | 11.46 | 17.21 | +5.57 |
-| Diff | | **-0.37 [-1.17, +0.48]** | MSE +18.4 [-20.6, +61.3] | |
+| Current | 24.7 | 11.81 | 16.67 | -5.30 |
+| Candidate | 13.7 | 11.50 | 17.28 | +5.72 |
+| Diff | | **-0.31 [-1.13, +0.58]** | MSE +20.7 [-18.4, +64.4] | |
 
 By position (MAE current -> candidate):
 
 | Position | n | MAE | Diff CI |
 |---|---|---|---|
-| RB | 104 | 13.24 -> 11.88 | [-3.61, +1.14] |
-| WR | 151 | 12.33 -> 12.61 | [-1.34, +1.95] |
-| TE | 91 | 9.41 -> 9.08 | [-2.04, +1.56] |
+| RB | 103 | 13.36 -> 11.96 | [-3.67, +1.14] |
+| WR | 150 | 12.24 -> 12.60 | [-1.26, +2.09] |
+| TE | 89 | 9.29 -> 9.10 | [-1.95, +1.97] |
 
 **Outcome: `retain_current`.** No promotion proposal is written.
 
@@ -126,18 +126,29 @@ By position (MAE current -> candidate):
 
 | h | n | Observed | Mean p cur / cand | Brier cur / cand | Brier diff [95% CI] | ECE cur / cand |
 |---|---|---|---|---|---|---|
-| 1 | 291 | 0.409 | 0.896 / 0.348 | 0.491 / 0.243 | -0.249 [-0.318, -0.175] | 0.497 / 0.061 |
-| 2 | 275 | 0.618 | 0.897 / 0.538 | 0.313 / 0.245 | -0.069 [-0.116, -0.021] | 0.285 / 0.080 |
-| 3 | 257 | 0.685 | 0.896 / 0.611 | 0.249 / 0.219 | -0.030 [-0.065, +0.005] | 0.216 / 0.074 |
-| 4 | 242 | 0.665 | 0.895 / 0.639 | 0.264 / 0.222 | -0.042 [-0.071, -0.010] | 0.236 / 0.026 |
+| 1 | 288 | 0.406 | 0.896 / 0.348 | 0.494 / 0.241 | -0.253 [-0.325, -0.176] | 0.499 / 0.058 |
+| 2 | 272 | 0.614 | 0.897 / 0.538 | 0.317 / 0.245 | -0.072 [-0.118, -0.024] | 0.289 / 0.076 |
+| 3 | 254 | 0.685 | 0.896 / 0.611 | 0.248 / 0.219 | -0.029 [-0.062, +0.005] | 0.216 / 0.074 |
+| 4 | 240 | 0.671 | 0.895 / 0.639 | 0.260 / 0.220 | -0.039 [-0.067, -0.009] | 0.231 / 0.032 |
 
-ROS totals 2025 (n = 242, actual mean 12.0):
+ROS totals 2025 (n = 240, actual mean 12.1):
 
-* MAE 14.16 -> 10.19, diff -3.97 [-5.08, -2.88].
-* Bias -10.76 -> -0.77.
+* MAE 14.16 -> 10.21, diff -3.95 [-5.06, -2.85].
+* Bias -10.74 -> -0.72.
 
 **A fixed 2019-22 table instead of the per-season refit** makes almost no difference: mean p 0.341 / 0.521 / 0.592 /
-0.618 and Brier 0.245 / 0.242 / 0.208 / 0.197 at h = 1..4. Adding one season moves a 4-5 season pool very little.
+0.618 and Brier 0.245 / 0.242 / 0.208 / 0.196 at h = 1..4. Adding one season moves a 4-5 season pool very little.
+
+**Harness fixes after review (verdict unchanged).** Two bugs in the evaluation rows were fixed after the first run.
+Both are correctness fixes to the population, not changes to the gates.
+
+* Out/Doubtful report rows marked `not_injury` (a personal absence) are excluded, as `fit_return_rates` already
+  excludes them. That removes 3-5 rows per horizon.
+* A player's schedule follows his latest roster row with week <= W, the same snapshot the current path uses. It no
+  longer comes from the team before W.
+
+All numbers above are from the fixed run. The first run had the same 18 failed gates and moved by at most 0.004
+Brier per horizon.
 
 ## 3. Why it failed (post hoc; changes nothing above)
 

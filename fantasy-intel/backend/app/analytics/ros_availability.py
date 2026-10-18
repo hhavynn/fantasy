@@ -149,15 +149,35 @@ def replacement_p(rates: dict, position: str, missed_team_games: int | None, h: 
 
 
 def ros_p_play(current: float | None, *, designation: str | None, position: str, missed_team_games: int | None,
-               h: int, rates: dict) -> tuple[float | None, str]:
-    """What a ROS row would carry under the candidate: the table for a player Out/Doubtful at the cutoff, the
-    current p_play otherwise. Returns (p_play, source)."""
-    if h >= 1 and (designation or "").strip().lower() in UNAVAILABLE_DESIGNATIONS and position in SKILL:
+               h: int, rates: dict, not_injury: bool = False) -> tuple[float | None, str]:
+    """What a ROS row would carry under the candidate: the table for a player Out/Doubtful at the cutoff with an
+    injury listing (the table's own population: fit_return_rates drops `not_injury` rows), the current p_play
+    otherwise. Returns (p_play, source)."""
+    if (h >= 1 and not not_injury and (designation or "").strip().lower() in UNAVAILABLE_DESIGNATIONS
+            and position in SKILL):
         return replacement_p(rates, position, missed_team_games, h), "return_rate_table"
     return current, "participation_undesignated"
 
 
 # ----------------------------------------------------------------------------- evaluation rows
+
+
+def non_injury_ids(sources: Sources, season: int, week: int) -> set[str]:
+    """Players whose week-W report row is a non-injury absence (personal, rest): not in the table's population."""
+    if sources.injuries is None or sources.injuries.height == 0:
+        return set()
+    return set(sources.injuries.filter((pl.col("season") == season) & (pl.col("week") == week)
+                                       & pl.col("not_injury").fill_null(False))["gsis_id"].to_list())
+
+
+def cutoff_teams(sources: Sources, season: int, week: int) -> dict[str, str]:
+    """gsis -> team of his latest weekly roster row with week <= W: the snapshot the current path's population
+    (participation.live_population with roster_week=W) uses, so both paths follow the same team's schedule."""
+    if sources.rosters is None or sources.rosters.height == 0:
+        return {}
+    r = (sources.rosters.filter((pl.col("season") == season) & (pl.col("week") <= week))
+         .sort("week", descending=True).group_by("gsis_id", maintain_order=True).first())
+    return {g: t for g, t in r.select("gsis_id", "team").iter_rows() if t is not None}
 
 
 COHORT_SCHEMA = {"season": pl.Int64, "cutoff_week": pl.Int64, "key": pl.Int64, "gsis_id": pl.String,
@@ -168,7 +188,8 @@ COHORT_SCHEMA = {"season": pl.Int64, "cutoff_week": pl.Int64, "key": pl.Int64, "
 
 def cohort(sources: Sources, season: int, current_p: Callable[[int, int], dict[str, float]], rates: dict, *,
            cutoffs=CUTOFF_WEEKS, horizons=GATED_HORIZONS + DESCRIPTIVE_HORIZONS) -> pl.DataFrame:
-    """One row per (player Out/Doubtful at cutoff W, h) whose team's h-th game after W is final.
+    """One row per (player Out/Doubtful at cutoff W with an injury listing, h) whose team's h-th game after W is
+    final. His team is the one of his latest roster row <= W (the current path's snapshot).
     `current_p(W, T)` -> {gsis: p_play} is the current ROS path for target week T at cutoff W; a player it does
     not cover (not in its population) is skipped for that T, so both paths always score identical rows."""
     games = sources.games.filter(pl.col("season") == season)
@@ -183,12 +204,15 @@ def cohort(sources: Sources, season: int, current_p: Callable[[int, int], dict[s
     rows = []
     for w in cutoffs:
         tl = injury_timeline(sources, season, w)
-        hurt = tl.filter(pl.col("designation").is_in(list(UNAVAILABLE_DESIGNATIONS)) & pl.col("position").is_in(list(SKILL)))
+        hurt = tl.filter(pl.col("designation").is_in(list(UNAVAILABLE_DESIGNATIONS)) & pl.col("position").is_in(list(SKILL))
+                         & ~pl.col("gsis_id").is_in(list(non_injury_ids(sources, season, w))))
+        teams = cutoff_teams(sources, season, w)
         cur: dict[int, dict[str, float]] = {}
         for r in hurt.iter_rows(named=True):
-            later = [x for x in sched.get(r["team"], []) if x > w]
+            team = teams.get(r["gsis_id"], r["team"])
+            later = [x for x in sched.get(team, []) if x > w]
             for h in horizons:
-                if len(later) < h or (r["team"], later[h - 1]) not in final:
+                if len(later) < h or (team, later[h - 1]) not in final:
                     break
                 t = later[h - 1]
                 if t not in cur:
@@ -198,7 +222,7 @@ def cohort(sources: Sources, season: int, current_p: Callable[[int, int], dict[s
                     continue
                 hit = (t, r["gsis_id"]) in pts
                 rows.append({"season": season, "cutoff_week": w, "key": key(season, w), "gsis_id": r["gsis_id"],
-                             "position": r["position"], "team": r["team"], "designation": r["designation"],
+                             "position": r["position"], "team": team, "designation": r["designation"],
                              "missed_team_games": r["missed_team_games"],
                              "missed_bucket": missed_bucket(r["missed_team_games"]), "h": h, "target_week": t,
                              "p_current": float(pc),
@@ -315,5 +339,5 @@ def gates(horizons: dict[int, dict], totals: dict) -> dict:
 
 
 __all__ = ["VERSION", "DECISION_RULES", "GATE_LIMITS", "rules_sha", "table_for_season", "team_game_index",
-           "replacement_p", "ros_p_play", "cohort", "calibration", "cluster_diff", "horizon_report", "ros_totals",
-           "totals_report", "gates"]
+           "replacement_p", "ros_p_play", "non_injury_ids", "cutoff_teams", "cohort", "calibration", "cluster_diff",
+           "horizon_report", "ros_totals", "totals_report", "gates"]

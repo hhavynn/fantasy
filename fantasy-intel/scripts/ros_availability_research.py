@@ -179,7 +179,9 @@ def cmd_live(args) -> dict:
     rates = ra.table_for_season(src, season)
     cur = _current(src, part, season)
     tl = iw.injury_timeline(src, season, w)
-    hurt = tl.filter(pl.col("designation").is_in(["out", "doubtful"]) & pl.col("position").is_in(list(iw.SKILL)))
+    hurt = tl.filter(pl.col("designation").is_in(["out", "doubtful"]) & pl.col("position").is_in(list(iw.SKILL))
+                     & ~pl.col("gsis_id").is_in(list(ra.non_injury_ids(src, season, w))))
+    teams = ra.cutoff_teams(src, season, w)
     sched: dict[str, list[int]] = {}
     for t, wk in src.games.filter(pl.col("season") == season).select("team", "week").sort("week").iter_rows():
         sched.setdefault(t, []).append(int(wk))
@@ -187,7 +189,8 @@ def cmd_live(args) -> dict:
     live = duckdb.connect(str(args.live_db), read_only=True)
     names = dict(live.execute("SELECT gsis_id, display_name FROM nfl_players").fetchall())
     for r in hurt.iter_rows(named=True):
-        later = [x for x in sched.get(r["team"], []) if x > w][:4]
+        team = teams.get(r["gsis_id"], r["team"])
+        later = [x for x in sched.get(team, []) if x > w][:4]
         for h, t in enumerate(later, 1):
             if t not in cache:
                 cache[t] = cur(w, t)
@@ -195,7 +198,7 @@ def cmd_live(args) -> dict:
             p, srcname = ra.ros_p_play(pc, designation=r["designation"], position=r["position"],
                                        missed_team_games=r["missed_team_games"], h=h, rates=rates)
             rows.append({"player": names.get(r["gsis_id"], r["gsis_id"]), "gsis_id": r["gsis_id"],
-                         "position": r["position"], "team": r["team"], "designation": r["designation"],
+                         "position": r["position"], "team": team, "designation": r["designation"],
                          "missed": r["missed_team_games"], "h": h, "week": t,
                          "p_current": pc, "p_candidate": round(p, 3) if pc is not None else None, "source": srcname})
     df = pl.DataFrame(rows)
