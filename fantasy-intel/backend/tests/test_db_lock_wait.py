@@ -133,3 +133,53 @@ def test_a_writer_waits_out_another_processs_read_only_lock(tmp_path, monkeypatc
         assert 1.0 < time.monotonic() - started < 30
     finally:
         proc.wait()
+
+
+HOLD_WRITE = """
+import sys, time, duckdb
+con = duckdb.connect(sys.argv[1])                    # a writer, like sync_nfl.py or the production `project` run
+con.execute("CREATE TABLE IF NOT EXISTS held (x INT)")
+print("held", flush=True)
+time.sleep(float(sys.argv[2]))
+con.close()
+"""
+
+
+def _load_script(name: str):
+    import importlib.util
+    from pathlib import Path
+
+    scripts = Path(__file__).resolve().parents[2] / "scripts"
+    sys.path.insert(0, str(scripts))
+    spec = importlib.util.spec_from_file_location(name, scripts / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.mark.parametrize("script,opener", [
+    # the freeze path: the schedule read before predict (also injury_snapshot / check_missed / _target_week)
+    ("ctx_shadow", lambda mod, db: mod._last_week(SimpleNamespace(live_db=db, season=2026))),
+    # the project path: backtest_independent_projections.py's scoring/bootstrap connection, opened before open_db
+    ("backtest_independent_projections", lambda mod, db: mod._ro(db).close()),
+])
+def test_the_research_and_project_readers_wait_out_a_writers_lock(tmp_path, monkeypatch, script, opener):
+    """The children the scheduled jobs launch open the live database read-only through app.db.connection, so
+    FANTASY_DB_LOCK_WAIT_S reaches them: a writer holding the file no longer fails them at once."""
+    db = tmp_path / "live.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("CREATE TABLE nfl_schedules (season INT, week INT, game_type VARCHAR)")
+    con.execute("INSERT INTO nfl_schedules VALUES (2026, 18, 'REG')")
+    con.close()
+    mod = _load_script(script)
+    monkeypatch.setenv(dbc.LOCK_WAIT_ENV, "60")
+    proc = subprocess.Popen([sys.executable, "-c", HOLD_WRITE, str(db), "2"], stdout=subprocess.PIPE, text=True)
+    try:
+        assert proc.stdout.readline().strip() == "held"
+        started = time.monotonic()
+        out = opener(mod, db)
+        assert 1.0 < time.monotonic() - started < 30
+        if script == "ctx_shadow":
+            assert out == 18
+    finally:
+        proc.wait()

@@ -45,7 +45,6 @@ import sys
 import time
 
 import _bootstrap  # noqa: F401
-import duckdb
 import polars as pl
 
 from app.analytics.forecast_backtest import (Protocol, build_store, completed_weeks, espn_pregame, evaluate,
@@ -56,6 +55,7 @@ from app.analytics.independent_projections import MODEL_VERSION, Artifact, fit_f
 from app.analytics.league_scoring import reconcile_with_espn
 from app.analytics.projection_source import MODEL_VERSION as CONSUMER_VERSION
 from app.config import REPO_ROOT, get_settings
+from app.db.connection import connect as db_connect
 
 
 def _path(env: str, default: str) -> Path:
@@ -64,7 +64,7 @@ def _path(env: str, default: str) -> Path:
 
 
 def _ro(path: Path | None):
-    return duckdb.connect(str(path), read_only=True) if path is not None and path.exists() else None
+    return db_connect(path, read_only=True) if path is not None and path.exists() else None
 
 
 def _scoring(live, season):
