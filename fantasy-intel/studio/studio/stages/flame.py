@@ -377,6 +377,18 @@ def board_markdown(snap: dict, cands: list[dict], chosen: list[dict]) -> str:
 
 # ---------------------------------------------------------------------------------------------- facts
 
+def week_complete(snap: dict, week: int) -> bool:
+    """Every regular-season game of the week has a final score (not just Thursday night's)."""
+    games = [g for g in snap["tables"]["nfl_schedules"] if g["week"] == week and g.get("game_type", "REG") == "REG"]
+    return bool(games) and all(g["home_score"] is not None and g["away_score"] is not None for g in games)
+
+
+def week_best(lead: dict) -> bool:
+    """'And the most of anyone in Week N': only when it isn't already the season's best, and only once every game
+    of that week has been played (with only Thursday's game in, 'anyone' would be two teams)."""
+    return lead["week_rank_value"] == 1 and lead["rank_value"] != 1 and lead.get("week_complete", False)
+
+
 def build_facts(snap: dict, story: dict) -> dict:
     """The claims one flame or praise Short is told with."""
     from .facts import ClaimBook
@@ -425,6 +437,7 @@ def build_facts(snap: dict, story: dict) -> dict:
         "own_weeks": book.add("his earlier games", "weeks_list", {"kind": "constant_weeks", "weeks": case["prior_weeks"]}),
         "per_game": not METRICS[m]["den"],
         "week_rank_value": evaluate_rank(snap, m, pos, gid, week, case["kind"], from_week=week),
+        "week_complete": week_complete(snap, week),
         "series": [{"week": r["week"],
                     "week_claim": book.add("game week", "week", {"kind": "week_value", "week": r["week"]}),
                     "value": val(m, r["week"], f"{METRICS[m]['label']}, week {r['week']}")} for r in season],
@@ -579,14 +592,14 @@ def compose(facts: dict, claims: dict, used: dict, hook_override: str | None = N
                   [], 1.1, pause=0.2)]
     posw = POS_WORD[pos]
     rank_line = f"That's {_sup_phrase(lead, kind)} of {ph(lead['games'])} {posw} games this season"
-    if lead["week_rank_value"] == 1 and lead["rank_value"] != 1:
+    if week_best(lead):
         rank_line += f",‖ and the {lead['sup']} of anyone in {ph(p['week_claim'])}."
     else:
         rank_line += "."
     beats.append(beat("rank", rank_line,
                       {**base, "type": "fp_strip", "transition": "whip", "sfx": True,
                        "claims": [lead["value"], lead["rank"], lead["games"], p["qualifier"], p["week_claim"]]
-                       + ([lead["week_rank"]] if lead["week_rank_value"] == 1 else [])},
+                       + ([lead["week_rank"]] if week_best(lead) else [])},
                       [lead["sup"]], 1.1, pause=0.25))
     if flame:
         tail = "A new low for him this season." if lead["season_extreme"] else "Below his own normal, too."

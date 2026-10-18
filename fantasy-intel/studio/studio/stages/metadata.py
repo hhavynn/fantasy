@@ -1,5 +1,5 @@
 """Stage 8: metadata.json for a PRIVATE upload (title options, description with chapters, AI-voice disclosure
-and data attribution), plus this episode's entry in episodes/history.jsonl."""
+and data attribution). The episode's entry in episodes/history.jsonl is written by record_history, once QC passes."""
 
 from __future__ import annotations
 
@@ -115,22 +115,31 @@ def _run(ep: Episode) -> None:
         meta["experiment"] = {**script["structure"], "duration_s": round(sum(durations.values()), 1),
                               "player": hero["name"], "position": hero["position"]}
     write_json(ep.path("metadata.json"), meta)
+    ep.log(f"  metadata: {len(chaps)} chapters, title: {meta['title']!r}")
 
-    if short and read_json(ep.path("story.json")).get("variant_of"):
-        ep.log(f"  metadata: {len(chaps)} chapters, title: {meta['title']!r} (hook variant: not added to history)")
-        return
+
+def record_history(ep: Episode) -> bool:
+    """Add this episode to episodes/history.jsonl (replacing an earlier row for it). Called only once QC has
+    passed: a failed Short never ships, so it must not count against the next ones' originality and variety
+    gates. A hook variant is an experiment beside its story, never history. Returns whether a row was written."""
+    if ep.fmt == "short" and read_json(ep.path("story.json")).get("variant_of"):
+        ep.log("  history: hook variant, not added")
+        return False
+    script = read_json(ep.path("script.json"))
+    facts = read_json(ep.path("facts.json"))
     history = ep.cfg.episodes_dir / "history.jsonl"
     entries = [json.loads(line) for line in history.read_text().splitlines() if line.strip()] if history.exists() else []
     entries = [e for e in entries if e["episode_id"] != ep.id]
     entry = {"episode_id": ep.id, "season": ep.season, "week": ep.week, "format": ep.fmt,
              "players": [p["gsis_id"] for p in facts["players"]],
              "narration": [s["text_display"] for s in script["narration_segments"]]}
-    if short:
+    if ep.fmt == "short":
         entry |= {"structure": script["structure"], "order": read_json(ep.path("story.json"))["order"]}
     entries.append(entry)
     entries.sort(key=lambda e: (e["season"], e["week"], e["format"], e.get("order", 0)))
     history.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in entries))
-    ep.log(f"  metadata: {len(chaps)} chapters, title: {meta['title']!r}")
+    ep.log(f"  history: {ep.id} added")
+    return True
 
 
 def run(ep: Episode) -> None:

@@ -294,7 +294,7 @@ follow-up work (section 9). The ROS p_play finding in section 6 is the larger un
 | Horizon guard in `build_live` (no horizon-0 run past the next unplayed week) | **live** (correctness) |
 | Injury timeline, established role, workload handoff, return-rate table, explanation metadata | research module, not imported by the app |
 | ifp-iwh challenger | `retain_baseline` (failed c7); not promoted, no registry change, ifp-2.0.0 unchanged |
-| ROS p_play from the empirical return table; ROS teammate-return scenarios | evidence only; needs a gated proposal and owner review |
+| ROS p_play from the empirical return table; ROS teammate-return scenarios | evaluated against pre-registered gates in `ros_availability.md`: `retain_current` (better at h = 1, worse at h >= 3); a prospective ros-avail-0.1.1 is pre-registered |
 | Re-projection after Friday's final reports | not changed; follow-up |
 
 **Real 2026 cases** (`cases` command; "old" = the stored production ifp-2 row; "refit" = ifp-2 refitted on the

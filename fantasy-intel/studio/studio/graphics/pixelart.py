@@ -16,6 +16,7 @@ from PIL import Image
 
 from .. import format_scenes as FS
 from .. import motion as M
+from ..scenes import ball_games
 from ..numbers import TEAM_NAMES, render
 from ..stages.story import last as last_name
 from . import kit as K
@@ -172,7 +173,7 @@ def scene_player_card(F, c, t, dur, spec, col):
 
 
 def scene_target_balls(F, c, t, dur, spec, col):
-    games = c.p["counts"]["games"]
+    games = ball_games(c, spec)          # the window the narration compares
     k_split = spec.get("split") or len(games)
     vals = [c.claims[g["value"]]["value"] for g in games]
     y = title(F, "TARGETS PER GAME", 72, col)
