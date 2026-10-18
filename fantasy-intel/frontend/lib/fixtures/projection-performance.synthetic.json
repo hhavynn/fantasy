@@ -1377,7 +1377,6 @@
    "Paired: ESPN and the model are scored on exactly the same player-weeks. Players the model could not project show ESPN's number on the site; those fallback rows are counted but never credited to the model.",
    "MAE difference = MAE(ours) - MAE(ESPN): negative means our projections were closer. The interval resamples whole NFL weeks, because player-weeks of one week are correlated; an interval that includes 0 means no established difference.",
    "Mean signed error = mean(actual - projection): positive means the projection was too low on average.",
-   "The production model is served by owner override; that decision is not statistical validation.",
    "RB accuracy is also split by pregame volume (carries + targets per game over the back's last games, threshold 4): the model is expected to lose to simpler forecasts on low-volume backs and win with volume, so the pooled RB figure mixes two opposite effects. Each group faces the same evidence bar as a position."
   ],
   "positions": {
@@ -2252,7 +2251,7 @@
    ]
   }
  },
- "report_sha256": "092b4e5a8c12d53023618d6c7863c010498dac8d82427e02cf40e16ea7ce75a4",
+ "report_sha256": "8f5e12e1fe0810c9ce964668b49d6bd6df912a01696a164e280a6e0f15209c66",
  "schema_version": "projection-performance-api/v1",
  "season": 2026,
  "stale": false,

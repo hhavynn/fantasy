@@ -64,7 +64,6 @@ METHODOLOGY = [
     "NFL weeks, because player-weeks of one week are correlated; an interval that includes 0 means no established "
     "difference.",
     "Mean signed error = mean(actual - projection): positive means the projection was too low on average.",
-    "The production model is served by owner override; that decision is not statistical validation.",
     "RB accuracy is also split by pregame volume (carries + targets per game over the back's last games, threshold 4): "
     "the model is expected to lose to simpler forecasts on low-volume backs and win with volume, so the pooled RB "
     "figure mixes two opposite effects. Each group faces the same evidence bar as a position.",

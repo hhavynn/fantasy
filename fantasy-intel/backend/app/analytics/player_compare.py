@@ -438,8 +438,8 @@ def projection_block(fwd: dict | None, name: str, as_of_week: int, source: str) 
             None if ros["ours"] is not None else
             "Not every remaining non-bye regular-season week has an independent estimate.")
         if entry is not None and entry.get("horizon") not in (None, 0):
-            notes.append(f"{name}: the independent number for week {as_of_week} comes from a run made "
-                         f"{entry['horizon']} week(s) earlier, so it is experimental.")
+            notes.append(f"{name}: the Fantasy Intel number for week {as_of_week} comes from a run made "
+                         f"{entry['horizon']} week(s) earlier.")
     if summary["ros_weeks_available"] == 0:
         notes.append(f"{name}: ESPN has no projection for any remaining week.")
     elif summary["ros_projected_points"] is None:
@@ -636,7 +636,7 @@ def build_rows(sa: Side, sb: Side, source: str, identical: bool) -> list[dict]:
     ros("espn", "Rest-of-season projection (ESPN)", "ros_espn", None)
     if independent:
         ros("ours", "Rest-of-season projection (Fantasy Intel)", "ros_ours",
-            "Experimental beyond next week; remaining regular-season weeks only")
+            "Remaining regular-season weeks only")
 
     gr = [None if _proj(s) is None else _proj(s)["games_remaining"] for s in (sa, sb)]
     problems = [f"Games remaining unknown for {s.name} (schedule incomplete)" for s, v in zip((sa, sb), gr) if v is None]
@@ -785,7 +785,7 @@ def finding_ros(sa: Side, sb: Side, source: str) -> dict:
     if source == "independent":
         oa, ob = ra[0]["ours"], ra[1]["ours"]
         if oa is not None and ob is not None:
-            text += (f" Fantasy Intel (experimental, regular season only) totals {oa:.1f} for {sa.name} and "
+            text += (f" Fantasy Intel (regular season only) totals {oa:.1f} for {sa.name} and "
                      f"{ob:.1f} for {sb.name}.")
     return _finding("ros", title, edge, text, basis)
 

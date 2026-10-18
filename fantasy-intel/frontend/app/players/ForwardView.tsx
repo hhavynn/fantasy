@@ -1,6 +1,6 @@
 import { LineChart } from "@/components/charts";
 import { OriginTag } from "@/components/ProjectionNotice";
-import { Badge, Notice, Section, Stat, StatStrip, VisuallyHidden } from "@/components/ui";
+import { Badge, Notice, Section, Stat, StatStrip } from "@/components/ui";
 import { oursBlock, oursByWeek, oursCell, oursNotice, oursPoints, oursTotalNote } from "@/lib/forward-view";
 import { num, pct, when } from "@/lib/format";
 import { valueDomain } from "@/lib/player-usage";
@@ -16,7 +16,7 @@ const OURS_INCOMPLETE = "Not every remaining week has a Fantasy Intel projection
  * ESPN's own weekly projections for every remaining fantasy week, shown unmodified: season-to-go
  * totals, a week-by-week table with the opponent, and the same numbers as a line (byes are gaps).
  * When the visitor's switch is on "Ours" the response also carries Fantasy Intel's series for the remaining
- * regular season: shown next to ESPN's, with ESPN-fallback weeks marked and the experimental note.
+ * regular season: shown next to ESPN's, with ESPN-fallback weeks marked.
  */
 export function ForwardView({ f }: { f: ForwardProjection }) {
   const s = f.summary;
@@ -111,7 +111,7 @@ export function ForwardView({ f }: { f: ForwardProjection }) {
           />
           <p className={styles.chartNote}>
             Bye weeks are gaps: a bye is not a projected zero.
-            {oursLine && <> {fallback.length > 0 ? `Ours is also a gap in wk ${fallback.join(", ")} (ESPN fallback). ` : " "}Experimental beyond next week.</>}
+            {oursLine && fallback.length > 0 && <> Ours is also a gap in wk {fallback.join(", ")} (ESPN fallback).</>}
           </p>
         </div>
       </div>
@@ -127,7 +127,6 @@ function OursTd({ cell }: { cell: ReturnType<typeof oursCell> }) {
       {cell.kind === "espn" && <OriginTag origin="espn" ours title="No independent estimate for this week: ESPN's projection" />}{" "}
       {cell.model && <Badge value={cell.model} tone="warn" title={`Previous model: no production-model run for this week`} />}{" "}
       {num(cell.value, 1, cell.title)}
-      {cell.experimental && <><span aria-hidden="true" className="faint"> exp</span><VisuallyHidden> (experimental)</VisuallyHidden></>}
     </td>
   );
 }

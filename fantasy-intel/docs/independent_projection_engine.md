@@ -458,6 +458,7 @@ ESPN sync, nflverse sync and analytics have finished and the pregame snapshot ch
 | `injury_freshness.py report` | every run | the upcoming week |
 | `start_sit_evaluation.py record` | every run with an upcoming week | the upcoming week |
 | `ctx_shadow.py pregame` | every run with an upcoming week (research shadow, `docs/research/ifp_ctx_shadow_automation.md`) | the upcoming week |
+| `dst_shadow.py pregame` | every run with an upcoming week (D/ST research shadow, `docs/research/dst_projection_model.md` section 7) | the upcoming week |
 | `distribution_ledger.py freeze` | every run with an upcoming week (research, `docs/research/fantasy_point_distributions.md` section 17; a retry of the learning cycle's freeze; exit 3 is an `INFO` line) | the upcoming week |
 | `espn_benchmark.py record` | when a fully final week exists | the latest fully final week |
 
@@ -473,7 +474,8 @@ ESPN sync, nflverse sync and analytics have finished and the pregame snapshot ch
 * **Safety.** The stage starts only after every write connection has closed (each sync runs in its own
   process), opens the database read-only, runs no sync, writes no live table, never touches
   MotherDuck and changes no model. Outputs go to the existing git-ignored defaults
-  (`data/models/start_sit`, `data/models/espn_benchmark`).
+  (`data/models/start_sit`, `data/models/espn_benchmark`, and the research shadows' directories). The one
+  network read is `dst_shadow.py` refreshing its git-ignored ESPN D/ST statistics cache when it misses a final game.
 * **Failures never fail the refresh.** A step that exits non-zero (for example `start_sit_evaluation`
   `espn_benchmark` exit 3 when not ready, or a DuckDB lock held by the learning cycle) or cannot
   start is logged as `WARNING: Evidence: ...` in `data/logs/refresh-<UTC stamp>.log`, and

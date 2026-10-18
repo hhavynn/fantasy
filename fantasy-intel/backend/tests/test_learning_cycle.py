@@ -78,15 +78,19 @@ def env(base, tmp_path, lc):
     return tmp_path
 
 
-def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False, dist_ledger=False):
+def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False, research_shadows=False,
+          dst_shadow=False, dist_ledger=False):
     """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it, and the kicker stage
-    (after project), the ifp-ctx-p1 shadow stage and the distribution-ledger stage only when a test asks for them too."""
+    (after project), the ifp-ctx-p1 / dfp-r1 shadow stages, the other research shadows and the distribution-ledger
+    stage only when a test asks for them too."""
     return lc.parse(["run", "--skip-sync", "--season", "2025", "--now", now, "--live-db", str(env / "live.duckdb"),
                      "--history-db", str(env / "history.duckdb"), "--ifp-dir", str(env / "models"),
                      "--out", str(env / "out"), "--kicker-dir", str(env / "kicker"), "--ctx-dir", str(env / "ctx"),
                      *([] if project else ["--no-project"]), *([] if kicker else ["--no-kicker"]),
                      "--dist-dir", str(env / "dist"),
-                     *([] if ctx_shadow else ["--no-ctx-shadow"]), *([] if dist_ledger else ["--no-dist-ledger"]), *extra])
+                     *([] if ctx_shadow else ["--no-ctx-shadow"]), *([] if dist_ledger else ["--no-dist-ledger"]),
+                     *([] if research_shadows else ["--no-qb-scenario-shadow", "--no-ipm-cal-shadow"]),
+                     "--dst-dir", str(env / "dst"), *([] if dst_shadow else ["--no-dst-shadow"]), *extra])
 
 
 def _run(lc, env, now=PRE_W10, *extra):
@@ -693,6 +697,106 @@ def test_dist_ledger_failure_never_fails_the_cycle_or_the_production_run(lc, env
     con.close()
 
 
+# ----------------------------------------------------------------------------- the other research shadow stages
+
+
+def test_research_shadow_stages_follow_ctx_shadow_and_are_no_ops_in_a_dry_cycle(lc, env):
+    """The real qb_scenario_shadow.py / participation_cal_shadow.py subprocesses on the synthetic 2025 world under a
+    simulated clock (a dry run): before the 2026 week-7 start nothing is forecast, there is no ipm-cal artifact to
+    freeze, nothing is built, and nothing is written."""
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, research_shadows=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    assert _stages(rep)[-3:] == [("ctx_shadow", "ok"), ("qb_scenario_shadow", "ok"), ("ipm_cal_shadow", "ok")]
+    qs, ipm = rep["qb_scenario_shadow"], rep["ipm_cal_shadow"]
+    assert (qs["status"], qs["pregame"]["status"], qs["score"]["status"]) == (
+        "ok", "before_prospective_start", "no_ledgers")
+    assert (ipm["status"], ipm["freeze"]["status"], ipm["score"]["status"]) == ("ok", "would_build", "not_frozen")
+    assert not [w for w in rep["warnings"] if "shadow" in w]
+    assert not (env / "ctx").exists()
+
+
+def test_a_research_shadow_failure_never_fails_the_cycle_or_the_other_shadows(lc, env, monkeypatch):
+    seen = []
+
+    def stage(args, conns, log_path, script):
+        seen.append(script)
+        if script == "qb_scenario_shadow.py":
+            raise RuntimeError("qb_scenario_shadow.py exited 1: MemoryError")
+        return {"status": "ok", "warnings": ["stale"] if script == "participation_cal_shadow.py" else []}
+
+    monkeypatch.setattr(lc, "stage_ctx_shadow", lambda args, conns, log_path: seen.append("ctx_shadow.py") or {
+        "status": "ok", "warnings": []})
+    monkeypatch.setattr(lc, "stage_research_shadow", stage)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, research_shadows=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert seen == ["ctx_shadow.py", "qb_scenario_shadow.py", "participation_cal_shadow.py"]
+    assert _stages(rep)[-3:] == [("ctx_shadow", "ok"), ("qb_scenario_shadow", "failed_nonfatal"),
+                                 ("ipm_cal_shadow", "ok")]
+    assert any("ifp-ctx-p2q shadow stage failed" in w for w in rep["warnings"])
+    assert "ipm-cal-0.1.0 shadow: stale" in rep["warnings"]
+    # each is skipped on its own flag, and still runs after the season's last week (scoring only)
+    seen.clear()
+    code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", "--no-ipm-cal-shadow", ctx_shadow=True,
+                                   research_shadows=True))
+    assert rep["status"] == "no_upcoming_week" and seen == ["ctx_shadow.py", "qb_scenario_shadow.py"]
+
+
+def test_research_shadow_stage_command_and_failure_handling(lc, env, monkeypatch, tmp_path):
+    ns = _args(lc, env, PRE_W10)
+    ns.week = 10
+    seen = []
+
+    class P:
+        def __init__(self, code, out="", err=""):
+            self.returncode, self.stdout, self.stderr = code, out, err
+
+    monkeypatch.setattr(lc.subprocess, "run", lambda cmd, **kw: seen.append((cmd, kw)) or P(
+        3, json.dumps({"status": "ok", "warnings": ["stale"]}), "WARNING: stale"))
+    log = tmp_path / "log.txt"
+    assert lc.stage_research_shadow(ns, [], log, "qb_scenario_shadow.py") == {"status": "ok", "warnings": ["stale"]}
+    cmd, kw = seen[0]
+    assert Path(cmd[1]).name == "qb_scenario_shadow.py" and cmd[2:5] == ["cycle", "--season", "2025"]
+    assert cmd[cmd.index("--week") + 1] == "10" and cmd[cmd.index("--now") + 1] == PRE_W10
+    assert cmd[cmd.index("--ifp-dir") + 1] == str(env / "ctx") and kw["timeout"] == lc.CTX_SHADOW_TIMEOUT_S
+    assert "qb_scenario_shadow.py cycle" in log.read_text()
+    monkeypatch.setattr(lc.subprocess, "run", lambda cmd, **kw: P(1, "", "Traceback ... MemoryError"))
+    with pytest.raises(RuntimeError, match="participation_cal_shadow.py exited 1"):
+        lc.stage_research_shadow(ns, [], log, "participation_cal_shadow.py")
+
+
+# ----------------------------------------------------------------------------- dfp-r1 D/ST research shadow stage
+
+
+def test_dst_shadow_stage_runs_after_ctx_shadow_and_is_a_no_op_before_the_prospective_window(lc, env):
+    """The real scripts/dst_shadow.py subprocess on the synthetic 2025 world: before the pre-registered 2026 week-7
+    start nothing is fetched or forecast and there is nothing to score, so it writes nothing and warns about nothing."""
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, dst_shadow=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    assert _stages(rep)[-3:] == [("project", "skipped"), ("ctx_shadow", "ok"), ("dst_shadow", "ok")]
+    ds = rep["dst_shadow"]
+    assert (ds["status"], ds["pregame"]["status"], ds["score"]["status"]) == (
+        "ok", "before_prospective_start", "no_ledgers")
+    assert not [w for w in rep["warnings"] if "dfp-r1" in w]
+    assert not (env / "dst").exists()                       # nothing written anywhere
+
+
+def test_dst_shadow_failure_never_fails_the_cycle_or_the_production_run(lc, env, monkeypatch):
+    _espn_players(env)
+
+    def boom(args, conns, log_path):
+        raise RuntimeError("dst_shadow.py exited 1: MemoryError")
+
+    monkeypatch.setattr(lc, "stage_dst_shadow", boom)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True, dst_shadow=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert _stages(rep)[-3:] == [("predict", "ok"), ("project", "ok"), ("dst_shadow", "failed_nonfatal")]
+    assert any("dfp-r1 shadow stage failed" in w for w in rep["warnings"])
+    con = connect(env / "live.duckdb")
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.0.0'"
+                       ).fetchone()[0] == 1
+    con.close()
+
+
 def test_dist_ledger_runs_after_ctx_shadow_and_its_warnings_reach_the_report(lc, env, monkeypatch):
     monkeypatch.setattr(lc, "stage_ctx_shadow", lambda args, conns, log_path: {"status": "ok", "warnings": []})
     monkeypatch.setattr(lc, "stage_dist_ledger", lambda args, conns, log_path: {
@@ -710,3 +814,14 @@ def test_dist_ledger_still_scores_when_no_week_is_left(lc, env, monkeypatch):
     code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", dist_ledger=True))
     assert code == lc.EXIT_OK and rep["status"] == "no_upcoming_week", rep["errors"]
     assert calls == [None] and ("dist_ledger", "ok") in _stages(rep)
+
+
+def test_dst_shadow_warnings_reach_the_report_and_it_still_scores_after_the_season(lc, env, monkeypatch):
+    calls = []
+    monkeypatch.setattr(lc, "stage_dst_shadow", lambda args, conns, log_path: calls.append(args.week) or {
+        "status": "ok", "warnings": ["2 open teams have no spread/total yet"]})
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, dst_shadow=True))
+    assert code == lc.EXIT_OK and "dfp-r1 shadow: 2 open teams have no spread/total yet" in rep["warnings"]
+    code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", dst_shadow=True))
+    assert code == lc.EXIT_OK and rep["status"] == "no_upcoming_week" and calls[-1] is None
+    assert ("dst_shadow", "ok") in _stages(rep)

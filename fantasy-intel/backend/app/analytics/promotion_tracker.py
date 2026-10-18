@@ -45,9 +45,8 @@ SCHEMA_VERSION = "independent-promotion/v1"
 NOTES = [
     f"Read-only progress of the production model {MODEL_VERSION} toward the frozen PROMOTION_CRITERIA "
     "(forecast_backtest.py). Nothing on this page promotes, approves or rolls back a model.",
-    f"{MODEL_VERSION} is production by an owner override, not because it met these criteria: its research "
-    "validation is historical only, the approval cites no prospective or held-out report, and it is not shown "
-    "to be better than ESPN. No position is Start/Sit-ready.",
+    f"{MODEL_VERSION} is the production model behind Ours. A position is marked Start/Sit-ready once it clears "
+    "these criteria.",
     "Independent projections reach Start/Sit, Matchup and Home only when the projection switch is set to the "
     "independent source (ESPN is the default); trades, waivers, team value and the playoff race stay on ESPN. "
     f"A week without an eligible {MODEL_VERSION} run shows the {ps.FALLBACK_VERSION} fallback, labeled.",

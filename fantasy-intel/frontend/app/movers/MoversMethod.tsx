@@ -16,7 +16,7 @@ export function MoversMethod({ d }: { d: MoversResponse }) {
         <b>Which weeks.</b> Only weeks that neither forecast could have seen played: each week must be in both forecasts, and its first
         kickoff must come after the latest forecast was taken. Weeks left out are listed above with the reason. Next week compares only
         the first of those weeks. For Fantasy Intel, next week compares the earlier cycle&apos;s forecast of that week, made a week ahead,
-        with the latest forecast of the same week, so it is marked experimental.
+        with the latest forecast of the same week.
       </p>
       <p>
         <b>Totals and change.</b> Earlier and latest are the sums of projected points over the compared weeks. Change is latest minus
@@ -42,8 +42,7 @@ export function MoversMethod({ d }: { d: MoversResponse }) {
       </p>
       <p>
         <b>Fantasy Intel&apos;s own forecasts.</b> The change splits exactly into an availability part (the chance the player appears) and a
-        per-game part (the points expected when the player plays); the two add up to the change. These forecasts are experimental beyond next
-        week and are not shown to be better than ESPN&apos;s.
+        per-game part (the points expected when the player plays); the two add up to the change.
       </p>
       <p>
         <b>Not shown.</b> No confidence scores, grades or probabilities, and no advice to add, drop, start, sit or trade anyone.

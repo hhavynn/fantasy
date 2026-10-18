@@ -67,6 +67,10 @@ class PlayerLock:
     reason: str = ""
 
 
+# The Start/Sit limitation line when the projection switch is on Ours.
+OURS_NOTE = ("Projections are Fantasy Intel's own model (expected points, league scoring). Kickers come from the kicker "
+             "model when a kicker run exists; D/ST and players the model can't project keep ESPN's number, marked.")
+
 def verify_schedule_coverage(con: Any, season: int, week: int) -> bool:
     """Verify if nfl_schedules has sufficient coverage of games for this week to confirm byes."""
     if not table_exists(con, "nfl_schedules"):
@@ -694,7 +698,7 @@ def load_start_sit_evaluation(
 ) -> dict:
     """Full evaluation payload for Start/Sit Command Center. `source` is "espn" (default) or
     "independent" (Fantasy Intel's model, see analytics/projection_source.py)."""
-    from .projection_source import NOTE, describe, normalize, weekly
+    from .projection_source import describe, normalize, weekly
 
     source = normalize(source)
     now = now or datetime.now(timezone.utc)
@@ -1119,7 +1123,7 @@ def load_start_sit_evaluation(
         },
         "limitations": [
             "Lock detection uses conservative NFL kickoff times and final scores from stored schedule data; exact ESPN transaction/lock acceptance cannot be guaranteed.",
-            (NOTE if source == "independent" and src["available"] else
+            (OURS_NOTE if source == "independent" and src["available"] else
              "Projections are unmodified weekly ESPN projections (ESPN league scoring); live actual points are not blended into pregame projections."),
             "Future preview is an informational projection on current roster assets and does not represent a submitted ESPN lineup.",
         ],

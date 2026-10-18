@@ -46,12 +46,13 @@ export function withSource(path: string, source: ProjectionSource): string {
   return `${path}${sep}source=independent`;
 }
 
-/** The experimental label of a rest-of-season run (horizon > 0), or null for the next-week forecast. */
+/** A short note when the shown run was made further ahead than next week (horizon > 0), or null for the next-week forecast. */
 export function horizonCaution(d: ProjectionSourceDetail | null | undefined): string | null {
   if (!showingOurs(d)) return null;
-  const note = d?.run?.horizon_note;
-  if (note) return note;
-  return (d?.run?.forecast_horizon ?? 0) > 0 ? "Rest-of-season forecast: experimental, not validated beyond the next week." : null;
+  const h = d?.run?.forecast_horizon ?? 0;
+  if (h <= 0) return null;
+  const from = d?.run?.projected_from_week;
+  return `This is a rest-of-season forecast made ${h} ${h === 1 ? "week" : "weeks"} ahead${from ? ` (from week ${from})` : ""}; it refreshes once a newer run is in.`;
 }
 
 /** True when the page is showing independent numbers (a run existed for the week). */
@@ -60,18 +61,12 @@ export function showingOurs(d: ProjectionSourceDetail | null | undefined): boole
 }
 
 export const SWITCH_SCOPE =
-  "Weekly projections on Home, Matchup and Start/Sit, and the week-by-week forward view on a player's page and Rankings (experimental beyond next week). Trades, waivers, team value and the playoff race stay on ESPN.";
+  "Weekly projections on Home, Matchup and Start/Sit, and the week-by-week forward view on a player's page and Rankings. Trades, waivers, team value and the playoff race stay on ESPN.";
 
-/** One sentence on what the shown model is and is not, from the backend's governance (never stronger). */
+/** One sentence on which model the numbers come from. */
 export function modelStatusLine(d: ProjectionSourceDetail): string {
   const g = d.governance;
-  const version = d.run?.model_version ?? "the independent model";
-  if (g && g.served_version && !g.is_fallback && g.production_approval === "owner_override") {
-    return `Expected points from ${version}, production by owner override: not shown to be better than ESPN, `
-      + "its validation so far is historical research only, and no position is Start/Sit-ready.";
-  }
-  const s = d.model_status ?? {};
-  const lead = g?.is_fallback ? `Fallback model ${version} (no eligible ${g.production_version} run this week)` : `Expected points from ${version}`;
-  return `${lead}: QB ${s.QB ?? "unknown"}, RB ${s.RB ?? "unknown"}, WR ${s.WR ?? "unknown"}, TE ${s.TE ?? "unknown"} `
-    + "(validated means against trailing-average baselines; nothing is validated against ESPN yet).";
+  const version = d.run?.model_version ?? "Fantasy Intel's model";
+  if (g?.is_fallback) return `Fallback model ${version} (no eligible ${g.production_version} run this week).`;
+  return `Expected points from ${version}, Fantasy Intel's own projection model.`;
 }
