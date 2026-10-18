@@ -64,6 +64,9 @@ METHODOLOGY = [
     "NFL weeks, because player-weeks of one week are correlated; an interval that includes 0 means no established "
     "difference.",
     "Mean signed error = mean(actual - projection): positive means the projection was too low on average.",
+    "RB accuracy is also split by pregame volume (carries + targets per game over the back's last games, threshold 4): "
+    "the model is expected to lose to simpler forecasts on low-volume backs and win with volume, so the pooled RB "
+    "figure mixes two opposite effects. Each group faces the same evidence bar as a position.",
 ]
 
 
@@ -114,6 +117,15 @@ def position_summary(card: dict, pos: str, leads: dict, cfg: eb.BenchmarkConfig)
                         "statement": pr.STATEMENTS[cond["verdict"]]},
         "observations": _position_cells(card, pos),
     }
+
+
+def rb_volume_summary(rows: list[dict], sources, cfg: eb.BenchmarkConfig) -> dict:
+    """RB accuracy vs ESPN by pregame volume (espn_benchmark.rb_volume_split), on the scorecard's own rows."""
+    split = eb.rb_volume_split(rows, None if sources is None else sources.panel, cfg)
+    for comp in split["comparisons"].values():
+        for g in comp["by_group"].values():
+            g["statement"] = pr.STATEMENTS[g["verdict"]]
+    return split
 
 
 def _version_weeks(rows: list[dict], cfg: eb.BenchmarkConfig) -> list[dict]:
@@ -259,6 +271,11 @@ def build_report(con, season: int, *, now: datetime, readers: dict | None = None
     leads = eb.lead_times(rows, cfg) if rows else {}
     positions = {pos: position_summary(card, pos, leads, cfg) for pos in POSITIONS}
     weekly = [{**w, "model_version": PRODUCTION} for w in eb.weekly_errors(rows, "pure_independent", cfg)]
+    rb_volume = rb_volume_summary(rows, sources, cfg)
+    for name in ("pure_independent", "conditional"):      # the groups must add up to the scorecard's RB rows
+        want = positions["RB"]["paired_n"] if name == "pure_independent" else positions["RB"]["conditional"]["n"]
+        if sum(g["n"] for g in rb_volume["comparisons"][name]["by_group"].values()) != want:
+            raise RuntimeError(f"RB volume groups do not add up to the scorecard's {name} RB observations")
     for pos in POSITIONS:          # the trend must add up to the scorecard, or nothing is published
         if sum(w["n"] for w in weekly if w["position"] == pos) != positions[pos]["paired_n"]:
             raise RuntimeError(f"{pos}: weekly rows do not add up to the scorecard's paired observations")
@@ -292,6 +309,7 @@ def build_report(con, season: int, *, now: datetime, readers: dict | None = None
         "positions": positions,
         "comparisons": card.get("comparisons") or {},
         "weekly": weekly,
+        "rb_volume_split": rb_volume,
         "preliminary": {"weeks": pre.get("weeks", []), "note": pre.get("note"),
                         "by_position": {p: {"n": g["n"], "ours": g["ours"], "espn": g["espn"]}
                                         for p, g in pre_pure.items()}},
