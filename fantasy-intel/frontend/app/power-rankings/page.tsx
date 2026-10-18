@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TeamLink } from "@/components/TeamLink";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { EmptyState, Method, Notice, PageHeader, Section, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -52,7 +53,7 @@ export default async function PowerRankingsPage({ searchParams }: PageProps<"/po
 
       {d.empty ? (
         <Section>
-          <EmptyState title="Nothing to rank yet" action={<Link href="/playoff-race">See the standings</Link>}>
+          <EmptyState title="Nothing to rank yet" action={<TeamLink href="/playoff-race">See the standings</TeamLink>}>
             <p>{d.message ?? "No team has a complete lineup projection."}</p>
           </EmptyState>
         </Section>
@@ -132,7 +133,7 @@ function PowerMethod({ d }: { d: PowerRankings }) {
       <div className={styles.method}>
         <p>
           Power rankings order every roster by how strong it is now, not by its record. Standings and playoff scenarios live
-          on <Link href="/playoff-race">Playoff race</Link>; single players on <Link href="/rankings">Rankings</Link>.
+          on <TeamLink href="/playoff-race">Playoff race</TeamLink>; single players on <Link href="/rankings">Rankings</Link>.
         </p>
         <dl className={styles.methodList}>
           {d.components.map((c) => (

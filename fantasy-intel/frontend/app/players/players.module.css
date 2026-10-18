@@ -95,3 +95,11 @@
 .logNotes { padding: 12px 16px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 13px; line-height: 19px; }
 .logNotes p { margin: 0 0 8px; }
 .logNotesBare { margin-top: 12px; color: var(--ink-muted); font-size: 13px; }
+
+/* A quiet outline link beside Compare in the profile header: a next step, not a heading. */
+.nextLink {
+  display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-control);
+  color: var(--ink-muted); font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;
+}
+.nextLink:hover { text-decoration: none; color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 720px) { .nextLink { min-height: 32px; padding: 0 12px; } }

@@ -35,6 +35,9 @@ export default defineConfig({
   projects: [
     { name: "desktop-1440", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
     { name: "mobile-375", use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } } },
+    // Navigation journeys only (not the full route smoke): the smallest phone and a tablet at the desktop bar's tightest.
+    { name: "mobile-320", testMatch: /navigation\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 320, height: 640 } } },
+    { name: "tablet-768", testMatch: /navigation\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 768, height: 1024 } } },
   ],
   webServer: [
     {

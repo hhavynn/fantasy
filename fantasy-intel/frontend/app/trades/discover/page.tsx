@@ -19,6 +19,7 @@ import type { TradeDeltas } from "@/lib/types";
 import { CheckChips, MainConcern, VerdictBadge } from "./DualValueParts";
 import { TradeEvidence } from "./TradeEvidence";
 import styles from "./discover.module.css";
+import { TeamLink } from "@/components/TeamLink";
 
 export const metadata = { title: "Discover trades" };
 
@@ -60,7 +61,7 @@ export default async function DiscoverPage({ searchParams }: PageProps<"/trades/
     <div className="stack">
       {!res.ok ? (
         <>
-          <PageHeader title="Trade discovery" actions={<Link href="/trades">Trade analyzer</Link>} />
+          <PageHeader title="Trade discovery" actions={<TeamLink href="/trades">Trade analyzer</TeamLink>} />
           <BackendProblem error={res.error} kind={res.kind} status={res.status} />
         </>
       ) : <Body c={res.data} summary={summary} q={q} sp={sp} />}
@@ -100,7 +101,7 @@ function Body({ c: d, summary, q, sp }: { c: DiscoveryContext; summary: Promise<
         title="Trade discovery"
         meta={<>Projected points: <b>ESPN</b> · Trade impact: <b>exact lineup simulation</b> for both teams · weeks {ev.start_week}–{ev.final_week}
           {ev.last_regular_season_week !== null && <> (regular season through {ev.last_regular_season_week})</>}</>}
-        actions={<Link href="/trades">Trade analyzer</Link>}
+        actions={<TeamLink href="/trades">Trade analyzer</TeamLink>}
       >
         <Tabs label="Discovery lens" current={modeHref(d.query.mode)}
           items={tabs.map((t) => ({ href: modeHref(t.mode), label: lensTabText(t) }))} />
@@ -203,7 +204,7 @@ function Filters({ d }: { d: DiscoveryContext }) {
         </label>
         <div className={styles.actions}>
           <button type="submit">Apply filters</button>
-          <Link href={`/trades/discover?mode=${qy.mode}`}>Reset</Link>
+          <TeamLink href={`/trades/discover?mode=${qy.mode}`}>Reset</TeamLink>
         </div>
       </div>
 
@@ -458,7 +459,7 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
         <td className={styles.partner} data-label="Partner">
           <Link href={`/managers/${r.opponent_team_id}`}>{r.opponent_name}</Link>
           {mc && <span className={styles.subline}>{mc.trade_history.completed_trades} completed trades · {mc.trade_history.confidence.toLowerCase()} confidence</span>}
-          <span className={styles.subline}><Link href={analyzerHref(r)} aria-label={`Analyze ${nm(r.sends)} for ${nm(r.receives)} in the trade analyzer`}>Analyze →</Link></span>
+          <span className={styles.subline}><TeamLink href={analyzerHref(r)} aria-label={`Analyze ${nm(r.sends)} for ${nm(r.receives)} in the trade analyzer`}>Analyze →</TeamLink></span>
         </td>
         <td className={styles.wrapCell} data-label="Gives">
           <Players ids={r.sends} d={d} />

@@ -9,7 +9,7 @@ const LEGACY_TEAM_PARAM = "team_id";
 /** Pages whose numbers depend on the selected team. Navigating between them keeps the selection. */
 export const TEAM_SCOPED_PATHS = [
   "/", "/matchup", "/start-sit", "/my-team/value", "/waivers", "/trades", "/trades/discover",
-  "/schedule-intelligence", "/luck-lab", "/playoff-race", "/injury-impact",
+  "/schedule-intelligence", "/luck-lab", "/playoff-race", "/power-rankings", "/injury-impact",
 ] as const;
 
 /** Params that only make sense for one team (an opponent, a counterfactual schedule, a page offset) and are
@@ -121,4 +121,19 @@ export function teamOptionLabel(t: { name: string; is_owner_default?: boolean; i
 /** Whether an API failure is the backend refusing the requested team (unknown, stale or deleted id). */
 export function isUnknownTeam(res: { ok: boolean; status?: number; error?: string | null }, sel: TeamSelection): boolean {
   return !res.ok && sel.kind !== "default" && res.status === 404 && /team/i.test(res.error ?? "");
+}
+
+/**
+ * The team that links should carry from the page at `pathname`. On a team-scoped page the URL is the truth (no
+ * `team` = the default, an explicit choice). League-wide pages never carry `team` in their own URL, so they fall
+ * back to the team last analyzed in this browser tab: Start/Sit for team 4 → Rankings → My team opens team 4's
+ * Overview again instead of silently switching back to the default.
+ */
+export function navTeam(pathname: string, urlTeam: string | null, lastTeam: string | null): string | null {
+  return isTeamScoped(pathname) ? urlTeam : (urlTeam ?? lastTeam);
+}
+
+/** A stored last-analyzed team, or null when absent or not a team id. */
+export function parseStoredTeam(raw: string | null): string | null {
+  return raw !== null && /^\d{1,6}$/.test(raw) ? raw : null;
 }

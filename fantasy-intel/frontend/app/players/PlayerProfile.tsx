@@ -14,6 +14,7 @@ import { UsageCharts } from "./UsageCharts";
 import { hasInjuryDesignation, ownerBadge } from "./helpers";
 import styles from "./players.module.css";
 import type { Detail } from "./types";
+import { TeamLink } from "@/components/TeamLink";
 
 const SKILL = ["QB", "RB", "WR", "TE"];
 
@@ -42,7 +43,7 @@ export function PlayerProfile({ d, q, cols }: { d: Detail; q: string; cols: "all
       )}
 
       {d.waiver && (
-        <Section title="Waiver view" actions={<Link href="/waivers">All waivers</Link>}>
+        <Section title="Waiver view" actions={<TeamLink href="/waivers">All waivers</TeamLink>}>
           <div className={styles.badgeRow}>
             <Badge value={d.waiver.recommendation} />
             <span>Waiver score {d.waiver.waiver_score.toFixed(2)}</span>
@@ -86,7 +87,11 @@ function ProfileHeader({ d, q }: { d: Detail; q: string }) {
           {hasInjuryDesignation(p.injury_status) && <Badge value={p.injury_status} title="ESPN injury designation" />}
         </span>
       }
-      actions={<><CompareLink a={p.espn_player_id} aName={p.full_name} /><SearchForm q={q} compact /></>}
+      actions={<>
+        <CompareLink a={p.espn_player_id} aName={p.full_name} />
+        <RankingsLink position={p.position} />
+        <SearchForm q={q} compact />
+      </>}
     >
       <ul className={styles.facts}>
         <li>{num(p.percent_owned, 1)}% owned ESPN-wide ({signed(p.percent_change)} this week)</li>
@@ -214,4 +219,12 @@ function ValueAndTrends({ d }: { d: Detail }) {
       </Section>
     </div>
   );
+}
+
+/** Next step from a profile: the player's position in the Rankings (or the kicker outlook), where the peers are. */
+function RankingsLink({ position }: { position: string | null }) {
+  const href = position && SKILL.includes(position) ? `/rankings?pos=${position}` : position === "K" ? "/kickers" : null;
+  if (!href) return null;
+  const text = position === "K" ? "Kicker outlook" : `${position} rankings`;
+  return <Link className={styles.nextLink} href={href}>{text}</Link>;
 }

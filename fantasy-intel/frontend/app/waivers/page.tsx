@@ -107,7 +107,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
   return (
     <div className="stack">
       <PageHeader
-        eyebrow="Players"
+        eyebrow="My team"
         title="Waivers"
         meta={<>Moves for {perspective ? <b>{perspective.name}</b> : "the default team"} · computed {when(computed_at)}</>}
         actions={<TeamPerspective path="/waivers" sp={sp} current={perspective?.team_id ?? null} />}

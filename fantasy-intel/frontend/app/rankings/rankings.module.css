@@ -11,9 +11,9 @@
 .submit { flex: none; }
 
 /* ---------- Source line ---------- */
-.sourceLine { min-width: 0; color: var(--ink); font-size: 13px; line-height: 19px; }
-.sourceLine p { margin: 0 0 4px; max-width: 120ch; }
-.notes { margin: 4px 0 0; padding-left: 18px; color: var(--ink-muted); font-size: 12px; line-height: 18px; }
+/* One line on the projection source above the list; the window, rating caveat and notes sit in the list's footnote. */
+.sourceLine { min-width: 0; max-width: 120ch; margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.sourceLine strong { color: var(--ink); }
 .count { margin-left: 8px; color: var(--ink-muted); font-size: 12px; font-weight: 400; }
 
 /* ---------- Desktop table / phone cards: both render, CSS picks one ---------- */
