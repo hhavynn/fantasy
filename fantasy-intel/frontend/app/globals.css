@@ -199,7 +199,8 @@ p { margin: 0 0 8px; }
 .brand-word > span { color: var(--accent); }
 .brand-mark { flex: none; color: var(--accent); }
 .brand-word { display: inline-flex; }
-.nav-groups { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+/* The section links never shrink: the controls on the right give way first (the league chip hides, the sync pill ellipsises). */
+.nav-groups { flex: none; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .nav-groups a { position: relative; display: flex; align-items: center; padding: 0 12px; color: var(--ink-muted); font-weight: 500; white-space: nowrap; }
 .nav-groups a::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 2px 2px 0 0; background: transparent; }
 .nav-groups a:hover { color: var(--ink); text-decoration: none; }
@@ -207,7 +208,7 @@ p { margin: 0 0 8px; }
 .nav-groups a[aria-current] { color: var(--ink); font-weight: 600; }
 .nav-groups a[aria-current]::after { background: var(--accent); }
 .topbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; min-width: 0; white-space: nowrap; }
-.league-chip { font-size: 13px; color: var(--ink-muted); }
+.league-chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: var(--ink-muted); }
 .subnav { display: flex; gap: 2px; align-items: center; height: var(--subnav-h); padding: 0 var(--gutter); max-width: var(--page-max); margin: 0 auto; overflow-x: auto; scrollbar-width: none; }
 .subnav-wrap { border-top: 1px solid var(--line); }
 .subnav a { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; color: var(--ink-muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
@@ -240,7 +241,7 @@ p { margin: 0 0 8px; }
 .mobile-nav { display: none; }
 .menu-toggle { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--ink-muted); cursor: pointer; }
 .menu-toggle:hover, .menu-toggle[aria-expanded="true"] { color: var(--ink); border-color: var(--line-control); }
-.mobile-nav-panel { position: absolute; left: 0; right: 0; top: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; max-height: calc(100dvh - var(--appbar-h) - var(--tabbar-h) - 8px); overscroll-behavior: contain; overflow-y: auto; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-pop); }
+.mobile-nav-panel { position: absolute; left: 0; right: 0; top: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; max-height: calc(100dvh - var(--appbar-h) - var(--tabbar-h)); overscroll-behavior: contain; overflow-y: auto; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-pop); }
 .mobile-nav-group { display: flex; flex-direction: column; gap: 2px; }
 .mobile-nav-title { padding: 0 10px 4px; font-size: 12px; font-weight: 600; color: var(--ink-faint); }
 .mobile-nav-theme { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -279,7 +280,17 @@ p { margin: 0 0 8px; }
   body { padding-bottom: var(--tabbar-h); }
 }
 
-/* Narrow desktops and tablets: the league name (also in each page header) makes room for search and the theme switch. */
+/* The league name is also in each page header; below 1200px it makes room for the section links and controls. */
+@media (max-width: 1200px) { .league-chip { display: none; } }
+
+/* Tablets: the section links, search and switches leave the sync pill only a few characters, so it shows just its
+   health dot; the text stays as the button's accessible name and title, and the popover has the details. */
+@media (min-width: 721px) and (max-width: 880px) {
+  .sync-pill { padding: 5px 9px; gap: 0; }
+  .sync-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+}
+
+/* Narrow desktops and tablets: tighter gaps for search and the theme switch. */
 @media (max-width: 960px) {
   .topbar { gap: 16px; }
   .topbar-end { gap: 8px; }
@@ -307,7 +318,8 @@ p { margin: 0 0 8px; }
   .league-chip { display: none; }
   .menu-toggle { width: 40px; height: 40px; }
 }
-@media (max-width: 380px) { .mobile-nav-panel { grid-template-columns: minmax(0, 1fr); } }
+/* Two columns down to 340px keep every page within about one screen; the narrowest phones get one. */
+@media (max-width: 340px) { .mobile-nav-panel { grid-template-columns: minmax(0, 1fr); } }
 /* 320px phones: brand, search, sync pill and menu button share one row. */
 @media (max-width: 360px) {
   .topbar { gap: 8px; padding: 0 12px; }

@@ -93,21 +93,12 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
 
       <RankingsControls sp={sp} filters={filters} leagueAvailable={data.league_context.available} />
 
-      <div className={styles.sourceLine}>
-        <p>
-          <strong>{data.projection.label}.</strong>{" "}
-          ESPN projections synced {when(f.espn_projections_synced_at)}
-          {showOurs && f.ours_run_created_at && <>; Fantasy Intel run {when(f.ours_run_created_at)}</>}
-          {f.player_scores_as_of_week !== null && <>; ratings and usage as of week {f.player_scores_as_of_week}</>}.
-        </p>
-        <p className="faint">
-          {data.window.label}{data.window.note ? `: ${data.window.note}` : ""}. Ratings are 0–100.0 percentiles within a position
-          (full PPR), not a trade price and not comparable to projected points.
-        </p>
-        {data.notes.length > 0 && (
-          <ul className={styles.notes}>{data.notes.map((n) => <li key={n}>{n}</li>)}</ul>
-        )}
-      </div>
+      <p className={styles.sourceLine}>
+        <strong>{data.projection.label}.</strong>{" "}
+        ESPN projections synced {when(f.espn_projections_synced_at)}
+        {showOurs && f.ours_run_created_at && <>; Fantasy Intel run {when(f.ours_run_created_at)}</>}
+        {f.player_scores_as_of_week !== null && <>; ratings and usage as of week {f.player_scores_as_of_week}</>}.
+      </p>
 
       <SourceNotices data={data} filters={filters} />
 
@@ -127,6 +118,11 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
           : undefined}
         actions={players.length > 0 ? <span className="faint">{from}–{to} of {counts.matched}</span> : undefined}
         flush={players.length > 0}
+        footnote={<>
+          {data.window.label}{data.window.note ? `: ${data.window.note}` : ""}. Ratings are 0–100.0 percentiles within a position
+          (full PPR), not a trade price and not comparable to projected points.
+          {data.notes.length > 0 && <>{" "}{data.notes.join(" ")}</>}
+        </>}
       >
         {players.length > 0 ? (
           <>
