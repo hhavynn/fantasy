@@ -189,10 +189,12 @@ def verdict(r: dict, p: pl.DataFrame, chosen: dict) -> dict:
                                 <= s["cohorts"]["starters_pool"]["ifp2"]["mae"] * 1.01 for s in sub.values()),
         "c6_pairs": pairs["pred_ret"]["accuracy"] >= pairs["pred_ifp2"]["accuracy"] - 0.005,
     }
-    mech = {f"{pos}:{rt.MECHANISM_COHORT}": r[pos]["cohorts"][rt.MECHANISM_COHORT]["ret"]["mae"]
-            - r[pos]["cohorts"][rt.MECHANISM_COHORT]["ifp2"]["mae"]
-            for pos in adopted if r[pos]["cohorts"][rt.MECHANISM_COHORT]["n"]}
-    checks["c7_mechanism"] = bool(mech) and all(v < 0 for v in mech.values())
+    # every adopted position needs its own mechanism evidence: a position with no cohort rows fails (None)
+    mech = {}
+    for pos in adopted:
+        co = r[pos]["cohorts"][rt.MECHANISM_COHORT]
+        mech[f"{pos}:{rt.MECHANISM_COHORT}"] = co["ret"]["mae"] - co["ifp2"]["mae"] if co["n"] else None
+    checks["c7_mechanism"] = all(v is not None and v < 0 for v in mech.values())
     return {"adopted_positions": adopted, "pooled_adopted": pooled, "pooled_adopted_rmse": rmse,
             "pairs_adopted": {m: pairs[f"pred_{m}"] for m in ("ret", "ifp2")}, "checks": checks,
             "mechanism_diffs": mech,
@@ -205,9 +207,18 @@ def cmd_evaluate(args) -> dict:
     frozen = json.loads(_frozen_path(args).read_text())
     if frozen["ifp2_config_hash"] != cfg.hash() or frozen["scoring_fingerprint"] != prov["scoring_fingerprint"]:
         raise SystemExit("frozen selection was made against a different ifp-2 config or league scoring")
+    # the pre-registered experiment is the frozen feature definition and group: a changed implementation must get a
+    # new RET_VERSION (and its own frozen selection), never be confirmed under the old one
+    if frozen.get("feature_version") != rt.RET_VERSION or frozen.get("group") != rt.GROUP \
+            or frozen.get("rules") != rt.DECISION_RULES:
+        raise SystemExit(f"{_frozen_path(args).name} was frozen with a different feature version, group or rules; "
+                         "bump RET_VERSION / RET_CHALLENGER_VERSION instead of re-confirming")
     chosen = frozen["per_position"]
     models = ["ifp2", rt.CANDIDATE, "B", "ret"]
-    out = {"frozen": {k: frozen[k] for k in ("per_position", "config_hash", "frozen_at")}, **prov}
+    # the store fingerprint covers all code and source data, so it legitimately moves with unrelated commits or new
+    # ingested weeks: recorded (not refused) so a rerun on different inputs is visible in evaluation.json
+    out = {"frozen": {k: frozen[k] for k in ("per_position", "config_hash", "frozen_at", "store_fingerprint")},
+           "store_matches_frozen": frozen["store_fingerprint"] == prov["fingerprint"], **prov}
     for name, seasons in (("confirmation", rt.WINDOWS["confirmation"]), ("exploratory", rt.WINDOWS["exploratory"])):
         p = _preds(store, ch.window_weeks(store, seasons), cfg, per_position=chosen)
         p.select("key", "gsis_id", "position", "label", *[f"pred_{m}" for m in models]).write_parquet(
