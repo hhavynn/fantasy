@@ -68,3 +68,6 @@ fantasy-intel/data/staging/
 
 # Personal / league-specific notes (real manager names, scouting). Never commit.
 /local/
+
+# Social trend engine: collected posts, HTTP cache, entity cache (regenerable)
+fantasy-intel/data/social/

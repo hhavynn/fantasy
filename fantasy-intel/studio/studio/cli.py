@@ -8,6 +8,7 @@
     uv run make-episode --week 6 --flame-praise --player bo-nix
     uv run make-episode --week 6 --flame-praise --player bo-nix --treatment courtroom --storyboard
     uv run make-episode --week 6 --format short --style premium   # also render a graphic style (pixel, broadcast, auto)
+    uv run make-episode --week 7 --trend episodes/2026-w07-trends/<idea>.json   # a social trend's lead player
 
 Stages skip themselves when their inputs are unchanged, so a rerun only redoes what changed. QC gates run
 last; the command exits non-zero, and upload stays blocked, if any gate fails. Each episode gets a
@@ -17,9 +18,11 @@ review.md for the human accuracy check.
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import time
+from pathlib import Path
 
 from . import editorial, shows
 from .core import Config, Episode, read_json, sha256_file, write_json
@@ -116,7 +119,7 @@ def editorial_pick(cfg: Config, snap: dict, season: int, week: int, recent: set[
 
 def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str | None,
                 hook: str | None = None, slug_suffix: str = "", presenter_mode: str = "off",
-                style: str = "original", show: str | None = None) -> int:
+                style: str = "original", show: str | None = None, trend: Path | None = None) -> int:
     week_ep = Episode(season, week, "short", cfg, force=force)
     week_ep.dir.mkdir(parents=True, exist_ok=True)
     snapshot.run(week_ep)
@@ -147,6 +150,8 @@ def make_shorts(cfg: Config, season: int, week: int, force: set[str], only: str 
             story = {**story, "show": show}
         if not ep.path("story.json").exists() or read_json(ep.path("story.json")) != story:
             write_json(ep.path("story.json"), story)
+        if trend:            # reviewer context only: not a stage input, never narrated
+            shutil.copyfile(trend, ep.path("trend_brief.json"))
         run_stages(ep, SHORT, hook or cfg["shorts"].get("hook") or None)
         passed = finish(ep)
         styled = render_style(ep, style) if style != "original" else None   # next to final.mp4, never over it
@@ -251,6 +256,10 @@ def main(argv: list[str] | None = None) -> int:
                                     "shorts.voice_clone); written to <slug>-voice-<name>")
     ap.add_argument("--hook", help="Shorts only: force a hook family (e.g. where, talk, warning) for A/B variants; "
                                    "the variant is written to <slug>-hook-<name>")
+    ap.add_argument("--trend", type=Path,
+                    help="Shorts only: a research package from `trends select` (fantasy-intel/social). Builds its lead "
+                         "player's usage Short through the normal stages and QC, and adds the social context to "
+                         "review.md")
     ap.add_argument("--flame-praise", action="store_true",
                     help="Shorts only: the latest game's flame (historically bad line) and praise (monster line) "
                          "Shorts instead of the usage stories; with --player, that player's strongest case")
@@ -288,12 +297,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.flame_praise:
         return make_flame_praise(cfg, season, args.week, force, args.player, args.hook, args.treatment,
                                  args.storyboard, args.variant, args.compare_mix, args.frozen_snapshot)
+    if args.trend:
+        handoff = json.loads(args.trend.read_text()).get("studio_handoff") or {}
+        if not handoff.get("player_slug"):
+            print("the trend package has no lead player with usage data; use it as a manual script brief")
+            return 2
+        args.player = handoff["player_slug"]
     if args.format == "short":
         suffix = ((f"-hook-{args.hook}" if args.hook else "") + (f"-voice-{args.voice}" if args.voice else "")
                   + (f"-show-{args.show}" if args.show else ""))
         style = args.style or (cfg.raw.get("graphics") or {}).get("style", "original")
         return make_shorts(cfg, season, args.week, force, args.player, args.hook, suffix, presenter_mode, style,
-                           args.show)
+                           args.show, args.trend.resolve() if args.trend else None)
     ep = Episode(season, args.week, "long", cfg, force=force)
     ep.dir.mkdir(parents=True, exist_ok=True)
     print(f"episode {ep.id} -> {ep.dir}")
