@@ -354,6 +354,9 @@ def test_rules_are_pre_registered_and_official_scoring_is_untouched():
     # the module never touches labels or league scoring
     src = pathlib.Path(pe.__file__).read_text()
     assert "league_points" not in src and "league_scoring" not in src and '"label"' not in src
+    # and writes nothing: outputs are the research script's, under the git-ignored research directory
+    for verb in ("INSERT ", "UPDATE ", "DELETE ", "CREATE TABLE", "WRITE_PARQUET", "WRITE_TEXT"):
+        assert verb not in src.upper(), verb
 
 
 def test_app_never_imports_the_research_module():
