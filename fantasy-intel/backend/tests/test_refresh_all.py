@@ -521,7 +521,9 @@ def test_shadows_only_runs_just_the_research_shadow_freezes(refresh, evidence_en
     ran = []
     monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: ran.append(cmd) or 3)
     assert refresh.run_evidence(evidence_env, now=TUE, shadows_only=True) == []        # exit 3: the shadow's warnings
-    assert [(Path(c[1]).name, c[2], c[-1]) for c in ran] == [("ctx_shadow.py", "pregame", "7")]
+    assert [(Path(c[1]).name, c[2]) for c in ran] == [          # every research shadow, nothing else
+        ("ctx_shadow.py", "pregame"), ("qb_scenario_shadow.py", "pregame"), ("dst_shadow.py", "pregame"),
+        ("distribution_ledger.py", "freeze"), ("participation_cal_shadow.py", "cycle")]
     text = evidence_env.path.read_text()
     assert "research shadows only" in text and "INFO: Evidence: ctx_shadow pregame week 7 reported" in text
 
@@ -534,7 +536,8 @@ def test_any_pregame_week_step_counts_as_a_research_shadow(refresh, evidence_env
     ran = []
     monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: ran.append(cmd[1]) or 0)
     refresh.run_evidence(evidence_env, now=TUE, shadows_only=True)
-    assert [Path(c).name for c in ran] == ["ctx_shadow.py", "dst"]
+    assert [Path(c).name for c in ran][0] == "ctx_shadow.py" and [Path(c).name for c in ran][-1] == "dst"
+    assert not any(Path(c).name in ("injury_freshness.py", "start_sit_evaluation.py", "espn_benchmark.py") for c in ran)
     assert refresh.is_shadow("dst_shadow pregame week 7") and not refresh.is_shadow("start_sit_evaluation week 7")
     assert refresh.is_shadow("ipm_cal_shadow cycle") and refresh.is_shadow("qb_scenario_shadow pregame week 7")
     assert not refresh.is_shadow("injury_freshness week 7") and not refresh.is_shadow("espn_benchmark week 6")
