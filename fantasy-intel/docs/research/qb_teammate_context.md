@@ -405,6 +405,9 @@ Next, by measured weakness:
    Biggest identified QB error source.
 2. **Calibrated two-QB scenarios**: for the `uncertain` class (57% start rate), mix the two QB profiles
    with a probability fitted on the evidence classes (a logistic model on dev seasons). Do not hand-set it.
+   *Items 1-2 were tested as `ifp-ctx-p2` in [qb_scenario_mixture.md](qb_scenario_mixture.md): the QB
+   MAE gain is 1.3-2.1x p1's and the week-1 failure is fixed, but the development bias guard still fails by 0.035.
+   Not adopted; it needs prospective evidence.*
 3. **Mean-oriented gate for redistribution features**: teammate-out effects improve RMSE and bias but not
    MAE. `expected_points` needs a mean, so a future pre-registration should gate those cohorts on RMSE /
    calibration as well as MAE.
@@ -431,3 +434,5 @@ uv run python ../scripts/context_research.py prospective
 
 Runtime on the local machine: about 30 seconds to build the store plus context (cached by input fingerprint) and under
 10 seconds per walk-forward window.
+
+Follow-up: the returning-teammate-only challenger (`ifp-ret-0.1.0`, `retain_baseline`) is in `returning_teammate_features.md`.
