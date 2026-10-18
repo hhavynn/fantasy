@@ -122,13 +122,15 @@ def test_selection_reads_the_schedule_and_benchmarks_only_a_fully_final_week(ref
         assert (sel["week"], sel["final_week"], asked) == (7, None, [6])
         assert "week 6 is not fully final (2/6 teams final)" in sel["notes"][0]
         assert [label for label, _ in refresh.evidence_steps(sel)] == [
-            "injury_freshness week 7", "start_sit_evaluation week 7", "ctx_shadow pregame week 7"]   # no benchmark
+            "injury_freshness week 7", "start_sit_evaluation week 7", "ctx_shadow pregame week 7",
+            "distribution_ledger pregame week 7"]                                                       # no benchmark
 
         sel = refresh.select_evidence(con, 2026, tue, final=lambda c, s, w: (True, ""))
         assert (sel["week"], sel["final_week"]) == (7, 6)
         steps = dict(refresh.evidence_steps(sel))
         assert list(steps) == ["injury_freshness week 7", "start_sit_evaluation week 7", "ctx_shadow pregame week 7",
-                               "espn_benchmark week 6"]
+                               "distribution_ledger pregame week 7", "espn_benchmark week 6"]
+        assert steps["distribution_ledger pregame week 7"][2:] == ["freeze", "--season", "2026", "--week", "7"]
         assert steps["ctx_shadow pregame week 7"][2:] == ["pregame", "--season", "2026", "--week", "7"]
         assert steps["espn_benchmark week 6"][2:] == ["record", "--season", "2026", "--week", "6"]
         assert steps["injury_freshness week 7"][2] == "report"
@@ -178,7 +180,7 @@ def test_run_evidence_runs_the_three_read_only_scripts(refresh, evidence_env, mo
     assert refresh.run_evidence(evidence_env, now=TUE) == []
     assert [(Path(c[1]).name, c[2], c[-1]) for c in ran] == [
         ("injury_freshness.py", "report", "7"), ("start_sit_evaluation.py", "record", "7"),
-        ("ctx_shadow.py", "pregame", "7"), ("espn_benchmark.py", "record", "6")]
+        ("ctx_shadow.py", "pregame", "7"), ("distribution_ledger.py", "freeze", "7"), ("espn_benchmark.py", "record", "6")]
     text = evidence_env.path.read_text()
     assert "Evidence: season 2026, upcoming week 7, latest fully final week 6" in text and "all steps ok" in text
 
@@ -195,9 +197,9 @@ def test_every_evidence_step_failure_is_reported_and_none_raises(refresh, eviden
 
     monkeypatch.setattr(refresh, "run_step", fake)
     problems = refresh.run_evidence(evidence_env, now=TUE)
-    assert calls == ["injury_freshness.py", "start_sit_evaluation.py", "ctx_shadow.py",
+    assert calls == ["injury_freshness.py", "start_sit_evaluation.py", "ctx_shadow.py", "distribution_ledger.py",
                      "espn_benchmark.py"]                                    # a failure does not stop the rest
-    assert len(problems) == 4
+    assert len(problems) == 5
     text = evidence_env.path.read_text()
     assert "could not run: OSError('boom')" in text and "start_sit_evaluation week 7 exited 1" in text
     assert "espn_benchmark week 6 exited 3" in text
@@ -223,6 +225,22 @@ def test_ctx_shadow_injury_warnings_are_info_and_its_failure_a_warning(refresh, 
         1 if "ctx_shadow" in cmd[1] else 0))
     problems = refresh.run_evidence(evidence_env, now=TUE)
     assert problems == ["ctx_shadow pregame week 7 exited 1 (output above; the refresh exit code is unchanged)"]
+    assert Path(ran[-1]).name == "espn_benchmark.py"
+
+
+def test_distribution_ledger_warnings_are_info_and_its_failure_a_warning(refresh, evidence_env, monkeypatch):
+    """The research distribution ledger's own warnings (exit 3: no artifact yet, a missed week) never count as an
+    evidence problem; a failed run (exit 1) is reported like any other step and does not stop the later steps."""
+    monkeypatch.setattr(refresh, "week_is_final", lambda con, season, week, cache=None: (True, ""))
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: 3 if "distribution_ledger" in cmd[1] else 0)
+    assert refresh.run_evidence(evidence_env, now=TUE) == []
+    assert ("INFO: Evidence: distribution_ledger pregame week 7 reported warnings for its research ledger"
+            in evidence_env.path.read_text())
+    ran = []
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: ran.append(cmd[1]) or (
+        1 if "distribution_ledger" in cmd[1] else 0))
+    problems = refresh.run_evidence(evidence_env, now=TUE)
+    assert problems == ["distribution_ledger pregame week 7 exited 1 (output above; the refresh exit code is unchanged)"]
     assert Path(ran[-1]).name == "espn_benchmark.py"
 
 

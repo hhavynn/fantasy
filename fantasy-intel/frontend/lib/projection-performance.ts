@@ -38,6 +38,16 @@ export type Comparison = {
   by_position: Record<string, ComparisonGroup>; fallback_share?: number | null;
 };
 
+export type RbVolumeGroupKey = "low_volume" | "volume" | "no_recent_games";
+export type RbVolumeGroup = {
+  n: number; weeks_covered: number; required_n: number; required_weeks: number; ours: ErrorStats; espn: ErrorStats;
+  mae_diff: number | null; ci95: Interval; verdict: Verdict; verdict_reason: string; statement: string;
+};
+export type RbVolumeSplit = {
+  threshold: number; groups: RbVolumeGroupKey[]; definition: string; source: string;
+  comparisons: Record<"pure_independent" | "conditional", { n: number; ours_column: string; by_group: Record<RbVolumeGroupKey, RbVolumeGroup> }>;
+};
+
 export type WeeklyError = { week: number; position: Position; n: number; ours_mae: number | null; espn_mae: number | null; model_version: string };
 
 export type DecisionSection = {
@@ -76,6 +86,8 @@ export type PerformanceReport = {
   positions: Record<Position, PositionSummary>;
   comparisons: Record<string, Comparison>;
   weekly: WeeklyError[];
+  /** Absent from reports built before the split existed. */
+  rb_volume_split?: RbVolumeSplit;
   preliminary: { weeks: number[]; note: string | null; by_position: Record<string, { n: number; ours: ErrorStats; espn: ErrorStats }> };
   model_versions: {
     production: string; fallback: string;
@@ -264,6 +276,23 @@ export function decisionModels(s: StartSitSummary, production: string): [string,
 }
 
 /** "1–5" for a run of consecutive weeks, "2, 4, 5" otherwise, "none" when empty. */
+/** Plain-language names for the RB volume groups (backend codes are never shown raw). */
+export function rbVolumeLabel(group: RbVolumeGroupKey, threshold: number): string {
+  if (group === "low_volume") return `Under ${threshold} opportunities a game`;
+  if (group === "volume") return `${threshold}+ opportunities a game`;
+  return "No earlier game this season";
+}
+
+export type RbVolumeRow = { group: RbVolumeGroupKey; label: string } & RbVolumeGroup;
+
+/** Rows of the RB-by-volume table in the report's group order, the published figures unchanged; [] for a report
+ *  built before the split existed. */
+export function rbVolumeRows(report: PerformanceReport, comparison: "pure_independent" | "conditional"): RbVolumeRow[] {
+  const s = report.rb_volume_split;
+  if (!s) return [];
+  return s.groups.map((g) => ({ group: g, label: rbVolumeLabel(g, s.threshold), ...s.comparisons[comparison].by_group[g] }));
+}
+
 export function weeksText(weeks: number[]): string {
   if (weeks.length === 0) return "none";
   const run = weeks.length > 2 && weeks.every((w, i) => i === 0 || w === weeks[i - 1] + 1);

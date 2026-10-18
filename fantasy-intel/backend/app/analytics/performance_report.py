@@ -103,19 +103,33 @@ def _validate(payload, season: int | None, allow_synthetic: bool) -> str | None:
     if not isinstance(positions, dict) or set(positions) != set(POSITIONS):
         return "the report must carry exactly the positions QB, RB, WR and TE"
     for pos, p in positions.items():
-        if p.get("verdict") not in VERDICTS:
-            return f"{pos}: unknown verdict {p.get('verdict')!r}"
-        if p.get("statement") != STATEMENTS[p["verdict"]]:
-            return f"{pos}: the statement does not match the verdict"
-        ci = p.get("ci95")
-        if p["verdict"] in ("ours_better", "espn_better"):
-            # a directional claim needs an interval on one side of zero (the offline build decided on the unrounded
-            # bounds, so a displayed bound may round to 0.0)
-            if not (isinstance(ci, list) and len(ci) == 2 and (ci[1] <= 0 if p["verdict"] == "ours_better" else ci[0] >= 0)):
-                return f"{pos}: a {p['verdict']} verdict without a 95% interval that excludes 0"
+        problem = _verdict_problem(pos, p)
+        if problem:
+            return problem
+    split = payload.get("rb_volume_split")          # optional: reports built before the split stay valid
+    if split is not None:
+        for name, comp in split["comparisons"].items():
+            for group, g in comp["by_group"].items():
+                problem = _verdict_problem(f"RB {group} ({name})", g)
+                if problem:
+                    return problem
     hit = _forbidden(payload)
     if hit:
         return f"the report contains an identifier field ({hit}); only aggregates may be published"
+    return None
+
+
+def _verdict_problem(label: str, p: dict) -> str | None:
+    if p.get("verdict") not in VERDICTS:
+        return f"{label}: unknown verdict {p.get('verdict')!r}"
+    if p.get("statement") != STATEMENTS[p["verdict"]]:
+        return f"{label}: the statement does not match the verdict"
+    ci = p.get("ci95")
+    if p["verdict"] in ("ours_better", "espn_better"):
+        # a directional claim needs an interval on one side of zero (the offline build decided on the unrounded
+        # bounds, so a displayed bound may round to 0.0)
+        if not (isinstance(ci, list) and len(ci) == 2 and (ci[1] <= 0 if p["verdict"] == "ours_better" else ci[0] >= 0)):
+            return f"{label}: a {p['verdict']} verdict without a 95% interval that excludes 0"
     return None
 
 

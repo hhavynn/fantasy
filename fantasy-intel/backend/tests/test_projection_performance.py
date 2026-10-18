@@ -665,3 +665,86 @@ def test_start_sit_never_credits_a_served_fallback_to_the_production_model(live)
     fb = _run_w5(con, src, W5_PRE_A, {1: 20.0}, version=FALLBACK, sha=production_pin.APPROVED_ARTIFACT_SHA256)
     rows, ex = pp.ssx.served_production_rows(con, 2026, [5], FP)
     assert rows == [] and ex == [{"run_id": fb["run_id"], "week": 5, "reason": f"the site served the fallback {FALLBACK}"}]
+
+
+# ----------------------------------------------------------------------------- RB accuracy by volume
+
+
+def test_opportunities_per_game_uses_only_earlier_games_of_the_season():
+    import polars as pl
+
+    panel = pl.DataFrame({"season": [2025, 2026, 2026, 2026, 2026, 2026, 2026, 2026],
+                          "week": [17, 1, 2, 3, 4, 5, 6, 7], "gsis_id": ["a"] * 8,
+                          "carries": [30.0, 1, 2, 3, 4, 5, 6, None], "targets": [0.0, 0, 0, 0, 0, 0, 0, 40]})
+    opp = eb.opportunities_per_game(panel, [(2026, 1, "a"), (2026, 3, "a"), (2026, 7, "a"), (2026, 8, "a"),
+                                            (2026, 5, "b"), (2026, 5, None)])
+    assert opp[(2026, 1, "a")] is None                    # the previous season never counts; no game yet this season
+    assert opp[(2026, 3, "a")] == pytest.approx(1.5)      # weeks 1-2 only: nothing from the week itself or later
+    assert opp[(2026, 7, "a")] == pytest.approx(4.0)      # the last 5 games (weeks 2-6)
+    assert opp[(2026, 8, "a")] == pytest.approx((3 + 4 + 5 + 6 + 40) / 5)
+    assert opp[(2026, 5, "b")] is None and (2026, 5, None) not in opp
+    assert [eb.rb_volume_group(x) for x in (None, 3.99, 4.0)] == ["no_recent_games", "low_volume", "volume"]
+
+
+def _rb_row(week: int, gid: str, actual: float, ours: float, espn: float) -> dict:
+    return {**dict.fromkeys(eb.ROW_KEYS), "season": 2026, "week": week, "gsis_id": gid,
+            "position": "RB", "outcome_status": "appeared", "actual_points": actual, "espn_pred": espn,
+            "ours_independent_pred": ours, "ours_conditional_pred": ours, "ours_origin": eb.OURS,
+            "ours_consumer_pred": ours, "exclusion_reason": None}
+
+
+def test_rb_volume_split_separates_opposite_effects(gate):
+    """Ours 3 points off on low-volume backs (ESPN 1), 1 point off with volume (ESPN 3): pooled, the RB difference is
+    zero; split, ESPN is better on low-volume backs and ours with volume. Week 1 has no earlier game."""
+    import polars as pl
+
+    backs = {f"low{i}": 2.0 for i in range(10)} | {f"vol{i}": 15.0 for i in range(10)}
+    panel = pl.DataFrame([{"season": 2026, "week": w, "gsis_id": g, "carries": o, "targets": 0.0}
+                          for w in range(1, 7) for g, o in backs.items()])
+    rows = []
+    for w in range(1, 7):
+        for i, g in enumerate(backs):
+            sign = 1 if (i + w) % 2 else -1
+            off_ours, off_espn = (3.0, 1.0) if g.startswith("low") else (1.0, 3.0)
+            rows.append(_rb_row(w, g, 10.0, 10.0 + sign * off_ours, 10.0 + sign * off_espn))
+    split = eb.rb_volume_split(rows, panel, eb.BenchmarkConfig(resamples=200))
+    by = split["comparisons"]["pure_independent"]["by_group"]
+    assert {k: v["n"] for k, v in by.items()} == {"low_volume": 50, "volume": 50, "no_recent_games": 20}
+    assert by["low_volume"]["mae_diff"] == pytest.approx(2.0) and by["low_volume"]["verdict"] == "espn_better"
+    assert by["volume"]["mae_diff"] == pytest.approx(-2.0) and by["volume"]["verdict"] == "ours_better"
+    assert by["no_recent_games"]["mae_diff"] == pytest.approx(0.0)
+    assert split["comparisons"]["conditional"]["n"] == 120
+
+
+def test_report_carries_the_rb_split_on_its_own_rb_rows(tmp_path, gate):
+    p = build(make_world(tmp_path / "w.duckdb"))
+    split = p["rb_volume_split"]
+    assert split["threshold"] == 4.0 and split["groups"] == ["low_volume", "volume", "no_recent_games"]
+    for name, n in (("pure_independent", p["positions"]["RB"]["paired_n"]),
+                    ("conditional", p["positions"]["RB"]["conditional"]["n"])):
+        comp = split["comparisons"][name]
+        assert comp["n"] == n == sum(g["n"] for g in comp["by_group"].values())
+        for g in comp["by_group"].values():
+            assert g["statement"] == pr.STATEMENTS[g["verdict"]]
+    assert split["comparisons"]["pure_independent"]["by_group"]["no_recent_games"]["n"] == 16   # week 1's backs
+    assert pr.validate(p, season=2026) is None
+
+
+def test_the_rb_split_faces_the_real_evidence_bar(tmp_path):
+    p = build(make_world(tmp_path / "w.duckdb"))
+    for comp in p["rb_volume_split"]["comparisons"].values():
+        for g in comp["by_group"].values():
+            assert g["verdict"] == "insufficient_evidence" and g["required_n"] == 300
+
+
+def test_reader_checks_the_rb_split_and_accepts_reports_without_it(tmp_path, gate):
+    p = build(make_world(tmp_path / "w.duckdb"))
+    assert pr.validate({k: v for k, v in p.items() if k != "rb_volume_split"}, season=2026) is None
+    bad = json.loads(json.dumps(p))
+    g = bad["rb_volume_split"]["comparisons"]["pure_independent"]["by_group"]["volume"]
+    g["statement"] = pr.STATEMENTS["ours_better" if g["verdict"] != "ours_better" else "espn_better"]
+    assert "RB volume (pure_independent): the statement does not match the verdict" in pr.validate(bad, season=2026)
+    bad = json.loads(json.dumps(p))
+    g = bad["rb_volume_split"]["comparisons"]["conditional"]["by_group"]["low_volume"]
+    g.update(verdict="ours_better", statement=pr.STATEMENTS["ours_better"], ci95=[-1.0, 0.5])
+    assert "without a 95% interval that excludes 0" in pr.validate(bad, season=2026)

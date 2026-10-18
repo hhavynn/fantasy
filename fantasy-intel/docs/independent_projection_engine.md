@@ -451,13 +451,14 @@ the projection tables. The hosted API bundle ships without polars, so there the 
 `scripts/refresh_all.py` (launchd: Thu 15:00, Sun 08:00, Mon 15:00, Tue 08:00 Pacific) now also runs
 the prospective-evidence capture, so no step above depends on remembering to run a script. After the
 ESPN sync, nflverse sync and analytics have finished and the pregame snapshot check has printed, an
-**evidence stage** runs four existing scripts, each as its own process:
+**evidence stage** runs these scripts, each as its own process:
 
 | Step | When | Week |
 | --- | --- | --- |
 | `injury_freshness.py report` | every run | the upcoming week |
 | `start_sit_evaluation.py record` | every run with an upcoming week | the upcoming week |
 | `ctx_shadow.py pregame` | every run with an upcoming week (research shadow, `docs/research/ifp_ctx_shadow_automation.md`) | the upcoming week |
+| `distribution_ledger.py freeze` | every run with an upcoming week (research, `docs/research/fantasy_point_distributions.md` section 17; a retry of the learning cycle's freeze; exit 3 is an `INFO` line) | the upcoming week |
 | `espn_benchmark.py record` | when a fully final week exists | the latest fully final week |
 
 * **Upcoming week** = the earliest regular-season week with a game still to kick off (nflverse
@@ -898,6 +899,11 @@ history database and model directory in persistent hosted storage: new infrastru
 | train | refit champion and challenger with frozen configuration, unless the **training fingerprint** (every training row, label and feature; challenger config hash; production selection and report bytes; scoring fingerprint; versions; target) matches the previous cycle's: then the same artifacts are reused. `--force-retrain` always refits | not pregame any more, or an error |
 | predict | `weekly_learning.py predict` with the exact artifacts of the train stage (not "latest"), pregame only | the target kicked off meanwhile (exit 3) |
 | project | `backtest_independent_projections.py project --week W --through-week L`: the target week's run, then a run for every later regular-season week from the same week-W artifact (see "Rest-of-season projections"); an unchanged run is a no-op; a later week that fails is listed in the report and does not stop the rest | the target week's own run fails |
+
+After `project`, separate models and research run as non-fatal stages (a failure is a warning, never a failed
+cycle): `kicker`, `ctx_shadow` (`docs/research/ifp_ctx_shadow_automation.md`) and `dist_ledger`, which scores the
+frozen point-distribution ledgers of fully final weeks and freezes the target week's distributions around the
+forecast `predict` just froze (`docs/research/fantasy_point_distributions.md` section 17; `--no-dist-ledger` skips it).
 
 A stage failure stops every later stage. Reports: `<out>/reports/cycle-<stamp>-<pid>.json`
 (write-once) and `<out>/status/latest-cycle.json`: status (`forecast_frozen`, `up_to_date`,

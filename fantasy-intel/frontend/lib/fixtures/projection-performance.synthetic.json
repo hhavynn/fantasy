@@ -1377,7 +1377,8 @@
    "Paired: ESPN and the model are scored on exactly the same player-weeks. Players the model could not project show ESPN's number on the site; those fallback rows are counted but never credited to the model.",
    "MAE difference = MAE(ours) - MAE(ESPN): negative means our projections were closer. The interval resamples whole NFL weeks, because player-weeks of one week are correlated; an interval that includes 0 means no established difference.",
    "Mean signed error = mean(actual - projection): positive means the projection was too low on average.",
-   "The production model is served by owner override; that decision is not statistical validation."
+   "The production model is served by owner override; that decision is not statistical validation.",
+   "RB accuracy is also split by pregame volume (carries + targets per game over the back's last games, threshold 4): the model is expected to lose to simpler forecasts on low-volume backs and win with volume, so the pooled RB figure mixes two opposite effects. Each group faces the same evidence bar as a position."
   ],
   "positions": {
    "QB": {
@@ -1788,6 +1789,192 @@
    "start_sit_ready": false,
    "status_note": "Production by owner override, not by evidence: the prospective promotion criteria are not met, its research validation is historical (backtests) only, and it is not shown to be better than ESPN."
   },
+  "rb_volume_split": {
+   "comparisons": {
+    "conditional": {
+     "by_group": {
+      "low_volume": {
+       "ci95": [
+        -3.061,
+        -1.338
+       ],
+       "espn": {
+        "bias": 0.0,
+        "mae": 4.0,
+        "n": 2,
+        "rmse": 4.0
+       },
+       "mae_diff": -2.199,
+       "n": 2,
+       "n_model": 2,
+       "ours": {
+        "bias": -1.801,
+        "mae": 1.801,
+        "n": 2,
+        "rmse": 1.996
+       },
+       "required_n": 30,
+       "required_weeks": 4,
+       "statement": "Insufficient prospective evidence.",
+       "verdict": "insufficient_evidence",
+       "verdict_reason": "2 model-covered rows < 30 required",
+       "weeks_covered": 2
+      },
+      "no_recent_games": {
+       "ci95": [
+        -2.613,
+        -2.613
+       ],
+       "espn": {
+        "bias": 0.0,
+        "mae": 4.0,
+        "n": 16,
+        "rmse": 4.0
+       },
+       "mae_diff": -2.613,
+       "n": 16,
+       "n_model": 16,
+       "ours": {
+        "bias": -0.872,
+        "mae": 1.387,
+        "n": 16,
+        "rmse": 1.685
+       },
+       "required_n": 30,
+       "required_weeks": 4,
+       "statement": "Insufficient prospective evidence.",
+       "verdict": "insufficient_evidence",
+       "verdict_reason": "16 model-covered rows < 30 required",
+       "weeks_covered": 1
+      },
+      "volume": {
+       "ci95": [
+        -2.789,
+        -2.646
+       ],
+       "espn": {
+        "bias": 0.0,
+        "mae": 4.0,
+        "n": 62,
+        "rmse": 4.0
+       },
+       "mae_diff": -2.723,
+       "n": 62,
+       "n_model": 62,
+       "ours": {
+        "bias": -0.965,
+        "mae": 1.277,
+        "n": 62,
+        "rmse": 1.576
+       },
+       "required_n": 30,
+       "required_weeks": 4,
+       "statement": "Fantasy Intel was more accurate than ESPN.",
+       "verdict": "ours_better",
+       "verdict_reason": "95% week-clustered CI of MAE(ours) - MAE(ESPN) is below 0",
+       "weeks_covered": 4
+      }
+     },
+     "n": 80,
+     "ours_column": "ours_conditional_pred"
+    },
+    "pure_independent": {
+     "by_group": {
+      "low_volume": {
+       "ci95": [
+        -3.0,
+        -3.0
+       ],
+       "espn": {
+        "bias": 0.0,
+        "mae": 4.0,
+        "n": 2,
+        "rmse": 4.0
+       },
+       "mae_diff": -3.0,
+       "n": 2,
+       "n_model": 2,
+       "ours": {
+        "bias": 0.0,
+        "mae": 1.0,
+        "n": 2,
+        "rmse": 1.0
+       },
+       "required_n": 30,
+       "required_weeks": 4,
+       "statement": "Insufficient prospective evidence.",
+       "verdict": "insufficient_evidence",
+       "verdict_reason": "2 model-covered rows < 30 required",
+       "weeks_covered": 2
+      },
+      "no_recent_games": {
+       "ci95": [
+        2.0,
+        2.0
+       ],
+       "espn": {
+        "bias": 0.0,
+        "mae": 4.0,
+        "n": 16,
+        "rmse": 4.0
+       },
+       "mae_diff": 2.0,
+       "n": 16,
+       "n_model": 16,
+       "ours": {
+        "bias": -6.0,
+        "mae": 6.0,
+        "n": 16,
+        "rmse": 6.083
+       },
+       "required_n": 30,
+       "required_weeks": 4,
+       "statement": "Insufficient prospective evidence.",
+       "verdict": "insufficient_evidence",
+       "verdict_reason": "16 model-covered rows < 30 required",
+       "weeks_covered": 1
+      },
+      "volume": {
+       "ci95": [
+        -3.0,
+        2.0
+       ],
+       "espn": {
+        "bias": 0.0,
+        "mae": 4.0,
+        "n": 62,
+        "rmse": 4.0
+       },
+       "mae_diff": -0.419,
+       "n": 62,
+       "n_model": 62,
+       "ours": {
+        "bias": -3.097,
+        "mae": 3.581,
+        "n": 62,
+        "rmse": 4.425
+       },
+       "required_n": 30,
+       "required_weeks": 4,
+       "statement": "No statistically established difference.",
+       "verdict": "no_significant_difference",
+       "verdict_reason": "95% week-clustered CI of MAE(ours) - MAE(ESPN) includes 0",
+       "weeks_covered": 4
+      }
+     },
+     "n": 80,
+     "ours_column": "ours_independent_pred"
+    }
+   },
+   "definition": "Pregame opportunities per game: carries + targets averaged over the back's last <= 5 games of the season strictly before the scored week. low_volume < 4, volume >= 4, no_recent_games: no earlier game this season (e.g. week 1, or first appearance).",
+   "groups": [
+    "low_volume",
+    "volume",
+    "no_recent_games"
+   ],
+   "source": "docs/research/rb_projection_diagnostics.md",
+   "threshold": 4.0
+  },
   "schema_version": "projection-performance/v1",
   "season": 2026,
   "start_sit": {
@@ -2065,7 +2252,7 @@
    ]
   }
  },
- "report_sha256": "a3d69ed7467eaa4975fb84417348b36421597ac88fddbe3fde3500c229f88ea1",
+ "report_sha256": "092b4e5a8c12d53023618d6c7863c010498dac8d82427e02cf40e16ea7ce75a4",
  "schema_version": "projection-performance-api/v1",
  "season": 2026,
  "stale": false,

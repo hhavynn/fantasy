@@ -18,7 +18,9 @@ only after every sync and analytics step has exited, so no write connection is o
 database read-only (here and in the four scripts it launches) and runs no sync. It can never fail the
 refresh: each step's problem is logged as a WARNING and the exit code is unchanged. One of them is the
 research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py pregame): it freezes that week's
-write-once pregame ledger once the final injury reports are in, or the main slate is within 6 hours.
+write-once pregame ledger once the final injury reports are in, or the main slate is within 6 hours. Another is the
+frozen pregame point-distribution ledger (scripts/distribution_ledger.py freeze, research only): a retry of the freeze
+learning_cycle.py normally makes right after its pregame forecast.
 """
 
 import argparse
@@ -47,6 +49,7 @@ TIMED_OUT = -999                     # run_step's result for a step killed at it
 EVIDENCE_TIMEOUT_S = 15 * 60         # per evidence step; REFRESH_EVIDENCE_TIMEOUT_S overrides
 START_SIT_NOTHING_ELIGIBLE = 2       # start_sit_evaluation record: no pregame roster row to freeze
 CTX_SHADOW_WARNINGS = 3              # ctx_shadow.py: ran and printed missing/stale injury-evidence WARNING lines
+DIST_LEDGER_WARNINGS = 3             # distribution_ledger.py: ran and printed WARNING lines (no artifact, missed week)
 
 
 def plan(publish: bool) -> list[str]:
@@ -240,6 +243,9 @@ def evidence_steps(sel: dict) -> list[tuple[str, list[str]]]:
         # research shadow (ifp-ctx-p1): gated write-once pregame ledger under data/models/research/context/
         steps.append((f"ctx_shadow pregame week {week}",
                       [py, str(SCRIPTS / "ctx_shadow.py"), "pregame", "--season", season, "--week", week]))
+        # research (ifpd): write-once pregame distribution ledger under data/models/research/point_distributions/
+        steps.append((f"distribution_ledger pregame week {week}",
+                      [py, str(SCRIPTS / "distribution_ledger.py"), "freeze", "--season", season, "--week", week]))
     if sel["final_week"] is not None:
         week = str(sel["final_week"])
         steps.append((f"espn_benchmark week {week}",
@@ -298,6 +304,8 @@ def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = 
             # research shadow only: its injury-evidence warnings are its own WARNING lines above and its run record,
             # never an evidence-stage problem (evidence health must not report a production capture as failed)
             log(f"INFO: {EVIDENCE} {label} reported injury-evidence warnings for the research shadow (see above)")
+        elif code == DIST_LEDGER_WARNINGS and label.startswith("distribution_ledger"):
+            log(f"INFO: {EVIDENCE} {label} reported warnings for its research ledger (see above)")
         elif code != 0:
             warn(f"{label} exited {code} (output above; the refresh exit code is unchanged)")
     log(f"{EVIDENCE} " + (f"{len(problems)} problem(s), see the WARNING lines above" if problems else "all steps ok"))

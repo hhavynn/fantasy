@@ -25,7 +25,10 @@ of it with --no-rest-of-season.
 After the production run, two separate models run as non-fatal stages (a failure is a warning, never a failed cycle):
 `kicker` (kfp-1.0.0) and `ctx_shadow`, the research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py
 cycle: scores its frozen pregame ledgers against actuals alongside ifp-2 and tries the gated write-once freeze; it
-writes only <ifp-dir>/research/context/). Skip them with --no-kicker / --no-ctx-shadow.
+writes only <ifp-dir>/research/context/). Skip them with --no-kicker / --no-ctx-shadow. Then `dist_ledger`, the frozen
+pregame point-distribution ledger (scripts/distribution_ledger.py cycle: scores frozen weeks' interval coverage and
+freezes the target week's distributions from the forecast `predict` just froze; research only, writes only
+<ifp-dir>/research/point_distributions/ledger/; skip with --no-dist-ledger).
 A stage failure stops every later stage. Nothing is backdated, overwritten or replayed: a week whose
 first kickoff passed without a frozen pregame forecast is recorded under <out>/missed/.
 
@@ -337,6 +340,40 @@ def stage_ctx_shadow(args, conns: list, log_path: Path) -> dict:
         return {}
 
 
+DIST_LEDGER_TIMEOUT_S = 15 * 60
+
+
+def stage_dist_ledger(args, conns: list, log_path: Path) -> dict:
+    """Research: the frozen pregame point-distribution ledger (scripts/distribution_ledger.py `cycle`, own process).
+    Scores the interval coverage of every fully final frozen week and freezes the target week's distributions around
+    the pregame forecast this cycle's `predict` stage froze. Never fails the cycle (run_cycle turns an error into a
+    warning); exit 3 means it ran and reported warnings, which are returned."""
+    for con in conns:            # DuckDB: the research process opens its own read-only connection
+        if con is not None:
+            con.close()
+    conns.clear()
+    cmd = [sys.executable, str(SCRIPTS / "distribution_ledger.py"), "cycle", "--season", str(args.season),
+           "--live-db", str(args.live_db), "--weekly-dir", str(args.out)]
+    if args.week is not None:
+        cmd += ["--week", str(args.week)]
+    if getattr(args, "dist_dir", None) is not None:
+        cmd += ["--ifp-dir", str(args.dist_dir)]
+    if getattr(args, "now", None):     # a simulated cycle clock: decide only (dry run, no writes)
+        cmd += ["--now", str(args.now)]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
+                          env={**os.environ, "PYTHONUNBUFFERED": "1"}, timeout=DIST_LEDGER_TIMEOUT_S)
+    out, err = proc.stdout or "", proc.stderr or ""
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"==> distribution_ledger.py cycle {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
+    if proc.returncode not in (0, 3):
+        raise RuntimeError(f"distribution_ledger.py exited {proc.returncode}: {err.strip()[-400:]} (see {log_path})")
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {}
+
+
 def training_fingerprint(args, store, scoring) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
@@ -451,6 +488,22 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                      "error": f"{err.__class__.__name__}: {err}"})
             report["warnings"].append(f"ifp-ctx-p1 shadow stage failed (production runs unaffected): {err}")
 
+    def dist_ledger():
+        """Research (point-distribution ledger), after the production stages: a failure is a warning, never a failure."""
+        if args.no_dist_ledger:
+            return
+        t_d = time.monotonic()
+        try:
+            dl = stage_dist_ledger(args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+            report["dist_ledger"] = dl
+            report["stages"].append({"name": "dist_ledger", "status": "ok", "seconds": round(time.monotonic() - t_d, 2)})
+            report["warnings"] += [f"distribution ledger: {w}" for w in dl.get("warnings") or []]
+        except Exception as err:      # noqa: BLE001
+            report["stages"].append({"name": "dist_ledger", "status": "failed_nonfatal",
+                                     "seconds": round(time.monotonic() - t_d, 2),
+                                     "error": f"{err.__class__.__name__}: {err}"})
+            report["warnings"].append(f"distribution ledger stage failed (production runs unaffected): {err}")
+
     try:
         preflight(args)
         lock = acquire_lock(args.out, now)
@@ -471,6 +524,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         report["missed_window"] = missed_window(args, last_started, kick, now)
         if target is None:
             ctx_shadow()                # the season's last frozen week still needs scoring once it is final
+            dist_ledger()
             raise CycleStop("no_upcoming_week", EXIT_OK, f"no {args.season} regular-season week kicks off after "
                             f"{now.isoformat()}")
         args.week, args.last_week = target, max(kick)
@@ -534,6 +588,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                              "error": f"{err.__class__.__name__}: {err}"})
                     report["warnings"].append(f"kicker projection failed (skill-position run unaffected): {err}")
         ctx_shadow()
+        dist_ledger()
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):
@@ -591,6 +646,10 @@ def parse(argv=None):
                     help="do not run the ifp-ctx-p1 research shadow stage (scripts/ctx_shadow.py cycle)")
     ap.add_argument("--ctx-dir", type=Path, default=None,
                     help="model directory holding research/context/ (default: ctx_shadow.py's, IFP_MODEL_DIR)")
+    ap.add_argument("--no-dist-ledger", action="store_true",
+                    help="do not run the point-distribution ledger stage (scripts/distribution_ledger.py cycle)")
+    ap.add_argument("--dist-dir", type=Path, default=None,
+                    help="model directory holding research/point_distributions/ (default: distribution_ledger.py's)")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (tests and audits only)")
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
     ap.add_argument("--history-db", type=Path, default=cli._path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
@@ -609,7 +668,7 @@ def main(argv=None) -> int:
         return 0
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
-            "training", "forecast", "projection", "kicker_projection", "ctx_shadow", "evaluation", "missed_window",
+            "training", "forecast", "projection", "kicker_projection", "ctx_shadow", "dist_ledger", "evaluation", "missed_window",
             "warnings", "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))
     return code
