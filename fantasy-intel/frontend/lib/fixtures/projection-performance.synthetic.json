@@ -1376,8 +1376,7 @@
    "Unconditional comparison (the headline): every resolved player-week the model projected; a player who did not play scores 0, as in a real lineup. The conditional comparison (players who appeared) is reported separately.",
    "Paired: ESPN and the model are scored on exactly the same player-weeks. Players the model could not project show ESPN's number on the site; those fallback rows are counted but never credited to the model.",
    "MAE difference = MAE(ours) - MAE(ESPN): negative means our projections were closer. The interval resamples whole NFL weeks, because player-weeks of one week are correlated; an interval that includes 0 means no established difference.",
-   "Mean signed error = mean(actual - projection): positive means the projection was too low on average.",
-   "The production model is served by owner override; that decision is not statistical validation."
+   "Mean signed error = mean(actual - projection): positive means the projection was too low on average."
   ],
   "positions": {
    "QB": {

@@ -9,7 +9,7 @@ import styles from "./ProjectionSwitch.module.css";
 
 const CHOICES: { value: ProjectionSource; label: string; title: string }[] = [
   { value: "espn", label: "ESPN", title: "ESPN's weekly projections (default)" },
-  { value: "ours", label: "Ours", title: "Fantasy Intel's own model (research: QB validated vs baselines, RB/WR/TE experimental)" },
+  { value: "ours", label: "Ours", title: "Fantasy Intel's own projection model" },
 ];
 
 /** ESPN / Ours as one radio group. `labels` adds a caption (the menu drawer on phones). */

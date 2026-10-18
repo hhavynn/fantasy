@@ -1,6 +1,6 @@
 import { BackendProblem } from "@/components/BackendProblem";
 import { BarChart } from "@/components/charts";
-import { Badge, EmptyState, Notice, PageHeader, Section } from "@/components/ui";
+import { EmptyState, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import {
   CONTRACT, SOURCE_NAME, chartMovers, eyebrowText, freshnessText, moversQuery, parseMoversState, selectedMover, signedPts,
@@ -13,7 +13,7 @@ import { Detail } from "./Detail";
 import { Answer, RisersFallers } from "./Lists";
 import { MoversMethod } from "./MoversMethod";
 import { MoversTable } from "./MoversTable";
-import { AboutComparison, OursNotices } from "./Notices";
+import { AboutComparison } from "./Notices";
 import styles from "./movers.module.css";
 
 export const metadata = { title: "Projection movers" };
@@ -73,7 +73,6 @@ export default async function MoversPage({ searchParams }: PageProps<"/movers">)
             {d.reason ?? "There are not enough stored forecasts to show movement."}
           </EmptyState>
         </Section>
-        <OursNotices d={d} />
         <AboutComparison d={d} />
         <MoversMethod d={d} />
       </div>
@@ -85,7 +84,6 @@ export default async function MoversPage({ searchParams }: PageProps<"/movers">)
   const meta = (
     <>
       {freshnessText(d)}
-      {d.experimental && <> · <Badge value="Experimental" tone="warn" title="Some forecasts in this comparison look more than one week ahead" /></>}
     </>
   );
 
@@ -94,7 +92,6 @@ export default async function MoversPage({ searchParams }: PageProps<"/movers">)
       <PageHeader eyebrow={eyebrowText(d)} title={TITLE} meta={meta}>{controls}</PageHeader>
       {dropped}
       <Answer d={d} />
-      <OursNotices d={d} />
       <RisersFallers d={d} state={state} selectedId={mover?.espn_player_id ?? null} />
       <AboutComparison d={d} />
 

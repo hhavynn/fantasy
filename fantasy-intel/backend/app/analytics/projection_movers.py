@@ -587,14 +587,9 @@ def movement(con, season: int, *, source: str = "espn", view: str = "ros", posit
 
 
 def _notes(ours: bool, experimental: bool) -> list[str]:
-    if not ours:
+    if not ours or not experimental:
         return []
-    notes = [("Fantasy Intel's production model is approved by an owner override and is not shown to be better than "
-              "ESPN's projections; movement here describes the model, not accuracy.")]
-    if experimental:
-        notes.append("A forecast of a week after the next one is experimental and not validated beyond the next week; "
-                     "here the earlier forecast of each week looks further ahead than the latest.")
-    return notes
+    return ["The earlier forecast of each compared week was made further ahead than the latest one."]
 
 
 def snapshots(con, season: int, source: str) -> list[dict]:

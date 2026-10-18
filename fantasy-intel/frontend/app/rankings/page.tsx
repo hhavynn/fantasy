@@ -32,11 +32,8 @@ function SourceNotices({ data, filters }: { data: RankingsResponse; filters: Ran
   const ours = data.projection.ours;
   if (data.projection.basis === "ours") {
     return (
-      <Notice tone={ours?.experimental ? "caution" : "info"}
-        title={ours?.experimental ? "Ranked by Fantasy Intel projections (experimental)" : "Ranked by Fantasy Intel projections (not proven against ESPN)"}>
-        {ours?.governance_note ?? "Ours is the independent production model. It is opt-in and has not been shown to beat ESPN."}
-        {ours?.experimental && <> Rest-of-season forecasts are experimental and not validated beyond the next week.</>}
-        {" "}ESPN&apos;s number stays beside it. A player with no Ours estimate is listed unranked, never ranked on ESPN&apos;s number.
+      <Notice tone="info" title="Ranked by Fantasy Intel projections">
+        Ours is Fantasy Intel&apos;s own projection model, with ESPN&apos;s number right beside it. A player with no Ours estimate is listed unranked, never ranked on ESPN&apos;s number.
       </Notice>
     );
   }
@@ -169,7 +166,7 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
             Fewer than two games means no rating, shown as a dash. Standard deviation is the spread of weekly PPR points over games played, in raw points.
           </p>
           <p>Rest of season covers the remaining regular-season weeks, the same window for every player. A total is shown only when every week in it is projected (a bye week is
-            not required). Fantasy Intel&apos;s rest-of-season numbers are experimental beyond the next game.</p>
+            not required).</p>
         </div>
       </Method>
     </div>

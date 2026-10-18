@@ -6,30 +6,6 @@ import styles from "./movers.module.css";
 
 const stop = (s: string) => s.replace(/[.\s]+$/, "");
 
-/** Ours only: the forecasts are experimental beyond next week, and the model is not shown to beat ESPN. */
-export function OursNotices({ d }: { d: MoversResponse }) {
-  if (d.source !== "independent") return null;
-  const g = d.governance;
-  const claimed = g?.espn_superiority_established === true;
-  return (
-    <>
-      {d.experimental && (
-        <Notice tone="caution" title="Experimental forecasts">
-          The earlier forecast of each compared week was made from further back than the next week, and the model is only
-          validated for the next week, so treat these movements as exploratory.
-        </Notice>
-      )}
-      {!claimed && (
-        <Notice tone="info" title="Not shown to be better than ESPN">
-          Fantasy Intel&apos;s model is in use by owner approval, not because it was shown to be more accurate than ESPN
-          {g && !g.start_sit_ready ? ", and no position is ready for Start/Sit decisions" : ""}. These movements show how its own
-          outlook changed, not whether the outlook is right.
-        </Notice>
-      )}
-    </>
-  );
-}
-
 /** The caveats that limit the numbers, in one notice: notes, scoring, weeks left out, runs not used. */
 export function AboutComparison({ d }: { d: MoversResponse }) {
   const items: string[] = [];
