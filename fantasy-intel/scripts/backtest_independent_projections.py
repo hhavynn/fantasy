@@ -417,8 +417,12 @@ def cmd_reproject(args, hist, scoring, now: datetime | None = None) -> dict:
         if exits is None and art.config["provenance"].get("pbp_exits_through_week") is not None:
             raise ValueError(f"{path.name} was trained with play-by-play injury evidence, but "
                              f"{args.weekly_dir / 'pbp_exits'} has none (scripts/weekly_learning.py sync-exits)")
-        ppath = args.out / f"participation_{pm.PARTICIPATION_VERSION}.json"
-        part = pm.ParticipationArtifact.from_dict(json.loads(ppath.read_text())) if ppath.exists() else None
+        # the participation model the base run recorded (not whatever version is current); build refuses when
+        # it is missing, so a re-projection never silently drops p_play / expected_points
+        recorded = base["run"].get("participation_version")
+        ppath = args.out / f"participation_{recorded}.json" if recorded else None
+        part = (pm.ParticipationArtifact.from_dict(json.loads(ppath.read_text()))
+                if ppath is not None and ppath.exists() else None)
         src = _sources(con, hist, scoring).with_exits(exits)
         built = fr.build(con, src, art, args.season, week, base=base, participation=part,
                          artifact_sha256=hashlib.sha256(data).hexdigest())
@@ -427,7 +431,8 @@ def cmd_reproject(args, hist, scoring, now: datetime | None = None) -> dict:
             stored = fr.store(con, built)
     else:
         stored = fr.store(None, built)
-    keys = ("base_run_id", "base_run_created_at", "kicked_off_teams", "unknown_kickoff_teams", "reprojected", "carried",
+    keys = ("base_run_id", "base_run_created_at", "kicked_off_teams", "unknown_kickoff_teams",
+            "missing_from_schedule_teams", "reprojected", "carried",
             "dropped_post_kickoff", "changes", "injury_freshness")
     return {"schema": fr.SCHEMA, "season": args.season, "week": week, "model_version": art.version,
             "artifact_id": sha, "artifact_file": path.name, **stored, **{k: built[k] for k in keys},

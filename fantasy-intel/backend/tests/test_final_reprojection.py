@@ -191,6 +191,32 @@ def test_unknown_kickoff_is_never_reprojected(week, monkeypatch):
     assert res["status"] == fr.UNCHANGED                       # player 6's news is not applied: kickoff unprovable
 
 
+def test_a_game_missing_from_the_refreshed_schedule_is_frozen_like_an_unknown_kickoff(week, monkeypatch):
+    """Codex review on #112: a feed gap that drops BBB's whole game must not re-project BBB as a bye."""
+    week.con.execute("DELETE FROM nfl_schedules WHERE season = 2026 AND week = 6 "
+                     "AND (home_team = 'BBB' OR away_team = 'BBB')")
+    built, res = _reproject(week, monkeypatch)
+    assert "BBB" in built["missing_from_schedule_teams"] and "BBB" in built["unknown_kickoff_teams"]
+    assert res["status"] == fr.UNCHANGED                       # player 6's news is not applied: kickoff unprovable
+    assert not any(r["coverage_status"] == "bye" for r in built["rows"] if r.get("nfl_team") == "BBB")
+
+
+def test_refuses_without_the_base_runs_participation_model(week, monkeypatch):
+    """Codex review on #112: a base run made with a participation model is never re-projected without it (that
+    would store rows with no p_play / expected_points as the newest run)."""
+    _at(monkeypatch, FRIDAY)
+    base = fr.base_run(week.con, 2026, 6, PROD, week.art.scoring_fingerprint)
+    with_part = {**base, "run": {**base["run"], "participation_version": "ipm-1.0.0"}}
+    with pytest.raises(fr.ReprojectRefused, match="participation model ipm-1.0.0"):
+        fr.build(week.con, week.src, week.art, 2026, 6, base=with_part, artifact_sha256=week.sha)
+    fr.check_participation(base, None)                         # the base used none: none is right
+    other = SimpleNamespace(version="ipm-9.9.9")
+    with pytest.raises(fr.ReprojectRefused):
+        fr.check_participation(with_part, other)
+    with pytest.raises(fr.ReprojectRefused):
+        fr.check_participation(base, other)                   # the base used none: adding one changes the run
+
+
 def test_in_progress_week_is_the_week_of_the_next_kickoff(week):
     assert fr.in_progress_week(week.con, 2026, WEDNESDAY) == 6
     assert fr.in_progress_week(week.con, 2026, FRIDAY.replace(tzinfo=timezone.utc)) == 6   # after Thursday night

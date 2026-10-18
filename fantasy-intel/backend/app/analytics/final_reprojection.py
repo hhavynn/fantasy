@@ -76,6 +76,18 @@ def check_base(base: dict | None, season: int, week: int, model_version: str) ->
     return sha
 
 
+def check_participation(base: dict, participation) -> None:
+    """The re-projection must use the participation model the base run recorded (its participation_version), or
+    none when the base used none: rebuilding without it would store rows with no p_play / expected_points as the
+    newest verified run, and the consumer view would fall back to ESPN for those players."""
+    recorded = base["run"].get("participation_version")
+    used = getattr(participation, "version", None) if participation is not None else None
+    if recorded != used:
+        raise ReprojectRefused(
+            f"base run {base['run']['run_id']} used participation model {recorded or 'none'}, but the re-projection "
+            f"would use {used or 'none'}: the base run's participation file must be available and reused")
+
+
 def kicked_off(con, season: int, week: int, at) -> tuple[set[str], set[str], dict]:
     """(teams whose kickoff is at or before `at`, teams with an unknown kickoff, {team: kickoff}) for the week's
     scheduled games (injury_freshness.scheduled_kickoffs; teams on a bye have no game and are absent)."""
@@ -166,9 +178,14 @@ def build(con, sources, artifact, season: int, week: int, *, base: dict, partici
     if artifact_sha256 != sha:
         raise ReprojectRefused(f"artifact file sha256 {artifact_sha256[:12]} is not the base run's ({sha[:12]}): a "
                                "re-projection reuses the base run's approved artifact, never a newer model")
+    check_participation(base, participation)
     meta, rows = build_live(con, sources, artifact, season, week, participation=participation,
                             artifact_sha256=artifact_sha256)
     started, unknown, sched = kicked_off(con, season, week, meta["created_at"])
+    # A team that had a game in the base run but is absent from the refreshed schedule (a transient feed gap) has an
+    # unprovable kickoff too: freeze and carry it like an explicit unknown, never re-project it as a bye.
+    missing = {r["nfl_team"] for r in base["rows"] if r.get("opponent") and r.get("nfl_team")} - set(sched)
+    unknown = unknown | missing
     if sched and not (set(sched) - started - unknown):
         raise ReprojectRefused(f"every week-{week} game has kicked off (or has no known kickoff): nothing is still "
                                "pregame, so there is nothing to re-project")
@@ -179,7 +196,8 @@ def build(con, sources, artifact, season: int, week: int, *, base: dict, partici
     same = pf.content_sha256(meta, fresh_new) == pf.content_sha256(base["run"], fresh_base)
     return {"meta": meta, "rows": stored, "base_run_id": base["run"]["run_id"],
             "base_run_created_at": str(base["run"]["created_at"]), "status": UNCHANGED if same else WRITTEN,
-            "kicked_off_teams": sorted(started), "unknown_kickoff_teams": sorted(unknown), **part,
+            "kicked_off_teams": sorted(started), "unknown_kickoff_teams": sorted(unknown),
+            "missing_from_schedule_teams": sorted(missing), **part,
             "changes": changes(base, stored, frozen_ids),
             "injury_freshness": freshness(con, season, week, meta["created_at"], base["run"]["created_at"], sched)}
 
