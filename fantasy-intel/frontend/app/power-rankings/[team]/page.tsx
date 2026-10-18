@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TeamLink } from "@/components/TeamLink";
 import { UnknownTeam } from "@/components/TeamPerspective";
 import { EmptyState, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -16,7 +17,7 @@ export const metadata = { title: "Power rankings team card" };
 export default async function PowerCardPage({ params }: PageProps<"/power-rankings/[team]">) {
   const { team } = await params;
   const sel = readTeamSelection({ team });
-  const header = <PageHeader eyebrow={<Link href={PATH}>Power rankings</Link>} title="Team card" />;
+  const header = <PageHeader eyebrow={<TeamLink href={PATH}>Power rankings</TeamLink>} title="Team card" />;
   if (sel.kind !== "team") {
     return <div className="stack">{header}<UnknownTeam path={PATH} sel={sel} /></div>;
   }
@@ -30,13 +31,13 @@ export default async function PowerCardPage({ params }: PageProps<"/power-rankin
   return (
     <div className="stack">
       <PageHeader
-        eyebrow={<Link href={PATH}>{d.week ? `Power rankings · Week ${d.week}` : "Power rankings"}</Link>}
+        eyebrow={<TeamLink href={PATH}>{d.week ? `Power rankings · Week ${d.week}` : "Power rankings"}</TeamLink>}
         title="Team card"
         meta="One team's power ranking on a single card. Share this page's link, or take a screenshot of the card."
       />
       {d.empty ? (
         <Section>
-          <EmptyState title="Nothing to rank yet" action={<Link href="/playoff-race">See the standings</Link>}>
+          <EmptyState title="Nothing to rank yet" action={<TeamLink href="/playoff-race">See the standings</TeamLink>}>
             <p>{d.message ?? "No team has a complete lineup projection."}</p>
           </EmptyState>
         </Section>

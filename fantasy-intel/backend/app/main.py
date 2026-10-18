@@ -26,6 +26,7 @@ from .api.player_compare import router as player_compare_router
 from .api.rankings import router as rankings_router
 from .api.leagues_v2 import router as leagues_v2_router
 from .api.kicker_projections import router as kicker_projections_router
+from .api.injury_impact import router as injury_impact_router
 from .api.power_rankings import router as power_rankings_router
 
 app = FastAPI(title="fantasy-intel", version="0.1.0")
@@ -77,6 +78,7 @@ app.include_router(player_compare_router)
 app.include_router(rankings_router)
 app.include_router(leagues_v2_router)
 app.include_router(kicker_projections_router)
+app.include_router(injury_impact_router)
 app.include_router(power_rankings_router)
 
 

@@ -25,6 +25,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/start-sit", label: "Start/Sit", summary: "The submitted lineup against the best projected one" },
       { href: "/waivers", label: "Waivers", summary: "Free agents the analysis supports for this roster, with the drop" },
       { href: "/my-team/value", label: "Team value", summary: "Roster value and lineup strength against the league" },
+      { href: "/injury-impact", label: "Injury impact", summary: "Who is out or questionable this week, and whose role could grow" },
     ],
   },
   {

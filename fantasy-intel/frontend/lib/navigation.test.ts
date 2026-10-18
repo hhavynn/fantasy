@@ -71,7 +71,8 @@ test("every page appears once and every group has pages", () => {
   assert.deepEqual(NAV_GROUPS.map((g) => g.label), ["My team", "Players", "Trades", "League"]);
   assert.ok(NAV_GROUPS.every((g) => g.pages.length > 0));
   for (const href of ["/", "/matchup", "/start-sit", "/my-team/value", "/players", "/compare", "/movers", "/waivers", "/trades", "/trades/discover",
-    "/schedule-intelligence", "/weekly-recap", "/luck-lab", "/playoff-race", "/managers", "/power-rankings"]) {
+    "/schedule-intelligence", "/weekly-recap", "/luck-lab", "/playoff-race", "/managers", "/power-rankings",
+    "/injury-impact"]) {
     assert.ok(hrefs.includes(href), `${href} missing from navigation`);
   }
 });
@@ -86,8 +87,8 @@ test("the kicker outlook sits in Players", () => {
 
 const groupOf = (label: string) => NAV_GROUPS.find((g) => g.label === label)!;
 
-test("My team holds this week's decisions for the analyzed roster, Waivers included", () => {
-  assert.deepEqual(groupOf("My team").pages.map((p) => p.href), ["/", "/matchup", "/start-sit", "/waivers", "/my-team/value"]);
+test("My team holds this week's decisions for the analyzed roster, Waivers and Injury impact included", () => {
+  assert.deepEqual(groupOf("My team").pages.map((p) => p.href), ["/", "/matchup", "/start-sit", "/waivers", "/my-team/value", "/injury-impact"]);
   assert.equal(group("/waivers"), "My team");
 });
 
@@ -171,4 +172,11 @@ test("power rankings sit in League right after the weekly recap, and a team card
   assert.equal(group("/power-rankings"), "League");
   assert.deepEqual(NAV_GROUPS[3].pages.map((p) => p.href).slice(0, 2), ["/weekly-recap", "/power-rankings"]);
   assert.equal(getActiveRoute("/power-rankings/4").activeHref, "/power-rankings");
+});
+
+test("injury impact is the last page in My team", () => {
+  assert.equal(getActiveRoute("/injury-impact").activeHref, "/injury-impact");
+  assert.equal(group("/injury-impact"), "My team");
+  const hrefs = NAV_GROUPS[0].pages.map((p) => p.href);
+  assert.equal(hrefs[hrefs.length - 1], "/injury-impact");
 });
