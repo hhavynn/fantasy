@@ -192,7 +192,7 @@ def _preds(store: pl.DataFrame, weeks, cfg, per_position=None) -> pl.DataFrame:
                           candidates=("A", "C"))
     j = preds.join(ref, on=["key", "gsis_id"], how="left", suffix="_cc")
     for m in ("ifp2", "A", "C"):
-        bad = j.filter((pl.col(f"pred_{m}") - pl.col(f"pred_{m}_cc")).abs().fill_null(0.0) > 1e-9
+        bad = j.filter(((pl.col(f"pred_{m}") - pl.col(f"pred_{m}_cc")).abs().fill_null(0.0) > 1e-9)
                        | (pl.col(f"pred_{m}").is_null() != pl.col(f"pred_{m}_cc").is_null()))
         assert bad.height == 0, f"pred_{m} differs from context_challenger.walk_forward"
     print(f"walk-forward {len(weeks)} weeks: {time.time() - t:.0f}s", file=sys.stderr)
