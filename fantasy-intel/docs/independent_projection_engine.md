@@ -741,8 +741,9 @@ forecast); its runs for that week are live views only, never evidence (artifact 
 
 **Real 2026 cases (cutoff week 6; research section 8 for the comparison with `ifp-2.0.0`).** Dameon Pierce week 6
 conditional 7.73 (ifp-2.0.0) -> 12.74 (Saquon Barkley Out, Bigsby and Shipley on IR); Braelon Allen 10.53 -> 13.14;
-week 7 (from week 6): Saquon Barkley P(plays) 0.39 and Breece Hall 0.40 (return rates) instead of ~0.93 / 0.96,
-Pierce's week-7 conditional 10.03 with Saquon's return weighted in.
+week 7 (from week 6, h = 1): Saquon Barkley P(plays) 0.42 and Breece Hall 0.46 (return rates) instead of ~0.93 /
+0.96; week 8 (h = 2): 0.65 / 0.64; week 9 on (h >= 3): the participation model again (0.93 / 0.96). Pierce's week-7
+conditional is 9.79 with Saquon's return weighted in (12.74 in week 6 while Saquon is Out).
 
 **Rollback.** `ifp-2.0.0` is the rollback target and the consumer fallback. It has no single pinned artifact
 (weekly-retrained, approved per artifact in the database), so `model_registry.py plan-rollback` reports it as not

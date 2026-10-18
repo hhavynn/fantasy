@@ -339,7 +339,7 @@ def _ours_reason(idx: dict, n: int, fallback: list[int]) -> str:
            f"passing the artifact and integrity checks; {n} such forecast{'s are' if n != 1 else ' is'} stored."]
     if late:
         out.append(f"{late} stored run{'s were' if late != 1 else ' was'} made after its week's first kickoff and "
-                   "is never compared.")
+                   f"{'are' if late != 1 else 'is'} never compared.")
     if other:
         out.append(f"{other} stored run{'s were' if other != 1 else ' was'} rejected (see skipped).")
     if fallback:
@@ -348,7 +348,7 @@ def _ours_reason(idx: dict, n: int, fallback: list[int]) -> str:
                    "movement across model versions is never shown.")
     if idx["excluded_runs"]:
         out.append(f"{len(idx['excluded_runs'])} run{'s were' if len(idx['excluded_runs']) != 1 else ' was'} made under "
-                   "different league scoring and is never compared.")
+                   f"different league scoring and {'are' if len(idx['excluded_runs']) != 1 else 'is'} never compared.")
     return " ".join(out)
 
 
