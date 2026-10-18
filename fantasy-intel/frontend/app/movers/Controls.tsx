@@ -5,7 +5,7 @@ import styles from "./movers.module.css";
 const VIEWS: MoverView[] = ["ros", "week"];
 const SOURCES: { value: MoverSource; label: string; title: string }[] = [
   { value: "espn", label: "ESPN", title: "ESPN's stored daily projections (default)" },
-  { value: "independent", label: "Ours (experimental)", title: "Fantasy Intel's own model, not shown to be better than ESPN" },
+  { value: "independent", label: "Ours", title: "Fantasy Intel's own projection model" },
 ];
 
 /**

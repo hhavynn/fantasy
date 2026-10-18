@@ -5,7 +5,7 @@ import type { SearchParams } from "@/lib/sort";
 import styles from "./rankings.module.css";
 
 const HORIZONS = [{ value: "week", label: "This week" }, { value: "ros", label: "Rest of season" }] as const;
-const SOURCES = [{ value: "espn", label: "ESPN" }, { value: "ours", label: "Ours (opt-in)" }] as const;
+const SOURCES = [{ value: "espn", label: "ESPN" }, { value: "ours", label: "Ours" }] as const;
 const STATUSES = [{ value: "all", label: "All" }, { value: "rostered", label: "Rostered" }, { value: "available", label: "Available" }] as const;
 
 /** Params the search form carries over as hidden inputs: everything except the search itself and the page. */

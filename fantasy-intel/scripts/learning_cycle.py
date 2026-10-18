@@ -29,7 +29,9 @@ cycle: scores its frozen pregame ledgers against actuals alongside ifp-2 and tri
 writes only <ifp-dir>/research/context/). Skip them with --no-kicker / --no-ctx-shadow. Two more research shadows run
 the same way right after it (RESEARCH_SHADOWS; skip with --no-qb-scenario-shadow / --no-ipm-cal-shadow):
 `qb_scenario_shadow` (ifp-ctx-p2q, scripts/qb_scenario_shadow.py cycle) and `ipm_cal_shadow` (the QB isotonic
-participation map, scripts/participation_cal_shadow.py cycle).
+participation map, scripts/participation_cal_shadow.py cycle). A further research shadow, `dst_shadow`
+(scripts/dst_shadow.py cycle: the D/ST model dfp-r1 vs ESPN; writes only data/models/dst/shadow/), follows them;
+skip it with --no-dst-shadow.
 A stage failure stops every later stage. Nothing is backdated, overwritten or replayed: a week whose
 first kickoff passed without a frozen pregame forecast is recorded under <out>/missed/.
 
@@ -380,6 +382,40 @@ def stage_research_shadow(args, conns: list, log_path: Path, script: str) -> dic
         return {}
 
 
+DST_SHADOW_TIMEOUT_S = 20 * 60       # a possible ESPN fetch, the fit and scoring (about a minute in practice)
+
+
+def stage_dst_shadow(args, conns: list, log_path: Path) -> dict:
+    """Research shadow of the D/ST model dfp-r1 (scripts/dst_shadow.py `cycle`, own process): score the frozen weeks
+    against ESPN's pregame snapshots, record a missed week, and freeze the target week's write-once ledger once Monday
+    night's statistics and the lines are in. Reads the databases read-only; writes only data/models/dst/shadow/ (and
+    the ESPN D/ST cache). Never fails the cycle: run_cycle turns an error into a warning; exit 3 = ran with warnings."""
+    for con in conns:            # DuckDB: the research process opens its own read-only connections
+        if con is not None:
+            con.close()
+    conns.clear()
+    cmd = [sys.executable, str(SCRIPTS / "dst_shadow.py"), "cycle", "--season", str(args.season),
+           "--live-db", str(args.live_db), "--history-db", str(args.history_db)]
+    if args.week is not None:
+        cmd += ["--week", str(args.week)]
+    if getattr(args, "dst_dir", None) is not None:
+        cmd += ["--out", str(args.dst_dir)]
+    if getattr(args, "now", None):     # a simulated cycle clock: dst_shadow.py then decides only (dry run, no writes)
+        cmd += ["--now", str(args.now)]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
+                          env={**os.environ, "PYTHONUNBUFFERED": "1"}, timeout=DST_SHADOW_TIMEOUT_S)
+    out, err = proc.stdout or "", proc.stderr or ""
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"==> dst_shadow.py cycle {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
+    if proc.returncode not in (0, 3):
+        raise RuntimeError(f"dst_shadow.py exited {proc.returncode}: {err.strip()[-400:]} (see {log_path})")
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {}
+
+
 def training_fingerprint(args, store, scoring) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
@@ -511,6 +547,22 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                          "error": f"{err.__class__.__name__}: {err}"})
                 report["warnings"].append(f"{label} stage failed (production runs unaffected): {err}")
 
+    def dst_shadow():
+        """Research shadow (dfp-r1 D/ST), after ctx_shadow: a failure is a warning, never a failed cycle."""
+        if args.no_dst_shadow:
+            return
+        t_d = time.monotonic()
+        try:
+            ds = stage_dst_shadow(args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+            report["dst_shadow"] = ds
+            report["stages"].append({"name": "dst_shadow", "status": "ok", "seconds": round(time.monotonic() - t_d, 2)})
+            report["warnings"] += [f"dfp-r1 shadow: {w}" for w in ds.get("warnings") or []]
+        except Exception as err:      # noqa: BLE001
+            report["stages"].append({"name": "dst_shadow", "status": "failed_nonfatal",
+                                     "seconds": round(time.monotonic() - t_d, 2),
+                                     "error": f"{err.__class__.__name__}: {err}"})
+            report["warnings"].append(f"dfp-r1 shadow stage failed (production runs unaffected): {err}")
+
     try:
         preflight(args)
         lock = acquire_lock(args.out, now)
@@ -532,6 +584,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         if target is None:
             ctx_shadow()                # the season's last frozen week still needs scoring once it is final
             research_shadows()
+            dst_shadow()
             raise CycleStop("no_upcoming_week", EXIT_OK, f"no {args.season} regular-season week kicks off after "
                             f"{now.isoformat()}")
         args.week, args.last_week = target, max(kick)
@@ -596,6 +649,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                     report["warnings"].append(f"kicker projection failed (skill-position run unaffected): {err}")
         ctx_shadow()
         research_shadows()
+        dst_shadow()
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):
@@ -756,6 +810,10 @@ def parse(argv=None):
     ap.add_argument("--ctx-dir", type=Path, default=None,
                     help="model directory holding research/ for the research shadows (default: each script's, "
                          "data/models)")
+    ap.add_argument("--no-dst-shadow", action="store_true",
+                    help="do not run the dfp-r1 D/ST research shadow stage (scripts/dst_shadow.py cycle)")
+    ap.add_argument("--dst-dir", type=Path, default=None,
+                    help="D/ST research directory holding shadow/ (default: dst_shadow.py's, DST_RESEARCH_DIR)")
     ap.add_argument("--week", type=int, default=None, dest="reproject_week",
                     help="reproject: the week to re-project (default: the week of the next kickoff)")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (tests and audits only)")
@@ -789,8 +847,7 @@ def main(argv=None) -> int:
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
             "training", "forecast", "projection", "kicker_projection", "ctx_shadow", *(r[0] for r in RESEARCH_SHADOWS),
-            "evaluation", "missed_window",
-            "warnings", "exit_code")
+            "dst_shadow", "evaluation", "missed_window", "warnings", "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))
     return code
 

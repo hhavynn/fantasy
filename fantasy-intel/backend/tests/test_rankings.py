@@ -651,11 +651,13 @@ def test_ours_bye_is_still_a_bye(league):
     assert hotel["projection"]["status"] == "bye" and hotel["rank"]["overall"] is None
 
 
-def test_ours_rest_of_season_is_experimental_and_labeled(league):
+def test_ours_rest_of_season_is_flagged_and_labeled_without_hedging(league):
     body = get(league, source="independent", horizon="ros")
     ours = body["projection"]["ours"]
-    assert ours["available"] and ours["experimental"] is True
-    assert "experimental" in (ours["label"] or "").lower() or "experimental" in json.dumps(body["notes"]).lower()
+    assert ours["available"] and ours["experimental"] is True          # the horizon flag stays in the API
+    assert ours["label"].startswith("Fantasy Intel projections (")
+    shown = (ours["label"] + json.dumps(body["notes"])).lower()
+    assert "experimental" not in shown and "owner override" not in shown and "better than espn" not in shown
     r = rows(body)
     assert r[101]["projection"]["value"] == r[101]["projection"]["ours"] == 8 * OURS[101]
     assert r[101]["projection"]["espn"] == espn_ros(101)

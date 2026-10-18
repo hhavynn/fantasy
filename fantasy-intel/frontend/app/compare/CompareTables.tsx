@@ -59,7 +59,6 @@ function RowView({ row, r }: { row: DisplayRow; r: CompareResponse }) {
       <th scope="row" className={styles.measure}>
         <span className={styles.measureName}>
           {row.label}
-          {row.experimental ? <> <Badge value="Experimental" tone="warn" title="Rest-of-season totals from our model are not validated beyond the next week" /></> : null}
         </span>
         <span className={styles.unit}>{row.unit}</span>
         {note ? <span className={styles.note}>{note}</span> : null}

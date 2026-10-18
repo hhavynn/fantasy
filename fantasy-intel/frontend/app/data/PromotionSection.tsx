@@ -43,9 +43,8 @@ export function PromotionSection({ t }: { t: PromotionTracker }) {
     >
       <div className={styles.block}>
         <p className={styles.meta}>
-          Model <b>{t.model_version}</b> is production by owner override, not by these criteria: its validation so far is
-          historical research only and it is not shown to be better than ESPN. A position can be called Start/Sit-ready only
-          after it passes the frozen criteria (held-out improvement of at least {barText} over the better trailing baseline
+          Model <b>{t.model_version}</b> powers Ours. Each position tracks toward these benchmarks: a position is marked
+          Start/Sit-ready once it passes the frozen criteria (held-out improvement of at least {barText} over the better trailing baseline
           with a 95% CI below 0, then at least {c.espn_min_matched_per_position} matched pregame ESPN observations with MAE
           no worse than ESPN).
         </p>
@@ -67,12 +66,14 @@ export function PromotionSection({ t }: { t: PromotionTracker }) {
             <tbody>
               {t.positions.map(({ position, model: m, espn: e }) => {
                 const st = m.status ? STATUS_LABEL[m.status] ?? { text: m.status, tone: "" } : null;
+                // the production model's reasons are the backend's governance wording, not a per-position finding
+                const why = m.status === "owner_override" ? undefined : m.reasons.join("; ") || undefined;
                 const clears = clearsBar(m.relative_mae_improvement, bar);
                 const share = matchedProgress(e.n, e.required);
                 return (
                   <tr key={position}>
                     <td><Pos value={position} /></td>
-                    <td>{st ? <Badge value={st.text} tone={st.tone} title={m.reasons.join("; ") || undefined} /> : <Missing why="No stored held-out evaluation" />}</td>
+                    <td>{st ? <Badge value={st.text} tone={st.tone} title={why} /> : <Missing why="No stored held-out evaluation" />}</td>
                     <td className="num">
                       {m.relative_mae_improvement === null ? <Missing why="No stored held-out evaluation" /> : (
                         <span className={cx(clears ? styles.clears : styles.short)} title={clears ? "Clears the bar" : "Below the bar"}>
@@ -100,7 +101,7 @@ export function PromotionSection({ t }: { t: PromotionTracker }) {
                     </td>
                     <td>
                       {m.start_sit_ready === null ? <Missing why="No stored held-out evaluation" /> : (
-                        <Badge value={m.start_sit_ready ? "Ready" : "Not ready"} tone={m.start_sit_ready ? "good" : ""} title={m.reasons.join("; ") || undefined} />
+                        <Badge value={m.start_sit_ready ? "Ready" : "Not ready"} tone={m.start_sit_ready ? "good" : ""} title={why} />
                       )}
                     </td>
                   </tr>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { conditions, headline, splitPlayers, statLineText, statusText, type KickerContext, type KickerPlayer } from "./kickers.ts";
+import { conditions, headline, rowFlags, splitPlayers, statLineText, statusText, type KickerContext, type KickerPlayer } from "./kickers.ts";
 
 const ctx = (over: Partial<KickerContext> = {}): KickerContext => ({
   expected_kicker_basis: "kicked the team's last game",
@@ -53,4 +53,10 @@ test("status, stat line and headline text", () => {
     p_make_by_distance: { "0_39": 0.96, "40_49": 0.84, "50_59": 0.72, "60_plus": 0.55 } }),
   "1.7/2.0 FG (0.9 / 0.5 / 0.3 / 0.0) · 2.3/2.4 PAT");
   assert.equal(headline(player(1, "projected", 7)), "Strong kicking outlook");
+});
+
+test("rowFlags drops the rest-of-season horizon flag and keeps the rest", () => {
+  const flags = ["rest-of-season kicker forecast (horizon 2): experimental, not validated beyond the next week", "new signing"];
+  assert.deepEqual(rowFlags(flags), ["new signing"]);
+  assert.deepEqual(rowFlags([]), []);
 });

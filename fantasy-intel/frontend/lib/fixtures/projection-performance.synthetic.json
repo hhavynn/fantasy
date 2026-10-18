@@ -1376,8 +1376,7 @@
    "Unconditional comparison (the headline): every resolved player-week the model projected; a player who did not play scores 0, as in a real lineup. The conditional comparison (players who appeared) is reported separately.",
    "Paired: ESPN and the model are scored on exactly the same player-weeks. Players the model could not project show ESPN's number on the site; those fallback rows are counted but never credited to the model.",
    "MAE difference = MAE(ours) - MAE(ESPN): negative means our projections were closer. The interval resamples whole NFL weeks, because player-weeks of one week are correlated; an interval that includes 0 means no established difference.",
-   "Mean signed error = mean(actual - projection): positive means the projection was too low on average.",
-   "The production model is served by owner override; that decision is not statistical validation."
+   "Mean signed error = mean(actual - projection): positive means the projection was too low on average."
   ],
   "positions": {
    "QB": {
@@ -2065,7 +2064,7 @@
    ]
   }
  },
- "report_sha256": "a3d69ed7467eaa4975fb84417348b36421597ac88fddbe3fde3500c229f88ea1",
+ "report_sha256": "2ac7e19c765812da9180f3355ad760b68d53cdd1859452b7d1a87b794eb157cd",
  "schema_version": "projection-performance-api/v1",
  "season": 2026,
  "stale": false,

@@ -486,11 +486,6 @@ def build_rankings(con, *, position: str = "ALL", horizon: str = "week", source:
                           "run_ids": [r["run_id"] for r in ours["runs"]],
                           "run_created_at": _newest(r["created_at"] for r in ours["runs"]),
                           "experimental": exp, "label": label, "governance_note": gov}
-            if horizon == "ros":
-                notes.append("Ours rest of season is experimental: ifp-2 horizons beyond the next game remain "
-                             "experimental.")
-            if gov:
-                notes.append(gov)
         else:
             ours_block = {"available": False, "reason": ours["reason"], "model_version": ps.MODEL_VERSION,
                           "model_versions": [], "run_ids": [], "run_created_at": None, "experimental": False,

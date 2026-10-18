@@ -97,7 +97,8 @@ def test_production_status_is_the_owner_override_not_the_frozen_artifact_text(tr
     for p in t["positions"]:
         assert p["model"]["status"] == ps.OVERRIDE_STATUS and p["model"]["start_sit_ready"] is False
         assert "owner override" in p["model"]["reasons"][0]
-    assert any("owner override" in n for n in t["notes"])
+    assert any("production model behind Ours" in n for n in t["notes"])
+    assert not any("owner override" in n or "better than ESPN" in n for n in t["notes"])
     assert not any("not used in lineups" in n for n in t["notes"])
 
 

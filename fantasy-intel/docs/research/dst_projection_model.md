@@ -4,7 +4,8 @@ Date: 2026-10-17. Code:
 
 * `backend/app/analytics/dst_research.py`: scoring, ESPN payloads, game table, ratings, stack, metrics.
 * `scripts/dst_research.py`: `fetch`, `reconcile`, `evaluate`.
-* Tests: `backend/tests/test_dst_research.py`.
+* `scripts/dst_shadow.py`: the prospective shadow (section 7).
+* Tests: `backend/tests/test_dst_research.py`, `backend/tests/test_dst_shadow.py`.
 
 Data:
 
@@ -301,17 +302,18 @@ used:
 
 Do **not** use it for multi-week (rest-of-season) D/ST planning.
 
-Follow-ups, in order:
+Follow-ups, in order (all three now run as part of the shadow, section 7):
 
 1. **Prospective record with real-time lines.** Each week, write a write-once D/ST run that uses the
-   `team_game_lines` line at projection time. Score it against ESPN's pregame snapshot
-   (`espn_projection_history`, already league-scored) for at least 8 weeks, the repo's shadow-promotion
-   minimum.
+   line stored at projection time. Score it against ESPN's pregame snapshot (`espn_projection_history`,
+   already league-scored) for at least 8 weeks, the repo's shadow-promotion minimum. *Built:* `dst_shadow.py`.
 2. **Multi-week vs ESPN, prospectively.** `espn_projection_history` holds ESPN's league-scored weekly
    projections for weeks 6-17 from each snapshot date. Score them at horizons 1-4 against the ratings-only
-   model as weeks complete.
-3. **A simpler production candidate.** Line + league means alone gets ~90% of the edge (4.2). If it is ever
-   productionised, that is the cheaper, more robust form.
+   model as weeks complete. *Built:* every ledger freezes the ratings-only model at horizons 1-4 next to ESPN's
+   projection from the snapshot at freeze time.
+3. **A simpler production candidate.** Line + league means alone gets ~90% of the edge (4.1). If it is ever
+   productionised, that is the cheaper, more robust form. *Built:* it is a second shadow row (`pred_line_only`)
+   with its own gate verdict.
 
 Reproduce:
 
@@ -324,3 +326,92 @@ uv run python ../scripts/dst_research.py evaluate
 
 `evaluate` writes `data/models/dst/dst_evaluation.json` and `dst_predictions.csv` (git-ignored). It runs in
 about 10 seconds.
+
+## 7. Prospective shadow (dfp-r1 vs ESPN, from 2026 week 7)
+
+`scripts/dst_shadow.py` runs the frozen model every week as a **shadow challenger** to ESPN's one-week D/ST
+projection. It does not replace ESPN: D/ST in `projection_source.weekly()` stays ESPN, nothing in `backend/app`
+imports the model or reads the shadow's files, and the model is not in the registry or the production pin
+(`test_dst_research.py` enforces the first part: only `dst_research.py` and `dst_shadow.py` import the model, and
+`learning_cycle.py` / `refresh_all.py` only launch `dst_shadow.py` as a separate process).
+
+No new scheduler. Two existing jobs call it:
+
+| Job (existing) | When | Runs | Does |
+|---|---|---|---|
+| `learning_cycle.py`, stage `dst_shadow` after `ctx_shadow` | Tue/Wed/Thu 07:00 PT | `dst_shadow.py cycle --week <target>` | scores every fully final frozen week, records a missed week, freezes the target week (normally here) |
+| `refresh_all.py` read-only evidence stage, and every pregame-guard run | Thu 15:00, Sun 08:00, Mon 15:00, Tue 08:00 PT, plus within 6 h of a kickoff | `dst_shadow.py pregame --week <upcoming>` | the same gated freeze, if the cycle could not |
+
+Both stages are non-fatal: a failure is `failed_nonfatal` plus a warning in the cycle report, or a WARNING line in
+the refresh log, and no exit code changes. Skip the cycle stage with `--no-dst-shadow`.
+
+**Freeze rule** (fixed in `dst_shadow.py` before any prospective week). One write-once ledger per week, frozen as
+**early** as the inputs are complete, because the decision it serves (a mid-week stream) is made then:
+
+* every game of the previous week has a final score in `nfl_schedules`, and every final game of the season has its
+  ESPN D/ST statistics in the cache (the ratings use the full previous week);
+* every team that has not kicked off has a spread and a total.
+
+If either is missing the freeze is deferred, unless an open team kicks off within 6 hours. Then it is frozen
+anyway, a team without a line gets the ratings-only projection, and every gap is a warning. Teams that already
+kicked off are excluded and never backfilled. In practice the Tuesday cycle freezes the week (Monday night is
+final, and the nflverse lines for the next week are posted), so the Thursday game is included. Freezing early
+means the line is an early-week line, not the closing line the backtest used: section 4.2 shows the MAE edge
+survives 2-3 points of line error and the ranking edge shrinks, which is exactly what this record will measure.
+
+**What a ledger holds** (`data/models/dst/shadow/ledger/s<S>w<WW>-pregame.json`, write-once), per open team:
+
+* `pred`: dfp-r1 (ratings + line; half-life 16, offseason gap 6, k 3, pressure off; the stack is fitted on
+  2020 .. season − 1 and the ratings use games through week − 1);
+* `pred_line_only`: the line + league means baseline (follow-up 3);
+* `pred_ratings_only`: the no-line model;
+* the line as stored at freeze time: `spread_line`, `total_line`, `margin`, `implied_opp`, `has_line`;
+* `espn_at_freeze`: ESPN's league-scored projection from the latest `espn_projection_history` snapshot synced at
+  or before the freeze, with its `synced_at`;
+* the expected components, λ_TD and P(any TD).
+
+`multi_week` holds the ratings-only model at horizons 1-4 (weeks W .. W+3, every scheduled team; information
+through W − 1) with ESPN's projection for the same team-week from the same snapshot (follow-up 2).
+
+Provenance: the decision (open, started, unknown-kickoff and no-line teams), the scoring fingerprint, the three
+configurations and their hash, the training seasons and row count, the lines (each open team's spread and total,
+the nflverse sync time, a sha256), the sha256 and fetch time of every ESPN cache file, the sha256 of the
+model module and both scripts, and a sha256 of the rows.
+
+ESPN's D/ST statistics come from `dst_research.py fetch` (its public read API, cached under `data/raw/espn_dst`,
+git-ignored). A fetch happens only when the cache misses a final game, never in a dry run or with `--no-fetch`.
+
+**Scoring** (every cycle, recomputed so stat corrections land). A frozen week counts once every game is final and
+ESPN's actual league points (`espn_player_weekly_points`, reconciled exact in section 1) exist for every ledger
+team. The baseline is ESPN's pregame projection: the latest snapshot synced strictly before the team's own
+kickoff. A snapshot taken after kickoff never counts. `shadow/scores.json` reports, on common support:
+
+* per week and pooled: MAE, bias, within-week Spearman and pair-order accuracy for dfp-r1, line-only and ESPN
+  pregame, with week-block bootstrap 90% CIs of the differences;
+* the same against ESPN at freeze time (equal information time);
+* multi-week, per horizon: ratings-only vs ESPN at freeze, and vs ESPN pregame.
+
+**Gate** (pre-registered, `dst_shadow.py::GATE`, against ESPN pregame): at least 8 scored weeks, then the test-set
+criteria of section 3: MAE-difference CI upper bound below 0, Spearman-difference CI lower bound above −0.02,
+|bias| ≤ 0.5. Until 8 weeks it reports `accumulating`; after that `passes` or `fails` for dfp-r1 and for
+line-only separately. A pass promotes nothing by itself: wiring a D/ST model into `projection_source` is a
+separate change with its own review.
+
+Files under `data/models/dst/shadow/`: `ledger/` (write-once), `runs/` (one write-once record per attempt,
+including deferrals and failures), `missed/` (a prospective week that started without a ledger; never
+backfilled) and `scores.json` (replaced).
+
+Manual use (from `backend/`):
+
+```bash
+uv run python ../scripts/dst_shadow.py pregame --week W                          # the gated freeze
+uv run python ../scripts/dst_shadow.py pregame --week W --now 2026-10-20T15:00Z  # evaluate the rule at a time (dry run)
+uv run python ../scripts/dst_shadow.py cycle   --week W                          # what learning_cycle runs
+uv run python ../scripts/dst_shadow.py score
+uv run python ../scripts/dst_shadow.py status
+```
+
+A forced run on the live database on 2026-10-18 (week 7, 28 open teams; not a frozen ledger) took about 1 second.
+The projections correlated −0.985 with the opponent's implied total, and averaged 0.56 points above ESPN's
+latest snapshot (section 4.3 found ESPN under-projects by 0.76). The real week-7 freeze was deferred because
+DAL-PHI had no line yet.

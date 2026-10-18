@@ -123,16 +123,17 @@ def test_selection_reads_the_schedule_and_benchmarks_only_a_fully_final_week(ref
         assert "week 6 is not fully final (2/6 teams final)" in sel["notes"][0]
         assert [label for label, _ in refresh.evidence_steps(sel)] == [
             "injury_freshness week 7", "start_sit_evaluation week 7", "ctx_shadow pregame week 7",
-            "qb_scenario_shadow pregame week 7", "ipm_cal_shadow cycle"]   # no benchmark
+            "qb_scenario_shadow pregame week 7", "dst_shadow pregame week 7", "ipm_cal_shadow cycle"]   # no benchmark
 
         sel = refresh.select_evidence(con, 2026, tue, final=lambda c, s, w: (True, ""))
         assert (sel["week"], sel["final_week"]) == (7, 6)
         steps = dict(refresh.evidence_steps(sel))
         assert list(steps) == ["injury_freshness week 7", "start_sit_evaluation week 7", "ctx_shadow pregame week 7",
-                               "qb_scenario_shadow pregame week 7", "ipm_cal_shadow cycle",
-                               "espn_benchmark week 6"]
+                               "qb_scenario_shadow pregame week 7", "dst_shadow pregame week 7",
+                               "ipm_cal_shadow cycle", "espn_benchmark week 6"]
         assert steps["ctx_shadow pregame week 7"][2:] == ["pregame", "--season", "2026", "--week", "7"]
         assert steps["qb_scenario_shadow pregame week 7"][2:] == ["pregame", "--season", "2026", "--week", "7"]
+        assert steps["dst_shadow pregame week 7"][2:] == ["pregame", "--season", "2026", "--week", "7"]
         assert steps["ipm_cal_shadow cycle"][2:] == ["cycle", "--season", "2026"]
         assert steps["espn_benchmark week 6"][2:] == ["record", "--season", "2026", "--week", "6"]
         assert steps["injury_freshness week 7"][2] == "report"
@@ -183,7 +184,7 @@ def test_run_evidence_runs_the_three_read_only_scripts(refresh, evidence_env, mo
     assert refresh.run_evidence(evidence_env, now=TUE) == []
     assert [(Path(c[1]).name, c[2], c[-1]) for c in ran] == [
         ("injury_freshness.py", "report", "7"), ("start_sit_evaluation.py", "record", "7"),
-        ("ctx_shadow.py", "pregame", "7"), ("qb_scenario_shadow.py", "pregame", "7"),
+        ("ctx_shadow.py", "pregame", "7"), ("qb_scenario_shadow.py", "pregame", "7"), ("dst_shadow.py", "pregame", "7"),
         ("participation_cal_shadow.py", "cycle", "2026"), ("espn_benchmark.py", "record", "6")]
     text = evidence_env.path.read_text()
     assert "Evidence: season 2026, upcoming week 7, latest fully final week 6" in text and "all steps ok" in text
@@ -202,8 +203,8 @@ def test_every_evidence_step_failure_is_reported_and_none_raises(refresh, eviden
     monkeypatch.setattr(refresh, "run_step", fake)
     problems = refresh.run_evidence(evidence_env, now=TUE)
     assert calls == ["injury_freshness.py", "start_sit_evaluation.py", "ctx_shadow.py", "qb_scenario_shadow.py",
-                     "participation_cal_shadow.py", "espn_benchmark.py"]     # a failure does not stop the rest
-    assert len(problems) == 6
+                     "dst_shadow.py", "participation_cal_shadow.py", "espn_benchmark.py"]     # a failure does not stop the rest
+    assert len(problems) == 7
     text = evidence_env.path.read_text()
     assert "could not run: OSError('boom')" in text and "start_sit_evaluation week 7 exited 1" in text
     assert "espn_benchmark week 6 exited 3" in text
@@ -245,6 +246,16 @@ def test_the_other_research_shadows_warnings_are_info_and_their_failures_warning
         "qb_scenario_shadow pregame week 7 exited 1 (output above; the refresh exit code is unchanged)",
         "ipm_cal_shadow cycle exited 1 (output above; the refresh exit code is unchanged)"]
 
+
+def test_dst_shadow_input_warnings_are_info_and_its_failure_a_warning(refresh, evidence_env, monkeypatch):
+    """The D/ST research shadow's own missing-input warnings (exit 3) are not an evidence problem; a failed run is."""
+    monkeypatch.setattr(refresh, "week_is_final", lambda con, season, week, cache=None: (True, ""))
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: 3 if "dst_shadow" in cmd[1] else 0)
+    assert refresh.run_evidence(evidence_env, now=TUE) == []
+    assert "INFO: Evidence: dst_shadow pregame week 7 reported missing-input warnings" in evidence_env.path.read_text()
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: 1 if "dst_shadow" in cmd[1] else 0)
+    assert refresh.run_evidence(evidence_env, now=TUE) == [
+        "dst_shadow pregame week 7 exited 1 (output above; the refresh exit code is unchanged)"]
 
 SLEEPER = [sys.executable, "-c", "import os, time; print(os.getpid(), flush=True); time.sleep(60)"]
 

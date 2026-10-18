@@ -269,10 +269,10 @@ export function unknownPlayerSide(detail: string | null | undefined): { side: Si
   return { side: m[1] as Side, id: idMatch ? Number(idMatch[1]) : null };
 }
 
-/** "Projections: ESPN" or "Projections: ESPN + Ours (experimental beyond next week)". */
+/** "Projections: ESPN" or "Projections: ESPN + Ours". */
 export function projectionSourceLine(source: CompareSource | "ours" | "espn" | null | undefined): string {
   return source === "independent" || source === "ours"
-    ? "Projections: ESPN + Ours (experimental beyond next week)"
+    ? "Projections: ESPN + Ours"
     : "Projections: ESPN";
 }
 
@@ -732,9 +732,6 @@ export function nextWeekOurs(card: CompareCard): { kind: OursNextKind; value: nu
   if (nw.ours_origin === "ours" && finite(nw.ours)) return { kind: "ours", value: nw.ours };
   return { kind: "missing", value: null };
 }
-
-export const ROS_OURS_CAUTION =
-  "Experimental: our model is validated for the next week only. A rest-of-season total sums forecasts made further ahead and is not shown to be better than ESPN's.";
 
 // ----------------------------------------------------------------------------------- shape guard --
 
