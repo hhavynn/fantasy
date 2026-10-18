@@ -94,11 +94,30 @@ NGS_METRICS = {
 FFO_METRICS = ["total_fantasy_points_exp", "rec_fantasy_points_exp", "rush_fantasy_points_exp",
                "pass_fantasy_points_exp", "rec_yards_gained_exp", "rush_yards_gained_exp", "receptions_exp"]
 
-PARTICIPATION_METRICS: dict[str, pl.Expr] = {   # scope: plays joined to a pbp dropback / scrimmage play
-    "was_pressure": DROPBACK, "time_to_throw": PASS_ATTEMPT, "number_of_pass_rushers": DROPBACK,
-    "defenders_in_box": SCRIMMAGE, "offense_formation": SCRIMMAGE, "offense_personnel": SCRIMMAGE,
-    "defense_coverage_type": DROPBACK, "defense_man_zone_type": DROPBACK, "route": None,
+# metric -> (column, scope) on plays joined to pbp. `route` is the targeted receiver's route, so it exists only on
+# pass attempts. Pressure and coverage are reported twice: over all dropbacks, and over pass attempts only. NGS-era
+# files (2016-2022) code them on attempts but leave sacks and scrambles null.
+PARTICIPATION_METRICS: dict[str, tuple[str, pl.Expr]] = {
+    "was_pressure": ("was_pressure", DROPBACK),
+    "was_pressure_pass_attempts": ("was_pressure", PASS_ATTEMPT),
+    "time_to_throw": ("time_to_throw", PASS_ATTEMPT),
+    "number_of_pass_rushers": ("number_of_pass_rushers", DROPBACK),
+    "defenders_in_box": ("defenders_in_box", SCRIMMAGE),
+    "offense_formation": ("offense_formation", SCRIMMAGE),
+    "offense_personnel": ("offense_personnel", SCRIMMAGE),
+    "defense_coverage_type": ("defense_coverage_type", DROPBACK),
+    "defense_coverage_type_pass_attempts": ("defense_coverage_type", PASS_ATTEMPT),
+    "defense_man_zone_type": ("defense_man_zone_type", DROPBACK),
+    "defense_man_zone_type_pass_attempts": ("defense_man_zone_type", PASS_ATTEMPT),
+    "route": ("route", PASS_ATTEMPT),
 }
+
+
+def _missing(frame: pl.DataFrame, col: str) -> pl.Expr:
+    """Null, or a blank string: FTN-era participation (2023+) writes "" where NGS-era files wrote null."""
+    if frame.schema[col] == pl.String:
+        return pl.col(col).is_null() | (pl.col(col).str.strip_chars() == "")
+    return pl.col(col).is_null()
 
 
 def _null_rows(frame: pl.DataFrame, source: str, season: int, games: pl.DataFrame,
@@ -112,7 +131,7 @@ def _null_rows(frame: pl.DataFrame, source: str, season: int, games: pl.DataFram
                                            pl.len().alias("rows"), pl.len().alias("nulls"))
         else:
             agg = sub.group_by("week").agg(pl.col("game_id").n_unique().alias("games_with_rows"),
-                                           pl.len().alias("rows"), pl.col(col).null_count().alias("nulls"))
+                                           pl.len().alias("rows"), _missing(frame, col).sum().alias("nulls"))
         agg = games.join(agg, on="week", how="left").with_columns(
             pl.col("games_with_rows").fill_null(0), pl.col("rows").fill_null(0), pl.col("nulls").fill_null(0))
         for r in agg.iter_rows(named=True):
@@ -191,8 +210,7 @@ def audit_season(season: int, schedules: pl.DataFrame, ngs: dict[str, pl.DataFra
             part = part.rename({"nflverse_game_id": "game_id"}).join(
                 pbp, left_on=["game_id", pl.col("play_id").cast(pl.Float64)], right_on=["game_id", "play_id"],
                 how="inner")
-            rows += _null_rows(part, "participation", season, games,
-                               {m: (m, s) for m, s in PARTICIPATION_METRICS.items()})
+            rows += _null_rows(part, "participation", season, games, PARTICIPATION_METRICS)
     return rows
 
 

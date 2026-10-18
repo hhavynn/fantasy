@@ -40,7 +40,7 @@ arrives after the season, has no in-season update schedule, or contains future i
 | NGS rushing: `rush_yards_over_expected` (RYOE), `expected_rush_yards` | NGS (`nfl_ngs_rushing`) | **2018+** (100% null in 2016-2017) | Usable pregame weekly from 2018. Backtests before 2018 must treat it as missing | Same as NGS passing |
 | FTN charting: `is_play_action`, `is_rpo`, `is_motion`, `is_screen_pass`, `n_defense_box`, `n_pass_rushers`, `n_blitzers`, `is_qb_out_of_pocket`, `is_catchable_ball`, `is_contested_ball`, `is_drop`, `is_interception_worthy`, `is_created_reception`, `read_thrown` | FTN (`load_ftn_charting`, read codes in `nfl_pbp_player_week`) | **2022+ only**, every played game, ≤0.03% null (one exception: `read_thrown` 2022, below) | **Usable pregame weekly, with lag**: FTN is hand-charted, about 1-2.5 days behind the game | Week 5 (including MNF) complete ≤ 27 h after MNF ended; TNF week 6 arrived 1-2 days later |
 | PFR advanced stats (`times_pressured`, used as `pfr_pressures` in `nfl_team_week`) | PFR (`nfl_pfr_pass/rush/rec`) | already synced | Usable weekly, with a larger lag: week 6 TNF was still missing 2.5 days after the game | Week 5 present by Wednesday 05:57 UTC |
-| Participation: `was_pressure`, `time_to_throw`, `defense_coverage_type`, `defense_man_zone_type`, `route`, `number_of_pass_rushers`, `defenders_in_box`, `offense_formation`/`personnel` | participation (`load_participation`, not synced) | 2016-2025. **No 2026 file**; coverage types null 2016-2017; `was_pressure` ~10% null and `route` ~62% null 2016-2022; near 0% null 2023+ | **Research-only / delayed** | No scheduled update job. The 2025 file was published 2026-02-10, after the season |
+| Participation: `was_pressure`, `time_to_throw`, `defense_coverage_type`, `defense_man_zone_type`, `route`, `number_of_pass_rushers`, `defenders_in_box`, `offense_formation`/`personnel` | participation (`load_participation`, not synced) | 2016-2025. **No 2026 file**. Coverage types are absent in 2016-2017. On pass attempts, `was_pressure` is ≤0.03% null and `route` 1.5-4.0% null in every season. Sacks and scrambles have no pressure or coverage code until 2023 | **Research-only / delayed** | No scheduled update job. The 2025 file was published 2026-02-10, after the season |
 | NGS week 0 (season totals) in any NGS table | NGS | all | **Research-only** (leaks the rest of the season) | n/a |
 
 The short version for the PR and the other workstreams:
@@ -68,6 +68,12 @@ missing data. Scopes, from `scripts/savant_data_coverage.py`:
 * dropbacks for `qb_hit`, `sack` and `qb_scramble`
 * penalty plays for the `penalty_*` detail
 * every real play for the `penalty` flag
+* pass attempts for participation `route` (the targeted receiver's route) and `time_to_throw`
+* dropbacks for participation `was_pressure`, `number_of_pass_rushers` and coverage. Pressure and coverage are
+  also reported on pass attempts only, as the `*_pass_attempts` metrics in the CSVs
+
+A blank string counts as missing, the same as a null. FTN-era participation files (2023+) write `""` where
+NGS-era files (2016-2022) wrote null.
 
 All are regular season only, with two-point tries excluded.
 
@@ -92,9 +98,11 @@ Fields with non-trivial null rates (everything else in the CSV is 0.0-0.2% null 
 | NGS rushing RYOE / `expected_rush_yards` | 100% | 100% | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% | 0% |
 | NGS receiving `avg_yac_above_expectation` | 0.4% | 0.6% | 1.0% | 0.5% | 0.4% | 0.2% | 0.2% | 0.5% | 0.2% | 0.2% | 0.0% |
 | FTN (all charted fields) | n/a | n/a | n/a | n/a | n/a | n/a | 0-2.1% | 0-0.03% | 0% | 0% | 0% |
-| participation `was_pressure` | 8.9% | 9.9% | 10.5% | 10.4% | 10.0% | 10.4% | 10.9% | 0.0% | 0.0% | 0.0% | no file |
-| participation coverage / man-zone type | 100% | 100% | 11.0% | 10.7% | 10.3% | 10.5% | 11.0% | 0-0.4% | 0-0.2% | 0-0.1% | no file |
-| participation `route` (per player) | 60.6% | 62.1% | 61.9% | 62.2% | 61.8% | 62.0% | 63.2% | 0.0% | 0.0% | 0.0% | no file |
+| participation `was_pressure`, all dropbacks | 8.9% | 9.9% | 10.5% | 10.4% | 10.0% | 10.4% | 10.9% | 0.0% | 0.0% | 0.0% | no file |
+| participation `was_pressure`, pass attempts | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | no file |
+| participation coverage / man-zone type, all dropbacks | 100% | 100% | 11.0% | 10.7% | 10.3% | 10.5% | 11.0% | 0.4% | 0.2% | 0.1% | no file |
+| participation coverage type, pass attempts | 100% | 100% | 0.5% | 0.4% | 0.3% | 0.2% | 0.2% | 0.3% | 0.1% | 0.1% | no file |
+| participation `route`, pass attempts | 1.5% | 1.7% | 2.6% | 3.8% | 3.6% | 3.3% | 4.0% | 3.2% | 3.2% | 2.7% | no file |
 
 Notes on the anomalies:
 
@@ -103,8 +111,17 @@ Notes on the anomalies:
   are already unverified (see `backend/app/nfl/ftn.py`).
 * **FTN `n_pass_rushers` 2023 week 16** is null on about half of that week's dropbacks. It is the only gap of
   its kind.
-* **Participation changed provider in 2023.** NGS-era participation (2016-2022) has gaps that FTN-era
-  participation (2023+) does not. That break alone would shift any pressure or coverage feature trained across it.
+* **Participation changed provider in 2023, and the encoding changed with it; completeness did not.** On pass attempts,
+  both eras are essentially complete: `was_pressure` ≤0.03% null, `route` 1.5-4.0%, coverage type ≤0.5% from
+  2018. The differences that matter are definitional:
+  * NGS-era files (2016-2022) code pressure and coverage only on pass attempts, so sacks and scrambles are
+    null. That accounts for the ~10% null over all dropbacks. FTN-era files (2023+) code every dropback.
+  * FTN-era files write missing strings as `""`, not null.
+  * The route vocabulary changed. The top routes were GO, FLAT, HITCH and CROSS in 2016, and QUICK OUT,
+    HITCH/CURL and IN/DIG in 2023.
+
+  A pressure feature that counts sacks as pressured dropbacks, or any per-route feature, therefore needs
+  era-specific handling before it is trained across the 2022 → 2023 break.
 
 ## 3. Freshness: when a week becomes available
 
@@ -143,7 +160,7 @@ but not to put tight bounds on FTN or PFR lags.
 ## 4. Caveats for backtests
 
 1. **Missing is not zero.** NGS lists qualifying players only, FTN starts in 2022, RYOE starts in 2018, and
-   participation 2016-2022 has ~10% null pressure. Every one of these must enter a model as missing (with a
+   participation 2016-2022 leaves sacks and scrambles without a pressure or coverage code. Every one of these must enter a model as missing (with a
    missing indicator or a fallback), never 0. The sync preserves nulls; feature code must too.
 2. **NGS week 0 = season totals.** Each NGS table carries a `week = 0` row per player with that season's
    totals. For past seasons that is the full season, so it leaks future weeks. Always filter `week >= 1`
@@ -157,7 +174,8 @@ but not to put tight bounds on FTN or PFR lags.
    counts (`air_yards`, `qb_hit`, `penalty`) are far less affected.
 5. **FTN has no pre-2022 history**, so a feature that needs FTN cannot be trained on 2016-2021. Its backtest
    window is 2022-2025 plus live 2026.
-6. **Provider break in participation (2022 → 2023)**: see §2.
+6. **Encoding break in participation (2022 → 2023)**: sacks and scrambles have no pressure or coverage code
+   before 2023, missing strings are blank after it, and route names changed (see §2).
 
 ## 5. NGS passing ingestion (`nfl_ngs_passing`)
 
