@@ -55,7 +55,8 @@ def _real_refresh_log(refresh, monkeypatch, tmp_path, *argv, codes=None):
     """Run refresh_all.main() for real (its own Log, run_step and run_evidence) with tiny stand-in scripts, and
     return the log text. `codes` maps a script name to its exit code."""
     codes = {"sync_espn.py": 0, "sync_nfl.py": 0, "compute_analytics.py": 0, "injury_freshness.py": 0,
-             "start_sit_evaluation.py": 0, "ctx_shadow.py": 0, "espn_benchmark.py": 0, "projection_performance.py": 0,
+             "start_sit_evaluation.py": 0, "ctx_shadow.py": 0, "qb_scenario_shadow.py": 0, "dst_shadow.py": 0,
+             "participation_cal_shadow.py": 0, "espn_benchmark.py": 0, "projection_performance.py": 0,
              **(codes or {})}
     for name, code in codes.items():
         # child output that imitates refresh_all's own markers must never be taken for them
@@ -98,6 +99,7 @@ def test_a_real_refresh_log_parses_step_by_step(refresh, monkeypatch, tmp_path):
     assert ev["ran"] and ev["status"] == "ok" and ev["problems"] == []          # the child's fake WARNING is ignored
     assert [(s["name"], s["result"]) for s in ev["steps"]] == [
         ("injury_freshness.py", "ok"), ("start_sit_evaluation.py", "ok"), ("ctx_shadow.py", "ok"),
+        ("qb_scenario_shadow.py", "ok"), ("dst_shadow.py", "ok"), ("participation_cal_shadow.py", "ok"),
         ("espn_benchmark.py", "ok")]
     assert r["pregame"]["week"] == 7 and r["pregame"]["captured_at"] == "2026-10-20T15:00:00+00:00"
     assert eh.pregame_capture_ok(r)
@@ -106,6 +108,13 @@ def test_a_real_refresh_log_parses_step_by_step(refresh, monkeypatch, tmp_path):
 def test_research_shadow_injury_warnings_never_make_the_capture_unhealthy(refresh, monkeypatch, tmp_path):
     """ctx_shadow.py exit 3 (its own injury-evidence WARNING lines) is not an evidence problem."""
     _, text = _real_refresh_log(refresh, monkeypatch, tmp_path, codes={"ctx_shadow.py": 3})
+    r = eh.parse_refresh_log(text)
+    assert r["evidence"]["status"] == "ok" and eh.pregame_capture_ok(r)
+
+
+def test_dst_shadow_input_warnings_never_make_the_capture_unhealthy(refresh, monkeypatch, tmp_path):
+    """dst_shadow.py exit 3 (its own missing-input WARNING lines) is not an evidence problem either."""
+    _, text = _real_refresh_log(refresh, monkeypatch, tmp_path, codes={"dst_shadow.py": 3})
     r = eh.parse_refresh_log(text)
     assert r["evidence"]["status"] == "ok" and eh.pregame_capture_ok(r)
 

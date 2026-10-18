@@ -120,8 +120,8 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
       <DataNotices notices={data.notices} />
 
       <Notice tone="info" title="Observed history first, estimates labelled">
-        Workloads and with/without splits are counted from this season&apos;s games. The pro-rata share (dashed) is a simple estimate,
-        not a validated projection: who absorbs vacated volume is hard to predict, so read it as a range beside the observed games.
+        Workloads and with/without splits are counted from this season&apos;s games. The pro-rata share (dashed) is a quick estimate of
+        who absorbs the vacated volume; read it beside the observed games.
         ESPN numbers are ESPN&apos;s own weekly projection.
       </Notice>
 

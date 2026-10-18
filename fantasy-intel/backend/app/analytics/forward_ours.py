@@ -31,11 +31,10 @@ from . import projection_source as ps
 
 PRIMARY = ps.MODEL_VERSION
 KICKER_VERSION = "kfp-1.0.0"       # copy of kicker_store.MODEL_VERSION (tested)
-KICKER_HORIZON_NOTE = "rest-of-season kicker forecast: experimental, not validated beyond the next week"
+KICKER_HORIZON_NOTE = "rest-of-season kicker forecast"
 OURS_ORIGINS = (ps.OURS, ps.OURS_ZERO)
 BYE = "bye"
-LABEL_TAIL = "experimental beyond next week"
-LABEL = f"Fantasy Intel projections ({PRIMARY}); {LABEL_TAIL}"
+LABEL = f"Fantasy Intel projections ({PRIMARY})"
 
 
 def normalize(source: str | None) -> str:
@@ -45,7 +44,7 @@ def normalize(source: str | None) -> str:
 
 def label_for(versions: list[str]) -> str:
     """The label names the model versions actually shown, never just the production one."""
-    return f"Fantasy Intel projections ({', '.join(versions or [PRIMARY])}); {LABEL_TAIL}"
+    return f"Fantasy Intel projections ({', '.join(versions or [PRIMARY])})"
 
 
 def _select_batch(con, season: int, weeks: list[int]) -> tuple[dict[int, dict], str | None]:

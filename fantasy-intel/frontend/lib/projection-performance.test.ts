@@ -94,9 +94,9 @@ test("all-insufficient report says so and never implies a winner", () => {
   }
   all.report!.status.verdict = "insufficient_evidence";
   const h = headline(all);
-  assert.equal(h.title, "Insufficient prospective evidence");
+  assert.equal(h.title, "Still collecting weeks");
   assert.equal(h.tone, "info");
-  assert.match(h.body, /not established/);
+  assert.match(h.body, /once a position clears/);
   assert.doesNotMatch(h.body, /more accurate/);
 });
 

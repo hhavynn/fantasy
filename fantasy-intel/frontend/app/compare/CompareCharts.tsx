@@ -109,9 +109,9 @@ export function ChartsSection({ r }: { r: CompareResponse }) {
             <LineChart
               series={remaining.ours} xLabels={remaining.xLabels} markers height={240} width={480}
               yFormat={oneDecimal}
-              ariaLabel={`Experimental Ours projected points for the remaining weeks, ${names}`}
-              title="Remaining weeks: Ours (experimental)"
-              caption="Fantasy Intel's own numbers, drawn only where the model produced one: ESPN stand-ins and byes are gaps. Experimental beyond next week; not shown to beat ESPN."
+              ariaLabel={`Ours projected points for the remaining weeks, ${names}`}
+              title="Remaining weeks: Ours"
+              caption="Fantasy Intel's own numbers, drawn only where the model produced one: ESPN stand-ins and byes are gaps."
             />
             <ChartData xName="Week" xLabels={remaining.xLabels} series={remaining.ours} />
           </div>

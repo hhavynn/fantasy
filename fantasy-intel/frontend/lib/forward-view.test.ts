@@ -26,12 +26,12 @@ test("oursPoints charts only our numbers: ESPN fallback weeks, byes and the play
   assert.deepEqual(oursPoints([week(6), week(7)], zero), [14.5, 0]);
 });
 
-test("oursCell marks ESPN-fallback weeks and the experimental weeks", () => {
+test("oursCell marks ESPN-fallback weeks and keeps the horizon flag without a caveat in the title", () => {
   assert.deepEqual(oursCell(ow(6, "ours", 14.5)), { value: 14.5, kind: "ours", experimental: false, model: null, title: "Fantasy Intel projection" });
   const later = oursCell(ow(8, "ours", 16.2));
   assert.equal(later.kind, "ours");
   assert.equal(later.experimental, true);
-  assert.match(later.title, /not validated beyond the next week/);
+  assert.equal(later.title, "Fantasy Intel projection");
   const fb = oursCell(ow(9, "espn", 11));
   assert.equal(fb.kind, "espn");
   assert.equal(fb.value, 11);
@@ -60,7 +60,7 @@ test("a week shown from the previous model carries a model badge and the reason 
 
 test("oursTotalNote explains an incomplete total", () => {
   const ok = ours([ow(6, "ours", 1)]);
-  assert.match(oursTotalNote(ok), /1\/1 wk · experimental/);
+  assert.equal(oursTotalNote(ok), "1/1 wk");
   const bad = ours([ow(6, "ours", 1), ow(7, "espn", 2)], { ros_complete: false, ros_projected_points: null, ros_weeks_available: 1, ros_weeks_expected: 2, missing_weeks: [7], fallback_weeks: [7] });
   assert.equal(oursTotalNote(bad), "1/2 wk · ESPN's number in wk 7");
 });

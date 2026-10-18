@@ -125,6 +125,16 @@ froze.
 * In `refresh_all.py` it is one more evidence step, with that stage's 15-minute per-step deadline.
 * Re-runs are idempotent: once the week's ledger exists, nothing is called, written or recorded.
 
+**Sibling shadows.** Two more research shadows use the same two jobs, the same non-fatal handling and the
+same exit codes. They run right after this one.
+* `qb_scenario_shadow.py`, ifp-ctx-p2q. It is the QB-only S2 candidate and uses this freeze rule unchanged
+  ([qb_scenario_mixture.md](qb_scenario_mixture.md) section 8).
+* `participation_cal_shadow.py`, the QB isotonic participation map
+  ([participation_calibration.md](participation_calibration.md), "Prospective re-test").
+
+`learning_cycle.py` runs them as the stages `qb_scenario_shadow` and `ipm_cal_shadow`. `refresh_all.py` runs
+`qb_scenario_shadow pregame week W` and `ipm_cal_shadow cycle`.
+
 **Manual use** (from `backend/`):
 
 ```

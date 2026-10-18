@@ -64,7 +64,6 @@ METHODOLOGY = [
     "NFL weeks, because player-weeks of one week are correlated; an interval that includes 0 means no established "
     "difference.",
     "Mean signed error = mean(actual - projection): positive means the projection was too low on average.",
-    "The production model is served by owner override; that decision is not statistical validation.",
 ]
 
 
