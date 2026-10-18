@@ -18,7 +18,9 @@ only after every sync and analytics step has exited, so no write connection is o
 database read-only (here and in the four scripts it launches) and runs no sync. It can never fail the
 refresh: each step's problem is logged as a WARNING and the exit code is unchanged. One of them is the
 research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py pregame): it freezes that week's
-write-once pregame ledger once the final injury reports are in, or the main slate is within 6 hours.
+write-once pregame ledger once the final injury reports are in, or the main slate is within 6 hours. The QB-only
+scenario shadow (scripts/qb_scenario_shadow.py pregame, ifp-ctx-p2q) follows it under the same freeze rule, and the
+QB participation-calibration re-test (scripts/participation_cal_shadow.py cycle) scores fully final weeks.
 Another is the D/ST research shadow of dfp-r1 (scripts/dst_shadow.py pregame): it freezes that week's write-once
 D/ST ledger once the lines and the previous week's ESPN statistics are in, if the learning cycle has not already.
 """
@@ -49,6 +51,7 @@ TIMED_OUT = -999                     # run_step's result for a step killed at it
 EVIDENCE_TIMEOUT_S = 15 * 60         # per evidence step; REFRESH_EVIDENCE_TIMEOUT_S overrides
 START_SIT_NOTHING_ELIGIBLE = 2       # start_sit_evaluation record: no pregame roster row to freeze
 CTX_SHADOW_WARNINGS = 3              # ctx_shadow.py: ran and printed missing/stale injury-evidence WARNING lines
+RESEARCH_SHADOW_LABELS = ("ctx_shadow", "qb_scenario_shadow", "ipm_cal_shadow")   # exit 3 = the shadow's own warnings
 DST_SHADOW_WARNINGS = 3              # dst_shadow.py: ran and printed missing-input WARNING lines
 
 
@@ -243,9 +246,14 @@ def evidence_steps(sel: dict) -> list[tuple[str, list[str]]]:
         # research shadow (ifp-ctx-p1): gated write-once pregame ledger under data/models/research/context/
         steps.append((f"ctx_shadow pregame week {week}",
                       [py, str(SCRIPTS / "ctx_shadow.py"), "pregame", "--season", season, "--week", week]))
+        # research shadow (ifp-ctx-p2q, QB only): the same gated freeze under data/models/research/qb_scenario_shadow/
+        steps.append((f"qb_scenario_shadow pregame week {week}",
+                      [py, str(SCRIPTS / "qb_scenario_shadow.py"), "pregame", "--season", season, "--week", week]))
         # research shadow (dfp-r1 D/ST): gated write-once pregame ledger under data/models/dst/shadow/
         steps.append((f"dst_shadow pregame week {week}",
                       [py, str(SCRIPTS / "dst_shadow.py"), "pregame", "--season", season, "--week", week]))
+    # research re-test of the QB participation map: freeze once, score fully final weeks (research/participation_cal_shadow/)
+    steps.append(("ipm_cal_shadow cycle", [py, str(SCRIPTS / "participation_cal_shadow.py"), "cycle", "--season", season]))
     if sel["final_week"] is not None:
         week = str(sel["final_week"])
         steps.append((f"espn_benchmark week {week}",
@@ -272,7 +280,7 @@ def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = 
         log(f"WARNING: {EVIDENCE} {msg}")
 
     log(f"==> {EVIDENCE} read-only stage (injury freshness, start/sit decision set, "
-        "ifp-ctx-p1 shadow, ESPN benchmark)")
+        "research shadows, ESPN benchmark)")
     try:
         from app.db.connection import open_db, table_exists
 
@@ -300,10 +308,11 @@ def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = 
             warn(f"{label} timed out after {timeout:g}s and was killed")
         elif code == START_SIT_NOTHING_ELIGIBLE and label.startswith("start_sit_evaluation"):
             log(f"INFO: {EVIDENCE} {label} recorded nothing: no roster player is still pregame and synced")
-        elif code == CTX_SHADOW_WARNINGS and label.startswith("ctx_shadow"):
+        elif code == CTX_SHADOW_WARNINGS and label.startswith(RESEARCH_SHADOW_LABELS):
             # research shadow only: its injury-evidence warnings are its own WARNING lines above and its run record,
             # never an evidence-stage problem (evidence health must not report a production capture as failed)
-            log(f"INFO: {EVIDENCE} {label} reported injury-evidence warnings for the research shadow (see above)")
+            what = "injury-evidence warnings" if " pregame " in label else "warnings"
+            log(f"INFO: {EVIDENCE} {label} reported {what} for the research shadow (see above)")
         elif code == DST_SHADOW_WARNINGS and label.startswith("dst_shadow"):
             log(f"INFO: {EVIDENCE} {label} reported missing-input warnings for the D/ST research shadow (see above)")
         elif code != 0:
