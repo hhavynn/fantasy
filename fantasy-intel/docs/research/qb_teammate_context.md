@@ -431,3 +431,5 @@ uv run python ../scripts/context_research.py prospective
 
 Runtime on the local machine: about 30 seconds to build the store plus context (cached by input fingerprint) and under
 10 seconds per walk-forward window.
+
+Automated prospective shadow (how the `ifp-ctx-p1` ledger is frozen, scored and read): [ifp_ctx_shadow_automation.md](ifp_ctx_shadow_automation.md).
