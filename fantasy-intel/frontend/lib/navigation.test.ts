@@ -69,7 +69,7 @@ test("every page appears once and every group has pages", () => {
   assert.deepEqual(NAV_GROUPS.map((g) => g.label), ["My team", "Players", "Trades", "League"]);
   assert.ok(NAV_GROUPS.every((g) => g.pages.length > 0));
   for (const href of ["/", "/matchup", "/start-sit", "/my-team/value", "/players", "/compare", "/movers", "/waivers", "/trades", "/trades/discover",
-    "/schedule-intelligence", "/weekly-recap", "/luck-lab", "/playoff-race", "/managers"]) {
+    "/schedule-intelligence", "/weekly-recap", "/luck-lab", "/playoff-race", "/managers", "/injury-impact"]) {
     assert.ok(hrefs.includes(href), `${href} missing from navigation`);
   }
 });
@@ -78,4 +78,11 @@ test("the kicker outlook sits in Players", () => {
   assert.equal(getActiveRoute("/kickers").activeHref, "/kickers");
   assert.equal(group("/kickers"), "Players");
   assert.ok(ALL_NAV_PAGES.some((p) => p.href === "/kickers"));
+});
+
+test("injury impact is the last page in My team", () => {
+  assert.equal(getActiveRoute("/injury-impact").activeHref, "/injury-impact");
+  assert.equal(group("/injury-impact"), "My team");
+  const hrefs = NAV_GROUPS[0].pages.map((p) => p.href);
+  assert.equal(hrefs[hrefs.length - 1], "/injury-impact");
 });
