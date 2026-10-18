@@ -467,6 +467,21 @@ def require_report(injuries: pl.DataFrame | None, season: int, week: int, teams:
     return rep
 
 
+def check_reused_artifact(art: dict, config_hash: str, cutoff: int, store_fp: str, name: str) -> None:
+    """An interrupted run's artifact is reused only if it was fitted under the same frozen spec, cutoff and training
+    store; otherwise the ledger would pair old models with current source hashes."""
+    if (art["config_hash"] != config_hash or art["training_cutoff_key"] != cutoff
+            or art["store_fingerprint"] != store_fp):
+        raise SystemExit(f"{name} was built under a different configuration, cutoff or training store (historical "
+                         "inputs changed since): move it aside to refit")
+
+
+def require_forecasts(rows: list[dict], week: int) -> None:
+    """A write-once ledger is never frozen without a single forecast (missing or empty roster ingest)."""
+    if not any(r["iwh_points"] is not None for r in rows):
+        raise SystemExit(f"no week-{week} forecast rows (roster ingest missing or empty?): nothing written")
+
+
 def _sha(obj) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
@@ -546,8 +561,7 @@ def cmd_predict(args) -> dict:
     apath = _out(args) / "artifacts" / f"{ic.IWH_VERSION}-s{season}w{week:02d}.json"
     if not hr._write_once(apath, art):
         art = json.loads(apath.read_text())        # an interrupted earlier run's artifact is reused, never refit
-        if art["config_hash"] != frozen["config_hash"] or art["training_cutoff_key"] != cutoff:
-            raise SystemExit(f"{apath.name} was built under a different configuration or cutoff")
+        check_reused_artifact(art, frozen["config_hash"], cutoff, prov["iwh_fingerprint"], apath.name)
         fitted = {p: {k: ch.RidgeModel.from_dict(d) for k, d in v.items()} for p, v in art["models"].items()}
     pop = live_population(src, season, week).filter(pl.col("team").is_in(teams))
     feats = features_for_week(src, season, week, pop)
@@ -562,6 +576,7 @@ def cmd_predict(args) -> dict:
     rows = [r for r in rows if r["team"] in still_open]
     if not still_open:
         raise SystemExit(f"every remaining week-{week} game kicked off while forecasting: nothing written")
+    require_forecasts(rows, week)
     season_inj = src.injuries.filter((pl.col("season") == season) & (pl.col("week") <= week))
     ledger = {"schema": "ifp-iwh-research-ledger/v1", "version": ic.IWH_VERSION, "status": ic.IWH_STATUS,
               "workload_version": iw.WORKLOAD_VERSION, "kind": "pregame", "season": season, "week": week,
@@ -598,6 +613,8 @@ def matched_rows(store: pl.DataFrame, ledgers: list[dict], config_hash: str) -> 
             status[k] = "rows_sha_mismatch"
         elif k not in final:
             status[k] = "not_final"
+        elif not led["rows"]:
+            status[k] = "empty"
         else:
             status[k] = "scored"
             df = pl.DataFrame([{"key": k, "gsis_id": r["gsis_id"], "position": r["position"],

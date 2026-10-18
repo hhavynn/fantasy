@@ -644,3 +644,18 @@ def test_scoring_uses_only_final_weeks_matching_untampered_ledgers(iwr):
                       S * 100 + 10: "other_config"}
     assert p.height == 1 and p["label"].to_list() == [12.0] and p["pred_iwh"].to_list() == [11.0]
     assert p["tl_status_class"].to_list() == ["available_returning"]       # the frozen cohort column, not the store's
+    _, empty = iwr.matched_rows(store, [led(7, rows=[])], "H")             # an empty ledger is reported, never crashes
+    assert empty == {S * 100 + 7: "empty"}
+
+
+def test_predict_never_freezes_an_empty_ledger_or_reuses_a_stale_artifact(iwr):
+    with pytest.raises(SystemExit, match="no week-7 forecast rows"):
+        iwr.require_forecasts([], 7)
+    with pytest.raises(SystemExit, match="no week-7 forecast rows"):
+        iwr.require_forecasts([{"iwh_points": None}], 7)
+    iwr.require_forecasts([{"iwh_points": None}, {"iwh_points": 8.5}], 7)
+    art = {"config_hash": "H", "training_cutoff_key": 202607, "store_fingerprint": "F"}
+    iwr.check_reused_artifact(art, "H", 202607, "F", "a.json")
+    for cfg, cut, fp in (("X", 202607, "F"), ("H", 202608, "F"), ("H", 202607, "NEW")):
+        with pytest.raises(SystemExit, match="move it aside to refit"):
+            iwr.check_reused_artifact(art, cfg, cut, fp, "a.json")
