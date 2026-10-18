@@ -273,13 +273,17 @@ is larger than ifp-iwh's on the comparable cohort (-0.25), so the two are comple
 
 ### 7.3 Why the returning-player check failed (diagnosed after the verdict; changes nothing above)
 
+Every number in sections 7.1-7.2 and 7.4 is **ifp-iwh-0.1.0** (handoff iwh-0.1.0), reproducible at commit
+d6fed66. The fix below shipped later as iwh-0.1.1 and is evaluated only prospectively (section 10).
+
+
 On the confirmation returning cohort the candidate *lowers* projections (mean -0.18), concentrated in rows
 whose participation factor is below 1 (part 0.5: mean -0.39; part 0.8: -0.19; part 1.0: -0.03). Those players
 missed games while listed **Questionable** (or on the practice report without a game status) and then
 inactive: the participation factor counts only Out/Doubtful/reserve weeks as injury absences, so it read those
-games as role absences and cut the claim. Pre-registered fix for **iwh-0.1.1** (not implemented in this PR, to
-keep the evaluated code and the results identical): a missed game counts as an injury absence when the player
-was on that week's report with any injury listing. It can only be judged on prospective weeks.
+games as role absences and cut the claim. Pre-registered fix for **iwh-0.1.1** (left out of PR #103 to keep the
+evaluated code and the results identical; implemented since): a missed game counts as an injury absence when the
+player was on that week's report with any injury listing. It can only be judged on prospective weeks.
 
 ### 7.4 Unconditional expected points
 
@@ -351,6 +355,84 @@ Next work, by expected value:
    new append-only run, so `expected_points` reflects Out designations.
 4. Unconditional (`p_play x conditional`) walk-forward evaluation on the roster population.
 5. Wire the explanation metadata into the Player Profile once a model using it is approved.
+
+## 10. Prospective shadow of ifp-iwh-0.1.1
+
+**What changed (iwh-0.1.1).** `_Cut.injured_absence` decides whether a missed game is an injury absence, for
+both `_participation` and the timeline's `missed_injured`:
+
+| Missed game while... | iwh-0.1.0 | iwh-0.1.1 |
+|---|---|---|
+| Out or Doubtful | injury absence | injury absence |
+| on a reserve list (RES/PUP/NFI) | injury absence | injury absence |
+| Questionable | role absence (claim cut) | injury absence |
+| on the practice report with no game status | role absence (claim cut) | injury absence |
+| listed "not injury related" (rest, personal) | role absence | role absence |
+| not on the report at all | role absence | role absence |
+
+Knock-on effects, all intended: a player who missed games Questionable and is back is now
+`available_returning` (was `available`, "a role or roster decision"), and at horizon >= 1 or without a week-W
+report such a player is `uncertain` (was `available` / `unknown`). `prev_game_out` still means Out/Doubtful.
+Tests: `test_questionable_then_inactive_is_an_injury_absence_not_a_role_absence` and the three after it.
+
+**Why prospective only.** 2021-22 selected the adoption and 2023-24 confirmed (and failed) ifp-iwh-0.1.0 once.
+Re-running either window with the fix would select or adjudicate on weeks that were already looked at, so
+`develop` and `evaluate` refuse under 0.1.1 and no historical number is restated. 2025-26 replays are also
+out: their injury reports carry no timestamp.
+
+**Pre-registered in code before any prospective week was forecast or scored**
+(`injury_prospective.PROSPECTIVE_RULES`, `PROSPECTIVE_THRESHOLDS`, `prospective_gate`):
+
+* Adoption: RB, WR and TE, ifp-iwh-0.1.0's development result unchanged (no reselection). QB keeps ifp2.
+* Evidence: write-once pregame ledger rows from **2026 week 7**, scored once the week is fully final; ifp2 and
+  ifp-iwh-0.1.1 fitted in the same run on the same training rows; identical rows only (both predictions
+  non-null, the player appeared).
+* Per adopted position (`challenger.SHADOW_GATE`): >= 8 fully final weeks, >= 400 matched appearances, MAE diff
+  week-clustered 95% CI upper < 0, |bias| not worse by > 0.15, starters-pool MAE not worse; plus (c3) MSE diff CI
+  lower bound not above 0.
+* Pooled adopted rows (`DECISION_RULES['confirmation']`): (c1) MSE diff < 0 with CI upper < 0; (c7) every
+  mechanism cohort with n >= 100 has MSE diff < 0 and |bias| no larger.
+* The returning-player cohort (`self_returning_any`, the c7 failure the fix targets) must reach n >= 100 before
+  the gate can be met. In the confirmation window it accrued about 6 rows per week under 0.1.0 (204 rows); 0.1.1
+  labels more players as returning, but expect this to take most of the remaining season or longer.
+* Outcome: `meets_gate` (every check) | `insufficient_data` (weeks, appearances or the returning cohort short) |
+  `fails_gate`. `meets_gate` is evidence for an owner review only: no promotion, no registry change.
+
+The first `predict` freezes these rules write-once (`frozen_ifp-iwh-0.1.1.json`, hashed together with the ifp-2
+config, the league scoring and the source of the gate and cohort functions). Every later `predict` and
+`prospective` must match the hash exactly, so a rule or gate edited after the first ledger stops the shadow
+instead of re-scoring it.
+
+**`predict --week W`** (run after the week's report is synced, before kickoff):
+
+* refuses weeks before 2026 week 7, and refuses while the week's injury report is not ingested for every team
+  still to play (no override: the ledger is write-once, so a forecast made without the report would be frozen
+  degraded);
+* excludes teams that have kicked off, checked before the build, after it, and again at write time;
+* fits ifp2 and ifp-iwh-0.1.1 in the same run on training rows strictly before W, and writes the fitted models
+  write-once (`artifacts/ifp-iwh-0.1.1-sSSSSwWW.json`; an interrupted run reuses them, never refits);
+* writes `ledger/sSSSSwWW-pregame.json` once: both models' points per player, the frozen timeline and handoff
+  columns the cohorts read, the explanation text, and source hashes (the week's report and its designation
+  count, the season's reports through W, rosters, panel, schedule, roster codes, store fingerprint, code hash),
+  plus a hash of the rows. A rerun writes nothing, but it still checks the frozen spec against the current code,
+  ifp-2 config and scoring, and checks the ledger's own spec and row hash.
+* never writes a ledger with no forecast rows, and reuses an interrupted run's models only if they were fitted on
+  the same training store.
+
+**`prospective`** scores ledgers whose week is fully final (in the store), whose config hash matches the
+frozen spec and whose rows still match their hash. Cohort columns come from the ledger, never recomputed after
+the fact. The starters pool is pregame too: ranked on each row's frozen baseline (pred_A1) across the whole week's
+ledger before the join to appearances, so a top-ranked player who sat out is not replaced by the next one down. Output: `prospective_ifp-iwh-0.1.1.json` (gate plus the usual cohort report).
+
+Code: `injury_workload.py` (`_Cut.injured_absence`), `injury_prospective.py` (rules and gate, research only, not
+imported by the app), `scripts/injury_workload_research.py` (`predict`, `prospective`; `develop` and `evaluate`
+refuse under 0.1.1, reproduce 0.1.0 at commit d6fed66). Status: research; no promotion, no registry change.
+
+```
+cd backend
+uv run python ../scripts/injury_workload_research.py predict --week 7   # each week, after the report sync
+uv run python ../scripts/injury_workload_research.py prospective
+```
 
 ## Reproduce
 

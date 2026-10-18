@@ -15,6 +15,7 @@ import polars as pl
 import pytest
 
 from app.analytics import injury_challenger as ic
+from app.analytics import injury_prospective as ip
 from app.analytics import injury_workload as iw
 from app.analytics.forecast_features import INJURY_SCHEMA, PANEL_COLUMNS, ROSTER_SCHEMA, Sources, _panel_schema
 
@@ -438,7 +439,7 @@ def test_preregistered_rules_and_features_exist():
 
 
 def test_research_modules_write_nothing():
-    for mod in (iw, ic):
+    for mod in (iw, ic, ip):
         text = pathlib.Path(mod.__file__).read_text().upper()
         for verb in ("INSERT ", "UPDATE ", "DELETE ", "CREATE TABLE", "WRITE_PARQUET", "WRITE_TEXT"):
             assert verb not in text, (mod.__name__, verb)
@@ -447,10 +448,246 @@ def test_research_modules_write_nothing():
 def test_app_never_imports_the_injury_research_modules():
     root = pathlib.Path(__file__).resolve().parents[1] / "app"
     for path in root.rglob("*.py"):
-        if path.name in ("injury_workload.py", "injury_challenger.py", "ros_availability.py"):   # research only
+        if path.name in ("injury_workload.py", "injury_challenger.py", "injury_prospective.py",
+                         "ros_availability.py"):   # research only
             continue
         text = path.read_text()
-        assert "injury_workload" not in text and "injury_challenger" not in text, path
+        assert not any(m in text for m in ("injury_workload", "injury_challenger", "injury_prospective")), path
     code = ("import sys, app.main; bad = [m for m in ('app.analytics.injury_workload', "
-            "'app.analytics.injury_challenger') if m in sys.modules]; print(bad); sys.exit(1 if bad else 0)")
+            "'app.analytics.injury_challenger', 'app.analytics.injury_prospective') if m in sys.modules]; "
+            "print(bad); sys.exit(1 if bad else 0)")
     assert subprocess.run([sys.executable, "-c", code], cwd=root.parent, capture_output=True).returncode == 0
+
+
+# ----------------------------------------------------------------------------- iwh-0.1.1: any injury listing
+
+
+def missed_two(rows4, rows5):
+    """STAR missed weeks 4 and 5 with the given report rows for those weeks; week 6 he is on the report without a
+    game designation (full practice)."""
+    rows = [*rows4, *rows5, *report(6, inj(STAR, None, 6, practice="Full Participation in Practice"))]
+    return world(range(1, 6), skip={STAR: (4, 5)}, injuries=rows)
+
+
+def test_iwh_011_versions_and_history_are_documented():
+    assert iw.WORKLOAD_VERSION == "iwh-0.1.1" and ic.IWH_VERSION == "ifp-iwh-0.1.1"
+    assert ic.HISTORICAL_VERSION == "ifp-iwh-0.1.0"
+    src = pathlib.Path(iw.__file__).read_text()
+    assert "iwh-0.1.0" in src and "Out/Doubtful" in src            # the old rule stays written down
+
+
+def test_questionable_then_inactive_is_an_injury_absence_not_a_role_absence():
+    """The section 7.3 failure: Questionable in weeks 4-5, inactive both times. iwh-0.1.0 read those games as role
+    absences (participation 0.5, claim cut in half); iwh-0.1.1 counts them as injury absences, exactly like Out."""
+    q = missed_two([inj(STAR, "Questionable", 4)], [inj(STAR, "Questionable", 5)])
+    out = missed_two([inj(STAR, "Out", 4)], [inj(STAR, "Out", 5)])
+    tq, to = rows_by_id(iw.injury_timeline(q, S, 6))[STAR], rows_by_id(iw.injury_timeline(out, S, 6))[STAR]
+    assert tq["missed_team_games"] == 2 and tq["missed_injured"] == 2
+    assert tq["status_class"] == iw.RETURNING == to["status_class"]
+    hq, ho = rows_by_id(iw.workload_handoff(q, S, 6))[STAR], rows_by_id(iw.workload_handoff(out, S, 6))[STAR]
+    assert hq["ho_participation"] == 1.0 == ho["ho_participation"]
+    assert hq["ho_car_share"] == pytest.approx(ho["ho_car_share"])
+    assert hq["ho_claim"] == pytest.approx(ho["ho_claim"])
+
+
+def test_practice_listing_without_game_status_counts_too():
+    p = missed_two([inj(STAR, None, 4, practice="Limited Participation in Practice")],
+                   [inj(STAR, None, 5, practice="Did Not Participate In Practice")])
+    assert rows_by_id(iw.injury_timeline(p, S, 6))[STAR]["missed_injured"] == 2
+    assert rows_by_id(iw.workload_handoff(p, S, 6))[STAR]["ho_participation"] == 1.0
+
+
+def test_not_injury_related_and_unlisted_misses_still_lower_the_claim():
+    """A 'not injury related' listing (rest, personal) or no listing at all is not an injury absence: those
+    weeks still cut the claim through participation, as before."""
+    ni = [{**inj(STAR, None, w, practice="Did Not Participate In Practice", injury="Not injury related - personal"),
+           "not_injury": True} for w in (4, 5)]
+    for src in (missed_two(ni[:1], ni[1:]), missed_two([], [])):
+        t = rows_by_id(iw.injury_timeline(src, S, 6))[STAR]
+        assert t["missed_injured"] == 0 and t["status_class"] == iw.AVAILABLE
+        assert rows_by_id(iw.workload_handoff(src, S, 6))[STAR]["ho_participation"] == pytest.approx(0.5)
+
+
+def test_a_mixed_absence_counts_each_week_on_its_own_listing():
+    m = missed_two([inj(STAR, "Questionable", 4)], [])                 # week 4 listed, week 5 not listed
+    assert rows_by_id(iw.injury_timeline(m, S, 6))[STAR]["missed_injured"] == 1
+    assert rows_by_id(iw.workload_handoff(m, S, 6))[STAR]["ho_participation"] == pytest.approx(0.75)
+
+
+# ----------------------------------------------------------------------------- prospective gate (pre-registered)
+
+
+def test_prospective_rules_are_preregistered_from_shadow_gate_and_decision_rules():
+    from app.analytics.challenger import SHADOW_GATE
+
+    assert ip.PROSPECTIVE_FIRST_WEEK == (2026, 7)
+    assert ip.PROSPECTIVE_ADOPTED == {"QB": False, "RB": True, "WR": True, "TE": True}
+    t = ip.PROSPECTIVE_THRESHOLDS
+    for k in ("min_prospective_weeks", "min_matched_appearances_per_position", "mae_ci95_upper_below",
+              "bias_tolerance_points", "starters_pool_mae_tolerance"):
+        assert t[k] == SHADOW_GATE[k]
+    assert t["mechanism_min_n"] == ic.MECHANISM_MIN_N and ic.BIAS_TOLERANCE == SHADOW_GATE["bias_tolerance_points"]
+    assert {"evidence", "first_week", "shadow_gate", "mse_bias_gate", "self_returning", "outcome", "never"} <= set(
+        ip.PROSPECTIVE_RULES)
+    assert "promotion" in ip.PROSPECTIVE_RULES["never"]
+
+
+def gate_frame(weeks=8, per_week=60, better=True, returning=15, seed=7):
+    """Synthetic matched ledger rows: per week and adopted position `per_week` appearances, `returning` of them
+    self-returning. The better model's error is exactly half the other's on every row."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    rows = []
+    for w in range(7, 7 + weeks):
+        for pos in ("RB", "WR", "TE"):
+            truth = rng.uniform(2, 20, per_week)
+            err = rng.normal(0, 2, per_week)
+            good, bad = truth + err / 2, truth + err              # half the error: smaller loss AND smaller |bias|
+            for i in range(per_week):
+                rows.append({"key": S * 100 + w, "season": S, "week": w, "gsis_id": f"{pos}{i}", "position": pos,
+                             "label": float(truth[i]), "pred_iwh": float(good[i] if better else bad[i]),
+                             "pred_ifp2": float(bad[i] if better else good[i]), "pred_A1": float(truth[i]),
+                             "ho_lead_out": 0, "ho_is_lead": 0, "ho_lead_returning": 0, "ho_car_share": 0.2,
+                             "tl_status_class": "available_returning" if i < returning else "available",
+                             "tl_missed_team_games": 1 if i < returning else 0, "tl_designation": "not_listed",
+                             "tl_practice_status": None, "team_changed": 0, "weeks_since_last": 1,
+                             "ho_vacated": 0.0, "ho_returning": 0.0})
+    from app.analytics.forecast_backtest import starters_pool_expr
+
+    return pl.DataFrame(rows).with_columns(starters_pool_expr().alias("starters_pool"))
+
+
+def test_prospective_gate_outcomes():
+    ok = ip.prospective_gate(gate_frame())
+    assert ok["weeks"] == 8 and ok["outcome"] == "meets_gate", ok["pooled_checks"]
+    assert all(all(v["checks"].values()) for v in ok["per_position"].values())
+    assert ok["mechanism"]["self_returning_any"]["n"] == 360 and ok["mechanism"]["self_returning_any"]["gating"]
+    assert ip.prospective_gate(gate_frame(better=False))["outcome"] == "fails_gate"
+    short = ip.prospective_gate(gate_frame(weeks=3, per_week=200))
+    assert short["outcome"] == "insufficient_data" and not short["per_position"]["RB"]["checks"]["weeks"]
+    few_returning = ip.prospective_gate(gate_frame(returning=1))        # 24 returning rows: below 100
+    assert few_returning["outcome"] == "insufficient_data"
+    assert not few_returning["pooled_checks"]["self_returning_n"]
+    assert not few_returning["mechanism"]["self_returning_any"]["gating"]
+
+
+# ----------------------------------------------------------------------------- prospective ledger guards (script)
+
+
+@pytest.fixture(scope="module")
+def iwr():
+    import importlib.util
+
+    scripts = pathlib.Path(__file__).resolve().parents[2] / "scripts"
+    sys.path.insert(0, str(scripts))
+    spec = importlib.util.spec_from_file_location("injury_workload_research", scripts / "injury_workload_research.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_historical_commands_refuse_under_011(iwr, tmp_path):
+    from types import SimpleNamespace
+
+    for cmd in (iwr.cmd_develop, iwr.cmd_evaluate):
+        with pytest.raises(SystemExit, match="judged only prospectively"):
+            cmd(SimpleNamespace(ifp_dir=tmp_path))
+    assert iwr._frozen_path(SimpleNamespace(ifp_dir=tmp_path)).name == "frozen_adoption_ifp-iwh-0.1.0.json"
+
+
+def test_predict_refuses_before_the_first_week_and_without_the_report(iwr):
+    from datetime import datetime, timedelta, timezone
+
+    with pytest.raises(SystemExit, match="pre-registered from 2026 week 7"):
+        iwr.check_prospective_week(2026, 6)
+    iwr.check_prospective_week(2026, 7)
+    iwr.check_prospective_week(2027, 1)
+    now = datetime(2026, 10, 25, 16, 0, tzinfo=timezone.utc)
+    kick = {"AAA": now - timedelta(minutes=1), "BBB": now, "CCC": now + timedelta(hours=3)}
+    assert iwr.open_teams(kick, now) == ["CCC"]                     # kicked off, or kicking off now, is excluded
+    rows = pl.DataFrame([inj(STAR, "Out", 7, team="CCC")], schema=INJURY_SCHEMA)
+    for injuries in (None, pl.DataFrame(schema=INJURY_SCHEMA), rows.with_columns(pl.lit(6).alias("week"))):
+        with pytest.raises(SystemExit, match="injury report is not ingested"):
+            iwr.require_report(injuries, S, 7, ["CCC"])
+    with pytest.raises(SystemExit, match="not ingested for DDD"):
+        iwr.require_report(rows, S, 7, ["CCC", "DDD"])
+    assert iwr.require_report(rows, S, 7, ["CCC"]).height == 1
+
+
+def test_prospective_spec_is_frozen_write_once_and_scoring_never_creates_it(iwr, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(ifp_dir=tmp_path)
+    with pytest.raises(SystemExit, match="does not exist"):
+        iwr.frozen_prospective(args, "cfg", "score", create=False)
+    first = iwr.frozen_prospective(args, "cfg", "score", create=True)
+    assert iwr.frozen_prospective(args, "cfg", "score", create=False)["frozen_at"] == first["frozen_at"]
+    with pytest.raises(SystemExit, match="different spec"):
+        iwr.frozen_prospective(args, "other-ifp2-config", "score", create=True)
+    monkeypatch.setitem(ip.PROSPECTIVE_THRESHOLDS, "self_returning_min_n", 50)    # a rule edited after freezing
+    with pytest.raises(SystemExit, match="different spec"):
+        iwr.frozen_prospective(args, "cfg", "score", create=False)
+
+
+def test_scoring_uses_only_final_weeks_matching_untampered_ledgers(iwr):
+    def led(week, cfg="H", rows=None):
+        rows = rows if rows is not None else [{"gsis_id": "RB1", "position": "RB", "ifp2_points": 10.0,
+                                               "iwh_points": 11.0, "tl_status_class": "available_returning",
+                                               "ho_lead_out": 0}]
+        return {"season": S, "week": week, "config_hash": cfg, "rows": rows, "rows_sha": iwr._sha(rows)}
+
+    store = pl.DataFrame({"key": [S * 100 + 7, S * 100 + 8], "gsis_id": ["RB1", "RB1"], "position": ["RB", "RB"],
+                          "label": [12.0, 3.0], "tl_status_class": ["available", "available"],
+                          "pred_A1": [9.0, 9.0]})
+    tampered = led(8)
+    tampered["rows"][0]["iwh_points"] = 3.0
+    p, status = iwr.matched_rows(store, [led(7), tampered, led(9), led(10, cfg="OTHER")], "H")
+    assert status == {S * 100 + 7: "scored", S * 100 + 8: "rows_sha_mismatch", S * 100 + 9: "not_final",
+                      S * 100 + 10: "other_config"}
+    assert p.height == 1 and p["label"].to_list() == [12.0] and p["pred_iwh"].to_list() == [11.0]
+    assert p["tl_status_class"].to_list() == ["available_returning"]       # the frozen cohort column, not the store's
+    _, empty = iwr.matched_rows(store, [led(7, rows=[])], "H")             # an empty ledger is reported, never crashes
+    assert empty == {S * 100 + 7: "empty"}
+
+
+def test_predict_never_freezes_an_empty_ledger_or_reuses_a_stale_artifact(iwr):
+    with pytest.raises(SystemExit, match="no week-7 forecast rows"):
+        iwr.require_forecasts([], 7)
+    with pytest.raises(SystemExit, match="no week-7 forecast rows"):
+        iwr.require_forecasts([{"iwh_points": None}], 7)
+    iwr.require_forecasts([{"iwh_points": None}, {"iwh_points": 8.5}], 7)
+    art = {"config_hash": "H", "training_cutoff_key": 202607, "store_fingerprint": "F"}
+    iwr.check_reused_artifact(art, "H", 202607, "F", "a.json")
+    for cfg, cut, fp in (("X", 202607, "F"), ("H", 202608, "F"), ("H", 202607, "NEW")):
+        with pytest.raises(SystemExit, match="move it aside to refit"):
+            iwr.check_reused_artifact(art, cfg, cut, fp, "a.json")
+
+
+def test_starters_pool_is_ranked_before_dropping_non_appearances(iwr):
+    """Codex P1: the pool is the top PAIR_POOL players by the ledger's frozen pred_A1 among ALL ledger rows. A
+    top-ranked player who sat out leaves a hole; the next player down is not backfilled into the pool."""
+    from app.analytics.forecast_backtest import PAIR_POOL
+
+    n = PAIR_POOL["TE"] + 1
+    rows = [{"gsis_id": f"TE{i:02d}", "position": "TE", "ifp2_points": 5.0, "iwh_points": 5.0,
+             "pred_A1": float(100 - i)} for i in range(n)]                     # TE00 ranks first, TE{n-1} last
+    led = {"season": S, "week": 7, "config_hash": "H", "rows": rows, "rows_sha": iwr._sha(rows)}
+    store = pl.DataFrame({"key": [S * 100 + 7] * (n - 1), "gsis_id": [f"TE{i:02d}" for i in range(1, n)],
+                          "position": ["TE"] * (n - 1), "label": [4.0] * (n - 1), "pred_A1": [0.0] * (n - 1)})
+    p, _ = iwr.matched_rows(store, [led], "H")                                  # TE00 did not appear
+    assert p.height == n - 1
+    pool = dict(zip(p["gsis_id"].to_list(), p["starters_pool"].to_list()))
+    assert pool[f"TE{n - 1:02d}"] is False                                      # rank n: outside the pool, not backfilled
+    assert sum(pool.values()) == PAIR_POOL["TE"] - 1
+
+
+def test_rerun_on_an_existing_ledger_still_checks_the_frozen_spec(iwr):
+    """Codex P2: predict's no-op rerun refuses a ledger written under another spec or edited since."""
+    rows = [{"gsis_id": "RB1", "iwh_points": 9.0}]
+    led = {"config_hash": "H", "rows": rows, "rows_sha": iwr._sha(rows)}
+    iwr.check_existing_ledger(led, "H", "s2026w07-pregame.json")
+    with pytest.raises(SystemExit, match="not the frozen"):
+        iwr.check_existing_ledger(led, "NEW", "s2026w07-pregame.json")
+    with pytest.raises(SystemExit, match="edited after writing"):
+        iwr.check_existing_ledger({**led, "rows": [{"gsis_id": "RB1", "iwh_points": 12.0}]}, "H", "x.json")
