@@ -81,6 +81,8 @@ test("the kicker outlook sits in Players", () => {
   assert.equal(getActiveRoute("/kickers").activeHref, "/kickers");
   assert.equal(group("/kickers"), "Players");
   assert.ok(ALL_NAV_PAGES.some((p) => p.href === "/kickers"));
+  assert.equal(getActiveRoute("/defenses").activeHref, "/defenses");
+  assert.equal(group("/defenses"), "Players");
 });
 
 // ---------- Task-based groups (frontend UX overhaul) ----------
@@ -97,7 +99,7 @@ test("Players leads with Rankings; the advanced tools sit in one labelled Resear
   assert.equal(players.pages[0].href, "/rankings");
   const clusters = navClusters(players);
   assert.deepEqual(clusters.map((c) => c.title), [null, "Research"]);
-  assert.deepEqual(clusters[0].pages.map((p) => p.href), ["/rankings", "/players", "/compare", "/kickers"]);
+  assert.deepEqual(clusters[0].pages.map((p) => p.href), ["/rankings", "/players", "/compare", "/kickers", "/defenses"]);
   assert.deepEqual(clusters[1].pages.map((p) => p.href).sort(),
     ["/movers", "/projection-performance", "/research", "/schedule-intelligence"].sort());
   assert.equal(group("/schedule-intelligence"), "Players");

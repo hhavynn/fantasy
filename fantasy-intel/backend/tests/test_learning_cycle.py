@@ -79,7 +79,7 @@ def env(base, tmp_path, lc):
 
 
 def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False, research_shadows=False,
-          dst_shadow=False, dist_ledger=False):
+          dst_shadow=False, dist_ledger=False, dst_project=False):
     """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it, and the kicker stage
     (after project), the ifp-ctx-p1 / dfp-r1 shadow stages, the other research shadows and the distribution-ledger
     stage only when a test asks for them too."""
@@ -90,7 +90,8 @@ def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=
                      "--dist-dir", str(env / "dist"),
                      *([] if ctx_shadow else ["--no-ctx-shadow"]), *([] if dist_ledger else ["--no-dist-ledger"]),
                      *([] if research_shadows else ["--no-qb-scenario-shadow", "--no-ipm-cal-shadow"]),
-                     "--dst-dir", str(env / "dst"), *([] if dst_shadow else ["--no-dst-shadow"]), *extra])
+                     "--dst-dir", str(env / "dst"), *([] if dst_shadow else ["--no-dst-shadow"]),
+                     *([] if dst_project else ["--no-dst-project"]), *extra])
 
 
 def _run(lc, env, now=PRE_W10, *extra):
@@ -825,3 +826,38 @@ def test_dst_shadow_warnings_reach_the_report_and_it_still_scores_after_the_seas
     code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", dst_shadow=True))
     assert code == lc.EXIT_OK and rep["status"] == "no_upcoming_week" and calls[-1] is None
     assert ("dst_shadow", "ok") in _stages(rep)
+
+
+
+# ----------------------------------------------------------------------------- dfp-r1 production D/ST stage
+
+
+def test_dst_project_runs_after_kicker_and_its_failure_never_fails_the_cycle(lc, env, monkeypatch):
+    _espn_players(env)
+    calls = []
+
+    def boom(args, log_path):
+        calls.append(args.week)
+        raise RuntimeError("dst_projections.py project exited 1: SystemExit: abstains")
+
+    monkeypatch.setattr(lc, "stage_kicker", lambda args, log_path: {"runs": []})
+    monkeypatch.setattr(lc, "stage_dst_project", boom)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True, kicker=True,
+                                   dst_project=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    names = [n for n, _ in _stages(rep)]
+    assert names[names.index("project"):names.index("project") + 3] == ["project", "kicker", "dst_project"]
+    assert ("dst_project", "failed_nonfatal") in _stages(rep) and calls == [rep["target_week"]]
+    assert any("D/ST projection failed (ESPN's D/ST numbers stay" in w for w in rep["warnings"])
+    con = connect(env / "live.duckdb")
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.0.0'"
+                       ).fetchone()[0] == 1
+    con.close()
+
+
+def test_dst_project_is_skipped_with_no_project_or_its_own_flag(lc, env, monkeypatch):
+    monkeypatch.setattr(lc, "stage_dst_project", lambda *a: pytest.fail("dst_project must not run"))
+    lc.run_cycle(_args(lc, env, PRE_W10, dst_project=True))                       # --no-project
+    _espn_players(env)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True))   # --no-dst-project
+    assert code == lc.EXIT_OK and "dst_project" not in [n for n, _ in _stages(rep)]

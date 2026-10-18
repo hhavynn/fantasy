@@ -35,6 +35,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/players", label: "Players", summary: "One player's usage, game log and outlook" },
       { href: "/compare", label: "Compare", summary: "Players side by side on projection, usage and schedule" },
       { href: "/kickers", label: "Kicker outlook", summary: "Weekly kicker projections with game context" },
+      { href: "/defenses", label: "D/ST outlook", summary: "Weekly D/ST projections with the betting line" },
       { href: "/research", label: "Research lab", section: "Research", summary: "Opportunity against production for WR, RB and TE" },
       { href: "/schedule-intelligence", label: "Schedule", section: "Research", summary: "Upcoming opponents for each rostered player" },
       { href: "/movers", label: "Projection movers", section: "Research", summary: "Who moved between two stored forecasts" },

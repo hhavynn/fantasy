@@ -18,6 +18,8 @@ Kickers (K) are not in the skill-position run: they come from the separate kicke
 (kicker_store.select_run: kfp-1.0.0, the league's kicker scoring, approved artifact, content hash), applied
 by `_kicker_overlay` only to players the skill run left on ESPN, and reported under `kicker_run`. A week
 without a verified kicker run keeps ESPN's kicker numbers.
+D/ST works the same way with the D/ST model's verified run (dst_store.select_run: dfp-r1, the league's D/ST
+scoring, approved artifact, content hash) via `_dst_overlay`, reported under `dst_run`.
 
 Which run consumers see (`select_run`, the one selection every consumer view uses: this switch, and
 GET /api/projections/independent):
@@ -223,6 +225,7 @@ def weekly(con, season: int, week: int, source: str) -> dict:
         elif r["coverage_status"] in ZERO_STATUSES:
             values[pid], origin[pid] = 0.0, OURS_ZERO
     kicker_run = _kicker_overlay(con, season, week, values, origin)
+    dst_run = _dst_overlay(con, season, week, values, origin)
     for o in origin.values():
         counts[o] += 1
     reason = _fallback_reason(week, run, sel["skipped"]) if sel["fallback"] else None
@@ -241,7 +244,7 @@ def weekly(con, season: int, week: int, source: str) -> dict:
         reason = f"{reason} {note}" if reason else note
     return {**base, **extra, "reason": reason, "values": values, "origin": origin, "counts": counts, "run": run_info,
             "model_status": consumer_status(run), "governance": governance(run["model_version"]),
-            "timing": timing(con, run, sel["rows"]), "kicker_run": kicker_run}
+            "timing": timing(con, run, sel["rows"]), "kicker_run": kicker_run, "dst_run": dst_run}
 
 
 def _kicker_overlay(con, season: int, week: int, values: dict, origin: dict) -> dict | None:
@@ -256,10 +259,22 @@ def _kicker_overlay(con, season: int, week: int, values: dict, origin: dict) -> 
     return k["run"]
 
 
+def _dst_overlay(con, season: int, week: int, values: dict, origin: dict) -> dict | None:
+    """D/ST values from the verified dfp-r1 run (dst_store.overlay), only for players still on ESPN. Mutates
+    `values` / `origin`; returns the D/ST run's info (None when no verified D/ST run exists: ESPN's D/ST numbers)."""
+    from . import dst_store
+
+    d = dst_store.overlay(con, season, week)
+    for pid, v in d["values"].items():
+        if origin.get(pid, ESPN) == ESPN:
+            values[pid], origin[pid] = v, d["origin"][pid]
+    return d["run"]
+
+
 def describe(w: dict) -> dict:
     """The part of `weekly` a response carries (no per-player maps)."""
     keys = ("source", "available", "reason", "run", "model_status", "counts", "governance", "timing", "skipped",
-            "kicker_run")
+            "kicker_run", "dst_run")
     return {k: w[k] for k in keys if k in w}
 
 
@@ -267,5 +282,5 @@ NOTE = ("Independent projections are Fantasy Intel's own model (expected points)
         "(retrained weekly) was approved by an owner override: it has not met its prospective promotion criteria, its "
         "research validation is historical only, and it is not shown to be better than ESPN. A week without an "
         "eligible ifp-2.0.0 run shows the previous model ifp-1.0.0 as a labeled fallback. Kickers come from the separate "
-        "kicker model kfp-1.0.0 when a verified kicker run exists. D/ST, and players the models cannot project, keep "
-        "ESPN's number and are marked.")
+        "kicker model kfp-1.0.0 when a verified kicker run exists. D/ST projections come from the D/ST model dfp-r1 when a "
+        "verified D/ST run exists. Players the models cannot project keep ESPN's number and are marked.")

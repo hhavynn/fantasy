@@ -1,7 +1,7 @@
 """Prospective shadow of the D/ST research model `dfp-r1` against ESPN's one-week D/ST projection (research only;
-see docs/research/dst_projection_model.md, "Prospective shadow"). It does NOT replace ESPN: D/ST in
-projection_source.weekly() stays ESPN, and nothing in the app, the API, the frontend, the production pin or the
-model registry reads anything written here.
+see docs/research/dst_projection_model.md, "Prospective shadow"). It is the evidence track: since the owner's override
+of 2026-10-18 the same model serves D/ST in production (scripts/dst_projections.py, dst_store; section 8), and this
+shadow keeps running unchanged next to it. Nothing in the app, the API or the frontend reads anything written here.
 
     cd backend
     uv run python ../scripts/dst_shadow.py pregame [--week W]     # gated write-once pregame ledger for week W
@@ -401,6 +401,20 @@ def _code_hashes() -> dict:
     return {k: _sha_bytes(p.read_bytes()) for k, p in files.items()}
 
 
+def apply_lines(rows: list[dict], season: int, week: int, games: list[dict]) -> None:
+    """Put the line stored NOW (week_games, the live DB, whatever the history DB holds) on the target week's rows,
+    oriented to each defense: margin = the defense's expected margin, implied_opp = the opponent's implied total."""
+    by_team = {g["team"]: g for g in games}
+    for r in rows:
+        g = by_team.get(r["team"]) if (r["season"], r["week"]) == (season, week) else None
+        if g is None:
+            continue
+        r["margin"] = r["implied_opp"] = None
+        if g["spread_line"] is not None and g["total_line"] is not None:
+            r["margin"] = g["spread_line"] if g["home"] else -g["spread_line"]
+            r["implied_opp"] = (g["total_line"] - r["margin"]) / 2
+
+
 def build_ledger(args, season: int, week: int, now: datetime, games: list[dict], dec: dict) -> dict:
     """Load the game table (ESPN cache + schedules), put the line stored NOW on the target rows, forecast, and attach
     ESPN's snapshot at freeze time and the provenance."""
@@ -413,14 +427,7 @@ def build_ledger(args, season: int, week: int, now: datetime, games: list[dict],
             con.close()
     by_team = {g["team"]: g for g in games}
     open_teams = set(dec["open"])
-    for r in rows:             # the line as stored at freeze time (the live DB, whatever the history DB holds)
-        g = by_team.get(r["team"]) if (r["season"], r["week"]) == (season, week) else None
-        if g is None:
-            continue
-        r["margin"] = r["implied_opp"] = None
-        if g["spread_line"] is not None and g["total_line"] is not None:
-            r["margin"] = g["spread_line"] if g["home"] else -g["spread_line"]
-            r["implied_opp"] = (g["total_line"] - r["margin"]) / 2
+    apply_lines(rows, season, week, games)
     fc = forecast(rows, scoring, season, week, open_teams, last=last_week(args, season))
     weeks = sorted({m["week"] for m in fc["multi_week"]} | {week})
     snaps = espn_snapshots(args, season, weeks)

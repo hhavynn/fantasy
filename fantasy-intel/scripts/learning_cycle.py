@@ -32,6 +32,8 @@ the same way right after it (RESEARCH_SHADOWS; skip with --no-qb-scenario-shadow
 participation map, scripts/participation_cal_shadow.py cycle). A further research shadow, `dst_shadow`
 (scripts/dst_shadow.py cycle: the D/ST model dfp-r1 vs ESPN; writes only data/models/dst/shadow/), follows them;
 skip it with --no-dst-shadow.
+The production D/ST model runs as `dst_project` right after `kicker` (scripts/dst_projections.py: the target
+week's verified dfp-r1 run in the live DB; non-fatal like kicker; skip it with --no-dst-project or --no-project).
 Then `dist_ledger`, the frozen pregame point-distribution ledger (scripts/distribution_ledger.py cycle: scores
 frozen weeks' interval coverage and freezes the target week's distributions from the forecast `predict` just
 froze; research only, writes only <ifp-dir>/research/point_distributions/ledger/; skip with --no-dist-ledger).
@@ -314,6 +316,47 @@ def stage_kicker(args, log_path: Path) -> dict:
     out["runs"] = [{k: r.get(k) for k in ("week", "run_id", "created", "row_count", "coverage")} for r in pj.get("runs", [])]
     return out
 
+
+DST_PROJECT_TIMEOUT_S = 20 * 60      # a possible ESPN fetch, the artifact fit (once a season) and one week's run
+
+
+def stage_dst_project(args, log_path: Path) -> dict:
+    """Production D/ST model (dfp-r1, scripts/dst_projections.py): fit and approve the season's artifact once, then
+    store the target week's verified D/ST run in the live DB (one week only: later weeks keep ESPN's D/ST numbers).
+    Called after `project` and `kicker` (the read connections are closed). Never fails the cycle: run_cycle turns an
+    error into a warning, and a week without a verified run keeps ESPN's D/ST numbers."""
+    base = [sys.executable, str(SCRIPTS / "dst_projections.py")]
+    common = ["--season", str(args.season), "--live-db", str(args.live_db), "--history-db", str(args.history_db)]
+    if getattr(args, "dst_dir", None) is not None:
+        common += ["--out", str(args.dst_dir)]
+    out: dict = {}
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+
+    def run(cmd: list[str]) -> dict:
+        proc = subprocess.run(base + cmd + common, cwd=_bootstrap.BACKEND, capture_output=True, text=True, env=env,
+                              timeout=DST_PROJECT_TIMEOUT_S)
+        with open(log_path, "a", encoding="utf-8") as log:
+            log.write(f"==> dst_projections.py {cmd[0]} {datetime.now(timezone.utc).isoformat()}\n"
+                      f"{proc.stdout}{proc.stderr}")
+        if proc.returncode != 0:
+            raise RuntimeError(f"dst_projections.py {cmd[0]} exited {proc.returncode}: {proc.stderr.strip()[-400:]}")
+        try:
+            return json.loads(proc.stdout)
+        except ValueError:
+            return {}
+
+    dst_dir = Path(args.dst_dir) if getattr(args, "dst_dir", None) is not None else cli._path("DST_RESEARCH_DIR",
+                                                                                              "data/models/dst")
+    if not (dst_dir / f"dfp-r1_{args.season}.json").exists():
+        fit = run(["fit", "--register"])
+        out["fit"] = {k: fit.get(k) for k in ("artifact", "sha256", "registered")}
+    else:
+        reg = run(["register"])       # approving an approved artifact again is a no-op
+        out["register"] = {k: reg.get(k) for k in ("artifact", "sha256", "registered")}
+    pj = run(["project", "--week", str(args.week)])
+    out["runs"] = [{k: r.get(k) for k in ("week", "run_id", "created", "row_count", "coverage")} for r in pj.get("runs", [])]
+    return out
 
 CTX_SHADOW_TIMEOUT_S = 45 * 60       # the whole research stage (store build + scoring + a possible freeze)
 # The other research shadows: (stage / report key, script, --no-* attribute, warning label). Same contract as ctx_shadow.
@@ -701,6 +744,18 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                              "seconds": round(time.monotonic() - t_k, 2),
                                              "error": f"{err.__class__.__name__}: {err}"})
                     report["warnings"].append(f"kicker projection failed (skill-position run unaffected): {err}")
+            if not args.no_dst_project:      # production D/ST model (dfp-r1): a failure is a warning, never a failed cycle
+                t_d = time.monotonic()
+                try:
+                    report["dst_projection"] = stage_dst_project(args, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+                    report["stages"].append({"name": "dst_project", "status": "ok",
+                                             "seconds": round(time.monotonic() - t_d, 2)})
+                except Exception as err:      # noqa: BLE001
+                    report["stages"].append({"name": "dst_project", "status": "failed_nonfatal",
+                                             "seconds": round(time.monotonic() - t_d, 2),
+                                             "error": f"{err.__class__.__name__}: {err}"})
+                    report["warnings"].append(f"D/ST projection failed (ESPN's D/ST numbers stay; skill-position run "
+                                              f"unaffected): {err}")
         ctx_shadow()
         research_shadows()
         dst_shadow()
@@ -869,6 +924,8 @@ def parse(argv=None):
                     help="do not run the point-distribution ledger stage (scripts/distribution_ledger.py cycle)")
     ap.add_argument("--dist-dir", type=Path, default=None,
                     help="model directory holding research/point_distributions/ (default: distribution_ledger.py's)")
+    ap.add_argument("--no-dst-project", action="store_true",
+                    help="do not store the production D/ST model's (dfp-r1) run after the skill-position projection")
     ap.add_argument("--no-dst-shadow", action="store_true",
                     help="do not run the dfp-r1 D/ST research shadow stage (scripts/dst_shadow.py cycle)")
     ap.add_argument("--dst-dir", type=Path, default=None,
@@ -905,7 +962,8 @@ def main(argv=None) -> int:
         return code
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
-            "training", "forecast", "projection", "kicker_projection", "ctx_shadow", *(r[0] for r in RESEARCH_SHADOWS),
+            "training", "forecast", "projection", "kicker_projection", "dst_projection", "ctx_shadow",
+            *(r[0] for r in RESEARCH_SHADOWS),
             "dst_shadow", "dist_ledger", "evaluation", "missed_window", "warnings", "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))
     return code

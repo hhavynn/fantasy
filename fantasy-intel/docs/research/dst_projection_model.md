@@ -19,6 +19,9 @@ The scoring fingerprint is `dst:79fb2f9284165708` (the owner league's slot-16 ru
 **Answer: adopt as a shadow challenger for the one-week projection only. Do not replace ESPN yet, and do not
 use it for multi-week horizons.**
 
+> **Update 2026-10-18: promoted to production by an owner override** (section 8). dfp-r1 now serves the one-week
+> D/ST projection on the site; the shadow of section 7 keeps running unchanged as the evidence track.
+
 On the held-out 2023-25 test seasons (1,632 team-games), the market-informed model beats ESPN's final weekly
 D/ST projection, rescored under the league's own rules, on every pre-registered criterion:
 
@@ -330,10 +333,10 @@ about 10 seconds.
 ## 7. Prospective shadow (dfp-r1 vs ESPN, from 2026 week 7)
 
 `scripts/dst_shadow.py` runs the frozen model every week as a **shadow challenger** to ESPN's one-week D/ST
-projection. It does not replace ESPN: D/ST in `projection_source.weekly()` stays ESPN, nothing in `backend/app`
-imports the model or reads the shadow's files, and the model is not in the registry or the production pin
-(`test_dst_research.py` enforces the first part: only `dst_research.py` and `dst_shadow.py` import the model, and
-`learning_cycle.py` / `refresh_all.py` only launch `dst_shadow.py` as a separate process).
+projection. Nothing in `backend/app` imports the model or reads the shadow's files (`test_dst_research.py`
+enforces it: only `dst_research.py`, `dst_shadow.py` and `dst_projections.py` import the model, and
+`learning_cycle.py` / `refresh_all.py` only launch them as separate processes). Since the owner override of section 8
+the same model also serves D/ST in production; the shadow is unchanged and remains the evidence track.
 
 No new scheduler. Two existing jobs call it:
 
@@ -415,3 +418,45 @@ A forced run on the live database on 2026-10-18 (week 7, 28 open teams; not a fr
 The projections correlated −0.985 with the opponent's implied total, and averaged 0.56 points above ESPN's
 latest snapshot (section 4.3 found ESPN under-projects by 0.76). The real week-7 freeze was deferred because
 DAL-PHI had no line yet.
+
+## 8. Production: owner override (2026-10-18)
+
+**Decision.** The owner (hhavynn) promoted dfp-r1 to the production D/ST model on 2026-10-18, so the site shows
+Fantasy Intel's D/ST expected points instead of ESPN's. It is recorded as an **owner override** of this report's
+verdict ("adopt as a shadow challenger"), the same way ifp-2 was promoted:
+
+* overridden: the gate of section 7 (8 prospective weeks against ESPN's pregame snapshot), which has not run yet;
+* evidence cited: the historical walk-forward test (2023-25) and 2026 weeks 1-5 (sections 3-4);
+* evidence track: `dst_shadow.py` keeps freezing and scoring its prospective ledger, unchanged;
+* scope: the coming week only. Later weeks keep ESPN's D/ST numbers, because the no-line multi-week form is worse
+  than ESPN (section 4.6);
+* recorded in `backend/app/analytics/dst_store.py` (`PROMOTION`, internal). Consumer-facing text describes the model
+  plainly (`dst_store.GOVERNANCE`, the D/ST outlook page).
+
+The model registry (`model_registry.json`) stays the ifp family's manifest: like the kicker model kfp-1.0.0, dfp-r1
+is governed by its own store and approved artifacts.
+
+**How it runs.**
+
+| Piece | What it does |
+|---|---|
+| `scripts/dst_projections.py fit --register` | once a season: writes `data/models/dst/dfp-r1_<season>.json` (the frozen configuration, the model code's sha256, training seasons 2020 .. season − 1, and 80% interval bands from out-of-sample residuals of the three previous seasons) and approves its sha256 in `approved_artifacts` |
+| `scripts/dst_projections.py project --week W` | one write-once run for week W in `dst_projection_runs` / `dst_projection_rows`: every ESPN D/ST, `projected` (with the projection, interval, expected sacks / takeaways / points and yards allowed / P(any TD), the line used and plain reasons), `bye` (0) or `no_nfl_team`; an identical rerun is a no-op, a moved line makes a new run |
+| `learning_cycle.py`, stage `dst_project` after `kicker` | runs `fit --register` (or `register`) and `project` for the target week, Tue/Wed/Thu; non-fatal: a failure is a warning, never a failed cycle; skipped with `--no-project` or `--no-dst-project` |
+| `dst_store.select_run` | what consumers see: the newest dfp-r1 run under the league's current D/ST scoring whose artifact is approved and whose rows verify against the content hash |
+
+The projection is the same code as the shadow's (`dst_shadow.forecast`; tested equal), with the line as stored in
+the live `nfl_schedules` when the run is made. A game without a line yet is projected from the ratings and flagged.
+
+**Where the site shows it.** Every view that uses the weekly projection switch on "Ours"
+(`projection_source.weekly`: Home, Matchup and Start/Sit): D/ST rows take the verified run's expected points
+(`origin = ours`; a bye is `ours_zero`), exactly like kickers. Also:
+
+* `GET /api/projections/independent`: D/ST rows carry the D/ST model's projection, interval, stat line and line
+  (`dst_run` names the run);
+* the forward view on a player page: the projected week comes from dfp-r1, later weeks from ESPN;
+* `GET /api/projections/defenses` and the **D/ST outlook** page (`/defenses`, next to the kicker outlook).
+
+A week without a verified run keeps ESPN's D/ST numbers, labeled as ESPN. The hosted copy carries the new tables
+automatically (`db/publish.py` copies every table).
+
