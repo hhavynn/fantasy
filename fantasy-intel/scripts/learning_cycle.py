@@ -22,6 +22,10 @@ The project stage also projects EVERY LATER regular-season week W+1..last from t
 projections, docs/independent_projection_engine.md; no training per week). A failure on one later week is listed under
 `projection.rest_of_season` and in `warnings`, and does not stop the other weeks or change the cycle status; skip all
 of it with --no-rest-of-season.
+After the production run, two separate models run as non-fatal stages (a failure is a warning, never a failed cycle):
+`kicker` (kfp-1.0.0) and `ctx_shadow`, the research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py
+cycle: scores its frozen pregame ledgers against actuals alongside ifp-2 and tries the gated write-once freeze; it
+writes only <ifp-dir>/research/context/). Skip them with --no-kicker / --no-ctx-shadow.
 A stage failure stops every later stage. Nothing is backdated, overwritten or replayed: a week whose
 first kickoff passed without a frozen pregame forecast is recorded under <out>/missed/.
 
@@ -296,6 +300,43 @@ def stage_kicker(args, log_path: Path) -> dict:
     return out
 
 
+CTX_SHADOW_TIMEOUT_S = 45 * 60       # the whole research stage (store build + scoring + a possible freeze)
+
+
+def stage_ctx_shadow(args, conns: list, log_path: Path) -> dict:
+    """Research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py `cycle`, own process): score every
+    fully final frozen week against actuals alongside ifp-2, record a week missed without a ledger, and try the target
+    week's write-once pregame freeze (usually deferred on Tue-Thu: the final injury reports land Friday, and
+    refresh_all.py's evidence stage freezes it before the main slate). Reads the databases read-only and writes only
+    <ifp-dir>/research/context/. Never fails the cycle: run_cycle turns an error into a warning. Exit 3 means it ran and
+    reported warnings (missing or stale injury evidence), which are returned, not raised."""
+    for con in conns:            # DuckDB: the research process opens its own read-only connections
+        if con is not None:
+            con.close()
+    conns.clear()
+    cmd = [sys.executable, str(SCRIPTS / "ctx_shadow.py"), "cycle", "--season", str(args.season),
+           "--live-db", str(args.live_db), "--history-db", str(args.history_db),
+           "--weekly-dir", str(args.out), "--exits-dir", str(args.out)]
+    if args.week is not None:          # None after the season's last week: score only (and check that week)
+        cmd += ["--week", str(args.week)]
+    if getattr(args, "ctx_dir", None) is not None:
+        cmd += ["--ifp-dir", str(args.ctx_dir)]
+    if getattr(args, "now", None):     # a simulated cycle clock: ctx_shadow.py then decides only (dry run, no writes)
+        cmd += ["--now", str(args.now)]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
+                          env={**os.environ, "PYTHONUNBUFFERED": "1"}, timeout=CTX_SHADOW_TIMEOUT_S)
+    out, err = proc.stdout or "", proc.stderr or ""
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"==> ctx_shadow.py cycle {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
+    if proc.returncode not in (0, 3):
+        raise RuntimeError(f"ctx_shadow.py exited {proc.returncode}: {err.strip()[-400:]} (see {log_path})")
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {}
+
+
 def training_fingerprint(args, store, scoring) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
@@ -394,6 +435,22 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         report["stages"].append({"name": name, "status": "ok", "seconds": round(time.monotonic() - t, 2)})
         return out
 
+    def ctx_shadow():
+        """Research shadow (ifp-ctx-p1), after the production stages: a failure is a warning, never a failed cycle."""
+        if args.no_ctx_shadow:
+            return
+        t_c = time.monotonic()
+        try:
+            cs = stage_ctx_shadow(args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+            report["ctx_shadow"] = cs
+            report["stages"].append({"name": "ctx_shadow", "status": "ok", "seconds": round(time.monotonic() - t_c, 2)})
+            report["warnings"] += [f"ifp-ctx-p1 shadow: {w}" for w in cs.get("warnings") or []]
+        except Exception as err:      # noqa: BLE001
+            report["stages"].append({"name": "ctx_shadow", "status": "failed_nonfatal",
+                                     "seconds": round(time.monotonic() - t_c, 2),
+                                     "error": f"{err.__class__.__name__}: {err}"})
+            report["warnings"].append(f"ifp-ctx-p1 shadow stage failed (production runs unaffected): {err}")
+
     try:
         preflight(args)
         lock = acquire_lock(args.out, now)
@@ -413,6 +470,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                               default=None)}
         report["missed_window"] = missed_window(args, last_started, kick, now)
         if target is None:
+            ctx_shadow()                # the season's last frozen week still needs scoring once it is final
             raise CycleStop("no_upcoming_week", EXIT_OK, f"no {args.season} regular-season week kicks off after "
                             f"{now.isoformat()}")
         args.week, args.last_week = target, max(kick)
@@ -475,6 +533,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                              "seconds": round(time.monotonic() - t_k, 2),
                                              "error": f"{err.__class__.__name__}: {err}"})
                     report["warnings"].append(f"kicker projection failed (skill-position run unaffected): {err}")
+        ctx_shadow()
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):
@@ -528,6 +587,10 @@ def parse(argv=None):
     ap.add_argument("--no-kicker", action="store_true",
                     help="do not fit/project the kicker model (kfp) after the skill-position projection")
     ap.add_argument("--kicker-dir", type=Path, default=cli._path("KICKER_MODEL_DIR", "data/models/kicker"))
+    ap.add_argument("--no-ctx-shadow", action="store_true",
+                    help="do not run the ifp-ctx-p1 research shadow stage (scripts/ctx_shadow.py cycle)")
+    ap.add_argument("--ctx-dir", type=Path, default=None,
+                    help="model directory holding research/context/ (default: ctx_shadow.py's, IFP_MODEL_DIR)")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (tests and audits only)")
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
     ap.add_argument("--history-db", type=Path, default=cli._path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
@@ -546,8 +609,8 @@ def main(argv=None) -> int:
         return 0
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
-            "training", "forecast", "projection", "kicker_projection", "evaluation", "missed_window", "warnings",
-            "exit_code")
+            "training", "forecast", "projection", "kicker_projection", "ctx_shadow", "evaluation", "missed_window",
+            "warnings", "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))
     return code
 
