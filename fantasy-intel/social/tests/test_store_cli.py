@@ -144,3 +144,13 @@ def test_studio_subject_for_out_player_is_the_replacement():
     assert [p["name"] for p in subjects] == ["Germie Bernard", "Roman Wilson"] and "out" in why
     subjects, _ = cli.studio_subjects({"format": "opinion_vs_numbers"}, cluster)
     assert subjects[0]["name"] == "Roman Wilson"
+
+
+def test_studio_subject_uses_teammate_replacement_not_named_in_posts():
+    lead = {"name": "Roman Wilson", "team": "PIT", "position": "WR", "roster_status": "RES", "gsis_id": "g1",
+            "teammates": [{"gsis_id": "g3", "name": "Calvin Austin III", "metric": "target share", "recent": 0.21,
+                           "source": "fantasy.duckdb:player_week_usage"}]}
+    cluster = {"enrichment": {"players": [lead], "upcoming_week": 6}, "top_posts": []}
+    subjects, why = cli.studio_subjects({"format": "injury_ripple"}, cluster)
+    assert [(p["name"], p["gsis_id"]) for p in subjects] == [("Calvin Austin III", "g3"), ("Roman Wilson", "g1")]
+    assert "Calvin Austin III" in why

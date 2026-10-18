@@ -271,6 +271,11 @@ def studio_subjects(idea: dict[str, Any], cluster: dict[str, Any] | None) -> tup
             ideas_mod.availability(lead, enr.get("upcoming_week"), enr.get("status_cues")) == "out":
         who, _, _ = ideas_mod.replacement(cluster)
         repl = next((p for p in players if p["name"] == who), None)
+        if repl is None and who:  # a teammate from our usage data the posts never named
+            mate = next((m for m in lead.get("teammates") or [] if m.get("name") == who), None)
+            if mate:
+                repl = {"name": mate["name"], "gsis_id": mate.get("gsis_id"), "team": lead.get("team"),
+                        "position": lead.get("position")}
         if repl:
             return [repl] + [p for p in players if p is not repl], f"{lead['name']} is out: the story is {who}"
     return players, "the idea's lead player"
