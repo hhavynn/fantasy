@@ -432,4 +432,6 @@ uv run python ../scripts/context_research.py prospective
 Runtime on the local machine: about 30 seconds to build the store plus context (cached by input fingerprint) and under
 10 seconds per walk-forward window.
 
+Follow-up: the returning-teammate-only challenger (`ifp-ret-0.1.0`, `retain_baseline`) is in `returning_teammate_features.md`.
+
 Automated prospective shadow (how the `ifp-ctx-p1` ledger is frozen, scored and read): [ifp_ctx_shadow_automation.md](ifp_ctx_shadow_automation.md).
