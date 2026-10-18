@@ -329,21 +329,78 @@ def test_real_outcome_labels_and_finality_on_a_synthetic_database(dl, tmp_path, 
                 "('s', 'nfl', '2025-09-10 03:00:00', '2025-09-10 03:00:00', 'ok', ?)",
                 [_json.dumps({"season": 2025, "nfl_schedules": 1})])
     con.close()
+    from app.analytics.independent_projection_store import league_scoring
+    con = connect(db, read_only=True)
+    _, scoring = league_scoring(con, 2025)
+    con.close()
     write_artifact(tmp_path / "models", artifact)
     a = dl.parse(["score", "--season", "2025", "--ifp-dir", str(tmp_path / "models"), "--live-db", str(db)])
     for week in (5, 10):
-        kick = datetime(2025, 9, min(28, week), 17, tzinfo=UTC)
-        rows = [{**wrow(gsis(t, s), pos, t, kickoff=kick), "_run_id": "r"} for t in TEAMS for s, pos in SLOTS]
-        body = {"season": 2025, "week": week, "artifact": {"content_hash": artifact["content_hash"]},
-                "rows": dl.ledger_rows(artifact, rows)}
-        body["rows_sha256"] = hashlib.sha256(dl._canon(body["rows"]).encode()).hexdigest()
-        dl._write_once(dl.week_path(a, 2025, week), body, compact=True)
+        _ledger(dl, a, artifact, 2025, week, scoring.fingerprint)
     s = dl.run_score(a)["scores"]
     assert s["weeks_scored"] == ["2025-05"] and s["weeks_not_final"] == ["2025-10"]
     resolved = s["outcomes"].get(wl.APPEARED, 0) + s["outcomes"].get(wl.CONFIRMED_ABSENT, 0)
     assert resolved >= len(TEAMS) * len(SLOTS)                       # every week-5 player resolved
     n = sum(e["conditional"]["n"] for e in s["by_mean"]["ifp-1.0.0"]["positions"].values())
     assert 0 < n == s["outcomes"][wl.APPEARED]                        # week 10 (no results) has no appearances
+
+
+def _ledger(dl, a, artifact, season, week, fingerprint):
+    from synthetic_forecast import SLOTS, TEAMS, gsis
+
+    kick = datetime(season, 9, min(28, week), 17, tzinfo=UTC)
+    rows = [{**wrow(gsis(t, s), pos, t, kickoff=kick), "_run_id": "r"} for t in TEAMS for s, pos in SLOTS]
+    body = {"season": season, "week": week, "rows": dl.ledger_rows(artifact, rows),
+            "artifact": {"content_hash": artifact["content_hash"], "scoring_fingerprint": fingerprint}}
+    body["rows_sha256"] = hashlib.sha256(dl._canon(body["rows"]).encode()).hexdigest()
+    dl._write_once(dl.week_path(a, season, week), body, compact=True)
+
+
+def test_a_ledger_frozen_under_other_scoring_is_refused_not_relabelled(dl, tmp_path, artifact):
+    """Outcomes are league points under each season's own scoring; a ledger recorded under another scoring fingerprint
+    is refused rather than scored with rules it was not frozen under."""
+    import json as _json
+
+    from app.db.connection import connect, init_db
+    from synthetic_forecast import add_league, add_participation, generate, write
+
+    db = tmp_path / "live.duckdb"
+    con = connect(db)
+    init_db(con)
+    write(con, add_participation(generate([2025], unfinished={2025: 10})))
+    add_league(con, 2025, 10)
+    con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status, stats) VALUES "
+                "('s', 'nfl', '2025-09-10 03:00:00', '2025-09-10 03:00:00', 'ok', ?)",
+                [_json.dumps({"season": 2025, "nfl_schedules": 1})])
+    con.close()
+    a = dl.parse(["score", "--season", "2025", "--ifp-dir", str(tmp_path / "models"), "--live-db", str(db)])
+    _ledger(dl, a, artifact, 2025, 5, "0" * 16)
+    rec = dl.run_score(a)
+    assert rec["status"] == "failed" and "frozen under scoring 0000000000000000" in rec["error"]
+    assert not (dl.ledger_dir(a) / "scores.json").exists()
+
+
+def test_a_resumed_cycle_records_every_skipped_week_once(dl, world, monkeypatch):
+    """The cycle did not run for weeks 6-8 (only week 7 was frozen, by the refresh): resuming before week 9 records
+    weeks 6 and 8 as missed, and a later cycle records nothing again."""
+    import duckdb
+
+    from app.analytics import injury_freshness
+
+    duckdb.connect(str(world / "live.duckdb")).close()
+    monkeypatch.setattr(injury_freshness, "scheduled_kickoffs",
+                        lambda con, season, week: {"AAA": KICK + timedelta(days=7 * (week - 7))})
+    monkeypatch.setattr(dl, "_target_week", lambda args, now: 9)
+    a = dl.parse(["cycle", "--season", "2026", "--ifp-dir", str(world / "models"),
+                  "--weekly-dir", str(world / "weekly"), "--live-db", str(world / "live.duckdb")])
+    assert dl.run_freeze(args_for(dl, world), 2026, 7, now=TUE)["status"] == "frozen"
+    resumed = TUE + timedelta(days=14)
+    out = dl.cmd_cycle(a, resumed)
+    assert [m["week"] for m in out["missed"]] == [6, 8]
+    assert sorted(p.name for p in (dl.ledger_dir(a) / "missed").glob("*.json")) == ["s2026w06.json", "s2026w08.json"]
+    assert sum("recorded as missed" in w for w in out["warnings"]) == 2
+    again = dl.cmd_cycle(a, resumed + timedelta(days=1))
+    assert again["missed"] == [] and not [w for w in again["warnings"] if "recorded as missed" in w]
 
 
 def test_the_app_never_imports_the_ledger():

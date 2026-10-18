@@ -511,8 +511,9 @@ Provenance recorded in the file:
 * a sha256 of the rows.
 
 One file per week: `<ifp-dir>/research/point_distributions/ledger/weeks/s<S>w<WW>-pregame.json` (git-ignored,
-about 0.5 MB). It is never rewritten. A prospective week whose games all start without one is recorded under
-`missed/` and never backfilled.
+about 0.5 MB). It is never rewritten. Every prospective week whose games all started without one is recorded once under
+`missed/` (each cycle checks every elapsed week, so a cycle that did not run for a while still records each of them)
+and never backfilled.
 
 **The pin.** Every week uses the same artifact until someone re-pins on purpose (`distribution_ledger.py pin
 --artifact FILE --reason TEXT`, write-once under `pins/`). The first freeze pins the newest artifact trained only on
@@ -526,7 +527,8 @@ explicit, recorded re-pin.
 
 **Scoring (weekly).** Once a frozen week is fully final (`weekly_learning.week_finality`; outcomes from
 `weekly_learning.label_outcomes`, so a game not yet played never becomes a zero), the ledger's own frozen quantiles are
-scored per mean model and position. It reuses the research functions:
+scored per mean model and position. Outcomes are league points under each season's own scoring; a ledger whose
+recorded scoring fingerprint differs from its season's is refused, never relabelled under other rules. It reuses the research functions:
 
 * randomized-PIT `calibration` (exact with the point mass at 0): coverage80, P10/P50/P90 rates, width, plus CRPS and a
   week-clustered 95% interval for coverage80;

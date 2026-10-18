@@ -358,9 +358,15 @@ def run_freeze(args, season: int, week: int, *, now: datetime | None = None) -> 
     return rec
 
 
+def missed_path(args, season: int, week: int) -> Path:
+    return ledger_dir(args) / "missed" / f"s{season}w{week:02d}.json"
+
+
 def check_missed(args, season: int, week: int | None, *, now: datetime, kickoffs=None) -> dict | None:
-    """A prospective week whose games have all kicked off without a ledger is recorded write-once (never backfilled)."""
-    if not week or week < 1 or (season, week) < FIRST_PROSPECTIVE or week_path(args, season, week).exists():
+    """A prospective week whose games have all kicked off without a ledger is recorded write-once (never backfilled).
+    None when it has a ledger, is already recorded, or is not over yet."""
+    if (not week or week < 1 or (season, week) < FIRST_PROSPECTIVE or week_path(args, season, week).exists()
+            or missed_path(args, season, week).exists()):
         return None
     if kickoffs is None:
         import duckdb
@@ -376,7 +382,7 @@ def check_missed(args, season: int, week: int | None, *, now: datetime, kickoffs
     rec = {"season": season, "week": week, "last_kickoff": max(known).isoformat(), "recorded_at": now.isoformat(),
            "reason": "no pregame distribution ledger was frozen before the week's games; nothing is backdated"}
     if args.write:
-        _write_once(ledger_dir(args) / "missed" / f"s{season}w{week:02d}.json", rec)
+        _write_once(missed_path(args, season, week), rec)
     return rec
 
 
@@ -392,23 +398,33 @@ def _labelled(args, ledgers: list[dict]):
     from app.analytics.independent_projection_store import league_scoring
     from app.analytics.schedule_intelligence import nfl_fetch_times
 
-    seasons = sorted({l["season"] for l in ledgers})
+    schema = {"season": pl.Int64, "week": pl.Int64, "key": pl.Int64, "gsis_id": pl.String, "team": pl.String,
+              "kickoff": pl.String, "_i": pl.Int64, "_j": pl.Int64}
+    srcs, labs, fetched = {}, [], {}
     con = duckdb.connect(str(args.live_db), read_only=True)
     try:
-        _, scoring = league_scoring(con, seasons[-1])
-        src = load_sources(con, scoring.require_supported(), seasons)
-        fetched = {s: nfl_fetch_times(con, s)["schedules"] for s in seasons}
+        # each season's points under ITS league scoring; a ledger frozen under other rules is refused, never relabelled
+        for season in sorted({l["season"] for l in ledgers}):
+            _, scoring = league_scoring(con, season)
+            for l in ledgers:
+                frozen_fp = (l.get("artifact") or {}).get("scoring_fingerprint")
+                if l["season"] == season and frozen_fp != scoring.fingerprint:
+                    raise ValueError(f"s{season}w{l['week']:02d} was frozen under scoring {frozen_fp}, but the "
+                                     f"league's {season} scoring is {scoring.fingerprint}: its outcomes would be scored "
+                                     "under other rules")
+            srcs[season] = load_sources(con, scoring.require_supported(), [season])
+            fetched[season] = nfl_fetch_times(con, season)["schedules"]
     finally:
         con.close()
-    recs = [{"season": l["season"], "week": l["week"], "key": key(l["season"], l["week"]), "gsis_id": r["gsis_id"],
-             "team": r["team"], "kickoff": r["kickoff"], "_i": i, "_j": j}
-            for i, l in enumerate(ledgers) for j, r in enumerate(l["rows"])]
-    frame = pl.DataFrame(recs, schema={"season": pl.Int64, "week": pl.Int64, "key": pl.Int64, "gsis_id": pl.String,
-                                       "team": pl.String, "kickoff": pl.String, "_i": pl.Int64, "_j": pl.Int64})
-    lab = wl.label_outcomes(frame, src, fetched)
+    for season, src in srcs.items():
+        recs = [{"season": l["season"], "week": l["week"], "key": key(l["season"], l["week"]), "gsis_id": r["gsis_id"],
+                 "team": r["team"], "kickoff": r["kickoff"], "_i": i, "_j": j}
+                for i, l in enumerate(ledgers) if l["season"] == season for j, r in enumerate(l["rows"])]
+        labs.append(wl.label_outcomes(pl.DataFrame(recs, schema=schema), src, fetched))
+    lab = pl.concat(labs, how="diagonal_relaxed")
     final = {}
     for l in ledgers:
-        f = wl.week_finality(src, l["season"], l["week"], fetched.get(l["season"]))
+        f = wl.week_finality(srcs[l["season"]], l["season"], l["week"], fetched.get(l["season"]))
         missing = lab.filter((pl.col("season") == l["season"]) & (pl.col("week") == l["week"])
                              & (pl.col("outcome_status") == wl.MISSING_INGESTION)).height
         final[(l["season"], l["week"])] = f["fully_final"] and not missing     # a team the ledger saw is still open
@@ -605,18 +621,24 @@ def cmd_cycle(args, now: datetime) -> dict:
     (right after the cycle's `predict` stage froze that week's pregame forecast)."""
     week = args.week if args.week is not None else _target_week(args, now)
     out = {"score": _summary(run_score(args, now=now))}
-    missed = None
+    missed = []
     try:
-        # the week before the target or, after the season's last week has started, that last week
-        missed = check_missed(args, args.season, week - 1 if week else _last_week(args), now=now)
+        # every elapsed prospective week before the target (or through the season's last week once it has started)
+        # with neither a ledger nor a missed record: a cycle that did not run for weeks still records each of them
+        last = week - 1 if week else _last_week(args)
+        first = 1 if args.season > FIRST_PROSPECTIVE[0] else FIRST_PROSPECTIVE[1]
+        for w in range(first, (last or 0) + 1):
+            rec = check_missed(args, args.season, w, now=now)
+            if rec:
+                missed.append(rec)
     except Exception as err:          # noqa: BLE001
         out["score"]["warnings"].append(f"missed-week check failed: {err}")
     out["missed"] = missed
     out["freeze"] = (run_freeze(args, args.season, week, now=now) if week
                      else {"status": "no_upcoming_week", "warnings": [], "notes": []})
     out["warnings"] = [*out["score"]["warnings"], *out["freeze"]["warnings"]]
-    if missed:
-        out["warnings"].append(f"week {missed['week']} started without a frozen distribution ledger (recorded as missed)")
+    for m in missed:
+        out["warnings"].append(f"week {m['week']} started without a frozen distribution ledger (recorded as missed)")
     out["status"] = "failed" if "failed" in (out["score"]["status"], out["freeze"]["status"]) else "ok"
     return out
 
