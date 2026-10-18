@@ -23,7 +23,6 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from datetime import datetime
-from typing import Any
 
 from ..db.connection import fetch_dicts, table_columns, table_exists, utcnow
 from . import injury_freshness as fresh
@@ -567,10 +566,9 @@ def build_injury_impact(con, *, position: str = "ALL", status: str = "all", team
     for e in entries:
         e["game"]["is_home"] = home.get(e["team"])
 
-    affects_me = lambda e: e["roster"]["is_mine"] or any(m["roster"]["is_mine"] for m in
-                                                         e["impact"]["teammates"] + e["impact"]["receivers"])
     for e in entries:
-        e["affects_my_roster"] = affects_me(e)
+        e["affects_my_roster"] = e["roster"]["is_mine"] or any(
+            m["roster"]["is_mine"] for m in e["impact"]["teammates"] + e["impact"]["receivers"])
 
     def order(e):
         return (e["game"]["started"] or bool(e["game"]["on_bye"]), e["absence"]["kind"] == "long_term",
