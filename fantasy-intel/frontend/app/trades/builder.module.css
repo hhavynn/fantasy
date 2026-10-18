@@ -116,3 +116,9 @@
 .previous { opacity: .55; }
 .resultSkeleton { display: grid; gap: 16px; }
 .pendingNote { margin: 0 0 16px; color: var(--ink-muted); }
+
+/* 320px phones: the week picker, Clear and Evaluate fit one row only with a narrower select and gaps. */
+@media (max-width: 360px) {
+  .controls { gap: 6px; }
+  .week select { width: 80px; }
+}
