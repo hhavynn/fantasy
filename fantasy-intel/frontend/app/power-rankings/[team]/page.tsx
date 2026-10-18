@@ -4,7 +4,7 @@ import { UnknownTeam } from "@/components/TeamPerspective";
 import { EmptyState, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cardHref, ordinal, PATH, type PowerRankings } from "@/lib/power-rankings";
-import { isUnknownTeam, readTeamSelection } from "@/lib/team-perspective";
+import { isUnknownTeam, readTeamSelection, withTeam } from "@/lib/team-perspective";
 import { TeamCard } from "../TeamCard";
 import { Unavailable } from "../Unavailable";
 import styles from "../power.module.css";
@@ -28,16 +28,19 @@ export default async function PowerCardPage({ params }: PageProps<"/power-rankin
   }
   const d = res.data;
   const t = d.teams.find((x) => x.team_id === sel.id);
+  // The card's team is in the route (/power-rankings/<id>), which TeamLink cannot read (it follows ?team= or the
+  // last team analyzed in this tab), so team-scoped links carry it explicitly.
+  const forTeam = (href: string) => withTeam(href, String(sel.id));
   return (
     <div className="stack">
       <PageHeader
-        eyebrow={<TeamLink href={PATH}>{d.week ? `Power rankings · Week ${d.week}` : "Power rankings"}</TeamLink>}
+        eyebrow={<Link href={forTeam(PATH)}>{d.week ? `Power rankings · Week ${d.week}` : "Power rankings"}</Link>}
         title="Team card"
         meta="One team's power ranking on a single card. Share this page's link, or take a screenshot of the card."
       />
       {d.empty ? (
         <Section>
-          <EmptyState title="Nothing to rank yet" action={<TeamLink href="/playoff-race">See the standings</TeamLink>}>
+          <EmptyState title="Nothing to rank yet" action={<Link href={forTeam("/playoff-race")}>See the standings</Link>}>
             <p>{d.message ?? "No team has a complete lineup projection."}</p>
           </EmptyState>
         </Section>

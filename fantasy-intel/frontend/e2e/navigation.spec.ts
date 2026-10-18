@@ -297,3 +297,13 @@ test("phone tab bar does not cover the end of the page", async ({ page }) => {
   const tabs = await page.locator(".tabbar").boundingBox();
   expect(box && tabs && box.y + box.height <= tabs.y + 1, "last section hidden under the tab bar").toBe(true);
 });
+
+test("a shared power-rankings card links back to the board for the card's team, not a stored one", async ({ page }) => {
+  // Analyze the default team first, so a stored team exists that differs from the card's (team 1, a rival).
+  await page.goto("/power-rankings?team=2");
+  await loaded(page);
+  await page.goto("/power-rankings/1");
+  await loaded(page);
+  const back = page.locator("main").getByRole("link", { name: /^Power rankings/ }).first();
+  await expect(back).toHaveAttribute("href", /[?&]team=1(&|$)/);
+});
