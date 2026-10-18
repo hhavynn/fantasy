@@ -451,13 +451,14 @@ the projection tables. The hosted API bundle ships without polars, so there the 
 `scripts/refresh_all.py` (launchd: Thu 15:00, Sun 08:00, Mon 15:00, Tue 08:00 Pacific) now also runs
 the prospective-evidence capture, so no step above depends on remembering to run a script. After the
 ESPN sync, nflverse sync and analytics have finished and the pregame snapshot check has printed, an
-**evidence stage** runs four existing scripts, each as its own process:
+**evidence stage** runs five existing scripts, each as its own process:
 
 | Step | When | Week |
 | --- | --- | --- |
 | `injury_freshness.py report` | every run | the upcoming week |
 | `start_sit_evaluation.py record` | every run with an upcoming week | the upcoming week |
 | `ctx_shadow.py pregame` | every run with an upcoming week (research shadow, `docs/research/ifp_ctx_shadow_automation.md`) | the upcoming week |
+| `signal_shadows.py pregame` | every run with an upcoming week (research shadows ifp-fr-p1 / ifp-dct-p1 / ifp-awd-p1, `docs/research/signal_shadows.md`) | the upcoming week |
 | `espn_benchmark.py record` | when a fully final week exists | the latest fully final week |
 
 * **Upcoming week** = the earliest regular-season week with a game still to kick off (nflverse

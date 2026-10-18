@@ -25,7 +25,9 @@ of it with --no-rest-of-season.
 After the production run, two separate models run as non-fatal stages (a failure is a warning, never a failed cycle):
 `kicker` (kfp-1.0.0) and `ctx_shadow`, the research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py
 cycle: scores its frozen pregame ledgers against actuals alongside ifp-2 and tries the gated write-once freeze; it
-writes only <ifp-dir>/research/context/). Skip them with --no-kicker / --no-ctx-shadow.
+writes only <ifp-dir>/research/context/), then `signal_shadows`, the prospective shadows of the ifp-fr-p1 / ifp-dct-p1 /
+ifp-awd-p1 candidates (scripts/signal_shadows.py cycle, writes only <ifp-dir>/research/signal_shadows/). Skip them with
+--no-kicker / --no-ctx-shadow / --no-signal-shadows.
 A stage failure stops every later stage. Nothing is backdated, overwritten or replayed: a week whose
 first kickoff passed without a frozen pregame forecast is recorded under <out>/missed/.
 
@@ -337,6 +339,37 @@ def stage_ctx_shadow(args, conns: list, log_path: Path) -> dict:
         return {}
 
 
+def stage_signal_shadows(args, conns: list, log_path: Path) -> dict:
+    """Research shadows ifp-fr-p1 / ifp-dct-p1 / ifp-awd-p1 (scripts/signal_shadows.py `cycle`, own process), as
+    stage_ctx_shadow: score the fully final frozen weeks, record a missed week, warm the raw snapshots and try the
+    gated freeze. Never fails the cycle; exit 3 (ran with warnings) returns them."""
+    for con in conns:
+        if con is not None:
+            con.close()
+    conns.clear()
+    cmd = [sys.executable, str(SCRIPTS / "signal_shadows.py"), "cycle", "--season", str(args.season),
+           "--live-db", str(args.live_db), "--history-db", str(args.history_db),
+           "--weekly-dir", str(args.out), "--exits-dir", str(args.out)]
+    if args.week is not None:
+        cmd += ["--week", str(args.week)]
+    if getattr(args, "ctx_dir", None) is not None:      # the research model directory (research/signal_shadows/)
+        cmd += ["--ifp-dir", str(args.ctx_dir)]
+    if getattr(args, "now", None):     # a simulated cycle clock: decide only (dry run, no writes)
+        cmd += ["--now", str(args.now)]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
+                          env={**os.environ, "PYTHONUNBUFFERED": "1"}, timeout=CTX_SHADOW_TIMEOUT_S)
+    out, err = proc.stdout or "", proc.stderr or ""
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"==> signal_shadows.py cycle {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
+    if proc.returncode not in (0, 3):
+        raise RuntimeError(f"signal_shadows.py exited {proc.returncode}: {err.strip()[-400:]} (see {log_path})")
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {}
+
+
 def training_fingerprint(args, store, scoring) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
@@ -451,6 +484,23 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                      "error": f"{err.__class__.__name__}: {err}"})
             report["warnings"].append(f"ifp-ctx-p1 shadow stage failed (production runs unaffected): {err}")
 
+    def signal_shadows():
+        """Research shadows (ifp-fr-p1, ifp-dct-p1, ifp-awd-p1), after ctx_shadow: a failure is a warning only."""
+        if args.no_signal_shadows:
+            return
+        t_s = time.monotonic()
+        try:
+            ss = stage_signal_shadows(args, conns, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+            report["signal_shadows"] = ss
+            report["stages"].append({"name": "signal_shadows", "status": "ok",
+                                     "seconds": round(time.monotonic() - t_s, 2)})
+            report["warnings"] += [f"signal shadows: {w}" for w in ss.get("warnings") or []]
+        except Exception as err:      # noqa: BLE001
+            report["stages"].append({"name": "signal_shadows", "status": "failed_nonfatal",
+                                     "seconds": round(time.monotonic() - t_s, 2),
+                                     "error": f"{err.__class__.__name__}: {err}"})
+            report["warnings"].append(f"signal shadows stage failed (production runs unaffected): {err}")
+
     try:
         preflight(args)
         lock = acquire_lock(args.out, now)
@@ -471,6 +521,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         report["missed_window"] = missed_window(args, last_started, kick, now)
         if target is None:
             ctx_shadow()                # the season's last frozen week still needs scoring once it is final
+            signal_shadows()
             raise CycleStop("no_upcoming_week", EXIT_OK, f"no {args.season} regular-season week kicks off after "
                             f"{now.isoformat()}")
         args.week, args.last_week = target, max(kick)
@@ -534,6 +585,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                              "error": f"{err.__class__.__name__}: {err}"})
                     report["warnings"].append(f"kicker projection failed (skill-position run unaffected): {err}")
         ctx_shadow()
+        signal_shadows()
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):
@@ -589,8 +641,11 @@ def parse(argv=None):
     ap.add_argument("--kicker-dir", type=Path, default=cli._path("KICKER_MODEL_DIR", "data/models/kicker"))
     ap.add_argument("--no-ctx-shadow", action="store_true",
                     help="do not run the ifp-ctx-p1 research shadow stage (scripts/ctx_shadow.py cycle)")
+    ap.add_argument("--no-signal-shadows", action="store_true",
+                    help="do not run the ifp-fr-p1 / ifp-dct-p1 / ifp-awd-p1 research shadows (signal_shadows.py cycle)")
     ap.add_argument("--ctx-dir", type=Path, default=None,
-                    help="model directory holding research/context/ (default: ctx_shadow.py's, IFP_MODEL_DIR)")
+                    help="model directory holding research/context/ and research/signal_shadows/ (default: "
+                         "IFP_MODEL_DIR)")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (tests and audits only)")
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
     ap.add_argument("--history-db", type=Path, default=cli._path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
@@ -609,7 +664,7 @@ def main(argv=None) -> int:
         return 0
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
-            "training", "forecast", "projection", "kicker_projection", "ctx_shadow", "evaluation", "missed_window",
+            "training", "forecast", "projection", "kicker_projection", "ctx_shadow", "signal_shadows", "evaluation", "missed_window",
             "warnings", "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))
     return code
