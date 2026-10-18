@@ -23,8 +23,9 @@ is not comparable across leagues; ranks are.
 Editions. The rankings for week E are what the league looked like before E's first kickoff:
   * current  - E = the first fantasy week that has not kicked off (trade_data.evaluation_start_week),
                the canonical league state (current rosters, current ESPN projections, NFL availability).
-  * previous - P = E - 1, recomputed point-in-time: rosters from lineup_snapshots at scoring period P, used
-               only when they provably are the rosters at P's first kickoff (kickoff_roster_problem),
+  * previous - P = E - 1, recomputed point-in-time: rosters from the newest roster_history snapshot synced
+               before P's first kickoff (history_roster_problem), else from lineup_snapshots at scoring period P
+               when they provably are the rosters at P's first kickoff (kickoff_roster_problem),
                ESPN projections from the newest espn_projection_history snapshot synced before P's first
                kickoff, free agents = league players on no roster at P, all-play over periods that ended
                before P. NFL availability records are current-only, so they are not applied to P (ESPN's
@@ -84,6 +85,8 @@ class Previous:
     reason: str | None = None
     projection_snapshot: str | None = None
     projection_synced_at: str | None = None
+    roster_source: str | None = None           # roster_history | lineup_snapshots
+    roster_synced_at: str | None = None
 
 
 # ------------------------------------------------------------------ pure math --
@@ -288,30 +291,76 @@ def kickoff_roster_problem(rows: list[dict], week: int, kickoff: datetime) -> st
     return None
 
 
+def history_roster_problem(period_rows: list[dict], week: int, synced_at: datetime, kickoff: datetime) -> str | None:
+    """Why a roster_history snapshot synced at `synced_at` (before `week`'s first kickoff) is not the rosters at
+    kickoff, or None when nothing shows a move in between. The evidence is the week's lineup_snapshots rows: a
+    player there acquired at or after the snapshot and before kickoff joined a roster the snapshot does not show.
+    (A player added in that gap and dropped again before the week's last sync leaves no trace there.)"""
+    late = sorted({r["team_id"] for r in period_rows
+                   if (d := _utc(r.get("acquisition_date"))) is not None and synced_at <= d < kickoff})
+    if not late:
+        return None
+    n = len(late)
+    return (f"{n} {'team' if n == 1 else 'teams'} changed {'its roster' if n == 1 else 'rosters'} between the last "
+            f"roster snapshot stored before week {week}'s first kickoff and that kickoff")
+
+
+def _history_roster(con, st: LeagueState, week: int, kickoff: datetime) -> tuple[list[dict], str | None]:
+    """Rows of the newest roster_history snapshot synced before `week`'s first kickoff and after the previous
+    week's first kickoff (an older one predates that week's waivers), and its synced_at. ([], None) if none."""
+    if not table_exists(con, "roster_history"):
+        return [], None
+    floor = pf.first_kickoffs(con, st.season).get(week - 1)
+    snaps = fetch_dicts(con, """SELECT snapshot_date, max(synced_at) AS synced_at FROM roster_history
+                                WHERE league_id = ? AND season = ? GROUP BY snapshot_date
+                                ORDER BY snapshot_date DESC""", [st.league_id, st.season])
+    pick = next((s for s in snaps if (t := _utc(s["synced_at"])) is not None and t < kickoff
+                 and (floor is None or t > floor)), None)
+    if pick is None:
+        return [], None
+    rows = fetch_dicts(con, """SELECT h.team_id, h.espn_player_id, h.lineup_slot_id, fp.full_name, fp.position,
+                                      fp.pro_team, fp.injury_status
+                               FROM roster_history h JOIN fantasy_players fp USING (espn_player_id)
+                               WHERE h.snapshot_date = ? AND h.league_id = ? AND h.season = ?
+                               ORDER BY h.team_id, h.espn_player_id""",
+                       [pick["snapshot_date"], st.league_id, st.season])
+    return rows, pick["synced_at"]
+
+
 def load_previous(con, race: RaceData) -> Previous:
-    """The previous edition's point-in-time league state (week E - 1), or why it cannot be rebuilt."""
+    """The previous edition's point-in-time league state (week E - 1), or why it cannot be rebuilt.
+    Rosters: the newest roster_history snapshot before P's first kickoff when nothing shows a later move
+    (history_roster_problem); otherwise lineup_snapshots at P when kickoff_roster_problem accepts them."""
     st = race.state
     if st.start_week is None:
         return Previous(None, None, "the season has no remaining weeks")
     week = st.start_week - 1
     if week < 1:
         return Previous(None, None, "there is no earlier week")
-    if not table_exists(con, "lineup_snapshots"):
-        return Previous(week, None, "no weekly roster snapshots are stored")
-    rows = fetch_dicts(con, """SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, fp.full_name, fp.position,
-                                      fp.pro_team, coalesce(fp.injury_status, l.injury_status) AS injury_status,
-                                      l.acquisition_date, l.synced_at
-                               FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
-                               WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
-                               ORDER BY l.team_id, l.espn_player_id""", [st.league_id, st.season, week])
-    if not rows:
-        return Previous(week, None, f"no roster snapshot is stored for week {week}")
     kickoff = pf.first_kickoffs(con, st.season).get(week)
     if kickoff is None:
         return Previous(week, None, f"week {week}'s first kickoff time is unknown")
-    problem = kickoff_roster_problem(rows, week, kickoff)
-    if problem:
-        return Previous(week, None, problem)
+    period = fetch_dicts(con, """SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, fp.full_name, fp.position,
+                                        fp.pro_team, coalesce(fp.injury_status, l.injury_status) AS injury_status,
+                                        l.acquisition_date, l.synced_at
+                                 FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
+                                 WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
+                                 ORDER BY l.team_id, l.espn_player_id""", [st.league_id, st.season, week]) \
+        if table_exists(con, "lineup_snapshots") else None
+    rows, synced_at = _history_roster(con, st, week, kickoff)
+    gap = history_roster_problem(period or [], week, _utc(synced_at), kickoff) if rows else None
+    if rows and not gap:
+        source = "roster_history"
+    else:
+        if period is None:
+            return Previous(week, None, gap or "no weekly roster snapshots are stored")
+        if not period:
+            return Previous(week, None, gap or f"no roster snapshot is stored for week {week}")
+        problem = kickoff_roster_problem(period, week, kickoff)
+        if problem:
+            return Previous(week, None, gap or problem)
+        rows, source = period, "lineup_snapshots"
+        synced_at = max((r["synced_at"] for r in period if r.get("synced_at") is not None), default=None)
     rosters: dict[int, list[RosterPlayer]] = {t: [] for t in st.rosters}
     for row in rows:
         rosters.setdefault(row["team_id"], []).append(RosterPlayer(
@@ -327,7 +376,7 @@ def load_previous(con, race: RaceData) -> Previous:
                    if pid not in then]
     prior = replace(st, rosters=rosters, free_agents=free_agents, projections=proj, start_week=week,
                     availability={}, first_projection_week=week)
-    return Previous(week, prior, None, snap, synced)
+    return Previous(week, prior, None, snap, synced, source, _iso(synced_at))
 
 
 # ------------------------------------------------------------------ build --
@@ -390,7 +439,9 @@ def build_power_rankings(race: RaceData, previous: Previous | None, extras: dict
             prev_info = {"available": True, "week": previous.week, "reason": None,
                          "projection_snapshot": previous.projection_snapshot,
                          "projection_synced_at": previous.projection_synced_at,
-                         "roster_week": previous.week, "comparable_weeks": prev_ed["comparable_weeks"],
+                         "roster_week": previous.week, "roster_source": previous.roster_source,
+                         "roster_synced_at": previous.roster_synced_at,
+                         "comparable_weeks": prev_ed["comparable_weeks"],
                          "all_play_periods": prev_ed["all_play_periods"], "weights": prev_sc["weights"]}
         else:
             prev_ed = prev_sc = None

@@ -174,7 +174,7 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
         # Rosters per period; the base league payload doubles as the current period.
         rosters = dict(p.rosters)
         rosters.setdefault(current, p.league)
-        lineup_count, points_rows, roster_players, rostered_ids = 0, [], [], set()
+        lineup_count, points_rows, roster_players, rostered_ids, current_lineups = 0, [], [], set(), []
         for period, raw in sorted(rosters.items()):
             r = parse.parse_rosters(raw, league_id=league_id, season=season, scoring_period=period, synced_at=now)
             lineup_count += replace_where(
@@ -184,8 +184,11 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
             if period == current:
                 roster_players = r["players"]
                 rostered_ids = {row["espn_player_id"] for row in r["lineups"] if row["espn_player_id"]}
+                current_lineups = r["lineups"]
         stats["lineup_rows"] = lineup_count
         stats["roster_periods"] = sorted(rosters)
+        stats["roster_history"] = write_roster_history(con, current_lineups, league_id=league_id, season=season,
+                                                       day=date.today(), now=now)
 
         # Player universe: pro players (base) <- FA pool <- current rosters.
         base = parse.parse_pro_players(p.pro_players, season=season, synced_at=now) if p.pro_players else []
@@ -338,6 +341,40 @@ def pregame_history_locked(con, season: int, week: int, day: date, now) -> set[i
         if ko is not None and cap is not None and cap < ko <= now:
             out.add(int(r["espn_player_id"]))
     return out
+
+
+def roster_history_locked(con, league_id: int, season: int, day, now) -> bool:
+    """True when today's stored roster snapshot was synced before a week's first kickoff that has since
+    passed: that snapshot is the kickoff roster power_rankings.load_previous needs, so a later sync the
+    same day must not replace it. Unknown kickoffs: not locked."""
+    from ..analytics.production_forecasts import first_kickoffs
+    from ..analytics.projection_backtest import _utc
+    from ..db.connection import fetch_dicts
+
+    row = fetch_dicts(con, """SELECT max(synced_at) AS synced_at FROM roster_history
+                              WHERE snapshot_date = ? AND league_id = ? AND season = ?""", [day, league_id, season])
+    stored, now = (_utc(row[0]["synced_at"]) if row else None), _utc(now)
+    if stored is None or now is None:
+        return False
+    return any(stored < ko <= now for ko in first_kickoffs(con, season).values())
+
+
+def write_roster_history(con, lineups: list[dict], *, league_id: int, season: int, day, now) -> dict:
+    """Append today's snapshot of every team's current-period roster to roster_history, the way
+    espn_projection_history is kept: one snapshot per day, the latest sync of the day replacing an
+    earlier one unless that one is locked (roster_history_locked). Earlier days are never touched.
+    Called inside write_all's transaction."""
+    rows = [{"snapshot_date": day, "league_id": league_id, "season": season, "team_id": r["team_id"],
+             "espn_player_id": r["espn_player_id"], "lineup_slot_id": r["lineup_slot_id"], "synced_at": now}
+            for r in lineups if r.get("espn_player_id")]
+    out = {"snapshot_date": day.isoformat(), "rows": 0, "locked": False}
+    if not rows:
+        return out
+    if roster_history_locked(con, league_id, season, day, now):
+        return {**out, "locked": True}
+    n = replace_where(con, "roster_history", rows, "snapshot_date = ? AND league_id = ? AND season = ?",
+                      [day, league_id, season])
+    return {**out, "rows": n}
 
 
 def write_projections(con, p: EspnPayloads, proj: dict[int, dict], *, season: int, current: int,
