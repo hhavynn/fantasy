@@ -33,10 +33,14 @@ comparable week are listed unranked, never scored 0.
 The rankings for week E describe the league before E's first kickoff, where E is the first fantasy week that has
 not kicked off. Last week's ranks (P = E − 1) are recomputed point-in-time, never estimated:
 
-* rosters from `lineup_snapshots` at scoring period P, only when they provably are the rosters at P's first
-  kickoff: every row was synced before kickoff, or the rows carry acquisition dates and none is at or after kickoff.
-  The sync rewrites a period's rows, so a snapshot synced later can include adds and trades made during the week;
-  moves are not reversed from the transaction log because ESPN omits other teams' trade legs and some adds there;
+* rosters from the newest `roster_history` snapshot synced before P's first kickoff (and after week P − 1's first
+  kickoff, so it postdates the previous week's waivers), unless P's `lineup_snapshots` rows show a player acquired
+  between that snapshot and kickoff. Otherwise rosters from `lineup_snapshots` at scoring period P, only when they
+  provably are the rosters at P's first kickoff: every row was synced before kickoff, or the rows carry acquisition
+  dates and none is at or after kickoff. The sync rewrites a period's rows, so a snapshot synced later can include
+  adds and trades made during the week; moves are not reversed from the transaction log because ESPN omits other
+  teams' trade legs and some adds there. `previous.roster_source` says which table was used and
+  `previous.roster_synced_at` when that roster was synced;
 * ESPN projections from the newest `espn_projection_history` snapshot whose rows were synced before P's first
   kickoff (`production_forecasts.first_kickoffs`);
 * free agents = league players on no roster at P;
@@ -44,6 +48,20 @@ not kicked off. Last week's ranks (P = E − 1) are recomputed point-in-time, ne
 
 NFL availability records are current-only, so they are not applied to P (ESPN's projections already carry injuries).
 If any input is missing, `previous.available` is false, `previous.reason` says why, and no movement is shown.
+
+### Roster history
+
+`roster_history` (keyed by snapshot date, league, season, team and player, with `lineup_slot_id` and `synced_at`)
+is written by every ESPN sync (`espn.sync.write_roster_history`) from the current period's rosters, the way
+`espn_projection_history` is: one snapshot per day, append-only across days, the latest sync of a day replacing an
+earlier one that day. The exception is a snapshot synced before a week's first kickoff when the next sync that day
+runs after it: that snapshot is the kickoff roster and is kept (`roster_history_locked`). So week P's movement is
+available as long as a sync ran between week P − 1's first kickoff and week P's. The table is create-only (no
+schema version bump); weeks before it existed fall back to the `lineup_snapshots` rule above.
+
+The check against later moves is only as good as P's `lineup_snapshots` rows: a player added between the snapshot
+and kickoff and dropped again before the week's last sync leaves no acquisition date there. Sync shortly before
+kickoff (Thursday) to keep that gap small.
 
 ## Team card
 
