@@ -275,6 +275,78 @@ def test_a_roster_changed_after_kickoff_is_never_used_as_the_kickoff_roster(monk
     assert load_previous(con, small()).reason is None
 
 
+def _with_roster_history(con, snapshots):
+    """snapshots: [(snapshot_date, synced_at, [(team, player, slot), ...])]."""
+    con.execute("CREATE TABLE roster_history (snapshot_date DATE, league_id BIGINT, season INT, team_id INT, "
+                "espn_player_id BIGINT, lineup_slot_id INT, synced_at TIMESTAMP)")
+    for day, synced, rows in snapshots:
+        for t, pid, slot in rows:
+            con.execute("INSERT INTO roster_history VALUES (?, 1, 2026, ?, ?, ?, ?)", [day, t, pid, slot, synced])
+    return con
+
+
+def test_load_previous_prefers_the_roster_history_snapshot_stored_before_kickoff(monkeypatch):
+    kickoff = datetime(2026, 10, 1, 17, tzinfo=timezone.utc)
+    monkeypatch.setattr(pr.pf, "first_kickoffs", lambda con, season: {3: datetime(2026, 9, 24, 17, tzinfo=timezone.utc),
+                                                                      4: kickoff})
+    con = _history_db(kickoff)
+    # The real-league case: team 2 added 202 after week 4 kicked off and the sync rewrote week 4 with it, so
+    # lineup_snapshots alone cannot be used.
+    con.execute("UPDATE lineup_snapshots SET acquisition_date = '2026-10-02 08:00' WHERE scoring_period = 4 "
+                "AND espn_player_id = 202")
+    assert load_previous(con, small()).state is None
+    _with_roster_history(con, [
+        ("2026-09-20", datetime(2026, 9, 20, 9), [(1, 101, 0), (2, 201, 0), (2, 202, 2)]),   # before week 3: too old
+        ("2026-09-30", datetime(2026, 9, 30, 9), [(1, 101, 0), (2, 201, 0)]),
+        ("2026-10-01", datetime(2026, 10, 1, 12), [(1, 101, 0), (1, 102, 2), (2, 201, 0), (2, 301, 21)]),
+        ("2026-10-02", datetime(2026, 10, 2, 9), [(1, 101, 0), (1, 102, 2), (2, 201, 0), (2, 202, 2), (2, 301, 21)]),
+    ])
+    data = small()
+    prev = load_previous(con, data)
+    assert prev.reason is None and prev.roster_source == "roster_history"
+    assert prev.roster_synced_at == "2026-10-01T12:00:00"
+    st = prev.state
+    assert sorted(p.espn_player_id for p in st.rosters[1]) == [101, 102]
+    assert sorted(p.espn_player_id for p in st.rosters[2]) == [201, 301]       # 202 came after kickoff
+    assert next(p for p in st.rosters[2] if p.espn_player_id == 301).on_ir
+    assert st.projections[101][4] == 11.0
+    prev_info = build_power_rankings(data, replace(prev, state=_previous(data, {1: 30.0}).state))["previous"]
+    assert prev_info["roster_source"] == "roster_history" and prev_info["roster_synced_at"] == "2026-10-01T12:00:00"
+
+
+def test_roster_history_is_not_used_when_a_move_landed_between_the_snapshot_and_kickoff(monkeypatch):
+    kickoff = datetime(2026, 10, 1, 17, tzinfo=timezone.utc)
+    monkeypatch.setattr(pr.pf, "first_kickoffs", lambda con, season: {4: kickoff})
+    con = _with_roster_history(_history_db(kickoff), [
+        ("2026-09-30", datetime(2026, 9, 30, 9), [(1, 101, 0), (1, 102, 2), (2, 201, 0), (2, 301, 21)])])
+    # Team 2 added 202 on the morning of kickoff, after the last stored snapshot.
+    con.execute("UPDATE lineup_snapshots SET acquisition_date = '2026-10-01 10:00' WHERE scoring_period = 4 "
+                "AND espn_player_id = 202")
+    prev = load_previous(con, small())
+    # The week's own rows prove the kickoff rosters (every acquisition predates kickoff), so they are used instead.
+    assert prev.reason is None and prev.roster_source == "lineup_snapshots"
+    assert sorted(p.espn_player_id for p in prev.state.rosters[2]) == [201, 202, 301]
+    # When those rows cannot be used either, the reason names the gap.
+    con.execute("UPDATE lineup_snapshots SET acquisition_date = '2026-10-02 08:00' WHERE scoring_period = 4 "
+                "AND espn_player_id = 201")
+    prev = load_previous(con, small())
+    assert prev.state is None and "1 team changed its roster between the last roster snapshot" in prev.reason
+
+
+def test_roster_history_synced_after_kickoff_is_never_the_kickoff_roster(monkeypatch):
+    kickoff = datetime(2026, 10, 1, 17, tzinfo=timezone.utc)
+    monkeypatch.setattr(pr.pf, "first_kickoffs", lambda con, season: {4: kickoff})
+    con = _with_roster_history(_history_db(kickoff), [
+        ("2026-10-01", datetime(2026, 10, 1, 18), [(1, 101, 0)]), ("2026-10-02", datetime(2026, 10, 2, 9), [(1, 101, 0)])])
+    con.execute("DELETE FROM lineup_snapshots WHERE scoring_period = 4")
+    prev = load_previous(con, small())
+    assert prev.state is None and prev.reason == "no roster snapshot is stored for week 4"
+    # Without any history before kickoff the week's lineup_snapshots rule still applies.
+    con = _with_roster_history(_history_db(kickoff), [("2026-10-02", datetime(2026, 10, 2, 9), [(1, 101, 0)])])
+    prev = load_previous(con, small())
+    assert prev.reason is None and prev.roster_source == "lineup_snapshots"
+
+
 # --------------------------------------------------------------------- API --
 
 def test_api_route_returns_the_contract(monkeypatch):

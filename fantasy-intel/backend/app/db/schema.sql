@@ -237,6 +237,22 @@ CREATE TABLE IF NOT EXISTS lineup_snapshots (
     PRIMARY KEY (league_id, season, scoring_period, team_id, espn_player_id)
 );
 
+-- One snapshot per day of every team's current-period roster (latest sync of the day wins, except that a
+-- snapshot synced before a week's first kickoff is never replaced by a sync after it). Append-only across
+-- days, unlike lineup_snapshots, so the rosters at a week's first kickoff survive the sync rewriting that
+-- week's lineup_snapshots. Read by power_rankings.load_previous. Create-only (no SCHEMA_VERSION bump).
+-- See docs/power_rankings.md.
+CREATE TABLE IF NOT EXISTS roster_history (
+    snapshot_date     DATE,
+    league_id         BIGINT,
+    season            INTEGER,
+    team_id           INTEGER,
+    espn_player_id    BIGINT,
+    lineup_slot_id    INTEGER,
+    synced_at         TIMESTAMP,
+    PRIMARY KEY (snapshot_date, league_id, season, team_id, espn_player_id)
+);
+
 CREATE TABLE IF NOT EXISTS matchups (
     league_id        BIGINT,
     season           INTEGER,
