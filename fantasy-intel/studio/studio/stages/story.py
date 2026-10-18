@@ -27,6 +27,7 @@ import json
 
 from .. import editorial as E
 from .. import shows as SH
+from ..numbers import round_half_up
 from ..core import Episode, canonical_json, read_json, run_stage, sha256_bytes, write_json
 from . import formats as F
 from .script import PLACEHOLDER, fill
@@ -119,15 +120,21 @@ def last(name: str) -> str:
     return parts[-1]
 
 
+def _shown_pts(share: float) -> int:
+    """A share in the points the viewer sees: the claim formatter's half-up rounding (0.105 -> 11), not Python's
+    ties-to-even round (0.105 -> 10), so every threshold reads the number on screen."""
+    return int(round_half_up(share * 100))
+
+
 def snaps_change_pts(p: dict, claims: dict) -> int | None:
     """His displayed snap-share change in points (None without a snap metric)."""
     snaps = next((m for m in p["metrics"] if m["column"] == "offense_pct"), None)
-    return None if snaps is None else round(claims[snaps["change"]]["value"] * 100)
+    return None if snaps is None else _shown_pts(claims[snaps["change"]]["value"])
 
 
 def _pts(cid: str, claims: dict) -> int:
     """A share claim in displayed points (0.215 -> 22)."""
-    return round(claims[cid]["value"] * 100)
+    return _shown_pts(claims[cid]["value"])
 
 
 def targets_swing(ts: dict, claims: dict) -> bool:
@@ -470,7 +477,8 @@ def counts_beats(p: dict, claims: dict, team: str) -> list[dict]:
         return []
     noun = COUNT_NOUN.get(counts["column"], (counts["column"].replace("_", " "),) * 2)
     text = _counts_sentence(early + late, len(early), noun[vals(early[-3:])[0] != 1])
-    scene = {"type": "target_balls", "split": k}
+    # the scene draws the same games the sentence reads (baseline window, then recent), split between the two
+    scene = {"type": "target_balls", "weeks": [g["week"] for g in early + late], "split": len(early)}
     out = []
     spread = (p.get("details") or {}).get("spread")
     if (p["role"] == "riser" and counts["column"] == "targets" and spread and spread["week"] == late[-1]["week"]
@@ -504,7 +512,7 @@ def vanishing_beats(p: dict, claims: dict, who: dict, hook_key: str = "") -> lis
     if k is not None:
         out.append(beat("evidence", _counts_sentence(games, k, "targets" if vals[:k][-3:][0] != 1 else "target"),
                         {"type": "target_balls", "split": k}, ["since"], 1.16))
-    pts = round(claims[snaps["change"]]["value"] * 100)
+    pts = _shown_pts(claims[snaps["change"]]["value"])
     if pts > SNAPS_BARELY_PTS:
         out.append(beat("twist", f"His snaps? Up to {ph(snaps['recent'])}. He's on the field more than before.",
                         {"type": "split", "role": "twist", "stamp": "MORE THAN BEFORE", "stamp_word": "more"},

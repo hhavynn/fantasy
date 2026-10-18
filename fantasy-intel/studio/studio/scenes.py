@@ -139,9 +139,17 @@ def scene_player_card(img, t, dur, spec, c):
             M.paste(img, rot, x, y, 1.0, M.clamp(1.6 - ft * 1.6))
 
 
+def ball_games(c, spec: dict) -> list[dict]:
+    """The games a target_balls scene draws: the spec's `weeks` when it names them (the window its narration
+    compares), else every game; `split` counts from the first of these."""
+    games = c.p["counts"]["games"]
+    weeks = spec.get("weeks")
+    return [g for g in games if g["week"] in weeks] if weeks else games
+
+
 def scene_target_balls(img, t, dur, spec, c):
     """Targets as footballs, game by game. After the drop-off, ghost footballs show the volume that is gone."""
-    games = c.p["counts"]["games"]
+    games = ball_games(c, spec)
     k_split = spec.get("split") or len(games)
     vals = [c.claims[g["value"]]["value"] for g in games]
     early = vals[:k_split]
@@ -340,7 +348,7 @@ def punches(scene: dict, c, dur: float) -> list[float]:
         return [0.45]
     if kind == "target_balls":
         k = scene.get("split") or 0
-        games = c.p["counts"]["games"]
+        games = ball_games(c, scene)
         return [c.at(games[k]["value"], default=99)] if k < len(games) else []
     if kind == "split":
         return [c.at(word="same", default=99)]
@@ -357,7 +365,7 @@ def sounds(scene: dict, start: float, dur: float, c) -> list[tuple[float, str, f
     if kind == "player_card":
         ev += [(start + 0.42, "impact", -1)]
     if kind == "target_balls":
-        for g in c.p["counts"]["games"]:
+        for g in ball_games(c, scene):
             ev.append((start + c.at(g["value"], default=99) - 0.1, "tick", -6))
     if kind == "split":
         ev.append((start + c.at(word="same", default=99) - 0.05, "impact", -4))

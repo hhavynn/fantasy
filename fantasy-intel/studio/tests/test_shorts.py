@@ -180,7 +180,7 @@ def test_a_breakout_says_the_raw_volume_behind_the_share():
     beats, _, _ = story.compose(f, cl, "seed", {})
     counts = next(b for b in beats if b["section"] == "counts")
     assert story.fill(counts["text_template"], cl, "display") == "2 targets, then 2, then 2. Since then: 9, 10."
-    assert counts["scene"] == {"type": "target_balls", "split": 3}
+    assert counts["scene"] == {"type": "target_balls", "weeks": [1, 2, 3, 4, 5], "split": 3}
     assert [b["section"] for b in beats].index("counts") == [b["section"] for b in beats].index("evidence") + 1
 
 
@@ -237,6 +237,28 @@ def test_steady_target_shares_are_not_called_all_over_the_place():
     # 26%, then 5%: that is a swing
     st, text = _unresolved([0.10, 0.04, 0.16, 0.26, 0.05])
     assert st["hook"] == "swing" and text["support"] == "But his target share hasn't settled: 26%, then 5%."
+
+
+def test_share_thresholds_round_like_the_display():
+    """Codex review on #109: 10.5% shows as 11% (half up), so 11% vs 16% is a 5-point gap, not a swing. Python's
+    round would read 10.5 as 10 and call it one."""
+    cl = {"a": {"value": 0.105}, "b": {"value": 0.16}}
+    assert story._pts("a", cl) == 11
+    assert not story.targets_swing({"weekly": ["a", "b"]}, cl)
+
+
+def test_the_volume_scene_draws_only_the_compared_games():
+    """Codex review on #109: with more games than the baseline + recent windows, the counts beat narrates only
+    those windows, and its target_balls scene draws exactly them, split between the two."""
+    from studio.scenes import ball_games
+    p = {"role": "riser", "recent_weeks": [6, 7], "baseline_weeks": [3, 4, 5],
+         "counts": {"column": "targets", "games": [{"week": w, "value": f"c90{w}"} for w in range(1, 8)]}}
+    cl = {f"c90{w}": {"value": v, "display": str(v), "spoken": str(v)} for w, v in zip(range(1, 8), [9, 9, 2, 2, 2, 6, 7])}
+    (only,) = story.counts_beats(p, cl, "Bears")
+    assert story.fill(only["text_template"], cl, "display") == "2 targets, then 2, then 2. Since then: 6, 7."
+    assert only["scene"] == {"type": "target_balls", "weeks": [3, 4, 5, 6, 7], "split": 3}
+    drawn = ball_games(type("C", (), {"p": p})(), only["scene"])
+    assert [g["week"] for g in drawn] == [3, 4, 5, 6, 7]               # weeks 1-2 are not in the ghost average
 
 
 def test_targets_swing_reads_the_displayed_games():
