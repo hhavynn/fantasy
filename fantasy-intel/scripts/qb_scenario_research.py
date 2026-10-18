@@ -59,7 +59,29 @@ def store(args) -> tuple[pl.DataFrame, dict]:
 
 
 def _code_hash() -> str:
+    """The code that builds the cached candidates (cache key only)."""
     return hashlib.sha256((SCRIPTS / "qb_scenarios.py").read_bytes()).hexdigest()[:16]
+
+
+def _evaluator_hash() -> str:
+    """The p2 model AND this selection / evaluation script: bound into the frozen selection."""
+    h = hashlib.sha256()
+    for name in ("qb_scenarios.py", "qb_scenario_research.py"):
+        h.update(name.encode() + b"\0" + (SCRIPTS / name).read_bytes())
+    return h.hexdigest()[:16]
+
+
+# What a frozen p2 selection is bound to. The store fingerprint covers the source data, the weeks, league
+# scoring and every module under app/ and scripts/ (hgb_research.input_fingerprint); the build fingerprint
+# adds the cached candidates; the evaluator hash names the p2 code explicitly.
+FROZEN_BINDING = ("ifp2_config_hash", "scoring_fingerprint", "store_fingerprint", "p2_build_fingerprint",
+                  "evaluator_hash")
+
+
+def _binding(cfg, prov: dict) -> dict:
+    return {"ifp2_config_hash": cfg.hash(), "scoring_fingerprint": prov["scoring_fingerprint"],
+            "store_fingerprint": prov["fingerprint"], "p2_build_fingerprint": prov["p2_build_fingerprint"],
+            "evaluator_hash": _evaluator_hash()}
 
 
 def build(args) -> tuple[pl.DataFrame, pl.DataFrame, dict]:
@@ -284,8 +306,7 @@ def cmd_develop(args) -> dict:
                     "bias": {m: r["metrics"][m]["bias"] for m in ["ifp2", *qs.P2_CANDIDATES]}}
     frozen = {"version": qs.P2_VERSION, "status": qs.P2_STATUS, "selected_on": WINDOWS["development"],
               "per_position": chosen, "candidates": qs.P2_CANDIDATES, "start_model": qs.START_MODEL_VERSION,
-              "start_features": qs.START_FEATURES, "rules": qs.P2_RULES, "ifp2_config_hash": cfg.hash(),
-              "code_hash": _code_hash(), "scoring_fingerprint": prov["scoring_fingerprint"]}
+              "start_features": qs.START_FEATURES, "rules": qs.P2_RULES, **_binding(cfg, prov)}
     frozen["config_hash"] = hashlib.sha256(json.dumps({k: v for k, v in frozen.items() if k != "rules"},
                                                       sort_keys=True, default=str).encode()).hexdigest()[:16]
     frozen["frozen_at"] = datetime.now(timezone.utc).isoformat()
@@ -293,7 +314,10 @@ def cmd_develop(args) -> dict:
     if not hr._write_once(path, frozen):
         prev = json.loads(path.read_text())
         if prev["config_hash"] != frozen["config_hash"]:
-            raise SystemExit(f"{path} already frozen with a different selection ({prev['per_position']})")
+            changed = [k for k in FROZEN_BINDING if prev.get(k) != frozen[k]]
+            raise SystemExit(f"{path} is already frozen ({prev['per_position']}) from different inputs or code "
+                             f"({', '.join(changed) or 'selection'}): it is never overwritten. Reproduce at the frozen "
+                             "commit and data snapshot, or use a fresh --ifp-dir.")
     rep = ctxr.report(dev, models)
     out = {"report": rep, "selection": why, "qb_cells": qb_cells(dev, ["ifp2", "A", "S2", "S2h"]), **prov}
     (_out(args) / "development.json").write_text(json.dumps(out, indent=1, default=str))
@@ -357,12 +381,14 @@ def cmd_evaluate(args) -> dict:
     st, cands, prov = build(args)
     cfg = ch.ChallengerConfig.load()
     frozen = json.loads(_frozen_path(args).read_text())
-    if frozen["ifp2_config_hash"] != cfg.hash() or frozen["scoring_fingerprint"] != prov["scoring_fingerprint"] \
-            or frozen["code_hash"] != _code_hash():
-        raise SystemExit("frozen p2 selection was made against a different ifp-2 config, scoring or p2 code")
+    now = _binding(cfg, prov)
+    changed = [k for k in FROZEN_BINDING if frozen.get(k) != now[k]]
+    if changed:
+        raise SystemExit(f"the frozen p2 selection was made from different inputs or code ({', '.join(changed)}); "
+                         "evaluate it at the frozen commit and data snapshot, or re-run develop into a fresh --ifp-dir")
     chosen = frozen["per_position"]
     models = ["ifp2", "A", "C", "p1", *qs.P2_CANDIDATES, *qs.ABLATIONS, "ctx2"]
-    out = {"frozen": {k: frozen[k] for k in ("per_position", "config_hash", "frozen_at")}, **prov}
+    out = {"frozen": {k: frozen[k] for k in ("per_position", "config_hash", "frozen_at", *FROZEN_BINDING)}, **prov}
     for name in ("confirmation", "exploratory"):
         weeks = ch.window_weeks(st, WINDOWS[name])
         p = _preds(args, st, cands, weeks, cfg, per_position=chosen)

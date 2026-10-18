@@ -334,6 +334,12 @@ uv run python ../scripts/qb_scenario_research.py evaluate       # sections 4-6
 uv run pytest -q tests/test_qb_scenarios.py
 ```
 
+The frozen selection is bound to the ifp-2 config hash, the league scoring, the store fingerprint (source
+data, weeks and every module under `app/` and `scripts/`), the p2 candidate-build fingerprint and a hash
+of both p2 scripts. `develop` never overwrites it, and `evaluate` refuses it if any of these differ. So
+reproduce at the PR's commit and data snapshot, or into a fresh `--ifp-dir`. Adding this binding after
+review changed no number: develop and evaluate were re-run with identical metrics and verdict.
+
 All numbers above come from a snapshot of `fantasy.duckdb` / `nfl_history.duckdb` taken on 2026-10-17,
 with the same store fingerprint as p1's re-run. Runtime: about 70 seconds to build the candidates and
 under 30 seconds per command afterwards.

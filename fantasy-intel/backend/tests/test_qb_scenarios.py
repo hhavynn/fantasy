@@ -231,3 +231,24 @@ def test_p1_is_untouched_and_the_app_never_imports_p2():
     backend = pathlib.Path(__file__).resolve().parents[1]
     for path in (backend / "app").rglob("*.py"):
         assert "qb_scenario" not in path.read_text(), path
+
+
+def test_evaluate_refuses_a_frozen_selection_made_from_other_inputs_or_code(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    import qb_scenario_research as qsr
+    from app.analytics import challenger as ch
+
+    prov = {"fingerprint": "store-a", "scoring_fingerprint": "sc", "p2_build_fingerprint": "build-a"}
+    monkeypatch.setattr(qsr, "build", lambda args: (None, None, prov))
+    args = SimpleNamespace(ifp_dir=tmp_path)
+    frozen = {"per_position": {"QB": "ifp2"}, "config_hash": "x", "frozen_at": "t",
+              **qsr._binding(ch.ChallengerConfig.load(), prov)}
+    assert set(qsr.FROZEN_BINDING) == {"ifp2_config_hash", "scoring_fingerprint", "store_fingerprint",
+                                       "p2_build_fingerprint", "evaluator_hash"}
+    for key, value in (("store_fingerprint", "store-b"), ("p2_build_fingerprint", "build-b"),
+                       ("evaluator_hash", "old-code")):
+        qsr._frozen_path(args).write_text(json.dumps({**frozen, key: value}))
+        with pytest.raises(SystemExit, match=key):
+            qsr.cmd_evaluate(args)
