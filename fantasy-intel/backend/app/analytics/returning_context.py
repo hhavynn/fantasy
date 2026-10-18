@@ -3,7 +3,7 @@
 Nothing in the app imports this module (tests/test_returning_context.py). It is a standalone
 challenger (`ifp-ret`), separate from ifp-ctx and ifp-ctx-p1, which it neither imports into nor
 changes. ifp-1.0.0, ifp-2.0.0, the model registry, production runs, ledgers, Start/Sit, trades and
-waivers are untouched. See docs/research/qb_teammate_context.md, section 12.
+waivers are untouched. See docs/research/returning_teammate_features.md.
 
 Why. The ifp-ctx study found that the *returning* half of its teammate group was its most consistent
 signal (top target competitor returning: WR MAE -0.11 to -0.19 in every window), while the vacated

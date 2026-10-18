@@ -1,5 +1,5 @@
 """Research: returning-teammate challenger (ifp-ret, research only; see
-docs/research/qb_teammate_context.md, section 12). Offline, read-only on both databases.
+docs/research/returning_teammate_features.md). Offline, read-only on both databases.
 
     cd backend
     uv run python ../scripts/returning_research.py build      # store + returning features, cohort sizes
