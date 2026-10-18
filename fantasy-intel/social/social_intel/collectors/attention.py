@@ -57,6 +57,7 @@ class SleeperTrendingCollector(Collector):
                     community=f"trending_{kind}", engagement=Engagement(likes=int(row.get("count") or 0)),
                     collection_method=self.method, confidence=1.0,
                     extra={"sleeper_id": sid, "gsis_id": gsis, "rank": rank, "direction": kind, "subject": name,
+                           "rolling": True,  # a trailing-24h count: fresh as of each collection
                            "count_24h": row.get("count")},
                 ))
         return posts, {}

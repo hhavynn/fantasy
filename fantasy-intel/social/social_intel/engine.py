@@ -67,14 +67,14 @@ class Engine:
         ctx = ScoringContext(
             now=now,
             baselines=self.store.community_baselines(self.sport),
-            snapshots=self.store.snapshots(list(by_key)),
-            covered=covered | self.store.used_fingerprints(),
+            snapshots=self.store.snapshots(list(by_key), self.sport),
+            covered=covered | self.store.covered_topics(self.sport),
             covered_entities=covered_entities,
             topic_weights=self.adapter.topic_weights(),
             entity_popularity=self.adapter.entity_popularity(),
         )
         hashes = {k: content_hash(p.text) for k, p in by_key.items()}
-        ctx.first_seen_text = self.store.earliest_seen(list(set(hashes.values())))
+        ctx.first_seen_text = self.store.earliest_seen(list(set(hashes.values())), self.sport)
 
         # cheap pre-score without enrichment, then enrich only the contenders
         for c in clusters:

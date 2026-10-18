@@ -216,6 +216,9 @@ def test_already_selected_topic_is_skipped_next_time(adapter, store, analytics_d
     store.save_ideas([i.to_dict()], {i.idea_id: f"{rows[0]['topic_id']}|{i.format}"})
     store.set_idea_status(i.idea_id, "selected")
     assert store.used_fingerprints() == {f"{rows[0]['topic_id']}|{i.format}"}
+    again = eng.rank(now=when)  # the next run sees the topic as made, whatever the format
+    assert "already_covered" in again[0]["score"]["flags"]
+    assert not ideas_mod.generate(again, adapter, now=when)
 
 
 def test_provenance_survives_to_the_idea(adapter, store, analytics_db):

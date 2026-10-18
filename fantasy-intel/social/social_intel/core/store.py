@@ -24,13 +24,11 @@ import duckdb
 
 from social_intel.contract import Engagement, SocialPost, utcnow
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # v2: post identity is (sport, key); snapshots carry the sport
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS meta (key VARCHAR PRIMARY KEY, value VARCHAR);
-CREATE TABLE IF NOT EXISTS posts (
-    key VARCHAR PRIMARY KEY,
-    sport VARCHAR,
+POSTS_COLUMNS = """
+    key VARCHAR NOT NULL,
+    sport VARCHAR NOT NULL,
     platform VARCHAR NOT NULL,
     external_id VARCHAR NOT NULL,
     url VARCHAR NOT NULL,
@@ -50,10 +48,17 @@ CREATE TABLE IF NOT EXISTS posts (
     content_hash VARCHAR,
     extra JSON,
     entities JSON,
-    topics VARCHAR[]
+    topics VARCHAR[],
+    PRIMARY KEY (sport, key)
+"""
+
+SCHEMA = f"""
+CREATE TABLE IF NOT EXISTS meta (key VARCHAR PRIMARY KEY, value VARCHAR);
+CREATE TABLE IF NOT EXISTS posts ({POSTS_COLUMNS}
 );
 CREATE TABLE IF NOT EXISTS engagement_snapshots (
     key VARCHAR NOT NULL,
+    sport VARCHAR,
     collected_at TIMESTAMPTZ NOT NULL,
     likes BIGINT, comments BIGINT, shares BIGINT, views BIGINT, upvote_ratio DOUBLE
 );
@@ -91,8 +96,32 @@ class Store:
         if str(path) != ":memory:":
             self.path.parent.mkdir(parents=True, exist_ok=True)
         self.con = self._connect()
+        self._migrate()
         self.con.execute(SCHEMA)
         self.con.execute("INSERT OR REPLACE INTO meta VALUES ('schema_version', ?)", [str(SCHEMA_VERSION)])
+
+    def _migrate(self) -> None:
+        """v1 keyed posts by platform+id alone, so one post collected for two sports overwrote itself.
+        Rebuild posts with a (sport, key) primary key and give snapshots their sport. Idempotent."""
+        tables = {r[0] for r in self.con.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'").fetchall()}
+        if "meta" not in tables or "posts" not in tables:
+            return
+        row = self.con.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+        if row and int(row[0]) >= 2:
+            return
+        with self.tx() as con:
+            cols = [r[0] for r in con.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'posts' ORDER BY ordinal_position"
+            ).fetchall()]
+            con.execute("ALTER TABLE posts RENAME TO posts_v1")
+            con.execute(f"CREATE TABLE posts ({POSTS_COLUMNS})")
+            con.execute(f"INSERT INTO posts ({', '.join(cols)}) SELECT {', '.join(cols)} FROM posts_v1 "
+                        "WHERE sport IS NOT NULL")
+            con.execute("DROP TABLE posts_v1")
+            if "engagement_snapshots" in tables:
+                con.execute("ALTER TABLE engagement_snapshots ADD COLUMN IF NOT EXISTS sport VARCHAR")
+                con.execute("UPDATE engagement_snapshots s SET sport = p.sport FROM posts p WHERE p.key = s.key")
 
     def _connect(self, retries: int = 20) -> duckdb.DuckDBPyConnection:
         err: Exception | None = None
@@ -130,40 +159,49 @@ class Store:
             uniq[p.key] = p
         keys = list(uniq)
         known = {r[0] for r in self.con.execute(
-            "SELECT key FROM posts WHERE key IN (SELECT unnest(?))", [keys]).fetchall()}
+            "SELECT key FROM posts WHERE sport = ? AND key IN (SELECT unnest(?))", [sport, keys]).fetchall()}
         new = 0
         with self.tx() as con:
             for p in uniq.values():
                 e = p.engagement
                 if p.key in known:
                     # sources complement each other (RSS has timestamps, the archive has comment
-                    # activity): fill gaps, keep the longer text, merge extras
+                    # activity): fill gaps, keep the longer text, merge extras. A rolling signal
+                    # (Sleeper's trailing-24h counts) is as fresh as its latest collection.
+                    rolling = bool(p.extra.get("rolling"))
                     con.execute(
                         """UPDATE posts SET last_collected_at = ?,
-                             text = CASE WHEN length(?) > length(coalesce(text, '')) THEN ? ELSE text END,
-                             title = coalesce(title, ?), created_at = coalesce(created_at, ?),
+                             text = CASE WHEN ? OR length(?) > length(coalesce(text, '')) THEN ? ELSE text END,
+                             title = coalesce(title, ?),
+                             created_at = CASE WHEN ? THEN ? ELSE coalesce(created_at, ?) END,
                              author = coalesce(author, ?), community = coalesce(community, ?),
                              entities = ?, topics = ?, extra = json_merge_patch(coalesce(extra, '{}'), ?)
-                           WHERE key = ?""",
-                        [p.collected_at, p.text, p.text, p.title, p.created_at, p.author, p.community,
-                         json.dumps(p.entities), p.topics, json.dumps(p.extra, default=str), p.key])
+                           WHERE sport = ? AND key = ?""",
+                        [p.collected_at, rolling, p.text, p.text, p.title, rolling, p.created_at, p.created_at,
+                         p.author, p.community, json.dumps(p.entities), p.topics, json.dumps(p.extra, default=str),
+                         sport, p.key])
                 else:
                     new += 1
                     con.execute(
-                        "INSERT INTO posts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT INTO posts (key, sport, platform, external_id, url, created_at, first_collected_at, "
+                        "last_collected_at, title, text, author, community, hashtags, collection_method, confidence, "
+                        "lang, parent_id, is_repost, content_hash, extra, entities, topics) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         [p.key, sport, p.platform, p.external_id, p.url, p.created_at, p.collected_at,
                          p.collected_at, p.title, p.text, p.author, p.community, p.hashtags,
                          p.collection_method, p.confidence, p.lang, p.parent_id, p.is_repost,
                          content_hash(p.text), json.dumps(p.extra, default=str), json.dumps(p.entities),
                          p.topics])
                 if any(v is not None for v in (e.likes, e.comments, e.shares, e.views)):
-                    con.execute("INSERT INTO engagement_snapshots VALUES (?,?,?,?,?,?,?)",
-                                [p.key, p.collected_at, e.likes, e.comments, e.shares, e.views, e.upvote_ratio])
+                    con.execute(
+                        "INSERT INTO engagement_snapshots (key, sport, collected_at, likes, comments, shares, views, "
+                        "upvote_ratio) VALUES (?,?,?,?,?,?,?,?)",
+                        [p.key, sport, p.collected_at, e.likes, e.comments, e.shares, e.views, e.upvote_ratio])
         return new
 
-    def update_annotations(self, key: str, entities: dict, topics: list[str]) -> None:
-        self.con.execute("UPDATE posts SET entities = ?, topics = ? WHERE key = ?",
-                         [json.dumps(entities), topics, key])
+    def update_annotations(self, sport: str, key: str, entities: dict, topics: list[str]) -> None:
+        self.con.execute("UPDATE posts SET entities = ?, topics = ? WHERE sport = ? AND key = ?",
+                         [json.dumps(entities), topics, sport, key])
 
     def recent_posts(self, sport: str, since_hours: float = 72, now: datetime | None = None) -> list[SocialPost]:
         """Posts created (or, if the source has no timestamp, first seen) in the window, each with its
@@ -176,7 +214,7 @@ class Store:
                 SELECT key, arg_max(likes, collected_at) AS likes, arg_max(comments, collected_at) AS comments,
                        arg_max(shares, collected_at) AS shares, arg_max(views, collected_at) AS views,
                        arg_max(upvote_ratio, collected_at) AS upvote_ratio
-                FROM engagement_snapshots GROUP BY key
+                FROM engagement_snapshots WHERE sport = ? GROUP BY key
             )
             SELECT p.platform, p.external_id, p.url, p.created_at, p.last_collected_at, p.text, p.author,
                    p.community, p.title, p.hashtags, p.collection_method, p.confidence, p.lang, p.parent_id,
@@ -185,7 +223,7 @@ class Store:
             FROM posts p LEFT JOIN latest l USING (key)
             WHERE p.sport = ? AND coalesce(p.created_at, p.first_collected_at) >= ?
             """,
-            [sport, cutoff]).fetchall()
+            [sport, sport, cutoff]).fetchall()
         out = []
         for r in rows:
             out.append(SocialPost(
@@ -198,12 +236,12 @@ class Store:
             ))
         return out
 
-    def snapshots(self, keys: list[str]) -> dict[str, list[tuple[datetime, Engagement]]]:
+    def snapshots(self, keys: list[str], sport: str) -> dict[str, list[tuple[datetime, Engagement]]]:
         if not keys:
             return {}
         rows = self.con.execute(
             """SELECT key, collected_at, likes, comments, shares, views, upvote_ratio FROM engagement_snapshots
-               WHERE key IN (SELECT unnest(?)) ORDER BY key, collected_at""", [keys]).fetchall()
+               WHERE sport = ? AND key IN (SELECT unnest(?)) ORDER BY key, collected_at""", [sport, keys]).fetchall()
         out: dict[str, list[tuple[datetime, Engagement]]] = {}
         for k, t, *e in rows:
             out.setdefault(k, []).append((_tz(t), Engagement(*e)))
@@ -217,13 +255,13 @@ class Store:
             WITH latest AS (
                 SELECT key, arg_max(coalesce(likes,0) + 3*coalesce(comments,0) + 2*coalesce(shares,0)
                                     + 0.01*coalesce(views,0), collected_at) AS total
-                FROM engagement_snapshots GROUP BY key
+                FROM engagement_snapshots WHERE sport = ? GROUP BY key
             )
             SELECT p.platform, coalesce(p.community, ''), median(l.total), count(*)
             FROM posts p JOIN latest l USING (key)
             WHERE p.sport = ? AND p.first_collected_at >= now() - to_days(?)
             GROUP BY ALL
-            """, [sport, days]).fetchall()
+            """, [sport, sport, days]).fetchall()
         return {(r[0], r[1]): float(r[2]) for r in rows if r[3] >= 5 and r[2] is not None}
 
     def known_content_hashes(self, sport: str) -> dict[str, list[str]]:
@@ -232,13 +270,13 @@ class Store:
             [sport]).fetchall()
         return {h: ks for h, ks in rows}
 
-    def earliest_seen(self, content_hashes: list[str]) -> dict[str, datetime]:
+    def earliest_seen(self, content_hashes: list[str], sport: str) -> dict[str, datetime]:
         """First time we ever saw each normalised text: recycled rumours resurface with old hashes."""
         if not content_hashes:
             return {}
         rows = self.con.execute(
             """SELECT content_hash, min(coalesce(created_at, first_collected_at)) FROM posts
-               WHERE content_hash IN (SELECT unnest(?)) GROUP BY 1""", [content_hashes]).fetchall()
+               WHERE sport = ? AND content_hash IN (SELECT unnest(?)) GROUP BY 1""", [sport, content_hashes]).fetchall()
         return {h: _tz(t) for h, t in rows}
 
     # ---------------------------------------------------------------- source health
@@ -314,6 +352,8 @@ class Store:
     def save_ranking(self, rank_run: str, sport: str, clusters: list[dict[str, Any]]) -> None:
         now = utcnow()
         with self.tx() as con:
+            if not clusters:  # an empty run is a result too: it must replace the previous ranking
+                con.execute("INSERT INTO ranked_clusters VALUES (?,?,?,NULL,NULL,NULL)", [rank_run, now, sport])
             for c in clusters:
                 con.execute("INSERT INTO ranked_clusters VALUES (?,?,?,?,?,?)",
                             [rank_run, now, sport, c["cluster_id"], c["score"]["total"], json.dumps(c, default=str)])
@@ -322,7 +362,7 @@ class Store:
         rows = self.con.execute(
             """SELECT body FROM ranked_clusters WHERE rank_run = (
                  SELECT rank_run FROM ranked_clusters WHERE sport = ? ORDER BY generated_at DESC LIMIT 1)
-               ORDER BY score DESC""", [sport]).fetchall()
+               AND body IS NOT NULL ORDER BY score DESC""", [sport]).fetchall()
         return [json.loads(r[0]) for r in rows]
 
     def save_ideas(self, ideas: list[dict[str, Any]], fingerprints: dict[str, str]) -> None:
@@ -352,10 +392,18 @@ class Store:
     def set_idea_status(self, idea_id: str, status: str) -> None:
         self.con.execute("UPDATE ideas SET status = ? WHERE idea_id = ?", [status, idea_id])
 
-    def used_fingerprints(self) -> set[str]:
-        """Topic fingerprints of ideas already sent to production."""
-        return {r[0] for r in self.con.execute(
-            "SELECT fingerprint FROM ideas WHERE status IN ('selected', 'sent') AND fingerprint <> ''").fetchall()}
+    def used_fingerprints(self, sport: str | None = None) -> set[str]:
+        """Fingerprints (``<topic_id>|<format>``) of ideas already selected or sent to production."""
+        q = "SELECT fingerprint FROM ideas WHERE status IN ('selected', 'sent') AND fingerprint <> ''"
+        args: list[Any] = []
+        if sport:
+            q += " AND sport = ?"
+            args.append(sport)
+        return {r[0] for r in self.con.execute(q, args).fetchall()}
+
+    def covered_topics(self, sport: str) -> set[str]:
+        """Topic ids already produced, any format: the novelty check compares topics, not angles."""
+        return {fp.split("|", 1)[0] for fp in self.used_fingerprints(sport)}
 
 
 def _tz(dt: datetime | None) -> datetime | None:
