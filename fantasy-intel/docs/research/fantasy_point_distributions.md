@@ -7,6 +7,8 @@ report. Code:
 * `backend/app/analytics/point_distributions.py` (research module, never imported by the app)
 * `scripts/point_distribution_research.py`
 * tests: `backend/tests/test_point_distributions.py`
+* prospective ledger (added 2026-10-18, section 17): `scripts/distribution_ledger.py`, tests
+  `backend/tests/test_distribution_ledger.py`
 
 **Answer.** Yes, statistically defensible floors and ceilings can sit on top of the existing
 projections without touching them. The method is simple. Take the realized scores of the 300
@@ -440,7 +442,7 @@ confirm it.
 
 Before any product use, accumulate frozen pregame distributions alongside the weekly learning cycle
 and re-check coverage on prospective weeks (2026 week 6 onward), as the ifp-2 shadow gate does for
-means.
+means. That ledger and its weekly coverage check now run automatically (section 17).
 
 ## 15. Reproduce
 
@@ -481,3 +483,83 @@ Guards:
 * **Dependence is measured, not modeled.**
 * **Scoring scope.** Only QB/RB/WR/TE under this league's scoring (fingerprint `e165b59686110c7d`).
   K and D/ST have no distribution.
+
+## 17. Frozen pregame ledger and prospective coverage (added 2026-10-18)
+
+Section 14's precondition is now automated by `scripts/distribution_ledger.py`. It is research output only: nothing
+in the app, the API or the frontend reads it, and no projection, artifact, ledger or table of the production models
+changes.
+
+**Freeze (write-once, before kickoff).** For week W the script reads the production weekly ledger
+(`data/models/weekly/ledger/s<S>w<WW>/`, written by `learning_cycle.py`'s `predict` stage). Per player it takes the
+latest pregame row created before his kickoff, the rule `weekly_learning.frozen_rows` uses, and keeps it only while
+his kickoff is still ahead of the freeze. Each row's two frozen means are dressed with the pinned artifact (R@300 for
+RB/WR/TE, Bz for QB):
+
+* `ifp-1.0.0` (the weekly champion, model C refit on earlier weeks): the mean these distributions were developed
+  and validated on (primary);
+* `ifp-2.0.0` (the production challenger): what the product shows (secondary, never part of the validation).
+
+Stored per row and mean: the 99-knot conditional quantile function, conditional P10/P50/P90, and unconditional
+P10/P50/P90 with the row's `ipm-1.0.0` p_play where the artifact approves it (WR/TE).
+
+Provenance recorded in the file:
+
+* the pin, and the artifact file, its content hash and sha256;
+* the trained-through key (always before W);
+* the weekly-ledger run ids, created times and file sha256s;
+* a sha256 of the rows.
+
+One file per week: `<ifp-dir>/research/point_distributions/ledger/weeks/s<S>w<WW>-pregame.json` (git-ignored,
+about 0.5 MB). It is never rewritten. Every prospective week whose games all started without one is recorded once under
+`missed/` (each cycle checks every elapsed week, so a cycle that did not run for a while still records each of them)
+and never backfilled.
+
+**The pin.** Every week uses the same artifact until someone re-pins on purpose (`distribution_ledger.py pin
+--artifact FILE --reason TEXT`, write-once under `pins/`). The first freeze pins the newest artifact trained only on
+weeks before the week being frozen; when several share that newest cutoff (e.g. after a `--refreeze`) it refuses to
+guess and asks for an explicit pin. Nothing is fitted here. Without an artifact the stage warns and freezes nothing:
+run `point_distribution_research.py run` once (section 15). The artifact's league-scoring fingerprint must match the
+live database's.
+
+Using one fixed artifact differs from the walk-forward evaluation in sections 5-6, which refit the residual pool every
+week. It is the stricter prospective test: the frozen method is not refit while it is being judged. A refit is an
+explicit, recorded re-pin.
+
+**Scoring (weekly).** Once a frozen week is fully final (`weekly_learning.week_finality`; outcomes from
+`weekly_learning.label_outcomes`, so a game not yet played never becomes a zero), the ledger's own frozen quantiles are
+scored per mean model and position. Outcomes are league points under each season's own scoring; a ledger whose
+recorded scoring fingerprint differs from its season's is refused, never relabelled under other rules. It reuses the research functions:
+
+* randomized-PIT `calibration` (exact with the point mass at 0): coverage80, P10/P50/P90 rates, width, plus CRPS and a
+  week-clustered 95% interval for coverage80;
+* `unconditional_block` for unconditional ranges (WR/TE only).
+
+Each block is compared with the pre-registered bounds (`VALIDATION_CRITERIA`, `UNCONDITIONAL_CRITERIA`, at least 400
+rows). The result is `insufficient_data`, `within_bounds` or `outside_bounds` with reasons. That label is a monitoring
+statement and decides nothing: QB stays restricted (it is scored only to see whether prospective weeks confirm its
+lower tail), RB is scored conditional-only, and lifting any restriction or shipping any percentile still needs a
+separate approval. Output: `ledger/scores.json`, recomputed each cycle so stat corrections are picked up.
+
+| Job (existing) | When | Runs |
+|---|---|---|
+| `learning_cycle.py`, stage `dist_ledger` after `ctx_shadow` | Tue/Wed/Thu 07:00 PT, right after `predict` froze the week's forecast | `distribution_ledger.py cycle --week <target>`: score final weeks, record a missed week, freeze the target week |
+| `refresh_all.py` evidence stage | Thu/Sun/Mon/Tue plus every pregame-guard run | `distribution_ledger.py freeze --week <upcoming>`: a retry (a no-op once frozen) |
+
+Both are non-fatal: a failure is a warning in the cycle report or the refresh log, and exit 3 (no artifact, missed
+week) is informational. `--no-dist-ledger` skips the cycle stage.
+
+Notes:
+
+* The first prospective week is 2026 week 6. That week's games began before this automation existed, so
+  `missed/s2026w06.json` is expected.
+* A dry run on the real 2026 week-6 forecast (scratch copy of the data, freeze time 2026-10-15 12:00 UTC) froze all
+  436 rows with an artifact trained through 2026 week 5 (`852219ee4d73d2b3`). The hash differs from section 13's
+  because the inputs have changed since, which is why the pin records the exact file.
+
+```
+cd backend
+uv run python ../scripts/distribution_ledger.py status
+uv run python ../scripts/distribution_ledger.py freeze --week W --now 2026-10-25T12:00Z   # decide only
+uv run python ../scripts/distribution_ledger.py score
+```

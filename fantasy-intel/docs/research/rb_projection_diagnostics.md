@@ -422,8 +422,12 @@ nor worse anywhere. It is below the pre-set effect floor and has no decision val
 4. **Do not repeat** touchdown regression (no signal on development, group X confirmed null), healthy-game windows
    and exposure weighting (ifp-2, adaptive workload), or non-linear models on the same features (HGB).
 
-**Recommendations (none acted on).** (a) If MAE over all appearances is the headline, report RB accuracy
-split at ~4 opportunities per game: the pooled number mixes two regimes. (b) Do not adopt `vol_shrink`-style
+**Recommendations** ((a) done 2026-10-18; (b) and (c) not acted on). (a) If MAE over all appearances is the headline,
+report RB accuracy split at ~4 opportunities per game: the pooled number mixes two regimes. The prospective
+projection-performance report and its page now carry this split (`rb_volume_split`, `docs/projection_performance.md`):
+production forecasts against ESPN's on the scorecard's own RB rows, groups `< 4`, `>= 4` and "no earlier game this
+season", each under the per-position evidence bar. It uses the current season's games only (the live database holds
+one season), so early-season weeks fall mostly in the third group. (b) Do not adopt `vol_shrink`-style
 shrinkage for `expected_points`; if wanted for a "typical outcome" display it is a median-style number and
 should be labelled so. (c) `tm_transfer`: do not add a third shadow model on this evidence. This is a **post-hoc departure
 from the preregistered consequence of a pass**, which was "worth tracking on frozen pregame forecasts"

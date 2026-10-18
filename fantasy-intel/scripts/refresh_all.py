@@ -23,6 +23,8 @@ scenario shadow (scripts/qb_scenario_shadow.py pregame, ifp-ctx-p2q) follows it 
 QB participation-calibration re-test (scripts/participation_cal_shadow.py cycle) scores fully final weeks.
 Another is the D/ST research shadow of dfp-r1 (scripts/dst_shadow.py pregame): it freezes that week's write-once
 D/ST ledger once the lines and the previous week's ESPN statistics are in, if the learning cycle has not already.
+The frozen pregame point-distribution ledger (scripts/distribution_ledger.py freeze, research only) is a retry of
+the freeze learning_cycle.py normally makes right after its pregame forecast.
 """
 
 import argparse
@@ -53,6 +55,7 @@ START_SIT_NOTHING_ELIGIBLE = 2       # start_sit_evaluation record: no pregame r
 CTX_SHADOW_WARNINGS = 3              # ctx_shadow.py: ran and printed missing/stale injury-evidence WARNING lines
 RESEARCH_SHADOW_LABELS = ("ctx_shadow", "qb_scenario_shadow", "ipm_cal_shadow")   # exit 3 = the shadow's own warnings
 DST_SHADOW_WARNINGS = 3              # dst_shadow.py: ran and printed missing-input WARNING lines
+DIST_LEDGER_WARNINGS = 3             # distribution_ledger.py: ran and printed WARNING lines (no artifact, missed week)
 
 
 def plan(publish: bool) -> list[str]:
@@ -252,6 +255,9 @@ def evidence_steps(sel: dict) -> list[tuple[str, list[str]]]:
         # research shadow (dfp-r1 D/ST): gated write-once pregame ledger under data/models/dst/shadow/
         steps.append((f"dst_shadow pregame week {week}",
                       [py, str(SCRIPTS / "dst_shadow.py"), "pregame", "--season", season, "--week", week]))
+        # research (ifpd): write-once pregame distribution ledger under data/models/research/point_distributions/
+        steps.append((f"distribution_ledger pregame week {week}",
+                      [py, str(SCRIPTS / "distribution_ledger.py"), "freeze", "--season", season, "--week", week]))
     # research re-test of the QB participation map: freeze once, score fully final weeks (research/participation_cal_shadow/)
     steps.append(("ipm_cal_shadow cycle", [py, str(SCRIPTS / "participation_cal_shadow.py"), "cycle", "--season", season]))
     if sel["final_week"] is not None:
@@ -315,6 +321,8 @@ def run_evidence(log: Log, now: datetime | None = None, timeout: float | None = 
             log(f"INFO: {EVIDENCE} {label} reported {what} for the research shadow (see above)")
         elif code == DST_SHADOW_WARNINGS and label.startswith("dst_shadow"):
             log(f"INFO: {EVIDENCE} {label} reported missing-input warnings for the D/ST research shadow (see above)")
+        elif code == DIST_LEDGER_WARNINGS and label.startswith("distribution_ledger"):
+            log(f"INFO: {EVIDENCE} {label} reported warnings for its research ledger (see above)")
         elif code != 0:
             warn(f"{label} exited {code} (output above; the refresh exit code is unchanged)")
     log(f"{EVIDENCE} " + (f"{len(problems)} problem(s), see the WARNING lines above" if problems else "all steps ok"))

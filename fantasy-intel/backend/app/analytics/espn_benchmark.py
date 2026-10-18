@@ -678,6 +678,65 @@ def lead_times(rows: list[dict], cfg: BenchmarkConfig = BenchmarkConfig()) -> di
     return out
 
 
+# docs/research/rb_projection_diagnostics.md: the ridge mean loses to a season average on backs with under ~4 carries +
+# targets per game (a mean-vs-median effect on spike-at-zero outcomes) and wins with volume, so a pooled RB number mixes
+# two opposite effects. Reported separately; the split changes no projection and no headline verdict.
+RB_VOLUME_THRESHOLD = 4.0
+RB_VOLUME_GROUPS = ("low_volume", "volume", "no_recent_games")
+RB_VOLUME_RECENT_GAMES = 5
+RB_VOLUME_DEFINITION = (f"Pregame opportunities per game: carries + targets averaged over the back's last <= "
+                        f"{RB_VOLUME_RECENT_GAMES} games of the season strictly before the scored week. low_volume < "
+                        f"{RB_VOLUME_THRESHOLD:g}, volume >= {RB_VOLUME_THRESHOLD:g}, no_recent_games: no earlier game "
+                        "this season (e.g. week 1, or first appearance).")
+
+
+def opportunities_per_game(panel: pl.DataFrame | None, keys: Iterable[tuple[int, int, str]],
+                           recent: int = RB_VOLUME_RECENT_GAMES) -> dict[tuple[int, int, str], float | None]:
+    """{(season, week, gsis_id): mean(carries + targets) over his last <= `recent` panel games of that season strictly
+    before the week, or None without one}. Pregame information only."""
+    want = {k for k in keys if k[2]}
+    if not want or panel is None or panel.height == 0:
+        return dict.fromkeys(want)
+    ids = sorted({g for _, _, g in want})
+    games = (panel.filter(pl.col("gsis_id").is_in(ids))
+             .select("season", "week", "gsis_id", (pl.col("carries").fill_null(0) + pl.col("targets").fill_null(0)).alias("opp"))
+             .unique(["season", "week", "gsis_id"], keep="first").sort("season", "week"))
+    hist: dict[tuple[int, str], list[tuple[int, float]]] = {}
+    for s, w, g, o in games.iter_rows():
+        hist.setdefault((s, g), []).append((w, o))
+    out = {}
+    for s, w, g in want:
+        prior = [o for wk, o in hist.get((s, g), []) if wk < w][-recent:]
+        out[(s, w, g)] = sum(prior) / len(prior) if prior else None
+    return out
+
+
+def rb_volume_group(opp: float | None) -> str:
+    if opp is None:
+        return "no_recent_games"
+    return "low_volume" if opp < RB_VOLUME_THRESHOLD else "volume"
+
+
+def rb_volume_split(rows: list[dict], panel: pl.DataFrame | None, cfg: BenchmarkConfig = BenchmarkConfig(),
+                    comparisons: Iterable[str] = ("pure_independent", "conditional")) -> dict:
+    """RB accuracy against ESPN split by pregame volume, on exactly the RB rows of each comparison (the groups add up
+    to the comparison's RB row count). Each group gets the same statistics and evidence gate as a position."""
+    need_n = PROMOTION_CRITERIA["espn_min_matched_per_position"]
+    rb = [r for r in rows if r["position"] == "RB"]
+    opp = opportunities_per_game(panel, [(r["season"], r["week"], r["gsis_id"]) for r in rb])
+    out = {"threshold": RB_VOLUME_THRESHOLD, "groups": list(RB_VOLUME_GROUPS), "definition": RB_VOLUME_DEFINITION,
+           "source": "docs/research/rb_projection_diagnostics.md", "comparisons": {}}
+    for name in comparisons:
+        pop, col = population(rows, name, cfg)
+        pop = [r for r in pop if r["position"] == "RB"]
+        by = {g: [] for g in RB_VOLUME_GROUPS}
+        for r in pop:
+            by[rb_volume_group(opp.get((r["season"], r["week"], r["gsis_id"])))].append(r)
+        out["comparisons"][name] = {"n": len(pop), "ours_column": col,
+                                    "by_group": {g: _group_stats(by[g], col, cfg, need_n, False) for g in RB_VOLUME_GROUPS}}
+    return out
+
+
 VERSION_VERDICTS = ("insufficient_evidence", "no_significant_difference", "first_better", "second_better")
 
 

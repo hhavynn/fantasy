@@ -45,6 +45,11 @@ DECISION_STATEMENTS = {
     "worse": "ESPN made better decisions than Fantasy Intel.",
 }
 
+# The RB volume split (mirrored from the research benchmark module's rb_volume_split: this reader ships without
+# polars; a test keeps the copy in sync).
+RB_VOLUME_GROUPS = ("low_volume", "volume", "no_recent_games")
+RB_VOLUME_COMPARISONS = ("pure_independent", "conditional")
+
 REQUIRED_KEYS = ("schema_version", "synthetic", "season", "generated_at", "data_as_of", "production", "evidence_gate",
                  "weeks", "benchmark", "status", "positions", "comparisons", "weekly", "preliminary", "model_versions",
                  "start_sit", "coverage", "notes")
@@ -103,19 +108,70 @@ def _validate(payload, season: int | None, allow_synthetic: bool) -> str | None:
     if not isinstance(positions, dict) or set(positions) != set(POSITIONS):
         return "the report must carry exactly the positions QB, RB, WR and TE"
     for pos, p in positions.items():
-        if p.get("verdict") not in VERDICTS:
-            return f"{pos}: unknown verdict {p.get('verdict')!r}"
-        if p.get("statement") != STATEMENTS[p["verdict"]]:
-            return f"{pos}: the statement does not match the verdict"
-        ci = p.get("ci95")
-        if p["verdict"] in ("ours_better", "espn_better"):
-            # a directional claim needs an interval on one side of zero (the offline build decided on the unrounded
-            # bounds, so a displayed bound may round to 0.0)
-            if not (isinstance(ci, list) and len(ci) == 2 and (ci[1] <= 0 if p["verdict"] == "ours_better" else ci[0] >= 0)):
-                return f"{pos}: a {p['verdict']} verdict without a 95% interval that excludes 0"
+        problem = _verdict_problem(pos, p)
+        if problem:
+            return problem
+    if "rb_volume_split" in payload:                 # optional: reports built before the split stay valid
+        problem = _rb_volume_problem(payload["rb_volume_split"])
+        if problem:
+            return problem
     hit = _forbidden(payload)
     if hit:
         return f"the report contains an identifier field ({hit}); only aggregates may be published"
+    return None
+
+
+def _rb_volume_problem(split) -> str | None:
+    """The complete shape the page reads: the known groups in order, both comparisons, every group in each, and the
+    figures each row shows (anything else is refused rather than half-rendered)."""
+    if not isinstance(split, dict):
+        return "rb_volume_split is not an object"
+    if split.get("groups") != list(RB_VOLUME_GROUPS):
+        return f"rb_volume_split groups must be {list(RB_VOLUME_GROUPS)}"
+    if not _number(split.get("threshold")):
+        return "rb_volume_split has no numeric threshold"
+    comps = split.get("comparisons")
+    if not isinstance(comps, dict) or set(comps) != set(RB_VOLUME_COMPARISONS):
+        return f"rb_volume_split must carry exactly the comparisons {', '.join(RB_VOLUME_COMPARISONS)}"
+    for name, comp in comps.items():
+        by = comp.get("by_group") if isinstance(comp, dict) else None
+        if not isinstance(by, dict) or set(by) != set(RB_VOLUME_GROUPS):
+            return f"rb_volume_split {name}: every group ({', '.join(RB_VOLUME_GROUPS)}) and only those are required"
+        for group, g in by.items():
+            label = f"RB {group} ({name})"
+            if not isinstance(g, dict) or not isinstance(g.get("n"), int) or not isinstance(g.get("verdict_reason"), str):
+                return f"{label}: malformed group"
+            for side in ("ours", "espn"):
+                if not isinstance(g.get(side), dict) or not (g[side].get("mae") is None or _number(g[side]["mae"])):
+                    return f"{label}: malformed {side} error figures"
+            if not (g.get("mae_diff") is None or _number(g["mae_diff"])):
+                return f"{label}: malformed MAE difference"
+            ci = g.get("ci95")
+            if not (ci is None or (isinstance(ci, list) and len(ci) == 2 and all(_number(x) for x in ci))):
+                return f"{label}: malformed 95% interval"
+            problem = _verdict_problem(label, g)
+            if problem:
+                return problem
+        if comp.get("n") != sum(g["n"] for g in by.values()):
+            return f"rb_volume_split {name}: the groups do not add up to its n"
+    return None
+
+
+def _number(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _verdict_problem(label: str, p: dict) -> str | None:
+    if p.get("verdict") not in VERDICTS:
+        return f"{label}: unknown verdict {p.get('verdict')!r}"
+    if p.get("statement") != STATEMENTS[p["verdict"]]:
+        return f"{label}: the statement does not match the verdict"
+    ci = p.get("ci95")
+    if p["verdict"] in ("ours_better", "espn_better"):
+        # a directional claim needs an interval on one side of zero (the offline build decided on the unrounded
+        # bounds, so a displayed bound may round to 0.0)
+        if not (isinstance(ci, list) and len(ci) == 2 and (ci[1] <= 0 if p["verdict"] == "ours_better" else ci[0] >= 0)):
+            return f"{label}: a {p['verdict']} verdict without a 95% interval that excludes 0"
     return None
 
 
