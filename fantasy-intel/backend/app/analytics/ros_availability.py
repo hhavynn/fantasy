@@ -3,7 +3,7 @@
 Nothing in the app imports this module (tests/test_ros_availability.py). build_live, projection_source, the
 model registry, approved artifacts and production runs are untouched. See docs/research/ros_availability.md.
 
-The problem. A rest-of-season run (`independent_projection_store.build_live(..., projected_from_week=W)`) gives
+The problem. A rest-of-season run (the projection store's `build_live(..., projected_from_week=W)`) gives
 every target week T > W the participation model's *undesignated* p_play (`participation.predict_week(...,
 feature_week=W)`): no week-T report exists, so a player ruled Out at W looks healthy from W+1 on.
 
