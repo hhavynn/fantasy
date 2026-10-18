@@ -451,12 +451,13 @@ the projection tables. The hosted API bundle ships without polars, so there the 
 `scripts/refresh_all.py` (launchd: Thu 15:00, Sun 08:00, Mon 15:00, Tue 08:00 Pacific) now also runs
 the prospective-evidence capture, so no step above depends on remembering to run a script. After the
 ESPN sync, nflverse sync and analytics have finished and the pregame snapshot check has printed, an
-**evidence stage** runs three existing scripts, each as its own process:
+**evidence stage** runs four existing scripts, each as its own process:
 
 | Step | When | Week |
 | --- | --- | --- |
 | `injury_freshness.py report` | every run | the upcoming week |
 | `start_sit_evaluation.py record` | every run with an upcoming week | the upcoming week |
+| `ctx_shadow.py pregame` | every run with an upcoming week (research shadow, `docs/research/ifp_ctx_shadow_automation.md`) | the upcoming week |
 | `espn_benchmark.py record` | when a fully final week exists | the latest fully final week |
 
 * **Upcoming week** = the earliest regular-season week with a game still to kick off (nflverse
@@ -695,6 +696,12 @@ Each run records `forecast_horizon` and `projected_from_week` (= `W`) in `indepe
 (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`; NULL on a run stored earlier means horizon 0; the tables are never in a
 `_REBUILD` entry). Both are in `HASHED_META`, but only a run with `h > 0` contributes them to its `content_sha256`, so
 every horizon-0 run keeps the digest it was sealed with and an unchanged rerun stays a no-op across the upgrade.
+
+**Horizon guard.** A run's cutoff week must be the next unplayed week (the week after the latest week with any final
+game): `build_live` raises `HorizonError` for a horizon-0 run of a later week, because ESPN status, the ESPN designation
+fallback and the latest roster row describe the earlier game (a stored ifp-1 week-7 run made while week 6 was unplayed
+carried a week-6 DOUBTFUL into week 7). Project such a week with `projected_from_week`. Measured weakness of the
+undesignated future-week p_play for players injured at the cutoff: `docs/research/injury_workload_handoff.md` section 6.
 
 **Method.** One cycle trains once (week `W`'s artifact; nothing is trained per future week, which readiness would refuse)
 and `project` then writes one run per target week `W..last` from that same artifact

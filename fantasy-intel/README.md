@@ -108,6 +108,7 @@ fantasy-intel/
 | `/schedule-intelligence` | Schedule intelligence: each remaining week's opponent (bye, home/away, regular season vs fantasy playoffs from league settings) and what that defense allowed in games presumed complete before the week (EPA per eligible pass play / designed rush, rush success, position target shares) with samples, ranks and insufficient-data reasons. Descriptive only |
 | `/playoff-race` | Playoff Race Lab: actual standings, all-play and points; every remaining regular-season matchup with ESPN-projected optimal lineup totals (multi-week periods supported); a deterministic projected-standings scenario, the playoff cutline, bubble teams and high-leverage games; URL-backed winner overrides. No probabilities, tiebreaks, clinching or elimination claims. Read-only |
 | `/my-team/value` | My Team Value: roster strength vs the league on comparable weeks, every player's exact lineup marginal value (regular/playoff, weekly starts, IR activation upside separately), slot strength and removal-scenario depth, unused bench projection with reasons, upgrade slot-weeks, realistic add/drop and a 1-for-1 trade preview, and the Playoff Race context. Read-only |
+| `/injury-impact` | Injury Impact Center: every meaningful QB/RB/WR/TE absence or questionable tag this week with his observed workload, the teammates whose opportunity depends on it (observed with/without splits beside a labelled pro-rata estimate, never a single winner), the team's game, per-team injury-data freshness, and roster / waiver status of the teammates for the selected team. See `docs/injury_impact.md` |
 | `/managers`        | One card per manager: record, roster construction, waiver aggression, positional add interest, streaming, trades, confidence |
 | `/managers/[id]`   | The evidence: every metric with numerator/denominator, league mean, z-score, sample size, rule; weekly roster composition; full transaction history; failed claims |
 | `/data`            | ID-mapping summary, unmatched players, name-matched (medium confidence) players, sync history |
@@ -530,9 +531,10 @@ the first failure stops the chain and the script exits 1. Every run writes
 `data/logs/refresh-<UTC stamp>.log`. At the end it checks that the current week's ESPN
 projections were snapshotted before that week's first kickoff and prints a `WARNING:` line if
 not (`/data` shows the same check under "Independent projections: path to promotion"). It then
-runs a read-only evidence stage (injury freshness report, start/sit decision set, ESPN benchmark;
-see `docs/independent_projection_engine.md`, "Weekly evidence routine (automated)") whose problems
-are `WARNING:` lines and never change the exit code; `--skip-evidence` skips it.
+runs a read-only evidence stage (injury freshness report, start/sit decision set, the ifp-ctx-p1
+research shadow, ESPN benchmark; see `docs/independent_projection_engine.md`, "Weekly evidence
+routine (automated)") whose problems are `WARNING:` lines and never change the exit code;
+`--skip-evidence` skips it.
 
 ```bash
 cd backend

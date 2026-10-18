@@ -11,6 +11,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/matchup", label: "Matchup" },
       { href: "/start-sit", label: "Start/Sit" },
       { href: "/my-team/value", label: "Team value" },
+      { href: "/injury-impact", label: "Injury impact" },
     ],
   },
   {
@@ -35,6 +36,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/luck-lab", label: "Luck lab" },
       { href: "/playoff-race", label: "Playoff race" },
       { href: "/managers", label: "Managers" },
+      { href: "/power-rankings", label: "Power rankings" },
     ],
   },
 ];

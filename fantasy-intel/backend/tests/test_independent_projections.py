@@ -368,6 +368,8 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "point_distributions.py",   # research-only point distributions (never imported by the app)
                "usage_signals.py",   # research-only FTN read / depth-chart signals (never imported by the app)
                "roster_context.py", "context_challenger.py",   # research-only QB/teammate context (never imported)
+               "injury_workload.py", "injury_challenger.py",   # research-only injury timeline / workload handoff
+               "returning_context.py",   # research-only returning-teammate challenger ifp-ret (never imported)
                # kicker model: reconciliation scores a kicker's rare offensive stats (fakes) with the skill weights
                "kicker_scoring.py"}
     for f in APP.rglob("*"):
