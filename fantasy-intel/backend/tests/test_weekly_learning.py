@@ -249,7 +249,8 @@ def test_weekly_pipeline_never_imports_into_consumers():
                          "espn_benchmark.py",   # research-only ESPN benchmark; reads label_outcomes (never imported)
                          "model_registry.py", "usage_signals.py", "context_challenger.py",
                          "returning_context.py",
-                         "injury_challenger.py"):   # research-only workload handoff challenger (never imported, see
+                         "injury_challenger.py",    # research-only workload handoff challenger (never imported, see
+                         "injury_prospective.py"):  # its prospective shadow of ifp-iwh-0.1.1 (never imported, see
             # tests/test_injury_workload.py::test_app_never_imports_the_injury_research_modules)
             continue
         text = path.read_text()
