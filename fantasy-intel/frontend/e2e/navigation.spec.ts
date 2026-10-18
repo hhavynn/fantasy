@@ -21,6 +21,9 @@ const subnav = (page: Page, group: string) => page.getByRole("navigation", { nam
 
 async function loaded(page: Page) {
   await page.waitForLoadState("networkidle");
+  // Streamed pages can sit on a loading skeleton after the network goes idle (Overview under load); its h1 holds
+  // only a placeholder bar. Every skeleton is a busy status region, so wait until none is left.
+  await expect(page.locator('main [role="status"][aria-busy="true"]'), "page still loading").toHaveCount(0, { timeout: 20_000 });
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("main")).not.toContainText(FAILURE_TEXT);
 }
