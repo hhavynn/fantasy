@@ -3,10 +3,16 @@ docs/research/injury_workload_handoff.md). Offline, read-only on both databases.
 
     cd backend
     uv run python ../scripts/injury_workload_research.py build      # ifp-2 store + handoff/timeline columns (cached)
-    uv run python ../scripts/injury_workload_research.py develop    # 2021-22 only -> write-once frozen adoption
-    uv run python ../scripts/injury_workload_research.py evaluate   # frozen adoption: 2023-24 (once) + 2025-26 replay
+    uv run python ../scripts/injury_workload_research.py develop    # ifp-iwh-0.1.0 only (refused under 0.1.1)
+    uv run python ../scripts/injury_workload_research.py evaluate   # ifp-iwh-0.1.0 only (refused under 0.1.1)
     uv run python ../scripts/injury_workload_research.py ros        # empirical return rates vs ROS p_play
     uv run python ../scripts/injury_workload_research.py cases      # named live player-weeks (week 6 / 7 of 2026)
+    uv run python ../scripts/injury_workload_research.py predict --week W   # ifp-iwh-0.1.1 pregame ledger (write-once)
+    uv run python ../scripts/injury_workload_research.py prospective        # score ledgers of fully final weeks
+
+ifp-iwh-0.1.0 was adjudicated once (retain_baseline); its code is commit d6fed66. ifp-iwh-0.1.1 is judged only
+on write-once pregame ledgers from 2026 week 7 (injury_challenger.PROSPECTIVE_RULES), so `develop` and
+`evaluate` refuse to run under it: re-running either would re-adjudicate a historical window.
 
 Outputs: <ifp-dir>/research/injury_workload/ (git-ignored). Never writes ifp-1/ifp-2 artifacts, the weekly
 ledger, the registry or any production table.
@@ -172,7 +178,14 @@ def _preds(store: pl.DataFrame, weeks, cfg, adopted=None) -> pl.DataFrame:
 
 
 def _frozen_path(args) -> Path:
-    return _out(args) / f"frozen_adoption_{ic.IWH_VERSION}.json"
+    return _out(args) / f"frozen_adoption_{ic.HISTORICAL_VERSION}.json"
+
+
+def _historical_only(command: str) -> None:
+    if ic.IWH_VERSION != ic.HISTORICAL_VERSION:
+        raise SystemExit(f"`{command}` adjudicates historical windows and ran once for {ic.HISTORICAL_VERSION} (code: "
+                         f"commit d6fed66). {ic.IWH_VERSION} is judged only prospectively: use `predict --week W` "
+                         "and `prospective`.")
 
 
 def cmd_build(args) -> dict:
@@ -187,6 +200,7 @@ def cmd_build(args) -> dict:
 
 
 def cmd_develop(args) -> dict:
+    _historical_only("develop")
     store, prov = build(args)
     cfg = ch.ChallengerConfig.load()
     dev = _preds(store, ch.window_weeks(store, ic.WINDOWS["development"]), cfg)
@@ -223,6 +237,7 @@ def cmd_develop(args) -> dict:
 
 
 def cmd_evaluate(args) -> dict:
+    _historical_only("evaluate")
     store, prov = build(args)
     cfg = ch.ChallengerConfig.load()
     frozen = json.loads(_frozen_path(args).read_text())
@@ -386,18 +401,251 @@ def cmd_cases(args) -> dict:
     return out
 
 
+# ----------------------------------------------------------------------------- prospective ledger (ifp-iwh-0.1.1)
+
+
+def _ledger_dir(args) -> Path:
+    return _out(args) / "ledger"
+
+
+def prospective_spec(cfg_hash: str, scoring_fp: str) -> dict:
+    """The pre-registered prospective spec (injury_challenger.PROSPECTIVE_*), hashed. Any edit to the rules,
+    thresholds, gate or cohort code, adoption, feature group, handoff version or the ifp-2 config/scoring changes
+    config_hash."""
+    import inspect
+
+    gate_code = hashlib.sha256("".join([inspect.getsource(ic.prospective_gate), inspect.getsource(ic.cohorts),
+                                        repr(ic.MECHANISM_COHORTS)]).encode()).hexdigest()[:16]
+    spec = {"version": ic.IWH_VERSION, "status": ic.IWH_STATUS, "workload_version": iw.WORKLOAD_VERSION,
+            "gate_code": gate_code,
+            "adopted": ic.PROSPECTIVE_ADOPTED, "group": ic.GROUP, "rules": ic.PROSPECTIVE_RULES,
+            "thresholds": ic.PROSPECTIVE_THRESHOLDS, "first_week": list(ic.PROSPECTIVE_FIRST_WEEK),
+            "ifp2_config_hash": cfg_hash, "scoring_fingerprint": scoring_fp}
+    spec["config_hash"] = hashlib.sha256(json.dumps(spec, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    return spec
+
+
+def frozen_prospective(args, cfg_hash: str, scoring_fp: str, *, create: bool) -> dict:
+    """The prospective spec, frozen write-once by the first `predict`; every later run must match it exactly.
+    `prospective` never creates it (scoring cannot precede the pre-registration)."""
+    spec = prospective_spec(cfg_hash, scoring_fp)
+    path = _out(args) / f"frozen_{ic.IWH_VERSION}.json"
+    if not path.exists():
+        if not create:
+            raise SystemExit(f"{path.name} does not exist: no {ic.IWH_VERSION} ledger has been written yet")
+        hr._write_once(path, {**spec, "frozen_at": datetime.now(timezone.utc).isoformat()})
+    prev = json.loads(path.read_text())
+    if prev["config_hash"] != spec["config_hash"]:
+        raise SystemExit(f"{path.name} was frozen with a different spec, rules, ifp-2 config or scoring "
+                         f"({prev['config_hash']} != {spec['config_hash']}); refusing")
+    return prev
+
+
+def check_prospective_week(season: int, week: int) -> None:
+    if (season, week) < tuple(ic.PROSPECTIVE_FIRST_WEEK):
+        raise SystemExit(f"{ic.IWH_VERSION} is pre-registered from {ic.PROSPECTIVE_FIRST_WEEK[0]} week "
+                         f"{ic.PROSPECTIVE_FIRST_WEEK[1]}; refusing a ledger for {season} week {week}")
+
+
+def open_teams(kickoffs: dict, now: datetime) -> list[str]:
+    """Teams whose week-W game has not kicked off at `now` (a team without a known kickoff is never open)."""
+    return sorted(t for t, ko in kickoffs.items() if now < ko)
+
+
+def require_report(injuries: pl.DataFrame | None, season: int, week: int, teams: list[str]) -> pl.DataFrame:
+    """The week's injury report rows; refuses (SystemExit) unless every team to be forecast has rows. The ledger is
+    write-once, so forecasts made before the report is ingested would be frozen degraded (the timeline would read
+    every team as `no_report`). There is no override."""
+    rep = None if injuries is None else injuries.filter((pl.col("season") == season) & (pl.col("week") == week))
+    have = set() if rep is None else set(rep["team"].drop_nulls().to_list())
+    missing = sorted(set(teams) - have)
+    if rep is None or rep.height == 0 or missing:
+        raise SystemExit(f"the {season} week-{week} injury report is not ingested"
+                         + (f" for {', '.join(missing)}" if rep is not None and rep.height and missing else "")
+                         + " (run sync_nfl.py first); a pregame ledger is write-once, so nothing was written")
+    return rep
+
+
+def _sha(obj) -> str:
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def ledger_rows(feats: pl.DataFrame, models: dict, tl: dict[str, dict], kick: dict, names: dict | None = None) -> list[dict]:
+    """One frozen row per player: both models' points on the same feature row (null = abstention: no game in
+    the lookback or no model), the timeline/handoff columns the prospective cohorts read, and the explanation."""
+    rows = []
+    for pos in POSITIONS:
+        g = feats.filter(pl.col("position") == pos)
+        m = models.get(pos)
+        if g.height == 0:
+            continue
+        ok = g["games_recent"].fill_null(0).to_numpy() > 0
+        base = m["ifp2"].predict(g) if m else None
+        cand = m["iwh"].predict(g) if m else None
+        for i, rec in enumerate(g.iter_rows(named=True)):
+            b = float(base[i]) if m is not None and ok[i] else None
+            c = float(cand[i]) if m is not None and ok[i] else None
+            t = tl.get(rec["gsis_id"])
+            h = {k: rec.get(k) for k in HO_COLS}
+            rows.append({"gsis_id": rec["gsis_id"], "position": pos, "team": rec["team"],
+                         "kickoff": kick[rec["team"]].isoformat(), "games_recent": rec.get("games_recent"),
+                         "ifp2_points": b, "iwh_points": c,
+                         **{f"tl_{k}": (t or {}).get(k) for k in TL_COLS}, "tl_status_reason": (t or {}).get("status_reason"),
+                         **h, "team_changed": rec.get("team_changed"), "weeks_since_last": rec.get("weeks_since_last"),
+                         "explanation": None if t is None or pos == "QB" else
+                         iw.explain(t, {"gsis_id": rec["gsis_id"], **h}, names=names, baseline_points=b,
+                                    challenger_points=c)["text"]})
+    return rows
+
+
+def cmd_predict(args) -> dict:
+    """Frozen pregame forecasts (ifp2 and ifp-iwh-0.1.1, same run, same rows) for one week, written once. Teams
+    that have kicked off are excluded (never backdated); refused while the week's injury report is not ingested."""
+    from app.analytics.forecast_features import features_for_week
+    from app.analytics.independent_projections import MIN_TRAIN_ROWS
+    from app.analytics.participation import live_population
+    from app.analytics.weekly_learning import team_kickoffs
+
+    season, week = args.season, args.week
+    check_prospective_week(season, week)
+    lpath = _ledger_dir(args) / f"s{season}w{week:02d}-pregame.json"
+    if lpath.exists():
+        led = json.loads(lpath.read_text())
+        return {"ledger": str(lpath), "written": False, "created_at": led["created_at"], "rows": len(led["rows"])}
+    src, _ = hr._sources(args)
+    kick = team_kickoffs(src, season, week)
+    teams = open_teams(kick, datetime.now(timezone.utc))
+    if not teams:
+        raise SystemExit(f"every week-{week} game has kicked off: no pregame forecast possible")
+    require_report(src.injuries, season, week, teams)      # before the slow build: fail fast
+    store, prov = build(args)
+    cfg = ch.ChallengerConfig.load()
+    frozen = frozen_prospective(args, cfg.hash(), prov["scoring_fingerprint"], create=True)
+    codes = _codes(args)
+    now = datetime.now(timezone.utc)          # after the slow build: never select on a stale clock
+    teams = open_teams(kick, now)
+    if not teams:
+        raise SystemExit(f"every week-{week} game kicked off during the build: nothing written")
+    inj = require_report(src.injuries, season, week, teams)
+    cutoff = season * 100 + week
+    n_train, fitted = {}, {}
+    for pos in POSITIONS:
+        train = ch.train_rows(store, cutoff, pos)
+        assert train.height == 0 or train["key"].max() < cutoff, "training row at or after the forecast week"
+        n_train[pos] = train.height
+        if train.height < MIN_TRAIN_ROWS:
+            continue
+        base = ic.fit_candidate(train, cfg, pos, False, cutoff)
+        use = bool(ic.GROUP[pos]) and frozen["adopted"].get(pos, False)
+        fitted[pos] = {"ifp2": base, "iwh": ic.fit_candidate(train, cfg, pos, True, cutoff) if use else base}
+    art = {"schema": "ifp-iwh-research-artifact/v1", "version": ic.IWH_VERSION, "status": ic.IWH_STATUS,
+           "workload_version": iw.WORKLOAD_VERSION, "training_cutoff_key": cutoff, "config_hash": frozen["config_hash"],
+           "created_at": now.isoformat(), "store_fingerprint": prov["iwh_fingerprint"], "training_rows": n_train,
+           "models": {p: {k: m.to_dict() for k, m in v.items()} for p, v in fitted.items()}}
+    apath = _out(args) / "artifacts" / f"{ic.IWH_VERSION}-s{season}w{week:02d}.json"
+    if not hr._write_once(apath, art):
+        art = json.loads(apath.read_text())        # an interrupted earlier run's artifact is reused, never refit
+        if art["config_hash"] != frozen["config_hash"] or art["training_cutoff_key"] != cutoff:
+            raise SystemExit(f"{apath.name} was built under a different configuration or cutoff")
+        fitted = {p: {k: ch.RidgeModel.from_dict(d) for k, d in v.items()} for p, v in art["models"].items()}
+    pop = live_population(src, season, week).filter(pl.col("team").is_in(teams))
+    feats = features_for_week(src, season, week, pop)
+    tl = iw.injury_timeline(src, season, week, roster_codes=codes)
+    ho = iw.workload_handoff(src, season, week, timeline=tl, roster_codes=codes)
+    feats = feats.join(ho, on="gsis_id", how="left")
+    rows = ledger_rows(feats, fitted, {r["gsis_id"]: r for r in tl.iter_rows(named=True)}, kick)
+    # fitting and feature building take time: re-check every kickoff at write time and drop any team whose game
+    # has started since, so no row in a "pregame" ledger is ever written after its kickoff
+    written_at = datetime.now(timezone.utc)
+    still_open = set(open_teams(kick, written_at)) & set(teams)
+    rows = [r for r in rows if r["team"] in still_open]
+    if not still_open:
+        raise SystemExit(f"every remaining week-{week} game kicked off while forecasting: nothing written")
+    season_inj = src.injuries.filter((pl.col("season") == season) & (pl.col("week") <= week))
+    ledger = {"schema": "ifp-iwh-research-ledger/v1", "version": ic.IWH_VERSION, "status": ic.IWH_STATUS,
+              "workload_version": iw.WORKLOAD_VERSION, "kind": "pregame", "season": season, "week": week,
+              "created_at": written_at.isoformat(), "config_hash": frozen["config_hash"], "artifact": apath.name,
+              "training_cutoff_key": cutoff, "teams_excluded_already_started": sorted(set(kick) - still_open),
+              "sources": {"injury_report_rows": inj.height,
+                          "injury_report_designations": int(inj["report_status"].is_not_null().sum()),
+                          "injury_report_sha": hr._frame_hash(inj), "injury_report_timestamped": False,
+                          "injuries_season_through_week_sha": hr._frame_hash(season_inj),
+                          "rosters_sha": hr._frame_hash(src.rosters), "panel_sha": hr._frame_hash(src.panel),
+                          "games_sha": hr._frame_hash(src.games), "roster_codes_sha": hr._frame_hash(codes),
+                          "store_fingerprint": prov["iwh_fingerprint"], "scoring_fingerprint": prov["scoring_fingerprint"],
+                          "code_hash": hr.code_hash()},
+              "rows_sha": _sha(rows), "rows": rows}
+    written = hr._write_once(lpath, ledger)
+    return {"ledger": str(lpath), "written": written, "rows": len(rows),
+            "forecast_rows": sum(r["iwh_points"] is not None for r in rows), "open_teams": len(still_open),
+            "teams_excluded_already_started": ledger["teams_excluded_already_started"]}
+
+
+FROZEN_ROW_COLS = [*[f"tl_{c}" for c in TL_COLS], *HO_COLS, "team_changed", "weeks_since_last"]
+
+
+def matched_rows(store: pl.DataFrame, ledgers: list[dict], config_hash: str) -> tuple[pl.DataFrame | None, dict]:
+    """Ledger rows of fully final weeks (weeks present in the store) under `config_hash`, joined to the store's
+    labels on identical (week, player) rows. Cohort columns come from the frozen ledger, never recomputed."""
+    parts, status = [], {}
+    final = set(store["key"].unique().to_list())
+    for led in ledgers:
+        k = led["season"] * 100 + led["week"]
+        if led.get("config_hash") != config_hash:
+            status[k] = "other_config"
+        elif _sha(led["rows"]) != led.get("rows_sha"):
+            status[k] = "rows_sha_mismatch"
+        elif k not in final:
+            status[k] = "not_final"
+        else:
+            status[k] = "scored"
+            df = pl.DataFrame([{"key": k, "gsis_id": r["gsis_id"], "position": r["position"],
+                                "pred_ifp2": r["ifp2_points"], "pred_iwh": r["iwh_points"],
+                                **{c: r.get(c) for c in FROZEN_ROW_COLS}} for r in led["rows"]],
+                              infer_schema_length=None)
+            parts.append(df.with_columns(pl.col("key").cast(pl.Int64), pl.col("pred_ifp2").cast(pl.Float64),
+                                         pl.col("pred_iwh").cast(pl.Float64)))
+    if not parts:
+        return None, status
+    frozen = pl.concat(parts, how="diagonal_relaxed")
+    keep = [c for c in store.columns if c not in frozen.columns or c in ("key", "gsis_id")]
+    return store.select(keep).join(frozen, on=["key", "gsis_id"], how="inner"), status
+
+
+def cmd_prospective(args) -> dict:
+    """Score the write-once ledgers of fully final weeks with the pre-registered gate (ic.prospective_gate)."""
+    store, prov = build(args)
+    cfg = ch.ChallengerConfig.load()
+    frozen = frozen_prospective(args, cfg.hash(), prov["scoring_fingerprint"], create=False)
+    paths = sorted(_ledger_dir(args).glob("s*-pregame.json")) if _ledger_dir(args).exists() else []
+    p, status = matched_rows(store, [json.loads(x.read_text()) for x in paths], frozen["config_hash"])
+    if p is None:
+        return {"ledgers": len(paths), "weeks": status, "scored_weeks": 0, "outcome": "insufficient_data"}
+    gate = ic.prospective_gate(p)
+    out = {"version": ic.IWH_VERSION, "config_hash": frozen["config_hash"], "weeks": status, "gate": gate,
+           "report": report(p), **prov}
+    (_out(args) / f"prospective_{ic.IWH_VERSION}.json").write_text(json.dumps(out, indent=1, default=str))
+    return {"weeks": status, "scored_weeks": gate["weeks"], "outcome": gate["outcome"],
+            "per_position": {pos: {"n": v["n"], "checks": v["checks"]} for pos, v in gate["per_position"].items()},
+            "pooled_checks": gate["pooled_checks"]}
+
+
 def main(argv=None) -> int:
     settings = get_settings()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["build", "develop", "evaluate", "ros", "cases"])
+    ap.add_argument("command", choices=["build", "develop", "evaluate", "ros", "cases", "predict", "prospective"])
     ap.add_argument("--ifp-dir", type=Path, default=cr._path("IFP_MODEL_DIR", "data/models"))
     ap.add_argument("--exits-dir", type=Path, default=cr._path("WEEKLY_MODEL_DIR", "data/models/weekly"))
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
     ap.add_argument("--history-db", type=Path, default=cr._path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
     ap.add_argument("--season", type=int, default=settings.nfl_season)
+    ap.add_argument("--week", type=int)
     ap.add_argument("--rebuild", action="store_true")
     args = ap.parse_args(argv)
-    cmds = {"build": cmd_build, "develop": cmd_develop, "evaluate": cmd_evaluate, "ros": cmd_ros, "cases": cmd_cases}
+    if args.command == "predict" and args.week is None:
+        ap.error("predict needs --week")
+    cmds = {"build": cmd_build, "develop": cmd_develop, "evaluate": cmd_evaluate, "ros": cmd_ros, "cases": cmd_cases,
+            "predict": cmd_predict, "prospective": cmd_prospective}
     print(json.dumps(cmds[args.command](args), indent=1, default=str))
     return 0
 
