@@ -46,10 +46,13 @@ uv run trends ideas --full              # generate + save ideas from the latest 
 uv run trends idea <id>                 # one idea's full research package
 uv run trends select <id>               # writes studio/episodes/<season>-wNN-trends/<id>.json
 cd ../studio && uv run make-episode --week 7 --trend episodes/2026-w07-trends/<id>.json
+#   add --frozen-snapshot to re-make a week from its archived snapshot.json instead of today's database
 uv run trends health                    # per-source status, success rate, cooldowns, last error
 uv run trends export --out bundle.json  # versioned JSON contract bundle; `trends schema` prints the schema
 ```
 
+The package names the player to build the Short about (for an injury idea about a player who is out,
+the replacement, i.e. the studio's fill-in story) plus fallbacks the studio tries in order.
 `make-episode --trend` builds that player's Short through the normal stages, claim checks and QC,
 and adds a "Social trend context (not narrated)" section to its `review.md`. Social numbers never
 enter the narration, so the claims/QC chain is unchanged. If the player doesn't qualify as a usage

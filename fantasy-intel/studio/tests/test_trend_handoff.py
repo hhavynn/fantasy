@@ -13,7 +13,8 @@ PACKAGE = {
              "relevance_window": "until Sunday kickoff", "why_trending": "r/fantasyfootball thread, 85 comments/hour",
              "editorial_angle": "Crowd says bust; carries say otherwise.", "hooks": ["82%. That's the share."],
              "opposing_args": ["Two games is a small sample."], "source_links": ["https://www.reddit.com/r/x/1"]},
-    "studio_handoff": {"week": 7, "player_slug": "cam-skattebo", "gsis_id": "00-0040002", "role": "riser"},
+    "studio_handoff": {"week": 7, "player_slug": "cam-skattebo", "gsis_id": "00-0040002", "role": "riser",
+                       "alternates": [{"slug": "tyrone-tracy-jr", "gsis_id": "00-0039000"}]},
 }
 
 
@@ -29,13 +30,13 @@ def test_trend_flag_builds_the_lead_players_short(tmp_path, monkeypatch):
     pkg.write_text(json.dumps(PACKAGE))
     seen = {}
 
-    def fake_make_shorts(cfg, season, week, force, only, *rest):
-        seen.update(week=week, only=only, trend=rest[-1])
+    def fake_make_shorts(cfg, season, week, force, only, *rest, **kw):
+        seen.update(week=week, only=only, trend=rest[-1], alternates=kw.get("alternates"))
         return 0
 
     monkeypatch.setattr(cli, "make_shorts", fake_make_shorts)
     assert cli.main(["--week", "7", "--trend", str(pkg)]) == 0
-    assert seen == {"week": 7, "only": "cam-skattebo", "trend": pkg.resolve()}
+    assert seen == {"week": 7, "only": "cam-skattebo", "trend": pkg.resolve(), "alternates": ["tyrone-tracy-jr"]}
 
 
 def test_trend_without_lead_player_is_a_manual_brief(tmp_path):
