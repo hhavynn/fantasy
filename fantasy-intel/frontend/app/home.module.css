@@ -1,0 +1,81 @@
+/* The "This week" band: matchup card beside the action list. */
+.band { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; }
+@media (max-width: 1100px) { .band { grid-template-columns: minmax(0, 1fr); } }
+
+/* Placeholder rows inside a band section while it loads. */
+.skeletonStack { display: grid; gap: 12px; }
+
+/* Two equal columns for standings and transactions. */
+.pair { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 1100px) { .pair { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- Matchup card: a two-sided scoreboard ---- */
+.card { display: grid; gap: 14px; }
+.board { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; gap: 12px; }
+.boardSolo { grid-template-columns: minmax(0, 1fr); }
+.side { min-width: 0; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--surface-raised); box-shadow: inset 0 3px 0 var(--side-color); }
+.sideMe { --side-color: var(--chart-1); }
+.sideOpp { --side-color: var(--chart-2); text-align: right; }
+.sideLabel { margin: 0; color: var(--ink-faint); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.vs { align-self: center; color: var(--ink-faint); font-family: var(--font-display); font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.teamName { margin: 2px 0 0; font-size: 15px; line-height: 20px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.teamName a { color: var(--ink); }
+.teamName a:hover { color: var(--accent); }
+.teamRecord { margin: 0; color: var(--ink-muted); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.teamTotal { margin: 10px 0 0; font-family: var(--font-display); font-size: 44px; line-height: 44px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+.teamTotal.leads { color: var(--ink); }
+.teamNote { margin: 4px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 16px; }
+.cardMargin { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0; }
+.cardMarginValue { font-family: var(--font-display); font-size: 24px; line-height: 26px; font-weight: 600; }
+.cardMarginText { color: var(--ink-muted); font-size: 13px; }
+.cardNone { margin: 0; color: var(--ink-faint); font-size: 13px; }
+.cardLink { font-size: 13px; font-weight: 500; }
+@media (max-width: 420px) {
+  .board { gap: 8px; }
+  .side { padding: 10px; }
+  .teamTotal { font-size: 36px; line-height: 38px; }
+}
+
+/* ---- Action items ---- */
+.items { margin: 0; padding: 0; list-style: none; }
+.item { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.item:hover { background: var(--surface-hover); }
+.item:last-child { border-bottom: 0; }
+.itemTitle { margin: 0; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.itemReason { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+.itemLink { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-control); white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink); }
+.itemLink:hover { text-decoration: none; border-color: var(--accent); color: var(--accent); }
+.icon { margin-top: 1px; }
+.negative { color: var(--negative); }
+.caution { color: var(--caution); }
+.info { color: var(--accent); }
+.positive { color: var(--positive); }
+.more { margin: 0; padding: 12px 16px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 13px; }
+.unavailable { margin: 12px 16px; }
+@media (max-width: 480px) {
+  .item { grid-template-columns: 20px minmax(0, 1fr); }
+  .itemLink { grid-column: 2; justify-self: start; height: 36px; }
+}
+
+/* ---- Tool shortcuts: what each workspace is for, one tap away ---- */
+.tools { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+@media (max-width: 1100px) { .tools { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) {
+  .tools { gap: 8px; }
+  .tool { grid-template-columns: 28px minmax(0, 1fr); align-items: center; padding: 10px 12px; }
+  .toolIcon { grid-row: auto; width: 28px; height: 28px; }
+  .toolTitle { font-size: 13px; line-height: 17px; }
+  .toolText { display: none; }
+}
+.tool {
+  display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 2px 12px; align-items: start; height: 100%;
+  padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink);
+}
+.tool:hover { text-decoration: none; border-color: var(--line-control); background: var(--surface-raised); }
+.tool:hover .toolTitle { color: var(--accent); }
+.toolIcon { grid-row: span 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--accent); }
+.toolTitle { font-weight: 600; line-height: 20px; }
+.toolText { color: var(--ink-muted); font-size: 12px; line-height: 17px; }
+
+.sectionHead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.sectionHead h2 { margin: 0; font-size: 15px; }

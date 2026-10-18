@@ -1,39 +1,25 @@
 import Link from "next/link";
-import { Fragment } from "react";
-import { Badge, Callout, ErrorBox } from "@/components/ui";
+import type { CSSProperties } from "react";
+import { BackendProblem } from "@/components/BackendProblem";
+import { BarChart } from "@/components/charts";
+import { Badge, EmptyState, Method, Notice, PageHeader, Section, Stat, StatStrip, Tabs } from "@/components/ui";
 import { api } from "@/lib/api";
+import { cx } from "@/lib/cx";
+import {
+  backendQuery, cutlineIndex, parseRaceQuery, raceHref, weeksText, withCutline, withOverride, type RaceQuery,
+} from "@/lib/playoff-view";
 import type { PlayoffRace, PrLeverage, PrMatchup, PrOutcome, PrPlace, PrRecord, PrStatus, PrTeam } from "@/lib/types";
+import styles from "./playoff.module.css";
+import { plural } from "@/lib/plural";
+
+export const metadata = { title: "Playoff race" };
 
 // Playoff Race Lab: actual standings and all-play, projected remaining matchups (ESPN weekly projections
 // through the canonical lineup optimizer), one deterministic projected scenario and URL-backed overrides.
 // Nothing here is a probability; no clinch or elimination is claimed.
 
-const AHEAD = "#4a96ec";     // projected ahead (diverging pole, validated on the dark panel surface)
-const BEHIND = "#d9762f";    // projected behind
-const NEUTRAL = "#6e7681";   // other teams in the ladder (emphasis: your team in AHEAD)
-
-type Q = { team?: string; base: string; o: Record<string, string> };
-
-function many(v: string | string[] | undefined): string[] {
-  return v === undefined ? [] : Array.isArray(v) ? v : [v];
-}
-
-function href(q: Q, change: Partial<Q> = {}): string {
-  const n = { ...q, ...change };
-  const p = new URLSearchParams();
-  if (n.team) p.set("team", n.team);
-  if (n.base !== "projected") p.set("base", n.base);
-  Object.entries(n.o).sort(([a], [b]) => Number(a) - Number(b)).forEach(([mid, out]) => p.append("o", `${mid}:${out}`));
-  const s = p.toString();
-  return `/playoff-race${s ? `?${s}` : ""}`;
-}
-
-function withOverride(q: Q, mid: number, outcome: string | null): string {
-  const o = { ...q.o };
-  if (outcome === null) delete o[String(mid)];
-  else o[String(mid)] = outcome;
-  return href(q, { o });
-}
+type Q = RaceQuery;
+type Name = (id: number | null | undefined) => string;
 
 function rec(r: PrRecord | null | undefined): string {
   if (!r) return "—";
@@ -45,22 +31,10 @@ function pts(v: number | null | undefined, d = 1): string {
 }
 
 function signed(v: number | null | undefined): string {
-  return v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
+  return v === null || v === undefined ? "—" : v > 0 ? `+${v.toFixed(1)}` : v < 0 ? `−${Math.abs(v).toFixed(1)}` : "0.0";
 }
 
-// Row index BEFORE which the dashed cutline is drawn: the first row past the last spot, or the first
-// row of a tied group that straddles it (that group shares the remaining spots; no tiebreak picks
-// among them). 0 = above the first row (e.g. every team tied at 0-0); not drawn when it is past the end.
-// The position comes from the statuses, never from row order alone: no line when no team has a decided
-// game yet (nothing establishes a cutline position).
-function cutAfter(d: PlayoffRace): number | null {
-  if (d.league.playoff_teams === null) return null;
-  const rows = d.scenario.projected_standings;
-  if (rows.every((x) => x.status === null)) return null;
-  return rows.filter((x) => x.status === "inside").length;      // inside teams come first in the order
-}
-
-const STATUS_TEXT: Record<string, string> = { inside: "inside cutline", outside: "outside", cutline_tie: "tied at cutline" };
+const STATUS_TEXT: Record<string, string> = { inside: "Inside the line", outside: "Outside", cutline_tie: "Tied at the line" };
 const STATUS_TONE: Record<string, string> = { inside: "good", outside: "bad", cutline_tie: "warn" };
 
 function StatusBadge({ s, title }: { s: PrStatus | undefined; title?: string }) {
@@ -70,47 +44,53 @@ function StatusBadge({ s, title }: { s: PrStatus | undefined; title?: string }) 
 
 export default async function PlayoffRacePage({ searchParams }: PageProps<"/playoff-race">) {
   const sp = await searchParams;
-  const team = many(sp.team)[0];
-  const base = many(sp.base)[0] === "actual" ? "actual" : "projected";
-  const o: Record<string, string> = {};
-  for (const v of many(sp.o)) {
-    const [mid, out] = v.split(":");
-    if (mid && out) o[mid] = out;
-  }
-  const q: Q = { team, base, o };
-  const p = new URLSearchParams();
-  if (team) p.set("team_id", team);
-  p.set("base", base);
-  Object.entries(o).forEach(([mid, out]) => p.append("override", `${mid}:${out}`));
-  const res = await api<PlayoffRace>(`/api/playoff-race?${p.toString()}`);
-  return (
-    <div className="stack">
-      <div className="page-head">
-        <h1>Playoff Race Lab</h1>
-        <span className="sub">Actual standings, projected remaining matchups and what-if scenarios · deterministic, not probabilities</span>
+  const q = parseRaceQuery(sp);
+  const res = await api<PlayoffRace>(`/api/playoff-race?${backendQuery(q)}`);
+  if (!res.ok) {
+    return (
+      <div className="stack">
+        <PageHeader title="Playoff race lab" />
+        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+        {Object.keys(q.o).length > 0 && <p><Link href={raceHref({ ...q, o: {} })}>Clear all overrides</Link></p>}
       </div>
-      {!res.ok ? <><ErrorBox error={res.error} />{Object.keys(o).length > 0 && <p><Link href={href({ ...q, o: {} })}>Clear all overrides</Link></p>}</>
-        : <Body d={res.data} q={q} />}
-    </div>
-  );
+    );
+  }
+  return <Body d={res.data} q={q} />;
 }
 
 function Body({ d, q }: { d: PlayoffRace; q: Q }) {
   const teams = new Map(d.teams.map((t) => [t.team_id, t]));
   const focus = d.focus_team_id !== null ? teams.get(d.focus_team_id) : undefined;
-  const name = (id: number | null | undefined) => (id === null || id === undefined ? "?" : teams.get(id)?.name ?? `Team ${id}`);
+  const name: Name = (id) => (id === null || id === undefined ? "?" : teams.get(id)?.name ?? `Team ${id}`);
   const open = d.matchups.regular.filter((m) => m.status !== "final" && m.status !== "bye");
   return (
-    <>
-      <p className="faint" style={{ margin: 0 }}>
-        {d.league.name} {d.league.season} · ESPN week {d.league.current_week}
-        {d.league.reg_season_matchups !== null && <> · regular season: {d.league.reg_season_matchups} matchup periods
-          {d.league.last_regular_season_week !== null && <> (through week {d.league.last_regular_season_week})</>}</>}
-        {" "}· playoff spots {d.league.playoff_teams ?? <b>unknown</b>} (league settings)
-        {" "}· first projectable week {d.window.first_actionable_week ?? "none"}
-      </p>
-      {d.warnings.map((w, i) => <Callout key={i}>{w}</Callout>)}
+    <div className="stack">
+      <PageHeader
+        eyebrow="League"
+        title="Playoff race lab"
+        meta={<>
+          {d.league.name} {d.league.season} · ESPN week {d.league.current_week}
+          {d.league.reg_season_matchups !== null && <> · regular season: {d.league.reg_season_matchups} matchup periods
+            {d.league.last_regular_season_week !== null && <> (through week {d.league.last_regular_season_week})</>}</>}
+          {" "}· playoff spots {d.league.playoff_teams ?? <b>unknown</b>} (league settings)
+          {" "}· first projectable week {d.window.first_actionable_week ?? "none"}
+          {focus && <> · spotlight <b>{focus.name}</b>{focus.is_mine ? " (default team)" : ""}</>}
+          . Deterministic scenarios from ESPN projections, not probabilities.
+        </>}
+        actions={
+          <form action="/playoff-race" className={styles.spotlightForm}>
+            {q.base !== "projected" && <input type="hidden" name="base" value={q.base} />}
+            {Object.entries(q.o).map(([mid, out]) => <input key={mid} type="hidden" name="o" value={`${mid}:${out}`} />)}
+            <label>Spotlight <select name="team" defaultValue={d.focus_team_id ?? ""}>
+              {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (default)" : ""}</option>)}
+            </select></label>
+            <button type="submit">Show</button>
+          </form>
+        }
+      />
+      {d.warnings.map((w, i) => <Notice key={i} tone="caution">{w}</Notice>)}
 
+      {focus && <FocusStrip d={d} t={focus} q={q} />}
       <ScenarioBar d={d} q={q} name={name} />
       {focus && <Spotlight d={d} t={focus} q={q} name={name} />}
 
@@ -119,240 +99,235 @@ function Body({ d, q }: { d: PlayoffRace; q: Q }) {
         <Ladder d={d} name={name} />
       </div>
 
-      {focus && <Margins t={focus} />}
       <Race d={d} q={q} name={name} />
+      {focus && <Margins t={focus} />}
       <Matchups d={d} q={q} open={open} />
       <Power d={d} />
       {d.matchups.playoff_known.length > 0 && <KnownPlayoffs d={d} />}
-      <Method d={d} />
-    </>
+      <MethodNotes d={d} />
+    </div>
   );
 }
 
-// ------------------------------------------------------------------- scenario controls --
+// ------------------------------------------------------------------- headline --
 
-function ScenarioBar({ d, q, name }: { d: PlayoffRace; q: Q; name: (id: number | null) => string }) {
+function PlaceNote({ p }: { p: PrPlace }) {
+  return <>{p.rank !== null ? `#${p.rank} ` : ""}<StatusBadge s={p.status} /></>;
+}
+
+function FocusStrip({ d, t, q }: { d: PlayoffRace; t: PrTeam; q: Q }) {
+  const f = d.scenario.focus;
+  if (!f) return null;
+  return (
+    <StatStrip>
+      <Stat label="Now (ESPN)" value={rec(t.record)} note={<>seed {t.espn_seed ?? "—"} · <StatusBadge s={t.current.status} title="Decided games only" /></>} />
+      <Stat label={q.base === "projected" ? "This scenario" : "Actual + overrides"} value={rec(f.scenario.record)} note={<PlaceNote p={f.scenario} />} />
+      <Stat label={`Win all ${f.open_games} open`} value={rec(f.win_out.record)} note={<PlaceNote p={f.win_out} />} />
+      <Stat label={`Lose all ${f.open_games} open`} value={rec(f.lose_out.record)} note={<PlaceNote p={f.lose_out} />} />
+    </StatStrip>
+  );
+}
+
+// ------------------------------------------------------------- scenario controls --
+
+function ScenarioBar({ d, q, name }: { d: PlayoffRace; q: Q; name: Name }) {
   const s = d.scenario;
   const byId = new Map(d.matchups.regular.map((m) => [m.matchup_id, m]));
+  const baseItems = [
+    { href: raceHref(q, { base: "projected" }), label: "Higher projection wins" },
+    { href: raceHref(q, { base: "actual" }), label: "Actual results only" },
+  ];
   return (
-    <section className="panel">
-      <h2>Scenario</h2>
-      <div className="row-flex">
-        <span>Baseline:</span>
-        <Link href={href(q, { base: "projected" })}><Badge value="higher projection wins" tone={q.base === "projected" ? "info" : ""} /></Link>
-        <Link href={href(q, { base: "actual" })}><Badge value="actual results only" tone={q.base === "actual" ? "info" : ""} /></Link>
-        <span className="faint">· {s.decided_open_games} remaining game(s) decided in this scenario, {s.unresolved_open_games} unresolved</span>
-        <form action="/playoff-race" className="row-flex" style={{ marginLeft: "auto" }}>
-          {q.base !== "projected" && <input type="hidden" name="base" value={q.base} />}
-          {Object.entries(q.o).map(([mid, out]) => <input key={mid} type="hidden" name="o" value={`${mid}:${out}`} />)}
-          <label>Spotlight <select name="team" defaultValue={d.focus_team_id ?? ""}>
-            {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (you)" : ""}</option>)}
-          </select></label>
-          <button type="submit">Show</button>
-        </form>
+    <Section title="Scenario">
+      <div className={styles.scenario}>
+        <Tabs label="Scenario baseline" items={baseItems} current={raceHref(q)} />
+        <p className={styles.scenarioNote}>{s.decided_open_games} remaining {plural(s.decided_open_games, "game")} decided in this scenario, {s.unresolved_open_games} unresolved.</p>
       </div>
       {s.overrides.length > 0 ? (
-        <div className="row-flex" style={{ marginTop: 8 }}>
+        <div className={styles.overrides}>
           <span>Your overrides:</span>
           {s.overrides.map((ov) => {
             const m = byId.get(ov.matchup_id);
             const who = ov.outcome === "home" ? name(m?.home_team_id ?? null) : ov.outcome === "away" ? name(m?.away_team_id ?? null) : null;
             return (
-              <span key={ov.matchup_id} className="badge info">
-                wk {m?.weeks?.join("–") ?? m?.matchup_period}: {who ? `${who} wins` : ov.outcome === "tie" ? "tie" : "unresolved"}
-                {" "}<Link href={withOverride(q, ov.matchup_id, null)} title="Remove this override">✕</Link>
+              <span key={ov.matchup_id} className={styles.chip}>
+                {m ? weeksText(m.weeks, m.matchup_period) : `matchup ${ov.matchup_id}`}: {who ? `${who} wins` : ov.outcome === "tie" ? "tie" : "unresolved"}
+                {" "}<Link href={withOverride(q, ov.matchup_id, null)} title="Remove this override" aria-label="Remove this override">✕</Link>
               </span>
             );
           })}
-          <Link href={href(q, { o: {} })}>clear all</Link>
+          <Link href={raceHref(q, { o: {} })}>Clear all</Link>
         </div>
-      ) : <p className="faint" style={{ margin: "8px 0 0" }}>No overrides. Use the buttons in “Remaining matchups” (or a spotlight game) to set a winner; each choice is in the URL, so the back button undoes it.</p>}
-    </section>
+      ) : (
+        <p className={styles.scenarioNote}>No overrides. Use the links in &ldquo;Remaining matchups&rdquo; (or a spotlight game) to set a winner; each choice is in the URL, so the back button undoes it.</p>
+      )}
+    </Section>
   );
 }
 
 // ----------------------------------------------------------------------- spotlight --
 
-function Place({ label, p, hint }: { label: string; p: PrPlace; hint?: string }) {
-  return (
-    <div className="stat" title={hint}>
-      <div className="label">{label}</div>
-      <div className="value">{rec(p.record)}{p.rank !== null && <span className="faint" style={{ fontSize: 13 }}> · #{p.rank}</span>}</div>
-      <StatusBadge s={p.status} />
-    </div>
-  );
-}
-
-function Spotlight({ d, t, q, name }: { d: PlayoffRace; t: PrTeam; q: Q; name: (id: number | null) => string }) {
+function Spotlight({ d, t, q, name }: { d: PlayoffRace; t: PrTeam; q: Q; name: Name }) {
   const f = d.scenario.focus;
   const lev = d.scenario.leverage[String(t.team_id)] ?? [];
   const high = lev.filter((g) => g.high_leverage);
   const fewest = f?.fewest_wins_to_get_inside;
+  const hasText = f && (
+    (fewest && (fewest.wins_needed !== null || fewest.note)) || (!fewest && f.win_out.status !== "inside" && d.league.playoff_teams && f.open_games > 0) || f.open_games === 0
+  );
+  if (!f || (!hasText && high.length === 0 && f.helpful_other_results.length === 0)) return null;
   return (
-    <section className="panel" style={{ borderColor: AHEAD }}>
-      <h2>{t.name}{t.is_mine ? " (your team)" : ""}</h2>
-      {f && (
-        <div className="grid grid-4">
-          <div className="stat">
-            <div className="label">Now (ESPN)</div>
-            <div className="value">{rec(t.record)}<span className="faint" style={{ fontSize: 13 }}> · seed {t.espn_seed ?? "—"}</span></div>
-            <StatusBadge s={t.current.status} title="Decided games only" />
+    <Section title={`What decides ${t.name}'s cutline`}>
+      <div className={styles.spotlight}>
+        {hasText && (
+          <ul className="reasons">
+            {fewest && fewest.wins_needed !== null && (
+              <li>Fewest wins among the {fewest.of_games} open {plural(fewest.of_games, "game")} that put {t.name} inside the cutline, every other result as in this
+                scenario: <b>{fewest.wins_needed}</b>{fewest.games.length > 0 && <> (for example {fewest.games.map((id) => {
+                  const g = lev.find((x) => x.matchup_id === id);
+                  return g ? `${weeksText(g.weeks, g.matchup_period)} vs ${name(g.opponent_id)}` : id;
+                }).join(", ")})</>}.</li>)}
+            {fewest && fewest.wins_needed === null && fewest.note && <li>{fewest.note}: the fewest-wins search was skipped.</li>}
+            {!fewest && f.win_out.status !== "inside" && d.league.playoff_teams && f.open_games > 0 && (
+              <li>Winning every open game does not put {t.name} inside the cutline under the other results of this scenario; see results elsewhere that help.</li>)}
+            {f.open_games === 0 && <li>No open regular-season games remain for {t.name}.</li>}
+          </ul>
+        )}
+        {high.length > 0 && (
+          <div>
+            <h3 className={styles.subhead}>High-leverage games: the result changes {t.name}&apos;s cutline status</h3>
+            <LeverageTable rows={high} q={q} name={name} d={d} tid={t.team_id} />
           </div>
-          <Place label={q.base === "projected" ? "This scenario" : "Actual + overrides"} p={f.scenario} />
-          <Place label={`Win all ${f.open_games} open`} p={f.win_out} hint="Every remaining game of this team won; all other results as in the scenario" />
-          <Place label={`Lose all ${f.open_games} open`} p={f.lose_out} hint="Every remaining game of this team lost; all other results as in the scenario" />
-        </div>
-      )}
-      {f && (
-        <ul className="reasons" style={{ marginTop: 10 }}>
-          {fewest && fewest.wins_needed !== null && (
-            <li>Fewest wins among the {fewest.of_games} open game(s) that put {t.name} inside the cutline, every other result as in this
-              scenario: <b>{fewest.wins_needed}</b>{fewest.games.length > 0 && <> (for example weeks {fewest.games.map((id) => {
-                const g = lev.find((x) => x.matchup_id === id);
-                return g ? `${g.weeks?.join("–") ?? g.matchup_period} vs ${name(g.opponent_id)}` : id;
-              }).join(", ")})</>}.</li>)}
-          {fewest && fewest.wins_needed === null && fewest.note && <li>{fewest.note}: the fewest-wins search was skipped.</li>}
-          {!fewest && f.win_out.status !== "inside" && d.league.playoff_teams && f.open_games > 0 && (
-            <li>Winning every open game does not put {t.name} inside the cutline under the other results of this scenario; see results elsewhere that help.</li>)}
-          {f.open_games === 0 && <li>No open regular-season games remain for {t.name}.</li>}
-        </ul>
-      )}
-      {high.length > 0 && <>
-        <h3 style={{ marginTop: 10 }}>High-leverage games (the result changes {t.name}&apos;s cutline status)</h3>
-        <LeverageTable rows={high} q={q} name={name} d={d} tid={t.team_id} />
-      </>}
-      {f && f.helpful_other_results.length > 0 && <>
-        <h3 style={{ marginTop: 10 }}>Results elsewhere that help {t.name}</h3>
-        <ul className="reasons">
-          {f.helpful_other_results.map((h) => {
-            const m = d.matchups.regular.find((x) => x.matchup_id === h.matchup_id);
-            const winner = h.result === "home" ? m?.home_team_id : m?.away_team_id;
-            return (
-              <li key={`${h.matchup_id}-${h.result}`}>
-                Week {m?.weeks?.join("–") ?? h.matchup_period}: {name(winner ?? null)} beats {name(h.loser_id)} → {t.name} #{h.rank} <StatusBadge s={h.status} />
-                {" "}<Link href={withOverride(q, h.matchup_id, h.result)}>apply</Link>
-              </li>
-            );
-          })}
-        </ul>
-      </>}
-    </section>
+        )}
+        {f.helpful_other_results.length > 0 && (
+          <div>
+            <h3 className={styles.subhead}>Results elsewhere that help {t.name}</h3>
+            <ul className="reasons">
+              {f.helpful_other_results.map((h) => {
+                const m = d.matchups.regular.find((x) => x.matchup_id === h.matchup_id);
+                const winner = h.result === "home" ? m?.home_team_id : m?.away_team_id;
+                return (
+                  <li key={`${h.matchup_id}-${h.result}`}>
+                    {m ? weeksText(m.weeks, h.matchup_period) : `Period ${h.matchup_period}`}: {name(winner ?? null)} beats {name(h.loser_id)} → {t.name} #{h.rank} <StatusBadge s={h.status} />
+                    {" "}<Link href={withOverride(q, h.matchup_id, h.result)}>Apply</Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 
-function LeverageTable({ rows, q, name, d, tid }: { rows: PrLeverage[]; q: Q; name: (id: number | null) => string; d: PlayoffRace; tid: number }) {
+function LeverageTable({ rows, q, name, d, tid }: { rows: PrLeverage[]; q: Q; name: Name; d: PlayoffRace; tid: number }) {
   const byId = new Map(d.matchups.regular.map((m) => [m.matchup_id, m]));
   return (
-    <div className="table-wrap">
-      <table>
-        <thead><tr><th>Week</th><th>Opponent</th><th>In this scenario</th><th>If win</th><th>If loss</th><th>Try it</th></tr></thead>
-        <tbody>
-          {rows.map((g) => {
-            const m = byId.get(g.matchup_id);
-            const side = m?.home_team_id === tid ? "home" : "away";
-            const other = side === "home" ? "away" : "home";
-            return (
-              <tr key={g.matchup_id}>
-                <td>{g.weeks?.join("–") ?? g.matchup_period}</td>
-                <td>{name(g.opponent_id)}{g.close && <> <Badge value="close" tone="warn" /></>}</td>
-                <td>{g.scenario_result ?? <span className="faint">unresolved ({g.status.replace("_", " ")})</span>}</td>
-                <td>#{g.if_win.rank} <StatusBadge s={g.if_win.status} /></td>
-                <td>#{g.if_loss.rank} <StatusBadge s={g.if_loss.status} /></td>
-                <td><Link href={withOverride(q, g.matchup_id, side)}>win</Link> · <Link href={withOverride(q, g.matchup_id, other)}>loss</Link></td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className={styles.flushTable}>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Week</th><th>Opponent</th><th>In this scenario</th><th>If win</th><th>If loss</th><th>Try it</th></tr></thead>
+          <tbody>
+            {rows.map((g) => {
+              const m = byId.get(g.matchup_id);
+              const side = m?.home_team_id === tid ? "home" : "away";
+              const other = side === "home" ? "away" : "home";
+              return (
+                <tr key={g.matchup_id} className={styles.leverage}>
+                  <td>{g.weeks?.join("–") ?? g.matchup_period}</td>
+                  <td>{name(g.opponent_id)}{g.close && <> <Badge value="close" tone="warn" /></>}</td>
+                  <td>{g.scenario_result ?? <span className="faint">unresolved ({g.status.replace("_", " ")})</span>}</td>
+                  <td>#{g.if_win.rank} <StatusBadge s={g.if_win.status} /></td>
+                  <td>#{g.if_loss.rank} <StatusBadge s={g.if_loss.status} /></td>
+                  <td><Link href={withOverride(q, g.matchup_id, side)}>Win</Link> · <Link href={withOverride(q, g.matchup_id, other)}>Loss</Link></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
 // ----------------------------------------------------------------------- standings --
 
-function Standings({ d, name }: { d: PlayoffRace; name: (id: number | null) => string }) {
+function Standings({ d, name }: { d: PlayoffRace; name: Name }) {
   const s = d.scenario;
   const spots = d.league.playoff_teams;
-  const after = cutAfter(d);
+  const after = cutlineIndex(s.projected_standings, spots);
   const tie = s.cutline?.cutline_tie;
+  const bubble = new Set(s.cutline?.bubble ?? []);
   const cur = new Map(s.current_standings.map((x) => [x.team_id, x]));
   const teams = new Map(d.teams.map((t) => [t.team_id, t]));
+  const items = withCutline(s.projected_standings, after);
   return (
-    <section className="panel">
-      <h2>Current vs {s.base === "projected" ? "projected" : "scenario"} standings</h2>
+    <Section
+      title={`Current vs ${s.base === "projected" ? "projected" : "scenario"} standings`}
+      flush
+      footnote={<>&ldquo;=&rdquo; marks a shared rank (equal winning percentage; no tiebreak applied). &ldquo;+n?&rdquo; counts games still unresolved in this scenario. Bubble teams have a remaining game whose result changes their cutline status. {after === null
+        ? (spots === null ? "Playoff spots are unknown, so no playoff line is drawn." : "No team has a decided game in this scenario yet, so no playoff line position is drawn.")
+        : <>The playoff line is after {spots} spots{tie ? `; a tied group straddles it, so it is drawn above them and they share ${tie.spots_left} ${plural(tie.spots_left, "spot")}` : ""}.</>}</>}
+    >
       <div className="table-wrap">
         <table>
-          <thead><tr><th>#</th><th>Team</th><th>Now</th><th>ESPN seed</th><th>Scenario</th><th>Move</th><th>Status</th></tr></thead>
+          <thead><tr><th>#</th><th>Team</th><th>Now</th><th title="ESPN's own seed">ESPN seed</th><th>Scenario</th><th>Move</th><th>Status</th></tr></thead>
           <tbody>
-            {s.projected_standings.map((x, i) => {
+            {items.map((it) => {
+              if (it.kind === "cutline") {
+                return (
+                  <tr key="cutline" className={styles.cutline}>
+                    <td colSpan={7} title={tie ? `${tie.spots_left} ${plural(tie.spots_left, "spot")} shared by the tied teams below` : `${spots} playoff spots`}>
+                      Playoff line · {spots} spots{tie ? ` · ${tie.spots_left} shared by the tied teams below` : ""}
+                    </td>
+                  </tr>
+                );
+              }
+              const x = it.row;
               const c = cur.get(x.team_id);
               const move = c?.rank && x.rank ? c.rank - x.rank : null;
               const t = teams.get(x.team_id);
               return (
-                <Fragment key={x.team_id}>
-                  {after !== null && i === after && (
-                    <tr><td colSpan={7} style={{ borderBottom: `2px dashed ${AHEAD}`, padding: 0 }}
-                            title={tie ? `Cutline: ${tie.spots_left} spot(s) shared by the tied teams below` : `Playoff cutline: ${spots} spots`} /></tr>
-                  )}
-                  <tr className={t?.is_mine ? "mine" : ""}>
-                    <td>{x.rank ?? "—"}{x.tied ? "=" : ""}</td>
-                    <td>{name(x.team_id)}</td>
-                    <td className="num">{rec(c?.record)}{c?.rank ? <span className="faint"> #{c.rank}{c.tied ? "=" : ""}</span> : null}</td>
-                    <td className="num">{t?.espn_seed ?? "—"}</td>
-                    <td className="num"><b>{rec(x.record)}</b>{x.record?.unresolved ? <span className="faint" title="Games unresolved in this scenario"> +{x.record.unresolved}?</span> : null}</td>
-                    <td className="num">{move === null || move === 0 ? <span className="faint">·</span> : move > 0 ? <span style={{ color: AHEAD }}>▲{move}</span> : <span style={{ color: BEHIND }}>▼{-move}</span>}</td>
-                    <td><StatusBadge s={x.status} /></td>
-                  </tr>
-                </Fragment>
+                <tr key={x.team_id} className={t?.is_mine ? "mine" : ""}>
+                  <td className="num">{x.rank ?? "—"}{x.tied ? "=" : ""}</td>
+                  <td>{name(x.team_id)}{bubble.has(x.team_id) && <> <Badge value="Bubble" tone="warn" title="A remaining game changes this team's cutline status" /></>}</td>
+                  <td className="num">{rec(c?.record)}{c?.rank ? <span className="faint"> #{c.rank}{c.tied ? "=" : ""}</span> : null}</td>
+                  <td className="num">{t?.espn_seed ?? "—"}</td>
+                  <td className="num"><b>{rec(x.record)}</b>{x.record?.unresolved ? <span className="faint" title="Games unresolved in this scenario"> +{x.record.unresolved}?</span> : null}</td>
+                  <td className="num">{move === null || move === 0 ? <span className="faint">·</span> : move > 0 ? <span className="up">▲ {move}</span> : <span className="down">▼ {-move}</span>}</td>
+                  <td><StatusBadge s={x.status} /></td>
+                </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      <p className="faint" style={{ marginTop: 6 }}>“=” marks a shared rank (equal winning percentage; no tiebreak applied). “+n?” counts games still unresolved in this scenario. {after === null
-        ? (spots === null ? " Playoff spots are unknown, so no cutline is drawn." : " No team has a decided game in this scenario yet, so no cutline position is drawn.")
-        : <> The dashed line is the cutline after {spots} spots{tie ? `; a tied group straddles it, so it is drawn above them and they share ${tie.spots_left} spot(s)` : ""}.</>}</p>
-    </section>
+    </Section>
   );
 }
 
-function Ladder({ d, name }: { d: PlayoffRace; name: (id: number | null) => string }) {
+function Ladder({ d, name }: { d: PlayoffRace; name: Name }) {
   const rows = d.scenario.projected_standings;
-  const after = cutAfter(d);
+  const after = cutlineIndex(rows, d.league.playoff_teams);
   const tie = d.scenario.cutline?.cutline_tie;
-  const mine = new Set(d.teams.filter((t) => t.team_id === d.focus_team_id).map((t) => t.team_id));
-  const rowH = 22, labelW = 150, barW = 260, top = 16;
-  const h = top + rows.length * rowH + 8;
   return (
-    <section className="panel">
-      <h2>Cutline ladder · scenario winning %</h2>
-      <svg viewBox={`0 0 ${labelW + barW + 110} ${h}`} width="100%" role="img" aria-label="Scenario winning percentage by team with the playoff cutline">
-        {[0, 0.5, 1].map((v) => (
-          <line key={v} x1={labelW + v * barW} x2={labelW + v * barW} y1={top - 4} y2={h - 6} stroke="var(--border)" strokeWidth={1} />
-        ))}
-        {rows.map((x, i) => {
-          const y = top + i * rowH;
-          const w = Math.max(2, (x.pct ?? 0) * barW);
-          return (
-            <g key={x.team_id}>
-              <title>{`${name(x.team_id)}: ${rec(x.record)} (${x.pct === null ? "no record" : (x.pct * 100).toFixed(1) + "%"})${x.status ? ` · ${STATUS_TEXT[x.status]}` : ""}`}</title>
-              <text x={labelW - 8} y={y + 14} textAnchor="end" fontSize={11} fill={mine.has(x.team_id) ? "var(--text)" : "var(--muted)"}>
-                {(name(x.team_id) ?? "").slice(0, 20)}
-              </text>
-              {x.pct !== null && <rect x={labelW} y={y + 4} width={w} height={rowH - 8} rx={4} fill={mine.has(x.team_id) ? AHEAD : NEUTRAL} />}
-              <text x={labelW + barW + 6} y={y + 14} fontSize={11} fill="var(--muted)">{rec(x.record)}</text>
-              {after !== null && i === after && (
-                <g>
-                  <line x1={labelW - 4} x2={labelW + barW + 106} y1={y} y2={y} stroke={AHEAD} strokeWidth={2} strokeDasharray="4 3" />
-                  <text x={labelW + barW + 106} y={y - 4} fontSize={10} textAnchor="end" fill="var(--text)">{tie ? `cutline · ${tie.spots_left} shared` : "cutline"}</text>
-                </g>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-      <p className="faint" style={{ marginTop: 6 }}>Bars: winning % in this scenario (decided games only), {d.focus_team_id !== null ? `${name(d.focus_team_id)} highlighted` : "no spotlight team"}. Gridlines at 0, 50 and 100%.</p>
-    </section>
+    <Section
+      title="Scenario record: win share (wins ÷ games)"
+      footnote={<>Bars: each team&apos;s win share in the deterministic scenario, W ÷ (W + L) over decided games. It is the scenario&apos;s record, not a probability or a chance of making the playoffs{d.focus_team_id !== null ? `; ${name(d.focus_team_id)} is highlighted` : ""}. Teams are in standings order; the dashed line is the playoff line.</>}
+    >
+      <BarChart
+        orientation="horizontal"
+        data={rows.map((x) => ({
+          label: name(x.team_id),
+          value: x.pct,
+          tone: x.team_id === d.focus_team_id ? "default" : "muted",
+        }))}
+        valueFormat={(v) => `${Math.round(v * 100)}%`}
+        divider={after !== null ? { after, label: tie ? `Playoff line · ${tie.spots_left} shared` : "Playoff line" } : undefined}
+        ariaLabel="Scenario win share (wins divided by games) by team with the playoff line"
+      />
+    </Section>
   );
 }
 
@@ -361,83 +336,81 @@ function Ladder({ d, name }: { d: PlayoffRace; name: (id: number | null) => stri
 function Margins({ t }: { t: PrTeam }) {
   const rows = t.remaining.filter((r) => r.status !== "bye");
   if (rows.length === 0) return null;
-  const maxAbs = Math.max(5, ...rows.map((r) => Math.abs(r.projected_margin ?? 0)));
-  const colW = 64, h = 150, mid = 70, scale = 55 / maxAbs;
   return (
-    <section className="panel">
-      <h2>{t.name}: projected margin by remaining matchup</h2>
-      <svg viewBox={`0 0 ${rows.length * colW + 20} ${h}`} width="100%" style={{ maxWidth: rows.length * colW + 20 }} role="img" aria-label="Projected scoring margin per remaining matchup">
-        <line x1={0} x2={rows.length * colW + 20} y1={mid} y2={mid} stroke="var(--border)" strokeWidth={1} />
-        {rows.map((r, i) => {
-          const x = 10 + i * colW;
-          const m = r.projected_margin;
-          const bh = m === null ? 0 : Math.max(2, Math.abs(m) * scale);
-          return (
-            <g key={r.matchup_id}>
-              <title>{`Week ${r.weeks?.join("–") ?? r.matchup_period} ${r.home ? "vs" : "@"} ${r.opponent_name}: ${m === null ? "no projected margin (" + r.status.replace("_", " ") + ")" : signed(m) + " projected"}${r.close ? " · close" : ""}`}</title>
-              {m !== null ? (
-                <rect x={x + 14} width={colW - 28} y={m >= 0 ? mid - bh : mid} height={bh} rx={4} fill={m >= 0 ? AHEAD : BEHIND} />
-              ) : (
-                <text x={x + colW / 2} y={mid + 4} textAnchor="middle" fontSize={11} fill="var(--faint)">gap</text>
-              )}
-              {m !== null && <text x={x + colW / 2} y={m >= 0 ? mid - bh - 4 : mid + bh + 12} textAnchor="middle" fontSize={10} fill="var(--muted)">{signed(m)}</text>}
-              <text x={x + colW / 2} y={h - 18} textAnchor="middle" fontSize={10} fill="var(--muted)">wk {r.weeks?.join("–") ?? r.matchup_period}</text>
-              <text x={x + colW / 2} y={h - 5} textAnchor="middle" fontSize={10} fill="var(--faint)">{(r.home ? "vs " : "@ ") + (r.opponent_name ?? "?").slice(0, 9)}</text>
-            </g>
-          );
-        })}
-      </svg>
-      <p className="faint" style={{ marginTop: 6 }}>
-        <span style={{ color: AHEAD }}>■</span> projected ahead · <span style={{ color: BEHIND }}>■</span> projected behind · “gap” = no projected margin (game under way,
-        a projection is incomplete, or its weeks are unknown). Margins compare ESPN-projected optimal lineups; they are not win probabilities.
-      </p>
-    </section>
+    <Section
+      title={`${t.name}: projected margin by remaining matchup`}
+      footnote="Margins compare ESPN-projected optimal lineups; they are not win probabilities. A dash means no projected margin (game under way, a projection is incomplete, or its weeks are unknown)."
+    >
+      <BarChart
+        orientation="horizontal"
+        data={rows.map((r) => ({
+          label: `${weeksText(r.weeks, r.matchup_period)} ${r.home ? "vs" : "@"} ${r.opponent_name ?? "?"}${r.close ? " (close)" : ""}`,
+          value: r.projected_margin,
+        }))}
+        valueFormat={signed}
+        ariaLabel="Projected scoring margin per remaining matchup, from this team's side"
+      />
+    </Section>
   );
 }
 
 // -------------------------------------------------------------------- race & leverage --
 
-function group(rows: { team_id: number; record: PrRecord | null }[], name: (id: number | null) => string): string {
+function group(rows: { team_id: number; record: PrRecord | null }[], name: Name): string {
   return rows.length ? rows.map((x) => `${name(x.team_id)} ${rec(x.record)}`).join(" = ") : "—";
 }
 
-function Race({ d, q, name }: { d: PlayoffRace; q: Q; name: (id: number | null) => string }) {
+function Race({ d, q, name }: { d: PlayoffRace; q: Q; name: Name }) {
   const cut = d.scenario.cutline;
-  if (!cut) return <Callout>Playoff spots are not reported in league settings, so no cutline or bubble can be shown.</Callout>;
+  if (!cut) return <Notice tone="caution">Playoff spots are not reported in league settings, so no cutline or bubble can be shown.</Notice>;
   return (
-    <section className="panel">
-      <h2>Playoff race · {cut.playoff_spots} spots</h2>
-      <p>
+    <Section
+      title={`Bubble teams · ${cut.playoff_spots} playoff spots`}
+      flush={cut.bubble.length > 0}
+      footnote="Bubble teams: those with at least one remaining game whose result changes their cutline status (all else as in this scenario), plus any team tied at the cutline."
+    >
+      <p className={cx(styles.raceLine, cut.bubble.length > 0 && styles.padded)}>
         {cut.cutline_tie ? <>
           Tied at the cutline: <b>{cut.cutline_tie.team_ids.map((id) => name(id)).join(", ")}</b> share {cut.cutline_tie.spots_left} remaining
-          spot(s) <Badge value="unresolved: no tiebreak applied" tone="warn" />
+          {plural(cut.cutline_tie.spots_left, "spot")} <Badge value="Unresolved: no tiebreak applied" tone="warn" />
         </> : <>
           Last in: <b>{group(cut.last_inside, name)}</b> · first out: <b>{group(cut.first_outside, name)}</b>
         </>}
       </p>
-      <p className="faint">Bubble teams: those with at least one remaining game whose result changes their cutline status (all else as in this scenario), plus any team tied at the cutline.</p>
-      {cut.bubble.length === 0 ? <p className="faint">No team&apos;s status depends on a single result in this scenario.</p> : (
-        <div className="grid grid-3">
-          {cut.bubble.map((tid) => {
-            const rows = (d.scenario.leverage[String(tid)] ?? []).filter((g) => g.high_leverage);
-            const proj = d.scenario.projected_standings.find((x) => x.team_id === tid);
-            return (
-              <div key={tid} className="panel tight">
-                <h3>{name(tid)} <span className="faint">{rec(proj?.record)} #{proj?.rank}</span> <StatusBadge s={proj?.status} /></h3>
-                <ul className="reasons">
-                  {rows.map((g) => (
-                    <li key={g.matchup_id}>wk {g.weeks?.join("–") ?? g.matchup_period} vs {name(g.opponent_id)}: win → <StatusBadge s={g.if_win.status} />, loss → <StatusBadge s={g.if_loss.status} />
-                      {" "}<span className="faint">({g.scenario_result ?? "unresolved"})</span></li>
-                  ))}
-                  {rows.length === 0 && <li>Tied at the cutline; no single own result decides it.</li>}
-                </ul>
-                {tid !== d.focus_team_id && <Link href={href(q, { team: String(tid) })}>spotlight this team</Link>}
-              </div>
-            );
-          })}
+      {cut.bubble.length === 0 ? <EmptyState title="No team's status depends on a single result in this scenario" /> : (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Team</th><th>Scenario</th><th>Status</th><th>Games that decide it</th><th /></tr></thead>
+            <tbody>
+              {cut.bubble.map((tid) => {
+                const rows = (d.scenario.leverage[String(tid)] ?? []).filter((g) => g.high_leverage);
+                const proj = d.scenario.projected_standings.find((x) => x.team_id === tid);
+                return (
+                  <tr key={tid} className={tid === d.focus_team_id ? "mine" : ""}>
+                    <td>{name(tid)}</td>
+                    <td className="num">{rec(proj?.record)} <span className="faint">#{proj?.rank}</span></td>
+                    <td><StatusBadge s={proj?.status} /></td>
+                    <td className={styles.decide}>
+                      {rows.length === 0 ? <span className="faint">Tied at the cutline; no single own result decides it.</span> : (
+                        <ul className={styles.decideList}>
+                          {rows.map((g) => (
+                            <li key={g.matchup_id}>
+                              {weeksText(g.weeks, g.matchup_period)} vs {name(g.opponent_id)}: win → <StatusBadge s={g.if_win.status} />, loss → <StatusBadge s={g.if_loss.status} />
+                              {" "}<span className="faint">({g.scenario_result ?? "unresolved"})</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td>{tid !== d.focus_team_id && <Link href={raceHref(q, { team: String(tid) })}>Spotlight</Link>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -449,22 +422,24 @@ function SideCell({ m, side }: { m: PrMatchup; side: "home" | "away" }) {
     const v = side === "home" ? m.home_points : m.away_points;
     return <span className="faint" title="ESPN points as of the last sync; not final">{pts(v)} live</span>;
   }
-  if (!s) return <span className="faint">—</span>;
-  if (s.projected_points !== null) return <b className="num">{pts(s.projected_points)}</b>;
-  return <span className="faint" title={`${s.gap ?? "incomplete"}${s.missing_players.length ? ": " + s.missing_players.join(", ") : ""}`}>known {pts(s.known_points)} · incomplete</span>;
+  if (!s) return <span className="missing" title="No projection">—</span>;
+  if (s.projected_points !== null) return <b>{pts(s.projected_points)}</b>;
+  return <span className="faint" title={`${s.gap ?? "incomplete"}${s.missing_players.length ? `: ${s.missing_players.join(", ")}` : ""}`}>known {pts(s.known_points)} · incomplete</span>;
 }
 
-// Bars share one scale: the largest projected margin among the remaining matchups fills half the width.
+/** The bar grows toward the projected leader's column; all bars share one scale (the biggest margin fills half). */
 function MarginBar({ m, maxAbs }: { m: PrMatchup; maxAbs: number }) {
-  if (m.projected_margin === null || m.projected_margin === undefined) return <span className="faint">—</span>;
-  const w = Math.max(2, (Math.abs(m.projected_margin) / maxAbs) * 50);
-  const home = m.projected_margin >= 0;
+  const v = m.projected_margin;
+  if (v === null || v === undefined) return <span className="missing" title="No projected margin">—</span>;
+  const w = Math.max(2, (Math.abs(v) / maxAbs) * 50);
+  const home = v >= 0;
   return (
-    <svg width={104} height={12} role="img" aria-label={`Projected margin ${signed(m.projected_margin)}`}>
-      <title>{`Projected margin ${signed(m.projected_margin)} (home minus away)`}</title>
-      <line x1={52} x2={52} y1={0} y2={12} stroke="var(--border)" />
-      <rect x={home ? 52 - w : 52} y={2} width={w} height={8} rx={3} fill={home ? AHEAD : BEHIND} />
-    </svg>
+    <span className={styles.marginCell} title={`Projected margin ${signed(v)} (home minus away)`}>
+      <span className={styles.track} aria-hidden="true">
+        <span className={cx(styles.fill, home ? styles.fillHome : styles.fillAway)} style={{ "--w": `${w.toFixed(1)}%` } as CSSProperties} />
+      </span>
+      <span>{v === 0 ? "Even" : `${home ? "Home" : "Away"} ${signed(Math.abs(v))}`}</span>
+    </span>
   );
 }
 
@@ -474,9 +449,9 @@ function OverrideLinks({ m, q }: { m: PrMatchup; q: Q }) {
     cur === out ? <b key={out}>{label}</b> : <Link key={out} href={withOverride(q, m.matchup_id, out)}>{label}</Link>
   );
   return (
-    <span className="row-flex" style={{ gap: 6 }}>
-      {opt("home", "home wins")}{opt("away", "away wins")}{opt("tie", "tie")}{opt("none", "unresolved")}
-      {cur !== undefined && <Link href={withOverride(q, m.matchup_id, null)} title="Back to the baseline">reset</Link>}
+    <span className={styles.overrideLinks}>
+      {opt("home", "Home wins")}{opt("away", "Away wins")}{opt("tie", "Tie")}{opt("none", "Unresolved")}
+      {cur !== undefined && <Link href={withOverride(q, m.matchup_id, null)} title="Back to the baseline">Reset</Link>}
     </span>
   );
 }
@@ -484,40 +459,54 @@ function OverrideLinks({ m, q }: { m: PrMatchup; q: Q }) {
 function Matchups({ d, q, open }: { d: PlayoffRace; q: Q; open: PrMatchup[] }) {
   const periods = [...new Set(open.map((m) => m.matchup_period))].sort((a, b) => a - b);
   const maxAbs = Math.max(1, ...open.map((m) => Math.abs(m.projected_margin ?? 0)));
+  const focus = d.focus_team_id;
+  const highIds = new Set((focus !== null ? d.scenario.leverage[String(focus)] ?? [] : []).filter((g) => g.high_leverage).map((g) => g.matchup_id));
   return (
-    <section className="panel">
-      <h2>Remaining regular-season matchups</h2>
-      {open.length === 0 ? <p className="faint">No remaining regular-season matchups in the ESPN schedule.</p> : (
+    <Section
+      title="Remaining regular-season matchups"
+      flush={open.length > 0}
+      footnote={open.length > 0 ? <>Projected totals are ESPN projections through the lineup optimizer. The margin is home minus away, drawn toward the projected leader. &ldquo;Close&rdquo; means within 5% of the mean projected total. Highlighted rows involve the spotlight team{highIds.size > 0 ? "; High leverage marks games that change its cutline status" : ""}. Overrides are in the URL.</> : undefined}
+    >
+      {open.length === 0 ? <EmptyState title="No remaining regular-season matchups">The ESPN schedule has no open regular-season games.</EmptyState> : (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Week</th><th>Home</th><th className="num">Proj.</th><th>Margin</th><th className="num">Proj.</th><th>Away</th><th>Scenario</th><th>Override</th></tr></thead>
-            <tbody>
-              {periods.flatMap((p) => open.filter((m) => m.matchup_period === p).map((m) => {
-                const res = m.scenario_result;
-                const mine = d.teams.find((t) => t.team_id === d.focus_team_id);
-                const involves = mine && (m.home_team_id === mine.team_id || m.away_team_id === mine.team_id);
-                return (
-                  <tr key={m.matchup_id} className={involves ? "mine" : ""}>
-                    <td>{m.weeks?.join("–") ?? `period ${m.matchup_period}`}{m.weeks && m.weeks.length > 1 && <div className="faint" style={{ fontSize: 11 }}>{m.weeks.length}-week matchup</div>}</td>
-                    <td>{m.home_name}</td>
-                    <td className="num"><SideCell m={m} side="home" /></td>
-                    <td><MarginBar m={m} maxAbs={maxAbs} /> <span className="faint">{signed(m.projected_margin)}</span>{m.close && <> <Badge value="close" tone="warn" title="Projected margin within 5% of the mean projected total" /></>}</td>
-                    <td className="num"><SideCell m={m} side="away" /></td>
-                    <td>{m.away_name}</td>
-                    <td className="wrap" style={{ minWidth: 160 }}>
-                      {res ? <b>{res === "tie" ? "tie" : `${res === "home" ? m.home_name : m.away_name} wins`}</b> : <span className="faint">unresolved</span>}
-                      {m.override ? <Badge value="override" tone="info" /> : res ? <span className="faint"> (projection)</span> : null}
-                      <div className="faint" style={{ fontSize: 11 }}>{m.status.replace("_", " ")}{m.status !== "upcoming" || !res ? ` · ${m.detail ?? ""}` : ""}</div>
-                    </td>
-                    <td><OverrideLinks m={m} q={q} /></td>
-                  </tr>
-                );
-              }))}
-            </tbody>
+            <thead><tr><th>Home</th><th className="num">Proj.</th><th>Margin</th><th className="num">Proj.</th><th>Away</th><th>Scenario</th><th>Override</th></tr></thead>
+            {periods.map((p) => {
+              const ms = open.filter((m) => m.matchup_period === p);
+              const sample = ms[0];
+              return (
+                <tbody key={p}>
+                  <tr className="group"><td colSpan={7}>{weeksText(sample?.weeks, p)}{sample?.weeks && sample.weeks.length > 1 ? ` · ${sample.weeks.length}-week matchup` : ""}</td></tr>
+                  {ms.map((m) => {
+                    const res = m.scenario_result;
+                    const involves = focus !== null && (m.home_team_id === focus || m.away_team_id === focus);
+                    return (
+                      <tr key={m.matchup_id} className={involves ? "mine" : ""}>
+                        <td>{m.home_name}</td>
+                        <td className="num"><SideCell m={m} side="home" /></td>
+                        <td>
+                          <MarginBar m={m} maxAbs={maxAbs} />
+                          {m.close && <> <Badge value="Close" tone="warn" title="Projected margin within 5% of the mean projected total" /></>}
+                        </td>
+                        <td className="num"><SideCell m={m} side="away" /></td>
+                        <td>{m.away_name}</td>
+                        <td className={styles.scenarioCell}>
+                          {res ? <b>{res === "tie" ? "Tie" : `${res === "home" ? m.home_name : m.away_name} wins`}</b> : <span className="faint">Unresolved</span>}
+                          {m.override ? <> <Badge value="Override" tone="info" /></> : res ? <span className="faint"> (projection)</span> : null}
+                          {highIds.has(m.matchup_id) && <> <Badge value="High leverage" tone="warn" title="This result changes the spotlight team's cutline status" /></>}
+                          <span className={styles.sub}>{m.status.replace("_", " ")}{m.status !== "upcoming" || !res ? ` · ${m.detail ?? ""}` : ""}</span>
+                        </td>
+                        <td><OverrideLinks m={m} q={q} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              );
+            })}
           </table>
         </div>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -526,9 +515,11 @@ function Matchups({ d, q, open }: { d: PlayoffRace; q: Q; open: PrMatchup[] }) {
 function Power({ d }: { d: PlayoffRace }) {
   const rows = [...d.teams].sort((a, b) => (a.current.rank ?? 99) - (b.current.rank ?? 99) || (a.espn_seed ?? 99) - (b.espn_seed ?? 99) || a.team_id - b.team_id);
   return (
-    <section className="panel">
-      <h2>League power view · actual vs forward</h2>
-      <p className="faint">Ordered by actual standing. No composite power score: actual results (left) and ESPN-based forward projections (right) are kept separate.</p>
+    <Section
+      title="League power view: actual vs forward"
+      flush
+      footnote="Ordered by actual standing. No composite power score: actual results (left) and ESPN-based forward projections (right) are kept separate. Badges: W, L or T is the result in this scenario (? = unresolved), followed by the projected margin from this team's side."
+    >
       <div className="table-wrap">
         <table>
           <thead><tr><th>Team</th><th>Record</th><th className="num">PF</th><th className="num">PA</th><th>All-play</th>
@@ -544,45 +535,49 @@ function Power({ d }: { d: PlayoffRace }) {
                   {t.all_play.periods.length ? <>{t.all_play.wins}-{t.all_play.losses}{t.all_play.ties ? `-${t.all_play.ties}` : ""} <span className="faint">({((t.all_play.pct ?? 0) * 100).toFixed(0)}%)</span></> : <span className="faint">no final periods</span>}
                 </td>
                 <td className="num">{t.regular_season_projected_points !== null ? pts(t.regular_season_projected_points)
-                  : t.projection_gap ? <span className="faint" title={t.projection_gap}>—</span>
+                  : t.projection_gap ? <span className="missing" title={t.projection_gap}>—</span>
                   : <span className="faint" title={`Incomplete weeks: ${(t.projection_weeks_incomplete ?? []).join(", ")}`}>known {pts(t.regular_season_known_points)}</span>}</td>
-                <td className="wrap">{t.remaining.length === 0 ? <span className="faint">none</span> : t.remaining.map((r) => (
-                  <span key={r.matchup_id} className="badge" style={{ marginRight: 4, marginBottom: 2, color: r.scenario_result === "win" ? AHEAD : r.scenario_result === "loss" ? BEHIND : undefined }}
-                        title={`Week ${r.weeks?.join("–") ?? r.matchup_period} ${r.home ? "vs" : "@"} ${r.opponent_name}: ${r.scenario_result ?? "unresolved"} (${r.status.replace("_", " ")})`}>
-                    {r.weeks?.join("–") ?? r.matchup_period} {r.home ? "vs" : "@"} {r.opponent_name?.slice(0, 10) ?? "?"} {r.scenario_result ? r.scenario_result[0].toUpperCase() : "?"}{r.projected_margin !== null ? ` ${signed(r.projected_margin)}` : ""}
+                <td className={styles.remaining}>{t.remaining.length === 0 ? <span className="faint">none</span> : (
+                  <span className={styles.badges}>
+                    {t.remaining.map((r) => (
+                      <Badge
+                        key={r.matchup_id}
+                        tone={r.scenario_result === "win" ? "good" : r.scenario_result === "loss" ? "bad" : r.scenario_result === "tie" ? "warn" : ""}
+                        title={`${weeksText(r.weeks, r.matchup_period)} ${r.home ? "vs" : "@"} ${r.opponent_name}: ${r.scenario_result ?? "unresolved"} (${r.status.replace("_", " ")})`}
+                        value={`${r.weeks?.join("–") ?? r.matchup_period} ${r.home ? "vs" : "@"} ${r.opponent_name?.slice(0, 10) ?? "?"} ${r.scenario_result ? r.scenario_result[0].toUpperCase() : "?"}${r.projected_margin !== null ? ` ${signed(r.projected_margin)}` : ""}`}
+                      />
+                    ))}
                   </span>
-                ))}</td>
+                )}</td>
                 <td className="faint">{t.projection_gap ?? ((t.projection_weeks_incomplete ?? []).length ? `incomplete wk ${(t.projection_weeks_incomplete ?? []).join(", ")}` : "complete")}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="faint">Badges: W/L/T is the result in this scenario (? = unresolved), followed by the projected margin from this team&apos;s side.</p>
-    </section>
+    </Section>
   );
 }
 
 function KnownPlayoffs({ d }: { d: PlayoffRace }) {
   return (
-    <section className="panel">
-      <h2>Playoff matchups ESPN already lists</h2>
-      <p className="faint">Shown as ESPN reports them; future playoff opponents are not modeled.</p>
-      <table>
-        <thead><tr><th>Period</th><th>Tier</th><th>Home</th><th>Away</th><th>ESPN winner</th></tr></thead>
-        <tbody>{d.matchups.playoff_known.map((m) => (
-          <tr key={m.matchup_id}><td>{m.weeks?.join("–") ?? m.matchup_period}</td><td>{m.playoff_tier}</td><td>{m.home_name ?? "TBD"}</td><td>{m.away_name ?? "—"}</td><td>{m.espn_winner}</td></tr>
-        ))}</tbody>
-      </table>
-    </section>
+    <Section title="Playoff matchups ESPN already lists" flush footnote="Shown as ESPN reports them; future playoff opponents are not modeled.">
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Period</th><th>Tier</th><th>Home</th><th>Away</th><th>ESPN winner</th></tr></thead>
+          <tbody>{d.matchups.playoff_known.map((m) => (
+            <tr key={m.matchup_id}><td>{m.weeks?.join("–") ?? m.matchup_period}</td><td>{m.playoff_tier}</td><td>{m.home_name ?? "TBD"}</td><td>{m.away_name ?? "—"}</td><td>{m.espn_winner}</td></tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </Section>
   );
 }
 
-function Method({ d }: { d: PlayoffRace }) {
+function MethodNotes({ d }: { d: PlayoffRace }) {
   const cov = d.schedule_coverage;
   return (
-    <details className="panel method">
-      <summary>How this works (and what it cannot say)</summary>
+    <Method title="How this works (and what it cannot say)">
       <ul className="reasons">
         <li>{d.rules.ordering}</li>
         <li>{d.rules.projection}</li>
@@ -593,10 +588,10 @@ function Method({ d }: { d: PlayoffRace }) {
           ? Object.entries(d.rules.espn_rules_reported).map(([k, v]) => `${k} = ${JSON.stringify(v)}`).join("; ") + ". "
           : ""}{d.rules.espn_rules_note}</li>
         <li>Schedule coverage: {cov.checked ? (cov.complete ? `every team has a matchup in all ${cov.regular_season_periods} regular-season periods`
-          : `missing regular-season matchups for ${cov.missing.length} team(s)`) : cov.reason}{cov.unmapped_periods && cov.unmapped_periods.length > 0 ? `; periods without known weeks: ${cov.unmapped_periods.join(", ")}` : ""}.</li>
+          : `missing regular-season matchups for ${cov.missing.length} ${plural(cov.missing.length, "team")}`) : cov.reason}{cov.unmapped_periods && cov.unmapped_periods.length > 0 ? `; periods without known weeks: ${cov.unmapped_periods.join(", ")}` : ""}.</li>
         {d.record_check.map((n, i) => <li key={`rc${i}`}>{n}</li>)}
         {d.window.reason && <li>Projection window: {d.window.reason}</li>}
       </ul>
-    </details>
+    </Method>
   );
 }

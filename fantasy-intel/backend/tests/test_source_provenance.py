@@ -1,0 +1,692 @@
+"""Point-in-time source provenance (app.analytics.source_provenance) on synthetic nflverse-shaped
+data: frozen pregame forecasts can be rebuilt from their own snapshots, and later corrections or
+post-kickoff updates never change what a past forecast knew."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import shutil
+import sys
+
+import polars as pl
+import pytest
+
+from app.analytics import source_provenance as sp
+from app.analytics import weekly_learning as wl
+from app.analytics.forecast_features import load_sources
+from app.analytics.independent_projection_store import league_scoring
+from app.db.connection import connect
+from test_learning_cycle import _make_db
+
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+UTC = timezone.utc
+NOW = "2025-09-10T08:00:00+00:00"            # after the synthetic nflverse sync; week 10 kicks off 17:00 UTC
+KICK10 = datetime(2025, 9, 10, 17, tzinfo=UTC)
+
+
+@pytest.fixture(scope="module")
+def cli():
+    sys.path.insert(0, str(SCRIPTS))
+    spec = importlib.util.spec_from_file_location("weekly_learning_cli", SCRIPTS / "weekly_learning.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.fixture(scope="module")
+def base(tmp_path_factory):
+    """Three seasons, so a rebuild from the two snapshotted seasons is checked against a forecast
+    that could see an older one; plus a fitted participation artifact."""
+    d = tmp_path_factory.mktemp("prov_base")
+    _make_db(d / "live.duckdb", [2023, 2024, 2025], {2025: 10})
+    _make_db(d / "history.duckdb", [2023, 2024], league=False)
+    con = connect(d / "live.duckdb")
+    _, scoring = league_scoring(con, 2025)
+    src = load_sources(con, scoring)
+    con.close()
+    from app.analytics.participation import PARTICIPATION_VERSION, build_store, fit_final
+    pstore = build_store(src, [(s, w) for s in (2024, 2025) for w in range(1, 10 if s == 2025 else 18)])
+    sel = {"positions": {p: {"lambda": 0.01} for p in ("QB", "RB", "WR", "TE")}, "conditional_model": {}}
+    part = fit_final(pstore, sel, {"status": {}, "positions": {}}, "2025-09-01", 2020)
+    models = d / "models"
+    models.mkdir()
+    (models / f"participation_{PARTICIPATION_VERSION}.json").write_text(json.dumps(part.to_dict(), default=str))
+    sel = {"positions": {p: {"primary": "C", "lambda": {"B": 0.01, "C": 0.01}, "intervals": {}}
+                         for p in ("QB", "RB", "WR", "TE")},
+           "protocol": {"train_start_season": 2020}, "scoring_fingerprint": scoring.fingerprint}
+    (models / "selection.json").write_text(json.dumps(sel))
+    sha = hashlib.sha256((models / "selection.json").read_bytes()).hexdigest()[:16]
+    (models / "heldout_report.json").write_text(json.dumps({"status": {}, "positions": {}, "selection_sha": sha}))
+    return d
+
+
+@pytest.fixture
+def env(base, tmp_path):
+    for name in ("live.duckdb", "history.duckdb"):
+        shutil.copy(base / name, tmp_path / name)
+    shutil.copytree(base / "models", tmp_path / "models")
+    return tmp_path
+
+
+def _argv(env, *cmd, now=NOW):
+    return [*cmd, "--season", "2025", "--now", now, "--live-db", str(env / "live.duckdb"),
+            "--history-db", str(env / "history.duckdb"), "--ifp-dir", str(env / "models"), "--out", str(env / "out")]
+
+
+def _forecast(cli, env, now=NOW) -> dict:
+    assert cli.main(_argv(env, "train", "--week", "10", now=now)) == 0
+    assert cli.main(_argv(env, "predict", "--week", "10", now=now)) == 0
+    runs = [r for r in wl.load_ledger(env / "out") if r["kind"] == "pregame"]
+    return max(runs, key=lambda r: r["created_at"])
+
+
+def _sql(env, *stmts):
+    con = connect(env / "live.duckdb")
+    for s in stmts:
+        con.execute(s)
+    con.close()
+
+
+def _arts(run):
+    return [wl.load_artifact(run["artifacts"][k]["path"]) for k in ("champion", "challenger")]
+
+
+def _participation(env):
+    from app.analytics.participation import PARTICIPATION_VERSION, ParticipationArtifact
+    return ParticipationArtifact.from_dict(json.loads((env / "models" / f"participation_{PARTICIPATION_VERSION}.json")
+                                                      .read_text()))
+
+
+def _digest(root: Path) -> dict:
+    return {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.rglob("*")) if p.is_file()}
+
+
+def _live_sources(env):
+    con = connect(env / "live.duckdb")
+    _, scoring = league_scoring(con, 2025)
+    src = load_sources(con, scoring)
+    con.close()
+    return src
+
+
+# ----------------------------------------------------------------------------- frozen forecast reconstruction
+
+
+def test_forecast_rebuilt_after_later_source_updates_matches_the_frozen_run(cli, env):
+    run = _forecast(cli, env)
+    assert run["sources"]["manifest_id"] and any(r["p_play"] is not None for r in run["rows"])
+    m = sp.load_manifest(env / "out", 2025, 10, run["sources"]["manifest_id"])
+    assert m["seasons"] == [2024, 2025]                 # what the feature pipeline reads (current + previous)
+    frozen = {"artifacts": _digest(env / "out" / "artifacts"), "ledger": _digest(env / "out" / "ledger"),
+              "snapshots": _digest(env / "out" / "snapshots")}
+    # after the forecast: a stat correction for week 8 and a week-10 injury report updated after kickoff
+    target = next(r for r in run["rows"] if r["p_play"] is not None and r["challenger"]["points"] is not None)
+    _sql(env, "UPDATE nfl_weekly_stats SET receiving_yards = receiving_yards + 80, receptions = receptions + 4 "
+              "WHERE season = 2025 AND week = 8",
+         f"DELETE FROM nfl_injuries WHERE season = 2025 AND week = 10 AND gsis_id = '{target['gsis_id']}'",
+         f"INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, position, report_status, "
+         f"report_primary_injury, practice_primary_injury, practice_status, date_modified) VALUES (2025, 'REG', "
+         f"'{target['team']}', 10, '{target['gsis_id']}', '{target['position']}', 'Out', 'Ankle', 'Ankle', "
+         f"'Did Not Participate In Practice', NULL)")       # 2025-style row: no provider timestamp
+    champ, chal = _arts(run)
+    rebuilt = wl.rebuild_run(env / "out", run, champ, chal, participation=_participation(env))
+    assert rebuilt["inputs_hash"] == run["inputs_hash"] and rebuilt["rows"] == run["rows"]
+    # the current tables WOULD give a different forecast: exactly the leak the snapshots prevent
+    now_src = _live_sources(env)
+    live = wl.predict(now_src, champ, chal, 2025, 10, datetime.fromisoformat(run["created_at"]),
+                      artifact_ids=run["artifacts"], participation=_participation(env))
+    by_id = {r["gsis_id"]: r for r in live["rows"]}
+    assert by_id[target["gsis_id"]]["p_play"] != target["p_play"]
+    assert any(by_id[r["gsis_id"]]["challenger"]["points"] != r["challenger"]["points"] for r in run["rows"])
+    # originals are untouched by the corrections and by the rebuild
+    assert _digest(env / "out" / "artifacts") == frozen["artifacts"]
+    assert _digest(env / "out" / "ledger") == frozen["ledger"]
+    assert _digest(env / "out" / "snapshots") == frozen["snapshots"]
+
+
+def test_corrected_source_adds_a_snapshot_and_keeps_the_original(cli, env):
+    run1 = _forecast(cli, env)
+    before = _digest(env / "out" / "snapshots")
+    _sql(env, "UPDATE nfl_weekly_stats SET rushing_yards = rushing_yards + 40 WHERE season = 2025 AND week = 7")
+    run2 = _forecast(cli, env, now="2025-09-10T10:00:00+00:00")
+    assert run2["run_id"] != run1["run_id"] and run2["sources"]["manifest_id"] != run1["sources"]["manifest_id"]
+    p1, p2 = run1["sources"]["parts"], run2["sources"]["parts"]
+    assert p1["panel/s2025"] != p2["panel/s2025"]                     # the corrected season is a new part
+    assert p1["panel/s2024"] == p2["panel/s2024"] and p1["injuries/s2025"] == p2["injuries/s2025"]   # stored once
+    after = _digest(env / "out" / "snapshots")
+    assert all(after[k] == v for k, v in before.items())              # nothing rewritten
+    for run in (run1, run2):                                          # both forecasts still rebuild exactly
+        champ, chal = _arts(run)
+        assert wl.rebuild_run(env / "out", run, champ, chal, _participation(env))["rows"] == run["rows"]
+
+
+def test_duplicate_snapshot_is_stored_once_and_keeps_the_first_capture_time(env, base):
+    src = _live_sources(env)
+    a = sp.capture(env / "out", src, 2025, 10, captured_at="2025-09-09T12:00:00+00:00")
+    files = _digest(env / "out" / "snapshots")
+    b = sp.capture(env / "out", src, 2025, 10, captured_at="2025-09-09T18:00:00+00:00")
+    assert a == b and b["captured_at"] == "2025-09-09T12:00:00+00:00"
+    assert _digest(env / "out" / "snapshots") == files
+    assert len(list((env / "out" / "snapshots" / "manifests").rglob("*.json"))) == 1
+
+
+# ----------------------------------------------------------------------------- pregame information state
+
+
+def _listed_team(src) -> str:
+    return sorted(src.injuries.filter((pl.col("season") == 2025) & (pl.col("week") == 10))["team"].unique())[0]
+
+
+def _injury_rows(src, team, status):
+    inj = src.injuries.filter((pl.col("season") == 2025) & (pl.col("week") == 10))
+    one = inj.filter(pl.col("team") == team).sort("gsis_id").head(1)
+    rest = src.injuries.filter(~((pl.col("season") == 2025) & (pl.col("week") == 10)
+                                 & (pl.col("gsis_id") == one["gsis_id"][0])))
+    return type(src)(src.panel, src.games, src.defense, src.rosters,
+                     pl.concat([rest, one.with_columns(pl.lit(status).alias("report_status"))])), one["gsis_id"][0]
+
+
+@pytest.fixture
+def week10_injuries(tmp_path):
+    """Week 10 is final here so it has injury reports to play with."""
+    d = tmp_path
+    _make_db(d / "w.duckdb", [2024, 2025], {2025: 11})
+    con = connect(d / "w.duckdb")
+    _, scoring = league_scoring(con, 2025)
+    src = load_sources(con, scoring)
+    con.close()
+    return src
+
+
+def test_report_captured_before_kickoff_is_what_was_known(week10_injuries, tmp_path):
+    src = week10_injuries
+    team = _listed_team(src)
+    early, gid = _injury_rows(src, team, "Questionable")
+    sp.capture(tmp_path, early, 2025, 10, captured_at=KICK10 - timedelta(days=1),
+               retrieved_at={"injuries": {2025: KICK10 - timedelta(days=1, hours=2)}})
+    rows, rep = sp.injuries_as_of(tmp_path, 2025, 10, {team: KICK10})
+    assert rows.filter(pl.col("gsis_id") == gid)["report_status"].to_list() == ["Questionable"]
+    assert rep["teams"][team]["known_by"] == (KICK10 - timedelta(days=1, hours=2)).isoformat()
+
+
+def test_report_changed_after_kickoff_never_reaches_that_team(week10_injuries, tmp_path):
+    src = week10_injuries
+    team = _listed_team(src)
+    early, gid = _injury_rows(src, team, "Questionable")
+    late, _ = _injury_rows(src, team, "Out")
+    sp.capture(tmp_path, early, 2025, 10, captured_at=KICK10 - timedelta(hours=20))
+    sp.capture(tmp_path, late, 2025, 10, captured_at=KICK10 + timedelta(hours=1))      # after the team's kickoff
+    rows, rep = sp.injuries_as_of(tmp_path, 2025, 10, {team: KICK10, "LATE": KICK10 + timedelta(hours=3),
+                                                       "EARLY": KICK10 - timedelta(days=2)})
+    assert rows.filter(pl.col("gsis_id") == gid)["report_status"].to_list() == ["Questionable"]
+    # had this team kicked off later, the newer capture would have been the one known before it
+    rows_late, _ = sp.injuries_as_of(tmp_path, 2025, 10, {team: KICK10 + timedelta(hours=3)})
+    assert rows_late.filter(pl.col("gsis_id") == gid)["report_status"].to_list() == ["Out"]
+    assert rep["teams"]["LATE"]["known_by"] == (KICK10 + timedelta(hours=1)).isoformat()
+    # a team that played before any capture gets nothing, never today's table
+    assert rep["no_pregame_snapshot"] == ["EARLY"] and rows.filter(pl.col("team") == "EARLY").height == 0
+
+
+def test_source_without_date_modified_is_labeled_not_imputed(env):
+    _sql(env, "UPDATE nfl_injuries SET date_modified = NULL WHERE season = 2025 AND week = 9")
+    con = connect(env / "live.duckdb")
+    cov = sp.injury_timestamp_coverage(con, 2025)
+    assert cov["column_present"] and 0 < cov["with_date_modified"] < cov["rows"]
+    assert sp.publication_time_status(cov) == "partial"
+    con.execute("ALTER TABLE nfl_injuries DROP COLUMN date_modified")
+    cov = sp.injury_timestamp_coverage(con, 2025)
+    assert cov == {**cov, "column_present": False, "with_date_modified": None}
+    assert sp.publication_time_status(cov) == "missing"
+    _, scoring = league_scoring(con, 2025)
+    src = load_sources(con, scoring)                       # rows kept: they cannot be filtered by time
+    con.close()
+    assert src.injuries.filter(pl.col("season") == 2025).height > 0
+    m = sp.capture(env / "out", src, 2025, 10, captured_at=NOW, meta=sp.source_meta({2025: cov}))
+    assert m["meta"]["injury_report_timestamps"]["2025"]["publication_time"] == "missing"
+    assert m["parts"]["injuries/s2025"]["retrieved_at"] is None       # unknown stays unknown
+    assert sp.known_by(m, "injuries/s2025").isoformat() == NOW       # we provably had it at capture time
+
+
+def test_missing_player_identity_never_reaches_the_snapshot(env):
+    _sql(env, "INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, position, report_status, "
+              "date_modified) VALUES (2025, 'REG', 'AAA', 9, NULL, 'WR', 'Out', NULL)")
+    con = connect(env / "live.duckdb")
+    cov = sp.injury_timestamp_coverage(con, 2025)
+    _, scoring = league_scoring(con, 2025)
+    src = load_sources(con, scoring)
+    con.close()
+    assert cov["unmapped_rows"] == 1                               # reported, not silently matched
+    m = sp.capture(env / "out", src, 2025, 10, captured_at=NOW, meta=sp.source_meta({2025: cov}))
+    snap = sp.read_part(env / "out", "injuries", 2025, m["parts"]["injuries/s2025"]["hash"])
+    assert snap["gsis_id"].null_count() == 0
+    assert m["meta"]["injury_report_timestamps"]["2025"]["unmapped_rows"] == 1
+
+
+def test_schema_drift_across_seasons_still_reconstructs(env):
+    src = _live_sources(env)
+    old = type(src)(src.panel, src.games.with_columns(pl.col("week").cast(pl.Int32)), src.defense,
+                    src.rosters, src.injuries)                   # an older capture with another integer width
+    a = sp.capture(env / "out", old, 2025, 10, captured_at="2025-09-01T00:00:00+00:00")
+    b = sp.capture(env / "out", src, 2025, 10, captured_at=NOW)
+    mixed = {**b, "parts": {**b["parts"], "games/s2024": a["parts"]["games/s2024"]}}
+    rebuilt, _ = sp.reconstruct(env / "out", mixed)
+    assert rebuilt.games["week"].dtype == pl.Int64
+    assert rebuilt.games.filter(pl.col("season") == 2024).height == src.games.filter(pl.col("season") == 2024).height
+    assert a["parts"]["exits/s2025"]["status"] == "unavailable" and rebuilt.exits is None
+
+
+# ----------------------------------------------------------------------------- failures
+
+
+def test_snapshot_retrieval_failure_is_explicit(cli, env):
+    run = _forecast(cli, env)
+    champ, chal = _arts(run)
+    part = run["sources"]["parts"]["panel/s2025"]
+    path = env / "out" / "snapshots" / "panel" / "s2025" / f"{part}.parquet"
+    saved = path.read_bytes()
+    path.unlink()
+    with pytest.raises(sp.ProvenanceError, match="missing"):
+        wl.rebuild_run(env / "out", run, champ, chal)
+    path.write_bytes(saved[: len(saved) // 2])
+    with pytest.raises(sp.ProvenanceError, match="unreadable|does not match"):
+        wl.rebuild_run(env / "out", run, champ, chal)
+    with pytest.raises(wl.NotReady, match="no source snapshot"):
+        wl.rebuild_run(env / "out", {**run, "sources": None}, champ, chal)
+
+
+def test_capture_failure_freezes_no_forecast(cli, env, monkeypatch):
+    assert cli.main(_argv(env, "train", "--week", "10")) == 0
+
+    def broken(self, *a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(pl.DataFrame, "write_parquet", broken)
+    assert cli.main(_argv(env, "predict", "--week", "10")) == 3
+    assert wl.load_ledger(env / "out") == []
+    assert not [p for p in (env / "out").rglob("*.partial")]
+
+
+def test_original_artifact_unchanged_by_later_sources(cli, env):
+    run = _forecast(cli, env)
+    arts = _digest(env / "out" / "artifacts")
+    _sql(env, "UPDATE nfl_weekly_stats SET receiving_yards = receiving_yards + 5 WHERE season = 2025 AND week = 9")
+    _forecast(cli, env, now="2025-09-10T12:00:00+00:00")             # retrains: a new artifact is added
+    after = _digest(env / "out" / "artifacts")
+    assert all(after[k] == v for k, v in arts.items()) and len(after) > len(arts)
+    champ, chal = _arts(run)
+    assert wl.rebuild_run(env / "out", run, champ, chal, _participation(env))["rows"] == run["rows"]
+
+
+# ----------------------------------------------------------------------------- injury evidence quality
+
+
+def test_injury_evidence_distinguishes_pbp_report_and_snap_drop(week10_injuries):
+    src = week10_injuries
+    ids = src.panel.filter(pl.col("season") == 2025)["gsis_id"].unique().to_list()
+    ev = sp.injury_evidence(src, 2025, 10, ids, {"2025": {"publication_time": "partial"}})
+    kinds = {v["evidence"] for v in ev.values()}
+    assert kinds <= {sp.PBP_VERIFIED, sp.REPORT_LISTING, sp.SNAP_DROP_ONLY, sp.NO_DROP, sp.UNKNOWN}
+    assert sp.PBP_VERIFIED not in kinds                                # no play-by-play evidence loaded
+    drop = next(g for g, v in ev.items() if v["game_class"] in ("role_low", "blowout_low", "listed_low"))
+    assert ev[drop]["evidence"] == sp.SNAP_DROP_ONLY                   # a low snap share alone is not an injury
+    assert all(v["report_publication_time"] == "partial" for v in ev.values() if v["evidence"] == sp.REPORT_LISTING)
+    s, w = ev[drop]["last_game"]
+    exits = pl.DataFrame({"season": [s], "week": [w], "gsis_id": [drop], "injured_in_game": [1], "injury_sec": [100.0],
+                          "last_touch_sec": [90.0], "team_last_sec": [3600.0]})
+    ev2 = sp.injury_evidence(src.with_exits(exits), 2025, 10, [drop])
+    assert ev2[drop]["evidence"] == sp.PBP_VERIFIED and ev2[drop]["pbp_covered"]
+
+
+def test_ledger_rows_carry_injury_evidence(cli, env):
+    run = _forecast(cli, env)
+    with_ev = [r for r in run["rows"] if r["injury_evidence"]]
+    assert with_ev and all(r["injury_evidence"]["evidence"] in (sp.PBP_VERIFIED, sp.REPORT_LISTING, sp.SNAP_DROP_ONLY,
+                                                                 sp.NO_DROP, sp.UNKNOWN) for r in with_ev)
+    m = sp.load_manifest(env / "out", 2025, 10, run["sources"]["manifest_id"])
+    assert set(m["meta"]["injury_report_timestamps"]) == {"2024", "2025"}
+
+
+# ----------------------------------------------------------------------------- injury retrieval provenance
+# Week 10 of the synthetic world: every team kicks off at KICK10 (17:00 UTC) unless a test moves a game. The
+# injury_retrievals log and the sync_runs row of each logged sync are filled by hand here (the real syncs write
+# both); nothing below touches a network or the production files.
+
+from app.analytics import injury_freshness as inj  # noqa: E402
+
+H = timedelta(hours=1)
+
+
+def _sync(env, run, finished, status="ok", season=2025):
+    """A sync_runs row for an nflverse sync (the sync that wrote the table content), finished at `finished`."""
+    con = connect(env / "live.duckdb")
+    done = None if status == "running" else finished.replace(tzinfo=None)      # a running sync has no finish time
+    con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status, stats) "
+                "VALUES (?, 'nfl', ?, ?, ?, ?)",
+                [run, (finished - 5 * H / 60).replace(tzinfo=None), done, status, json.dumps({"season": season})])
+    con.close()
+
+
+def _log(env, team, retrieved, *, scope=inj.SCOPE_TEAM_WEEK, sha=None, pub=None, run=None):
+    """One nflverse observation of the synthetic live DB, as the sync would log it. Observations at the same
+    instant share one sync (`run`), which is registered in sync_runs, finishing 10 minutes after the download.
+    The fixture's own sync ('synthetic-nfl') is dropped unless it is the run used: the latest successful sync
+    decides which log rows can describe the table."""
+    run = run or f"run@{retrieved.isoformat()}"
+    con = connect(env / "live.duckdb")
+    if run != "synthetic-nfl":
+        con.execute("DELETE FROM sync_runs WHERE run_id = 'synthetic-nfl'")
+    known = con.execute("SELECT count(*) FROM sync_runs WHERE run_id = ?", [run]).fetchone()[0]
+    con.close()
+    if not known:
+        _sync(env, run, retrieved + 10 * H / 60)
+    con = connect(env / "live.duckdb")
+    feed = scope == inj.SCOPE_FEED
+    inj.record_observations(con, [inj.Observation(
+        inj.SOURCE_NFLVERSE, scope, 2025, None if feed else 10, None if feed else team, retrieved,
+        sha or hashlib.sha256(f"{team}{retrieved}".encode()).hexdigest(), 3, 1 if pub else 0, pub,
+        retrieved - timedelta(seconds=30), run)])
+    con.close()
+
+
+def _capture(env, captured_at, *, con=True, retrieved_at=None):
+    handle = connect(env / "live.duckdb") if con else None
+    try:
+        return sp.capture(env / "out", _live_sources(env), 2025, 10, captured_at=captured_at, con=handle,
+                          retrieved_at=retrieved_at)
+    finally:
+        if handle is not None:
+            handle.close()
+
+
+def _entry(env, team, retrieved):
+    con = connect(env / "live.duckdb")
+    row = con.execute("SELECT retrieval_id, content_sha FROM injury_retrievals WHERE team = ? AND retrieved_at = ?",
+                      [team, retrieved.replace(tzinfo=None)]).fetchone()
+    con.close()
+    return row
+
+
+def test_capture_embeds_the_latest_verified_retrieval_per_team(env):
+    pub = KICK10 - 30 * H
+    _log(env, "AAA", KICK10 - 40 * H)                    # an older sync
+    _log(env, "AAA", KICK10 - 20 * H, pub=pub)           # the sync that wrote the table: its retrieval is recorded
+    _log(env, "BBB", KICK10 - 20 * H)
+    m = _capture(env, KICK10 - 2 * H)
+    view = m["injury_retrievals"]
+    assert view["schema"] == "injury-retrievals/v1" and view["log"] == "present"
+    rid, sha = _entry(env, "AAA", KICK10 - 20 * H)
+    assert view["teams"]["AAA"] == {"source": "nflverse", "retrieved_at": (KICK10 - 20 * H).isoformat(),
+                                    "provider_published_at": pub.isoformat(), "content_sha": sha,
+                                    "retrieval_id": rid}
+    assert view["teams"]["BBB"]["provider_published_at"] is None            # no provider time: null, never imputed
+    assert "CCC" not in view["teams"]                                       # nothing logged, nothing invented
+    assert sp.load_manifest(env / "out", 2025, 10, m["manifest_id"]) == m
+
+
+def test_retrieval_at_or_after_kickoff_or_after_capture_is_not_embedded(env):
+    # one sync (retrieved at KICK10 - 3h) logged every team; two games kick off at/before that instant
+    t = KICK10 - 3 * H
+    _sql(env, "UPDATE nfl_schedules SET gametime = '08:00' WHERE season = 2025 AND week = 10 AND home_team = 'FFF'",
+         "UPDATE nfl_schedules SET gametime = '10:00' WHERE season = 2025 AND week = 10 AND home_team = 'BBB'")
+    for team in "AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH":
+        _log(env, team, t)
+    m = _capture(env, KICK10 - 2 * H)
+    teams = set(m["injury_retrievals"]["teams"])
+    # FFF kicked off 12:00 UTC (after-kickoff retrieval), BBB at 14:00 UTC exactly the retrieval time, and their
+    # opponents (AAA, CCC) share those kickoffs
+    assert teams == {"DDD", "EEE", "GGG", "HHH"}, teams
+    # a capture taken before that sync finished cannot contain its content: nothing is embedded
+    early = _capture(env, t + timedelta(minutes=5))
+    assert early["injury_retrievals"]["teams"] == {} and early["injury_retrievals"]["log"] == "present"
+
+
+def test_a_later_post_kickoff_retrieval_blocks_the_older_pregame_entry(env):
+    _log(env, "EEE", KICK10 - 20 * H)
+    _log(env, "EEE", KICK10 + 10 * H)
+    assert "EEE" not in _capture(env, KICK10 + 12 * H)["injury_retrievals"]["teams"]
+
+
+def test_a_later_sync_that_dropped_the_team_blocks_the_older_entry(env):
+    _log(env, "AAA", KICK10 - 30 * H)
+    _log(env, "BBB", KICK10 - 30 * H)
+    _log(env, None, KICK10 - 30 * H, scope=inj.SCOPE_FEED)
+    _log(env, "BBB", KICK10 - 10 * H)
+    _log(env, None, KICK10 - 10 * H, scope=inj.SCOPE_FEED)               # the newer sync listed BBB but not AAA
+    teams = _capture(env, KICK10 - 2 * H)["injury_retrievals"]["teams"]
+    assert set(teams) == {"BBB"} and teams["BBB"]["retrieved_at"] == (KICK10 - 10 * H).isoformat()
+
+
+def test_missing_log_table_is_recorded_as_unavailable(env):
+    _sql(env, "DROP TABLE injury_retrievals")
+    m = _capture(env, KICK10 - 2 * H)
+    assert m["injury_retrievals"] == {"schema": "injury-retrievals/v1", "log": "unavailable", "teams": {}}
+
+
+def test_old_manifest_without_the_field_loads_and_reconstructs_identically(env):
+    src = _live_sources(env)
+    old = _capture(env, KICK10 - 20 * H, con=False)               # what every earlier capture produced
+    assert "injury_retrievals" not in old
+    body = {k: v for k, v in old.items() if k not in ("manifest_id", "captured_at")}
+    assert old["manifest_id"] == hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    path = env / "out" / "snapshots" / "manifests" / "s2025w10" / f"{old['manifest_id']}.json"
+    frozen = _digest(env / "out" / "snapshots")
+    _log(env, "AAA", KICK10 - 10 * H)
+    new = _capture(env, KICK10 - 2 * H)                           # a newer capture adds the field and a new file
+    assert new["manifest_id"] != old["manifest_id"] and new["injury_retrievals"]["teams"]
+    after = _digest(env / "out" / "snapshots")
+    assert all(after[k] == v for k, v in frozen.items()), "an existing manifest or part was rewritten"
+    assert sp.load_manifest(env / "out", 2025, 10, old["manifest_id"]) == old
+    assert path.read_bytes() == json.dumps(old, indent=1, default=str).encode()
+    rebuilt, _ = sp.reconstruct(env / "out", old)
+    for fam in sp.FAMILIES:
+        a, b = getattr(src, fam), getattr(rebuilt, fam)
+        assert (a is None) == (b is None)
+        if a is not None:
+            assert sp.frame_hash(sp._canonical(fam, a.filter(pl.col("season") >= 2024))) == sp.frame_hash(b)
+    # known_by of an old manifest is untouched by the new code path (team given or not)
+    part = "injuries/s2025"
+    assert sp.known_by(old, part, "AAA") == sp.known_by(old, part) == datetime.fromisoformat(old["captured_at"])
+
+
+def test_known_by_uses_the_verified_time_and_is_never_later_than_captured_at(env):
+    part = "injuries/s2025"
+    sync_end = KICK10 - 3 * H                                     # sync_runs upper bound for the part
+    _log(env, "AAA", KICK10 - 10 * H)
+    m = _capture(env, KICK10 - 2 * H, retrieved_at={"injuries": {2025: sync_end}})
+    assert m["parts"][part]["retrieved_at"] == sync_end.isoformat()
+    assert sp.known_by(m, part, "AAA") == KICK10 - 10 * H         # the verified download time wins
+    assert sp.known_by(m, part, "BBB") == sync_end == sp.known_by(m, part)    # no entry: unchanged rule
+    assert sp.known_by(m, "games/s2025", "AAA") == datetime.fromisoformat(m["captured_at"])   # other families
+    # a verified time later than the capture (corrupt or hand-edited) can never move known_by past captured_at
+    bad = json.loads(json.dumps(m))
+    bad["injury_retrievals"]["teams"]["AAA"]["retrieved_at"] = (KICK10 + H).isoformat()
+    assert sp.known_by(bad, part, "AAA") == datetime.fromisoformat(m["captured_at"])
+    # point-in-time reads report the verified time
+    _, rep = sp.injuries_as_of(env / "out", 2025, 10, {"AAA": KICK10, "BBB": KICK10})
+    assert rep["teams"]["AAA"]["known_by"] == (KICK10 - 10 * H).isoformat()
+    assert rep["teams"]["BBB"]["known_by"] == sync_end.isoformat()
+    # the verified time is what decides whether the snapshot counts as known before a given instant
+    assert set(sp.injuries_as_of(env / "out", 2025, 10, {"AAA": KICK10 - 5 * H, "BBB": KICK10 - 2 * H})[1]["teams"]) \
+        == {"AAA", "BBB"}
+    tight = sp.injuries_as_of(env / "out", 2025, 10, {"AAA": KICK10 - 11 * H, "BBB": KICK10 - 2 * H})[1]
+    assert tight["no_pregame_snapshot"] == ["AAA"] and set(tight["teams"]) == {"BBB"}
+
+
+def test_unlogged_post_kickoff_sync_is_not_attributed_to_an_older_pregame_retrieval(env):
+    """The newest nfl sync rewrote nfl_injuries but its injury_retrievals write failed (sync.py only warns).
+    The older logged retrieval must not be attached to the newer content."""
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")                     # sync A, pregame, logged
+    m0 = _capture(env, KICK10 - 19 * H, retrieved_at={"injuries": {2025: KICK10 - 20 * H}})
+    assert m0["injury_retrievals"]["teams"]["AAA"]["retrieved_at"] == (KICK10 - 20 * H).isoformat()
+    # sync B at KICK10 + 1h rewrites nfl_injuries (a post-kickoff row for AAA); its log write failed -> no rows
+    _sync(env, "syncB", KICK10 + 1 * H)
+    _sql(env, "INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, report_status) "
+              "VALUES (2025, 'REG', 'AAA', 10, 'POSTKICK', 'Out')")
+    m1 = _capture(env, KICK10 + 2 * H, retrieved_at={"injuries": {2025: KICK10 + 1 * H}})
+    assert "AAA" not in m1["injury_retrievals"]["teams"]
+    assert sp.known_by(m1, "injuries/s2025", "AAA") == sp.known_by(m1, "injuries/s2025") == KICK10 + 1 * H
+    rows, rep = sp.injuries_as_of(env / "out", 2025, 10, {"AAA": KICK10})
+    assert rep["teams"]["AAA"]["manifest_id"] == m0["manifest_id"]       # the pregame manifest, not m1
+    assert rep["teams"]["AAA"]["known_by"] == (KICK10 - 20 * H).isoformat()
+    assert "POSTKICK" not in rows["gsis_id"].to_list()
+
+
+def test_backdated_capture_gets_no_retrieval_older_than_the_table_content(env):
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    _sql(env, "INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, report_status) "
+              "VALUES (2025, 'REG', 'AAA', 10, 'LATER', 'Out')")
+    _log(env, "AAA", KICK10 + 1 * H, run="syncB")                        # the sync that wrote LATER, post-kickoff
+    m = _capture(env, KICK10 - 10 * H)                                   # --now in the past (audit/replay)
+    assert m["injury_retrievals"]["teams"] == {} and m["injury_retrievals"]["log"] == "present"
+    assert sp.known_by(m, "injuries/s2025", "AAA") == sp.known_by(m, "injuries/s2025")
+
+
+def test_retrieval_is_embedded_only_when_it_belongs_to_the_latest_successful_sync(env):
+    _log(env, "AAA", KICK10 - 30 * H, run="syncA")
+    _log(env, "AAA", KICK10 - 20 * H, run="syncB")
+    _log(env, "BBB", KICK10 - 25 * H, run="syncOld")                     # a different sync, not the latest
+    assert _capture(env, KICK10 - 2 * H)["injury_retrievals"]["teams"]["AAA"]["retrieved_at"] == \
+        (KICK10 - 20 * H).isoformat()
+    _sync(env, "syncFailed", KICK10 - 10 * H, status="error")            # a failed sync did not write the table
+    m = _capture(env, KICK10 - 1 * H)
+    assert set(m["injury_retrievals"]["teams"]) == {"AAA"}
+    _sql(env, "DELETE FROM sync_runs")                                   # no successful sync at all: nothing verified
+    assert _capture(env, KICK10 - H)["injury_retrievals"]["teams"] == {}
+
+
+def cli_retrieved(env, live):
+    """weekly_learning.py's sync-level retrieved_at bounds, computed on the fixture's database."""
+    import types
+    spec = importlib.util.spec_from_file_location("weekly_learning_cli2", SCRIPTS / "weekly_learning.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod._retrieved_at(types.SimpleNamespace(season=2025, out=env / "out"), live)
+
+
+def test_sync_that_died_after_its_commit_blocks_every_older_entry(env):
+    """run_nfl_sync COMMITs the new content before recording retrievals and finishing 'ok'. A crash in between
+    leaves the table newer than the latest 'ok' run: no older retrieval may be attached to it."""
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    part = "injuries/s2025"
+    sync_a = KICK10 - 20 * H + 10 * H / 60
+    ok = _capture(env, KICK10 - 15 * H, retrieved_at={"injuries": {2025: sync_a}})
+    assert set(ok["injury_retrievals"]["teams"]) == {"AAA"}
+    live = connect(env / "live.duckdb", read_only=True)
+    assert cli_retrieved(env, live)["injuries"][2025] is not None        # no unfinished sync yet
+    live.close()
+    _sync(env, "syncB", KICK10 + 1 * H, status="running")               # B committed post-kickoff rows, then died
+    _sql(env, "INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, report_status) "
+              "VALUES (2025, 'REG', 'AAA', 10, 'POSTKICK', 'Out')")
+    live = connect(env / "live.duckdb", read_only=True)
+    sync_level = cli_retrieved(env, live)                  # what weekly_learning.py would pass for the injuries part
+    live.close()
+    assert sync_level["injuries"][2025] is None             # an unfinished sync after the last ok one: time unknown
+    m = _capture(env, KICK10 + 2 * H, retrieved_at=sync_level)
+    assert m["injury_retrievals"]["teams"] == {}
+    assert m["injury_retrievals"]["log"].startswith("unverifiable: unfinished nfl sync syncB (status running)")
+    assert sp.known_by(m, part, "AAA") == sp.known_by(m, part) == datetime.fromisoformat(m["captured_at"])
+    _, rep = sp.injuries_as_of(env / "out", 2025, 10, {"AAA": KICK10})
+    assert rep["teams"]["AAA"]["manifest_id"] == ok["manifest_id"]
+
+
+def test_sync_that_failed_and_rolled_back_does_not_block_the_entries(env):
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    _sync(env, "syncB", KICK10 - 10 * H, status="error")                # rolled back: the table is still A's
+    m = _capture(env, KICK10 - 2 * H)
+    assert m["injury_retrievals"]["log"] == "present"
+    assert m["injury_retrievals"]["teams"]["AAA"]["retrieved_at"] == (KICK10 - 20 * H).isoformat()
+
+
+def test_retrieval_of_a_sync_with_no_recorded_status_blocks_the_entries(env):
+    """A crash before the 'running' marker existed: only its injury_retrievals rows remain."""
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    con = connect(env / "live.duckdb")
+    inj.record_observations(con, [inj.Observation(inj.SOURCE_NFLVERSE, inj.SCOPE_FEED, 2025, None, None,
+                                                  KICK10 - 10 * H, "f" * 64, 3, 0, None, None, "syncGhost")])
+    con.close()
+    m = _capture(env, KICK10 - 2 * H)
+    assert m["injury_retrievals"]["teams"] == {} and m["injury_retrievals"]["log"].startswith("unverifiable:")
+
+
+def test_predict_embeds_retrievals_and_frozen_runs_are_unaffected(cli, env, monkeypatch):
+    # an earlier run made by the code before this field existed: no `con` reaches capture
+    real = sp.capture
+    monkeypatch.setattr(sp, "capture", lambda *a, **k: real(*a, **{**k, "con": None}))
+    legacy = _forecast(cli, env)
+    monkeypatch.undo()
+    assert "injury_retrievals" not in sp.load_manifest(env / "out", 2025, 10, legacy["sources"]["manifest_id"])
+    ledger, snaps = _digest(env / "out" / "ledger"), _digest(env / "out" / "snapshots")
+    # logged by the fixture's own sync ('synthetic-nfl', the latest successful nfl sync)
+    _log(env, "AAA", datetime(2025, 9, 10, 3, tzinfo=UTC), run="synthetic-nfl")
+    run = _forecast(cli, env, now="2025-09-10T09:00:00+00:00")
+    m = sp.load_manifest(env / "out", 2025, 10, run["sources"]["manifest_id"])
+    assert set(m["injury_retrievals"]["teams"]) == {"AAA"} and run["run_id"] != legacy["run_id"]
+    for r in (legacy, run):                                       # both still rebuild exactly from their snapshots
+        champ, chal = _arts(r)
+        rebuilt = wl.rebuild_run(env / "out", r, champ, chal, _participation(env))
+        assert rebuilt["inputs_hash"] == r["inputs_hash"] and rebuilt["rows"] == r["rows"]
+    assert all(_digest(env / "out" / "ledger").get(k) == v for k, v in ledger.items())
+    assert all(_digest(env / "out" / "snapshots").get(k) == v for k, v in snaps.items())
+    # the extra field never changes what the model saw: same forecast numbers as the legacy run
+    assert [(r["gsis_id"], r["challenger"], r["p_play"]) for r in run["rows"]] == \
+        [(r["gsis_id"], r["challenger"], r["p_play"]) for r in legacy["rows"]]
+    # nothing new in the log: the same inputs are a no-op, not a new run
+    again = _forecast(cli, env, now="2025-09-10T09:30:00+00:00")
+    assert again["run_id"] == run["run_id"]
+
+
+def _real_crashing_sync(env, monkeypatch, at):
+    """The real run_nfl_sync: write_all commits a post-kickoff AAA row, then the process dies (KeyboardInterrupt
+    stands in for SIGTERM/kill) before the retrievals are logged and finish('ok') runs."""
+    from app.db import connection as dbc
+    from app.nfl import sync as nfl_sync
+
+    monkeypatch.setattr(dbc, "utcnow", lambda: at.replace(tzinfo=None))
+    monkeypatch.setattr(nfl_sync, "fetch_all", lambda season: object())
+
+    def write_all(con, p):
+        con.execute("BEGIN TRANSACTION")
+        con.execute("INSERT INTO nfl_injuries (season, game_type, team, week, gsis_id, report_status) "
+                    "VALUES (2025, 'REG', 'AAA', 10, 'POSTKICK', 'Out')")
+        con.execute("COMMIT")
+        return {"warnings": []}
+
+    def die(*a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(nfl_sync, "write_all", write_all)
+    monkeypatch.setattr(nfl_sync, "record_injury_retrievals", die)
+    with pytest.raises(KeyboardInterrupt):
+        nfl_sync.run_nfl_sync(lambda: connect(env / "live.duckdb"), 2025)
+    monkeypatch.undo()
+
+
+def test_real_sync_crash_after_commit_is_unverifiable_even_for_a_backdated_capture(env, monkeypatch):
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    _real_crashing_sync(env, monkeypatch, KICK10 + 1 * H)           # B committed POSTKICK, then died
+    for captured in (KICK10 + 2 * H, KICK10 - 10 * H):              # a normal capture and one with --now in the past
+        m = _capture(env, captured)
+        assert m["injury_retrievals"]["teams"] == {}, captured
+        assert m["injury_retrievals"]["log"].startswith("unverifiable: unfinished nfl sync nfl-")
+
+
+def test_a_newer_sync_of_another_season_does_not_hide_this_seasons_provenance(env):
+    """run_nfl_sync replaces only its own season, so a more recent ok sync of season 2024 did not write the
+    2025 table and must not be taken as the writer."""
+    _log(env, "AAA", KICK10 - 20 * H, run="syncA")
+    _sync(env, "syncPrevSeason", KICK10 - 5 * H, season=2024)
+    m = _capture(env, KICK10 - 2 * H)
+    assert m["injury_retrievals"]["log"] == "present"
+    assert m["injury_retrievals"]["teams"]["AAA"]["retrieved_at"] == (KICK10 - 20 * H).isoformat()
+    # an unfinished sync of the other season does not block either ...
+    _sync(env, "deadPrevSeason", KICK10 - 4 * H, status="running", season=2024)
+    assert "AAA" in _capture(env, KICK10 - 1 * H)["injury_retrievals"]["teams"]
+    # ... but a marker whose season is unknown (no stats) may be this season's: fail closed
+    _sql(env, "INSERT INTO sync_runs (run_id, source, started_at, finished_at, status) "
+              "VALUES ('deadUnknown', 'nfl', TIMESTAMP '2025-09-10 14:00:00', NULL, 'running')")
+    blocked = _capture(env, KICK10 - timedelta(minutes=30))
+    assert blocked["injury_retrievals"]["teams"] == {}
+    assert blocked["injury_retrievals"]["log"].startswith("unverifiable: unfinished nfl sync deadUnknown")

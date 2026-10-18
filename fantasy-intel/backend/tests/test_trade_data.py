@@ -405,6 +405,14 @@ def test_trade_api_endpoints(tmp_path, monkeypatch):
     assert set(body["manager_context"]) == {"2", "1"}
     assert any("undroppable" in x for x in body["limitations"])
     assert "301" in body["names"]
+    assert body["kdst_streaming"]["enabled"] is True                 # K/D/ST valued against streaming by default
+    raw = api.post("/api/trades/evaluate", json={"team_a_id": 2, "team_b_id": 1, "team_a_sends": [304],
+                                                 "team_b_sends": [301, 302], "kdst_streaming": False}).json()
+    assert raw["kdst_streaming"] == {"enabled": False, "positions": []}
+    disc = api.get("/api/trades/discover?kdst_streaming=false").json()
+    assert disc["kdst_streaming"]["enabled"] is False and disc["query"]["kdst_streaming"] is False
+    assert "streaming baseline is off" in disc["kdst_policy"]
+    assert api.get("/api/trades/discover").json()["kdst_streaming"]["enabled"] is True
 
     bad = api.post("/api/trades/evaluate", json={"team_a_id": 2, "team_b_id": 1, "team_a_sends": [301],
                                                  "team_b_sends": [304]})

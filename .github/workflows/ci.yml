@@ -45,6 +45,39 @@ jobs:
       - name: Run backend pytest suite
         run: uv run pytest
 
+  social:
+    name: Social trend engine (Python 3.12)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fantasy-intel/social
+    env:
+      TZ: UTC
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "fantasy-intel/social/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Lint
+        run: uv run ruff check social_intel tests
+
+      - name: Run tests (fixtures only, no network)
+        run: uv run pytest
+
   frontend:
     name: Frontend (Node.js 22)
     runs-on: ubuntu-latest
@@ -77,3 +110,62 @@ jobs:
 
       - name: Run production build
         run: npm run build
+
+  e2e:
+    name: E2E smoke (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: fantasy-intel/frontend
+    env:
+      TZ: UTC
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "fantasy-intel/backend/uv.lock"
+
+      - name: Install backend dependencies
+        working-directory: fantasy-intel/backend
+        run: uv sync --frozen
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "fantasy-intel/frontend/package-lock.json"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps --only-shell chromium
+
+      - name: Build frontend
+        run: npm run build
+
+      # Playwright starts the backend on the synthetic DuckDB (scripts/build_e2e_db.py) and `next start`.
+      - name: Run route smoke test
+        run: npm run e2e
+
+      - name: Upload Playwright traces and report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: |
+            fantasy-intel/frontend/test-results/
+            fantasy-intel/frontend/playwright-report/
+          retention-days: 14

@@ -1,0 +1,52 @@
+.figure { margin: 0; width: 100%; min-width: 0; }
+.svg { display: block; width: 100%; height: auto; }
+
+/* Text: 11 chart units at the natural width; larger units on phones (see phoneFont). */
+.t {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  fill: var(--chart-axis);
+  font-variant-numeric: tabular-nums;
+}
+.strong { fill: var(--ink); }
+.muted { fill: var(--ink-muted); }
+.halo { paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+
+.grid { stroke: var(--chart-grid); stroke-width: 1; shape-rendering: crispEdges; }
+.axis { stroke: var(--line-control); stroke-width: 1; }
+.ref { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 4 3; }
+.line { fill: none; stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+/* Hovering one series brings it forward and lets the others recede (pointer only; values stay in the tooltips). */
+.series { transition: opacity var(--dur) var(--ease-out); }
+.svg:has(.series:hover) .series:not(:hover) { opacity: .28; }
+.hit { cursor: crosshair; }
+.hit:hover { fill: var(--ink); fill-opacity: .12; }
+.dot { stroke: var(--surface); stroke-width: 1.5; transition: r var(--dur-fast) var(--ease-out); }
+.dot:hover { r: 5.5; }
+.empty { font-family: var(--font-sans); font-size: 13px; fill: var(--ink-faint); }
+
+/* Phones: a viewBox chart shrinks, so labels use a larger unit size and sparser tick sets. */
+@media (max-width: 720px) {
+  .t { font-size: var(--t-phone); }
+  .desktopOnly { display: none; }
+}
+@media (min-width: 721px) {
+  .phoneOnly { display: none; }
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.legendItem { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 14px; height: 4px; border-radius: 2px; }
+/* Optional chart heading and source/sample line (ChartFrame title/caption). */
+.title { margin: 0 0 6px; color: var(--ink); font-size: 13px; line-height: 18px; font-weight: 600; }
+.caption { margin: 6px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; }

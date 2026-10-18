@@ -109,3 +109,15 @@ detail_sigma = 3.5
 # <slug>-editorial/final.mp4. The original Short is never changed. Media comes from assets/media/manifest.json;
 # a video using media no person has approved yet fails the publish check.
 mode = "off"
+
+[graphics]
+# Graphic style for Shorts (studio/graphics, tokens in assets/styles/*.toml): original | premium | pixel |
+# broadcast | auto. 'original' renders only final.mp4, exactly as before. Any other value ALSO renders
+# styles/<style>/final.mp4 with its own QC; final.mp4 is never replaced.
+style = "auto"
+# auto: [graphics.auto] per-angle overrides first, then auto_default; a story with a scene the style has no
+# design for falls back to original.
+auto_default = "premium"          # the website's look for every story it has a design for
+
+[graphics.auto]
+# Per-angle overrides, e.g. fill_in = "broadcast" or comparison = "pixel". Empty: premium everywhere.

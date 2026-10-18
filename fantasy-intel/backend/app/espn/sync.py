@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
+from ..analytics import injury_freshness
 from ..analytics.projections import build_ros_projections
 from ..config import DATA_DIR
 from ..db.connection import SyncRun, merge_columns, replace_where, upsert_rows, utcnow
@@ -34,6 +35,12 @@ class EspnPayloads:
     projections: dict[int, dict] = field(default_factory=dict)      # week -> raw kona_player_info
     projection_failures: dict[int, str] = field(default_factory=dict)  # week -> error
     warnings: list[str] = field(default_factory=list)
+    # Our clock around the whole download (naive UTC); the injury retrieval log records these. The
+    # player status rows reach `injury_status_rows` in write_all (in memory only).
+    fetch_started_at: Any = None
+    fetched_at: Any = None
+    injury_status_rows: list[dict] | None = None
+    injury_status_season: int | None = None
 
 
 def _try(warnings: list[str], label: str, fn: Callable[[], Any]) -> Any:
@@ -69,8 +76,10 @@ def fetch_projections(client, p: EspnPayloads, weeks: list[int]) -> None:
 
 def fetch_all(client, *, max_activity_pages: int = 40) -> EspnPayloads:
     """Network phase. `client` is an EspnClient (or a fake with the same methods)."""
+    started = utcnow()
     league = client.league()  # fatal on failure (bad credentials / league id)
     p = EspnPayloads(league=league)
+    p.fetch_started_at = started
     current = min(league.get("scoringPeriodId") or 1, league.get("status", {}).get("finalScoringPeriod") or 99)
 
     p.pro_players = _try(p.warnings, "pro players", client.pro_players)
@@ -115,6 +124,7 @@ def fetch_all(client, *, max_activity_pages: int = 40) -> EspnPayloads:
         card = _try(p.warnings, f"player cards {i}", lambda: client.player_cards(batch, final_period))
         if card:
             p.cards.append(card)
+    p.fetched_at = utcnow()
     return p
 
 
@@ -187,6 +197,18 @@ def write_all(con, p: EspnPayloads, *, swid: str | None, my_team_id: int | None)
             # Complete universe fetched: replace so stale availability can't linger.
             con.execute("DELETE FROM fantasy_players")
         stats["players"] = upsert_rows(con, "fantasy_players", players, ["espn_player_id"])
+        # In memory only (recorded after COMMIT by run_espn_sync): the status rows this fetch returned.
+        # Only a complete universe (the pro-player base) proves a team's statuses were refreshed; without
+        # it `players` holds just the FA pool and current rosters, so logging a per-team snapshot would
+        # let injury_freshness call a team fresh although most of its statuses were never fetched.
+        p.injury_status_season = season
+        if base:
+            p.injury_status_rows = [{"espn_player_id": r.get("espn_player_id"), "pro_team": r.get("pro_team"),
+                                     "injury_status": r.get("injury_status")} for r in players]
+        else:
+            p.injury_status_rows = None
+            stats["warnings"].append("injury status retrieval not logged: pro-player fetch returned nothing, "
+                                     "so the ESPN snapshot is incomplete")
         stats["free_agent_pool"] = len(pool)
         today = date.today()
         upsert_rows(con, "player_ownership_history", [{
@@ -292,8 +314,34 @@ def _in_scope(con, statement: str, season: int, week: int, x: dict, extra_where:
     con.execute(f"{statement} WHERE {where}{extra_where}", params + (extra_params or []))
 
 
+def pregame_history_locked(con, season: int, week: int, day: date, now) -> set[int]:
+    """ESPN ids whose `day` history row for `week` was captured before their NFL team's kickoff
+    while that kickoff has now passed. That row is the pregame benchmark; a later same-day sync
+    must not replace it with a post-kickoff projection. Unknown team or kickoff: not locked."""
+    from ..analytics.projection_backtest import _kickoff, _utc
+    from ..db.connection import fetch_dicts, table_columns, table_exists
+
+    if not table_exists(con, "nfl_schedules") or not {"gameday", "gametime"} <= set(table_columns(con, "nfl_schedules")):
+        return set()
+    kick = {}
+    for g in fetch_dicts(con, "SELECT gameday, gametime, home_team, away_team FROM nfl_schedules "
+                              "WHERE season = ? AND week = ? AND game_type = 'REG'", [season, week]):
+        for t in (g["home_team"], g["away_team"]):
+            kick[t] = _kickoff(g)
+    now = _utc(now)
+    out = set()
+    for r in fetch_dicts(con, """SELECT h.espn_player_id, h.synced_at, fp.pro_team FROM espn_projection_history h
+                                 JOIN fantasy_players fp USING (espn_player_id)
+                                 WHERE h.snapshot_date = ? AND h.season = ? AND h.scoring_period = ?""",
+                         [day, season, week]):
+        ko, cap = kick.get(r["pro_team"]), _utc(r["synced_at"])
+        if ko is not None and cap is not None and cap < ko <= now:
+            out.add(int(r["espn_player_id"]))
+    return out
+
+
 def write_projections(con, p: EspnPayloads, proj: dict[int, dict], *, season: int, current: int,
-                      final: int | None) -> dict:
+                      final: int | None, now=None) -> dict:
     """Write parsed weekly projections (see docs/espn_ros_projections.md).
 
     Every requested week is reconciled within its scope (projected_points in scope were already
@@ -311,11 +359,17 @@ def write_projections(con, p: EspnPayloads, proj: dict[int, dict], *, season: in
     merge_columns(con, "espn_player_weekly_points", rows, ["season", "espn_player_id", "scoring_period"],
                   ["projected_points", "synced_at"])
     today = date.today()
+    now = now or utcnow()
+    locked: set[tuple[int, int]] = set()
     for week, x in proj.items():
         _in_scope(con, "DELETE FROM espn_player_weekly_points", season, week, x,
                   " AND actual_points IS NULL AND projected_points IS NULL")
-        _in_scope(con, "DELETE FROM espn_projection_history", season, week, x, " AND snapshot_date = ?", [today])
-    history = upsert_rows(con, "espn_projection_history", [{**r, "snapshot_date": today} for r in rows],
+        keep = sorted(pregame_history_locked(con, season, week, today, now))
+        locked |= {(week, pid) for pid in keep}
+        _in_scope(con, "DELETE FROM espn_projection_history", season, week, x,
+                  " AND snapshot_date = ? AND espn_player_id NOT IN (SELECT unnest(?::BIGINT[]))", [today, keep])
+    history = upsert_rows(con, "espn_projection_history", [{**r, "snapshot_date": today} for r in rows
+                                                           if (r["scoring_period"], r["espn_player_id"]) not in locked],
                           ["snapshot_date", "season", "espn_player_id", "scoring_period"])
     return {
         "source": "ESPN kona_player_info (statSourceId 1, statSplitTypeId 1)",
@@ -341,6 +395,19 @@ def _count(rows: list[dict], key: str) -> dict:
     return out
 
 
+def record_injury_status_retrieval(con, p: EspnPayloads, sync_run_id: str | None = None) -> dict | None:
+    """Append this fetch's per-team ESPN injury-status snapshot to the write-once retrieval log.
+    ESPN supplies no publication time, so it is recorded as NULL. Nothing is logged unless the fetch
+    finished and write_all captured its player rows, and write_all captures them only when the complete
+    pro-player base was fetched (an incomplete snapshot never proves a team's statuses are fresh)."""
+    if p.fetched_at is None or p.injury_status_rows is None or p.injury_status_season is None:
+        return None
+    obs = injury_freshness.espn_status_observations(
+        p.injury_status_rows, p.injury_status_season, retrieved_at=p.fetched_at,
+        fetch_started_at=p.fetch_started_at, sync_run_id=sync_run_id)
+    return injury_freshness.record_observations(con, obs)
+
+
 def run_espn_sync(con_factory, settings, client=None, save_raw_payloads: bool = True) -> dict:
     """Fetch then write. `con_factory` opens a read-write connection (context manager)."""
     from .client import EspnClient
@@ -362,5 +429,11 @@ def run_espn_sync(con_factory, settings, client=None, save_raw_payloads: bool = 
         except Exception as err:
             run.finish("error", f"{type(err).__name__}: {err}")
             raise
+        try:   # audit log only; the synced data above is already committed
+            stats["injury_retrievals"] = record_injury_status_retrieval(con, payloads, run.run_id)
+        except Exception as err:
+            msg = f"injury retrieval log failed: {type(err).__name__}: {err}"
+            log.warning(msg)
+            stats["warnings"].append(msg)
         run.finish("ok", "warnings: %d" % len(stats["warnings"]), stats)
     return stats

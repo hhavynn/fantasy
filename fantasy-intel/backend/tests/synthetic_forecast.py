@@ -87,8 +87,16 @@ def generate(seasons: list[int], seed: int = 7, iid_noise: bool = False, weeks: 
                         snaps.append({"pfr_player_id": f"pfr-{g}", "season": season, "week": week, "game_type": "REG",
                                       "team": team, "opponent": opp, "offense_snaps": 60,
                                       "offense_pct": round(min(1.0, 0.5 + 0.3 * k * rng.random()), 3)})
+                        # Expected counts are deterministic in the opportunities (no extra random draws,
+                        # so every other synthetic value is unchanged by their presence).
                         xfp.append({"player_id": g, "season": season, "week": week,
-                                    "total_fantasy_points_exp": round(0.9 * tgt + 0.6 * car + 0.3 * att, 3)})
+                                    "total_fantasy_points_exp": round(0.9 * tgt + 0.6 * car + 0.3 * att, 3),
+                                    "receptions_exp": 0.65 * tgt, "rec_yards_gained_exp": 7.5 * tgt,
+                                    "rush_yards_gained_exp": 4.2 * car, "pass_yards_gained_exp": 6.8 * att,
+                                    "pass_touchdown_exp": 0.045 * att, "rec_touchdown_exp": 0.05 * tgt,
+                                    "rush_touchdown_exp": 0.03 * car, "pass_interception_exp": 0.025 * att,
+                                    "pass_two_point_conv_exp": 0.0, "rec_two_point_conv_exp": 0.0,
+                                    "rush_two_point_conv_exp": 0.0})
                         pbp.append({"season": season, "week": week, "player_id": g, "team": team,
                                     "rush_attempts": car, "designed_rushes": car, "targets": tgt,
                                     "rz_targets": int(tgt * 0.15), "rz_carries": int(car * 0.2), "gl_carries": int(car * 0.05),

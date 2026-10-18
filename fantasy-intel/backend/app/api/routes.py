@@ -9,29 +9,44 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ..analytics.availability import availability, injury_order_sql, latest_injuries
+from ..analytics import forward_ours
 from ..analytics.context import ftn_semantics
 from ..analytics.projections import BASELINE_NOTE, league_window, player_forward
 from ..analytics.team_lineups import project_team, public_weeks, replacement_market, roster_marginal_value
 from ..analytics.trade_data import (load_league_state, manager_context, named_weeks, player_intelligence,
                                     player_names)
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
-from ..analytics.trade_alternatives import for_evaluation as trade_vs_free_agency
-from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade
+from ..analytics import trade_dual_value
+from ..analytics.trade_alternatives import FreeAgencyBoard, for_evaluation as trade_vs_free_agency
+from ..analytics.trade_discovery import _side_detail
+from ..analytics.trades import NoRemainingWeeksError, TradeError, evaluate_trade, with_streaming
 from ..config import get_settings
-from ..db.connection import schema_version, table_exists
+from ..db.connection import schema_version, table_columns, table_exists
 from .deps import db, one, rows
+from .perspective import league_teams, resolve_team, waiver_table
 
 router = APIRouter(prefix="/api")
 
-PLAYER_COLS = """
+_PLAYER_COLS = """
     fp.espn_player_id, fp.full_name, fp.position, fp.pro_team, fp.injury_status, fp.availability_status,
     fp.on_team_id, fp.percent_owned, fp.percent_change, fp.season_points, fp.season_avg_points,
     m.gsis_id, m.match_method, m.match_confidence,
     s.games, s.opportunity_basis, s.opportunity_tier, s.role_trend, s.market_signal,
     s.opportunity_score, s.production_score, s.usage_trend_score, s.trend_label,
     s.fp_per_game, s.xfp_per_game, s.fp_minus_xfp, s.value_gap_label, s.classification, s.value_score,
+    {ratings},
     s.components->>'production_sustainability' AS production_sustainability
 """
+# 0-100 ratings (ratings-100.v1): ALTERed into player_scores, so a hosted/older copy may not have them yet.
+_RATING_COLS = ("opportunity_score_100", "production_score_100", "value_score_100", "rating_scale_version")
+
+
+def _player_cols(con) -> str:
+    have = set(table_columns(con, "player_scores"))
+    return _PLAYER_COLS.format(ratings=",\n    ".join(
+        f"s.{c}" if c in have else f"NULL AS {c}" for c in _RATING_COLS))
+
+
 PLAYER_JOINS = """
     LEFT JOIN player_id_map m ON m.espn_player_id = fp.espn_player_id
     LEFT JOIN player_scores s ON s.gsis_id = m.gsis_id AND s.season = $season
@@ -49,14 +64,22 @@ def _pj(season: int) -> str:
     return PLAYER_JOINS.replace("$season", str(int(season)))
 
 
+# A 'running' row with no finish time is left behind by a sync that died (SyncRun.start writes it, finish()
+# replaces it); a live sync holds the DuckDB lock, so the API cannot even read during one. Report it as
+# 'interrupted', and keep it out of the "latest run" per source so it neither shows as running nor as failed.
+_INTERRUPTED = "(status = 'running' AND finished_at IS NULL)"
+_RUN_STATUS = f"CASE WHEN {_INTERRUPTED} THEN 'interrupted' ELSE status END"
+
+
 def _sync_status(con) -> dict:
     out = {}
     for r in rows(con, """
         SELECT source, max(finished_at) AS last_ok FROM sync_runs WHERE status = 'ok' GROUP BY 1"""):
         out[r["source"]] = r["last_ok"]
-    last = rows(con, """
+    last = rows(con, f"""
         SELECT source, status, message, finished_at FROM (
-          SELECT *, row_number() OVER (PARTITION BY source ORDER BY started_at DESC) rn FROM sync_runs) WHERE rn = 1""")
+          SELECT *, row_number() OVER (PARTITION BY source ORDER BY started_at DESC) rn FROM sync_runs
+          WHERE NOT {_INTERRUPTED}) WHERE rn = 1""")
     return {"last_success": out, "latest_runs": last}
 
 
@@ -86,7 +109,7 @@ def status():
 def _roster(con, league_id: int, season: int, week: int, team_id: int) -> list[dict]:
     roster = rows(con, f"""
         SELECT l.lineup_slot, l.lineup_slot_id, l.is_starter, l.acquisition_type, l.acquisition_date,
-               l.points AS week_points, l.projected_points AS week_projection, {PLAYER_COLS}
+               l.points AS week_points, l.projected_points AS week_projection, {_player_cols(con)}
         FROM lineup_snapshots l JOIN fantasy_players fp ON fp.espn_player_id = l.espn_player_id
         {_pj(season)}
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ? AND l.team_id = ?
@@ -108,22 +131,36 @@ def _roster(con, league_id: int, season: int, week: int, team_id: int) -> list[d
     return roster
 
 
+@router.get("/teams")
+def teams():
+    """The league's teams for the team-perspective selector: names, the owner's default and roster freshness."""
+    with db() as con:
+        lg = _league(con)
+        ts = league_teams(con, lg["league_id"], lg["season"])
+        return {"league": {k: lg[k] for k in ("league_id", "season", "name", "current_week", "synced_at")},
+                "teams": ts, "default_team_id": next((t["team_id"] for t in ts if t["is_owner_default"]), None)}
+
+
 @router.get("/overview")
-def overview():
+def overview(team_id: int | None = Query(None, description="Fantasy team to analyze (defaults to the owner's team)")):
     with db() as con:
         lg = _league(con)
         league_id, season, week = lg["league_id"], lg["season"], lg["current_week"]
+        perspective = resolve_team(con, lg, team_id)
         teams = rows(con, """SELECT * FROM fantasy_teams WHERE league_id=? AND season=?
                              ORDER BY wins DESC, ties DESC, points_for DESC""", [league_id, season])
         me = next((t for t in teams if t["is_mine"]), None)
-        roster = _roster(con, league_id, season, week, me["team_id"]) if me else []
+        team = next((t for t in teams if t["team_id"] == perspective["team_id"]), None) if perspective else None
+        roster = _roster(con, league_id, season, week, team["team_id"]) if team else []
         injuries = [p for p in roster if (p["injury_status"] or "ACTIVE") not in ("ACTIVE", "NORMAL")
                     or (p.get("nfl_injury") or {}).get("report_status")]
         needs = rows(con, """SELECT * FROM team_position_needs WHERE league_id=? AND season=? AND team_id=?
-                             ORDER BY need_score DESC""", [league_id, season, me["team_id"]]) if me else []
+                             ORDER BY need_score DESC""", [league_id, season, team["team_id"]]) if team else []
         return {
             "league": lg,
-            "my_team": me,
+            "my_team": me,          # the owner's team (is_mine), unchanged by the selection
+            "team": team,           # the team this overview is for
+            "perspective": perspective,
             "standings": teams,
             "roster": roster,
             "injuries": injuries,
@@ -178,7 +215,7 @@ def search_players(q: str = "", limit: int = Query(30, le=100)):
         teams = {r["team_id"]: r["name"] for r in rows(con, "SELECT team_id, name FROM fantasy_teams WHERE league_id=? AND season=?",
                                                        [lg["league_id"], lg["season"]])}
         out = rows(con, f"""
-            SELECT {PLAYER_COLS} FROM fantasy_players fp {_pj(lg["season"])}
+            SELECT {_player_cols(con)} FROM fantasy_players fp {_pj(lg["season"])}
             WHERE fp.position IN ('QB','RB','WR','TE','K','D/ST')
               AND (? = '' OR strip_accents(lower(fp.full_name)) LIKE '%' || strip_accents(lower(?)) || '%')
             ORDER BY fp.percent_owned DESC NULLS LAST LIMIT ?
@@ -193,7 +230,7 @@ def player_detail(espn_player_id: int):
     with db() as con:
         lg = _league(con)
         season = lg["season"]
-        p = one(con, f"SELECT {PLAYER_COLS}, m.notes AS mapping_notes, m.nfl_name, m.nfl_team "
+        p = one(con, f"SELECT {_player_cols(con)}, m.notes AS mapping_notes, m.nfl_name, m.nfl_team "
                      f"FROM fantasy_players fp {_pj(season)} WHERE fp.espn_player_id = ?", [espn_player_id])
         if not p:
             raise HTTPException(404, "Unknown ESPN player id")
@@ -240,14 +277,28 @@ def player_detail(espn_player_id: int):
 
 
 @router.get("/players/{espn_player_id}/forward")
-def player_forward_view(espn_player_id: int):
-    """ESPN's projection for every remaining fantasy week (unmodified) + the ROS summary."""
+def player_forward_view(espn_player_id: int,
+                        source: str = Query("espn", description="Projection source: espn (default) | independent")):
+    """ESPN's projection for every remaining fantasy week (unmodified) + the ROS summary.
+
+    With source=independent the response also carries `ours`: Fantasy Intel's production model (ifp-2.0.0) for
+    each remaining regular-season week {available, reason, label, model_version, weeks [{week, value, origin
+    (ours | ours_zero | espn | bye), on_bye, run_id, model_version, run_created_at, horizon, projected_from_week,
+    experimental}], ros_projected_points (NULL unless every non-bye week is ours / ours_zero), ros_weeks_expected,
+    ros_weeks_available, ros_complete, fallback_weeks, missing_weeks, run_created_at}. available=false (with a
+    reason) means no rest-of-season run is stored yet. Without it, or with source=espn, the response is ESPN's only.
+
+    404 for an unknown player, 422 for a bad source, 503 when the league window is unknown."""
+    try:
+        forward_ours.normalize(source)
+    except ValueError as err:
+        raise HTTPException(422, str(err))
     with db() as con:
         lg = _league(con)
         p = one(con, "SELECT pro_team FROM fantasy_players WHERE espn_player_id = ?", [espn_player_id])
         if not p:
             raise HTTPException(404, "Unknown ESPN player id")
-        out = player_forward(con, lg["season"], espn_player_id, p["pro_team"])
+        out = player_forward(con, lg["season"], espn_player_id, p["pro_team"], source=source)
         if out is None:
             raise HTTPException(503, "League current/final week unknown. Run scripts/sync_espn.py.")
         return out
@@ -293,12 +344,15 @@ def _route_summary(weekly: list[dict]) -> dict | None:
 
 @router.get("/waivers")
 def waivers(position: str | None = None, recommendation: str | None = None,
-            limit: int = Query(150, ge=1, le=360), offset: int = Query(0, ge=0), view: str = "ALL"):
+            limit: int = Query(150, ge=1, le=360), offset: int = Query(0, ge=0), view: str = "ALL",
+            team_id: int | None = Query(None, description="Fantasy team to evaluate pickups for (defaults to the owner's team)")):
     with db() as con:
         lg = _league(con)
         season = lg["season"]
-        params: list = [lg["league_id"], season]
-        where = ""
+        perspective = resolve_team(con, lg, team_id)
+        table, team_params = waiver_table(con, lg, perspective)
+        params: list = [lg["league_id"], season, *team_params]
+        where = " AND w.team_id = ?" if team_params else ""
         if position:
             where += " AND w.position = ?"
             params.append(position.upper())
@@ -316,16 +370,16 @@ def waivers(position: str | None = None, recommendation: str | None = None,
         if view.upper() not in views:
             raise HTTPException(422, "Unknown waiver view")
         where += views[view.upper()]
-        total = one(con, f"SELECT count(*) n FROM waiver_recommendations w WHERE w.league_id=? AND w.season=? {where}", params)["n"]
-        meta = one(con, "SELECT components, computed_at FROM waiver_recommendations WHERE league_id=? AND season=? LIMIT 1",
-                   [lg["league_id"], season])
+        total = one(con, f"SELECT count(*) n FROM {table} WHERE w.league_id=? AND w.season=? {where}", params)["n"]
+        meta = one(con, f"SELECT w.components, w.computed_at FROM {table} WHERE w.league_id=? AND w.season=? "
+                        f"{' AND w.team_id = ?' if team_params else ''} LIMIT 1", [lg["league_id"], season, *team_params])
         params.extend([limit, offset])
         out = rows(con, f"""
             SELECT w.*, fp.full_name, fp.pro_team, fp.injury_status, fp.percent_owned, fp.percent_change,
                    s.trend_label, s.classification, s.games, s.xfp_per_game, s.fp_per_game,
                    s.opportunity_basis, s.opportunity_tier, s.role_trend, s.market_signal, pc.labels AS context_labels,
                    d.full_name AS drop_name, d.position AS drop_position
-            FROM waiver_recommendations w
+            FROM {table}
             JOIN fantasy_players fp ON fp.espn_player_id = w.espn_player_id
             LEFT JOIN player_id_map m ON m.espn_player_id = w.espn_player_id
             LEFT JOIN player_scores s ON s.gsis_id = m.gsis_id AND s.season = w.season
@@ -338,7 +392,19 @@ def waivers(position: str | None = None, recommendation: str | None = None,
                      w.waiver_score DESC, w.espn_player_id
             LIMIT ? OFFSET ?
         """, params)
-        return {"league": lg, "players": out, "computed_at": meta["computed_at"] if meta else None,
+        computed_at = meta["computed_at"] if meta else None
+        if perspective:
+            # The roster may have been re-synced after the analysis ran: say so, and mark suggested drops that are no
+            # longer on the team instead of presenting them as current.
+            on_roster = {r["espn_player_id"] for r in rows(con, """SELECT espn_player_id FROM lineup_snapshots
+                         WHERE league_id=? AND season=? AND scoring_period=? AND team_id=?""",
+                                                                [lg["league_id"], season, lg["current_week"],
+                                                                 perspective["team_id"]])}
+            for r in out:
+                r["drop_on_roster"] = None if r["suggested_drop_id"] is None else r["suggested_drop_id"] in on_roster
+        roster_synced = perspective["roster_synced_at"] if perspective else None
+        return {"league": lg, "perspective": perspective, "players": out, "computed_at": computed_at,
+                "roster_newer_than_analysis": bool(roster_synced and computed_at and roster_synced > computed_at),
                 "coverage": (meta["components"].get("decision") or {}).get("coverage") if meta else None,
                 "total": total, "offset": offset, "limit": limit}
 
@@ -417,7 +483,8 @@ def data_quality():
         medium = rows(con, """SELECT m.*, fp.percent_owned FROM player_id_map m JOIN fantasy_players fp USING (espn_player_id)
                               WHERE m.match_confidence = 'medium' ORDER BY fp.percent_owned DESC NULLS LAST LIMIT 100""")
         conflicts = rows(con, "SELECT * FROM player_id_map WHERE notes LIKE 'Conflicting%' LIMIT 100")
-        runs = rows(con, "SELECT run_id, source, started_at, finished_at, status, message FROM sync_runs ORDER BY started_at DESC LIMIT 30")
+        runs = rows(con, f"SELECT run_id, source, started_at, finished_at, {_RUN_STATUS} AS status, message FROM sync_runs "
+                    "ORDER BY started_at DESC LIMIT 30")
         issues = rows(con, "SELECT * FROM validation_issues ORDER BY severity, check_name") \
             if table_exists(con, "validation_issues") else []
         external = _external_quality(con)
@@ -607,6 +674,22 @@ class TradeRequest(BaseModel):
     team_a_sends: list[int]
     team_b_sends: list[int]
     start_week: int | None = None
+    kdst_streaming: bool = True       # value K and D/ST against weekly free-agent streaming (team_lineups)
+
+
+def _dual_value(con, lg: dict, state, res: dict, body: "TradeRequest") -> dict:
+    """The dual-value assessment (docs/trade_discovery_dual_value.md) of an evaluated trade: the same
+    trade_dual_value.for_evaluation call, over the same window and side views, that Trade Discovery makes,
+    so the analyzer and discovery assess a trade identically. Read-only; adds a field, changes none."""
+    window = state.window(body.start_week)
+    mine = {t["team_id"] for t in rows(con, "SELECT team_id FROM fantasy_teams WHERE league_id=? AND season=? "
+                                            "AND is_mine", [lg["league_id"], lg["season"]])}
+    name = lambda t: state.team_names.get(t) or f"Team {t}"   # noqa: E731
+    labels = ("You", name(body.team_b_id)) if body.team_a_id in mine else (name(body.team_a_id), name(body.team_b_id))
+    return trade_dual_value.for_evaluation(
+        state, window, body.team_a_id, list(res["trade"]["team_a_sends"]), list(res["trade"]["team_b_sends"]),
+        _side_detail(res["team_a"]), _side_detail(res["team_b"]), phase="ros",
+        fa_board=FreeAgencyBoard(state, window) if state.free_agents else None, labels=labels)
 
 
 @router.post("/trades/evaluate")
@@ -615,6 +698,8 @@ def trades_evaluate(body: TradeRequest):
     with db() as con:
         lg = _league(con)
         state = _state(con)
+        if body.kdst_streaming:
+            state = with_streaming(state)
         try:
             res = evaluate_trade(state, body.team_a_id, body.team_b_id, body.team_a_sends, body.team_b_sends,
                                  body.start_week, max_per_side=get_settings().trade_max_players_per_side)
@@ -622,6 +707,7 @@ def trades_evaluate(body: TradeRequest):
             raise HTTPException(409, str(err))
         except TradeError as err:
             raise HTTPException(422, str(err))
+        res["dual_value"] = _dual_value(con, lg, state, res, body)
         ids = set(body.team_a_sends) | set(body.team_b_sends)
         for side in (res["team_a"], res["team_b"]):
             for key in ("before", "after"):

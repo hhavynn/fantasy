@@ -1,3 +1,5 @@
+import type { ProjectionOrigin, ProjectionSourceDetail } from "@/lib/projection-source";
+
 export interface LineupPlayer {
   slot_id: string;
   slot: string;
@@ -6,6 +8,7 @@ export interface LineupPlayer {
   position: string | null;
   pro_team: string | null;
   projected_points: number | null;
+  projection_origin?: ProjectionOrigin | null;
   is_flex: boolean;
   is_currently_starting: boolean;
   current_slot: string | null;
@@ -26,6 +29,7 @@ export interface DecisionPlayer {
   position: string;
   pro_team: string;
   projection: number | null;
+  projection_origin?: ProjectionOrigin | null;
   lock_status: string;
 }
 
@@ -47,6 +51,7 @@ export interface BenchPlayer {
   position: string;
   pro_team: string | null;
   projected_points: number | null;
+  projection_origin?: ProjectionOrigin | null;
   lock_status: "LOCKED" | "UNLOCKED" | "UNKNOWN" | "BYE" | "TEAMLESS";
   kickoff_utc: string | null;
   opponent: string | null;
@@ -106,6 +111,7 @@ export interface StartSitResponse {
   scoring_period: number;
   is_future_preview: boolean;
   projection_source: string;
+  projection_source_detail?: ProjectionSourceDetail;
   summary: StartSitSummary;
   actual_lineup: LineupPlayer[];
   recommended_lineup: LineupPlayer[];

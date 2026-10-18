@@ -194,3 +194,33 @@ def test_history_ingestion_guards(tmp_path):
 def test_metrics_sign_convention():
     m = metrics(np.array([10.0, 20.0]), np.array([12.0, 16.0]))
     assert m == {"n": 2, "mae": 3.0, "rmse": round((20 / 2) ** 0.5, 3), "bias": 1.0}   # actual - predicted
+
+
+def _roster_db(tmp_path, snapshots):
+    import duckdb
+    con = duckdb.connect(str(tmp_path / "r.duckdb"))
+    con.execute("CREATE TABLE lineup_snapshots (league_id BIGINT, season INT, scoring_period INT, team_id INT, "
+                "espn_player_id BIGINT)")
+    con.execute("CREATE TABLE player_id_map (espn_player_id BIGINT, gsis_id VARCHAR, espn_position VARCHAR, "
+                "match_confidence VARCHAR)")
+    for lg, week, team, pid in snapshots:
+        con.execute("INSERT INTO lineup_snapshots VALUES (?, 2025, ?, ?, ?)", [lg, week, team, pid])
+    for pid, g in ((10, "A"), (11, "B"), (20, "C"), (21, "D")):
+        con.execute("INSERT INTO player_id_map VALUES (?, ?, 'WR', 'high')", [pid, g])
+    return con
+
+
+def test_roster_pairs_do_not_cross_leagues_that_share_a_team_id(tmp_path):
+    # team 1 exists in both leagues; only (A, B) and (C, D) sat on the same roster
+    con = _roster_db(tmp_path, [(111, 5, 1, 10), (111, 5, 1, 11), (222, 5, 1, 20), (222, 5, 1, 21)])
+    assert fb.league_roster_pairs(con, 2025) == {(2025, 5, "A", "B"), (2025, 5, "C", "D")}
+    # a pair that is real in one league stays once, even if another league also rosters both players
+    con.execute("INSERT INTO lineup_snapshots VALUES (222, 2025, 5, 2, 10), (222, 2025, 5, 2, 11)")
+    assert fb.league_roster_pairs(con, 2025) == {(2025, 5, "A", "B"), (2025, 5, "C", "D")}
+
+
+def test_roster_pairs_single_league_is_unchanged(tmp_path):
+    con = _roster_db(tmp_path, [(111, 5, 1, 10), (111, 5, 1, 11), (111, 5, 2, 20), (111, 5, 2, 21),
+                                (111, 6, 1, 10), (111, 6, 2, 11)])
+    assert fb.league_roster_pairs(con, 2025) == {(2025, 5, "A", "B"), (2025, 5, "C", "D")}
+    assert fb.league_roster_pairs(con, 2024) == set()

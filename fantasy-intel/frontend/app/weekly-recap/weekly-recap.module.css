@@ -1,0 +1,26 @@
+/* Weekly recap: award footnote, scoreboard games, trade list and in-section tabs. */
+.footnote { margin: 8px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 16px; max-width: 100ch; }
+.awardLine { overflow-wrap: anywhere; }
+
+/* Paired sections keep their own height: a long activity list must not stretch its neighbour. */
+.pair { align-items: start; }
+
+/* Scoreboard: two compact games per row on wide screens, one per row on phones. */
+.board { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+.game { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); min-width: 0; }
+.side { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; color: var(--ink-muted); font-size: 13px; line-height: 20px; }
+.won { color: var(--ink); font-weight: 600; }
+.team { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.points { font-family: var(--font-display); font-size: 18px; line-height: 22px; font-variant-numeric: tabular-nums; }
+.gameMeta { margin: 2px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 16px; }
+
+/* Long team names ellipsise in table cells; the full name is in the title. */
+.teamCell { display: inline-block; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+
+.sectionTabs { padding: 0 8px; }
+
+.trades { margin: 0; padding: 0; list-style: none; }
+.trades > li { padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.trades > li:last-child { border-bottom: 0; }
+.tradeHead { margin: 0 0 4px; color: var(--ink-muted); font-size: 12px; line-height: 16px; }
+.tradeSides { margin: 0; padding-left: 18px; font-size: 13px; line-height: 20px; color: var(--ink); }

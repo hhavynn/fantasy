@@ -1,0 +1,307 @@
+"""Weekly learning CLI for the independent projection engine (champion ifp-1.0.0 refit + shadow
+challenger ifp-2.0.0). Never writes the live database or the production model files.
+
+    cd backend
+    uv run python ../scripts/sync_nfl.py                                   # 1. nflverse (existing; Tuesday)
+    uv run python ../scripts/weekly_learning.py sync-exits                 # 2. play-by-play injury evidence
+    uv run python ../scripts/weekly_learning.py status  --week 7           # 3. readiness (read-only)
+    uv run python ../scripts/weekly_learning.py train   --week 7           # 4. versioned artifacts
+    uv run python ../scripts/weekly_learning.py predict --week 7           # 5. frozen pregame forecasts
+    uv run python ../scripts/weekly_learning.py evaluate                   # 6. prospective accuracy
+    uv run python ../scripts/weekly_learning.py cycle   --week 7           # 2-6 in order, stops on any error
+
+Inputs: the live DB (FANTASY_DB_PATH, read-only here), the history DB (NFL_HISTORY_DB_PATH), and
+the production ifp-1.0.0 files in --ifp-dir (selection.json, heldout_report.json and the
+participation artifact; read-only). Outputs: --out (default data/models/weekly, git-ignored):
+pbp_exits/<season>.parquet, artifacts/<version>/s<season>w<week>-<id>.json, ledger/s<season>w<week>/<run>.json,
+reports/evaluate-<timestamp>.json.
+
+`train`/`predict` refuse when an earlier game is not final, a completed week lacks box scores,
+snaps or xFP, the league scoring differs from an artifact's, or week W has already kicked off
+(use --retrospective for a clearly labeled replay that never counts as pregame evidence).
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import sys
+import time
+
+import _bootstrap  # noqa: F401
+import duckdb
+import polars as pl
+
+from app.analytics import challenger as ch
+from app.analytics import weekly_learning as wl
+from app.analytics.forecast_features import Sources, load_sources
+from app.analytics.independent_projection_store import league_scoring
+from app.config import REPO_ROOT, get_settings
+from app.nfl import pbp_exits
+
+
+def _path(env: str, default: str) -> Path:
+    raw = Path(os.getenv(env) or default)
+    return raw if raw.is_absolute() else REPO_ROOT / raw
+
+
+def _ro(path: Path):
+    return duckdb.connect(str(path), read_only=True) if path is not None and Path(path).exists() else None
+
+
+def _now(args) -> datetime:
+    return datetime.fromisoformat(args.now).astimezone(timezone.utc) if args.now else datetime.now(timezone.utc)
+
+
+def _context(args):
+    live = _ro(args.live_db)
+    if live is None:
+        raise wl.NotReady(f"live database {args.live_db} not found")
+    hist = _ro(args.history_db)
+    _, scoring = league_scoring(live, args.season)
+    scoring.require_supported()
+    parts = [load_sources(c, scoring) for c in (hist, live) if c is not None]
+    src = Sources.concat(parts).with_exits(pbp_exits.load_dir(args.out / "pbp_exits"))
+    return live, hist, scoring, src
+
+
+def cmd_sync_exits(args, **_) -> dict:
+    live = _ro(args.live_db)
+    hist = _ro(args.history_db)
+    out = []
+    if args.history_seasons:
+        first, last = (int(x) for x in args.history_seasons.split("-"))
+        seasons = list(range(first, last + 1))
+    else:
+        seasons = [args.season]
+    for season in seasons:
+        con = live if season == args.season else hist
+        if con is None:
+            raise wl.NotReady(f"no database holds {season} rosters")
+        ros = pl.from_arrow(con.execute("SELECT season, week, team, jersey_number, gsis_id, position, last_name "
+                                        "FROM nfl_rosters_weekly WHERE season = ?", [season]).arrow())
+        done = con.execute("SELECT max(week) FROM nfl_schedules WHERE season = ? AND game_type = 'REG' AND week NOT IN "
+                           "(SELECT week FROM nfl_schedules WHERE season = ? AND game_type = 'REG' AND home_score IS NULL)",
+                           [season, season]).fetchone()[0]
+        out.append(pbp_exits.sync_season(season, ros, args.out / "pbp_exits", max_week=done))
+    return {"seasons": out}
+
+
+def _fetched_at(live, season: int):
+    """Start of the latest successful nflverse sync that wrote the season's schedule (the fetch time
+    game_presumed_final needs), or None."""
+    from app.analytics.schedule_intelligence import nfl_fetch_times
+    return nfl_fetch_times(live, season)["schedules"] if live is not None else None
+
+
+def cmd_status(args, src, live=None, **_) -> dict:
+    return wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season), con=live)
+
+
+def _require_ready(args, src, live=None) -> dict:
+    rep = wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season), con=live)
+    if not rep["ok"]:
+        raise wl.NotReady("; ".join(rep["errors"]))
+    if not rep["pregame"] and not args.retrospective:
+        raise wl.NotReady(f"week {args.week} kicked off at {rep['first_kickoff']}: a model trained or a forecast made "
+                          "now is not pregame evidence (use --retrospective for a labeled replay)")
+    return rep
+
+
+def cmd_train(args, src, scoring, store=None, live=None, **_) -> dict:
+    _require_ready(args, src, live)
+    sel_path, rep_path = args.ifp_dir / "selection.json", args.ifp_dir / "heldout_report.json"
+    sel, rep = json.loads(sel_path.read_text()), json.loads(rep_path.read_text())
+    import hashlib
+    if rep.get("selection_sha") != hashlib.sha256(sel_path.read_bytes()).hexdigest()[:16]:
+        raise wl.NotReady("heldout_report.json does not evaluate the current selection.json")
+    if sel.get("scoring_fingerprint") != scoring.fingerprint:
+        raise wl.NotReady("ifp-1.0.0 selection was made under different league scoring")
+    t = time.time()
+    champ, chal = wl.train(src, args.season, args.week, ifp_selection=sel, ifp_report=rep, cfg=ch.ChallengerConfig.load(),
+                           scoring_desc=scoring.describe(), created_at=_now(args).isoformat(),
+                           retrospective=args.retrospective, store=store)
+    res = {}
+    for art in (champ, chal):
+        aid, path, created = wl.save_artifact(art, args.out)
+        res[art.version] = {"id": aid, "path": str(path), "new": created, **{
+            k: art.config["provenance"][k] for k in ("latest_included_week", "training_seasons", "rows", "data_hash",
+                                                     "config_hash", "retrospective")}}
+    res["runtime_seconds"] = round(time.time() - t, 1)
+    return res
+
+
+def _pinned(path: Path, season: int, week: int, fingerprint: str):
+    art = wl.load_artifact(path)
+    wl.check_artifact(art, season, week, fingerprint)
+    return art, Path(path).stem.split("-", 1)[1], Path(path)
+
+
+def _retrieved_at(args, live) -> dict:
+    """Upper bounds on when each source family was downloaded: the live season's tables were
+    written by the latest successful nflverse sync; history seasons are unknown (null); the
+    play-by-play evidence file by its write time."""
+    synced = None
+    if live is not None:
+        try:
+            row = live.execute("SELECT max(finished_at) FROM sync_runs WHERE source = 'nfl' AND status = 'ok'").fetchone()
+            synced = row[0] if row else None
+            # A sync that started after the last ok one and never finished may have committed newer content
+            # (run_nfl_sync commits before it finishes): then the ok run's time no longer bounds the download.
+            from app.analytics import injury_freshness as inj
+            run = inj.latest_nfl_sync_run(live, args.season)
+            if synced is not None and run is not None and inj.unverifiable_after(live, args.season, run):
+                synced = None
+        except duckdb.Error:
+            synced = None
+    out = {fam: {args.season: synced} for fam in ("panel", "games", "defense", "rosters", "injuries")}
+    out["exits"] = {}
+    for s in (args.season - 1, args.season):
+        f = args.out / "pbp_exits" / f"{s}.parquet"
+        out["exits"][s] = datetime.fromtimestamp(f.stat().st_mtime, timezone.utc) if f.exists() else None
+    return out
+
+
+def capture_sources(args, live, hist, src, participation_sources) -> dict:
+    """Snapshot what this forecast reads (source_provenance). Fails closed: no snapshot, no forecast."""
+    from app.analytics import source_provenance as sp
+    cov = {s: sp.injury_timestamp_coverage(live if s == args.season else hist, s) for s in (args.season - 1, args.season)}
+    fallback = participation_sources[1] if participation_sources else set()
+    extra = {}
+    if fallback:
+        extra[sp.PARTICIPATION_INJURIES] = participation_sources[0].injuries.filter(
+            (pl.col("season") == args.season) & (pl.col("week") == args.week))
+    try:
+        return sp.capture(args.out, src, args.season, args.week, captured_at=_now(args),
+                          retrieved_at=_retrieved_at(args, live), meta=sp.source_meta(cov, fallback), extra=extra,
+                          con=live)
+    except Exception as err:
+        raise wl.NotReady(f"could not snapshot the forecast's sources ({err.__class__.__name__}: {err}); no forecast "
+                          "was frozen") from err
+
+
+def cmd_predict(args, live, src, scoring, artifacts: dict | None = None, hist=None, **_) -> dict:
+    """`artifacts` ({version: path}) pins the exact artifacts to use (the learning cycle passes the
+    ones it just trained or reused); otherwise the most recently created artifact of each version.
+    The sources the forecast reads are snapshotted first (source_provenance) and referenced by the run."""
+    rep = _require_ready(args, src, live)
+    from app.analytics.participation import PARTICIPATION_VERSION, ParticipationArtifact
+    if artifacts:
+        champ, cid, cpath = _pinned(artifacts[wl.MODEL_VERSION], args.season, args.week, scoring.fingerprint)
+        chal, xid, xpath = _pinned(artifacts[ch.CHALLENGER_VERSION], args.season, args.week, scoring.fingerprint)
+    else:
+        champ, cid, cpath = wl.latest_artifact(args.out, wl.MODEL_VERSION, args.season, args.week, scoring.fingerprint)
+        chal, xid, xpath = wl.latest_artifact(args.out, ch.CHALLENGER_VERSION, args.season, args.week,
+                                              scoring.fingerprint)
+    for art in (champ, chal):
+        if bool(art.config["provenance"]["retrospective"]) != bool(args.retrospective):
+            raise wl.NotReady(f"{art.version} artifact retrospective={art.config['provenance']['retrospective']} does "
+                              "not match this run; retrain for the right kind")
+    ppath = args.ifp_dir / f"participation_{PARTICIPATION_VERSION}.json"
+    # A retrospective replay gets no P(appears): the participation artifact was fitted on later weeks.
+    part = ParticipationArtifact.from_dict(json.loads(ppath.read_text())) \
+        if ppath.exists() and not args.retrospective else None
+    t = time.time()
+    psrc = None
+    if part is not None and live is not None:
+        from app.analytics.independent_projection_store import espn_designation_fallback
+        psrc = espn_designation_fallback(live, src, args.season, args.week)
+    manifest = capture_sources(args, live, hist, src, psrc)
+    run = wl.predict(src, champ, chal, args.season, args.week, _now(args), con=live, participation=part,
+                     kind="retrospective" if args.retrospective else "pregame", readiness_report=rep,
+                     participation_sources=psrc,
+                     sources_manifest={"manifest_id": manifest["manifest_id"],
+                                       "parts": {k: v["hash"] for k, v in manifest["parts"].items()}},
+                     report_times=manifest["meta"]["injury_report_timestamps"],
+                     artifact_ids={"champion": {"version": champ.version, "id": cid, "path": str(cpath)},
+                                   "challenger": {"version": chal.version, "id": xid, "path": str(xpath)}})
+    if not run["rows"] or (run["kind"] == "pregame" and not any(r["pregame"] for r in run["rows"])):
+        raise wl.NotReady(f"no {run['kind']} forecast row for {args.season} week {args.week} (no ACT/INA roster player "
+                          "on a team playing that week, or every game has kicked off): nothing was frozen; rerun "
+                          "after nflverse publishes the weekly rosters")
+    path, created = wl.write_run(run, args.out)
+    # an identical earlier run is kept and reported (its id), never rewritten
+    return {"run_id": run["run_id"] if created else path.stem, "path": str(path), "new": created,
+            "rows": len(run["rows"]),
+            "pregame_rows": sum(r["pregame"] for r in run["rows"]),
+            "with_challenger": sum(r["challenger"]["points"] is not None for r in run["rows"]),
+            "source_manifest": manifest["manifest_id"],
+            "runtime_seconds": round(time.time() - t, 2)}
+
+
+def cmd_evaluate(args, src, live=None, scoring=None, **_) -> dict:
+    runs = wl.load_ledger(args.out)
+    fetched = {args.season: _fetched_at(live, args.season)}
+    # which models the counted pregame runs actually used, from their recorded artifacts
+    # (app/analytics/model_registry.py refuses a report without a single consistent subject)
+    subject = wl.report_subject(runs, "pregame", None if scoring is None else scoring.fingerprint)
+    rep = {"subject": subject, "pregame": wl.evaluate(runs, src, "pregame", fetched_at=fetched),
+           "retrospective_not_evidence": wl.evaluate(runs, src, "retrospective", fetched_at=fetched)}
+    d = args.out / "reports"
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / f"evaluate-{_now(args):%Y%m%dT%H%M%S}.json"
+    path.write_text(json.dumps(rep, indent=1, default=str))
+    p = rep["pregame"]
+    return {"report": str(path), "pregame_weeks": p.get("weeks"),
+            "preliminary_weeks_not_evidence": (p.get("preliminary") or {}).get("weeks", []),
+            "outcomes": p.get("outcomes"),
+            "by_position": {pos: {"n": r["n"], "mae": {m: v["mae"] for m, v in r["metrics"].items()},
+                                  "diff": r.get("challenger_minus_champion_mae")}
+                            for pos, r in p.get("positions", {}).items()},
+            "shadow_status": {pos: {"status": s["status"], "lifecycle": s["lifecycle"],
+                                    "criteria": [f"{c['name']}: {c['result']} (observed {c['observed']}, required "
+                                                 f"{c['required']})" for c in s["criteria"]]}
+                              for pos, s in (p.get("shadow_status") or {}).items()},
+            "promotion_blockers": p.get("promotion_blockers")}
+
+
+def cmd_cycle(args, **ctx) -> dict:
+    out = {"sync_exits": cmd_sync_exits(args)}
+    live, hist, scoring, src = _context(args)
+    ctx = {"live": live, "hist": hist, "src": src, "scoring": scoring}
+    out["status"] = cmd_status(args, **ctx)
+    out["train"] = cmd_train(args, **ctx)
+    out["predict"] = cmd_predict(args, **ctx)
+    out["evaluate"] = cmd_evaluate(args, **ctx)
+    return out
+
+
+def main(argv=None) -> int:
+    settings = get_settings()
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("command", choices=["sync-exits", "status", "train", "predict", "evaluate", "cycle"])
+    ap.add_argument("--week", type=int)
+    ap.add_argument("--season", type=int, default=settings.nfl_season)
+    ap.add_argument("--history-seasons", help="sync-exits only, e.g. 2019-2025 (history database rosters)")
+    ap.add_argument("--retrospective", action="store_true",
+                    help="replay a week that already started; stored as retrospective, never counted as pregame")
+    ap.add_argument("--now", help="ISO timestamp to use as the current time (testing and audits)")
+    ap.add_argument("--live-db", type=Path, default=settings.db_path)
+    ap.add_argument("--history-db", type=Path, default=_path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
+    ap.add_argument("--ifp-dir", type=Path, default=_path("INDEPENDENT_MODEL_DIR", "data/models"))
+    ap.add_argument("--out", type=Path, default=_path("WEEKLY_MODEL_DIR", "data/models/weekly"))
+    args = ap.parse_args(argv)
+    if args.command in ("status", "train", "predict", "cycle") and not args.week:
+        print("--week is required", file=sys.stderr)
+        return 2
+    try:
+        if args.command == "sync-exits":
+            result = cmd_sync_exits(args)
+        elif args.command == "cycle":
+            result = cmd_cycle(args)
+        else:
+            live, hist, scoring, src = _context(args)
+            result = {"status": cmd_status, "train": cmd_train, "predict": cmd_predict, "evaluate": cmd_evaluate}[
+                args.command](args, live=live, hist=hist, src=src, scoring=scoring)
+    except (wl.NotReady, FileNotFoundError, ValueError) as err:
+        print(f"NOT READY: {err}", file=sys.stderr)
+        return 3
+    print(json.dumps(result, indent=1, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

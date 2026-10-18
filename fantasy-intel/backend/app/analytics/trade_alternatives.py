@@ -61,7 +61,7 @@ from collections import Counter
 
 from .lineup import FLEX_ELIGIBILITY
 from .team_lineups import (PROJECTION_SOURCE, RosterPlayer, Window, _pareto, compare, lineup_relevant, project_team,
-                           project_week, projection, r, starters)
+                           project_week, projection, r, slot_filled, starters)
 from .trade_discovery import _Totals
 from .trades import EvaluationUnavailable, LeagueState, TradeError, choose_forced_drops, legal_roster, side_lineups
 
@@ -357,7 +357,7 @@ class FreeAgencyBoard:
             ok = bw["projection_complete"]
             complete = complete and ok
             total += gain
-            incumbent_slots = [(a["points"] if a.get("player_id") is not None else 0.0) for a in bw["assignment"] if a["slot"] == position]
+            incumbent_slots = [(a["points"] if slot_filled(a) else 0.0) for a in bw["assignment"] if a["slot"] == position]
             if not incumbent_slots:
                 starter_pts = 0.0
             elif any(pts is None for pts in incumbent_slots):
@@ -387,7 +387,7 @@ def slot_breakdown(teams: dict[str, dict]) -> list[dict]:
             for a in w["assignment"]:
                 row = rows.setdefault(a["slot"], {"slot": a["slot"], **{f"{k}_points": 0.0 for k in teams},
                                                   **{f"{k}_empty_weeks": 0 for k in teams}})
-                if a["player_id"] is None:
+                if not slot_filled(a):
                     row[f"{name}_empty_weeks"] += 1
                 else:
                     row[f"{name}_points"] += a["points"] or 0.0

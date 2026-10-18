@@ -1,10 +1,41 @@
 # Independent Weekly Projection Engine (V1, research)
 
 An NFL-evidence fantasy-point model for QB/RB/WR/TE that **never uses ESPN projections as an
-input**. ESPN appears only as an external comparison. It is research output: nothing in lineups,
-trades, waivers, playoff odds, player scores or market signals reads it.
+input**. ESPN appears only as an external comparison and stays the default everywhere: nothing in
+lineups, trades, waivers, playoff odds, player scores or market signals reads the model. The one opt-in
+path is the **projection switch** (header toggle "ESPN | Ours", see "Projection switch" below),
+which only changes the weekly numbers on Home, Matchup and Start/Sit and adds Fantasy Intel's series to a
+player's forward view.
 
-**Current status (model `ifp-1.0.0`, held-out evaluation on real data, see "Results"):**
+**Production model: `ifp-2.0.0`, by owner override (2026-10-16, `model_registry.json`).** What that
+does and does not establish:
+
+* it is production because the owner decided so, not because of evidence: it has NOT met
+  `SHADOW_PROMOTION_CRITERIA` (>= 8 fully final prospective weeks, >= 400 matched appearances per
+  position) or `PROMOTION_CRITERIA` (>= 3% vs the best trailing baseline, ESPN rule), and the approval
+  cites no prospective or held-out report;
+* its research validation (the 2023-24 confirmation, backtests) is **historical evidence only**;
+* it is **not shown to be better than ESPN**; that question is answered only by frozen pregame forecasts
+  as they accumulate (`espn_benchmark.py`, the promotion tracker);
+* no position is Start/Sit-ready, and the consumer status of every position is `owner_override`
+  (never `validated`);
+* the model a user sees **may be the `ifp-1.0.0` fallback**: a week with no eligible `ifp-2.0.0` run shows
+  the newest eligible `ifp-1.0.0` run, labeled as the fallback (on 2026-10-16 this is the case for week 7).
+
+Which run is shown, and what may be said about it, is decided in one place
+(`projection_source.select_run` / `governance`, see "Projection switch"). Weekly routine (laptop, before
+the week's first kickoff), automated by the launchd jobs in `scripts/launchd/`:
+
+```bash
+uv run python ../scripts/learning_cycle.py run    # sync, train and freeze ifp-2 for week W, then store its run (`project`)
+uv run python ../scripts/refresh_all.py           # ... which the next refresh publishes to MotherDuck
+```
+
+`learning_cycle.py run --no-project` skips storing the run; `backtest_independent_projections.py project
+--week W` stores it by hand.
+
+**`ifp-1.0.0` status (previous production, now the labeled fallback and the rollback target; its artifact
+is pinned in the registry; held-out evaluation on real data, see "Results"):**
 
 | Position | Status | Start/Sit ready |
 |---|---|---|
@@ -32,6 +63,15 @@ where `p_play` = P(appears in week W) from pregame roster status, injury report 
 "Validated" here means calibrated and better than simple pregame baselines on held-out
 roster-population weeks; it says nothing about ESPN.
 
+**`ifp-2.0.0` research history (historical evidence only; see "Weekly learning and the ifp-2
+challenger"):** injury-aware established workload, previous-season usage priors and recency-weighted
+training. It passed its frozen confirmation rules on 2023-24 (pooled MAE 4.031 -> 4.016, 95% CI of the
+difference [-0.023, -0.007]), but the gain is ~0.4%, far below the 3% promotion bar, and a historical
+replay can never stand in for prospective confirmation. It ran in shadow until the owner override; its
+stored runs still carry the status frozen at training time ("shadow ... never read by consumers"), which
+consumers replace with `owner_override`. Only frozen pregame forecasts from 2026 week 6 onward count as
+evidence for it.
+
 ## Files
 
 | File | Role |
@@ -41,10 +81,17 @@ roster-population weeks; it says nothing about ESPN.
 | `backend/app/analytics/forecast_features.py` | Point-in-time panel + features |
 | `backend/app/analytics/independent_projections.py` | Baselines, ridge models, artifact, explanations |
 | `backend/app/analytics/forecast_backtest.py` | Walk-forward validation, selection, held-out evaluation, ESPN matching |
-| `backend/app/analytics/independent_projection_store.py` | Live week-W run with availability/ID guards |
+| `backend/app/analytics/independent_projection_store.py` | Live week-W run with availability/ID guards; `write_run` stores it append-only |
+| `backend/app/analytics/production_forecasts.py` | SQL-only (hosted-safe) immutable-run reader: `pregame_forecasts`, `latest_run`, content hash, v8 backfill |
 | `backend/app/api/independent_projections.py` | Read-only `GET /api/projections/independent` |
 | `backend/app/analytics/participation.py` | Roster population, participation features, logistic model, walk-forward evaluation, live P(appears) |
+| `backend/app/analytics/promotion_tracker.py`, `backend/app/api/projection_promotion.py` | Read-only `GET /api/projections/independent/promotion` (the tracker on `/data`) |
 | `scripts/backtest_independent_projections.py` | `audit`, `select`, `evaluate`, `fit`, `participation-select`, `participation-evaluate`, `participation-fit`, `snap-ablation`, `project` |
+| `backend/app/nfl/pbp_exits.py` | Play-by-play in-game injury evidence per player-game (research input) |
+| `backend/app/analytics/challenger.py`, `challenger_config.json` | ifp-2 challenger: weighted/robust linear fits, walk-forward specs, cohorts, frozen config, confirmation and shadow criteria |
+| `backend/app/analytics/weekly_learning.py`, `scripts/weekly_learning.py` | Weekly cycle: readiness gate, versioned artifacts, write-once forecast ledger, prospective evaluation |
+| `backend/app/analytics/model_registry.py`, `model_registry.json`, `scripts/model_registry.py` | Approval manifest, integrity checks, dry-run promotion gate and rollback planner (research only; `docs/model_registry.md`) |
+| `scripts/challenger_research.py` | `store`, `develop`, `freeze`, `confirm`, `exploratory`, `exits-audit`, `cases` |
 
 Added dependency: **numpy** (closed-form ridge, bootstrap). No scikit-learn, no gradient boosting,
 no cloud services, no LLM numbers.
@@ -63,8 +110,16 @@ uv run python ../scripts/backtest_independent_projections.py participation-selec
 uv run python ../scripts/backtest_independent_projections.py participation-evaluate  # frozen -> held-out
 uv run python ../scripts/backtest_independent_projections.py participation-fit       # data/models/participation_ipm-1.0.0.json
 uv run python ../scripts/backtest_independent_projections.py snap-ablation           # validation-only diagnostic
-uv run python ../scripts/backtest_independent_projections.py project --week 7    # writes the two live tables
+uv run python ../scripts/backtest_independent_projections.py project --week 7    # stores one ifp-2.0.0 run
+uv run python ../scripts/backtest_independent_projections.py project --week 7 --model ifp-1.0.0   # previous model
 ```
+
+`project` runs the production model by default (`projection_source.MODEL_VERSION`, `ifp-2.0.0`): the
+newest weekly-learning artifact trained for the target week (`--weekly-dir`, default
+`data/models/weekly`, written by `weekly_learning.py train` / `learning_cycle.py run`) with the
+play-by-play injury evidence it was trained with, and the run records that artifact file's sha256 as
+its `artifact_id`. It refuses a week without such an artifact, a retrospective artifact, or missing
+injury evidence the artifact used. `--model ifp-1.0.0` runs the frozen artifact in `--out`.
 
 `select`/`evaluate`/`fit`/`audit` open the live DB read-only. Only `project` writes, and only the
 tables `independent_projection_runs` and `independent_player_projections` (create-only, no schema
@@ -206,6 +261,11 @@ TE 80.0%. Intervals are prediction intervals for one week's score, not confidenc
 contemporaneous lineup snapshots, 1,012 pairs): recent 64.6%, season 62.3%, opportunity 65.0%,
 context 64.7%. No meaningful edge on this small sample.
 
+*Note:* this pair set was built before `league_roster_pairs` keyed rosters by `(league_id, team_id)`; ESPN team
+ids restart at 1 in every league, so with several synced leagues it also paired players from different leagues'
+team 1s. All models were scored on the same set, so the comparison between them is unaffected, but N (1,012) may
+be overstated. Rerun `backtest_independent_projections.py evaluate` on the real database to restate N.
+
 **ESPN comparison: 0 matched observations.** Nothing is claimed about ESPN.
 
 Runtime (Apple silicon laptop): history ingestion 17 s; feature store 42.7k rows in 3.3 s;
@@ -285,6 +345,12 @@ underconfident for backups); the extremes are well calibrated (0.96 predicted vs
 n = 508). RB's largest gaps are in sparse bins (0.1-0.2 and 0.3-0.4, n <= 49). Recalibration is a
 follow-up; the frozen statuses stand.
 
+Calibration research (`docs/research/participation_calibration.md`, shadow only): walk-forward
+Platt / shrunk Platt / isotonic maps fitted only on earlier out-of-sample predictions. Only QB
+isotonic passes the pre-registered rule (log loss and Brier CIs below 0, ECE 0.046 -> 0.015 in
+development); it does not improve unconditional fantasy points, so `ipm-1.0.0` is unchanged and the
+map is kept as a shadow candidate.
+
 Unconditional league points (actual = points if he appeared, else 0), same rows:
 
 | Pos | Conditional as-is | Out rule (Out -> 0) | Best baseline x conditional | **Expected points** | vs conditional (95% CI) | vs Out rule (95% CI) |
@@ -324,6 +390,207 @@ conditional model `ifp-1.0.0` is **unchanged**: a validation-only ablation (`sna
 validation MAE by -0.006 / -0.004 / -0.002 / 0.000 (QB/RB/WR/TE), every 95% CI spanning 0, and was
 slightly worse on the injury-exit rows themselves. The held-out seasons were not used for it.
 
+## Weekly evidence routine and promotion tracker
+
+The ESPN criterion can only be met with ESPN projections captured **before** kickoff, and ESPN
+history only began on 2026-10-14. Nothing backfills a missed week, so every week:
+
+1. **Before Thursday's first kickoff**, capture a pregame ESPN snapshot (from `backend/`):
+
+   ```bash
+   uv run python ../scripts/sync_espn.py
+   ```
+
+   Syncing again before Sunday is fine and keeps the comparison current: each player is compared
+   with the last snapshot taken before *his own* kickoff (`forecast_backtest.espn_pregame`).
+   `espn_projection_history` keeps one snapshot per calendar day, so a sync later the same day
+   replaces that day's earlier snapshot. A Thursday sync after the Thursday game has kicked off
+   therefore leaves that game's players with the previous day's snapshot; sync on Wednesday as well
+   if you want a fallback.
+2. **Store the week's independent projection** (needs the fitted artifacts in `data/models`, see
+   "Runbook"): `uv run python ../scripts/backtest_independent_projections.py project --week N`.
+   Its features use only games completed before week N, but its weights come from the artifact:
+   `fit` trains on every completed week. A run therefore counts as evidence only if its artifact
+   was fitted **before week N's first kickoff**, it was created **before the player's own kickoff**,
+   its stored rows still reproduce its content hash, and it is of the current model version under
+   the current league scoring. Every other run is listed as excluded with a reason (including a
+   run made after kickoff and a run whose rows are missing). Rerunning `project` for the same week
+   adds a run; it never replaces one (see "Live runs and abstention", Storage). Without a counted
+   run a week contributes no matched observation to the tracker.
+3. After the week's games are final and nflverse is synced (`sync_nfl.py`), the tracker counts the
+   new matched player-weeks automatically.
+
+The **Data quality page (`/data`) section "Independent projections: path to promotion"** reads
+`GET /api/projections/independent/promotion` (`independent-promotion/v1`, read-only):
+
+* the tracker follows the PRODUCTION model (`projection_source.MODEL_VERSION`, `ifp-2.0.0`) and reports
+  its `governance`; per position the status is `owner_override` (never the frozen "shadow" text stored in
+  its runs). Held-out fields are copied from the evaluation stored with the latest verified run of that
+  model under the current scoring; `ifp-2.0.0` runs store no per-position held-out evaluation, so they
+  are null (never borrowed from `ifp-1.0.0`);
+* matched pregame-ESPN observations so far vs `espn_min_matched_per_position`, computed with
+  `espn_pregame` + `espn_comparison` on counted stored weekly projections (`pred_primary` = the
+  player's row from the latest eligible run created before his own kickoff,
+  `production_forecasts.pregame_forecasts`; see step 2)
+  and completed
+  appearances (league points from nflverse box scores), plus the pool of completed player-weeks
+  with a pregame ESPN snapshot whether or not a projection was stored; MAE ours vs ESPN once
+  there is at least one matched row;
+* whether the current week already has an ESPN snapshot taken before its first kickoff (a later
+  snapshot still counts for players whose own game kicks off after it).
+
+The tracker never promotes anything. `ifp-2.0.0` already reaches the opt-in weekly views by the owner's
+override; the tracker measures the evidence that override did not have, and no position may be called
+Start/Sit-ready or better than ESPN until it passes the frozen criteria. The isolation test in
+`tests/test_independent_projections.py` keeps every other module from importing the tracker or
+the projection tables. The hosted API bundle ships without polars, so there the endpoint answers
+`available: false` instead of a copy of the criteria, still with the production model's `governance`.
+
+## Weekly evidence routine (automated)
+
+`scripts/refresh_all.py` (launchd: Thu 15:00, Sun 08:00, Mon 15:00, Tue 08:00 Pacific) now also runs
+the prospective-evidence capture, so no step above depends on remembering to run a script. After the
+ESPN sync, nflverse sync and analytics have finished and the pregame snapshot check has printed, an
+**evidence stage** runs four existing scripts, each as its own process:
+
+| Step | When | Week |
+| --- | --- | --- |
+| `injury_freshness.py report` | every run | the upcoming week |
+| `start_sit_evaluation.py record` | every run with an upcoming week | the upcoming week |
+| `ctx_shadow.py pregame` | every run with an upcoming week (research shadow, `docs/research/ifp_ctx_shadow_automation.md`) | the upcoming week |
+| `espn_benchmark.py record` | when a fully final week exists | the latest fully final week |
+
+* **Upcoming week** = the earliest regular-season week with a game still to kick off (nflverse
+  schedule, US Eastern kickoffs). Thursday, Sunday and Monday runs therefore all target the week in
+  progress, and Tuesday's run targets the next week. `record` is write-once and refuses players whose
+  game has kicked off, so each run captures exactly the players still pregame; this is intended.
+* **Fully final week** = `weekly_learning.week_finality` (every game final, box scores and snaps
+  synced), the rule the benchmark itself counts weeks by. The Tuesday run normally finds the week
+  just played; if nflverse has not caught up it logs why and tries again on the next run, and the
+  benchmark is never recorded for a week that is not final. Recording is content-addressed, so a
+  repeat with identical inputs writes nothing.
+* **Safety.** The stage starts only after every write connection has closed (each sync runs in its own
+  process), opens the database read-only, runs no sync, writes no live table, never touches
+  MotherDuck and changes no model. Outputs go to the existing git-ignored defaults
+  (`data/models/start_sit`, `data/models/espn_benchmark`).
+* **Failures never fail the refresh.** A step that exits non-zero (for example `start_sit_evaluation`
+  `espn_benchmark` exit 3 when not ready, or a DuckDB lock held by the learning cycle) or cannot
+  start is logged as `WARNING: Evidence: ...` in `data/logs/refresh-<UTC stamp>.log`, and
+  `refresh_all.py` keeps its exit code. `start_sit_evaluation` exit 2 (no player is still pregame)
+  is an `INFO` line. Each evidence step has a 15 minute deadline (`REFRESH_EVIDENCE_TIMEOUT_S`
+  overrides, in seconds): a step still running then is killed with its process group and logged as
+  `timed out`, so a stuck step cannot block the next scheduled refresh. The sync steps have no
+  deadline. The injury report is printed into the same log. After a failed sync or analytics step
+  the stage does not run; after a failed MotherDuck publish alone it does (the local data is fresh,
+  and a skipped start/sit record cannot be redone once games kick off), and the refresh still exits 1.
+* `--skip-evidence` skips the stage; `--check-only` implies it.
+* **Checking that it really ran.** `scripts/evidence_health.py` (docs/evidence_health.md) parses every
+  refresh log step by step and checks the files each step should have written. So "the refresh exited 0" and
+  "this week's pregame evidence was captured" are reported separately, with the cause of anything missing.
+
+## Projection switch (opt-in weekly view)
+
+The switch reads the production model `ifp-2.0.0` (`projection_source.MODEL_VERSION`); for a week
+without an eligible `ifp-2.0.0` run it shows the newest eligible `ifp-1.0.0` run (`FALLBACK_VERSION`) and
+says so in `reason` and `governance.is_fallback`, which the notice on Home, Matchup and Start/Sit prints.
+
+A header toggle (**ESPN | Ours**, in the menu drawer on phones) stores the visitor's choice in the
+`fi_projection` cookie. With "Ours", Home, Matchup and Start/Sit request `source=independent`
+(`GET /api/start-sit`, `GET /api/matchup`); ESPN stays the default everywhere.
+`app/analytics/projection_source.py` turns the stored run for the week into lineup numbers:
+
+* `ours`: `expected_points` (unconditional, like ESPN's weekly projection);
+* `ours_zero`: 0.0 for a bye or a row withheld as unavailable;
+* `espn`: ESPN's number where no independent estimate exists (K, D/ST, abstentions, uncertain ID
+  mapping, no participation estimate), tagged "ESPN" in the UI.
+
+**Run selection (`projection_source.select_run`, shared with `GET /api/projections/independent`; the tracker
+applies the same two checks).** The league's scoring must be supported. Candidates are `ifp-2.0.0` runs under
+that scoring, newest first, then (only if none qualifies) `ifp-1.0.0` runs. A run qualifies only when:
+
+* **approved artifact** (`production_forecasts.artifact_gate`, below): the run's artifact passes the rule of its
+  model version;
+* **integrity**: its stored rows reproduce its `content_sha256`
+  (`production_forecasts.integrity_problem`, the same rule as the evidence readers). A row count is not
+  enough: an edited value keeps the count. Unsealed, short, empty or edited runs are skipped;
+* any other model version (research models such as `ifp-hgb-0.1.0`) is never a candidate.
+
+Skipped runs are reported in `skipped` with their reason; with nothing left the response says
+`available: false` and why, and shows ESPN. A database without `independent_projection_rows` (not
+migrated to schema v8) fails closed: legacy rows cannot be integrity-checked, so nothing is shown.
+
+**Artifact approval.** The switch (and the evidence readers: `pregame_forecasts`, `eligible_run_ids`, the
+promotion tracker) only use runs made by an approved artifact. `ifp-2.0.0` is retrained weekly, so each of its
+artifacts is approved by a row in the write-once `approved_artifacts` table, which the learning cycle's
+`project` stage writes (`--register-artifact learning_cycle`) for the write-once store artifact it uses; the
+run's `artifact_id` and the registered sha are the same sha256 of the artifact file bytes. A run of an
+unregistered artifact is excluded ("artifact not registered as approved") and the switch falls back to
+`ifp-1.0.0`, then ESPN. The `ifp-1.0.0` fallback has the single-sha pin
+`production_pin.APPROVED_ARTIFACT_SHA256` = `a1fe1bc3...9881`, the file the newest stored `ifp-1.0.0`
+production run recorded (the same sha as `model_registry.json`, tested equal): a run made from a later refit
+under the same version label, or a legacy-migrated run with no recorded `artifact_id`, is never shown as the
+fallback. A database without `approved_artifacts`, or whose table has no row for `ifp-2.0.0` yet (right after
+the upgrade), is read as before and marked unverified (`run.artifact_verified: false`): the switch fails open
+there so an old hosted copy and the first days after the upgrade keep working. Enforcement starts with the first
+registered artifact, and the first learning cycle registers its artifact and backfills the others already in the
+weekly store. Details, the manual pin and the transition after the upgrade are in
+[model_registry.md](model_registry.md) ("Approving artifacts for the consumer view").
+
+**Live view vs evidence.** The switch shows the newest qualifying run whenever it was made: a run made
+after Thursday's kickoff is a legitimate live update for Sunday's players. Accuracy evidence uses a
+different population (`production_forecasts.pregame_forecasts`: per player, the latest verified run made
+before his own kickoff, from an artifact fitted before the week's first kickoff). `timing` says how many
+shown rows are pregame. Runs are append-only, so a late run never rewrites the frozen pregame row of a
+player whose game had started, and never becomes evidence for him.
+
+**What consumers may claim (`governance`, `consumer_status`).** `model_status` is `owner_override` for
+every `ifp-2.0.0` position; the fallback keeps its stored held-out status (`validated` = held-out MAE vs
+trailing-average baselines only). `governance` carries `production_approval: owner_override`,
+`espn_superiority_established: false`, `start_sit_ready: false`, `is_fallback` and `production_evidence`.
+
+Start/Sit and Matchup rerun the same lineup optimizer on these numbers (Matchup computes both teams' lineups on the fly instead of reading
+`team_week_lineup_projections`). Availability warnings still quote ESPN's number, because they say
+so by name. Trades, waivers, team value and the playoff race stay on ESPN. The switch is a view, not evidence: the
+frozen `PROMOTION_CRITERIA` and the tracker still have to be met.
+
+**Player forward view (opt-in).** With "Ours", a player's page asks
+`GET /api/players/{id}/forward?source=independent`. The response is ESPN's forward view, unchanged and
+byte-identical to the default (`source=espn` or no `source`), plus an `ours` block. It is built by
+`app/analytics/forward_ours.py`, the only module besides Start/Sit and Matchup that imports
+`projection_source` (it applies the switch's own selection to every remaining regular-season week;
+`test_projection_switch_is_opt_in_and_limited_to_weekly_views` pins the importer set, and its entry point
+requires an explicit `source`):
+
+* `weeks`: one entry per remaining regular-season week with `value`, `origin` (`ours`, `ours_zero`, `espn`
+  for a week without an independent estimate, or `bye` from the NFL schedule), and the run's `run_id`,
+  `model_version`, `run_created_at`, `horizon` (NULL on a legacy run = 0) and `projected_from_week`; `experimental` is
+  true for horizon > 0;
+* `ros_projected_points`: the regular-season total ("Ours: regular season left"), with the same
+  complete-or-null rule as ESPN's. It counts `ifp-2.0.0` weeks only and is NULL unless every non-bye
+  remaining regular-season week is `ours` or `ours_zero` from that model. An ESPN-fallback week
+  (`fallback_weeks`, `missing_weeks`) or a week shown from the previous model (`other_model_weeks`) makes
+  it NULL, so a total never mixes models. A bye is not expected and adds nothing;
+* Selection per week is exactly `projection_source.select_run`'s: the production model first, else the labeled
+  previous model; within a model the newest run of ANY horizon (`created_at DESC NULLS LAST`) that
+  `production_forecasts.artifact_gate` accepts and whose stored rows pass `integrity_problem` (an edited,
+  lost or unsealed run is skipped). `artifact_verified` is true for a registered / pinned artifact and false when
+  approval could not be verified (fail open). `forward_ours` reuses `artifact_gate`, `integrity_problem`,
+  `horizon_of` and `horizon_note` and reads all weeks with one runs query and one rows query for the first
+  candidate of each week: 11 queries per request on clean data (4 are ESPN's), constant in the number of weeks,
+  plus one per extra candidate run that must be checked. Integrity needs all of a run's rows, so rows are not
+  filtered by player. A test pins the result equal to `projection_source.weekly()` per week (value, origin, run,
+  reason, skipped). `experimental` comes from the run's `horizon_note` (horizon > 0);
+* `model_versions` / `mixed_models` / `label`: the model versions actually shown, per-week
+  `model_version`, and a `reason` the UI prints as a notice (a previous-model week gets an "ifp-1" badge).
+* `available: false` with a `reason` when no remaining week has a stored run;
+* `label`: "Fantasy Intel projections (ifp-2.0.0); experimental beyond next week".
+
+The UI shows an "Ours" column next to ESPN's, an "Ours: regular season left" tile and a second line on the chart.
+ESPN-fallback weeks carry an ESPN tag and are gaps in the Ours line; weeks beyond the next one are marked
+"exp". The future-week runs are not produced by this change: they come from the rest-of-season learning
+cycle (Workstream R1, one immutable run per remaining target week). Until that cycle has run, only the
+upcoming week has a run, the other weeks fall back to ESPN, and the Ours total stays empty.
+
 ## Live runs and abstention
 
 Week-W rows (`coverage_status`): `projected`; `abstain_no_history`; `bye`;
@@ -353,14 +620,153 @@ P 0.05, expected 0.58 (conditional 10.77). Tyler Huntley (BAL): P 0.71, expected
 conditional -> 1.35 expected): ESPN's positive projections behave more like "if he plays". None
 of this is an accuracy claim; no week-6 game is final.
 
+### Storage: immutable, run-keyed production forecasts (schema v8)
+
+Before v8, `independent_player_projections` had `PRIMARY KEY (season, week, espn_player_id)` and the
+writer replaced the whole week, so a second `project --week N` deleted the first run's player rows
+while its `independent_projection_runs` row survived: earlier forecasts were unrecoverable and a run id
+could be counted as evidence with no rows behind it. v8 fixes this with append-only storage:
+
+| Table | Key | Role |
+|---|---|---|
+| `independent_projection_runs` | `run_id` | run metadata, written once, plus `artifact_id`, `content_sha256`, `row_count`, `migrated_from_legacy`, `forecast_horizon`, `projected_from_week` (NULL = horizon 0) |
+| `independent_projection_rows` | `(run_id, espn_player_id)` | every column of the legacy table plus `kickoff` (the player's own team kickoff, naive UTC, from `nfl_schedules`) and `pregame` (`run created_at < kickoff`; unknown kickoff = false) |
+| `independent_player_projections` | `(season, week, espn_player_id)` | LEGACY. Never written, dropped or modified by v8; read only as a fallback and as the backfill source |
+
+* **Write-once.** `independent_projection_store.write_run` never deletes or updates a committed run or
+  its rows. A run id that exists with different content raises `ImmutableRunError`. The rows written are
+  read back inside the same transaction and must reproduce the digest or nothing is committed.
+* **Provenance.** `artifact_id` is the sha256 of the artifact **file bytes** that `project` loaded (the
+  digest `model_registry.json` pins, so a later consumer can compare them; callers without a file get a
+  `dict:`-prefixed digest of the canonical artifact JSON that can never collide with it). `content_sha256`
+  is the sha256 of the canonicalised run meta (season, week, model/scoring/artifact ids, artifact time,
+  data cutoff, model status and evaluation, participation fields) plus all rows (every legacy column;
+  sorted by player; JSON columns parsed and key-sorted; floats and ints normalised). It excludes `run_id`,
+  `created_at`, `nfl_synced_at` (operational stamps) and `kickoff`/`pregame` (annotations derived from the
+  schedule). `row_count` is the number of rows stored. The hash detects loss and
+  corruption of rows; it does not prove authenticity, because `created_at` and `kickoff` are outside it
+  and anyone with write access to the database can rewrite a run and recompute its hash.
+* **Idempotent retry.** A write whose `content_sha256` equals the NEWEST existing run of the same `(season,
+  week, model_version, scoring_fingerprint, artifact_id)` returns that run's id and writes nothing (a
+  revert to an older run's content, A then B then A, is a new run so the newest computation stays newest). Different
+  content (a source correction, a late injury report, a new artifact file) creates a NEW run; the old
+  rows stay byte-identical and both are queryable.
+* **Pregame, per player.** `production_forecasts.pregame_forecasts(con, season, weeks, *, model_version,
+  scoring_fingerprint)` returns `(rows, exclusions)`: per `(week, espn_player_id)` the row of the latest
+  eligible run created strictly before that player's own kickoff (a Thursday player can keep Wednesday's
+  run while Sunday players use Saturday's). The kickoff is the earlier of the stored one and the current
+  schedule's (a flexed game can only make a row less eligible); an unknown kickoff is never pregame.
+  Eligible run = model and scoring match, artifact fitted before the week's first kickoff, integrity
+  verified. Exclusions are `{run_id, week, reason}` and the tracker shows them: model/scoring mismatch,
+  artifact fitted after the first kickoff or unknown time, `forecast rows missing` (`row_count` NULL/0, or
+  a run whose rows the old overwrite destroyed), `integrity` (row count differs, no content hash, hash
+  mismatch), `post-kickoff` (no row was made before its player's kickoff). The module is SQL + stdlib so
+  the hosted API imports it.
+* **Readers.** Every reader applies `production_forecasts.integrity_problem` (row count AND content hash).
+  The consumer views (`projection_source`, `GET /api/projections/independent`) show the run
+  `projection_source.select_run` picks (integrity plus approved artifact, see "Projection switch") and
+  keep their ESPN default and origin labels. If `independent_projection_rows` does not exist (an old DB,
+  or a hosted copy published before the migration) the consumer views **fail closed** (nothing shown,
+  with the reason); only the research tracker's ESPN evidence still reads the legacy table, with
+  run-level eligibility only (no per-player kickoff check).
+* **Migration (`SCHEMA_VERSION` 8, create-only).** `init_db` adds the new table and the four run columns
+  (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`), then `production_forecasts.migrate_legacy` copies every
+  legacy row whose run exists into the new table under its original `run_id` (`ON CONFLICT DO NOTHING`),
+  computes `kickoff`/`pregame` where `nfl_schedules` allows, sets `row_count` and `migrated_from_legacy =
+  TRUE` and, when rows exist, seals the run with a `content_sha256` (its `artifact_id` stays NULL: the file
+  was not recorded). A run whose rows were destroyed keeps `row_count = 0`, no hash, and is excluded with
+  `forecast rows missing`. Legacy rows whose run row is missing are not invented; they are counted in
+  `schema_meta['projection_rows_backfill']` (`orphan_legacy_rows`, `orphan_legacy_run_ids`,
+  `runs_without_rows`). The pass is idempotent. The two tables must never be added to a `_REBUILD`
+  entry in `db/connection.py`: that list DROPS tables (a v6 database gets its participation columns by `ALTER` and keeps its runs and legacy rows).
+* **Publish.** `db/publish.py` replaces each hosted table with `CREATE OR REPLACE TABLE ... AS SELECT *` from
+  the local file (read-only attach) in one transaction, so the new tables are copied as they are and
+  publishing never writes the local history. The local file stays the system of record: publishing a local
+  DB that lacks a run removes it from the hosted copy, so never publish from a restored older file.
+  (`tests/test_production_forecasts.py::test_publish_copies_the_run_tables_as_is_and_cannot_touch_local_history`.)
+
+## Rest-of-season projections (experimental beyond horizon 0)
+
+The production model (`ifp-2.0.0`) projects **every remaining regular-season week**, not only the upcoming one, and
+re-projects them after each completed week, so one breakout or dud game moves every future week (as ESPN's does).
+
+**Definitions.** `W` is the first regular-season week whose first kickoff is still ahead (`learning_cycle.pick_target`).
+For a target week `T` in `W..last REG week`, the **forecast horizon** is `h = T - W` (0 = the normal pregame forecast).
+Each run records `forecast_horizon` and `projected_from_week` (= `W`) in `independent_projection_runs`
+(`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`; NULL on a run stored earlier means horizon 0; the tables are never in a
+`_REBUILD` entry). Both are in `HASHED_META`, but only a run with `h > 0` contributes them to its `content_sha256`, so
+every horizon-0 run keeps the digest it was sealed with and an unchanged rerun stays a no-op across the upgrade.
+
+**Horizon guard.** A run's cutoff week must be the next unplayed week (the week after the latest week with any final
+game): `build_live` raises `HorizonError` for a horizon-0 run of a later week, because ESPN status, the ESPN designation
+fallback and the latest roster row describe the earlier game (a stored ifp-1 week-7 run made while week 6 was unplayed
+carried a week-6 DOUBTFUL into week 7). Project such a week with `projected_from_week`. Measured weakness of the
+undesignated future-week p_play for players injured at the cutoff: `docs/research/injury_workload_handoff.md` section 6.
+
+**Method.** One cycle trains once (week `W`'s artifact; nothing is trained per future week, which readiness would refuse)
+and `project` then writes one run per target week `W..last` from that same artifact
+(`backtest_independent_projections.py project --week W --through-week L`; a single later week is
+`project --week T --artifact-week W`). `weekly_learning.latest_artifact(..., artifact_week=W)` loads `W`'s artifact and
+checks its data cutoff against both `W` and `T`. The approved-artifact gate (`production_forecasts.artifact_gate`) accepts
+`W`'s registered artifact for every `T` after its cutoff, so the later runs verify like the horizon-0 run.
+
+For `h >= 1` the features are **as of now, against the future opponent**: player, usage and recency features are computed
+with feature week `W` (`weeks_since_last` and every recency feature stay in the training distribution), while the
+opponent, home/away and bye come from `T`'s schedule, and the opponent's defensive context is the opponent's through the
+latest completed week. A breakout or dud in the latest game therefore moves the projection of every future week the
+same direction (`tests/test_ros_projections.py`).
+
+**Availability for `h >= 1`.**
+
+| Signal | Horizon 0 | Horizon >= 1 |
+|---|---|---|
+| NFL reserve designation (`player_availability.derive`) | `unavailable_weeks` for `W` | `unavailable_weeks` for each `T` separately; a reserve-list player (roster status RES/PUP/NFI, reserve rule code, so an earliest eligible week is derivable) is withheld before that week and projected from it ("returns from reserve (eligible week N)"), also when ESPN lists `INJURY_RESERVE` |
+| ESPN `INJURY_RESERVE` / `SUSPENSION` | withheld | withheld for every remaining week, "long-term unavailable; return date unknown" (unless a return week is derivable, see above) |
+| Weekly roster status not ACT/INA | withheld | withheld for every remaining week, same note (a reserve list with no derivable return, exempt, suspended, practice squad, released) |
+| ESPN `OUT` | withheld | ignored (flag: "describes the next game only") |
+| ESPN `DOUBTFUL` / `QUESTIONABLE` | flag, assumed to play | ignored (same flag) |
+| ESPN-status designation fallback for the participation model | used where nflverse has no report | never used |
+| Participation (`p_play`) | week-`W` injury report | no week-`T` report exists: undesignated `p_play` (the week-`W` report is not reused for `T`) |
+
+Rows of a future week carry the flags "future week: no injury report yet" and "rest-of-season forecast (horizon k):
+experimental, not validated beyond the next week"; participation rows carry the same "future week" note. A bye in `T` is a
+`bye` row, as today. A failure on one future week is listed under `projection.rest_of_season` and in `warnings` of the
+cycle report and does not stop the other weeks or change the cycle status (`--no-rest-of-season` skips all of it).
+
+Roster, fantasy-IR and participation-population state are read as of the cutoff week `W`, never later, so replaying a
+past `W` with `--through-week` sees no state posted since. The ESPN "next game only" flags are stored on the rows but
+left out of a horizon-k run's `content_sha256`, so an ESPN status flip does not store a new copy of every future week.
+
+**Evidence stays horizon 0.** `pregame_forecasts`, `eligible_run_ids`, the ESPN benchmark, the start/sit evaluation and the
+promotion tracker and the prospective evidence audit (`scripts/evidence_audit.py`) only ever use `coalesce(forecast_horizon, 0) = 0` runs. A horizon-k run is excluded with the reason
+"rest-of-season forecast (horizon k), not evidence", **even when the week's horizon-0 run is missing**: a missed pregame run
+is never replaced by an earlier, less informed forecast. `promotion_tracker.latest_run` likewise never reports a
+future-week run as the latest. The **consumer** selection is the opposite by design: `production_forecasts.latest_run`
+(used by the projection switch and `GET /api/projections/independent`) returns the newest run of **any** horizon for the
+requested week that passes the artifact rule and `integrity_problem` (`verified_runs`; a horizon-k run's digest leaves the
+ESPN next-game-only flags out, and the integrity check recomputes that same digest), so a later, better-informed run is never hidden behind an older one; it carries `horizon` and
+`horizon_note` ("rest-of-season forecast (horizon k): experimental, not validated beyond the next week"), and the API run
+block exposes `forecast_horizon`, `projected_from_week` and `experimental_note`.
+
+**Only horizon 0 is validated.** The held-out evaluation, promotion criteria and ESPN comparison measure the next-week
+forecast. The same model has not been evaluated beyond that: a longer horizon adds schedule and role change the features
+do not see (the opponent is the only thing that moves), no injury report, and the week-`W` information gets older. Treat
+horizon >= 1 as experimental until a horizon-by-horizon held-out study exists.
+
 ## API contract (`independent-projections/v2`)
 
 v2 = v1 plus `independent.expected_points`, `independent.participation`,
 `comparison.expected_minus_espn`, `comparison.expected_comparable` and `run.participation`
-(additive; v1 fields keep their meaning).
+(additive). Governance additions (additive): top-level `governance` (`projection_source.governance`),
+`run.is_fallback`, `run.fallback_reason`, `run.skipped_runs`, `run.artifact_model_status` (the status
+frozen in the run at training time) and `independent.pregame` (row made before the player's own kickoff).
+`model_status` (top level and per player) is now the status consumers may state: `owner_override` for
+every `ifp-2.0.0` position, with `start_sit_ready: false`; the run shown is the one the projection
+switch shows (`select_run`), never the newest run of any model.
 
 `GET /api/projections/independent?week=7[&position=WR][&team_id=3]` (default week: league
-`current_week`). 200 with `available: false` when no run exists; 422 for a bad position.
+`current_week`). 200 with `available: false` (and `unavailable_reason`) when no run qualifies; 422 for
+a bad position. Example (an `ifp-1.0.0` fallback week):
 
 ```json
 {
@@ -371,11 +777,17 @@ v2 = v1 plus `independent.expected_points`, `independent.participation`,
           "created_at": "...", "scoring_fingerprint": "e165b59686110c7d",
           "feature_cutoff": {"data_through_season": 2026, "data_through_week": 6,
                              "rule": "only NFL games completed before the target week"},
+          "is_fallback": true, "fallback_reason": "No eligible ifp-2.0.0 run for week 7; ...",
+          "skipped_runs": [], "artifact_id": "a1fe1bc3...", "content_sha256": "...",
+          "artifact_model_status": {"WR": {"status": "experimental", "...": "..."}},
           "nfl_synced_at": "...", "heldout_evaluation": {"...": "aggregates"},
           "participation": {"model_version": "ipm-1.0.0", "status": {"WR": {"participation": "validated",
                             "expected_points": "validated", "reasons": []}}, "heldout_evaluation": {"...": "aggregates"}}},
+  "governance": {"production_version": "ifp-2.0.0", "served_version": "ifp-1.0.0", "is_fallback": true,
+                 "production_approval": "owner_override", "espn_superiority_established": false,
+                 "start_sit_ready": false, "production_evidence": "Historical research only ...", "...": "..."},
   "model_status": {"WR": {"status": "experimental", "validated_for": null, "start_sit_ready": false,
-                          "intervals_published": true, "reasons": ["relative MAE improvement 0.0276 < 0.03", "..."]}},
+                          "reasons": ["relative MAE improvement 0.0276 < 0.03", "..."]}},
   "players": [{
     "espn_player_id": 1001, "gsis_id": "00-0000001", "name": "Example WR", "position": "WR",
     "nfl_team": "AAA", "opponent": "BBB", "is_home": true, "fantasy_team_id": 3, "injury_status": "ACTIVE",
@@ -386,7 +798,7 @@ v2 = v1 plus `independent.expected_points`, `independent.participation`,
       "latest_usage": {"season": 2026, "week": 6}, "missing_inputs": [], "flags": [],
       "explanation": [{"feature": "target_share", "value": 0.27, "training_mean": 0.119,
                        "contribution": 1.9, "text": "target share: 0.270 (training average 0.119)"}],
-      "is_espn_fallback": false,
+      "is_espn_fallback": false, "pregame": true,
       "expected_points": 10.9,
       "participation": {"p_play": 0.956, "model_version": "ipm-1.0.0", "model_status": "validated",
                         "expected_points_status": "validated", "depth_rank": 1,
@@ -411,6 +823,456 @@ numbers and is available whenever both exist; check `participation.model_status`
 contributions (points relative to the training-average player) plus data-quality flags; it never
 explains ESPN's number. Players are ordered by independent projection (nulls last), then id.
 
+## Weekly learning and the ifp-2 challenger (research, shadow)
+
+Full evidence, tables and examples: `docs/research/ifp2_weekly_learning_report.md`.
+
+### What the champion did with completed weeks
+
+`ifp-1.0.0` learned from a finished week only when someone ran `fit`, which retrains the frozen
+selection on every completed week and **overwrites** `independent_projections_ifp-1.0.0.json`.
+There was no completeness gate (an unfinished Monday game was simply absent), no record of which
+artifact produced a stored forecast beyond `artifact_created_at`, and `project` replaces the week's
+rows, so a rerun after kickoff erased the pregame forecast. The weekly pipeline below fixes this
+without touching `fit`, `project` or the live tables.
+
+### Weekly cycle (`scripts/weekly_learning.py`, from `backend/`)
+
+| When (US Eastern) | Command | What it does |
+|---|---|---|
+| Tue/Wed, after Monday night is final and nflverse has published | `uv run python ../scripts/sync_nfl.py` | Existing nflverse sync (box scores, snaps, xFP, injuries, rosters) |
+| same | `uv run python ../scripts/weekly_learning.py sync-exits` | Play-by-play in-game injury evidence for the season's final weeks (`<out>/pbp_exits/<season>.parquet`) |
+| same | `... status --week W` | Read-only readiness: every REG game before W final; box scores and snaps for every team that played; nflverse expected points for >= 50% of appearances; W has not kicked off |
+| Wed, before Thursday's kickoff | `... train --week W` | Champion = `ifp-1.0.0` frozen selection refit (bit-identical to `fit`); challenger = frozen `ifp-2.0.0` config; both on FINAL weeks < W |
+| Wed-Sun, before kickoff (rerun after late injury news is fine) | `... predict --week W` | Frozen pregame forecasts for every ACT/INA roster player on a team playing in W: champion, challenger, trailing baselines, P(appears) |
+| any time | `... evaluate` | Prospective accuracy of frozen pregame forecasts whose own games are final and synced; only fully final weeks count toward `SHADOW_PROMOTION_CRITERIA` (see "Prospective evaluation: outcome finality") |
+| | `... cycle --week W` | `sync-exits`, `status`, `train`, `predict`, `evaluate` in order; stops at the first refusal |
+
+One-time history: `... sync-exits --history-seasons 2019-2025`. Defaults: `--out data/models/weekly`
+(`WEEKLY_MODEL_DIR`, git-ignored), production files read from `--ifp-dir data/models` (read-only).
+Exit code 3 and `NOT READY: ...` on any refusal.
+
+Safety rules (each is tested in `tests/test_weekly_learning.py`):
+
+* A week enters training only when **every** game of it is final; a partly final week is excluded
+  whole. Training rows have `(season, week) < W` (asserted) and features from earlier games only.
+* `train`/`predict` refuse after week W's first kickoff unless `--retrospective`; retrospective
+  artifacts and runs are labeled, get no P(appears) (the participation artifact was fitted later),
+  and are reported separately as "not evidence".
+* Artifacts are content-addressed: `artifacts/<version>/s<season>w<week>-<sha>.json`, written once.
+  Retraining on identical inputs reproduces the same id; changed inputs add a new file. Provenance:
+  target week, data cutoff, latest included week, training seasons, rows per position, data hash,
+  configuration hash, scoring fingerprint, play-by-play coverage, retrospective flag.
+* A ledger run (`ledger/s<season>w<week>/<run_id>.json`) is never overwritten. An identical rerun is
+  a no-op; a changed input (e.g. a Saturday injury report) adds a run. Evaluation uses, per player,
+  the latest run created **before his own kickoff** by artifacts whose data cutoff precedes W.
+* Scoring fingerprint, artifact schema and data cutoff are checked before every prediction.
+* Nothing in `app/` imports the pipeline or the challenger (tested). Weekly retraining never
+  re-tunes: penalties, features and interval bands come from committed configuration.
+
+The participation model is not retrained weekly here (`participation-fit` is unchanged); its
+`expected_points` are recorded as is.
+
+### Automated weekly cycle (`scripts/learning_cycle.py`)
+
+**Where it runs.** The cycle needs the writable `data/fantasy.duckdb`, `data/nfl_history.duckdb`
+and the git-ignored `data/models/` (production `ifp-1.0.0` files; weekly artifacts, ledger and
+reports in `data/models/weekly/`). They exist only on the laptop that runs the syncs. MotherDuck
+holds a read-only published copy of the live database (no history database, no model files) and
+Vercel serves the API from it; GitHub Actions has neither. So the cycle is a second per-user launchd
+agent on that Mac (`scripts/launchd/com.fantasy-intel.weekly-learning.plist`, Tue/Wed/Thu 07:00
+Pacific), separate from `com.fantasy-intel.refresh` (ESPN snapshots, analytics, MotherDuck), which
+is unchanged and still owns the pregame ESPN snapshots. Moving the cycle to the cloud would need the
+history database and model directory in persistent hosted storage: new infrastructure, not done here.
+
+**One cycle** (`learning_cycle.py run`; every stage reuses a `weekly_learning.py` command):
+
+| Stage | What | Stops the cycle when |
+|---|---|---|
+| preflight | live DB, history DB, production `selection.json` / `heldout_report.json`, writable `--out`; refuses hosted mode (`MOTHERDUCK_DATABASE`) | anything missing (exit 5, with the action to take) |
+| lock | `<out>/locks/cycle.lock` (pid, host, start); a dead or > 6 h old lock is taken over | another cycle is running (exit 4) |
+| sync_nfl, sync_exits | existing `sync_nfl.py` (output to `<out>/logs/`) and `weekly_learning.py sync-exits` (`--skip-sync` skips both) | a sync fails (exit 1) |
+| target week | first REG week whose first kickoff (nflverse gameday + gametime, US Eastern, stored in UTC) is after now | no week left (exit 0) |
+| readiness | `weekly_learning.readiness`: every earlier game final, box scores / snaps / expected points synced, target not kicked off | data not ready (exit 3: retry before the reported kickoff) |
+| evaluate | `weekly_learning.py evaluate` (finality-aware, PRs above) | an error (exit 1) |
+| train | refit champion and challenger with frozen configuration, unless the **training fingerprint** (every training row, label and feature; challenger config hash; production selection and report bytes; scoring fingerprint; versions; target) matches the previous cycle's: then the same artifacts are reused. `--force-retrain` always refits | not pregame any more, or an error |
+| predict | `weekly_learning.py predict` with the exact artifacts of the train stage (not "latest"), pregame only | the target kicked off meanwhile (exit 3) |
+| project | `backtest_independent_projections.py project --week W --through-week L`: the target week's run, then a run for every later regular-season week from the same week-W artifact (see "Rest-of-season projections"); an unchanged run is a no-op; a later week that fails is listed in the report and does not stop the rest | the target week's own run fails |
+
+A stage failure stops every later stage. Reports: `<out>/reports/cycle-<stamp>-<pid>.json`
+(write-once) and `<out>/status/latest-cycle.json`: status (`forecast_frozen`, `up_to_date`,
+`waiting_for_data`, `failed`, `locked`, `config_error`, `no_upcoming_week`), season, target week and
+its first kickoff (UTC and Eastern), stages with timings, `nfl_synced_at` (last successful nflverse
+sync), latest final week, readiness warnings, previous-week finality, last included training week,
+artifact ids and whether they were created or reused, frozen projection counts, evaluation
+progress (prospective weeks, readiness per position), the target week's pregame ESPN snapshot
+status (read-only), the missed window, errors and required actions. Sync output goes to the log
+file only; no environment variable, token or cookie is written anywhere.
+
+**Kickoff safety.** Training and prediction are refused once the target week has kicked off (checked
+again at predict time). A week whose first kickoff passes without any frozen pregame row is
+recorded write-once in `<out>/missed/s<season>w<week>.json`; nothing is backdated and no
+retrospective replay is substituted (a manual `--retrospective` replay is still possible and is
+never pregame evidence).
+
+**Idempotence and restarts.** Artifacts are content-addressed and ledger runs dedupe on their inputs
+hash, so a repeated cycle changes nothing and reports `up_to_date`. Artifacts, ledger runs and missed
+records are written to a temporary file and hard-linked into place, so an interrupted write never
+leaves a partial file; a truncated file from an older version is reported (`NotReady`) and never
+overwritten. A changed input before kickoff (a stat correction, a late injury report) produces a new
+artifact and a new ledger run; every original stays byte-identical.
+
+**Limitations.** A Mac that is shut down skips the attempt (asleep: it runs on wake); three attempts
+Tue-Thu morning cover most delays, but if nflverse publishes after the Thursday attempt and before a
+Thursday-night kickoff, run `learning_cycle.py run` by hand. If the refresh and the cycle start
+together, the cycle's sync fails on DuckDB's write lock and the next attempt retries. The
+participation artifact is not retrained (unchanged); the challenger stays shadow-only.
+
+### Pregame source provenance (`app/analytics/source_provenance.py`)
+
+**Audit: what could be silently rewritten.**
+
+| Source | Storage | Rewritten by later refreshes? |
+|---|---|---|
+| nflverse injury reports (`nfl_injuries`) | live DB, season partition | **Yes**: every `sync_nfl.py` replaces the season. `load_injuries` drops rows with `date_modified` at or after kickoff, but rows without `date_modified` (many 2025-2026 rows) cannot be filtered by time |
+| nflverse weekly rosters, schedules, box scores, snaps, expected points | live DB, season partitions | **Yes**, replaced on every sync (stat corrections, flexed kickoffs, roster status changes) |
+| Play-by-play injury evidence (`pbp_exits/<season>.parquet`) | weekly model dir | **Yes**, rewritten by `sync-exits` |
+| nflverse depth charts (`nfl_depth_charts`) | live DB | Yes, but no forecast reads it (participation ranks depth from snaps) |
+| ESPN status fallback (`fantasy_players.injury_status`) | live DB | **Yes**, every ESPN sync |
+| ESPN projection snapshots (`espn_projection_history`) | live DB, one row per player, week and **local date** | A same-day sync replaced that day's row, including one captured before kickoff by a sync after it. **Fixed**: such a row is now locked (below) |
+| Model artifacts, ledger runs | weekly model dir | No: content-addressed / write-once (earlier sections) |
+| Production runs (`independent_projection_runs` / `independent_projection_rows`) | live DB | No since schema v8: append-only, content-hashed (Storage, above); before v8 `project` replaced the week's rows |
+
+No historical leakage is claimed: forecasts were made pregame from the tables as they were then.
+The problem was reconstruction: a past forecast's inputs could only be re-read from tables that had
+since been replaced.
+
+**What is captured.** Every `weekly_learning.py predict` (and so every learning cycle) snapshots the
+exact `Sources` frames the forecast reads (box-score panel, schedule, defense, weekly rosters,
+injury reports, play-by-play exits) for the target season and the previous one, which is every
+season the feature pipeline reads (a test rebuilds a forecast from these two seasons against a
+database holding three). When the ESPN-status fallback supplied a team's designations, the week's
+designations as P(appears) used them are captured too (gsis id, team, status; no ESPN ids, cookies
+or raw payloads). Each part is a parquet file named by the sha256 of its content
+(`<out>/snapshots/<family>/s<season>/<sha>.parquet`), so an unchanged season (e.g. the previous one)
+is stored once. A write-once manifest per capture
+(`<out>/snapshots/manifests/s<season>w<week>/<id>.json`) lists the parts, and the ledger run stores
+the manifest id and part hashes as part of its inputs (a changed source gives a new run). If the
+snapshot cannot be written, no forecast is frozen. `weekly_learning.rebuild_run` recomputes a run
+from its snapshots and artifacts only and must reproduce its rows and inputs hash.
+
+**Timestamps.** Event = the NFL week and the team's kickoff. Published = nflverse `date_modified`
+per injury row, when present; its coverage per season (and the count of rows without a player id)
+is recorded as `available`, `partial` or `missing` and never imputed. Retrieved = an upper bound on
+the download time: the finish of the nflverse sync that wrote the live season (`sync_runs`), the
+play-by-play file's write time, or null (history seasons). Captured = the forecast's creation time.
+Used = the ledger run's `created_at`. `known_by` = retrieved if known, else captured. For a team's
+injury rows, `known_by` prefers the verified per-team retrieval time recorded in the manifest's
+`injury_retrievals` field (below), never later than `captured_at`.
+
+**Per-team injury retrievals.** New manifests add `injury_retrievals` (schema `injury-retrievals/v1`):
+per team the latest verified entry of the append-only `injury_retrievals` log (source, retrieved_at,
+provider_published_at, content_sha, retrieval_id) written by the latest successful nfl sync (the one that
+wrote the captured table), only if retrieved strictly before both the capture and that team's kickoff.
+A team with no qualifying entry (log write failed, backdated capture, sync after the capture) has none,
+and nothing is guessed. The first capture after deployment gets a new manifest id and so one extra
+frozen run. Manifests
+made before the field existed load and reconstruct unchanged, and an existing manifest is never
+rewritten. Readiness and the cycle report also list injury-freshness warnings (missing, stale or
+post-kickoff-only evidence, ESPN fallback adding no designations, or "injury retrieval log
+unavailable"); they are informational and never block or change a forecast. See
+`docs/injury_freshness.md` section 5.
+
+**Point-in-time reads.** `source_provenance.injuries_as_of(season, week, kickoffs)` returns, per team,
+the week's injury rows from the latest snapshot known strictly before **that team's** kickoff,
+reading snapshots only. An update received after kickoff never reaches that team; a team with no
+snapshot before its kickoff gets no rows (listed in `no_pregame_snapshot`), never today's table.
+
+**Corrections.** A corrected source (a stat correction, a re-issued injury report) is a new part and a
+new manifest; earlier parts, manifests, artifacts and ledger runs stay byte-identical, and every
+earlier forecast still rebuilds exactly. Unreadable or hash-mismatched snapshots raise
+`ProvenanceError`; nothing falls back to the current database.
+
+**Injury evidence quality.** Each ledger row carries `injury_evidence` for the player's last game
+before the forecast, from the forecast's own game classification (descriptive, not a model input):
+`pbp_injury_mention` (play-by-play says he was injured in that game), `injury_report_listing` (snap
+drop plus a new report listing after it, with the report's publication-time status),
+`snap_drop_without_injury_evidence` (role cut, rest, game script or an unreported injury: never
+called an injury), `no_snap_drop` or `unknown`, plus whether play-by-play covered that week.
+
+**ESPN pregame benchmark.** `sync_espn.py` keeps one history row per player, week and day. A row
+captured before the player's team kicked off is now locked once that kickoff has passed: a later
+same-day sync neither deletes nor overwrites it (`espn.sync.pregame_history_locked`). Players whose
+game has not started are replaced as before; with an unknown team or kickoff nothing is locked.
+
+**Retention and deployment.** Snapshots live in the git-ignored weekly model directory on the machine
+that runs the cycle; they survive process restarts and database rebuilds (separate files), are not
+published to MotherDuck, and are lost with that disk, so include `data/models/` in backups. Size:
+two seasons of frames per new capture, a few MB at most, deduplicated by content; never delete a part
+a manifest references.
+
+**What remains unrecoverable.** Forecasts made before this capture existed have no snapshot and
+`rebuild_run` refuses them. Seasons synced before now carry only today's version of their injury
+reports, rosters and stats: their original publication or retrieval times cannot be recovered, and
+`date_modified` is missing for many 2025-2026 injury rows. Retrospective replays of past weeks therefore
+use present-day tables and stay labeled retrospective. Sources that should adopt the same snapshot
+store next: the ESPN projection snapshots themselves (today a DB table), nflverse depth charts if a
+model starts reading them, and any future injury or news feed.
+
+### Prospective evaluation: outcome finality
+
+`evaluate` labels every frozen forecast row with an explicit outcome status
+(`weekly_learning.label_outcomes`). Finality is decided **per player's own game**, never per week:
+a final Thursday or Sunday game says nothing about a Monday game. nflverse schedules have no
+game-status field and do not say whether a score can be live, so a game is **presumed final** only
+under the rule `schedule_intelligence` already uses: both scores present AND the schedule fetched at
+least 8 h after kickoff (after a 1 h download margin), the fetch time being the start of the latest
+successful nflverse sync that wrote the season's schedule (`sync_runs`). An unknown fetch time never
+presumes a game final. The same rule gates training readiness (`weekly_learning.game_presumed_final`).
+
+| Status | Rule | Conditional | Unconditional |
+|---|---|---|---|
+| `appeared` | his team's game is presumed final, the team's box scores AND snap counts for the week are synced, and he has a panel row (box score or offensive snaps > 0) | league points | league points |
+| `confirmed_absent` | same finality and completeness, no panel row (inactive, healthy scratch, did not play) | excluded | **0** |
+| `pending_game` | his team's game is not presumed final (no score, or a score that may be live) | excluded | excluded |
+| `missing_ingestion` | game final but the team's box scores or snaps are not synced yet, or the game the forecast saw (row kickoff) is missing from the current schedule | excluded | excluded |
+| `bye` | no game for his team, neither when the forecast was made nor now | excluded | excluded |
+| `unresolved_identity` | no `gsis_id`, an id on no roster or box score of the season, or his week box score / roster row is for a different team than the forecast | excluded | excluded |
+
+Only `appeared` and `confirmed_absent` carry a label; every other status has a null label, so an
+unfinished, unsynced or unmatched player can never become a zero-point outcome (asserted).
+
+A week is **prospective evidence** only when it is fully final: every scheduled game is presumed
+final, every scheduled team's box scores and snaps are synced, and every game the frozen forecasts saw
+is still in the schedule (an incomplete schedule download never turns teams into byes). `weeks`, the per-position
+metrics, the bootstrap CI, pair decisions and `shadow_status` use fully final weeks only, so a
+partly final week counts as **zero** prospective weeks toward `SHADOW_PROMOTION_CRITERIA`.
+Resolved players of partly final weeks are reported separately under `preliminary` (marked
+PRELIMINARY, no bootstrap, never read by `shadow_status`). The report also carries `finality` per
+week (scheduled / final / complete teams, pending and missing-ingestion teams) and `outcomes`
+(status counts for evidence and not-yet-evidence rows). Rerunning `evaluate` after the last game
+is final and synced turns the week into evidence; the ledger is never rewritten.
+
+### Game classification and healthy-game usage (all point-in-time)
+
+Every pre-cutoff game is classified for a forecast of week W (`forecast_features.classify_games`):
+
+| Class | Rule (snap drop = snap share >= 15 points below the mean of the player's previous <= 4 games) |
+|---|---|
+| `injury_exit` | snap drop AND (play-by-play says he was injured in that game, OR a NEW injury listing appears within 2 weeks, using reports up to W's pregame report only) |
+| `blowout_low` | snap drop, no injury evidence, final margin >= 17 |
+| `listed_low` | snap drop, listed after it but also on that week's own report (chronic listing; ambiguous) |
+| `role_low` | snap drop with no injury evidence (possible role cut, coaching decision, rest, or an unreported injury; ambiguous) |
+| `full` / `unknown` | no snap drop / no snap share or reference |
+
+Low fantasy points never mark an injury. Play-by-play evidence (`app/nfl/pbp_exits.py`) comes from
+"<TEAM>-<jersey>-<name> was injured during the play" in nflverse play descriptions, mapped with that
+week's roster (team + jersey) and confirmed by surname; unconfirmed mentions are dropped.
+
+Measured on 2020-2026 week 5 (`challenger_research.py exits-audit`): 1,283 `injury_exit` games (435
+with a play-by-play mention, 848 report-only). The ifp-1.0.0-era `injury_exit_last` label agrees on
+862 of its 1,265 forecast rows; only ~20% of its labeled exits have a play-by-play injury mention.
+A play-by-play mention alone does not mean an exit (median snap share 85% of normal). Next
+appearance after each class (players with reference snap share >= 40%, median opportunities vs the
+pre-game reference): RB 0.86 after a play-by-play exit vs 0.58 after `role_low`; WR 0.83 vs 0.52;
+only ~25% of play-by-play exits appear the following week.
+
+Challenger inputs (all from games before W; `FEATURE_DOCS` has exact definitions):
+
+* `h_*`: usage over the last <= 5 games that were not injury exits; `inj_exits_recent`,
+  `last_injury_exit`, `last_role_low`, `last_blowout_low`.
+* `prev_*`: previous-season usage over healthy games (`prev_xfpl_pg` shrunk 2 games toward the
+  position mean); `prev_team_changed`.
+* `xfpl_eb` (established workload): this season's healthy-game expected league points per game shrunk
+  toward `prev_xfpl_pg` by k = 3 games (toward the position mean with no previous season). The weight
+  on the current season is n / (n + 3) after n healthy games: 25% after 1, 50% after 3, 77% after 10.
+  On development, k in {~0, 1, 3, 6, 10} were indistinguishable (pooled MAE 4.208-4.211); k = 3 is the
+  pre-set default.
+* Expected league points (`xfpl*`): nflverse expected counts x this league's weights, split into
+  touchdown and non-touchdown parts. For this league (full PPR, 4-point passing TD) it is nearly
+  identical to nflverse xFP (correlation 0.999998); it matters for other scoring formats.
+
+### Model selection (frozen before confirmation, commit `cc0845b`)
+
+Windows: development 2021-22 (all choices), confirmation 2023-24 (one run), exploratory 2025 + 2026
+weeks 1-5 (already inspected; never used to choose), prospective 2026 week 6 onward.
+
+| Candidate (development, pooled MAE; C = 4.215) | Result | Decision |
+|---|---|---|
+| Huber loss (c = 1.0 / 1.345 / 2.0) | 4.052 / 4.080 / 4.126, but bias +0.63 / +0.47 / +0.22 (C -0.23), RMSE worse, pair accuracy lower | rejected: lowers MAE by targeting the median, not a better expectation |
+| Touchdown/yardage efficiency split (X) | 4.211, after-TD-boom cohort worse | rejected |
+| Team volume / margin context (K) | 4.216 | rejected |
+| Healthy-usage averages added (U) or replacing raw usage (R) | 4.212 / 4.209; after-injury-exit cohort worse | rejected |
+| Previous-season usage (P, Q) | 4.216 / 4.212; team-change cohort -1.2% | Q kept |
+| Game-class flags (F) | 4.214; after-role-drop cohort -2.9% | kept |
+| Established workload blend (E) | 4.208 [-0.01, -0.00] | kept |
+| Recency half-life 18 / 36 / 72 weeks on C | 4.207 / 4.210 / 4.212 | 36 weeks kept with F+E+Q |
+| **F + E + Q, 36-week half-life (RB/WR/TE)** | **4.203 [-0.018, -0.004]**, RMSE 5.869 vs 5.878 | **frozen**; QB keeps C (no addition helped QB) |
+
+### Confirmation (2023-24, run once) and exploratory replay
+
+| Pos | n | A1 | A2 | B | C | ifp-2 | ifp-2 - C (95% CI) | RMSE C / ifp-2 | Bias C / ifp-2 |
+|---|---|---|---|---|---|---|---|---|---|
+| QB | 1,330 | 6.30 | 6.19 | 6.29 | 6.056 | 6.056 | 0 (same model) | 7.60 / 7.60 | +0.17 / +0.17 |
+| RB | 3,398 | 4.08 | 4.07 | 4.16 | 4.015 | 4.006 | -0.009 [-0.022, +0.004] | 5.67 / 5.68 | -0.06 / -0.02 |
+| WR | 5,409 | 4.39 | 4.29 | 4.36 | 4.237 | 4.211 | -0.026 [-0.038, -0.014] | 5.97 / 5.96 | -0.05 / +0.03 |
+| TE | 3,208 | 2.95 | 2.89 | 2.95 | 2.860 | 2.853 | -0.007 [-0.024, +0.009] | 4.23 / 4.23 | +0.08 / +0.09 |
+| All | 13,345 | 4.16 | 4.09 | 4.16 | 4.031 | 4.016 | -0.014 [-0.023, -0.007] | 5.72 / 5.72 | +0.00 / +0.05 |
+
+All `CONFIRMATION_RULES` passed -> status `shadow`. Start/Sit pairs 65.45% -> 65.57% (regret 2.505
+-> 2.495), close calls 60.38% -> 60.52%. Exploratory 2025-26 (n = 8,645, not a fresh test): pooled
+-0.018 [-0.028, -0.009], RB -0.030 [-0.049, -0.010], WR -0.020 [-0.034, -0.008].
+
+Where it helps and where it hurts (confirmation; exploratory agrees in direction):
+
+| Cohort | n | C | ifp-2 | Bias C / ifp-2 |
+|---|---|---|---|---|
+| After a role drop (`role_low`) | 1,016 | 3.29 | 3.18 | -0.61 / -0.29 |
+| Team changed | 2,957 | 3.70 | 3.62 | -0.32 / -0.09 |
+| Starters pool | 5,616 | 5.76 | 5.74 | +0.24 / +0.28 |
+| After an injury exit | 292 | 4.40 | 4.42 | +0.47 / +0.15 |
+| Repeated injury exits (>= 2 of last 5) | 179 | 3.75 | 3.77 | -0.28 / -0.46 |
+| After a touchdown boom | 303 | 6.15 | 6.10 | +1.03 / +1.04 |
+
+After injury exits the challenger removes most of C's under-projection but is no more accurate:
+returning players get ~85% of their previous opportunities and some exit again, so restoring the
+full established workload overshoots about as often as C undershoots. Exploratory: 4.41 -> 4.50.
+
+### Workload vs availability
+
+The data does not support a second probability model for "normal workload given he appears": an
+injury exit happens in ~2.7% of appearances and prior exits do not raise it (QB 2.8% -> 4.7%, RB 2.7%
+-> 3.6%, WR 3.3% -> 3.8%, TE 2.6% -> 2.8% after one recent exit; lower after two). The real
+availability risk after an exit is missing the next game, which `participation.py` already models
+(it sees `injury_exit_last` and the week-W report). The conditional estimate keeps
+`inj_exits_recent` as an input, so partial-game risk stays in the conditional mean rather than being
+assumed away.
+
+Follow-up research (`docs/research/adaptive_workload.md`, research only, rejected): an exposure-weighted
+established workload (an injury-shortened game counts as the fraction of a game the player was on the
+field) and an adaptive recent-vs-established blend (`ifp-aw-0.1.0`) were within +/-0.003 MAE of ifp-2
+on every window, so `xfpl_eb` stays as frozen. The blend helps persistent usage declines and hurts
+upward streaks, which regress; a decline-only variant would need a fresh, prospective pre-registration.
+
+### Intervals
+
+The challenger reuses the empirical tercile bands, built from development-window residuals (no
+multipliers). Coverage is flat across volatility terciles (e.g. WR 79-85%), so no volatility split
+was added. QB coverage 74.0% (confirmation) is outside 75-85%: QB intervals are withheld, as for C.
+The band's high end is the 90th-percentile outcome (the "ceiling").
+
+### Promotion
+
+`PROMOTION_CRITERIA` and the participation criteria are unchanged. The challenger additionally
+needs `challenger.SHADOW_PROMOTION_CRITERIA` on frozen pregame forecasts: >= 8 prospective weeks,
+>= 400 matched appearances per position, challenger - champion MAE CI entirely below 0, bias not
+worse by > 0.15, starters-pool MAE not worse, interval coverage 75-85%. Meeting it yields
+`eligible_for_review`, never a promotion; consumer-facing use also needs the existing
+`PROMOTION_CRITERIA` (>= 3% vs the best trailing baseline, ESPN rule) and your approval. The
+challenger is expected to fail the 3% bar: its confirmed gain is ~0.4%.
+
+**Fail-closed enforcement (`weekly_learning.shadow_status`).** Every condition is evaluated per
+position as `{name, observed, required, result, explanation}` with `result` in `pass`, `fail` or
+`insufficient_data`. Missing evidence is `insufficient_data`, **never a pass**. Thresholds come
+from `challenger.SHADOW_GATE`, which restates `SHADOW_PROMOTION_CRITERIA` (tested to agree; the
+pre-registered text is unchanged so challenger artifact ids are unchanged).
+
+| Criterion | Required | `insufficient_data` when | `fail` when |
+|---|---|---|---|
+| `frozen_pregame_evidence` | report kind `pregame` | - | retrospective (or any other) replays |
+| `prospective_weeks` | >= 8 fully final weeks | fewer | - |
+| `matched_appearances` | >= 400 per position (player appeared, both models forecast) | fewer | - |
+| `mae_vs_champion` | week-clustered 95% CI upper bound of challenger - champion MAE < 0, identical rows | no CI (< 2 weeks of paired rows) | CI upper >= 0 |
+| `bias_guard` | \|challenger bias\| <= \|champion bias\| + 0.15 | either bias missing | worse by more than 0.15 |
+| `starters_pool_mae` | challenger MAE <= champion MAE on the starters pool | pool empty or a MAE missing | challenger worse |
+| `interval_coverage` | challenger 80% coverage in [0.75, 0.85] | no challenger intervals | under- or overcoverage |
+
+The **starters pool** is one definition everywhere (`forecast_backtest.starters_pool_expr`): per
+(season, week, position) the top `PAIR_POOL` players (QB 24, RB 48, WR 60, TE 24) by the
+recent-average baseline A1, a pregame quantity identical for every model. The same pool drives the
+Start/Sit pair decisions and the challenger research cohorts. In the prospective evaluation the rank
+runs over **every frozen pregame forecast** of the week, before anyone knows who appears; MAE is then
+measured on the pool members who appeared, so an inactive top player leaves a gap instead of being
+backfilled. (Backtest stores hold appearances only, so there the same rank runs over appearing players.)
+QB challenger intervals are withheld
+by policy (confirmation coverage 74.0%), so QB `interval_coverage` is `insufficient_data` with that
+explanation: QB cannot reach `eligible_for_review` until coverage evidence exists. This is a
+reported limitation, not an exemption.
+
+Status vocabulary (separate axes):
+
+| Field | Values | Meaning |
+|---|---|---|
+| `status` (readiness) | `insufficient_evidence` | a sample criterion (pregame evidence, weeks, appearances) has not passed, or any criterion lacks evidence |
+| | `failed_evaluation` | enough evidence and at least one criterion fails |
+| | `eligible_for_review` | every criterion passes; the most an evaluation can produce |
+| `lifecycle` | `research_shadow` | ifp-2.0.0 in every position: never read by lineups, Start/Sit, trades, waivers, matchups or the website |
+| | `approved_production` | only by explicit user approval plus a reviewed code change that wires a model into consumers; never set by evaluation |
+| `production_gate` | `not_evaluated` | `PROMOTION_CRITERIA` stays a separate gate the weekly evaluation does not evaluate |
+
+Since the owner override of 2026-10-16, `lifecycle: research_shadow` describes the weekly ledger's
+evaluation of ifp-2.0.0 against the champion only; it no longer means consumers never read ifp-2.0.0 (the
+projection switch does, as production by override).
+
+`evaluate` writes `shadow_status` (per position: `status`, `lifecycle`, `criteria`, `blocking`,
+`production_gate`) and `promotion_blockers`, which answers "what prevents ifp-2 from replacing
+ifp-1?" per position: every non-passing criterion's explanation plus the approval and production
+gate. The CLI summary prints one line per criterion.
+
+### Opportunity + efficiency decomposition (research, negative)
+
+`docs/research/opportunity_efficiency.md`: forecasting realized expected league points and points
+minus xFP with separate ridges (`ifp-oe-0.1.0`, research only) equals the direct ridge when features,
+penalty and rows match, and no separate penalty or feature split beats ifp-2 on the 2023-26 replay
+(efficiency residual out-of-sample R^2 <= 0.007). Absent nflverse xFP for a zero-opportunity
+appearance in a covered team-week is a measured zero; treating it as missing biases any xFP-target
+model by about -0.9 points.
+
+### Shallow gradient boosting (research, retain ridge)
+
+`docs/research/hgb_challenger.md`: per-position HistGradientBoosting on ifp-2's features (`ifp-hgb-0.1.0`,
+research only, scikit-learn in the `research` dependency group) is worse than ifp-2 on development
+(+0.025 MAE, CI [+0.003, +0.045]) and not better on the 2023-26 replay; ridge is retained. Its frozen
+configuration writes write-once pregame research forecasts (`hgb_research.py predict`) as prospective
+evidence only.
+
+### Model registry (approval manifest, research only)
+
+`docs/model_registry.md`: `backend/app/analytics/model_registry.json` records the approved
+production model (`ifp-2.0.0`, an `owner_approval` with `override: true` that cites no evidence),
+`ifp-1.0.0` (retired, the rollback target, artifact pinned) and `ifp-hgb-0.1.0` (experimental).
+`scripts/model_registry.py status` is a dry-run promotion gate: artifact sha256 integrity, scoring
+fingerprint, finalized pregame prospective evidence recomputed per position, `PROMOTION_CRITERIA`,
+the ESPN rule where claimed, a restorable rollback target and an explicit owner approval. It never
+changes a consumer; the hosted app does not import it.
+
+### Runtime
+
+Feature store 2020-2026 (42.7k rows, with classification) 6.4 s; development grid of 20 specs x 8
+penalties 16 s (parallel); confirmation 2.8 s; weekly `train` ~10 s; `predict` ~1 s; play-by-play
+sync ~0.5 s per season (nflverse cache). Artifacts ~30 KB each, ledger runs ~0.7 MB per week (436 players in week 6).
+
+### New data sources: FTN read progression and timestamped depth charts (research)
+
+`docs/research/first_read_depth_chart_signals.md` (`app/analytics/usage_signals.py`, never imported
+by the app). FTN `read_thrown` code `"1"`, not the dictionary's `"0"`, behaves as the first read in
+every season 2022-2026 (`"0"` replaced 2022's NA on non-pass plays). The first-read share of
+targets adds a small, consistent gain over ifp-2 for WR/RB (points MAE −0.020 development,
+−0.012 replay); the dictionary reading adds nothing. The modern timestamped depth charts (2025+
+only) help through the static pregame tier, mostly for backup QBs; the depth-*change* features
+(promotion, vacancy, chart-vs-snaps) are rejected. Nothing is integrated: both survivors are
+follow-up prospective-shadow candidates, and ifp-1.0.0 / ifp-2.0.0 are unchanged.
+
+## Point distributions (research, ifpd-0.1.0)
+
+`docs/research/fantasy_point_distributions.md`: calibrated P10/P50/P90, P(points >= 10/15/20) and
+unconditional mixtures around the unchanged ifp-1.0.0 mean (`app/analytics/point_distributions.py`,
+`scripts/point_distribution_research.py`; never imported by the app). Conditional ranges pass the
+pre-registered bar at every position on 2023-24 and beat the existing tercile bands on CRPS for
+RB/WR/TE; unconditional ranges are publishable in research terms for WR/TE only (QB/RB participation
+is experimental). The existing `interval_80` and its QB withholding are unchanged; nothing is wired
+into the API, Start/Sit or the website.
+
 ## Known biases and unsupported populations
 
 * **`projected_points` is still conditional on playing**; use `expected_points` for an
@@ -427,6 +1289,9 @@ explains ESPN's number. Players are ordered by independent projection (nulls las
   unchanged in `projected_points` (Barkley and Moore are now flagged as injury exits and their
   P(appears) is 0.77 / 0.52; Rice is flagged as a possible demotion).
 * Low-volume RBs and players with < 3 recent games are worse than simple averages.
+* ifp-2 challenger: the injury-exit classification is partial (report-only exits are noisier than
+  play-by-play ones; week-18 rest and unreported injuries look like role cuts), and after injury exits
+  it is no more accurate than C (see "Where it helps and where it hurts").
 * Team changes carry old-team shares (flagged); rookies abstain until their first game.
 * The conditional model uses no injury reports, depth charts, coaching or QB changes (the
   participation model uses injury reports and a snap-based depth order); no weather or Vegas.
@@ -435,8 +1300,11 @@ explains ESPN's number. Players are ordered by independent projection (nulls las
 
 ## Recommended next steps
 
-1. Keep syncing ESPN daily so `espn_projection_history` accumulates true pregame snapshots;
-   rerun `evaluate` once >= 300 matched completed player-weeks per position exist.
+0. Run the weekly learning cycle every week (before Thursday's kickoff) so the challenger accumulates
+   frozen pregame forecasts; check `weekly_learning.py evaluate` after 8 weeks.
+1. Follow the weekly evidence routine above so `espn_projection_history` accumulates true pregame
+   snapshots and every week has a stored run; rerun `evaluate` once the `/data` tracker shows
+   >= 300 matched completed player-weeks per position.
 2. Recalibrate QB/RB participation (e.g. isotonic or Platt on validation predictions) and add a
    team-level constraint for QBs (probabilities of a team's QBs taking the first snap sum to 1),
    then re-evaluate on a later held-out window; the 2025-26 held-out has now been used.

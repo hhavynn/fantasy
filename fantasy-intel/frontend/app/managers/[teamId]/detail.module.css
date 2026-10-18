@@ -1,0 +1,2 @@
+.rule { white-space: normal; min-width: 240px; max-width: 520px; color: var(--ink-muted); }
+.metrics { overflow-x: auto; }

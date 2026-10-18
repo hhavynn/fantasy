@@ -1,26 +1,69 @@
-.page { max-width: 1100px; }
-.page p { max-width: 75ch; text-wrap: pretty; }
-.page a:focus-visible, .page summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.context { color: #a5afbb; border-left: 2px solid var(--border); padding-left: 14px; }
-.context span { display: block; }
-.list { border-top: 1px solid var(--border); }
-.sectionTitle { color: var(--text); text-transform: none; font-size: 16px; padding-top: 18px; }
-.sectionTitle span { color: #a5afbb; font-size: 12px; font-weight: 400; margin-left: 10px; }
-.move { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 3fr); gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--border); }
-.identity h3 { font-size: 15px; text-wrap: balance; }
-.identity h3 a { color: var(--text); }
-.meta { color: #a5afbb; margin-top: 6px; }
-.action { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
-.action strong { font-size: 15px; }
-.cost { color: #b3cff3; margin-top: 10px; }
-.risk { color: #d8bb7d; font-size: 12px; }
-.evidence { margin-top: 10px; }
-.evidence summary { color: #a5afbb; }
-.evidenceBody { background: var(--panel); padding: 14px; margin-top: 10px; border-radius: 6px; }
-.evidence ul { padding-left: 20px; }
-.evidence li { margin: 5px 0; }
-.empty { padding: 24px 0; }
-@media (max-width: 650px) {
-  .move { grid-template-columns: 1fr; gap: 12px; }
-  .action { align-items: flex-start; }
+/* Waivers: filters, top-claims band, decision table. Tokens only; see globals.css. */
+
+/* ---------- Filters ---------- */
+.filters { display: flex; flex-direction: column; gap: 12px; margin-top: -4px; min-width: 0; }
+/* Common filters stay visible in one quiet bar; the active ones are filled and a reset appears beside them. */
+.chipRows { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.chipRows :global(.filters) { margin-bottom: 0; min-width: 0; max-width: 100%; }
+.chipRows { min-width: 0; max-width: 100%; }
+.chipLabel { color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-right: 2px; }
+.reset { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--ink-muted); font-size: 12px; }
+@media (max-width: 720px) {
+  /* Phones: each chip row scrolls sideways instead of wrapping into a tall control panel. */
+  .chipRows { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px; }
+  .chipRows :global(.filters) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .chipRows :global(.chip) { flex: none; }
+  .reset { margin-left: 0; }
 }
+
+/* ---------- Top claims ---------- */
+.band { min-width: 0; }
+.bandTitle { margin: 0 0 4px; font-size: 16px; line-height: 22px; }
+.bandNote { margin: 0 0 12px; color: var(--ink-muted); font-size: 13px; max-width: 80ch; }
+.claims { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.claim { min-width: 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.claim[data-actionable] { border-top: 3px solid var(--positive); }
+.claimHead { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.claimRank {
+  display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 6px;
+  background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.claimName { margin: 0; min-width: 0; font-size: inherit; line-height: inherit; font-weight: inherit; }
+.claimMeta { margin: 4px 0 12px; color: var(--ink-muted); font-size: 13px; }
+.claimAction { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.claimAction strong { font-size: 14px; }
+.claimSummary { margin: 8px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.claimFacts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
+.claimFacts dt { color: var(--ink-muted); }
+.claimFacts dd { margin: 0; min-width: 0; }
+.competitors { color: var(--ink-muted); }
+
+/* ---------- Decision table ---------- */
+.count { margin-left: 8px; color: var(--ink-muted); font-size: 12px; font-weight: 400; }
+.table th, .table td { vertical-align: middle; }
+.player > tr.main td { border-bottom: 0; }
+.who { white-space: normal; min-width: 150px; max-width: 200px; }
+.sub { display: block; margin-top: 2px; color: var(--ink-muted); font-size: 12px; line-height: 17px; white-space: normal; }
+.move { white-space: normal; min-width: 240px; max-width: 360px; }
+.moveHead { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.giveUp { white-space: normal; min-width: 130px; }
+.player > tr.more td { padding-top: 0; padding-bottom: 8px; white-space: normal; }
+.player > tr.more:hover td { background: transparent; }
+
+/* The evidence cell spans the whole (wide) table, so the panel pins to the left edge of the scrolling area. */
+.details { position: sticky; left: 16px; max-width: min(760px, calc(100vw - 64px)); }
+.details > summary { font-size: 12px; color: var(--ink-faint); }
+.details[open] > summary { color: var(--ink-muted); }
+.evidence { margin-top: 8px; padding: 12px 16px; background: var(--surface-raised); border-radius: 6px; font-size: 13px; line-height: 19px; }
+.evidence p { margin: 0 0 8px; }
+.evidence ul { margin: 0 0 8px; padding-left: 20px; }
+.evidence li { margin: 3px 0; }
+.evidence details { margin: 0 0 8px; }
+.evidence a { text-decoration: underline; text-underline-offset: 2px; }
+
+.pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.method { max-width: 80ch; }
+.method p { margin: 0 0 10px; }
+.method ol { margin: 0 0 10px; padding-left: 20px; }
+.method li { margin: 4px 0; }

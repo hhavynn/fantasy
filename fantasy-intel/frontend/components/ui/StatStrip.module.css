@@ -1,0 +1,49 @@
+/* Flex-wrap rather than a grid: stats share each row equally, and an odd one out stretches across the last row. */
+:where(.strip) { margin: 0; }
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden; /* clips the divider shadows at the outer edge */
+}
+.stat {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 14px 16px;
+  box-shadow: -1px 0 0 var(--line), 0 -1px 0 var(--line);
+}
+.label { margin: 0; color: var(--ink-muted); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.value {
+  margin: 4px 0 0;
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: 34px;
+  letter-spacing: .005em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.note { margin: 2px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 16px; }
+.positive { color: var(--positive); }
+.negative { color: var(--negative); }
+.caution { color: var(--caution); }
+
+/* Phones: two stats per row; an odd one out stretches across the last row. */
+@media (max-width: 720px) {
+  .stat { flex-basis: 45%; padding: 12px 14px; }
+  .value { font-size: 26px; line-height: 30px; }
+}
+@media (max-width: 360px) {
+  .stat { padding: 10px 12px; }
+  .value { font-size: 23px; line-height: 27px; }
+}
+/* Tablets: where the strip would wrap five stats as four over one, or six as five over one, it reads as three rows of three instead. */
+@media (min-width: 721px) and (max-width: 870px) {
+  .strip:has(> .stat:nth-child(5):last-child) > .stat { flex-basis: 30%; }
+}
+@media (min-width: 721px) and (max-width: 1030px) {
+  .strip:has(> .stat:nth-child(6):last-child) > .stat { flex-basis: 30%; }
+}

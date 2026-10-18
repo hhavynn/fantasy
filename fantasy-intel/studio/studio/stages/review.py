@@ -183,10 +183,31 @@ def build(ep: Episode) -> str:
         lines.append("")
     text = " ".join(s["text_display"] for s in script["narration_segments"])
     checks = flags(facts, claims, timings.get("fallback_words", []), text)
+    lines += trend_context(ep)
     lines += ["## Check by eye", *([f"- {c}" for c in checks] or ["- Nothing flagged automatically."]),
               "- Does the story make sense for a fantasy manager this week?",
               "- Watch the video once with sound: captions in sync, names pronounced right.", ""]
     return "\n".join(lines)
+
+
+def trend_context(ep: Episode) -> list[str]:
+    """The social trend this Short answers (from `trends select`), for the reviewer only: none of it is
+    narrated, so it never reaches the claims or QC."""
+    if not ep.path("trend_brief.json").exists():
+        return []
+    pkg = read_json(ep.path("trend_brief.json"))
+    idea = pkg.get("idea") or {}
+    lines = ["## Social trend context (not narrated)", "",
+             f"Idea `{idea.get('idea_id')}`: {idea.get('working_title')} ({idea.get('format')}), trend score "
+             f"{idea.get('trend_score')}, research confidence {idea.get('research_confidence')}, relevant "
+             f"{idea.get('relevance_window')}.", "", f"- Why it's trending: {idea.get('why_trending')}",
+             f"- Angle: {idea.get('editorial_angle')}"]
+    lines += [f"- Hook option: {h}" for h in idea.get("hooks", [])]
+    lines += [f"- Against: {a}" for a in idea.get("opposing_args", [])]
+    lines += [f"- Source: {u}" for u in idea.get("source_links", [])]
+    lines += ["- Does the Short answer the take people are actually arguing about? Social opinions above are "
+              "attributed, not facts.", ""]
+    return lines
 
 
 def run(ep: Episode) -> None:

@@ -83,6 +83,13 @@ sides. The full search is on Trade discovery. There is no acceptance estimate.
   even matchup.
 * This is a deterministic scenario, not a win probability.
 
+## K / D/ST streaming
+
+By default every lineup on this page, for every team, can stream K and D/ST at the weekly baseline (the 3rd-best
+available player's projection). This covers the overview, marginal values, upgrades, the trade preview and matchup
+effects; the matchup-effect "before" margins are re-projected under the same model. `?kdst_streaming=false`
+restores the hold-all-season view. See [`kdst_streaming_baseline.md`](kdst_streaming_baseline.md).
+
 ## API and page
 
 `GET /api/my-team/value?team_id=&trades=true|false` returns:

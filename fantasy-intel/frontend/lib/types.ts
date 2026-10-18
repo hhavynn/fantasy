@@ -31,6 +31,9 @@ export type PlayerCore = {
   market_signal: string | null;
   production_sustainability: string | null;   // production vs xFP baseline: regression evidence, not a trade call
   fantasy_team?: string | null;
+  // 0–100.0 ratings (ratings-100.v1). Null = not computed; absent on a database written before the scale.
+  opportunity_score_100?: number | null; production_score_100?: number | null; value_score_100?: number | null;
+  rating_scale_version?: string | null;
 };
 
 export type RosterPlayer = PlayerCore & {
@@ -151,9 +154,32 @@ export type RosSummary = {
   bye_weeks_remaining: number | null; bye_weeks: number[]; missing_weeks: number[]; projection_source: string;
 };
 
+/** Where an "ours" week's number came from: our model, our model's zero (bye / unavailable), ESPN's fallback, or a schedule bye. */
+export type OursOrigin = "ours" | "ours_zero" | "espn" | "bye";
+
+/** One remaining regular-season week of the "ours" series (GET /api/players/{id}/forward?source=independent). */
+export type OursWeek = {
+  week: number; value: number | null; origin: OursOrigin; on_bye: boolean | null;
+  run_id: string | null; model_version: string | null; run_created_at: string | null;
+  horizon: number | null; forecast_horizon: number | null; projected_from_week: number | null;
+  horizon_note: string | null; experimental: boolean;
+  /** true: the run's artifact is approved; false: approval could not be verified (shown anyway); null: no run or no rule. */
+  artifact_verified?: boolean | null;
+};
+
+/** Fantasy Intel's production model for the rest of the regular season. `ros_projected_points` is null unless complete. */
+export type OursForward = {
+  available: boolean; reason: string | null; label: string; model_version: string; model_versions: string[];
+  mixed_models: boolean; weeks: OursWeek[];
+  ros_projected_points: number | null; ros_weeks_expected: number; ros_weeks_available: number; ros_complete: boolean;
+  fallback_weeks: number[]; missing_weeks: number[]; other_model_weeks: number[]; last_regular_season_week: number | null; run_created_at: string | null;
+};
+
 export type ForwardProjection = {
   source: string; note: string; summary: RosSummary; projection_synced_at: string | null;
   weeks: ForwardWeek[]; schedule_available: boolean;
+  /** Present only when the request carried source=independent. */
+  ours?: OursForward;
 };
 
 // V2 Trade Evaluator (POST /api/trades/evaluate). Projected points: ESPN. Trade impact: exact lineup simulation.
@@ -176,8 +202,13 @@ export type TradeWindow = {
     current_week_status?: string; uncertain?: boolean; warning?: string | null };
 };
 
+/** `streamer`: the K/D/ST waiver streamer at that week's streaming baseline (player_id null, not an empty slot). */
 export type LineupSlot = { slot: string; player_id: number | null; name?: string | null; position: string | null;
-  points: number | null; is_flex: boolean };
+  points: number | null; is_flex: boolean; streamer?: boolean };
+/** The K/D/ST weekly streaming baseline a lineup computation used (enabled false = current K/D/ST held all season). */
+export type KdstStreaming = { enabled: boolean; rank?: number; note?: string;
+  positions: { position: string; weeks: { week: number; phase: string | null; espn_player_id: number; name: string | null;
+    pro_team: string | null; points: number; rank: number; available_projected: number }[] }[] };
 export type LineupWeek = { week: number; phase: string | null; projection_complete: boolean;
   known_lineup_points: number; projected_lineup_points: number | null; assignment: LineupSlot[];
   bench: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
@@ -263,6 +294,7 @@ export type TradeResult = {
     classifications: Record<string, { label: string; confidence: string }> }>;
   names: Record<string, { name: string | null; position: string | null; pro_team: string | null }>;
   projection_source: string; trade_impact_source: string; assumptions: string[]; limitations: string[];
+  kdst_streaming?: KdstStreaming;
 };
 
 // ------------------------------------------------------------ trade discovery --
@@ -548,7 +580,7 @@ export type TeamValue = {
       marginal: number | null; known_marginal: number; espn_projected: TvRaw }[];
     consolidation_candidates: number[]; ir_players: number[]; note: string };
   upgrades?: {
-    slot_gaps: { week: number; phase: string | null; slot: string; current_player_id: number | null; current_name: string | null;
+    slot_gaps: { week: number; phase: string | null; slot: string; current_player_id: number | null; current_name: string | null; current_is_streamer?: boolean;
       current_points: number | null; best_available: TvLite & { points: number }; gap: number }[];
     free_addition: { player: TvLite | null; lineup_points_added: number | null; known_lineup_points_added: number | null;
       regular_season_points_added: number | null; playoff_points_added: number | null; weeks_started: number[] | null;

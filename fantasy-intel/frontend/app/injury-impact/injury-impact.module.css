@@ -1,0 +1,119 @@
+/* Injury impact: source line, roster actions, controls, one entry per absence. Tokens only; see globals.css. */
+
+/* ---------- Source line and notices ---------- */
+.sourceLine { min-width: 0; color: var(--ink); font-size: 13px; line-height: 19px; }
+.sourceLine p { margin: 0 0 4px; max-width: 120ch; }
+.notices { display: grid; gap: 8px; }
+.count { margin-left: 6px; color: var(--ink-muted); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+
+/* ---------- Kinds of number: observed is solid, an estimate is dashed ---------- */
+.kindObserved, .kindEstimate {
+  display: inline-flex; align-items: center; padding: 0 6px; border-radius: var(--radius-xs);
+  font-size: 10.5px; line-height: 16px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+  vertical-align: 2px; white-space: nowrap;
+}
+.kindObserved { color: var(--ink); background: var(--neutral-soft); border: 1px solid var(--neutral-soft); }
+.kindEstimate { color: var(--ink-muted); background: transparent; border: 1px dashed var(--line-control); }
+
+/* ---------- Roster actions (decision first) ---------- */
+.actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 24px; }
+.actionCol { min-width: 0; }
+.actionList { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.actionList li { display: grid; gap: 3px; min-width: 0; }
+.actionWhy { padding-left: 40px; color: var(--ink-muted); font-size: 12.5px; line-height: 18px; }
+
+/* ---------- Controls ---------- */
+.controls { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.chipRows { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; max-width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.chipRows :global(.filters) { margin-bottom: 0; min-width: 0; max-width: 100%; }
+.chipLabel { color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-right: 2px; }
+
+/* ---------- Entries ---------- */
+.entries { display: flex; flex-direction: column; min-width: 0; }
+.entry { min-width: 0; padding: 18px 0; }
+.entries > .entry:first-child { padding-top: 2px; }
+.entries > .entry:last-child { padding-bottom: 2px; }
+.entry + .entry { border-top: 1px solid var(--line); }
+.emptyGroup { margin: 0; color: var(--ink-muted); font-size: 13px; }
+
+.entryHead { display: grid; grid-template-columns: minmax(200px, 260px) 1fr; align-items: start; gap: 12px 24px; }
+.who { min-width: 0; }
+.plainName { color: var(--ink); font-weight: 600; }
+.headFacts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px 20px; margin: 0; min-width: 0; }
+.headFacts > div { min-width: 0; }
+.headFacts dt, .facts dt { color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+.headFacts dd { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin: 3px 0 0; font-size: 13.5px; line-height: 18px; color: var(--ink); }
+.statusText { font-weight: 600; }
+.subLine { color: var(--ink-muted); font-size: 12px; line-height: 16px; }
+
+.entryBody { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 16px 24px; margin-top: 14px; }
+.blockTitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; color: var(--ink); font-size: 13px; line-height: 18px; font-weight: 600; }
+.subTitle { margin: 14px 0 6px; color: var(--ink-muted); font-size: 12.5px; line-height: 18px; font-weight: 600; }
+
+.workload { min-width: 0; padding: 12px; border-radius: var(--radius); background: var(--surface-raised); }
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px 12px; margin: 0; }
+.facts > div { min-width: 0; }
+.facts dd { margin: 1px 0 0; font-size: 15px; line-height: 20px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.spark { display: grid; gap: 4px; margin: 12px 0 0; }
+.spark figcaption { color: var(--ink-faint); font-size: 11.5px; line-height: 16px; }
+.absence { margin: 8px 0 0; color: var(--ink-muted); font-size: 12.5px; line-height: 18px; }
+
+.absorb { min-width: 0; }
+.clarity { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0 0 10px; max-width: 90ch; color: var(--ink-muted); font-size: 12.5px; line-height: 18px; }
+.none { margin: 0; color: var(--ink-muted); font-size: 12.5px; line-height: 18px; }
+
+.mates { width: 100%; font-size: 13px; }
+.mates th { white-space: nowrap; }
+.mates td { vertical-align: middle; }
+.mateCell { min-width: 170px; }
+
+.split { display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.arrow { color: var(--ink-faint); }
+.games { margin-left: 4px; color: var(--ink-faint); font-size: 11px; }
+.glyph { margin-right: 2px; font-size: 9px; vertical-align: 1px; }
+
+/* The estimate bar is outlined and dashed: it is a rule of thumb, not a measurement. */
+.share { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.shareTrack { position: relative; display: inline-block; width: 54px; height: 8px; border: 1px dashed var(--line-control); border-radius: 3px; overflow: hidden; }
+.shareFill { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); border-right: 1px solid var(--accent); }
+.shareValue { min-width: 32px; text-align: right; color: var(--ink); }
+.shareExtra { min-width: 36px; color: var(--ink-muted); font-size: 12px; }
+
+.links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 12px; font-size: 13px; }
+
+/* ---------- Collapsed groups (long-term, already kicked off) ---------- */
+.group { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.group > summary {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 12px 16px; cursor: pointer;
+  color: var(--ink); font-size: 15px; line-height: 22px; font-weight: 600; list-style: none;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.group > summary::-webkit-details-marker { display: none; }
+.group > summary::after { content: "Show"; margin-left: auto; color: var(--accent); font-size: 13px; font-weight: 500; }
+.group[open] > summary { border-bottom: 1px solid var(--line); }
+.group[open] > summary::after { content: "Hide"; }
+.group > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius); }
+.summaryNote { flex-basis: 100%; color: var(--ink-muted); font-size: 12px; line-height: 17px; font-weight: 400; }
+.group > .entries { padding: 16px; }
+
+.method { max-width: 80ch; }
+.method p { margin: 0 0 10px; }
+
+/* ---------- Narrow screens ---------- */
+@media (max-width: 1180px) {
+  .entryBody { grid-template-columns: minmax(0, 1fr); }
+  .facts { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .entryHead { grid-template-columns: minmax(0, 1fr); }
+  .headFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chipRows { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px; }
+  .chipRows :global(.filters) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .chipRows :global(.chip) { flex: none; }
+  .actionWhy { padding-left: 0; }
+  .group > .entries { padding: 12px; }
+  .mateCell { min-width: 150px; }
+  .facts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .workload { padding: 10px; }
+}

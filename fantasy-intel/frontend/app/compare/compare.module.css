@@ -1,0 +1,129 @@
+/* Player Comparison Lab (/compare). Tokens only; see globals.css. Player A is blue, Player B orange: the same
+   pairing as the trade analyzer and the charts' first two series, always with a letter and a different shape. */
+
+.sideA { --side-color: var(--chart-1); }
+.sideB { --side-color: var(--chart-2); }
+.sideDot { display: inline-block; flex: none; width: 10px; height: 10px; margin-right: 6px; border-radius: 3px; background: var(--side-color); vertical-align: baseline; }
+.sideB .sideDot { border-radius: 50%; }
+
+/* ---------- Pickers ---------- */
+.picker { display: grid; gap: 10px; }
+.slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.slot {
+  position: relative; min-width: 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface-raised); box-shadow: inset 0 3px 0 var(--side-color);
+}
+.slotLabel { display: block; margin-bottom: 6px; color: var(--ink-faint); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.combo { position: relative; display: flex; align-items: center; gap: 8px; }
+.combo input.comboInput { flex: 1 1 auto; min-width: 0; width: 100%; height: 40px; font-size: 16px; padding: 0 12px; }
+.ghost {
+  flex: none; height: 32px; padding: 0 12px; background: transparent; color: var(--ink-muted); border-color: var(--line-control); font-weight: 500;
+}
+.ghost:hover { color: var(--ink); background: var(--surface-hover); filter: none; }
+.popover {
+  position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none;
+  max-height: 320px; overflow-y: auto; background: var(--surface-raised); border: 1px solid var(--line-control);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-pop);
+}
+p.popover { padding: 12px; color: var(--ink-muted); font-size: 13px; }
+.option { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 8px; border-radius: var(--radius-xs); cursor: pointer; }
+.optionActive { background: var(--surface-hover); box-shadow: inset 2px 0 0 var(--accent); }
+.optionText { display: flex; flex-direction: column; min-width: 0; }
+.optionName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 600; line-height: 18px; }
+.optionMeta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; color: var(--ink-muted); font-size: 12px; line-height: 16px; }
+.picked { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.pickedText { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.pickedName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 600; line-height: 20px; }
+.pickerActions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 720px) {
+  .slots { grid-template-columns: minmax(0, 1fr); }
+  .ghost { height: 40px; }
+}
+
+/* ---------- Identity cards ---------- */
+.hero { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.heroCard {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px 16px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: linear-gradient(180deg, var(--surface-raised), var(--surface)); box-shadow: inset 0 3px 0 var(--side-color);
+}
+.sideTag { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-faint); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.sideTag::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--side-color); }
+.sideB .sideTag::before { border-radius: 50%; }
+.heroFacts { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+@media (min-width: 721px) { .heroOne { grid-template-columns: minmax(0, 1fr); max-width: 560px; } }
+@media (max-width: 720px) { .hero { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- Research summary ---------- */
+.findings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.finding { min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-raised); }
+.findingHead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.findingTitle { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; }
+.leader { display: inline-flex; align-items: center; color: var(--ink); font-size: 13px; line-height: 20px; font-weight: 600; }
+.leaderLabel { margin-right: 4px; color: var(--ink-muted); font-weight: 400; }
+.findingText { margin: 8px 0 0; color: var(--ink); font-size: 13px; line-height: 19px; }
+.basis { margin: 6px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
+.limits { margin-top: 16px; }
+.limitsTitle { margin: 0 0 4px; color: var(--ink-muted); font-size: 12px; line-height: 17px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.limits ul { margin: 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.limits li { margin: 2px 0; }
+.disclaimer { margin-top: 16px; }
+@media (max-width: 860px) { .findings { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- Side-by-side tables ---------- */
+.compareTable th, .compareTable td { white-space: normal; vertical-align: top; }
+.compareTable .measure {
+  min-width: 150px; background-color: var(--cell-bg); color: var(--ink); font-size: 13px; line-height: 20px; font-weight: 500;
+  letter-spacing: 0; text-transform: none; text-align: left;
+}
+.measureName { display: block; font-weight: 600; }
+.unit { display: block; color: var(--ink-faint); font-size: 12px; line-height: 16px; font-weight: 400; }
+.note { display: block; max-width: 34ch; margin-top: 2px; color: var(--ink-muted); font-size: 12px; line-height: 17px; font-weight: 400; }
+.thSide { min-width: 140px; color: var(--ink); font-size: 13px; line-height: 20px; letter-spacing: 0; text-transform: none; }
+.thEdge { width: 44px; padding-left: 0; padding-right: 0; }
+.compareTable td.cell { min-width: 140px; font-variant-numeric: tabular-nums; }
+.val { color: var(--ink); font-weight: 600; }
+.why { display: block; max-width: 30ch; margin-top: 2px; color: var(--ink-faint); font-size: 12px; line-height: 16px; font-weight: 400; }
+.compareTable td.edgeCell { width: 44px; padding-left: 0; padding-right: 0; text-align: center; }
+.edge { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 22px; padding: 0 6px; border-radius: 999px; color: var(--ink-faint); font-size: 12px; font-weight: 700; }
+.edge_a { color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--chart-1); }
+.edge_b { color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--chart-2); }
+.edge_even { color: var(--ink-muted); }
+.edge_na { color: var(--ink-faint); }
+/* Phones: both players and the edge column fit beside the measure, so the comparison needs no sideways scroll. */
+@media (max-width: 720px) {
+  .compareTable th, .compareTable td { padding-left: 6px; padding-right: 6px; }
+  :global(.table-wrap) .compareTable th.measure:first-child { min-width: 92px; max-width: 34vw; padding-left: 12px; }
+  .compareTable td.cell, .compareTable .thSide, .compact td.cell { min-width: 0; }
+  .thEdge, .compareTable td.edgeCell { width: 34px; }
+  .why { max-width: 16ch; }
+  .note { max-width: 18ch; }
+}
+.legend { margin: 0; padding: 10px 16px 12px; color: var(--ink-faint); font-size: 12px; line-height: 17px; }
+.compact th, .compact td { padding-top: 5px; padding-bottom: 5px; }
+.compact .measure { min-width: 130px; }
+.compact td.cell { min-width: 100px; }
+
+/* ---------- Availability and context ---------- */
+.contextGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 32px; }
+.contextCol { min-width: 0; }
+.contextTitle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: 0 0 10px; font-size: 15px; line-height: 22px; }
+.contextSide { margin-right: 8px; color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 14px; margin: 0; font-size: 13px; line-height: 19px; }
+.facts dt { color: var(--ink-muted); }
+.facts dd { min-width: 0; margin: 0; }
+.factNote { display: block; margin-top: 3px; color: var(--ink-muted); font-size: 12px; line-height: 17px; }
+.subTitle { margin: 16px 0 6px; color: var(--ink-muted); font-size: 12px; line-height: 17px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.evidence { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; line-height: 19px; }
+.gamesTable th, .gamesTable td { white-space: nowrap; }
+.gamesTable .gameWeek { background-color: var(--cell-bg); color: var(--ink); font-size: 13px; letter-spacing: 0; text-transform: none; font-weight: 600; }
+@media (max-width: 860px) { .contextGrid { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- Charts ---------- */
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 28px 32px; }
+.chartBlock { min-width: 0; }
+.chartData { margin-top: 8px; font-size: 12px; }
+.chartData .table-wrap { margin-top: 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+
+/* ---------- Misc ---------- */
+.switchHint { display: block; color: var(--ink-faint); }
+.errorList { margin: 0 0 8px; padding-left: 18px; }

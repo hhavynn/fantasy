@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import duckdb
+
 import numpy as np
 import polars as pl
 import pytest
@@ -14,6 +16,8 @@ from app.analytics.independent_projection_store import build_live, write_live
 from app.analytics.independent_projections import (Artifact, RidgeModel, explain_row, fit_final, fit_ridge,
                                                    interval_for)
 from app.analytics.league_scoring import resolve_skill_scoring
+from app.analytics.production_pin import APPROVED_ARTIFACT_SHA256 as PINNED
+from app.db.connection import table_columns
 
 from synthetic_forecast import SCORING_ITEMS, add_league, database, gsis
 
@@ -77,7 +81,7 @@ def test_interval_bands():
 # ----------------------------------------------------------------------------- live run
 
 
-def _artifact(src, fingerprint=None, drop=()):
+def _artifact(src, fingerprint=None, drop=(), created_at="2026-10-14T00:00:00+00:00"):
     store = build_store(src, completed_weeks(src, [2025, 2026]))
     sel = {"protocol": {}, "positions": {p: {"primary": "C", "lambda": {"B": 0.1, "C": 0.1}, "intervals": {}}
                                          for p in ("QB", "RB", "WR", "TE") if p not in drop}}
@@ -86,7 +90,7 @@ def _artifact(src, fingerprint=None, drop=()):
     desc = SCORING.describe()
     if fingerprint:
         desc["fingerprint"] = fingerprint
-    return fit_final(store, sel, ev, desc, "2026-10-14T00:00:00+00:00", 2025)
+    return fit_final(store, sel, ev, desc, created_at, 2025)
 
 
 PLAYERS = {  # espn id -> (name, position, gsis, confidence, injury)
@@ -192,13 +196,13 @@ def test_live_uses_only_weeks_before_target(live):
 
 # ----------------------------------------------------------------------------- API
 
-TOP_KEYS = {"schema_version", "league", "week", "notes", "available", "unavailable_reason", "run", "model_status",
-            "players"}
+TOP_KEYS = {"schema_version", "league", "week", "notes", "available", "unavailable_reason", "run", "model_status", "governance",
+            "players", "kicker_run"}
 PLAYER_KEYS = {"espn_player_id", "gsis_id", "name", "position", "nfl_team", "opponent", "is_home", "fantasy_team_id",
                "injury_status", "independent", "espn", "comparison"}
 INDEP_KEYS = {"projected_points", "interval_80", "model", "model_version", "model_status", "start_sit_ready",
               "coverage_status", "games_used", "latest_usage", "missing_inputs", "flags", "explanation",
-              "is_espn_fallback", "expected_points", "participation"}
+              "is_espn_fallback", "expected_points", "participation", "pregame"}
 COMPARISON_KEYS = {"independent_minus_espn", "comparable", "comparability_note", "expected_minus_espn",
                    "expected_comparable", "evidence"}
 
@@ -219,7 +223,7 @@ def test_api_unavailable_before_any_run(live, monkeypatch):
 def test_api_contract_is_stable(live, monkeypatch):
     con, src, path = live
     before = con.execute("SELECT * FROM espn_player_weekly_points ORDER BY ALL").fetchall()
-    meta, rows = build_live(con, src, _artifact(src), 2026, 6)
+    meta, rows = build_live(con, src, _artifact(src), 2026, 6, artifact_sha256=PINNED)
     write_live(con, meta, rows)
     assert con.execute("SELECT * FROM espn_player_weekly_points ORDER BY ALL").fetchall() == before
     con.close()
@@ -253,6 +257,47 @@ def test_api_contract_is_stable(live, monkeypatch):
     assert client.get("/api/projections/independent", params={"week": 7}).json()["available"] is False
 
 
+def test_api_shows_the_latest_verified_run_and_refuses_unmigrated_databases(live, monkeypatch):
+    from datetime import timedelta
+
+    con, src, path = live
+    art = _artifact(src)
+    first, rows1 = build_live(con, src, art, 2026, 6, artifact_sha256=PINNED)
+    write_live(con, first, rows1)
+    second, rows2 = build_live(con, src, art, 2026, 6, artifact_sha256=PINNED)
+    second["created_at"] = first["created_at"] + timedelta(minutes=1)
+    next(r for r in rows2 if r["espn_player_id"] == 1)["projected_points"] = 41.0
+    write_live(con, second, rows2)
+    cols = ", ".join(c for c in table_columns(con, "independent_player_projections"))
+    con.close()
+
+    def wr1(body):
+        return next(p for p in body["players"] if p["espn_player_id"] == 1)["independent"]["projected_points"]
+
+    client = _client(monkeypatch, path)
+    body = client.get("/api/projections/independent", params={"week": 6}).json()
+    assert body["run"]["run_id"] == second["run_id"] and wr1(body) == 41.0 and body["run"]["artifact_id"] == PINNED
+    assert body["run"]["is_fallback"] is True and body["governance"]["is_fallback"] is True
+    # an unmigrated copy (legacy table only) cannot be integrity-checked: it fails closed, with the reason
+    con = duckdb.connect(str(path))
+    con.execute(f"INSERT INTO independent_player_projections ({cols}) SELECT {cols} FROM independent_projection_rows "
+                "WHERE run_id = ?", [second["run_id"]])
+    con.execute("DROP TABLE independent_projection_rows")
+    con.close()
+    legacy = _client(monkeypatch, path).get("/api/projections/independent", params={"week": 6}).json()
+    assert legacy["available"] is False and "schema v8" in legacy["unavailable_reason"] and legacy["players"] == []
+    # ... including a whole v7 database (e.g. a hosted copy published before the laptop migrated)
+    con = duckdb.connect(str(path))
+    for c in ("artifact_id", "content_sha256", "row_count", "migrated_from_legacy"):
+        con.execute(f"ALTER TABLE independent_projection_runs DROP COLUMN {c}")
+    con.execute("UPDATE schema_meta SET value = '7' WHERE key = 'schema_version'")
+    con.close()
+    client = _client(monkeypatch, path)
+    v7 = client.get("/api/projections/independent", params={"week": 6}).json()
+    assert v7["available"] is False and "schema v8" in v7["unavailable_reason"]
+    assert client.get("/api/data-quality").status_code == 200
+
+
 def _participation_artifact(intercept=2.0):
     from app.analytics.participation import LogitModel, ParticipationArtifact
     models = {p: LogitModel(p, ["snap_pct"], ["snap_pct"], [0.5], [1.0], [0.0], intercept, 0.01, 0, [])
@@ -267,7 +312,7 @@ def test_live_participation_gives_unconditional_expected_points(live, monkeypatc
     art = _artifact(src)
     plain = _by_id(build_live(con, src, art, 2026, 6)[1])
     con.execute("UPDATE fantasy_players SET injury_status = 'QUESTIONABLE' WHERE espn_player_id = 6")
-    meta, rows = build_live(con, src, art, 2026, 6, participation=_participation_artifact())
+    meta, rows = build_live(con, src, art, 2026, 6, participation=_participation_artifact(), artifact_sha256=PINNED)
     r = _by_id(rows)
     p = 1 / (1 + np.exp(-2.0))
     for pid in (1, 6, 11):
@@ -298,15 +343,116 @@ def test_live_participation_gives_unconditional_expected_points(live, monkeypatc
 
 
 def test_canonical_espn_systems_do_not_read_independent_projections():
-    """Lineups, trades, waivers, scores and ESPN projections must not depend on this research model."""
-    allowed = {"independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
+    """Lineups, trades, waivers, scores and ESPN projections must not depend on this research model.
+    The only path to it is the opt-in projection switch (analytics/projection_source.py, ESPN by
+    default), which only weekly Start/Sit, weekly Matchup and the opt-in player forward view
+    (analytics/forward_ours.py) import (test below)."""
+    allowed = {"projection_source.py",   # opt-in weekly source switch; SQL only, ESPN unless asked
+               "production_forecasts.py",   # immutable run-keyed forecast store (SQL only); readers of the runs
+               "independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
                "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",
-               "connection.py"}   # connection.py: schema-version rebuild list only (like schema.sql)
+               "rb_research.py",  # RB forecasting research (shadow only)
+               "connection.py",   # connection.py: schema-version rebuild list only (like schema.sql)
+               "promotion_tracker.py", "projection_promotion.py",   # read-only promotion tracker
+               "espn_benchmark.py",  # read-only prospective ESPN benchmark
+               # ifp-2 research challenger + weekly learning pipeline (shadow only; nothing imports them,
+               # see tests/test_weekly_learning.py::test_weekly_pipeline_never_imports_into_consumers)
+               "start_sit_evaluation.py",   # research-only roster decision evaluation (reads the independent tables)
+               "challenger.py", "weekly_learning.py",
+               "source_provenance.py",   # pregame source snapshots of the weekly pipeline (research only)
+               "adaptive_workload.py",   # research-only ifp-aw role estimator (never imported by the app)
+               "hgb_research.py",   # research-only gradient-boosting challenger (never imported by the app)
+               "opportunity_efficiency.py",   # research-only two-target model (never imported by the app)
+               "model_registry.py",   # research-only approval manifest + dry-run promotion gate (never imported)
+               "participation_calibration.py",   # P(appears) calibration research, shadow only (nothing imports it)
+               "point_distributions.py",   # research-only point distributions (never imported by the app)
+               "usage_signals.py",   # research-only FTN read / depth-chart signals (never imported by the app)
+               "roster_context.py", "context_challenger.py",   # research-only QB/teammate context (never imported)
+               "injury_workload.py", "injury_challenger.py",   # research-only injury timeline / workload handoff
+               "returning_context.py",   # research-only returning-teammate challenger ifp-ret (never imported)
+               # kicker model: reconciliation scores a kicker's rare offensive stats (fakes) with the skill weights
+               "kicker_scoring.py"}
     for f in APP.rglob("*"):
         if f.suffix not in (".py", ".sql") or f.name in allowed:
             continue
         text = f.read_text()
         for needle in ("independent_projection", "independent_player_projections", "forecast_features",
                        "forecast_backtest", "league_scoring", "analytics.participation", "from .participation",
-                       "import participation"):
+                       "import participation", "promotion_tracker"):
             assert needle not in text, f"{f.relative_to(APP)} references {needle}"
+
+
+def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
+    """Weekly Start/Sit, weekly Matchup and the opt-in player forward view (analytics/forward_ours.py) are the
+    only consumers of the switch. Trades, waivers, team value and the playoff race stay ESPN."""
+    import inspect
+
+    from app.analytics import forward_ours, matchup, projection_source, start_sit
+    from app.analytics.challenger import CHALLENGER_VERSION
+    from app.analytics.independent_projections import MODEL_VERSION
+
+    # production is ifp-2.0.0 (model_registry.json); ifp-1.0.0 is read only for a week without an ifp-2 run
+    assert projection_source.MODEL_VERSION == CHALLENGER_VERSION == "ifp-2.0.0"
+    assert projection_source.FALLBACK_VERSION == MODEL_VERSION == "ifp-1.0.0"
+    assert inspect.signature(start_sit.load_start_sit_evaluation).parameters["source"].default == "espn"
+    assert inspect.signature(matchup.load_matchup).parameters["source"].default == "espn"
+    # the forward view's entry point requires an explicit source (no default), and the route defaults to ESPN
+    from app.api import routes
+    assert inspect.signature(forward_ours.ours_forward).parameters["source"].default is inspect.Parameter.empty
+    assert inspect.signature(routes.player_forward_view).parameters["source"].default.default == "espn"
+    import re
+    imports = re.compile(r"from \.+(analytics\.)?projection_source import|import projection_source")
+    users = {f.relative_to(APP).as_posix() for f in APP.rglob("*.py") if imports.search(f.read_text())}
+    switch = {"analytics/start_sit.py", "analytics/matchup.py", "analytics/forward_ours.py"}
+    # read-only views that must show the SAME run and governance as the switch (they never feed a lineup)
+    readers = {"api/independent_projections.py", "analytics/promotion_tracker.py", "api/projection_promotion.py",
+               "analytics/model_registry.py",   # research-only rollback dry run (simulates the selection)
+               "analytics/performance_report.py",   # the accuracy page's governance (constants only, no run read)
+               "analytics/projection_movers.py",   # movement between stored forecasts (reads runs, never calls weekly())
+               "analytics/rankings.py"}   # opt-in Rankings (source=independent): the switch's selection via forward_ours
+    assert switch <= users <= switch | readers
+    assert {f for f in users if re.search(r"\bweekly\(", (APP / f).read_text())} == switch
+
+
+def test_api_shows_the_same_run_as_the_switch_never_a_newer_unapproved_one(live, monkeypatch):
+    """GET /api/projections/independent used to show the newest run of ANY model or scoring. It now shows the run
+    the projection switch shows: production first, the labeled fallback otherwise, never a research model or a
+    run whose rows do not verify."""
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from app.analytics import projection_source as ps
+
+    con, src, path = live
+    art = _artifact(src)
+    prod, rows = build_live(con, src, replace(art, version=ps.MODEL_VERSION), 2026, 6, artifact_sha256="b" * 64)
+    write_live(con, prod, rows)
+    fb, rows = build_live(con, src, art, 2026, 6, artifact_sha256=PINNED)
+    fb["created_at"] = prod["created_at"] + timedelta(minutes=1)
+    write_live(con, fb, rows)
+    research, rows = build_live(con, src, replace(art, version="ifp-hgb-0.1.0"), 2026, 6, artifact_sha256="c" * 64)
+    research["created_at"] = prod["created_at"] + timedelta(minutes=2)
+    write_live(con, research, rows)
+    switch = ps.weekly(con, 2026, 6, "independent")
+    con.close()
+    body = _client(monkeypatch, path).get("/api/projections/independent", params={"week": 6}).json()
+    assert body["run"]["run_id"] == switch["run"]["run_id"] == prod["run_id"]
+    assert body["run"]["is_fallback"] is False and body["governance"]["served_version"] == ps.MODEL_VERSION
+    assert body["governance"]["espn_superiority_established"] is False
+    assert all(s["status"] == ps.OVERRIDE_STATUS and s["start_sit_ready"] is False and s["validated_for"] is None
+               for s in body["model_status"].values())
+    assert body["run"]["artifact_model_status"]                   # the frozen stored status, labeled as such
+    skills = [p for p in body["players"] if p["position"] in ps.POSITIONS]
+    assert skills and all(p["independent"]["model_status"] == ps.OVERRIDE_STATUS for p in skills)
+    assert not any(p["independent"]["start_sit_ready"] for p in body["players"])
+    assert all(isinstance(p["independent"]["pregame"], bool) for p in body["players"])
+    # tamper with the production run's rows: the API falls back to the pinned ifp-1 run and says so
+    con = duckdb.connect(str(path))
+    con.execute("UPDATE independent_projection_rows SET projected_points = 77 WHERE run_id = ? AND espn_player_id = 1",
+                [prod["run_id"]])
+    con.close()
+    body = _client(monkeypatch, path).get("/api/projections/independent", params={"week": 6}).json()
+    assert body["run"]["run_id"] == fb["run_id"] and body["run"]["is_fallback"] is True
+    assert body["run"]["skipped_runs"][0]["run_id"] == prod["run_id"]
+    assert "content_sha256" in body["run"]["skipped_runs"][0]["reason"] and body["run"]["fallback_reason"]
+    assert 77 not in [p["independent"]["projected_points"] for p in body["players"]]

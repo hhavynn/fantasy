@@ -22,6 +22,7 @@ from typing import Any, Callable
 import polars as pl
 
 from ..db.connection import SyncRun, connect, init_db, replace_where, table_exists, upsert_rows
+from .kicking_pbp import derive_kicks, derive_team_drives
 from .sync import curate_players, derive_pbp, player_positions
 
 log = logging.getLogger("nfl.history")
@@ -97,7 +98,7 @@ def write(con, seasons: list[int], payload: dict[str, Any]) -> dict:
         players = payload["players"]
         con.execute("DELETE FROM nfl_players")
         stats["nfl_players"] = upsert_rows(con, "nfl_players", curate_players(players), ["gsis_id"])
-        for t in ("nfl_pbp_player_week", "nfl_team_week", "nfl_defense_week"):
+        for t in ("nfl_pbp_player_week", "nfl_team_week", "nfl_defense_week", "nfl_kick_attempts", "nfl_team_game_drives"):
             con.execute(f"DELETE FROM {t}")
         rosters = payload["frames"].get("nfl_rosters_weekly")
         for season in seasons:
@@ -107,7 +108,11 @@ def write(con, seasons: list[int], payload: dict[str, Any]) -> dict:
             stats[f"pbp_{season}"] = {
                 "player": replace_where(con, "nfl_pbp_player_week", player_rows, "season = ?", [season]),
                 "team": replace_where(con, "nfl_team_week", team_rows, "season = ?", [season]),
-                "defense": replace_where(con, "nfl_defense_week", defense_rows, "season = ?", [season])}
+                "defense": replace_where(con, "nfl_defense_week", defense_rows, "season = ?", [season]),
+                "kicks": replace_where(con, "nfl_kick_attempts", derive_kicks(payload["pbp"][season], season),
+                                       "season = ?", [season]),
+                "drives": replace_where(con, "nfl_team_game_drives", derive_team_drives(payload["pbp"][season], season),
+                                        "season = ?", [season])}
         con.execute("DELETE FROM schema_meta WHERE key IN ('database_role', 'history_seasons')")
         con.execute("INSERT INTO schema_meta VALUES ('database_role', ?), ('history_seasons', ?)",
                     [HISTORY_ROLE, ",".join(map(str, seasons))])

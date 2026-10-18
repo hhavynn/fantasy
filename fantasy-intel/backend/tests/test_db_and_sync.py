@@ -160,3 +160,47 @@ def test_pool_projection_never_overwrites_a_known_actual(con):
     row = con.execute("SELECT actual_points, projected_points FROM espn_player_weekly_points WHERE espn_player_id = ? "
                       "AND scoring_period = ?", [fa_id, CURRENT - 1]).fetchone()
     assert row == (4.0, 9.0)
+
+
+def test_sync_run_finish_never_erases_the_running_marker(con):
+    """finish() replaces the marker with one UPDATE (not upsert_rows' DELETE then INSERT), so a failure while
+    finishing leaves the 'running' row: the sign of an unfinished sync survives."""
+    from app.db.connection import SyncRun
+
+    class Failing:                                   # a connection whose UPDATE dies
+        def __init__(self, real):
+            self.real = real
+
+        def execute(self, sql, *a):
+            if sql.lstrip().upper().startswith("UPDATE"):
+                raise RuntimeError("died while finishing")
+            return self.real.execute(sql, *a)
+
+    run = SyncRun(con, "nfl")
+    run.start(stats={"season": 2025})
+    run.con = Failing(con)
+    try:
+        run.finish("ok")
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("finish should have failed")
+    assert con.execute("SELECT status, finished_at, json_extract_string(stats, '$.season') FROM sync_runs "
+                       "WHERE run_id = ?", [run.run_id]).fetchall() == [("running", None, "2025")]
+    run.con = con
+    run.finish("ok", "fine", {"season": 2025, "warnings": []})        # the retry replaces the marker
+    assert con.execute("SELECT status, message, json_extract_string(stats, '$.season') FROM sync_runs "
+                       "WHERE run_id = ?", [run.run_id]).fetchall() == [("ok", "fine", "2025")]
+
+
+def test_sync_run_finish_joins_an_open_transaction(con):
+    from app.db.connection import SyncRun
+
+    run = SyncRun(con, "analytics")
+    run.start()
+    con.execute("BEGIN TRANSACTION")
+    run.finish("error", "rolled back by the caller")
+    con.execute("ROLLBACK")
+    assert con.execute("SELECT status FROM sync_runs WHERE run_id = ?", [run.run_id]).fetchall() == [("running",)]
+    run.finish("ok")
+    assert con.execute("SELECT status FROM sync_runs WHERE run_id = ?", [run.run_id]).fetchall() == [("ok",)]
