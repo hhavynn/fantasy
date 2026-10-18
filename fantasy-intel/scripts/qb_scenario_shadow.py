@@ -4,8 +4,8 @@ docs/research/qb_scenario_mixture.md section 8 and docs/research/ifp_ctx_shadow_
 `ifp-ctx-p2q` is ifp-ctx-p2's S2 at QB (the calibrated start-probability mixture of qb_scenarios.py) and ifp-2 at
 RB/WR/TE. The historical windows cannot settle it (qb_scenario_mixture.md section 7), so it is judged only on
 write-once pregame ledgers frozen from 2026 week 7 on, under p1's prospective gate. The model is qb_scenarios.py,
-unchanged and called through qb_scenario_research.py's own build (so the forecast is exactly the study's S2); neither
-file is edited here (both are bound into p2's frozen selection).
+unchanged and called through qb_scenario_research.py's own build by qb_scenario_forecast.py (so the forecast is exactly
+the study's S2); neither p2 file is edited here (both are bound into p2's frozen selection).
 
     cd backend
     uv run python ../scripts/qb_scenario_shadow.py pregame [--week W]   # gated write-once pregame ledger for week W
@@ -21,8 +21,10 @@ Who runs it (no new scheduler), exactly like ctx_shadow.py:
 
 Pre-registration. The spec below (candidate, start model constants, gate, rules) is frozen write-once on first use
 into frozen_ifp-ctx-p2q.json, bound to the ifp-2 config hash, league scoring, the roster-context version and the
-sha256 of qb_scenarios.py (the p2 model code). A later run whose spec or binding differs is refused, so the candidate
-cannot be re-selected or edited once prospective evidence exists. The freeze rule (when a week's ledger is written)
+sha256 of the forecast-building code (qb_scenario_forecast.FORECAST_CODE: qb_scenarios.py, qb_scenario_research.py
+and qb_scenario_forecast.py). A later run whose spec or binding differs is refused, and a ledger whose recorded code
+hash differs never counts, so the candidate cannot be re-selected or edited once prospective evidence exists. This
+file only schedules and scores; editing it does not touch the frozen numbers. The freeze rule (when a week's ledger is written)
 is ctx_shadow.py's, unchanged: the start model reads the same nflverse week-W designations as p1.
 
 Writes only under <ifp-dir>/research/qb_scenario_shadow/ (git-ignored): the frozen spec, ledger/ (write-once, one file
@@ -109,16 +111,18 @@ def _sha_text(text: bytes) -> str:
     return hashlib.sha256(text).hexdigest()
 
 
-def p2_model_hash() -> str:
-    """sha256 of qb_scenarios.py: the p2 model code the frozen spec is bound to."""
-    return _sha_text((SCRIPTS / "qb_scenarios.py").read_bytes())
+def forecast_code_hash() -> str:
+    """sha256 of the forecast-building code the frozen spec is bound to: qb_scenarios.py (the p2 model),
+    qb_scenario_research.py (the study's store / candidate build) and qb_scenario_forecast.py (this week's forecast)."""
+    import qb_scenario_forecast as qsf
+    return qsf.forecast_code_hash()
 
 
 # ----------------------------------------------------------------------------- the frozen spec
 
 
 # What a frozen p2q spec is bound to (besides its own constants): any difference refuses every later predict/score.
-FROZEN_BINDING = ("ifp2_config_hash", "scoring_fingerprint", "context_version", "p2_model_hash")
+FROZEN_BINDING = ("ifp2_config_hash", "scoring_fingerprint", "context_version", "forecast_code_hash")
 
 
 def spec_now(cfg_hash: str, scoring_fp: str) -> dict:
@@ -139,7 +143,7 @@ def spec_now(cfg_hash: str, scoring_fp: str) -> dict:
             "freeze_rule": {"ready_share": cs.READY_SHARE, "slate_share": cs.SLATE_SHARE,
                             "deadline_hours": cs.DEADLINE_HOURS},
             "rules": RULES, "ifp2_config_hash": cfg_hash, "scoring_fingerprint": scoring_fp,
-            "context_version": rc.CONTEXT_VERSION, "p2_model_hash": p2_model_hash()}
+            "context_version": rc.CONTEXT_VERSION, "forecast_code_hash": forecast_code_hash()}
     spec["config_hash"] = _sha_text(json.dumps(spec, sort_keys=True, default=str).encode())[:16]
     return spec
 
@@ -191,12 +195,10 @@ def cmd_predict(args) -> dict:
 
     import context_research as ctxr
     import hgb_research as hr
+    import qb_scenario_forecast as qsf
     import qb_scenario_research as qsr
-    import qb_scenarios as qs
     from app.analytics import challenger as ch
-    from app.analytics import roster_context as rc
-    from app.analytics.forecast_features import features_for_week, key
-    from app.analytics.participation import live_population
+    from app.analytics.forecast_features import key
     from app.analytics.weekly_learning import team_kickoffs, write_once
 
     season, week = args.season, args.week
@@ -225,39 +227,7 @@ def cmd_predict(args) -> dict:
         raise RuntimeError(f"the week-{week} injury report is not ingested yet (run sync_nfl.py first): a ledger is "
                            "write-once, so forecasts without it would be frozen degraded. --allow-no-report overrides.")
     cutoff = key(season, week)
-    # start model: week-W candidates (pregame inputs only; the postgame columns are blanked) and a fit on strictly
-    # earlier team-weeks (walk_forward_start asserts it)
-    cw = qs.start_candidates(src, ctx, season, week, teams=open_teams).with_columns(
-        pl.lit(None, pl.Float64).alias("started"), pl.lit(None, pl.Float64).alias("appeared"))
-    pc, models = qs.walk_forward_start(pl.concat([cands.filter(pl.col("key") < cutoff), cw], how="vertical_relaxed"),
-                                       [(season, week)])
-    start_model = models.get(cutoff)
-    teams_all = pl.read_parquet(qsr._out(ns) / "teams.parquet")
-    recent_all = pl.read_parquet(qsr._out(ns) / "recent.parquet")
-    # forecast rows: QB only (RB/WR/TE are ifp-2 in this candidate); realized-starter columns stay empty
-    pop = live_population(src, season, week).filter(pl.col("team").is_in(open_teams))
-    feats = features_for_week(src, season, week, pop).filter(pl.col("position") == "QB")
-    feats = feats.join(rc.context_for_week(src, ctx, season, week, feats.select("gsis_id", "position", "team",
-                                                                                "opponent")), on="gsis_id", how="left")
-    feats = feats.with_columns(pl.lit(season).alias("season"), pl.lit(week).alias("week"), pl.lit(cutoff).alias("key"))
-    rows_w = qs.scenario_columns(feats, pc, teams_all.head(0), recent_all.head(0))
-    train = qs.scenario_columns(st.filter((pl.col("position") == "QB") & (pl.col("key") < cutoff)), pc, teams_all,
-                                recent_all)
-    both = pl.concat([train, rows_w], how="diagonal_relaxed")
-    # S2 and the ifp-2 refit through the study's own walk_forward_p2 (pred_ctx2 = ifp-2 base for QB here)
-    pred = qs.walk_forward_p2(both, [(season, week)], cfg, candidates=("S2",), ablations=(), per_position={"QB": "ifp2"})
-    pred = pred.select("key", "gsis_id", "pred_S2", pl.col("pred_ctx2").alias("pred_ifp2")) if pred.height else \
-        pl.DataFrame(schema={"key": pl.Int64, "gsis_id": pl.String, "pred_S2": pl.Float64, "pred_ifp2": pl.Float64})
-    fr = rows_w.join(pred, on=["key", "gsis_id"], how="left")
-    rows = [{"gsis_id": r["gsis_id"], "position": "QB", "team": r["team"], "kickoff": kick[r["team"]].isoformat(),
-             "ifp2_points": r["pred_ifp2"], "s2_points": r["pred_S2"], "pi_start": r["pi_start"],
-             "pi_hard": r["pi_hard"], "qb_self_epa": r.get("qb_self_epa"), "games_recent": r.get("games_recent"),
-             "scenario_fallback_ifp2": r["pi_start"] is None}
-            for r in fr.sort("team", "gsis_id").iter_rows(named=True)]
-    cand_rows = [{k: r[k] for k in ("team", "gsis_id", "p_start", "pi_start", "rank", "first_game", "p1_expected",
-                                    "p1_confidence", "prev_start", "questionable", "doubtful", "unavailable")}
-                 for r in pc.filter(pl.col("key") == cutoff).sort("team", "p_start", descending=[False, True])
-                 .iter_rows(named=True)]
+    rows, cand_rows, start_model = qsf.forecast(ns, st, cands, cfg, src, ctx, season, week, open_teams, kick)
     # re-check every kickoff at write time: no row in a "pregame" ledger is ever written after its kickoff
     written_at = _utcnow()
     still_open = {t for t in open_teams if written_at < kick[t]}
@@ -268,6 +238,7 @@ def cmd_predict(args) -> dict:
     ledger = {"schema": LEDGER_SCHEMA, "version": CANDIDATE, "kind": "pregame", "season": season, "week": week,
               "created_at": written_at.isoformat(), "config_hash": spec["config_hash"],
               "spec_frozen_at": spec["frozen_at"], "training_cutoff_key": cutoff,
+              "forecast_code_hash": spec["forecast_code_hash"],
               "store_fingerprint": prov["fingerprint"], "p2_build_fingerprint": prov["p2_build_fingerprint"],
               "teams_excluded_already_started": sorted(set(kick) - still_open),
               "start_model": start_model,
@@ -291,21 +262,33 @@ def ledger_files(args) -> list[Path]:
 
 
 def counted(led: dict, spec: dict) -> bool:
-    """A ledger is evidence only if it is a prospective week, was frozen under this spec, and after the spec."""
+    """A ledger is evidence only if it is a prospective week, was frozen under this spec and by the bound forecast code,
+    and after the spec."""
     return ((led["season"], led["week"]) >= tuple(spec["first_prospective"])
             and led.get("config_hash") == spec["config_hash"]
+            and led.get("forecast_code_hash") == spec["forecast_code_hash"]
             and datetime.fromisoformat(led["created_at"]) >= datetime.fromisoformat(spec["frozen_at"]))
 
 
-def gate(r: dict, weeks: int, spec: dict) -> dict:
-    """context_research.cmd_prospective's gate (p1's), on the gated positions of `r` (ctxr.report of ifp2 vs ctx)."""
+def matched_weeks(p, positions) -> dict[str, int]:
+    """Per position, the fully final weeks with at least one matched appearance: labelled, both forecasts present (the
+    rows ctxr.report scores). An empty or unmatched ledger never counts toward the week requirement."""
+    import polars as pl
+
+    common = p.filter(pl.col("label").is_not_null() & pl.col("pred_ctx").is_not_null() & pl.col("pred_ifp2").is_not_null())
+    return {pos: common.filter(pl.col("position") == pos).select("key").n_unique() for pos in positions}
+
+
+def gate(r: dict, weeks: dict[str, int], spec: dict) -> dict:
+    """context_research.cmd_prospective's gate (p1's), on the gated positions of `r` (ctxr.report of ifp2 vs ctx).
+    `weeks`: matched_weeks per position."""
     g = spec["gate"]
     out = {}
     for pos in spec["gated_positions"]:
         x = r.get(pos) or {"n": 0}
         ci = (x.get("minus_ifp2") or {}).get("ctx", {}).get("ci95") if x["n"] else None
         sp = (x.get("cohorts") or {}).get("starters_pool") or {"n": 0}
-        checks = {"weeks": weeks >= g["min_prospective_weeks"],
+        checks = {"weeks": weeks.get(pos, 0) >= g["min_prospective_weeks"],
                   "appearances": x["n"] >= g["min_matched_appearances_per_position"],
                   "mae_ci_upper_below_0": ci is not None and ci[1] < g["mae_ci95_upper_below"],
                   "bias": x["n"] > 0 and abs(x["metrics"]["ctx"]["bias"]) <= abs(x["metrics"]["ifp2"]["bias"])
@@ -395,7 +378,8 @@ def cmd_prospective(args) -> dict:
     else:
         p = st.join(pl.concat(parts), on=["key", "gsis_id"], how="inner")
         r = ctxr.report(p, ["ifp2", "ctx"])
-        out.update(status="scored", report=r, gate=gate(r, len(weeks), spec))
+        mw = matched_weeks(p, spec["gated_positions"])
+        out.update(status="scored", report=r, matched_weeks=mw, gate=gate(r, mw, spec))
         both = p.filter(pl.col("label").is_not_null() & pl.col("pred_ctx").is_not_null()
                         & pl.col("pred_production").is_not_null())
         out["alongside_production"] = cs._metrics([(None, None, *t) for t in both.select(

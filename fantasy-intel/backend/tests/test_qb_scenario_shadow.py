@@ -75,7 +75,10 @@ def test_spec_is_qb_only_s2_under_p1s_gate(qss):
     assert (g["min_prospective_weeks"], g["min_matched_appearances_per_position"], g["bias_tolerance_points"],
             g["mae_ci95_upper_below"]) == (8, 400, 0.15, 0.0)
     assert g["min_prospective_weeks"] == ch.SHADOW_GATE["min_prospective_weeks"]          # p1's gate, not a copy
-    assert spec["p2_model_hash"] == hashlib.sha256((SCRIPTS / "qb_scenarios.py").read_bytes()).hexdigest()
+    h = hashlib.sha256()
+    for name in ("qb_scenarios.py", "qb_scenario_research.py", "qb_scenario_forecast.py"):
+        h.update(name.encode() + b"\0" + (SCRIPTS / name).read_bytes())
+    assert spec["forecast_code_hash"] == h.hexdigest()           # the model, the study's build and this forecast
     assert qss.spec_now("cfg", "scoring")["config_hash"] == spec["config_hash"]           # deterministic
 
 
@@ -89,8 +92,8 @@ def test_spec_freezes_once_and_a_changed_binding_is_refused(qss, args, monkeypat
                     ({"cfg_hash": "cfg-a", "scoring_fp": "scoring-b"}, "scoring_fingerprint")):
         with pytest.raises(RuntimeError, match=key):
             qss.load_spec(args, kw["cfg_hash"], kw["scoring_fp"])
-    monkeypatch.setattr(qss, "p2_model_hash", lambda: "edited-qb-scenarios")       # the p2 model code changed
-    with pytest.raises(RuntimeError, match="p2_model_hash"):
+    monkeypatch.setattr(qss, "forecast_code_hash", lambda: "edited-forecast")      # the forecast code changed
+    with pytest.raises(RuntimeError, match="forecast_code_hash"):
         qss.load_spec(args, "cfg-a", "scoring-a")
     monkeypatch.undo()
     monkeypatch.setitem(qss.RULES, "gate", "a looser gate")                           # a rule edited after the freeze
@@ -185,9 +188,12 @@ def test_predict_refuses_weeks_before_the_start_without_building_anything(qss, a
 
 
 def test_only_prospective_ledgers_under_the_frozen_spec_count(qss):
-    spec = {"first_prospective": [2026, 7], "config_hash": "h", "frozen_at": SUN.isoformat()}
-    ok = {"season": 2026, "week": 7, "config_hash": "h", "created_at": (SUN + timedelta(hours=1)).isoformat()}
+    spec = {"first_prospective": [2026, 7], "config_hash": "h", "frozen_at": SUN.isoformat(), "forecast_code_hash": "c"}
+    ok = {"season": 2026, "week": 7, "config_hash": "h", "forecast_code_hash": "c",
+          "created_at": (SUN + timedelta(hours=1)).isoformat()}
     assert qss.counted(ok, spec)
+    assert not qss.counted({**ok, "forecast_code_hash": "edited"}, spec)              # made by other forecast code
+    assert not qss.counted({k: v for k, v in ok.items() if k != "forecast_code_hash"}, spec)
     assert not qss.counted({**ok, "week": 6}, spec)                                   # before the start
     assert not qss.counted({**ok, "config_hash": "other"}, spec)                      # another spec
     assert not qss.counted({**ok, "created_at": (SUN - timedelta(hours=1)).isoformat()}, spec)   # before the freeze
@@ -202,15 +208,28 @@ def _report(n, weeks_ci, bias_ctx, bias_ifp2, sp_ctx, sp_ifp2):
 def test_gate_is_p1s(qss):
     spec = qss.spec_now("cfg", "scoring")
     good = _report(450, [-0.4, -0.1], -0.2, -0.1, 6.0, 6.1)
-    assert qss.gate(good, 8, spec)["QB"]["status"] == "meets_gate"
-    assert qss.gate(good, 7, spec)["QB"]["status"] == "insufficient_data"
-    assert qss.gate(_report(399, [-0.4, -0.1], 0, 0, 6, 6.1), 9, spec)["QB"]["status"] == "insufficient_data"
+    assert qss.gate(good, {"QB": 8}, spec)["QB"]["status"] == "meets_gate"
+    assert qss.gate(good, {"QB": 7}, spec)["QB"]["status"] == "insufficient_data"
+    assert qss.gate(_report(399, [-0.4, -0.1], 0, 0, 6, 6.1), {"QB": 9}, spec)["QB"]["status"] == "insufficient_data"
     worse_bias = _report(450, [-0.4, -0.1], -0.26, -0.1, 6.0, 6.1)                  # |bias| worse by > 0.15
-    assert qss.gate(worse_bias, 8, spec)["QB"]["checks"]["bias"] is False
-    assert qss.gate(worse_bias, 8, spec)["QB"]["status"] == "fails_gate"
-    assert qss.gate(_report(450, [-0.4, 0.01], 0, 0, 6, 6.1), 8, spec)["QB"]["status"] == "fails_gate"
-    assert qss.gate(_report(450, [-0.4, -0.1], 0, 0, 6.2, 6.1), 8, spec)["QB"]["checks"]["starters_pool"] is False
-    assert qss.gate({}, 0, spec)["QB"]["status"] == "insufficient_data"
+    assert qss.gate(worse_bias, {"QB": 8}, spec)["QB"]["checks"]["bias"] is False
+    assert qss.gate(worse_bias, {"QB": 8}, spec)["QB"]["status"] == "fails_gate"
+    assert qss.gate(_report(450, [-0.4, 0.01], 0, 0, 6, 6.1), {"QB": 8}, spec)["QB"]["status"] == "fails_gate"
+    assert qss.gate(_report(450, [-0.4, -0.1], 0, 0, 6.2, 6.1), {"QB": 8}, spec)["QB"]["checks"]["starters_pool"] is False
+    assert qss.gate({}, {}, spec)["QB"]["status"] == "insufficient_data"
+
+
+def test_only_weeks_with_matched_qb_appearances_count_toward_the_week_requirement(qss):
+    """Seven weeks of matched QB rows plus one fully final ledger whose rows match nothing (no label, or a missing
+    forecast) is seven weeks, not eight."""
+    rows = [{"key": 202607 + w, "position": "QB", "label": 10.0, "pred_ctx": 9.0, "pred_ifp2": 9.5} for w in range(7)]
+    rows += [{"key": 202614, "position": "QB", "label": None, "pred_ctx": 9.0, "pred_ifp2": 9.5},
+             {"key": 202614, "position": "QB", "label": 10.0, "pred_ctx": None, "pred_ifp2": 9.5},
+             {"key": 202615, "position": "RB", "label": 10.0, "pred_ctx": 9.0, "pred_ifp2": 9.5}]
+    mw = qss.matched_weeks(pl.DataFrame(rows), ["QB"])
+    assert mw == {"QB": 7}
+    spec = qss.spec_now("cfg", "scoring")
+    assert qss.gate(_report(450, [-0.4, -0.1], 0, 0, 6.0, 6.1), mw, spec)["QB"]["status"] == "insufficient_data"
 
 
 def test_start_calibration_against_the_realized_starter(qss):

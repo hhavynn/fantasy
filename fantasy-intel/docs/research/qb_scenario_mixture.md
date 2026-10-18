@@ -330,7 +330,7 @@ decomposition that looked at every window. Historical replay cannot settle it.
 nothing in production, the API or the frontend reads it, and `projection_source.py` / `participation.py` are
 unchanged.
 
-**Candidate.** S2 at QB, exactly this study's model: `qb_scenarios.py` called through
+**Candidate.** S2 at QB, exactly this study's model: `qb_scenario_forecast.py` calls `qb_scenarios.py` through
 `qb_scenario_research.py`'s own `build`, then `walk_forward_p2` for the target week. RB/WR/TE are ifp-2, so only QB
 rows are frozen and gated. Neither p2 file is edited, because both are bound into p2's frozen selection
 (`evaluator_hash`).
@@ -342,8 +342,10 @@ prospective week and before this study's results are revisited. It holds:
 * the freeze-rule constants and the first prospective week (2026 week 7).
 
 Like the p2 selection, it is bound to the ifp-2 config hash, the league scoring, the roster-context version and the
-sha256 of `qb_scenarios.py`. Any later difference in the spec or the binding is refused, and the error names the
-key. The p2 study's frozen selection, when it is present, is recorded as provenance but not bound, so the shadow
+sha256 of the forecast-building code: `qb_scenarios.py` (the model), `qb_scenario_research.py` (the store and
+candidate build) and `qb_scenario_forecast.py` (the week's forecast). Any later difference in the spec or the
+binding is refused, and the error names the key. Every ledger records the same code hash, and a ledger whose hash
+differs never counts. `qb_scenario_shadow.py` only schedules and scores, so fixing it does not stop the evidence. The p2 study's frozen selection, when it is present, is recorded as provenance but not bound, so the shadow
 does not depend on the study's directory. (Adding the new scripts changes `hgb_research.code_hash`, which covers
 every script, so p2's store fingerprint changes too. As before, reproduce the study at PR #102's commit.)
 
@@ -365,7 +367,7 @@ and never backfilled.
 after the spec froze. Once its week is fully final, `prospective.json` is rebuilt with three parts.
 * **The gate**, p1's `challenger.SHADOW_GATE` on QB: S2 against the ifp-2 refit frozen in the same ledger, on
   identical rows.
-  * at least 8 fully final weeks and at least 400 matched QB appearances;
+  * at least 8 fully final weeks with matched QB appearances, and at least 400 matched QB appearances;
   * a week-clustered MAE-difference CI with upper bound below 0;
   * |bias(S2)| <= |bias(ifp-2)| + 0.15;
   * starters-pool MAE not worse.
