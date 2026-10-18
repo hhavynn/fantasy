@@ -97,6 +97,34 @@ def rules_sha() -> str:
                           .encode()).hexdigest()[:16]
 
 
+# ros-avail-0.1.0 failed its gates (retain_current; docs/research/ros_availability.md). The next candidate is
+# written down here BEFORE any data it will be judged on exists. Its design used what the 0.1.0 confirmation showed
+# (post hoc), so 2019-2025 can no longer test it: only prospective weeks can. Not implemented or run here.
+NEXT_CANDIDATE = {
+    "version": "ros-avail-0.1.1",
+    "changes": [
+        "fit population = application population: an Out/Doubtful episode counts only if the player's latest weekly "
+        "roster row <= W is ACT/INA (reserve-list players are withheld by build_live and never receive a ROS p_play; "
+        "0.1.0 mixed them in and under-predicted returns)",
+        "applied at h = 1 and h = 2 only; h >= 3 keeps the current p_play (0.1.0 lost to the current path there)",
+        "refit at every cutoff on all episodes from 2019 through the cutoff (current season included)",
+    ],
+    "evaluation": "prospective only: a write-once pregame ledger from the 2026 week-7 cutoff to the end of the regular "
+                  "season (current p_play, candidate p_play, both frozen before kickoff), scored after the season",
+    "gates": {
+        "p1_brier": "Brier(candidate) - Brier(current) < 0 with a cutoff-week bootstrap 95% CI upper < 0, at h = 1 and "
+                    "at h = 2 separately",
+        "p2_mean": "|mean candidate p - observed rate| <= 0.08 at h = 1 and at h = 2",
+        "p3_totals": "expected points over the next two team games: MAE(candidate) <= MAE(current) (point estimate)",
+    },
+    "outcome": "all pass -> promotion proposal for owner review; otherwise retain_current",
+}
+
+
+def next_candidate_sha() -> str:
+    return hashlib.sha256(json.dumps(NEXT_CANDIDATE, sort_keys=True).encode()).hexdigest()[:16]
+
+
 # ----------------------------------------------------------------------------- the candidate
 
 

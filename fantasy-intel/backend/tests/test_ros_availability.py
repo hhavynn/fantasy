@@ -20,6 +20,7 @@ from test_injury_workload import BACKUP, S, STAR, inj, report, world
 # Pre-registration: the rules were committed before the first evaluation run. Changing them must be deliberate
 # (and documented as a new version), so the hash is pinned here.
 FROZEN_RULES_SHA = "db1ad0df05ec5216"
+FROZEN_NEXT_SHA = "f3e0772c4317ca39"   # ros-avail-0.1.1, pre-registered for prospective weeks only
 
 
 def test_rules_are_frozen():
@@ -29,6 +30,8 @@ def test_rules_are_frozen():
     assert set(ra.DECISION_RULES["gates_ros_totals"]) >= {"r1_mae", "r2_bias"}
     assert ra.GATED_HORIZONS == (1, 2, 3, 4) and ra.TEST_SEASONS == (2023, 2024)
     assert "owner approval" in ra.DECISION_RULES["never"]
+    assert ra.next_candidate_sha() == FROZEN_NEXT_SHA
+    assert "prospective" in ra.NEXT_CANDIDATE["evaluation"]
 
 
 # ----------------------------------------------------------------------------- candidate
