@@ -697,6 +697,12 @@ Each run records `forecast_horizon` and `projected_from_week` (= `W`) in `indepe
 `_REBUILD` entry). Both are in `HASHED_META`, but only a run with `h > 0` contributes them to its `content_sha256`, so
 every horizon-0 run keeps the digest it was sealed with and an unchanged rerun stays a no-op across the upgrade.
 
+**Horizon guard.** A run's cutoff week must be the next unplayed week (the week after the latest week with any final
+game): `build_live` raises `HorizonError` for a horizon-0 run of a later week, because ESPN status, the ESPN designation
+fallback and the latest roster row describe the earlier game (a stored ifp-1 week-7 run made while week 6 was unplayed
+carried a week-6 DOUBTFUL into week 7). Project such a week with `projected_from_week`. Measured weakness of the
+undesignated future-week p_play for players injured at the cutoff: `docs/research/injury_workload_handoff.md` section 6.
+
 **Method.** One cycle trains once (week `W`'s artifact; nothing is trained per future week, which readiness would refuse)
 and `project` then writes one run per target week `W..last` from that same artifact
 (`backtest_independent_projections.py project --week W --through-week L`; a single later week is
