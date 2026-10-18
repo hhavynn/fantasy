@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { plural } from "@/lib/plural";
 import { POSITIONS, headline, weeksText, type PerformanceResponse } from "@/lib/projection-performance";
-import { Coverage, EspnComparison, Methodology, ModelVersions, PositionCards, StartSit, WeeklyTrend } from "./sections";
+import { Coverage, EspnComparison, Methodology, ModelVersions, PositionCards, RbVolume, StartSit, WeeklyTrend } from "./sections";
 import styles from "./performance.module.css";
 
 export const metadata = { title: "Projection performance" };
@@ -86,6 +86,7 @@ export default async function ProjectionPerformancePage() {
 
       <PositionCards r={r} />
       <EspnComparison r={r} />
+      <RbVolume r={r} />
       <WeeklyTrend r={r} />
       <ModelVersions r={r} />
       <StartSit r={r} />
