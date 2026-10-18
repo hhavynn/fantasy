@@ -13,7 +13,7 @@ from studio.stages import flame, qc
 from studio.stages import showrunner as SR
 from studio.stages.facts import evaluate_claim
 from studio.stages.script import BANNED, DIGIT, NUMBER_WORDS, PLACEHOLDER
-from studio.stages.story import finish
+from studio.stages.story import fill, finish
 
 NAMES = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India", "Juliet"]
 TEAMS = ["PHI", "DAL", "NYJ", "SEA", "BUF", "MIA", "KC", "LV", "DEN", "LAC"]
@@ -148,6 +148,32 @@ def test_a_comparison_needs_a_benchmark_the_data_supports():
     hog = p["angles"][0]
     assert not SR.eligible("comparison", hog, p)
     assert SR.choose(p, [])["format"] != "comparison"
+
+
+def test_one_offense_with_fewer_targets_is_not_a_comparison():
+    # 16 targets, the opponent had more, and one other team drew fewer: a coincidence, not "entire NFL offenses"
+    p, _ = receiver(targets=16, opp_targets=30, teams_fewer=1)
+    assert not SR.eligible("comparison", p["angles"][0], p)
+    p, claims = receiver(targets=16, opp_targets=30, teams_fewer=2)
+    assert SR.eligible("comparison", p["angles"][0], p)
+    beats, _ = SR.compose({"players": [p]}, claims, SR.choose(p, [], "comparison"))
+    assert "{{tf}} entire NFL offenses got fewer that week." in " ".join(b["text_template"] for b in beats)
+
+
+def test_one_sack_is_one_sack():
+    _, facts, claims = qb_facts(latest_air=250.0, sacks=1, ints=2)
+    p = facts["players"][0]
+    for fmt in ("roast_monologue", "courtroom"):
+        brief = SR.choose(p, [], fmt)
+        assert brief["format"] == fmt and brief["angle"] == "rough_day"
+        beats, _ = SR.compose(facts, claims, brief)
+        said = " ".join(fill(b["text_template"], claims, "display") for b in beats)
+        assert "1 sack." in said and "1 sacks" not in said
+        assert all(b["scene"].get("small_label") in (None, "SACK") for b in beats)
+        assert SR.thumbnail(p, claims, SR.structure(brief, beats))[2] == "1 SACK"
+    _, facts, claims = qb_facts(latest_air=250.0, sacks=5, ints=2)
+    beats, _ = SR.compose(facts, claims, SR.choose(facts["players"][0], [], "roast_monologue"))
+    assert "5 sacks." in " ".join(fill(b["text_template"], claims, "display") for b in beats)
 
 
 def test_about_half_is_only_said_when_it_is_about_half():
