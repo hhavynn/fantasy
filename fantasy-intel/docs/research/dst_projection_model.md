@@ -131,7 +131,8 @@ opponent's implied team total and the defense's expected margin from the closing
 only on earlier seasons' point-in-time features.
 
 **Touchdowns.** Defensive TDs are E[INT] · TD-per-INT, E[FR] · TD-per-FR and E[block] · TD-per-block, at
-league rates. Return TDs come from the team's shrunk return-TD rating. P(at least one D/ST TD) is
+league rates. Return TDs come from the team's shrunk return-TD rating, split into kickoff and punt returns by
+the league's observed mix, so a league that scores the two differently is scored correctly. P(at least one D/ST TD) is
 1 − exp(−λ_TD).
 
 **Tiers.** P(points- and yards-allowed tier) is a kernel-weighted empirical distribution of earlier seasons'

@@ -322,6 +322,10 @@ class Ratings:
             num = np.nansum(wts * hist[td][m])
             den = np.nansum(wts * hist[base][m]) if base else np.sum(wts[~np.isnan(hist[td][m])])
             self.td_rate[td] = float(num / den) if den > 0 else 0.0
+        # share of return TDs that are kickoff returns (the rest are punt returns), so a league that scores
+        # 101 and 102 differently gets the observed mix; 0.5 with no return TD in the window
+        kr, pr = np.nansum(wts * hist["kr_td"][m]), np.nansum(wts * hist["pr_td"][m])
+        self.td_rate["kr_share"] = float(kr / (kr + pr)) if kr + pr > 0 else 0.5
 
     def predict(self, x: str, team: str, opp: str, home: float) -> float:
         d, o = self.teams.get(team), self.teams.get(opp)
@@ -347,7 +351,7 @@ def history_arrays(rows: Sequence[dict], teams: Sequence[str]) -> dict[str, np.n
            "d_idx": np.array([idx[r["team"]] for r in fin], dtype=int),
            "o_idx": np.array([idx[r["opp"]] for r in fin], dtype=int),
            "home": np.array([r["home"] for r in fin], dtype=float)}
-    for x in RATED + ("int_td", "fr_td", "blk_td", "ret2", "saf1"):
+    for x in RATED + ("int_td", "fr_td", "blk_td", "ret2", "saf1", "kr_td", "pr_td"):
         out[x] = np.array([np.nan if r.get(x) is None else r[x] for r in fin], dtype=float)
     return out
 
@@ -463,8 +467,9 @@ def project_season(train_rows, train_feats, rows, feats, scoring: DstScoring, cf
         stats = {99: e["sacks"], 100: 2 * e["sacks"], 95: e["ints"], 96: e["fr"], 97: e["blk"], 98: e["saf"],
                  103: e["ints"] * f["tau_int_td"], 104: e["fr"] * f["tau_fr_td"], 93: e["blk"] * f["tau_blk_td"],
                  206: f["tau_ret2"], 209: f["tau_saf1"], PA_STAT: e["pa"], YA_STAT: e["ya"]}
-        # return TDs: split the team's KR+PR expectation by the league's KR/PR mix (both 6 in every ESPN default)
-        stats[101] = stats[102] = e["ret_td"] / 2
+        # return TDs: split the team's KR+PR expectation by the league's observed KR/PR mix
+        stats[101] = e["ret_td"] * f["tau_kr_share"]
+        stats[102] = e["ret_td"] * (1 - f["tau_kr_share"])
         for j, t in enumerate(PA_TIERS):
             stats[t] = float(pa_p[i, j])
         for j, t in enumerate(YA_TIERS):

@@ -144,6 +144,8 @@ def synthetic(seasons=(2020, 2021, 2022, 2023), weeks=8, seed=0, sack_prone="HHH
                              dr.tier_of(ya, dr.YA_TIERS): 1.0}
                     if rng.random() < 0.1:
                         stats[103] = 1.0
+                    if rng.random() < 0.04:
+                        stats[101 if rng.random() < 0.75 else 102] = 1.0
                     espn[s]["actual"][(team, w)] = stats
                     espn[s]["espn"][(team, w)] = {99: 2.4, 95: 0.8, 96: 0.6, 91: 0.2, 92: 0.2, 122: 0.3, 130: 0.3}
                     tw.append({"season": s, "week": w, "team": opp, "dropbacks": 38.0, "hit_or_sack": sacks + 3})
@@ -223,7 +225,8 @@ def test_projection_is_the_league_score_of_expected_statistics(world):
     assert sum(p["p_ya_tier"].values()) == pytest.approx(1.0)
     stats = {99: p["e_sacks"], 95: p["e_ints"], 96: p["e_fr"], 97: p["e_blk"], 98: p["e_saf"],
              103: p["e_ints"] * f["tau_int_td"], 104: p["e_fr"] * f["tau_fr_td"], 93: p["e_blk"] * f["tau_blk_td"],
-             101: p["e_ret_td"] / 2, 102: p["e_ret_td"] / 2, 206: f["tau_ret2"], 209: f["tau_saf1"],
+             101: p["e_ret_td"] * f["tau_kr_share"], 102: p["e_ret_td"] * (1 - f["tau_kr_share"]),
+             206: f["tau_ret2"], 209: f["tau_saf1"],
              **p["p_pa_tier"], **p["p_ya_tier"]}
     assert p["pred"] == pytest.approx(scoring.points(stats), abs=1e-5)
     assert p["p_any_td"] == pytest.approx(1 - math.exp(-p["lambda_td"]))
@@ -235,6 +238,25 @@ def test_projection_is_the_league_score_of_expected_statistics(world):
     hhh = [q["e_sacks"] for i, q in zip(te, preds) if rows[i]["opp"] == "HHH"]
     rest = [q["e_sacks"] for i, q in zip(te, preds) if rows[i]["opp"] != "HHH"]
     assert np.mean(hhh) > np.mean(rest) + 0.5
+
+
+def test_return_tds_keep_the_kickoff_vs_punt_mix(world):
+    """A league that scores kickoff- and punt-return TDs differently gets the observed KR/PR mix, not 50/50."""
+    rows, teams, _, hist = world
+    rt = dr.Ratings(hist, teams, 202308, dr.DConfig())
+    kr, pr = (hist[c][hist["key"] <= 202308] for c in ("kr_td", "pr_td"))
+    assert kr.sum() and pr.sum() and kr.sum() != pr.sum()      # the fixture's mix is not 50/50
+    assert abs(rt.td_rate["kr_share"] - 0.5) > 0.05
+    kr_only = dr.resolve_dst_scoring([{"statId": 101, "points": 6.0}])
+    pr_only = dr.resolve_dst_scoring([{"statId": 102, "points": 6.0}])
+    cfg = dr.DConfig(market=False)
+    feats = dr.rating_features(rows, hist, teams, cfg, 1)
+    tr = [i for i, r in enumerate(rows) if r["season"] < 2023]
+    te = [i for i, r in enumerate(rows) if r["season"] == 2023][:4]
+    args = ([rows[i] for i in tr], [feats[i] for i in tr], [rows[i] for i in te], [feats[i] for i in te])
+    for k, p in zip(dr.project_season(*args, kr_only, cfg), dr.project_season(*args, pr_only, cfg)):
+        share = k["pred"] / (k["pred"] + p["pred"])
+        assert share == pytest.approx(feats[te[0]]["tau_kr_share"], abs=1e-3)
 
 
 def test_rows_without_a_line_fall_back_to_ratings(world):
