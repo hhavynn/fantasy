@@ -66,7 +66,7 @@ export function clearsBar(v: number | null, bar: number): boolean | null {
 
 export const STATUS_LABEL: Record<string, { text: string; tone: string }> = {
   validated: { text: "Validated", tone: "good" },
-  experimental: { text: "Experimental", tone: "warn" },
+  experimental: { text: "In research", tone: "" },
   insufficient_data: { text: "Insufficient data", tone: "" },
-  owner_override: { text: "Owner override (unproven)", tone: "warn" },
+  owner_override: { text: "In production", tone: "" },
 };

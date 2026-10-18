@@ -9,7 +9,7 @@ import styles from "./injury-impact.module.css";
 export function Kind({ kind }: { kind: "observed" | "estimate" | "espn" }) {
   const text = kind === "observed" ? "Observed" : kind === "estimate" ? "Estimate" : "ESPN model";
   const title = kind === "observed" ? "Counted from this season's games"
-    : kind === "estimate" ? "Pro-rata split, not a validated projection" : "ESPN's own weekly projection";
+    : kind === "estimate" ? "Pro-rata split estimate" : "ESPN's own weekly projection";
   return <span className={kind === "observed" ? styles.kindObserved : styles.kindEstimate} title={title}>{text}</span>;
 }
 

@@ -160,3 +160,8 @@ export function statLineText(s: StatLine | null): string | null {
 export function headline(p: KickerPlayer): string | null {
   return p.independent.explanation.find((e) => e.feature === "headline")?.text ?? null;
 }
+
+/** A kicker's row flags, minus the per-row rest-of-season horizon flag: the page states the run's horizon once. */
+export function rowFlags(flags: string[]): string[] {
+  return flags.filter((f) => !f.startsWith("rest-of-season kicker forecast"));
+}

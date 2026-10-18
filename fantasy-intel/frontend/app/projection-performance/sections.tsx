@@ -233,7 +233,7 @@ export function ModelVersions({ r }: { r: PerformanceReport }) {
                     <td>
                       {s?.served_version ? <>{s.served_version}{s.fallback ? <> <Badge value="Fallback" tone="warn" /></> : null}</> : <span className="faint" title={s?.note ?? undefined}>ESPN</span>}
                       {s?.forecast_horizon ? (
-                        <span className={cx("faint", styles.small)} title={s.horizon_note ?? undefined}>
+                        <span className={cx("faint", styles.small)}>
                           rest-of-season forecast, {s.forecast_horizon} {plural(s.forecast_horizon, "week")} ahead (not scored)
                         </span>
                       ) : null}
@@ -476,7 +476,6 @@ export function Methodology({ r, sha }: { r: PerformanceReport; sha: string | nu
         <li>Interval: {g.interval} ({g.resamples} resamples, fixed seed). A verdict in either direction needs the whole interval on one side of 0.</li>
         <li>Start/Sit: at least {g.start_sit_min_decisions} decisions and {g.start_sit_min_weeks} weeks before any verdict.</li>
         {r.notes.map((n) => <li key={n}>{n}</li>)}
-        <li>{r.production.production_evidence}</li>
       </ul>
       <Method title="Report provenance">
         <ul className={styles.list}>
