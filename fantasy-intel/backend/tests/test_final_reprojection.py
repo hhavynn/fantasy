@@ -209,6 +209,14 @@ def test_injury_retrieval_times_are_reported_never_a_gate(week, monkeypatch):
     assert res["status"] == fr.WRITTEN                          # stale/missing teams elsewhere change nothing
 
 
+def test_the_app_never_imports_the_reprojection_writer():
+    """Local-only (polars, the model packages, a write path): the hosted API and consumer views never import it."""
+    app = Path(fr.__file__).resolve().parents[1]
+    for f in app.rglob("*.py"):
+        if f.name != "final_reprojection.py":
+            assert "final_reprojection" not in f.read_text(), f"{f.relative_to(app)} imports final_reprojection"
+
+
 # ----------------------------------------------------------------------------- the CLI and the scheduled step
 
 
