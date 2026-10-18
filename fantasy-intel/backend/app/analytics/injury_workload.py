@@ -1,8 +1,10 @@
-"""Week-specific injury timeline, established healthy role and team workload handoff (research only).
+"""Week-specific injury timeline, established healthy role and team workload handoff.
 
-Nothing in the app imports this module (tests/test_injury_workload.py). It feeds the research
-challenger `ifp-iwh` (scripts/injury_workload_research.py); ifp-1.0.0 and ifp-2.0.0 never read it.
-See docs/research/injury_workload_handoff.md for every definition and the evidence.
+Feeds the production model ifp-2.1.0 (app.analytics.injury_model, with the iwh-0.1.1 participation fix:
+`listing_absence=True`) and the research challenger `ifp-iwh` (scripts/injury_workload_research.py, iwh-0.1.0,
+the defaults here, kept byte-identical so the evaluated research reproduces). ifp-1.0.0 and ifp-2.0.0 never read it.
+The hosted API never imports it (numpy/polars). See docs/research/injury_workload_handoff.md for every definition
+and the evidence.
 
 Three layers, each point-in-time for a forecast of (season S, target week T) made at cutoff week W <= T:
 
@@ -52,7 +54,8 @@ import polars as pl
 from ..db.connection import table_columns, table_exists
 from .forecast_features import Sources, classify_games, key
 
-WORKLOAD_VERSION = "iwh-0.1.0"
+WORKLOAD_VERSION = "iwh-0.1.0"          # the evaluated research version (defaults below)
+WORKLOAD_VERSION_FIXED = "iwh-0.1.1"    # + listing_absence: the pre-registered fix of section 7.3 (production)
 
 # Fixed before any backtest; derivations in docs/research/injury_workload_handoff.md.
 HEALTHY_WINDOW = 8           # established role: the last <= 8 healthy games in the lookback
@@ -92,7 +95,8 @@ TIMELINE_DOCS: dict[str, str] = {
     "last_healthy_season/week": "his last appearance that was not an injury exit",
     "last_game_injury_exit": "1 if the last appearance is classified injury_exit (forecast_features.classify_games)",
     "missed_team_games": "his current team's final games this season after his last appearance, before W",
-    "missed_injured": "of those, games he was designated Out/Doubtful or on a reserve list for (injury absences)",
+    "missed_injured": "of those, games he was designated Out/Doubtful or on a reserve list for (injury absences); "
+                      "iwh-0.1.1 (listing_absence): any injury listing that week",
     "return_evidence": "pregame evidence after missed games: listed_without_designation | questionable | "
                        "activated_from_reserve | none",
     "status_class": "available | available_returning | uncertain | unavailable | unknown (see status_reason)",
@@ -134,10 +138,18 @@ class _Cut:
     schedule: dict[str, list[int]]       # team -> all scheduled REG weeks this season (for reserve windows)
     listed: dict[tuple[str, int], str]   # (gsis, week) -> report_status for weeks <= W (injury listings only)
     played: dict[str, set[int]]          # gsis -> weeks of this season (before W) he appeared in
+    listing_absence: bool = False        # iwh-0.1.1: any injury listing makes a missed game an injury absence
+
+    def injured_absence(self, g: str, week: int, roster_row: dict | None) -> bool:
+        """Was a missed game an injury absence? Designated Out/Doubtful (iwh-0.1.0) or, with listing_absence
+        (iwh-0.1.1), on that week's report with ANY injury listing; or on a reserve list that week."""
+        listed = (g, week) in self.listed if self.listing_absence \
+            else self.listed.get((g, week)) in UNAVAILABLE_DESIGNATIONS
+        return listed or (roster_row or {}).get("status") in RESERVE_ROSTER
 
 
 def _cut(sources: Sources, season: int, target: int, cutoff: int | None,
-         roster_codes: pl.DataFrame | None = None) -> _Cut:
+         roster_codes: pl.DataFrame | None = None, listing_absence: bool = False) -> _Cut:
     w = target if cutoff is None else cutoff
     if w > target:
         raise ValueError(f"cutoff week {w} is after the target week {target}")
@@ -189,7 +201,7 @@ def _cut(sources: Sources, season: int, target: int, cutoff: int | None,
     for g, wk in p.filter(pl.col("season") == season).select("gsis_id", "week").iter_rows():
         played[g].add(int(wk))
     return _Cut(season, target, w, p, report, report_teams, roster_last, dict(roster_rows), dict(team_games),
-                dict(schedule), listed, dict(played))
+                dict(schedule), listed, dict(played), listing_absence)
 
 
 # ----------------------------------------------------------------------------- 1. injury timeline
@@ -251,8 +263,7 @@ def _timeline_rows(cut: _Cut) -> list[dict]:
         rec["missed_team_games"] = len(after)
         rows = cut.roster_rows.get(g, [])
         by_week = {r["week"]: r for r in rows}
-        inj = sum(1 for w in after if cut.listed.get((g, w)) in UNAVAILABLE_DESIGNATIONS
-                  or (by_week.get(w) or {}).get("status") in RESERVE_ROSTER)
+        inj = sum(1 for w in after if cut.injured_absence(g, w, by_week.get(w)))
         rec["missed_injured"] = inj
         prev = tg[-1] if tg else None
         rec["prev_game_out"] = None if prev is None else int(cut.listed.get((g, prev)) in UNAVAILABLE_DESIGNATIONS)
@@ -333,10 +344,11 @@ def _status(rec: dict, cur_st: str, horizon: int) -> tuple[str, str]:
 
 
 def injury_timeline(sources: Sources, season: int, target_week: int, cutoff_week: int | None = None,
-                    roster_codes: pl.DataFrame | None = None) -> pl.DataFrame:
+                    roster_codes: pl.DataFrame | None = None, listing_absence: bool = False) -> pl.DataFrame:
     """Player-by-week injury timeline for (season, target_week) as known at `cutoff_week` (default: the target
-    week itself, horizon 0). One row per QB/RB/WR/TE with a lookback appearance or a roster row before W."""
-    cut = _cut(sources, season, target_week, cutoff_week, roster_codes)
+    week itself, horizon 0). One row per QB/RB/WR/TE with a lookback appearance or a roster row before W.
+    `listing_absence`: the iwh-0.1.1 rule for `missed_injured` (_Cut.injured_absence)."""
+    cut = _cut(sources, season, target_week, cutoff_week, roster_codes, listing_absence)
     rows = _timeline_rows(cut)
     return pl.DataFrame(rows, schema=TIMELINE_SCHEMA, orient="row") if rows else pl.DataFrame(schema=TIMELINE_SCHEMA)
 
@@ -485,7 +497,11 @@ def _xfpl_rates(p: pl.DataFrame) -> dict[str, tuple[float, float, float]]:
 def _participation(cut: _Cut, g: str, team: str) -> float:
     """Share of the team's last <= TEAM_WINDOW final games the player either played or missed injured (designated
     Out/Doubtful, or on a reserve list that week), counting only weeks he was on the team's roster when roster
-    rows exist. An injury absence keeps the role; a healthy absence (scratch, demotion) lowers it."""
+    rows exist. An injury absence keeps the role; a healthy absence (scratch, demotion) lowers it.
+
+    With cut.listing_absence (iwh-0.1.1, docs section 7.3) a missed game also counts as an injury absence when the player
+    was on that week's report with ANY injury listing (Questionable, or the practice report without a game status),
+    so a Questionable-and-inactive game is not read as a role absence. iwh-0.1.0 (False) counted Out/Doubtful only."""
     weeks = cut.team_games.get(team, [])[-TEAM_WINDOW:]
     if not weeks:
         return 1.0
@@ -497,7 +513,7 @@ def _participation(cut: _Cut, g: str, team: str) -> float:
         if rows and (r is None or r["team"] != team or r["status"] not in (*ACTIVE_ROSTER, *RESERVE_ROSTER)):
             continue      # not on this team's roster that week (practice squad, another team): not counted
         den += 1
-        if w in played or cut.listed.get((g, w)) in UNAVAILABLE_DESIGNATIONS or (r or {}).get("status") in RESERVE_ROSTER:
+        if w in played or cut.injured_absence(g, w, r):
             num += 1
     return num / den if den else 1.0
 
@@ -572,7 +588,7 @@ def _room_evidence(games: list[tuple[int, dict[str, float]]], first: dict[str, i
 
 def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_week: int | None = None, *,
                      timeline: pl.DataFrame | None = None, return_rates: dict | None = None,
-                     roster_codes: pl.DataFrame | None = None) -> pl.DataFrame:
+                     roster_codes: pl.DataFrame | None = None, listing_absence: bool = False) -> pl.DataFrame:
     """Expected opportunities of every RB/WR/TE in week T (layer 3 of the module docstring), one row per player.
 
     Horizon 0: Out/Doubtful/reserve/inactive players leave the pool; Questionable players stay (conditional on
@@ -580,8 +596,10 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
     Horizon >= 1 (T after the cutoff): a player injured at the cutoff is `uncertain`. With `return_rates`
     ({(position, missed_bucket, horizon): rate} from `fit_return_rates`, an empirical frequency fitted on earlier
     seasons) the expected shares are the probability-weighted mixture over his presence/absence scenarios;
-    without it he stays out of the pool and every row reports ho_scenarios = 0 (status quo, labeled)."""
-    cut = _cut(sources, season, target_week, cutoff_week, roster_codes)
+    without it he stays out of the pool and every row reports ho_scenarios = 0 (status quo, labeled).
+    `listing_absence`: the iwh-0.1.1 rule (_Cut.injured_absence: participation and missed_injured); False is the
+    evaluated iwh-0.1.0."""
+    cut = _cut(sources, season, target_week, cutoff_week, roster_codes, listing_absence)
     tl = timeline if timeline is not None else pl.DataFrame(_timeline_rows(cut), schema=TIMELINE_SCHEMA, orient="row")
     tl = tl.filter(pl.col("position").is_in(SKILL))
     if tl.height == 0:
@@ -731,24 +749,37 @@ def missed_bucket(missed: int | None) -> str:
     return "0" if m == 0 else "1" if m == 1 else "2-3" if m <= 3 else "4+"
 
 
+RETURN_MAX_HORIZON = 4      # the table's horizons (team games after the cutoff); a later game uses the last one
+RETURN_MIN_N = 30           # a thinner cell pools over positions, then over missed-game buckets
+
+
+def return_rate_cell(rates: dict | None, position: str | None, missed: int | None, horizon: int) -> tuple | None:
+    """The table cell used for (position, games already missed, h team games after the cutoff): the key and its
+    {rate, n}, or None when no cell has RETURN_MIN_N episodes. h is capped at the table's largest horizon."""
+    hs = [k[2] for k in (rates or {})]
+    h = min(max(horizon, 1), max(hs) if hs else RETURN_MAX_HORIZON)
+    b = missed_bucket(missed)
+    for k in ((position, b, h), ("ALL", b, h), ("ALL", "ALL", h)):
+        cell = (rates or {}).get(k)
+        if cell and cell["n"] >= RETURN_MIN_N:
+            return k, cell
+    return None
+
+
 def _return_rate(rates: dict | None, row: dict, horizon: int) -> float:
     """Empirical P(appears in the team's h-th game after the cutoff | injured at the cutoff), by position and
     games already missed; pooled over positions, then over buckets, when a cell is thin. Never a fixed guess:
     without a fitted table the caller keeps the player out (status quo) instead."""
-    h = min(max(horizon, 1), 4)
-    b = missed_bucket(row.get("missed_team_games"))
-    for k in ((row.get("position"), b, h), ("ALL", b, h), ("ALL", "ALL", h)):
-        cell = (rates or {}).get(k)
-        if cell and cell["n"] >= 30:
-            return cell["rate"]
-    return 0.0
+    hit = return_rate_cell(rates, row.get("position"), row.get("missed_team_games"), min(max(horizon, 1), 4))
+    return hit[1]["rate"] if hit else 0.0
 
 
-def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...] | None = None) -> dict:
+def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...] | None = None,
+                     max_horizon: int = RETURN_MAX_HORIZON) -> dict:
     """{(position|'ALL', missed bucket|'ALL', h): {rate, n}}: among players designated Out or Doubtful for their
     team's week-W game (with a lookback appearance), the share who appeared in the team's h-th game after W
-    (h = 1..4, byes skipped). Only episodes whose outcome game is strictly before `through_key` count, so a
-    table fitted for a forecast made at week W uses no outcome at or after W."""
+    (h = 1..max_horizon, byes skipped). Only episodes whose outcome game is strictly before `through_key` count, so
+    a table fitted for a forecast made at week W uses no outcome at or after W."""
     if sources.injuries is None:
         return {}
     inj = sources.injuries.filter(pl.col("report_status").str.to_lowercase().is_in(list(UNAVAILABLE_DESIGNATIONS))
@@ -774,7 +805,7 @@ def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...
         prior = [x for x in tw if x < w]
         played = [x for x in prior if (s, x, g) in apps]
         missed = len([x for x in prior if not played or x > max(played)]) if prior else 0
-        for h in range(1, 5):
+        for h in range(1, max_horizon + 1):
             if len(later) < h or key(s, later[h - 1]) >= through_key:
                 break
             hit = int((s, later[h - 1], g) in apps)

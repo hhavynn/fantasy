@@ -321,8 +321,8 @@ def _ours_context(con, season: int, baseline: str | None) -> dict:
         if between:
             ctx["notes"].append(f"The week {max(between)} forecast was made by {ps.FALLBACK_VERSION}, an earlier model "
                                 "version, so it is not compared: movement across model versions is never shown.")
-        if base_side is None:
-            ctx["reason"] = _ours_reason(idx, 1, between)
+        if base_side is None:   # also name a previous-model forecast of the SAME cutoff (as right after a switch)
+            ctx["reason"] = _ours_reason(idx, 1, sorted(k for k in fallback if k <= c and (cutoff is None or k == cutoff)))
         ctx.update(current=cur_side, baseline=base_side)
         return ctx
     ctx["skipped"] = sorted(failed + everything, key=lambda x: (x["week"], x["run_id"]))

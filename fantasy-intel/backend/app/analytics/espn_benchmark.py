@@ -49,7 +49,7 @@ from . import weekly_learning as wl
 from .forecast_backtest import PROMOTION_CRITERIA, metrics, week_bootstrap_mae_diff
 from .forecast_features import POSITIONS, Sources, load_sources
 from .independent_projection_store import league_scoring
-from .challenger import CHALLENGER_VERSION as MODEL_VERSION   # the production model the projection switch reads
+from .projection_source import MODEL_VERSION   # the production model the projection switch reads
 from .projection_backtest import _kickoff, _utc
 from .promotion_tracker import first_kickoffs
 

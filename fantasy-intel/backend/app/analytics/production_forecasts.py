@@ -92,7 +92,7 @@ def horizon_note(run: dict | None) -> str | None:
 
 
 NOT_APPROVED_ARTIFACT = "artifact not the approved production artifact"     # ifp-1.0.0 sha pin
-NOT_REGISTERED = "artifact not registered as approved"                      # ifp-2.0.0 approved_artifacts
+NOT_REGISTERED = "artifact not registered as approved"                      # ifp-2.x approved_artifacts
 NO_TABLE = "no approved_artifacts table yet"                                 # why a run is "unverified"
 NO_ROWS = "no approved artifacts registered for this model yet"
 APPROVED = "approved_artifacts"
@@ -108,7 +108,7 @@ def artifact_gate(con, model_version: str | None, artifact_id=_PIN):
 
     * "unchecked"  no artifact rule applies (another version, or ifp-1.0.0 while unpinned): the run counts;
     * "verified"   the run's artifact_id matches the pin / is registered in approved_artifacts: counts;
-    * "unverified" ifp-2.0.0 on a database WITHOUT approved_artifacts (an old local database or hosted copy),
+    * "unverified" ifp-2.x on a database WITHOUT approved_artifacts (an old local database or hosted copy),
                    or whose approved_artifacts has NO row for the model yet (the table exists but nothing has
                    been registered, as right after an upgrade): counts, but is marked unverified (fail OPEN:
                    failing closed would blank production until the owner re-syncs, republishes or re-runs the
@@ -128,7 +128,7 @@ def artifact_gate(con, model_version: str | None, artifact_id=_PIN):
     if model_version == production_pin.PINNED_MODEL_VERSION:
         sha = production_pin.APPROVED_ARTIFACT_SHA256
         return _unchecked if sha is None else pinned(sha)
-    if model_version != production_pin.REGISTERED_MODEL_VERSION:
+    if model_version not in production_pin.REGISTERED_MODEL_VERSIONS:
         return _unchecked
     if not table_exists(con, APPROVED):
         return lambda run: ("unverified", NO_TABLE)
@@ -513,7 +513,7 @@ def pregame_forecasts(con, season: int, weeks: Iterable[int] | None = None, *,
     """(rows, exclusions). Per (season, week, espn_player_id): the row from the LATEST eligible run whose
     run created_at < that player's own kickoff. Eligible run = model_version match, scoring_fingerprint match,
     artifact_created_at < the week's first kickoff, integrity verified (row_count and content hash), and, once
-    the artifact rule of artifact_gate holds (ifp-1.0.0: the sha pin once set; ifp-2.0.0: registered in approved_artifacts).
+    the artifact rule of artifact_gate holds (ifp-1.0.0: the sha pin once set; ifp-2.1.0 / ifp-2.0.0: registered in approved_artifacts).
     exclusions: [{run_id, week, reason}]. Rows are never returned from another model version or scoring."""
     if not table_exists(con, RUNS):
         return [], []

@@ -16,8 +16,9 @@ the next refresh_all.py publishes (skip it with --no-project).
 A cycle: lock -> preflight -> sync_nfl.py -> sync-exits -> pick the target week (the next week whose
 first kickoff, US Eastern from nflverse, is still ahead) -> readiness (every earlier game final,
 box scores / snaps / xFP synced) -> evaluate frozen forecasts -> train (reused when the training
-data, configuration and scoring fingerprint are unchanged) -> predict (pregame only) -> project (the
-production ifp-2.0.0 run in the live DB; an identical run already stored is a no-op) -> report.
+data, configuration and scoring fingerprint are unchanged; the ledger's ifp-1.0.0 / ifp-2.0.0 and the production
+ifp-2.1.0) -> predict (pregame only) -> project (the production ifp-2.1.0 run in the live DB; an identical run
+already stored is a no-op) -> report.
 The project stage also projects EVERY LATER regular-season week W+1..last from the same week-W artifact (rest-of-season
 projections, docs/independent_projection_engine.md; no training per week). A failure on one later week is listed under
 `projection.rest_of_season` and in `warnings`, and does not stop the other weeks or change the cycle status; skip all
@@ -58,6 +59,7 @@ sys.path.insert(0, str(SCRIPTS))
 import weekly_learning as cli  # noqa: E402  (the existing weekly_learning.py commands)
 
 from app.analytics import challenger as ch  # noqa: E402
+from app.analytics import injury_model as im  # noqa: E402
 from app.analytics import weekly_learning as wl  # noqa: E402
 from app.config import get_settings  # noqa: E402
 
@@ -344,11 +346,15 @@ def training_fingerprint(args, store, scoring) -> str:
                  "challenger_config": ch.ChallengerConfig.load().hash(),
                  "ifp_selection": hashlib.sha256((Path(args.ifp_dir) / "selection.json").read_bytes()).hexdigest(),
                  "ifp_report": hashlib.sha256((Path(args.ifp_dir) / "heldout_report.json").read_bytes()).hexdigest(),
-                 "scoring": scoring.fingerprint, "versions": [wl.MODEL_VERSION, ch.CHALLENGER_VERSION],
+                 "production_config": im.config_hash(ch.ChallengerConfig.load()),
+                 "scoring": scoring.fingerprint, "versions": list(TRAINED_VERSIONS),
                  "target": [args.season, args.week]})
 
 
-def stage_train(args, src, scoring, live=None) -> dict:
+TRAINED_VERSIONS = (wl.MODEL_VERSION, ch.CHALLENGER_VERSION, im.MODEL_VERSION)   # ledger champion, challenger, production
+
+
+def stage_train(args, src, scoring, live=None, hist=None) -> dict:
     """Train both models unless an earlier cycle trained on exactly these inputs (same training
     rows and features, configuration, production selection and scoring). Then reuse its artifacts.
     `--force-retrain` always refits; content addressing keeps every earlier artifact."""
@@ -364,9 +370,9 @@ def stage_train(args, src, scoring, live=None) -> dict:
     if (state and state.get("fingerprint") == fp and not args.force_retrain
             and all(Path(a["path"]).exists() for a in state["artifacts"].values())):
         return {"reused": True, "fingerprint": fp, **state}
-    res = cli.cmd_train(args, src=src, scoring=scoring, store=store, live=live)
+    res = cli.cmd_train(args, src=src, scoring=scoring, store=store, live=live, hist=hist)
     arts = {v: {k: res[v][k] for k in ("id", "path", "new", "latest_included_week", "data_hash", "config_hash")}
-            for v in (wl.MODEL_VERSION, ch.CHALLENGER_VERSION)}
+            for v in TRAINED_VERSIONS}
     state = {"fingerprint": fp, "artifacts": arts, "trained_at": datetime.now(timezone.utc).isoformat(),
              "runtime_seconds": res.get("runtime_seconds")}
     _replace_json(state_path, state)
@@ -497,7 +503,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         report["evaluation"] = {"report": ev["report"], "prospective_weeks": len(ev["pregame_weeks"] or []),
                                 "preliminary_weeks": ev.get("preliminary_weeks_not_evidence"),
                                 "status_by_position": {p: s["status"] for p, s in (ev["shadow_status"] or {}).items()}}
-        tr = stage("train", stage_train, args, src, scoring, live)
+        tr = stage("train", stage_train, args, src, scoring, live, hist)
         report["training"] = {"reused": tr["reused"], "fingerprint": tr["fingerprint"],
                               "latest_included_week": tr["artifacts"][wl.MODEL_VERSION]["latest_included_week"],
                               "artifacts": {v: {"id": a["id"], "created": bool(a["new"]) and not tr["reused"],
@@ -568,7 +574,7 @@ def cmd_status(args) -> dict:
             "lock": json.loads(lock.read_text()) if lock.exists() else None,
             "missed_windows": sorted(p.name for p in (out / "missed").glob("*.json")),
             "artifacts": {v: len(list((out / "artifacts" / v).glob("*.json")))
-                          for v in (wl.MODEL_VERSION, ch.CHALLENGER_VERSION)},
+                          for v in TRAINED_VERSIONS},
             "ledger_runs": len(list((out / "ledger").glob("s*/*.json")))}
 
 
@@ -598,7 +604,7 @@ def parse(argv=None):
     ap.add_argument("--out", type=Path, default=cli._path("WEEKLY_MODEL_DIR", "data/models/weekly"))
     args = ap.parse_args(argv)
     # fields the weekly_learning.py commands read
-    args.week, args.retrospective, args.history_seasons = None, False, None
+    args.week, args.retrospective, args.history_seasons, args.after_kickoff = None, False, None, False
     return args
 
 

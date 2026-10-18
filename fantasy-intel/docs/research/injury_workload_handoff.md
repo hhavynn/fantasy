@@ -1,4 +1,11 @@
-# Injury timeline and workload handoff (ifp-iwh, research only)
+# Injury timeline and workload handoff (ifp-iwh research; shipped as ifp-2.1.0)
+
+> **Update 2026-10-18: production.** The owner replaced "Ours" with this model: **`ifp-2.1.0`** =
+> ifp-2.0.0 + the handoff group of this study with the iwh-0.1.1 participation fix (section 7.3), + the
+> empirical return-rate P(plays) for players Out/Doubtful at a rest-of-season cutoff (section 6), + the
+> teammate-return scenarios at horizon >= 1. Code: `backend/app/analytics/injury_model.py`; registry promotion
+> event of 2026-10-18 (owner override); docs/independent_projection_engine.md "ifp-2.1.0". The verdicts below
+> are the pre-registered research record and are unchanged.
 
 **Question.** Why do our projections undervalue a starter coming back from injury and barely move a backup
 whose starter is ruled out? And does an explicit, team-level model of who inherits the vacated work, and who
@@ -292,9 +299,9 @@ follow-up work (section 9). The ROS p_play finding in section 6 is the larger un
 | Change | Status |
 |---|---|
 | Horizon guard in `build_live` (no horizon-0 run past the next unplayed week) | **live** (correctness) |
-| Injury timeline, established role, workload handoff, return-rate table, explanation metadata | research module, not imported by the app |
-| ifp-iwh challenger | `retain_baseline` (failed c7); not promoted, no registry change, ifp-2.0.0 unchanged |
-| ROS p_play from the empirical return table; ROS teammate-return scenarios | evidence only; needs a gated proposal and owner review |
+| Injury timeline, established role, workload handoff, return-rate table | **live in ifp-2.1.0** (2026-10-18, owner decision); explanation metadata still research |
+| ifp-iwh challenger | research verdict `retain_baseline` (failed c7); shipped with the c7 fix (iwh-0.1.1) as ifp-2.1.0 by owner override |
+| ROS p_play from the empirical return table; ROS teammate-return scenarios | **live in ifp-2.1.0** (table refitted per weekly artifact on all pre-cutoff episodes, horizons 1-8) |
 | Re-projection after Friday's final reports | not changed; follow-up |
 
 **Real 2026 cases** (`cases` command; "old" = the stored production ifp-2 row; "refit" = ifp-2 refitted on the

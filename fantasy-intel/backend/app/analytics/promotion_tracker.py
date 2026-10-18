@@ -1,14 +1,14 @@
 """Promotion tracker for the independent projection engine (read-only).
 
-How far each position (QB/RB/WR/TE) of the PRODUCTION model (projection_source.MODEL_VERSION, ifp-2.0.0) is
-from the frozen PROMOTION_CRITERIA in forecast_backtest. ifp-2.0.0 is production by an owner override, not
-because it met these criteria (the registry manifest); this page measures the evidence the override did not
-have. Nothing here decides or changes a status:
+How far each position (QB/RB/WR/TE) of the PRODUCTION model (projection_source.MODEL_VERSION, ifp-2.1.0) is
+from the frozen PROMOTION_CRITERIA in forecast_backtest. ifp-2.1.0 is production by the owner's decision, recorded
+as an owner override (the registry manifest); this page measures the prospective evidence. Nothing here decides
+or changes a status:
 
 * Model status: for the production model, `owner_override` (projection_source.consumer_status; the status
   stored in its runs was frozen at training time and still says "shadow"). The held-out baseline
-  comparison is copied from the evaluation stored with the latest verified run; ifp-2.0.0 runs store no
-  per-position held-out evaluation, so those fields are empty rather than borrowed from ifp-1.0.0.
+  comparison is copied from the evaluation stored with the latest verified run; weekly ifp-2.x runs store no
+  per-position held-out evaluation, so those fields are empty rather than borrowed from another model.
 * The ESPN evidence reuses forecast_backtest.espn_pregame (ESPN projection captured strictly
   before the player's kickoff) and forecast_backtest.espn_comparison (the frozen >= N matched
   observations and MAE <= ESPN rule). "Ours" is the stored weekly-run projection of the primary
@@ -98,7 +98,7 @@ def latest_run(con, season: int, fingerprint: str | None) -> dict | None:
 
 def _run_missing_reason(con, season: int, fingerprint: str | None) -> str:
     project = ("From backend/, run `uv run python ../scripts/backtest_independent_projections.py project --week N` "
-               "(for a manual ifp-2.0.0 run add `--model ifp-2.0.0 --register-artifact manual_pin` so its artifact is "
+               f"(for a manual run add `--register-artifact manual_pin` so its {MODEL_VERSION} artifact is "
                "approved; it needs the fitted artifacts in data/models; see the runbook in "
                "docs/independent_projection_engine.md).")
     if fingerprint is None:

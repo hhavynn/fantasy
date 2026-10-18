@@ -10,7 +10,7 @@
     uv run python ../scripts/backtest_independent_projections.py participation-fit       # participation artifact
     uv run python ../scripts/backtest_independent_projections.py snap-ablation           # validation only
     uv run python ../scripts/backtest_independent_projections.py project --week 7   # appends one immutable run
-    uv run python ../scripts/backtest_independent_projections.py project --week 7 --model ifp-1.0.0   # previous model
+    uv run python ../scripts/backtest_independent_projections.py project --week 7 --model ifp-2.0.0   # previous model
     uv run python ../scripts/backtest_independent_projections.py project --week 10 --artifact-week 7   # week 10 from week 7's artifact
     uv run python ../scripts/backtest_independent_projections.py project --week 7 --through-week 18   # rest of the season
 
@@ -21,16 +21,17 @@ the participation model participation_selection.json, participation_heldout_repo
 `evaluate` refuses a selection made on other seasons; `fit` refuses an evaluation of another selection;
 the participation commands refuse a participation selection made with another conditional selection.
 
-`project` runs the production model (projection_source.MODEL_VERSION, ifp-2.0.0) by default: the newest
+`project` runs the production model (projection_source.MODEL_VERSION, ifp-2.1.0) by default: the newest
 weekly-learning artifact for the target week (scripts/weekly_learning.py sync-exits + train --week W,
---weekly-dir, default data/models/weekly) with its play-by-play injury evidence. `--model ifp-1.0.0`
-runs the previous model's frozen artifact from --out.
+--weekly-dir, default data/models/weekly) with its play-by-play injury evidence. `--model ifp-2.0.0` runs the
+previous (fallback) model's weekly artifact the same way; `--model ifp-1.0.0` the retired model's frozen artifact
+from --out.
 
 Rest-of-season projections (docs/independent_projection_engine.md): `--week T --artifact-week W` projects the later
 week T with week W's artifact (features as of W, T's opponent; projected_from_week = W, forecast_horizon = T - W);
 `--week W --through-week L` does that for every week W..L in one process (one source load, one artifact
 registration; a failure on a later week is reported in the output's rest_of_season list and does not stop the others;
-a failure on week W itself is an error). Both apply to the weekly-trained model (ifp-2.0.0) only.
+a failure on week W itself is an error). Both apply to the weekly-trained models (ifp-2.1.0, ifp-2.0.0) only.
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ from app.analytics.forecast_features import Sources, load_sources
 from app.analytics import participation as pm
 from app.analytics.independent_projections import MODEL_VERSION, Artifact, fit_final
 from app.analytics.league_scoring import reconcile_with_espn
+from app.analytics.projection_source import FALLBACK_VERSION
 from app.analytics.projection_source import MODEL_VERSION as CONSUMER_VERSION
 from app.config import REPO_ROOT, get_settings
 
@@ -245,7 +247,7 @@ def _artifact_week(args) -> int | None:
 
 def _project_artifact(args, scoring) -> tuple[Artifact, bytes, pl.DataFrame | None, Path | None]:
     """(artifact, its file bytes, play-by-play exits) for `project --model`. ifp-1.0.0: the frozen artifact in
-    --out. ifp-2.0.0: the newest weekly-learning artifact for the target week, which weekly_learning.latest_artifact
+    --out. ifp-2.1.0 / ifp-2.0.0: the newest weekly-learning artifact for the target week, which weekly_learning.latest_artifact
     checks was trained under the league's scoring on games before the week, plus the exits it was trained with.
     The fourth value is that artifact's path (None for ifp-1.0.0)."""
     if args.model == MODEL_VERSION:
@@ -292,7 +294,7 @@ def cmd_project(args, hist, scoring) -> dict:
     art_week = _artifact_week(args)
     rest_of_season = through is not None or art_week is not None
     if rest_of_season and args.model == MODEL_VERSION:
-        raise ValueError("--artifact-week / --through-week apply to the weekly-trained model (ifp-2.0.0) only")
+        raise ValueError("--artifact-week / --through-week apply to the weekly-trained models (ifp-2.1.0, ifp-2.0.0) only")
     if through is not None:
         if art_week is not None:
             raise ValueError("--through-week projects weeks --week .. --through-week from the artifact of --week; "
@@ -334,10 +336,10 @@ def cmd_project(args, hist, scoring) -> dict:
     results = []
     with open_db(args.live_db) as con:
         registered = backfill = None
-        if args.register_artifact:       # ifp-2.0.0 only: approve the write-once store artifact this run uses
+        if args.register_artifact:       # weekly models only: approve the write-once store artifact this run uses
             if art_path is None:
-                raise ValueError("--register-artifact applies to the weekly-trained model (ifp-2.0.0) only; ifp-1.0.0 "
-                                 "is pinned in the registry and production_pin.py")
+                raise ValueError("--register-artifact applies to the weekly-trained models (ifp-2.1.0, ifp-2.0.0) only; "
+                                 "ifp-1.0.0 is pinned in the registry and production_pin.py")
             # FIRST every other artifact already in the write-once store (the first run after the upgrade covers the
             # runs those artifacts made; files that are not the store's own are skipped), THEN this run's artifact:
             # the first registration starts enforcement, so it must not precede the backfill.
@@ -363,7 +365,9 @@ def cmd_project(args, hist, scoring) -> dict:
                 ros.append({"week": target, "forecast_horizon": target - from_week, "error": f"{type(err).__name__}: {err}"})
                 print(f"WARNING: rest-of-season projection for week {target} failed: {err}", file=sys.stderr)
     first = results[0]
-    out = {**first, "artifact_registered": registered and
+    prov = art.config.get("provenance") or {}
+    out = {**first, "artifact_trained_after_first_kickoff": bool(prov.get("trained_after_first_kickoff")),
+           "artifact_registered": registered and
            {"sha256": registered[0], "created": registered[1], "source": args.register_artifact},
            "artifact_backfill": backfill, "runtime_seconds": round(time.time() - t, 2)}
     if through is not None:
@@ -385,19 +389,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--season", type=int, default=settings.nfl_season, help="live season")
     parser.add_argument("--week", type=int, help="target NFL week (project)")
     parser.add_argument("--artifact-week", type=int, dest="artifact_week",
-                        help="project --week T with the ifp-2.0.0 artifact of this EARLIER week W (rest-of-season "
+                        help="project --week T with the weekly artifact of this EARLIER week W (rest-of-season "
                              "projection: features as of W, T's opponent; forecast_horizon = T - W)")
     parser.add_argument("--through-week", type=int, dest="through_week",
                         help="project --week W and every later week up to this one (the last regular-season week) "
                              "from W's artifact, in one process")
-    parser.add_argument("--model", choices=[CONSUMER_VERSION, MODEL_VERSION], default=CONSUMER_VERSION,
+    parser.add_argument("--model", choices=[CONSUMER_VERSION, FALLBACK_VERSION, MODEL_VERSION], default=CONSUMER_VERSION,
                         help="model `project` runs (default: the production model the projection switch reads)")
     parser.add_argument("--weekly-dir", type=Path, default=_path("WEEKLY_MODEL_DIR", "data/models/weekly"),
                         help="weekly-learning output (ifp-2 artifacts and pbp_exits), as in weekly_learning.py --out")
     parser.add_argument("--register-artifact", choices=["learning_cycle", "manual_pin"],
-                        help="project --model ifp-2.0.0: record the weekly-store artifact this run uses in the live "
-                             "database's approved_artifacts (write-once); the consumer view serves only registered "
-                             "ifp-2.0.0 artifacts. The learning cycle passes learning_cycle; a manual pin is manual_pin")
+                        help="weekly models (ifp-2.1.0, ifp-2.0.0): record the weekly-store artifact this run uses in "
+                             "the live database's approved_artifacts (write-once); the consumer view serves only "
+                             "registered artifacts of its version once one is registered. The learning cycle passes "
+                             "learning_cycle; a manual pin is manual_pin")
     parser.add_argument("--synthetic-label", action="store_true", help="mark reports as synthetic-data runs")
     args = parser.parse_args(argv)
     protocol = Protocol(heldout_seasons=(2025, args.season) if args.season > 2025 else (2025,))

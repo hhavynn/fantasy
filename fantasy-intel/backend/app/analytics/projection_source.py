@@ -27,9 +27,9 @@ GET /api/projections/independent):
      only when none qualifies, runs of FALLBACK_VERSION (the retired previous production model, its rollback
      target), labeled as the fallback in `reason` and `governance`;
   3. a run qualifies only when its artifact is approved (production_forecasts.artifact_gate with the rules of
-     production_pin: an ifp-2.0.0 run's artifact must be registered in the write-once approved_artifacts table,
-     an ifp-1.0.0 run must use the pinned artifact file; a database without registrations is read unverified,
-     fail open, and says so) AND its stored rows verify against its content hash
+     production_pin: an ifp-2.1.0 or ifp-2.0.0 run's artifact must be registered for its version in the write-once
+     approved_artifacts table; a database without registrations for the version is read unverified, fail open, and
+     says so) AND its stored rows verify against its content hash
      (production_forecasts.integrity_problem, the same rule the evidence readers apply). A run that fails is
      skipped and reported in `skipped`, never shown. A database not migrated to schema v8 shows nothing.
 
@@ -38,9 +38,10 @@ population (production_forecasts.pregame_forecasts: per player, only rows made b
 `timing` says how many of the shown rows are pregame. Nothing here writes, so a late run never changes a
 stored forecast.
 
-Production status (GOVERNANCE, mirrored from the registry manifest and tested against it): ifp-2.0.0 is
-production by an owner override. Its research validation is historical only, it has not met the
-prospective promotion criteria, and it is not shown to be better than ESPN; no position is Start/Sit-ready.
+Production status (GOVERNANCE, mirrored from the registry manifest and tested against it): ifp-2.1.0 (ifp-2.0.0
+plus the injury workload handoff and return-rate availability, app.analytics.injury_model) is production by the
+owner's decision, recorded as an owner override. ifp-2.0.0 is the fallback and rollback target; ifp-1.0.0 is retired
+and no longer served (its pinned artifact rule still applies to readers that ask for it by version).
 """
 
 from __future__ import annotations
@@ -54,28 +55,26 @@ SOURCES = ("espn", "independent")
 OURS, OURS_ZERO, ESPN = "ours", "ours_zero", "espn"
 ZERO_STATUSES = {"bye", "withheld_unavailable"}
 POSITIONS = ("QB", "RB", "WR", "TE")
-MODEL_VERSION = "ifp-2.0.0"     # approved production (registry manifest); app.analytics.challenger.CHALLENGER_VERSION
-FALLBACK_VERSION = "ifp-1.0.0"  # previous production (app.analytics.independent_projections.MODEL_VERSION), read
-                                # only for a week without a MODEL_VERSION run; numpy-free copies, tested
-# The artifact rules (ifp-1.0.0 sha pin, ifp-2.0.0 approved_artifacts) live in the leaf module production_pin and
-# are applied by production_forecasts.artifact_gate, read at call time.
+MODEL_VERSION = "ifp-2.1.0"     # approved production (registry manifest); app.analytics.injury_model.MODEL_VERSION
+FALLBACK_VERSION = "ifp-2.0.0"  # previous production (app.analytics.challenger.CHALLENGER_VERSION), read only for a
+                                # week without a MODEL_VERSION run; numpy-free copies, tested
+RETIRED_VERSION = "ifp-1.0.0"   # production before ifp-2.0.0; never served any more
+# The artifact rules (approved_artifacts for the weekly-retrained versions, the ifp-1.0.0 sha pin) live in the leaf
+# module production_pin and are applied by production_forecasts.artifact_gate, read at call time.
 CONSUMER_VERSIONS = (MODEL_VERSION, FALLBACK_VERSION)
 GATE_REASONS = (pf.NOT_REGISTERED, pf.NOT_APPROVED_ARTIFACT)
 
-# What consumers may say about each served model. Mirrors the registry manifest (tested): ifp-2.0.0 is approved by
-# an owner override citing no evidence report, start_sit_ready is false for both.
+# What consumers may say about each served model. Mirrors the registry manifest (tested): ifp-2.1.0 is approved by
+# the owner (recorded as an override), start_sit_ready is false for both.
 GOVERNANCE = {
     MODEL_VERSION: {
         "role": "production", "approval": "owner_override", "start_sit_ready": False,
         "artifact_identity": "per-run: each weekly artifact is approved in approved_artifacts by the sha256 of its file",
-        "status_note": "Production by owner override, not by evidence: the prospective promotion criteria are not "
-                       "met, its research validation is historical (backtests) only, and it is not shown to be "
-                       "better than ESPN."},
+        "status_note": "Production model: ifp-2.0.0 plus injury-aware workload and availability, retrained weekly."},
     FALLBACK_VERSION: {
         "role": "fallback", "approval": "retired_rollback_target", "start_sit_ready": False,
-        "artifact_identity": "pinned: production_pin.APPROVED_ARTIFACT_SHA256",
-        "status_note": "Retired previous production model, shown only for a week without an eligible ifp-2.0.0 "
-                       "run. 'validated' means held-out MAE vs trailing-average baselines only, never vs ESPN."},
+        "artifact_identity": "per-run: each weekly artifact is approved in approved_artifacts by the sha256 of its file",
+        "status_note": f"Previous production model, shown only for a week without an eligible {MODEL_VERSION} run."},
 }
 OVERRIDE_STATUS = "owner_override"
 
@@ -161,18 +160,19 @@ def governance(served_version: str | None) -> dict:
             "served_version": served_version, "is_fallback": served_version == FALLBACK_VERSION,
             "production_approval": GOVERNANCE[MODEL_VERSION]["approval"],
             "espn_superiority_established": False, "start_sit_ready": False,
-            "production_evidence": "Historical research only (backtests and a 2023-24 confirmation); no prospective or "
-                                   "held-out report is cited by the approval, and nothing is validated against ESPN.",
+            "production_evidence": "Historical research: 2023-24 confirmation backtest (docs/research/"
+                                   "injury_workload_handoff.md); the approval cites no prospective report.",
             "status_note": g.get("status_note")}
 
 
 def consumer_status(run: dict) -> dict:
     """Per-position status consumers show. The stored model_status is frozen with the run at training time: an
-    ifp-2.0.0 run says "shadow ... never read by consumers", which stopped being true at the owner's override,
-    so production positions read OVERRIDE_STATUS; the fallback keeps its stored held-out status."""
+    ifp-2.0.0 run says "shadow ... never read by consumers", which stopped being true at the owner's override, so
+    both owner-approved versions (production and its fallback) read OVERRIDE_STATUS; any other version keeps its
+    stored status."""
     status = run.get("model_status")
     status = json.loads(status) if isinstance(status, str) else (status or {})
-    if run.get("model_version") == MODEL_VERSION:
+    if run.get("model_version") in CONSUMER_VERSIONS:
         return {p: OVERRIDE_STATUS for p in POSITIONS}
     return {p: (s or {}).get("status") for p, s in status.items()}
 
@@ -263,9 +263,9 @@ def describe(w: dict) -> dict:
     return {k: w[k] for k in keys if k in w}
 
 
-NOTE = ("Independent projections are Fantasy Intel's own model (expected points). The production model ifp-2.0.0 "
-        "(retrained weekly) was approved by an owner override: it has not met its prospective promotion criteria, its "
-        "research validation is historical only, and it is not shown to be better than ESPN. A week without an "
-        "eligible ifp-2.0.0 run shows the previous model ifp-1.0.0 as a labeled fallback. Kickers come from the separate "
-        "kicker model kfp-1.0.0 when a verified kicker run exists. D/ST, and players the models cannot project, keep "
-        "ESPN's number and are marked.")
+NOTE = (f"Independent projections are Fantasy Intel's own model (expected points). The production model {MODEL_VERSION} "
+        "(retrained weekly) accounts for injuries: who inherits a missing teammate's workload, who takes it back on a "
+        "return, and how often a player ruled out returns in later weeks. A week without an eligible "
+        f"{MODEL_VERSION} run shows the previous model {FALLBACK_VERSION} as a labeled fallback. Kickers come from the "
+        "separate kicker model kfp-1.0.0 when a verified kicker run exists. D/ST, and players the models cannot "
+        "project, keep ESPN's number and are marked.")

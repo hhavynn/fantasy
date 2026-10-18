@@ -54,7 +54,7 @@ PLAYERS = {
     13: ("Reserve + ESPN IR WR", "WR", gsis("DDD", "WR1"), "INJURY_RESERVE"),   # RES + R01 from week 5: eligible week 9
 }
 RESERVE_ID, PS_ID, OTHER_RES_ID, IR_RES_ID = 5, 6, 12, 13
-TRACKED = "ifp-2.0.0"                  # the production model the tracker reports on (no approved_artifacts table: fail open)
+TRACKED = "ifp-2.1.0"                  # the production model the tracker reports on (no approved_artifacts table: fail open)
 
 
 def artifact(src, created_at="2026-08-01T00:00:00+00:00"):
