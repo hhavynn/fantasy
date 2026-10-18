@@ -152,6 +152,31 @@ def artifact_digest(artifact: Artifact) -> str:
     return "dict:" + hashlib.sha256(json.dumps(artifact.to_dict(), sort_keys=True, default=str).encode()).hexdigest()
 
 
+class HorizonError(ValueError):
+    """A run's cutoff week is not the first unplayed week: its "current" inputs describe an earlier game."""
+
+
+def check_horizon(sources: Sources, season: int, cutoff_week: int) -> None:
+    """Refuse a run whose cutoff (feature) week lies beyond the next unplayed week. The ESPN injury status, the
+    ESPN designation fallback and the latest roster row describe the NEXT game only; a horizon-0 run for week 7
+    made while week 6 is unplayed would apply week 6's OUT/DOUBTFUL to week 7 (an injury carried forward a
+    week). Such a target week is a rest-of-season target: pass projected_from_week = the first unplayed week.
+    The next unplayed week is the week after the latest week with any final game (a postponed or cancelled game
+    in an otherwise final week does not block); with no final game this season it is the season's first week."""
+    played = sources.games.filter((pl.col("season") == season) & pl.col("points_for").is_not_null())
+    if played.height:
+        nxt = int(played["week"].max()) + 1
+    else:
+        weeks = sources.games.filter(pl.col("season") == season)["week"]
+        if weeks.len() == 0:
+            return
+        nxt = int(weeks.min())
+    if cutoff_week > nxt:
+        raise HorizonError(f"cutoff week {cutoff_week} is after the next unplayed week {nxt} of {season}: current "
+                           f"injury and roster status describe week {nxt}'s game, not week {cutoff_week}'s; project "
+                           f"week {cutoff_week} as a rest-of-season target (projected_from_week={nxt})")
+
+
 def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int,
                participation=None, artifact_sha256: str | None = None, *,
                projected_from_week: int | None = None) -> tuple[dict, list[dict]]:
@@ -166,6 +191,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     if fw > week:
         raise ValueError(f"projected_from_week {fw} is after the target week {week}")
     horizon = week - fw
+    check_horizon(sources, season, fw)
     _, scoring = league_scoring(con, season)
     scoring_ok = scoring.supported and scoring.fingerprint == artifact.scoring_fingerprint
     games = sources.games.filter((pl.col("season") == season) & (pl.col("week") == week))

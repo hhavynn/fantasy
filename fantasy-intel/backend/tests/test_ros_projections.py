@@ -25,6 +25,15 @@ from synthetic_forecast import SCORING_ITEMS, add_league, database, gsis
 
 SCORING = resolve_skill_scoring(SCORING_ITEMS)
 W, LAST = 6, 17                       # first unplayed week; the synthetic season's last regular-season week
+
+
+def played_through(src: Sources, cutoff: int) -> Sources:
+    """The same sources as seen at a later cutoff: weeks before `cutoff` marked final (scores filled in). A run's
+    cutoff must be the next unplayed week (independent_projection_store.check_horizon)."""
+    done = pl.col("week") < cutoff
+    games = src.games.with_columns(*[pl.when(done & pl.col(c).is_null()).then(pl.lit(0.0)).otherwise(pl.col(c)).alias(c)
+                                     for c in ("points_for", "points_against")])
+    return Sources(src.panel, games, src.defense, src.rosters, src.injuries, src.exits)
 BYE_TEAM, BYE_WEEK = "HHH", 8
 CREATED = datetime(2026, 9, 1)        # before every synthetic kickoff (all in September 2026)
 
@@ -393,7 +402,7 @@ def test_a_horizon_one_run_is_not_the_twin_of_a_horizon_zero_run(world):
     """Same week, model, scoring and artifact but a different horizon: separate runs (e.g. after a cutoff change)."""
     con, src = world
     art = artifact(src)
-    m0, r0 = project(con, src, art, W + 1, from_week=W + 1)       # a horizon-0 run for week W+1
+    m0, r0 = project(con, played_through(src, W + 1), art, W + 1, from_week=W + 1)   # a horizon-0 run for W+1
     m1, r1 = project(con, src, art, W + 1, from_week=W)           # a horizon-1 run for week W+1
     s0, s1 = write_run(con, {**m0, "created_at": CREATED}, r0), write_run(con, {**m1, "created_at": CREATED}, r1)
     assert s0["created"] and s1["created"] and s0["run_id"] != s1["run_id"]
@@ -448,7 +457,7 @@ def test_the_tracker_page_lists_future_week_exclusions_once_per_week(world):
     art = artifact(src)
     for from_week, created in ((W, datetime(2026, 9, 1)), (W + 1, datetime(2026, 9, 2))):    # two cycles
         for target in range(from_week, from_week + 3):
-            m, r = project(con, src, art, target, from_week=from_week)
+            m, r = project(con, played_through(src, from_week), art, target, from_week=from_week)
             write_run(con, {**m, "created_at": created, "artifact_id": f"{from_week:064d}"}, r)
     _, excluded = pf.pregame_forecasts(con, 2026, None, model_version=MODEL_VERSION,
                                        scoring_fingerprint=SCORING.fingerprint, artifact_id=None)
@@ -470,7 +479,7 @@ def test_the_consumer_latest_run_takes_the_newest_run_of_any_horizon(world):
     assert run["run_id"] == old["run_id"] and run["horizon"] == 2 and run["forecast_horizon"] == 2
     assert run["horizon_note"] == "rest-of-season forecast (horizon 2): experimental, not validated beyond the next week"
     # the week arrives: a horizon-0 run made later is newer and wins
-    new_meta, new_rows = project(con, src, art, W + 2, from_week=W + 2)
+    new_meta, new_rows = project(con, played_through(src, W + 2), art, W + 2, from_week=W + 2)
     new = write_run(con, {**new_meta, "created_at": datetime(2026, 9, 3)}, new_rows)
     run = pf.latest_run(con, 2026, W + 2, model_version=MODEL_VERSION, scoring_fingerprint=fp, artifact_id=None)
     assert run["run_id"] == new["run_id"] and run["horizon"] == 0 and run["horizon_note"] is None
@@ -632,3 +641,18 @@ def test_a_future_run_with_next_game_flags_passes_the_integrity_check(world):
     assert pf.integrity_problem(run, rows).startswith("integrity: stored rows do not match")
     assert pf.latest_run(con, 2026, W + 2, model_version=MODEL_VERSION, scoring_fingerprint=SCORING.fingerprint,
                          artifact_id=None) is None
+
+
+def test_a_horizon_zero_run_beyond_the_next_unplayed_week_is_refused(world):
+    """Week W is unplayed: ESPN status and the latest roster row describe week W's game. A horizon-0 run for week
+    W+1 would apply week W's OUT / DOUBTFUL to week W+1 (an injury carried forward a week), so it is refused and
+    must be made as a rest-of-season target instead."""
+    from app.analytics.independent_projection_store import HorizonError, check_horizon
+
+    con, src = world
+    art = artifact(src)
+    with pytest.raises(HorizonError, match="rest-of-season target"):
+        project(con, src, art, W + 1, from_week=W + 1)
+    check_horizon(src, 2026, W)                 # the next unplayed week itself is fine
+    meta, _ = project(con, src, art, W + 1, from_week=W)
+    assert meta["forecast_horizon"] == 1
