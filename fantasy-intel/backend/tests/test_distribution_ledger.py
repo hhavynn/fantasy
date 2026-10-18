@@ -193,6 +193,20 @@ def test_the_pin_is_kept_and_never_moves_to_a_newer_artifact(dl, world, artifact
     assert led9["artifact"]["pin_id"] == 2 and led9["artifact"]["trained_through_key"] == 202607
 
 
+def test_an_ambiguous_newest_cutoff_is_never_auto_pinned(dl, world, artifact):
+    """Two artifacts trained through the same week (e.g. after a --refreeze): nothing says which reflects the current
+    research inputs, so the first freeze refuses to guess and asks for an explicit pin; an older cutoff does not tie."""
+    write_artifact(world / "models", artifact, trained_through_key=202604)                   # older: no tie
+    other = write_artifact(world / "models", artifact, input_fingerprint="0" * 16)          # same cutoff 202605
+    rec = dl.run_freeze(args_for(dl, world), 2026, 7, now=TUE)
+    assert rec["status"] == "no_artifact" and "ambiguous" in rec["warnings"][0] and other.name in rec["warnings"][0]
+    assert not (dl.ledger_dir(args_for(dl, world)) / "pins").exists()
+    dl.cmd_pin(dl.parse(["pin", "--ifp-dir", str(world / "models"), "--artifact", other.name,
+                         "--reason", "the artifact of the current inputs"]), TUE)
+    led = json.loads(Path(dl.run_freeze(args_for(dl, world), 2026, 7, now=TUE)["ledger"]).read_text())
+    assert led["artifact"]["file"] == other.name and led["artifact"]["input_fingerprint"] == "0" * 16
+
+
 def test_an_artifact_trained_on_the_week_itself_is_never_used(dl, tmp_path, artifact):
     write_artifact(tmp_path / "models", artifact, trained_through_key=202607)          # includes week 7
     write_run(tmp_path / "weekly", TUE - timedelta(hours=1), ROWS)

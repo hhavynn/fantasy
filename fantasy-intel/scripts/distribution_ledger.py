@@ -200,7 +200,12 @@ def ensure_pin(args, season: int, week: int, now: datetime) -> tuple[dict | None
     if not cands:
         return None, [f"no {pd_.DISTRIBUTION_VERSION} distribution artifact trained before {season} week {week} under "
                       f"{research_dir(args)}: run `point_distribution_research.py run` once; nothing is frozen until then"]
-    _, _, path = max(cands)
+    newest = max(c[0] for c in cands)
+    tied = sorted(c[2].name for c in cands if c[0] == newest)
+    if len(tied) > 1:      # e.g. after a --refreeze: which one reflects the current research inputs is not knowable here
+        return None, [f"{len(tied)} artifacts are trained through {newest} ({', '.join(tied)}): the automatic pin is "
+                      "ambiguous; pin one explicitly with `distribution_ledger.py pin --artifact FILE --reason TEXT`"]
+    path = next(c[2] for c in cands if c[0] == newest)
     pin = make_pin(args, path, how="auto", now=now,
                    reason="first freeze: the newest artifact trained only on weeks before the week being frozen")
     if args.write:

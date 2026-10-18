@@ -517,7 +517,8 @@ and never backfilled.
 
 **The pin.** Every week uses the same artifact until someone re-pins on purpose (`distribution_ledger.py pin
 --artifact FILE --reason TEXT`, write-once under `pins/`). The first freeze pins the newest artifact trained only on
-weeks before the week being frozen. Nothing is fitted here. Without an artifact the stage warns and freezes nothing:
+weeks before the week being frozen; when several share that newest cutoff (e.g. after a `--refreeze`) it refuses to
+guess and asks for an explicit pin. Nothing is fitted here. Without an artifact the stage warns and freezes nothing:
 run `point_distribution_research.py run` once (section 15). The artifact's league-scoring fingerprint must match the
 live database's.
 

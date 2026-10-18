@@ -45,8 +45,8 @@ DECISION_STATEMENTS = {
     "worse": "ESPN made better decisions than Fantasy Intel.",
 }
 
-# The RB volume split (espn_benchmark.rb_volume_split, copied: this reader ships without polars; a test keeps the
-# copy in sync).
+# The RB volume split (mirrored from the research benchmark module's rb_volume_split: this reader ships without
+# polars; a test keeps the copy in sync).
 RB_VOLUME_GROUPS = ("low_volume", "volume", "no_recent_games")
 RB_VOLUME_COMPARISONS = ("pure_independent", "conditional")
 
