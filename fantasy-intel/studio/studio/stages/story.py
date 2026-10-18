@@ -30,13 +30,16 @@ from ..core import Episode, canonical_json, read_json, run_stage, sha256_bytes, 
 from . import formats as F
 from .script import PLACEHOLDER, fill
 
-VERSION = 9
+VERSION = 10
 WORDS_PER_SECOND = 2.9          # am_fenrir at ~1.1x, measured on the hook line
 
 SNAPS_BARELY_PTS = 5            # a snap-share change this small (displayed points) "barely moved"
+SWING_PTS = 5                   # weekly target shares further apart than this (displayed points) "haven't settled"
+HELD_PTS = 5                    # with the teammate back, a role within this many points of without him "stayed"
 
 UNIT = {"offense_pct": "snaps", "target_share": "targets", "air_yards_share": "air yards",
         "backfield_rush_share": "running back carries"}
+COUNT_NOUN = {"targets": ("target", "targets"), "designed_rushes": ("carry", "carries")}
 POS_WORD = {"TE": "tight end", "WR": "receiver", "RB": "running back"}
 
 HOOKS = {
@@ -56,6 +59,8 @@ HOOKS = {
     },
     "held": {
         "stayed": ("{tm} came back. {name} kept the role anyway.", ["kept"]),
+        # the role shrank in the games he was back: "kept the role" would be false
+        "tested": ("{tm} came back. Did {name} keep the role?", ["keep"]),
     },
     "displaced": {
         "reason": ("{name}'s role shrank, and there's a reason.", ["reason"]),
@@ -79,7 +84,8 @@ HEADLINES = {
     ("vanishing_targets", "warning"): None,
     ("shrinking", "proof"): ["ROLE", "SHRINKING."], ("shrinking", "talk"): ["WE NEED", "TO TALK."],
     ("fill_in", "catch"): ["THERE'S A", "CATCH."], ("fill_in", "real"): ["REAL ROLE", "OR FILL-IN?"],
-    ("held", "stayed"): ["HE'S BACK.", "ROLE STAYED."], ("displaced", "reason"): ["ROLE", "SHRANK."],
+    ("held", "stayed"): ["HE'S BACK.", "ROLE STAYED."], ("held", "tested"): ["HE'S BACK.", "ROLE KEPT?"],
+    ("displaced", "reason"): ["ROLE", "SHRANK."],
     ("takeover", "took_over"): ["BACKFIELD", "TAKEOVER."], ("unresolved", "yet"): ["MORE SNAPS.", "TARGETS NEXT?"],
     ("unresolved", "swing"): ["MORE SNAPS.", "TARGETS: ???"],
     ("breakout", "growing"): ["ROLE", "GROWING."],
@@ -92,6 +98,8 @@ TITLES = {
     "fill_in": ["Is {name}'s Role Real or a Fill-In?", "{name} Is Filling In for {tm}", "The Catch With {name}"],
     "held": ["{name} Kept the Role With {tm} Back", "{name}'s Role Survived {tm}'s Return",
              "The {Stat} Change Behind {name}"],
+    "held_tested": ["{tm} Is Back. Did {name} Keep the Role?", "The {Stat} Change Behind {name}",
+                    "{name}'s Role With {tm} Back"],
     "displaced": ["{tm} Is Back. {name}'s Role Shrank.", "The Reason {name}'s Role Shrank",
                   "{name}'s {Stat} Just Dropped"],
     "takeover": ["{name} Took Over the Backfield", "The {Stat} Change Behind {name}", "{name}'s Role Just Changed"],
@@ -114,6 +122,37 @@ def snaps_change_pts(p: dict, claims: dict) -> int | None:
     """His displayed snap-share change in points (None without a snap metric)."""
     snaps = next((m for m in p["metrics"] if m["column"] == "offense_pct"), None)
     return None if snaps is None else round(claims[snaps["change"]]["value"] * 100)
+
+
+def _pts(cid: str, claims: dict) -> int:
+    """A share claim in displayed points (0.215 -> 22)."""
+    return round(claims[cid]["value"] * 100)
+
+
+def targets_swing(ts: dict, claims: dict) -> bool:
+    """His game-by-game target shares are far apart (26%, then 5%), not just short of the mean's threshold."""
+    pts = [_pts(c, claims) for c in ts.get("weekly") or []]
+    return len(pts) >= 2 and max(pts) - min(pts) > SWING_PTS
+
+
+def held_split(p: dict) -> tuple[list[dict], list[dict]]:
+    """His recent lead-metric games without the teammate, and with him back."""
+    missed = set(p["teammate"]["missed_values"])
+    values = p.get("recent_values") or []
+    return [v for v in values if v["week"] in missed], [v for v in values if v["week"] not in missed]
+
+
+def role_held(p: dict, claims: dict) -> bool:
+    """With the teammate back, every game stayed within HELD_PTS of his average without him."""
+    out, back = held_split(p)
+    if not out or not back:
+        return True
+    without = sum(_pts(v["value"], claims) for v in out) / len(out)
+    return all(_pts(v["value"], claims) >= without - HELD_PTS for v in back)
+
+
+def _possessive(name: str) -> str:
+    return name + ("'" if name.endswith("s") else "'s")
 
 
 def storyline(p: dict, claims: dict) -> str:
@@ -190,8 +229,11 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
     if snaps_up:                         # "Same snaps" would be false: he's playing more
         hooks = {k: v for k, v in hooks.items() if k != "comparison"}
     if story == "unresolved":
-        swing = bool(next(m for m in p["metrics"] if m["column"] == "target_share").get("weekly"))
+        swing = targets_swing(next(m for m in p["metrics"] if m["column"] == "target_share"), claims)
         hooks = {k: v for k, v in hooks.items() if (k == "swing") == swing}
+    kept = story != "held" or role_held(p, claims)
+    if story == "held":
+        hooks = {k: v for k, v in hooks.items() if (k == "stayed") == kept}
     hook_key = hook_override if hook_override in hooks else choose(list(hooks), used.get("hook", []), seed)
     team = claims[p["team_name"]]["display"]
     who = {"name": p["name"], "last": last(p["name"]), "team": team, "tm": tm["name"] if tm else ""}
@@ -237,8 +279,9 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
                           ["still", "starting"], 1.0))
 
     elif story == "shrinking":
-        m2 = p["metrics"][1] if len(p["metrics"]) > 1 else None
-        if m2 and m2.get("sustained", True):
+        counts_at = len(beats)
+        m2 = support_metric(p)
+        if m2:
             beats.append(beat("support", f"His {m2['label']}: {ph(m2['baseline'])} to {ph(m2['recent'])}.",
                               {"type": "twist", "snaps": m2["column"]}, [], 1.08))
         beats.append(beat("takeaway", "It's a small sample. But this is the trend that matters.",
@@ -246,6 +289,7 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
         beats.append(beat("question", f"Are you still starting {who['last']}?",
                           {"type": "decision", "question": ["STILL STARTING", who["last"].upper() + "?"]},
                           ["still", "starting"], 1.0))
+        _fit(beats, counts_at, counts_beats(p, claims, team), claims)
 
     elif story in ("fill_in", "held", "displaced"):
         reason = f" with {ph(tm['reason'])}" if "reason" in tm else ""
@@ -261,10 +305,26 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
             beats.append(beat("why", f"{tm['name']} missed {ph(tm['missed'])}{reason}.",
                               {"type": "teammate_out", "phase": 1}, [], 1.08))
             if story == "held":
-                beats.append(beat("held", f"{tm['name']} came back in {ph(tm['back_week'])}, and {who['last']} "
-                                          "kept the role.", {"type": "statement", "lines": ["HE CAME BACK.",
-                                                                                          "THE ROLE STAYED."]},
-                                  ["kept"], 1.08))
+                out, back = held_split(p)
+                if out and back:      # the games that back up the hook: without him, then with him back
+                    said = lambda vs: " and ".join(ph(v["value"]) for v in vs)
+                    him = tm["name"] if last(tm["name"]) == who["last"] else last(tm["name"])
+                    beats.append(beat("held", f"{him} came back in {ph(tm['back_week'])}. "
+                                              f"{_possessive(who['last'])} {lead['label']}: {said(out)} without him, "
+                                              f"{said(back)} with him back.", {"type": "bar_timeline", "metric": 0},
+                                      ["back"], 1.08))
+                else:
+                    beats.append(beat("held", f"{tm['name']} came back in {ph(tm['back_week'])}.",
+                                      {"type": "teammate_out", "phase": 2}, ["back"], 1.08))
+                if kept:
+                    take = ("The role survived his return. That's what makes it real.",
+                            ["HE CAME BACK.", "THE ROLE STAYED."], ["survived"])
+                elif back and all(_pts(v["value"], claims) > _pts(lead["baseline"], claims) for v in back):
+                    take = ("Smaller with him back, but still bigger than before.", ["SMALLER.", "STILL BIGGER."],
+                            ["still", "bigger"])
+                else:
+                    take = ("With him back, the role shrank.", ["HE CAME BACK.", "THE ROLE SHRANK."], ["shrank"])
+                beats.append(beat("takeaway", take[0], {"type": "statement", "lines": take[1]}, take[2], 1.08))
                 beats.append(beat("question", f"Are you buying {who['last']} now?",
                                   {"type": "decision", "question": ["BUYING", who["last"].upper() + "?"]},
                                   ["buying"], 1.0))
@@ -289,23 +349,40 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
                                    "options": ["ADD", "WAIT"]}, ["or", "wait"], 1.0))
 
     else:  # takeover, unresolved, breakout
-        m2 = p["metrics"][1] if len(p["metrics"]) > 1 else None
+        m2 = support_metric(p)
+        counts_at = len(beats)
+        extra = []
         if story == "unresolved":
             ts = next(m for m in p["metrics"] if m["column"] == "target_share")
-            if ts.get("weekly"):          # up and down: say the games rather than a misleading mean
-                beats.append(beat("support", "But his target share hasn't settled: "
-                                             + ", then ".join(ph(c) for c in ts["weekly"]) + ".",
+            games = ", then ".join(ph(c) for c in ts.get("weekly") or [])
+            if targets_swing(ts, claims):          # up and down: say the games rather than a misleading mean
+                beats.append(beat("support", f"But his target share hasn't settled: {games}.",
                                   {"type": "twist", "snaps": "target_share"}, ["settled"], 1.08))
+            elif ts.get("weekly") and abs(_pts(ts["change"], claims)) <= SNAPS_BARELY_PTS:
+                beats.append(beat("support", f"But his target share barely moved: {ph(ts['baseline'])} before, "
+                                             f"{' and '.join(ph(c) for c in ts['weekly'])} now.",
+                                  {"type": "twist", "snaps": "target_share"}, ["barely", "moved"], 1.08))
+            elif ts.get("weekly"):                 # steady game to game, just short of a sustained rise
+                beats.append(beat("support", f"But his target share is only {games}.",
+                                  {"type": "twist", "snaps": "target_share"}, ["only"], 1.08))
             else:
                 beats.append(beat("support", f"But his target share is only {ph(ts['recent'])}.",
                                   {"type": "twist", "snaps": "target_share"}, ["only"], 1.08))
+            extra = raw_targets_beats(p)
             take = ("Playing time moves first. Watch whether the targets follow.",
                     ["PLAYING TIME", "MOVES FIRST."])
         else:
-            if m2 and m2.get("sustained", True):
+            if m2:
                 beats.append(beat("support", f"And his {m2['label']} went from {ph(m2['baseline'])} to "
                                              f"{ph(m2['recent'])}.", {"type": "twist", "snaps": m2["column"]}, [],
                                   1.08))
+            elif story == "breakout" and lead["column"] != "offense_pct" and snaps_steady(p, claims):
+                # more of the ball without more playing time: the share rise is the role, not the snaps
+                snaps = next(m for m in p["metrics"] if m["column"] == "offense_pct")
+                beats.append(beat("support", f"His snaps? {ph(snaps['recent'])}. About the same as before. "
+                                             "The ball just finds him more.", {"type": "twist", "snaps": "offense_pct"},
+                                  ["same", "more"], 1.12))
+            extra = counts_beats(p, claims, team)
             take = (("The question now is whether it holds.", ["DOES IT", "HOLD?"]) if story == "takeover"
                     else ("The box score catches up later. The role already got bigger.",
                           ["THE ROLE", "GOT BIGGER."]))
@@ -313,8 +390,87 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
         beats.append(beat("question", f"Is {who['last']} on your roster?",
                           {"type": "decision", "question": [f"{who['last'].upper()}", "ON YOUR ROSTER?"],
                            "options": ["YES", "NOT YET"]}, ["your", "roster"], 1.0))
+        _fit(beats, counts_at + (story == "unresolved"), extra, claims)
 
-    return finish(beats, p, lead, story, hook_key, tm, who)
+    titles = None
+    if not kept:
+        titles = [t.format(name=p["name"], Stat=lead["label"].title(), tm=who["tm"]) for t in TITLES["held_tested"]]
+    return finish(beats, p, lead, story, hook_key, tm, who, titles=titles)
+
+
+def snaps_steady(p: dict, claims: dict) -> bool:
+    """Every recent game's snap share within SNAPS_BARELY_PTS of his earlier average (38% then 81% averages out
+    the same, but it is not the same playing time)."""
+    snaps = next((m for m in p["metrics"] if m["column"] == "offense_pct"), None)
+    if snaps is None:
+        return False
+    base = _pts(snaps["baseline"], claims)
+    recent = [round((s["value"] or 0) * 100) for s in snaps["series"] if s["week"] in p["recent_weeks"]]
+    return bool(recent) and all(abs(v - base) <= SNAPS_BARELY_PTS for v in recent)
+
+
+def support_metric(p: dict) -> dict | None:
+    """The first supporting metric that moved the lead's way in every recent game."""
+    up = p["metrics"][0]["delta_over_threshold"] > 0
+    return next((m for m in p["metrics"][1:] if m.get("sustained", True) and (m["delta_over_threshold"] > 0) == up),
+                None)
+
+
+def _fit(beats: list[dict], at: int, options: list[dict], claims: dict) -> None:
+    """Insert the first (longest) option that keeps the Short inside the ~20 s word budget, if any does."""
+    fits = next((b for b in options if _words(beats + [b], claims) <= E.MAX_WORDS), None)
+    if fits:
+        beats.insert(at, fits)
+
+
+def _words(beats: list[dict], claims: dict) -> int:
+    """Spoken words, as story.run and the editorial budget count them."""
+    return sum(len(fill(b["text_template"].replace(PAUSE, ""), claims, "spoken").split()) for b in beats)
+
+
+def raw_targets_beats(p: dict) -> list[dict]:
+    """His recent games in raw targets ("In raw targets: 7, then 2."): what "hasn't settled" or "only" looks like
+    on the stat sheet. A back's per-game counts are carries, so his targets come from the game details."""
+    counts = p.get("counts") or {}
+    if counts.get("column") == "targets":
+        games = [g for g in counts["games"] if g["week"] in p["recent_weeks"]]
+        k = next((i for i, g in enumerate(counts["games"]) if g["week"] in p["recent_weeks"]), 0)
+        scene = {"type": "target_balls", "split": k}
+    else:
+        games = [{"value": g.get("targets")} for g in (p.get("details") or {}).get("games", [])]
+        scene = {"type": "twist", "snaps": "target_share"}
+    if len(games) < 2 or not all(g["value"] for g in games):
+        return []
+    return [beat("counts", f"In raw targets: {_then_list(games)}.", scene, [], 1.12)]
+
+
+def counts_beats(p: dict, claims: dict, team: str) -> list[dict]:
+    """The share move in raw per-game volume ("4 targets, then 1, then 0. Since then: 3, 7."), longest first: for
+    a riser, with "no one on the team got more" when his latest game matched or beat every teammate, then without
+    it. Empty when the counts did not move his way by at least one a game (a share can rise because the team
+    threw less)."""
+    counts = p.get("counts") or {}
+    games = counts.get("games") or []
+    k = next((i for i, g in enumerate(games) if g["week"] in p["recent_weeks"]), None)
+    early = [g for g in games[:k or 0] if g["week"] in p["baseline_weeks"]]
+    if not k or not early:
+        return []
+    vals = lambda gs: [claims[g["value"]]["value"] for g in gs]
+    late = games[k:]
+    move = sum(vals(late)) / len(late) - sum(vals(early)) / len(early)
+    if (move if p["role"] == "riser" else -move) < 1:
+        return []
+    noun = COUNT_NOUN.get(counts["column"], (counts["column"].replace("_", " "),) * 2)
+    text = _counts_sentence(early + late, len(early), noun[vals(early[-3:])[0] != 1])
+    scene = {"type": "target_balls", "split": k}
+    out = []
+    spread = (p.get("details") or {}).get("spread")
+    if (p["role"] == "riser" and counts["column"] == "targets" and spread and spread["week"] == late[-1]["week"]
+            and vals(late)[-1] >= claims[spread["most_by_teammate"]]["value"]):
+        out.append(beat("counts", f"{text} No one on the {team} got more in {ph(spread['week_claim'])}.", scene,
+                        ["more"], 1.12))
+    out.append(beat("counts", text, scene, ["since"], 1.12))
+    return out
 
 
 def decline_split(values: list[int]) -> int | None:
@@ -338,7 +494,8 @@ def vanishing_beats(p: dict, claims: dict, who: dict, hook_key: str = "") -> lis
     out = []
     k = decline_split(vals)
     if k is not None:
-        out.append(beat("evidence", _counts_sentence(games, k), {"type": "target_balls", "split": k}, ["since"], 1.16))
+        out.append(beat("evidence", _counts_sentence(games, k, "targets" if vals[:k][-3:][0] != 1 else "target"),
+                        {"type": "target_balls", "split": k}, ["since"], 1.16))
     pts = round(claims[snaps["change"]]["value"] * 100)
     if pts > SNAPS_BARELY_PTS:
         out.append(beat("twist", f"His snaps? Up to {ph(snaps['recent'])}. He's on the field more than before.",
@@ -368,10 +525,10 @@ def vanishing_beats(p: dict, claims: dict, who: dict, hook_key: str = "") -> lis
     return out
 
 
-def _counts_sentence(games: list[dict], k: int) -> str:
+def _counts_sentence(games: list[dict], k: int, noun: str = "targets") -> str:
     early = [ph(g["value"]) for g in games[:k]][-3:]
     late = [ph(g["value"]) for g in games[k:]]
-    head = early[0] + " targets" + "".join(f", then {e}" for e in early[1:])
+    head = f"{early[0]} {noun}" + "".join(f", then {e}" for e in early[1:])
     return f"{head}. Since then: {', '.join(late)}."
 
 

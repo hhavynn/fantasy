@@ -24,6 +24,7 @@ from . import motion as M
 from . import edit_scenes as ES
 from . import series_scenes as SS
 from .format_scenes import PAPER, PAPER_INK, brand, stamp
+from .stages import flame as FL
 
 FLAME = (255, 104, 38)
 EMBER = (232, 54, 36)
@@ -260,7 +261,7 @@ def scene_fp_strip(img, t, dur, spec, c):
     kc = M.back_out(M.progress(t, reveal + 0.1, 0.3))
     M.put_text(img, big, M.CENTER_X, 1200, size=M.fit_size(big, "black", 92, 880), fill=col,
                scale=0.6 + 0.4 * kc, alpha=M.clamp(kc * 2), stroke=4)
-    if lead.get("week_rank_value") == 1 and rank != 1:
+    if FL.week_best(lead):
         kw = M.ease_out(M.progress(t, c.at(word="anyone", default=dur * 0.75) - 0.1, 0.3))
         wk = f"AND THE {lead['sup'].upper()} OF ANY {pos} IN {c.d(p['week_claim']).upper()}"
         M.put_text(img, wk, M.CENTER_X, 1310, size=M.fit_size(wk, "bold", 44, 880), weight="bold", fill=M.INK,

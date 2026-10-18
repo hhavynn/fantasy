@@ -146,12 +146,14 @@ def scene_target_balls(img, t, dur, spec, c):
     vals = [c.claims[g["value"]]["value"] for g in games]
     early = vals[:k_split]
     ghost_to = round(sum(early) / len(early)) if early else 0
-    M.put_text(img, "TARGETS PER GAME", M.CENTER_X, 300, size=80, fill=M.INK, alpha=M.clamp(t * 6))
+    noun = "CARRIES" if c.p["counts"].get("column") == "designed_rushes" else "TARGETS"
+    M.put_text(img, f"{noun} PER GAME", M.CENTER_X, 300, size=80, fill=M.INK, alpha=M.clamp(t * 6))
     n = len(games)
     col_w = (M.SAFE_RIGHT - M.SAFE_LEFT) / n
     ball_w = int(min(col_w * 0.78, 120))
-    step = int(ball_w * 0.5)
     base = 1210
+    # a 20-carry game still fits between the title and the week labels: the stack tightens, never overflows
+    step = max(4, min(int(ball_w * 0.5), int((base - 520) / max(vals + [ghost_to, 1]))))
     for i, (g, v) in enumerate(zip(games, vals)):
         ta = c.at(g["value"], default=0.2 + i * 0.35)
         k = M.ease_out(M.progress(t, ta - 0.12, 0.3))

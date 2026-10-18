@@ -33,6 +33,8 @@ SHORT = [("facts", facts), ("script", story), ("tts", tts), ("render", render_mo
 
 def finish(ep: Episode) -> bool:
     passed = qc.run(ep)
+    if passed:                       # only a video that could ship counts as channel history
+        metadata.record_history(ep)
     provenance.run(ep)
     review.run(ep)
     return passed

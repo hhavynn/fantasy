@@ -43,6 +43,7 @@ ROUGH_SACKS, ROUGH_INTS, ROUGH_POINTS = 4, 2, 10
 AIRLESS_SHARE = 0.30          # "only 20 of his 107 passing yards came in the air": at most this share flew
 SHOOTOUT_POINTS = 27         # "a shootout": both teams scored at least this many
 HOG_TARGETS = 15               # target_hog: at least this many targets...
+MIN_TEAMS_FEWER = 2           # ..."N entire NFL offenses got fewer": one offense is a coincidence, not a joke
 MONSTER_YARDS = {"QB": 350, "WR": 140, "TE": 110, "RB": 140}
 # Pauses inside a line, for the short-form pace: `‖` a breath (barely any), `⏸` the comic beat before a punchline.
 # Kokoro pads each spoken part by about 0.13 s on its own, so these are what is added on top.
@@ -212,7 +213,7 @@ def angles(book, snap: dict, p: dict) -> list[dict]:
         a["teams_fewer_value"] = book.claims[-3]["value"]
         a["rank_value"] = book.claims[-2]["value"]
         a["beats_opponent"] = a["opp_targets_value"] < box["targets_value"]
-        a["strength"] = 5 if a["beats_opponent"] else 4 if a["teams_fewer_value"] else 3
+        a["strength"] = 5 if a["beats_opponent"] else 4 if a["teams_fewer_value"] >= MIN_TEAMS_FEWER else 3
         out.append(a)
     if kind == "praise":
         yards = box.get("passing_yards_value") if pos == "QB" else box.get("receiving_yards_value", 0) + (
@@ -305,7 +306,7 @@ def choose(p: dict, recent: list[dict], treatment: str | None = None) -> dict:
 def eligible(fmt: str, a: dict, p: dict) -> bool:
     """A format needs the facts its joke stands on."""
     if fmt == "comparison" and a["id"] == "target_hog":
-        return a["beats_opponent"] or a["teams_fewer_value"] > 0
+        return a["beats_opponent"] or a["teams_fewer_value"] >= MIN_TEAMS_FEWER
     if fmt == "courtroom":
         return p["position"] == "QB"
     if fmt in ("main_character", "fan_meltdown"):
@@ -397,14 +398,15 @@ def build_roast_monologue(ctx):
                   f"What Was {p['name']} Doing Against the {ph(p['opponent'])}?"]
         return beats, titles
     s = "s" if box["passing_interceptions_value"] != 1 else ""
+    sack, sacks_label = _sacks(box)
     beats = [
         _beat(ctx, "open", f"{name} against the {ctx['opp']}?{BEAT} Group project.‖ Nobody started it.",
               {**still, "type": "dp_line", "lines": ["GROUP PROJECT.", "NOBODY STARTED IT."], "claims": [p["opponent"]]},
               [_cue("punchline", word="started", at="end", context="setup_aside")]),
-        _beat(ctx, "stat", f"{ph(box['sacks_suffered'])} sacks.‖ {ph(box['passing_interceptions'])} interception{s}."
+        _beat(ctx, "stat", f"{ph(box['sacks_suffered'])} {sack}.‖ {ph(box['passing_interceptions'])} interception{s}."
                            f"‖ {ph(g['points'])} points.",
               {**still, "type": "dp_stat", "big": g["points"], "unit": "POINTS", "small": box["sacks_suffered"],
-               "small_label": "SACKS", "claims": [box["sacks_suffered"], box["passing_interceptions"], g["points"]]}),
+               "small_label": sacks_label, "claims": [box["sacks_suffered"], box["passing_interceptions"], g["points"]]}),
         _beat(ctx, "punchline", f"{'At home.' if g['home'] else 'On the road.'}{BEAT} The film room needs snacks.",
               {**still, "type": "dp_end", "lines": ["THE FILM ROOM", "NEEDS SNACKS."], "claims": [g["venue"]]},
               [_cue("final_payoff", word="snacks", at="end", context="deadpan_hit")], pause=LAST_GAP),
@@ -444,7 +446,8 @@ def build_courtroom(ctx):
         notes[lead["value"]] = {"rank": lead["rank"], "rank_value": lead["rank_value"], "games": lead["games"],
                                 "worst": worst.upper()}
         how = "by expected points" if lead["metric"] == "epa" else f"by {lead['label']}"
-        exhibits.append((f"{ph(box['sacks_suffered'])} sacks.", box["sacks_suffered"], "SACKS",
+        sack, sacks_label = _sacks(box)
+        exhibits.append((f"{ph(box['sacks_suffered'])} {sack}.", box["sacks_suffered"], sacks_label,
                          [box["sacks_suffered"]], box["sacks_suffered"]))
         exhibits.append((f"{how},‖ the {ph(lead['rank'])}-{worst} of {ph(lead['games'])} quarterback games this season."
                          if lead["rank_value"] > 1 else
@@ -530,7 +533,8 @@ def build_comparison(ctx):
                            ["entire"]))
         punch = "One receiver out-targeted a whole NFL offense."
     else:
-        beats.append(_beat(ctx, "versus", f"{ph(a['teams_fewer'])} entire NFL offenses got fewer that week.",
+        offenses = "offense" if a["teams_fewer_value"] == 1 else "offenses"
+        beats.append(_beat(ctx, "versus", f"{ph(a['teams_fewer'])} entire NFL {offenses} got fewer that week.",
                            {**tally, "stage": "teams", "claims": [box["targets"], a["teams_fewer"]]},
                            [_cue("punchline", claim=a["teams_fewer"], at="end", context="absurd_comparison")],
                            ["entire"]))
@@ -546,6 +550,11 @@ def build_comparison(ctx):
     titles = [f"{p['name']} Out-Targeted the Entire {ph(p['opponent'])} Offense",
               f"{ph(box['targets'])} Targets: {p['name']} Is Actually Ridiculous"]
     return beats, titles
+
+
+def _sacks(box: dict) -> tuple[str, str]:
+    """The spoken word and the on-screen label for his sack count: "1 sack", "4 sacks"."""
+    return ("sack", "SACK") if box["sacks_suffered_value"] == 1 else ("sacks", "SACKS")
 
 
 def _slams(p: dict) -> list[tuple[str, str]]:
@@ -744,7 +753,7 @@ def thumbnail(p: dict, claims: dict, structure: dict) -> tuple[str, str, str]:
                 else "SHORTEST THROWS IN THE NFL"), f"{d(a['x'])} YDS", "NFL AVERAGE: " + d(a["league"])
     if a["id"] == "rough_day":
         return ("THE NFL v. " + last if fam == "courtroom" else "WHAT HAPPENED?"), \
-            f"{d(p['game']['points'])} POINTS", f"{d(p['box']['sacks_suffered'])} SACKS"
+            f"{d(p['game']['points'])} POINTS", f"{d(p['box']['sacks_suffered'])} {_sacks(p['box'])[1]}"
     if a["id"] == "target_hog":
         them = f"THE {d(p['opponent']).upper()}: {d(a['opp_targets'])}" if a["beats_opponent"] else "ONE RECEIVER"
         return ("MAIN CHARACTER" if fam == "main_character" else "WE ARE NOT CALM" if fam == "fan_meltdown"

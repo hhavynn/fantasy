@@ -142,10 +142,108 @@ def test_vacated_role_makes_a_fill_in_story():
          "text_spoken": story.fill(s["text_template"], cl, "spoken")} for s in segs]}).passed
 
 
+def _said(beats, cl):
+    return [story.fill(b["text_template"].replace(story.PAUSE, ""), cl, "display") for b in beats]
+
+
 def test_teammate_back_in_the_latest_game_makes_a_held_story():
     f, p, cl = _riser(_with_teammate({4}))
     assert p["teammate"]["returned"] and storyline(p, cl) == "held"
     assert cl[p["teammate"]["back_week"]]["display"] == "Week 5"
+    beats, titles, st = story.compose(f, cl, "seed", {})
+    text = dict(zip([b["section"] for b in beats], _said(beats, cl)))
+    # "kept the role" is backed by the number for the week he came back, beside the week he was out
+    assert st["hook"] == "stayed" and "kept the role" in text["hook"]
+    assert text["held"] == "Star Receiver came back in Week 5. Receiver's snap share: 85% without him, 90% with him back."
+    assert {"held", "takeaway"} <= set(text) and beats[-1]["section"] == "question"
+    assert any("Kept the Role" in t for t in titles)
+
+
+def test_a_role_that_shrank_on_his_return_is_not_called_kept():
+    snap = _with_teammate({4})
+    for r in snap["tables"]["player_week_usage"]:
+        if r["gsis_id"] == "00-RISER" and r["week"] == 5:
+            r["offense_pct"], r["offense_snaps"] = 0.55, 33
+    f, p, cl = _riser(snap)
+    assert storyline(p, cl) == "held" and not story.role_held(p, cl)
+    beats, titles, st = story.compose(f, cl, "seed", {})
+    said = " ".join(_said(beats, cl))
+    assert st["hook"] == "tested" and "kept the role" not in said.lower()
+    assert "85% without him, 55% with him back." in said
+    assert "Smaller with him back, but still bigger than before." in said
+    assert not any("Kept the Role" in t or "Survived" in t for t in titles)
+
+
+def test_a_breakout_says_the_raw_volume_behind_the_share():
+    f, p, cl = _riser(make_snapshot())
+    assert storyline(p, cl) == "breakout"
+    beats, _, _ = story.compose(f, cl, "seed", {})
+    counts = next(b for b in beats if b["section"] == "counts")
+    assert story.fill(counts["text_template"], cl, "display") == "2 targets, then 2, then 2. Since then: 9, 10."
+    assert counts["scene"] == {"type": "target_balls", "split": 3}
+    assert [b["section"] for b in beats].index("counts") == [b["section"] for b in beats].index("evidence") + 1
+
+
+def test_the_volume_beat_needs_a_real_rise_and_fits_the_budget(monkeypatch):
+    f, p, cl = _riser(make_snapshot())
+    flat = {**p, "counts": {**p["counts"], "games": p["counts"]["games"][:3] + p["counts"]["games"][:2]}}
+    flat["counts"]["games"] = [{**g, "week": w} for g, w in zip(flat["counts"]["games"], range(1, 6))]
+    assert story.counts_beats(flat, cl, "Eagles") == []          # 2, 2, 2 then 2, 2: the share rose, not the volume
+    full = story._words(story.compose(f, cl, "seed", {})[0], cl)
+    monkeypatch.setattr(story.E, "MAX_WORDS", full - 1)          # no room: the optional beat is the one left out
+    assert "counts" not in [b["section"] for b in story.compose(f, cl, "seed", {})[0]]
+
+
+def test_the_volume_beat_says_when_no_teammate_got_more():
+    p = {"role": "riser", "recent_weeks": [4, 5], "baseline_weeks": [1, 2, 3],
+         "counts": {"column": "targets", "games": [{"week": w, "value": f"c90{w}"} for w in range(1, 6)]},
+         "details": {"spread": {"week": 5, "week_claim": "c950", "most_by_teammate": "c951"}}}
+    cl = {f"c90{w}": {"value": v, "display": str(v), "spoken": str(v)} for w, v in zip(range(1, 6), [4, 1, 0, 3, 7])}
+    cl |= {"c950": {"value": 5, "display": "Week 5", "spoken": "Week five"}, "c951": {"value": 7}}
+    longest, short = story.counts_beats(p, cl, "Browns")
+    assert story.fill(longest["text_template"], cl, "display") == \
+        "4 targets, then 1, then 0. Since then: 3, 7. No one on the Browns got more in Week 5."
+    assert "No one" not in short["text_template"]
+    cl["c951"]["value"] = 8                                       # a teammate had more: never said
+    assert len(story.counts_beats(p, cl, "Browns")) == 1
+
+
+def test_a_backs_volume_beat_counts_carries():
+    p = {"role": "riser", "recent_weeks": [3, 4], "baseline_weeks": [1, 2],
+         "counts": {"column": "designed_rushes", "games": [{"week": w, "value": f"c90{w}"} for w in range(1, 5)]}}
+    cl = {f"c90{w}": {"value": v, "display": str(v), "spoken": str(v)} for w, v in zip(range(1, 5), [10, 12, 19, 20])}
+    (only,) = story.counts_beats(p, cl, "Panthers")
+    assert story.fill(only["text_template"], cl, "display") == "10 carries, then 12. Since then: 19, 20."
+    cl["c901"] = {"value": 1, "display": "1", "spoken": "one"}
+    (only,) = story.counts_beats(p, cl, "Panthers")
+    assert story.fill(only["text_template"], cl, "display") == "1 carry, then 12. Since then: 19, 20."
+
+
+def _unresolved(shares):
+    snap = make_snapshot()
+    snap["tables"]["player_week_usage"] = [r for r in snap["tables"]["player_week_usage"] if r["gsis_id"] != "00-RISER"]
+    snap["tables"]["player_week_usage"] += _rows("00-RISER", "PHI", "WR", [0.20, 0.25, 0.20, 0.85, 0.90], shares)
+    f, p, cl = _riser(snap)
+    assert storyline(p, cl) == "unresolved"
+    beats, _, st = story.compose(f, cl, "seed", {})
+    return st, dict(zip([b["section"] for b in beats], _said(beats, cl)))
+
+
+def test_steady_target_shares_are_not_called_all_over_the_place():
+    # 12%, then 11% (Tyler Higbee, Week 6): steady, and barely above the 10% before
+    st, text = _unresolved([0.10, 0.04, 0.16, 0.12, 0.11])
+    assert st["hook"] == "yet" and "all over the place" not in text["hook"]
+    assert text["support"] == "But his target share barely moved: 10% before, 12% and 11% now."
+    # 26%, then 5%: that is a swing
+    st, text = _unresolved([0.10, 0.04, 0.16, 0.26, 0.05])
+    assert st["hook"] == "swing" and text["support"] == "But his target share hasn't settled: 26%, then 5%."
+
+
+def test_targets_swing_reads_the_displayed_games():
+    cl = {"a": {"value": 0.12}, "b": {"value": 0.11}, "c": {"value": 0.26}, "d": {"value": 0.05}}
+    assert not story.targets_swing({"weekly": ["a", "b"]}, cl)
+    assert story.targets_swing({"weekly": ["c", "d"]}, cl)
+    assert not story.targets_swing({}, cl)
 
 
 def test_a_returning_teammate_explains_a_faller():
@@ -232,3 +330,39 @@ def test_an_absence_after_the_rise_does_not_explain_it():
     f, p, cl = _riser(_with_teammate({5}))
     assert p["teammate"] is None
     assert storyline(p, cl) != "fill_in"
+
+
+def test_a_shrinking_role_says_the_raw_drop():
+    f = build_facts(make_snapshot(), ALL, set(), only="00-FALLER")
+    cl = {c["id"]: c for c in f["claims"]}
+    assert storyline(f["players"][0], cl) == "shrinking"
+    beats, _, _ = story.compose(f, cl, "seed", {})
+    text = dict(zip([b["section"] for b in beats], _said(beats, cl)))
+    assert text["counts"] == "9 targets, then 9, then 8. Since then: 4, 3."
+    assert "No one" not in text["counts"]                         # the team-lead line is only for risers
+
+
+def test_support_is_the_first_metric_that_moved_every_game():
+    p = {"metrics": [{"column": "target_share", "delta_over_threshold": 2},
+                     {"column": "offense_pct", "delta_over_threshold": 0.2, "sustained": False},
+                     {"column": "air_yards_share", "delta_over_threshold": 1.5, "sustained": True}]}
+    assert story.support_metric(p)["column"] == "air_yards_share"
+    p["metrics"][2]["delta_over_threshold"] = -1.5               # moved every game, but the other way
+    assert story.support_metric(p) is None
+    p["metrics"][2] |= {"delta_over_threshold": 1.5, "sustained": False}
+    assert story.support_metric(p) is None
+
+
+def test_same_snaps_means_every_recent_game_not_just_the_average():
+    cl = {"c901": {"value": 0.58}}
+    p = {"recent_weeks": [4, 5], "metrics": [{"column": "offense_pct", "baseline": "c901",
+                                              "series": [{"week": 4, "value": 0.57}, {"week": 5, "value": 0.60}]}]}
+    assert story.snaps_steady(p, cl)
+    p["metrics"][0]["series"] = [{"week": 4, "value": 0.38}, {"week": 5, "value": 0.81}]    # same mean, not the same
+    assert not story.snaps_steady(p, cl)
+
+
+def test_an_unresolved_story_says_the_raw_targets():
+    st, text = _unresolved([0.10, 0.04, 0.16, 0.26, 0.05])
+    assert text["counts"] == "In raw targets: 9, then 2."
+    assert list(text).index("counts") == list(text).index("support") + 1
