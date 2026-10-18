@@ -78,10 +78,13 @@ The ten questions from the brief:
 ## 2. Correctness fixes (shipped)
 
 1. **Horizon guard in `build_live`** (`independent_projection_store.check_horizon`). A run's cutoff week must
-   be the next unplayed week (the week after the latest week with any final game). A horizon-0 run for a
-   later week now raises `HorizonError` and says to project it as a rest-of-season target
-   (`projected_from_week`). Valid runs are byte-identical; the learning cycle always passes the right week.
-   Regression test: `test_ros_projections.py::test_a_horizon_zero_run_beyond_the_next_unplayed_week_is_refused`.
+   be the next unplayed week: the earliest week with an outstanding game over the whole slate (a final
+   Thursday game does not end its week; an unscored game counts as postponed or cancelled only when a game
+   with a strictly later kickoff is final). A horizon-0 run for a later week now raises `HorizonError` and
+   says to project it as a rest-of-season target (`projected_from_week`). Valid runs are byte-identical; the
+   learning cycle always passes the right week. Regression tests in `test_ros_projections.py`:
+   `test_a_horizon_zero_run_beyond_the_next_unplayed_week_is_refused` and
+   `test_the_next_unplayed_week_is_judged_over_the_whole_slate`.
    Three existing ROS tests that simulated a later cutoff with the same unplayed sources now mark the earlier
    weeks final first (`played_through`).
 
