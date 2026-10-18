@@ -58,6 +58,7 @@ sys.path.insert(0, str(SCRIPTS))
 import challenger_research as cr  # noqa: E402  (path defaults shared with context_research.py)
 
 from app.config import get_settings  # noqa: E402
+from app.db.connection import connect as db_connect  # noqa: E402
 
 SCHEMA = "ifp-ctx-shadow-run/v1"
 CANDIDATE = "ifp-ctx-p1"
@@ -103,10 +104,9 @@ def _sha_file(path: Path) -> str:
 
 def injury_snapshot(args, season: int, week: int, now: datetime) -> dict:
     """injury_freshness.diagnostics for the week, from a read-only connection (changes nothing)."""
-    import duckdb
     from app.analytics import injury_freshness as inj
 
-    con = duckdb.connect(str(args.live_db), read_only=True)
+    con = db_connect(args.live_db, read_only=True)
     try:
         return inj.diagnostics(con, season, week, now)
     finally:
@@ -275,9 +275,8 @@ def check_missed(args, season: int, week: int, *, now: datetime | None = None, k
         return None
     now = now or _utcnow()
     if kickoffs is None:
-        import duckdb
         from app.analytics.injury_freshness import scheduled_kickoffs
-        con = duckdb.connect(str(args.live_db), read_only=True)
+        con = db_connect(args.live_db, read_only=True)
         try:
             kickoffs = scheduled_kickoffs(con, season, week)
         finally:
@@ -411,10 +410,9 @@ def _summary(rec: dict) -> dict:
 
 def _target_week(args, now: datetime) -> int | None:
     """The upcoming week: the earliest REG week with a game still to kick off (refresh_all.py's rule)."""
-    import duckdb
     from app.analytics.injury_freshness import scheduled_kickoffs
 
-    con = duckdb.connect(str(args.live_db), read_only=True)
+    con = db_connect(args.live_db, read_only=True)
     try:
         weeks = [r[0] for r in con.execute("SELECT DISTINCT week FROM nfl_schedules WHERE season = ? AND "
                                            "game_type = 'REG' ORDER BY week", [args.season]).fetchall()]
@@ -428,9 +426,7 @@ def _target_week(args, now: datetime) -> int | None:
 
 
 def _last_week(args) -> int | None:
-    import duckdb
-
-    con = duckdb.connect(str(args.live_db), read_only=True)
+    con = db_connect(args.live_db, read_only=True)
     try:
         row = con.execute("SELECT max(week) FROM nfl_schedules WHERE season = ? AND game_type = 'REG'",
                           [args.season]).fetchone()

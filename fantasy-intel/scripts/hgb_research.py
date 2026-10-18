@@ -43,6 +43,7 @@ from app.analytics.forecast_backtest import (_arr, build_store, completed_weeks,
                                              walk_forward as ifp_walk_forward)
 from app.analytics.forecast_features import POSITIONS  # noqa: E402
 from app.config import get_settings  # noqa: E402
+from app.db.connection import connect as db_connect  # noqa: E402
 
 
 def _out(args) -> Path:
@@ -88,11 +89,10 @@ def final_weeks(args, src) -> list[tuple[int, int]]:
     """Completed weeks that are also fully final and fully ingested (participation_calibration's
     week_finality rule): a partly played or partly synced week would put an incomplete player pool
     into the store, the diagnostics and the Start/Sit pairs."""
-    import duckdb
     import participation_calibration as pcal
 
-    live = duckdb.connect(str(args.live_db), read_only=True)
-    hist = duckdb.connect(str(args.history_db), read_only=True) if args.history_db.exists() else None
+    live = db_connect(args.live_db, read_only=True)
+    hist = db_connect(args.history_db, read_only=True) if args.history_db.exists() else None
     try:
         fetched = pcal.fetch_times(live, hist, args.season)
     finally:
