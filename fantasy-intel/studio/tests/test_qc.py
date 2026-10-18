@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import subprocess
 
 import numpy as np
@@ -178,3 +179,30 @@ def test_integrity_fails_when_an_input_changes_after_its_stage(scripted):
     write_json(scripted.path("facts.json"), f)
     msg = failures(qc.gate_integrity(scripted))
     assert "script: facts.json changed" in msg
+
+
+def test_only_a_short_that_passes_qc_enters_the_history(tmp_path, monkeypatch):
+    """A failed Short never ships, so it must not count in the next Shorts' originality and variety gates."""
+    from studio import cli
+    from studio.core import Config, Episode
+    from studio.stages import metadata
+    monkeypatch.setenv("STUDIO_EPISODES", str(tmp_path / "episodes"))
+    cfg = Config.load()
+    ep = Episode(2026, 6, "short", cfg, log=lambda *_: None, slug="some-player")
+    ep.dir.mkdir(parents=True)
+    write_json(ep.path("story.json"), {"gsis_id": "00-X", "order": 1})
+    write_json(ep.path("facts.json"), {"players": [{"gsis_id": "00-X"}]})
+    write_json(ep.path("script.json"), {"narration_segments": [{"text_display": "A line."}],
+                                        "structure": {"hook": "yet"}})
+    for stage in (cli.provenance, cli.review):
+        monkeypatch.setattr(stage, "run", lambda ep: None)
+    history = cfg.episodes_dir / "history.jsonl"
+    monkeypatch.setattr(cli.qc, "run", lambda ep: False)
+    assert not cli.finish(ep) and not history.exists()
+    monkeypatch.setattr(cli.qc, "run", lambda ep: True)
+    assert cli.finish(ep)
+    rows = [json.loads(line) for line in history.read_text().splitlines()]
+    assert [(r["episode_id"], r["structure"], r["order"]) for r in rows] == [(ep.id, {"hook": "yet"}, 1)]
+    assert cli.finish(ep) and len(history.read_text().splitlines()) == 1        # a rerun replaces its row
+    write_json(ep.path("story.json"), {"gsis_id": "00-X", "order": 1, "variant_of": "2026-w06-short-x"})
+    assert not metadata.record_history(ep)                                    # a hook variant is never history
