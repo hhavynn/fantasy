@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
 import { Missing, num } from "@/lib/format";
 import { Notice, PageHeader, Stat, StatStrip, Tabs } from "@/components/ui";
@@ -11,6 +10,7 @@ import {
   TradePreview, ValueMethod, WaiverMoves, WeeklyChart,
 } from "./sections";
 import styles from "./value.module.css";
+import { TeamLink } from "@/components/TeamLink";
 
 export const metadata = { title: "Team value" };
 
@@ -84,10 +84,10 @@ export default async function TeamValuePage({ searchParams }: PageProps<"/my-tea
         <div className={styles.subhead}>
           <Tabs items={tabs} current={currentTab} label="Projection window" />
           <nav className={styles.related} aria-label="Related pages">
-            <Link href="/trades/discover">Trade discovery</Link>
-            <Link href="/waivers">Waivers</Link>
-            <Link href="/playoff-race">Playoff race</Link>
-            <Link href="/trades">Trade evaluator</Link>
+            <TeamLink href="/trades/discover">Trade discovery</TeamLink>
+            <TeamLink href="/waivers">Waivers</TeamLink>
+            <TeamLink href="/playoff-race">Playoff race</TeamLink>
+            <TeamLink href="/trades">Trade evaluator</TeamLink>
           </nav>
         </div>
       </PageHeader>

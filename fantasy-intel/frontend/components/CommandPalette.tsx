@@ -7,6 +7,8 @@ import { NAV_GROUPS } from "@/lib/navigation";
 import {
   type PaletteItem, type SearchPlayer, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent, wrapIndex,
 } from "@/lib/palette";
+import { withTeam } from "@/lib/team-perspective";
+import { useTeam } from "./useTeam";
 import styles from "./CommandPalette.module.css";
 
 const RECENT_KEY = "fantasy-intel:palette-recent";
@@ -44,6 +46,8 @@ export function CommandPalette() {
   const trigger = useRef<HTMLButtonElement>(null);
   const returnTo = useRef<HTMLElement | null>(null);
   const mac = useSyncExternalStore(noopSubscribe, isMac, () => true);
+  // The analyzed team (`?team=`): a team-scoped destination opens for the same team, as the nav links do.
+  const team = useTeam();
 
   const show = useCallback(() => {
     returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : trigger.current;
@@ -81,14 +85,14 @@ export function CommandPalette() {
         <span className={styles.triggerLabel}>Search players, pages…</span>
         <kbd className={styles.kbd} aria-hidden="true">{mac ? "⌘K" : "Ctrl K"}</kbd>
       </button>
-      {open && createPortal(<PaletteDialog onClose={close} />, document.body)}
+      {open && createPortal(<PaletteDialog onClose={close} team={team} />, document.body)}
     </>
   );
 }
 
 type PlayerResult = { q: string; players: PaletteItem[]; failed: boolean };
 
-function PaletteDialog({ onClose }: { onClose: () => void }) {
+function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | null }) {
   const router = useRouter();
   const uid = useId();
   const listId = `${uid}-list`;
@@ -148,8 +152,8 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
   const choose = useCallback((item: PaletteItem) => {
     writeRecents(pushRecent(readRecents(), item));
     onClose();
-    router.push(item.href);
-  }, [onClose, router]);
+    router.push(withTeam(item.href, team));
+  }, [onClose, router, team]);
 
   const move = (delta: number) => {
     const next = flat[wrapIndex(activeIndex, delta, flat.length)];

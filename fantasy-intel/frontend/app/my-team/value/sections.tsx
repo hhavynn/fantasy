@@ -10,6 +10,7 @@ import {
 import type { TeamValue, TvMatchupEffect, TvPhase, TvPlayer } from "@/lib/types";
 import styles from "./value.module.css";
 import { plural } from "@/lib/plural";
+import { TeamLink } from "@/components/TeamLink";
 
 const HEALTHY = ["ACTIVE", "NORMAL"];
 
@@ -56,7 +57,7 @@ export function Summary({ d, phase }: { d: TeamValue; phase: TvPhase }) {
           <li>
             Best add/drop found: add <b>{best.add.name}</b> ({best.add.position}), drop <b>{best.drop.name}</b>:{" "}
             <Exact value={best.ros_delta} known={best.known_ros_delta} /> projected starting points over the rest of the season
-            (regular {num(best.regular_season_delta, 1)} · playoffs {num(best.playoff_delta, 1)}). <Link href="/waivers">Waivers</Link>
+            (regular {num(best.regular_season_delta, 1)} · playoffs {num(best.playoff_delta, 1)}). <TeamLink href="/waivers">Waivers</TeamLink>
           </li>
         )}
         {closest && (
@@ -346,7 +347,7 @@ export function BenchSection({ d }: { d: TeamValue }) {
                   <td className="num"><Points value={p.marginal} known={p.known_marginal} /></td>
                   <td className="wrap">{Object.entries(p.bench_reason_counts).map(([k, n]) => `${REASON_TEXT[k] ?? k} (${n} wk)`).join(" · ")}</td>
                   <td className="wrap faint">{c ? c.covers.map((x) => `${x.for} at ${x.slot} (${x.weeks.length} wk)`).join("; ") : "—"}</td>
-                  <td><Link href="/trades/discover">Trade ideas</Link></td>
+                  <td><TeamLink href="/trades/discover">Trade ideas</TeamLink></td>
                 </tr>
               );
             })}
@@ -465,7 +466,7 @@ export function TradePreview({ d, trades, sp }: { d: TeamValue; trades: boolean;
     <Section
       title="Trade preview (1-for-1)"
       actions={toggle}
-      footnote={<>{up.trade_preview_rule} <Link href="/trades/discover">Open trade discovery</Link> for 2-for-1 and 1-for-2 trades and every sort.</>}
+      footnote={<>{up.trade_preview_rule} <TeamLink href="/trades/discover">Open trade discovery</TeamLink> for 2-for-1 and 1-for-2 trades and every sort.</>}
       flush={trades && up.trade_preview.length > 0}
     >
       {!trades ? (
@@ -498,7 +499,7 @@ export function TradePreview({ d, trades, sp }: { d: TeamValue; trades: boolean;
                       <span className="faint">({fmtSigned(t.mine.regular_season_delta)} / {fmtSigned(t.mine.playoff_delta)})</span>
                     </td>
                     <td className="num"><Delta value={t.theirs.ros_delta} /></td>
-                    <td><Link href={`/trades?${qs.toString()}`}>Evaluate</Link></td>
+                    <td><TeamLink href={`/trades?${qs.toString()}`}>Evaluate</TeamLink></td>
                   </tr>
                 );
               })}

@@ -5,7 +5,6 @@
 // deep link the server renders), so an evaluation runs only when asked for, and the server-rendered
 // result (children) is shown only while it matches the current selection.
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState, useTransition } from "react";
 import { Badge, EmptyState, Notice, Section, Skeleton, SkeletonStatStrip } from "@/components/ui";
@@ -14,6 +13,9 @@ import {
   togglePlayer,
 } from "@/lib/trade-builder";
 import type { OptionPlayer, OptionTeam } from "@/lib/trade-types";
+import { TeamLink } from "@/components/TeamLink";
+import { useTeam } from "@/components/useTeam";
+import { withTeam } from "@/lib/team-perspective";
 import styles from "./builder.module.css";
 import { RosterPicker } from "./RosterPicker";
 
@@ -22,6 +24,8 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
   limits: Record<string, number>; firstWeek: number; finalWeek: number; children?: ReactNode;
 }) {
   const router = useRouter();
+  // The analyzed team (`?team=`) is the page's perspective, separate from the two sides: evaluating keeps it.
+  const team = useTeam();
   const [pending, startTransition] = useTransition();
   const [sel, setSel] = useState<Selection>(initial);
   const [showStale, setShowStale] = useState(false);
@@ -52,7 +56,7 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
     if (!canEvaluate(sel, maxPerSide)) return;
     setShowStale(false);
     scrollToResult.current = true;
-    startTransition(() => router.push(`/trades?${toQuery(sel)}`, { scroll: false }));
+    startTransition(() => router.push(withTeam(`/trades?${toQuery(sel)}`, team), { scroll: false }));
   };
 
   // Arriving on a link that already carries an evaluation (from Discovery, My Team Value or a shared URL): show the verdict,
@@ -144,7 +148,7 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
         {!pending && evaluatedKey === null && (
           <Section>
             <EmptyState title="No trade evaluated yet"
-              action={<Link href="/trades/discover">Try trade discovery</Link>}>
+              action={<TeamLink href="/trades/discover">Try trade discovery</TeamLink>}>
               Pick players from each roster, then evaluate. Both teams&apos; best lineups are rebuilt for every remaining week, so the result is
               the change in projected starting points: there is no trade grade and no acceptance probability. Not sure what to offer? Discovery
               searches for trades that improve your lineup.

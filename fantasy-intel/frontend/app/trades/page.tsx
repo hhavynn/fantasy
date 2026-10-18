@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { UnknownTeam } from "@/components/TeamPerspective";
@@ -9,6 +8,7 @@ import { readTeamSelection } from "@/lib/team-perspective";
 import type { TradeOptionsV3, TradeResultV3 } from "@/lib/trade-types";
 import { EvaluatedTrade, EvaluatedTradeSkeleton } from "./EvaluatedTrade";
 import { TradeBuilder } from "./TradeBuilder";
+import { TeamLink } from "@/components/TeamLink";
 
 export const metadata = { title: "Trade analyzer" };
 
@@ -43,7 +43,7 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
   if (firstWeek === null || evaluation.remaining_weeks === false) {
     return (
       <div className="stack">
-        <PageHeader title="Trade analyzer" actions={<Link href="/trades/discover">Discover trades</Link>} />
+        <PageHeader title="Trade analyzer" actions={<TeamLink href="/trades/discover">Discover trades</TeamLink>} />
         <Notice tone="caution" title="No remaining fantasy scoring periods">
           {evaluation.warning ?? "Every scoring week has already kicked off, so there is nothing left to evaluate."}
         </Notice>
@@ -78,7 +78,7 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
         eyebrow="Trades"
         title="Trade analyzer"
         meta={<>Projected points: <b>ESPN</b> · Trade impact: <b>our exact lineup simulation</b> · weeks {firstWeek}–{evaluation.final_week}</>}
-        actions={<Link href="/trades/discover">Discover trades</Link>}
+        actions={<TeamLink href="/trades/discover">Discover trades</TeamLink>}
       />
       {evaluation.uncertain && evaluation.warning && <Notice tone="caution">{evaluation.warning}</Notice>}
       <Method title="How trades are evaluated">

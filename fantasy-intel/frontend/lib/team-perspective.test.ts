@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ALL_NAV_PAGES } from "./navigation.ts";
 import {
-  isTeamScoped, isUnknownTeam, perspectiveHref, readTeamSelection, selectedTeamId, teamOptionLabel, teamParamFrom,
+  isTeamScoped, isUnknownTeam, navTeam, parseStoredTeam, perspectiveHref, readTeamSelection, selectedTeamId, teamOptionLabel, teamParamFrom,
   TEAM_SCOPED_PATHS, withTeam, withTeamId,
 } from "./team-perspective.ts";
 
@@ -85,4 +85,27 @@ test("only a 404 about a requested team counts as an unknown team", () => {
   assert.equal(isUnknownTeam({ ok: false, status: 503, error: "busy" }, sel), false);
   assert.equal(isUnknownTeam({ ok: false, status: 404, error: "Team 99 is not in League" }, { kind: "default" }), false);
   assert.equal(isUnknownTeam({ ok: true }, sel), false);
+});
+
+test("links carry the URL's team on team-scoped pages, and the last analyzed team from league-wide pages", () => {
+  assert.equal(navTeam("/start-sit", "4", "7"), "4");                 // the URL wins on a team-scoped page
+  assert.equal(navTeam("/start-sit", null, "7"), null);               // no team there is the explicit default
+  assert.equal(navTeam("/rankings", null, "4"), "4");                 // Start/Sit for team 4 → Rankings → keeps team 4
+  assert.equal(navTeam("/players", null, null), null);
+  assert.equal(navTeam("/managers/3", null, "4"), "4");
+  assert.equal(withTeam("/", navTeam("/rankings", null, "4")), "/?team=4");
+  assert.equal(withTeam("/players?id=1", navTeam("/rankings", null, "4")), "/players?id=1");  // never leaks into league-wide pages
+});
+
+test("a stored last team must be a team id", () => {
+  assert.equal(parseStoredTeam("4"), "4");
+  assert.equal(parseStoredTeam(null), null);
+  assert.equal(parseStoredTeam("4; drop"), null);
+  assert.equal(parseStoredTeam(""), null);
+});
+
+test("Trade analyzer and Discovery links keep the analyzed team; links that name a team keep theirs", () => {
+  assert.equal(withTeam("/trades?ta=4&tb=2&a=11&b=12", "4"), "/trades?ta=4&tb=2&a=11&b=12&team=4");
+  assert.equal(withTeam("/trades/discover?mode=balanced", "4"), "/trades/discover?mode=balanced&team=4");
+  assert.equal(withTeam("/luck-lab?team=2&vs=5", "4"), "/luck-lab?team=2&vs=5");
 });

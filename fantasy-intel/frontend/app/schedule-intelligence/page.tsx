@@ -12,6 +12,7 @@ import {
 import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/sort";
 import type { ScheduleIntelligence, SiLabel, SiMetric, SiPlayer, SiWeek } from "@/lib/types";
 import styles from "./schedule.module.css";
+import { TeamLink } from "@/components/TeamLink";
 
 export const metadata = { title: "Schedule" };
 
@@ -96,7 +97,7 @@ function Body({ d, detail, position, phase, sp }: { d: ScheduleIntelligence; det
   return (
     <div className="stack">
       <PageHeader
-        eyebrow="League"
+        eyebrow="Player research"
         title="Schedule intelligence"
         meta={<>
           {d.team?.name ?? "Roster"} · {range}{regular} · first actionable week {w.first_actionable_week ?? "none"}.
@@ -122,7 +123,7 @@ function Body({ d, detail, position, phase, sp }: { d: ScheduleIntelligence; det
             {d.players.map((p) => <option key={p.espn_player_id} value={p.espn_player_id}>{p.name} ({p.position})</option>)}
           </select></label>
           <button type="submit">Show</button>
-          <Link href="/schedule-intelligence" className={styles.reset}>Reset</Link>
+          <TeamLink href="/schedule-intelligence" className={styles.reset}>Reset</TeamLink>
         </form>
       </Section>
 

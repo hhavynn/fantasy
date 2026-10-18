@@ -138,3 +138,10 @@ test("playerItem builds the profile link and a compact hint", () => {
   assert.equal(players[1].hint, "WR · BAL · Gridiron Ghosts");
   assert.equal(playerItem({ id: 3, name: "X", position: "RB", team: null, owner: null }).hint, "RB · FA");
 });
+
+test("pages in a labelled cluster say so in their hint, and their summary finds them", () => {
+  const movers = pages.find((p) => p.href === "/movers")!;
+  assert.equal(movers.hint, "Players · Research");
+  assert.equal(rankItems("schedule luck", [...QUICK_ACTIONS, ...pages])[0]?.href, "/luck-lab");
+  assert.equal(rankItems("opponents", [...QUICK_ACTIONS, ...pages]).some((i) => i.href === "/schedule-intelligence"), true);
+});

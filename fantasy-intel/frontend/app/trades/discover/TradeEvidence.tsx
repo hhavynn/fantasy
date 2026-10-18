@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { TeamLink } from "@/components/TeamLink";
 import { useRef, useState } from "react";
 import { PlayerLink } from "@/components/PlayerLink";
 import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
@@ -41,7 +41,7 @@ export function TradeEvidence({ src, analyzer }: { src: string; analyzer: string
         {load.status === "ready" ? <Evidence e={load.e} analyzer={analyzer} />
           : load.status === "error" ? (
             <p className={styles.small}>
-              The evidence for this trade did not load. Close and reopen this panel to retry, or <Link href={analyzer}>open the trade in the analyzer</Link>.
+              The evidence for this trade did not load. Close and reopen this panel to retry, or <TeamLink href={analyzer}>open the trade in the analyzer</TeamLink>.
             </p>
           ) : <p className={`${styles.small} faint`} role="status">Loading evidence…</p>}
       </div>
@@ -85,7 +85,7 @@ function Evidence({ e, analyzer }: { e: DEvidence; analyzer: string }) {
         ))}
       </div>
       {e.injury_scenarios.length > 0 && (
-        <p className={styles.small}>Injury return scenarios (earliest return, delayed, none) are in the analyzer: <Link href={analyzer}>open</Link>.</p>
+        <p className={styles.small}>Injury return scenarios (earliest return, delayed, none) are in the analyzer: <TeamLink href={analyzer}>open</TeamLink>.</p>
       )}
       {e.manager_context && (
         <p className={styles.mgrNote}>{e.opponent_name}: {e.manager_context.trade_history.completed_trades} completed trades

@@ -214,6 +214,9 @@ p { margin: 0 0 8px; }
 .subnav a:hover { color: var(--ink); background: var(--surface-hover); text-decoration: none; }
 .subnav a[aria-current] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 .subnav-label { flex: none; margin-right: 8px; padding-right: 12px; border-right: 1px solid var(--line); color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+/* A labelled cluster inside a group (Players → Research): a divider and a small label, never a second nav level. */
+.subnav-cluster { display: contents; }
+.subnav-section { flex: none; display: inline-flex; align-items: center; height: 20px; margin: 0 4px 0 10px; padding-left: 12px; border-left: 1px solid var(--line); color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 
 /* Sync pill: one health dot; details in a popover. */
 .sync { position: relative; min-width: 0; }
@@ -237,7 +240,7 @@ p { margin: 0 0 8px; }
 .mobile-nav { display: none; }
 .menu-toggle { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--ink-muted); cursor: pointer; }
 .menu-toggle:hover, .menu-toggle[aria-expanded="true"] { color: var(--ink); border-color: var(--line-control); }
-.mobile-nav-panel { position: absolute; left: 0; right: 0; top: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; max-height: calc(100dvh - var(--appbar-h) - 8px); overflow-y: auto; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-pop); }
+.mobile-nav-panel { position: absolute; left: 0; right: 0; top: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; max-height: calc(100dvh - var(--appbar-h) - var(--tabbar-h) - 8px); overscroll-behavior: contain; overflow-y: auto; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: var(--shadow-pop); }
 .mobile-nav-group { display: flex; flex-direction: column; gap: 2px; }
 .mobile-nav-title { padding: 0 10px 4px; font-size: 12px; font-weight: 600; color: var(--ink-faint); }
 .mobile-nav-theme { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -245,6 +248,13 @@ p { margin: 0 0 8px; }
 .mobile-nav-group a:hover { color: var(--ink); background: var(--surface-hover); text-decoration: none; }
 .mobile-nav-group a[aria-current] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 .mobile-nav-title { letter-spacing: .08em; text-transform: uppercase; font-size: 11px; }
+.mobile-nav-cluster { display: flex; flex-direction: column; gap: 2px; }
+.mobile-nav-cluster + .mobile-nav-cluster { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.mobile-nav-section { padding: 2px 10px; font-size: 11px; font-weight: 600; color: var(--ink-faint); }
+.mobile-nav-foot { grid-column: 1 / -1; display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mobile-nav-foot a { display: inline-flex; align-items: center; min-height: 42px; padding: 0 10px; border-radius: 6px; color: var(--ink-muted); }
+.mobile-nav-foot a:hover { color: var(--ink); background: var(--surface-hover); text-decoration: none; }
+.mobile-nav-foot a[aria-current] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 
 /* Phones: a bottom tab bar reaches every section in one tap; the sub-nav at the top lists the section's pages. */
 .tabbar { display: none; }

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { CompareLink } from "@/components/CompareLink";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
 import { Badge, Notice, PageHeader, Pos, Rating, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
@@ -14,6 +13,7 @@ import { UsageCharts } from "./UsageCharts";
 import { hasInjuryDesignation, ownerBadge } from "./helpers";
 import styles from "./players.module.css";
 import type { Detail } from "./types";
+import { TeamLink } from "@/components/TeamLink";
 
 const SKILL = ["QB", "RB", "WR", "TE"];
 
@@ -42,7 +42,7 @@ export function PlayerProfile({ d, q, cols }: { d: Detail; q: string; cols: "all
       )}
 
       {d.waiver && (
-        <Section title="Waiver view" actions={<Link href="/waivers">All waivers</Link>}>
+        <Section title="Waiver view" actions={<TeamLink href="/waivers">All waivers</TeamLink>}>
           <div className={styles.badgeRow}>
             <Badge value={d.waiver.recommendation} />
             <span>Waiver score {d.waiver.waiver_score.toFixed(2)}</span>

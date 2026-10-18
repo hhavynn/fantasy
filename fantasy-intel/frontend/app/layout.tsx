@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
-import { BrandMark, MobileNav, NavGroups, SubNav, TabBar } from "@/components/Nav";
+import { BrandLink, BrandMark, MobileNav, NavGroups, SubNav, TabBar } from "@/components/Nav";
 import { ProjectionSwitch } from "@/components/ProjectionSwitch";
 import { SyncPill } from "@/components/SyncPill";
 import { TableScroll } from "@/components/TableScroll";
@@ -70,10 +69,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body>
         <header className="appbar">
           <div className="topbar">
-            <Link href="/" className="brand" aria-label="Fantasy Intel home">
+            <BrandLink>
               <BrandMark />
               <span className="brand-word">Fantasy<span>Intel</span></span>
-            </Link>
+            </BrandLink>
             <NavGroups />
             <div className="topbar-end">
               {s?.league && (

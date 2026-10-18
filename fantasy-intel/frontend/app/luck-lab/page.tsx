@@ -11,6 +11,7 @@ import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/so
 import { ScheduleSelector } from "./ScheduleSelector";
 import styles from "./luck.module.css";
 import { plural } from "@/lib/plural";
+import { TeamLink } from "@/components/TeamLink";
 
 export const metadata = { title: "Luck lab" };
 
@@ -95,7 +96,7 @@ function Body({ d, cleared, sp }: { d: LuckLab; cleared: boolean; sp: SearchPara
             scheduleOf={d.schedule_of}
           >
             <span className={styles.crosslinks}>
-              <Link href="/playoff-race">Playoff race</Link> · <Link href="/">Standings</Link>
+              <TeamLink href="/playoff-race">Playoff race</TeamLink> · <TeamLink href="/">Standings</TeamLink>
             </span>
           </ScheduleSelector>
         }

@@ -122,3 +122,18 @@ export function teamOptionLabel(t: { name: string; is_owner_default?: boolean; i
 export function isUnknownTeam(res: { ok: boolean; status?: number; error?: string | null }, sel: TeamSelection): boolean {
   return !res.ok && sel.kind !== "default" && res.status === 404 && /team/i.test(res.error ?? "");
 }
+
+/**
+ * The team that links should carry from the page at `pathname`. On a team-scoped page the URL is the truth (no
+ * `team` = the default, an explicit choice). League-wide pages never carry `team` in their own URL, so they fall
+ * back to the team last analyzed in this browser tab: Start/Sit for team 4 → Rankings → My team opens team 4's
+ * Overview again instead of silently switching back to the default.
+ */
+export function navTeam(pathname: string, urlTeam: string | null, lastTeam: string | null): string | null {
+  return isTeamScoped(pathname) ? urlTeam : (urlTeam ?? lastTeam);
+}
+
+/** A stored last-analyzed team, or null when absent or not a team id. */
+export function parseStoredTeam(raw: string | null): string | null {
+  return raw !== null && /^\d{1,6}$/.test(raw) ? raw : null;
+}

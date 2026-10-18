@@ -37,7 +37,10 @@ export function pageItems(groups: readonly NavGroup[]): PaletteItem[] {
   for (const g of groups) {
     for (const p of g.pages) {
       if (covered.has(p.href)) continue;
-      pages.push({ id: `page:${p.href}`, kind: "page", label: p.label, hint: g.label, href: p.href });
+      pages.push({
+        id: `page:${p.href}`, kind: "page", label: p.label, hint: p.section ? `${g.label} · ${p.section}` : g.label, href: p.href,
+        keywords: p.summary ? [p.summary] : undefined,
+      });
     }
   }
   return pages;
