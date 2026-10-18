@@ -11,6 +11,7 @@ the next refresh_all.py publishes (skip it with --no-project).
     cd backend
     uv run python ../scripts/learning_cycle.py run                 # one cycle (what the scheduler runs)
     uv run python ../scripts/learning_cycle.py run --skip-sync     # data already synced by refresh_all.py
+    uv run python ../scripts/learning_cycle.py reproject           # Fri / Sun morning: final injury reports
     uv run python ../scripts/learning_cycle.py status              # latest cycle report + lock state
 
 A cycle: lock -> preflight -> sync_nfl.py -> sync-exits -> pick the target week (the next week whose
@@ -30,6 +31,11 @@ D/ST model dfp-r1 vs ESPN; writes only data/models/dst/shadow/), follows it. Ski
 --no-ctx-shadow / --no-dst-shadow.
 A stage failure stops every later stage. Nothing is backdated, overwritten or replayed: a week whose
 first kickoff passed without a frozen pregame forecast is recorded under <out>/missed/.
+
+`reproject` (run_reproject) is the later, separate step: after sync_nfl.py it stores a NEW run of the week in progress
+with the artifact of that week's newest verified production run, so Friday's final game designations reach
+expected_points (docs/independent_projection_engine.md, "Final-designation re-projection"). Teams already kicked off keep
+their base-run rows; no run, ledger entry or artifact is modified. Not scheduled yet (a launchd change needs the owner).
 
 Injury-retrieval freshness (docs/injury_freshness.md section 5) is reported as `warnings` /
 `injury_freshness` in the cycle report; it never changes a status, an exit code or a forecast.
@@ -64,6 +70,7 @@ from app.analytics import weekly_learning as wl  # noqa: E402
 from app.config import get_settings  # noqa: E402
 
 SCHEMA = "weekly-learning-cycle/v1"
+REPROJECT_SCHEMA = "final-reprojection-step/v1"
 EASTERN = ZoneInfo("America/New_York")
 EXIT_OK, EXIT_FAILED, EXIT_NOT_READY, EXIT_LOCKED, EXIT_CONFIG = 0, 1, 3, 4, 5
 STALE_LOCK = timedelta(hours=6)
@@ -614,6 +621,104 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
     return code, report
 
 
+# ----------------------------------------------------------------------------- final-designation re-projection
+
+
+def stage_reproject(args, log_path: Path) -> dict:
+    """backtest_independent_projections.py reproject (own process: it opens the live DB read-only, then for one
+    write_run). Exit 2 is a refusal (no base run, nothing still pregame, artifact file missing), returned as
+    {"refused": message}, never raised."""
+    cmd = [sys.executable, str(SCRIPTS / "backtest_independent_projections.py"), "reproject",
+           "--season", str(args.season), "--live-db", str(args.live_db), "--history-db", str(args.history_db),
+           "--out", str(args.ifp_dir), "--weekly-dir", str(args.out)]
+    if args.week is not None:
+        cmd += ["--week", str(args.week)]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
+                          env={**os.environ, "PYTHONUNBUFFERED": "1"})
+    out, err = proc.stdout or "", proc.stderr or ""
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"==> backtest_independent_projections.py reproject {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
+    if proc.returncode == 2:
+        return {"refused": err.strip()[-500:]}
+    if proc.returncode != 0:
+        raise RuntimeError(f"reproject exited {proc.returncode}: {err.strip()[-500:]} (see {log_path}); a DuckDB lock "
+                           "error means another process is writing the live database: retry later")
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {}
+
+
+def run_reproject(args, now: datetime | None = None) -> tuple[int, dict]:
+    """Friday / Sunday-morning step (docs/independent_projection_engine.md, "Final-designation re-projection"): lock
+    -> preflight -> sync_nfl.py -> a NEW production run of the week in progress with its base run's artifact, so the
+    final game designations reach expected_points. Teams already kicked off keep their base-run rows. Never trains,
+    never predicts, never touches the ledger, the ESPN data or MotherDuck (the next refresh_all.py publishes).
+    Exit codes: 0 written or unchanged; 3 refused (no base run / nothing pregame); 4 locked; 5 config; 1 failure.
+    Reports: <out>/reports/reproject-<UTC stamp>-<pid>.json (write-once), <out>/status/latest-reproject.json."""
+    if now is None:
+        now = datetime.fromisoformat(args.now) if args.now else datetime.now(timezone.utc)
+    now = now.astimezone(timezone.utc)
+    stamp = f"{now:%Y%m%dT%H%M%SZ}"
+    report = {"schema": REPROJECT_SCHEMA, "started_at": now.isoformat(), "season": args.season, "week": args.week,
+              "status": None, "stages": [], "errors": [], "required_actions": [], "reprojection": None}
+    lock, code = None, EXIT_OK
+    log_path = Path(args.out) / "logs" / f"reproject-{stamp}.log"
+    try:
+        if args.now:
+            raise CycleStop("config_error", EXIT_CONFIG, "--now is not supported by reproject: kickoffs are judged "
+                            "against the real clock, so a simulated time could re-project a game already played",
+                            ["run without --now"])
+        preflight(args)
+        lock = acquire_lock(args.out, now)
+        if args.skip_sync:
+            report["stages"].append({"name": "sync_nfl", "status": "skipped"})
+        else:
+            t = time.monotonic()
+            try:
+                stage_sync_nfl(args, log_path)
+            except Exception as err:
+                report["stages"].append({"name": "sync_nfl", "status": "failed", "error": str(err)})
+                raise CycleStop("failed", EXIT_FAILED, f"stage sync_nfl failed: {err}",
+                                ["retry later; the stored runs are unchanged"]) from err
+            report["stages"].append({"name": "sync_nfl", "status": "ok", "seconds": round(time.monotonic() - t, 2)})
+        t = time.monotonic()
+        try:
+            rp = stage_reproject(args, log_path)
+        except Exception as err:
+            report["stages"].append({"name": "reproject", "status": "failed", "error": str(err)})
+            raise CycleStop("failed", EXIT_FAILED, f"stage reproject failed: {err}",
+                            ["fix the error and rerun; the stored runs are unchanged"]) from err
+        report["stages"].append({"name": "reproject", "status": "refused" if "refused" in rp else "ok",
+                                 "seconds": round(time.monotonic() - t, 2)})
+        report["reprojection"] = rp
+        if "refused" in rp:
+            raise CycleStop("refused", EXIT_NOT_READY, rp["refused"],
+                            ["nothing was written; see the message (a week without a stored run is never backfilled)"])
+        report["week"] = rp.get("week")
+        report["status"] = rp.get("status")
+    except CycleStop as stop:
+        report["status"], code = stop.status, stop.code
+        report["errors"].append(str(stop))
+        report["required_actions"] += stop.actions
+    except Exception as err:          # noqa: BLE001
+        report["status"], code = "failed", EXIT_FAILED
+        report["errors"].append(f"{err.__class__.__name__}: {err}")
+    finally:
+        release_lock(lock)
+    report["finished_at"] = datetime.now(timezone.utc).isoformat()
+    report["exit_code"] = code
+    try:
+        wl.write_once(Path(args.out) / "reports" / f"reproject-{stamp}-{os.getpid()}.json",
+                      json.dumps(report, indent=1, default=str))
+        if report["status"] != "locked":
+            _replace_json(Path(args.out) / "status" / "latest-reproject.json", report)
+    except OSError as err:
+        print(f"could not write the re-projection report under {args.out}: {err}", file=sys.stderr)
+    return code, report
+
+
 def cmd_status(args) -> dict:
     out = Path(args.out)
     latest = out / "status" / "latest-cycle.json"
@@ -629,7 +734,7 @@ def cmd_status(args) -> dict:
 def parse(argv=None):
     settings = get_settings()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["run", "status"])
+    ap.add_argument("command", choices=["run", "reproject", "status"])
     ap.add_argument("--season", type=int, default=settings.nfl_season)
     ap.add_argument("--skip-sync", action="store_true", help="do not run sync_nfl.py / sync-exits first")
     ap.add_argument("--force-retrain", action="store_true",
@@ -649,6 +754,8 @@ def parse(argv=None):
                     help="do not run the dfp-r1 D/ST research shadow stage (scripts/dst_shadow.py cycle)")
     ap.add_argument("--dst-dir", type=Path, default=None,
                     help="D/ST research directory holding shadow/ (default: dst_shadow.py's, DST_RESEARCH_DIR)")
+    ap.add_argument("--week", type=int, default=None, dest="reproject_week",
+                    help="reproject: the week to re-project (default: the week of the next kickoff)")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (tests and audits only)")
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
     ap.add_argument("--history-db", type=Path, default=cli._path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
@@ -657,6 +764,10 @@ def parse(argv=None):
     args = ap.parse_args(argv)
     # fields the weekly_learning.py commands read
     args.week, args.retrospective, args.history_seasons = None, False, None
+    if args.command == "reproject":
+        args.week = args.reproject_week
+    elif args.reproject_week is not None:
+        ap.error("--week applies to reproject only (run picks the target week itself)")
     return args
 
 
@@ -665,6 +776,14 @@ def main(argv=None) -> int:
     if args.command == "status":
         print(json.dumps(cmd_status(args), indent=1, default=str))
         return 0
+    if args.command == "reproject":
+        code, report = run_reproject(args)
+        keys = ("status", "season", "week", "errors", "required_actions", "exit_code")
+        rp = report.get("reprojection") or {}
+        print(json.dumps({**{k: report.get(k) for k in keys},
+                          **{k: rp.get(k) for k in ("run_id", "base_run_id", "kicked_off_teams", "reprojected",
+                                                    "carried", "changes")}}, indent=1, default=str))
+        return code
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
             "training", "forecast", "projection", "kicker_projection", "ctx_shadow", "dst_shadow", "evaluation",
