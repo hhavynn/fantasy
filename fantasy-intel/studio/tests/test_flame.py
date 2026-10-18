@@ -117,3 +117,27 @@ def test_a_changed_snapshot_fails_re_derivation():
     lead = facts["players"][0]["lead"]
     src = next(cl for cl in facts["claims"] if cl["id"] == lead["value"])["source"]
     assert evaluate_claim(tampered, src) != evaluate_claim(snap, src)
+
+
+def test_most_of_anyone_in_the_week_waits_for_the_week_to_finish():
+    snap = snapshot_with_qbs(latest_air=520.0, latest_epa=25.0, latest_yds=400)
+    assert flame.week_complete(snap, 5) and not flame.week_complete(snap, 6)     # week 6 not played yet
+    c = next(c for c in flame.candidates(snap) if c["gsis_id"] == "QB00" and c["kind"] == "praise")
+    story = {"gsis_id": c["gsis_id"], "name": c["name"], "role": c["kind"]}
+    facts = flame.build_facts(snap, story)
+    claims = {cl["id"]: cl for cl in facts["claims"]}
+    lead = facts["players"][0]["lead"]
+    # the season's best is said as such; "and the most of anyone in Week 5" is for a lesser season rank
+    lead.update(rank_value=2, week_rank_value=1)
+    rank_line = lambda: next(b for b in flame.compose(facts, claims, {})[0] if b["section"] == "rank")
+    assert lead["week_complete"] and "of anyone in" in rank_line()["text_template"]
+    assert lead["week_rank"] in rank_line()["scene"]["claims"]
+    # Thursday night only: "anyone" would be two teams
+    snap["tables"]["nfl_schedules"] = [{**g, "home_score": None, "away_score": None}
+                                       if g["week"] == 5 and g["home_team"] != "PHI" else g
+                                       for g in snap["tables"]["nfl_schedules"]]
+    assert not flame.week_complete(snap, 5)
+    lead["week_complete"] = flame.week_complete(snap, 5)
+    assert "of anyone in" not in rank_line()["text_template"]
+    assert lead["week_rank"] not in rank_line()["scene"]["claims"]
+    assert not flame.week_best({"rank_value": 2, "week_rank_value": 1})          # unknown: never claimed
