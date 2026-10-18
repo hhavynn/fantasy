@@ -60,8 +60,8 @@ SYNCS = ("sync_espn.py", "sync_nfl.py")  # separate sources: one failing never s
 LOCK_WAIT_S = 120                    # FANTASY_DB_LOCK_WAIT_S for every step, unless the environment sets it
 LOCK_RETRY_DELAYS_S = (60, 180)      # a step that still failed on the DuckDB lock runs again after each delay
 LOCK_MARKERS = ("DatabaseBusy", "Could not set lock", "Conflicting lock")
-SHADOW_STEP = " pregame week "       # label of a research shadow's pregame freeze ("<name> pregame week W"): these
-                                     # evidence steps also run after a failed sync (shadows_only)
+SHADOW_STEP = " pregame week "       # a research shadow's evidence step is labelled "<name> pregame week W" or its
+                                     # name ends in "_shadow" ("ipm_cal_shadow cycle"): those also run after a failed sync
 
 
 def plan(publish: bool) -> list[str]:
@@ -273,15 +273,15 @@ def select_evidence(con, season: int, now: datetime, final: Callable | None = No
 
 
 def is_shadow(label: str) -> bool:
-    """A research shadow's pregame freeze (label "<name> pregame week W")."""
-    return SHADOW_STEP in label
+    """A research shadow's evidence step: labelled "<name> pregame week W", or its name ends in "_shadow"."""
+    return SHADOW_STEP in label or label.split(" ", 1)[0].endswith("_shadow")
 
 
 def evidence_steps(sel: dict) -> list[tuple[str, list[str]]]:
     """(label, command) in run order. The scripts open the database read-only and write only their
     git-ignored default output dirs (start_sit_evaluation, espn_benchmark, ctx_shadow under
     data/models/research/context; injury_freshness `report` writes nothing). A research shadow's pregame freeze is
-    labelled "<name> pregame week W" (is_shadow): those steps also run after a failed sync."""
+    labelled "<name> pregame week W" or named "<name>_shadow ..." (is_shadow): those steps also run after a failed sync."""
     py, season = sys.executable, str(sel["season"])
     steps = []
     if sel["week"] is not None:

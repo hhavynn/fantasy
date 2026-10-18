@@ -485,6 +485,8 @@ def test_any_pregame_week_step_counts_as_a_research_shadow(refresh, evidence_env
     refresh.run_evidence(evidence_env, now=TUE, shadows_only=True)
     assert [Path(c).name for c in ran] == ["ctx_shadow.py", "dst"]
     assert refresh.is_shadow("dst_shadow pregame week 7") and not refresh.is_shadow("start_sit_evaluation week 7")
+    assert refresh.is_shadow("ipm_cal_shadow cycle") and refresh.is_shadow("qb_scenario_shadow pregame week 7")
+    assert not refresh.is_shadow("injury_freshness week 7") and not refresh.is_shadow("espn_benchmark week 6")
 
 
 def test_every_step_process_gets_the_lock_wait(refresh, monkeypatch, tmp_path):

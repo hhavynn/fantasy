@@ -30,7 +30,7 @@ pipeline succeeding:
   `no_upcoming_week` and after a failed production stage. The cycle's status and exit code never change.
 
 A new research shadow plugs in the same way. In `refresh_all.py`, add an evidence step labelled
-`<name> pregame week W`; `is_shadow` then also runs it after a failed sync. In `learning_cycle.py`, add a closure like
+`<name> pregame week W`, or name the step `<name>_shadow ...`. `is_shadow` then also runs it after a failed sync. In `learning_cycle.py`, add a closure like
 `ctx_shadow(after=None)` and call it next to `ctx_shadow()` in both places: after the production stages, and in the
 early-stop block of the `CycleStop` handler.
 

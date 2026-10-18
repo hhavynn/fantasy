@@ -614,7 +614,7 @@ def stage_reproject(args, log_path: Path) -> dict:
         cmd += ["--week", str(args.week)]
     log_path.parent.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
-                          env={**os.environ, "PYTHONUNBUFFERED": "1"})
+                          env=child_env())
     out, err = proc.stdout or "", proc.stderr or ""
     with open(log_path, "a", encoding="utf-8") as log:
         log.write(f"==> backtest_independent_projections.py reproject {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
