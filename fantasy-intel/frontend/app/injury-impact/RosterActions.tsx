@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui";
 import { gameLabel, levelBadge, levelLabel, rosterActions, waiversHref, type InjuryEntry, type RosterAction } from "@/lib/injury-impact";
+import { withTeam } from "@/lib/team-perspective";
 import { Change, RosterBadge, Who } from "./ImpactParts";
 import styles from "./injury-impact.module.css";
 
@@ -42,7 +43,7 @@ function ActionList({ title, empty, items, render }: {
 }
 
 /** Decision first: the selected roster's injured players, its players who could gain, and pickups. */
-export function RosterActions({ entries }: { entries: InjuryEntry[] }) {
+export function RosterActions({ entries, team }: { entries: InjuryEntry[]; team: string | null }) {
   const { myInjured, myGainers, pickups } = rosterActions(entries);
   return (
     <div className={styles.actions}>
@@ -53,7 +54,7 @@ export function RosterActions({ entries }: { entries: InjuryEntry[] }) {
             <Who id={a.entry.espn_player_id} name={a.entry.full_name} position={a.entry.position} team={a.entry.team}
               meta={<Badge value={levelBadge(a.entry.status.level)} />} />
             <span className={styles.actionWhy}>
-              {gameLabel(a.entry.game) ?? "Opponent unknown"} · <Link href="/start-sit">Check Start/Sit</Link>
+              {gameLabel(a.entry.game) ?? "Opponent unknown"} · <Link href={withTeam("/start-sit", team)}>Check Start/Sit</Link>
             </span>
           </>
         )} />
@@ -72,7 +73,7 @@ export function RosterActions({ entries }: { entries: InjuryEntry[] }) {
             <Who id={a.mate!.espn_player_id} name={a.mate!.full_name} position={a.mate!.position} team={a.entry.team}
               meta={<RosterBadge roster={a.mate!.roster} />} />
             <GainLine a={a} />
-            <span className={styles.actionWhy}><Link href={waiversHref(a.mate!.position)}>See {a.mate!.position} waivers</Link></span>
+            <span className={styles.actionWhy}><Link href={withTeam(waiversHref(a.mate!.position), team)}>See {a.mate!.position} waivers</Link></span>
           </>
         )} />
     </div>

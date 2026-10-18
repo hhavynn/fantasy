@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CompareLink } from "@/components/CompareLink";
 import { Badge, Sparkline } from "@/components/ui";
 import { Missing, num, pct } from "@/lib/format";
+import { withTeam } from "@/lib/team-perspective";
 import {
   absenceLabel, CLARITY_LABEL, compareTarget, freshnessLabel, gameLabel, levelBadge, levelLabel, snapSeries,
   waiversHref, type InjuryEntry, type Receiver, type Teammate,
@@ -179,7 +180,7 @@ function QbTables({ e }: { e: InjuryEntry }) {
 }
 
 /** One absence: who, status, game and data freshness; his observed workload; who could absorb it, and links. */
-export function ImpactEntry({ e }: { e: InjuryEntry }) {
+export function ImpactEntry({ e, team }: { e: InjuryEntry; team: string | null }) {
   const fresh = freshnessLabel(e.freshness);
   const game = gameLabel(e.game);
   const ko = kickoffText(e.game.kickoff);
@@ -229,8 +230,8 @@ export function ImpactEntry({ e }: { e: InjuryEntry }) {
       </div>
 
       <footer className={styles.links}>
-        <Link href="/start-sit">Start/Sit</Link>
-        <Link href={waiversHref(e.position)}>{e.position} waivers</Link>
+        <Link href={withTeam("/start-sit", team)}>Start/Sit</Link>
+        <Link href={withTeam(waiversHref(e.position), team)}>{e.position} waivers</Link>
         {e.espn_player_id !== null && target?.espn_player_id != null && (
           <CompareLink a={e.espn_player_id} b={target.espn_player_id} aName={e.full_name} bName={target.full_name}>
             Compare with {target.full_name}

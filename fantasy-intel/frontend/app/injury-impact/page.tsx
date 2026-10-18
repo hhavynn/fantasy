@@ -11,7 +11,7 @@ import {
 } from "@/lib/injury-impact";
 import { plural } from "@/lib/plural";
 import type { SearchParams } from "@/lib/sort";
-import { isUnknownTeam, readTeamSelection, selectedTeamId, withTeamId } from "@/lib/team-perspective";
+import { isUnknownTeam, readTeamSelection, selectedTeamId, teamParamFrom, withTeamId } from "@/lib/team-perspective";
 import { ImpactEntry } from "./ImpactEntry";
 import { RosterActions } from "./RosterActions";
 import styles from "./injury-impact.module.css";
@@ -47,8 +47,8 @@ function DataNotices({ notices }: { notices: InjuryNotice[] }) {
   );
 }
 
-function EntryList({ entries }: { entries: InjuryEntry[] }) {
-  return <div className={styles.entries}>{entries.map((e) => <ImpactEntry key={e.gsis_id} e={e} />)}</div>;
+function EntryList({ entries, team }: { entries: InjuryEntry[]; team: string | null }) {
+  return <div className={styles.entries}>{entries.map((e) => <ImpactEntry key={e.gsis_id} e={e} team={team} />)}</div>;
 }
 
 function Shell({ sp, current, week, children }: { sp: SearchParams; current: number | null; week?: number; children: ReactNode }) {
@@ -95,6 +95,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
   const posHref = (p: string) => injuryHref(sp, { pos: p === "ALL" ? null : p });
   const fresh = f.summary.by_status;
   const report = f.injury_report;
+  const team = teamParamFrom(sp);
 
   return (
     <Shell sp={sp} current={data.league_context.my_team_id} week={data.week}>
@@ -126,7 +127,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
 
       {data.league_context.available && (
         <Section title="For your roster" subtitle="Games still to play this week; long-term absences are left out because their volume is already redistributed.">
-          <RosterActions entries={data.players} />
+          <RosterActions entries={data.players} team={team} />
         </Section>
       )}
 
@@ -163,7 +164,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
         <>
           <Section title={<>This week <span className={styles.count}>{groups.upcoming.length} {plural(groups.upcoming.length, "player")}</span></>}
             subtitle="Games still to play, most severe and biggest role first.">
-            {groups.upcoming.length > 0 ? <EntryList entries={groups.upcoming} />
+            {groups.upcoming.length > 0 ? <EntryList entries={groups.upcoming} team={team} />
               : <p className={styles.emptyGroup}>No absence in this view has a game still to play.</p>}
           </Section>
           {groups.longTerm.length > 0 && (
@@ -172,7 +173,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
                 Long-term absences <span className={styles.count}>{groups.longTerm.length}</span>
                 <span className={styles.summaryNote}>Out {data.method.thresholds.long_term_missed}+ straight games; teammates&apos; recent usage already reflects it</span>
               </summary>
-              <EntryList entries={groups.longTerm} />
+              <EntryList entries={groups.longTerm} team={team} />
             </details>
           )}
           {groups.done.length > 0 && (
@@ -181,7 +182,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
                 Already kicked off or on a bye <span className={styles.count}>{groups.done.length}</span>
                 <span className={styles.summaryNote}>Status no longer affects this week</span>
               </summary>
-              <EntryList entries={groups.done} />
+              <EntryList entries={groups.done} team={team} />
             </details>
           )}
         </>
