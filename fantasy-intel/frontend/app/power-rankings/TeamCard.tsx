@@ -37,7 +37,7 @@ export function TeamCard({ d, team, heading = "h2" }: { d: PowerRankings; team: 
             {recordText(team.record)} record · all-play {recordText(team.all_play)} ({pctText(team.all_play.pct)})
           </p>
           <p className={styles.cardMove} data-dir={team.movement === null ? undefined : team.movement > 0 ? "up" : team.movement < 0 ? "down" : "flat"}>
-            {move ?? (d.previous.available ? "New this week" : "First week tracked")}
+            {move ?? (d.previous.available ? "Not ranked last week" : "No movement this week")}
           </p>
         </div>
         <div className={styles.cardScore}>

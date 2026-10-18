@@ -33,7 +33,10 @@ comparable week are listed unranked, never scored 0.
 The rankings for week E describe the league before E's first kickoff, where E is the first fantasy week that has
 not kicked off. Last week's ranks (P = E − 1) are recomputed point-in-time, never estimated:
 
-* rosters from `lineup_snapshots` at scoring period P;
+* rosters from `lineup_snapshots` at scoring period P, only when they provably are the rosters at P's first
+  kickoff: every row was synced before kickoff, or the rows carry acquisition dates and none is at or after kickoff.
+  The sync rewrites a period's rows, so a snapshot synced later can include adds and trades made during the week;
+  moves are not reversed from the transaction log because ESPN omits other teams' trade legs and some adds there;
 * ESPN projections from the newest `espn_projection_history` snapshot whose rows were synced before P's first
   kickoff (`production_forecasts.first_kickoffs`);
 * free agents = league players on no roster at P;

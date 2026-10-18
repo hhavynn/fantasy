@@ -205,7 +205,8 @@ def test_movement_is_absent_with_a_reason_when_the_previous_edition_cannot_be_re
 def _history_db(kickoff: datetime):
     con = duckdb.connect()
     con.execute("CREATE TABLE lineup_snapshots (league_id BIGINT, season INT, scoring_period INT, team_id INT, "
-                "espn_player_id BIGINT, lineup_slot_id INT, injury_status VARCHAR)")
+                "espn_player_id BIGINT, lineup_slot_id INT, injury_status VARCHAR, acquisition_date TIMESTAMP, "
+                "synced_at TIMESTAMP)")
     con.execute("CREATE TABLE fantasy_players (espn_player_id BIGINT, full_name VARCHAR, position VARCHAR, "
                 "pro_team VARCHAR, injury_status VARCHAR)")
     con.execute("CREATE TABLE espn_projection_history (snapshot_date DATE, season INT, espn_player_id BIGINT, "
@@ -213,10 +214,12 @@ def _history_db(kickoff: datetime):
     for pid, pos in ((101, "QB"), (102, "RB"), (201, "QB"), (202, "RB"), (301, "RB")):
         con.execute("INSERT INTO fantasy_players VALUES (?, ?, ?, 'KC', NULL)", [pid, f"P{pid}", pos])
     # Week 4 rosters: team 1 had 101+102, team 2 had 201+202+301 (301 on IR). Week 5 moved 301 to team 1.
-    for t, pid, slot in ((1, 101, 0), (1, 102, 2), (2, 201, 0), (2, 202, 2), (2, 301, 21)):
-        con.execute("INSERT INTO lineup_snapshots VALUES (1, 2026, 4, ?, ?, ?, NULL)", [t, pid, slot])
-    con.execute("INSERT INTO lineup_snapshots VALUES (1, 2026, 5, 1, 301, 2, NULL)")
+    # Synced after kickoff, but every acquisition predates it: provably the kickoff rosters.
     k = kickoff.replace(tzinfo=None)
+    for t, pid, slot in ((1, 101, 0), (1, 102, 2), (2, 201, 0), (2, 202, 2), (2, 301, 21)):
+        con.execute("INSERT INTO lineup_snapshots VALUES (1, 2026, 4, ?, ?, ?, NULL, '2026-08-20', ?)",
+                    [t, pid, slot, k.replace(day=k.day + 1)])
+    con.execute("INSERT INTO lineup_snapshots VALUES (1, 2026, 5, 1, 301, 2, NULL, '2026-08-20', ?)", [k])
     for date, synced, pts in (("2026-09-29", datetime(2026, 9, 30, 6), 11.0), ("2026-10-01", k.replace(hour=k.hour + 1), 99.0)):
         for pid in (101, 102, 201, 202, 301):
             for w in range(4, 11):
@@ -251,6 +254,25 @@ def test_load_previous_explains_a_missing_snapshot_or_roster(monkeypatch):
     con.execute("DELETE FROM lineup_snapshots WHERE scoring_period = 4")
     prev = load_previous(con, small())
     assert prev.state is None and prev.reason == "no roster snapshot is stored for week 4"
+
+
+def test_a_roster_changed_after_kickoff_is_never_used_as_the_kickoff_roster(monkeypatch):
+    kickoff = datetime(2026, 10, 1, 17, tzinfo=timezone.utc)
+    monkeypatch.setattr(pr.pf, "first_kickoffs", lambda con, season: {4: kickoff})
+    con = _history_db(kickoff)
+    # Team 2 picked 202 up on waivers after week 4 kicked off; the sync rewrote week 4 with that roster.
+    con.execute("UPDATE lineup_snapshots SET acquisition_date = '2026-10-02 08:00' WHERE scoring_period = 4 "
+                "AND espn_player_id = 202")
+    prev = load_previous(con, small())
+    assert prev.state is None and "1 team changed its roster after week 4's first kickoff" in prev.reason
+    res = build_power_rankings(small(), prev)
+    assert not res["previous"]["available"] and all(t["movement"] is None for t in res["teams"])
+    # Without acquisition dates a snapshot synced after kickoff cannot be verified either.
+    con.execute("UPDATE lineup_snapshots SET acquisition_date = NULL")
+    assert "carry no acquisition dates" in load_previous(con, small()).reason
+    # A snapshot synced before kickoff is the kickoff roster whatever its acquisition dates say.
+    con.execute("UPDATE lineup_snapshots SET synced_at = '2026-10-01 12:00' WHERE scoring_period = 4")
+    assert load_previous(con, small()).reason is None
 
 
 # --------------------------------------------------------------------- API --

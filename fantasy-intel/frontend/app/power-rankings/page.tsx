@@ -117,7 +117,7 @@ function Notices({ d }: { d: PowerRankings }) {
       {!d.previous.available && (
         <Notice tone="info" title="No week-over-week movement this week">
           Last week&apos;s ranks could not be rebuilt from what was known before its kickoff: {d.previous.reason}.
-          Movement appears once a roster snapshot and an ESPN projection snapshot from before kickoff are both stored.
+          Movement is shown only when the stored rosters for that week are provably the rosters at kickoff and an ESPN projection snapshot from before kickoff is stored; nothing is estimated.
         </Notice>
       )}
       {d.window?.note && <Notice tone="caution" title="Some weeks are left out">{d.window.note}</Notice>}

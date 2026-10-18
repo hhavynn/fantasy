@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { UnknownTeam } from "@/components/TeamPerspective";
-import { PageHeader } from "@/components/ui";
+import { EmptyState, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cardHref, ordinal, PATH, type PowerRankings } from "@/lib/power-rankings";
 import { isUnknownTeam, readTeamSelection } from "@/lib/team-perspective";
@@ -34,14 +34,20 @@ export default async function PowerCardPage({ params }: PageProps<"/power-rankin
         title="Team card"
         meta="One team's power ranking on a single card. Share this page's link, or take a screenshot of the card."
       />
-      {t ? (
+      {d.empty ? (
+        <Section>
+          <EmptyState title="Nothing to rank yet" action={<Link href="/playoff-race">See the standings</Link>}>
+            <p>{d.message ?? "No team has a complete lineup projection."}</p>
+          </EmptyState>
+        </Section>
+      ) : t ? (
         <div className={styles.cardStage}>
           <TeamCard d={d} team={t} />
         </div>
       ) : (
         <UnknownTeam path={PATH} sel={sel} detail={d.message} />
       )}
-      {d.teams.length > 1 && (
+      {!d.empty && d.teams.length > 1 && (
         <nav aria-label="Other team cards" className={styles.switcher}>
           <div className="filters">
             {d.teams.map((x) => (
