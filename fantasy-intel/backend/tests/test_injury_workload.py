@@ -553,7 +553,9 @@ def gate_frame(weeks=8, per_week=60, better=True, returning=15, seed=7):
                              "tl_missed_team_games": 1 if i < returning else 0, "tl_designation": "not_listed",
                              "tl_practice_status": None, "team_changed": 0, "weeks_since_last": 1,
                              "ho_vacated": 0.0, "ho_returning": 0.0})
-    return pl.DataFrame(rows)
+    from app.analytics.forecast_backtest import starters_pool_expr
+
+    return pl.DataFrame(rows).with_columns(starters_pool_expr().alias("starters_pool"))
 
 
 def test_prospective_gate_outcomes():
@@ -660,3 +662,32 @@ def test_predict_never_freezes_an_empty_ledger_or_reuses_a_stale_artifact(iwr):
     for cfg, cut, fp in (("X", 202607, "F"), ("H", 202608, "F"), ("H", 202607, "NEW")):
         with pytest.raises(SystemExit, match="move it aside to refit"):
             iwr.check_reused_artifact(art, cfg, cut, fp, "a.json")
+
+
+def test_starters_pool_is_ranked_before_dropping_non_appearances(iwr):
+    """Codex P1: the pool is the top PAIR_POOL players by the ledger's frozen pred_A1 among ALL ledger rows. A
+    top-ranked player who sat out leaves a hole; the next player down is not backfilled into the pool."""
+    from app.analytics.forecast_backtest import PAIR_POOL
+
+    n = PAIR_POOL["TE"] + 1
+    rows = [{"gsis_id": f"TE{i:02d}", "position": "TE", "ifp2_points": 5.0, "iwh_points": 5.0,
+             "pred_A1": float(100 - i)} for i in range(n)]                     # TE00 ranks first, TE{n-1} last
+    led = {"season": S, "week": 7, "config_hash": "H", "rows": rows, "rows_sha": iwr._sha(rows)}
+    store = pl.DataFrame({"key": [S * 100 + 7] * (n - 1), "gsis_id": [f"TE{i:02d}" for i in range(1, n)],
+                          "position": ["TE"] * (n - 1), "label": [4.0] * (n - 1), "pred_A1": [0.0] * (n - 1)})
+    p, _ = iwr.matched_rows(store, [led], "H")                                  # TE00 did not appear
+    assert p.height == n - 1
+    pool = dict(zip(p["gsis_id"].to_list(), p["starters_pool"].to_list()))
+    assert pool[f"TE{n - 1:02d}"] is False                                      # rank n: outside the pool, not backfilled
+    assert sum(pool.values()) == PAIR_POOL["TE"] - 1
+
+
+def test_rerun_on_an_existing_ledger_still_checks_the_frozen_spec(iwr):
+    """Codex P2: predict's no-op rerun refuses a ledger written under another spec or edited since."""
+    rows = [{"gsis_id": "RB1", "iwh_points": 9.0}]
+    led = {"config_hash": "H", "rows": rows, "rows_sha": iwr._sha(rows)}
+    iwr.check_existing_ledger(led, "H", "s2026w07-pregame.json")
+    with pytest.raises(SystemExit, match="not the frozen"):
+        iwr.check_existing_ledger(led, "NEW", "s2026w07-pregame.json")
+    with pytest.raises(SystemExit, match="edited after writing"):
+        iwr.check_existing_ledger({**led, "rows": [{"gsis_id": "RB1", "iwh_points": 12.0}]}, "H", "x.json")

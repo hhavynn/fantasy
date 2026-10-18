@@ -52,8 +52,12 @@ PROSPECTIVE_RULES = {
 
 
 def prospective_gate(p: pl.DataFrame) -> dict:
-    """The pre-registered prospective gate on matched ledger rows `p` (label, position, pred_ifp2, pred_iwh, key and
-    the frozen cohort columns). Every threshold comes from PROSPECTIVE_THRESHOLDS."""
+    """The pre-registered prospective gate on matched ledger rows `p` (label, position, pred_ifp2, pred_iwh, key, the
+    frozen cohort columns and `starters_pool`). Every threshold comes from PROSPECTIVE_THRESHOLDS.
+
+    `starters_pool` must be pregame membership: ranked on the ledger's frozen pred_A1 over EVERY ledger row of the
+    week before any label join (injury_workload_research.matched_rows). Ranking after the join to appearances would
+    drop a top-ranked player who sat out and backfill a lower-ranked one, making the pool depend on outcomes."""
     t = PROSPECTIVE_THRESHOLDS
     adopted = [pos for pos, a in PROSPECTIVE_ADOPTED.items() if a]
     rows = p.filter(pl.col("label").is_not_null() & pl.col("position").is_in(adopted)
@@ -63,7 +67,7 @@ def prospective_gate(p: pl.DataFrame) -> dict:
     per = {}
     for pos in adopted:
         g = rows.filter(pl.col("position") == pos)
-        sp = g.filter(flt["starters_pool"])
+        sp = g.filter(pl.col("starters_pool").fill_null(False))
         mae = week_bootstrap_diff(g, "pred_iwh", "pred_ifp2", loss="absolute")
         mse = week_bootstrap_diff(g, "pred_iwh", "pred_ifp2")
         b, c = point_metrics(g, "pred_ifp2"), point_metrics(g, "pred_iwh")

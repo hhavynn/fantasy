@@ -414,11 +414,15 @@ instead of re-scoring it.
 * writes `ledger/sSSSSwWW-pregame.json` once: both models' points per player, the frozen timeline and handoff
   columns the cohorts read, the explanation text, and source hashes (the week's report and its designation
   count, the season's reports through W, rosters, panel, schedule, roster codes, store fingerprint, code hash),
-  plus a hash of the rows. A rerun returns the existing ledger and writes nothing.
+  plus a hash of the rows. A rerun writes nothing, but it still checks the frozen spec against the current code,
+  ifp-2 config and scoring, and checks the ledger's own spec and row hash.
+* never writes a ledger with no forecast rows, and reuses an interrupted run's models only if they were fitted on
+  the same training store.
 
 **`prospective`** scores ledgers whose week is fully final (in the store), whose config hash matches the
 frozen spec and whose rows still match their hash. Cohort columns come from the ledger, never recomputed after
-the fact. Output: `prospective_ifp-iwh-0.1.1.json` (gate plus the usual cohort report).
+the fact. The starters pool is pregame too: ranked on each row's frozen baseline (pred_A1) across the whole week's
+ledger before the join to appearances, so a top-ranked player who sat out is not replaced by the next one down. Output: `prospective_ifp-iwh-0.1.1.json` (gate plus the usual cohort report).
 
 Code: `injury_workload.py` (`_Cut.injured_absence`), `injury_prospective.py` (rules and gate, research only, not
 imported by the app), `scripts/injury_workload_research.py` (`predict`, `prospective`; `develop` and `evaluate`

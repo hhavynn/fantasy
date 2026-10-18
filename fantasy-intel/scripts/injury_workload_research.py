@@ -476,6 +476,13 @@ def check_reused_artifact(art: dict, config_hash: str, cutoff: int, store_fp: st
                          "inputs changed since): move it aside to refit")
 
 
+def check_existing_ledger(led: dict, config_hash: str, name: str) -> None:
+    if led.get("config_hash") != config_hash:
+        raise SystemExit(f"{name} was written under spec {led.get('config_hash')}, not the frozen {config_hash}")
+    if _sha(led["rows"]) != led.get("rows_sha"):
+        raise SystemExit(f"{name} rows no longer match their recorded hash (edited after writing)")
+
+
 def require_forecasts(rows: list[dict], week: int) -> None:
     """A write-once ledger is never frozen without a single forecast (missing or empty roster ingest)."""
     if not any(r["iwh_points"] is not None for r in rows):
@@ -505,6 +512,8 @@ def ledger_rows(feats: pl.DataFrame, models: dict, tl: dict[str, dict], kick: di
             h = {k: rec.get(k) for k in HO_COLS}
             rows.append({"gsis_id": rec["gsis_id"], "position": pos, "team": rec["team"],
                          "kickoff": kick[rec["team"]].isoformat(), "games_recent": rec.get("games_recent"),
+                         # baseline A1 (independent_projections.baseline_predictions): the starters-pool rank key
+                         "pred_A1": rec.get("pts_recent_raw") if (rec.get("games_recent") or 0) > 0 else None,
                          "ifp2_points": b, "iwh_points": c,
                          **{f"tl_{k}": (t or {}).get(k) for k in TL_COLS}, "tl_status_reason": (t or {}).get("status_reason"),
                          **h, "team_changed": rec.get("team_changed"), "weeks_since_last": rec.get("weeks_since_last"),
@@ -525,10 +534,14 @@ def cmd_predict(args) -> dict:
     season, week = args.season, args.week
     check_prospective_week(season, week)
     lpath = _ledger_dir(args) / f"s{season}w{week:02d}-pregame.json"
+    src, scoring = hr._sources(args)
     if lpath.exists():
+        # a rerun writes nothing, but still refuses if the frozen spec no longer matches the code, the ifp-2 config
+        # or the scoring, or if this ledger was written under another spec or edited since
+        frozen = frozen_prospective(args, ch.ChallengerConfig.load().hash(), scoring.fingerprint, create=False)
         led = json.loads(lpath.read_text())
+        check_existing_ledger(led, frozen["config_hash"], lpath.name)
         return {"ledger": str(lpath), "written": False, "created_at": led["created_at"], "rows": len(led["rows"])}
-    src, _ = hr._sources(args)
     kick = team_kickoffs(src, season, week)
     teams = open_teams(kick, datetime.now(timezone.utc))
     if not teams:
@@ -597,12 +610,15 @@ def cmd_predict(args) -> dict:
             "teams_excluded_already_started": ledger["teams_excluded_already_started"]}
 
 
-FROZEN_ROW_COLS = [*[f"tl_{c}" for c in TL_COLS], *HO_COLS, "team_changed", "weeks_since_last"]
+FROZEN_ROW_COLS = [*[f"tl_{c}" for c in TL_COLS], *HO_COLS, "team_changed", "weeks_since_last", "pred_A1"]
 
 
 def matched_rows(store: pl.DataFrame, ledgers: list[dict], config_hash: str) -> tuple[pl.DataFrame | None, dict]:
     """Ledger rows of fully final weeks (weeks present in the store) under `config_hash`, joined to the store's
-    labels on identical (week, player) rows. Cohort columns come from the frozen ledger, never recomputed."""
+    labels on identical (week, player) rows. Cohort columns come from the frozen ledger, never recomputed, and the
+    starters pool is ranked on the ledger's pred_A1 over every ledger row BEFORE the join to appearances."""
+    from app.analytics.forecast_backtest import starters_pool_expr
+
     parts, status = [], {}
     final = set(store["key"].unique().to_list())
     for led in ledgers:
@@ -617,12 +633,15 @@ def matched_rows(store: pl.DataFrame, ledgers: list[dict], config_hash: str) -> 
             status[k] = "empty"
         else:
             status[k] = "scored"
-            df = pl.DataFrame([{"key": k, "gsis_id": r["gsis_id"], "position": r["position"],
+            df = pl.DataFrame([{"key": k, "season": led["season"], "week": led["week"],
+                                "gsis_id": r["gsis_id"], "position": r["position"],
                                 "pred_ifp2": r["ifp2_points"], "pred_iwh": r["iwh_points"],
                                 **{c: r.get(c) for c in FROZEN_ROW_COLS}} for r in led["rows"]],
                               infer_schema_length=None)
-            parts.append(df.with_columns(pl.col("key").cast(pl.Int64), pl.col("pred_ifp2").cast(pl.Float64),
-                                         pl.col("pred_iwh").cast(pl.Float64)))
+            df = df.with_columns(pl.col("key").cast(pl.Int64), pl.col("season").cast(pl.Int64),
+                                 pl.col("week").cast(pl.Int64), pl.col("pred_ifp2").cast(pl.Float64),
+                                 pl.col("pred_iwh").cast(pl.Float64), pl.col("pred_A1").cast(pl.Float64))
+            parts.append(df.with_columns(starters_pool_expr().alias("starters_pool")))
     if not parts:
         return None, status
     frozen = pl.concat(parts, how="diagonal_relaxed")
