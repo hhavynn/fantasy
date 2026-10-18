@@ -15,14 +15,16 @@ override).** `ifp-2.1.0` is `ifp-2.0.0` plus injury awareness (`app/analytics/in
   a backup whose lead is out gets the vacated carries/targets the team actually gave out in comparable games, and
   a returning starter takes them back;
 * **who is really likely to play later**: a rest-of-season run gives a player who is Out/Doubtful at the cutoff
-  the empirical return rate (about 0.34 for the next game) instead of an undesignated P(plays) (about 0.91);
+  the empirical return rate for his team's next two games (about 0.39 and 0.61) instead of an undesignated
+  P(plays) (about 0.91; ros-avail-0.1.1 of `docs/research/ros_availability.md`);
 * everything else (candidates, withholding, the participation model at horizon 0, intervals, storage, the
   artifact gate, integrity checks) is `ifp-2.0.0`'s.
 
 Research evidence (historical, `docs/research/injury_workload_handoff.md`): on the 2023-24 confirmation window the
 handoff features cut pooled MAE by 0.039 [-0.048, -0.031] (RB/WR/TE, every position better) and RMSE/bias on the
 teammate-out cohorts; the rest-of-season P(plays) Brier for players Out/Doubtful at the cutoff falls from 0.514
-to 0.239. The pre-registered research verdict was `retain_baseline` (the returning-player mechanism check failed);
+to 0.239 (ros_availability.md, its confirmation: Brier 0.495 -> 0.245 at h = 1, 0.288 -> 0.242 at h = 2, worse at
+h >= 3, hence the h = 1-2 rule). The pre-registered research verdict was `retain_baseline` (the returning-player mechanism check failed);
 the diagnosed cause is fixed in the handoff version production uses (iwh-0.1.1), and the owner chose to ship it.
 No position is Start/Sit-ready and the consumer status of every position is `owner_override`. Accuracy is still
 measured prospectively from frozen pregame forecasts (`espn_benchmark.py`, the promotion tracker).
@@ -711,18 +713,23 @@ player was on that week's report with any injury listing (a Questionable-and-ina
 claim as if he had been demoted). The research module keeps iwh-0.1.0 as its default so the evaluated numbers
 reproduce.
 
-**Rest-of-season P(plays).** For a run at horizon h >= 1, a player designated **Out or Doubtful for the cutoff
-week's game** gets `p_play` = the empirical return rate P(appears in his team's h-th game after the cutoff), by
-position and games already missed (`injury_workload.fit_return_rates`, horizons 1..8 team games, byes skipped; a
-cell with fewer than 30 episodes pools over positions, then buckets; a later game uses h = 8). The table is fitted
-into every weekly artifact (`config.injury_model.return_rates`) from episodes whose outcome game precedes the
-cutoff (2019 onward, about 2,100 episodes at h = 1; pooled 0.34 at h = 1, 0.64 at h = 4, 0.68 at h = 8). Each such
-row's `participation` names `model_version: return-rate-table`, the cell used, and keeps the replaced undesignated
-estimate (`undesignated_p_play`); the row is flagged. On 2023-24 this changes the mean next-week P(plays) of these
-players from 0.91 to 0.34 (they played 39%), Brier 0.514 -> 0.239 (research section 6). Players on a reserve list
-or ESPN IR/suspension stay withheld exactly as before; Questionable players keep the participation model.
-Injured teammates at h >= 1 are mixed into the handoff as present/absent scenarios with the same rates, so a
-temporary starter does not keep the role for the rest of the season.
+**Rest-of-season P(plays) (ros-avail-0.1.1).** For a run at horizon h >= 1, a player designated **Out or Doubtful
+for the cutoff week's game** gets `p_play` = the empirical return rate P(appears in his team's h-th game after the
+cutoff) **for h = 1 and 2 only** (his team's next two games, byes skipped), by position and games already missed
+(`injury_workload.fit_return_rates(active_roster_only=True)`; a cell with fewer than 30 episodes pools over
+positions, then buckets). From h = 3 on the participation model's estimate stays: the evaluated 0.1.0 table was far
+better than it at h = 1 (Brier 0.495 -> 0.245) and h = 2 (0.288 -> 0.242) but worse at h >= 3
+(`docs/research/ros_availability.md`), and this is that study's pre-registered next candidate. The table is fitted
+into every weekly artifact (`config.injury_model.return_rates`, horizons 1-8) from episodes whose outcome game
+precedes the cutoff, 2019 onward, counting only players on the active roster (ACT/INA) at their cutoff: the
+population the rule is applied to (reserve-list players are withheld anyway). At the week-6 cutoff it gives 0.39
+at h = 1 and 0.61 at h = 2 (pooled; a 2019-22 fit gives 0.38 / 0.58 against 0.41 / 0.66 observed in 2023-24). Each
+such row's `participation` names `model_version: return-rate-table`, `ros_availability: ros-avail-0.1.1`, the cell
+used, and keeps the replaced undesignated estimate (`undesignated_p_play`); the row is flagged. Players on a reserve
+list or ESPN IR/suspension stay withheld exactly as before; Questionable players keep the participation model.
+Injured teammates at h >= 1 are mixed into the handoff as present/absent scenarios weighted by the same table (all
+8 horizons), so a temporary starter does not keep the role for the rest of the season. The prospective ledger of
+ros_availability.md still judges the rule (`NEXT_CANDIDATE` gates).
 
 **Training and storage.** `weekly_learning.train_production` builds the artifact (`artifacts/ifp-2.1.0/` in the
 weekly store, content-addressed, write-once); `scripts/weekly_learning.py train` writes it next to the ledger's

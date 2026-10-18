@@ -775,11 +775,15 @@ def _return_rate(rates: dict | None, row: dict, horizon: int) -> float:
 
 
 def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...] | None = None,
-                     max_horizon: int = RETURN_MAX_HORIZON) -> dict:
+                     max_horizon: int = RETURN_MAX_HORIZON, active_roster_only: bool = False) -> dict:
     """{(position|'ALL', missed bucket|'ALL', h): {rate, n}}: among players designated Out or Doubtful for their
     team's week-W game (with a lookback appearance), the share who appeared in the team's h-th game after W
     (h = 1..max_horizon, byes skipped). Only episodes whose outcome game is strictly before `through_key` count, so
-    a table fitted for a forecast made at week W uses no outcome at or after W."""
+    a table fitted for a forecast made at week W uses no outcome at or after W.
+
+    `active_roster_only` (ros-avail-0.1.1, docs/research/ros_availability.md): an episode counts only if the player's
+    latest weekly roster row with week <= W is ACT/INA, the population a rest-of-season run applies the table to
+    (reserve-list players are withheld and never get a rest-of-season p_play; mixing them in under-predicts returns)."""
     if sources.injuries is None:
         return {}
     inj = sources.injuries.filter(pl.col("report_status").str.to_lowercase().is_in(list(UNAVAILABLE_DESIGNATIONS))
@@ -791,6 +795,14 @@ def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...
     for s, t, w in games.select("season", "team", "week").sort("week").iter_rows():
         sched[(int(s), t)].append(int(w))
     apps = set(sources.panel.select("season", "week", "gsis_id").iter_rows())
+    roster: dict[tuple[int, str], list[tuple[int, str]]] = defaultdict(list)
+    if active_roster_only and sources.rosters is not None:
+        for s, w, g, st in sources.rosters.select("season", "week", "gsis_id", "status").sort("week").iter_rows():
+            roster[(int(s), g)].append((int(w), st))
+
+    def active_at(s: int, g: str, w: int) -> bool:
+        rows = [st for wk, st in roster.get((s, g), []) if wk <= w]
+        return bool(rows) and rows[-1] in ACTIVE_ROSTER
     first_app: dict[str, int] = {}
     pos_of: dict[str, str] = {}
     for s, w, g, p in sources.panel.select("season", "week", "gsis_id", "position").sort("season", "week").iter_rows():
@@ -799,6 +811,8 @@ def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...
     cnt: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])
     for s, w, g, t in inj.select("season", "week", "gsis_id", "team").iter_rows():
         if g not in pos_of or pos_of[g] not in SKILL or first_app[g] >= key(s, w):
+            continue
+        if active_roster_only and not active_at(int(s), g, int(w)):
             continue
         tw = sched.get((int(s), t), [])
         later = [x for x in tw if x > w]

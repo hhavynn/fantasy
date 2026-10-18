@@ -128,6 +128,16 @@ def test_return_rate_cell_pools_thin_cells_and_caps_the_horizon():
     assert iw.return_rate_cell({}, "RB", 0, 1) is None
 
 
+def test_return_table_counts_only_players_on_the_active_roster_at_the_cutoff():
+    """ros-avail-0.1.1: a reserve-list player is withheld by build_live and never gets a rest-of-season P(plays), so
+    his episode is not in the production table (the research default keeps every episode)."""
+    rows = tiw.report(4, tiw.inj(tiw.STAR, "Out", 4))
+    src = tiw.world(range(1, 6), skip={tiw.STAR: (4,)}, injuries=rows, roster={(tiw.STAR, 4): ("AAA", "RES")})
+    assert iw.fit_return_rates(src, 202606)[("ALL", "ALL", 1)]["n"] == 1
+    assert ("ALL", "ALL", 1) not in iw.fit_return_rates(src, 202606, active_roster_only=True)
+    assert im.fit_return_table(src, tiw.S, 6) == []
+
+
 def test_return_table_is_fitted_only_on_outcomes_before_the_cutoff():
     """An Out player who returns in week 5: the week-4 episode's h=1 outcome (week 5) counts for a forecast at week 6,
     not for one at week 5."""
@@ -243,10 +253,15 @@ def test_rest_of_season_out_or_doubtful_players_get_the_return_rate(trained):
         assert any("historical return rate 25%" in f for f in x["flags"])
     healthy = r[HEALTHY_WR]
     assert healthy["participation"]["model_version"] == part.version and healthy["p_play"] != 0.25
-    # h counts the TEAM's games after the cutoff, so a later week uses a later cell
+    # h counts the TEAM's games after the cutoff: h = 2 still uses the table (its own cell) ...
+    _, rows8 = build_live(con, src, with_table(art, rate=0.6), 2026, 8, participation=part, artifact_sha256="a" * 64,
+                          projected_from_week=W)
+    assert by_id(rows8)[OUT_RB]["participation"]["return_rate"]["h"] == 2 and by_id(rows8)[OUT_RB]["p_play"] == 0.6
+    # ... and from h = 3 on the participation model's estimate stays (ros-avail-0.1.1: the table lost there)
     _, rows9 = build_live(con, src, with_table(art, rate=0.6), 2026, 9, participation=part, artifact_sha256="a" * 64,
                           projected_from_week=W)
-    assert by_id(rows9)[OUT_RB]["participation"]["return_rate"]["h"] == 3
+    assert by_id(rows9)[OUT_RB]["participation"]["model_version"] == part.version
+    assert im.PPLAY_HORIZONS == 2 and im.ROS_AVAILABILITY_VERSION == "ros-avail-0.1.1"
 
 
 def test_without_a_fitted_table_the_undesignated_estimate_stays(trained):

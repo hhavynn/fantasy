@@ -2,7 +2,8 @@
 
 > **Update 2026-10-18: production.** The owner replaced "Ours" with this model: **`ifp-2.1.0`** =
 > ifp-2.0.0 + the handoff group of this study with the iwh-0.1.1 participation fix (section 7.3), + the
-> empirical return-rate P(plays) for players Out/Doubtful at a rest-of-season cutoff (section 6), + the
+> empirical return-rate P(plays) for players Out/Doubtful at a rest-of-season cutoff (section 6; applied as
+> ros_availability.md's pre-registered ros-avail-0.1.1: matched population, the team's next 2 games only), + the
 > teammate-return scenarios at horizon >= 1. Code: `backend/app/analytics/injury_model.py`; registry promotion
 > event of 2026-10-18 (owner override); docs/independent_projection_engine.md "ifp-2.1.0". The verdicts below
 > are the pre-registered research record and are unchanged.

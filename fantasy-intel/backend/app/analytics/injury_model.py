@@ -10,12 +10,15 @@ docs/research/injury_workload_handoff.md):
    features. The handoff is iwh-0.1.1: iwh-0.1.0 (the evaluated research version) with the pre-registered fix of
    section 7.3, so a Questionable-and-inactive game counts as an injury absence, not a role absence
    (injury_workload.workload_handoff(listing_absence=True)).
-2. Rest-of-season P(plays) for a player designated Out or Doubtful at the cutoff week W. A run for a later week T
-   (horizon >= 1) used to give him an undesignated P(plays) (about 0.91 on 2023-24 while 39% actually played). It is
-   now the empirical return rate: P(appears in his team's h-th game after W | Out/Doubtful at W), by position and
-   games already missed (injury_workload.fit_return_rates, horizons 1..RETURN_HORIZON team games, a later game uses
-   the last one). The table is refitted with every weekly artifact on episodes whose outcome game precedes W and is
-   stored in it, so a run never reads an outcome at or after its cutoff.
+2. Rest-of-season P(plays) for a player designated Out or Doubtful at the cutoff week W, ros-avail-0.1.1
+   (docs/research/ros_availability.md, its pre-registered next candidate). A run for a later week T used to give
+   him an undesignated P(plays) (about 0.91 on 2023-24 while 41% played the next game). For his team's next
+   PPLAY_HORIZONS games after W it is now the empirical return rate P(appears in the team's h-th game after W |
+   Out/Doubtful at W, on the active roster at W), by position and games already missed
+   (injury_workload.fit_return_rates(active_roster_only=True)). Later games keep the participation model's
+   estimate: the 0.1.0 table lost to it at h >= 3. The table is refitted with every weekly artifact on episodes
+   whose outcome game precedes W (2019 through the cutoff) and stored in it, so a run never reads an outcome at or
+   after its cutoff.
 3. Rest-of-season handoff scenarios: at horizon >= 1 a teammate who is injured at the cutoff is enumerated as
    present/absent scenarios weighted by the same table (a temporary starter does not keep the role all season).
 
@@ -43,7 +46,10 @@ WORKLOAD_VERSION = iw.WORKLOAD_VERSION_FIXED  # iwh-0.1.1
 GROUP = {p: list(ic.GROUP[p]) for p in POSITIONS}
 HANDOFF_FEATURES = ("ho_exp_xfpl", "ho_shift_pg")
 FEATURE_DECIMALS = 9                         # handoff features are rounded (see handoff)
-RETURN_HORIZON = 8                           # return-rate table horizons (team games after the cutoff)
+RETURN_HORIZON = 8                           # return-rate table horizons (team games after the cutoff; the handoff's
+                                             # teammate-return scenarios use all of them)
+PPLAY_HORIZONS = 2                           # P(plays) from the table only for the team's next 2 games (ros-avail-0.1.1)
+ROS_AVAILABILITY_VERSION = "ros-avail-0.1.1"
 UNAVAILABLE = iw.UNAVAILABLE_DESIGNATIONS    # ("out", "doubtful"): the designations the table conditions on
 CONFIG_KEY = "injury_model"                  # Artifact.config key that marks an ifp-2.1.0 artifact
 RETURN_RATE_MODEL = "return-rate-table"      # participation.model_version of a row whose P(plays) is the table's
@@ -54,6 +60,8 @@ def config(cfg: ch.ChallengerConfig) -> dict:
     return {"version": MODEL_VERSION, "base": BASE_VERSION, "base_config_hash": cfg.hash(),
             "workload_version": WORKLOAD_VERSION, "group": GROUP, "listing_absence": True,
             "return_rate_horizons": RETURN_HORIZON, "return_rate_min_n": iw.RETURN_MIN_N,
+            "return_rate_population": "Out/Doubtful at the cutoff, latest roster row <= cutoff ACT/INA",
+            "ros_availability": ROS_AVAILABILITY_VERSION, "p_play_horizons": PPLAY_HORIZONS,
             "features": {p: features(cfg, p) for p in POSITIONS}}
 
 
@@ -142,7 +150,7 @@ def fit(store: pl.DataFrame, season: int, week: int, cfg: ch.ChallengerConfig) -
 def fit_return_table(sources: Sources, season: int, week: int) -> list[dict]:
     """The return-rate table for a forecast made at (season, week): every Out/Doubtful episode in the sources whose
     outcome game precedes the cutoff, as JSON cells [{position, missed, h, rate, n}] (sorted)."""
-    rates = iw.fit_return_rates(sources, key(season, week), max_horizon=RETURN_HORIZON)
+    rates = iw.fit_return_rates(sources, key(season, week), max_horizon=RETURN_HORIZON, active_roster_only=True)
     return [{"position": p, "missed": b, "h": h, "rate": round(v["rate"], 6), "n": v["n"]}
             for (p, b, h), v in sorted(rates.items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1]), kv[0][2]))]
 
@@ -178,9 +186,9 @@ def cutoff_injured(sources: Sources, season: int, cutoff_week: int, roster_codes
 def ros_p_play(artifact, sources: Sources, season: int, cutoff_week: int, week: int, rows: list[dict], *,
                injured: dict) -> dict[str, dict]:
     """{gsis_id: participation dict} replacing the undesignated P(plays) of a rest-of-season row (week > cutoff)
-    whose player was Out or Doubtful at the cutoff: the artifact's empirical return rate for his position, games
-    already missed and h (his team's games after the cutoff). Rows without such a designation keep the
-    participation model's estimate (they are not returned)."""
+    whose player was Out or Doubtful at the cutoff, for h (his team's games after the cutoff) <= PPLAY_HORIZONS: the
+    artifact's empirical return rate for his position, games already missed and h. Every other row keeps the
+    participation model's estimate (it is not returned)."""
     rates = return_table(artifact)
     if week <= cutoff_week or not rates:
         return {}
@@ -190,13 +198,16 @@ def ros_p_play(artifact, sources: Sources, season: int, cutoff_week: int, week: 
         if t is None or r.get("coverage_status") != "projected":
             continue
         h = team_games_after(sources, season, r["nfl_team"], cutoff_week, week)
+        if h > PPLAY_HORIZONS:
+            continue
         hit = iw.return_rate_cell(rates, t["position"], t["missed_team_games"], h)
         if hit is None:
             continue
         (cell_pos, bucket, cell_h), cell = hit
         designation = t["designation"].capitalize()
         out[r["gsis_id"]] = {
-            "p_play": round(cell["rate"], 4), "model_version": RETURN_RATE_MODEL, "status": "production",
+            "p_play": round(cell["rate"], 4), "model_version": RETURN_RATE_MODEL,
+            "ros_availability": ROS_AVAILABILITY_VERSION, "status": "production",
             "expected_points_status": "production",
             "return_rate": {"position": cell_pos, "missed_games_bucket": bucket, "h": h, "table_h": cell_h,
                             "episodes": cell["n"], "cutoff_week": cutoff_week, "designation": t["designation"]},
