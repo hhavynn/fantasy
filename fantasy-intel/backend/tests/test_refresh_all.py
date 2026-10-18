@@ -29,18 +29,23 @@ def test_publish_only_with_a_motherduck_token(refresh, monkeypatch):
     assert "publish_motherduck.py" not in refresh.plan(publish=False)
 
 
-def test_first_failure_stops_the_chain(refresh, monkeypatch, tmp_path):
+def test_a_failed_sync_skips_the_steps_that_need_it(refresh, monkeypatch, tmp_path):
     for name, body in (("sync_espn.py", "print('espn ok')"), ("sync_nfl.py", "raise SystemExit(3)"),
                        ("compute_analytics.py", "open(__file__ + '.ran', 'w').close()")):
         (tmp_path / name).write_text(body)
+    shadows = []
     monkeypatch.setattr(refresh, "SCRIPTS", tmp_path)
     monkeypatch.setattr(refresh, "LOG_DIR", tmp_path / "logs")
     monkeypatch.setattr(refresh, "check_pregame", lambda log: pytest.fail("check must not run after a failure"))
+    monkeypatch.setattr(refresh, "run_evidence", lambda *a, **k: pytest.fail("no full evidence after a failed sync"))
+    monkeypatch.setattr(refresh, "run_shadows", lambda log: shadows.append(log))
     monkeypatch.setattr(sys, "argv", ["refresh_all.py", "--no-publish"])
     assert refresh.main() == 1
     assert not (tmp_path / "compute_analytics.py.ran").exists()
     log = next((tmp_path / "logs").glob("refresh-*.log")).read_text()
     assert "espn ok" in log and "<== exit 3" in log and "FAILED: sync_nfl.py exited 3" in log
+    assert "SKIPPED: compute_analytics.py (needs sync_nfl.py, which failed)" in log
+    assert len(shadows) == 1                       # the research shadows' freezes still ran
 
 
 def _snap(**kw):
@@ -390,6 +395,7 @@ def _main(refresh, monkeypatch, tmp_path, *argv, step_code=0):
     monkeypatch.setattr(refresh, "run_step", fake_step)
     monkeypatch.setattr(refresh, "check_pregame", lambda log: events.append("pregame_check"))
     monkeypatch.setattr(refresh, "run_evidence", lambda log: events.append("evidence") or [])
+    monkeypatch.setattr(refresh, "run_shadows", lambda log: events.append("shadows"))
     monkeypatch.setattr(sys, "argv", ["refresh_all.py", "--no-publish", *argv])
     return refresh.main(), events
 
@@ -400,12 +406,14 @@ def test_evidence_runs_after_the_syncs_and_analytics(refresh, monkeypatch, tmp_p
     assert events == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py", "pregame_check", "evidence"]
 
 
-def test_evidence_is_skipped_after_a_failed_step_and_by_flags(refresh, monkeypatch, tmp_path):
+def test_after_a_failed_step_only_the_research_shadows_run_and_flags_skip_them(refresh, monkeypatch, tmp_path):
     code, events = _main(refresh, monkeypatch, tmp_path / "a", step_code=3)
-    assert code == 1 and "evidence" not in events
+    assert code == 1 and events == ["sync_espn.py", "sync_nfl.py", "shadows"]
+    code, events = _main(refresh, monkeypatch, tmp_path / "d", "--skip-evidence", step_code=3)
+    assert code == 1 and events == ["sync_espn.py", "sync_nfl.py"]
     for name, flag in (("b", "--skip-evidence"), ("c", "--check-only")):
         code, events = _main(refresh, monkeypatch, tmp_path / name, flag)
-        assert code == 0 and "evidence" not in events
+        assert code == 0 and "evidence" not in events and "shadows" not in events
 
 
 def test_an_evidence_exception_never_changes_the_exit_status(refresh, monkeypatch, tmp_path):
@@ -454,6 +462,124 @@ def test_a_failed_local_step_still_skips_evidence_with_publish_enabled(refresh, 
     monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: events.append(Path(cmd[1]).name) or (
         3 if Path(cmd[1]).name == "compute_analytics.py" else 0))
     monkeypatch.setattr(refresh, "run_evidence", lambda log: events.append("evidence") or [])
+    monkeypatch.setattr(refresh, "run_shadows", lambda log: events.append("shadows"))
     monkeypatch.setattr(sys, "argv", ["refresh_all.py"])
     assert refresh.main() == 1
-    assert events == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py"]
+    assert events == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py", "shadows"]   # no report, no publish
+
+
+# ----------------------------------------------------------------------------- DuckDB lock contention (2026-10-18)
+
+LOCK_LINE = ('app.db.connection.DatabaseBusy: IO Error: Could not set lock on file "fantasy.duckdb": Conflicting lock '
+             'is held in /Users/x/.local/share/uv/python/cpython-3.13.14-macos-aarch64-none/bin/python3.13 (PID 54372)')
+
+
+def _lock_steps(refresh, monkeypatch, outcomes):
+    """run_step stub: per script name, a list of exit codes to return in order; a non-zero code from a script whose
+    outcome is marked 'lock' logs the DatabaseBusy traceback line first."""
+    calls = []
+
+    def fake(cmd, log, timeout=None):
+        name = Path(cmd[1]).name
+        calls.append(name)
+        seq = outcomes.get(name, [0])
+        code = seq.pop(0) if len(seq) > 1 else seq[0]
+        if code == "lock":
+            log(LOCK_LINE)
+            return 1
+        return code
+
+    monkeypatch.setattr(refresh, "run_step", fake)
+    monkeypatch.setattr(refresh, "LOCK_RETRY_DELAYS_S", (0, 0))
+    return calls
+
+
+def test_a_step_that_failed_on_the_lock_is_retried_and_recovers(refresh, monkeypatch, tmp_path):
+    calls = _lock_steps(refresh, monkeypatch, {"sync_espn.py": ["lock", 0]})
+    log = refresh.Log(tmp_path / "x.log")
+    assert refresh.run_db_step([sys.executable, "sync_espn.py"], log) == 0
+    assert calls == ["sync_espn.py", "sync_espn.py"]
+    assert "sync_espn.py could not take the DuckDB lock (another process holds it); retry 1/2" in log.path.read_text()
+
+
+def test_a_failure_that_is_not_the_lock_is_not_retried(refresh, monkeypatch, tmp_path):
+    calls = _lock_steps(refresh, monkeypatch, {"sync_espn.py": [1, 0]})
+    assert refresh.run_db_step([sys.executable, "sync_espn.py"], refresh.Log(tmp_path / "x.log")) == 1
+    assert calls == ["sync_espn.py"]
+
+
+def test_a_lock_that_is_never_released_gives_up_after_the_retries(refresh, monkeypatch, tmp_path):
+    calls = _lock_steps(refresh, monkeypatch, {"sync_espn.py": ["lock"]})
+    log = refresh.Log(tmp_path / "x.log")
+    assert refresh.run_db_step([sys.executable, "sync_espn.py"], log) == 1
+    assert calls == ["sync_espn.py"] * 3
+    assert "still could not take the DuckDB lock after 3 attempts" in log.path.read_text()
+
+
+def test_a_held_lock_on_the_espn_sync_still_runs_nflverse_and_the_shadow_freezes(refresh, monkeypatch, tmp_path):
+    """The 2026-10-18 08:00 refresh: sync_espn.py lost the DuckDB lock and the whole chain, including the ifp-ctx-p1
+    freeze, was skipped. Now the nflverse sync (the injury reports the freeze gate reads) still runs, the steps that
+    need ESPN data are skipped, and the research shadows still freeze on the stored data."""
+    calls = _lock_steps(refresh, monkeypatch, {"sync_espn.py": ["lock"]})
+    events = []
+    monkeypatch.setattr(refresh, "LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(refresh, "check_pregame", lambda log: pytest.fail("needs the ESPN sync"))
+    monkeypatch.setattr(refresh, "run_report", lambda log: pytest.fail("needs the analytics"))
+    monkeypatch.setattr(refresh, "run_evidence", lambda log, **kw: events.append(kw) or [])
+    monkeypatch.setattr(sys, "argv", ["refresh_all.py", "--no-publish"])
+    assert refresh.main() == 1
+    assert calls == ["sync_espn.py"] * 3 + ["sync_nfl.py"]
+    assert events == [{"shadows_only": True}]
+    log = next((tmp_path / "logs").glob("refresh-*.log")).read_text()
+    assert "FAILED: sync_espn.py exited 1" in log and "SKIPPED: compute_analytics.py" in log
+
+
+def test_shadows_only_runs_just_the_research_shadow_freezes(refresh, evidence_env, monkeypatch):
+    monkeypatch.setattr(refresh, "week_is_final", lambda con, season, week, cache=None: (True, ""))
+    ran = []
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: ran.append(cmd) or 3)
+    assert refresh.run_evidence(evidence_env, now=TUE, shadows_only=True) == []        # exit 3: the shadow's warnings
+    assert [(Path(c[1]).name, c[2]) for c in ran] == [          # every research shadow, nothing else
+        ("ctx_shadow.py", "pregame"), ("qb_scenario_shadow.py", "pregame"), ("signal_shadows.py", "pregame"),
+        ("dst_shadow.py", "pregame"), ("distribution_ledger.py", "freeze"), ("participation_cal_shadow.py", "cycle")]
+    text = evidence_env.path.read_text()
+    assert "research shadows only" in text and "INFO: Evidence: ctx_shadow pregame week 7 reported" in text
+
+
+def test_any_pregame_week_step_counts_as_a_research_shadow(refresh, evidence_env, monkeypatch):
+    """A shadow added later (labelled "<name> pregame week W") runs after a failed sync with no other wiring."""
+    real = refresh.evidence_steps
+    monkeypatch.setattr(refresh, "evidence_steps", lambda sel: [*real(sel), ("dst_shadow pregame week 7", ["x", "dst"])])
+    monkeypatch.setattr(refresh, "week_is_final", lambda con, season, week, cache=None: (True, ""))
+    ran = []
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: ran.append(cmd[1]) or 0)
+    refresh.run_evidence(evidence_env, now=TUE, shadows_only=True)
+    assert [Path(c).name for c in ran][0] == "ctx_shadow.py" and [Path(c).name for c in ran][-1] == "dst"
+    assert not any(Path(c).name in ("injury_freshness.py", "start_sit_evaluation.py", "espn_benchmark.py") for c in ran)
+    assert refresh.is_shadow("dst_shadow pregame week 7") and not refresh.is_shadow("start_sit_evaluation week 7")
+    assert refresh.is_shadow("ipm_cal_shadow cycle") and refresh.is_shadow("qb_scenario_shadow pregame week 7")
+    assert refresh.is_shadow("signal_shadows pregame week 7")
+    assert not refresh.is_shadow("injury_freshness week 7") and not refresh.is_shadow("espn_benchmark week 6")
+
+
+def test_every_step_process_gets_the_lock_wait(refresh, monkeypatch, tmp_path):
+    from app.db.connection import LOCK_WAIT_ENV
+
+    monkeypatch.delenv(LOCK_WAIT_ENV, raising=False)
+    log = refresh.Log(tmp_path / "x.log")
+    cmd = [sys.executable, "-c", f"import os; print('wait=' + os.environ['{LOCK_WAIT_ENV}'])"]
+    assert refresh.run_step(cmd, log) == 0
+    assert f"wait={refresh.LOCK_WAIT_S}" in log.path.read_text()
+    monkeypatch.setenv(LOCK_WAIT_ENV, "7")                      # an explicit setting wins
+    assert refresh.run_step(cmd, log, timeout=30) == 0
+    assert "wait=7" in log.path.read_text()
+
+
+def test_log_since_returns_only_the_new_lines(refresh, tmp_path):
+    log = refresh.Log(tmp_path / "x.log")
+    log("a")
+    mark = log.lines
+    assert log.since(mark) == []
+    log("b")
+    log("c")
+    assert log.since(mark) == ["b", "c"] and log.since(0) == ["a", "b", "c"]
