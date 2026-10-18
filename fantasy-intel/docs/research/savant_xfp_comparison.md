@@ -14,13 +14,13 @@ r = 0.998 (single week). That means we can compute it ourselves for any week or 
 it ourselves:
 
 * **Our measure is better on its own.** As a single next-week predictor, nflverse xFP beats the
-  Savant-style xFP at every position. The difference is significant everywhere (all positions: +0.046
-  MAE for Savant, 95% CI [+0.035, +0.056]).
+  Savant-style xFP at every position. The difference is significant everywhere (all positions: +0.044
+  MAE for Savant, 95% CI [+0.034, +0.054]).
 * **Adding it on top of ours does nothing.** On top of recent points + nflverse xFP, the Savant-style
-  xFP (equivalently, the Savant − nflverse gap) changes next-week MAE by −0.0002 (CI [−0.004, +0.003]).
+  xFP (equivalently, the Savant − nflverse gap) changes next-week MAE by +0.001 (CI [−0.002, +0.004]).
 * **It does not fix ifp-2's errors.** Used as a correction to ifp-2's backtest predictions, the gap
   helps no more than a plain per-position level shift. In the two out-of-sample directions the gap
-  adds −0.001 and −0.004 MAE on a 4.01 baseline, and one of the two CIs includes 0 (§6).
+  adds −0.001 and −0.005 MAE on a 4.01 baseline, and one of the two CIs includes 0 (§6).
 
 There is nothing to promote and nothing worth a challenger feature. The only interesting by-product
 is a calibration fact about our own input (§4): nflverse's QB expected points run about 7% above
@@ -105,7 +105,7 @@ The replica *is* Savant's number for practical purposes. Everything below uses t
 lets us test across 2019-2025 every week without further downloads.
 
 **Leakage check.** Bucket rates estimated only from 2016-2022 give the same conclusions:
-agreement r 0.9998, every next-week MAE within 0.0012 of the pooled-rate run, and the same §6
+agreement r 0.9998, every next-week MAE within 0.0015 of the pooled-rate run, and the same §6
 results to the third decimal.
 
 ## 3. Where Savant and nflverse disagree (2025 season, Savant export vs nflverse)
@@ -155,39 +155,44 @@ documentation note, not a defect.
 **Setup:**
 
 * **Rows:** every REG player-week 2019-2025 (QB/RB/WR/TE with a box-score row) with at least one
-  previous game.
+  previous game that has nflverse xFP coverage. Eligibility uses only pregame facts: a week whose own
+  `nfl_ff_opportunity` row is missing (a zero-opportunity or uncovered appearance) stays in.
 * **Features:** means over the player's previous ≤ 5 games.
-* **Fit and test:** OLS per position, fit on 2019-2022 (19,862 rows), test on 2023-2025 (15,617 rows).
+* **Fit and test:** OLS per position, fit on 2019-2022 (21,509 rows), test on 2023-2025 (17,136 rows).
 * **Target:** PPR points of the week (this league's scoring is full PPR, so `xfpl` ≈ nflverse xFP).
 * **CIs:** 95%, from 1,000 bootstrap resamples of whole weeks.
 
 | Test MAE | QB | RB | WR | TE | All |
 |---|---|---|---|---|---|
-| A: recent points | 6.536 | 4.829 | 5.028 | 3.880 | 4.927 |
-| F: nflverse xFP only | 6.495 | 4.809 | 4.966 | 3.810 | 4.878 |
-| G: Savant xFP only | 6.630 | 4.830 | 5.015 | 3.827 | 4.923 |
-| B: points + nflverse xFP | 6.462 | 4.768 | 4.939 | 3.803 | 4.850 |
-| C: points + Savant xFP | 6.500 | 4.772 | 4.959 | 3.813 | 4.867 |
-| **D: points + both (= gap)** | 6.462 | 4.773 | 4.935 | 3.802 | 4.850 |
-| B2: B + nflverse xTD | 6.458 | 4.765 | 4.922 | 3.799 | 4.841 |
-| E: B2 + Savant xFP and xTD | 6.439 | 4.770 | 4.914 | 3.795 | 4.836 |
+| A: recent points | 6.535 | 4.591 | 4.786 | 3.751 | 4.718 |
+| F: nflverse xFP only | 6.495 | 4.585 | 4.751 | 3.700 | 4.687 |
+| G: Savant xFP only | 6.629 | 4.603 | 4.801 | 3.719 | 4.731 |
+| B: points + nflverse xFP | 6.462 | 4.533 | 4.704 | 3.684 | 4.647 |
+| C: points + Savant xFP | 6.500 | 4.537 | 4.722 | 3.692 | 4.661 |
+| **D: points + both (= gap)** | 6.462 | 4.540 | 4.703 | 3.684 | 4.648 |
+| B2: B + nflverse xTD | 6.458 | 4.527 | 4.689 | 3.674 | 4.636 |
+| E: B2 + Savant xFP and xTD | 6.440 | 4.533 | 4.686 | 3.670 | 4.633 |
 
 | Paired difference (MAE, 95% CI) | All | Comment |
 |---|---|---|
-| G − F (Savant alone vs nflverse alone) | +0.046 [+0.035, +0.056] | nflverse better at every position |
-| C − B (swap nflverse for Savant) | +0.016 [+0.011, +0.021] | worse |
-| **D − B (add Savant / the gap)** | **−0.0002 [−0.004, +0.003]** | no information |
-| E − B2 (add Savant xFP + xTD to nflverse xFP + xTD) | −0.005 [−0.010, −0.001] | see below |
+| G − F (Savant alone vs nflverse alone) | +0.044 [+0.034, +0.054] | nflverse better at every position |
+| C − B (swap nflverse for Savant) | +0.014 [+0.009, +0.019] | worse |
+| **D − B (add Savant / the gap)** | **+0.001 [−0.002, +0.004]** | no information |
+| E − B2 (add Savant xFP + xTD to nflverse xFP + xTD) | −0.002 [−0.006, +0.002] | no information |
 
-**Why E − B2 is not a signal.**
+**By position, the small effects change sign:**
 
-* **It changes sign by position.** WR gains (−0.008 [−0.014, −0.004]), RB loses (+0.005
-  [+0.002, +0.009]), and QB and TE CIs include 0.
-* **The gain comes with a negative weight on Savant.** In the WR fit, Savant xFP enters with a
-  negative coefficient: it acts as a correction to nflverse rather than as better information.
-* **It is one of many comparisons.** Read as a family, the result is noise around zero.
+* **Adding Savant / the gap (D − B):**
+  * RB gets worse: +0.006 [+0.001, +0.013].
+  * WR gets marginally better: −0.001 [−0.002, −0.0002]. Savant xFP enters the WR fit with a small
+    negative weight, so it acts as a correction to nflverse rather than as better information.
+* **Adding Savant xFP and xTD (E − B2):**
+  * RB gets worse: +0.006 [+0.002, +0.010].
+  * The WR, TE and QB CIs include 0.
 
-The xTD term that *does* help (B2 vs B: −0.009 overall) is nflverse's own xTD, which ifp-2 already
+Read as a family of comparisons, this is noise around zero.
+
+The xTD term that *does* help (B2 vs B: −0.011 overall) is nflverse's own xTD, which ifp-2 already
 carries as `xfpl_td_recent`.
 
 ## 6. Does the gap explain ifp-2's own errors?
@@ -197,19 +202,22 @@ carries as `xfpl_td_recent`.
 * **Residual:** ifp-2 backtest residual = label − `pred_ifp2` (confirmation 2023-24: 13,345 rows;
   exploratory 2025: 6,720 rows; 2026 excluded because no 2026 play-by-play was loaded).
 * **Gap feature:** Savant-style minus nflverse xFP, averaged over the player's last ≤ 5 games strictly
-  before the forecast week. It uses ifp-2's own lookback (current + previous season); a missing gap is
-  set to 0.
+  before the forecast week.
+  * It uses ifp-2's own lookback: games are restricted to the forecast's current and previous season
+    *before* averaging, so no older game enters a window.
+  * A missing gap (rookies, no prior coverage: 564 and 375 rows) is set to 0 on both the fitting and
+    the scoring side, so both use the same population.
 * **Correction:** a per-position linear correction, fit on one window and scored on the other.
 * **Control:** a correction with only an intercept, so that a level shift is not credited to the gap.
 
 | Fit → test | ifp-2 MAE | intercept only | + gap | gap vs intercept (95% CI) |
 |---|---|---|---|---|
-| 2023-24 → 2025 | 4.0084 | 4.0198 | 4.0186 | −0.001 [−0.007, +0.004] |
-| 2025 → 2023-24 | 4.0163 | 3.9979 | 3.9939 | −0.004 [−0.0075, −0.0005] |
+| 2023-24 → 2025 | 4.0084 | 4.0196 | 4.0184 | −0.001 [−0.006, +0.004] |
+| 2025 → 2023-24 | 4.0163 | 3.9952 | 3.9905 | −0.005 [−0.008, −0.001] |
 
-* **Correlation.** Correlation of residual with gap, by position: −0.008 (TE) to −0.052 (RB).
-* **Sign.** Gap slopes are mostly negative: when Savant-style recently exceeded nflverse, ifp-2
-  slightly over-projected. That is the same direction as §5's negative weights, i.e. nflverse's richer
+* **Correlation.** Correlation of residual with gap, by position: −0.009 (TE) to −0.052 (RB).
+* **Sign.** Gap slopes are negative for QB, RB and WR in both fits (TE: negative in one, about 0 in
+  the other). When Savant-style recently exceeded nflverse, ifp-2 slightly over-projected. That is the same direction as §5's negative weights, i.e. nflverse's richer
   model is the better-informed of the two.
 * **Size.** At most a few thousandths of a point, under 0.1% of MAE, and only one direction excludes
   0. That is below anything the promotion rules would act on. Most of the "improvement" in the table

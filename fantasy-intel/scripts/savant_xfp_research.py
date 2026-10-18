@@ -209,7 +209,7 @@ def agreement(p: pl.DataFrame, sav_dir: Path) -> dict:
 def trailing(p: pl.DataFrame) -> pl.DataFrame:
     """Each player-week gets means of the previous <= RECENT games he played (any season in the panel)."""
     cols = {"fp": "fp_r", "nfx": "nfx_r", "svx": "svx_r", "nfxtd": "nfxtd_r", "svxtd": "svxtd_r"}
-    p = p.with_columns(pl.col("nfx").is_not_null().alias("cov")).sort("gsis_id", "season", "week")
+    p = p.sort("gsis_id", "season", "week")
     exprs = [pl.col(c).shift(1).rolling_mean(RECENT, min_samples=1).over("gsis_id").alias(a) for c, a in cols.items()]
     return p.with_columns(*exprs, pl.col("fp").shift(1).over("gsis_id").is_not_null().alias("has_prev"))
 
@@ -252,7 +252,9 @@ MODELS = {
 
 
 def next_week(p: pl.DataFrame) -> dict:
-    d = trailing(p).filter(pl.col("has_prev") & pl.col("cov") & pl.col("nfx_r").is_not_null())
+    # Eligibility uses only pregame facts: a previous game and prior xFP coverage (nfx_r). The target
+    # week's own nfl_ff_opportunity row is postgame, so uncovered / zero-opportunity weeks stay in.
+    d = trailing(p).filter(pl.col("has_prev") & pl.col("nfx_r").is_not_null())
     out = {}
     for pos in (*POS, "ALL"):
         rows = d if pos == "ALL" else d.filter(pl.col("position") == pos)
@@ -286,25 +288,27 @@ def next_week(p: pl.DataFrame) -> dict:
 def engine(p: pl.DataFrame, preds_dir: Path) -> dict:
     """ifp-2 backtest errors (label - pred_ifp2) vs the trailing replica-minus-nflverse gap. Fit a per-position
     linear correction on one window and score it on the other (2023-24 <-> 2025). Features for a forecast
-    week come from the player's last <= RECENT games strictly before it (as-of join), played or not that week."""
-    t = (p.sort("gsis_id", "season", "week")
-         .with_columns([pl.col(c).rolling_mean(RECENT, min_samples=1).over("gsis_id").alias(c + "_r")
-                        for c in ("nfx", "svx", "nfxtd", "svxtd")])
-         .with_columns((pl.col("season") * 100 + pl.col("week")).alias("key"),
-                       (pl.col("svx_r") - pl.col("nfx_r")).alias("gap_r"),
-                       (pl.col("svxtd_r") - pl.col("nfxtd_r")).alias("gaptd_r")))
-    feats = t.select("key", "gsis_id", "gap_r", "gaptd_r").sort("key")
+    week come from the player's last <= RECENT games strictly before it (as-of join), played or not that week,
+    drawn only from ifp-2's lookback: the forecast's current and previous season (filtered BEFORE the rolling
+    mean, so no game from two or more seasons back enters a window). A missing gap is 0 on both sides."""
+    def feats_for(season: int) -> pl.DataFrame:
+        t = (p.filter(pl.col("season").is_between(season - 1, season)).sort("gsis_id", "season", "week")
+             .with_columns([pl.col(c).rolling_mean(RECENT, min_samples=1).over("gsis_id").alias(c + "_r")
+                            for c in ("nfx", "svx", "nfxtd", "svxtd")])
+             .with_columns((pl.col("season") * 100 + pl.col("week")).alias("feat_key"),
+                           (pl.col("svx_r") - pl.col("nfx_r")).alias("gap_r"),
+                           (pl.col("svxtd_r") - pl.col("nfxtd_r")).alias("gaptd_r")))
+        return t.select("feat_key", "gsis_id", "gap_r", "gaptd_r").sort("feat_key")
+
     win = {}
     for name in ("confirmation", "exploratory"):
         pr = pl.read_parquet(preds_dir / f"{name}_preds.parquet").filter(pl.col("key") < 202600)
         pr = (pr.filter(pl.col("pred_ifp2").is_not_null() & pl.col("label").is_not_null())
-              .with_columns((pl.col("key") - 1).alias("before")).sort("before"))
-        win[name] = pr.join_asof(feats.rename({"key": "feat_key"}), left_on="before", right_on="feat_key",
-                                 by="gsis_id", strategy="backward").with_columns(
-            (pl.col("label") - pl.col("pred_ifp2")).alias("resid"),
-            # ifp-2's own lookback: the current and previous season only
-            *[pl.when(pl.col("feat_key") // 100 >= pl.col("key") // 100 - 1).then(pl.col(c)).alias(c)
-              for c in ("gap_r", "gaptd_r")])
+              .with_columns((pl.col("key") - 1).alias("before"), (pl.col("key") // 100).alias("season")))
+        parts = [g.sort("before").join_asof(feats_for(season), left_on="before", right_on="feat_key", by="gsis_id",
+                                            strategy="backward")
+                 for (season,), g in pr.group_by("season")]
+        win[name] = pl.concat(parts).with_columns((pl.col("label") - pl.col("pred_ifp2")).alias("resid"))
     out = {w: {"rows": d.height, "with_gap": int(d["gap_r"].is_not_null().sum()),
                "ifp2_mae": round(float(d["resid"].abs().mean()), 4)} for w, d in win.items()}
     for fit_w, test_w in (("confirmation", "exploratory"), ("exploratory", "confirmation")):
@@ -312,9 +316,8 @@ def engine(p: pl.DataFrame, preds_dir: Path) -> dict:
         for fs in ([], ["gap_r"], ["gap_r", "gaptd_r"]):
             errs_b, errs_a, groups, coefs = [], [], [], {}
             for pos in POS:
-                a = win[fit_w].filter((pl.col("position") == pos) & pl.col("gap_r").is_not_null())
-                b = win[test_w].filter(pl.col("position") == pos).with_columns(
-                    pl.col("gap_r").fill_null(0.0), pl.col("gaptd_r").fill_null(0.0))
+                a, b = (win[w].filter(pl.col("position") == pos).with_columns(
+                    pl.col("gap_r").fill_null(0.0), pl.col("gaptd_r").fill_null(0.0)) for w in (fit_w, test_w))
                 beta = _ols(_x(a, fs), a["resid"].to_numpy())
                 coefs[pos] = [round(float(c), 3) for c in beta]
                 adj = _pred(beta, _x(b, fs))
