@@ -5,6 +5,7 @@ import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { isUnknownTeam, readTeamSelection, withTeam, withTeamId } from "@/lib/team-perspective";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
+import { RangeLine } from "@/components/RangeLine";
 import { OriginTag, ProjectionNotice } from "@/components/ProjectionNotice";
 import {
   Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, Section, SortableTh, Verdict, VerdictFigure,
@@ -12,6 +13,8 @@ import {
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
 import { showingOurs, withSource } from "@/lib/projection-source";
+import { EMPTY_RANGES, RANGE_FOOTNOTE, rangeFor, type RangeMap } from "@/lib/projection-ranges";
+import { getRanges } from "@/lib/projection-ranges.server";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import {
@@ -76,6 +79,8 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   const d = res.data;
   const { league, team, summary, decisions, recommended_lineup, actual_lineup, unconstrained_lineup, current_bench } = d;
   const ours = showingOurs(d.projection_source_detail);
+  const ranges = ours ? await getRanges(d.scoring_period) : EMPTY_RANGES;
+  const rangeNote = ranges.size > 0 ? ` ${RANGE_FOOTNOTE}` : "";
   const projLabel = ours ? "Fantasy Intel (research) projected points for the week" : "ESPN projected points for the week";
   const moves = decisions.filter((x) => x.action !== "NO_CHANGE");
   const actionable = moves.filter((x) => x.actionability === "ACTIONABLE").length;
@@ -177,21 +182,21 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         <Section
           title="Recommended moves"
           subtitle={`${actionable} of ${moves.length} can be made now · gains are not additive`}
-          footnote="Gains are measured against the submitted lineup as a whole and are never summed across moves: FLEX dependencies share opportunity cost."
+          footnote={`Gains are measured against the submitted lineup as a whole and are never summed across moves: FLEX dependencies share opportunity cost.${rangeNote}`}
           flush
         >
           <ul className={styles.moves}>
-            {moves.map((m) => <Move key={m.id} move={m} ours={ours} />)}
+            {moves.map((m) => <Move key={m.id} move={m} ours={ours} ranges={ranges} />)}
           </ul>
         </Section>
       )}
 
       <Section
         title="Lineup: submitted vs recommended"
-        footnote={`${summary.starters_count} starters · ${summary.bench_count} bench · ${summary.ir_count} IR. Kickoff locks use stored NFL schedule data and are conservative.`}
+        footnote={`${summary.starters_count} starters · ${summary.bench_count} bench · ${summary.ir_count} IR. Kickoff locks use stored NFL schedule data and are conservative.${rangeNote}`}
         flush
       >
-        <LineupTable recommended={recommended_lineup} actual={actual_lineup} ours={ours} projLabel={projLabel} />
+        <LineupTable recommended={recommended_lineup} actual={actual_lineup} ours={ours} projLabel={projLabel} ranges={ranges} />
       </Section>
 
       {d.injury_warnings.length > 0 || d.schedule_warnings.length > 0 ? (
@@ -226,7 +231,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         </Section>
       ) : null}
 
-      <BenchSection bench={current_bench} recommended={recommended_lineup} sp={sp} ours={ours} projLabel={projLabel} />
+      <BenchSection bench={current_bench} recommended={recommended_lineup} sp={sp} ours={ours} projLabel={projLabel} ranges={ranges} />
 
       <Benchmark
         summary={summary}
@@ -261,19 +266,22 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
 // ------------------------------------------------------------------- moves --
 
-function MovePlayer({ p, ours, dir }: { p: DecisionPlayer; ours: boolean; dir: "in" | "out" }) {
+function MovePlayer({ p, ours, dir, ranges }: { p: DecisionPlayer; ours: boolean; dir: "in" | "out"; ranges: RangeMap }) {
   const lock = p.lock_status !== "UNLOCKED" ? lockStatusBadge(p.lock_status, null) : null;
   return (
     <li className={styles.swapRow}>
       <span className={dir === "in" ? styles.inGlyph : styles.outGlyph} aria-hidden="true">{dir === "in" ? "▲" : "▼"}</span>
       <PlayerIdentity id={p.id} name={p.name} position={p.position} team={p.pro_team || null}
                       meta={lock ? <Badge value={lock.label} tone={lock.tone === "warn" ? "warn" : ""} /> : null} />
-      <span className={styles.swapProj}><OriginTag origin={p.projection_origin} ours={ours} /> {num(p.projection, 1)}</span>
+      <span className={styles.swapProj}>
+        <OriginTag origin={p.projection_origin} ours={ours} /> {num(p.projection, 1)}
+        <RangeLine range={rangeFor(ranges, p.id, p.projection_origin ?? null)} />
+      </span>
     </li>
   );
 }
 
-function Move({ move, ours }: { move: StartSitDecision; ours: boolean }) {
+function Move({ move, ours, ranges }: { move: StartSitDecision; ours: boolean; ranges: RangeMap }) {
   const badge = actionabilityBadge(move.actionability);
   // A plain 1-for-1 swap has an obvious pair to compare; a multi-player cascade does not.
   const pair = move.start_players.length === 1 && move.bench_players.length === 1 ? [move.start_players[0], move.bench_players[0]] : null;
@@ -282,11 +290,11 @@ function Move({ move, ours }: { move: StartSitDecision; ours: boolean }) {
       <div className={styles.swap}>
         <div className={styles.swapSide}>
           <p className={styles.swapLabel}><span className={styles.verb}>Start</span></p>
-          <ul className={styles.swapList}>{move.start_players.map((p) => <MovePlayer key={p.id} p={p} ours={ours} dir="in" />)}</ul>
+          <ul className={styles.swapList}>{move.start_players.map((p) => <MovePlayer key={p.id} p={p} ours={ours} dir="in" ranges={ranges} />)}</ul>
         </div>
         <div className={styles.swapSide}>
           <p className={styles.swapLabel}><span className={styles.over}>Bench</span></p>
-          <ul className={styles.swapList}>{move.bench_players.map((p) => <MovePlayer key={p.id} p={p} ours={ours} dir="out" />)}</ul>
+          <ul className={styles.swapList}>{move.bench_players.map((p) => <MovePlayer key={p.id} p={p} ours={ours} dir="out" ranges={ranges} />)}</ul>
         </div>
       </div>
       <div className={styles.moveMeta}>
@@ -325,7 +333,7 @@ function OppCell({ r }: { r: Pick<LineupPlayer, "opponent" | "is_home" | "lock_s
   );
 }
 
-function LineupTable({ recommended, actual, ours, projLabel }: { recommended: LineupPlayer[]; actual: LineupPlayer[]; ours: boolean; projLabel: string }) {
+function LineupTable({ recommended, actual, ours, projLabel, ranges }: { recommended: LineupPlayer[]; actual: LineupPlayer[]; ours: boolean; projLabel: string; ranges: RangeMap }) {
   const kept = new Set(recommended.map((r) => r.player_id).filter((id): id is number => id !== null));
   const leaving = actual.filter((a) => a.player_id !== null && !kept.has(a.player_id));
   // Who takes a leaving player's place is only unambiguous with one swap; otherwise link the leaving player alone.
@@ -362,7 +370,7 @@ function LineupTable({ recommended, actual, ours, projLabel }: { recommended: Li
                     : change.kind === "empty" ? <span className={styles.empty} title="No eligible player is on the roster for this slot">{change.text}</span>
                     : change.text}
                 </td>
-                <td className="num"><OriginTag origin={r.projection_origin} ours={ours} /> <b>{num(r.projected_points, 1)}</b></td>
+                <td className="num"><OriginTag origin={r.projection_origin} ours={ours} /> <b>{num(r.projected_points, 1)}</b><RangeLine range={rangeFor(ranges, r.player_id, r.projection_origin ?? null)} /></td>
               </tr>
             );
           })}
@@ -382,7 +390,7 @@ function LineupTable({ recommended, actual, ours, projLabel }: { recommended: Li
                   To bench{" "}
                   <CompareLink a={partner?.player_id ?? (a.player_id as number)} b={partner ? (a.player_id as number) : undefined} aName={partner?.name ?? a.name} bName={partner ? a.name : undefined} />
                 </td>
-                <td className="num"><OriginTag origin={a.projection_origin} ours={ours} /> {num(a.projected_points, 1)}</td>
+                <td className="num"><OriginTag origin={a.projection_origin} ours={ours} /> {num(a.projected_points, 1)}<RangeLine range={rangeFor(ranges, a.player_id, a.projection_origin ?? null)} /></td>
               </tr>
             ))}
           </tbody>
@@ -394,13 +402,13 @@ function LineupTable({ recommended, actual, ours, projLabel }: { recommended: Li
 
 // ------------------------------------------------------------------- bench --
 
-function BenchSection({ bench, recommended, sp, ours, projLabel }: { bench: BenchPlayer[]; recommended: LineupPlayer[]; sp: SP; ours: boolean; projLabel: string }) {
+function BenchSection({ bench, recommended, sp, ours, projLabel, ranges }: { bench: BenchPlayer[]; recommended: LineupPlayer[]; sp: SP; ours: boolean; projLabel: string; ranges: RangeMap }) {
   if (bench.length === 0) return null;
   const sort = parseSort(sp, BENCH_SORTS, BENCH_DEFAULT);
   const promoted = new Set(recommended.map((r) => r.player_id));
   const rows = sortRows(bench, (b) => (sort.key === "name" ? b.name : b.projected_points), sort.dir);
   return (
-    <Section title="Bench and reserves" actions={<span className="faint">{bench.length} players</span>} flush>
+    <Section title="Bench and reserves" actions={<span className="faint">{bench.length} players</span>} flush footnote={ranges.size > 0 ? RANGE_FOOTNOTE : undefined}>
       <div className="table-wrap">
         <table>
           <thead>
@@ -426,7 +434,7 @@ function BenchSection({ bench, recommended, sp, ours, projLabel }: { bench: Benc
                 </td>
                 <td><OppCell r={{ ...b, has_final_score: false, home_score: null, away_score: null }} /></td>
                 <td>{promoted.has(b.player_id) ? <span className={styles.promote}>Recommended starter</span> : "Bench reserve"}</td>
-                <td className="num"><OriginTag origin={b.projection_origin} ours={ours} /> {num(b.projected_points, 1)}</td>
+                <td className="num"><OriginTag origin={b.projection_origin} ours={ours} /> {num(b.projected_points, 1)}<RangeLine range={rangeFor(ranges, b.player_id, b.projection_origin ?? null)} /></td>
               </tr>
             ))}
           </tbody>

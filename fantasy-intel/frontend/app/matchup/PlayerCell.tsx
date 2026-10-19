@@ -1,8 +1,10 @@
 import { PlayerLink } from "@/components/PlayerLink";
 import { OriginTag } from "@/components/ProjectionNotice";
+import { RangeLine } from "@/components/RangeLine";
 import { Badge, Pos } from "@/components/ui";
 import { num } from "@/lib/format";
 import { hasDesignation, type PlayerRow } from "@/lib/matchup";
+import { rangeFor, type RangeMap } from "@/lib/projection-ranges";
 import styles from "./matchup.module.css";
 
 /** A player in a lineup: name, position, NFL team, bye and injury badges. `row` null = no slot on this side. */
@@ -25,7 +27,11 @@ export function PlayerCell({ row, align = "left", emptyReason = "No player is pr
   );
 }
 
-/** A points cell value: a measured zero renders as 0.0, an unknown as the muted dash. */
-export function Points({ value, why = "No ESPN projection" }: { value: number | null; why?: string }) {
-  return <>{num(value, 1, why)}</>;
+/** A points cell value: a measured zero renders as 0.0, an unknown as the muted dash. With `ranges`, the row's
+ * floor–ceiling range follows on its own line when the number is our model's projection. */
+export function Points({ value, why = "No ESPN projection", row, ranges }: {
+  value: number | null; why?: string; row?: PlayerRow | null; ranges?: RangeMap;
+}) {
+  const range = row && ranges ? rangeFor(ranges, row.id, row.origin ?? null) : null;
+  return <>{num(value, 1, why)}<RangeLine range={range} /></>;
 }

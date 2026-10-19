@@ -14,12 +14,13 @@ import { UsageCharts } from "./UsageCharts";
 import { hasInjuryDesignation, ownerBadge } from "./helpers";
 import styles from "./players.module.css";
 import type { Detail } from "./types";
+import type { PlayerRange } from "@/lib/projection-ranges";
 import { TeamLink } from "@/components/TeamLink";
 
 const SKILL = ["QB", "RB", "WR", "TE"];
 
 /** A player profile: who and what state, the key numbers, the verdict signals, then the evidence by week. */
-export function PlayerProfile({ d, q, cols }: { d: Detail; q: string; cols: "all" | "core" }) {
+export function PlayerProfile({ d, q, cols, range = null }: { d: Detail; q: string; cols: "all" | "core"; range?: PlayerRange | null }) {
   const p = d.player;
   const f = d.forward_projection;
   const hasUsage = d.weekly.length > 0 || d.score !== null;
@@ -53,7 +54,7 @@ export function PlayerProfile({ d, q, cols }: { d: Detail; q: string; cols: "all
       )}
 
       {/* Outlook first (what to expect), then the role behind it, then week-by-week evidence. */}
-      {f && <ForwardView f={f} />}
+      {f && <ForwardView f={f} range={range} />}
       {SKILL.includes(p.position ?? "") && <ScheduleLink id={p.espn_player_id} />}
 
       {d.score && <ValueAndTrends d={d} />}

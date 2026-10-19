@@ -54,7 +54,7 @@
 .pairRight { grid-template-columns: auto minmax(0, 1fr); padding: 6px 12px 6px 4px; }
 .pairRight .pairWho { order: 2; align-items: flex-end; text-align: right; }
 .pairWho { display: flex; flex-direction: column; min-width: 0; }
-.pairWho :global(.player-link) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 18px; font-weight: 600; }
+.pairWho :global(.player-link) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 18px; font-weight: 600; }
 .pairWho :global(.player-link) > span:first-child { display: none; }
 .pairMeta { display: flex; flex-wrap: wrap; gap: 2px 6px; color: var(--ink-faint); font-size: 11px; line-height: 15px; }
 .pairRight .pairMeta { justify-content: flex-end; }

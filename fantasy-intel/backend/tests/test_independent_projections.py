@@ -207,12 +207,12 @@ def test_live_uses_only_weeks_before_target(live):
 # ----------------------------------------------------------------------------- API
 
 TOP_KEYS = {"schema_version", "league", "week", "notes", "available", "unavailable_reason", "run", "model_status", "governance",
-            "players", "kicker_run"}
+            "players", "kicker_run", "ranges"}
 PLAYER_KEYS = {"espn_player_id", "gsis_id", "name", "position", "nfl_team", "opponent", "is_home", "fantasy_team_id",
                "injury_status", "independent", "espn", "comparison"}
 INDEP_KEYS = {"projected_points", "interval_80", "model", "model_version", "model_status", "start_sit_ready",
               "coverage_status", "games_used", "latest_usage", "missing_inputs", "flags", "explanation",
-              "is_espn_fallback", "expected_points", "participation", "pregame"}
+              "is_espn_fallback", "expected_points", "participation", "pregame", "range"}
 COMPARISON_KEYS = {"independent_minus_espn", "comparable", "comparability_note", "expected_minus_espn",
                    "expected_comparable", "evidence"}
 
@@ -434,7 +434,8 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
                "analytics/performance_report.py",   # the accuracy page's governance (constants only, no run read)
                "analytics/espn_benchmark.py",   # benchmarks the production model: its version constant only
                "analytics/projection_movers.py",   # movement between stored forecasts (reads runs, never calls weekly())
-               "analytics/rankings.py"}   # opt-in Rankings (source=independent): the switch's selection via forward_ours
+               "analytics/rankings.py",   # opt-in Rankings (source=independent): the switch's selection via forward_ours
+               "analytics/projection_ranges.py"}   # floor / ceiling ranges around the switch's run (select_run only)
     assert switch <= users <= switch | readers
     assert {f for f in users if re.search(r"\bweekly\(", (APP / f).read_text())} == switch
 
