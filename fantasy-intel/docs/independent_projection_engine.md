@@ -410,7 +410,7 @@ slightly worse on the injury-exit rows themselves. The held-out seasons were not
 `ifp-2.2.0` re-test (2026-10-19, `docs/research/injury_return_snap_trend.md`). This was a narrow fix for players
 *returning* from an injury exit: injury exit last game, and at least 1 team game missed since. It neutralized
 `snap_trend` and `opp_trend` and recomputed usage averages without the exit game. On that cohort it was clearly
-worse: horizon-0 MAE +0.199 [+0.081, +0.320] (n = 238, 2023-25), and horizons 1-3 +0.079 [+0.013, +0.151] (n = 935). Returning
+worse: horizon-0 MAE +0.199 [+0.081, +0.320] (n = 238, 2023-25), and horizons 1-3 +0.079 [-0.004, +0.158] (n = 935). Returning
 RBs are already over-projected (+0.79), so the candidate was dropped and production is unchanged.
 
 ## Weekly evidence routine and promotion tracker
