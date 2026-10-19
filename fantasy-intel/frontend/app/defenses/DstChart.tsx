@@ -1,4 +1,5 @@
 import { InteractiveScatter, type InteractivePoint } from "@/components/charts";
+import { EmptyState } from "@/components/ui";
 import { bubbleRadius } from "@/components/charts/interactive";
 import { disruption, median, takeaways, type DstPlayer } from "@/lib/defenses";
 import styles from "./defenses.module.css";
@@ -22,7 +23,14 @@ export function DstChart({ players, week, sel }: { players: DstPlayer[]; week: n
     const pts = p.independent.expected_points;
     return x === null || x === undefined || y === null || pts === null ? [] : [{ p, x, y, pts }];
   });
-  if (usable.length < 3) return null;
+  if (usable.length < 3) {
+    return (
+      <EmptyState title="No matchup map yet">
+        Only {usable.length} of {players.length} projected defenses have a betting line so far. The map fills in once lines
+        are posted; the table below still ranks every defense.
+      </EmptyState>
+    );
+  }
   // Sized from this week's lowest projection, not zero: D/ST projections sit in a narrow band, so a zero base
   // would draw every bubble nearly the same size.
   const minPts = Math.min(...usable.map((u) => u.pts));
