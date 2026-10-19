@@ -106,6 +106,28 @@ def with_training_handoff(sources: Sources, store: pl.DataFrame, roster_codes: p
     return store.drop([c for c in HANDOFF_FEATURES if c in store.columns]).join(extra, on=["key", "gsis_id"], how="left")
 
 
+def injury_inputs_hash(sources: Sources, season: int, week: int, roster_codes: pl.DataFrame | None = None) -> str:
+    """Digest of what the training handoff and the return-rate table read beyond the training store, for target week
+    W: injury reports, weekly rosters, GSIS roster codes and game results before W, plus the season's schedule (team,
+    week, opponent). Used by the learning cycle's training fingerprint, so a correction to any of them retrains
+    instead of reusing a cached artifact; week-W reports and later results do not enter the artifact and are left
+    out, so mid-week syncs do not force a retrain."""
+    k = key(season, week)
+    before = (pl.col("season") * 100 + pl.col("week")) < k
+    h = hashlib.sha256()
+    games = sources.games
+    parts = [("injuries", None if sources.injuries is None else sources.injuries.filter(before)),
+             ("rosters", None if sources.rosters is None else sources.rosters.filter(before)),
+             ("codes", None if roster_codes is None else roster_codes.filter(before)),
+             ("results", games.filter(before)),
+             ("schedule", games.filter(pl.col("season") == season).select("season", "week", "team", "opponent"))]
+    for name, df in parts:
+        h.update(name.encode())
+        if df is not None and df.height:
+            h.update(df.sort(sorted(df.columns)).write_csv().encode())
+    return h.hexdigest()[:16]
+
+
 def handoff_hash(store: pl.DataFrame) -> str:
     """Digest of the handoff columns of a training store (part of the artifact's data hash)."""
     cols = ["key", "gsis_id", *HANDOFF_FEATURES]

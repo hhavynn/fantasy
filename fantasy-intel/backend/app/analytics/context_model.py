@@ -301,6 +301,26 @@ def with_training_inputs(sources: Sources, store: pl.DataFrame, inputs: Inputs,
     return _round(out)
 
 
+def source_inputs_hash(inputs: Inputs, sources: Sources, season: int, week: int) -> str:
+    """Digest of what ifp-2.2.0's training reads beyond the training store and forecast_features.Sources, for target
+    week W: the context tables before W and the depth snapshots made before W's first kickoff (later rows never
+    enter the artifact, so a mid-week sync or a fresh depth download does not force a retrain)."""
+    k = key(season, week)
+    before = (pl.col("season") * 100 + pl.col("week")) < k
+    h = hashlib.sha256()
+    for name in ("starters", "qb_stats", "team_env", "def_targets"):
+        df = getattr(inputs.ctx, name)
+        h.update(name.encode())
+        if df is not None and df.height:
+            df = df.filter(before)
+            h.update(df.sort(sorted(df.columns)).write_csv().encode())
+    if inputs.depth is not None:
+        kick = _games(sources).filter((pl.col("season") == season) & (pl.col("week") == week))["kickoff"].min()
+        d = inputs.depth if kick is None else inputs.depth.filter(pl.col("dt") < kick)
+        h.update(b"depth" + d.sort(sorted(d.columns)).write_csv().encode())
+    return h.hexdigest()[:16]
+
+
 def inputs_hash(store: pl.DataFrame) -> str:
     """Digest of the component columns of a training store (part of the artifact's data hash)."""
     cols = ["key", "gsis_id", "s_start", *[c for c in ADDED_FLOATS if c in store.columns]]

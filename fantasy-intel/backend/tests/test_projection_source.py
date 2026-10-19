@@ -500,7 +500,7 @@ def test_the_run_a_view_reports_carries_its_horizon_and_experimental_note(league
     _, con, _ = league
     season = con.execute("SELECT max(season) FROM leagues").fetchone()[0]
     _fake_selection(monkeypatch, con, horizon=horizon, from_week=CURRENT_WEEK - horizon, week=CURRENT_WEEK)
-    note = f"rest-of-season forecast (horizon {horizon}): experimental, not validated beyond the next week"
+    note = f"rest-of-season forecast (horizon {horizon})"
     w = ps.weekly(con, season, CURRENT_WEEK, "independent")
     expected = {"forecast_horizon": horizon, "projected_from_week": CURRENT_WEEK - horizon,
                 "horizon_note": note if horizon else None}

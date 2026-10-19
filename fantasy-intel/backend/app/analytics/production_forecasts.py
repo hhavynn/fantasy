@@ -62,7 +62,7 @@ HASHED_META = META_INT + META_STR + META_JSON
 # above 0 contributes them to its digest, so every horizon-0 run (stored before or after this change) keeps the
 # digest it was sealed with and an unchanged rerun stays idempotent across the upgrade.
 HORIZON_META = ("forecast_horizon", "projected_from_week")
-HORIZON_NOTE = "rest-of-season forecast (horizon {k}): experimental, not validated beyond the next week"
+HORIZON_NOTE = "rest-of-season forecast (horizon {k})"
 # Marker of the flag a horizon >= 1 row carries for an ESPN OUT / DOUBTFUL / QUESTIONABLE status (next game only, not
 # applied to the target week). Informational: a horizon-k run's digest ignores it, so a status flip does not make
 # every future week's run "different" and store a new copy of all of them.

@@ -472,7 +472,7 @@ def stage_dst_shadow(args, conns: list, log_path: Path) -> dict:
         return {}
 
 
-def training_fingerprint(args, store, scoring) -> str:
+def training_fingerprint(args, store, scoring, src=None, codes=None, conns=None) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
     return _sha({"data": wl.store_hash(store, cols) if store.height else None,
@@ -481,17 +481,22 @@ def training_fingerprint(args, store, scoring) -> str:
                  "ifp_report": hashlib.sha256((Path(args.ifp_dir) / "heldout_report.json").read_bytes()).hexdigest(),
                  "production_config": im.config_hash(ch.ChallengerConfig.load()),
                  "context_config": cm.config_hash(ch.ChallengerConfig.load()),
-                 "context_inputs": context_inputs_fingerprint(args),
+                 "context_inputs": context_inputs_fingerprint(args, src, conns),
+                 # ifp-2.1.0 also reads injury reports, rosters, roster codes and the schedule (handoff, return table)
+                 "injury_inputs": None if src is None else im.injury_inputs_hash(src, args.season, args.week, codes),
                  "scoring": scoring.fingerprint, "versions": list(TRAINED_VERSIONS),
                  "target": [args.season, args.week]})
 
 
-def context_inputs_fingerprint(args) -> dict:
-    """What ifp-2.2.0 reads outside the training store: the depth snapshots and the frozen QB P(plays) map."""
-    depth = Path(args.out) / cli.DEPTH_DIR / "manifest.json"
+def context_inputs_fingerprint(args, src=None, conns=None) -> dict:
+    """What ifp-2.2.0 reads outside the training store: the context tables and depth snapshots before week W
+    (context_model.source_inputs_hash) and the frozen QB P(plays) map."""
     pmap, note = cm.load_participation_map(Path(args.ifp_dir))
-    return {"depth": json.loads(depth.read_text()).get("current") if depth.exists() else None,
-            "participation_map": (pmap or {}).get("sha256") or note}
+    out = {"participation_map": (pmap or {}).get("sha256") or note, "sources": None}
+    if src is not None and conns:
+        inputs = cm.load_inputs(list(conns), Path(args.out) / cli.DEPTH_DIR, args.season)
+        out["sources"] = cm.source_inputs_hash(inputs, src, args.season, args.week)
+    return out
 
 
 # ledger champion, ledger challenger, fallback (ifp-2.1.0), production (ifp-2.2.0)
@@ -503,7 +508,7 @@ def stage_train(args, src, scoring, live=None, hist=None) -> dict:
     rows and features, configuration, production selection and scoring). Then reuse its artifacts.
     `--force-retrain` always refits; content addressing keeps every earlier artifact."""
     store = wl.training_store(src, args.season, args.week)
-    fp = training_fingerprint(args, store, scoring)
+    fp = training_fingerprint(args, store, scoring, src, cli.roster_codes(live, hist), conns=(hist, live))
     state_path = Path(args.out) / "state" / f"train-s{args.season}w{args.week:02d}.json"
     state = None
     if state_path.exists():

@@ -477,7 +477,7 @@ def test_the_consumer_latest_run_takes_the_newest_run_of_any_horizon(world):
     old = write_run(con, {**old_meta, "created_at": datetime(2026, 9, 1)}, old_rows)
     run = pf.latest_run(con, 2026, W + 2, model_version=MODEL_VERSION, scoring_fingerprint=fp, artifact_id=None)
     assert run["run_id"] == old["run_id"] and run["horizon"] == 2 and run["forecast_horizon"] == 2
-    assert run["horizon_note"] == "rest-of-season forecast (horizon 2): experimental, not validated beyond the next week"
+    assert run["horizon_note"] == "rest-of-season forecast (horizon 2)"
     # the week arrives: a horizon-0 run made later is newer and wins
     new_meta, new_rows = project(con, played_through(src, W + 2), art, W + 2, from_week=W + 2)
     new = write_run(con, {**new_meta, "created_at": datetime(2026, 9, 3)}, new_rows)
