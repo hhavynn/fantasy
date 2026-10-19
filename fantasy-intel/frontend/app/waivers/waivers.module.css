@@ -1,7 +1,7 @@
 /* Waivers: filters, top-claims band, decision table. Tokens only; see globals.css. */
 
 /* ---------- Filters ---------- */
-.filters { display: flex; flex-direction: column; gap: 12px; margin-top: -4px; min-width: 0; }
+.filters { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 /* Common filters stay visible in one quiet bar; the active ones are filled and a reset appears beside them. */
 .chipRows { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .chipRows :global(.filters) { margin-bottom: 0; min-width: 0; max-width: 100%; }
@@ -17,9 +17,7 @@
 }
 
 /* ---------- Top claims ---------- */
-.band { min-width: 0; }
-.bandTitle { margin: 0 0 4px; font-size: 16px; line-height: 22px; }
-.bandNote { margin: 0 0 12px; color: var(--ink-muted); font-size: 13px; max-width: 80ch; }
+.band { display: grid; gap: 12px; min-width: 0; }
 .claims { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
 .claim { min-width: 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
 .claim[data-actionable] { border-top: 3px solid var(--positive); }

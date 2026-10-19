@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CompareLink } from "@/components/CompareLink";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
-import { Badge, Notice, PageHeader, Pos, Rating, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
+import { Badge, Glossary, Notice, PageHeader, Pos, Rating, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
 import { label, num, pct, signed } from "@/lib/format";
 import { RATING_CAVEAT, ratingFor } from "@/lib/ratings";
 import { metricLabel, tidyReason } from "@/lib/reason-text";
@@ -53,17 +53,19 @@ export function PlayerProfile({ d, q, cols, range = null }: { d: Detail; q: stri
         </Section>
       )}
 
+      {/* Outlook first (what to expect), then the role behind it, then week-by-week evidence. */}
+      {f && <ForwardView f={f} range={range} />}
+      {SKILL.includes(p.position ?? "") && <ScheduleLink id={p.espn_player_id} />}
+
       {d.score && <ValueAndTrends d={d} />}
 
       <UsageCharts d={d} />
-
-      {f && <ForwardView f={f} range={range} />}
-      {SKILL.includes(p.position ?? "") && <ScheduleLink id={p.espn_player_id} />}
 
       {d.context && <ContextSection d={d} />}
       {d.route_data && <RouteSection r={d.route_data} />}
 
       <GameLog d={d} all={cols === "all"} id={String(p.espn_player_id)} />
+      <Glossary terms={["PPR/g", "xFP", "FPOE", "Snap share", "Target share", "Backfield share", "aDOT", "ROS", "Value rating", "—"]} />
     </div>
   );
 }
@@ -77,7 +79,7 @@ function ProfileHeader({ d, q }: { d: Detail; q: string }) {
   const report = latestInj?.report_status;
   return (
     <PageHeader
-      eyebrow="Player profile"
+      eyebrow="Players · Profile"
       title={<span className={styles.titleLine}><PlayerPhoto id={p.espn_player_id} name={p.full_name} size={64} />{p.full_name}</span>}
       meta={
         <span className={styles.metaLine}>

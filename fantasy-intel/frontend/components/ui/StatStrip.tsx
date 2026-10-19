@@ -4,9 +4,12 @@ import styles from "./StatStrip.module.css";
 
 export type StatTone = "positive" | "negative" | "caution";
 
-/** One surface holding a row of `Stat`s with hairline dividers; wraps to extra rows on narrow screens. */
-export function StatStrip({ children, className }: { children: ReactNode; className?: string }) {
-  return <dl className={cx(styles.strip, className)}>{children}</dl>;
+/**
+ * One surface holding a row of `Stat`s with hairline dividers; wraps to extra rows on narrow screens.
+ * `compact` is for supporting context under a page's main answer: smaller numbers, and three per row on phones.
+ */
+export function StatStrip({ children, className, compact = false }: { children: ReactNode; className?: string; compact?: boolean }) {
+  return <dl className={cx(styles.strip, compact && styles.compact, className)}>{children}</dl>;
 }
 
 /**

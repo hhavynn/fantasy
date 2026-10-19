@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
-import { EmptyState, Notice, PageHeader, Section } from "@/components/ui";
+import { EmptyState, Glossary, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import {
   type CompareResponse, type ParamError, type Side,
@@ -21,7 +21,7 @@ export const metadata = { title: "Compare players" };
 
 const TITLE = "Compare players";
 const META = "Two players side by side, from projections, usage and scores the app already stores. Nothing here is a forecast of its own.";
-const SWITCH_HINT = "Switch between ESPN and Ours with the Proj switch in the top bar (in the menu on phones).";
+const SWITCH_HINT = "Switch between ESPN and Ours with the Proj switch in the top bar (in the menu on tablets and phones).";
 
 const pick = (id: number | null): PickerSelection | null => (id === null ? null : { id, name: null, position: null, team: null });
 
@@ -33,7 +33,7 @@ function fromCard(r: CompareResponse, side: Side): PickerSelection {
 function Shell({ a, b, meta, children }: { a: PickerSelection | null; b: PickerSelection | null; meta?: ReactNode; children?: ReactNode }) {
   return (
     <div className="stack">
-      <PageHeader eyebrow="Player research" title={TITLE} meta={meta ?? META}>
+      <PageHeader eyebrow="Players" title={TITLE} meta={meta ?? META}>
         <ComparePicker a={a} b={b} />
       </PageHeader>
       {children}
@@ -183,6 +183,7 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
       <Section title="Statistical advantages" subtitle="Every measure in one compact table. An edge appears only when the gap passes a materiality threshold." flush>
         <AdvantagesTable r={r} />
       </Section>
+      <Glossary terms={["Projected points", "PPR/g", "xFP", "Snap share", "Target share", "ROS", "Value rating", "—"]} />
     </Shell>
   );
 }

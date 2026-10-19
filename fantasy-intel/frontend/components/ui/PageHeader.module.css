@@ -19,6 +19,7 @@
 .extra { flex: 1 0 100%; min-width: 0; max-width: 100%; }
 
 @media (max-width: 720px) {
-  .title { font-size: 30px; line-height: 32px; }
+  .header { gap: 12px; }
   .actions { flex: 1 0 100%; }
+  .meta { font-size: 13px; }
 }

@@ -10,13 +10,15 @@ import styles from "./PlayerIdentity.module.css";
  * of supporting metadata (position, NFL team, then anything passed in `meta`, e.g. an injury badge).
  * The name stays the scan anchor; metadata is quieter. `size="lg"` is for cards.
  */
-export function PlayerIdentity({ id, name, position, team, meta, size = "md", link = true, className }: {
+export function PlayerIdentity({ id, name, position, team, meta, lead, size = "md", link = true, className }: {
   id: number;
   name: string | null;
   position?: string | null;
   /** NFL team abbreviation; `null` shows "FA". Omit to leave the team out. */
   team?: string | null;
   meta?: ReactNode;
+  /** A short tag before the photo, such as the lineup slot, so it stays with the name in a pinned column. */
+  lead?: ReactNode;
   size?: "md" | "lg";
   link?: boolean;
   className?: string;
@@ -25,6 +27,7 @@ export function PlayerIdentity({ id, name, position, team, meta, size = "md", li
   const showTeam = team !== undefined;
   return (
     <span className={cx("player-identity", styles.identity, size === "lg" && styles.lg, className)}>
+      {lead ? <span className={styles.lead}>{lead}</span> : null}
       <PlayerPhoto id={id} name={name} size={size === "lg" ? 40 : 30} className={styles.photo} />
       <span className={styles.text}>
         {link

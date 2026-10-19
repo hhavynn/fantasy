@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
-import { Method, Notice, PageHeader, Section, Tabs } from "@/components/ui";
+import {
+  Glossary, Method, Notice, PageHeader, Section, Tabs,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { parseSort, sortRows, type SearchParams } from "@/lib/sort";
@@ -107,7 +109,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
   return (
     <div className="stack">
       <PageHeader
-        eyebrow="My team"
+        eyebrow="Waivers"
         title="Waivers"
         meta={<>Moves for {perspective ? <b>{perspective.name}</b> : "the default team"} · computed {when(computed_at)}</>}
         actions={<TeamPerspective path="/waivers" sp={sp} current={perspective?.team_id ?? null} />}
@@ -119,9 +121,18 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         </Notice>
       )}
 
+      {band.ok
+        ? <TopClaims top={top} position={pos} />
+        : <Notice tone="caution" title="Top claims are unavailable">{band.error}</Notice>}
+
       <div className={styles.filters}>
         <Tabs label="Waiver decision views" items={viewItems} current={currentView} />
-        <div className={styles.chipRows}>
+        <details className="filter-box">
+          <summary>
+            <span className="filter-box-title">Filters</span>
+            <span className="filter-box-summary">{pos === "ALL" ? "All positions" : pos} · {rec === "ALL" ? "Any recommendation" : REC_LABEL[rec]}</span>
+          </summary>
+          <div className={styles.chipRows}>
           <nav className="filters" aria-label="Player positions">
             <span className={styles.chipLabel}>Position</span>
             {POSITIONS.map((p) => (
@@ -142,12 +153,9 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
               <Link className="chip reset" href={chipHref({ pos: null, rec: null })}>Reset filters</Link>
             </p>
           )}
-        </div>
+          </div>
+        </details>
       </div>
-
-      {band.ok
-        ? <TopClaims top={top} position={pos} />
-        : <Notice tone="caution" title="Top claims are unavailable">{band.error}</Notice>}
 
       <Section
         title={<>{VIEWS[view]} <span className={styles.count}>{total} {total === 1 ? "player" : "players"}</span></>}
@@ -171,6 +179,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         </nav>
       )}
 
+      <Glossary terms={["Waiver score", "Value rating", "xFP", "ROS", "FAAB", "—"]} />
       <Method title="How waiver advice is calculated">
         <div className={styles.method}>
           <p>

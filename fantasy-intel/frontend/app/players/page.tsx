@@ -61,7 +61,7 @@ export default async function PlayersPage({ searchParams }: PageProps<"/players"
   return (
     <div className="stack">
       <PageHeader
-        eyebrow="Player research"
+        eyebrow="Players"
         title="Players"
         meta="Usage beneath the box score: snaps, shares, expected points, red-zone work."
       >

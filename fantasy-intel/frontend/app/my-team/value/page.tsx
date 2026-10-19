@@ -10,6 +10,7 @@ import {
   TradePreview, ValueMethod, WaiverMoves, WeeklyChart,
 } from "./sections";
 import styles from "./value.module.css";
+import { TeamPerspective } from "@/components/TeamPerspective";
 import { TeamLink } from "@/components/TeamLink";
 
 export const metadata = { title: "Team value" };
@@ -68,17 +69,7 @@ export default async function TeamValuePage({ searchParams }: PageProps<"/my-tea
         title="My team value"
         meta={`${d.team.name}${d.team.is_mine ? " (default team)" : ""} · ${PHASE_TEXT[phase]}${weeks.length ? ` · weeks ${weeks[0]}–${weeks[weeks.length - 1]}` : ""}`}
         actions={
-          <form action={PATH} className={styles.picker}>
-            {phase !== "all" && <input type="hidden" name="phase" value={phase} />}
-            {!trades && <input type="hidden" name="trades" value="off" />}
-            <label>
-              <span>Team</span>
-              <select name="team" defaultValue={d.team.team_id}>
-                {d.teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}{t.is_mine ? " (default)" : ""}</option>)}
-              </select>
-            </label>
-            <button type="submit">Show</button>
-          </form>
+          <TeamPerspective path={PATH} sp={sp} current={d.team.team_id} />
         }
       >
         <div className={styles.subhead}>
