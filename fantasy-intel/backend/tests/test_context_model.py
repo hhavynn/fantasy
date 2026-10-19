@@ -131,7 +131,9 @@ def test_training_artifact_records_its_components_and_start_model(trained):
     c = art.config[cm.CONFIG_KEY]
     assert c["base"] == "ifp-2.1.0" and c["components"] == {p: list(cm.SHIPPED[p]) for p in ps.POSITIONS}
     assert c["excluded"] == cm.EXCLUDED and c["start_model"]["version"] == "qbstart-0.1.0"
-    assert c["participation_map"]["sha256"] == "x" and c["depth_note"] == "no depth snapshot directory"
+    # the QB P(plays) map is stored only while the component ships (the guard left it out)
+    assert (c["participation_map"] or {}).get("sha256") == ("x" if cm.QB_PARTICIPATION in cm.SHIPPED["QB"] else None)
+    assert c["depth_note"] == "no depth snapshot directory"
     if "QB" in art.models and cm.uses_scenarios("QB"):
         assert set(c["fallback_models"]) == {"QB"} and "s_start" not in c["fallback_models"]["QB"]["features"]
     prov = art.config["provenance"]
@@ -183,7 +185,11 @@ def test_horizon_zero_run_reads_every_component_and_calibrates_qbs(trained, monk
 
     monkeypatch.setattr(cm, "augment", spy)
     part = participation_artifact()
-    meta, rows = build_live(con, src, art, 2026, W, participation=part, artifact_sha256="a" * 64,
+    c = art.config[cm.CONFIG_KEY]
+    forced = replace(art, config={**art.config, cm.CONFIG_KEY: {          # the map's code path, whatever SHIPPED says
+        **c, "participation_map": {**QB_MAP, "sha256": "x"},
+        "components": {**c["components"], "QB": [*c["components"]["QB"], cm.QB_PARTICIPATION]}}})
+    meta, rows = build_live(con, src, forced, 2026, W, participation=part, artifact_sha256="a" * 64,
                             context_inputs=inputs)
     assert {"pi_start", "s_start", cm.ROLE_FEATURE, cm.DEPTH_FEATURE, "qb_epa_delta"} <= seen["cols"]
     assert set(im.HANDOFF_FEATURES) <= seen["cols"]                       # ifp-2.1.0's handoff is still read
@@ -192,7 +198,7 @@ def test_horizon_zero_run_reads_every_component_and_calibrates_qbs(trained, monk
     assert projected and all(r["model"] == "ifp22_context_ridge" for r in projected)
     for r in projected:
         q = r["participation"] or {}
-        if r["position"] == "QB" and cm.QB_PARTICIPATION in cm.SHIPPED["QB"]:
+        if r["position"] == "QB" and q.get("p_play") is not None:
             assert q["calibration"] == cm.CAL_VERSION and r["p_play"] == round(cm.calibrate(QB_MAP, q["uncalibrated_p_play"]), 4)
             assert r["expected_points"] == round(r["p_play"] * r["projected_points"], 2)
         else:
@@ -201,6 +207,10 @@ def test_horizon_zero_run_reads_every_component_and_calibrates_qbs(trained, monk
 
 def test_rest_of_season_rows_keep_the_participation_models_p_play(trained):
     con, src, inputs, art = trained
+    c = art.config[cm.CONFIG_KEY]
+    art = replace(art, config={**art.config, cm.CONFIG_KEY: {
+        **c, "participation_map": {**QB_MAP, "sha256": "x"},
+        "components": {**c["components"], "QB": [*c["components"]["QB"], cm.QB_PARTICIPATION]}}})
     _, rows = build_live(con, src, art, 2026, 7, participation=participation_artifact(), artifact_sha256="a" * 64,
                          projected_from_week=W, context_inputs=inputs)
     assert all("calibration" not in (r["participation"] or {}) for r in rows)
@@ -216,6 +226,7 @@ def test_calibration_never_touches_return_rate_rows():
             {"position": "RB", "coverage_status": "projected", "p_play": 0.5, "projected_points": 20.0,
              "participation": {"p_play": 0.5, "model_version": "ipm-1.0.0"}}]
     assert cm.calibrate_rows(art, rows, 0) == 1
+    assert cm.QB_PARTICIPATION in cm.GUARD_DROPPED["QB"] and cm.QB_PARTICIPATION not in cm.SHIPPED["QB"]
     assert rows[0]["p_play"] == 0.5 and rows[2]["p_play"] == 0.5 and rows[1]["p_play"] == 0.4
     assert rows[1]["expected_points"] == 8.0 and rows[1]["participation"]["uncalibrated_p_play"] == 0.5
     assert cm.calibrate_rows(art, rows, 1) == 0

@@ -164,7 +164,7 @@ def governance(served_version: str | None) -> dict:
             "served_version": served_version, "is_fallback": served_version == FALLBACK_VERSION,
             "production_approval": GOVERNANCE[MODEL_VERSION]["approval"],
             "espn_superiority_established": False, "start_sit_ready": False,
-            "production_evidence": "Historical backtest of every component on 2023-26 (docs/research/"
+            "production_evidence": "Historical research: backtest of every component on 2023-26 (docs/research/"
                                    "ifp22_promotion.md); accuracy is tracked weekly from frozen pregame forecasts.",
             "status_note": g.get("status_note")}
 

@@ -50,10 +50,11 @@ def with_table(art, rate=0.25, n=100):
 
 
 def test_versions_are_wired_consistently():
-    assert ps.MODEL_VERSION == im.MODEL_VERSION == "ifp-2.1.0"
-    assert ps.FALLBACK_VERSION == im.BASE_VERSION == ch.CHALLENGER_VERSION == "ifp-2.0.0"
+    """ifp-2.1.0 is the fallback since ifp-2.2.0 (tests/test_context_model.py); ifp-2.0.0 is retired, still gated."""
+    assert ps.FALLBACK_VERSION == im.MODEL_VERSION == "ifp-2.1.0"
+    assert ps.RETIRED_WEEKLY_VERSION == im.BASE_VERSION == ch.CHALLENGER_VERSION == "ifp-2.0.0"
     assert ps.CONSUMER_VERSIONS == (ps.MODEL_VERSION, ps.FALLBACK_VERSION)
-    assert production_pin.REGISTERED_MODEL_VERSIONS == ps.CONSUMER_VERSIONS
+    assert production_pin.REGISTERED_MODEL_VERSIONS == (*ps.CONSUMER_VERSIONS, ps.RETIRED_WEEKLY_VERSION)
     assert production_pin.REGISTERED_MODEL_VERSION == ps.MODEL_VERSION
     assert production_pin.PINNED_MODEL_VERSION == ps.RETIRED_VERSION == "ifp-1.0.0"
     assert im.WORKLOAD_VERSION == iw.WORKLOAD_VERSION == "iwh-0.1.1"
@@ -65,7 +66,7 @@ def test_governance_notes_are_short_and_neutral():
         assert len(note) < 120 and "not shown to be better" not in note
     assert "not shown to be better" not in ps.NOTE and ps.MODEL_VERSION in ps.NOTE and ps.FALLBACK_VERSION in ps.NOTE
     g = ps.governance(ps.MODEL_VERSION)
-    assert g["production_version"] == "ifp-2.1.0" and g["fallback_version"] == "ifp-2.0.0" and not g["is_fallback"]
+    assert g["production_version"] == "ifp-2.2.0" and g["fallback_version"] == "ifp-2.1.0" and not g["is_fallback"]
     assert g["start_sit_ready"] is False and g["production_approval"] == "owner_override"
     assert ps.governance(ps.FALLBACK_VERSION)["is_fallback"] is True
 
@@ -276,23 +277,25 @@ def test_earlier_model_runs_are_unchanged_by_the_new_code(trained):
     assert all(x["coverage_status"] != "projected" for x in rows)      # no models: nothing projected, nothing crashed
 
 
-def test_switch_serves_ifp_2_1_and_falls_back_to_ifp_2_0(trained):
+def test_switch_serves_ifp_2_1_as_the_fallback_and_never_the_retired_ifp_2_0(trained):
+    """Since ifp-2.2.0, an ifp-2.1.0 run is the labeled fallback for a week without an ifp-2.2.0 run, and a run of the
+    retired ifp-2.0.0 is never served (the ifp-2.2.0 side is in tests/test_context_model.py)."""
     con, src, art = trained
     part = participation_artifact()
-    for v, sha in ((ps.FALLBACK_VERSION, "e"), (ps.MODEL_VERSION, "f")):
+    for v, sha in ((ps.RETIRED_WEEKLY_VERSION, "e"), (ps.FALLBACK_VERSION, "f")):
         register_approved_artifact(con, model_version=v, artifact_sha256=sha * 64, target_season=2026, target_week=W,
                                    training_cutoff_key=202605, source="learning_cycle")
-    meta0, rows0 = build_live(con, src, replace(art, version=ps.FALLBACK_VERSION), 2026, W, participation=part,
+    meta0, rows0 = build_live(con, src, replace(art, version=ps.RETIRED_WEEKLY_VERSION), 2026, W, participation=part,
                               artifact_sha256="e" * 64)
     write_run(con, meta0, rows0)
     w = ps.weekly(con, 2026, W, "independent")
-    assert w["run"]["model_version"] == ps.FALLBACK_VERSION and w["governance"]["is_fallback"]
-    assert ps.FALLBACK_VERSION in w["reason"] and ps.MODEL_VERSION in w["reason"]
+    assert w["available"] is False and w["run"] is None                  # ifp-2.0.0 is no longer a consumer version
     meta1, rows1 = build_live(con, src, art, 2026, W, participation=part, artifact_sha256="f" * 64)
-    meta1["created_at"] = meta0["created_at"] - timedelta(minutes=5)       # older than the fallback run: still wins
+    meta1["created_at"] = meta0["created_at"] - timedelta(minutes=5)
     write_run(con, meta1, rows1)
     w = ps.weekly(con, 2026, W, "independent")
-    assert w["run"]["model_version"] == ps.MODEL_VERSION and w["reason"] is None and not w["governance"]["is_fallback"]
+    assert w["run"]["model_version"] == ps.FALLBACK_VERSION == im.MODEL_VERSION and w["governance"]["is_fallback"]
+    assert ps.FALLBACK_VERSION in w["reason"] and ps.MODEL_VERSION in w["reason"]
     assert w["model_status"] == {p: ps.OVERRIDE_STATUS for p in ps.POSITIONS}
     # a K row is not in the skill run: it stays on ESPN for the kicker overlay to replace
     assert all(o in (ps.OURS, ps.OURS_ZERO, ps.ESPN) for o in w["origin"].values())
