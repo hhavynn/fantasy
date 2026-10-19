@@ -1134,7 +1134,7 @@ def test_dst_project_runs_after_kicker_and_its_failure_never_fails_the_cycle(lc,
     assert ("dst_project", "failed_nonfatal") in _stages(rep) and calls == [rep["target_week"]]
     assert any("D/ST projection failed (ESPN's D/ST numbers stay" in w for w in rep["warnings"])
     con = connect(env / "live.duckdb")
-    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.1.0'"
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.2.0'"
                        ).fetchone()[0] == 1
     con.close()
 
