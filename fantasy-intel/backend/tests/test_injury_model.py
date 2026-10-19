@@ -306,3 +306,42 @@ def test_describe_is_json_safe(trained):
     json.dumps(d)
     assert d["version"] == im.MODEL_VERSION and d["return_rates"]["1"]["rate"] == 0.25
     assert d["features"]["RB"] == list(im.HANDOFF_FEATURES) and d["features"]["QB"] == []
+
+
+# ----------------------------------------------------------------------------- Codex review on #123
+
+
+def _rates(by_h: dict[int, float]) -> dict:
+    return {("ALL", "ALL", h): {"rate": r, "n": 100} for h, r in by_h.items()}
+
+
+def test_handoff_return_scenarios_use_team_games_not_weeks():
+    """STAR is Out at the week-6 cutoff and AAA has a bye in week 7: week 8 is AAA's FIRST game after the cutoff,
+    so his return is weighted with the h = 1 cell, not h = 2 (target - cutoff weeks)."""
+    src = tiw.world(range(1, 6), injuries=tiw.report(6, tiw.inj(tiw.STAR, "Out", 6)), byes={"AAA": 7}, last_week=10)
+    sure_back_h1 = _rates({1: 1.0, 2: 0.0, 3: 0.0})
+    sure_back_all = _rates({1: 1.0, 2: 1.0, 3: 1.0})
+    never_back = _rates({1: 0.0, 2: 0.0, 3: 0.0})
+    share = lambda rates: tiw.rows_by_id(im.handoff(src, tiw.S, 8, 6, return_rates=rates))[tiw.BACKUP]["ho_car_share"]
+    assert share(sure_back_h1) == pytest.approx(share(sure_back_all))       # only the h = 1 cell is read
+    assert share(sure_back_h1) < share(never_back)                         # and it matters
+
+
+def test_return_rates_past_four_games_are_read_from_their_own_cells():
+    rates = _rates({h: h / 10 for h in range(1, 9)})
+    row = {"position": "RB", "missed_team_games": 0}
+    assert iw._return_rate(rates, row, 6) == pytest.approx(0.6)            # not the h = 4 cell
+    assert iw._return_rate(rates, row, 12) == pytest.approx(0.8)           # capped at the table's last horizon
+    assert iw._return_rate(_rates({1: 0.3, 2: 0.4, 3: 0.5, 4: 0.6}), row, 7) == pytest.approx(0.6)   # research tables
+
+
+def test_training_fingerprint_inputs_cover_injury_history_but_not_the_target_week():
+    base = tiw.world(range(1, 6), injuries=tiw.report(4, tiw.inj(tiw.STAR, "Out", 4)))
+    fp = im.injury_inputs_hash(base, tiw.S, 6)
+    corrected = tiw.world(range(1, 6), injuries=tiw.report(4, tiw.inj(tiw.STAR, "Questionable", 4)))
+    assert im.injury_inputs_hash(corrected, tiw.S, 6) != fp                 # an earlier report changed: retrain
+    codes = pl.DataFrame({"season": [tiw.S], "week": [3], "gsis_id": [tiw.STAR], "abbr": ["R01"]})
+    assert im.injury_inputs_hash(base, tiw.S, 6, codes) != fp               # a roster-code correction: retrain
+    midweek = tiw.world(range(1, 6), injuries=[*tiw.report(4, tiw.inj(tiw.STAR, "Out", 4)),
+                                               *tiw.report(6, tiw.inj(tiw.WR1, "Questionable", 6))])
+    assert im.injury_inputs_hash(midweek, tiw.S, 6) == fp                   # the week-6 report never enters W=6's fit

@@ -455,7 +455,7 @@ def stage_dst_shadow(args, conns: list, log_path: Path) -> dict:
         return {}
 
 
-def training_fingerprint(args, store, scoring) -> str:
+def training_fingerprint(args, store, scoring, src=None, codes=None) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
     return _sha({"data": wl.store_hash(store, cols) if store.height else None,
@@ -463,6 +463,8 @@ def training_fingerprint(args, store, scoring) -> str:
                  "ifp_selection": hashlib.sha256((Path(args.ifp_dir) / "selection.json").read_bytes()).hexdigest(),
                  "ifp_report": hashlib.sha256((Path(args.ifp_dir) / "heldout_report.json").read_bytes()).hexdigest(),
                  "production_config": im.config_hash(ch.ChallengerConfig.load()),
+                 # ifp-2.1.0 also reads injury reports, rosters, roster codes and the schedule (handoff, return table)
+                 "injury_inputs": None if src is None else im.injury_inputs_hash(src, args.season, args.week, codes),
                  "scoring": scoring.fingerprint, "versions": list(TRAINED_VERSIONS),
                  "target": [args.season, args.week]})
 
@@ -475,7 +477,7 @@ def stage_train(args, src, scoring, live=None, hist=None) -> dict:
     rows and features, configuration, production selection and scoring). Then reuse its artifacts.
     `--force-retrain` always refits; content addressing keeps every earlier artifact."""
     store = wl.training_store(src, args.season, args.week)
-    fp = training_fingerprint(args, store, scoring)
+    fp = training_fingerprint(args, store, scoring, src, cli.roster_codes(live, hist))
     state_path = Path(args.out) / "state" / f"train-s{args.season}w{args.week:02d}.json"
     state = None
     if state_path.exists():

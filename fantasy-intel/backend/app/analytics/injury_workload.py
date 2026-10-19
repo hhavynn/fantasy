@@ -624,6 +624,9 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
     for team, grp in tl.group_by("team"):
         team = team[0]
         members = grp["gsis_id"].to_list()
+        # the return-rate table's h: this team's scheduled games after the cutoff through the target week (byes
+        # skipped), not target - cutoff weeks
+        team_h = max(1, sum(1 for w in cut.schedule.get(team, []) if cut.cutoff < w <= target_week))
         rush_pg, tgt_pg = vol.get(team, vol["__league__"])
         claims = {"car": {}, "tgt": {}, "gl": {}}
         part = {}
@@ -680,7 +683,7 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
                 fixed_out.discard(g)
                 scenarios = [((), 1.0)]
                 for m in mix:
-                    p = _return_rate(return_rates, info[m], horizon)
+                    p = _return_rate(return_rates, info[m], team_h)
                     scenarios = [(s + ((m, True),), w * p) for s, w in scenarios] + \
                                 [(s + ((m, False),), w * (1 - p)) for s, w in scenarios]
                 scen_n = max(scen_n, len(mix))
@@ -770,8 +773,8 @@ def _return_rate(rates: dict | None, row: dict, horizon: int) -> float:
     """Empirical P(appears in the team's h-th game after the cutoff | injured at the cutoff), by position and
     games already missed; pooled over positions, then over buckets, when a cell is thin. Never a fixed guess:
     without a fitted table the caller keeps the player out (status quo) instead."""
-    hit = return_rate_cell(rates, row.get("position"), row.get("missed_team_games"), min(max(horizon, 1), 4))
-    return hit[1]["rate"] if hit else 0.0
+    hit = return_rate_cell(rates, row.get("position"), row.get("missed_team_games"), horizon)   # capped at the
+    return hit[1]["rate"] if hit else 0.0                                                     # table's last h
 
 
 def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...] | None = None,
