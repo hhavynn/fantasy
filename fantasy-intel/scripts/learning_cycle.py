@@ -342,7 +342,8 @@ DST_PROJECT_TIMEOUT_S = 20 * 60      # a possible ESPN fetch, the artifact fit (
 
 
 def stage_dst_project(args, log_path: Path) -> dict:
-    """Production D/ST model (dfp-r1, scripts/dst_projections.py): fit and approve the season's artifact once, then
+    """Production D/ST model (dfp-r1, scripts/dst_projections.py): `ensure` the artifact for the league's current D/ST
+    scoring (fitted and approved once per season and scoring), then
     store the target week's verified D/ST run in the live DB (one week only: later weeks keep ESPN's D/ST numbers).
     Called after `project` and `kicker` (the read connections are closed). Never fails the cycle: run_cycle turns an
     error into a warning, and a week without a verified run keeps ESPN's D/ST numbers."""
@@ -367,14 +368,9 @@ def stage_dst_project(args, log_path: Path) -> dict:
         except ValueError:
             return {}
 
-    dst_dir = Path(args.dst_dir) if getattr(args, "dst_dir", None) is not None else cli._path("DST_RESEARCH_DIR",
-                                                                                              "data/models/dst")
-    if not (dst_dir / f"dfp-r1_{args.season}.json").exists():
-        fit = run(["fit", "--register"])
-        out["fit"] = {k: fit.get(k) for k in ("artifact", "sha256", "registered")}
-    else:
-        reg = run(["register"])       # approving an approved artifact again is a no-op
-        out["register"] = {k: reg.get(k) for k in ("artifact", "sha256", "registered")}
+    # the artifact for the league's current D/ST scoring: fitted once (per season and scoring), else re-approved (no-op)
+    art = run(["ensure"])
+    out["artifact"] = {k: art.get(k) for k in ("artifact", "sha256", "registered", "fitted")}
     pj = run(["project", "--week", str(args.week)])
     out["runs"] = [{k: r.get(k) for k in ("week", "run_id", "created", "row_count", "coverage")} for r in pj.get("runs", [])]
     return out

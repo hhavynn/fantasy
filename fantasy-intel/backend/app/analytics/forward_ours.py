@@ -31,6 +31,7 @@ from . import projection_source as ps
 
 PRIMARY = ps.MODEL_VERSION
 KICKER_VERSION = "kfp-1.0.0"       # copy of kicker_store.MODEL_VERSION (tested)
+DST_VERSION = "dfp-r1"             # copy of dst_store.MODEL_VERSION (tested)
 KICKER_HORIZON_NOTE = "rest-of-season kicker forecast"
 OURS_ORIGINS = (ps.OURS, ps.OURS_ZERO)
 BYE = "bye"
@@ -257,9 +258,16 @@ def ours_forward(con, season: int, pid: int, weeks: list[dict], *, source: str) 
         return _empty(f"No {PRIMARY} projection run is stored for any remaining regular-season week yet "
                       "(they are written by the rest-of-season learning cycle), so ESPN projections are shown.",
                       last_regular)
+    if any((e["model_version"] or "").startswith("dfp-") for e in entries):
+        # a D/ST: dfp-r1 projects one week, so its other weeks are ESPN's numbers, not the skill-position run's
+        for e in entries:
+            if e["origin"] == ps.ESPN:
+                e.update(run_id=None, model_version=None, run_created_at=None)
     versions = sorted({e["model_version"] for e in entries if e["model_version"]})
-    # a kicker's weeks come from the kicker model: it is that player's primary model (never mixed with ifp in a total)
-    primary = KICKER_VERSION if versions and all(v.startswith("kfp-") for v in versions) else PRIMARY
+    # a kicker's (D/ST's) weeks come from the kicker (D/ST) model: it is that player's primary model (never mixed with
+    # ifp in a total)
+    primary = (KICKER_VERSION if versions and all(v.startswith("kfp-") for v in versions)
+               else DST_VERSION if versions and all(v.startswith("dfp-") for v in versions) else PRIMARY)
     required = [e for e in entries if e["on_bye"] is not True]
     counted = [e for e in required if e["origin"] in OURS_ORIGINS and e["model_version"] == primary]
     fallback = [e["week"] for e in entries if e["origin"] == ps.ESPN]

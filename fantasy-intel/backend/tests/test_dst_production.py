@@ -186,6 +186,14 @@ def test_the_forward_view_shows_our_dst_for_the_projected_week(stored):  # noqa:
     got = fo.player_weeks(stored, 2026, DST, [6, 7])
     assert got[6]["value"] == 6.4 and got[6]["origin"] == "ours" and got[6]["dst_run"]["run_id"] == "dfp-test"
     assert got[7]["dst_run"] is None                                        # one week only: later weeks stay ESPN
+    weeks = [{"week": w, "phase": "regular", "on_bye": False} for w in (6, 7)]
+    fwd = fo.ours_forward(stored, 2026, DST, weeks, source="independent")
+    # Codex review on #131: the dfp week is the D/ST's own model, not an "other model" week mixed with ifp
+    assert fwd["model_version"] == "dfp-r1" and fwd["model_versions"] == ["dfp-r1"] and not fwd["mixed_models"]
+    assert fwd["other_model_weeks"] == [] and fwd["ros_weeks_available"] == 1 and fwd["fallback_weeks"] == [7]
+    by = {e["week"]: e for e in fwd["weeks"]}
+    assert by[6]["model_version"] == "dfp-r1" and by[7]["origin"] == "espn" and by[7]["model_version"] is None
+    assert fo.DST_VERSION == st.MODEL_VERSION
 
 
 def test_the_dst_endpoint(stored):  # noqa: F811
@@ -238,13 +246,14 @@ def test_fit_register_and_project_store_a_verified_run(dp, prod):
     out = dp.cmd_project(prod)
     run = out["runs"][0]
     assert run["created"] and run["week"] == 7
-    assert run["coverage"] == {"bye": 1, "no_nfl_team": 1, "projected": 8}
+    assert run["coverage"] == {"no_estimate": 1, "no_nfl_team": 1, "projected": 8}
     con = duckdb.connect(str(prod.live_db), read_only=True)
     sel = st.select_run(con, 2026, 7)
     con.close()
     assert sel["run"]["artifact_check"] == "verified" and sel["run"]["artifact_id"] == out["artifact_sha256"]
     rows = {r["nfl_team"]: r for r in sel["rows"]}
-    assert rows["GB"]["coverage_status"] == "bye" and rows["GB"]["expected_points"] == 0.0
+    # GB has no game anywhere in the schedule: not a confirmed bye, so no number (consumers keep ESPN's)
+    assert rows["GB"]["coverage_status"] == "no_estimate" and rows["GB"]["expected_points"] is None
     atl = rows["ATL"]
     assert atl["coverage_status"] == "projected" and atl["expected_points"] == atl["projected_points"]
     assert atl["interval_low"] < atl["projected_points"] < atl["interval_high"]
@@ -286,8 +295,57 @@ def test_a_missing_line_projects_from_ratings_and_says_so(dp, prod):
     assert all(not r["context"]["has_line"] for r in flagged)
 
 
+def test_only_a_confirmed_bye_is_a_zero(dp, prod):
+    """Codex review on #131: a team missing from the week's schedule is a bye (0) only when it plays every other week
+    of the season; a partially synced schedule leaves it without a number (ESPN's stays)."""
+    prod.register = True
+    dp.cmd_fit(prod)
+    con = duckdb.connect(str(prod.live_db))
+    game = con.execute("SELECT home_team, away_team FROM nfl_schedules WHERE season = 2026 AND week = 7 "
+                       "AND gametime = '20:15'").fetchone()
+    con.execute("DELETE FROM nfl_schedules WHERE season = 2026 AND week = 7 AND gametime = '20:15'")
+    other = con.execute("SELECT home_team, away_team FROM nfl_schedules WHERE season = 2026 AND week = 7 LIMIT 1"
+                        ).fetchone()
+    con.execute("DELETE FROM nfl_schedules WHERE season = 2026 AND week = 7 AND home_team = ?", [other[0]])
+    w = next(w for w in (8, 9, 10) if not set(con.execute(
+        "SELECT home_team, away_team FROM nfl_schedules WHERE season = 2026 AND week = ? AND (home_team = ? OR "
+        "away_team = ?)", [w, other[0], other[0]]).fetchone()) & set(game))
+    con.execute("DELETE FROM nfl_schedules WHERE season = 2026 AND week = ? AND (home_team = ? OR away_team = ?)",
+                [w, other[0], other[0]])                                  # other[0] misses a later week as well
+    con.close()
+    dp.cmd_project(prod)
+    con = duckdb.connect(str(prod.live_db), read_only=True)
+    rows = {r["nfl_team"]: r for r in st.select_run(con, 2026, 7)["rows"]}
+    o = st.overlay(con, 2026, 7)
+    con.close()
+    for t in game:              # every other week played: a confirmed bye
+        assert rows[t]["coverage_status"] == "bye" and o["values"][rows[t]["espn_player_id"]] == 0.0
+    t = other[0]                # week 8 missing too: the schedule is partial, nothing is confirmed
+    assert rows[t]["coverage_status"] == "no_estimate" and rows[t]["espn_player_id"] not in o["values"]
+
+
+def test_a_scoring_change_needs_a_new_artifact_and_ensure_fits_it(dp, prod):
+    """Codex review on #131: an artifact fitted under other D/ST rules is never reused (its bands are in those points)."""
+    first = dp.cmd_ensure(prod)
+    assert first["fitted"] and first["registered"]
+    assert dp.cmd_ensure(prod) == {**dp.cmd_ensure(prod), "fitted": False}           # then: register only (no-op)
+    con = duckdb.connect(str(prod.live_db))
+    changed = [dict(i, pointsOverrides={"16": 2.0}) if i["statId"] == 99 else i for i in LEAGUE]   # sacks now 2 pts
+    con.execute("UPDATE leagues SET scoring_items = ?", [json.dumps(changed)])
+    con.close()
+    with pytest.raises(SystemExit, match="ensure"):
+        dp.cmd_project(prod)                                                  # no artifact for the new rules yet
+    prod.artifact = Path(first["artifact"])
+    with pytest.raises(SystemExit, match="fitted for D/ST scoring"):
+        dp.cmd_project(prod)                                                  # the old one is refused explicitly
+    prod.artifact = None
+    second = dp.cmd_ensure(prod)
+    assert second["fitted"] and second["artifact"] != first["artifact"]
+    assert dp.cmd_project(prod)["runs"][0]["created"]
+
+
 def test_project_refuses_without_an_artifact_or_with_unsupported_scoring(dp, prod):
-    with pytest.raises(SystemExit, match="fit --register"):
+    with pytest.raises(SystemExit, match="ensure"):
         dp.cmd_project(prod)
     con = duckdb.connect(str(prod.live_db))
     con.execute("UPDATE leagues SET scoring_items = ?", [json.dumps(LEAGUE + [{"statId": 107, "points": 0.1}])])
@@ -309,7 +367,7 @@ class _Proc:
         self.returncode, self.stdout, self.stderr = code, out, err
 
 
-def test_stage_fits_once_then_registers_and_projects_the_target_week(lc, tmp_path, monkeypatch):
+def test_stage_ensures_the_artifact_then_projects_the_target_week(lc, tmp_path, monkeypatch):
     ns = lc.parse(["run", "--season", "2026", "--live-db", str(tmp_path / "l.duckdb"), "--dst-dir", str(tmp_path / "dst")])
     ns.week = 7
     seen = []
@@ -317,13 +375,8 @@ def test_stage_fits_once_then_registers_and_projects_the_target_week(lc, tmp_pat
         {"artifact": "a", "sha256": "s", "registered": True, "runs": [{"week": 7, "run_id": "r", "created": True}]})))
     out = lc.stage_dst_project(ns, tmp_path / "log.txt")
     assert [Path(c[1]).name for c in seen] == ["dst_projections.py"] * 2
-    assert seen[0][2:4] == ["fit", "--register"] and seen[1][2:5] == ["project", "--week", "7"]
+    assert seen[0][2] == "ensure" and seen[1][2:5] == ["project", "--week", "7"]
     assert seen[1][seen[1].index("--out") + 1] == str(tmp_path / "dst") and out["runs"][0]["run_id"] == "r"
-    (tmp_path / "dst").mkdir()
-    (tmp_path / "dst" / "dfp-r1_2026.json").write_text("{}")
-    seen.clear()
-    lc.stage_dst_project(ns, tmp_path / "log.txt")
-    assert seen[0][2] == "register"                                       # never refitted mid-season
     monkeypatch.setattr(lc.subprocess, "run", lambda cmd, **kw: _Proc(1, "", "SystemExit: abstains"))
-    with pytest.raises(RuntimeError, match="dst_projections.py register exited 1"):
+    with pytest.raises(RuntimeError, match="dst_projections.py ensure exited 1"):
         lc.stage_dst_project(ns, tmp_path / "log.txt")
