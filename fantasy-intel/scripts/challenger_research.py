@@ -33,6 +33,7 @@ from app.analytics.forecast_backtest import build_store, completed_weeks
 from app.analytics.forecast_features import Sources, load_sources
 from app.analytics.independent_projection_store import league_scoring
 from app.config import REPO_ROOT, get_settings
+from app.db.connection import connect as db_connect
 from app.nfl.pbp_exits import load_dir
 
 
@@ -42,8 +43,8 @@ def _path(env: str, default: str) -> Path:
 
 
 def sources(args) -> tuple[Sources, object]:
-    live = duckdb.connect(str(args.live_db), read_only=True)
-    hist = duckdb.connect(str(args.history_db), read_only=True) if args.history_db.exists() else None
+    live = db_connect(args.live_db, read_only=True)
+    hist = db_connect(args.history_db, read_only=True) if args.history_db.exists() else None
     _, scoring = league_scoring(live, args.season)
     parts = [load_sources(c, scoring.require_supported()) for c in (hist, live) if c is not None]
     src = Sources.concat(parts).with_exits(load_dir(args.out / "pbp_exits"))
