@@ -2,7 +2,7 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { Badge, EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
-import { DISTANCES, conditions, headline, rowFlags, splitPlayers, statusText, type KickerPlayer, type KickerResponse } from "@/lib/kickers";
+import { DISTANCES, conditions, factorChips, outlook, rowFlags, splitPlayers, statusText, type KickerPlayer, type KickerResponse } from "@/lib/kickers";
 import styles from "./kickers.module.css";
 
 export const metadata = { title: "Kicker outlook" };
@@ -16,7 +16,7 @@ function Row({ p, rank }: { p: KickerPlayer; rank: number }) {
   const i = p.independent;
   const s = i.stat_line;
   const c = conditions(i.context);
-  const reasons = i.explanation.filter((e) => e.feature !== "headline" && e.contribution !== null && Math.abs(e.contribution) >= 0.15);
+  const chips = factorChips(p);
   return (
     <tr>
       <td className={styles.num}>{rank}</td>
@@ -41,11 +41,13 @@ function Row({ p, rank }: { p: KickerPlayer; rank: number }) {
       <td className={styles.num}>{s ? `${s.pat_made.toFixed(1)} / ${s.pat_att.toFixed(1)}` : <Missing />}</td>
       <td className={styles.cond} title={c.detail ?? undefined}>{c.text}</td>
       <td className={styles.why}>
-        {headline(p) ?? ""}
-        {reasons.length > 0 && (
-          <ul>
-            {reasons.slice(0, 3).map((e) => (
-              <li key={e.feature}>{e.contribution! > 0 ? "+" : ""}{e.contribution!.toFixed(1)} pts · {e.text}</li>
+        {outlook(p) ?? ""}
+        {chips.length > 0 && (
+          <ul className={styles.chips} aria-label="Points vs a league-average kicker">
+            {chips.map((c) => (
+              <li key={c.feature} className={c.points > 0 ? styles.up : styles.down} title={c.text}>
+                {c.label} <b>{c.points > 0 ? "+" : "−"}{Math.abs(c.points).toFixed(1)}</b>
+              </li>
             ))}
           </ul>
         )}
@@ -105,7 +107,7 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
         </Notice>
       )}
       <Section title={`Projected kickers (${projected.length})`}
-        subtitle="Points are expected points (chance he kicks × points if he does). FG makes by distance: 0–39 / 40–49 / 50–59 / 60+." flush>
+        subtitle="Points are expected points (chance he kicks × points if he does). FG makes by distance: 0–39 / 40–49 / 50–59 / 60+. Chips show how many points each factor adds or takes away against a league-average kicker; hover one for the detail." flush>
         <div className="table-wrap">
           <table>
             <thead>

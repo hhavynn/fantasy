@@ -5,3 +5,8 @@
 .why li { margin: 1px 0; }
 .cond { white-space: nowrap; }
 .weekForm { display: flex; gap: 8px; align-items: center; }
+.selected td { background: var(--accent-soft); }
+.figure { margin: 0; min-width: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 8px 0 0; padding: 0; list-style: none; color: var(--ink-muted); font-size: 12px; line-height: 18px; }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.caption { margin: 10px 0 0; color: var(--ink-muted); font-size: 12.5px; line-height: 18px; max-width: 100ch; }

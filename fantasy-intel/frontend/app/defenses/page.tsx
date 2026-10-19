@@ -3,6 +3,7 @@ import { EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui
 import { api } from "@/lib/api";
 import { headline, lineText, splitDefenses, statusText, takeaways, type DstPlayer, type DstResponse } from "@/lib/defenses";
 import { Missing, num, when } from "@/lib/format";
+import { DstChart } from "./DstChart";
 import styles from "./defenses.module.css";
 
 export const metadata = { title: "D/ST outlook" };
@@ -12,13 +13,13 @@ const TITLE = "D/ST outlook";
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
-function Row({ p, rank }: { p: DstPlayer; rank: number }) {
+function Row({ p, rank, selected }: { p: DstPlayer; rank: number; selected: boolean }) {
   const i = p.independent;
   const s = i.stat_line;
   const line = lineText(i.context);
   const td = s?.p_any_td;
   return (
-    <tr>
+    <tr id={selected ? "evidence" : `dst-${p.espn_player_id}`} className={selected ? styles.selected : undefined} aria-current={selected || undefined}>
       <td className={styles.num}>{rank}</td>
       <td>
         <b>{p.name ?? `D/ST ${p.espn_player_id}`}</b>
@@ -48,6 +49,7 @@ function Row({ p, rank }: { p: DstPlayer; rank: number }) {
 export default async function DefensesPage({ searchParams }: PageProps<"/defenses">) {
   const sp: SP = await searchParams;
   const week = Number(one(sp.week)) || undefined;
+  const sel = Number(one(sp.sel)) || null;
   const res = await api<DstResponse>(`/api/projections/defenses${week ? `?week=${week}` : ""}`);
   if (!res.ok) {
     return (
@@ -89,6 +91,9 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
         {d.run.feature_cutoff.data_through_week}, with the betting lines as they stood then
         {d.run.artifact_verified ? "" : ` (artifact approval unverified: ${d.run.artifact_note ?? "unknown"})`}.
       </Notice>
+      <Section title="Matchup map" subtitle="Weak opponent on the left, more splash plays up top, bubble size is expected points.">
+        <DstChart players={projected} week={d.week} sel={sel} />
+      </Section>
       <Section title={`Projected defenses (${projected.length})`}
         subtitle="Points are expected fantasy points under this league's D/ST scoring. Opp. total is the opponent's implied points from the line." flush>
         <div className="table-wrap">
@@ -101,7 +106,7 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
                 <th className={styles.num}>Pts allowed</th><th className={styles.num}>TD chance</th><th>Why</th>
               </tr>
             </thead>
-            <tbody>{projected.map((p, n) => <Row key={p.espn_player_id} p={p} rank={n + 1} />)}</tbody>
+            <tbody>{projected.map((p, n) => <Row key={p.espn_player_id} p={p} rank={n + 1} selected={p.espn_player_id === sel} />)}</tbody>
           </table>
         </div>
       </Section>
