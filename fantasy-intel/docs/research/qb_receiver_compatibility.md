@@ -1,4 +1,4 @@
-# QB-receiver compatibility: receiver role x expected-QB passing quality (`ifp-qbr-0.1.0`, research only)
+# QB-receiver compatibility: receiver role x expected-QB passing quality (`ifp-qbr-0.1.1`, research only)
 
 **Question.** ifp-ctx (`qb_teammate_context.md`) found that a changed expected starting QB helps WR projections
 only a little: the changed-QB WR cohort improves by 0.03-0.10 MAE, and the QB group (candidate A) is flat for WR/TE
@@ -14,15 +14,16 @@ should capture more of the QB change than A does.
     -0.010 with CI upper < 0 against ifp-2, *and* CI upper < 0 against A.
   * TE: +0.000 against ifp-2, -0.000 against A.
 * **Role-awareness adds about nothing beyond A in any window.** Pooled WR+TE, Q minus A is -0.004 (dev), -0.001
-  (confirmation) and -0.004 (replay), all CIs covering 0. Adding the interactions to ifp-ctx-p1's WR spec (C -> CQ)
-  moves WR by -0.005 / -0.002 / -0.003, also within noise.
+  (confirmation) and -0.004 (replay). Adding the interactions to ifp-ctx-p1's WR spec (C -> CQ)
+  moves WR by -0.005 / -0.002 / -0.003, also within noise. The development CI for pooled Q minus A just touches 0
+  ([-0.009, -0.000]), but selection is per position, and neither WR nor TE passes.
 * **On the cohort the interactions exist for, they are flat.** On changed-expected-QB rows, Q minus A is
   -0.004 [-0.023, +0.014] (dev), -0.002 [-0.016, +0.011] (confirmation) and +0.004 [-0.013, +0.021] (replay).
   A itself keeps its -0.04 to -0.06 gain there. The role split of that cohort is not consistent either: deep threats
-  -0.033 / +0.011 / +0.024, short-route receivers -0.001 / +0.000 / +0.001.
+  -0.035 / +0.009 / +0.023, short-route receivers -0.001 / +0.000 / +0.001.
 * **The hypothesis' direct prediction fails** (section 5). When the expected QB is a downgrade, ifp-2 does *not*
   over-project deep-threat WRs more than short-route WRs. Short-route WRs are over-projected more in development and
-  confirmation (-0.94 vs -0.67; -1.14 vs -0.22). Compared on the same team-week, the deep-minus-short residual
+  confirmation (-0.94 vs -0.67; -1.15 vs -0.22). Compared on the same team-week, the deep-minus-short residual
   has no consistent sign, and every CI covers 0.
 * **Why so little signal.** Deep-ball accuracy is barely a QB trait. Within-QB play noise equals the between-QB
   spread of deep CPOE only at about 260 deep attempts, roughly two full seasons. After shrinkage, the deep-CPOE delta
@@ -152,6 +153,16 @@ The protocol is identical to `qb_teammate_context.md` section 4, with the same t
   position's changed-expected-QB rows, MAE(qbr) < MAE(ifp-2) **and** MAE(qbr) < MAE(A).
 * **Exploratory** (2025-26): reported only. It was already inspected, and its injury reports are untimestamped.
 
+**Re-run after code review (disclosed).** The review of PR #124 found a look-ahead in `qbr-0.1.0`.
+* Each receiver's position, which picks the league prior his role rates shrink toward, came from his *latest*
+  panel row overall. A later re-listing (a WR later listed as TE) could therefore reach earlier backtest weeks.
+* `qbr-0.1.1` takes the position from panel rows strictly before (S, W) (`positions_before`, tested). The rules
+  are unchanged.
+* Development, confirmation and the replay were re-run once. The selection (every position `ifp2`) and the verdict
+  are identical. No headline figure moved by more than 0.002 MAE, and a few role-cohort rows changed membership
+  (for example confirmation WR deep threats 259 -> 265). Every number below is from the re-run. The
+  confirmation window has now been evaluated twice by this study.
+
 ## 4. Results
 
 ### Development (2021-22) and the frozen selection
@@ -162,10 +173,11 @@ Identical rows, n = 8,535 (WR 5,324, TE 3,211), 36 weeks.
 |---|---|---|---|---|---|---|---|---|
 | WR | 4.438 | +0.002 | -0.005 [-0.018, +0.007] | -0.007 [-0.014, +0.000] | -0.281 -> -0.282 | -0.017 [-0.031, -0.003] | -0.005 [-0.012, +0.001] | ifp2 |
 | TE | 2.990 | +0.000 | +0.000 [-0.010, +0.011] | -0.000 [-0.007, +0.008] | -0.060 -> -0.063 | +0.001 | +0.000 | ifp2 |
-| WR+TE | 3.893 | +0.001 | -0.003 [-0.011, +0.005] | -0.004 [-0.009, +0.000] | -0.198 -> -0.200 | -0.010 [-0.019, -0.000] | -0.003 | |
+| WR+TE | 3.893 | +0.001 | -0.003 [-0.011, +0.005] | -0.004 [-0.009, -0.000] | -0.198 -> -0.200 | -0.010 [-0.019, -0.000] | -0.003 | |
 
 The ifp-2, A and C numbers reproduce `qb_teammate_context.md` section 6 exactly (WR 4.438, +0.002, -0.017; TE 2.990,
-+0.000, +0.001). The selection is frozen write-once in `frozen_selection_ifp-qbr-0.1.0.json`: every position `ifp2`.
++0.000, +0.001). The selection is frozen write-once in `frozen_selection_ifp-qbr-0.1.1.json`: every position `ifp2`. That matches the pre-review
+`frozen_selection_ifp-qbr-0.1.0.json`, which is kept unchanged.
 With nothing adopted, the outcome is `retain_baseline` by rule. The numbers below are descriptive and decide
 nothing.
 
@@ -197,22 +209,22 @@ MAE differences; "bias" is mean(actual - forecast).
 
 | Rows | Cohort | n dev / conf / expl | A - ifp-2 (dev / conf / expl) | Q - A (dev / conf / expl) | Bias ifp-2 / A / Q (conf) |
 |---|---|---|---|---|---|
-| WR | changed QB | 1,099 / 996 / 706 | -0.048* / -0.059* / -0.029* | -0.004 / -0.012 / +0.005 | -0.04 / +0.16 / +0.18 |
+| WR | changed QB | 1,099 / 996 / 706 | -0.048* / -0.059* / -0.029* | -0.004 / -0.013 / +0.005 | -0.04 / +0.16 / +0.18 |
 | TE | changed QB | 639 / 576 / 414 | -0.058* / -0.037* / -0.059* | -0.004 / +0.016 / +0.001 | +0.08 / +0.24 / +0.24 |
 | WR+TE | changed QB | 1,738 / 1,572 / 1,120 | -0.051* / -0.051* / -0.040* | -0.004 / -0.002 / +0.004 | +0.00 / +0.19 / +0.20 |
-| WR | changed QB, deep threat | 230 / 259 / 177 | -0.031 / -0.045* / -0.026 | -0.035 / +0.010 / +0.024 | +0.10 / +0.31 / +0.34 |
-| WR | changed QB, short route | 312 / 235 / 149 | -0.038 / -0.069* / -0.022 | +0.004 / -0.015 / +0.009 | -0.22 / -0.01 / +0.02 |
+| WR | changed QB, deep threat | 231 / 265 / 177 | -0.030 / -0.043* / -0.026 | -0.037 / +0.008 / +0.023 | +0.11 / +0.32 / +0.35 |
+| WR | changed QB, short route | 312 / 234 / 148 | -0.038 / -0.070* / -0.022 | +0.004 / -0.015 / +0.009 | -0.22 / -0.01 / +0.02 |
 | WR | QB downgrade | 580 / 499 / 353 | -0.081* / -0.065* / -0.047* | -0.020 / -0.011 / +0.028 | -0.30 / -0.07 / -0.01 |
 | WR | downgrade, deep threat | 119 / 128 / 87 | -0.097* / -0.052* / -0.040* | -0.053 / -0.002 / +0.050 | -0.22 / +0.03 / +0.27 |
-| WR | downgrade, short route | 163 / 123 / 78 | -0.084* / -0.076* / -0.010 | +0.017 / -0.032 / +0.027 | -1.14 / -0.91 / -0.91 |
-| WR | backup QB expected (starter out) | 181 / 154 / 142 | -0.070* / -0.020 / -0.050* | -0.048 / -0.068* / +0.079* | +0.20 / +0.44 / +0.45 |
+| WR | downgrade, short route | 163 / 122 / 78 | -0.084* / -0.077* / -0.010 | +0.017 / -0.033 / +0.028 | -1.15 / -0.92 / -0.92 |
+| WR | backup QB expected (starter out) | 181 / 154 / 142 | -0.070* / -0.020 / -0.050* | -0.050 / -0.070* / +0.078* | +0.20 / +0.44 / +0.45 |
 | WR+TE | same QB | 6,359 / 6,621 / 4,055 | +0.013* / +0.012* / +0.008* | -0.005* / -0.000 / -0.007* | +0.13 / +0.09 / +0.08 |
 
 Reading:
 
 * **A is where the QB-change gain lives.** It improves every changed-QB cohort in every window.
 * **Q adds nothing consistent on top.** The only significant Q-minus-A cells change sign between windows. With a
-  backup QB expected, WR moves -0.068 in confirmation and +0.079 in the replay.
+  backup QB expected, WR moves -0.070 in confirmation and +0.078 in the replay.
 * **A's pooled flatness for receivers is a trade.** It gains about 0.05 on changed-QB rows and pays +0.008 to +0.013
   on the about 75% of rows with the same QB, every window significant. Q recovers a little of that cost in dev and
   the replay (-0.005, -0.007), not in confirmation.
@@ -229,14 +241,14 @@ for the slopes, by team-week for the paired test.
 | Test | dev | conf | expl | The hypothesis predicts |
 |---|---|---|---|---|
 | ifp-2 residual, downgrade, deep threat (n 119 / 128 / 87) | -0.67 | -0.22 | +0.42 | more negative than short route |
-| ifp-2 residual, downgrade, middle (n 279 / 232 / 170) | -0.63 | -0.05 | -0.69 | |
-| ifp-2 residual, downgrade, short route (n 163 / 123 / 78) | -0.94 | -1.14 | +0.72 | |
-| Same team-week, deep threat minus short route, ifp-2 residual (team-weeks 49 / 56 / 31) | -0.86 [-2.89, +0.94] | +0.52 [-1.45, +2.59] | +0.98 [-1.80, +3.43] | < 0 |
-| Slope of A's residual on (deep share - mean) x EPA delta | +14 [-33, +54] | -39 [-93, +20] | +1 [-63, +78] | > 0 |
-| Slope of A's residual on (deep share - mean) x deep-CPOE delta | -1.1 [-4.7, +2.5] | +0.4 [-3.5, +4.2] | +0.4 [-2.8, +3.8] | > 0 |
+| ifp-2 residual, downgrade, middle (n 279 / 233 / 170) | -0.63 | -0.05 | -0.69 | |
+| ifp-2 residual, downgrade, short route (n 163 / 122 / 78) | -0.94 | -1.15 | +0.72 | |
+| Same team-week, deep threat minus short route, ifp-2 residual (team-weeks 49 / 56 / 31) | -0.86 [-2.85, +1.12] | +0.57 [-1.48, +2.58] | +0.98 [-1.55, +3.51] | < 0 |
+| Slope of A's residual on (deep share - mean) x EPA delta | +15 [-31, +55] | -39 [-94, +20] | +5 [-62, +87] | > 0 |
+| Slope of A's residual on (deep share - mean) x deep-CPOE delta | -1.2 [-4.8, +2.2] | +0.4 [-3.5, +4.2] | +0.7 [-2.7, +4.3] | > 0 |
 
 * **Over-projection after a downgrade is not larger for deep threats.**
-  * Short-route WRs are over-projected more in development and confirmation (-0.94 and -1.14, against -0.67 and
+  * Short-route WRs are over-projected more in development and confirmation (-0.94 and -1.15, against -0.67 and
     -0.22).
   * In the replay both groups are under-projected.
 * **On the same team-week the sign flips between windows**, and no CI excludes 0. These are only 31-56 team-weeks
@@ -250,13 +262,13 @@ for the slopes, by team-week for the paired test.
 | Window start | `qb_epa_delta` | `qbr_epa_x` (air-yards share x EPA delta) | `qbr_deep_x` (deep share x deep-CPOE delta) | `qbr_vol_x` (deep share x deep-rate delta) |
 |---|---|---|---|---|
 | 2021 week 1 | -1.96 | +28.6 | -0.52 | -22 |
-| 2023 week 1 | -3.94 | +26.2 | -0.12 | -90 |
-| 2025 week 1 | -3.91 | +23.8 | -0.18 | -80 |
+| 2023 week 1 | -3.94 | +26.2 | -0.13 | -92 |
+| 2025 week 1 | -3.91 | +23.8 | -0.18 | -81 |
 
 Take a 10th-percentile changed-QB downgrade: EPA delta -0.17, CPOE -4.3, deep CPOE -2.6, deep rate -0.02.
 
-* For a deep threat (deep share 0.25, air-yards share 0.35), the QB terms give -0.62 / -0.32 / -0.46 points.
-* For a short-route WR (0.10, 0.10), they give +0.33 / +0.47 / +0.24.
+* For a deep threat (deep share 0.25, air-yards share 0.35), the QB terms give -0.62 / -0.31 / -0.46 points.
+* For a short-route WR (0.10, 0.10), they give +0.33 / +0.48 / +0.24.
 
 So the model does split receivers by role, by about 0.7-1.0 points, almost entirely through air-yards share x EPA
 delta. The two deep-specific terms take the *opposite* sign to the hypothesis. Section 4 shows this split does not
