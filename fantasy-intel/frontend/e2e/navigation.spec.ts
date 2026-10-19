@@ -40,6 +40,7 @@ test("every primary section is reachable from the section links and marks itself
   await page.goto("/");
   await loaded(page);
   for (const [label, path, h1] of [
+    ["Waivers", "/waivers", /Waivers/],
     ["Players", "/rankings", /Rankings/],
     ["Trades", "/trades", /Trade analyzer/],
     ["League", "/weekly-recap", /recap/i],
@@ -58,8 +59,9 @@ test("nested routes highlight their section and page", async ({ page }) => {
     ["/managers/1", "League", "Managers"],
     ["/trades/discover", "Trades", "Discover"],
     ["/research/wr", "Players", "Research lab"],
-    ["/players?id=201", "Players", "Players"],
-    ["/waivers", "My team", "Waivers"],
+    ["/players?id=201", "Players", "Player profile"],
+    ["/waivers", "Waivers", "Waivers"],
+    ["/kickers", "Waivers", "Kickers"],
   ] as const) {
     await page.goto(path);
     await loaded(page);
@@ -83,7 +85,7 @@ test("the analyzed team carries across team-scoped pages, survives league-wide p
   await loaded(page);
   await expect(page.getByRole("combobox", { name: "Analyzing" })).toHaveValue(/team=1/);
 
-  await subnav(page, "My team").getByRole("link", { name: "Waivers", exact: true }).click();
+  await sections(page).getByRole("link", { name: "Waivers", exact: true }).click();
   await expect(page).toHaveURL(/\/waivers\?team=1$/);
   await loaded(page);
 
@@ -93,9 +95,9 @@ test("the analyzed team carries across team-scoped pages, survives league-wide p
   await loaded(page);
   await expect(subnav(page, "Players").getByRole("link", { name: "Compare", exact: true })).toHaveAttribute("href", "/compare");
 
-  // Back to a team-scoped page: still team 1, not the default. (Phones reopen the group's last page, Waivers.)
+  // Back to a team-scoped page: still team 1, not the default. (Phones reopen the group's last page, Start/Sit.)
   await sections(page).getByRole("link", { name: "My team", exact: true }).click();
-  await expect(page).toHaveURL(isPhone() ? /\/waivers\?team=1$/ : /\/\?team=1$/);
+  await expect(page).toHaveURL(isPhone() ? /\/start-sit\?team=1$/ : /\/\?team=1$/);
   await loaded(page);
   await expect(page.getByRole("link", { name: "Fantasy Intel home" })).toHaveAttribute("href", "/?team=1");
 });
@@ -202,14 +204,14 @@ test("key pages fit the viewport without sideways scroll", async ({ page }) => {
   }
 });
 
-test("desktop and tablet: the four section links are fully visible in the app bar", async ({ page }) => {
+test("desktop and tablet: the five section links are fully visible in the app bar", async ({ page }) => {
   test.skip(isPhone(), "phones use the tab bar");
   await page.goto("/trades");
   await loaded(page);
   const nav = page.locator(".nav-groups");
   const fits = await nav.evaluate((n) => n.scrollWidth <= n.clientWidth);
   expect(fits, "section links clipped").toBe(true);
-  for (const label of ["My team", "Players", "Trades", "League"]) {
+  for (const label of ["My team", "Waivers", "Players", "Trades", "League"]) {
     await expect(sections(page).getByRole("link", { name: label, exact: true })).toBeInViewport();
   }
 });

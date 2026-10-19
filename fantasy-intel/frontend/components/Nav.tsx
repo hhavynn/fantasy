@@ -9,6 +9,7 @@ import {
   NAV_GROUPS, getActiveRoute, navClusters, parseTabMemory, tabMemoryEntry, tabTarget, type TabMemoryEntry,
 } from "@/lib/navigation";
 import type { ProjectionSource } from "@/lib/projection-source";
+import type { SyncState } from "@/lib/sync-status";
 import { withTeam } from "@/lib/team-perspective";
 import { ProjectionSwitch } from "./ProjectionSwitch";
 import { ThemeSwitch } from "./ThemeSwitch";
@@ -64,6 +65,7 @@ export function SubNav() {
 /** Line icons for the phone tab bar, keyed by group label; a group without one gets a plain dot. */
 const GROUP_ICONS: Record<string, ReactNode> = {
   "My team": <path d="M9 2.5 15 5v4.2c0 3.6-2.5 5.6-6 6.8-3.5-1.2-6-3.2-6-6.8V5l6-2.5Z" />,
+  Waivers: <><circle cx="9" cy="9" r="6.5" /><path d="M9 6v6M6 9h6" /></>,
   Players: <><circle cx="9" cy="6" r="3" /><path d="M3.5 15.5c.6-2.9 2.8-4.5 5.5-4.5s4.9 1.6 5.5 4.5" /></>,
   Trades: <><path d="M3 6h11l-3-3" /><path d="M15 12H4l3 3" /></>,
   League: <><path d="M3 15.5h12" /><path d="M5 15.5V9" /><path d="M9 15.5V4" /><path d="M13 15.5v-4" /></>,
@@ -139,8 +141,8 @@ export function BrandMark({ size = 22 }: { size?: number }) {
   );
 }
 
-/** Phones: the section row collapses into a menu button with every group's pages. */
-export function MobileNav({ projection }: { projection?: ProjectionSource } = {}) {
+/** Phones: the section row collapses into a menu button with every group's pages, the switches and data freshness. */
+export function MobileNav({ projection, sync }: { projection?: ProjectionSource; sync?: { state: SyncState; text: string } } = {}) {
   const pathname = usePathname();
   const search = useSearchParams();
   const { activeHref } = getActiveRoute(pathname);
@@ -167,7 +169,9 @@ export function MobileNav({ projection }: { projection?: ProjectionSource } = {}
   return (
     <div className="mobile-nav" ref={root} onBlur={onBlur}>
       <button ref={toggle} type="button" className="menu-toggle" aria-expanded={open} aria-controls="mobile-nav-panel"
-              aria-label={open ? "Close menu" : "Open menu"} onClick={() => setOpen((o) => !o)}>
+              data-sync={sync?.state}
+              aria-label={`${open ? "Close menu" : "Open menu"}${sync && sync.state !== "ok" ? ` (${sync.text})` : ""}`}
+              onClick={() => setOpen((o) => !o)}>
         <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
           <path d={open ? "M4 4l10 10M14 4L4 14" : "M3 5h12M3 9h12M3 13h12"} fill="none" stroke="currentColor"
                 strokeWidth="1.6" strokeLinecap="round" />
@@ -175,6 +179,12 @@ export function MobileNav({ projection }: { projection?: ProjectionSource } = {}
       </button>
       {open && (
         <nav id="mobile-nav-panel" className="mobile-nav-panel" aria-label="All pages">
+          {sync && (
+            <Link href="/data" className="mobile-nav-sync" data-state={sync.state} onClick={close}>
+              <span><b>Data</b> · {sync.text}</span>
+              <span aria-hidden="true">→</span>
+            </Link>
+          )}
           {NAV_GROUPS.map((g) => (
             <div key={g.label} className="mobile-nav-group" role="group" aria-labelledby={`mnav-${g.label}`}>
               <span id={`mnav-${g.label}`} className="mobile-nav-title">{g.label}</span>

@@ -19,7 +19,7 @@ export const metadata = { title: "Compare players" };
 
 const TITLE = "Compare players";
 const META = "Two players side by side, from projections, usage and scores the app already stores. Nothing here is a forecast of its own.";
-const SWITCH_HINT = "Switch between ESPN and Ours with the Proj switch in the top bar (in the menu on phones).";
+const SWITCH_HINT = "Switch between ESPN and Ours with the Proj switch in the top bar (in the menu on tablets and phones).";
 
 const pick = (id: number | null): PickerSelection | null => (id === null ? null : { id, name: null, position: null, team: null });
 
