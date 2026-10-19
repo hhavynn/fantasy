@@ -56,7 +56,14 @@ READY, CONFIRMED, FAILS, ACCUMULATING, NO_EVIDENCE = (
 
 # Candidates already folded into a production version: {candidate: {"version": "ifp-2.x.0", "positions": [...]}}.
 # The promotion pull request adds its candidate here, so later passing gates read as confirmations.
-PROMOTED: dict[str, dict] = {}
+PROMOTED: dict[str, dict] = {
+    # ifp-2.2.0 by owner override (app/analytics/context_model.SHIPPED; docs/research/ifp22_promotion.md). ipm-cal-0.1.0
+    # was left out by its backtest guard and ifp-fr-p1 waits on the FTN licensing decision: neither is listed.
+    "ifp-ctx-p2q": {"version": "ifp-2.2.0", "positions": ["QB"]},
+    "ifp-ctx-p1": {"version": "ifp-2.2.0", "positions": ["RB", "WR"]},
+    "ifp-dct-p1": {"version": "ifp-2.2.0", "positions": ["QB", "RB", "WR"]},
+    "ifp-awd-p1": {"version": "ifp-2.2.0", "positions": ["RB", "WR", "TE"]},
+}
 
 
 def _path(env: str, default: str) -> Path:
