@@ -433,7 +433,7 @@ def test_bye_and_rest_of_season_rows(live):
     by = {r["espn_player_id"]: r for r in rows}
     assert by[105]["coverage_status"] == "bye" and by[108]["coverage_status"] == "bye"
     assert by[101]["coverage_status"] == "projected" and meta["forecast_horizon"] == 1
-    assert any("experimental" in f for f in by[101]["flags"])
+    assert any("rest-of-season kicker forecast" in f for f in by[101]["flags"])
     assert by[101]["context"]["weather"]["status"] == "not_applicable"
 
 
