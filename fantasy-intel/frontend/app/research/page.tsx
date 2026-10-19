@@ -21,7 +21,7 @@ export default async function ResearchOverview() {
   return (
     <div className="stack">
       <PageHeader
-        eyebrow="Player research"
+        eyebrow="Players · Research"
         title="Research lab"
         meta={d ? <>{first?.season} season · nflverse data through week {d.latest_week ?? "—"} · full PPR · NFL sync {when(d.nfl_synced_at)}</> : "Who is getting the opportunities, and is production keeping up?"}
       >
