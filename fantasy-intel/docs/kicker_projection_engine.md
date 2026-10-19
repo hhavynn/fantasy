@@ -88,7 +88,7 @@ Also evaluated: a **direct ridge** on points (same features plus kicker point hi
 | PAT-try volume | offense + defense + stadium | deviance 1.07 (league rate) -> 0.98 |
 | Conversion | league curve + venue + kicker skill (tau2 = 0.1, decay = 0.7) | FG log loss 0.3644 (league curve) -> 0.3600 |
 | Observed weather | excluded | conversion log loss worsens (0.3600 -> 0.3625); points MAE gain about 0.01 |
-| Implied team total (kfp-1.1.0) | in FG and PAT volume | added 2026-10-19 after the pre-registered test below: validation MAE 3.593 -> 3.575, test -0.016 [-0.025, -0.008] |
+| Implied team total (kfp-1.1.0) | in FG and PAT volume | added 2026-10-19: validation MAE 3.593 -> 3.575 (see "Candidate features" below) |
 | Game script | excluded | validation MAE +0.0017 (worse); test -0.008: inconsistent |
 | Blend with direct ridge | none (structural only) | 0.75 blend 3.5937 vs 3.5931 |
 | Shrinkage / ridge | team_k = 2, prior_k = 2, ridge 0.3 | Poisson-deviance grid |
@@ -208,11 +208,17 @@ Prospective 2026 weeks 1-6 (155 common-support rows): kfp 3.66 vs A1 4.21, A2 4.
 
 ### Candidate features, 2026-10-19 (`scripts/kicker_feature_tests.py`)
 
-Each candidate was added on its own to production, in both the FG-try and PAT-try models. The adoption rule was set
-before running: validation (2021-22) MAE must beat production, and the held-out (2023-25) paired MAE difference must
-have a 95% week-cluster bootstrap CI entirely below zero.
+Each candidate was added on its own to production, in both the FG-try and PAT-try models. The adoption rule is
+validation only: the candidate's validation (2021-22) MAE must beat production's. The 2023-25 test numbers below are
+reported, not gated on.
 
-| Candidate | Val MAE | Test MAE | Test diff vs production [95% CI] | Test weekly Spearman | Decision |
+The first run of this script also required the test CI to sit below zero. The decisions are the same under the
+validation-only rule: the implied total wins on validation, and the 4th-down rate loses there. But 2023-25 was looked
+at when choosing what to ship, so for kfp-1.1.0 it is **no longer a clean held-out estimate**. The untouched check is
+2026 prospective weeks. On weeks 1-6, scored after the decision, the two versions are level: +0.012 [-0.022, +0.053]
+over 184 kicker-games. Weeks 7 onward are the first that kfp-1.1.0 projects live.
+
+| Candidate | Val MAE (rule) | Test MAE | Test diff vs production [95% CI] (reported) | Test weekly Spearman | Decision |
 |---|---|---|---|---|---|
 | production (kfp-1.0.0) | 3.593 | 3.763 | — | 0.157 | — |
 | implied team total (closing line) | 3.575 | 3.746 | **-0.016 [-0.025, -0.008]** | 0.174 | **adopt** |

@@ -1,4 +1,4 @@
-"""Pre-registered backtest of two candidate kicker features against kfp-1.0.0 (the implied total became production kfp-1.1.0).
+"""Backtest of two candidate kicker features against kfp-1.0.0 (the implied total became production kfp-1.1.0).
 
     uv run --project backend python scripts/kicker_feature_tests.py [--out data/models/kicker/feature_tests.json]
 
@@ -7,11 +7,13 @@ Candidates (each added alone to production, in both the FG-try and PAT-try Poiss
     (total - spread) / 2 for the away team (nflverse spread_line is positive when the home team is favored).
   * fourth: the team's shrunk 4th-down go rate inside FG range (o_fourth_go_rate, already computed point-in-time).
 
-Decision rule, fixed before running: a candidate is adopted only if
-  1. its validation (2021-22) MAE is lower than production's, and
-  2. its held-out test (2023-25) paired MAE difference vs production has a 95% week-cluster bootstrap CI entirely
-     below zero.
-Otherwise it is dropped. Weekly Spearman and FG-try deviance are reported as diagnostics only.
+Decision rule: a candidate is adopted only if its validation (2021-22) MAE is lower than production's; otherwise it
+is dropped. The test seasons (2023-25) are report-once evidence and never part of the rule, as kicker_backtest.TEST
+requires. Weekly Spearman and FG-try deviance are diagnostics only.
+
+History: the first run on 2026-10-19 also gated on the test CI. The decisions are the same under the validation-only
+rule, but 2023-25 has now been looked at for selection, so it is no longer a clean held-out estimate for kfp-1.1.0;
+2026 weeks played after that date are the untouched check.
 
 Note: backtests use closing lines; a live run uses the line at projection time, which is noisier.
 """
@@ -84,7 +86,7 @@ def main(argv=None) -> int:
     data = kb.build_dataset(frames, scoring, BASE)
     missing = data["rows"].filter(pl.col("completed") & pl.col("o_implied").is_null()).height
 
-    report = {"rule": "adopt iff validation MAE < production AND test paired MAE diff CI95 upper < 0",
+    report = {"rule": "adopt iff validation MAE < production (test 2023-25 is reported, never gated on)",
               "completed_rows_without_line": missing,
               "validation": summarize(run(data, scoring, kb.VALIDATION)),
               "test": summarize(run(data, scoring, kb.TEST))}
@@ -93,8 +95,7 @@ def main(argv=None) -> int:
         if name == "production":
             continue
         v_ok = report["validation"][name]["mae"] < report["validation"]["production"]["mae"]
-        t_ok = report["test"][name]["vs_production"]["ci95"][1] < 0
-        decisions[name] = "adopt" if v_ok and t_ok else "drop"
+        decisions[name] = "adopt" if v_ok else "drop"
     report["decisions"] = decisions
     text = json.dumps(report, indent=2)
     print(text)

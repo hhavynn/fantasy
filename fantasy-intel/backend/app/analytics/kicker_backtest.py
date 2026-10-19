@@ -408,8 +408,9 @@ def finite(v):
 # deviance), PAT volume uses offense + defense + stadium, the conversion curve adds venue terms, observed weather and
 # game-script features are excluded (no validated gain), structural model only (blending with the direct ridge did
 # not help), no season-recency weighting.
-# kfp-1.1.0 adds the "line" group (the team's implied total) to both FG and PAT volume: it passed the pre-registered
-# test in scripts/kicker_feature_tests.py (validation MAE 3.593 -> 3.575; test 2023-25 -0.016 [-0.025, -0.008]).
+# kfp-1.1.0 adds the "line" group (the team's implied total) to both FG and PAT volume, chosen on validation
+# (scripts/kicker_feature_tests.py: MAE 3.593 -> 3.575). An earlier gate also looked at TEST, so 2023-25 is no longer a
+# clean held-out estimate for it; 2026 prospective weeks are.
 PRODUCTION = km.KConfig(groups=("offense", "defense", "stadium", "line"), fg_groups=("line",), team_k=2.0, prior_k=2.0,
                         ridge_lambda=0.3, tau2=0.1, decay=0.7, blend=1.0, train_decay=1.0)
 
