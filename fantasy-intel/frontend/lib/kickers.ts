@@ -166,6 +166,15 @@ export function outlook(p: KickerPlayer): string | null {
   return headline(p)?.replace(/ \((helped|held back) by [^)]*\)$/, "") ?? null;
 }
 
+/** Whether a kfp model version uses the betting line (the implied team total), which started with kfp-1.1.0. Weeks
+ * served from an older run (2026 weeks 1-6 are kfp-1.0.0) are described without it. */
+export function usesBettingLine(version: string): boolean {
+  const m = /^kfp-(\d+)\.(\d+)/.exec(version);
+  if (!m) return false;
+  const [major, minor] = [Number(m[1]), Number(m[2])];
+  return major > 1 || (major === 1 && minor >= 1);
+}
+
 /** A kicker's row flags, minus the per-row rest-of-season horizon flag: the page states the run's horizon once. */
 export function rowFlags(flags: string[]): string[] {
   return flags.filter((f) => !f.startsWith("rest-of-season kicker forecast"));

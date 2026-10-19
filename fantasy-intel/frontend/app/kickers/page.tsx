@@ -2,7 +2,7 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { Badge, EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
-import { DISTANCES, conditions, factorChips, outlook, rowFlags, splitPlayers, statusText, type KickerPlayer, type KickerResponse } from "@/lib/kickers";
+import { DISTANCES, conditions, factorChips, outlook, usesBettingLine, rowFlags, splitPlayers, statusText, type KickerPlayer, type KickerResponse } from "@/lib/kickers";
 import styles from "./kickers.module.css";
 
 export const metadata = { title: "Kicker outlook" };
@@ -76,10 +76,12 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
       <button type="submit">Show</button>
     </form>
   );
+  const line = usesBettingLine(d.governance.model_version);
   const meta = (
     <>
-      {d.governance.model_version} · week {d.week} {d.league.season}. Expected points from opportunity (FG and PAT tries, including
-      the betting line) × conversion (distance, kicker accuracy, venue), scored with this league&apos;s kicker rules.
+      {d.governance.model_version} · week {d.week} {d.league.season}. Expected points from opportunity (FG and PAT tries
+      {line ? ", including the betting line" : ""}) × conversion (distance, kicker accuracy, venue), scored with this league&apos;s
+      kicker rules.
     </>
   );
   if (!d.available || !d.run) {
@@ -142,10 +144,21 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
       )}
       <Method title="How kicker projections work">
         <p>
-          Expected FG tries come from the league rate adjusted by the team&apos;s implied points from the betting line (other team
-          and opponent stats did not improve held-out accuracy for FG volume); expected PAT tries come from the team&apos;s touchdown
-          rate and the opponent&apos;s, shrunk toward the league, plus the same implied total. A game without a posted line uses a
-          league-average implied total. Each FG try&apos;s
+          {line ? (
+            <>
+              Expected FG tries come from the league rate adjusted by the team&apos;s implied points from the betting line (other
+              team and opponent stats did not improve held-out accuracy for FG volume); expected PAT tries come from the
+              team&apos;s touchdown rate and the opponent&apos;s, shrunk toward the league, plus the same implied total. A game
+              without a posted line uses a league-average implied total.
+            </>
+          ) : (
+            <>
+              Expected FG tries come from the league rate (team and opponent context did not improve held-out accuracy for FG
+              volume); expected PAT tries come from the team&apos;s touchdown rate and the opponent&apos;s, shrunk toward the
+              league. This week was projected by {d.governance.model_version}, before the betting line became an input.
+            </>
+          )}{" "}
+          Each FG try&apos;s
           distance follows the league distribution tilted by the kicker&apos;s own long-range share, and its make chance is a smooth
           distance curve plus venue terms plus the kicker&apos;s accuracy, estimated from every earlier kick (misses and blocks
           included) and shrunk toward league average by sample size. Weather forecasts (NWS) are shown with their retrieval time;

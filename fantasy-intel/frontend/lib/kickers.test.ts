@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { conditions, factorChips, headline, outlook, rowFlags, splitPlayers, statLineText, statusText, type KickerContext, type KickerPlayer } from "./kickers.ts";
+import { conditions, factorChips, headline, outlook, usesBettingLine, rowFlags, splitPlayers, statLineText, statusText, type KickerContext, type KickerPlayer } from "./kickers.ts";
 
 const ctx = (over: Partial<KickerContext> = {}): KickerContext => ({
   expected_kicker_basis: "kicked the team's last game",
@@ -83,4 +83,11 @@ test("the outlook drops the factor tail that the chips already show", () => {
   assert.equal(outlook(p), "Strong kicking outlook: 8.7 projected vs a 7.6 median");
   p.independent.explanation[0].text = "Average kicking outlook: 7.6 projected vs a 7.6 median";
   assert.equal(outlook(p), "Average kicking outlook: 7.6 projected vs a 7.6 median");
+});
+
+test("only kfp-1.1.0 and later are described as using the betting line", () => {
+  assert.equal(usesBettingLine("kfp-1.1.0"), true);
+  assert.equal(usesBettingLine("kfp-2.0.0"), true);
+  assert.equal(usesBettingLine("kfp-1.0.0"), false);
+  assert.equal(usesBettingLine("ifp-2.2.0"), false);
 });
