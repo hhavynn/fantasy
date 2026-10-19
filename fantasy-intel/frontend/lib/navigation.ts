@@ -34,6 +34,7 @@ export const NAV_GROUPS: NavGroup[] = [
     pages: [
       { href: "/waivers", label: "Waivers", summary: "Free agents the analysis supports for this roster, with the drop" },
       { href: "/kickers", label: "Kickers", summary: "Weekly kicker projections with game context, free agents included" },
+      { href: "/defenses", label: "D/ST", summary: "Weekly D/ST projections with the betting line, free agents included" },
     ],
   },
   {

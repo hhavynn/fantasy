@@ -62,6 +62,7 @@ test("nested routes highlight their section and page", async ({ page }) => {
     ["/players?id=201", "Players", "Player profile"],
     ["/waivers", "Waivers", "Waivers"],
     ["/kickers", "Waivers", "Kickers"],
+    ["/defenses", "Waivers", "D/ST"],
   ] as const) {
     await page.goto(path);
     await loaded(page);

@@ -12,7 +12,7 @@ Per week the value comes from the newest eligible run for that week, labeled by 
 
   ours       the model's unconditional expected points;
   ours_zero  the run says he cannot score (bye, or withheld as unavailable): 0.0;
-  espn       no independent estimate for this week (no run stored yet, K / D/ST, an abstention): ESPN's number,
+  espn       no independent estimate for this week (no run stored yet, no K / D/ST run, an abstention): ESPN's number,
              marked, and the week is NOT part of "ours";
   bye        the NFL schedule has him on a bye and no run said otherwise (not a projection, not required).
 
@@ -31,6 +31,7 @@ from . import projection_source as ps
 
 PRIMARY = ps.MODEL_VERSION
 KICKER_VERSION = "kfp-1.0.0"       # copy of kicker_store.MODEL_VERSION (tested)
+DST_VERSION = "dfp-r1"             # copy of dst_store.MODEL_VERSION (tested)
 KICKER_HORIZON_NOTE = "rest-of-season kicker forecast"
 OURS_ORIGINS = (ps.OURS, ps.OURS_ZERO)
 BYE = "bye"
@@ -126,6 +127,7 @@ def player_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dict
                                            AND scoring_period IN (SELECT unnest(?))""", [season, pid, weeks])}
     selected, unavailable = _select_batch(con, season, weeks)
     kicker = _kicker_weeks(con, season, pid, weeks)
+    dst = _dst_weeks(con, season, pid, weeks)
     out = {}
     for week in weeks:
         sel = selected.get(week) or {"run": None, "rows": None, "skipped": [], "fallback": False}
@@ -138,9 +140,12 @@ def player_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dict
         k = kicker.get(week)
         if run is not None and origin == ps.ESPN and k is not None:      # projection_source._kicker_overlay
             value, origin = k["value"], k["origin"]
+        d = dst.get(week)
+        if run is not None and origin == ps.ESPN and d is not None:      # projection_source._dst_overlay
+            value, origin = d["value"], d["origin"]
         out[week] = {"value": value, "origin": origin, "run": run, "skipped": sel["skipped"],
                      "reason": _week_reason(week, sel) if run else None, "unavailable_reason": unavailable,
-                     "kicker_run": k["run"] if k else None}
+                     "kicker_run": k["run"] if k else None, "dst_run": d["run"] if d else None}
     return out
 
 
@@ -159,6 +164,24 @@ def _kicker_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dic
         k = kicker_store.overlay(con, season, week)
         if pid in k["values"]:
             out[week] = {"value": k["values"][pid], "origin": k["origin"][pid], "run": k["run"]}
+    return out
+
+
+def _dst_weeks(con, season: int, pid: int, weeks: list[int]) -> dict[int, dict]:
+    """week -> {value, origin, run} from the verified D/ST run (dst_store.overlay), only for weeks where this player
+    has a D/ST row at all (one query for everyone else). dfp-r1 projects one week, so this is at most the target week."""
+    from . import dst_store
+
+    if not table_exists(con, dst_store.ROWS):
+        return {}
+    have = {r["week"] for r in fetch_dicts(con, f"""SELECT DISTINCT week FROM {dst_store.ROWS}
+                                                   WHERE season = ? AND espn_player_id = ?
+                                                     AND week IN (SELECT unnest(?))""", [season, pid, weeks])}
+    out = {}
+    for week in sorted(have):
+        d = dst_store.overlay(con, season, week)
+        if pid in d["values"]:
+            out[week] = {"value": d["values"][pid], "origin": d["origin"][pid], "run": d["run"]}
     return out
 
 
@@ -194,8 +217,8 @@ def ours_forward(con, season: int, pid: int, weeks: list[dict], *, source: str) 
         if origin == ps.ESPN and on_bye:       # a schedule bye is not an ESPN projection and not a gap to fill
             origin, value = BYE, None
         horizon = run["horizon"] if run else None     # production_forecasts.horizon_of: NULL on a legacy run = 0
-        if got.get("kicker_run") and origin in OURS_ORIGINS:      # a kicker's week comes from the kicker model's run
-            kr = got["kicker_run"]
+        if (got.get("kicker_run") or got.get("dst_run")) and origin in OURS_ORIGINS:   # K / D/ST: their own model's run
+            kr = got.get("kicker_run") or got["dst_run"]
             entries.append({"week": w["week"], "value": value, "origin": origin, "on_bye": on_bye,
                             "run_id": kr["run_id"], "model_version": kr["model_version"],
                             "run_created_at": kr["created_at"], "horizon": kr["forecast_horizon"],
@@ -235,9 +258,16 @@ def ours_forward(con, season: int, pid: int, weeks: list[dict], *, source: str) 
         return _empty(f"No {PRIMARY} projection run is stored for any remaining regular-season week yet "
                       "(they are written by the rest-of-season learning cycle), so ESPN projections are shown.",
                       last_regular)
+    if any((e["model_version"] or "").startswith("dfp-") for e in entries):
+        # a D/ST: dfp-r1 projects one week, so its other weeks are ESPN's numbers, not the skill-position run's
+        for e in entries:
+            if e["origin"] == ps.ESPN:
+                e.update(run_id=None, model_version=None, run_created_at=None)
     versions = sorted({e["model_version"] for e in entries if e["model_version"]})
-    # a kicker's weeks come from the kicker model: it is that player's primary model (never mixed with ifp in a total)
-    primary = KICKER_VERSION if versions and all(v.startswith("kfp-") for v in versions) else PRIMARY
+    # a kicker's (D/ST's) weeks come from the kicker (D/ST) model: it is that player's primary model (never mixed with
+    # ifp in a total)
+    primary = (KICKER_VERSION if versions and all(v.startswith("kfp-") for v in versions)
+               else DST_VERSION if versions and all(v.startswith("dfp-") for v in versions) else PRIMARY)
     required = [e for e in entries if e["on_bye"] is not True]
     counted = [e for e in required if e["origin"] in OURS_ORIGINS and e["model_version"] == primary]
     fallback = [e["week"] for e in entries if e["origin"] == ps.ESPN]

@@ -1104,3 +1104,51 @@ CREATE TABLE IF NOT EXISTS kicker_projection_rows (
     pregame              BOOLEAN,
     PRIMARY KEY (run_id, espn_player_id)
 );
+
+-- D/ST projection runs (dfp-*), parallel to the kicker tables and for the same reasons (a D/ST run is made under a
+-- different, D/ST scoring fingerprint). Same contract: append-only, write-once, sealed by content_sha256 over the
+-- canonical meta + rows (app/analytics/dst_store.py), verified by every reader. Never list these tables in a
+-- connection._REBUILD entry.
+CREATE TABLE IF NOT EXISTS dst_projection_runs (
+    run_id               VARCHAR PRIMARY KEY,
+    season               INTEGER,
+    week                 INTEGER,
+    model_version        VARCHAR,
+    scoring_fingerprint  VARCHAR,           -- D/ST scoring fingerprint ('dst:...')
+    scoring              JSON,              -- resolved D/ST rules
+    artifact_id          VARCHAR,           -- sha256 of the artifact file bytes
+    artifact_created_at  VARCHAR,
+    data_through_season  INTEGER,
+    data_through_week    INTEGER,
+    nfl_synced_at        TIMESTAMP,
+    model_status         JSON,
+    evaluation           JSON,
+    inputs               JSON,              -- the lines as stored at projection time + ESPN statistics cache provenance
+    forecast_horizon     INTEGER,
+    created_at           TIMESTAMP,
+    content_sha256       VARCHAR,
+    row_count            INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS dst_projection_rows (
+    run_id               VARCHAR,
+    season               INTEGER,
+    week                 INTEGER,
+    espn_player_id       BIGINT,
+    nfl_team             VARCHAR,
+    opponent             VARCHAR,
+    is_home              BOOLEAN,
+    coverage_status      VARCHAR,           -- projected | bye | no_nfl_team
+    projected_points     DOUBLE,
+    interval_low         DOUBLE,
+    interval_high        DOUBLE,
+    expected_points      DOUBLE,            -- = projected_points (a D/ST always plays its game)
+    stat_line            JSON,              -- expected sacks, takeaways, points / yards allowed, P(any D/ST TD)
+    context              JSON,              -- the line used (spread, total, opponent implied total), kickoff
+    explanation          JSON,
+    flags                JSON,
+    missing_inputs       JSON,
+    kickoff              TIMESTAMP,         -- annotations (not hashed)
+    pregame              BOOLEAN,
+    PRIMARY KEY (run_id, espn_player_id)
+);

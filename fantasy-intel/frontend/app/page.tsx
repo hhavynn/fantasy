@@ -112,7 +112,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
 
       {projection === "ours" && (
         <Notice tone="info" title="This week's matchup and lineup use Fantasy Intel projections">
-          Switched in the header (research model; K and D/ST keep ESPN&apos;s number). Waiver and rest-of-season numbers stay on ESPN.
+          Switched in the header (K and D/ST from our kicker and D/ST models). Waiver and rest-of-season numbers stay on ESPN.
         </Notice>
       )}
 

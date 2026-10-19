@@ -34,6 +34,8 @@ isotonic participation map, scripts/participation_cal_shadow.py cycle) and `sign
 ifp-awd-p1, scripts/signal_shadows.py cycle, writes only <ifp-dir>/research/signal_shadows/). A further research shadow, `dst_shadow`
 (scripts/dst_shadow.py cycle: the D/ST model dfp-r1 vs ESPN; writes only data/models/dst/shadow/), follows them;
 skip it with --no-dst-shadow.
+The production D/ST model runs as `dst_project` right after `kicker` (scripts/dst_projections.py: the target
+week's verified dfp-r1 run in the live DB; non-fatal like kicker; skip it with --no-dst-project or --no-project).
 Then `dist_ledger`, the frozen pregame point-distribution ledger (scripts/distribution_ledger.py cycle: scores
 frozen weeks' interval coverage and freezes the target week's distributions from the forecast `predict` just
 froze; research only, writes only <ifp-dir>/research/point_distributions/ledger/; skip with --no-dist-ledger).
@@ -336,6 +338,43 @@ def stage_kicker(args, log_path: Path) -> dict:
     out["runs"] = [{k: r.get(k) for k in ("week", "run_id", "created", "row_count", "coverage")} for r in pj.get("runs", [])]
     return out
 
+
+DST_PROJECT_TIMEOUT_S = 20 * 60      # a possible ESPN fetch, the artifact fit (once a season) and one week's run
+
+
+def stage_dst_project(args, log_path: Path) -> dict:
+    """Production D/ST model (dfp-r1, scripts/dst_projections.py): `ensure` the artifact for the league's current D/ST
+    scoring (fitted and approved once per season and scoring), then
+    store the target week's verified D/ST run in the live DB (one week only: later weeks keep ESPN's D/ST numbers).
+    Called after `project` and `kicker` (the read connections are closed). Never fails the cycle: run_cycle turns an
+    error into a warning, and a week without a verified run keeps ESPN's D/ST numbers."""
+    base = [sys.executable, str(SCRIPTS / "dst_projections.py")]
+    common = ["--season", str(args.season), "--live-db", str(args.live_db), "--history-db", str(args.history_db)]
+    if getattr(args, "dst_dir", None) is not None:
+        common += ["--out", str(args.dst_dir)]
+    out: dict = {}
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = child_env()
+
+    def run(cmd: list[str]) -> dict:
+        proc = subprocess.run(base + cmd + common, cwd=_bootstrap.BACKEND, capture_output=True, text=True, env=env,
+                              timeout=DST_PROJECT_TIMEOUT_S)
+        with open(log_path, "a", encoding="utf-8") as log:
+            log.write(f"==> dst_projections.py {cmd[0]} {datetime.now(timezone.utc).isoformat()}\n"
+                      f"{proc.stdout}{proc.stderr}")
+        if proc.returncode != 0:
+            raise RuntimeError(f"dst_projections.py {cmd[0]} exited {proc.returncode}: {proc.stderr.strip()[-400:]}")
+        try:
+            return json.loads(proc.stdout)
+        except ValueError:
+            return {}
+
+    # the artifact for the league's current D/ST scoring: fitted once (per season and scoring), else re-approved (no-op)
+    art = run(["ensure"])
+    out["artifact"] = {k: art.get(k) for k in ("artifact", "sha256", "registered", "fitted")}
+    pj = run(["project", "--week", str(args.week)])
+    out["runs"] = [{k: r.get(k) for k in ("week", "run_id", "created", "row_count", "coverage")} for r in pj.get("runs", [])]
+    return out
 
 CTX_SHADOW_TIMEOUT_S = 45 * 60       # the whole research stage (store build + scoring + a possible freeze)
 # The other research shadows: (stage / report key, script, --no-* attribute, warning label). Same contract as ctx_shadow.
@@ -648,6 +687,28 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                      "error": f"{err.__class__.__name__}: {err}", **tag})
             report["warnings"].append(f"kicker projection failed (skill-position run unaffected): {err}")
 
+    def dst_project(after=None):
+        """Production D/ST model (dfp-r1), right after kicker and under the same rules: a failure is a warning, never a
+        failed cycle; a live-database write, so never with --no-project; needs the target week."""
+        if args.no_dst_project or args.no_project or args.week is None:
+            return                      # (no stage entry when disabled: a report's stage list is unchanged)
+        for con in conns:               # DuckDB allows one writing process: close the cycle's read connections
+            if con is not None:
+                con.close()
+        conns.clear()
+        t_d = time.monotonic()
+        tag = {"after": after} if after else {}
+        try:
+            report["dst_projection"] = stage_dst_project(args, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+            report["stages"].append({"name": "dst_project", "status": "ok",
+                                     "seconds": round(time.monotonic() - t_d, 2), **tag})
+        except Exception as err:      # noqa: BLE001
+            report["stages"].append({"name": "dst_project", "status": "failed_nonfatal",
+                                     "seconds": round(time.monotonic() - t_d, 2),
+                                     "error": f"{err.__class__.__name__}: {err}", **tag})
+            report["warnings"].append(f"D/ST projection failed (ESPN's D/ST numbers stay; skill-position run "
+                                      f"unaffected): {err}")
+
     def ctx_shadow(after=None):
         """Research shadow (ifp-ctx-p1), after the production stages: a failure is a warning, never a failed cycle.
         `after`: the early stop (waiting_for_data, failed) it follows."""
@@ -816,6 +877,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                     if "error" in r:
                         report["warnings"].append(f"rest-of-season projection for week {r['week']} failed: {r['error']}")
             kicker()
+            dst_project()
         ctx_shadow()
         research_shadows()
         dst_shadow()
@@ -831,6 +893,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         if lock is not None and stop.status in ("waiting_for_data", "failed"):
             if stop.status == "waiting_for_data":
                 kicker(after=stop.status)
+                dst_project(after=stop.status)
             ctx_shadow(after=stop.status)
             research_shadows()
             dst_shadow()
@@ -997,6 +1060,8 @@ def parse(argv=None):
                     help="do not run the point-distribution ledger stage (scripts/distribution_ledger.py cycle)")
     ap.add_argument("--dist-dir", type=Path, default=None,
                     help="model directory holding research/point_distributions/ (default: distribution_ledger.py's)")
+    ap.add_argument("--no-dst-project", action="store_true",
+                    help="do not store the production D/ST model's (dfp-r1) run after the skill-position projection")
     ap.add_argument("--no-dst-shadow", action="store_true",
                     help="do not run the dfp-r1 D/ST research shadow stage (scripts/dst_shadow.py cycle)")
     ap.add_argument("--dst-dir", type=Path, default=None,
@@ -1037,7 +1102,7 @@ def main(argv=None) -> int:
         return code
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
-            "training", "forecast", "projection", "kicker_projection", "ctx_shadow", *(r[0] for r in RESEARCH_SHADOWS),
+            "training", "forecast", "projection", "kicker_projection", "dst_projection", "ctx_shadow", *(r[0] for r in RESEARCH_SHADOWS),
             "dst_shadow", "dist_ledger", "promotion_check", "promotion_ready", "evaluation", "missed_window", "warnings",
             "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))

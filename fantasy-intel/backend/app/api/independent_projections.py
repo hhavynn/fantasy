@@ -113,7 +113,8 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
     if position and position not in POSITIONS:
         raise ValueError(f"position must be one of {', '.join(POSITIONS)}")
     base = {"schema_version": SCHEMA_VERSION, "league": {"id": lg["league_id"], "season": lg["season"]},
-            "week": week, "notes": NOTES, "governance": ps.governance(None), "kicker_run": None}
+            "week": week, "notes": NOTES, "governance": ps.governance(None), "kicker_run": None,
+            "dst_run": None}
     base["ranges"] = None       # floor / ceiling block (_range_overlay) once a run is served
     if not (table_exists(con, pf.RUNS) and pf.rows_source(con)):
         return {**base, "available": False, "unavailable_reason": "Independent projections have not been computed "
@@ -157,8 +158,10 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
     status = ps.consumer_status(run)
     out_players = [_player(p, run, status) for p in players]
     kicker_run = _kicker_overlay(con, lg["season"], week, out_players)
+    dst_run = _dst_overlay(con, lg["season"], week, out_players)
     ranges = _range_overlay(con, run, sel["rows"], out_players)
-    return {**base, "available": True, "unavailable_reason": None, "kicker_run": kicker_run, "ranges": ranges,
+    return {**base, "available": True, "unavailable_reason": None, "kicker_run": kicker_run, "dst_run": dst_run,
+            "ranges": ranges,
             "governance": ps.governance(run["model_version"]),
             "run": {"run_id": run["run_id"], "model_version": run["model_version"], "is_fallback": sel["fallback"],
                     "fallback_reason": (f"No eligible {ps.MODEL_VERSION} run for week {week}; the retired previous "
@@ -222,6 +225,39 @@ def _kicker_overlay(con, season: int, week: int, players: list[dict]) -> dict | 
     run = sel["run"]
     return {"available": True, "run_id": run["run_id"], "model_version": run["model_version"],
             "created_at": str(run["created_at"]), "artifact_verified": run.get("artifact_check") == "verified"}
+
+
+def _dst_overlay(con, season: int, week: int, players: list[dict]) -> dict | None:
+    """D/ST players (no skill-position model) take the verified dfp-r1 run's row (dst_store.select_run): the
+    `independent` block then describes the D/ST model. Returns the D/ST run's identity."""
+    from ..analytics import dst_store as ds
+    from .dst_projections import player as dst_player
+
+    if not any(p["position"] == "D/ST" for p in players):
+        return None
+    sel = ds.select_run(con, season, week)
+    if sel["run"] is None:
+        return {"available": False, "reason": sel["unavailable_reason"]}
+    rows = {r["espn_player_id"]: r for r in sel["rows"]}
+    for p in players:
+        r = rows.get(p["espn_player_id"])
+        if p["position"] != "D/ST" or r is None:
+            continue
+        d = dst_player(r, {}, {})["independent"]
+        p["independent"] = {**p["independent"], "projected_points": d["projected_points"],
+                            "expected_points": d["expected_points"], "interval_80": d["interval_80"],
+                            "model": ds.MODEL_NAME, "model_version": ds.MODEL_VERSION, "model_status": "dst_model",
+                            "coverage_status": d["coverage_status"], "flags": d["flags"],
+                            "missing_inputs": d["missing_inputs"], "explanation": d["explanation"],
+                            "pregame": d["pregame"], "games_used": None, "latest_usage": None, "participation": None,
+                            "stat_line": d["stat_line"], "dst_context": d["context"]}
+        espn, indep, exp = p["espn"]["projected_points"], d["projected_points"], d["expected_points"]
+        diff = round(indep - espn, 2) if indep is not None and espn is not None else None
+        exp_diff = round(exp - espn, 2) if exp is not None and espn is not None else None
+        p["comparison"] = {"independent_minus_espn": diff, **_comparability(indep, espn),
+                           "expected_minus_espn": exp_diff, "expected_comparable": exp_diff is not None,
+                           "evidence": _evidence(d, diff)}
+    return {"available": True, **ds.run_info(sel["run"])}
 
 
 def _range_overlay(con, run: dict, rows: list[dict], players: list[dict]) -> dict:

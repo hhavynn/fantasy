@@ -13,8 +13,8 @@ export function ProjectionNotice({ detail, className }: { detail: ProjectionSour
     : "Showing Fantasy Intel projections";
   return (
     <Notice tone="info" title={title} className={className}>
-      {modelStatusLine(detail)} Players marked <OriginTag origin="espn" ours /> keep ESPN&apos;s number: K, D/ST and anyone the model
-      can&apos;t project.
+      {modelStatusLine(detail)} K and D/ST come from our kicker and D/ST models. Players marked{" "}
+      <OriginTag origin="espn" ours /> keep ESPN&apos;s number: anyone our models can&apos;t project this week.
       {c && <> This week: {c.ours} from our model, {c.ours_zero} at 0 (bye or unavailable), {c.espn} from ESPN.</>}
       {detail.reason && <> {detail.reason}</>}
       {horizonCaution(detail) && <> {horizonCaution(detail)}</>}

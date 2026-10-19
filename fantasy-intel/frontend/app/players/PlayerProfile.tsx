@@ -224,10 +224,10 @@ function ValueAndTrends({ d }: { d: Detail }) {
   );
 }
 
-/** Next step from a profile: the player's position in the Rankings (or the kicker outlook), where the peers are. */
+/** Next step from a profile: the player's position in the Rankings (or the kicker / D/ST outlook), where the peers are. */
 function RankingsLink({ position }: { position: string | null }) {
-  const href = position && SKILL.includes(position) ? `/rankings?pos=${position}` : position === "K" ? "/kickers" : null;
+  const href = position && SKILL.includes(position) ? `/rankings?pos=${position}` : position === "K" ? "/kickers" : position === "D/ST" ? "/defenses" : null;
   if (!href) return null;
-  const text = position === "K" ? "Kicker outlook" : `${position} rankings`;
+  const text = position === "K" ? "Kicker outlook" : position === "D/ST" ? "D/ST outlook" : `${position} rankings`;
   return <Link className={styles.nextLink} href={href}>{text}</Link>;
 }

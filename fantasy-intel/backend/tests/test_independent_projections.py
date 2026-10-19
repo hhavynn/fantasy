@@ -207,7 +207,7 @@ def test_live_uses_only_weeks_before_target(live):
 # ----------------------------------------------------------------------------- API
 
 TOP_KEYS = {"schema_version", "league", "week", "notes", "available", "unavailable_reason", "run", "model_status", "governance",
-            "players", "kicker_run", "ranges"}
+            "players", "kicker_run", "dst_run", "ranges"}
 PLAYER_KEYS = {"espn_player_id", "gsis_id", "name", "position", "nfl_team", "opponent", "is_home", "fantasy_team_id",
                "injury_status", "independent", "espn", "comparison"}
 INDEP_KEYS = {"projected_points", "interval_80", "model", "model_version", "model_status", "start_sit_ready",

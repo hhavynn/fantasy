@@ -77,10 +77,12 @@ test("every page appears once and every group has pages", () => {
   }
 });
 
-test("the kicker outlook sits with Waivers, as a streaming tool", () => {
+test("the kicker and D/ST outlooks sit with Waivers, as streaming tools", () => {
   assert.equal(getActiveRoute("/kickers").activeHref, "/kickers");
   assert.equal(group("/kickers"), "Waivers");
   assert.ok(ALL_NAV_PAGES.some((p) => p.href === "/kickers"));
+  assert.equal(getActiveRoute("/defenses").activeHref, "/defenses");
+  assert.equal(group("/defenses"), "Waivers");
 });
 
 // ---------- Task-based groups (frontend UX overhaul) ----------
@@ -92,7 +94,7 @@ test("My team holds this week's lineup decisions for the analyzed roster", () =>
 });
 
 test("Waivers is its own destination, so the other weekly decision is one tap away on phones", () => {
-  assert.deepEqual(groupOf("Waivers").pages.map((p) => p.href), ["/waivers", "/kickers"]);
+  assert.deepEqual(groupOf("Waivers").pages.map((p) => p.href), ["/waivers", "/kickers", "/defenses"]);
   assert.equal(group("/waivers"), "Waivers");
   assert.ok(NAV_GROUPS.length <= 5, "a phone tab bar holds at most five destinations");
 });
