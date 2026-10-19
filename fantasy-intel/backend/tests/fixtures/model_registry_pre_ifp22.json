@@ -1,0 +1,120 @@
+{
+ "schema": "model-registry/v1",
+ "note": "Reviewed approval manifest (app/analytics/model_registry.py). Paths are relative to INDEPENDENT_MODEL_DIR (data/models). Read by research tooling only; the hosted app never reads it, and the projection switch reads projection_source.MODEL_VERSION, which must name the production model here, and serves an ifp-1.0.0 fallback run only when its artifact_id equals projection_source.FALLBACK_ARTIFACT_SHA256, which must equal the ifp-1.0.0 pin here (tested). Changing production is a separate, explicitly approved change to this file AND the consumer wiring (docs/independent_projection_engine.md, 'Model registry and promotion').",
+ "production": {"family": "ifp", "version": "ifp-2.1.0"},
+ "models": [
+  {
+   "family": "ifp",
+   "version": "ifp-1.0.0",
+   "state": "deprecated_or_rolled_back",
+   "artifact": {"path": "independent_projections_ifp-1.0.0.json", "sha256": "a1fe1bc3f3c54143789bb4562695162df90535a1ff85f927841ef562ab699881"},
+   "scoring_fingerprint": "e165b59686110c7d",
+   "training_cutoff": {"season": 2026, "week": 5},
+   "approval": {
+    "kind": "incumbent",
+    "approved_by": null,
+    "approved_at": null,
+    "note": "The model the opt-in projection switch already read when the registry was created. Not an owner approval: it authorizes nothing new and cannot be reused by any other model."
+   },
+   "validation_reports": [
+    {"kind": "heldout_backtest", "path": "heldout_report.json", "sha256": "d75ca79b232c086d28e2f14d574811352ca833738879c26b530d306d2241cd5d"}
+   ],
+   "rollback_to": null,
+   "reason": "Previous production model: ridge conditional model with the ipm-1.0.0 participation artifact for expected points. Its artifact, training cutoff and held-out report are pinned (see pin): the file's sha256 equals the artifact_id the newest stored ifp-1.0.0 production run recorded, and projection_source.FALLBACK_ARTIFACT_SHA256 serves only runs of exactly these bytes. The participation artifact is not registered or pinned.",
+   "retired": {"at": "2026-10-16T04:12:51+00:00", "by": "hhavynn", "kind": "superseded", "reason": "Replaced by ifp-2.0.0 (owner decision). Still read by the projection switch for a week without an ifp-2.0.0 run, and the rollback target."}
+,
+   "pin": {"at": "2026-10-16T06:51:39.099987+00:00", "by": "claude-code on fix/production-projection-governance (pin-artifact proposal; owner review via PR)", "reason": "Pin the retired ifp-1.0.0 production artifact (the rollback target and consumer fallback) to the exact bytes production served: the file's sha256 equals the artifact_id recorded by the newest stored ifp-1.0.0 production run.", "artifact_sha256": "a1fe1bc3f3c54143789bb4562695162df90535a1ff85f927841ef562ab699881", "training_cutoff_source": "end of every position model's train_window in the artifact", "served_by_runs": ["ifp-2026w7-20261016T041959-c39940"], "other_recorded_artifacts": []}
+  },
+  {
+   "family": "ifp",
+   "version": "ifp-2.0.0",
+   "state": "deprecated_or_rolled_back",
+   "artifact": {"path": null, "sha256": null},
+   "scoring_fingerprint": "e165b59686110c7d",
+   "training_cutoff": null,
+   "approval": {
+    "kind": "owner_approval",
+    "approved_by": "hhavynn",
+    "approved_at": "2026-10-16T04:12:51+00:00",
+    "start_sit_ready": false,
+    "evidence_sha256": {},
+    "override": true,
+    "reason": "Owner decision: the projection switch reads ifp-2.0.0. Recorded as an owner override: SHADOW_PROMOTION_CRITERIA (>= 8 fully final prospective weeks, >= 400 matched appearances per position) and PROMOTION_CRITERIA (>= 3% vs the best trailing baseline) are NOT met, and no prospective or held-out report is cited. ifp-1.0.0 stays the rollback target and the fallback for a week without an ifp-2.0.0 run."
+   },
+   "validation_reports": [],
+   "rollback_to": "ifp-1.0.0",
+   "reason": "Production since the owner approval above. Weekly-retrained (challenger.py, weekly_learning.py): each week's run (backtest_independent_projections.py project) uses the newest content-addressed artifact for that target week, trained on games before it, and records its file sha256 as the run's artifact_id, so artifact.path and sha256 stay null here. Forecasts keep going to the frozen pregame ledger for the prospective evaluation.",
+   "retired": {"at": "2026-10-18T20:30:00+00:00", "by": "hhavynn", "kind": "superseded", "reason": "Replaced by ifp-2.1.0 (owner decision). Still read by the projection switch for a week without an ifp-2.1.0 run, and the rollback target."}
+  },
+  {
+   "family": "ifp",
+   "version": "ifp-2.1.0",
+   "state": "approved_production",
+   "artifact": {"path": null, "sha256": null},
+   "scoring_fingerprint": "e165b59686110c7d",
+   "training_cutoff": null,
+   "approval": {
+    "kind": "owner_approval",
+    "approved_by": "hhavynn",
+    "approved_at": "2026-10-18T20:30:00+00:00",
+    "start_sit_ready": false,
+    "evidence_sha256": {},
+    "override": true,
+    "reason": "Owner decision (\"upgrade it, and replace the ours\"): the projection switch reads ifp-2.1.0, ifp-2.0.0 plus the injury workload handoff (iwh-0.1.1) and the empirical return-rate P(plays) for players Out/Doubtful at the rest-of-season cutoff for the team's next two games (ros-avail-0.1.1). Recorded as an owner override: the handoff's pre-registered research verdict was retain_baseline (failed the returning-player mechanism check c7, diagnosed and fixed in iwh-0.1.1), the return-rate P(plays) overrides ros-avail-0.1.0's retain_current verdict (0.1.1 is a prospective-only candidate, docs/research/ros_availability.md), SHADOW_PROMOTION_CRITERIA and PROMOTION_CRITERIA are not met, and no prospective or held-out report is cited. ifp-2.0.0 stays the rollback target and the fallback for a week without an ifp-2.1.0 run."
+   },
+   "validation_reports": [
+    {"kind": "historical_research", "path": "research/injury_workload_handoff.md", "sha256": null}
+   ],
+   "rollback_to": "ifp-2.0.0",
+   "reason": "Production since the owner approval above. Weekly-retrained like ifp-2.0.0 (injury_model.py, weekly_learning.train_production): each week's run (backtest_independent_projections.py project) uses the newest content-addressed ifp-2.1.0 artifact for that target week, trained on games before it, and records its file sha256 as the run's artifact_id (approved in approved_artifacts), so artifact.path and sha256 stay null here. Research evidence (historical, 2023-24 confirmation of the handoff features): pooled MAE -0.039 [-0.048, -0.031] vs ifp-2 on RB/WR/TE, every position better; rest-of-season P(plays) Brier for players Out/Doubtful at the cutoff 0.514 -> 0.239."
+  },
+  {
+   "family": "ifp",
+   "version": "ifp-hgb-0.1.0",
+   "state": "experimental_research",
+   "artifact": {"path": null, "sha256": null},
+   "scoring_fingerprint": "e165b59686110c7d",
+   "training_cutoff": null,
+   "approval": null,
+   "validation_reports": [
+    {"kind": "historical_research", "path": "research/hgb_challenger.md", "sha256": null}
+   ],
+   "rollback_to": null,
+   "reason": "Research-only gradient-boosting challenger (docs/research/hgb_challenger.md): worse than ifp-2 on development, ridge retained. Historical research cannot replace prospective confirmation."
+  }
+ ],
+ "history": [
+  {
+   "at": "2026-10-16T00:00:00+00:00",
+   "event": "registry_initialized",
+   "production": "ifp-1.0.0",
+   "by": null,
+   "reason": "Registry created with the incumbent champion as production. No model was promoted, activated or rolled back."
+  },
+  {
+   "at": "2026-10-16T04:12:51+00:00",
+   "event": "promotion",
+   "from": "ifp-1.0.0",
+   "production": "ifp-2.0.0",
+   "by": "hhavynn",
+   "reason": "Owner decision: the projection switch reads ifp-2.0.0. Recorded as an owner override: SHADOW_PROMOTION_CRITERIA (>= 8 fully final prospective weeks, >= 400 matched appearances per position) and PROMOTION_CRITERIA (>= 3% vs the best trailing baseline) are NOT met, and no prospective or held-out report is cited. ifp-1.0.0 stays the rollback target and the fallback for a week without an ifp-2.0.0 run."
+  },
+  {
+   "at": "2026-10-16T06:51:39.099987+00:00",
+   "event": "artifact_pinned",
+   "production": "ifp-2.0.0",
+   "version": "ifp-1.0.0",
+   "artifact_sha256": "a1fe1bc3f3c54143789bb4562695162df90535a1ff85f927841ef562ab699881",
+   "by": "claude-code on fix/production-projection-governance (pin-artifact proposal; owner review via PR)",
+   "reason": "Pin the retired ifp-1.0.0 production artifact (the rollback target and consumer fallback) to the exact bytes production served: the file's sha256 equals the artifact_id recorded by the newest stored ifp-1.0.0 production run."
+  },
+  {
+   "at": "2026-10-18T20:30:00+00:00",
+   "event": "promotion",
+   "from": "ifp-2.0.0",
+   "production": "ifp-2.1.0",
+   "by": "hhavynn",
+   "reason": "Owner decision (\"upgrade it, and replace the ours\"): the projection switch reads ifp-2.1.0, ifp-2.0.0 plus the injury workload handoff (iwh-0.1.1) and the empirical return-rate P(plays) for players Out/Doubtful at the rest-of-season cutoff for the team's next two games (ros-avail-0.1.1). Recorded as an owner override: the handoff's pre-registered research verdict was retain_baseline (failed the returning-player mechanism check c7, diagnosed and fixed in iwh-0.1.1), the return-rate P(plays) overrides ros-avail-0.1.0's retain_current verdict (0.1.1 is a prospective-only candidate, docs/research/ros_availability.md), SHADOW_PROMOTION_CRITERIA and PROMOTION_CRITERIA are not met, and no prospective or held-out report is cited. ifp-2.0.0 stays the rollback target and the fallback for a week without an ifp-2.1.0 run."
+  }
+ ]
+}

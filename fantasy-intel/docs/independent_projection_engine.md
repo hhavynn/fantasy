@@ -7,8 +7,14 @@ path is the **projection switch** (header toggle "ESPN | Ours", see "Projection 
 which only changes the weekly numbers on Home, Matchup and Start/Sit and adds Fantasy Intel's series to a
 player's forward view.
 
-**Production model: `ifp-2.1.0`, by owner decision (2026-10-18, `model_registry.json`, recorded as an owner
-override).** `ifp-2.1.0` is `ifp-2.0.0` plus injury awareness (`app/analytics/injury_model.py`, section
+**Production model: `ifp-2.2.0`, by owner decision (2026-10-19, `model_registry.json`, recorded as an owner
+override).** `ifp-2.2.0` is `ifp-2.1.0` (below) plus the prospective research shadows' frozen specs: QB start
+probabilities and the two-scenario mixture, QB and teammate context for RB/WR, the pregame depth tier (QB/RB/WR) and
+the decline-only role (RB/WR/TE) (`app/analytics/context_model.py`, section "ifp-2.2.0" below; backtest guard in
+`docs/research/ifp22_promotion.md`: QB MAE -0.367, RB -0.025, WR -0.030, TE 0.000 vs ifp-2.1.0 on 2023-26). The
+QB P(plays) map was left out by the guard; the FTN first-read candidate waits on a licensing decision.
+
+**`ifp-2.1.0`** (production 2026-10-18 to 2026-10-19, now the fallback) is `ifp-2.0.0` plus injury awareness (`app/analytics/injury_model.py`, section
 "ifp-2.1.0: injury-aware workload and availability" below):
 
 * **who inherits the work**: RB/WR/TE ridges add the workload-handoff features (`ho_exp_xfpl`, `ho_shift_pg`):
@@ -29,15 +35,16 @@ the diagnosed cause is fixed in the handoff version production uses (iwh-0.1.1),
 No position is Start/Sit-ready and the consumer status of every position is `owner_override`. Accuracy is still
 measured prospectively from frozen pregame forecasts (`espn_benchmark.py`, the promotion tracker).
 
-The model a user sees may be the **`ifp-2.0.0` fallback**: a week with no eligible `ifp-2.1.0` run shows the
-newest eligible `ifp-2.0.0` run, labeled as the fallback. `ifp-1.0.0` is retired and no longer served.
+The model a user sees may be the **`ifp-2.1.0` fallback**: a week with no eligible `ifp-2.2.0` run shows the
+newest eligible `ifp-2.1.0` run, labeled as the fallback. `ifp-2.0.0` and `ifp-1.0.0` are retired and no longer
+served.
 
 Which run is shown, and what may be said about it, is decided in one place
 (`projection_source.select_run` / `governance`, see "Projection switch"). Weekly routine (laptop, before
 the week's first kickoff), automated by the launchd jobs in `scripts/launchd/`:
 
 ```bash
-uv run python ../scripts/learning_cycle.py run    # sync, train ifp-2.1.0 (and the ledger's ifp-1/ifp-2) for week W, store its runs (`project`)
+uv run python ../scripts/learning_cycle.py run    # sync, train ifp-2.2.0 (and ifp-2.1.0, the ledger's ifp-1/ifp-2) for week W, store its runs (`project`)
 uv run python ../scripts/refresh_all.py           # ... which the next refresh publishes to MotherDuck
 ```
 
@@ -700,7 +707,46 @@ could be counted as evidence with no rows behind it. v8 fixes this with append-o
   DB that lacks a run removes it from the hosted copy, so never publish from a restored older file.
   (`tests/test_production_forecasts.py::test_publish_copies_the_run_tables_as_is_and_cannot_touch_local_history`.)
 
-## ifp-2.1.0: injury-aware workload and availability (production)
+## ifp-2.2.0: research shadows promoted into Ours (production)
+
+`app/analytics/context_model.py`; evidence, overlaps and the backtest guard in `docs/research/ifp22_promotion.md`.
+Production by the owner's decision ("force-promote shadows now"), recorded as an owner override: none of the shadows'
+prospective gates is met, and their ledgers keep running unchanged as the post-hoc evidence.
+
+**What it is.** ifp-2.1.0 whole (below: the handoff features, return-rate P(plays) and rest-of-season scenarios),
+plus the frozen spec of each prospective research shadow that passed the backtest guard (`context_model.SHIPPED`):
+
+| Position | Added | From |
+|---|---|---|
+| QB | start probabilities of every plausible QB (`qbstart-0.1.0`, refitted weekly on earlier team-weeks), `s_start` + `qb_self_epa`, projection = pi x f(start) + (1 - pi) x f(no start); the pregame depth tier `dc_tier` | ifp-ctx-p2q, ifp-dct-p1 |
+| RB, WR | the expected starting QB vs the player's recent QBs (`qb_epa_delta`, `qb_cpoe_delta`, `qb_changed`), unavailable / returning teammates' claims (`tm_*`), `dc_tier`, the decline-only role `aw_role_d` in place of `xfpl_eb` | ifp-ctx-p1, ifp-dct-p1, ifp-awd-p1 |
+| TE | `aw_role_d` in place of `xfpl_eb` | ifp-awd-p1 |
+
+Left out: the QB P(plays) map ipm-cal-0.1.0 (unconditional QB MAE +0.016 [+0.003, +0.031] in the guard) and the FTN
+first-read candidate ifp-fr-p1 (CC-BY-SA 4.0: pending the owner's licensing decision). Guard result, ifp-2.2.0 minus
+ifp-2.1.0 conditional MAE on identical 2023 - 2026 week 6 player-weeks: QB -0.367 [-0.444, -0.276], RB -0.025
+[-0.051, -0.003], WR -0.030 [-0.043, -0.018], TE +0.000.
+
+**Inputs.** Besides the forecast sources: the QB / team context tables of both databases (`roster_context.
+load_context_sources`) and nflverse modern depth charts kept as content-addressed snapshots in
+`<weekly-dir>/depth_raw` (`weekly_learning.py sync-depth`; the learning cycle runs it after `sync-exits`, and a failed
+download keeps the stored snapshot). `backtest_independent_projections.py project` / `reproject` load them for an
+ifp-2.2.0 artifact (`context_model.load_inputs`); `build_live` refuses an ifp-2.2.0 artifact without them. The QB
+scenario code is the shadow's own `scripts/qb_scenarios.py` (sha256 recorded in every artifact).
+
+**Point in time.** Training rows get every component from data before their own week. A live run reads everything as
+of the cutoff week W: W's report (with the ESPN status fallback) at horizon 0; at a later target week W's next-game
+designations are dropped; the depth tier is W's game's, from snapshots made before the run.
+
+**Training and storage.** `weekly_learning.train_context` (artifacts in `artifacts/ifp-2.2.0/`); `weekly_learning.py
+train` trains it after the ledger models and ifp-2.1.0 (the fallback keeps its own weekly artifacts), and the learning
+cycle's `project` stage projects it (the default model) and registers it in `approved_artifacts`. `train --week W
+--after-kickoff` trains ifp-2.2.0 alone for a week already in progress (never evidence for that week).
+
+**Rollback.** `ifp-2.1.0` is the rollback target and the consumer fallback (weekly-retrained, approved per artifact):
+switch `projection_source.MODEL_VERSION` back and project `--model ifp-2.1.0`.
+
+## ifp-2.1.0: injury-aware workload and availability (fallback, previous production)
 
 `app/analytics/injury_model.py`; the handoff itself is `app/analytics/injury_workload.py` (definitions and
 evidence: `docs/research/injury_workload_handoff.md`).

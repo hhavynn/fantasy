@@ -256,6 +256,8 @@ def test_weekly_pipeline_never_imports_into_consumers():
                          "injury_challenger.py",    # research-only workload handoff challenger and its prospective
                          "injury_prospective.py",   # gate (never imported, see
             # tests/test_injury_workload.py::test_app_never_imports_the_injury_research_modules)
+                         "context_model.py",   # the production model ifp-2.2.0, trained and projected offline (never
+                         # imported by the hosted app, see tests/test_context_model.py)
                          "situational_usage.py"):   # research-only situational usage splits (never imported, see
             # tests/test_situational_usage.py::test_research_module_is_never_imported_by_the_app)
             continue

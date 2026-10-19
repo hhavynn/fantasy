@@ -249,6 +249,19 @@ LABELS = {
     # ifp-2.1.0 (app.analytics.injury_model): the injury workload handoff
     "ho_exp_xfpl": "expected opportunity value with this week's available teammates (xFP per game)",
     "ho_shift_pg": "expected touches vs his recent average (carries + targets per game)",
+    # ifp-2.2.0 (app.analytics.context_model)
+    "s_start": "chance he starts at quarterback when he plays", "qb_self_epa": "his passing efficiency (EPA per dropback)",
+    "qb_epa_delta": "expected starting QB's passing efficiency vs the QBs he has played with",
+    "qb_cpoe_delta": "expected starting QB's accuracy vs the QBs he has played with",
+    "qb_changed": "a different starting QB is expected",
+    "tm_tgt_gain_pg": "targets opened up by unavailable teammates (per game)",
+    "tm_car_gain_pg": "carries opened up by unavailable teammates (per game)",
+    "tm_tgt_vacated": "share of team targets held by unavailable teammates",
+    "tm_tgt_returning": "share of team targets held by returning teammates",
+    "tm_car_vacated": "share of team carries held by unavailable teammates",
+    "tm_car_returning": "share of team carries held by returning teammates",
+    "dc_tier": "depth chart tier (1 = starter)",
+    "aw_role_d": "workload role (expected points per game, follows a sustained drop)",
 }
 
 

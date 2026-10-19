@@ -379,7 +379,8 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "usage_signals.py",   # research-only FTN read / depth-chart signals (never imported by the app)
                "roster_context.py", "context_challenger.py",   # research-only QB/teammate context (never imported)
                "injury_workload.py", "injury_challenger.py",   # injury timeline / workload handoff (ifp-2.1.0 + research)
-               "injury_model.py",   # the production model ifp-2.1.0 (trained and projected offline, never by the API)
+               "injury_model.py",   # the fallback model ifp-2.1.0 (trained and projected offline, never by the API)
+               "context_model.py",   # the production model ifp-2.2.0 (trained and projected offline, never by the API)
                "returning_context.py",   # research-only returning-teammate challenger ifp-ret (never imported)
                "qb_receiver_compat.py",   # research-only receiver role x QB challenger ifp-qbr (never imported)
                "penalty_erased.py",   # research-only penalty-erased opportunities ifp-pe (never imported)
@@ -409,11 +410,13 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     from app.analytics.challenger import CHALLENGER_VERSION
     from app.analytics.independent_projections import MODEL_VERSION
 
-    # production is ifp-2.1.0 (model_registry.json); ifp-2.0.0 is read only for a week without an ifp-2.1.0 run
+    # production is ifp-2.2.0 (model_registry.json); ifp-2.1.0 is read only for a week without an ifp-2.2.0 run
+    from app.analytics.context_model import MODEL_VERSION as CONTEXT_VERSION
     from app.analytics.injury_model import MODEL_VERSION as INJURY_VERSION
 
-    assert projection_source.MODEL_VERSION == INJURY_VERSION == "ifp-2.1.0"
-    assert projection_source.FALLBACK_VERSION == CHALLENGER_VERSION == "ifp-2.0.0"
+    assert projection_source.MODEL_VERSION == CONTEXT_VERSION == "ifp-2.2.0"
+    assert projection_source.FALLBACK_VERSION == INJURY_VERSION == "ifp-2.1.0"
+    assert projection_source.RETIRED_WEEKLY_VERSION == CHALLENGER_VERSION == "ifp-2.0.0"
     assert projection_source.RETIRED_VERSION == MODEL_VERSION == "ifp-1.0.0"
     assert inspect.signature(start_sit.load_start_sit_evaluation).parameters["source"].default == "espn"
     assert inspect.signature(matchup.load_matchup).parameters["source"].default == "espn"

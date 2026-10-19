@@ -1,6 +1,6 @@
 """Opt-in "ours" series for the player forward view (GET /players/{id}/forward?source=independent).
 
-The production model (ifp-2.1.0) is run for every remaining regular-season week (the rest-of-season cycle,
+The production model (ifp-2.2.0) is run for every remaining regular-season week (the rest-of-season cycle,
 one immutable run per target week). This module reads those stored runs, one week at a time, through the
 opt-in weekly switch (`projection_source.weekly`) and turns them into a per-week series and a total for ONE
 player. It trains and writes nothing and is SQL-only, like the switch.

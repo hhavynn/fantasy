@@ -442,6 +442,7 @@ def test_app_never_imports_the_research_context_modules():
     subprocess.run([sys.executable, "-c", code], cwd=backend, check=True)
     for path in (backend / "app").rglob("*.py"):
         if path.name not in ("roster_context.py", "context_challenger.py", "returning_context.py",
-                             "qb_receiver_compat.py"):   # research only
+                             "qb_receiver_compat.py",    # research only
+                             "context_model.py"):        # the production model ifp-2.2.0 (offline; app.main never imports it, tests/test_context_model.py)
             text = path.read_text()
             assert "roster_context" not in text and "context_challenger" not in text, path

@@ -1,5 +1,5 @@
 """Approved production model registry (app.analytics.model_registry): the committed manifest records the
-owner's promotions of ifp-2.0.0 over ifp-1.0.0 and of ifp-2.1.0 over ifp-2.0.0 as valid transitions, every promotion check fails closed, a
+owner's promotions of ifp-2.0.0 over ifp-1.0.0, of ifp-2.1.0 over ifp-2.0.0 and of ifp-2.2.0 over ifp-2.1.0 as valid transitions, every promotion check fails closed, a
 fixture approval is accepted only in isolation, rollback is planned (never applied), and nothing in the hosted
 app reads the registry. Promotion fixtures start from the pre-promotion manifest (ifp-1.0.0 production,
 tests/fixtures/model_registry_pre_ifp2.json)."""
@@ -30,6 +30,7 @@ APP = BACKEND / "app"
 PRE_IFP2 = pathlib.Path(__file__).resolve().parent / "fixtures" / "model_registry_pre_ifp2.json"
 PRE_PIN = pathlib.Path(__file__).resolve().parent / "fixtures" / "model_registry_pre_pin.json"
 PRE_IFP21 = pathlib.Path(__file__).resolve().parent / "fixtures" / "model_registry_pre_ifp21.json"   # ifp-2.0.0 production
+PRE_IFP22 = pathlib.Path(__file__).resolve().parent / "fixtures" / "model_registry_pre_ifp22.json"   # ifp-2.1.0 production
 
 
 def _pre() -> dict:
@@ -156,21 +157,48 @@ def test_pre_promotion_manifest_had_ifp_1_as_incumbent():
     assert [h["event"] for h in m["history"]] == ["registry_initialized"]
 
 
-def test_committed_production_is_ifp_2_1_by_owner_approval():
+def test_committed_production_is_ifp_2_2_by_owner_approval():
     m = reg.load_manifest()
     p = reg.production(m)
-    assert p["version"] == ps.MODEL_VERSION == "ifp-2.1.0"
+    assert p["version"] == ps.MODEL_VERSION == "ifp-2.2.0"
     assert p["state"] == reg.APPROVED and p["scoring_fingerprint"] == FP and p["rollback_to"] == ps.FALLBACK_VERSION
+    ap = p["approval"]
+    assert ap["kind"] == reg.OWNER_APPROVAL and ap["approved_by"] and ap["override"] is True
+    assert ap["start_sit_ready"] is False and ap["evidence_sha256"] == {}     # no pinned evidence is claimed
+    assert "Force-promote shadows now" in ap["reason"] and "ifp-fr-p1" in ap["reason"]
+    assert [r["kind"] for r in p["validation_reports"]] == [reg.HISTORICAL]   # the backtest guard doc, historical only
+    assert p["artifact"] == {"path": None, "sha256": None}                    # weekly: approved in the database
+    assert [e["version"] for e in m["models"] if e["state"] == reg.APPROVED] == ["ifp-2.2.0"]
+    for v in (ps.FALLBACK_VERSION, ps.RETIRED_WEEKLY_VERSION, MODEL_VERSION):
+        assert reg.entry(m, v)["state"] == reg.RETIRED
+    assert reg.entry(m, ps.FALLBACK_VERSION)["retired"]["kind"] == "superseded"
+    assert [h["event"] for h in m["history"]] == ["registry_initialized", "promotion", reg.PIN_EVENT, "promotion",
+                                                  "promotion"]
+    assert m["history"][-1]["from"] == ps.FALLBACK_VERSION and m["history"][-1]["production"] == ps.MODEL_VERSION
+    # a valid, append-only transition from the manifest it replaced (one promotion per reviewed change)
+    pre = reg.load_manifest(PRE_IFP22)
+    assert reg.verify_transition(pre, m) == []
+    assert m["history"][:len(pre["history"])] == pre["history"]
+    for v in (ps.RETIRED_WEEKLY_VERSION, MODEL_VERSION):                      # older entries unchanged
+        assert reg.entry(m, v) == reg.entry(pre, v)
+
+
+def test_ifp_2_1_was_promoted_by_owner_approval():
+    """The manifest while ifp-2.1.0 was production (until the ifp-2.2.0 promotion), kept as a fixture."""
+    m = reg.load_manifest(PRE_IFP22)
+    p = reg.production(m)
+    assert p["version"] == "ifp-2.1.0"
+    assert p["state"] == reg.APPROVED and p["scoring_fingerprint"] == FP and p["rollback_to"] == "ifp-2.0.0"
     ap = p["approval"]
     assert ap["kind"] == reg.OWNER_APPROVAL and ap["approved_by"] and ap["override"] is True
     assert ap["start_sit_ready"] is False and ap["evidence_sha256"] == {}     # no pinned evidence is claimed
     assert [r["kind"] for r in p["validation_reports"]] == [reg.HISTORICAL]   # the research doc, historical only
     assert p["artifact"] == {"path": None, "sha256": None}                    # weekly: approved in the database
     assert [e["version"] for e in m["models"] if e["state"] == reg.APPROVED] == ["ifp-2.1.0"]
-    assert reg.entry(m, ps.FALLBACK_VERSION)["state"] == reg.RETIRED == reg.entry(m, MODEL_VERSION)["state"]
-    assert reg.entry(m, ps.FALLBACK_VERSION)["retired"]["kind"] == "superseded"
+    assert reg.entry(m, "ifp-2.0.0")["state"] == reg.RETIRED == reg.entry(m, MODEL_VERSION)["state"]
+    assert reg.entry(m, "ifp-2.0.0")["retired"]["kind"] == "superseded"
     assert [h["event"] for h in m["history"]] == ["registry_initialized", "promotion", reg.PIN_EVENT, "promotion"]
-    assert m["history"][-1]["from"] == ps.FALLBACK_VERSION and m["history"][-1]["production"] == ps.MODEL_VERSION
+    assert m["history"][-1]["from"] == "ifp-2.0.0" and m["history"][-1]["production"] == "ifp-2.1.0"
     # a valid, append-only transition from the manifest it replaced (one promotion per reviewed change)
     assert reg.verify_transition(reg.load_manifest(PRE_IFP21), m) == []
     # history before the switch is unchanged byte for byte (models are only appended or retired)
@@ -189,9 +217,10 @@ def test_dry_run_report_on_the_committed_manifest(tmp_path):
     # the fallback is weekly-retrained like production: no single pinned artifact to restore
     assert rb["version"] == ps.FALLBACK_VERSION and rb["artifact_pinned"] is False
     assert rb["artifact_check"]["result"] == reg.INSUFFICIENT
-    assert {c["version"] for c in rep["candidates"]} == {MODEL_VERSION, ps.FALLBACK_VERSION, "ifp-hgb-0.1.0"}
+    assert {c["version"] for c in rep["candidates"]} == {MODEL_VERSION, ps.FALLBACK_VERSION, ps.RETIRED_WEEKLY_VERSION,
+                                                         "ifp-hgb-0.1.0"}
     # the owner override does not pass the evidence gate: the approval cites no prospective or held-out report
-    gate = reg.evaluate_promotion(reg.load_manifest(PRE_IFP21), m, model_root=tmp_path, live_scoring_fp=FP)
+    gate = reg.evaluate_promotion(reg.load_manifest(PRE_IFP22), m, model_root=tmp_path, live_scoring_fp=FP)
     assert gate["activatable"] is False and gate["blocking"]
     assert not any(c["activatable"] or c["eligible_for_review"] or c["activates"] for c in rep["candidates"])
 
@@ -522,8 +551,8 @@ def test_consumer_artifact_pin_is_a_tested_copy_of_the_registry_pin():
     # the versions the two artifact rules belong to are tested copies of the switch's
     assert production_pin.PINNED_MODEL_VERSION == ps.RETIRED_VERSION
     assert production_pin.REGISTERED_MODEL_VERSION == ps.MODEL_VERSION == reg.production(m)["version"]
-    assert production_pin.REGISTERED_MODEL_VERSIONS == ps.CONSUMER_VERSIONS
-    for v in ps.CONSUMER_VERSIONS:                  # both retrain weekly: approved in the database
+    assert production_pin.REGISTERED_MODEL_VERSIONS == (*ps.CONSUMER_VERSIONS, ps.RETIRED_WEEKLY_VERSION)
+    for v in production_pin.REGISTERED_MODEL_VERSIONS:       # all retrain weekly: approved in the database
         assert reg.entry(m, v)["artifact"]["sha256"] is None
 
 
@@ -853,7 +882,7 @@ def test_committed_pin_of_the_rollback_target_is_a_valid_transition():
     runs only of exactly these bytes."""
     pre, m = reg.load_manifest(PRE_PIN), reg.load_manifest(PRE_IFP21)
     assert reg.verify_transition(pre, m) == []
-    assert reg.production(m)["version"] == reg.production(pre)["version"] == ps.FALLBACK_VERSION
+    assert reg.production(m)["version"] == reg.production(pre)["version"] == ps.RETIRED_WEEKLY_VERSION
     assert reg.entry(reg.load_manifest(), ps.RETIRED_VERSION) == reg.entry(m, ps.RETIRED_VERSION)   # pin kept as is
     e = reg.entry(m, ps.RETIRED_VERSION)
     assert e["state"] == reg.RETIRED and e["artifact"]["path"] == "independent_projections_ifp-1.0.0.json"
@@ -864,9 +893,9 @@ def test_committed_pin_of_the_rollback_target_is_a_valid_transition():
         ["d75ca79b232c086d28e2f14d574811352ca833738879c26b530d306d2241cd5d"]
     last = m["history"][-1]
     assert last["event"] == reg.PIN_EVENT and last["version"] == ps.RETIRED_VERSION
-    assert last["artifact_sha256"] == production_pin.APPROVED_ARTIFACT_SHA256 and last["production"] == ps.FALLBACK_VERSION
+    assert last["artifact_sha256"] == production_pin.APPROVED_ARTIFACT_SHA256 and last["production"] == ps.RETIRED_WEEKLY_VERSION
     # ifp-2.0.0 keeps per-run artifact identity: nothing pretends it has one permanent artifact
-    assert reg.entry(m, ps.FALLBACK_VERSION)["artifact"] == {"path": None, "sha256": None}
+    assert reg.entry(m, ps.RETIRED_WEEKLY_VERSION)["artifact"] == {"path": None, "sha256": None}
     # a pin never changes once made
     m = reg.load_manifest()
     moved = deepcopy(m)
@@ -948,7 +977,7 @@ def test_pin_artifact_refuses_unproven_or_replaced_bytes(tmp_path):
         _pin(m, root, [_rec("a", "2026-10-01", sha),
                        _rec("b", "2026-10-09", "e" * 64)])
     with pytest.raises(reg.RegistryError, match="per-run artifact"):
-        _pin(m, root, [_rec("a", "2026-10-01", sha)], version=ps.FALLBACK_VERSION)    # weekly-retrained
+        _pin(m, root, [_rec("a", "2026-10-01", sha)], version=ps.RETIRED_WEEKLY_VERSION)    # weekly-retrained
 
 
 def test_pin_evidence_is_the_live_scorings_verified_runs_only(tmp_path):
