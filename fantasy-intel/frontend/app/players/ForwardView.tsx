@@ -1,7 +1,9 @@
 import { LineChart } from "@/components/charts";
 import { OriginTag } from "@/components/ProjectionNotice";
+import { RangeLine } from "@/components/RangeLine";
 import { Badge, Notice, Section, Stat, StatStrip } from "@/components/ui";
 import { oursBlock, oursByWeek, oursCell, oursNotice, oursPoints, oursTotalNote } from "@/lib/forward-view";
+import { RANGE_FOOTNOTE, type PlayerRange } from "@/lib/projection-ranges";
 import { num, pct, when } from "@/lib/format";
 import { valueDomain } from "@/lib/player-usage";
 import type { ForwardProjection } from "@/lib/types";
@@ -18,7 +20,7 @@ const OURS_INCOMPLETE = "Not every remaining week has a Fantasy Intel projection
  * When the visitor's switch is on "Ours" the response also carries Fantasy Intel's series for the remaining
  * regular season: shown next to ESPN's, with ESPN-fallback weeks marked.
  */
-export function ForwardView({ f }: { f: ForwardProjection }) {
+export function ForwardView({ f, range = null }: { f: ForwardProjection; range?: PlayerRange | null }) {
   const s = f.summary;
   const span = (available: number | null, expected: number | null) => (expected === null ? "" : `${available}/${expected} wk`);
   const splitKnown = s.last_regular_season_week !== null;
@@ -42,6 +44,7 @@ export function ForwardView({ f }: { f: ForwardProjection }) {
         (a projected 0 counts, a missing week does not). Byes come from the NFL schedule, not from a 0 projection.
         {oursOn && ours && <> {ours.label}. Ours covers the regular season only; weeks marked <OriginTag origin="espn" ours /> have no
           Fantasy Intel projection yet and show ESPN&apos;s number, which also keeps the Ours total empty.</>}
+        {oursOn && range && <> {RANGE_FOOTNOTE}</>}
       </>}
     >
       {notice && <Notice tone="caution" title={notice.title}>{notice.text}</Notice>}
@@ -85,7 +88,7 @@ export function ForwardView({ f }: { f: ForwardProjection }) {
                       : w.opponent ? `${w.is_home ? "vs" : "@"} ${w.opponent}`
                         : <span className="missing" title="NFL schedule unavailable">—</span>}
                   </td>
-                  {oursOn && <OursTd cell={oursCell(oursWeeks?.get(w.week), ours?.model_version)} />}
+                  {oursOn && <OursTd cell={oursCell(oursWeeks?.get(w.week), ours?.model_version)} range={w.week === s.as_of_week ? range : null} />}
                   <td className="num">{num(w.espn_projected_points, 1, "ESPN returned no projection for this week (unknown, not 0)")}</td>
                   <td>{w.on_bye === null ? <span className="missing" title="Schedule unknown">?</span> : w.on_bye ? <Badge value="BYE" tone="warn" /> : null}</td>
                   <td className={styles.phase}>{w.phase === "playoff" ? "Playoffs" : w.phase === "regular" ? "Regular" : ""}</td>
@@ -120,13 +123,14 @@ export function ForwardView({ f }: { f: ForwardProjection }) {
 }
 
 /** The Ours cell: our number, a 0 for a bye or unavailable, or ESPN's number with an ESPN tag. */
-function OursTd({ cell }: { cell: ReturnType<typeof oursCell> }) {
+function OursTd({ cell, range }: { cell: ReturnType<typeof oursCell>; range: PlayerRange | null }) {
   if (cell.kind === "none" || cell.kind === "bye") return <td className="num"><span className="faint" title={cell.title}>—</span></td>;
   return (
     <td className="num" title={cell.title}>
       {cell.kind === "espn" && <OriginTag origin="espn" ours title="No independent estimate for this week: ESPN's projection" />}{" "}
       {cell.model && <Badge value={cell.model} tone="warn" title={`Previous model: no production-model run for this week`} />}{" "}
       {num(cell.value, 1, cell.title)}
+      {cell.kind === "ours" && <RangeLine range={range} />}
     </td>
   );
 }

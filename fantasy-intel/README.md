@@ -118,9 +118,10 @@ Every page shows last-sync timestamps in the header. A muted **—** always mean
 
 **Navigating.** `Ctrl+K` / `⌘K` (or `/` outside a text field) opens a command palette: quick
 actions ("Decide who to start"), every page, and player search against the backend; the app bar
-button does the same. The app bar groups pages (My team, Players, Trades, League) with a sub-nav
-for the active group, and collapses into a menu on phones. Choose **System**, **Light** or **Dark**
-in the app bar (System follows the OS); the choice is stored in the browser. Wide tables scroll
+button does the same. The app bar groups pages (My team, Waivers, Players, Trades, League) with a sub-nav
+for the active group; phones get a bottom tab bar with the same five sections, and the theme, projection
+switch and data status sit in the menu below 1100px. Choose **System**, **Light** or **Dark**
+(System follows the OS); the choice is stored in the browser. Wide tables scroll
 sideways inside their panel with the first column pinned, so they stay readable at 375px.
 
 ---

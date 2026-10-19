@@ -1,8 +1,5 @@
 /* Team value page. Layout, a few table details and the slot meter; the kit owns surfaces, type and tones. */
 
-.picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.picker label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.picker select { max-width: min(100%, 240px); }
 
 .subhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
 .related { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font-size: 13px; color: var(--ink-muted); }
@@ -50,5 +47,4 @@
 
 @media (max-width: 720px) {
   .subhead { align-items: flex-start; }
-  .picker { width: 100%; }
-}
+  }

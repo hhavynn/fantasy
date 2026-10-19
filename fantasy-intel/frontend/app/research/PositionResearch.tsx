@@ -50,7 +50,7 @@ export async function PositionResearch({ slug, searchParams }: { slug: Slug; sea
   return (
     <div className="stack">
       <PageHeader
-        eyebrow="Research lab"
+        eyebrow="Players · Research lab"
         title={title}
         meta={d ? (
           <>

@@ -11,10 +11,10 @@ test("root route ('/') activates Overview in My team", () => {
   assert.equal(group("/"), "My team");
 });
 
-test("the matchup page sits after Overview in My team", () => {
+test("My team opens with Overview, then this week's lineup decision and the matchup behind it", () => {
   assert.equal(getActiveRoute("/matchup").activeHref, "/matchup");
   assert.equal(group("/matchup"), "My team");
-  assert.deepEqual(NAV_GROUPS[0].pages.map((p) => p.href).slice(0, 2), ["/", "/matchup"]);
+  assert.deepEqual(NAV_GROUPS[0].pages.map((p) => p.href).slice(0, 3), ["/", "/start-sit", "/matchup"]);
 });
 
 test("nested trade routes: the longest match wins", () => {
@@ -27,11 +27,11 @@ test("nested trade routes: the longest match wins", () => {
 test("the weekly recap leads League, so the palette lists it", () => {
   assert.equal(getActiveRoute("/weekly-recap").activeHref, "/weekly-recap");
   assert.equal(group("/weekly-recap"), "League");
-  assert.equal(NAV_GROUPS[3].pages[0].href, "/weekly-recap");
+  assert.equal(NAV_GROUPS[4].pages[0].href, "/weekly-recap");
 });
 
 test("projection movers sits in the Players research cluster", () => {
-  const movers = NAV_GROUPS[1].pages.find((p) => p.href === "/movers");
+  const movers = NAV_GROUPS[2].pages.find((p) => p.href === "/movers");
   assert.equal(movers?.section, "Research");
   assert.equal(getActiveRoute("/movers").activeHref, "/movers");
   assert.equal(group("/movers"), "Players");
@@ -40,7 +40,7 @@ test("projection movers sits in the Players research cluster", () => {
 test("Compare sits right after Players in the Players group", () => {
   assert.equal(getActiveRoute("/compare").activeHref, "/compare");
   assert.equal(group("/compare"), "Players");
-  const hrefs = NAV_GROUPS[1].pages.map((p) => p.href);
+  const hrefs = NAV_GROUPS[2].pages.map((p) => p.href);
   assert.equal(hrefs[hrefs.indexOf("/players") + 1], "/compare");
   assert.equal(getActiveRoute("/compare/").activeHref, "/compare");
   assert.equal(getActiveRoute("/comparex").activeHref, null);
@@ -68,7 +68,7 @@ test("unknown routes and Data quality activate nothing (never Overview)", () => 
 test("every page appears once and every group has pages", () => {
   const hrefs = ALL_NAV_PAGES.map((p) => p.href);
   assert.equal(hrefs.length, new Set(hrefs).size, "duplicate hrefs in navigation");
-  assert.deepEqual(NAV_GROUPS.map((g) => g.label), ["My team", "Players", "Trades", "League"]);
+  assert.deepEqual(NAV_GROUPS.map((g) => g.label), ["My team", "Waivers", "Players", "Trades", "League"]);
   assert.ok(NAV_GROUPS.every((g) => g.pages.length > 0));
   for (const href of ["/", "/matchup", "/start-sit", "/my-team/value", "/players", "/compare", "/movers", "/waivers", "/trades", "/trades/discover",
     "/schedule-intelligence", "/weekly-recap", "/luck-lab", "/playoff-race", "/managers", "/power-rankings",
@@ -77,21 +77,26 @@ test("every page appears once and every group has pages", () => {
   }
 });
 
-test("the kicker outlook sits in Players", () => {
+test("the kicker and D/ST outlooks sit with Waivers, as streaming tools", () => {
   assert.equal(getActiveRoute("/kickers").activeHref, "/kickers");
-  assert.equal(group("/kickers"), "Players");
+  assert.equal(group("/kickers"), "Waivers");
   assert.ok(ALL_NAV_PAGES.some((p) => p.href === "/kickers"));
   assert.equal(getActiveRoute("/defenses").activeHref, "/defenses");
-  assert.equal(group("/defenses"), "Players");
+  assert.equal(group("/defenses"), "Waivers");
 });
 
 // ---------- Task-based groups (frontend UX overhaul) ----------
 
 const groupOf = (label: string) => NAV_GROUPS.find((g) => g.label === label)!;
 
-test("My team holds this week's decisions for the analyzed roster, Waivers and Injury impact included", () => {
-  assert.deepEqual(groupOf("My team").pages.map((p) => p.href), ["/", "/matchup", "/start-sit", "/waivers", "/my-team/value", "/injury-impact"]);
-  assert.equal(group("/waivers"), "My team");
+test("My team holds this week's lineup decisions for the analyzed roster", () => {
+  assert.deepEqual(groupOf("My team").pages.map((p) => p.href), ["/", "/start-sit", "/matchup", "/injury-impact", "/my-team/value"]);
+});
+
+test("Waivers is its own destination, so the other weekly decision is one tap away on phones", () => {
+  assert.deepEqual(groupOf("Waivers").pages.map((p) => p.href), ["/waivers", "/kickers", "/defenses"]);
+  assert.equal(group("/waivers"), "Waivers");
+  assert.ok(NAV_GROUPS.length <= 5, "a phone tab bar holds at most five destinations");
 });
 
 test("Players leads with Rankings; the advanced tools sit in one labelled Research cluster after the everyday pages", () => {
@@ -99,7 +104,7 @@ test("Players leads with Rankings; the advanced tools sit in one labelled Resear
   assert.equal(players.pages[0].href, "/rankings");
   const clusters = navClusters(players);
   assert.deepEqual(clusters.map((c) => c.title), [null, "Research"]);
-  assert.deepEqual(clusters[0].pages.map((p) => p.href), ["/rankings", "/players", "/compare", "/kickers", "/defenses"]);
+  assert.deepEqual(clusters[0].pages.map((p) => p.href), ["/rankings", "/players", "/compare"]);
   assert.deepEqual(clusters[1].pages.map((p) => p.href).sort(),
     ["/movers", "/projection-performance", "/research", "/schedule-intelligence"].sort());
   assert.equal(group("/schedule-intelligence"), "Players");
@@ -107,7 +112,7 @@ test("Players leads with Rankings; the advanced tools sit in one labelled Resear
 });
 
 test("groups without a labelled cluster are one cluster", () => {
-  for (const label of ["My team", "Trades", "League"]) {
+  for (const label of ["My team", "Waivers", "Trades", "League"]) {
     assert.deepEqual(navClusters(groupOf(label)).map((c) => c.title), [null], label);
   }
 });
@@ -166,19 +171,19 @@ test("stored tab memory is parsed defensively", () => {
     Players: { href: "/rankings?pos=WR", team: null },
     Trades: { href: "//evil.example/trades", team: null },
     League: { href: "https://evil.example", team: null },
-    "My team": { href: "/waivers", team: 4 },
+    Waivers: { href: "/waivers", team: 4 },
   })), { Players: { href: "/rankings?pos=WR", team: null } });
 });
 
 test("power rankings sit in League right after the weekly recap, and a team card highlights them", () => {
   assert.equal(group("/power-rankings"), "League");
-  assert.deepEqual(NAV_GROUPS[3].pages.map((p) => p.href).slice(0, 2), ["/weekly-recap", "/power-rankings"]);
+  assert.deepEqual(NAV_GROUPS[4].pages.map((p) => p.href).slice(0, 2), ["/weekly-recap", "/power-rankings"]);
   assert.equal(getActiveRoute("/power-rankings/4").activeHref, "/power-rankings");
 });
 
-test("injury impact is the last page in My team", () => {
+test("injury impact sits in My team, after the matchup", () => {
   assert.equal(getActiveRoute("/injury-impact").activeHref, "/injury-impact");
   assert.equal(group("/injury-impact"), "My team");
   const hrefs = NAV_GROUPS[0].pages.map((p) => p.href);
-  assert.equal(hrefs[hrefs.length - 1], "/injury-impact");
+  assert.equal(hrefs[hrefs.indexOf("/matchup") + 1], "/injury-impact");
 });

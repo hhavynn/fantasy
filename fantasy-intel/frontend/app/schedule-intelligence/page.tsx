@@ -2,7 +2,9 @@ import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
-import { Badge, Method, Notice, PageHeader, Pos, Section, SortableTh, Stat, StatStrip } from "@/components/ui";
+import {
+  Badge, Glossary, Method, Notice, PageHeader, Pos, Section, SortableTh, Stat, StatStrip,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { when } from "@/lib/format";
@@ -97,7 +99,7 @@ function Body({ d, detail, position, phase, sp }: { d: ScheduleIntelligence; det
   return (
     <div className="stack">
       <PageHeader
-        eyebrow="Player research"
+        eyebrow="Players · Research"
         title="Schedule intelligence"
         meta={<>
           {d.team?.name ?? "Roster"} · {range}{regular} · first actionable week {w.first_actionable_week ?? "none"}.
@@ -145,6 +147,7 @@ function Body({ d, detail, position, phase, sp }: { d: ScheduleIntelligence; det
 
       {detail && <Detail p={detail} />}
 
+      <Glossary terms={["EPA", "Target share", "Bye", "—"]} />
       <Method title="What this is (and is not)">
         <ul className="reasons">{d.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
         <p>{d.label_rule}</p>

@@ -4,7 +4,7 @@ export default function Loading() {
   return (
     <div className="stack" role="status" aria-busy="true">
       <VisuallyHidden>Loading D/ST projections…</VisuallyHidden>
-      <PageHeader eyebrow="Projections" title="D/ST outlook" meta={<Skeleton w={420} h={12} />} />
+      <PageHeader eyebrow="Waivers · Streaming" title="D/ST outlook" meta={<Skeleton w={420} h={12} />} />
       <Section title={<Skeleton w={160} h={14} />} flush>
         <SkeletonTable rows={8} cols={7} />
       </Section>

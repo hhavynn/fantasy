@@ -3,10 +3,14 @@ import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { ProjectionNotice } from "@/components/ProjectionNotice";
-import { EmptyState, Method, Notice, PageHeader, Tabs } from "@/components/ui";
+import {
+  EmptyState, Glossary, Method, Notice, PageHeader, Tabs,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
+import { EMPTY_RANGES } from "@/lib/projection-ranges";
+import { getRanges } from "@/lib/projection-ranges.server";
 import {
   availableViews, chooseView, matchupHref, parseWeekParam, statusLabel, switcherWeeks, type LineupView,
 } from "@/lib/matchup";
@@ -57,7 +61,8 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
 
   const qs = new URLSearchParams();
   if (wk.kind === "ok") qs.set("week", String(wk.week));
-  const res = await api<Matchup>(withTeamId(withSource(`/api/matchup${qs.size ? `?${qs}` : ""}`, await getProjectionSource()), sel));
+  const source = await getProjectionSource();
+  const res = await api<Matchup>(withTeamId(withSource(`/api/matchup${qs.size ? `?${qs}` : ""}`, source), sel));
 
   if (!res.ok) {
     if (isUnknownTeam(res, sel)) {
@@ -89,6 +94,8 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
   const view = chooseView(sp.lineup, m);
   const views = availableViews(m);
   const keep = { team: teamParam };
+  // Rows carry a range only next to our own projected number (origin "ours"), so ESPN mode never shows one.
+  const ranges = source === "ours" ? await getRanges(m.week) : EMPTY_RANGES;
   const weeks = switcherWeeks(m.weeks_available, m.week);
   const prev = weeks.filter((w) => w < m.week).at(-1);
   const next = weeks.find((w) => w > m.week);
@@ -142,6 +149,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
       {opp && view ? (
         <Lineups
           m={m}
+          ranges={ranges}
           opponent={opp}
           view={view}
           actions={views.length > 1 ? (
@@ -153,15 +161,16 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
           ) : undefined}
         />
       ) : null}
-      {!opp ? <SoloLineup m={m} /> : null}
+      {!opp ? <SoloLineup m={m} ranges={ranges} /> : null}
       {opp && !view ? (
         <EmptyState title="No lineups for this week yet">
           ESPN has no projections or set lineups stored for week {m.week}. They appear after the next sync.
         </EmptyState>
       ) : null}
 
-      {view ? <Bench m={m} opponent={opp} view={opp ? view : "projected"} /> : null}
+      {view ? <Bench m={m} opponent={opp} view={opp ? view : "projected"} ranges={ranges} /> : null}
 
+      <Glossary terms={["Projected points", "Lineup points", "Bye", "Q / D / O", "—"]} />
       <Method title="How this page works">
         <p>
           <b>Projected lineups.</b> ESPN&apos;s weekly projections, unmodified, run through the same optimal-lineup solver used across the site: for each

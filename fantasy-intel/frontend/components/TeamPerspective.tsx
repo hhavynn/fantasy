@@ -39,10 +39,15 @@ export async function TeamPerspective({ path, sp, current, reset = TEAM_SPECIFIC
       <TeamPerspectiveSelect options={options} placeholder={team ? null : "Pick a team"} />
       {team && (
         <p className={styles.fresh}>
+          {team.team_id !== def && (
+            <span className={styles.other}>
+              Viewing another team · read-only, nothing is sent to ESPN · <Link href={perspectiveHref(path, sp, null, reset)}>Back to default</Link>
+              <span aria-hidden="true"> · </span>
+            </span>
+          )}
           {team.roster_players > 0
-            ? <>Roster as of the ESPN sync {when(team.roster_synced_at)} · {team.roster_players} players</>
+            ? <span title={`Roster as of the ESPN sync ${when(team.roster_synced_at)}`}>Roster synced {when(team.roster_synced_at)} · {team.roster_players} players</span>
             : <>No roster in the latest ESPN sync</>}
-          {team.team_id !== def && <> · read-only view; nothing is sent to ESPN · <Link href={perspectiveHref(path, sp, null, reset)}>Back to default</Link></>}
         </p>
       )}
       {children}

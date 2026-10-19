@@ -1,11 +1,16 @@
 import Link from "next/link";
 import { Tabs } from "@/components/ui";
 import { rankingsHref, RANK_POSITIONS, type RankingsFilters } from "@/lib/rankings";
-import type { SearchParams } from "@/lib/sort";
+import { sortHref, type SearchParams } from "@/lib/sort";
 import styles from "./rankings.module.css";
 
 const HORIZONS = [{ value: "week", label: "This week" }, { value: "ros", label: "Rest of season" }] as const;
 const SOURCES = [{ value: "espn", label: "ESPN" }, { value: "ours", label: "Ours" }] as const;
+/** Phone sort shortcuts: the table's sortable headers are not on screen there. Each opens in its natural direction. */
+const PHONE_SORTS = [
+  { key: "rank", label: "Rank", dir: "asc" }, { key: "rating", label: "Rating", dir: "desc" },
+  { key: "xfp", label: "xFP/g", dir: "desc" }, { key: "ppr", label: "PPR/g", dir: "desc" }, { key: "trend", label: "Trend", dir: "desc" },
+] as const;
 const STATUSES = [{ value: "all", label: "All" }, { value: "rostered", label: "Rostered" }, { value: "available", label: "Available" }] as const;
 
 /** Params the search form carries over as hidden inputs: everything except the search itself and the page. */
@@ -51,10 +56,21 @@ export function RankingsControls({ sp, filters, leagueAvailable }: { sp: SearchP
       <Tabs label="Position"
         items={RANK_POSITIONS.map((p) => ({ href: posHref(p), label: p === "ALL" ? "All" : p }))}
         current={posHref(filters.pos)} />
-      <div className={styles.chipRows}>
-        <Chips label="Time window" name="Window" options={HORIZONS} current={filters.horizon} sp={sp} param="horizon" />
-        <Chips label="Projection source" name="Projections" options={SOURCES} current={filters.source} sp={sp} param="source" />
-        {leagueAvailable && <Chips label="Roster status" name="Roster" options={STATUSES} current={filters.status} sp={sp} param="status" />}
+      <div className={styles.controlRow}>
+        <details className={`filter-box ${styles.filterBox}`}>
+          <summary>
+            <span className="filter-box-title">Filters</span>
+            <span className="filter-box-summary">
+              {HORIZONS.find((h) => h.value === filters.horizon)?.label} · {SOURCES.find((x) => x.value === filters.source)?.label}
+              {leagueAvailable ? ` · ${STATUSES.find((x) => x.value === filters.status)?.label === "All" ? "All players" : STATUSES.find((x) => x.value === filters.status)?.label}` : ""}
+            </span>
+          </summary>
+          <div className={styles.chipRows}>
+            <Chips label="Time window" name="Window" options={HORIZONS} current={filters.horizon} sp={sp} param="horizon" />
+            <Chips label="Projection source" name="Projections" options={SOURCES} current={filters.source} sp={sp} param="source" />
+            {leagueAvailable && <Chips label="Roster status" name="Roster" options={STATUSES} current={filters.status} sp={sp} param="status" />}
+          </div>
+        </details>
         <form className={styles.search} action="/rankings" role="search">
           {hidden.map(([k, v], i) => <input key={`${k}-${i}`} type="hidden" name={k} value={v} />)}
           <label className={styles.searchLabel} htmlFor="rankings-q">Search</label>
@@ -62,6 +78,21 @@ export function RankingsControls({ sp, filters, leagueAvailable }: { sp: SearchP
             placeholder="Player name" autoComplete="off" />
           <button className={styles.submit} type="submit">Search</button>
         </form>
+      </div>
+      <div className={styles.chipTail}>
+        <nav className={`filters ${styles.phoneOnly}`} aria-label="Sort by">
+          <span className={styles.chipLabel} aria-hidden="true">Sort</span>
+          {PHONE_SORTS.map((o) => {
+            const on = filters.sort.key === o.key;
+            const rest = Object.fromEntries(Object.entries(sp).filter(([k]) => k !== "offset"));
+            return (
+              <Link key={o.key} className={`chip ${on ? "active" : ""}`} aria-current={on ? "page" : undefined} scroll={false}
+                href={`/rankings${sortHref(rest, o.key, on ? (filters.sort.dir === "asc" ? "desc" : "asc") : o.dir)}`}>
+                {o.label}{on ? (filters.sort.dir === "asc" ? " ▲" : " ▼") : ""}
+              </Link>
+            );
+          })}
+        </nav>
         {hasFilters && <Link className="chip reset" href={rankingsHref(sp, { pos: null, status: null, q: null })} scroll={false}>Clear filters</Link>}
       </div>
     </div>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { api, apiRequest, classifyHttpError, formatDetail } from "./api.ts";
+import { api, apiRequest, classifyHttpError, formatDetail, isFirstRun } from "./api.ts";
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -100,4 +100,10 @@ test("formatDetail: strings, lists and anything else", () => {
   assert.equal(formatDetail([{ msg: "a" }, { msg: "b" }]), "a; b");
   assert.equal(formatDetail({ x: 1 }), null);
   assert.equal(formatDetail(""), null);
+});
+
+test("a missing database is a first run, not an error", () => {
+  assert.equal(isFirstRun("No database yet. Run scripts/sync_espn.py and scripts/sync_nfl.py first."), true);
+  assert.equal(isFirstRun("database is busy"), false);
+  assert.equal(isFirstRun(null), false);
 });

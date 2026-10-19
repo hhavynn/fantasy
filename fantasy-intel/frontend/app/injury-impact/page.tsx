@@ -2,7 +2,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
-import { EmptyState, Method, Notice, PageHeader, Section, Tabs } from "@/components/ui";
+import {
+  EmptyState, Glossary, Method, Notice, PageHeader, Section, Tabs,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import {
@@ -188,6 +190,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
         </>
       )}
 
+      <Glossary terms={["Q / D / O", "IR", "Target share", "Snap share", "—"]} />
       <Method title="How injury impact is calculated">
         <div className={styles.method}>
           <p><b>Who is listed.</b> Every QB, RB, WR and TE whose status this week is questionable, doubtful, out, on injured reserve or suspended,

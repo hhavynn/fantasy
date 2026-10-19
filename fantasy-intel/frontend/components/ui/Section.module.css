@@ -14,7 +14,7 @@
   border-bottom: 1px solid var(--line);
 }
 .titles { min-width: 0; }
-.title { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); letter-spacing: .005em; }
+.title { margin: 0; font-size: 16px; line-height: 22px; font-weight: 600; color: var(--ink); letter-spacing: .005em; }
 .subtitle { margin: 1px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 17px; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
 .body { padding: 16px; min-width: 0; }

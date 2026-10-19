@@ -52,7 +52,7 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
   if (!res.ok) {
     return (
       <div className="stack">
-        <PageHeader eyebrow="Projections" title={TITLE} />
+        <PageHeader eyebrow="Waivers · Streaming" title={TITLE} />
         <BackendProblem error={res.error} kind={res.kind} status={res.status} />
       </div>
     );
@@ -73,7 +73,7 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
   if (!d.available || !d.run) {
     return (
       <div className="stack">
-        <PageHeader eyebrow="Projections" title={TITLE} meta={meta} actions={weekForm} />
+        <PageHeader eyebrow="Waivers · Streaming" title={TITLE} meta={meta} actions={weekForm} />
         <Section title="No D/ST run for this week">
           <EmptyState title="ESPN's D/ST projections are shown elsewhere">{d.unavailable_reason}</EmptyState>
         </Section>
@@ -83,7 +83,7 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
   const { projected, other } = splitDefenses(d.players);
   return (
     <div className="stack">
-      <PageHeader eyebrow="Projections" title={TITLE} meta={meta} actions={weekForm} />
+      <PageHeader eyebrow="Waivers · Streaming" title={TITLE} meta={meta} actions={weekForm} />
       <Notice tone="info" title="This week's run">
         Run {d.run.run_id} made {when(d.run.created_at)} from games through {d.run.feature_cutoff.data_through_season} week{" "}
         {d.run.feature_cutoff.data_through_week}, with the betting lines as they stood then

@@ -115,6 +115,7 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
     base = {"schema_version": SCHEMA_VERSION, "league": {"id": lg["league_id"], "season": lg["season"]},
             "week": week, "notes": NOTES, "governance": ps.governance(None), "kicker_run": None,
             "dst_run": None}
+    base["ranges"] = None       # floor / ceiling block (_range_overlay) once a run is served
     if not (table_exists(con, pf.RUNS) and pf.rows_source(con)):
         return {**base, "available": False, "unavailable_reason": "Independent projections have not been computed "
                 "(run scripts/backtest_independent_projections.py project).", "run": None, "model_status": None,
@@ -158,7 +159,9 @@ def build_response(con, week: int | None, position: str | None, team_id: int | N
     out_players = [_player(p, run, status) for p in players]
     kicker_run = _kicker_overlay(con, lg["season"], week, out_players)
     dst_run = _dst_overlay(con, lg["season"], week, out_players)
+    ranges = _range_overlay(con, run, sel["rows"], out_players)
     return {**base, "available": True, "unavailable_reason": None, "kicker_run": kicker_run, "dst_run": dst_run,
+            "ranges": ranges,
             "governance": ps.governance(run["model_version"]),
             "run": {"run_id": run["run_id"], "model_version": run["model_version"], "is_fallback": sel["fallback"],
                     "fallback_reason": (f"No eligible {ps.MODEL_VERSION} run for week {week}; the retired previous "
@@ -255,6 +258,21 @@ def _dst_overlay(con, season: int, week: int, players: list[dict]) -> dict | Non
                            "expected_minus_espn": exp_diff, "expected_comparable": exp_diff is not None,
                            "evidence": _evidence(d, diff)}
     return {"available": True, **ds.run_info(sel["run"])}
+
+
+def _range_overlay(con, run: dict, rows: list[dict], players: list[dict]) -> dict:
+    """independent.range = {floor, median, ceiling} (points if he plays, app.analytics.projection_ranges) on every
+    player whose served row carries one, else null. Returns what the ranges are and which positions carry them."""
+    from ..analytics import projection_ranges as pr
+
+    tables = pr.load(con)
+    problem = pr.run_problem(tables, run)
+    by_id = {r["espn_player_id"]: r for r in rows}
+    for p in players:
+        r = by_id.get(p["espn_player_id"])
+        p["independent"]["range"] = (pr.row_range(tables, r) if problem is None and r is not None
+                                     and p["independent"].get("model_version") == run["model_version"] else None)
+    return pr.describe(tables, problem)
 
 
 def _status_detail(run: dict, status: dict) -> dict:
