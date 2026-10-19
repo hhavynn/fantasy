@@ -438,7 +438,7 @@ def augment(artifact, sources: Sources, inputs: Inputs, season: int, week: int, 
         return feats
     fw = feature_week
     src = sources if week == fw else _week_report_free(sources, season, fw)
-    mode = "week"     # with W's report removed above for a later week, "week" reads no designation for W
+    mode = "week" if week == fw else "none"   # a later week: W's report is not the target's; roster-only availability
     tg = feats.select("gsis_id", "position", "team", "opponent")
     drop = set(CONTEXT_COLUMNS) | {ROLE_FEATURE, f"aw_streak{aw.DECLINE_SUFFIX}", DEPTH_FEATURE, "dc_age_hours",
                                    "s_start", "pi_start", "p_start"}

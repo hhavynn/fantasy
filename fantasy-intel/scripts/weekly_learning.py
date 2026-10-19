@@ -344,7 +344,7 @@ def cmd_evaluate(args, src, live=None, scoring=None, **_) -> dict:
 
 
 def cmd_cycle(args, **ctx) -> dict:
-    out = {"sync_exits": cmd_sync_exits(args)}
+    out = {"sync_exits": cmd_sync_exits(args), "sync_depth": cmd_sync_depth(args)}   # depth before ifp-2.2.0 training
     live, hist, scoring, src = _context(args)
     ctx = {"live": live, "hist": hist, "src": src, "scoring": scoring}
     out["status"] = cmd_status(args, **ctx)
