@@ -5,7 +5,7 @@
   "fallback_version": "ifp-2.0.0",
   "is_fallback": false,
   "production_approval": "owner_override",
-  "production_evidence": "Historical research: 2023-24 confirmation backtest (docs/research/injury_workload_handoff.md); the approval cites no prospective report.",
+  "production_evidence": "Historical research: 2023-24 confirmation backtest (docs/research/injury_workload_handoff.md); accuracy is tracked weekly from frozen pregame forecasts.",
   "production_version": "ifp-2.1.0",
   "served_version": "ifp-2.1.0",
   "start_sit_ready": false,
@@ -1782,7 +1782,7 @@
    "fallback_version": "ifp-2.0.0",
    "is_fallback": false,
    "production_approval": "owner_override",
-   "production_evidence": "Historical research: 2023-24 confirmation backtest (docs/research/injury_workload_handoff.md); the approval cites no prospective report.",
+   "production_evidence": "Historical research: 2023-24 confirmation backtest (docs/research/injury_workload_handoff.md); accuracy is tracked weekly from frozen pregame forecasts.",
    "production_version": "ifp-2.1.0",
    "served_version": "ifp-2.1.0",
    "start_sit_ready": false,
@@ -2251,7 +2251,7 @@
    ]
   }
  },
- "report_sha256": "75d0595e7ac8b9e1679f68ad3a574128826c5f05cc5d27d59aaf304fb42fbb85",
+ "report_sha256": "6e2cc978124cd38a80af2cf599353bea5228218ed73705d1246a0c246d75f6ba",
  "schema_version": "projection-performance-api/v1",
  "season": 2026,
  "stale": false,

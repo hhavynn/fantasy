@@ -18,7 +18,9 @@ docs/research/injury_workload_handoff.md):
    (injury_workload.fit_return_rates(active_roster_only=True)). Later games keep the participation model's
    estimate: the 0.1.0 table lost to it at h >= 3. The table is refitted with every weekly artifact on episodes
    whose outcome game precedes W (2019 through the cutoff) and stored in it, so a run never reads an outcome at or
-   after its cutoff.
+   after its cutoff. Governance (internal record): ros-avail-0.1.0's pre-registered verdict was retain_current and
+   0.1.1 is a prospective-only candidate, so shipping it here is an owner override of retain_current, not a
+   validated result (the registry manifest's ifp-2.1.0 approval).
 3. Rest-of-season handoff scenarios: at horizon >= 1 a teammate who is injured at the cutoff is enumerated as
    present/absent scenarios weighted by the same table (a temporary starter does not keep the role all season).
 

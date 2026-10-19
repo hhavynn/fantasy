@@ -60,7 +60,7 @@
     "start_sit_ready": false,
     "evidence_sha256": {},
     "override": true,
-    "reason": "Owner decision (\"upgrade it, and replace the ours\"): the projection switch reads ifp-2.1.0, ifp-2.0.0 plus the injury workload handoff (iwh-0.1.1) and the empirical return-rate P(plays) for players Out/Doubtful at the rest-of-season cutoff. Recorded as an owner override: its pre-registered research verdict was retain_baseline (failed the returning-player mechanism check c7, diagnosed and fixed in iwh-0.1.1), SHADOW_PROMOTION_CRITERIA and PROMOTION_CRITERIA are not met, and no prospective or held-out report is cited. ifp-2.0.0 stays the rollback target and the fallback for a week without an ifp-2.1.0 run."
+    "reason": "Owner decision (\"upgrade it, and replace the ours\"): the projection switch reads ifp-2.1.0, ifp-2.0.0 plus the injury workload handoff (iwh-0.1.1) and the empirical return-rate P(plays) for players Out/Doubtful at the rest-of-season cutoff for the team's next two games (ros-avail-0.1.1). Recorded as an owner override: the handoff's pre-registered research verdict was retain_baseline (failed the returning-player mechanism check c7, diagnosed and fixed in iwh-0.1.1), the return-rate P(plays) overrides ros-avail-0.1.0's retain_current verdict (0.1.1 is a prospective-only candidate, docs/research/ros_availability.md), SHADOW_PROMOTION_CRITERIA and PROMOTION_CRITERIA are not met, and no prospective or held-out report is cited. ifp-2.0.0 stays the rollback target and the fallback for a week without an ifp-2.1.0 run."
    },
    "validation_reports": [
     {"kind": "historical_research", "path": "research/injury_workload_handoff.md", "sha256": null}
@@ -114,7 +114,7 @@
    "from": "ifp-2.0.0",
    "production": "ifp-2.1.0",
    "by": "hhavynn",
-   "reason": "Owner decision (\"upgrade it, and replace the ours\"): the projection switch reads ifp-2.1.0, ifp-2.0.0 plus the injury workload handoff (iwh-0.1.1) and the empirical return-rate P(plays) for players Out/Doubtful at the rest-of-season cutoff. Recorded as an owner override: its pre-registered research verdict was retain_baseline (failed the returning-player mechanism check c7, diagnosed and fixed in iwh-0.1.1), SHADOW_PROMOTION_CRITERIA and PROMOTION_CRITERIA are not met, and no prospective or held-out report is cited. ifp-2.0.0 stays the rollback target and the fallback for a week without an ifp-2.1.0 run."
+   "reason": "Owner decision (\"upgrade it, and replace the ours\"): the projection switch reads ifp-2.1.0, ifp-2.0.0 plus the injury workload handoff (iwh-0.1.1) and the empirical return-rate P(plays) for players Out/Doubtful at the rest-of-season cutoff for the team's next two games (ros-avail-0.1.1). Recorded as an owner override: the handoff's pre-registered research verdict was retain_baseline (failed the returning-player mechanism check c7, diagnosed and fixed in iwh-0.1.1), the return-rate P(plays) overrides ros-avail-0.1.0's retain_current verdict (0.1.1 is a prospective-only candidate, docs/research/ros_availability.md), SHADOW_PROMOTION_CRITERIA and PROMOTION_CRITERIA are not met, and no prospective or held-out report is cited. ifp-2.0.0 stays the rollback target and the fallback for a week without an ifp-2.1.0 run."
   }
  ]
 }

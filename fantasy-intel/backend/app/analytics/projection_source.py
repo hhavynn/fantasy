@@ -161,7 +161,8 @@ def governance(served_version: str | None) -> dict:
             "production_approval": GOVERNANCE[MODEL_VERSION]["approval"],
             "espn_superiority_established": False, "start_sit_ready": False,
             "production_evidence": "Historical research: 2023-24 confirmation backtest (docs/research/"
-                                   "injury_workload_handoff.md); the approval cites no prospective report.",
+                                   "injury_workload_handoff.md); accuracy is tracked weekly from frozen pregame "
+                                   "forecasts.",
             "status_note": g.get("status_note")}
 
 

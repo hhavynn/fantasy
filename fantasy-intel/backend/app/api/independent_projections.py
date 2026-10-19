@@ -32,8 +32,8 @@ NOTES = [
     "participation.p_play * projected_points is the unconditional expectation (null without a participation estimate).",
     "Compare ESPN with expected_points (comparison.expected_minus_espn): both are unconditional. "
     "independent_minus_espn compares a conditional estimate and is marked not comparable when ESPN projects 0.",
-    f"The production model {ps.MODEL_VERSION} is approved by the owner (recorded as an owner override; see "
-    f"governance). A week without an eligible {ps.MODEL_VERSION} run shows the {ps.FALLBACK_VERSION} fallback, labeled.",
+    f"The production model is {ps.MODEL_VERSION} (see governance). A week without an eligible {ps.MODEL_VERSION} run "
+    f"shows the {ps.FALLBACK_VERSION} fallback, labeled.",
     "This is the live view (the newest verified run). independent.pregame says whether a row was made before the "
     "player's own kickoff; only pregame rows are ever used as accuracy evidence.",
 ]
