@@ -417,6 +417,10 @@ Next, by measured weakness:
    this for production). This makes 2026+ teammate features verifiable.
 6. **QB-receiver pair features** need a raw play-by-play ingestion (free nflverse `load_pbp`). Only worth
    it if 1-2 leave a QB-change gap for receivers.
+   *Receiver role x QB passing quality (deep-ball CPOE, deep rate, aDOT, sack rate from play-by-play) was tested as
+   `ifp-qbr-0.1.0` in [qb_receiver_compatibility.md](qb_receiver_compatibility.md): `retain_baseline`. Q minus A is
+   about 0 for WR/TE in every window, including the changed-QB cohort, and deep threats do not lose more than
+   short-route receivers after a QB downgrade.*
 7. **Offensive line availability** from snap counts (OL snaps exist in `nfl_snap_counts`): a free,
    untested candidate for QB rows.
 
