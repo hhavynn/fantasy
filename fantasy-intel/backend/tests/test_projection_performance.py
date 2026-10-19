@@ -485,7 +485,7 @@ def test_refresh_builds_the_report_before_publishing_and_never_fails_on_it(monke
     monkeypatch.setattr(refresh, "LOG_DIR", tmp_path)
     monkeypatch.setattr(sys, "argv", ["refresh_all.py", "--skip-evidence"])
     assert refresh.main() == 0
-    expected = [*refresh.STEPS, refresh.REPORT] + ([refresh.PUBLISH] if token else [])
+    expected = [*refresh.STEPS, refresh.REPORT, refresh.RANGES] + ([refresh.PUBLISH] if token else [])
     assert calls == expected
     log = next(tmp_path.glob("refresh-*.log")).read_text()
     assert ("WARNING: report:" in log) == (report_code != 0)

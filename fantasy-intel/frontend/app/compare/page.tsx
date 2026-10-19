@@ -9,6 +9,8 @@ import {
 } from "@/lib/compare";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
+import { EMPTY_RANGES } from "@/lib/projection-ranges";
+import { getRanges } from "@/lib/projection-ranges.server";
 import { ChartsSection } from "./CompareCharts";
 import { ComparePicker, type PickerSelection } from "./ComparePicker";
 import { CompareHero, ContextSection, SummarySection } from "./CompareSections";
@@ -129,6 +131,7 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
   }
 
   const r = res.data;
+  const ranges = r.source === "independent" ? await getRanges(r.as_of_week) : EMPTY_RANGES;
   const pa = fromCard(r, "a");
   const pb = fromCard(r, "b");
   const meta = (
@@ -166,7 +169,7 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
         subtitle={`${projectionSourceLine(r.source)}. ${r.scoring.note ?? ""}`.trim()}
         flush
       >
-        <ProjectionTable r={r} />
+        <ProjectionTable r={r} ranges={ranges} />
       </Section>
       <Section
         title="Usage comparison"
