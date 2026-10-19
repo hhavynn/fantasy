@@ -88,6 +88,7 @@ Also evaluated: a **direct ridge** on points (same features plus kicker point hi
 | PAT-try volume | offense + defense + stadium | deviance 1.07 (league rate) -> 0.98 |
 | Conversion | league curve + venue + kicker skill (tau2 = 0.1, decay = 0.7) | FG log loss 0.3644 (league curve) -> 0.3600 |
 | Observed weather | excluded | conversion log loss worsens (0.3600 -> 0.3625); points MAE gain about 0.01 |
+| Implied team total (kfp-1.1.0) | in FG and PAT volume | added 2026-10-19 after the pre-registered test below: validation MAE 3.593 -> 3.575, test -0.016 [-0.025, -0.008] |
 | Game script | excluded | validation MAE +0.0017 (worse); test -0.008: inconsistent |
 | Blend with direct ridge | none (structural only) | 0.75 blend 3.5937 vs 3.5931 |
 | Shrinkage / ridge | team_k = 2, prior_k = 2, ridge 0.3 | Poisson-deviance grid |
@@ -221,6 +222,12 @@ The implied total gains through PAT volume, not FG volume: FG-try deviance barel
 test 1.008 -> 1.007). It also spreads projections a little (test SD 0.55 -> 0.61), which helps with the narrow 7-9.5
 band. It used closing lines, and 16 of 3,926 rows had none and were filled with the mean, so the live gain with an
 earlier line should be smaller. The 4th-down go rate adds nothing, as it did inside the earlier "script" group.
+
+Shipped as **kfp-1.1.0**. `km.line_table` builds the implied total from `nfl_schedules`; a game without a posted line uses
+the training mean and is listed in `missing_inputs`. The "Implied team total" explanation item is the change when the
+total is set to that mean; the PAT-volume item is measured with the line neutralized, so the two don't overlap. The
+full re-evaluation gives a test MAE of 3.755 on common support (kfp-1.0.0: 3.769). On 2026 weeks 1-6 (184 games)
+the two versions are level: +0.012 [-0.022, +0.053].
 
 ## 5. Production run
 

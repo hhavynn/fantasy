@@ -145,7 +145,28 @@ def _explain(art: km.KickerArtifact, scoring: KickerScoring, lam_fg, lam_pat, sk
         return base_pts - km.expected_kicking(conv, scoring, args["lam_fg"], args["lam_pat"], args["skill"],
                                               args["long_share"], args["env"])["points"]
 
-    d = delta(lam_pat=league_pat)
+    def pts(**kw_):
+        args = {"lam_fg": lam_fg, "lam_pat": lam_pat, "skill": skill, "long_share": long_share, "env": env, **kw_}
+        return km.expected_kicking(conv, scoring, args["lam_fg"], args["lam_pat"], args["skill"], args["long_share"],
+                                   args["env"])["points"]
+
+    # kfp-1.1 "line" group: the implied total's effect is the change when it is set to the training mean (the GLM
+    # fills a missing value with that mean); PAT volume below is then measured with the line neutralized, so the two
+    # items do not count the same points twice.
+    lam_fg0, lam_pat0 = lam_fg, lam_pat
+    for glm in (art.lambda_fg, art.lambda_pat):
+        if "o_implied" in glm.columns:
+            neutral = pl.DataFrame([{**row, "o_implied": None}])
+            lam_fg0 = float(art.lambda_fg.predict(neutral)[0])
+            lam_pat0 = float(art.lambda_pat.predict(neutral)[0])
+            mean = glm.means[glm.columns.index("o_implied")]
+            implied = row.get("o_implied")
+            items.append({"feature": "implied_total", "contribution": round(base_pts - pts(lam_fg=lam_fg0, lam_pat=lam_pat0), 2),
+                          "text": (f"betting line: team implied for {implied:.1f} points vs a league-average {mean:.1f}"
+                                   if implied is not None else
+                                   f"no betting line yet: a league-average {mean:.1f} implied points assumed")})
+            break
+    d = pts(lam_fg=lam_fg0, lam_pat=lam_pat0) - pts(lam_fg=lam_fg0, lam_pat=league_pat)
     items.append({"feature": "pat_opportunity", "contribution": round(d, 2),
                   "text": (f"touchdown volume: {lam_pat:.2f} expected PAT tries vs a league-average {league_pat:.2f} "
                            f"(team offense {row.get('o_pat_att', float('nan')):.2f} PAT/game, opponent allows "
@@ -297,7 +318,7 @@ def build_run(con, frames: dict, artifact: km.KickerArtifact, season: int, week:
         rec["flags"] += venue.get("notes") or []
         kickoff = _kickoff(g) if g else None
         # weather: next game only, outdoor US venues; shown with its freshness; a model input only if the artifact
-        # was trained with the weather group (kfp-1.0.0 is not)
+        # was trained with the weather group (kfp-1.x is not)
         wx = {"status": "not_applicable", "reason": "rest-of-season week: no forecast is fetched"} if horizon else None
         if wx is None:
             gid = game["game_id"]
@@ -312,6 +333,8 @@ def build_run(con, frames: dict, artifact: km.KickerArtifact, season: int, week:
         elif uses_weather:
             row["wx_wind"], row["wx_cold"] = (km.OUTDOOR_WIND_FILL if venue.get("outdoor") else 0.0), 0.0
             rec["missing_inputs"].append("weather forecast unavailable: average outdoor conditions assumed")
+        if "o_implied" in artifact.lambda_pat.columns and row.get("o_implied") is None:
+            rec["missing_inputs"].append("no betting line posted yet: a league-average implied total is assumed")
         frame = pl.DataFrame([row])
         lam_fg = float(artifact.lambda_fg.predict(frame)[0])
         lam_pat = float(artifact.lambda_pat.predict(frame)[0])
@@ -341,7 +364,7 @@ def build_run(con, frames: dict, artifact: km.KickerArtifact, season: int, week:
         rec["context"] = {
             "expected_kicker_basis": exp["basis"], "designation": designation,
             "team": {k: _r(game.get(k)) for k in ("o_fg_att", "o_pat_att", "o_fg_range", "o_rz_td_rate", "o_points",
-                                                  "o_games")},
+                                                  "o_games", "o_implied")},
             "opponent": {k: _r(game.get(k)) for k in ("d_fg_att", "d_pat_att", "d_fg_range", "d_rz_td_rate", "d_points",
                                                       "d_games")},
             "kicker": {"skill_logit": _r(skill), "long_share": _r(long_share), "weighted_kicks": _r(kicks)},

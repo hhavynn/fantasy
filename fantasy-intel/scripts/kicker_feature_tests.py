@@ -1,4 +1,4 @@
-"""Pre-registered backtest of two candidate kicker features against production kfp-1.0.0.
+"""Pre-registered backtest of two candidate kicker features against kfp-1.0.0 (the implied total became production kfp-1.1.0).
 
     uv run --project backend python scripts/kicker_feature_tests.py [--out data/models/kicker/feature_tests.json]
 
@@ -32,32 +32,17 @@ import polars as pl
 import kicker_projections as kp
 from app.analytics import kicker_backtest as kb
 from app.analytics import kicker_model as km
-from app.db.connection import table_exists
 
-km.LAMBDA_FEATURES["line"] = ["o_implied"]
 km.LAMBDA_FEATURES["fourth"] = ["o_fourth_go_rate"]
 
-BASE = kb.PRODUCTION
+# kfp-1.0.0's configuration (the "line" group is the implied total, built by kb.build_dataset since kfp-1.1.0)
+BASE = replace(kb.PRODUCTION, groups=("offense", "defense", "stadium"), fg_groups=())
 CANDIDATES = {
     "production": BASE,
     "implied": replace(BASE, groups=BASE.groups + ("line",), fg_groups=("line",)),
     "fourth": replace(BASE, groups=BASE.groups + ("fourth",), fg_groups=("fourth",)),
 }
 
-
-def implied_totals(cons) -> pl.DataFrame:
-    """(game_id, team, o_implied) for both sides of every REG game with a line."""
-    parts = []
-    for con in cons:
-        if con is None or not table_exists(con, "nfl_schedules"):
-            continue
-        parts.append(pl.from_arrow(con.execute("""
-            SELECT game_id, home_team, away_team, spread_line::DOUBLE AS spread, total_line::DOUBLE AS total
-            FROM nfl_schedules WHERE game_type = 'REG' AND spread_line IS NOT NULL AND total_line IS NOT NULL""").arrow()))
-    g = pl.concat(parts).unique("game_id", keep="last")
-    home = g.select("game_id", pl.col("home_team").alias("team"), ((pl.col("total") + pl.col("spread")) / 2).alias("o_implied"))
-    away = g.select("game_id", pl.col("away_team").alias("team"), ((pl.col("total") - pl.col("spread")) / 2).alias("o_implied"))
-    return pl.concat([home, away])
 
 
 def fg_deviance(df: pl.DataFrame) -> float:
@@ -95,12 +80,9 @@ def main(argv=None) -> int:
     ap.add_argument("--season", type=int, default=2026)
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args(argv)
-    live, hist, _items, scoring, frames = kp._load(SimpleNamespace(**vars(args)))
+    _live, _hist, _items, scoring, frames = kp._load(SimpleNamespace(**vars(args)))
     data = kb.build_dataset(frames, scoring, BASE)
-    lines = implied_totals([hist, live])
-    rows = data["rows"].join(lines, on=["game_id", "team"], how="left")
-    missing = rows.filter(pl.col("completed") & pl.col("o_implied").is_null()).height
-    data["rows"] = rows.with_columns(pl.col("o_implied").fill_null(pl.col("o_implied").mean()))
+    missing = data["rows"].filter(pl.col("completed") & pl.col("o_implied").is_null()).height
 
     report = {"rule": "adopt iff validation MAE < production AND test paired MAE diff CI95 upper < 0",
               "completed_rows_without_line": missing,

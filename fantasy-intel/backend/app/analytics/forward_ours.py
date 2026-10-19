@@ -30,7 +30,7 @@ from . import production_forecasts as pf
 from . import projection_source as ps
 
 PRIMARY = ps.MODEL_VERSION
-KICKER_VERSION = "kfp-1.0.0"       # copy of kicker_store.MODEL_VERSION (tested)
+KICKER_VERSION = "kfp-1.1.0"       # copy of kicker_store.MODEL_VERSION (tested)
 DST_VERSION = "dfp-r1"             # copy of dst_store.MODEL_VERSION (tested)
 KICKER_HORIZON_NOTE = "rest-of-season kicker forecast"
 OURS_ORIGINS = (ps.OURS, ps.OURS_ZERO)

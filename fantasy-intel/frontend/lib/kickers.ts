@@ -1,4 +1,4 @@
-// Types and pure helpers for the kicker projections page (GET /api/projections/kickers, kfp-1.0.0).
+// Types and pure helpers for the kicker projections page (GET /api/projections/kickers, kfp-1.1.0).
 
 export type DistanceKey = "0_39" | "40_49" | "50_59" | "60_plus";
 export const DISTANCES: { key: DistanceKey; label: string }[] = [
@@ -177,6 +177,7 @@ const FACTOR_LABEL: Record<string, string> = {
   pat_opportunity: "TD volume",
   kicker_accuracy: "Kicker accuracy",
   long_range_share: "Long-range tries",
+  implied_total: "Implied team total",
 };
 
 /** "Dome / altitude", "Dome", "Altitude", "Outdoors" or "Venue", from the stadium the run stored. */

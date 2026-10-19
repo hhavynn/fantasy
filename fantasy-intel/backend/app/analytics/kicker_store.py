@@ -28,7 +28,7 @@ from ..db.connection import fetch_dicts, insert_rows, table_exists, utcnow
 RUNS = "kicker_projection_runs"
 ROWS = "kicker_projection_rows"
 APPROVED = "approved_artifacts"
-MODEL_VERSION = "kfp-1.0.0"
+MODEL_VERSION = "kfp-1.1.0"
 CONSUMER_VERSIONS = (MODEL_VERSION,)
 
 ROW_COLUMNS = ("season", "week", "espn_player_id", "gsis_id", "nfl_team", "opponent", "is_home", "venue_id",

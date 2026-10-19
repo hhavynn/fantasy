@@ -46,6 +46,7 @@ def build_dataset(frames: dict, scoring: KickerScoring, cfg: km.KConfig, targets
         tg = pl.concat([tg, targets], how="diagonal_relaxed")
     venues = km.venue_table(frames["schedule"])
     feats = km.add_context(km.team_features(tg, cfg), venues)
+    feats = feats.join(km.line_table(frames["schedule"]), on=["game_id", "team"], how="left")
     feats = feats.with_columns(pl.col("game_kicker_id").alias("kicker_player_id"))
     khist = km.kicker_history_features(tg)
     feats = km.kicker_points_asof(khist, feats)
@@ -402,12 +403,14 @@ def finite(v):
 
 # ----------------------------------------------------------------------------- production configuration
 
-# Frozen kfp-1.0.0 choices, made on the VALIDATION seasons only (scripts/kicker_projections.py evaluate re-derives
+# Frozen kfp-1.1.0 choices, made on the VALIDATION seasons only (scripts/kicker_projections.py evaluate re-derives
 # them and reports any drift): FG-try volume uses the league rate (team/opponent context did not reduce validation
 # deviance), PAT volume uses offense + defense + stadium, the conversion curve adds venue terms, observed weather and
 # game-script features are excluded (no validated gain), structural model only (blending with the direct ridge did
 # not help), no season-recency weighting.
-PRODUCTION = km.KConfig(groups=("offense", "defense", "stadium"), fg_groups=(), team_k=2.0, prior_k=2.0,
+# kfp-1.1.0 adds the "line" group (the team's implied total) to both FG and PAT volume: it passed the pre-registered
+# test in scripts/kicker_feature_tests.py (validation MAE 3.593 -> 3.575; test 2023-25 -0.016 [-0.025, -0.008]).
+PRODUCTION = km.KConfig(groups=("offense", "defense", "stadium", "line"), fg_groups=("line",), team_k=2.0, prior_k=2.0,
                         ridge_lambda=0.3, tau2=0.1, decay=0.7, blend=1.0, train_decay=1.0)
 
 

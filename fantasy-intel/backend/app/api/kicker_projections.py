@@ -29,7 +29,7 @@ NOTES = [
     "projected_points is conditional on the kicker kicking in the game; expected_points = p_play x projected_points.",
     "stat_line holds the model's expected FG tries and makes by distance and expected PAT tries and makes.",
     "Weather is a forecast (NWS) shown with its retrieval time; it is a model input only when "
-    "context.weather.used_by_model is true (kfp-1.0.0: never).",
+    "context.weather.used_by_model is true (kfp-1.1.0: never).",
     "A retractable roof's game-day position is unknown before kickoff and is never assumed.",
 ]
 

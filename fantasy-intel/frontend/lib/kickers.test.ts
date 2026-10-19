@@ -15,7 +15,7 @@ const player = (id: number, status: string, exp: number | null, name = `K${id}`)
   espn_player_id: id, name, nfl_team: "GB", opponent: "CHI", is_home: true, fantasy_team_id: null, injury_status: null,
   independent: { projected_points: exp, expected_points: exp, p_play: 0.99, interval_80: null, coverage_status: status,
     stat_line: null, context: null, explanation: [{ feature: "headline", contribution: null, text: "Strong kicking outlook" }],
-    flags: [], missing_inputs: [], pregame: true, model_version: "kfp-1.0.0" },
+    flags: [], missing_inputs: [], pregame: true, model_version: "kfp-1.1.0" },
   espn: { projected_points: 8 }, comparison: { expected_minus_espn: null },
 });
 

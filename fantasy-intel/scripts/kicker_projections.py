@@ -1,4 +1,4 @@
-"""Kicker projection engine (kfp-1.0.0): reconcile scoring, evaluate, fit the artifact, project a week.
+"""Kicker projection engine (kfp-1.1.0): reconcile scoring, evaluate, fit the artifact, project a week.
 
     cd backend
     uv run python ../scripts/kicker_projections.py reconcile                       # league kicker scoring vs ESPN
@@ -9,7 +9,7 @@
 
 Data: the history DB (NFL_HISTORY_DB_PATH, finished seasons) and the live DB (FANTASY_DB_PATH). Both need the
 kicker opportunity tables (scripts/sync_kicking_pbp.py backfills them; the regular syncs keep them current).
-Outputs: <out>/kfp_evaluation.json, <out>/kfp-1.0.0_<season>.json (artifact; <out> defaults to data/models/kicker,
+Outputs: <out>/kfp_evaluation.json, <out>/kfp-1.1.0_<season>.json (artifact; <out> defaults to data/models/kicker,
 git-ignored). Only `project` and `fit --register` write to the live database: `project` appends one write-once
 kicker run per target week (an identical rerun is a no-op), `--register` approves the artifact file's sha256.
 """
