@@ -68,8 +68,9 @@ class PlayerLock:
 
 
 # The Start/Sit limitation line when the projection switch is on Ours.
-OURS_NOTE = ("Projections are Fantasy Intel's own model (expected points, league scoring). Kickers come from the kicker "
-             "model when a kicker run exists; D/ST and players the model can't project keep ESPN's number, marked.")
+OURS_NOTE = ("Projections are Fantasy Intel's own model (expected points, league scoring). Kickers and D/ST come from "
+             "the kicker and D/ST models when their run exists; players the models can't project keep ESPN's number, "
+             "marked.")
 
 def verify_schedule_coverage(con: Any, season: int, week: int) -> bool:
     """Verify if nfl_schedules has sufficient coverage of games for this week to confirm byes."""

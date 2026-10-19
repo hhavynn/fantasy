@@ -17,8 +17,9 @@ the next refresh_all.py publishes (skip it with --no-project).
 A cycle: lock -> preflight -> sync_nfl.py -> sync-exits -> pick the target week (the next week whose
 first kickoff, US Eastern from nflverse, is still ahead) -> readiness (every earlier game final,
 box scores / snaps / xFP synced) -> evaluate frozen forecasts -> train (reused when the training
-data, configuration and scoring fingerprint are unchanged) -> predict (pregame only) -> project (the
-production ifp-2.0.0 run in the live DB; an identical run already stored is a no-op) -> report.
+data, configuration and scoring fingerprint are unchanged; the ledger's ifp-1.0.0 / ifp-2.0.0 and the production
+ifp-2.1.0) -> predict (pregame only) -> project (the production ifp-2.1.0 run in the live DB; an identical run
+already stored is a no-op) -> report.
 The project stage also projects EVERY LATER regular-season week W+1..last from the same week-W artifact (rest-of-season
 projections, docs/independent_projection_engine.md; no training per week). A failure on one later week is listed under
 `projection.rest_of_season` and in `warnings`, and does not stop the other weeks or change the cycle status; skip all
@@ -27,9 +28,10 @@ After the production run, two separate models run as non-fatal stages (a failure
 `kicker` (kfp-1.0.0) and `ctx_shadow`, the research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py
 cycle: scores its frozen pregame ledgers against actuals alongside ifp-2 and tries the gated write-once freeze; it
 writes only <ifp-dir>/research/context/). Skip them with --no-kicker / --no-ctx-shadow. Two more research shadows run
-the same way right after it (RESEARCH_SHADOWS; skip with --no-qb-scenario-shadow / --no-ipm-cal-shadow):
-`qb_scenario_shadow` (ifp-ctx-p2q, scripts/qb_scenario_shadow.py cycle) and `ipm_cal_shadow` (the QB isotonic
-participation map, scripts/participation_cal_shadow.py cycle). A further research shadow, `dst_shadow`
+the same way right after it (RESEARCH_SHADOWS; skip with --no-qb-scenario-shadow / --no-ipm-cal-shadow /
+--no-signal-shadows): `qb_scenario_shadow` (ifp-ctx-p2q, scripts/qb_scenario_shadow.py cycle), `ipm_cal_shadow` (the QB
+isotonic participation map, scripts/participation_cal_shadow.py cycle) and `signal_shadows` (ifp-fr-p1 / ifp-dct-p1 /
+ifp-awd-p1, scripts/signal_shadows.py cycle, writes only <ifp-dir>/research/signal_shadows/). A further research shadow, `dst_shadow`
 (scripts/dst_shadow.py cycle: the D/ST model dfp-r1 vs ESPN; writes only data/models/dst/shadow/), follows them;
 skip it with --no-dst-shadow.
 The production D/ST model runs as `dst_project` right after `kicker` (scripts/dst_projections.py: the target
@@ -37,6 +39,10 @@ week's verified dfp-r1 run in the live DB; non-fatal like kicker; skip it with -
 Then `dist_ledger`, the frozen pregame point-distribution ledger (scripts/distribution_ledger.py cycle: scores
 frozen weeks' interval coverage and freezes the target week's distributions from the forecast `predict` just
 froze; research only, writes only <ifp-dir>/research/point_distributions/ledger/; skip with --no-dist-ledger).
+Last, `promotion_check` (scripts/shadow_promotion_check.py check, docs/shadow_promotion.md): reads every research
+shadow's saved gate result and reports, per candidate and position, whether it is ready to promote into Ours; a ready
+candidate gets a "PROMOTION READY" line in this cycle's log and stderr and an entry in data/logs/promotion-queue.json.
+It edits no production code or registry; skip with --no-promotion-check.
 Neither the kicker nor the research shadows (dist_ledger included) need the target week's new data, so they also
 run when the cycle stops early: after `waiting_for_data` (the kicker only when it may write, i.e. without
 --no-project), and the read-only shadows also after a failed production stage (all of them also after
@@ -79,6 +85,7 @@ sys.path.insert(0, str(SCRIPTS))
 import weekly_learning as cli  # noqa: E402  (the existing weekly_learning.py commands)
 
 from app.analytics import challenger as ch  # noqa: E402
+from app.analytics import injury_model as im  # noqa: E402
 from app.analytics import weekly_learning as wl  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.db.connection import LOCK_WAIT_ENV  # noqa: E402
@@ -375,7 +382,8 @@ def stage_dst_project(args, log_path: Path) -> dict:
 CTX_SHADOW_TIMEOUT_S = 45 * 60       # the whole research stage (store build + scoring + a possible freeze)
 # The other research shadows: (stage / report key, script, --no-* attribute, warning label). Same contract as ctx_shadow.
 RESEARCH_SHADOWS = (("qb_scenario_shadow", "qb_scenario_shadow.py", "no_qb_scenario_shadow", "ifp-ctx-p2q shadow"),
-                    ("ipm_cal_shadow", "participation_cal_shadow.py", "no_ipm_cal_shadow", "ipm-cal-0.1.0 shadow"))
+                    ("ipm_cal_shadow", "participation_cal_shadow.py", "no_ipm_cal_shadow", "ipm-cal-0.1.0 shadow"),
+                    ("signal_shadows", "signal_shadows.py", "no_signal_shadows", "signal shadows"))
 
 
 def stage_ctx_shadow(args, conns: list, log_path: Path) -> dict:
@@ -510,23 +518,62 @@ def stage_dst_shadow(args, conns: list, log_path: Path) -> dict:
         return {}
 
 
-def training_fingerprint(args, store, scoring) -> str:
+PROMOTION_CHECK_TIMEOUT_S = 5 * 60   # reads a handful of JSON files
+
+
+def stage_promotion_check(args, log_path: Path) -> dict:
+    """Promote-when-proven watcher (scripts/shadow_promotion_check.py `check`, own process): reads every research
+    shadow's saved gate result (nothing is re-scored) and flags the candidates whose pre-registered gate passes. Writes
+    only the summary, its log and promotion-queue.json under the logs directory (data/logs). Never fails the cycle:
+    run_cycle turns an error into a warning; exit 3 = ran, a result could not be read (returned as warnings)."""
+    cmd = [sys.executable, str(SCRIPTS / "shadow_promotion_check.py"), "check"]
+    if getattr(args, "ctx_dir", None) is not None:
+        cmd += ["--ifp-dir", str(args.ctx_dir)]
+    if getattr(args, "dst_dir", None) is not None:
+        cmd += ["--dst-dir", str(args.dst_dir)]
+    if getattr(args, "dist_dir", None) is not None:
+        cmd += ["--dist-dir", str(args.dist_dir)]
+    if getattr(args, "promotion_logs_dir", None) is not None:
+        cmd += ["--logs-dir", str(args.promotion_logs_dir)]
+    if getattr(args, "now", None):     # a simulated cycle clock: report only, write nothing
+        cmd += ["--now", str(args.now)]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
+                          env=child_env(), timeout=PROMOTION_CHECK_TIMEOUT_S)
+    out, err = proc.stdout or "", proc.stderr or ""
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"==> shadow_promotion_check.py check {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
+    if proc.returncode not in (0, 3):
+        raise RuntimeError(f"shadow_promotion_check.py exited {proc.returncode}: {err.strip()[-400:]} (see {log_path})")
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {}
+
+
+def training_fingerprint(args, store, scoring, src=None, codes=None) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
     return _sha({"data": wl.store_hash(store, cols) if store.height else None,
                  "challenger_config": ch.ChallengerConfig.load().hash(),
                  "ifp_selection": hashlib.sha256((Path(args.ifp_dir) / "selection.json").read_bytes()).hexdigest(),
                  "ifp_report": hashlib.sha256((Path(args.ifp_dir) / "heldout_report.json").read_bytes()).hexdigest(),
-                 "scoring": scoring.fingerprint, "versions": [wl.MODEL_VERSION, ch.CHALLENGER_VERSION],
+                 "production_config": im.config_hash(ch.ChallengerConfig.load()),
+                 # ifp-2.1.0 also reads injury reports, rosters, roster codes and the schedule (handoff, return table)
+                 "injury_inputs": None if src is None else im.injury_inputs_hash(src, args.season, args.week, codes),
+                 "scoring": scoring.fingerprint, "versions": list(TRAINED_VERSIONS),
                  "target": [args.season, args.week]})
 
 
-def stage_train(args, src, scoring, live=None) -> dict:
+TRAINED_VERSIONS = (wl.MODEL_VERSION, ch.CHALLENGER_VERSION, im.MODEL_VERSION)   # ledger champion, challenger, production
+
+
+def stage_train(args, src, scoring, live=None, hist=None) -> dict:
     """Train both models unless an earlier cycle trained on exactly these inputs (same training
     rows and features, configuration, production selection and scoring). Then reuse its artifacts.
     `--force-retrain` always refits; content addressing keeps every earlier artifact."""
     store = wl.training_store(src, args.season, args.week)
-    fp = training_fingerprint(args, store, scoring)
+    fp = training_fingerprint(args, store, scoring, src, cli.roster_codes(live, hist))
     state_path = Path(args.out) / "state" / f"train-s{args.season}w{args.week:02d}.json"
     state = None
     if state_path.exists():
@@ -537,9 +584,9 @@ def stage_train(args, src, scoring, live=None) -> dict:
     if (state and state.get("fingerprint") == fp and not args.force_retrain
             and all(Path(a["path"]).exists() for a in state["artifacts"].values())):
         return {"reused": True, "fingerprint": fp, **state}
-    res = cli.cmd_train(args, src=src, scoring=scoring, store=store, live=live)
+    res = cli.cmd_train(args, src=src, scoring=scoring, store=store, live=live, hist=hist)
     arts = {v: {k: res[v][k] for k in ("id", "path", "new", "latest_included_week", "data_hash", "config_hash")}
-            for v in (wl.MODEL_VERSION, ch.CHALLENGER_VERSION)}
+            for v in TRAINED_VERSIONS}
     state = {"fingerprint": fp, "artifacts": arts, "trained_at": datetime.now(timezone.utc).isoformat(),
              "runtime_seconds": res.get("runtime_seconds")}
     _replace_json(state_path, state)
@@ -719,6 +766,26 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                      "error": f"{err.__class__.__name__}: {err}"})
             report["warnings"].append(f"distribution ledger stage failed (production runs unaffected): {err}")
 
+    def promotion_check():
+        """Promote-when-proven watcher, after every research shadow: a failure is a warning, never a failed cycle."""
+        if getattr(args, "no_promotion_check", False):
+            return
+        t_p = time.monotonic()
+        try:
+            pc = stage_promotion_check(args, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+            report["promotion_check"] = pc
+            report["promotion_ready"] = list(pc.get("lines") or [])
+            report["stages"].append({"name": "promotion_check", "status": "ok",
+                                     "seconds": round(time.monotonic() - t_p, 2)})
+            report["warnings"] += [f"promotion check: {w}" for w in pc.get("warnings") or []]
+            for line in report["promotion_ready"]:
+                print(line, file=sys.stderr)
+        except Exception as err:      # noqa: BLE001
+            report["stages"].append({"name": "promotion_check", "status": "failed_nonfatal",
+                                     "seconds": round(time.monotonic() - t_p, 2),
+                                     "error": f"{err.__class__.__name__}: {err}"})
+            report["warnings"].append(f"promotion check stage failed (production runs unaffected): {err}")
+
     try:
         preflight(args)
         lock = acquire_lock(args.out, now)
@@ -742,6 +809,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
             research_shadows()
             dst_shadow()
             dist_ledger()
+            promotion_check()
             raise CycleStop("no_upcoming_week", EXIT_OK, f"no {args.season} regular-season week kicks off after "
                             f"{now.isoformat()}")
         args.week, args.last_week = target, max(kick)
@@ -768,7 +836,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         report["evaluation"] = {"report": ev["report"], "prospective_weeks": len(ev["pregame_weeks"] or []),
                                 "preliminary_weeks": ev.get("preliminary_weeks_not_evidence"),
                                 "status_by_position": {p: s["status"] for p, s in (ev["shadow_status"] or {}).items()}}
-        tr = stage("train", stage_train, args, src, scoring, live)
+        tr = stage("train", stage_train, args, src, scoring, live, hist)
         report["training"] = {"reused": tr["reused"], "fingerprint": tr["fingerprint"],
                               "latest_included_week": tr["artifacts"][wl.MODEL_VERSION]["latest_included_week"],
                               "artifacts": {v: {"id": a["id"], "created": bool(a["new"]) and not tr["reused"],
@@ -800,6 +868,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         research_shadows()
         dst_shadow()
         dist_ledger()
+        promotion_check()
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):
@@ -815,6 +884,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
             research_shadows()
             dst_shadow()
             dist_ledger()
+            promotion_check()
     except Exception as err:          # outside a stage: still report, release the lock, exit 1
         report["status"], code = "failed", EXIT_FAILED
         report["errors"].append(f"{err.__class__.__name__}: {err}")
@@ -942,7 +1012,7 @@ def cmd_status(args) -> dict:
             "lock": json.loads(lock.read_text()) if lock.exists() else None,
             "missed_windows": sorted(p.name for p in (out / "missed").glob("*.json")),
             "artifacts": {v: len(list((out / "artifacts" / v).glob("*.json")))
-                          for v in (wl.MODEL_VERSION, ch.CHALLENGER_VERSION)},
+                          for v in TRAINED_VERSIONS},
             "ledger_runs": len(list((out / "ledger").glob("s*/*.json")))}
 
 
@@ -967,6 +1037,8 @@ def parse(argv=None):
                     help="do not run the ifp-ctx-p2q research shadow stage (scripts/qb_scenario_shadow.py cycle)")
     ap.add_argument("--no-ipm-cal-shadow", action="store_true",
                     help="do not run the QB participation-calibration re-test (scripts/participation_cal_shadow.py cycle)")
+    ap.add_argument("--no-signal-shadows", action="store_true",
+                    help="do not run the ifp-fr-p1 / ifp-dct-p1 / ifp-awd-p1 research shadows (signal_shadows.py cycle)")
     ap.add_argument("--ctx-dir", type=Path, default=None,
                     help="model directory holding research/ for the research shadows (default: each script's, "
                          "data/models)")
@@ -980,6 +1052,10 @@ def parse(argv=None):
                     help="do not run the dfp-r1 D/ST research shadow stage (scripts/dst_shadow.py cycle)")
     ap.add_argument("--dst-dir", type=Path, default=None,
                     help="D/ST research directory holding shadow/ (default: dst_shadow.py's, DST_RESEARCH_DIR)")
+    ap.add_argument("--no-promotion-check", action="store_true",
+                    help="do not run the promote-when-proven check (scripts/shadow_promotion_check.py check)")
+    ap.add_argument("--promotion-logs-dir", type=Path, default=None,
+                    help="where the promotion check writes its summary and queue (default: its own, data/logs)")
     ap.add_argument("--week", type=int, default=None, dest="reproject_week",
                     help="reproject: the week to re-project (default: the week of the next kickoff)")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (tests and audits only)")
@@ -989,7 +1065,7 @@ def parse(argv=None):
     ap.add_argument("--out", type=Path, default=cli._path("WEEKLY_MODEL_DIR", "data/models/weekly"))
     args = ap.parse_args(argv)
     # fields the weekly_learning.py commands read
-    args.week, args.retrospective, args.history_seasons = None, False, None
+    args.week, args.retrospective, args.history_seasons, args.after_kickoff = None, False, None, False
     if args.command == "reproject":
         args.week = args.reproject_week
     elif args.reproject_week is not None:
@@ -1012,9 +1088,9 @@ def main(argv=None) -> int:
         return code
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
-            "training", "forecast", "projection", "kicker_projection", "dst_projection", "ctx_shadow",
-            *(r[0] for r in RESEARCH_SHADOWS),
-            "dst_shadow", "dist_ledger", "evaluation", "missed_window", "warnings", "exit_code")
+            "training", "forecast", "projection", "kicker_projection", "dst_projection", "ctx_shadow", *(r[0] for r in RESEARCH_SHADOWS),
+            "dst_shadow", "dist_ledger", "promotion_check", "promotion_ready", "evaluation", "missed_window", "warnings",
+            "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))
     return code
 

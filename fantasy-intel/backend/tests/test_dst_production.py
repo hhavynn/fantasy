@@ -22,8 +22,8 @@ from test_dst_research import LEAGUE
 from app.analytics.independent_projection_store import build_live as build_ifp, write_live
 from test_dst_shadow import TEAMS, world, write_cache
 from test_dst_shadow import build_live as build_dst_world
-from test_independent_projections import _artifact, live  # noqa: F401  (live is a fixture)
-from test_projection_source import PINNED
+from test_independent_projections import live  # noqa: F401  (live is a fixture)
+from test_projection_source import FALLBACK_SHA, _fallback
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 SCHEMA = Path(__file__).resolve().parents[1] / "app" / "db" / "schema.sql"
@@ -123,13 +123,13 @@ def test_the_artifact_gate_and_the_scoring_gate(con):
 
 @pytest.fixture
 def stored(live):  # noqa: F811
-    """test_projection_source's week-6 run of the synthetic league, with a D/ST in the league (as every real league
+    """test_projection_source's week-6 (fallback ifp-2.0.0) run of the synthetic league, with a D/ST in the league (as every real league
     has: the ifp run carries it as unsupported_position, and ESPN projects it)."""
     con, src, _ = live
     con.execute("INSERT INTO fantasy_players (espn_player_id, full_name, position, pro_team, on_team_id) "
                 "VALUES (?, 'AAA D/ST', 'D/ST', 'AAA', 1)", [DST])
     con.execute("INSERT INTO espn_player_weekly_points VALUES (2026, ?, 6, NULL, 5.0, '2026-10-13 12:00:00')", [DST])
-    meta, rows = build_ifp(con, src, _artifact(src), 2026, 6, artifact_sha256=PINNED)
+    meta, rows = build_ifp(con, src, _fallback(src), 2026, 6, artifact_sha256=FALLBACK_SHA)
     for r in rows:
         if r["coverage_status"] == "projected":
             r["expected_points"] = round(r["projected_points"] * 0.9, 2)

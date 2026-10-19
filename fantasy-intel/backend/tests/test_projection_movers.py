@@ -333,7 +333,7 @@ def test_ours_changes_split_into_availability_and_per_game(con):
         return {"x": base(1) + 2.0} if pid == 1 else {"p": 0.5} if pid == 2 else None
     base_runs, cur_runs = two_cycles(con, tweak7=tweak7)
     r = ours(con)
-    assert r["available"] and r["source"] == "independent" and r["label"] == "Fantasy Intel projections (ifp-2.0.0)"
+    assert r["available"] and r["source"] == "independent" and r["label"] == f"Fantasy Intel projections ({ps.MODEL_VERSION})"
     assert r["baseline"]["id"] == "w6" and r["current"]["id"] == "w7"
     assert (r["baseline"]["model_version"], r["current"]["model_version"]) == (ps.MODEL_VERSION, ps.MODEL_VERSION)
     assert r["baseline"]["run_ids"] == {str(w): base_runs[w] for w in range(6, 15)}
@@ -519,6 +519,22 @@ def test_the_real_database_shape_with_one_late_run_is_unavailable_with_a_reason(
     r = ours(con)
     assert r["available"] is False and "made after its week's first kickoff" in r["reason"]
     assert len(r["skipped"]) == 1 and r["players"] == []
+
+
+def test_right_after_the_model_switch_movers_explain_why_nothing_is_compared(con):
+    """The real database after the switch to ifp-2.1.0 (2026-10-18): an ifp-2.0.0 week-6 run, then the ifp-2.1.0
+    cycle with cutoff 6 made during week 6 (its week-6 run after kickoff, weeks 7.. before theirs). One ifp-2.1.0
+    snapshot exists, so Ours movers are unavailable with an explicit reason; nothing crosses model versions."""
+    seed(con)
+    add_run(con, 6, 6, datetime(2026, 10, 16, 4, 0), version=ps.FALLBACK_VERSION)
+    cycle(con, 6, datetime(2026, 10, 18, 21, 0))
+    r = ours(con)
+    assert r["available"] is False and r["players"] == []
+    assert f"two stored {ps.MODEL_VERSION} forecasts" in r["reason"] and "1 such forecast is stored" in r["reason"]
+    assert "made after its week's first kickoff" in r["reason"]           # the ifp-2.1.0 week-6 run
+    assert ps.FALLBACK_VERSION in r["reason"] and "never shown" in r["reason"]
+    assert r["current"]["model_version"] == ps.MODEL_VERSION and r["baseline"] is None
+    assert [s["id"] for s in pm.snapshots(con, SEASON, "independent")] == ["w6"]
 
 
 # ----------------------------------------------------------------------------- reads only

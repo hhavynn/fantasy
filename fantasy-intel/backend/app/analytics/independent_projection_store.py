@@ -34,6 +34,13 @@ unavailable_weeks); ESPN INJURY_RESERVE / SUSPENSION and a non-ACT/INA roster st
 fallback describe the next game only and apply to h = 0 ONLY. Participation sees no week-T injury report and gives
 an undesignated p_play. Rows are flagged "future week: no injury report yet" and "experimental"; horizon-0
 output is byte-identical to a run made before this feature existed.
+
+An ifp-2.1.0 artifact (app.analytics.injury_model) adds two inputs and nothing else: the workload-handoff features
+of the projected week (as known at the cutoff week, with the cutoff week's designations incl. the ESPN status
+fallback; at h >= 1 injured teammates' returns are weighted by the artifact's return-rate table), and, at h >= 1, a
+player designated Out/Doubtful at the cutoff gets the table's empirical return rate as P(plays) instead of the
+undesignated estimate (flagged; the replaced estimate is kept in `participation`). ifp-1.0.0 / ifp-2.0.0 runs are
+unchanged.
 """
 
 from __future__ import annotations
@@ -60,8 +67,9 @@ LONG_TERM_UNAVAILABLE = "long-term unavailable; return date unknown"
 RESERVE_ROSTER = {"RES", "PUP", "NFI"}   # NFL reserve lists: player_availability.derive can date a return for these
 ACTIVE_ROSTER = {"ACT", "INA"}     # nflverse weekly roster: active 53 (INA = game-day inactive that week)
 SUPPORTED_MAPPING = "high"
-# Row `model` label per fitted model name: ifp-1.0.0 selects B or C per position, ifp-2.0.0 fits "ifp2" ridges.
-MODEL_LABELS = {"B": "opportunity", "C": "context", "ifp2": "ifp2_ridge"}
+# Row `model` label per fitted model name: ifp-1.0.0 selects B or C per position, ifp-2.0.0 fits "ifp2" ridges,
+# ifp-2.1.0 "ifp21" ridges (ifp2 + the injury workload handoff).
+MODEL_LABELS = {"B": "opportunity", "C": "context", "ifp2": "ifp2_ridge", "ifp21": "ifp21_injury_aware_ridge"}
 
 
 def league_scoring(con, season: int):
@@ -285,9 +293,16 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
         targets.append({"gsis_id": c["gsis_id"], "position": c["position"], "team": team,
                         "opponent": game["opponent"], "is_home": bool(game["is_home"])})
     preds: dict[str, dict] = {}
+    injury = _injury_model(artifact)
+    hsources = codes = None
+    if injury is not None:   # cutoff-week designations as P(plays) sees them (nflverse, else the ESPN status fallback)
+        hsources, _ = espn_designation_fallback(con, sources, season, fw)
+        codes = _roster_codes(con, season)
     if targets:
         tdf = pl.DataFrame(targets).unique("gsis_id", keep="first")
         feats = features_for_week(sources, season, fw, tdf)    # feature week W; opponent / home-away are T's
+        if injury is not None:
+            feats = injury.augment(artifact, hsources, season, week, fw, feats, roster_codes=codes)
         preds = {p["gsis_id"]: p for p in predict_frame(artifact, feats)}
     for rec in rows:
         if rec.get("coverage_status") != "pending":
@@ -323,6 +338,18 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
                                     "note": "no ACT/INA NFL weekly roster row for this season: no participation estimate"}
             continue
         rec.update(p_play=q["p_play"], expected_points=round(q["p_play"] * rec["projected_points"], 2), participation=q)
+    if injury is not None and participation is not None and horizon:
+        # ifp-2.1.0: Out/Doubtful at the cutoff -> the empirical return rate, not the undesignated estimate
+        ros = injury.ros_p_play(artifact, hsources, season, fw, week, rows,
+                                injured=injury.cutoff_injured(hsources, season, fw, codes))
+        for rec in rows:
+            q = ros.get(rec["gsis_id"]) if rec.get("coverage_status") == "projected" else None
+            if q is None:
+                continue
+            q = {**q, "undesignated_p_play": (rec.get("participation") or {}).get("p_play"),
+                 "undesignated_model_version": participation.version}
+            rec.update(p_play=q["p_play"], expected_points=round(q["p_play"] * rec["projected_points"], 2),
+                       participation=q, flags=rec["flags"] + q["flags"])
     before = sources.panel.filter(pl.col("season") * 100 + pl.col("week") < key(season, fw))
     last = before.select(pl.col("season").max(), pl.col("week").filter(
         pl.col("season") == pl.col("season").max()).max()).row(0) if before.height else (None, None)
@@ -341,6 +368,22 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     for rec in rows:
         rec["run_id"] = meta["run_id"]
     return meta, rows
+
+
+def _injury_model(artifact):
+    """app.analytics.injury_model for an ifp-2.1.0 artifact (its config carries "injury_model"), else None: other
+    versions never import it."""
+    if not isinstance((artifact.config or {}).get("injury_model"), dict):
+        return None
+    from . import injury_model as im
+
+    return im
+
+
+def _roster_codes(con, season: int):
+    from .injury_workload import load_roster_codes
+
+    return load_roster_codes(con, [season])
 
 
 def write_run(con, meta: dict, rows: list[dict]) -> dict:

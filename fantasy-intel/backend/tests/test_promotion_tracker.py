@@ -90,13 +90,13 @@ def test_production_status_is_the_owner_override_not_the_frozen_artifact_text(tr
     tracker reports the owner override instead and never claims Start/Sit readiness or ESPN superiority."""
     con, _, _ = tracked
     t = build_tracker(con)
-    assert t["model_version"] == ps.MODEL_VERSION == "ifp-2.0.0"
+    assert t["model_version"] == ps.MODEL_VERSION == "ifp-2.1.0"
     assert t["run"]["week"] == 5 and t["run"]["model_version"] == ps.MODEL_VERSION and t["run_missing_reason"] is None
     assert t["governance"]["production_approval"] == "owner_override"
     assert t["governance"]["espn_superiority_established"] is False and t["governance"]["start_sit_ready"] is False
     for p in t["positions"]:
         assert p["model"]["status"] == ps.OVERRIDE_STATUS and p["model"]["start_sit_ready"] is False
-        assert "owner override" in p["model"]["reasons"][0]
+        assert p["model"]["reasons"] == [ps.GOVERNANCE[ps.MODEL_VERSION]["status_note"]]
     assert any("production model behind Ours" in n for n in t["notes"])
     assert not any("owner override" in n or "better than ESPN" in n for n in t["notes"])
     assert not any("not used in lineups" in n for n in t["notes"])

@@ -23,6 +23,7 @@ from synthetic_forecast import SCORING_ITEMS, add_league, database, gsis
 
 SCORING = resolve_skill_scoring(SCORING_ITEMS)
 APP = Path(__file__).resolve().parents[1] / "app"
+FB_SHA = "9" * 64      # a fallback (ifp-2.0.0) run's weekly artifact digest (unregistered here: served unverified)
 
 
 # ----------------------------------------------------------------------------- ridge
@@ -79,6 +80,15 @@ def test_interval_bands():
 
 
 # ----------------------------------------------------------------------------- live run
+
+
+def _fallback_art(src):
+    """The previous production model's artifact: what the switch serves for a week without a production run."""
+    from dataclasses import replace
+
+    from app.analytics import projection_source as ps
+
+    return replace(_artifact(src), version=ps.FALLBACK_VERSION)
 
 
 def _artifact(src, fingerprint=None, drop=(), created_at="2026-10-14T00:00:00+00:00"):
@@ -223,7 +233,7 @@ def test_api_unavailable_before_any_run(live, monkeypatch):
 def test_api_contract_is_stable(live, monkeypatch):
     con, src, path = live
     before = con.execute("SELECT * FROM espn_player_weekly_points ORDER BY ALL").fetchall()
-    meta, rows = build_live(con, src, _artifact(src), 2026, 6, artifact_sha256=PINNED)
+    meta, rows = build_live(con, src, _fallback_art(src), 2026, 6, artifact_sha256=FB_SHA)
     write_live(con, meta, rows)
     assert con.execute("SELECT * FROM espn_player_weekly_points ORDER BY ALL").fetchall() == before
     con.close()
@@ -261,10 +271,10 @@ def test_api_shows_the_latest_verified_run_and_refuses_unmigrated_databases(live
     from datetime import timedelta
 
     con, src, path = live
-    art = _artifact(src)
-    first, rows1 = build_live(con, src, art, 2026, 6, artifact_sha256=PINNED)
+    art = _fallback_art(src)
+    first, rows1 = build_live(con, src, art, 2026, 6, artifact_sha256=FB_SHA)
     write_live(con, first, rows1)
-    second, rows2 = build_live(con, src, art, 2026, 6, artifact_sha256=PINNED)
+    second, rows2 = build_live(con, src, art, 2026, 6, artifact_sha256=FB_SHA)
     second["created_at"] = first["created_at"] + timedelta(minutes=1)
     next(r for r in rows2 if r["espn_player_id"] == 1)["projected_points"] = 41.0
     write_live(con, second, rows2)
@@ -276,7 +286,7 @@ def test_api_shows_the_latest_verified_run_and_refuses_unmigrated_databases(live
 
     client = _client(monkeypatch, path)
     body = client.get("/api/projections/independent", params={"week": 6}).json()
-    assert body["run"]["run_id"] == second["run_id"] and wr1(body) == 41.0 and body["run"]["artifact_id"] == PINNED
+    assert body["run"]["run_id"] == second["run_id"] and wr1(body) == 41.0 and body["run"]["artifact_id"] == FB_SHA
     assert body["run"]["is_fallback"] is True and body["governance"]["is_fallback"] is True
     # an unmigrated copy (legacy table only) cannot be integrity-checked: it fails closed, with the reason
     con = duckdb.connect(str(path))
@@ -309,10 +319,10 @@ def _participation_artifact(intercept=2.0):
 
 def test_live_participation_gives_unconditional_expected_points(live, monkeypatch):
     con, src, path = live
-    art = _artifact(src)
+    art = _fallback_art(src)
     plain = _by_id(build_live(con, src, art, 2026, 6)[1])
     con.execute("UPDATE fantasy_players SET injury_status = 'QUESTIONABLE' WHERE espn_player_id = 6")
-    meta, rows = build_live(con, src, art, 2026, 6, participation=_participation_artifact(), artifact_sha256=PINNED)
+    meta, rows = build_live(con, src, art, 2026, 6, participation=_participation_artifact(), artifact_sha256=FB_SHA)
     r = _by_id(rows)
     p = 1 / (1 + np.exp(-2.0))
     for pid in (1, 6, 11):
@@ -368,9 +378,13 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "point_distributions.py",   # research-only point distributions (never imported by the app)
                "usage_signals.py",   # research-only FTN read / depth-chart signals (never imported by the app)
                "roster_context.py", "context_challenger.py",   # research-only QB/teammate context (never imported)
-               "injury_workload.py", "injury_challenger.py",   # research-only injury timeline / workload handoff
+               "injury_workload.py", "injury_challenger.py",   # injury timeline / workload handoff (ifp-2.1.0 + research)
+               "injury_model.py",   # the production model ifp-2.1.0 (trained and projected offline, never by the API)
                "returning_context.py",   # research-only returning-teammate challenger ifp-ret (never imported)
+               "qb_receiver_compat.py",   # research-only receiver role x QB challenger ifp-qbr (never imported)
+               "penalty_erased.py",   # research-only penalty-erased opportunities ifp-pe (never imported)
                "ros_availability.py",   # research-only ROS p_play for players injured at the cutoff (never imported)
+               "situational_usage.py",   # research-only situational usage splits ifp-su (never imported by the app)
                # kicker model: reconciliation scores a kicker's rare offensive stats (fakes) with the skill weights
                "kicker_scoring.py",
                # local-only writer of the final-designation re-projection run (never imported by the app, see
@@ -395,9 +409,12 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     from app.analytics.challenger import CHALLENGER_VERSION
     from app.analytics.independent_projections import MODEL_VERSION
 
-    # production is ifp-2.0.0 (model_registry.json); ifp-1.0.0 is read only for a week without an ifp-2 run
-    assert projection_source.MODEL_VERSION == CHALLENGER_VERSION == "ifp-2.0.0"
-    assert projection_source.FALLBACK_VERSION == MODEL_VERSION == "ifp-1.0.0"
+    # production is ifp-2.1.0 (model_registry.json); ifp-2.0.0 is read only for a week without an ifp-2.1.0 run
+    from app.analytics.injury_model import MODEL_VERSION as INJURY_VERSION
+
+    assert projection_source.MODEL_VERSION == INJURY_VERSION == "ifp-2.1.0"
+    assert projection_source.FALLBACK_VERSION == CHALLENGER_VERSION == "ifp-2.0.0"
+    assert projection_source.RETIRED_VERSION == MODEL_VERSION == "ifp-1.0.0"
     assert inspect.signature(start_sit.load_start_sit_evaluation).parameters["source"].default == "espn"
     assert inspect.signature(matchup.load_matchup).parameters["source"].default == "espn"
     # the forward view's entry point requires an explicit source (no default), and the route defaults to ESPN
@@ -412,6 +429,7 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     readers = {"api/independent_projections.py", "analytics/promotion_tracker.py", "api/projection_promotion.py",
                "analytics/model_registry.py",   # research-only rollback dry run (simulates the selection)
                "analytics/performance_report.py",   # the accuracy page's governance (constants only, no run read)
+               "analytics/espn_benchmark.py",   # benchmarks the production model: its version constant only
                "analytics/projection_movers.py",   # movement between stored forecasts (reads runs, never calls weekly())
                "analytics/rankings.py"}   # opt-in Rankings (source=independent): the switch's selection via forward_ours
     assert switch <= users <= switch | readers
@@ -431,7 +449,7 @@ def test_api_shows_the_same_run_as_the_switch_never_a_newer_unapproved_one(live,
     art = _artifact(src)
     prod, rows = build_live(con, src, replace(art, version=ps.MODEL_VERSION), 2026, 6, artifact_sha256="b" * 64)
     write_live(con, prod, rows)
-    fb, rows = build_live(con, src, art, 2026, 6, artifact_sha256=PINNED)
+    fb, rows = build_live(con, src, replace(art, version=ps.FALLBACK_VERSION), 2026, 6, artifact_sha256=FB_SHA)
     fb["created_at"] = prod["created_at"] + timedelta(minutes=1)
     write_live(con, fb, rows)
     research, rows = build_live(con, src, replace(art, version="ifp-hgb-0.1.0"), 2026, 6, artifact_sha256="c" * 64)
@@ -450,7 +468,7 @@ def test_api_shows_the_same_run_as_the_switch_never_a_newer_unapproved_one(live,
     assert skills and all(p["independent"]["model_status"] == ps.OVERRIDE_STATUS for p in skills)
     assert not any(p["independent"]["start_sit_ready"] for p in body["players"])
     assert all(isinstance(p["independent"]["pregame"], bool) for p in body["players"])
-    # tamper with the production run's rows: the API falls back to the pinned ifp-1 run and says so
+    # tamper with the production run's rows: the API falls back to the ifp-2.0.0 run and says so
     con = duckdb.connect(str(path))
     con.execute("UPDATE independent_projection_rows SET projected_points = 77 WHERE run_id = ? AND espn_player_id = 1",
                 [prod["run_id"]])

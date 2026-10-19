@@ -1,6 +1,6 @@
 """Opt-in "ours" series for the player forward view (GET /players/{id}/forward?source=independent).
 
-The production model (ifp-2.0.0) is run for every remaining regular-season week (the rest-of-season cycle,
+The production model (ifp-2.1.0) is run for every remaining regular-season week (the rest-of-season cycle,
 one immutable run per target week). This module reads those stored runs, one week at a time, through the
 opt-in weekly switch (`projection_source.weekly`) and turns them into a per-week series and a total for ONE
 player. It trains and writes nothing and is SQL-only, like the switch.
@@ -12,7 +12,7 @@ Per week the value comes from the newest eligible run for that week, labeled by 
 
   ours       the model's unconditional expected points;
   ours_zero  the run says he cannot score (bye, or withheld as unavailable): 0.0;
-  espn       no independent estimate for this week (no run stored yet, K / D/ST, an abstention): ESPN's number,
+  espn       no independent estimate for this week (no run stored yet, no K / D/ST run, an abstention): ESPN's number,
              marked, and the week is NOT part of "ours";
   bye        the NFL schedule has him on a bye and no run said otherwise (not a projection, not required).
 

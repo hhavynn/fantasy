@@ -246,6 +246,9 @@ LABELS = {
     "team_pts_pg": "team points per game vs league", "opp_pos_allowed": "opponent points allowed to position vs league",
     "opp_pass_epa": "opponent pass EPA/play allowed vs league", "opp_rush_epa": "opponent rush EPA/play allowed vs league",
     "is_home": "home game", "xfp_missing": "no xFP coverage", "snap_missing": "no snap data", "rz_missing": "no red-zone data",
+    # ifp-2.1.0 (app.analytics.injury_model): the injury workload handoff
+    "ho_exp_xfpl": "expected opportunity value with this week's available teammates (xFP per game)",
+    "ho_shift_pg": "expected touches vs his recent average (carries + targets per game)",
 }
 
 

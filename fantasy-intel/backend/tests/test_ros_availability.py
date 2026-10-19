@@ -5,6 +5,7 @@ Hand-built frames with invented values (the backfield world of test_injury_workl
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import subprocess
 import sys
@@ -199,9 +200,12 @@ def test_research_module_writes_nothing():
 
 def test_app_never_imports_the_ros_availability_research():
     root = pathlib.Path(__file__).resolve().parents[1] / "app"
-    for path in root.rglob("*.py"):
+    for path in root.rglob("*.py"):      # imports, not text: the production model cites the study by name
         if path.name != "ros_availability.py":
-            assert "ros_availability" not in path.read_text(), path
+            tree = ast.parse(path.read_text())
+            names = {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)} | \
+                {a.name for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names}
+            assert not {x for x in names if x.endswith("ros_availability")}, path
     code = ("import sys, app.main; bad = 'app.analytics.ros_availability' in sys.modules; print(bad); "
             "sys.exit(1 if bad else 0)")
     assert subprocess.run([sys.executable, "-c", code], cwd=root.parent, capture_output=True).returncode == 0

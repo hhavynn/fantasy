@@ -356,5 +356,11 @@ def test_dfp_r1_runs_only_from_its_scripts_and_the_shadow_stays_separate():
         text = (scripts / name).read_text()
         assert '"dst_shadow.py"' in text and "import dst_shadow" not in text and "from dst_shadow" not in text
     assert '"dst_projections.py"' in (scripts / "learning_cycle.py").read_text()
+    callers = {f.name for f in scripts.rglob("*.py") if "dst_shadow" in f.read_text()}
+    # shadow_promotion_check.py only reads the shadow's saved scores.json
+    assert callers == {"dst_shadow.py", "dst_projections.py", "learning_cycle.py", "refresh_all.py",
+                       "shadow_promotion_check.py"}
+    text = (scripts / "shadow_promotion_check.py").read_text()
+    assert "import dst_shadow" not in text and "from dst_shadow" not in text
     source = (root / "backend" / "app" / "analytics" / "projection_source.py").read_text()
     assert "from . import dst_store" in source and "dst_research" not in source
