@@ -22,8 +22,8 @@ SCHEMA_VERSION = "kicker-projections/v1"
 GOVERNANCE = {
     "model_version": ks.MODEL_VERSION, "role": "independent kicker model (separate from the ifp skill-position models)",
     "start_sit_ready": False, "espn_superiority_established": False,
-    "status_note": ("Fantasy Intel's kicker model: more accurate than trailing kicker averages on 2023-2025 held-out "
-                    "seasons, and tracked against ESPN every week since 2026."),
+    "status_note": ("Fantasy Intel's kicker model: more accurate than trailing kicker averages in a 2023-2025 "
+                    "retrospective backtest, and tracked prospectively against ESPN every week since 2026."),
 }
 NOTES = [
     "projected_points is conditional on the kicker kicking in the game; expected_points = p_play x projected_points.",
@@ -88,7 +88,7 @@ def build_response(con, week: int | None, team_id: int | None) -> dict:
                     "feature_cutoff": {"data_through_season": run.get("data_through_season"),
                                        "data_through_week": run.get("data_through_week")},
                     "forecast_horizon": int(run.get("forecast_horizon") or 0), "model_status": run.get("model_status"),
-                    "heldout_evaluation": run.get("evaluation"), "weather_summary": run.get("weather_summary")},
+                    "evaluation": run.get("evaluation"), "weather_summary": run.get("weather_summary")},
             "players": players}
 
 

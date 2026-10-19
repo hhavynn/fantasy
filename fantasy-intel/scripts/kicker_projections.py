@@ -119,8 +119,12 @@ def cmd_evaluate(args) -> dict:
     live, hist, items, scoring, frames = _load(args)
     scoring.require_supported()
     rep: dict = {"model_version": km.MODEL_VERSION, "generated_at": datetime.now(timezone.utc).isoformat(),
+                 "config": kb.cfg_dict(kb.PRODUCTION),
                  "scoring": scoring.describe(), "protocol": {"burn_in": 2019, "validation": list(kb.VALIDATION),
-                                                             "test": list(kb.TEST), "prospective": args.season},
+                                                             "test": list(kb.TEST), "prospective": args.season,
+                                                             "test_role": "retrospective, report-only (inspected when "
+                                                                          "kfp-1.1.0 was chosen)",
+                                                             "held_out": f"prospective {args.season}"},
                  "sample_sizes": _sample_sizes(frames)}
     rep["reconciliation"] = {k: v for k, v in reconcile_with_espn(live, args.season, scoring, items).items()}
     base = kb.PRODUCTION
@@ -163,7 +167,9 @@ def cmd_evaluate(args) -> dict:
     val = kb.full_report(data, base, scoring, kb.VALIDATION, "validation")
     vp = val.pop("_predictions")
     bands = km.residual_bands(vp["pred"].to_numpy(), vp["label"].to_numpy())
-    test = kb.full_report(data, base, scoring, kb.TEST, "test (held out)")
+    # 2023-25 was inspected when kfp-1.1.0 was chosen: a retrospective, report-only split. The untouched check is the
+    # prospective season below.
+    test = kb.full_report(data, base, scoring, kb.TEST, "test 2023-25 (retrospective, report-only)")
     tp = test.pop("_predictions")
     test["interval80_coverage"] = _coverage(bands, tp)
     rep["validation"], rep["test"] = val, test
@@ -199,6 +205,35 @@ def _coverage(bands: dict, preds: pl.DataFrame) -> dict:
     return {"n": n, "empirical": round(inside / n, 4) if n else None, "nominal": bands.get("nominal_coverage")}
 
 
+def report_is_stale(ev: dict, cfg) -> bool:
+    """True when an evaluation report was made for another model version, or records a different frozen config
+    (reports made before the config was recorded are judged by version alone)."""
+    if ev.get("model_version") != km.MODEL_VERSION:
+        return True
+    recorded = ev.get("config")
+    return recorded is not None and _clean(recorded) != _clean(kb.cfg_dict(cfg))
+
+
+def artifact_evaluation(args, cfg) -> dict:
+    """The evaluation summary a new artifact embeds, from <out>/kfp_evaluation.json. A report made for another model
+    version or configuration (e.g. the first cycle after an upgrade) is re-derived first, so an artifact never carries
+    another model's metrics."""
+    ev_path = args.out / "kfp_evaluation.json"
+    if ev_path.exists() and report_is_stale(json.loads(ev_path.read_text()), cfg):
+        cmd_evaluate(args)
+    if not ev_path.exists():
+        return {}
+    ev = json.loads(ev_path.read_text())
+    if report_is_stale(ev, cfg):
+        raise SystemExit(f"{ev_path} still describes {ev.get('model_version')!r} after re-evaluating; not fitting")
+    return {"test": {k: ev["test"].get(k) for k in ("common_support", "all_rows_model", "interval80_coverage",
+                                                     "fg_make_logloss")},
+            "prospective": {k: ev["prospective"].get(k) for k in ("all_rows_model", "espn")},
+            "ablations_test": {k: {"mae": v["mae"], "per_season_mae": v["per_season_mae"]}
+                               for k, v in ev["ablations_test"].items()},
+            "league_median_points": ev.get("league_median_points"), "report_generated_at": ev.get("generated_at")}
+
+
 def cmd_fit(args) -> dict:
     live, hist, items, scoring, frames = _load(args)
     scoring.require_supported()
@@ -213,16 +248,7 @@ def cmd_fit(args) -> dict:
     # intervals: out-of-sample residuals of every season the walk-forward can predict (2021 .. season-1)
     oos = pl.concat([kb.evaluate_season(data, cfg, scoring, s, sf) for s in range(kb.FIRST_ROW_SEASON + 1, season)])
     bands = km.residual_bands(oos["pred"].to_numpy(), oos["label"].to_numpy())
-    evaluation = {}
-    ev_path = args.out / "kfp_evaluation.json"
-    if ev_path.exists():
-        ev = json.loads(ev_path.read_text())
-        evaluation = {"test": {k: ev["test"].get(k) for k in ("common_support", "all_rows_model", "interval80_coverage",
-                                                             "fg_make_logloss")},
-                      "prospective": {k: ev["prospective"].get(k) for k in ("all_rows_model", "espn")},
-                      "ablations_test": {k: {"mae": v["mae"], "per_season_mae": v["per_season_mae"]}
-                                         for k, v in ev["ablations_test"].items()},
-                      "league_median_points": ev.get("league_median_points"), "report_generated_at": ev.get("generated_at")}
+    evaluation = artifact_evaluation(args, cfg)
     hcons = [c for c in (connect(args.history_db, read_only=True) if args.history_db.exists() else None, live) if c]
     part = kb.participation_table(hcons, frames, scoring)
     status = {"K": {"status": "research_validated_historical", "start_sit_ready": False,

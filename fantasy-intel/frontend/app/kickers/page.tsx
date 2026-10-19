@@ -147,13 +147,13 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
           {line ? (
             <>
               Expected FG tries come from the league rate adjusted by the team&apos;s implied points from the betting line (other
-              team and opponent stats did not improve held-out accuracy for FG volume); expected PAT tries come from the
+              team and opponent stats did not improve validation accuracy for FG volume); expected PAT tries come from the
               team&apos;s touchdown rate and the opponent&apos;s, shrunk toward the league, plus the same implied total. A game
               without a posted line uses a league-average implied total.
             </>
           ) : (
             <>
-              Expected FG tries come from the league rate (team and opponent context did not improve held-out accuracy for FG
+              Expected FG tries come from the league rate (team and opponent context did not improve validation accuracy for FG
               volume); expected PAT tries come from the team&apos;s touchdown rate and the opponent&apos;s, shrunk toward the
               league. This week was projected by {d.governance.model_version}, before the betting line became an input.
             </>

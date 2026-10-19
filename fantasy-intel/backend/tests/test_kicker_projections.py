@@ -643,3 +643,44 @@ def test_retired_kfp_runs_serve_weeks_without_a_current_run(live):
     sel = ks.select_run(con, 2026, 4)
     assert sel["run"]["model_version"] == ks.MODEL_VERSION and sel["run"]["run_id"] == meta["run_id"]
     assert build_response(con, 4, None)["governance"]["model_version"] == ks.MODEL_VERSION
+
+
+def test_fit_re_evaluates_a_report_from_another_model_version(tmp_path, monkeypatch):
+    import argparse
+    import importlib.util
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[2] / "scripts" / "kicker_projections.py"
+    monkeypatch.syspath_prepend(str(script.parent))
+    spec = importlib.util.spec_from_file_location("kicker_projections_cli", script)
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+
+    def report(version, median, config=None):
+        r = {"model_version": version, "generated_at": f"{version}-report", "league_median_points": median,
+             "test": {"common_support": {}}, "prospective": {}, "ablations_test": {}}
+        return {**r, "config": config} if config is not None else r
+
+    out = tmp_path / "kicker"
+    out.mkdir()
+    path = out / "kfp_evaluation.json"
+    path.write_text(json.dumps(report("kfp-1.0.0", 7.6)))           # left by the previous model (an upgrade)
+    calls = []
+
+    def evaluate(args):
+        calls.append(args)
+        path.write_text(json.dumps(report(km.MODEL_VERSION, 8.0, kb.cfg_dict(kb.PRODUCTION))))
+
+    monkeypatch.setattr(cli, "cmd_evaluate", evaluate)
+    args = argparse.Namespace(out=out)
+    ev = cli.artifact_evaluation(args, kb.PRODUCTION)
+    assert len(calls) == 1 and ev["league_median_points"] == 8.0 and ev["report_generated_at"] == "kfp-1.1.0-report"
+    assert cli.artifact_evaluation(args, kb.PRODUCTION)["league_median_points"] == 8.0 and len(calls) == 1  # current
+    # same version, different frozen config: also re-derived
+    assert cli.report_is_stale(report(km.MODEL_VERSION, 8.0, {**kb.cfg_dict(kb.PRODUCTION), "team_k": 9.0}),
+                               kb.PRODUCTION)
+    # an evaluate that still leaves a stale report: refuse rather than embed it
+    monkeypatch.setattr(cli, "cmd_evaluate", lambda a: path.write_text(json.dumps(report("kfp-1.0.0", 7.6))))
+    path.write_text(json.dumps(report("kfp-1.0.0", 7.6)))
+    with pytest.raises(SystemExit):
+        cli.artifact_evaluation(args, kb.PRODUCTION)
