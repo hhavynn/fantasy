@@ -1,0 +1,38 @@
+{
+ "schema": "availability-news/v1",
+ "note": "Owner-curated availability facts no synced source carries yet (a reported multi-week timeline, a reinstatement the weekly rosters have not published). Read by live production runs only (app/analytics/availability_news.py); never by training. Remove an entry once the synced data says the same thing or it no longer applies.",
+ "entries": [
+  {
+   "season": 2026,
+   "gsis_id": "00-0031381",
+   "espn_player_id": 16800,
+   "name": "Davante Adams",
+   "team": "LA",
+   "kind": "out",
+   "from_week": 7,
+   "return_window": [12, 16],
+   "reported_on": "2026-10-19",
+   "note": "Ruptured hamstring in week 6; Sean McVay: out 6-10 weeks, IR expected this week. Rams bye week 11, so the earliest return is week 12 and the latest week 16.",
+   "sources": [
+    "https://www.nfl.com/news/davante-adams-hamstring-expected-to-miss-6-10-weeks-as-injuries-pile-up-rams",
+    "https://www.nbcsports.com/nfl/profootballtalk/rumor-mill/news/rams-wr-davante-adams-out-6-10-weeks-with-ruptured-hamstring"
+   ]
+  },
+  {
+   "season": 2026,
+   "gsis_id": "00-0035700",
+   "espn_player_id": 4047365,
+   "name": "Josh Jacobs",
+   "team": "GB",
+   "kind": "active",
+   "from_week": 7,
+   "return_window": null,
+   "reported_on": "2026-10-19",
+   "note": "Removed from the Commissioner's Exempt List, eligible for week 7; reported to return as the starting running back. The league's conduct investigation is still open.",
+   "sources": [
+    "https://www.espn.com/nfl/story/_/id/50197784/packers-josh-jacobs-eligible-return-next-week-amid-probe",
+    "https://athlonsports.com/nfl/trending/when-will-josh-jacobs-play-return-timeline-for-packers-rb-after-nfl-decision"
+   ]
+  }
+ ]
+}
