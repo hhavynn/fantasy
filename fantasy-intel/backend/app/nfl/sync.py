@@ -40,6 +40,10 @@ RAW_DATASETS: dict[str, tuple[Callable[[int], pl.DataFrame], str | None]] = {
     "nfl_pfr_pass": (lambda s: nfl.load_pfr_advstats([s], stat_type="pass", summary_level="week"), "season"),
     "nfl_ngs_rushing": (lambda s: nfl.load_nextgen_stats([s], stat_type="rushing"), "season"),
     "nfl_ngs_receiving": (lambda s: nfl.load_nextgen_stats([s], stat_type="receiving"), "season"),
+    # QB-week NGS passing (aggressiveness, avg_time_to_throw, CPOE, avg_intended_air_yards, ...). Stored as
+    # published: week 0 rows are NGS season totals, only QBs over NGS's attempt threshold appear, and nulls
+    # stay null. Research input only; not an ifp-2 feature (docs/research/savant_data_coverage.md).
+    "nfl_ngs_passing": (lambda s: nfl.load_nextgen_stats([s], stat_type="passing"), "season"),
 }
 
 
