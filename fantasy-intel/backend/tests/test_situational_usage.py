@@ -271,10 +271,28 @@ def test_bonferroni_interval_is_wider():
     d = pl.DataFrame({"key": rng.integers(1, 40, n), "label": rng.normal(5, 3, n)}).with_columns(
         (pl.col("label") + pl.Series(rng.normal(0, 2, n))).alias("a"),
         (pl.col("label") + pl.Series(rng.normal(0, 2.1, n))).alias("b"))
-    wide = su.week_bootstrap(d, "a", "b", alpha=0.05 / 6)
-    narrow = su.week_bootstrap(d, "a", "b")
+    wide = su.week_bootstrap(d, "a", "b", alpha=0.05 / 6, seed=7)
+    narrow = su.week_bootstrap(d, "a", "b", seed=7)          # same seed: identical week resamples
     assert wide["diff"] == narrow["diff"]
     assert wide["ci"][0] <= narrow["ci"][0] and wide["ci"][1] >= narrow["ci"][1]
+
+
+def test_week_bootstrap_is_bit_reproducible_and_independent_of_row_order():
+    rng = np.random.default_rng(2)
+    n = 5000
+    d = pl.DataFrame({"key": rng.integers(1, 60, n), "label": rng.normal(5, 3, n)}).with_columns(
+        (pl.col("label") + pl.Series(rng.normal(0, 2, n))).alias("a"),
+        (pl.col("label") + pl.Series(rng.normal(0, 2.1, n))).alias("b"))
+    first = su.week_bootstrap(d, "a", "b", seed=11)
+    assert all(su.week_bootstrap(d, "a", "b", seed=11) == first for _ in range(20))
+    shuffled = su.week_bootstrap(d.sample(fraction=1.0, shuffle=True, seed=3), "a", "b", seed=11)
+    assert shuffled["diff"] == pytest.approx(first["diff"], abs=1e-12)
+    assert shuffled["ci"] == pytest.approx(first["ci"], abs=1e-12)
+    # the per-week sums match a plain group-by
+    by = d.group_by("key").agg((pl.col("label") - pl.col("a")).abs().sum().alias("la"),
+                               (pl.col("label") - pl.col("b")).abs().sum().alias("lb"), pl.len().alias("n"))
+    assert first["diff"] == pytest.approx((by["la"].sum() - by["lb"].sum()) / by["n"].sum(), abs=1e-12)
+    assert first["weeks"] == by.height and first["n"] == n
 
 
 def test_research_module_is_never_imported_by_the_app():

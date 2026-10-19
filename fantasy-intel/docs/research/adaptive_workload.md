@@ -330,3 +330,7 @@ uv run python ../scripts/adaptive_workload_research.py cases
   declines, never toward streaks above the role). Evaluate it only on prospective frozen weeks
   (2026 week 7 onward) through the weekly pipeline's shadow gate, after explicit approval to add a
   third shadow model.
+* **Done (2026-10-18):** pre-registered as `ifp-awd-p1` (`RoleConfig(decline_only=True)`, `adaptive_workload.AWD_*`).
+  It uses ifp-2's frozen penalties and half-life with no search, and is never scored on the historical windows.
+  It is frozen and scored weekly from 2026 week 7 by `scripts/signal_shadows.py`; see
+  [signal_shadows.md](signal_shadows.md).

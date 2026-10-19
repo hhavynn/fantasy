@@ -6,7 +6,7 @@ No training, no syncs, no ESPN calls and no writes. Independent estimates and ES
 are separate fields; an independent value is never replaced by ESPN's, and unknown is null.
 
 The run shown is the one every consumer view shows (projection_source.select_run): the production model
-(ifp-2.0.0) under the league's current scoring, else the labeled ifp-1.0.0 fallback, and only a run whose stored
+(ifp-2.1.0) under the league's current scoring, else the labeled ifp-2.0.0 fallback, and only a run whose stored
 rows verify against its content hash and whose artifact is approved. Players are served from exactly the rows
 that were verified. `governance` says what the served model's approval does and does not establish.
 """
@@ -32,9 +32,8 @@ NOTES = [
     "participation.p_play * projected_points is the unconditional expectation (null without a participation estimate).",
     "Compare ESPN with expected_points (comparison.expected_minus_espn): both are unconditional. "
     "independent_minus_espn compares a conditional estimate and is marked not comparable when ESPN projects 0.",
-    "The production model ifp-2.0.0 was approved by an owner override, not by evidence: its validation is "
-    "historical research only and it is not shown to be better than ESPN (see governance). No position is "
-    "Start/Sit-ready. A week without an eligible ifp-2.0.0 run shows the ifp-1.0.0 fallback, labeled.",
+    f"The production model is {ps.MODEL_VERSION} (see governance). A week without an eligible {ps.MODEL_VERSION} run "
+    f"shows the {ps.FALLBACK_VERSION} fallback, labeled.",
     "This is the live view (the newest verified run). independent.pregame says whether a row was made before the "
     "player's own kickoff; only pregame rows are ever used as accuracy evidence.",
 ]

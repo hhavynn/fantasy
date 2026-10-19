@@ -79,10 +79,10 @@ def env(base, tmp_path, lc):
 
 
 def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False, research_shadows=False,
-          dst_shadow=False, dist_ledger=False):
+          dst_shadow=False, dist_ledger=False, signal_shadows=False, promotion_check=False):
     """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it, and the kicker stage
     (after project), the ifp-ctx-p1 / dfp-r1 shadow stages, the other research shadows and the distribution-ledger
-    stage only when a test asks for them too."""
+    stage (and the signal shadows) only when a test asks for them too."""
     return lc.parse(["run", "--skip-sync", "--season", "2025", "--now", now, "--live-db", str(env / "live.duckdb"),
                      "--history-db", str(env / "history.duckdb"), "--ifp-dir", str(env / "models"),
                      "--out", str(env / "out"), "--kicker-dir", str(env / "kicker"), "--ctx-dir", str(env / "ctx"),
@@ -90,7 +90,10 @@ def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=
                      "--dist-dir", str(env / "dist"),
                      *([] if ctx_shadow else ["--no-ctx-shadow"]), *([] if dist_ledger else ["--no-dist-ledger"]),
                      *([] if research_shadows else ["--no-qb-scenario-shadow", "--no-ipm-cal-shadow"]),
-                     "--dst-dir", str(env / "dst"), *([] if dst_shadow else ["--no-dst-shadow"]), *extra])
+                     "--dst-dir", str(env / "dst"), *([] if dst_shadow else ["--no-dst-shadow"]),
+                     *([] if signal_shadows else ["--no-signal-shadows"]),
+                     "--promotion-logs-dir", str(env / "plogs"), *([] if promotion_check else ["--no-promotion-check"]),
+                     *extra])
 
 
 def _run(lc, env, now=PRE_W10, *extra):
@@ -330,7 +333,7 @@ def test_status_command_and_cli_entry(lc, env, capsys):
     assert lc.main(["status", "--out", str(env / "out")]) == 0
     st = json.loads(capsys.readouterr().out)
     assert st["latest_cycle"]["status"] == "forecast_frozen" and st["lock"] is None
-    assert st["artifacts"] == {"ifp-1.0.0": 1, "ifp-2.0.0": 1} and st["ledger_runs"] == 1
+    assert st["artifacts"] == {"ifp-1.0.0": 1, "ifp-2.0.0": 1, "ifp-2.1.0": 1} and st["ledger_runs"] == 1
     assert st["missed_windows"] == ["s2025w09.json"]
 
 
@@ -420,22 +423,22 @@ def _espn_players(env):
 
 def test_kicker_stage_failure_never_fails_the_cycle_or_the_ifp_run(lc, env):
     """The kicker stage runs after `project`; here it fails (the synthetic databases hold no kicker data), and the
-    cycle still exits OK with the ifp-2.0.0 run stored, the failure reported as a warning."""
+    cycle still exits OK with the ifp-2.1.0 run stored, the failure reported as a warning."""
     _espn_players(env)
     code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True, kicker=True))
     assert code == lc.EXIT_OK, rep["errors"]
     assert _stages(rep)[-3:] == [("predict", "ok"), ("project", "ok"), ("kicker", "failed_nonfatal")]
     assert any("kicker projection failed" in w for w in rep["warnings"])
     con = connect(env / "live.duckdb")
-    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.0.0'"
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.1.0'"
                        ).fetchone()[0] == 1
     assert con.execute("SELECT count(*) FROM kicker_projection_runs").fetchone()[0] == 0
     con.close()
 
 
-def test_cycle_stores_the_production_ifp2_run_the_switch_reads(lc, env):
+def test_cycle_stores_the_production_run_the_switch_reads(lc, env):
     """The `project` stage runs backtest_independent_projections.py project on the artifact the cycle just
-    trained: an ifp-2.0.0 run in the live DB, identified by that artifact file's sha256; a rerun is a no-op.
+    trained: an ifp-2.1.0 run in the live DB, identified by that artifact file's sha256; a rerun is a no-op.
     (The same stage also stores the rest-of-season runs: test_cycle_projects_every_remaining_week...)"""
     from app.analytics import projection_source as ps
 
@@ -443,15 +446,15 @@ def test_cycle_stores_the_production_ifp2_run_the_switch_reads(lc, env):
     code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True))
     assert code == lc.EXIT_OK, rep["errors"]
     assert _stages(rep)[-2:] == [("predict", "ok"), ("project", "ok")]
-    art = rep["training"]["artifacts"]["ifp-2.0.0"]["path"]
-    assert rep["projection"]["model_version"] == ps.MODEL_VERSION == "ifp-2.0.0" and rep["projection"]["created"]
+    art = rep["training"]["artifacts"]["ifp-2.1.0"]["path"]
+    assert rep["projection"]["model_version"] == ps.MODEL_VERSION == "ifp-2.1.0" and rep["projection"]["created"]
     assert rep["projection"]["artifact_id"] == hashlib.sha256(Path(art).read_bytes()).hexdigest()
     con = connect(env / "live.duckdb")
     runs = con.execute("SELECT run_id, model_version, row_count FROM independent_projection_runs").fetchall()
-    assert runs == [(rep["projection"]["run_id"], "ifp-2.0.0", rep["projection"]["rows"])] and runs[0][2] > 0
+    assert runs == [(rep["projection"]["run_id"], "ifp-2.1.0", rep["projection"]["rows"])] and runs[0][2] > 0
     models = {r[0] for r in con.execute("SELECT DISTINCT model FROM independent_projection_rows "
                                         "WHERE coverage_status = 'projected'").fetchall()}
-    assert models == {"ifp2_ridge"}
+    assert models == {"ifp21_injury_aware_ridge"}
     assert ps.weekly(con, 2025, 10, "independent")["run"]["run_id"] == runs[0][0]
     con.close()
     code, again = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True))
@@ -484,7 +487,7 @@ def test_cycle_projects_every_remaining_week_from_the_target_weeks_artifact(lc, 
     code, rep = lc.run_cycle(_args(lc, env, project=True))
     assert code == lc.EXIT_OK, rep["errors"]
     assert rep["last_regular_season_week"] == LAST_WEEK
-    art_sha = hashlib.sha256(Path(rep["training"]["artifacts"]["ifp-2.0.0"]["path"]).read_bytes()).hexdigest()
+    art_sha = hashlib.sha256(Path(rep["training"]["artifacts"]["ifp-2.1.0"]["path"]).read_bytes()).hexdigest()
     runs = _runs(env)
     assert [r[0] for r in runs] == list(range(10, LAST_WEEK + 1))
     assert [r[1] for r in runs] == list(range(0, LAST_WEEK - 10 + 1))
@@ -505,12 +508,12 @@ def test_cycle_projects_every_remaining_week_from_the_target_weeks_artifact(lc, 
     # the gate: W's artifact is registered once (target week 10, cutoff before week 10) and covers every later week
     fp = league_scoring(con, 2025)[1].fingerprint
     for week in (10, 13, LAST_WEEK):
-        run = pf.latest_run(con, 2025, week, model_version="ifp-2.0.0", scoring_fingerprint=fp)
+        run = pf.latest_run(con, 2025, week, model_version="ifp-2.1.0", scoring_fingerprint=fp)
         assert run is not None and run["artifact_check"] == "verified" and run["horizon"] == week - 10
-    assert con.execute("SELECT count(*) FROM approved_artifacts WHERE model_version = 'ifp-2.0.0'").fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM approved_artifacts WHERE model_version = 'ifp-2.1.0'").fetchone()[0] == 1
     assert ps.weekly(con, 2025, 14, "independent")["run"]["run_id"] == next(r[4] for r in runs if r[0] == 14)
     # evidence: horizon 0 only, the rest excluded with the reason
-    forecasts, excluded = pf.pregame_forecasts(con, 2025, None, model_version="ifp-2.0.0", scoring_fingerprint=fp)
+    forecasts, excluded = pf.pregame_forecasts(con, 2025, None, model_version="ifp-2.1.0", scoring_fingerprint=fp)
     assert {f["week"] for f in forecasts} <= {10}
     assert {e["week"] for e in excluded if e["reason"].startswith("rest-of-season forecast")} == \
         set(range(11, LAST_WEEK + 1))
@@ -549,7 +552,7 @@ def test_a_failed_future_week_is_reported_and_the_other_weeks_are_still_projecte
     monkeypatch.setattr(store, "build_live", flaky)
     args = argparse.Namespace(live_db=env / "live.duckdb", history_db=env / "history.duckdb", out=env / "models",
                               weekly_dir=env / "out", season=2025, week=10, through_week=15, artifact_week=None,
-                              model="ifp-2.0.0", register_artifact="learning_cycle")
+                              model="ifp-2.1.0", register_artifact="learning_cycle")
     hist = cli._ro(args.history_db)
     live = cli._ro(args.live_db)
     scoring = cli._scoring(live, 2025)
@@ -571,7 +574,7 @@ def test_the_cycle_report_lists_a_failed_future_week_without_failing_the_cycle(l
         for con in conns:
             con.close()
         conns.clear()
-        return {"run_id": "r10", "created": True, "rows": 5, "model_version": "ifp-2.0.0", "artifact_id": "a" * 64,
+        return {"run_id": "r10", "created": True, "rows": 5, "model_version": "ifp-2.1.0", "artifact_id": "a" * 64,
                 "rest_of_season": [{"week": 11, "forecast_horizon": 1, "run_id": "r11", "created": True, "rows": 5},
                                    {"week": 12, "forecast_horizon": 2, "error": "RuntimeError: boom"}]}
 
@@ -639,7 +642,7 @@ def test_ctx_shadow_failure_never_fails_the_cycle_or_the_production_run(lc, env,
     assert _stages(rep)[-3:] == [("predict", "ok"), ("project", "ok"), ("ctx_shadow", "failed_nonfatal")]
     assert any("ifp-ctx-p1 shadow stage failed" in w for w in rep["warnings"])
     con = connect(env / "live.duckdb")
-    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.0.0'"
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.1.0'"
                        ).fetchone()[0] == 1
     con.close()
 
@@ -814,7 +817,7 @@ def test_dist_ledger_failure_never_fails_the_cycle_or_the_production_run(lc, env
     assert _stages(rep)[-3:] == [("predict", "ok"), ("project", "ok"), ("dist_ledger", "failed_nonfatal")]
     assert any("distribution ledger stage failed" in w for w in rep["warnings"])
     con = connect(env / "live.duckdb")
-    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.0.0'"
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.1.0'"
                        ).fetchone()[0] == 1
     con.close()
 
@@ -914,7 +917,7 @@ def test_dst_shadow_failure_never_fails_the_cycle_or_the_production_run(lc, env,
     assert _stages(rep)[-3:] == [("predict", "ok"), ("project", "ok"), ("dst_shadow", "failed_nonfatal")]
     assert any("dfp-r1 shadow stage failed" in w for w in rep["warnings"])
     con = connect(env / "live.duckdb")
-    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.0.0'"
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.1.0'"
                        ).fetchone()[0] == 1
     con.close()
 
@@ -975,3 +978,136 @@ def test_every_research_shadow_runs_after_an_early_stop_in_the_normal_order(lc, 
     args.skip_sync = False
     code, rep = lc.run_cycle(args)
     assert code == lc.EXIT_FAILED and seen == order and rep["stages"][0] == {**rep["stages"][0], "status": "failed"}
+
+
+# ----------------------------------------------------------------------------- signal research shadows (RESEARCH_SHADOWS)
+
+
+def test_signal_shadows_stage_runs_after_ctx_shadow_and_is_a_no_op_before_the_prospective_window(lc, env):
+    """The real scripts/signal_shadows.py subprocess on the synthetic 2025 world: before 2026 week 7 nothing is
+    fetched or forecast and there is no ledger to score, so it writes nothing and reports no warning."""
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, signal_shadows=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    names = [n for n, _ in _stages(rep)]
+    assert names.index("signal_shadows") == names.index("ctx_shadow") + 1 and ("signal_shadows", "ok") in _stages(rep)
+    ss = rep["signal_shadows"]
+    assert (ss["status"], ss["pregame"]["status"], ss["score"]["status"], ss["prepare"]) == (
+        "ok", "before_prospective_start", "no_ledgers", None)
+    assert not [w for w in rep["warnings"] if "signal shadows" in w]
+    assert not (env / "ctx").exists()                       # nothing written anywhere
+
+
+def _only(script, fn):
+    """A stage_research_shadow stand-in that fails the test if any other research shadow runs."""
+    def stage(args, conns, log_path, s):
+        assert s == script, s
+        return fn(args)
+    return stage
+
+
+def test_signal_shadows_failure_never_fails_the_cycle(lc, env, monkeypatch):
+    def boom(args):
+        raise RuntimeError("signal_shadows.py exited 1: nflverse unreachable")
+
+    monkeypatch.setattr(lc, "stage_research_shadow", _only("signal_shadows.py", boom))
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, signal_shadows=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert ("signal_shadows", "failed_nonfatal") in _stages(rep)
+    assert any("signal shadows stage failed (production runs unaffected)" in w for w in rep["warnings"])
+
+
+def test_signal_shadows_warnings_reach_the_report_and_it_runs_when_no_week_is_left(lc, env, monkeypatch):
+    calls = []
+    monkeypatch.setattr(lc, "stage_research_shadow", _only("signal_shadows.py", lambda args: calls.append(args.week) or {
+        "status": "ok", "warnings": ["depth_2026 fetch failed; using the stored snapshot"]}))
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, signal_shadows=True))
+    assert code == lc.EXIT_OK and "signal shadows: depth_2026 fetch failed; using the stored snapshot" in rep["warnings"]
+    code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", signal_shadows=True))
+    assert rep["status"] == "no_upcoming_week" and calls[-1] is None and ("signal_shadows", "ok") in _stages(rep)
+
+
+def test_signal_shadows_also_run_after_an_early_stop(lc, env, monkeypatch):
+    """A waiting_for_data stop still runs the signal shadows (a RESEARCH_SHADOWS row), right after ctx_shadow."""
+    seen = []
+    monkeypatch.setattr(lc, "stage_ctx_shadow", lambda args, conns, log_path: seen.append("ctx_shadow") or {
+        "status": "ok", "warnings": []})
+    monkeypatch.setattr(lc, "stage_research_shadow", lambda args, conns, log_path, script: seen.append(script) or {
+        "status": "ok", "warnings": []})
+    _sql(env, "DELETE FROM nfl_snap_counts WHERE season = 2025 AND week = 9 AND team = 'AAA'")
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, signal_shadows=True))
+    assert code == lc.EXIT_NOT_READY and seen == ["ctx_shadow", "signal_shadows.py"]
+    assert ("signal_shadows", "ok") in _stages(rep)
+
+
+# ----------------------------------------------------------------------------- promote-when-proven check stage
+
+
+def test_promotion_check_stage_runs_last_and_writes_nothing_in_a_dry_cycle(lc, env):
+    """The real scripts/shadow_promotion_check.py subprocess after dist_ledger: no shadow has a scored week, so every
+    candidate is no_evidence, nothing is ready, and under the simulated clock nothing is written."""
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, dist_ledger=True, promotion_check=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    assert _stages(rep)[-2:] == [("dist_ledger", "ok"), ("promotion_check", "ok")]
+    pc = rep["promotion_check"]
+    assert pc["dry_run"] and pc["ready"] == [] and pc["counts"]["no_evidence"] == len(pc["candidates"]) == 9
+    assert rep["promotion_ready"] == [] and not [w for w in rep["warnings"] if "promotion check" in w]
+    assert not (env / "plogs").exists()
+
+
+def test_promotion_check_failure_never_fails_the_cycle_or_the_production_run(lc, env, monkeypatch):
+    _espn_players(env)
+
+    def boom(args, log_path):
+        raise RuntimeError("shadow_promotion_check.py exited 1: MemoryError")
+
+    monkeypatch.setattr(lc, "stage_promotion_check", boom)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True, promotion_check=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert _stages(rep)[-2:] == [("project", "ok"), ("promotion_check", "failed_nonfatal")]
+    assert any("promotion check stage failed (production runs unaffected)" in w for w in rep["warnings"])
+
+
+def test_promotion_ready_lines_reach_the_report_and_stderr(lc, env, monkeypatch, capsys):
+    line = "PROMOTION READY: ifp-fr-p1 RB WR (9 weeks scored; into next Ours version ifp-2.2.0; brief: ...)"
+    monkeypatch.setattr(lc, "stage_promotion_check", lambda args, log_path: {
+        "ready": [{"candidate": "ifp-fr-p1", "positions": ["RB", "WR"]}], "lines": [line],
+        "warnings": ["ifp-ctx-p1: could not read scores.json"]})
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, promotion_check=True))
+    assert code == lc.EXIT_OK and rep["promotion_ready"] == [line]
+    assert rep["promotion_check"]["ready"][0]["candidate"] == "ifp-fr-p1"
+    assert "promotion check: ifp-ctx-p1: could not read scores.json" in rep["warnings"]
+    assert line in capsys.readouterr().err
+
+
+def test_promotion_check_runs_after_an_early_stop_and_when_no_week_is_left(lc, env, monkeypatch):
+    seen = []
+    monkeypatch.setattr(lc, "stage_dist_ledger", lambda args, conns, log_path: seen.append("dist_ledger") or {
+        "status": "ok", "warnings": []})
+    monkeypatch.setattr(lc, "stage_promotion_check", lambda args, log_path: seen.append("promotion_check") or {
+        "lines": [], "warnings": []})
+    _sql(env, "DELETE FROM nfl_snap_counts WHERE season = 2025 AND week = 9 AND team = 'AAA'")
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, dist_ledger=True, promotion_check=True))
+    assert code == lc.EXIT_NOT_READY and seen == ["dist_ledger", "promotion_check"]
+    assert _stages(rep)[-1] == ("promotion_check", "ok")
+    seen.clear()
+    code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", promotion_check=True))
+    assert seen == ["promotion_check"] and ("promotion_check", "ok") in _stages(rep)
+
+
+def test_promotion_check_stage_command_writes_the_signal_outside_a_dry_run(lc, env):
+    """stage_promotion_check without a simulated clock: a ready D/ST result produces the PROMOTION READY line in the
+    cycle log, the queue entry and the summary under the promotion logs directory."""
+    (env / "dst" / "shadow").mkdir(parents=True)
+    (env / "dst" / "shadow" / "scores.json").write_text(json.dumps({
+        "scored_weeks": 9, "gate": {"weeks": 9, "n": 288, "candidates": {"dfp-r1": {
+            "status": "passes", "checks": {"mae_better_than_espn": True, "ranking_not_worse": True, "bias_ok": True}}}}}))
+    args = _args(lc, env, PRE_W10, promotion_check=True)
+    args.now = None
+    log = env / "out" / "logs" / "cycle-test.log"
+    pc = lc.stage_promotion_check(args, log)
+    assert [r["candidate"] for r in pc["ready"]] == ["dfp-r1"] and not pc["dry_run"]
+    assert "PROMOTION READY: dfp-r1 DST" in log.read_text()
+    q = json.loads((env / "plogs" / "promotion-queue.json").read_text())
+    assert q["entries"]["dfp-r1"]["status"] == "ready"
+    assert (env / "plogs" / "shadow-promotion-latest.json").exists()
+    assert "PROMOTION READY: dfp-r1 DST" in (env / "plogs" / "shadow-promotion.log").read_text()

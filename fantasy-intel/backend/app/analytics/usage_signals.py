@@ -496,6 +496,76 @@ DECISION_RULES = {
 }
 
 
+# Separately pre-registered PROSPECTIVE candidates (the follow-up plan of
+# docs/research/first_read_depth_chart_signals.md, written before any prospective week was forecast). The
+# historical windows have no untouched holdout; only frozen pregame forecasts from 2026 week 7 on can
+# confirm them (scripts/signal_shadows.py, docs/research/signal_shadows.md). Depth-change features
+# (dc_tier_change, dc_vacancy, dc_snap_gap) were rejected and are not in any candidate.
+PROSPECTIVE = {
+    "ifp-fr-p1": {"features": ["fr_team_share", "fr_own_share"], "positions": ("RB", "WR"), "source": "ftn",
+                  "semantics": "empirical", "label": "ifp-2 + FTN first-read team share and own share"},
+    "ifp-dct-p1": {"features": ["dc_tier"], "positions": ("QB", "RB", "WR"), "source": "depth_modern",
+                   "cutoff_hours": 1.5, "label": "ifp-2 + static pregame depth-chart tier"},
+}
+PROSPECTIVE_RULES = {
+    "model": "the frozen ifp-2 spec per position (features, penalty, recency half-life; no search) plus the "
+             "candidate's features, missing source data through ifp's automatic missing indicator; positions "
+             "outside the candidate are not forecast by it",
+    "ftn_capture": "FTN rows pulled by nflverse strictly before the forecast time only "
+                   "(restrict_to_available(as_of=forecast time)); a prior game not charted yet contributes nothing "
+                   "(never zero, never backfilled after the freeze); empirical read semantics ('1' = first read)",
+    "depth_capture": "the latest modern snapshot strictly before the team's kickoff minus cutoff_hours, at most "
+                     "MAX_STALE_DAYS old; the snapshot file sha and each team's snapshot time are frozen with the row",
+    "evidence": "write-once pregame ledger rows only, scored after the week is fully final; ifp2 and every candidate "
+                "fitted in the same run on the same rows",
+    "first_week": (2026, 7),
+    "gate": "per candidate position: challenger.SHADOW_GATE via weekly_learning.shadow_criteria (>= 8 fully final "
+            "weeks, >= 400 matched appearances, MAE CI upper < 0, bias, starters pool, 80% interval coverage with "
+            "ifp-2's frozen bands)",
+    "before_consumer_use": "FTN code semantics confirmed upstream (nflverse/nflreadr#325), a CC-BY-SA 4.0 review of "
+                           "any published FTN derivative, and the depth-chart upstream terms",
+    "never": "passing the gate is evidence for an owner review only; no automatic promotion or registry change",
+}
+FTN_LICENSE = ("FTN Data via nflverse, CC-BY-SA 4.0: internal research input only; any published derivative must "
+               "carry the attribution and the same license (review required before publishing)")
+
+
+def live_ftn_features(pbp: pl.DataFrame, ftn: pl.DataFrame, panel: pl.DataFrame, season: int, week: int,
+                      targets: pl.DataFrame, as_of: datetime, prior_seasons: int = 1) -> tuple[pl.DataFrame, dict]:
+    """Prospective FTN features for week (season, week) as of `as_of`: only FTN games nflverse had fully
+    pulled strictly before `as_of`, empirical semantics, the same ftn_features as the research. Returns
+    (features, provenance) with every earlier REG game of the window that is not available yet."""
+    lo = season - prior_seasons
+    p = pbp.filter((pl.col("season") >= lo) & ((pl.col("season") < season) | (pl.col("week") < week)))
+    f = ftn.filter(pl.col("season").cast(pl.Int64) >= lo)
+    avail = restrict_to_available(f, as_of)
+    tg, audit = classify_targets(p, avail, "empirical")
+    pr, tr = game_reads(tg)
+    feats = ftn_features(appearance_reads(panel, pr, tr), season, week, targets, prior_seasons)
+    games = p.filter(pl.col("season_type") == "REG").select("season", "week", "game_id").unique()
+    have = set(avail["nflverse_game_id"].unique().to_list()) if avail.height else set()
+    late = games.filter(~pl.col("game_id").is_in(list(have))).sort("season", "week", "game_id")
+    prev = late.filter((pl.col("season") == season) & (pl.col("week") == week - 1))
+    pulled = avail["date_pulled"].max() if avail.height else None
+    return feats, {"as_of": as_of.isoformat(), "semantics": "empirical", "ftn_rows_available": avail.height,
+                   "ftn_rows_excluded_not_yet_pulled": f.height - avail.height,
+                   "latest_date_pulled": None if pulled is None else str(pulled),
+                   "pbp_games_in_window": games.height, "games_not_available": late.height,
+                   "previous_week_games_not_available": prev["game_id"].to_list(), "target_audit": audit}
+
+
+def live_depth_features(depth: pl.DataFrame, games: pl.DataFrame, targets: pl.DataFrame, cutoff_hours: float,
+                        as_of: datetime) -> tuple[pl.DataFrame, dict]:
+    """Prospective depth features: modern snapshots with dt strictly before `as_of` (anything later cannot
+    exist at the freeze; the filter guards a clock skew), then depth_features' point-in-time rule per team.
+    `targets`: (season, week, gsis_id, position, team); `games`: (season, week, team, kickoff)."""
+    snaps, norm = normalize_modern(depth)
+    snaps = snaps.filter(pl.col("dt") < as_of)
+    dc, audit = depth_features(snaps, games, targets, cutoff_hours)
+    return dc, {"as_of": as_of.isoformat(), "cutoff_hours": cutoff_hours, "normalize": norm, "join": audit,
+                "latest_snapshot": None if snaps.height == 0 else str(snaps["dt"].max())}
+
+
 def fit_logistic(z: np.ndarray, y: np.ndarray, w: np.ndarray, lam: float, iters: int = 50) -> tuple[np.ndarray, float]:
     """L2-penalized (lam * sum of weights, intercept free) weighted logistic regression by IRLS on
     standardized inputs. Deterministic."""
@@ -696,4 +766,5 @@ def manifest_fingerprint(root: Path, families: tuple[str, ...]) -> str:
 
 __all__ = ["SIGNALS_VERSION", "classify_read", "classify_targets", "game_reads", "appearance_reads", "ftn_features",
            "normalize_modern", "snapshot_for", "depth_features", "outcome_labels", "GROUPS", "WINDOWS",
-           "DECISION_RULES", "write_snapshot", "read_snapshot"]
+           "DECISION_RULES", "write_snapshot", "read_snapshot", "PROSPECTIVE", "PROSPECTIVE_RULES",
+           "live_ftn_features", "live_depth_features"]
