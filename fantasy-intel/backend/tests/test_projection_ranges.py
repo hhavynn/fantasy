@@ -16,7 +16,7 @@ from app.analytics import point_distributions as pd_
 from app.analytics import projection_ranges as pr
 from app.analytics.independent_projection_store import build_live, write_live
 
-from test_independent_projections import PINNED, SCORING, _artifact, _client, live  # noqa: F401
+from test_independent_projections import FB_SHA, SCORING, _client, _fallback_art, live  # noqa: F401
 from test_point_distributions import _synthetic_oos
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
@@ -124,7 +124,7 @@ def test_rows_need_a_projection_and_runs_need_horizon_zero_and_matching_scoring(
 
 def _served(live, artifact=None):
     con, src, path = live
-    meta, rows = build_live(con, src, _artifact(src), 2026, 6, artifact_sha256=PINNED)
+    meta, rows = build_live(con, src, _fallback_art(src), 2026, 6, artifact_sha256=FB_SHA)
     write_live(con, meta, rows)
     if artifact is not None:
         pr.store(con, artifact, _pin(artifact))
