@@ -27,18 +27,50 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def connect(db_path: Path, read_only: bool = False, retries: int = 20) -> duckdb.DuckDBPyConnection:
-    """Open the database, retrying briefly if another process holds the lock."""
+LOCK_WAIT_ENV = "FANTASY_DB_LOCK_WAIT_S"
+DEFAULT_RETRIES = 20
+_MAX_BACKOFF_S = 5.0
+
+
+def lock_wait_s() -> float | None:
+    """Seconds a caller that passes no `retries` keeps waiting for another process's lock (FANTASY_DB_LOCK_WAIT_S),
+    or None. The scheduled batch jobs set it for their steps (refresh_all.py, learning_cycle.py): a read-only reader
+    such as the social-trends job holds a lock a writer cannot take, for up to a minute at a time."""
+    raw = (os.getenv(LOCK_WAIT_ENV) or "").strip()
+    try:
+        return max(0.0, float(raw)) if raw else None
+    except ValueError:
+        return None
+
+
+def connect(db_path: Path, read_only: bool = False, retries: int | None = None) -> duckdb.DuckDBPyConnection:
+    """Open the database, retrying if another process holds the lock: `retries` attempts 0.25 s apart (20 when not
+    given), or, when no `retries` is given and FANTASY_DB_LOCK_WAIT_S is set, for up to that many seconds with a
+    backoff from 0.25 s doubling to 5 s. Callers that pass `retries` (the API) never wait longer than they asked."""
     db_path = Path(db_path)
     if not read_only:
         db_path.parent.mkdir(parents=True, exist_ok=True)
+    wait = lock_wait_s() if retries is None else None
+    deadline = None if wait is None else time.monotonic() + wait
+    attempts, delay = 0, 0.25
     last_err: Exception | None = None
-    for _ in range(retries):
+    while True:
         try:
             return duckdb.connect(str(db_path), read_only=read_only)
         except duckdb.IOException as err:  # lock held by another process
             last_err = err
+        attempts += 1
+        lock_error = "lock" in str(last_err).lower()
+        if deadline is None or not lock_error:   # another IO error never waits past the attempt count
+            if attempts >= (DEFAULT_RETRIES if retries is None else retries):
+                break
             time.sleep(0.25)
+            continue
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(delay, remaining))
+        delay = min(delay * 2, _MAX_BACKOFF_S)
     raise DatabaseBusy(str(last_err))
 
 

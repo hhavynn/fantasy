@@ -40,6 +40,7 @@ from app.analytics.forecast_backtest import (_arr, build_store, metrics, pair_de
                                              week_bootstrap_mae_diff)
 from app.analytics.forecast_features import POSITIONS  # noqa: E402
 from app.config import get_settings  # noqa: E402
+from app.db.connection import connect as db_connect  # noqa: E402
 
 SEED = 20261016
 CONTEXT_COLUMNS = [*rc.QB_COLUMNS, *rc.TM_COLUMNS, *rc.ENV_COLUMNS, "ctx_report_used"]
@@ -55,7 +56,7 @@ def ctx_sources(args) -> rc.ContextSources:
     parts = []
     for path in (args.history_db, args.live_db):
         if path.exists():
-            con = duckdb.connect(str(path), read_only=True)
+            con = db_connect(path, read_only=True)
             try:
                 parts.append(rc.load_context_sources(con))
             finally:

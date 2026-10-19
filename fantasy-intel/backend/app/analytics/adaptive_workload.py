@@ -47,6 +47,12 @@ recent regime gets weight r = n / (n + REGIME_K)
   aw_role = (1 - r) * aw_eb + r * mean(o over the n streak games)
 
 r is a fixed function of pregame evidence: it is never fitted to outcomes.
+
+Decline-only regime (RoleConfig(decline_only=True), the prospective ifp-awd-p1 candidate): the same blend,
+but only a streak of games well BELOW the role is a regime. A streak above the role is ignored (no blend),
+so aw_role <= aw_eb always: the estimate follows persistent role drops and never projects above the
+established role on a hot streak. Pre-registered after the cohort asymmetry in
+docs/research/adaptive_workload.md section 1; it can only be judged on prospective frozen weeks.
 """
 
 from __future__ import annotations
@@ -88,9 +94,11 @@ class RoleConfig:
     exposure: bool = True          # False: every game f = 1 (ablation; injury exits kept at face value)
     adaptive: bool = True          # False: aw_role = aw_eb
     team_change_factor: float = TEAM_CHANGE_PRIOR_FACTOR
+    decline_only: bool = False     # True: only streaks below the role blend (ifp-awd-p1)
 
     def tag(self) -> str:
-        return f"e{int(self.exposure)}a{int(self.adaptive)}t{self.team_change_factor:g}"
+        return (f"e{int(self.exposure)}a{int(self.adaptive)}t{self.team_change_factor:g}"
+                + ("d" if self.decline_only else ""))
 
 
 # ----------------------------------------------------------------------------- game information
@@ -165,6 +173,8 @@ def _role_one(rows: list[dict], season: int, prior_pos: float, team: str | None,
         base = eb([g for g in cur_x if (g["season"], g["week"]) not in ids])
         devs = [g["xfpl"] / base - 1.0 if base > 0 else 0.0 for g in face[:n]]
         s = 1 if all(d >= REGIME_DELTA for d in devs) else -1 if all(d <= -REGIME_DELTA for d in devs) else 0
+        if cfg.decline_only and s > 0:       # a streak above the role is never a regime here
+            s = 0
         if s:
             streak, sign = n, s
             break
@@ -307,6 +317,39 @@ def walk_forward(store: pl.DataFrame, weeks: list[tuple[int, int]], name: str, f
     return pl.concat(out, how="diagonal_relaxed") if out else pl.DataFrame()
 
 
+# Separately pre-registered PROSPECTIVE candidate (written before any prospective week was forecast; never
+# evaluated on the historical windows, which found the asymmetry it tests). Only frozen pregame forecasts
+# from 2026 week 7 onward can confirm it (scripts/signal_shadows.py, docs/research/signal_shadows.md).
+AWD_VERSION = "ifp-awd-p1"
+DECLINE_CONFIG = RoleConfig(decline_only=True)        # exposure on, team-change factor 0.5, as AW_B
+DECLINE_SUFFIX = "_d"
+DECLINE_ONLY = Candidate("AW_D", {"xfpl_eb": f"aw_role{DECLINE_SUFFIX}"})
+AWD_POSITIONS = ("RB", "WR", "TE")                     # QB keeps ifp-2's QB model (no xfpl_eb)
+AWD_RULES = {
+    "model": "the frozen ifp-2 spec per position (features, penalty, 36-week half-life; no penalty search) with "
+             "xfpl_eb replaced by the decline-only role aw_role_d (RoleConfig(decline_only=True)); QB unchanged",
+    "hypothesis": "two or more consecutive face-value games >= 25% below the established role persist, so blending "
+                  "toward them (weight n/(n+2)) lowers MAE; streaks above the role regress, so they are ignored",
+    "evidence": "write-once pregame ledger rows only, scored after the week is fully final; ifp2 and the candidate "
+                "fitted in the same run on the same rows",
+    "first_week": (2026, 7),
+    "gate": "per position in AWD_POSITIONS: challenger.SHADOW_GATE via weekly_learning.shadow_criteria (>= 8 fully "
+            "final weeks, >= 400 matched appearances, MAE CI upper < 0, bias, starters pool, 80% interval coverage "
+            "with ifp-2's frozen bands)",
+    "reported_not_gating": "the decline-regime cohort (aw_streak_d <= -2), RMSE",
+    "never": "passing the gate is evidence for an owner review only; no automatic promotion or registry change",
+}
+
+
+def awd_features(position: str, ifp2: ChallengerConfig) -> list[str]:
+    """ifp-2's own features for the position with xfpl_eb swapped for the decline-only role (RB/WR/TE)."""
+    feats = list(ifp2.features(position))
+    if position not in AWD_POSITIONS:
+        return feats
+    assert "xfpl_eb" in feats, f"ifp-2 {position} has no xfpl_eb to replace"
+    return [DECLINE_ONLY.replace.get(f, f) for f in feats]
+
+
 # ----------------------------------------------------------------------------- evaluation
 
 
@@ -437,5 +480,5 @@ def research_config(cand: Candidate, lams: dict[str, float], ifp2: ChallengerCon
     return cfg
 
 
-__all__ = ["AW_VERSION", "RoleConfig", "role_features_for_week", "build_role_store", "CANDIDATES",
+__all__ = ["AW_VERSION", "AWD_VERSION", "DECLINE_CONFIG", "awd_features", "RoleConfig", "role_features_for_week", "build_role_store", "CANDIDATES",
            "AW_DECISION_RULES", "compare", "decision", "LAMBDA_GRID", "TRAIN_START", "recency_weights"]
