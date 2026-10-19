@@ -13,8 +13,8 @@ import styles from "./leagues.module.css";
 export const metadata = { title: "Leagues" };
 
 const HINTS: Record<string, { hint: string; note?: string }> = {
-  sleeper: { hint: "Digits only, from the league's Sleeper URL.", note: "Public leagues by league id. No password or token is needed." },
-  espn: { hint: "Digits only, from the league's ESPN URL.", note: "Public leagues by league id. Private ESPN leagues cannot be connected here, and no cookies or passwords are requested." },
+  sleeper: { hint: "Digits only: open the league on sleeper.com and copy the number after /leagues/ in the address bar.", note: "Public leagues by league id. No password or token is needed." },
+  espn: { hint: "Digits only: open the league on fantasy.espn.com and copy the number after leagueId= in the address bar.", note: "Public leagues by league id. Private ESPN leagues cannot be connected here, and no cookies or passwords are requested." },
   yahoo: { hint: "", note: "Yahoo leagues need an OAuth sign-in with Yahoo." },
 };
 
@@ -37,25 +37,39 @@ export default async function LeaguesPage() {
       <PageHeader
         eyebrow="Connections"
         title="Leagues"
-        meta="Connect leagues from other providers and choose your team in each. Prototype: the existing ESPN dashboard is unchanged."
+        meta={enabled
+          ? "Connect leagues from other providers and choose your team in each. Prototype: the existing ESPN dashboard is unchanged."
+          : "Which fantasy providers this dashboard can read, and how it gets its league today."}
       />
 
       {!enabled ? (
-        <Notice tone="info" title="Multi-league support is not enabled in this deployment">
-          Leagues cannot be connected or listed here, and the connect controls below are switched off. The rest of the dashboard works as before.
-        </Notice>
+        <>
+          <Notice tone="info" title="Connecting leagues from the browser is switched off in this deployment">
+            This page is a prototype. Nothing can be connected or listed here, so no connect controls are shown. The rest of the dashboard works as before.
+          </Notice>
+          <Section title="How this dashboard gets its league" subtitle="The one setup that works today">
+            <ol className={styles.steps}>
+              <li>The deployment&apos;s owner sets <code>ESPN_LEAGUE_ID</code> and <code>ESPN_SEASON</code> in <code>fantasy-intel/.env</code>. The id is the number after <code>leagueId=</code> in the league&apos;s fantasy.espn.com address.</li>
+              <li>A private ESPN league also needs the owner&apos;s <code>espn_s2</code> and <code>SWID</code> cookies in the same file. They are read from the environment only.</li>
+              <li>The sync scripts import the league and NFL usage data; every page then reads from that import.</li>
+            </ol>
+            <p className={styles.plain}>The provider list below shows what each provider could supply once this prototype is enabled.</p>
+          </Section>
+        </>
       ) : null}
       {data?.providersProblem ? <Notice tone={data.providersProblem.tone} title={data.providersProblem.title}>{data.providersProblem.body}</Notice> : null}
 
-      <Section title="Connect a league" subtitle="Pick a provider. A provider that is switched off says why.">
+      <Section title={enabled ? "Connect a league" : "Providers"} subtitle={enabled ? "Pick a provider. A provider that is switched off says why." : "What each provider supports, and why it is unavailable here."}>
         <ul className={styles.cards}>
           {cards.map((card) => <li key={card.provider}><ProviderCardView card={card} season={defaultSeason(new Date(now))} /></li>)}
         </ul>
       </Section>
 
-      <Section title="Connected leagues" subtitle="Leagues connected to your account.">
-        <ConnectedLeagues enabled={enabled} data={data} now={now} />
-      </Section>
+      {enabled ? (
+        <Section title="Connected leagues" subtitle="Leagues connected to your account.">
+          <ConnectedLeagues enabled={enabled} data={data} now={now} />
+        </Section>
+      ) : null}
     </div>
   );
 }
@@ -76,7 +90,6 @@ function ProviderCardView({ card, season }: { card: ProviderCard; season: number
       ) : (
         <div className={styles.disabledBlock}>
           <p id={reasonId} className={styles.reason}><span className={styles.reasonLabel}>Why unavailable:</span> {card.reason}</p>
-          <button type="button" disabled aria-describedby={reasonId}>Connect {card.label} (unavailable)</button>
         </div>
       )}
 
