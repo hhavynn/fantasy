@@ -205,6 +205,23 @@ proven pregame), and pregame snapshots from 2026-10-14 onward (weeks 6+).
 
 Prospective 2026 weeks 1-6 (155 common-support rows): kfp 3.66 vs A1 4.21, A2 4.16, A3 3.83.
 
+### Candidate features, 2026-10-19 (`scripts/kicker_feature_tests.py`)
+
+Each candidate was added on its own to production, in both the FG-try and PAT-try models. The adoption rule was set
+before running: validation (2021-22) MAE must beat production, and the held-out (2023-25) paired MAE difference must
+have a 95% week-cluster bootstrap CI entirely below zero.
+
+| Candidate | Val MAE | Test MAE | Test diff vs production [95% CI] | Test weekly Spearman | Decision |
+|---|---|---|---|---|---|
+| production (kfp-1.0.0) | 3.593 | 3.763 | — | 0.157 | — |
+| implied team total (closing line) | 3.575 | 3.746 | **-0.016 [-0.025, -0.008]** | 0.174 | **adopt** |
+| 4th-down go rate in FG range | 3.600 | 3.764 | +0.001 [-0.001, +0.003] | 0.156 | drop |
+
+The implied total gains through PAT volume, not FG volume: FG-try deviance barely moves (validation 0.942 -> 0.943,
+test 1.008 -> 1.007). It also spreads projections a little (test SD 0.55 -> 0.61), which helps with the narrow 7-9.5
+band. It used closing lines, and 16 of 3,926 rows had none and were filled with the mean, so the live gain with an
+earlier line should be smaller. The 4th-down go rate adds nothing, as it did inside the earlier "script" group.
+
 ## 5. Production run
 
 `kicker_live.build_run` per ESPN kicker:
