@@ -1,7 +1,7 @@
 """Promotion tracker for the independent projection engine (read-only).
 
-How far each position (QB/RB/WR/TE) of the PRODUCTION model (projection_source.MODEL_VERSION, ifp-2.1.0) is
-from the frozen PROMOTION_CRITERIA in forecast_backtest. ifp-2.1.0 is production by the owner's decision, recorded
+How far each position (QB/RB/WR/TE) of the PRODUCTION model (projection_source.MODEL_VERSION, ifp-2.2.0) is
+from the frozen PROMOTION_CRITERIA in forecast_backtest. ifp-2.2.0 is production by the owner's decision, recorded
 as an owner override (the registry manifest); this page measures the prospective evidence. Nothing here decides
 or changes a status:
 

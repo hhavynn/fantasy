@@ -41,6 +41,11 @@ fallback; at h >= 1 injured teammates' returns are weighted by the artifact's re
 player designated Out/Doubtful at the cutoff gets the table's empirical return rate as P(plays) instead of the
 undesignated estimate (flagged; the replaced estimate is kept in `participation`). ifp-1.0.0 / ifp-2.0.0 runs are
 unchanged.
+
+An ifp-2.2.0 artifact (app.analytics.context_model) keeps all of that and adds the shipped research-shadow
+components as known at the cutoff week (QB start probabilities and the scenario mixture, QB and teammate context,
+the pregame depth tier from snapshots made before the run, the decline-only role), plus the frozen QB P(plays) map
+at horizon 0. The caller passes context_model.Inputs (`context_inputs`).
 """
 
 from __future__ import annotations
@@ -69,7 +74,8 @@ ACTIVE_ROSTER = {"ACT", "INA"}     # nflverse weekly roster: active 53 (INA = ga
 SUPPORTED_MAPPING = "high"
 # Row `model` label per fitted model name: ifp-1.0.0 selects B or C per position, ifp-2.0.0 fits "ifp2" ridges,
 # ifp-2.1.0 "ifp21" ridges (ifp2 + the injury workload handoff).
-MODEL_LABELS = {"B": "opportunity", "C": "context", "ifp2": "ifp2_ridge", "ifp21": "ifp21_injury_aware_ridge"}
+MODEL_LABELS = {"B": "opportunity", "C": "context", "ifp2": "ifp2_ridge", "ifp21": "ifp21_injury_aware_ridge",
+                "ifp22": "ifp22_context_ridge"}
 
 
 def league_scoring(con, season: int):
@@ -195,15 +201,19 @@ def check_horizon(sources: Sources, season: int, cutoff_week: int) -> None:
 
 def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int,
                participation=None, artifact_sha256: str | None = None, *,
-               projected_from_week: int | None = None) -> tuple[dict, list[dict]]:
+               projected_from_week: int | None = None, context_inputs=None) -> tuple[dict, list[dict]]:
     """Run metadata + one row per candidate. `sources` must contain the live season (and
     ideally the previous season from the history DB). `participation`: optional
     ParticipationArtifact; without it p_play and expected_points stay null. `artifact_sha256`: sha256 of
     the artifact file the caller loaded (scripts/backtest_independent_projections.py project), stored as
     the run's artifact_id so it can be compared with the approval registry's pinned sha.
     `projected_from_week`: W, the first unplayed week, when `week` is a later target week T (rest-of-season
-    projection, horizon T - W; see the module docstring). None (or == week) is the normal horizon-0 run."""
+    projection, horizon T - W; see the module docstring). None (or == week) is the normal horizon-0 run.
+    `context_inputs`: app.analytics.context_model.Inputs, required for an ifp-2.2.0 artifact (context_model.load_inputs)."""
     fw = week if projected_from_week is None else projected_from_week
+    context = _context_model(artifact)
+    if context is not None and context_inputs is None:
+        raise ValueError(f"an {artifact.version} artifact needs context_inputs (app.analytics.context_model.load_inputs)")
     if fw > week:
         raise ValueError(f"projected_from_week {fw} is after the target week {week}")
     horizon = week - fw
@@ -303,7 +313,10 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
         feats = features_for_week(sources, season, fw, tdf)    # feature week W; opponent / home-away are T's
         if injury is not None:
             feats = injury.augment(artifact, hsources, season, week, fw, feats, roster_codes=codes)
-        preds = {p["gsis_id"]: p for p in predict_frame(artifact, feats)}
+        if context is not None:
+            feats = context.augment(artifact, hsources if hsources is not None else sources, context_inputs, season,
+                                    week, fw, feats, as_of=utcnow())
+        preds = {p["gsis_id"]: p for p in (context.predict_frame if context is not None else predict_frame)(artifact, feats)}
     for rec in rows:
         if rec.get("coverage_status") != "pending":
             continue
@@ -350,6 +363,8 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
                  "undesignated_model_version": participation.version}
             rec.update(p_play=q["p_play"], expected_points=round(q["p_play"] * rec["projected_points"], 2),
                        participation=q, flags=rec["flags"] + q["flags"])
+    if context is not None and participation is not None:
+        context.calibrate_rows(artifact, rows, horizon)     # ifp-2.2.0: the frozen QB P(plays) map, horizon 0
     before = sources.panel.filter(pl.col("season") * 100 + pl.col("week") < key(season, fw))
     last = before.select(pl.col("season").max(), pl.col("week").filter(
         pl.col("season") == pl.col("season").max()).max()).row(0) if before.height else (None, None)
@@ -378,6 +393,15 @@ def _injury_model(artifact):
     from . import injury_model as im
 
     return im
+
+
+def _context_model(artifact):
+    """app.analytics.context_model for an ifp-2.2.0 artifact (its config carries "context_model"), else None."""
+    if not isinstance((artifact.config or {}).get("context_model"), dict):
+        return None
+    from . import context_model as cm
+
+    return cm
 
 
 def _roster_codes(con, season: int):

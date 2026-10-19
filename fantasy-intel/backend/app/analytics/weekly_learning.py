@@ -313,6 +313,51 @@ def train_production(sources: Sources, season: int, week: int, *, cfg: ch.Challe
                                                "research": "docs/research/injury_workload_handoff.md"})
 
 
+def train_context(sources: Sources, season: int, week: int, *, cfg: ch.ChallengerConfig, scoring_desc: dict,
+                  created_at: str, inputs, participation_map: dict | None, participation_note: str = "",
+                  retrospective: bool = False, store: pl.DataFrame | None = None,
+                  roster_codes: pl.DataFrame | None = None, after_kickoff: bool = False) -> Artifact:
+    """The production model ifp-2.2.0 for week W (app.analytics.context_model): ifp-2.1.0 whole (training rows,
+    handoff features, return-rate table) plus the shipped research-shadow components: their features, the QB start
+    model fitted on team-weeks before W, and the frozen QB P(plays) map. Nothing is tuned. `inputs`:
+    context_model.Inputs (ContextSources and depth snapshots); `after_kickoff` as in train_production."""
+    from . import context_model as cm
+    from . import injury_model as im
+
+    store = training_store(sources, season, week) if store is None else store
+    store = cm.with_training_inputs(sources, store, inputs, roster_codes)
+    exits_through = None
+    if sources.exits is not None and sources.exits.filter(pl.col("season") == season).height:
+        exits_through = int(sources.exits.filter(pl.col("season") == season)["week"].max())
+    models, rows, fallback = cm.fit(store, season, week, cfg)
+    start = None
+    if cm.uses_scenarios("QB"):
+        weeks = sorted({(int(s), int(w)) for s, w in store.select("season", "week").unique().iter_rows()})
+        start = cm.fit_start(cm.start_candidates(sources, inputs, [sw for sw in weeks if key(*sw) < key(season, week)]),
+                             season, week)
+    cells = im.fit_return_table(sources, season, week)
+    cols = [c for p in POSITIONS for c in cm.features(cfg, p)]
+    status = {p: dict(PRODUCTION_STATUS[p]) for p in POSITIONS}
+    for p in POSITIONS:
+        if p not in models:
+            status[p] = {"status": "insufficient_data", "reasons": ["too few training rows"], "start_sit_ready": False}
+    prov = _provenance("production", store, rows, season, week, cm.config_hash(cfg), scoring_desc["fingerprint"],
+                       store_hash(store, cols), retrospective, exits_through)
+    prov.update(handoff_hash=im.handoff_hash(store), inputs_hash=cm.inputs_hash(store),
+                trained_after_first_kickoff=bool(after_kickoff), roster_codes=roster_codes is not None,
+                depth_snapshots=inputs.depth is not None)
+    pmap = participation_map if cm.QB_PARTICIPATION in cm.SHIPPED[cm.CAL_POSITION] else None
+    ctx_cfg = cm.artifact_config(cfg, start_model=start, fallback=fallback, participation_map=pmap,
+                                 participation_note=participation_note, depth_note=inputs.depth_note)
+    return Artifact(version=cm.MODEL_VERSION, created_at=created_at, scoring_fingerprint=scoring_desc["fingerprint"],
+                    scoring=scoring_desc,
+                    config={im.CONFIG_KEY: im.artifact_config(cfg, cells), cm.CONFIG_KEY: ctx_cfg,
+                            "config_hash": cm.config_hash(cfg), "provenance": prov},
+                    models=models, intervals={p: cfg.intervals[p] for p in models if status[p].get("intervals_published")},
+                    status=status, evaluation={"return_rates": im.return_table_summary(cells),
+                                               "research": "docs/research/ifp22_promotion.md"})
+
+
 def artifact_id(art: Artifact) -> str:
     d = art.to_dict()
     d.pop("created_at", None)
