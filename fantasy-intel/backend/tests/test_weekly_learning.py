@@ -254,8 +254,10 @@ def test_weekly_pipeline_never_imports_into_consumers():
                          "qb_receiver_compat.py",   # research-only ifp-qbr challenger (never imported, see
                          # tests/test_qb_receiver_compat.py::test_app_never_imports_the_research_module)
                          "injury_challenger.py",    # research-only workload handoff challenger and its prospective
-                         "injury_prospective.py"):  # gate (never imported, see
+                         "injury_prospective.py",   # gate (never imported, see
             # tests/test_injury_workload.py::test_app_never_imports_the_injury_research_modules)
+                         "situational_usage.py"):   # research-only situational usage splits (never imported, see
+            # tests/test_situational_usage.py::test_research_module_is_never_imported_by_the_app)
             continue
         text = path.read_text()
         assert "weekly_learning" not in text and "from .challenger" not in text, path
