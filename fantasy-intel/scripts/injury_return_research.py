@@ -136,7 +136,9 @@ def add_recomputed(src: Sources, rows: pl.DataFrame, cutoff: str = "key") -> pl.
     rows = rows.drop([c for c in cols if c in rows.columns])
     if not parts:
         return rows.with_columns(*[pl.lit(None, dtype=pl.Float64).alias(c) for c in cols])
-    return rows.join(pl.concat(parts), on=["gsis_id", cutoff], how="left", validate="m:1")
+    out = rows.join(pl.concat(parts), on=["gsis_id", cutoff], how="left", validate="m:1")
+    assert out.height == rows.height, f"recomputed join changed the row count: {rows.height} -> {out.height}"
+    return out
 
 
 def replacement_means(store: pl.DataFrame) -> dict[str, dict[str, float]]:
