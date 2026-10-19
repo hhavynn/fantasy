@@ -692,7 +692,7 @@ def test_dist_ledger_failure_never_fails_the_cycle_or_the_production_run(lc, env
     assert _stages(rep)[-3:] == [("predict", "ok"), ("project", "ok"), ("dist_ledger", "failed_nonfatal")]
     assert any("distribution ledger stage failed" in w for w in rep["warnings"])
     con = connect(env / "live.duckdb")
-    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.0.0'"
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.1.0'"
                        ).fetchone()[0] == 1
     con.close()
 
@@ -792,7 +792,7 @@ def test_dst_shadow_failure_never_fails_the_cycle_or_the_production_run(lc, env,
     assert _stages(rep)[-3:] == [("predict", "ok"), ("project", "ok"), ("dst_shadow", "failed_nonfatal")]
     assert any("dfp-r1 shadow stage failed" in w for w in rep["warnings"])
     con = connect(env / "live.duckdb")
-    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.0.0'"
+    assert con.execute("SELECT count(*) FROM independent_projection_runs WHERE model_version = 'ifp-2.1.0'"
                        ).fetchone()[0] == 1
     con.close()
 
