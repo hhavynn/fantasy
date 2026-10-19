@@ -396,9 +396,15 @@ def week_bootstrap(df: pl.DataFrame, a: str, b: str, *, loss: str = "absolute", 
         return {"diff": None, "ci": None, "n": 0, "weeks": 0}
     f = (lambda e: e.abs()) if loss == "absolute" else (lambda e: e ** 2)
     d = d.with_columns(f(pl.col(label) - pl.col(a)).alias("_la"), f(pl.col(label) - pl.col(b)).alias("_lb"))
-    by = d.group_by("key").agg(pl.col("_la").sum(), pl.col("_lb").sum(), pl.len().alias("n")).sort("key")
-    la, lb, n = by["_la"].to_numpy(), by["_lb"].to_numpy(), by["n"].to_numpy()
-    rng = np.random.default_rng(seed)
+    # Per-week sums in numpy over a stable sort: a multithreaded polars group_by can change the float summation
+    # order between runs, which made results (and exact comparisons of them) depend on the thread schedule.
+    d = d.with_row_index("_i").sort(["key", "_i"])
+    keys = d["key"].to_numpy()
+    starts = np.flatnonzero(np.r_[True, keys[1:] != keys[:-1]])
+    la = np.add.reduceat(d["_la"].to_numpy().astype(float), starts)
+    lb = np.add.reduceat(d["_lb"].to_numpy().astype(float), starts)
+    n = np.diff(np.r_[starts, len(keys)])
+    rng = np.random.default_rng(seed)   # one fixed seed: calls with the same seed resample the same weeks
     idx = rng.integers(0, len(n), size=(resamples, len(n)))
     diffs = (la[idx].sum(1) - lb[idx].sum(1)) / n[idx].sum(1)
     lo, hi = np.percentile(diffs, [100 * alpha / 2, 100 * (1 - alpha / 2)])
