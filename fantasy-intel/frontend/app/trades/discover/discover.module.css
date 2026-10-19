@@ -94,6 +94,23 @@
 .weekMoves { display: flex; flex-wrap: wrap; gap: 2px 16px; color: var(--ink-muted); }
 
 .phoneSort { display: none; }
+/* Phone trade cards (the table shows on wider screens). */
+.cards { display: none; margin: 0; padding: 0; list-style: none; }
+.cardGroup { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px 10px; background: var(--surface-raised); border-bottom: 1px solid var(--line); }
+.card { display: grid; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.card:last-child { border-bottom: 0; }
+.cardTop { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; color: var(--ink-muted); font-size: 13px; }
+.cardShape { font-family: var(--font-display); font-size: 18px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.cardAnalyze { margin-left: auto; display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 12px; border: 1px solid var(--line-control); border-radius: 999px; font-weight: 600; }
+.cardAnalyze:hover { text-decoration: none; border-color: var(--accent); }
+.cardSwap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cardLabel { margin: 0 0 4px; color: var(--ink-faint); font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.cardDeltas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-raised); }
+.cardDeltas dt { color: var(--ink-faint); font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.cardDeltas dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
+.cardMore > summary { color: var(--ink-muted); font-size: 13px; }
+.cardMoreBody { display: grid; gap: 6px; padding-top: 6px; }
+.cardText { margin: 0 0 6px; font-size: 13px; line-height: 19px; }
 .action { white-space: nowrap; }
 
 /* Phones: each trade becomes a two-column card (the columns would not fit); sorting moves to the links above. */
@@ -106,23 +123,8 @@
   .phoneSort a { flex: none; white-space: nowrap; display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 12px; border: 1px solid var(--line-control); border-radius: 999px; color: var(--ink-muted); }
   .phoneSort a[aria-current] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); font-weight: 600; }
   .phoneSort a:hover { text-decoration: none; color: var(--ink); }
-  .table, .table > thead, .table > tbody, .table > tbody > tr > td { display: block; }
-  .table > thead { height: 0; overflow: hidden; }
-  .table > tbody {
-    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding: 16px;
-    border-bottom: 1px solid var(--line);
-  }
-  .table > tbody > tr { display: contents; }
-  .table > tbody > tr > td, .table > tbody > .mainRow > td, .table > tbody > .detailRow > td { padding: 0; border: 0; min-width: 0; max-width: none; text-align: left; white-space: normal; }
-  .table > tbody > tr > td[data-label]::before {
-    content: attr(data-label); display: block; margin-bottom: 2px; font-size: 11px; line-height: 14px; font-weight: 600;
-    letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint);
-  }
-  .table > tbody > tr > td.typeCell, .table > tbody > tr > td.action, .table > tbody > tr > td.detailCell, .table > tbody > tr > td.wide { grid-column: 1 / -1; }
-  .table > tbody.groupBody { display: block; padding: 0; border-bottom: 0; }
-  .groupRow th { display: block; padding: 12px 16px 8px; }
-  .table tbody:last-of-type { border-bottom: 0; }
-  .table > tbody:hover td { background: transparent; }
+  .table { display: none; }
+  .cards { display: block; }
   /* Evidence tables restack: one block per row, labelled cells. */
   .evTable, .evTable thead, .evTable tbody, .evTable tr, .evTable td { display: block; }
   .evTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }

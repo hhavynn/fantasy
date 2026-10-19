@@ -41,8 +41,8 @@ export async function TeamPerspective({ path, sp, current, reset = TEAM_SPECIFIC
         <p className={styles.fresh}>
           {team.team_id !== def && (
             <span className={styles.other}>
-              Viewing another team · read-only · <Link href={perspectiveHref(path, sp, null, reset)}>Back to default</Link>
-              <span className={styles.sep} aria-hidden="true"> · </span>
+              Viewing another team · read-only, nothing is sent to ESPN · <Link href={perspectiveHref(path, sp, null, reset)}>Back to default</Link>
+              <span aria-hidden="true"> · </span>
             </span>
           )}
           {team.roster_players > 0

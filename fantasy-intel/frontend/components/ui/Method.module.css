@@ -18,10 +18,10 @@
 }
 .summary::-webkit-details-marker { display: none; }
 .summary::before { content: "ⓘ"; color: var(--ink-faint); font-weight: 400; }
-.summary::after { content: "Show"; margin-left: auto; color: var(--accent); font-size: 13px; font-weight: 500; }
+.summary::after { content: "Show" / ""; margin-left: auto; color: var(--accent); font-size: 13px; font-weight: 500; }
 .summary:hover { color: var(--ink); }
 .method[open] > .summary { margin: 0; border-bottom: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0; }
-.method[open] > .summary::after { content: "Hide"; }
+.method[open] > .summary::after { content: "Hide" / ""; }
 .body { padding: 14px 16px 16px; color: var(--ink-muted); }
 .body > :last-child { margin-bottom: 0; }
 .body p, .body li { max-width: 100ch; }

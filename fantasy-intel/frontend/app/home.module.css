@@ -5,9 +5,6 @@
 /* Placeholder rows inside a band section while it loads. */
 .skeletonStack { display: grid; gap: 12px; }
 
-/* Two equal columns for standings and transactions. */
-.pair { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
-@media (max-width: 1100px) { .pair { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---- Matchup card: a two-sided scoreboard ---- */
 .card { display: grid; gap: 14px; }

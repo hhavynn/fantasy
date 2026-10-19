@@ -1,5 +1,6 @@
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { TrendArrow } from "@/components/ui";
+import { Missing } from "@/lib/format";
 import { availabilityWarning, opponentLabel, rankLabel, type RankingRow } from "@/lib/rankings";
 import { AvailabilityBadge, Points, RatingText, RosterBadge } from "./RankingParts";
 import styles from "./rankings.module.css";
@@ -39,7 +40,7 @@ export function RankingsCards({ rows, showOurs, basis }: { rows: RankingRow[]; s
             <span className={styles.cardMeta}>
               <span>{opponentLabel(r.game)}</span>
               <span title="Overall rating, 0–100, within the position">Rating <b><RatingText value={r.rating.overall} /></b></span>
-              <span><TrendArrow label={r.role_trend} /> {r.role_trend && TREND_WORD[r.role_trend] ? TREND_WORD[r.role_trend] : "No trend"}</span>
+              <span>Trend {r.role_trend && TREND_WORD[r.role_trend] ? <><TrendArrow label={r.role_trend} /> {TREND_WORD[r.role_trend]}</> : <Missing why="Too few games for a role trend" />}</span>
               <RosterBadge roster={r.roster} />
             </span>
             {warning && <p className={styles.warning}>{warning}</p>}

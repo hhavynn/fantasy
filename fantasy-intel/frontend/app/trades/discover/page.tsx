@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Suspense } from "react";
+import { Fragment, Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
@@ -148,6 +148,13 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
         </Notice>
       )}
       {d.lens_note && <Notice tone="info">{d.lens_note}</Notice>}
+      {(d.coverage.exact && !d.coverage.exact.exhaustive) || d.coverage.heuristic ? (
+        <Notice tone="caution" title="This list is not a proven top list">
+          {d.coverage.exact && !d.coverage.exact.exhaustive ? "The exact search reached its evaluation cap. " : ""}
+          {d.coverage.heuristic ? `Larger shapes (${d.coverage.heuristic_shapes.join(", ")}) come from a bounded heuristic search. ` : ""}
+          Every listed trade is still evaluated exactly; see About this search below.
+        </Notice>
+      ) : null}
 
       <Results d={d} rows={rows} total={total} excluded={excluded} q={q} sp={sp} />
 
@@ -429,9 +436,90 @@ function Results({ d, rows, total, excluded, q, sp }: {
                 tier={tier} r={r} d={d} q={q} verdictGroups={verdictGroups} />
             ))}
           </table>
+          <PhoneTrades sorted={sorted} grouped={grouped} counts={counts} d={d} q={q} verdictGroups={verdictGroups} />
         </div>
       )}
     </Section>
+  );
+}
+
+/**
+ * Phones: one compact card per trade that leads with what changes hands and both lineup deltas, then the verdict;
+ * asset balance, the lineup change and the checks sit behind a disclosure, and the evidence panel below that. The
+ * same numbers as the table, which wider screens show instead (CSS picks one).
+ */
+function PhoneTrades({ sorted, grouped, counts, d, q, verdictGroups }: {
+  sorted: { tier: string; r: DSummaryRow }[]; grouped: boolean; counts: Map<string, number>; d: DiscoverySummary; q: string; verdictGroups: boolean;
+}) {
+  const nm = (ids: number[]) => ids.map((id) => d.names[id]?.name ?? `#${id}`).join(" + ");
+  return (
+    <ol className={styles.cards} aria-label="Trades">
+      {sorted.map(({ tier, r }, i) => {
+        const header = grouped && (i === 0 || sorted[i - 1].tier !== tier);
+        const text = header ? d.verdicts?.[tier] ?? d.tiers?.[tier] : undefined;
+        const dv = r.dual_value_summary ?? null;
+        const b = r.asset_balance;
+        const fav = favoursText(dv?.asset.favours);
+        const concerns = r.rationale.concerns;
+        return (
+          <Fragment key={r.key}>
+            {header && (
+              <li className={styles.cardGroup}>
+                <span className={styles.groupTitle}>
+                  <VerdictBadge verdict={tier} text={text} />
+                  <span className="faint">{counts.get(tier) ?? 0} {(counts.get(tier) ?? 0) === 1 ? "trade" : "trades"}</span>
+                </span>
+                {text && <span className={styles.groupText}>{text}</span>}
+              </li>
+            )}
+            <li className={styles.card}>
+              <p className={styles.cardTop}>
+                <span className={styles.cardShape}>{r.shape}</span>
+                <span>with <Link href={`/managers/${r.opponent_team_id}`}>{r.opponent_name}</Link></span>
+                <TeamLink className={styles.cardAnalyze} href={analyzerHref(r)} aria-label={`Analyze ${nm(r.sends)} for ${nm(r.receives)} in the trade analyzer`}>Analyze →</TeamLink>
+              </p>
+              <div className={styles.cardSwap}>
+                <div><p className={styles.cardLabel}>Gives</p><Players ids={r.sends} d={d} /></div>
+                <div><p className={styles.cardLabel}>Gets</p><Players ids={r.receives} d={d} /></div>
+              </div>
+              <dl className={styles.cardDeltas}>
+                <div><dt>Team Δ</dt><dd><DeltaCell v={r.mine} side={dv?.lineup.you} /></dd></div>
+                <div><dt>Partner Δ</dt><dd><DeltaCell v={r.theirs} side={dv?.lineup.them} /></dd></div>
+              </dl>
+              <div className={styles.tags}>
+                {dv && <VerdictBadge verdict={dv.verdict} text={dv.verdict_text} />}
+                {!verdictGroups && TIER_SHORT[tier] && <Badge value={TIER_SHORT[tier]} tone={TIER_TONE[tier] ?? ""} title={d.tiers[tier]} />}
+                {!verdictGroups && concerns.length > 0 && <Badge value={`${concerns.length} concern${concerns.length === 1 ? "" : "s"}`} tone="warn" />}
+                {!r.consistent_with_manual_evaluator && <Badge value="analyzer mismatch" tone="bad" />}
+              </div>
+              {dv && <MainConcern text={dv.main_concern} checks={dv.checks} />}
+              <details className={styles.cardMore}>
+                <summary>Lineup change, asset balance and checks</summary>
+                <div className={styles.cardMoreBody}>
+                  <p className={styles.cardLabel}>Lineup change</p>
+                  {dv?.you_change
+                    ? <p className={styles.cardText}>{dv.you_change}{dv.them_change && <span className={styles.subline}><b>Partner:</b> {dv.them_change}</span>}</p>
+                    : <p className={styles.cardText}><span className="missing" title="No lineup-change summary for this trade (older backend or classic view)">—</span></p>}
+                  <p className={styles.cardLabel}>Asset balance</p>
+                  <p className={styles.cardText}>
+                    <span title={b.note}><Badge value={b.text} tone={ASSET_TONE[b.label]} /></span>
+                    {b.you_send_par !== null && b.they_send_par !== null
+                      ? <span className={styles.subline}>gives {b.you_send_par.toFixed(0)} · gets {b.they_send_par.toFixed(0)} pts above replacement</span>
+                      : <span className={styles.subline}><span className="missing" title="A player's points above replacement are unknown (missing projections), so no total is shown">—</span> points above replacement incomplete</span>}
+                    {fav && <span className={styles.subline}><b>{fav}</b></span>}
+                  </p>
+                  <p className={styles.cardLabel}>Checks</p>
+                  {dv && <CheckChips checks={dv.checks} criteria={d.criteria} />}
+                  {r.categories.length > 0 && <div className={styles.tags}>{r.categories.map((c) => <Badge key={c} value={label(c)} tone="" title={d.categories[c]} />)}</div>}
+                  <span className={styles.subline}>{r.rationale.trade_type.text} · smaller side {r.min_side_ros_delta === null ? "—" : signedText(r.min_side_ros_delta)}</span>
+                </div>
+              </details>
+              <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} />
+            </li>
+          </Fragment>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -484,7 +572,7 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
           <Players ids={r.receives} d={d} />
           <SeenFromThem label="Partner gives:" ids={r.receives} d={d} />
         </td>
-        <td className={`${styles.assetCell} ${styles.wide}`} data-label="Asset balance">
+        <td className={styles.assetCell} data-label="Asset balance">
           <span title={b.note}><Badge value={b.text} tone={ASSET_TONE[b.label]} /></span>
           {b.you_send_par !== null && b.they_send_par !== null
             ? <span className={styles.subline}>gives {b.you_send_par.toFixed(0)} · gets {b.they_send_par.toFixed(0)} pts above replacement</span>
@@ -494,7 +582,7 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
         <td className="num" data-label="Team Δ"><DeltaCell v={r.mine} side={dv?.lineup.you} /></td>
         <td className="num" data-label="Partner Δ"><DeltaCell v={r.theirs} side={dv?.lineup.them} /></td>
         <td className="num" data-label="Smaller side">{r.min_side_ros_delta === null ? <span className="missing" title={why}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
-        <td className={`${styles.changeCell} ${styles.wide}`} data-label="Lineup change">
+        <td className={styles.changeCell} data-label="Lineup change">
           {dv?.you_change
             ? <>
               {dv.you_change}
@@ -502,7 +590,7 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
             </>
             : <span className="missing" title="No lineup-change summary for this trade (older backend or classic view)">—</span>}
         </td>
-        <td className={`${styles.typeCell} ${styles.wide}`} data-label="Verdict & checks">
+        <td className={styles.typeCell} data-label="Verdict & checks">
           <div className={styles.tags}>
             {dv && <VerdictBadge verdict={dv.verdict} text={dv.verdict_text} />}
             {!verdictGroups && TIER_SHORT[tier] && <Badge value={TIER_SHORT[tier]} tone={TIER_TONE[tier] ?? ""} title={d.tiers[tier]} />}
@@ -516,7 +604,7 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
         </td>
       </tr>
       <tr className={styles.detailRow}>
-        <td colSpan={10} className={styles.detailCell}>
+        <td colSpan={10}>
           <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} />
         </td>
       </tr>

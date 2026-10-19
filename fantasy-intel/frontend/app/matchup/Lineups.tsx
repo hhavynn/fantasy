@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { PlayerLink } from "@/components/PlayerLink";
+import { OriginTag } from "@/components/ProjectionNotice";
 import { Badge, Section, VisuallyHidden } from "@/components/ui";
 import {
   hasDesignation, hasStarted, leader, lineupRows, lineupTotal, pairSlots, type LineupTotal, type LineupView, type PlayerRow, type SlotRow,
@@ -42,6 +43,7 @@ function PairSide({ row, side, lead }: { row: PlayerRow | null; side: "left" | "
                 {row.pro_team ? <span>{row.pro_team}</span> : null}
                 {row.bye ? <Badge value="BYE" tone="warn" title="His NFL team has no game this week" /> : null}
                 {hasDesignation(row.injury) ? <Badge value={row.injury} /> : null}
+                <OriginTag origin={row.origin} ours />
               </span>
             </>
           )}
@@ -59,7 +61,7 @@ function PairList({ m, opponent, pairs, heading, meTotal, oppTotal }: {
   m: Matchup; opponent: TeamSide; pairs: SlotRow<PlayerRow>[]; heading: string; meTotal: LineupTotal; oppTotal: LineupTotal;
 }) {
   return (
-    <ol className={styles.pairs} aria-label={`${m.me.name} against ${opponent.name}, slot by slot`}>
+    <ol className={styles.pairs} aria-label={`${m.me.name} against ${opponent.name}, slot by slot, ${heading === "Actual" ? "actual points" : "projected points"}`}>
       <li className={`${styles.pair} ${styles.pairHeadRow}`} aria-hidden="true">
         <span className={styles.pairTeam}>{m.me.name}</span>
         <span className={styles.pairSlot}>{heading}</span>
@@ -77,7 +79,7 @@ function PairList({ m, opponent, pairs, heading, meTotal, oppTotal }: {
       })}
       <li className={`${styles.pair} ${styles.pairTotal}`}>
         <span className={styles.pairTotalValue}><TotalCell total={meTotal} why="No total available" /></span>
-        <span className={styles.pairSlot}>Total</span>
+        <span className={styles.pairSlot}>Total<VisuallyHidden> {heading === "Actual" ? "actual points" : "projected points"}</VisuallyHidden></span>
         <span className={`${styles.pairTotalValue} ${styles.pairTotalRight}`}><TotalCell total={oppTotal} why="No total available" /></span>
       </li>
     </ol>

@@ -43,8 +43,8 @@ export function FirstRunGuide() {
         </li>
         <li>
           <b>Fill in <code>fantasy-intel/.env</code>.</b> Copy <code>.env.example</code>, then set <code>ESPN_LEAGUE_ID</code> and <code>ESPN_SEASON</code>.
-          A private league also needs your <code>espn_s2</code> and <code>SWID</code> browser cookies (the README shows where to find them); they are read from
-          the environment only and never stored.
+          A private league also needs your <code>espn_s2</code> and <code>SWID</code> browser cookies, saved as <code>ESPN_S2</code> and <code>SWID</code> (the
+          README shows where to find them); they are read from the environment only and never stored.
         </li>
         <li>
           <b>Import the data.</b> Both syncs are safe to repeat:
@@ -53,7 +53,8 @@ export function FirstRunGuide() {
         <li><b>Reload this page.</b> The dashboard, lineup advice, waivers and trades fill in from the imported league.</li>
       </ol>
       <p className={styles.guideNote}>
-        Connecting Sleeper or Yahoo leagues from the browser is a prototype that is switched off unless this deployment enables it. See <Link href="/leagues">League connections</Link>.
+        Connecting other leagues from the browser (Sleeper, public ESPN leagues) is a prototype that is switched off unless this deployment enables it;
+        Yahoo is not available yet. See <Link href="/leagues">League connections</Link>.
       </p>
     </section>
   );
@@ -96,7 +97,6 @@ export function BackendProblem({ error, kind = "unknown", status }: {
     body = (
       <>
         <p>{error}</p>
-        {/no database yet/i.test(error) && <FirstRun />}
         {/busy/i.test(error) && <p>A sync usually holds the database for a few seconds. Reload shortly.</p>}
       </>
     );

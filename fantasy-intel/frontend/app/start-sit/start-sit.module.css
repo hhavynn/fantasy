@@ -1,6 +1,5 @@
 /* Start/Sit page. Layout and a few table details only; the kit owns surfaces, type and tones. */
 
-.verdict { display: grid; gap: 8px; }
 
 /* ---------- Header controls ---------- */
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }

@@ -126,14 +126,14 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         figures={
           <>
             <VerdictFigure
-              label="Submitted"
+              label="Submitted (proj)"
               value={actual.value === null ? <Missing why="No submitted lineup for this week" /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
-              note={!hasLineup ? "No submitted lineup" : actual.partial ? "*Partial: some starters lack a projection" : "Current ESPN starters"}
+              note={!hasLineup ? "No submitted lineup" : actual.partial ? "*Partial: some starters lack a projection" : "Current ESPN starters, projected pts"}
             />
             <VerdictFigure
-              label="Recommended"
+              label="Recommended (proj)"
               value={<>{num(recommended.value, 1)}{recommended.partial ? "*" : null}</>}
-              note={recommended.partial ? "*Partial: some players lack a projection" : "Best lineup under kickoff locks"}
+              note={recommended.partial ? "*Partial: some players lack a projection" : "Best lineup under kickoff locks, projected pts"}
             />
             <VerdictFigure
               label="Projected gain"

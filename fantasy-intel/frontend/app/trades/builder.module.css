@@ -114,9 +114,11 @@
 .ghost:hover { background: var(--surface-hover); }
 .evaluate { min-width: 104px; }
 
+/* Wider screens: the bar sticks to the bottom of the viewport too, so Evaluate is on screen while rosters are picked
+   (a top-sticky bar only appeared after scrolling past the builder). */
 @media (min-width: 721px) {
-  .bar { position: sticky; top: var(--appbar-h); bottom: auto; box-shadow: 0 6px 16px var(--shadow-edge); }
-  .list { max-height: 460px; overflow-y: auto; }
+  .bar { bottom: 12px; }
+  .list { max-height: 460px; overflow-y: auto; overscroll-behavior: contain; }
 }
 
 @media (max-width: 720px) {
@@ -142,7 +144,7 @@
 
 /* ---------- Results ---------- */
 
-.results { scroll-margin-top: calc(var(--appbar-h) + 88px); }
+.results { scroll-margin-top: calc(var(--appbar-h) + 12px); }
 .previous { opacity: .55; }
 .resultSkeleton { display: grid; gap: 16px; }
 .pendingNote { margin: 0 0 16px; color: var(--ink-muted); }

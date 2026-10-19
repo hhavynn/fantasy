@@ -18,7 +18,7 @@ export const GLOSSARY = {
   "Projected points": "A forecast of fantasy points in your league's scoring. ESPN's projection by default; Fantasy Intel's own model only when the Proj switch is set to Ours.",
   Ours: "Fantasy Intel's independent projection model. It is experimental, so ESPN's projection stays the default everywhere.",
   "Projected gain": "How many more projected starting points a change produces than the lineup it is compared with. Gains from separate moves are not added together.",
-  "Lineup points": "Projected points of a team's best legal starting lineup. Bench players count only when they would start.",
+  "Lineup points": "Points of the starting lineup shown: projected before games, actual once they start. Decision pages use the best legal lineup, so a bench player counts only when he would start.",
   "Ratings (0–100)": "Overall, opportunity and production ratings rank a player within his own position from recent play, in full PPR. 100 is the top of the position; a rating is not a price and not projected points.",
   "Value rating": "A 0–100 rank within the player's own position from recent play. A relative rank, not a trade price and not projected points.",
   "Waiver score": "The waiver engine's 0–10 ranking score. It orders candidates; the Claim, Wait or Ignore recommendation comes from separate evidence.",

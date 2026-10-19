@@ -49,8 +49,8 @@ export default async function LeaguesPage() {
           </Notice>
           <Section title="How this dashboard gets its league" subtitle="The one setup that works today">
             <ol className={styles.steps}>
-              <li>The deployment&apos;s owner sets <code>ESPN_LEAGUE_ID</code> and <code>ESPN_SEASON</code> in <code>fantasy-intel/.env</code>. The id is the number after <code>leagueId=</code> in the league&apos;s fantasy.espn.com address.</li>
-              <li>A private ESPN league also needs the owner&apos;s <code>espn_s2</code> and <code>SWID</code> cookies in the same file. They are read from the environment only.</li>
+              <li>The deployment&apos;s owner sets <code>ESPN_LEAGUE_ID</code> (and the season, <code>ESPN_SEASON</code>) in <code>fantasy-intel/.env</code>. The id is the number after <code>leagueId=</code> in the league&apos;s fantasy.espn.com address.</li>
+              <li>A private ESPN league also needs the owner&apos;s <code>espn_s2</code> and <code>SWID</code> cookies in the same file, as <code>ESPN_S2</code> and <code>SWID</code>. They are read from the environment only.</li>
               <li>The sync scripts import the league and NFL usage data; every page then reads from that import.</li>
             </ol>
             <p className={styles.plain}>The provider list below shows what each provider could supply once this prototype is enabled.</p>

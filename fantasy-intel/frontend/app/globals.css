@@ -239,8 +239,9 @@ p { margin: 0 0 8px; }
   border-bottom: 1px solid var(--line);
 }
 /* Rows that scroll sideways fade at the edge they continue past, so a clipped chip reads as "more this way". */
-.subnav, .scroll-row {
-  mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-l, 0px), #000 calc(100% - var(--fade-r, 24px)), transparent 100%);
+/* The fade is no wider than the row's end padding, so a row scrolled to its end shows its last link unfaded. */
+.subnav {
+  mask-image: linear-gradient(to right, var(--ink) calc(100% - 16px), transparent 100%);
 }
 @media (min-width: 1100px) { .subnav { mask-image: none; } }
 .subnav a { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; color: var(--ink-muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
@@ -337,12 +338,6 @@ p { margin: 0 0 8px; }
   .mobile-nav { display: block; }
 }
 
-/* Tablets: the section links, search and switches leave the sync pill only a few characters, so it shows just its
-   health dot; the text stays as the button's accessible name and title, and the popover has the details. */
-@media (min-width: 721px) and (max-width: 880px) {
-  .sync-pill { padding: 5px 9px; gap: 0; }
-  .sync-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
-}
 
 /* Narrow desktops and tablets: tighter gaps for search and the theme switch. */
 @media (max-width: 960px) {
@@ -377,6 +372,12 @@ p { margin: 0 0 8px; }
   .league-chip { display: none; }
   .menu-toggle { width: var(--tap); height: var(--tap); border-radius: 10px; }
 }
+/* Phones in landscape (wide but short): only the top bar stays fixed; the sub-nav scrolls away as it does on phones. */
+@media (min-width: 721px) and (max-height: 520px) {
+  :root { --appbar-h: calc(var(--topbar-h) + 1px); }
+  .subnav-wrap { position: relative; top: auto; z-index: auto; }
+}
+
 /* Two columns down to 340px keep every page within about one screen; the narrowest phones get one. */
 @media (max-width: 340px) { .mobile-nav-panel { grid-template-columns: minmax(0, 1fr); } }
 /* 320px phones: brand, search, sync pill and menu button share one row. */

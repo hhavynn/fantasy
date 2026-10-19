@@ -97,5 +97,3 @@
 .notes { margin: 4px 0 0; padding-left: 16px; }
 .notes li + li { margin-top: 4px; }
 .weekNav { display: flex; flex-wrap: wrap; gap: 8px; }
-/* Phones step week by week with the chips above; the full week strip is a desktop shortcut. */
-@media (max-width: 720px) { nav.weekTabs { display: none; } }
