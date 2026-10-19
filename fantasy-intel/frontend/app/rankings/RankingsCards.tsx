@@ -1,13 +1,18 @@
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { TrendArrow } from "@/components/ui";
 import { availabilityWarning, opponentLabel, rankLabel, type RankingRow } from "@/lib/rankings";
-import { AvailabilityBadge, Points, RatingBar, RosterBadge } from "./RankingParts";
+import { AvailabilityBadge, Points, RatingText, RosterBadge } from "./RankingParts";
 import styles from "./rankings.module.css";
 
 const TREND_WORD: Record<string, string> = { UP: "Rising", FLAT: "Flat", DOWN: "Falling" };
 
-/** The phone layout: one card per player. Shown instead of the table at 720px and below (CSS only). */
+/**
+ * The phone layout: a dense ranked list, one compact row per player (rank, identity, the ranked projection on the
+ * right, then opponent, rating, trend and roster on a second line). It keeps players comparable down the screen
+ * instead of one tall card each. Shown instead of the table at 720px and below (CSS only).
+ */
 export function RankingsCards({ rows, showOurs, basis }: { rows: RankingRow[]; showOurs: boolean; basis: "espn" | "ours" }) {
+  const ptsLabel = basis === "ours" ? "Ours" : "ESPN";
   return (
     <ol className={styles.cardView} aria-label="Player rankings">
       {rows.map((r) => {
@@ -16,41 +21,27 @@ export function RankingsCards({ rows, showOurs, basis }: { rows: RankingRow[]; s
         const why = r.why[0];
         return (
           <li key={r.espn_player_id} className={r.roster.is_mine ? `${styles.card} ${styles.mine}` : styles.card}>
-            <div className={styles.cardHead}>
-              <span className={styles.cardRank}>
-                <strong className={ranked ? undefined : styles.unranked}>{rankLabel(r)}</strong>
-                {ranked && <span className={styles.overall}>#{r.rank.overall} overall</span>}
-              </span>
-              <RosterBadge roster={r.roster} />
-            </div>
+            <span className={styles.cardRank}>
+              <strong className={ranked ? undefined : styles.unranked}>{rankLabel(r)}</strong>
+              {ranked && <span className={styles.overall} title="Overall rank among all QB, RB, WR and TE">#{r.rank.overall}</span>}
+            </span>
             <PlayerIdentity id={r.espn_player_id} name={r.full_name} position={r.position} team={r.pro_team}
-              meta={<AvailabilityBadge row={r} />} size="lg" />
-            <dl className={styles.facts}>
-              <div>
-                <dt>{basis === "ours" ? "Ours pts" : "ESPN pts"}</dt>
-                <dd className={styles.keyFact}>
-                  <Points value={basis === "ours" ? r.projection.ours : r.projection.espn} status={r.projection.status} />
-                </dd>
-              </div>
+              meta={<AvailabilityBadge row={r} />} className={styles.cardWho} />
+            <span className={styles.cardPts}>
+              <span className={styles.keyFact}>
+                <Points value={basis === "ours" ? r.projection.ours : r.projection.espn} status={r.projection.status} />
+              </span>
+              <span className={styles.cardPtsLabel}>{ptsLabel} pts</span>
               {showOurs && (
-                <div>
-                  <dt>ESPN pts</dt>
-                  <dd><Points value={r.projection.espn} status={r.projection.status} /></dd>
-                </div>
+                <span className={styles.cardPtsLabel}>ESPN <Points value={r.projection.espn} status={r.projection.status} /></span>
               )}
-              <div className={styles.ratingFact}>
-                <dt>Rating</dt>
-                <dd><RatingBar value={r.rating.overall} label="Overall rating" /></dd>
-              </div>
-              <div>
-                <dt>Opp</dt>
-                <dd>{opponentLabel(r.game)}</dd>
-              </div>
-              <div>
-                <dt>Trend</dt>
-                <dd><TrendArrow label={r.role_trend} /> {r.role_trend && TREND_WORD[r.role_trend] ? <span className={styles.trendWord}>{TREND_WORD[r.role_trend]}</span> : null}</dd>
-              </div>
-            </dl>
+            </span>
+            <span className={styles.cardMeta}>
+              <span>{opponentLabel(r.game)}</span>
+              <span title="Overall rating, 0–100, within the position">Rating <b><RatingText value={r.rating.overall} /></b></span>
+              <span><TrendArrow label={r.role_trend} /> {r.role_trend && TREND_WORD[r.role_trend] ? TREND_WORD[r.role_trend] : "No trend"}</span>
+              <RosterBadge roster={r.roster} />
+            </span>
             {warning && <p className={styles.warning}>{warning}</p>}
             {why && <p className={styles.why}>{why}</p>}
           </li>
