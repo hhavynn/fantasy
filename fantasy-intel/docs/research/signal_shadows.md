@@ -91,7 +91,7 @@ All files live under `<IFP_MODEL_DIR>/research/signal_shadows/`, which is git-ig
 | `raw/<family>_<season>-<sha>.parquet`, `raw/manifest.json` | content-addressed; a changed upstream file becomes a new snapshot and the manifest keeps the history |
 | `store.parquet` (+ `.meta.json`) | cache, rebuilt when any input fingerprint changes |
 | `frozen/<candidate>.json` | write-once |
-| `artifacts/s<S>w<WW>.json` (the fitted models) | write-once; an interrupted run reuses it, never refits |
+| `artifacts/s<S>w<WW>-<store fingerprint>.json` (the fitted models) | write-once; an interrupted run reuses it only when it was built from the same store, specs, cutoff and abstentions (otherwise it is refused, and new data refits into a new file) |
 | `ledger/s<S>w<WW>-pregame.json` | write-once |
 | `runs/*.json` (every attempt that checked something) and `missed/s<S>w<WW>.json` | write-once |
 | `scores.json` | replaced on each scoring |

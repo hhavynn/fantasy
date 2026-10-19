@@ -333,6 +333,25 @@ def _code_sha() -> str:
     return hashlib.sha256(b"".join(f.read_bytes() for f in files)).hexdigest()[:16]
 
 
+def load_or_write_artifact(args, season: int, week: int, art: dict, models: dict) -> tuple[Path, dict]:
+    """Write the fitted models once per (week, store fingerprint). The file name carries the store fingerprint, so
+    a retry after the data changed refits into a new artifact instead of reusing models trained on the old store
+    (no ledger exists yet: the ledger is written last). An interrupted run's artifact for the SAME store is reused,
+    never refit, and only when its candidate specs, cutoff and abstentions also match; otherwise it is refused.
+    Returns (artifact path, models) with the reused models deserialized."""
+    from app.analytics import challenger as ch
+
+    apath = out_dir(args) / "artifacts" / f"s{season}w{week:02d}-{art['store_fingerprint']}.json"
+    if _write_once(apath, art):
+        return apath, models
+    prev = json.loads(apath.read_text())
+    same = {k: (prev.get(k), art[k]) for k in ("candidates", "training_cutoff_key", "store_fingerprint", "abstained")}
+    stale = {k: v for k, v in same.items() if v[0] != v[1]}
+    if stale:
+        raise SystemExit(f"{apath.name} was built from other inputs ({', '.join(sorted(stale))}); refusing to reuse it")
+    return apath, {p: {k: ch.RidgeModel.from_dict(d) for k, d in v.items()} for p, v in prev["models"].items()}
+
+
 def live_features(args, src, season: int, week: int, teams: list[str], now: datetime, ok: dict[str, bool]):
     """Pregame feature rows of week W for the open teams: ifp-2's features, the point-in-time FTN and depth
     features (as of `now`) and the decline-only role. Returns (frame, provenance)."""
@@ -411,14 +430,9 @@ def cmd_predict(args, now: datetime | None = None) -> dict:
     hashes = {n: s["config_hash"] for n, s in specs.items()}
     art = {"schema": "ifp-signal-shadow-artifact/v1", "candidates": hashes, "ifp2_config_hash": cfg.hash(),
            "training_cutoff_key": cutoff, "created_at": now.isoformat(), "store_fingerprint": prov["fingerprint"],
-           "training_rows": n_train, "models": {p: {k: m.to_dict() for k, m in v.items()} for p, v in models.items()}}
-    apath = out_dir(args) / "artifacts" / f"s{season}w{week:02d}.json"
-    if not _write_once(apath, art):
-        prev = json.loads(apath.read_text())        # an interrupted earlier run's artifact is reused, never refit
-        if prev["candidates"] != hashes or prev["training_cutoff_key"] != cutoff:
-            raise SystemExit(f"{apath.name} was built under a different configuration or cutoff")
-        models = {p: {k: ch.RidgeModel.from_dict(d) for k, d in v.items() if k not in abstain}
-                  for p, v in prev["models"].items()}
+           "abstained": abstain, "training_rows": n_train,
+           "models": {p: {k: m.to_dict() for k, m in v.items()} for p, v in models.items()}}
+    apath, models = load_or_write_artifact(args, season, week, art, models)
     feats, live_prov = live_features(args, src, season, week, open_teams, now, ok)
     rows = []
     for pos in POSITIONS:

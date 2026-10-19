@@ -266,6 +266,28 @@ def test_missed_week_is_recorded_once_and_never_backfilled(ss, args):
     assert ss.check_missed(args, 2026, 9, now=SUN, kickoffs=started) is None          # frozen in time
 
 
+def _art(fp="aaa", abstained=None, models=None):
+    return {"schema": "ifp-signal-shadow-artifact/v1", "candidates": {"ifp-fr-p1": "h1"}, "training_cutoff_key": 202607,
+            "store_fingerprint": fp, "abstained": abstained or {}, "models": models or {}}
+
+
+def test_an_interrupted_freeze_reuses_only_an_artifact_built_from_the_same_inputs(ss, args):
+    """Codex review: a retry after the store was rebuilt must refit, never reuse models trained on the old store, and an
+    artifact whose abstentions differ is refused rather than silently forecasting nulls."""
+    fitted = {"RB": {"ifp2": "fitted"}}
+    path, models = ss.load_or_write_artifact(args, 2026, 7, _art("aaa", {"ifp-fr-p1": "raw ftn incomplete"}), fitted)
+    assert models is fitted and path.name == "s2026w07-aaa.json"
+    path2, models2 = ss.load_or_write_artifact(args, 2026, 7, _art("bbb"), {"RB": {"ifp2": "refit"}})
+    assert path2.name == "s2026w07-bbb.json" and models2 == {"RB": {"ifp2": "refit"}}      # new store: refit
+    assert json.loads(path.read_text())["store_fingerprint"] == "aaa"                        # the old one untouched
+    with pytest.raises(SystemExit, match="abstained"):
+        ss.load_or_write_artifact(args, 2026, 7, _art("aaa"), fitted)                        # same store, other abstentions
+    with pytest.raises(SystemExit, match="candidates"):
+        ss.load_or_write_artifact(args, 2026, 7, {**_art("bbb"), "candidates": {"ifp-fr-p1": "h2"}}, fitted)
+    _, reused = ss.load_or_write_artifact(args, 2026, 7, _art("bbb"), {"RB": {"ifp2": "would refit"}})
+    assert reused == {}                                    # the stored (empty) models are reused, never refit
+
+
 # ----------------------------------------------------------------------------- raw snapshots
 
 
@@ -453,6 +475,8 @@ def test_predict_freezes_all_candidates_point_in_time_and_write_once(ss, tmp_pat
     assert set(led["sources"]["raw_snapshots"]) == {"ftn_2025", "pbp_2025", "depth_2025"}
     assert set(led["candidates"]) == set(ss.CANDIDATES) and "CC-BY-SA" in led["license"]
     assert all(datetime.fromisoformat(r["kickoff"]) > datetime.fromisoformat(led["created_at"]) for r in led["rows"])
+    art = json.loads((ss.out_dir(a) / "artifacts" / led["artifact"]).read_text())
+    assert art["store_fingerprint"] == led["store_fingerprint"] and led["artifact"].endswith(f"{art['store_fingerprint']}.json")
     again = ss.cmd_predict(a, now=now)
     assert again["written"] is False and json.loads(ss.ledger_path(a, 2025, 10).read_text()) == led
 
