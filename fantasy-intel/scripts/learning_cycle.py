@@ -37,6 +37,10 @@ skip it with --no-dst-shadow.
 Then `dist_ledger`, the frozen pregame point-distribution ledger (scripts/distribution_ledger.py cycle: scores
 frozen weeks' interval coverage and freezes the target week's distributions from the forecast `predict` just
 froze; research only, writes only <ifp-dir>/research/point_distributions/ledger/; skip with --no-dist-ledger).
+Last, `promotion_check` (scripts/shadow_promotion_check.py check, docs/shadow_promotion.md): reads every research
+shadow's saved gate result and reports, per candidate and position, whether it is ready to promote into Ours; a ready
+candidate gets a "PROMOTION READY" line in this cycle's log and stderr and an entry in data/logs/promotion-queue.json.
+It edits no production code or registry; skip with --no-promotion-check.
 Neither the kicker nor the research shadows (dist_ledger included) need the target week's new data, so they also
 run when the cycle stops early: after `waiting_for_data` (the kicker only when it may write, i.e. without
 --no-project), and the read-only shadows also after a failed production stage (all of them also after
@@ -472,6 +476,39 @@ def stage_dst_shadow(args, conns: list, log_path: Path) -> dict:
         return {}
 
 
+PROMOTION_CHECK_TIMEOUT_S = 5 * 60   # reads a handful of JSON files
+
+
+def stage_promotion_check(args, log_path: Path) -> dict:
+    """Promote-when-proven watcher (scripts/shadow_promotion_check.py `check`, own process): reads every research
+    shadow's saved gate result (nothing is re-scored) and flags the candidates whose pre-registered gate passes. Writes
+    only the summary, its log and promotion-queue.json under the logs directory (data/logs). Never fails the cycle:
+    run_cycle turns an error into a warning; exit 3 = ran, a result could not be read (returned as warnings)."""
+    cmd = [sys.executable, str(SCRIPTS / "shadow_promotion_check.py"), "check"]
+    if getattr(args, "ctx_dir", None) is not None:
+        cmd += ["--ifp-dir", str(args.ctx_dir)]
+    if getattr(args, "dst_dir", None) is not None:
+        cmd += ["--dst-dir", str(args.dst_dir)]
+    if getattr(args, "dist_dir", None) is not None:
+        cmd += ["--dist-dir", str(args.dist_dir)]
+    if getattr(args, "promotion_logs_dir", None) is not None:
+        cmd += ["--logs-dir", str(args.promotion_logs_dir)]
+    if getattr(args, "now", None):     # a simulated cycle clock: report only, write nothing
+        cmd += ["--now", str(args.now)]
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True,
+                          env=child_env(), timeout=PROMOTION_CHECK_TIMEOUT_S)
+    out, err = proc.stdout or "", proc.stderr or ""
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"==> shadow_promotion_check.py check {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
+    if proc.returncode not in (0, 3):
+        raise RuntimeError(f"shadow_promotion_check.py exited {proc.returncode}: {err.strip()[-400:]} (see {log_path})")
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {}
+
+
 def training_fingerprint(args, store, scoring, src=None, codes=None, conns=None) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
@@ -679,6 +716,26 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
                                      "error": f"{err.__class__.__name__}: {err}"})
             report["warnings"].append(f"distribution ledger stage failed (production runs unaffected): {err}")
 
+    def promotion_check():
+        """Promote-when-proven watcher, after every research shadow: a failure is a warning, never a failed cycle."""
+        if getattr(args, "no_promotion_check", False):
+            return
+        t_p = time.monotonic()
+        try:
+            pc = stage_promotion_check(args, Path(args.out) / "logs" / f"cycle-{stamp}.log")
+            report["promotion_check"] = pc
+            report["promotion_ready"] = list(pc.get("lines") or [])
+            report["stages"].append({"name": "promotion_check", "status": "ok",
+                                     "seconds": round(time.monotonic() - t_p, 2)})
+            report["warnings"] += [f"promotion check: {w}" for w in pc.get("warnings") or []]
+            for line in report["promotion_ready"]:
+                print(line, file=sys.stderr)
+        except Exception as err:      # noqa: BLE001
+            report["stages"].append({"name": "promotion_check", "status": "failed_nonfatal",
+                                     "seconds": round(time.monotonic() - t_p, 2),
+                                     "error": f"{err.__class__.__name__}: {err}"})
+            report["warnings"].append(f"promotion check stage failed (production runs unaffected): {err}")
+
     try:
         preflight(args)
         lock = acquire_lock(args.out, now)
@@ -705,6 +762,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
             research_shadows()
             dst_shadow()
             dist_ledger()
+            promotion_check()
             raise CycleStop("no_upcoming_week", EXIT_OK, f"no {args.season} regular-season week kicks off after "
                             f"{now.isoformat()}")
         args.week, args.last_week = target, max(kick)
@@ -762,6 +820,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         research_shadows()
         dst_shadow()
         dist_ledger()
+        promotion_check()
     except CycleStop as stop:
         report["status"], code = stop.status, stop.code
         if stop.status not in ("no_upcoming_week",):
@@ -776,6 +835,7 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
             research_shadows()
             dst_shadow()
             dist_ledger()
+            promotion_check()
     except Exception as err:          # outside a stage: still report, release the lock, exit 1
         report["status"], code = "failed", EXIT_FAILED
         report["errors"].append(f"{err.__class__.__name__}: {err}")
@@ -941,6 +1001,10 @@ def parse(argv=None):
                     help="do not run the dfp-r1 D/ST research shadow stage (scripts/dst_shadow.py cycle)")
     ap.add_argument("--dst-dir", type=Path, default=None,
                     help="D/ST research directory holding shadow/ (default: dst_shadow.py's, DST_RESEARCH_DIR)")
+    ap.add_argument("--no-promotion-check", action="store_true",
+                    help="do not run the promote-when-proven check (scripts/shadow_promotion_check.py check)")
+    ap.add_argument("--promotion-logs-dir", type=Path, default=None,
+                    help="where the promotion check writes its summary and queue (default: its own, data/logs)")
     ap.add_argument("--week", type=int, default=None, dest="reproject_week",
                     help="reproject: the week to re-project (default: the week of the next kickoff)")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (tests and audits only)")
@@ -974,7 +1038,8 @@ def main(argv=None) -> int:
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
             "training", "forecast", "projection", "kicker_projection", "ctx_shadow", *(r[0] for r in RESEARCH_SHADOWS),
-            "dst_shadow", "dist_ledger", "evaluation", "missed_window", "warnings", "exit_code")
+            "dst_shadow", "dist_ledger", "promotion_check", "promotion_ready", "evaluation", "missed_window", "warnings",
+            "exit_code")
     print(json.dumps({k: report.get(k) for k in keys}, indent=1, default=str))
     return code
 

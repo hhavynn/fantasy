@@ -1,5 +1,5 @@
 import { PlayerIdentity } from "@/components/PlayerIdentity";
-import { Badge, EmptyState, Score } from "@/components/ui";
+import { Badge, Score, Verdict } from "@/components/ui";
 import type { TopClaims as Top } from "@/lib/waivers";
 import { Competition, EvidenceBadge, GiveUp, OwnedDelta, RoleTrend, actionLabel } from "./WaiverParts";
 import { hasInjuryDesignation } from "../players/helpers";
@@ -14,22 +14,19 @@ import type { WaiverRow } from "./types";
 export function TopClaims({ top, position }: { top: Top<WaiverRow>; position: string }) {
   const scope = position === "ALL" ? "" : ` at ${position}`;
   const heading = top.mode === "actionable" ? `Top claims${scope}` : top.mode === "watch" ? `Nothing to claim right now${scope}` : `No candidates${scope}`;
+  const count = top.mode === "none" ? 0 : top.rows.length;
   return (
-    <section className={styles.band} aria-labelledby="top-claims-heading">
-      <h2 id="top-claims-heading" className={styles.bandTitle}>{heading}</h2>
-      {top.mode === "actionable" && (
-        <p className={styles.bandNote}>Moves the analysis calls actionable for this roster, best first.</p>
-      )}
-      {top.mode === "watch" && (
-        <p className={styles.bandNote}>
-          No add clears the bar for a claim. These are the highest-ranked options that are not an outright pass; none is a recommendation to add.
-        </p>
-      )}
-      {top.mode === "none" ? (
-        <EmptyState title="Nothing worth watching">
-          Every evaluated player{scope} is a pass for this roster. Refresh ESPN and NFL data if the snapshot looks stale.
-        </EmptyState>
-      ) : (
+    <section className={styles.band} aria-label="Top claims">
+      <Verdict
+        tone={top.mode === "actionable" ? "positive" : "info"}
+        eyebrow={top.mode === "actionable" ? `${count} ${count === 1 ? "move" : "moves"}, best first` : "No claim recommended"}
+        headline={heading}
+      >
+        {top.mode === "actionable" && "Moves the analysis calls actionable for this roster, each with the player to drop. Evidence is under each player in the list below."}
+        {top.mode === "watch" && "No add clears the bar for a claim. These are the highest-ranked options that are not an outright pass; none is a recommendation to add."}
+        {top.mode === "none" && `Every evaluated player${scope} is a pass for this roster. Refresh ESPN and NFL data if the snapshot looks stale.`}
+      </Verdict>
+      {top.mode !== "none" && (
         <ol className={styles.claims}>
           {top.rows.map((w, i) => <ClaimCard key={w.espn_player_id} row={w} rank={i + 1} informational={top.mode !== "actionable"} />)}
         </ol>

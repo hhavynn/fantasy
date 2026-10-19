@@ -36,7 +36,7 @@ export default async function MoversPage({ searchParams }: PageProps<"/movers">)
   if (!res.ok) {
     return (
       <div className="stack">
-        <PageHeader eyebrow="Projections" title={TITLE} />
+        <PageHeader eyebrow="Players · Research" title={TITLE} />
         <BackendProblem error={res.error} kind={res.kind} status={res.status} />
       </div>
     );
@@ -45,7 +45,7 @@ export default async function MoversPage({ searchParams }: PageProps<"/movers">)
   if (d.contract !== CONTRACT) {
     return (
       <div className="stack">
-        <PageHeader eyebrow="Projections" title={TITLE} />
+        <PageHeader eyebrow="Players · Research" title={TITLE} />
         <Notice tone="caution" title="The backend sent an unexpected format">
           This page reads the {CONTRACT} response and the backend answered with {d.contract ? `“${d.contract}”` : "no version"}. Update the backend and the app together.
         </Notice>

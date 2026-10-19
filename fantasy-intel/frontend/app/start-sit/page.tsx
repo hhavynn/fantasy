@@ -3,10 +3,11 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { CompareLink } from "@/components/CompareLink";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { isUnknownTeam, readTeamSelection, withTeam, withTeamId } from "@/lib/team-perspective";
+import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import { OriginTag, ProjectionNotice } from "@/components/ProjectionNotice";
 import {
-  Badge, Delta, Method, Notice, PageHeader, Pos, Section, SortableTh, Stat, StatStrip,
+  Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, Section, SortableTh, Verdict, VerdictFigure,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
@@ -117,44 +118,48 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
       <ProjectionNotice detail={d.projection_source_detail} />
 
-      {/* Verdict band: the answer first, then the numbers behind it. */}
-      <div className={styles.verdict}>
-        <Notice tone={verdict.tone} title={verdict.headline}>
-          {verdict.detail}
-          {emptySlots.map((slot) => (
-            <span key={slot}> <Link href={withTeam(WAIVER_POSITIONS.includes(slot) ? `/waivers?pos=${encodeURIComponent(slot)}` : "/waivers", sel.kind === "team" ? String(sel.id) : null)}>Find a {slot} on waivers</Link>.</span>
-          ))}
-        </Notice>
-        <StatStrip>
-          <Stat
-            label="Submitted lineup"
-            value={actual.value === null ? <Missing why="No submitted lineup for this week" /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
-            note={!hasLineup ? "No submitted lineup" : actual.partial ? "*Partial: some starters lack a projection" : "ESPN starters, projected pts"}
-          />
-          <Stat
-            label="Recommended lineup"
-            value={<>{num(recommended.value, 1)}{recommended.partial ? "*" : null}</>}
-            note={recommended.partial ? "*Partial: some players lack a projection" : "Projected pts, respects kickoff locks"}
-          />
-          <Stat
-            label="Projected gain"
-            tone={gainKnown && (summary.projected_gain ?? 0) > 0 ? "positive" : undefined}
-            value={gainKnown ? <Delta value={summary.projected_gain} suffix=" pts" /> : <Missing why={hasLineup ? "Cannot compute: missing projections" : "No submitted lineup to compare"} />}
-            note={
-              !hasLineup ? "Needs a submitted lineup"
-                : !summary.projection_complete ? "Needs every starter projected"
-                : (summary.projected_gain ?? 0) > 0 ? "Over the submitted lineup"
-                : "Submitted lineup is already the best"
-            }
-          />
-          <Stat label="Moves" value={moves.length} note={moves.length > 0 ? `${actionable} actionable now` : "No swaps recommended"} />
-          <Stat
-            label="Kickoff locks"
-            value={lockedRows.length}
-            note={lockedRows.length > 0 ? `Locked: ${lockedRows.map((r) => r.slot).join(", ")}` : "No starting slot locked"}
-          />
-        </StatStrip>
-      </div>
+      {/* The answer first: the verdict, the totals behind it, then each move. */}
+      <Verdict
+        tone={verdict.tone}
+        eyebrow={`Week ${d.scoring_period} · ${team.name}`}
+        headline={verdict.headline}
+        figures={
+          <>
+            <VerdictFigure
+              label="Submitted (proj)"
+              value={actual.value === null ? <Missing why="No submitted lineup for this week" /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
+              note={!hasLineup ? "No submitted lineup" : actual.partial ? "*Partial: some starters lack a projection" : "Current ESPN starters, projected pts"}
+            />
+            <VerdictFigure
+              label="Recommended (proj)"
+              value={<>{num(recommended.value, 1)}{recommended.partial ? "*" : null}</>}
+              note={recommended.partial ? "*Partial: some players lack a projection" : "Best lineup under kickoff locks, projected pts"}
+            />
+            <VerdictFigure
+              label="Projected gain"
+              emphasis
+              tone={gainKnown && (summary.projected_gain ?? 0) > 0 ? "positive" : undefined}
+              value={gainKnown ? <Delta value={summary.projected_gain} suffix=" pts" /> : <Missing why={hasLineup ? "Cannot compute: missing projections" : "No submitted lineup to compare"} />}
+              note={
+                !hasLineup ? "Needs a submitted lineup"
+                  : !summary.projection_complete ? "Needs every starter projected"
+                  : (summary.projected_gain ?? 0) > 0 ? "Over the submitted lineup"
+                  : "Submitted lineup is already the best"
+              }
+            />
+            <VerdictFigure
+              label="Kickoff locks"
+              value={lockedRows.length}
+              note={lockedRows.length > 0 ? `Locked: ${lockedRows.map((r) => r.slot).join(", ")}` : "No starting slot locked"}
+            />
+          </>
+        }
+      >
+        {verdict.detail}
+        {emptySlots.map((slot) => (
+          <span key={slot}> <Link href={withTeam(WAIVER_POSITIONS.includes(slot) ? `/waivers?pos=${encodeURIComponent(slot)}` : "/waivers", sel.kind === "team" ? String(sel.id) : null)}>Find a {slot} on waivers</Link>.</span>
+        ))}
+      </Verdict>
 
       {d.is_future_preview && (
         <Notice tone="info" title={`Future week preview (week ${d.scoring_period})`}>
@@ -171,7 +176,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
       {moves.length > 0 && (
         <Section
           title="Recommended moves"
-          actions={<span className="faint">{moves.length} {moves.length === 1 ? "move" : "moves"} · not additive</span>}
+          subtitle={`${actionable} of ${moves.length} can be made now · gains are not additive`}
           footnote="Gains are measured against the submitted lineup as a whole and are never summed across moves: FLEX dependencies share opportunity cost."
           flush
         >
@@ -229,6 +234,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         unconstrained={unconstrained_lineup}
       />
 
+      <Glossary terms={["Projected points", "Projected gain", "Kickoff lock", "FLEX", "IR", "Ours", "—"]} />
       <Method title="How this is calculated">
         <p className={styles.prose}>
           Three lineups are compared for the week: the submitted ESPN lineup, the best lineup under kickoff locks (the one recommended here),
@@ -255,23 +261,15 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
 // ------------------------------------------------------------------- moves --
 
-function MovePlayer({ p, ours }: { p: DecisionPlayer; ours: boolean }) {
+function MovePlayer({ p, ours, dir }: { p: DecisionPlayer; ours: boolean; dir: "in" | "out" }) {
   const lock = p.lock_status !== "UNLOCKED" ? lockStatusBadge(p.lock_status, null) : null;
   return (
-    <span className={styles.person}>
-      <PlayerLink id={p.id} name={p.name} /> <Pos value={p.position} /> <span className={styles.proj}>({num(p.projection, 1)})</span> <OriginTag origin={p.projection_origin} ours={ours} />
-      {lock && <> <Badge value={lock.label} tone={lock.tone === "warn" ? "warn" : ""} /></>}
-    </span>
-  );
-}
-
-function PlayerList({ players, ours }: { players: DecisionPlayer[]; ours: boolean }) {
-  return (
-    <>
-      {players.map((p, i) => (
-        <span key={p.id}>{i > 0 ? ", " : ""}<MovePlayer p={p} ours={ours} /></span>
-      ))}
-    </>
+    <li className={styles.swapRow}>
+      <span className={dir === "in" ? styles.inGlyph : styles.outGlyph} aria-hidden="true">{dir === "in" ? "▲" : "▼"}</span>
+      <PlayerIdentity id={p.id} name={p.name} position={p.position} team={p.pro_team || null}
+                      meta={lock ? <Badge value={lock.label} tone={lock.tone === "warn" ? "warn" : ""} /> : null} />
+      <span className={styles.swapProj}><OriginTag origin={p.projection_origin} ours={ours} /> {num(p.projection, 1)}</span>
+    </li>
   );
 }
 
@@ -281,17 +279,15 @@ function Move({ move, ours }: { move: StartSitDecision; ours: boolean }) {
   const pair = move.start_players.length === 1 && move.bench_players.length === 1 ? [move.start_players[0], move.bench_players[0]] : null;
   return (
     <li className={styles.move}>
-      <div>
-        <p className={styles.sentence}>
-          <span className={styles.verb}>Start</span> <PlayerList players={move.start_players} ours={ours} />{" "}
-          <span className={styles.over}>over</span> <PlayerList players={move.bench_players} ours={ours} />
-        </p>
-        <p className={styles.reason}>{move.explanation}</p>
-        {move.warnings.length > 0 && (
-          <ul className={styles.cautions}>
-            {move.warnings.map((w, i) => <li key={i}>{w}</li>)}
-          </ul>
-        )}
+      <div className={styles.swap}>
+        <div className={styles.swapSide}>
+          <p className={styles.swapLabel}><span className={styles.verb}>Start</span></p>
+          <ul className={styles.swapList}>{move.start_players.map((p) => <MovePlayer key={p.id} p={p} ours={ours} dir="in" />)}</ul>
+        </div>
+        <div className={styles.swapSide}>
+          <p className={styles.swapLabel}><span className={styles.over}>Bench</span></p>
+          <ul className={styles.swapList}>{move.bench_players.map((p) => <MovePlayer key={p.id} p={p} ours={ours} dir="out" />)}</ul>
+        </div>
       </div>
       <div className={styles.moveMeta}>
         <span className={styles.gain}><Delta value={move.projected_net_gain} suffix=" pts" /></span>
@@ -302,6 +298,15 @@ function Move({ move, ours }: { move: StartSitDecision; ours: boolean }) {
         {move.target_slot && <span className={styles.slotNote}>Slot: {move.target_slot}</span>}
         {pair && <CompareLink a={pair[0].id} b={pair[1].id} aName={pair[0].name} bName={pair[1].name} />}
       </div>
+      {move.warnings.length > 0 && (
+        <ul className={styles.cautions}>
+          {move.warnings.map((w, i) => <li key={i}>{w}</li>)}
+        </ul>
+      )}
+      <details className={styles.why}>
+        <summary>Why this move</summary>
+        <p className={styles.reason}>{move.explanation}</p>
+      </details>
     </li>
   );
 }
@@ -331,7 +336,6 @@ function LineupTable({ recommended, actual, ours, projLabel }: { recommended: Li
       <table>
         <thead>
           <tr>
-            <th>Slot</th>
             <th>Player</th>
             <th>Opponent</th>
             <th>Versus submitted</th>
@@ -343,16 +347,14 @@ function LineupTable({ recommended, actual, ours, projLabel }: { recommended: Li
             const change = slotChange({ slot: r.slot, playerId: r.player_id, isCurrentlyStarting: r.is_currently_starting, currentSlot: r.current_slot });
             return (
               <tr key={r.slot_id}>
-                <td className={styles.slotName}>{r.slot}</td>
                 <td>
                   {r.player_id !== null ? (
-                    <span className={styles.person2}>
-                      <PlayerLink id={r.player_id} name={r.name} />
-                      <Pos value={r.position} />
-                      <span className="faint">{r.pro_team ?? "FA"}</span>
-                      {r.injury_status && !HEALTHY.includes(r.injury_status) && <Badge value={r.injury_status} />}
-                    </span>
-                  ) : <span className={styles.empty}>Empty</span>}
+                    <PlayerIdentity id={r.player_id} name={r.name} position={r.position} team={r.pro_team}
+                                    lead={<span title="Lineup slot">{r.slot}</span>}
+                                    meta={r.injury_status && !HEALTHY.includes(r.injury_status) ? <Badge value={r.injury_status} /> : null} />
+                  ) : (
+                    <span className={styles.lineCell}><span className={styles.slotName} title="Lineup slot">{r.slot}</span><span className={styles.empty}>Empty</span></span>
+                  )}
                 </td>
                 <td>{r.player_id !== null ? <OppCell r={r} /> : <Missing why="No player in this slot" />}</td>
                 <td className={styles.change}>
@@ -367,17 +369,13 @@ function LineupTable({ recommended, actual, ours, projLabel }: { recommended: Li
         </tbody>
         {leaving.length > 0 && (
           <tbody>
-            <tr className="group"><td colSpan={5}>Moving out of the lineup</td></tr>
+            <tr className="group"><td colSpan={4}>Moving out of the lineup</td></tr>
             {leaving.map((a) => (
               <tr key={a.slot_id} className={styles.out}>
-                <td>{a.current_slot ?? a.slot}</td>
                 <td>
-                  <span className={styles.person2}>
-                    <PlayerLink id={a.player_id as number} name={a.name} />
-                    <Pos value={a.position} />
-                    <span className="faint">{a.pro_team ?? "FA"}</span>
-                    {a.injury_status && !HEALTHY.includes(a.injury_status) && <Badge value={a.injury_status} />}
-                  </span>
+                  <PlayerIdentity id={a.player_id as number} name={a.name} position={a.position} team={a.pro_team}
+                                  lead={<span title="Current slot">{a.current_slot ?? a.slot}</span>}
+                                  meta={a.injury_status && !HEALTHY.includes(a.injury_status) ? <Badge value={a.injury_status} /> : null} />
                 </td>
                 <td><OppCell r={a} /></td>
                 <td>

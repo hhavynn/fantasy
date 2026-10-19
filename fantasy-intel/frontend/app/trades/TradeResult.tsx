@@ -4,7 +4,7 @@ import { CompareLink } from "@/components/CompareLink";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
-import { Badge, Delta, Method, Notice, Pos, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
+import { Badge, Delta, Method, Notice, Pos, Section, Stat, StatStrip, TrendArrow, Verdict as VerdictBand, VerdictFigure } from "@/components/ui";
 import { label, num, signed } from "@/lib/format";
 import { resultText, resultTone, signedText } from "@/lib/trade-format";
 import type { InjuryScenarios, TradeResultV3, TradeSideV3 } from "@/lib/trade-types";
@@ -98,10 +98,29 @@ function Verdict({ r }: { r: TradeResult }) {
   const an = A.team_name ?? "Team A", bn = B.team_name ?? "Team B";
   // A 1-for-1 has one obvious pair; a larger trade links each player on his own.
   const oneForOne = A.sends.length === 1 && B.sends.length === 1;
+  const tone = resultTone(r.result.label);
+  const weeks = r.evaluation.weeks;
   return (
+    <>
+    <VerdictBand
+      tone={tone === "good" ? "positive" : tone === "bad" ? "negative" : tone === "warn" ? "caution" : "info"}
+      eyebrow={`Trade · ${r.trade.shape}${weeks.length > 0 ? ` · weeks ${weeks[0]}–${weeks[weeks.length - 1]}` : ""}`}
+      headline={resultText(r.result.label, an, bn)}
+      figures={
+        <>
+          <VerdictFigure label={`${an} · rest of season`} emphasis value={<Delta value={A.deltas.ros_delta} />}
+            note={A.deltas.ros_delta === null ? "Incomplete projections" : "Projected starting points vs no trade"} />
+          <VerdictFigure label={`${bn} · rest of season`} emphasis value={<Delta value={B.deltas.ros_delta} />}
+            note={B.deltas.ros_delta === null ? "Incomplete projections" : "Projected starting points vs no trade"} />
+        </>
+      }
+    >
+      Regular season: {resultText(r.result.regular_season_label, an, bn)}. Playoffs: {resultText(r.result.playoff_label, an, bn)}.
+      {" "}A change in projected lineup points, not a grade or an acceptance estimate.
+    </VerdictBand>
     <Section
-      title={`Trade · ${r.trade.shape}`}
-      actions={<Badge value={resultText(r.result.label, an, bn)} tone={resultTone(r.result.label)} />}
+      title="Who gets what"
+      actions={<Badge value={resultText(r.result.label, an, bn)} tone={tone} />}
       footnote={<>
         Lineup-point deltas are the change in each team&apos;s projected starting points versus no trade (ESPN projections, exact optimal-lineup
         simulation). Combined {signedText(r.result.combined_ros_delta)} · smaller side {signedText(r.result.min_side_ros_delta)}. {r.result.note}
@@ -120,16 +139,17 @@ function Verdict({ r }: { r: TradeResult }) {
           <Players r={r} ids={B.sends} links={!oneForOne} />
         </div>
       </div>
-      <p className={`${styles.labels} ${styles.muted} ${styles.small}`}>
-        <span>Regular season: {resultText(r.result.regular_season_label, an, bn)}</span>
-        <span>Playoffs: {resultText(r.result.playoff_label, an, bn)}</span>
-        {oneForOne && <CompareLink a={A.sends[0]} b={B.sends[0]} aName={nameOf(r, A.sends[0])} bName={nameOf(r, B.sends[0])}>Compare these players</CompareLink>}
-      </p>
+      {oneForOne && (
+        <p className={`${styles.labels} ${styles.muted} ${styles.small}`}>
+          <CompareLink a={A.sends[0]} b={B.sends[0]} aName={nameOf(r, A.sends[0])} bName={nameOf(r, B.sends[0])}>Compare these players</CompareLink>
+        </p>
+      )}
       <div className={styles.strips}>
         <TeamStrip r={r} s={A} side="a" />
         <TeamStrip r={r} s={B} side="b" />
       </div>
     </Section>
+    </>
   );
 }
 
@@ -346,7 +366,7 @@ function TeamImpact({ s }: { s: TradeSide }) {
         {s.lineups.before.map((b, i) => (
           <div key={b.week} className={styles.lineupWeek}>
             <div className="faint">Week {b.week} · {num(b.projected_lineup_points, 1, why)} → {num(s.lineups.after[i].projected_lineup_points, 1, why)}</div>
-            <LineupTable before={b} after={s.lineups.after[i]} />
+            <div className="table-wrap flat"><LineupTable before={b} after={s.lineups.after[i]} /></div>
           </div>
         ))}
       </Method>

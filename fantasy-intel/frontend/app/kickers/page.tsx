@@ -62,7 +62,7 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
   if (!res.ok) {
     return (
       <div className="stack">
-        <PageHeader eyebrow="Projections" title={TITLE} />
+        <PageHeader eyebrow="Waivers · Streaming" title={TITLE} />
         <BackendProblem error={res.error} kind={res.kind} status={res.status} />
       </div>
     );
@@ -83,7 +83,7 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
   if (!d.available || !d.run) {
     return (
       <div className="stack">
-        <PageHeader eyebrow="Projections" title={TITLE} meta={meta} actions={weekForm} />
+        <PageHeader eyebrow="Waivers · Streaming" title={TITLE} meta={meta} actions={weekForm} />
         <Section title="No kicker run for this week">
           <EmptyState title="ESPN's kicker projections are shown elsewhere">{d.unavailable_reason}</EmptyState>
         </Section>
@@ -93,7 +93,7 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
   const { projected, other } = splitPlayers(d.players);
   return (
     <div className="stack">
-      <PageHeader eyebrow="Projections" title={TITLE} meta={meta} actions={weekForm} />
+      <PageHeader eyebrow="Waivers · Streaming" title={TITLE} meta={meta} actions={weekForm} />
       <Notice tone="info" title="This week's run">
         Run {d.run.run_id} made {when(d.run.created_at)} from data through{" "}
         {d.run.feature_cutoff.data_through_season} week {d.run.feature_cutoff.data_through_week}

@@ -9,32 +9,39 @@ export type NavPage = {
 };
 export type NavGroup = { label: string; pages: NavPage[] };
 
-// Section groups, organised by what a manager came to do rather than by when a feature was built:
-// - My team: this week's decisions for the analyzed roster (every page here is team-scoped).
+// Section groups, organised by the decision a manager came to make rather than by when a feature was built:
+// - My team: this week's lineup decisions for the analyzed roster (every page here is team-scoped).
+// - Waivers: who to add (and stream) and who to drop. Its own destination because it is the other weekly job.
 // - Players: find, rank and compare players; the "Research" cluster holds the model and opportunity tools.
 // - Trades: find a trade, then evaluate it.
 // - League: what happened and where the league stands.
-// The app bar shows the groups and a sub-nav for the active group's pages. Data quality is reached from the sync
-// status, not the nav, and the multi-league prototype (/leagues) stays out of it while it is feature-flagged.
+// Five groups fit a phone tab bar one-to-one. The app bar shows the groups and a sub-nav for the active group's
+// pages. Data quality is reached from the sync status, not the nav, and the multi-league prototype (/leagues)
+// stays out of it while it is feature-flagged.
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: "My team",
     pages: [
       { href: "/", label: "Overview", summary: "This week at a glance: matchup, action items, roster and standings" },
-      { href: "/matchup", label: "Matchup", summary: "This week's head-to-head, lineup against lineup" },
       { href: "/start-sit", label: "Start/Sit", summary: "The submitted lineup against the best projected one" },
-      { href: "/waivers", label: "Waivers", summary: "Free agents the analysis supports for this roster, with the drop" },
+      { href: "/matchup", label: "Matchup", summary: "This week's head-to-head, lineup against lineup" },
+      { href: "/injury-impact", label: "Injuries", summary: "Who is out or questionable this week, and whose role could grow" },
       { href: "/my-team/value", label: "Team value", summary: "Roster value and lineup strength against the league" },
-      { href: "/injury-impact", label: "Injury impact", summary: "Who is out or questionable this week, and whose role could grow" },
+    ],
+  },
+  {
+    label: "Waivers",
+    pages: [
+      { href: "/waivers", label: "Waivers", summary: "Free agents the analysis supports for this roster, with the drop" },
+      { href: "/kickers", label: "Kickers", summary: "Weekly kicker projections with game context, free agents included" },
     ],
   },
   {
     label: "Players",
     pages: [
       { href: "/rankings", label: "Rankings", summary: "Every player ranked by projection, filtered by position and horizon" },
-      { href: "/players", label: "Players", summary: "One player's usage, game log and outlook" },
+      { href: "/players", label: "Player profile", summary: "One player's usage, game log and outlook" },
       { href: "/compare", label: "Compare", summary: "Players side by side on projection, usage and schedule" },
-      { href: "/kickers", label: "Kicker outlook", summary: "Weekly kicker projections with game context" },
       { href: "/research", label: "Research lab", section: "Research", summary: "Opportunity against production for WR, RB and TE" },
       { href: "/schedule-intelligence", label: "Schedule", section: "Research", summary: "Upcoming opponents for each rostered player" },
       { href: "/movers", label: "Projection movers", section: "Research", summary: "Who moved between two stored forecasts" },

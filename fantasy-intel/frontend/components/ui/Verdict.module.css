@@ -1,0 +1,43 @@
+.verdict {
+  --tone: var(--accent);
+  position: relative;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+/* A tone edge on the leading side: the one place a decision page uses a tinted frame. */
+.verdict::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--tone); }
+.info { --tone: var(--accent); }
+.positive { --tone: var(--positive); }
+.caution { --tone: var(--caution); }
+.negative { --tone: var(--negative); }
+
+.head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; }
+.icon { flex: none; margin-top: 3px; color: var(--tone); }
+.text { flex: 1; min-width: 0; }
+.eyebrow { margin: 0 0 2px; color: var(--ink-faint); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.headline { margin: 0; color: var(--ink); font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -.005em; text-wrap: balance; overflow-wrap: anywhere; }
+.body { margin-top: 4px; color: var(--ink-muted); font-size: 14px; line-height: 21px; max-width: 80ch; overflow-wrap: anywhere; }
+.body > :last-child { margin-bottom: 0; }
+.actions { flex: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.figures { display: flex; flex-wrap: wrap; margin: 0; border-top: 1px solid var(--line); background: var(--surface-raised); }
+.figure { flex: 1 1 140px; min-width: 0; padding: 12px 20px; box-shadow: -1px 0 0 var(--line); }
+.label { margin: 0; color: var(--ink-muted); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.value { margin: 2px 0 0; font-family: var(--font-display); font-size: 26px; line-height: 30px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); overflow-wrap: anywhere; }
+.emphasis .value { font-size: 32px; line-height: 34px; }
+.note { margin: 2px 0 0; color: var(--ink-faint); font-size: 12px; line-height: 16px; }
+.v-positive { color: var(--positive); }
+.v-negative { color: var(--negative); }
+.v-caution { color: var(--caution); }
+
+@media (max-width: 720px) {
+  .head { padding: 14px 16px; gap: 10px; flex-wrap: wrap; }
+  .headline { font-size: 18px; line-height: 24px; }
+  .actions { flex: 1 0 100%; padding-left: 30px; }
+  .figure { flex-basis: 45%; padding: 10px 14px; }
+  .value { font-size: 22px; line-height: 26px; }
+  .emphasis .value { font-size: 26px; line-height: 30px; }
+}

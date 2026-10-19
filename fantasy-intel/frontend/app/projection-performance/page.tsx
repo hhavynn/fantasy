@@ -17,7 +17,7 @@ export default async function ProjectionPerformancePage() {
   if (!res.ok) {
     return (
       <div className="stack">
-        <PageHeader eyebrow="Projections" title={TITLE} />
+        <PageHeader eyebrow="Players · Research" title={TITLE} />
         <BackendProblem error={res.error} kind={res.kind} status={res.status} />
       </div>
     );
@@ -29,7 +29,7 @@ export default async function ProjectionPerformancePage() {
   if (!d.available || !r) {
     return (
       <div className="stack">
-        <PageHeader eyebrow="Projections" title={TITLE} meta={META} />
+        <PageHeader eyebrow="Players · Research" title={TITLE} meta={META} />
         <Notice tone={h.tone} title={h.title}>{h.body}</Notice>
         {d.rejected.length > 0 && (
           <Notice tone="caution" title={`${d.rejected.length} published ${plural(d.rejected.length, "report")} failed verification`}>
@@ -51,7 +51,7 @@ export default async function ProjectionPerformancePage() {
   const ss = r.start_sit;
   return (
     <div className="stack">
-      <PageHeader eyebrow={`Projections · ${r.season}`} title={TITLE} meta={META} />
+      <PageHeader eyebrow={`Players · Research · ${r.season}`} title={TITLE} meta={META} />
 
       {r.synthetic && (
         <Notice tone="caution" title="Synthetic test data">

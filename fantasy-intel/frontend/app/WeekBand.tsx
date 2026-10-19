@@ -47,7 +47,7 @@ export function WeekBandSkeleton() {
           <Skeleton w="60%" h={14} />
         </div>
       </Section>
-      <Section title="Action items">
+      <Section title="Before kickoff">
         <div className={styles.skeletonStack}>
           <Skeleton w="70%" h={14} />
           <Skeleton w="90%" h={12} />
