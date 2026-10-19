@@ -311,6 +311,13 @@ the null and show `rb_components` is significantly worse on squared error). Plai
 Nothing is promoted; ifp-1.0.0, ifp-2.0.0, the registry, the weekly pipeline, the ledgers and the "Ours" selector
 are unchanged. No prospective shadow is recommended.
 
+**Disposition (2026-10-18, owner direction: Savant signals should improve Ours, not become a separate model).**
+Every candidate here was already framed that way: ifp-2's own position spec plus situational features (or
+ifp-2's features feeding RB component forecasts), fitted on the same training rows and scored out of sample against
+ifp-2, with the availability cohorts taken from the iwh RB workload pieces on main (#111). None gained, so **the
+situational features are dropped**: they are not added to the Ours (ifp) feature set, no standalone model or shadow
+ledger is built, and the research module stays unused by the app.
+
 **Recommendation for the NFL Savant review:** do not build situational usage splits into the projection engine.
 If Savant-style splits are wanted, they belong in **descriptive** player pages (role profile: early-down vs
 passing-down back, goal-line share, conventional success rate labelled as such), not in the forecast. Do not repeat:
