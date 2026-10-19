@@ -251,6 +251,8 @@ def test_weekly_pipeline_never_imports_into_consumers():
                          "espn_benchmark.py",   # research-only ESPN benchmark; reads label_outcomes (never imported)
                          "model_registry.py", "usage_signals.py", "context_challenger.py",
                          "returning_context.py", "penalty_erased.py",
+                         "qb_receiver_compat.py",   # research-only ifp-qbr challenger (never imported, see
+                         # tests/test_qb_receiver_compat.py::test_app_never_imports_the_research_module)
                          "injury_challenger.py",    # research-only workload handoff challenger and its prospective
                          "injury_prospective.py"):  # gate (never imported, see
             # tests/test_injury_workload.py::test_app_never_imports_the_injury_research_modules)
