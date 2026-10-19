@@ -28,9 +28,10 @@ After the production run, two separate models run as non-fatal stages (a failure
 `kicker` (kfp-1.0.0) and `ctx_shadow`, the research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py
 cycle: scores its frozen pregame ledgers against actuals alongside ifp-2 and tries the gated write-once freeze; it
 writes only <ifp-dir>/research/context/). Skip them with --no-kicker / --no-ctx-shadow. Two more research shadows run
-the same way right after it (RESEARCH_SHADOWS; skip with --no-qb-scenario-shadow / --no-ipm-cal-shadow):
-`qb_scenario_shadow` (ifp-ctx-p2q, scripts/qb_scenario_shadow.py cycle) and `ipm_cal_shadow` (the QB isotonic
-participation map, scripts/participation_cal_shadow.py cycle). A further research shadow, `dst_shadow`
+the same way right after it (RESEARCH_SHADOWS; skip with --no-qb-scenario-shadow / --no-ipm-cal-shadow /
+--no-signal-shadows): `qb_scenario_shadow` (ifp-ctx-p2q, scripts/qb_scenario_shadow.py cycle), `ipm_cal_shadow` (the QB
+isotonic participation map, scripts/participation_cal_shadow.py cycle) and `signal_shadows` (ifp-fr-p1 / ifp-dct-p1 /
+ifp-awd-p1, scripts/signal_shadows.py cycle, writes only <ifp-dir>/research/signal_shadows/). A further research shadow, `dst_shadow`
 (scripts/dst_shadow.py cycle: the D/ST model dfp-r1 vs ESPN; writes only data/models/dst/shadow/), follows them;
 skip it with --no-dst-shadow.
 Then `dist_ledger`, the frozen pregame point-distribution ledger (scripts/distribution_ledger.py cycle: scores
@@ -334,7 +335,8 @@ def stage_kicker(args, log_path: Path) -> dict:
 CTX_SHADOW_TIMEOUT_S = 45 * 60       # the whole research stage (store build + scoring + a possible freeze)
 # The other research shadows: (stage / report key, script, --no-* attribute, warning label). Same contract as ctx_shadow.
 RESEARCH_SHADOWS = (("qb_scenario_shadow", "qb_scenario_shadow.py", "no_qb_scenario_shadow", "ifp-ctx-p2q shadow"),
-                    ("ipm_cal_shadow", "participation_cal_shadow.py", "no_ipm_cal_shadow", "ipm-cal-0.1.0 shadow"))
+                    ("ipm_cal_shadow", "participation_cal_shadow.py", "no_ipm_cal_shadow", "ipm-cal-0.1.0 shadow"),
+                    ("signal_shadows", "signal_shadows.py", "no_signal_shadows", "signal shadows"))
 
 
 def stage_ctx_shadow(args, conns: list, log_path: Path) -> dict:
@@ -908,6 +910,8 @@ def parse(argv=None):
                     help="do not run the ifp-ctx-p2q research shadow stage (scripts/qb_scenario_shadow.py cycle)")
     ap.add_argument("--no-ipm-cal-shadow", action="store_true",
                     help="do not run the QB participation-calibration re-test (scripts/participation_cal_shadow.py cycle)")
+    ap.add_argument("--no-signal-shadows", action="store_true",
+                    help="do not run the ifp-fr-p1 / ifp-dct-p1 / ifp-awd-p1 research shadows (signal_shadows.py cycle)")
     ap.add_argument("--ctx-dir", type=Path, default=None,
                     help="model directory holding research/ for the research shadows (default: each script's, "
                          "data/models)")

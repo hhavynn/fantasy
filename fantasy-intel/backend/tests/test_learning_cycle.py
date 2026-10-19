@@ -79,10 +79,10 @@ def env(base, tmp_path, lc):
 
 
 def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False, research_shadows=False,
-          dst_shadow=False, dist_ledger=False):
+          dst_shadow=False, dist_ledger=False, signal_shadows=False):
     """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it, and the kicker stage
     (after project), the ifp-ctx-p1 / dfp-r1 shadow stages, the other research shadows and the distribution-ledger
-    stage only when a test asks for them too."""
+    stage (and the signal shadows) only when a test asks for them too."""
     return lc.parse(["run", "--skip-sync", "--season", "2025", "--now", now, "--live-db", str(env / "live.duckdb"),
                      "--history-db", str(env / "history.duckdb"), "--ifp-dir", str(env / "models"),
                      "--out", str(env / "out"), "--kicker-dir", str(env / "kicker"), "--ctx-dir", str(env / "ctx"),
@@ -90,7 +90,8 @@ def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=
                      "--dist-dir", str(env / "dist"),
                      *([] if ctx_shadow else ["--no-ctx-shadow"]), *([] if dist_ledger else ["--no-dist-ledger"]),
                      *([] if research_shadows else ["--no-qb-scenario-shadow", "--no-ipm-cal-shadow"]),
-                     "--dst-dir", str(env / "dst"), *([] if dst_shadow else ["--no-dst-shadow"]), *extra])
+                     "--dst-dir", str(env / "dst"), *([] if dst_shadow else ["--no-dst-shadow"]),
+                     *([] if signal_shadows else ["--no-signal-shadows"]), *extra])
 
 
 def _run(lc, env, now=PRE_W10, *extra):
@@ -975,3 +976,62 @@ def test_every_research_shadow_runs_after_an_early_stop_in_the_normal_order(lc, 
     args.skip_sync = False
     code, rep = lc.run_cycle(args)
     assert code == lc.EXIT_FAILED and seen == order and rep["stages"][0] == {**rep["stages"][0], "status": "failed"}
+
+
+# ----------------------------------------------------------------------------- signal research shadows (RESEARCH_SHADOWS)
+
+
+def test_signal_shadows_stage_runs_after_ctx_shadow_and_is_a_no_op_before_the_prospective_window(lc, env):
+    """The real scripts/signal_shadows.py subprocess on the synthetic 2025 world: before 2026 week 7 nothing is
+    fetched or forecast and there is no ledger to score, so it writes nothing and reports no warning."""
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, signal_shadows=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    names = [n for n, _ in _stages(rep)]
+    assert names.index("signal_shadows") == names.index("ctx_shadow") + 1 and ("signal_shadows", "ok") in _stages(rep)
+    ss = rep["signal_shadows"]
+    assert (ss["status"], ss["pregame"]["status"], ss["score"]["status"], ss["prepare"]) == (
+        "ok", "before_prospective_start", "no_ledgers", None)
+    assert not [w for w in rep["warnings"] if "signal shadows" in w]
+    assert not (env / "ctx").exists()                       # nothing written anywhere
+
+
+def _only(script, fn):
+    """A stage_research_shadow stand-in that fails the test if any other research shadow runs."""
+    def stage(args, conns, log_path, s):
+        assert s == script, s
+        return fn(args)
+    return stage
+
+
+def test_signal_shadows_failure_never_fails_the_cycle(lc, env, monkeypatch):
+    def boom(args):
+        raise RuntimeError("signal_shadows.py exited 1: nflverse unreachable")
+
+    monkeypatch.setattr(lc, "stage_research_shadow", _only("signal_shadows.py", boom))
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, signal_shadows=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert ("signal_shadows", "failed_nonfatal") in _stages(rep)
+    assert any("signal shadows stage failed (production runs unaffected)" in w for w in rep["warnings"])
+
+
+def test_signal_shadows_warnings_reach_the_report_and_it_runs_when_no_week_is_left(lc, env, monkeypatch):
+    calls = []
+    monkeypatch.setattr(lc, "stage_research_shadow", _only("signal_shadows.py", lambda args: calls.append(args.week) or {
+        "status": "ok", "warnings": ["depth_2026 fetch failed; using the stored snapshot"]}))
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, signal_shadows=True))
+    assert code == lc.EXIT_OK and "signal shadows: depth_2026 fetch failed; using the stored snapshot" in rep["warnings"]
+    code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", signal_shadows=True))
+    assert rep["status"] == "no_upcoming_week" and calls[-1] is None and ("signal_shadows", "ok") in _stages(rep)
+
+
+def test_signal_shadows_also_run_after_an_early_stop(lc, env, monkeypatch):
+    """A waiting_for_data stop still runs the signal shadows (a RESEARCH_SHADOWS row), right after ctx_shadow."""
+    seen = []
+    monkeypatch.setattr(lc, "stage_ctx_shadow", lambda args, conns, log_path: seen.append("ctx_shadow") or {
+        "status": "ok", "warnings": []})
+    monkeypatch.setattr(lc, "stage_research_shadow", lambda args, conns, log_path, script: seen.append(script) or {
+        "status": "ok", "warnings": []})
+    _sql(env, "DELETE FROM nfl_snap_counts WHERE season = 2025 AND week = 9 AND team = 'AAA'")
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, signal_shadows=True))
+    assert code == lc.EXIT_NOT_READY and seen == ["ctx_shadow", "signal_shadows.py"]
+    assert ("signal_shadows", "ok") in _stages(rep)

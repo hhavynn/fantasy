@@ -287,6 +287,10 @@ test; the depth-change hypothesis fails.**
 
 ### Follow-up plan (prospective shadow; not part of this PR)
 
+> **Implemented (2026-10-18)** as `ifp-fr-p1` and `ifp-dct-p1` in `scripts/signal_shadows.py`, frozen weekly from
+> 2026 week 7. See [signal_shadows.md](signal_shadows.md). Items 1-3 are as written below. The interval guard uses
+> ifp-2's frozen bands. Item 4 (semantics, licensing, terms) is still open for the owner.
+
 1. Pre-register two shadow variants of ifp-2 and nothing else:
    * **ifp-2 + `fr_team_share`, `fr_own_share`** for RB/WR.
    * **ifp-2 + `dc_tier`** for QB/RB/WR (TE excluded: no development gain).

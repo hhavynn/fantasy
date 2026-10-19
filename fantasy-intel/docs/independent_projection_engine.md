@@ -468,6 +468,7 @@ ESPN sync, nflverse sync and analytics have finished and the pregame snapshot ch
 | `injury_freshness.py report` | every run | the upcoming week |
 | `start_sit_evaluation.py record` | every run with an upcoming week | the upcoming week |
 | `ctx_shadow.py pregame` | every run with an upcoming week (research shadow, `docs/research/ifp_ctx_shadow_automation.md`) | the upcoming week |
+| `signal_shadows.py pregame` | every run with an upcoming week (research shadows ifp-fr-p1 / ifp-dct-p1 / ifp-awd-p1, `docs/research/signal_shadows.md`) | the upcoming week |
 | `dst_shadow.py pregame` | every run with an upcoming week (D/ST research shadow, `docs/research/dst_projection_model.md` section 7) | the upcoming week |
 | `distribution_ledger.py freeze` | every run with an upcoming week (research, `docs/research/fantasy_point_distributions.md` section 17; a retry of the learning cycle's freeze; exit 3 is an `INFO` line) | the upcoming week |
 | `espn_benchmark.py record` | when a fully final week exists | the latest fully final week |
