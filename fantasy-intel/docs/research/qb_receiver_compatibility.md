@@ -30,7 +30,10 @@ should capture more of the QB change than A does.
   air-yards share x EPA delta term, which overlaps A's own EPA delta.
 * **The bias guard passes**, unlike the QB-row adoption it sank in ifp-ctx. WR/TE |bias| moves by less than 0.01 in
   every window. QB rows are out of scope here by pre-registration.
-* **No new prospective candidate is proposed.** `ifp-ctx-p1` and its write-once ledger are untouched (tested).
+* **Dropped as an Ours feature.** It was tested as a candidate addition to the Ours feature set, out of sample
+  against ifp-2. It does not beat ifp-2 for WR or TE in any window, so nothing is added to Ours (ifp-2 / ifp-2.1),
+  and served numbers are unchanged. No new prospective candidate is proposed. `ifp-ctx-p1` and its write-once ledger
+  are untouched (tested). The research module stays only so the negative result can be reproduced.
 
 Code: `backend/app/analytics/qb_receiver_compat.py` (play-by-play tables, QB profiles, receiver roles, interactions,
 candidates, walk-forward, cohorts, pre-registered rules), `scripts/qbr_research.py` (`pbp`, `build`, `develop`,
