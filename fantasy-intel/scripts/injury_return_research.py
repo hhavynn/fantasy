@@ -119,7 +119,10 @@ def without_exit_game(src: Sources, rows: pl.DataFrame, season: int, week: int) 
                       pl.col("last_week").cast(p["week"].dtype).alias("week"))
     s2 = Sources(p.join(drop, on=["gsis_id", "season", "week"], how="anti"), src.games, src.defense, src.rosters,
                  src.injuries, src.exits)
-    tg = coh.select("gsis_id", "position", "team", "opponent", pl.col("is_home").cast(pl.Boolean))
+    # horizon rows repeat a player once per target week under one cutoff; the recomputed usage depends only on the
+    # cutoff, so one target row per player (the opponent / home-away columns are not used here)
+    tg = coh.select("gsis_id", "position", "team", "opponent", pl.col("is_home").cast(pl.Boolean)).unique(
+        "gsis_id", keep="first", maintain_order=True)
     f = features_for_week(s2, season, week, tg)
     return f.select("gsis_id", *[pl.col(c).cast(pl.Float64).alias(f"{c}_nx") for c in cols])
 
@@ -133,7 +136,7 @@ def add_recomputed(src: Sources, rows: pl.DataFrame, cutoff: str = "key") -> pl.
     rows = rows.drop([c for c in cols if c in rows.columns])
     if not parts:
         return rows.with_columns(*[pl.lit(None, dtype=pl.Float64).alias(c) for c in cols])
-    return rows.join(pl.concat(parts), on=["gsis_id", cutoff], how="left")
+    return rows.join(pl.concat(parts), on=["gsis_id", cutoff], how="left", validate="m:1")
 
 
 def replacement_means(store: pl.DataFrame) -> dict[str, dict[str, float]]:
