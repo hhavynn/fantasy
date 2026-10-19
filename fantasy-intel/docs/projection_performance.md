@@ -50,6 +50,39 @@ uv run python ../scripts/projection_performance.py publish --season 2026        
 `refresh_all.py --skip-report` skips the step. A failure is a `WARNING: report:` line; the previous report stays
 published and the refresh exit code is unchanged.
 
+## Weekly replay (hindsight, not evidence)
+
+The scorecard grows one week at a time and only for the model that was live that week, so a model change takes weeks
+to show up there. The **Weekly replay** section answers the faster question: if today's model had made every finished
+week of the season, how close would it have been, and is that better or worse than the previous model, week by week?
+
+```
+refresh_all.py  ... -> projection_performance.py publish -> model_replay.py publish -> publish_motherduck.py
+hosted API      GET /api/projections/replay        app/analytics/model_replay.py (SQL + stdlib only)
+page            /projection-performance            "Weekly replay" section, above the ESPN comparison
+```
+
+* **How:** for every fully final week W of the season, the production model (context_model, its SHIPPED components),
+  the previous version (ifp-2.1.0's frozen spec) and the recent-average baseline are refitted on rows of weeks
+  strictly before W (the walk-forward of `scripts/ifp22_backtest.py`, reusing its cached store) and predict W. MAE per
+  week and position on identical player-weeks.
+* **Snapshots:** `publish` stores one write-once row of `model_replays` (canonical JSON + sha256, like the report) when
+  the model fingerprint (model code + config) or the data fingerprint (the labeled rows) changed; otherwise nothing.
+* **Comparison:** the page shows the newest snapshot's MAE per week with the change against the newest snapshot of a
+  DIFFERENT model fingerprint ("closer in weeks 1 and 3, further off in 2 and 4"). Before the first model change it
+  compares against ifp-2.1.0 replayed on the same rows. A change under 0.05 points reads as about the same; this is one
+  season, not a significance test.
+* **Limits:** hindsight. Inputs are today's data (stat corrections, depth charts and injury reports as synced now),
+  outcomes are conditional on playing (players with at least one recent game), and nothing here is what the site
+  showed that week. It never feeds a verdict, a promotion or the scorecard. ESPN is deliberately not part of it.
+
+```
+cd backend
+uv run python ../scripts/model_replay.py show       # replay and print, writes nothing (~1-2 min)
+uv run python ../scripts/model_replay.py publish    # store a snapshot if the model or weeks changed
+uv run python ../scripts/model_replay.py history    # stored snapshots and the week-by-week comparison
+```
+
 ## What the report contains (aggregates only)
 
 No player, roster, league or fantasy-team identifier is ever published; only counts and error statistics.

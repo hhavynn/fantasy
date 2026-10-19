@@ -8,7 +8,8 @@ benchmark). launchd runs it on a weekly schedule (see README "Scheduled refresh"
 Report step (docs/projection_performance.md): after the analytics step, scripts/projection_performance.py
 publish builds the accuracy scorecard from a read-only connection and inserts it as one write-once row, so the
 MotherDuck publish that follows carries it to the hosted site. It can never fail the refresh: a problem is
-logged as a WARNING and the publish still runs.
+logged as a WARNING and the publish still runs. scripts/model_replay.py publish follows it the same way (today's
+model replayed on every fully final week, one snapshot row when the model or the weeks changed).
 
 Each step runs in its own process. The two syncs are separate sources, so a failed ESPN sync still runs the nflverse
 sync (and the other way round); a failure skips every step that needs the failed one (analytics, report, publish,
@@ -60,6 +61,7 @@ LOG_DIR = DATA_DIR / "logs"
 STEPS = ("sync_espn.py", "sync_nfl.py", "compute_analytics.py")
 PUBLISH = "publish_motherduck.py"
 REPORT = "projection_performance.py"   # not in STEPS: run by run_report, whose failure never stops the chain
+REPLAY = "model_replay.py"             # not in STEPS: run by run_replay after the report, never stops the chain
 RANGES = "projection_ranges.py"         # not in STEPS: run by run_ranges before the publish, never stops the chain
 EVIDENCE = "Evidence:"
 TIMED_OUT = -999                     # run_step's result for a step killed at its deadline
@@ -417,6 +419,23 @@ def run_report(log: Log, timeout: float | None = None) -> str | None:
     return problem
 
 
+def run_replay(log: Log, timeout: float | None = None) -> str | None:
+    """Replay the production model on every fully final week and store a snapshot when the model or the weeks changed
+    (model_replay.py publish, one write-once row). Returns the problem, if any (logged as a WARNING). Never raises."""
+    timeout = evidence_timeout() if timeout is None else timeout
+    try:
+        code = run_step([sys.executable, str(SCRIPTS / REPLAY), "publish"], log, timeout=timeout)
+    except Exception as e:
+        problem = f"{REPLAY} could not run: {e!r}"
+    else:
+        if code == 0:
+            return None
+        problem = (f"{REPLAY} timed out after {timeout:g}s and was killed" if code == TIMED_OUT else
+                   f"{REPLAY} exited {code}; the previous replay stays published")
+    log(f"WARNING: replay: {problem}")
+    return problem
+
+
 def run_ranges(log: Log) -> str | None:
     """Copy the pinned point-distribution table into the database (projection_ranges.py load, a no-op once the pin is
     loaded) so the publish carries the floor / ceiling ranges. Returns the problem, if any (logged as a WARNING).
@@ -456,6 +475,7 @@ def main() -> int:
                     continue
                 if step == PUBLISH and not args.skip_report:
                     run_report(log)          # after analytics, so the publish carries the new report
+                    run_replay(log)          # and the newest weekly model replay
                 if step == PUBLISH:
                     run_ranges(log)          # so the publish carries the pinned floor / ceiling table
                 code = run_db_step([sys.executable, str(SCRIPTS / step)], log)
@@ -481,6 +501,7 @@ def main() -> int:
                 return 1
             if PUBLISH not in steps and not args.skip_report:
                 run_report(log)              # local install: the local API serves the report
+                run_replay(log)
             if PUBLISH not in steps:
                 run_ranges(log)
         try:

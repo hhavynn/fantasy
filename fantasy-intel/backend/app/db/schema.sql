@@ -1000,6 +1000,20 @@ CREATE TABLE IF NOT EXISTS projection_performance_reports (
     payload              VARCHAR NOT NULL       -- canonical JSON (sorted keys, no NaN)
 );
 
+-- Weekly model replays (create-only, no version bump): the production model refitted walk-forward on every fully
+-- final week of the season, built OFFLINE by scripts/model_replay.py and served by app/analytics/model_replay.py.
+-- Hindsight, never prospective evidence. Write-once rows keyed by the sha256 of the canonical JSON; a new row only
+-- when the model or data fingerprint changed. Aggregates only. Never list this table in a connection._REBUILD entry.
+CREATE TABLE IF NOT EXISTS model_replays (
+    replay_sha256        VARCHAR PRIMARY KEY,   -- sha256 of `payload` (UTF-8 bytes, exactly as stored)
+    season               INTEGER NOT NULL,
+    schema_version       VARCHAR NOT NULL,      -- model_replay.SCHEMA_VERSION
+    generated_at         TIMESTAMP NOT NULL,    -- naive UTC, also inside the payload
+    model_fingerprint    VARCHAR NOT NULL,      -- model code + config; changes when the model changes
+    data_fingerprint     VARCHAR NOT NULL,      -- the replay's input store; changes when weeks are added/corrected
+    payload              VARCHAR NOT NULL       -- canonical JSON (sorted keys, no NaN)
+);
+
 -- Kicker projection inputs derived from nflverse play-by-play (app/nfl/kicking_pbp.py). Create-only (no version
 -- bump); rebuilt per season by the live sync, the history sync and scripts/sync_kicking_pbp.py.
 -- temp / wind / roof are nflverse's OBSERVED game conditions: never a pregame forecast.
