@@ -11,7 +11,7 @@ each number came from (`origin`):
              like ESPN's weekly projection, so the two are interchangeable in a lineup.
   ours_zero  the independent run says he cannot score this week: a bye, or withheld as unavailable
              (ESPN OUT / IR / suspension, NFL-ineligible, not on the active roster). 0.0, as ESPN does.
-  espn       no independent estimate exists for him (D/ST has no model; rookies without an NFL
+  espn       no independent estimate exists for him (no verified K or D/ST run; rookies without an NFL
              game, uncertain ID mapping, no participation estimate): ESPN's projection, labeled.
 
 Kickers (K) are not in the skill-position run: they come from the separate kicker model's verified run
