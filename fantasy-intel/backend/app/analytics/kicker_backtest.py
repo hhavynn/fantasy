@@ -30,6 +30,7 @@ ABLATIONS = {
     "+offense": ("offense",),
     "+defense": ("offense", "defense"),
     "+stadium": ("offense", "defense", "stadium"),
+    "+line (kfp-1.1.0 groups)": ("offense", "defense", "stadium", "line"),
     "+weather (retrospective)": ("offense", "defense", "stadium", "weather"),
     "+script (full, no weather)": ("offense", "defense", "stadium", "script"),
     "full + weather (retrospective)": ("offense", "defense", "stadium", "weather", "script"),

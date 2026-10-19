@@ -34,7 +34,7 @@ NOTES = [
 ]
 
 
-def player(r: dict, fantasy: dict, espn: dict) -> dict:
+def player(r: dict, fantasy: dict, espn: dict, model_version: str = ks.MODEL_VERSION) -> dict:
     f, e = fantasy.get(r["espn_player_id"]) or {}, espn.get(r["espn_player_id"]) or {}
     exp = r.get("expected_points")
     ep = e.get("projected_points")
@@ -48,7 +48,7 @@ def player(r: dict, fantasy: dict, espn: dict) -> dict:
                             "coverage_status": r.get("coverage_status"), "stat_line": r.get("stat_line"),
                             "context": r.get("context"), "explanation": r.get("explanation") or [],
                             "flags": r.get("flags") or [], "missing_inputs": r.get("missing_inputs") or [],
-                            "pregame": r.get("pregame"), "model_version": ks.MODEL_VERSION},
+                            "pregame": r.get("pregame"), "model_version": model_version},
             "espn": {"projected_points": ep},
             "comparison": {"expected_minus_espn": round(exp - ep, 2) if exp is not None and ep is not None else None}}
 
@@ -73,11 +73,13 @@ def build_response(con, week: int | None, team_id: int | None) -> dict:
         con, "SELECT espn_player_id, projected_points FROM espn_player_weekly_points WHERE season = ? "
              "AND scoring_period = ? AND espn_player_id IN (SELECT unnest(?))", [lg["season"], week, ids])} \
         if table_exists(con, "espn_player_weekly_points") else {}
-    players = [player(r, fantasy, espn) for r in sel["rows"]]
+    players = [player(r, fantasy, espn, run["model_version"]) for r in sel["rows"]]
     if team_id is not None:
         players = [p for p in players if p["fantasy_team_id"] == team_id]
     players.sort(key=lambda p: (p["independent"]["expected_points"] is None, -(p["independent"]["expected_points"] or 0),
                                 p["espn_player_id"]))
+    # a week projected before kfp-1.1.0 is served from its kfp-1.0.0 run, labeled as such
+    base["governance"] = {**GOVERNANCE, "model_version": run["model_version"]}
     return {**base, "available": True, "unavailable_reason": None, "skipped_runs": sel["skipped"],
             "run": {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"]),
                     "artifact_id": run.get("artifact_id"), "artifact_verified": run.get("artifact_check") == "verified",

@@ -29,7 +29,10 @@ RUNS = "kicker_projection_runs"
 ROWS = "kicker_projection_rows"
 APPROVED = "approved_artifacts"
 MODEL_VERSION = "kfp-1.1.0"
-CONSUMER_VERSIONS = (MODEL_VERSION,)
+RETIRED_VERSIONS = ("kfp-1.0.0",)
+# Read in this order: a week's newest verified kfp-1.1.0 run wins; weeks projected only before kfp-1.1.0 (2026 weeks
+# 1-6) keep their kfp-1.0.0 run instead of falling back to ESPN. Each version is gated by its own registered artifacts.
+CONSUMER_VERSIONS = (MODEL_VERSION, *RETIRED_VERSIONS)
 
 ROW_COLUMNS = ("season", "week", "espn_player_id", "gsis_id", "nfl_team", "opponent", "is_home", "venue_id",
                "coverage_status", "projected_points", "interval_low", "interval_high", "p_play", "expected_points",
@@ -259,7 +262,7 @@ def select_run(con, season: int, week: int) -> dict:
                 return {**out, "run": _decode_run(run), "rows": [_decode_row(r) for r in rows]}
             out["skipped"].append({"run_id": run["run_id"], "model_version": run["model_version"],
                                    "created_at": str(run["created_at"]), "reason": problem})
-    why = (f"No verified {MODEL_VERSION} kicker run under the league's kicker scoring is stored for week {week}"
+    why = (f"No verified kfp kicker run ({', '.join(CONSUMER_VERSIONS)}) under the league's kicker scoring is stored for week {week}"
            + (f" ({'; '.join(s['run_id'] + ': ' + s['reason'] for s in out['skipped'])})" if out["skipped"] else ""))
     return {**out, "unavailable_reason": why + "."}
 

@@ -614,3 +614,32 @@ def test_line_table_splits_the_total_by_the_home_favored_spread():
     t = {(r["game_id"], r["team"]): r["o_implied"] for r in km.line_table(sched).iter_rows(named=True)}
     assert t == {("g1", "KC"): 26.0, ("g1", "LV"): 19.0}           # no spread, no implied total
     assert km.line_table(sched.drop("spread_line")).height == 0      # a schedule without the line columns
+
+
+def test_retired_kfp_runs_serve_weeks_without_a_current_run(live):
+    from app.analytics import forward_ours as fo
+    from app.api.kicker_projections import build_response
+
+    con = live[0]
+    assert fo.KICKER_VERSION == ks.MODEL_VERSION and ks.CONSUMER_VERSIONS == (ks.MODEL_VERSION, "kfp-1.0.0")
+    meta, rows = _build(live)
+    old = {**meta, "run_id": "kfp-old-1-0", "model_version": "kfp-1.0.0"}
+    ks.write_run(con, old, rows)
+    # only a kfp-1.0.0 run (2026 weeks 1-6): it is served, under its own version, not ESPN's fallback
+    body = build_response(con, 4, None)
+    assert body["run"]["run_id"] == "kfp-old-1-0" and body["governance"]["model_version"] == "kfp-1.0.0"
+    assert {p["independent"]["model_version"] for p in body["players"]} == {"kfp-1.0.0"}
+    assert ks.overlay(con, 2026, 4)["run"]["model_version"] == "kfp-1.0.0"
+    # each version is gated by its own artifacts: a registered 1.0 artifact that is not this run's rejects it
+    ks.register_artifact(con, model_version="kfp-1.0.0", artifact_sha256="e" * 64, target_season=2026,
+                         training_cutoff_key=202599, artifact_created_at=None)
+    sel = ks.select_run(con, 2026, 4)
+    assert sel["run"] is None and "not registered" in sel["skipped"][0]["reason"]
+    ks.register_artifact(con, model_version="kfp-1.0.0", artifact_sha256="a" * 64, target_season=2026,
+                         training_cutoff_key=202599, artifact_created_at=None)
+    assert ks.select_run(con, 2026, 4)["run"]["artifact_check"] == "verified"
+    # both versions stored for the week: kfp-1.1.0 wins, even though the 1.0 run is newer
+    ks.write_run(con, {**meta, "created_at": "2026-09-01 00:00:00"}, rows)
+    sel = ks.select_run(con, 2026, 4)
+    assert sel["run"]["model_version"] == ks.MODEL_VERSION and sel["run"]["run_id"] == meta["run_id"]
+    assert build_response(con, 4, None)["governance"]["model_version"] == ks.MODEL_VERSION

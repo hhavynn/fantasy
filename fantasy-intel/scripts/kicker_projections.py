@@ -134,10 +134,12 @@ def cmd_evaluate(args) -> dict:
                                                           for g in ((), ("stadium",), ("stadium", "weather"))}},
                         "opportunity": {"best": to["best"], "top5": to["grid"][:5]}}
     variants = {}
-    for name, (g, fg) in {"production (fg: league rate; pat: off+def+stadium)": (base.groups, ()),
+    no_line = tuple(g for g in base.groups if g != "line")
+    for name, (g, fg) in {"production (fg: line; pat: off+def+stadium+line)": (base.groups, base.fg_groups),
+                          "kfp-1.0.0: line removed (fg: league rate; pat: off+def+stadium)": (no_line, ()),
                           "fg uses the same groups as pat": (base.groups, None),
-                          "fg: stadium only": (base.groups, ("stadium",)),
-                          "+script": (base.groups + ("script",), ())}.items():
+                          "fg: stadium only (line removed from fg)": (base.groups, ("stadium",)),
+                          "+script": (base.groups + ("script",), base.fg_groups)}.items():
         c = base.with_groups(g, fg)
         sf = kb.season_frames(data, c, range(kb.FIRST_ROW_SEASON, max(kb.VALIDATION) + 1))
         p = pl.concat([kb.evaluate_season(data, c, scoring, s, sf) for s in kb.VALIDATION])
