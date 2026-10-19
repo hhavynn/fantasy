@@ -6,6 +6,7 @@ docs/research/qb_receiver_compatibility.md). Offline except `pbp`, read-only on 
     uv run python ../scripts/qbr_research.py build      # ifp-ctx store + role x QB columns, coverage, diagnostics
     uv run python ../scripts/qbr_research.py develop    # 2021-22 only -> write-once frozen selection
     uv run python ../scripts/qbr_research.py evaluate   # frozen selection: 2023-24 (once) + 2025-26 replay
+    uv run python ../scripts/qbr_research.py hypothesis # descriptive: role-dependent residuals, all windows
 
 Reuses the ifp-ctx feature store builder (context_research.build) into its OWN cache directory, so the
 ifp-ctx / ifp-ctx-p1 outputs are never touched. Outputs: <ifp-dir>/research/qbr/ (git-ignored).
@@ -307,10 +308,92 @@ def cmd_evaluate(args) -> dict:
             "exploratory_pooled": out["exploratory"]["ALL"]["diffs"]}
 
 
+# ----------------------------------------------------------------------------- the hypothesis, directly (descriptive)
+
+
+def _boot(values: np.ndarray, n: int = 2000, seed: int = SEED) -> list[float]:
+    rng = np.random.default_rng(seed)
+    b = [float(values[rng.integers(0, len(values), len(values))].mean()) for _ in range(n)]
+    return [round(float(np.percentile(b, 2.5)), 3), round(float(np.percentile(b, 97.5)), 3)]
+
+
+def _slope(df: pl.DataFrame, x: str, y: str, n: int = 1000, seed: int = SEED) -> dict:
+    """OLS slope of y on x with a week-clustered bootstrap 95% CI."""
+    def fit(d):
+        xs, ys = d[x].to_numpy(), d[y].to_numpy()
+        xs = xs - xs.mean()
+        return float((xs * (ys - ys.mean())).sum() / (xs * xs).sum())
+
+    parts = df.partition_by("key")
+    rng = np.random.default_rng(seed)
+    b = [fit(pl.concat([parts[i] for i in rng.integers(0, len(parts), len(parts))])) for _ in range(n)]
+    return {"slope": round(fit(df), 3), "ci95": [round(float(np.percentile(b, 2.5)), 3),
+                                                 round(float(np.percentile(b, 97.5)), 3)], "n": df.height}
+
+
+def cmd_hypothesis(args) -> dict:
+    """Descriptive, selects nothing: on WR rows with a changed expected QB, does the role-blind error
+    depend on the receiver's role? (1) mean residual (label - prediction) of ifp2 and A by role when the
+    expected QB is a downgrade; (2) deep-threat minus short-route residual of ifp2 on the SAME team-week;
+    (3) slope of A's residual on (deep share - mean) x QB delta; (4) Q's fitted WR coefficients (per raw
+    unit) at the start of each window and the points they imply for a deep threat vs a short-route WR."""
+    store, prov = build(args)
+    cfg = ch.ChallengerConfig.load()
+    out = {"fingerprint": prov["fingerprint"]}
+    for name, seasons in qr.WINDOWS.items():
+        weeks = ch.window_weeks(store, seasons)
+        p = (store.filter(pl.col("key").is_in([s * 100 + w for s, w in weeks]))
+             .join(qr.walk_forward(store, weeks, cfg, candidates=("A",)), on=["key", "gsis_id"])
+             .filter(pl.col("label").is_not_null() & pl.col("pred_A").is_not_null() & (pl.col("position") == "WR")
+                     & (pl.col("qb_changed") == 1))
+             .drop_nulls(["rec_deep_share", "qb_epa_delta", "qb_deep_cpoe_delta"]))
+        p = p.with_columns((pl.col("label") - pl.col("pred_ifp2")).alias("res_ifp2"),
+                           (pl.col("label") - pl.col("pred_A")).alias("res_A"),
+                           (pl.col("rec_deep_share") - pl.col("rec_deep_share").mean()).alias("_ds"))
+        p = p.with_columns((pl.col("_ds") * pl.col("qb_epa_delta")).alias("ds_x_epa"),
+                           (pl.col("_ds") * pl.col("qb_deep_cpoe_delta")).alias("ds_x_deep_cpoe"))
+        down = p.filter(pl.col("qb_epa_delta") < qr.DOWNGRADE)
+        roles = {"deep_threat": pl.col("rec_deep_share") >= qr.DEEP_THREAT,
+                 "middle": (pl.col("rec_deep_share") > qr.SHORT_ROUTE) & (pl.col("rec_deep_share") < qr.DEEP_THREAT),
+                 "short_route": pl.col("rec_deep_share") <= qr.SHORT_ROUTE}
+        r = {"changed_qb_wr_rows": p.height, "downgrade_rows": down.height, "downgrade_residual_by_role": {}}
+        for lab, e in roles.items():
+            g = down.filter(e)
+            r["downgrade_residual_by_role"][lab] = {"n": g.height, "ifp2": round(float(g["res_ifp2"].mean()), 3),
+                                                    "A": round(float(g["res_A"].mean()), 3)}
+        tw = lambda e, c: down.filter(e).group_by("key", "team").agg(pl.col("res_ifp2").mean().alias(c))  # noqa: E731
+        pair = tw(roles["deep_threat"], "deep").join(tw(roles["short_route"], "short"), on=["key", "team"])
+        d = (pair["deep"] - pair["short"]).to_numpy()
+        r["same_team_week_deep_minus_short_residual_ifp2"] = {"team_weeks": pair.height,
+                                                              "mean": round(float(d.mean()), 3) if len(d) else None,
+                                                              "ci95": _boot(d) if len(d) > 3 else None}
+        r["slope_res_A_on_deep_share_x_epa_delta"] = _slope(p, "ds_x_epa", "res_A")
+        r["slope_res_A_on_deep_share_x_deep_cpoe_delta"] = _slope(p, "ds_x_deep_cpoe", "res_A")
+        k = weeks[0][0] * 100 + weeks[0][1]
+        m = qr.fit_candidate(ch.train_rows(store, k, "WR"), cfg, "WR", "Q", k)
+        coef = {c: b / s for c, b, s in zip(m.columns, m.coef, m.stds)
+                if c in ("qb_epa_delta", "qb_cpoe_delta", "qb_changed", *qr.FEATURE_COLUMNS)}
+        # a 10th-percentile changed-QB downgrade (build_report changed_qb_delta_quantiles) for two WR roles
+        q = {"qb_epa_delta": -0.17, "qb_cpoe_delta": -4.3, "qb_deep_cpoe_delta": -2.6, "qb_deep_rate_delta": -0.02}
+
+        def pts(deep_share, ay_share):
+            x = {"qb_epa_delta": q["qb_epa_delta"], "qb_cpoe_delta": q["qb_cpoe_delta"], "qb_changed": 0.0,
+                 "qbr_deep_x": deep_share * q["qb_deep_cpoe_delta"], "qbr_vol_x": deep_share * q["qb_deep_rate_delta"],
+                 "qbr_epa_x": ay_share * q["qb_epa_delta"]}
+            return sum(coef[c] * x[c] for c in coef)
+
+        r["Q_wr_coef_per_unit_at_window_start"] = {c: round(v, 4) for c, v in coef.items()}
+        r["Q_implied_points_10th_pct_downgrade"] = {"deep_threat (deep 0.25, ay 0.35)": round(pts(0.25, 0.35), 2),
+                                                    "short_route (deep 0.10, ay 0.10)": round(pts(0.10, 0.10), 2)}
+        out[name] = r
+    (_out(args) / "hypothesis.json").write_text(json.dumps(out, indent=1, default=str))
+    return out
+
+
 def main(argv=None) -> int:
     settings = get_settings()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["pbp", "build", "develop", "evaluate"])
+    ap.add_argument("command", choices=["pbp", "build", "develop", "evaluate", "hypothesis"])
     ap.add_argument("--ifp-dir", type=Path, default=cr._path("IFP_MODEL_DIR", "data/models"))
     ap.add_argument("--exits-dir", type=Path, default=cr._path("WEEKLY_MODEL_DIR", "data/models/weekly"))
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
@@ -318,7 +401,8 @@ def main(argv=None) -> int:
     ap.add_argument("--season", type=int, default=settings.nfl_season)
     ap.add_argument("--rebuild", action="store_true")
     args = ap.parse_args(argv)
-    cmds = {"pbp": cmd_pbp, "build": cmd_build, "develop": cmd_develop, "evaluate": cmd_evaluate}
+    cmds = {"pbp": cmd_pbp, "build": cmd_build, "develop": cmd_develop, "evaluate": cmd_evaluate,
+            "hypothesis": cmd_hypothesis}
     print(json.dumps(cmds[args.command](args), indent=1, default=str))
     return 0
 
