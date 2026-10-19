@@ -119,6 +119,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
       >
         <Tabs
           label="Week"
+          className={styles.weekTabs}
           current={matchupHref({ week: m.week, ...keep })}
           items={weeks.map((w) => ({ href: matchupHref({ week: w, ...keep }), label: String(w) }))}
         />
