@@ -1,4 +1,8 @@
-# Kicker projection engine (kfp-1.0.0)
+# Kicker projection engine (kfp-1.1.0)
+
+Production is **kfp-1.1.0** (2026-10-19): kfp-1.0.0 plus the team's implied total from the betting line in FG and PAT
+volume. Sections marked kfp-1.0.0 below are that version's historical results; weeks projected only by kfp-1.0.0
+(2026 weeks 1-6) are still served from their kfp-1.0.0 runs.
 
 Fantasy Intel's independent weekly kicker (K) projection. It is a separate model with its own identity, storage and
 artifact approval, so it can never change, invalidate or relabel the skill-position models (ifp-1.0.0 / ifp-2.0.0).
@@ -27,7 +31,8 @@ and a kicker run is made under a different (kicker) scoring fingerprint. Writing
 rows into skill-position evidence, and adding row columns would change every stored ifp run's content hash. The kicker
 tables reuse the same contract instead: append-only, write-once, `content_sha256` over canonical meta and rows,
 verified by every reader, an identical rerun is a no-op, and different content under an existing run_id raises.
-Artifacts are approved in the shared write-once `approved_artifacts` table under model_version `kfp-1.0.0`. That gate
+Artifacts are approved in the shared write-once `approved_artifacts` table under their own model_version (`kfp-1.1.0`
+for production; `kfp-1.0.0` artifacts stay registered for the weeks they projected). That gate
 filters by model version, so it can never approve an ifp artifact. As with ifp-2.0.0, the gate fails open, marked
 "unverified", until the first kfp artifact is registered.
 
@@ -80,12 +85,12 @@ E[points | he kicks] = lambda_FG * sum_d P(d) [p(d) * made(d) + p_miss(d) * miss
 
 Also evaluated: a **direct ridge** on points (same features plus kicker point history), and blends of the two.
 
-### Production configuration (chosen on validation seasons only)
+### Production configuration, kfp-1.1.0 (chosen on validation seasons only)
 
 | Choice | Value | Evidence (validation 2021-22) |
 |---|---|---|
-| FG-try volume | league rate (no features) | Poisson deviance 0.942 intercept-only vs 0.943 with offense features: **team and opponent context do not predict FG tries** |
-| PAT-try volume | offense + defense + stadium | deviance 1.07 (league rate) -> 0.98 |
+| FG-try volume | league rate + implied team total (kfp-1.0.0: league rate only) | Poisson deviance 0.942 intercept-only vs 0.943 with offense features: **team and opponent stats do not predict FG tries**; the betting line is the one input kept (see below) |
+| PAT-try volume | offense + defense + stadium + implied team total (kfp-1.0.0: without the total) | deviance 1.07 (league rate) -> 0.98 |
 | Conversion | league curve + venue + kicker skill (tau2 = 0.1, decay = 0.7) | FG log loss 0.3644 (league curve) -> 0.3600 |
 | Observed weather | excluded | conversion log loss worsens (0.3600 -> 0.3625); points MAE gain about 0.01 |
 | Implied team total (kfp-1.1.0) | in FG and PAT volume | added 2026-10-19: validation MAE 3.593 -> 3.575 (see "Candidate features" below) |
@@ -117,7 +122,10 @@ priors). Rows are (team-game, the kicker who kicked). Predictions are conditiona
 Protocol: tune on 2021-2022, each season predicted by models fitted on earlier seasons only. Report 2023-2025 once
 with frozen choices. 2026 is the prospective check (models fitted on 2020-2025).
 
-### Held-out test, 2023-2025 (1,603 kicker-games with every baseline defined)
+### kfp-1.0.0 held-out test, 2023-2025 (1,603 kicker-games with every baseline defined)
+
+Historical: these are kfp-1.0.0's numbers, from before 2023-25 was inspected to choose kfp-1.1.0. For kfp-1.1.0 the
+split is retrospective and report-only (see "Candidate features").
 
 | Model | MAE | RMSE | Bias (actual - pred) |
 |---|---|---|---|
@@ -182,7 +190,7 @@ not used.
 * Fetched only for open-air US venues, only before kickoff, only within about 6.5 days. Snapshots are append-only,
   reused for 6 h, and served stale up to 36 h when the provider is down (labeled). Otherwise the result is
   "unavailable" and the run continues without it.
-* **kfp-1.0.0 does not use weather as an input.** It is stored and shown with its retrieval time and labeled "not a
+* **kfp-1.x does not use weather as an input.** It is stored and shown with its retrieval time and labeled "not a
   model input". The archive of real pregame forecasts is what a future prospective weather test needs. No pregame
   forecast archive exists for past seasons, so the only historical experiment possible is the retrospective one above.
 
@@ -232,7 +240,7 @@ earlier line should be smaller. The 4th-down go rate adds nothing, as it did ins
 Shipped as **kfp-1.1.0**. `km.line_table` builds the implied total from `nfl_schedules`; a game without a posted line uses
 the training mean and is listed in `missing_inputs`. The "Implied team total" explanation item is the change when the
 total is set to that mean; the PAT-volume item is measured with the line neutralized, so the two don't overlap. The
-full re-evaluation gives a test MAE of 3.755 on common support (kfp-1.0.0: 3.769). On 2026 weeks 1-6 (184 games)
+full re-evaluation gives a retrospective (report-only) 2023-25 MAE of 3.755 on common support (kfp-1.0.0: 3.769). On 2026 weeks 1-6 (184 games)
 the two versions are level: +0.012 [-0.022, +0.053].
 
 ## 5. Production run
@@ -249,12 +257,15 @@ the two versions are level: +0.012 [-0.022, +0.053].
 * `p_play` from an empirical table: P(the previous kicker kicks | still rostered, pregame designation), history
   2020-2025. No designation 0.992 (n = 2,854); Questionable 0.75 raw (n = 59). `expected_points = p_play x
   projected_points`.
-* Explanations are counterfactuals of the model itself: points change when touchdown volume, accuracy, long-range share
-  or venue is set to the league average. The headline ("Strong / Average / Weak kicking outlook") is derived from the
+* Explanations are counterfactuals of the model itself: points change when the implied team total, touchdown volume,
+  accuracy, long-range share or venue is set to the league average (touchdown volume is measured with the line
+  neutralized, so the two do not overlap). The headline ("Strong / Average / Weak kicking outlook") is derived from the
   projection vs the league median.
 * Rest of season: features as of the cutoff week, the future opponent and venue, no weather, flagged experimental.
 
-### Sample projections (2026 week 7, run made 2026-10-16 19:17 UTC, data through week 6 TNF)
+### Sample projections, kfp-1.0.0 (historical: 2026 week 7, run made 2026-10-16 19:17 UTC, data through week 6 TNF)
+
+Superseded for week 7 by the kfp-1.1.0 run of 2026-10-19 (artifact `kfp-1.1.0_2026.json`, trained 2020-2025).
 
 Artifact `kfp-1.0.0_2026.json` (trained 2020-2025). Scoring `k:b498324a91e7a6a0` (3/4/5/6, miss -1, PAT +1).
 
