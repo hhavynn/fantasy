@@ -86,8 +86,8 @@ devices, VoiceOver/TalkBack runs.
 ## 5. Verification
 
 `npm run lint` clean · `npm run typecheck` clean · `npm test` 541/541 (adds glossary and first-run tests) ·
-`npm run build` OK · `npm run e2e` (see the PR body for the final count; 224 passed / 16 skipped on the run before
-the last review fixes). An independent review of the full diff found 5 medium and 9 low issues; all were fixed.
+`npm run build` OK · `npm run e2e` 224 passed, 16 skipped (viewport-specific skips) across desktop-1440, mobile-375,
+mobile-320 and tablet-768, on the final commit. An independent review of the full diff found 5 medium and 9 low issues; all were fixed.
 
 ## 6. Screenshots
 
