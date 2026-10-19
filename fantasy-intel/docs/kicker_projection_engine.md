@@ -99,7 +99,7 @@ Also evaluated: a **direct ridge** on points (same features plus kicker point hi
 | Shrinkage / ridge | team_k = 2, prior_k = 2, ridge 0.3 | Poisson-deviance grid |
 
 The opportunity finding matters for the brief's "red-zone stall" hypothesis. The model does include FG-range trips
-and red-zone TD rate, but after shrinkage they did not reduce held-out FG-try deviance. Weekly FG volume regresses
+and red-zone TD rate, but after shrinkage they did not reduce validation (2021-22) FG-try deviance. Weekly FG volume regresses
 almost completely to the league rate. The kicker-to-kicker spread comes instead from touchdown volume (PATs), accuracy,
 long-range usage and venue.
 
@@ -307,7 +307,7 @@ database restored apart from the model directory is approved on the next cycle w
   freely available with verified timing.
 * Fake-kick offensive points and D/ST-style events are not projected (they reconcile at 0 in 2026).
 * Compressed range: projections sit roughly between 7 and 9.5 points because FG volume regresses to the league rate.
-  That is the MAE-optimal point estimate on held-out data, but ESPN spreads kickers wider (week 7: Reichard 11.6 and
+  That is the MAE-optimal point estimate out of sample, but ESPN spreads kickers wider (week 7: Reichard 11.6 and
   Fairbairn 11.3 at ESPN vs 8.4 and 8.5 here). Ranking (Spearman 0.14) beats trailing averages, but separation at the
   top is modest.
 * Not Start/Sit-ready: historical validation only.
