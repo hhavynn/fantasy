@@ -1,5 +1,6 @@
-"""Weekly learning CLI for the independent projection engine (champion ifp-1.0.0 refit + shadow
-challenger ifp-2.0.0). Never writes the live database or the production model files.
+"""Weekly learning CLI for the independent projection engine: the ledger's champion ifp-1.0.0 refit and
+challenger ifp-2.0.0, plus the production model ifp-2.1.0 (app.analytics.injury_model; `project` stores its run).
+Never writes the live database or the production model files.
 
     cd backend
     uv run python ../scripts/sync_nfl.py                                   # 1. nflverse (existing; Tuesday)
@@ -19,6 +20,10 @@ reports/evaluate-<timestamp>.json.
 `train`/`predict` refuse when an earlier game is not final, a completed week lacks box scores,
 snaps or xFP, the league scoring differs from an artifact's, or week W has already kicked off
 (use --retrospective for a clearly labeled replay that never counts as pregame evidence).
+`train --after-kickoff` is the one exception for a week in progress that is NOT a replay: it trains only the
+production model (ifp-2.1.0) on exactly the pregame cutoff data, for a model introduced mid-week. The artifact
+records trained_after_first_kickoff, its fit time is after the week's first kickoff, and every evidence reader
+therefore excludes its runs for that week; nothing goes to the ledger.
 """
 
 from __future__ import annotations
@@ -101,18 +106,35 @@ def cmd_status(args, src, live=None, **_) -> dict:
     return wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season), con=live)
 
 
-def _require_ready(args, src, live=None) -> dict:
+def _require_ready(args, src, live=None, *, allow_started: bool = False) -> dict:
     rep = wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season), con=live)
     if not rep["ok"]:
         raise wl.NotReady("; ".join(rep["errors"]))
-    if not rep["pregame"] and not args.retrospective:
+    if not rep["pregame"] and not args.retrospective and not allow_started:
         raise wl.NotReady(f"week {args.week} kicked off at {rep['first_kickoff']}: a model trained or a forecast made "
                           "now is not pregame evidence (use --retrospective for a labeled replay)")
     return rep
 
 
-def cmd_train(args, src, scoring, store=None, live=None, **_) -> dict:
-    _require_ready(args, src, live)
+def roster_codes(live, hist) -> pl.DataFrame | None:
+    """nflverse GSIS roster codes for the injury handoff (reserve return dates): the live season(s) from the live DB,
+    every other season from the history DB (the live database wins, as in Sources.concat)."""
+    from app.analytics.injury_workload import load_roster_codes
+
+    lv = load_roster_codes(live) if live is not None else None
+    hs = load_roster_codes(hist) if hist is not None else None
+    if lv is not None and hs is not None and lv.height:
+        hs = hs.filter(~pl.col("season").is_in(lv["season"].unique().to_list()))
+    parts = [c for c in (hs, lv) if c is not None]
+    return pl.concat(parts) if parts else None
+
+
+def cmd_train(args, src, scoring, store=None, live=None, hist=None, **_) -> dict:
+    after = bool(getattr(args, "after_kickoff", False))
+    if after and args.retrospective:
+        raise wl.NotReady("--after-kickoff and --retrospective are exclusive (a replay is never a production artifact)")
+    ready = _require_ready(args, src, live, allow_started=after)
+    after = after and not ready["pregame"]      # before kickoff it is an ordinary pregame training
     sel_path, rep_path = args.ifp_dir / "selection.json", args.ifp_dir / "heldout_report.json"
     sel, rep = json.loads(sel_path.read_text()), json.loads(rep_path.read_text())
     import hashlib
@@ -121,11 +143,18 @@ def cmd_train(args, src, scoring, store=None, live=None, **_) -> dict:
     if sel.get("scoring_fingerprint") != scoring.fingerprint:
         raise wl.NotReady("ifp-1.0.0 selection was made under different league scoring")
     t = time.time()
-    champ, chal = wl.train(src, args.season, args.week, ifp_selection=sel, ifp_report=rep, cfg=ch.ChallengerConfig.load(),
-                           scoring_desc=scoring.describe(), created_at=_now(args).isoformat(),
-                           retrospective=args.retrospective, store=store)
+    cfg = ch.ChallengerConfig.load()
+    store = wl.training_store(src, args.season, args.week) if store is None else store
+    arts = []
+    if not after:       # the ledger models: pregame (or a labeled replay) only
+        arts += list(wl.train(src, args.season, args.week, ifp_selection=sel, ifp_report=rep, cfg=cfg,
+                              scoring_desc=scoring.describe(), created_at=_now(args).isoformat(),
+                              retrospective=args.retrospective, store=store))
+    arts.append(wl.train_production(src, args.season, args.week, cfg=cfg, scoring_desc=scoring.describe(),
+                                    created_at=_now(args).isoformat(), retrospective=args.retrospective, store=store,
+                                    roster_codes=roster_codes(live, hist), after_kickoff=after))
     res = {}
-    for art in (champ, chal):
+    for art in arts:
         aid, path, created = wl.save_artifact(art, args.out)
         res[art.version] = {"id": aid, "path": str(path), "new": created, **{
             k: art.config["provenance"][k] for k in ("latest_included_week", "training_seasons", "rows", "data_hash",
@@ -278,6 +307,10 @@ def main(argv=None) -> int:
     ap.add_argument("--history-seasons", help="sync-exits only, e.g. 2019-2025 (history database rosters)")
     ap.add_argument("--retrospective", action="store_true",
                     help="replay a week that already started; stored as retrospective, never counted as pregame")
+    ap.add_argument("--after-kickoff", action="store_true",
+                    help="train only: the week already kicked off and this is NOT a replay: train the production model "
+                         "(ifp-2.1.0) alone on the pregame cutoff data (a model introduced mid-week; its runs for this "
+                         "week are never evidence)")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (testing and audits)")
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
     ap.add_argument("--history-db", type=Path, default=_path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))

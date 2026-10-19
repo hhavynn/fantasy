@@ -30,7 +30,7 @@ def ours_value(week: int, pid: int = 1) -> float:
 
 def populate(con, *, run_weeks=range(CURRENT, LAST_REG + 1), horizon_col=True, skip=None):
     """League window 6..17 (regular season ends 14), ESPN projections for every week, a schedule with a
-    KC bye in week 9, and one run per week in `run_weeks` (ifp-2.0.0, scoring fingerprint 'fp')."""
+    KC bye in week 9, and one run per week in `run_weeks` (the production model, scoring fingerprint 'fp')."""
     con.execute("""INSERT INTO leagues (league_id, season, name, current_week, final_scoring_period,
                    reg_season_matchups, scoring_items, settings_raw, synced_at)
                    VALUES (1, ?, 'L', ?, ?, ?, '[]', '{}', '2026-10-14 00:00:00')""",
@@ -60,7 +60,7 @@ def add_run(con, week, *, version=ps.MODEL_VERSION, created=CREATED, skip=None, 
             horizon=None, sealed=True):
     """One run for `week` with a row per player: WR 1 projected (or bye on KC's bye week), K 2 unsupported,
     RB 3 projected. `skip`: player ids left out of the run's rows."""
-    if artifact is None:     # the registered ifp-2.0.0 artifact, or the pinned ifp-1.0.0 one
+    if artifact is None:     # the registered production artifact; a fallback run's is unregistered (fail open)
         artifact = APPROVED if version == ps.MODEL_VERSION else production_pin.APPROVED_ARTIFACT_SHA256
     rows = []
     for pid, (_, pos, team) in PLAYERS.items():
@@ -120,7 +120,7 @@ def test_ours_value_per_remaining_regular_season_week(con):
     out = ours_for(con)
     o = out["ours"]
     assert o["available"] and o["label"] == LABEL
-    assert o["label"] == "Fantasy Intel projections (ifp-2.0.0)"
+    assert o["label"] == f"Fantasy Intel projections ({ps.MODEL_VERSION})"
     assert [e["week"] for e in o["weeks"]] == list(range(CURRENT, LAST_REG + 1))   # regular season only
     w = by_week(o)
     for week in (6, 7, 12, 14):
@@ -187,8 +187,8 @@ def test_previous_model_weeks_are_labeled_and_never_counted_in_the_ifp2_total(co
     assert o["available"] and ps.FALLBACK_VERSION in o["reason"]
     assert {e["model_version"] for e in o["weeks"]} == {ps.FALLBACK_VERSION}
     assert o["model_versions"] == [ps.FALLBACK_VERSION] and o["mixed_models"] is False
-    assert "ifp-1.0.0" in o["label"] and "ifp-2.0.0" not in o["label"]
-    assert o["ros_projected_points"] is None and o["ros_complete"] is False       # not an ifp-2.0.0 total
+    assert ps.FALLBACK_VERSION in o["label"] and ps.MODEL_VERSION not in o["label"]
+    assert o["ros_projected_points"] is None and o["ros_complete"] is False       # not a production-model total
     assert o["other_model_weeks"] == list(range(CURRENT, LAST_REG + 1))
     assert by_week(o)[7]["value"] == ours_value(7)                                # the weekly numbers still show
 
@@ -200,12 +200,12 @@ def test_mixed_model_weeks_are_labeled_and_hide_the_total(con):
     w = by_week(o)
     assert w[6]["model_version"] == ps.FALLBACK_VERSION and w[7]["model_version"] == ps.MODEL_VERSION
     assert o["model_versions"] == [ps.FALLBACK_VERSION, ps.MODEL_VERSION] and o["mixed_models"] is True
-    assert "ifp-1.0.0" in o["label"] and "ifp-2.0.0" in o["label"]
+    assert ps.FALLBACK_VERSION in o["label"] and ps.MODEL_VERSION in o["label"]
     assert o["model_version"] == ps.MODEL_VERSION               # the production model, for the per-week badge
     assert o["ros_projected_points"] is None and o["ros_complete"] is False
     assert o["other_model_weeks"] == [6] and o["missing_weeks"] == [6]
     assert "Mixed models" in o["reason"] and "week 6" in o["reason"]
-    # once the production run exists for the week, the label and the total are ifp-2.0.0 again
+    # once the production run exists for the week, the label and the total are the production model's again
     add_run(con, CURRENT, created=CREATED + timedelta(hours=1))
     o = ours_for(con)["ours"]
     assert o["model_versions"] == [ps.MODEL_VERSION] and not o["mixed_models"] and o["ros_complete"]
@@ -233,7 +233,7 @@ def test_no_future_runs_means_unavailable_with_a_reason(con):
     populate(con, run_weeks=[])
     out = ours_for(con)
     o = out["ours"]
-    assert o["available"] is False and "No ifp-2.0.0 projection run" in o["reason"]
+    assert o["available"] is False and f"No {ps.MODEL_VERSION} projection run" in o["reason"]
     assert o["weeks"] == [] and o["ros_projected_points"] is None
     assert out["summary"]["ros_projected_points"] is not None      # ESPN is still shown in full
 

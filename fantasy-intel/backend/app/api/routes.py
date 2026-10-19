@@ -281,7 +281,7 @@ def player_forward_view(espn_player_id: int,
                         source: str = Query("espn", description="Projection source: espn (default) | independent")):
     """ESPN's projection for every remaining fantasy week (unmodified) + the ROS summary.
 
-    With source=independent the response also carries `ours`: Fantasy Intel's production model (ifp-2.0.0) for
+    With source=independent the response also carries `ours`: Fantasy Intel's production model (ifp-2.1.0) for
     each remaining regular-season week {available, reason, label, model_version, weeks [{week, value, origin
     (ours | ours_zero | espn | bye), on_bye, run_id, model_version, run_created_at, horizon, projected_from_week,
     experimental}], ros_projected_points (NULL unless every non-bye week is ours / ours_zero), ros_weeks_expected,

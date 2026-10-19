@@ -1,7 +1,8 @@
 """Final-designation re-projection of the production week run (docs/independent_projection_engine.md,
 "Final-designation re-projection").
 
-The learning cycle stores the week's production run (ifp-2.0.0, horizon 0) Tue-Thu, before the first kickoff.
+The learning cycle stores the week's production run (projection_source.MODEL_VERSION, horizon 0) Tue-Thu, before the
+first kickoff.
 The final game designations (nflverse injury report: Out / Doubtful / Questionable) land on Friday, after that
 run, so it keeps mid-week injury inputs (a player listed Questionable by ESPN on Wednesday and Out on Friday's
 report keeps his Wednesday p_play). This module builds a LATER run of the same week with the same approved

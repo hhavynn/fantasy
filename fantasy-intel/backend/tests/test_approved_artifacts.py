@@ -281,12 +281,12 @@ def test_a_rejected_production_run_is_explained_as_not_approved_not_as_missing(l
     con, src, _ = live
     register_approved_artifact(con, model_version=PROD, artifact_sha256="a" * 64, target_season=2026, target_week=6,
                                training_cutoff_key=202605, source="learning_cycle")
-    store(con, src, BEFORE_ALL, sha="b" * 64, meta_over={"model_version": PROD})      # unregistered ifp-2 run
-    store(con, src, BEFORE_ALL, sha=production_pin.APPROVED_ARTIFACT_SHA256)            # ifp-1.0.0 run, pinned file
+    store(con, src, BEFORE_ALL, sha="b" * 64, meta_over={"model_version": PROD})      # unregistered production run
+    store(con, src, BEFORE_ALL, sha="9" * 64, meta_over={"model_version": ps.FALLBACK_VERSION})   # fallback run
     w = ps.weekly(con, 2026, 6, "independent")
-    assert w["run"]["model_version"] == "ifp-1.0.0"
-    assert "not approved" in w["reason"] and "No ifp-2.0.0 run is stored" not in w["reason"]
-    con.execute("DELETE FROM independent_projection_runs WHERE model_version = 'ifp-1.0.0'")
+    assert w["run"]["model_version"] == ps.FALLBACK_VERSION
+    assert "not approved" in w["reason"] and f"No {PROD} run is stored" not in w["reason"]
+    con.execute("DELETE FROM independent_projection_runs WHERE model_version = ?", [ps.FALLBACK_VERSION])
     con.execute("DELETE FROM independent_projection_rows "
                 "WHERE run_id NOT IN (SELECT run_id FROM independent_projection_runs)")
     w = ps.weekly(con, 2026, 6, "independent")                       # nothing approved left: ESPN, and it says why

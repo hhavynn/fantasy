@@ -270,6 +270,49 @@ def train(sources: Sources, season: int, week: int, *, ifp_selection: dict, ifp_
     return champ, chal
 
 
+PRODUCTION_STATUS = {
+    pos: {"status": "production", "start_sit_ready": False, "validated_for": None, "intervals_published": pos != "QB",
+          "reasons": ["production model by owner decision (approval kind owner_override)"]
+                     + (["80% interval coverage 74.0% (ifp-2 confirmation) is outside 75-85%: intervals withheld"]
+                        if pos == "QB" else [])}
+    for pos in POSITIONS}
+
+
+def train_production(sources: Sources, season: int, week: int, *, cfg: ch.ChallengerConfig, scoring_desc: dict,
+                     created_at: str, retrospective: bool = False, store: pl.DataFrame | None = None,
+                     roster_codes: pl.DataFrame | None = None, after_kickoff: bool = False) -> Artifact:
+    """The production model ifp-2.1.0 for week W (app.analytics.injury_model): ifp-2.0.0's frozen spec and training
+    rows plus the iwh-0.1.1 handoff features, and the return-rate table fitted on episodes before W. Nothing is
+    tuned. `after_kickoff`: the week already kicked off but this is not a replay (a model introduced mid-week, trained
+    on exactly the pregame cutoff data); recorded in provenance, and every evidence reader excludes its runs for W
+    (artifact fitted after the week's first kickoff)."""
+    from . import injury_model as im
+
+    store = training_store(sources, season, week) if store is None else store
+    store = im.with_training_handoff(sources, store, roster_codes)
+    exits_through = None
+    if sources.exits is not None and sources.exits.filter(pl.col("season") == season).height:
+        exits_through = int(sources.exits.filter(pl.col("season") == season)["week"].max())
+    models, rows = im.fit(store, season, week, cfg)
+    cells = im.fit_return_table(sources, season, week)
+    cols = [c for p in POSITIONS for c in im.features(cfg, p)]
+    status = {p: dict(PRODUCTION_STATUS[p]) for p in POSITIONS}
+    for p in POSITIONS:
+        if p not in models:
+            status[p] = {"status": "insufficient_data", "reasons": ["too few training rows"], "start_sit_ready": False}
+    prov = _provenance("production", store, rows, season, week, im.config_hash(cfg), scoring_desc["fingerprint"],
+                       store_hash(store, cols), retrospective, exits_through)
+    prov.update(handoff_hash=im.handoff_hash(store), trained_after_first_kickoff=bool(after_kickoff),
+                roster_codes=roster_codes is not None)
+    return Artifact(version=im.MODEL_VERSION, created_at=created_at, scoring_fingerprint=scoring_desc["fingerprint"],
+                    scoring=scoring_desc,
+                    config={im.CONFIG_KEY: im.artifact_config(cfg, cells), "config_hash": im.config_hash(cfg),
+                            "provenance": prov},
+                    models=models, intervals={p: cfg.intervals[p] for p in models if status[p].get("intervals_published")},
+                    status=status, evaluation={"return_rates": im.return_table_summary(cells),
+                                               "research": "docs/research/injury_workload_handoff.md"})
+
+
 def artifact_id(art: Artifact) -> str:
     d = art.to_dict()
     d.pop("created_at", None)

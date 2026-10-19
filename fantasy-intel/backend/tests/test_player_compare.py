@@ -225,7 +225,7 @@ def test_independent_without_runs_says_ours_unavailable(con):
     for s in (card(out, "a"), card(out, "b")):
         ros = s["projection"]["ros"]
         assert ros["ours_available"] is False and ros["ours"] is None and ros["ours_reason"]
-        assert "No ifp-2.0.0 projection run is stored" in ros["ours_reason"]
+        assert f"No {ps.MODEL_VERSION} projection run is stored" in ros["ours_reason"]
         nw = s["projection"]["next_week"]
         assert nw["ours"] is None and nw["ours_origin"] is None
     assert row(out, "next_week_ours")["edge"] == "n/a" and row(out, "ros_ours")["edge"] == "n/a"

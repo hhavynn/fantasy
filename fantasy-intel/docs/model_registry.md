@@ -1,28 +1,28 @@
 # Approved production model registry and the future promotion process
 
-**Status: the approved production model is `ifp-2.0.0` by owner override** (promotion event of
-2026-10-16, an `owner_approval` by the repository owner recorded with `override: true`). It cites no
-prospective or held-out report, `evaluate_promotion` correctly reports the transition as not activatable
-on evidence, its research validation is historical only, and it is **not shown to be better than ESPN**.
-No position is Start/Sit-ready.
+**Status: the approved production model is `ifp-2.1.0`** (promotion event of 2026-10-18, an `owner_approval` by
+the repository owner recorded with `override: true`): `ifp-2.0.0` plus the injury workload handoff and the
+rest-of-season return-rate P(plays) (`app/analytics/injury_model.py`, docs/independent_projection_engine.md
+"ifp-2.1.0"). Its evidence is the historical research of `docs/research/injury_workload_handoff.md` (cited as a
+`historical_research` report, unpinned); `evaluate_promotion` reports the transition as not activatable on
+evidence, as for every owner override. No position is Start/Sit-ready.
 
-`ifp-1.0.0` is retired (`superseded`), is `ifp-2.0.0`'s `rollback_to`, and is still served by the
-projection switch, labeled as the fallback, for a week with no eligible `ifp-2.0.0` run. **Its artifact is
-pinned** (`artifact_pinned` event of 2026-10-16): `independent_projections_ifp-1.0.0.json`, sha256
-`a1fe1bc3f3c54143789bb4562695162df90535a1ff85f927841ef562ab699881`, the exact bytes the newest stored
-`ifp-1.0.0` production run (`ifp-2026w7-20261016T041959-c39940`) recorded as its `artifact_id`; training
-cutoff 2026 week 5 (read from the artifact's `train_window`); held-out report `heldout_report.json`
-pinned too (it binds field by field to the artifact's embedded result). The file is git-ignored and lives
-only on the owner's laptop (`data/models`); the registry pins its identity, it does not contain it.
+`ifp-2.0.0` is retired (`superseded`), is `ifp-2.1.0`'s `rollback_to`, and is served by the projection switch,
+labeled as the fallback, for a week with no eligible `ifp-2.1.0` run. Both are weekly-retrained: neither has a
+single artifact in the manifest (`artifact.path`/`sha256` null); each weekly artifact is approved, for its own
+version, in the database's write-once `approved_artifacts` table. `ifp-1.0.0` (production until 2026-10-16) is
+retired and no longer served; its pinned artifact (`artifact_pinned` event of 2026-10-16,
+`independent_projections_ifp-1.0.0.json`, sha256
+`a1fe1bc3f3c54143789bb4562695162df90535a1ff85f927841ef562ab699881`) and the pin rule stay unchanged for readers
+that ask for `ifp-1.0.0` by version.
 
-The projection switch reads `projection_source.MODEL_VERSION` (`ifp-2.0.0`), serves its runs only when their
-weekly artifact is registered in the database's write-once `approved_artifacts` table (fail open, labeled
-unverified, while nothing is registered yet), serves fallback runs only of the pinned artifact
-(`production_pin.APPROVED_ARTIFACT_SHA256`, tested equal to the pin), and shows no run whose stored rows do not
-reproduce its content hash; the hosted app never imports the registry. The pre-promotion manifest is kept as
-`backend/tests/fixtures/model_registry_pre_ifp2.json` and the pre-pin one as
-`backend/tests/fixtures/model_registry_pre_pin.json`; both transitions are tested. The sections below
-describe the gate as designed.
+The projection switch reads `projection_source.MODEL_VERSION` (`ifp-2.1.0`), then `FALLBACK_VERSION`
+(`ifp-2.0.0`), serves a run only when its weekly artifact is registered for its version in `approved_artifacts`
+(fail open, labeled unverified, while nothing is registered for that version yet), and shows no run whose stored
+rows do not reproduce its content hash; the hosted app never imports the registry. The pre-promotion manifests are
+kept as `backend/tests/fixtures/model_registry_pre_ifp2.json` and `model_registry_pre_pin.json`; every
+transition, including the `ifp-2.1.0` promotion, is tested (`verify_transition`). The sections below describe the
+gate as designed.
 
 | File | Role |
 |---|---|
@@ -35,7 +35,7 @@ describe the gate as designed.
 
 | Consumer | Reads | How |
 |---|---|---|
-| Start/Sit (`analytics/start_sit.py`, `GET /api/start-sit`) | ESPN by default; with `source=independent`, `ifp-2.0.0`, else the labeled `ifp-1.0.0` fallback | `projection_source.weekly` -> `select_run` (league scoring, content-hash integrity, approved artifact) |
+| Start/Sit (`analytics/start_sit.py`, `GET /api/start-sit`) | ESPN by default; with `source=independent`, `ifp-2.1.0`, else the labeled `ifp-2.0.0` fallback | `projection_source.weekly` -> `select_run` (league scoring, content-hash integrity, approved artifact) |
 | Matchup and Home (`analytics/matchup.py`, `GET /api/matchup`) | same | same |
 | `GET /api/projections/independent` | exactly the run the switch shows, with `governance` | `projection_source.select_run` (it used to show the newest run of any model) |
 | Promotion tracker (`GET /api/projections/independent/promotion`) | the production model's verified runs and pregame evidence | read-only progress, decides nothing; on Vercel `available: false` plus `governance` |
@@ -57,17 +57,17 @@ The consumer view and the evidence readers apply one rule per model version
 
 | Model | Rule | Today |
 |---|---|---|
-| `ifp-1.0.0` (fallback, rollback target) | one immutable file: runs must match `production_pin.APPROVED_ARTIFACT_SHA256`; `None` = unpinned, every run counts as before | pinned: `a1fe1bc3...9881` |
-| `ifp-2.0.0` (production, retrained weekly) | each artifact is approved by a row in the **write-once `approved_artifacts` table**: the run's `artifact_id` must be registered for the model, and the run's week must lie after the artifact's recorded data cutoff in the artifact's target season (so one weekly artifact also covers the rest-of-season runs that reuse it) | enforced |
+| `ifp-1.0.0` (retired, not served) | one immutable file: runs must match `production_pin.APPROVED_ARTIFACT_SHA256`; `None` = unpinned, every run counts as before | pinned: `a1fe1bc3...9881` |
+| `ifp-2.1.0` (production) and `ifp-2.0.0` (fallback, rollback target), both retrained weekly (`production_pin.REGISTERED_MODEL_VERSIONS`) | each artifact is approved by a row in the **write-once `approved_artifacts` table**: the run's `artifact_id` must be registered for the run's model version, and the run's week must lie after the artifact's recorded data cutoff in the artifact's target season (so one weekly artifact also covers the rest-of-season runs that reuse it) | enforced |
 | anything else | no rule | n/a |
 
 The rule covers the projection switch (`projection_source.weekly`, so Start/Sit, Matchup and Home with
 `source=independent`), the evidence readers (`production_forecasts.pregame_forecasts`, `eligible_run_ids`,
 `latest_run`, and so the ESPN benchmark and the Start/Sit evaluation) and the promotion tracker for the model
-it tracks (the production model `ifp-2.0.0`). Excluded runs carry the reason
-`artifact not registered as approved` (ifp-2.0.0) or `artifact not the approved production artifact`
+it tracks (the production model `ifp-2.1.0`). Excluded runs carry the reason
+`artifact not registered as approved` (ifp-2.x) or `artifact not the approved production artifact`
 (ifp-1.0.0 pin). When no approved run exists for the week the switch falls back by its existing rules
-(ifp-2.0.0, then ifp-1.0.0, then ESPN with `available: false` and a reason). Response shapes are unchanged,
+(ifp-2.1.0, then ifp-2.0.0, then ESPN with `available: false` and a reason). Response shapes are unchanged,
 except that `run.artifact_verified` appears when verification ran (`true`), or `false` for an unverified run
 (below). `GET /api/projections/independent` shows exactly the run the switch shows
 (`projection_source.select_run`); it no longer shows the newest stored run of any model. Every consumer view also
