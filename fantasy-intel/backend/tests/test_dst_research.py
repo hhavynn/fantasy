@@ -352,6 +352,9 @@ def test_dfp_r1_runs_only_as_a_research_shadow_and_dst_stays_espn():
         text = (scripts / name).read_text()
         assert '"dst_shadow.py"' in text and "import dst_shadow" not in text and "from dst_shadow" not in text
     callers = {f.name for f in scripts.rglob("*.py") if "dst_shadow" in f.read_text()}
-    assert callers == {"dst_shadow.py", "learning_cycle.py", "refresh_all.py"}
+    # shadow_promotion_check.py only reads the shadow's saved scores.json
+    assert callers == {"dst_shadow.py", "learning_cycle.py", "refresh_all.py", "shadow_promotion_check.py"}
+    text = (scripts / "shadow_promotion_check.py").read_text()
+    assert "import dst_shadow" not in text and "from dst_shadow" not in text
     source = (root / "backend" / "app" / "analytics" / "projection_source.py").read_text()
     assert "D/ST has no model" in source and "dfp" not in source

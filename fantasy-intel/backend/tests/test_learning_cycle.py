@@ -79,7 +79,7 @@ def env(base, tmp_path, lc):
 
 
 def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False, research_shadows=False,
-          dst_shadow=False, dist_ledger=False, signal_shadows=False):
+          dst_shadow=False, dist_ledger=False, signal_shadows=False, promotion_check=False):
     """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it, and the kicker stage
     (after project), the ifp-ctx-p1 / dfp-r1 shadow stages, the other research shadows and the distribution-ledger
     stage (and the signal shadows) only when a test asks for them too."""
@@ -91,7 +91,9 @@ def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=
                      *([] if ctx_shadow else ["--no-ctx-shadow"]), *([] if dist_ledger else ["--no-dist-ledger"]),
                      *([] if research_shadows else ["--no-qb-scenario-shadow", "--no-ipm-cal-shadow"]),
                      "--dst-dir", str(env / "dst"), *([] if dst_shadow else ["--no-dst-shadow"]),
-                     *([] if signal_shadows else ["--no-signal-shadows"]), *extra])
+                     *([] if signal_shadows else ["--no-signal-shadows"]),
+                     "--promotion-logs-dir", str(env / "plogs"), *([] if promotion_check else ["--no-promotion-check"]),
+                     *extra])
 
 
 def _run(lc, env, now=PRE_W10, *extra):
@@ -1035,3 +1037,77 @@ def test_signal_shadows_also_run_after_an_early_stop(lc, env, monkeypatch):
     code, rep = lc.run_cycle(_args(lc, env, PRE_W10, ctx_shadow=True, signal_shadows=True))
     assert code == lc.EXIT_NOT_READY and seen == ["ctx_shadow", "signal_shadows.py"]
     assert ("signal_shadows", "ok") in _stages(rep)
+
+
+# ----------------------------------------------------------------------------- promote-when-proven check stage
+
+
+def test_promotion_check_stage_runs_last_and_writes_nothing_in_a_dry_cycle(lc, env):
+    """The real scripts/shadow_promotion_check.py subprocess after dist_ledger: no shadow has a scored week, so every
+    candidate is no_evidence, nothing is ready, and under the simulated clock nothing is written."""
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, dist_ledger=True, promotion_check=True))
+    assert code == lc.EXIT_OK, rep["errors"]
+    assert _stages(rep)[-2:] == [("dist_ledger", "ok"), ("promotion_check", "ok")]
+    pc = rep["promotion_check"]
+    assert pc["dry_run"] and pc["ready"] == [] and pc["counts"]["no_evidence"] == len(pc["candidates"]) == 9
+    assert rep["promotion_ready"] == [] and not [w for w in rep["warnings"] if "promotion check" in w]
+    assert not (env / "plogs").exists()
+
+
+def test_promotion_check_failure_never_fails_the_cycle_or_the_production_run(lc, env, monkeypatch):
+    _espn_players(env)
+
+    def boom(args, log_path):
+        raise RuntimeError("shadow_promotion_check.py exited 1: MemoryError")
+
+    monkeypatch.setattr(lc, "stage_promotion_check", boom)
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, "--no-rest-of-season", project=True, promotion_check=True))
+    assert code == lc.EXIT_OK and rep["status"] == "forecast_frozen", rep["errors"]
+    assert _stages(rep)[-2:] == [("project", "ok"), ("promotion_check", "failed_nonfatal")]
+    assert any("promotion check stage failed (production runs unaffected)" in w for w in rep["warnings"])
+
+
+def test_promotion_ready_lines_reach_the_report_and_stderr(lc, env, monkeypatch, capsys):
+    line = "PROMOTION READY: ifp-fr-p1 RB WR (9 weeks scored; into next Ours version ifp-2.2.0; brief: ...)"
+    monkeypatch.setattr(lc, "stage_promotion_check", lambda args, log_path: {
+        "ready": [{"candidate": "ifp-fr-p1", "positions": ["RB", "WR"]}], "lines": [line],
+        "warnings": ["ifp-ctx-p1: could not read scores.json"]})
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, promotion_check=True))
+    assert code == lc.EXIT_OK and rep["promotion_ready"] == [line]
+    assert rep["promotion_check"]["ready"][0]["candidate"] == "ifp-fr-p1"
+    assert "promotion check: ifp-ctx-p1: could not read scores.json" in rep["warnings"]
+    assert line in capsys.readouterr().err
+
+
+def test_promotion_check_runs_after_an_early_stop_and_when_no_week_is_left(lc, env, monkeypatch):
+    seen = []
+    monkeypatch.setattr(lc, "stage_dist_ledger", lambda args, conns, log_path: seen.append("dist_ledger") or {
+        "status": "ok", "warnings": []})
+    monkeypatch.setattr(lc, "stage_promotion_check", lambda args, log_path: seen.append("promotion_check") or {
+        "lines": [], "warnings": []})
+    _sql(env, "DELETE FROM nfl_snap_counts WHERE season = 2025 AND week = 9 AND team = 'AAA'")
+    code, rep = lc.run_cycle(_args(lc, env, PRE_W10, dist_ledger=True, promotion_check=True))
+    assert code == lc.EXIT_NOT_READY and seen == ["dist_ledger", "promotion_check"]
+    assert _stages(rep)[-1] == ("promotion_check", "ok")
+    seen.clear()
+    code, rep = lc.run_cycle(_args(lc, env, "2026-06-01T00:00:00+00:00", promotion_check=True))
+    assert seen == ["promotion_check"] and ("promotion_check", "ok") in _stages(rep)
+
+
+def test_promotion_check_stage_command_writes_the_signal_outside_a_dry_run(lc, env):
+    """stage_promotion_check without a simulated clock: a ready D/ST result produces the PROMOTION READY line in the
+    cycle log, the queue entry and the summary under the promotion logs directory."""
+    (env / "dst" / "shadow").mkdir(parents=True)
+    (env / "dst" / "shadow" / "scores.json").write_text(json.dumps({
+        "scored_weeks": 9, "gate": {"weeks": 9, "n": 288, "candidates": {"dfp-r1": {
+            "status": "passes", "checks": {"mae_better_than_espn": True, "ranking_not_worse": True, "bias_ok": True}}}}}))
+    args = _args(lc, env, PRE_W10, promotion_check=True)
+    args.now = None
+    log = env / "out" / "logs" / "cycle-test.log"
+    pc = lc.stage_promotion_check(args, log)
+    assert [r["candidate"] for r in pc["ready"]] == ["dfp-r1"] and not pc["dry_run"]
+    assert "PROMOTION READY: dfp-r1 DST" in log.read_text()
+    q = json.loads((env / "plogs" / "promotion-queue.json").read_text())
+    assert q["entries"]["dfp-r1"]["status"] == "ready"
+    assert (env / "plogs" / "shadow-promotion-latest.json").exists()
+    assert "PROMOTION READY: dfp-r1 DST" in (env / "plogs" / "shadow-promotion.log").read_text()
