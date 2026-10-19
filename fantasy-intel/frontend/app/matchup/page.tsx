@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { ProjectionNotice } from "@/components/ProjectionNotice";
-import { EmptyState, Method, Notice, PageHeader, Tabs } from "@/components/ui";
+import {
+  EmptyState, Glossary, Method, Notice, PageHeader, Tabs,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
@@ -163,6 +165,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
 
       {view ? <Bench m={m} opponent={opp} view={opp ? view : "projected"} /> : null}
 
+      <Glossary terms={["Projected points", "Lineup points", "Bye", "Q / D / O", "—"]} />
       <Method title="How this page works">
         <p>
           <b>Projected lineups.</b> ESPN&apos;s weekly projections, unmodified, run through the same optimal-lineup solver used across the site: for each

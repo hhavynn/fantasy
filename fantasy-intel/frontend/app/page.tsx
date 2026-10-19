@@ -6,7 +6,7 @@ import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
-  Badge, EmptyState, Method, Notice, PageHeader, Pos, Rating, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
+  Badge, EmptyState, Glossary, Method, Notice, PageHeader, Pos, Rating, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { StartSitInput, WaiverInput } from "@/lib/action-items";
@@ -181,6 +181,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
             ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next ESPN sync.</EmptyState>
             : <MovesTable moves={o.recent_transactions} />}
         </Section>
+        <Glossary terms={["PPR/g", "xFP/g", "Value rating", "Projected points", "FAAB", "Q / D / O", "—"]} />
       </div>
     </div>
   );

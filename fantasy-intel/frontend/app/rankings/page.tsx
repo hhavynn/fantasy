@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
-import { EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui";
+import {
+  EmptyState, Glossary, Method, Notice, PageHeader, Section,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { plural } from "@/lib/plural";
@@ -149,6 +151,7 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
         </nav>
       )}
 
+      <Glossary terms={["Projected points", "ROS", "Ratings (0–100)", "xFP/g", "PPR/g", "Ours", "Bye", "—"]} />
       <Method title="How rankings are calculated">
         <div className={styles.method}>
           <p>

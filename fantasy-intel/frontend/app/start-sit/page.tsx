@@ -7,7 +7,7 @@ import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import { OriginTag, ProjectionNotice } from "@/components/ProjectionNotice";
 import {
-  Badge, Delta, Method, Notice, PageHeader, Pos, Section, SortableTh, Verdict, VerdictFigure,
+  Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, Section, SortableTh, Verdict, VerdictFigure,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
@@ -234,6 +234,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         unconstrained={unconstrained_lineup}
       />
 
+      <Glossary terms={["Projected points", "Projected gain", "Kickoff lock", "FLEX", "IR", "Ours", "—"]} />
       <Method title="How this is calculated">
         <p className={styles.prose}>
           Three lineups are compared for the week: the submitted ESPN lineup, the best lineup under kickoff locks (the one recommended here),

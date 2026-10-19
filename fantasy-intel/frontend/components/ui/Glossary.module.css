@@ -1,0 +1,14 @@
+.glossary { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.summary {
+  display: flex; align-items: center; gap: 8px; min-height: var(--tap); padding: 0 16px; list-style: none; cursor: pointer;
+  color: var(--ink); font-size: 14px; font-weight: 600; border-radius: var(--radius);
+}
+.summary::-webkit-details-marker { display: none; }
+.summary::before { content: "Aa" / ""; display: inline-grid; place-items: center; width: 22px; height: 18px; border-radius: 4px; background: var(--neutral-soft); color: var(--ink-muted); font-size: 11px; font-weight: 700; }
+.summary::after { content: "Show"; margin-left: auto; color: var(--accent); font-size: 13px; font-weight: 500; }
+.glossary[open] > .summary { border-bottom: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0; }
+.glossary[open] > .summary::after { content: "Hide"; }
+.list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px 24px; margin: 0; padding: 14px 16px 16px; }
+.item { min-width: 0; }
+.item dt { color: var(--ink); font-weight: 600; font-size: 13px; }
+.item dd { margin: 2px 0 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }

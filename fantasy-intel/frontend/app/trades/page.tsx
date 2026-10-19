@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { UnknownTeam } from "@/components/TeamPerspective";
-import { Method, Notice, PageHeader } from "@/components/ui";
+import {
+  Glossary, Method, Notice, PageHeader,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { canEvaluate, initialSelection, selectionKey } from "@/lib/trade-builder";
 import { readTeamSelection } from "@/lib/team-perspective";
@@ -89,6 +91,7 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
           </Suspense>
         )}
       </TradeBuilder>
+      <Glossary terms={["Lineup points", "ROS", "Projected points", "FLEX", "IR", "—"]} />
       <Method title="How trades are evaluated">
         <p>
           Pick up to {maxPerSide} players from each roster. Every remaining week, both teams&apos; optimal lineups are rebuilt before and after the

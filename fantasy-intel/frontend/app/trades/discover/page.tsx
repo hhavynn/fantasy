@@ -3,8 +3,7 @@ import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
-  Badge, Delta, EmptyState, Method, Notice, PageHeader, Pos, Section, Skeleton, SkeletonStatStrip, SkeletonTable, SortableTh, Stat, StatStrip,
-  Tabs, VisuallyHidden,
+  Badge, Delta, EmptyState, Glossary, Method, Notice, PageHeader, Pos, Section, Skeleton, SkeletonStatStrip, SkeletonTable, SortableTh, Stat, StatStrip, Tabs, VisuallyHidden,
 } from "@/components/ui";
 import { api, type ApiResult } from "@/lib/api";
 import { signed } from "@/lib/format";
@@ -158,6 +157,7 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
         <Coverage d={d} />
       </Method>
 
+      <Glossary terms={["Lineup points", "ROS", "Projected points", "—"]} />
       <Method title="Method, assumptions and limitations">
         <p>{ev.start_week_reason}</p>
         <p>{d.note}</p>

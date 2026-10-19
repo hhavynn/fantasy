@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
-import { Method, Notice, PageHeader, Section, Tabs } from "@/components/ui";
+import {
+  Glossary, Method, Notice, PageHeader, Section, Tabs,
+} from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { parseSort, sortRows, type SearchParams } from "@/lib/sort";
@@ -177,6 +179,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         </nav>
       )}
 
+      <Glossary terms={["Waiver score", "Value rating", "xFP", "ROS", "FAAB", "—"]} />
       <Method title="How waiver advice is calculated">
         <div className={styles.method}>
           <p>
