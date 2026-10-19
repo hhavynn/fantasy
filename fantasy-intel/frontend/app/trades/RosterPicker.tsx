@@ -28,8 +28,10 @@ function availabilityBadge(p: OptionPlayer) {
 
 const playerName = (p: OptionPlayer) => p.name ?? `#${p.espn_player_id}`;
 
-export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, onToggle, className }: {
+export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, onToggle, className, active = true }: {
   role: string;
+  /** Phones show one side at a time; the inactive side is hidden there (both always show on wider screens). */
+  active?: boolean;
   /** Side colour class from the builder (team A or team B). */
   className?: string;
   team: OptionTeam;
@@ -49,7 +51,7 @@ export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, on
   const positions = positionsIn(team.roster);
 
   return (
-    <section className={cx(styles.side, className)} aria-label={`${role}: ${team.name}`}>
+    <section className={cx(styles.side, className)} aria-label={`${role}: ${team.name}`} data-active={active ? "" : undefined}>
       <div className={styles.sideHead}>
         <span className={styles.role}>{role}</span>
         <select className={styles.teamSelect} aria-label={`${role} team`} value={team.team_id} onChange={(e) => onTeam(Number(e.target.value))}>

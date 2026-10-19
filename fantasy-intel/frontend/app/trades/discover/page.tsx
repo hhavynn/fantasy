@@ -143,13 +143,20 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
   const excluded = (d.excluded.lopsided ?? 0) + (d.excluded.one_sided ?? 0);
   return (
     <>
-      <Coverage d={d} />
-
+      {d.search.consistency_failures > 0 && (
+        <Notice tone="negative" title={`${d.search.consistency_failures} of ${d.search.consistency_checked} rows disagree with the trade analyzer`}>
+          Re-run the analytics refresh; the search coverage below has the details.
+        </Notice>
+      )}
       {d.lens_note && <Notice tone="info">{d.lens_note}</Notice>}
 
       <Results d={d} rows={rows} total={total} excluded={excluded} q={q} sp={sp} />
 
       <Managers d={d} />
+
+      <Method title="About this search: pool, coverage and checks">
+        <Coverage d={d} />
+      </Method>
 
       <Method title="Method, assumptions and limitations">
         <p>{ev.start_week_reason}</p>
@@ -175,6 +182,13 @@ function Filters({ d }: { d: DiscoveryContext }) {
   const qy = d.query;
   const allMode = qy.mode === "all";
   return (
+    <details className="filter-box">
+    <summary>
+      <span className="filter-box-title">Filters</span>
+      <span className="filter-box-summary">
+        {qy.opponent === null ? "All managers" : d.teams.find((t) => t.team_id === qy.opponent)?.name ?? "One manager"} · {qy.shapes.join(", ") || "No shapes"}
+      </span>
+    </summary>
     <form action="/trades/discover" className={`panel ${styles.filters}`} aria-label="Discovery filters">
       <input type="hidden" name="mode" value={qy.mode} />
       <div className={styles.row}>
@@ -263,6 +277,7 @@ function Filters({ d }: { d: DiscoveryContext }) {
         </div>
       </details>
     </form>
+    </details>
   );
 }
 

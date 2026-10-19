@@ -70,6 +70,25 @@
 .ros { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
 .none { padding: 16px 12px; color: var(--ink-faint); font-size: 13px; }
 
+/* Phones: a two-team switch picks which roster is on screen; each tab names its team and how many players it sends. */
+.sideSwitch { display: none; }
+.sideTab {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 0 8px;
+  height: auto; min-height: 56px; padding: 8px 12px; text-align: left; border: 1px solid var(--line-control); border-radius: var(--radius-sm);
+  background: var(--surface-raised); color: var(--ink); font-weight: 500; box-shadow: inset 0 3px 0 var(--side-color);
+}
+.sideTab[data-side="a"] { --side-color: var(--chart-1); }
+.sideTab[data-side="b"] { --side-color: var(--chart-2); }
+.sideTab:hover { filter: none; border-color: var(--ink-faint); }
+.sideTab[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.sideTabRole { grid-column: 1; color: var(--ink-faint); font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.sideTabName { grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; font-weight: 600; }
+.sideTabCount {
+  grid-column: 2; grid-row: 1 / span 2; display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 6px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line-control); font-variant-numeric: tabular-nums; font-weight: 700;
+}
+.sideTab[aria-pressed="true"] .sideTabCount { border-color: var(--accent); color: var(--accent); }
+
 /* ---------- Action bar ---------- */
 
 .bar {
@@ -81,6 +100,12 @@
 .summary { display: flex; flex-direction: column; min-width: 0; }
 .counts { font-family: var(--font-display); font-size: 22px; line-height: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .counts i { font-style: normal; color: var(--ink-faint); padding: 0 4px; }
+/* Who is in the trade, by name, so a phone user never loses track of the picks on the roster that is off screen. */
+.picks { display: flex; align-items: baseline; gap: 6px; min-width: 0; max-width: 100%; font-size: 13px; line-height: 18px; color: var(--ink); }
+.pickA, .pickB { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pickA { box-shadow: inset 0 -2px 0 var(--chart-1); }
+.pickB { box-shadow: inset 0 -2px 0 var(--chart-2); }
+.pickArrow { flex: none; color: var(--ink-faint); }
 .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; line-height: 18px; color: var(--ink-muted); }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .hint { font-size: 13px; color: var(--caution); }
@@ -95,8 +120,13 @@
 }
 
 @media (max-width: 720px) {
+  .sideSwitch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
   .sides { grid-template-columns: minmax(0, 1fr); gap: 20px; }
-  .swap { justify-self: center; margin: 0; transform: rotate(90deg); }
+  .side:not([data-active]) { display: none; }
+  .side { border-top: 0; padding-top: 0; }
+  .sideHead .role { display: none; }
+  .swap { display: none; }
+  .summary { width: 100%; }
   .bar { margin-left: -16px; margin-right: -16px; border-radius: 10px 10px 0 0; border-left: 0; border-right: 0; }
   .barInner { padding: 8px 16px; }
   .controls { width: 100%; flex-wrap: nowrap; gap: 8px; }

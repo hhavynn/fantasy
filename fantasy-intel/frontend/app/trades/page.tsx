@@ -81,13 +81,6 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
         actions={<TeamLink href="/trades/discover">Discover trades</TeamLink>}
       />
       {evaluation.uncertain && evaluation.warning && <Notice tone="caution">{evaluation.warning}</Notice>}
-      <Method title="How trades are evaluated">
-        <p>
-          Pick up to {maxPerSide} players from each roster. Every remaining week, both teams&apos; optimal lineups are rebuilt before and after the
-          trade with the league&apos;s real slots and FLEX rules; roster capacity and ESPN position limits are enforced with exact forced drops. Only
-          starters count. Evaluation starts at week {firstWeek}: {evaluation.start_week_reason.reason}
-        </p>
-      </Method>
       <TradeBuilder teams={teams} initial={initial} evaluatedKey={evaluated ? selectionKey(initial) : null} maxPerSide={maxPerSide}
         capacity={opts.data.active_capacity} limits={opts.data.position_limits} firstWeek={firstWeek} finalWeek={evaluation.final_week}>
         {evaluated && (
@@ -96,6 +89,13 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
           </Suspense>
         )}
       </TradeBuilder>
+      <Method title="How trades are evaluated">
+        <p>
+          Pick up to {maxPerSide} players from each roster. Every remaining week, both teams&apos; optimal lineups are rebuilt before and after the
+          trade with the league&apos;s real slots and FLEX rules; roster capacity and ESPN position limits are enforced with exact forced drops. Only
+          starters count. Evaluation starts at week {firstWeek}: {evaluation.start_week_reason.reason}
+        </p>
+      </Method>
     </div>
   );
 }

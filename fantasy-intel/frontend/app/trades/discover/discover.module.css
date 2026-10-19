@@ -99,10 +99,11 @@
 /* Phones: each trade becomes a two-column card (the columns would not fit); sorting moves to the links above. */
 @media (max-width: 720px) {
   .phoneSort {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 12px 16px; border-bottom: 1px solid var(--line);
-    font-size: 13px; color: var(--ink-faint);
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+    overflow-x: auto; scrollbar-width: none; font-size: 13px; color: var(--ink-faint);
   }
-  .phoneSort a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 12px; border: 1px solid var(--line-control); border-radius: 999px; color: var(--ink-muted); }
+  .phoneSort > span { flex: none; }
+  .phoneSort a { flex: none; white-space: nowrap; display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 12px; border: 1px solid var(--line-control); border-radius: 999px; color: var(--ink-muted); }
   .phoneSort a[aria-current] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); font-weight: 600; }
   .phoneSort a:hover { text-decoration: none; color: var(--ink); }
   .table, .table > thead, .table > tbody, .table > tbody > tr > td { display: block; }

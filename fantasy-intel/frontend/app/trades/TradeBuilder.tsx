@@ -29,6 +29,8 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
   const [pending, startTransition] = useTransition();
   const [sel, setSel] = useState<Selection>(initial);
   const [showStale, setShowStale] = useState(false);
+  // Phones: which roster is on screen. Wider screens show both side by side.
+  const [side, setSide] = useState<"a" | "b">("a");
   const results = useRef<HTMLDivElement>(null);
   const scrollToResult = useRef(false);
   // A new URL selection (e.g. a deep link followed while on this page) replaces local state.
@@ -81,10 +83,22 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
 
   return (
     <div className={`stack ${styles.builder}`}>
-      <Section title="Build a trade">
+      <Section title="Build a trade" subtitle="Pick who each team sends, then evaluate">
+        <div className={styles.sideSwitch} role="group" aria-label="Roster shown">
+          <button type="button" className={styles.sideTab} data-side="a" aria-pressed={side === "a"} onClick={() => setSide("a")}>
+            <span className={styles.sideTabRole}>Team A sends</span>
+            <span className={styles.sideTabName}>{teamA?.name ?? "Team A"}</span>
+            <span className={styles.sideTabCount}>{sel.a.length}</span>
+          </button>
+          <button type="button" className={styles.sideTab} data-side="b" aria-pressed={side === "b"} onClick={() => setSide("b")}>
+            <span className={styles.sideTabRole}>Team B sends</span>
+            <span className={styles.sideTabName}>{teamB?.name ?? "Team B"}</span>
+            <span className={styles.sideTabCount}>{sel.b.length}</span>
+          </button>
+        </div>
         <div className={styles.sides}>
           {teamA && (
-            <RosterPicker role="Team A sends" className={styles.sideA} team={teamA} teams={teams} picked={sel.a} maxPerSide={maxPerSide}
+            <RosterPicker role="Team A sends" className={styles.sideA} active={side === "a"} team={teamA} teams={teams} picked={sel.a} maxPerSide={maxPerSide}
               onTeam={(id) => setSel(changeTeam(sel, teams, "a", id))}
               onToggle={(id) => setSel(togglePlayer(sel, "a", id, maxPerSide))} />
           )}
@@ -92,7 +106,7 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h11l-3-3" /><path d="M15 12H4l3 3" /></svg>
           </span>
           {teamB && (
-            <RosterPicker role="Team B sends" className={styles.sideB} team={teamB} teams={teams} picked={sel.b} maxPerSide={maxPerSide}
+            <RosterPicker role="Team B sends" className={styles.sideB} active={side === "b"} team={teamB} teams={teams} picked={sel.b} maxPerSide={maxPerSide}
               onTeam={(id) => setSel(changeTeam(sel, teams, "b", id))}
               onToggle={(id) => setSel(togglePlayer(sel, "b", id, maxPerSide))} />
           )}
@@ -115,6 +129,13 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
         <div className={styles.barInner}>
           <div className={styles.summary}>
             <span className={styles.counts} aria-live="polite">{giveLabel} {sel.a.length} <i aria-hidden="true">·</i> {getLabel} {sel.b.length}</span>
+            {(aOut.length > 0 || bOut.length > 0) && (
+              <span className={styles.picks} title={`${teamA?.name ?? "Team A"} sends ${aOut.map((p) => p.name).join(", ") || "nobody"}; ${teamB?.name ?? "Team B"} sends ${bOut.map((p) => p.name).join(", ") || "nobody"}`}>
+                <span className={styles.pickA}>{aOut.map((p) => p.name ?? `#${p.espn_player_id}`).join(", ") || "Nobody yet"}</span>
+                <span className={styles.pickArrow} aria-hidden="true">⇄</span>
+                <span className={styles.pickB}>{bOut.map((p) => p.name ?? `#${p.espn_player_id}`).join(", ") || "Nobody yet"}</span>
+              </span>
+            )}
             <span className={styles.meta}>
               {ready ? <span>{shape}</span> : sel.ta !== sel.tb && <span className={styles.hint}>{issues[0].text}</span>}
               {current && !pending && <Badge value="Result below matches this selection" tone="good" />}
