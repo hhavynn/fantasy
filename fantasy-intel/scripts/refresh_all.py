@@ -58,6 +58,7 @@ LOG_DIR = DATA_DIR / "logs"
 STEPS = ("sync_espn.py", "sync_nfl.py", "compute_analytics.py")
 PUBLISH = "publish_motherduck.py"
 REPORT = "projection_performance.py"   # not in STEPS: run by run_report, whose failure never stops the chain
+RANGES = "projection_ranges.py"         # not in STEPS: run by run_ranges before the publish, never stops the chain
 EVIDENCE = "Evidence:"
 TIMED_OUT = -999                     # run_step's result for a step killed at its deadline
 EVIDENCE_TIMEOUT_S = 15 * 60         # per evidence step; REFRESH_EVIDENCE_TIMEOUT_S overrides
@@ -411,6 +412,22 @@ def run_report(log: Log, timeout: float | None = None) -> str | None:
     return problem
 
 
+def run_ranges(log: Log) -> str | None:
+    """Copy the pinned point-distribution table into the database (projection_ranges.py load, a no-op once the pin is
+    loaded) so the publish carries the floor / ceiling ranges. Returns the problem, if any (logged as a WARNING).
+    Never raises; exit 3 (no pin yet) is informational."""
+    try:
+        code = run_db_step([sys.executable, str(SCRIPTS / RANGES), "load"], log)
+    except Exception as e:
+        problem = f"{RANGES} could not run: {e!r}"
+    else:
+        if code in (0, 3):
+            return None
+        problem = f"{RANGES} exited {code}; the previously loaded ranges stay served"
+    log(f"WARNING: ranges: {problem}")
+    return problem
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--no-publish", action="store_true", help="skip MotherDuck even if MOTHERDUCK_TOKEN is set")
@@ -434,6 +451,8 @@ def main() -> int:
                     continue
                 if step == PUBLISH and not args.skip_report:
                     run_report(log)          # after analytics, so the publish carries the new report
+                if step == PUBLISH:
+                    run_ranges(log)          # so the publish carries the pinned floor / ceiling table
                 code = run_db_step([sys.executable, str(SCRIPTS / step)], log)
                 if code != 0:
                     if step != PUBLISH:
@@ -457,6 +476,8 @@ def main() -> int:
                 return 1
             if PUBLISH not in steps and not args.skip_report:
                 run_report(log)              # local install: the local API serves the report
+            if PUBLISH not in steps:
+                run_ranges(log)
         try:
             check_pregame(log)
         except Exception as e:  # the data is refreshed; a broken check must still be visible

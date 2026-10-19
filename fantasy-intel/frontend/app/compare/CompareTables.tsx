@@ -7,6 +7,7 @@ import {
   byeText, edgeMark, edgeText, nextOpponentText, playerName, projectionRows, upcomingText, usageRows, allRows, rowNote,
 } from "@/lib/compare";
 import { label } from "@/lib/format";
+import { EMPTY_RANGES, RANGE_TITLE, rangeFor, rangeLabel, rangeText, type RangeMap } from "@/lib/projection-ranges";
 import styles from "./compare.module.css";
 
 // Side-by-side tables: Measure | Player A | edge | Player B. The edge column is an arrow toward the side with the
@@ -103,7 +104,7 @@ function EdgeLegend() {
 }
 
 /** Position, schedule and the projection rows. */
-export function ProjectionTable({ r }: { r: CompareResponse }) {
+export function ProjectionTable({ r, ranges = EMPTY_RANGES }: { r: CompareResponse; ranges?: RangeMap }) {
   const [a, b] = r.players;
   const rows = projectionRows(r);
   const noWindow = "The league's projection window is unknown.";
@@ -117,6 +118,10 @@ export function ProjectionTable({ r }: { r: CompareResponse }) {
             <PlainRow name="Next opponent" hint={`Week ${r.as_of_week}`}
               a={orMissing(nextOpponentText(a), noWindow)} b={orMissing(nextOpponentText(b), noWindow)} />
             {rows.map((row) => <RowView key={row.key} row={row} r={r} />)}
+            {ranges.size > 0 && (
+              <PlainRow name="Range" hint={`Week ${r.as_of_week} · floor–ceiling if he plays`}
+                a={<RangeCell card={a} ranges={ranges} />} b={<RangeCell card={b} ranges={ranges} />} />
+            )}
             <PlainRow name="Bye week(s)" hint="This season's remaining schedule"
               a={orMissing(byeText(a), a.projection ? "No bye listed in the remaining weeks." : noWindow)}
               b={orMissing(byeText(b), b.projection ? "No bye listed in the remaining weeks." : noWindow)} />
@@ -127,6 +132,21 @@ export function ProjectionTable({ r }: { r: CompareResponse }) {
       </div>
       <EdgeLegend />
     </>
+  );
+}
+
+/** Ours floor–ceiling for the week (RB, WR, TE), or why there is none. */
+function RangeCell({ card, ranges }: { card: CompareCard; ranges: RangeMap }) {
+  const range = rangeFor(ranges, card.player.espn_player_id);
+  if (!range) {
+    const pos = card.player.position;
+    return missing(pos === "RB" || pos === "WR" || pos === "TE" ? "No Ours projection this week" : `Ranges cover RB, WR and TE`);
+  }
+  return (
+    <span className={styles.val} title={RANGE_TITLE}>
+      <span aria-hidden="true">{rangeText(range)}</span>
+      <VisuallyHidden>{rangeLabel(range)}</VisuallyHidden>
+    </span>
   );
 }
 

@@ -419,6 +419,8 @@ Illustration, 2026 week 5 (pregame inputs; realized score shown afterwards):
 
 ## 14. Recommendation on product integration
 
+*Update 2026-10-18: RB, WR and TE floor / ceiling ranges now ship on the site; see section 18.*
+
 **Not yet, and not by default.**
 
 Ready for a future, separately approved integration that can be rolled back on its own:
@@ -563,3 +565,35 @@ uv run python ../scripts/distribution_ledger.py status
 uv run python ../scripts/distribution_ledger.py freeze --week W --now 2026-10-25T12:00Z   # decide only
 uv run python ../scripts/distribution_ledger.py score
 ```
+
+## 18. Floor / ceiling ranges on the site (added 2026-10-18)
+
+The site now shows a floor and a ceiling under every Ours projection for **RB, WR and TE**: the 10th and 90th
+percentile of the player's points if he plays, so 80% of outcomes land between them. The numbers come from the same
+pinned artifact the frozen pregame ledger uses (section 17), dressed around the projection the site serves, which stays
+the distribution's mean.
+
+| Position | Shown | Basis (this report's numbers) |
+|---|---|---|
+| RB | yes | confirmation coverage 0.813, P10 / P90 rates 0.089 / 0.098; replay 0.810 |
+| WR | yes | confirmation 0.813, 0.091 / 0.096; replay 0.807 |
+| TE | yes | confirmation 0.801, 0.095 / 0.104; replay 0.791 |
+| QB | no | floor ran high in the 2025-26 replay (P10 rate 0.122, 0.141 among starters); returns once prospective weeks confirm the lower tail |
+| K, D/ST | no | no distribution model |
+
+How it is served:
+
+* `scripts/projection_ranges.py load` copies the pinned artifact's residual-quantile table (P10 / P50 / P90 per grid
+  mean, plus each row's residual mean) into the `projection_range_quantiles` table, append-only by pin. `refresh_all.py`
+  runs it right before the MotherDuck publish, which copies every table to the hosted database.
+* `app/analytics/projection_ranges.py` (numpy-free; it never imports the research module) reproduces
+  `artifact_quantiles` exactly at the three levels (tested against it) for the run `projection_source.select_run` serves.
+  A range is attached only to the next-week forecast (forecast horizon 0, the horizon validated here), to a row with a
+  projection, and only when the artifact was built under the run's league scoring.
+* API: `GET /api/projections/ranges?week=W` (floor / median / ceiling per ESPN player id) and `independent.range` on
+  `GET /api/projections/independent`.
+* Frontend: with the projection switch on Ours, Start/Sit, Matchup, Compare and the player forward view show the range
+  as a small line under the projection ("5.1–24.8"); its tooltip and footnote give the definition. ESPN mode shows none.
+
+The ranges are conditional on playing, as validated here; the number above them is the served expected points.
+

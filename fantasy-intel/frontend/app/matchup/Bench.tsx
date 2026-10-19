@@ -1,10 +1,11 @@
 import { Section } from "@/components/ui";
 import { benchRows, hasStarted, type LineupView, type PlayerRow } from "@/lib/matchup";
 import type { Matchup, TeamSide } from "@/lib/matchup-types";
+import { EMPTY_RANGES, type RangeMap } from "@/lib/projection-ranges";
 import { PlayerCell, Points } from "./PlayerCell";
 import styles from "./matchup.module.css";
 
-function BenchTable({ name, rows, heading }: { name: string; rows: PlayerRow[] | null; heading: string }) {
+function BenchTable({ name, rows, heading, ranges }: { name: string; rows: PlayerRow[] | null; heading: string; ranges: RangeMap }) {
   return (
     <div>
       <h3 className={styles.benchTitle}>{name}</h3>
@@ -19,7 +20,7 @@ function BenchTable({ name, rows, heading }: { name: string; rows: PlayerRow[] |
                     <PlayerCell row={r} />
                     {r.slot === "IR" ? <> <span className={styles.team3} title="In a fantasy IR slot">IR</span></> : null}
                   </td>
-                  <td className={styles.pts}><Points value={r.value} /></td>
+                  <td className={styles.pts}><Points value={r.value} row={r} ranges={ranges} /></td>
                 </tr>
               ))}
             </tbody>
@@ -31,7 +32,7 @@ function BenchTable({ name, rows, heading }: { name: string; rows: PlayerRow[] |
 }
 
 /** Both benches. On phones they sit behind a toggle; browsers that can show closed details content open it on wide screens. */
-export function Bench({ m, opponent, view }: { m: Matchup; opponent: TeamSide | null; view: LineupView }) {
+export function Bench({ m, opponent, view, ranges = EMPTY_RANGES }: { m: Matchup; opponent: TeamSide | null; view: LineupView; ranges?: RangeMap }) {
   const mine = benchRows(m.me, view, m.status);
   const theirs = opponent ? benchRows(opponent, view, m.status) : null;
   if (mine === null && theirs === null) return null;
@@ -42,8 +43,8 @@ export function Bench({ m, opponent, view }: { m: Matchup; opponent: TeamSide | 
       <details className={styles.benchDetails}>
         <summary>Show bench ({count} players)</summary>
         <div className={styles.benchGrid}>
-          <BenchTable name={m.me.name} rows={mine} heading={heading} />
-          {opponent ? <BenchTable name={opponent.name} rows={theirs} heading={heading} /> : null}
+          <BenchTable name={m.me.name} rows={mine} heading={heading} ranges={ranges} />
+          {opponent ? <BenchTable name={opponent.name} rows={theirs} heading={heading} ranges={ranges} /> : null}
         </div>
       </details>
     </Section>

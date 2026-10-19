@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import type { ForwardProjection } from "@/lib/types";
+import { rangeFor, type PlayerRange } from "@/lib/projection-ranges";
+import { getRanges } from "@/lib/projection-ranges.server";
 import { PlayerProfile } from "./PlayerProfile";
 import { ResultsTable, SearchForm } from "./PlayerSearch";
 import styles from "./players.module.css";
@@ -41,11 +43,18 @@ export default async function PlayersPage({ searchParams }: PageProps<"/players"
     // With the switch on "Ours", the forward view comes from the forward endpoint with source=independent (ESPN's
     // series is unchanged in it, plus the `ours` block); if that call fails the ESPN view from the profile stays.
     let d = detail.data;
+    let range: PlayerRange | null = null;
     if (await getProjectionSource() === "ours" && d.forward_projection) {
-      const fwd = await api<ForwardProjection>(withSource(`/api/players/${id}/forward`, "ours"));
-      if (fwd.ok) d = { ...d, forward_projection: fwd.data };
+      const [fwd, ranges] = await Promise.all([
+        api<ForwardProjection>(withSource(`/api/players/${id}/forward`, "ours")),
+        getRanges(d.forward_projection.summary.as_of_week),
+      ]);
+      if (fwd.ok) {
+        d = { ...d, forward_projection: fwd.data };
+        range = rangeFor(ranges, Number(id));
+      }
     }
-    return <PlayerProfile d={d} q={q} cols={cols} />;
+    return <PlayerProfile d={d} q={q} cols={cols} range={range} />;
   }
 
   const list = await api<PlayerListRow[]>(`/api/players?q=${encodeURIComponent(q)}&limit=${LIMIT}`);
