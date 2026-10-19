@@ -231,7 +231,7 @@ def test_missing_injury_report_is_not_healthy():
 def test_production_participation_and_consumers_are_unchanged():
     assert pm.PARTICIPATION_VERSION == "ipm-1.0.0" and pm.PARTICIPATION_SCHEMA == "participation-artifact/v1"
     for path in APP.rglob("*.py"):
-        if path.name == "participation_calibration.py":
+        if path.name in ("participation_calibration.py", "context_model.py"):   # context_model: the production model ifp-2.2.0 (offline; app.main never imports it, tests/test_context_model.py)
             continue
         assert "participation_calibration" not in path.read_text(), path
     # the production artifact cannot be read as a calibration artifact (and vice versa)

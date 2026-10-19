@@ -280,4 +280,8 @@ def test_production_never_imports_the_shadows(qss):
     app = Path(__file__).resolve().parents[1] / "app"
     for f in app.rglob("*.py"):
         src = f.read_text()
-        assert "qb_scenario_shadow" not in src and "participation_cal_shadow" not in src, f
+        assert "qb_scenario_shadow" not in src, f
+        if f.name == "context_model.py":     # ifp-2.2.0 reads the ipm-cal shadow's frozen map FILE, never imports it
+            assert "import participation_cal_shadow" not in src, f
+            continue
+        assert "participation_cal_shadow" not in src, f

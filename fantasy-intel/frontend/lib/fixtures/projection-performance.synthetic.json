@@ -2,20 +2,20 @@
  "available": true,
  "governance": {
   "espn_superiority_established": false,
-  "fallback_version": "ifp-2.0.0",
+  "fallback_version": "ifp-2.1.0",
   "is_fallback": false,
   "production_approval": "owner_override",
-  "production_evidence": "Historical research: 2023-24 confirmation backtest (docs/research/injury_workload_handoff.md); accuracy is tracked weekly from frozen pregame forecasts.",
-  "production_version": "ifp-2.1.0",
-  "served_version": "ifp-2.1.0",
+  "production_evidence": "Historical research: backtest of every component on 2023-26 (docs/research/ifp22_promotion.md); accuracy is tracked weekly from frozen pregame forecasts.",
+  "production_version": "ifp-2.2.0",
+  "served_version": "ifp-2.2.0",
   "start_sit_ready": false,
-  "status_note": "Production model: ifp-2.0.0 plus injury-aware workload and availability, retrained weekly."
+  "status_note": "Production model: injury-aware, with starting-QB odds, QB and teammate context and depth charts; retrained weekly."
  },
  "rejected": [],
  "report": {
   "benchmark": {
    "available": true,
-   "content_sha256": "1df64d0f272eefc41811f812e3f0ff8d02f6729c109946fddea2c86e27fea94f",
+   "content_sha256": "eb2defc2b0839bf48c09ef892734f3994b0ab5a617577b34f052ea2b3eb7b782",
    "forecast_source": "injected",
    "schema_version": "espn-benchmark/v1",
    "unavailable_reason": null
@@ -1143,8 +1143,8 @@
       "descriptive_verdict_reason": "3 distinct weeks < 4 required",
       "mae": {
        "espn": 4.0,
-       "ifp-2.0.0": 1.488,
-       "ifp-2.1.0": 2.75
+       "ifp-2.1.0": 1.488,
+       "ifp-2.2.0": 2.75
       },
       "mae_diff": 1.262,
       "n": 160,
@@ -1159,8 +1159,8 @@
       ],
       "mae": {
        "espn": 4.0,
-       "ifp-2.0.0": 1.5,
-       "ifp-2.1.0": 6.0
+       "ifp-2.1.0": 1.5,
+       "ifp-2.2.0": 6.0
       },
       "mae_diff": 4.5,
       "n": 24,
@@ -1177,8 +1177,8 @@
       ],
       "mae": {
        "espn": 4.0,
-       "ifp-2.0.0": 1.5,
-       "ifp-2.1.0": 4.333
+       "ifp-2.1.0": 1.5,
+       "ifp-2.2.0": 4.333
       },
       "mae_diff": 2.833,
       "n": 48,
@@ -1195,8 +1195,8 @@
       ],
       "mae": {
        "espn": 4.0,
-       "ifp-2.0.0": 1.5,
-       "ifp-2.1.0": 1.0
+       "ifp-2.1.0": 1.5,
+       "ifp-2.2.0": 1.0
       },
       "mae_diff": -0.5,
       "n": 24,
@@ -1213,8 +1213,8 @@
       ],
       "mae": {
        "espn": 4.0,
-       "ifp-2.0.0": 1.469,
-       "ifp-2.1.0": 1.0
+       "ifp-2.1.0": 1.469,
+       "ifp-2.2.0": 1.0
       },
       "mae_diff": -0.469,
       "n": 64,
@@ -1230,16 +1230,16 @@
      2,
      3
     ],
-    "diff": "MAE(ifp-2.1.0) - MAE(ifp-2.0.0); negative means ifp-2.1.0 is closer",
+    "diff": "MAE(ifp-2.2.0) - MAE(ifp-2.1.0); negative means ifp-2.2.0 is closer",
     "n": 160,
     "rule": "Only player-weeks where both versions have a valid pregame forecast are compared; a week with only one version's forecasts is listed for that version and never mixed into the comparison.",
     "scored_weeks": {
-     "ifp-2.0.0": [
+     "ifp-2.1.0": [
       1,
       2,
       3
      ],
-     "ifp-2.1.0": [
+     "ifp-2.2.0": [
       1,
       2,
       3,
@@ -1248,13 +1248,13 @@
      ]
     },
     "versions": [
-     "ifp-2.1.0",
-     "ifp-2.0.0"
+     "ifp-2.2.0",
+     "ifp-2.1.0"
     ]
    },
-   "fallback": "ifp-2.0.0",
+   "fallback": "ifp-2.1.0",
    "pregame_by_week": {
-    "ifp-2.0.0": [
+    "ifp-2.1.0": [
      {
       "paired_pregame_forecasts": 56,
       "scored": 56,
@@ -1271,7 +1271,7 @@
       "week": 3
      }
     ],
-    "ifp-2.1.0": [
+    "ifp-2.2.0": [
      {
       "paired_pregame_forecasts": 56,
       "scored": 56,
@@ -1309,7 +1309,7 @@
      }
     ]
    },
-   "production": "ifp-2.1.0",
+   "production": "ifp-2.2.0",
    "served_now": [
     {
      "fallback": false,
@@ -1433,7 +1433,7 @@
      "window_h": 24.0
     },
     "mae_diff": 2.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n_model": 40,
     "observations": {
      "by_reason": {
@@ -1511,7 +1511,7 @@
      "window_h": 24.0
     },
     "mae_diff": 0.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n_model": 80,
     "observations": {
      "by_reason": {
@@ -1589,7 +1589,7 @@
      "window_h": 24.0
     },
     "mae_diff": -3.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n_model": 24,
     "observations": {
      "by_reason": {
@@ -1667,7 +1667,7 @@
      "window_h": 24.0
     },
     "mae_diff": -3.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n_model": 112,
     "observations": {
      "by_reason": {
@@ -1777,16 +1777,16 @@
    ]
   },
   "production": {
-   "benchmarked_version": "ifp-2.1.0",
+   "benchmarked_version": "ifp-2.2.0",
    "espn_superiority_established": false,
-   "fallback_version": "ifp-2.0.0",
+   "fallback_version": "ifp-2.1.0",
    "is_fallback": false,
    "production_approval": "owner_override",
-   "production_evidence": "Historical research: 2023-24 confirmation backtest (docs/research/injury_workload_handoff.md); accuracy is tracked weekly from frozen pregame forecasts.",
-   "production_version": "ifp-2.1.0",
-   "served_version": "ifp-2.1.0",
+   "production_evidence": "Historical research: backtest of every component on 2023-26 (docs/research/ifp22_promotion.md); accuracy is tracked weekly from frozen pregame forecasts.",
+   "production_version": "ifp-2.2.0",
+   "served_version": "ifp-2.2.0",
    "start_sit_ready": false,
-   "status_note": "Production model: ifp-2.0.0 plus injury-aware workload and availability, retrained weekly."
+   "status_note": "Production model: injury-aware, with starting-QB odds, QB and teammate context and depth charts; retrained weekly."
   },
   "rb_volume_split": {
    "comparisons": {
@@ -1986,7 +1986,7 @@
     "ifp1_production": {
      "candidates": 140,
      "evaluated": false,
-     "model_version": "ifp-2.0.0",
+     "model_version": "ifp-2.1.0",
      "unavailable_reason": "no pregame prediction recorded for ifp1_production",
      "with_pregame_prediction": 0
     },
@@ -2034,7 +2034,7 @@
       "verdict": "insufficient_evidence",
       "weeks": 5
      },
-     "model_version": "ifp-2.1.0",
+     "model_version": "ifp-2.2.0",
      "same_position": {
       "ci95": [
        0.1726,
@@ -2056,7 +2056,7 @@
    "sets": 5,
    "source": "recorded pregame decision sets",
    "warnings": [
-    "ifp-2.1.0: 228 same-position decisions over 5 weeks; a verdict needs at least 200 decisions and 8 weeks."
+    "ifp-2.2.0: 228 same-position decisions over 5 weeks; a verdict needs at least 200 decisions and 8 weeks."
    ],
    "weeks_recorded": [
     1,
@@ -2080,7 +2080,7 @@
   "weekly": [
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 8,
     "ours_mae": 6.0,
     "position": "QB",
@@ -2088,7 +2088,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 16,
     "ours_mae": 6.0,
     "position": "RB",
@@ -2096,7 +2096,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 24,
     "ours_mae": 1.0,
     "position": "WR",
@@ -2104,7 +2104,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 8,
     "ours_mae": 1.0,
     "position": "TE",
@@ -2112,7 +2112,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 8,
     "ours_mae": 6.0,
     "position": "QB",
@@ -2120,7 +2120,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 16,
     "ours_mae": 1.0,
     "position": "RB",
@@ -2128,7 +2128,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 16,
     "ours_mae": 1.0,
     "position": "WR",
@@ -2136,7 +2136,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 8,
     "ours_mae": 1.0,
     "position": "TE",
@@ -2144,7 +2144,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 8,
     "ours_mae": 6.0,
     "position": "QB",
@@ -2152,7 +2152,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 16,
     "ours_mae": 6.0,
     "position": "RB",
@@ -2160,7 +2160,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 24,
     "ours_mae": 1.0,
     "position": "WR",
@@ -2168,7 +2168,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 8,
     "ours_mae": 1.0,
     "position": "TE",
@@ -2176,7 +2176,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 8,
     "ours_mae": 6.0,
     "position": "QB",
@@ -2184,7 +2184,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 16,
     "ours_mae": 1.0,
     "position": "RB",
@@ -2192,7 +2192,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 24,
     "ours_mae": 1.0,
     "position": "WR",
@@ -2200,7 +2200,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 8,
     "ours_mae": 6.0,
     "position": "QB",
@@ -2208,7 +2208,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 16,
     "ours_mae": 6.0,
     "position": "RB",
@@ -2216,7 +2216,7 @@
    },
    {
     "espn_mae": 4.0,
-    "model_version": "ifp-2.1.0",
+    "model_version": "ifp-2.2.0",
     "n": 24,
     "ours_mae": 1.0,
     "position": "WR",
@@ -2251,7 +2251,7 @@
    ]
   }
  },
- "report_sha256": "6e2cc978124cd38a80af2cf599353bea5228218ed73705d1246a0c246d75f6ba",
+ "report_sha256": "7b3740dc473b6e9fae741b476177a8b837a5700cabfc2682244916ea9638fe86",
  "schema_version": "projection-performance-api/v1",
  "season": 2026,
  "stale": false,

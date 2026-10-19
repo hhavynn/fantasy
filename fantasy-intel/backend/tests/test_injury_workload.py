@@ -451,7 +451,8 @@ def test_research_modules_write_nothing():
 # handoff modules; the hosted API (app.main) never loads them.
 PIPELINE_IMPORTERS = {"injury_workload.py", "injury_challenger.py", "injury_model.py", "independent_projection_store.py",
                       "weekly_learning.py", "injury_prospective.py", "ros_availability.py",   # the last three: research
-                      "situational_usage.py"}   # (situational_usage reuses the handoff cohort columns by name)
+                      "situational_usage.py",   # (situational_usage reuses the handoff cohort columns by name)
+                      "context_model.py"}   # the production model ifp-2.2.0 (offline; app.main never imports it, tests/test_context_model.py)
 
 
 def test_only_the_model_pipeline_imports_the_injury_modules():

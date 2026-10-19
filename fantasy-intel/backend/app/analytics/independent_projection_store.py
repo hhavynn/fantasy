@@ -44,8 +44,9 @@ unchanged.
 
 An ifp-2.2.0 artifact (app.analytics.context_model) keeps all of that and adds the shipped research-shadow
 components as known at the cutoff week (QB start probabilities and the scenario mixture, QB and teammate context,
-the pregame depth tier from snapshots made before the run, the decline-only role), plus the frozen QB P(plays) map
-at horizon 0. The caller passes context_model.Inputs (`context_inputs`).
+the pregame depth tier from snapshots made before the run, the decline-only role); the frozen QB P(plays) map applies
+at horizon 0 only while its component ships (the backtest guard left it out). The caller passes
+context_model.Inputs (`context_inputs`).
 """
 
 from __future__ import annotations
