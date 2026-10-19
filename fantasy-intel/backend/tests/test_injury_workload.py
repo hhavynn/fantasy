@@ -7,7 +7,9 @@ point total."""
 
 from __future__ import annotations
 
+import ast
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -445,18 +447,25 @@ def test_research_modules_write_nothing():
             assert verb not in text, (mod.__name__, verb)
 
 
-def test_app_never_imports_the_injury_research_modules():
+# Only the production model ifp-2.1.0 (injury_model) and the offline pipeline that trains and stores it import the
+# handoff modules; the hosted API (app.main) never loads them.
+PIPELINE_IMPORTERS = {"injury_workload.py", "injury_challenger.py", "injury_model.py", "independent_projection_store.py",
+                      "weekly_learning.py", "injury_prospective.py", "ros_availability.py",   # the last three: research
+                      "situational_usage.py"}   # (situational_usage reuses the handoff cohort columns by name)
+
+
+def test_only_the_model_pipeline_imports_the_injury_modules():
     root = pathlib.Path(__file__).resolve().parents[1] / "app"
     for path in root.rglob("*.py"):
-        if path.name in ("injury_workload.py", "injury_challenger.py", "injury_prospective.py",
-                         "ros_availability.py",   # research only
-                         "situational_usage.py"):   # research only; reuses the handoff cohort columns by name
+        if path.name in PIPELINE_IMPORTERS:
             continue
-        text = path.read_text()
-        assert not any(m in text for m in ("injury_workload", "injury_challenger", "injury_prospective")), path
-    code = ("import sys, app.main; bad = [m for m in ('app.analytics.injury_workload', "
-            "'app.analytics.injury_challenger', 'app.analytics.injury_prospective') if m in sys.modules]; "
-            "print(bad); sys.exit(1 if bad else 0)")
+        tree = ast.parse(path.read_text())
+        names = {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)} | \
+            {a.name for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names}
+        assert not {x for x in names if re.search(r"injury_(workload|challenger|model|prospective)$", x)}, path
+    code = ("import sys, app.main; bad = [m for m in ('app.analytics.injury_workload', 'app.analytics.injury_challenger', "
+            "'app.analytics.injury_model', 'app.analytics.injury_prospective') if m in sys.modules]; print(bad); "
+            "sys.exit(1 if bad else 0)")
     assert subprocess.run([sys.executable, "-c", code], cwd=root.parent, capture_output=True).returncode == 0
 
 

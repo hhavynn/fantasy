@@ -1,7 +1,8 @@
-"""Week-specific injury timeline, established healthy role and team workload handoff (research only).
+"""Week-specific injury timeline, established healthy role and team workload handoff.
 
-Nothing in the app imports this module (tests/test_injury_workload.py). It feeds the research
-challenger `ifp-iwh` (scripts/injury_workload_research.py); ifp-1.0.0 and ifp-2.0.0 never read it.
+Feeds the production model ifp-2.1.0 (app.analytics.injury_model, trained and projected offline) and the research
+challenger `ifp-iwh` (scripts/injury_workload_research.py). The hosted API never imports it
+(tests/test_injury_workload.py); ifp-1.0.0 and ifp-2.0.0 never read it.
 See docs/research/injury_workload_handoff.md for every definition and the evidence.
 
 Three layers, each point-in-time for a forecast of (season S, target week T) made at cutoff week W <= T:
@@ -623,6 +624,9 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
     for team, grp in tl.group_by("team"):
         team = team[0]
         members = grp["gsis_id"].to_list()
+        # the return-rate table's h: this team's scheduled games after the cutoff through the target week (byes
+        # skipped), not target - cutoff weeks
+        team_h = max(1, sum(1 for w in cut.schedule.get(team, []) if cut.cutoff < w <= target_week))
         rush_pg, tgt_pg = vol.get(team, vol["__league__"])
         claims = {"car": {}, "tgt": {}, "gl": {}}
         part = {}
@@ -679,7 +683,7 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
                 fixed_out.discard(g)
                 scenarios = [((), 1.0)]
                 for m in mix:
-                    p = _return_rate(return_rates, info[m], horizon)
+                    p = _return_rate(return_rates, info[m], team_h)
                     scenarios = [(s + ((m, True),), w * p) for s, w in scenarios] + \
                                 [(s + ((m, False),), w * (1 - p)) for s, w in scenarios]
                 scen_n = max(scen_n, len(mix))
@@ -748,24 +752,42 @@ def missed_bucket(missed: int | None) -> str:
     return "0" if m == 0 else "1" if m == 1 else "2-3" if m <= 3 else "4+"
 
 
+RETURN_MAX_HORIZON = 4      # the table's horizons (team games after the cutoff); a later game uses the last one
+RETURN_MIN_N = 30           # a thinner cell pools over positions, then over missed-game buckets
+
+
+def return_rate_cell(rates: dict | None, position: str | None, missed: int | None, horizon: int) -> tuple | None:
+    """The table cell used for (position, games already missed, h team games after the cutoff): the key and its
+    {rate, n}, or None when no cell has RETURN_MIN_N episodes. h is capped at the table's largest horizon."""
+    hs = [k[2] for k in (rates or {})]
+    h = min(max(horizon, 1), max(hs) if hs else RETURN_MAX_HORIZON)
+    b = missed_bucket(missed)
+    for k in ((position, b, h), ("ALL", b, h), ("ALL", "ALL", h)):
+        cell = (rates or {}).get(k)
+        if cell and cell["n"] >= RETURN_MIN_N:
+            return k, cell
+    return None
+
+
 def _return_rate(rates: dict | None, row: dict, horizon: int) -> float:
     """Empirical P(appears in the team's h-th game after the cutoff | injured at the cutoff), by position and
     games already missed; pooled over positions, then over buckets, when a cell is thin. Never a fixed guess:
     without a fitted table the caller keeps the player out (status quo) instead."""
-    h = min(max(horizon, 1), 4)
-    b = missed_bucket(row.get("missed_team_games"))
-    for k in ((row.get("position"), b, h), ("ALL", b, h), ("ALL", "ALL", h)):
-        cell = (rates or {}).get(k)
-        if cell and cell["n"] >= 30:
-            return cell["rate"]
-    return 0.0
+    hit = return_rate_cell(rates, row.get("position"), row.get("missed_team_games"), horizon)   # capped at the
+    return hit[1]["rate"] if hit else 0.0                                                     # table's last h
 
 
-def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...] | None = None) -> dict:
+def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...] | None = None,
+                     max_horizon: int = RETURN_MAX_HORIZON, active_roster_only: bool = False) -> dict:
     """{(position|'ALL', missed bucket|'ALL', h): {rate, n}}: among players designated Out or Doubtful for their
     team's week-W game (with a lookback appearance), the share who appeared in the team's h-th game after W
-    (h = 1..4, byes skipped). Only episodes whose outcome game is strictly before `through_key` count, so a
-    table fitted for a forecast made at week W uses no outcome at or after W."""
+    (h = 1..max_horizon, byes skipped). Only episodes whose outcome game is strictly before `through_key` count, so
+    a table fitted for a forecast made at week W uses no outcome at or after W.
+
+    `active_roster_only` (ros-avail-0.1.1, docs/research/ros_availability.md; the production model ifp-2.1.0): an
+    episode counts only if the player's latest weekly roster row with week <= W is ACT/INA, the population a
+    rest-of-season run applies the table to (reserve-list players are withheld and never get a rest-of-season
+    p_play; mixing them in under-predicts returns)."""
     if sources.injuries is None:
         return {}
     inj = sources.injuries.filter(pl.col("report_status").str.to_lowercase().is_in(list(UNAVAILABLE_DESIGNATIONS))
@@ -777,6 +799,14 @@ def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...
     for s, t, w in games.select("season", "team", "week").sort("week").iter_rows():
         sched[(int(s), t)].append(int(w))
     apps = set(sources.panel.select("season", "week", "gsis_id").iter_rows())
+    roster: dict[tuple[int, str], list[tuple[int, str]]] = defaultdict(list)
+    if active_roster_only and sources.rosters is not None:
+        for s, w, g, st in sources.rosters.select("season", "week", "gsis_id", "status").sort("week").iter_rows():
+            roster[(int(s), g)].append((int(w), st))
+
+    def active_at(s: int, g: str, w: int) -> bool:
+        rows = [st for wk, st in roster.get((s, g), []) if wk <= w]
+        return bool(rows) and rows[-1] in ACTIVE_ROSTER
     first_app: dict[str, int] = {}
     pos_of: dict[str, str] = {}
     for s, w, g, p in sources.panel.select("season", "week", "gsis_id", "position").sort("season", "week").iter_rows():
@@ -786,12 +816,14 @@ def fit_return_rates(sources: Sources, through_key: int, seasons: tuple[int, ...
     for s, w, g, t in inj.select("season", "week", "gsis_id", "team").iter_rows():
         if g not in pos_of or pos_of[g] not in SKILL or first_app[g] >= key(s, w):
             continue
+        if active_roster_only and not active_at(int(s), g, int(w)):
+            continue
         tw = sched.get((int(s), t), [])
         later = [x for x in tw if x > w]
         prior = [x for x in tw if x < w]
         played = [x for x in prior if (s, x, g) in apps]
         missed = len([x for x in prior if not played or x > max(played)]) if prior else 0
-        for h in range(1, 5):
+        for h in range(1, max_horizon + 1):
             if len(later) < h or key(s, later[h - 1]) >= through_key:
                 break
             hit = int((s, later[h - 1], g) in apps)

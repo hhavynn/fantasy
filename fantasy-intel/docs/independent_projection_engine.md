@@ -7,35 +7,45 @@ path is the **projection switch** (header toggle "ESPN | Ours", see "Projection 
 which only changes the weekly numbers on Home, Matchup and Start/Sit and adds Fantasy Intel's series to a
 player's forward view.
 
-**Production model: `ifp-2.0.0`, by owner override (2026-10-16, `model_registry.json`).** What that
-does and does not establish:
+**Production model: `ifp-2.1.0`, by owner decision (2026-10-18, `model_registry.json`, recorded as an owner
+override).** `ifp-2.1.0` is `ifp-2.0.0` plus injury awareness (`app/analytics/injury_model.py`, section
+"ifp-2.1.0: injury-aware workload and availability" below):
 
-* it is production because the owner decided so, not because of evidence: it has NOT met
-  `SHADOW_PROMOTION_CRITERIA` (>= 8 fully final prospective weeks, >= 400 matched appearances per
-  position) or `PROMOTION_CRITERIA` (>= 3% vs the best trailing baseline, ESPN rule), and the approval
-  cites no prospective or held-out report;
-* its research validation (the 2023-24 confirmation, backtests) is **historical evidence only**;
-* it is **not shown to be better than ESPN**; that question is answered only by frozen pregame forecasts
-  as they accumulate (`espn_benchmark.py`, the promotion tracker);
-* no position is Start/Sit-ready, and the consumer status of every position is `owner_override`
-  (never `validated`);
-* the model a user sees **may be the `ifp-1.0.0` fallback**: a week with no eligible `ifp-2.0.0` run shows
-  the newest eligible `ifp-1.0.0` run, labeled as the fallback (on 2026-10-16 this is the case for week 7).
+* **who inherits the work**: RB/WR/TE ridges add the workload-handoff features (`ho_exp_xfpl`, `ho_shift_pg`):
+  a backup whose lead is out gets the vacated carries/targets the team actually gave out in comparable games, and
+  a returning starter takes them back;
+* **who is really likely to play later**: a rest-of-season run gives a player who is Out/Doubtful at the cutoff
+  the empirical return rate for his team's next two games (about 0.39 and 0.61) instead of an undesignated
+  P(plays) (about 0.91; ros-avail-0.1.1 of `docs/research/ros_availability.md`);
+* everything else (candidates, withholding, the participation model at horizon 0, intervals, storage, the
+  artifact gate, integrity checks) is `ifp-2.0.0`'s.
+
+Research evidence (historical, `docs/research/injury_workload_handoff.md`): on the 2023-24 confirmation window the
+handoff features cut pooled MAE by 0.039 [-0.048, -0.031] (RB/WR/TE, every position better) and RMSE/bias on the
+teammate-out cohorts; the rest-of-season P(plays) Brier for players Out/Doubtful at the cutoff falls from 0.514
+to 0.239 (ros_availability.md, its confirmation: Brier 0.495 -> 0.245 at h = 1, 0.288 -> 0.242 at h = 2, worse at
+h >= 3, hence the h = 1-2 rule). The pre-registered research verdict was `retain_baseline` (the returning-player mechanism check failed);
+the diagnosed cause is fixed in the handoff version production uses (iwh-0.1.1), and the owner chose to ship it.
+No position is Start/Sit-ready and the consumer status of every position is `owner_override`. Accuracy is still
+measured prospectively from frozen pregame forecasts (`espn_benchmark.py`, the promotion tracker).
+
+The model a user sees may be the **`ifp-2.0.0` fallback**: a week with no eligible `ifp-2.1.0` run shows the
+newest eligible `ifp-2.0.0` run, labeled as the fallback. `ifp-1.0.0` is retired and no longer served.
 
 Which run is shown, and what may be said about it, is decided in one place
 (`projection_source.select_run` / `governance`, see "Projection switch"). Weekly routine (laptop, before
 the week's first kickoff), automated by the launchd jobs in `scripts/launchd/`:
 
 ```bash
-uv run python ../scripts/learning_cycle.py run    # sync, train and freeze ifp-2 for week W, then store its run (`project`)
+uv run python ../scripts/learning_cycle.py run    # sync, train ifp-2.1.0 (and the ledger's ifp-1/ifp-2) for week W, store its runs (`project`)
 uv run python ../scripts/refresh_all.py           # ... which the next refresh publishes to MotherDuck
 ```
 
 `learning_cycle.py run --no-project` skips storing the run; `backtest_independent_projections.py project
 --week W` stores it by hand.
 
-**`ifp-1.0.0` status (previous production, now the labeled fallback and the rollback target; its artifact
-is pinned in the registry; held-out evaluation on real data, see "Results"):**
+**`ifp-1.0.0` status (retired: production until 2026-10-16, no longer served; its artifact stays pinned in the
+registry; held-out evaluation on real data, see "Results"):**
 
 | Position | Status | Start/Sit ready |
 |---|---|---|
@@ -493,8 +503,8 @@ ESPN sync, nflverse sync and analytics have finished and the pregame snapshot ch
 
 ## Projection switch (opt-in weekly view)
 
-The switch reads the production model `ifp-2.0.0` (`projection_source.MODEL_VERSION`); for a week
-without an eligible `ifp-2.0.0` run it shows the newest eligible `ifp-1.0.0` run (`FALLBACK_VERSION`) and
+The switch reads the production model `ifp-2.1.0` (`projection_source.MODEL_VERSION`); for a week
+without an eligible `ifp-2.1.0` run it shows the newest eligible `ifp-2.0.0` run (`FALLBACK_VERSION`) and
 says so in `reason` and `governance.is_fallback`, which the notice on Home, Matchup and Start/Sit prints.
 
 A header toggle (**ESPN | Ours**, in the menu drawer on phones) stores the visitor's choice in the
@@ -508,8 +518,8 @@ A header toggle (**ESPN | Ours**, in the menu drawer on phones) stores the visit
   mapping, no participation estimate), tagged "ESPN" in the UI.
 
 **Run selection (`projection_source.select_run`, shared with `GET /api/projections/independent`; the tracker
-applies the same two checks).** The league's scoring must be supported. Candidates are `ifp-2.0.0` runs under
-that scoring, newest first, then (only if none qualifies) `ifp-1.0.0` runs. A run qualifies only when:
+applies the same two checks).** The league's scoring must be supported. Candidates are `ifp-2.1.0` runs under
+that scoring, newest first, then (only if none qualifies) `ifp-2.0.0` runs. A run qualifies only when:
 
 * **approved artifact** (`production_forecasts.artifact_gate`, below): the run's artifact passes the rule of its
   model version;
@@ -523,16 +533,17 @@ Skipped runs are reported in `skipped` with their reason; with nothing left the 
 migrated to schema v8) fails closed: legacy rows cannot be integrity-checked, so nothing is shown.
 
 **Artifact approval.** The switch (and the evidence readers: `pregame_forecasts`, `eligible_run_ids`, the
-promotion tracker) only use runs made by an approved artifact. `ifp-2.0.0` is retrained weekly, so each of its
-artifacts is approved by a row in the write-once `approved_artifacts` table, which the learning cycle's
+promotion tracker) only use runs made by an approved artifact. `ifp-2.1.0` and `ifp-2.0.0` are retrained weekly,
+so each of their artifacts is approved by a row (for its own version) in the write-once `approved_artifacts` table,
+which the learning cycle's
 `project` stage writes (`--register-artifact learning_cycle`) for the write-once store artifact it uses; the
 run's `artifact_id` and the registered sha are the same sha256 of the artifact file bytes. A run of an
 unregistered artifact is excluded ("artifact not registered as approved") and the switch falls back to
-`ifp-1.0.0`, then ESPN. The `ifp-1.0.0` fallback has the single-sha pin
+`ifp-2.0.0`, then ESPN. The retired `ifp-1.0.0` keeps its single-sha pin for readers that ask for it by version
 `production_pin.APPROVED_ARTIFACT_SHA256` = `a1fe1bc3...9881`, the file the newest stored `ifp-1.0.0`
 production run recorded (the same sha as `model_registry.json`, tested equal): a run made from a later refit
 under the same version label, or a legacy-migrated run with no recorded `artifact_id`, is never shown as the
-fallback. A database without `approved_artifacts`, or whose table has no row for `ifp-2.0.0` yet (right after
+fallback. A database without `approved_artifacts`, or whose table has no row for the version yet (right after
 the upgrade), is read as before and marked unverified (`run.artifact_verified: false`): the switch fails open
 there so an old hosted copy and the first days after the upgrade keep working. Enforcement starts with the first
 registered artifact, and the first learning cycle registers its artifact and backfills the others already in the
@@ -547,8 +558,8 @@ shown rows are pregame. Runs are append-only, so a late run never rewrites the f
 player whose game had started, and never becomes evidence for him.
 
 **What consumers may claim (`governance`, `consumer_status`).** `model_status` is `owner_override` for
-every `ifp-2.0.0` position; the fallback keeps its stored held-out status (`validated` = held-out MAE vs
-trailing-average baselines only). `governance` carries `production_approval: owner_override`,
+every position of both owner-approved versions (`ifp-2.1.0` and its `ifp-2.0.0` fallback): their stored status was
+frozen at training time. `governance` carries `production_approval: owner_override`,
 `espn_superiority_established: false`, `start_sit_ready: false`, `is_fallback` and `production_evidence`.
 
 Start/Sit and Matchup rerun the same lineup optimizer on these numbers (Matchup computes both teams' lineups on the fly instead of reading
@@ -687,6 +698,60 @@ could be counted as evidence with no rows behind it. v8 fixes this with append-o
   publishing never writes the local history. The local file stays the system of record: publishing a local
   DB that lacks a run removes it from the hosted copy, so never publish from a restored older file.
   (`tests/test_production_forecasts.py::test_publish_copies_the_run_tables_as_is_and_cannot_touch_local_history`.)
+
+## ifp-2.1.0: injury-aware workload and availability (production)
+
+`app/analytics/injury_model.py`; the handoff itself is `app/analytics/injury_workload.py` (definitions and
+evidence: `docs/research/injury_workload_handoff.md`).
+
+**Conditional points.** Per position, `ifp-2.0.0`'s frozen spec (same features, penalty and 36-week recency
+weights, fitted by `challenger.fit_linear` on the same training rows, `challenger.train_rows`) plus, for RB/WR/TE,
+`injury_challenger.GROUP`: `ho_exp_xfpl` (expected league points of opportunity given who is available this week)
+and `ho_shift_pg` (expected carries + targets minus his raw last-5 average). QB is `ifp-2.0.0`'s ridge. Training
+rows get each week's handoff at horizon 0 from data before that week (`injury_model.with_training_handoff`);
+the live run gets the target week's handoff as known at the cutoff week, with the cutoff week's designations as
+P(plays) sees them (nflverse, else the ESPN status fallback). Handoff version **iwh-0.1.1** = the evaluated
+iwh-0.1.0 plus the pre-registered fix of research section 7.3: a missed game counts as an injury absence when the
+player was on that week's report with any injury listing (a Questionable-and-inactive game no longer cuts his
+claim as if he had been demoted). The research module keeps iwh-0.1.0 as its default so the evaluated numbers
+reproduce.
+
+**Rest-of-season P(plays) (ros-avail-0.1.1).** For a run at horizon h >= 1, a player designated **Out or Doubtful
+for the cutoff week's game** gets `p_play` = the empirical return rate P(appears in his team's h-th game after the
+cutoff) **for h = 1 and 2 only** (his team's next two games, byes skipped), by position and games already missed
+(`injury_workload.fit_return_rates(active_roster_only=True)`; a cell with fewer than 30 episodes pools over
+positions, then buckets). From h = 3 on the participation model's estimate stays: the evaluated 0.1.0 table was far
+better than it at h = 1 (Brier 0.495 -> 0.245) and h = 2 (0.288 -> 0.242) but worse at h >= 3
+(`docs/research/ros_availability.md`), and this is that study's pre-registered next candidate. The table is fitted
+into every weekly artifact (`config.injury_model.return_rates`, horizons 1-8) from episodes whose outcome game
+precedes the cutoff, 2019 onward, counting only players on the active roster (ACT/INA) at their cutoff: the
+population the rule is applied to (reserve-list players are withheld anyway). At the week-6 cutoff it gives 0.39
+at h = 1 and 0.61 at h = 2 (pooled; a 2019-22 fit gives 0.38 / 0.58 against 0.41 / 0.66 observed in 2023-24). Each
+such row's `participation` names `model_version: return-rate-table`, `ros_availability: ros-avail-0.1.1`, the cell
+used, and keeps the replaced undesignated estimate (`undesignated_p_play`); the row is flagged. Players on a reserve
+list or ESPN IR/suspension stay withheld exactly as before; Questionable players keep the participation model.
+Injured teammates at h >= 1 are mixed into the handoff as present/absent scenarios weighted by the same table (all
+8 horizons), so a temporary starter does not keep the role for the rest of the season. The prospective ledger of
+ros_availability.md still judges the rule (`NEXT_CANDIDATE` gates).
+
+**Training and storage.** `weekly_learning.train_production` builds the artifact (`artifacts/ifp-2.1.0/` in the
+weekly store, content-addressed, write-once); `scripts/weekly_learning.py train` writes it next to the ledger's
+`ifp-1.0.0` / `ifp-2.0.0` artifacts, and the learning cycle's `project` stage projects it (the default model) and
+registers it in `approved_artifacts`. Real-data training takes about 50 s (the handoff of ~130 weeks). A model
+introduced while a week is already in progress is trained with `train --week W --after-kickoff` (production model
+only, on exactly the pregame cutoff data; `provenance.trained_after_first_kickoff: true`, never a ledger
+forecast); its runs for that week are live views only, never evidence (artifact fitted after the first kickoff).
+
+**Real 2026 cases (cutoff week 6; research section 8 for the comparison with `ifp-2.0.0`).** Dameon Pierce week 6
+conditional 7.73 (ifp-2.0.0) -> 12.74 (Saquon Barkley Out, Bigsby and Shipley on IR); Braelon Allen 10.53 -> 13.14;
+week 7 (from week 6, h = 1): Saquon Barkley P(plays) 0.42 and Breece Hall 0.46 (return rates) instead of ~0.93 /
+0.96; week 8 (h = 2): 0.65 / 0.64; week 9 on (h >= 3): the participation model again (0.93 / 0.96). Pierce's week-7
+conditional is 9.79 with Saquon's return weighted in (12.74 in week 6 while Saquon is Out).
+
+**Rollback.** `ifp-2.0.0` is the rollback target and the consumer fallback. It has no single pinned artifact
+(weekly-retrained, approved per artifact in the database), so `model_registry.py plan-rollback` reports it as not
+restorable by the registry's pinned-artifact rule; a rollback is the reviewed code change of the registry doc
+(switch `projection_source.MODEL_VERSION` back and project `--model ifp-2.0.0`).
 
 ## Rest-of-season projections (experimental beyond horizon 0)
 

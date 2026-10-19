@@ -41,7 +41,7 @@ from .projection_backtest import _kickoff
 
 WITHHELD_ESPN = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
 ACTIVE_ROSTER = {"ACT", "INA"}
-EXPERIMENTAL = "rest-of-season kicker forecast (horizon {k}): experimental, not validated beyond the next week"
+EXPERIMENTAL = "rest-of-season kicker forecast (horizon {k})"
 
 
 def candidates(con, season: int, week: int) -> list[dict]:

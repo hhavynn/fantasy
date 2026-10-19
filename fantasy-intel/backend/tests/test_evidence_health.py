@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from app.analytics import projection_source as ps
+
 import pytest
 
 from app.analytics import production_pin
@@ -356,6 +358,10 @@ def _ts(dt):
     return dt.astimezone(UTC).replace(tzinfo=None)
 
 
+# The real database shape of 2026-10-16, one model generation on: production and its labeled fallback.
+PRODUCTION, FALLBACK = ps.MODEL_VERSION, ps.FALLBACK_VERSION
+
+
 def _run(con, version, week, created, fit="2026-10-15T09:00:00+00:00"):
     _, scoring = league_scoring(con, 2026)
     rows = [{"season": 2026, "week": week, "espn_player_id": pid, "gsis_id": f"00-{pid}", "position": pos, "nfl_team": team,
@@ -397,9 +403,9 @@ def world(tmp_path):
                 [_ts(THU_PT_1500 - timedelta(seconds=4)), _ts(THU_PT_1500 + timedelta(seconds=30))])
     con.execute("INSERT INTO sync_runs VALUES ('n1', 'nfl', ?, ?, 'ok', NULL, NULL)",
                 [_ts(THU_PT_1500 + timedelta(minutes=1)), _ts(THU_PT_1500 + timedelta(minutes=2))])
-    _run(con, "ifp-1.0.0", 6, datetime(2026, 10, 15, 15, 12, tzinfo=UTC))      # pregame fallback
-    _run(con, "ifp-2.0.0", 6, datetime(2026, 10, 16, 4, 46, tzinfo=UTC))       # after TNF kickoff
-    _run(con, "ifp-1.0.0", 7, datetime(2026, 10, 16, 4, 19, tzinfo=UTC))       # week 7: fallback only
+    _run(con, FALLBACK, 6, datetime(2026, 10, 15, 15, 12, tzinfo=UTC))      # pregame fallback
+    _run(con, PRODUCTION, 6, datetime(2026, 10, 16, 4, 46, tzinfo=UTC))     # after TNF kickoff
+    _run(con, FALLBACK, 7, datetime(2026, 10, 16, 4, 19, tzinfo=UTC))       # week 7: fallback only
     con.close()
     logs = root / "data" / "logs"
     logs.mkdir(parents=True)
@@ -468,10 +474,10 @@ def test_week_audit_names_every_missing_capture_and_its_cause(world):
     assert "evidence stage did not run" in missing["start_sit_decision_set"]
     # a pregame snapshot the refresh reported (23:30Z) is no longer stored: replaced after kickoff
     assert w6["lost_espn"][0]["reported"] == "2026-10-15T23:30:00+00:00"
-    # week 6 is served by ifp-2, week 7 falls back to ifp-1
+    # week 6 is served by the production model, week 7 falls back to the previous one
     w7 = next(w for w in rep["weeks"] if w["week"] == 7)
-    assert w6["served"]["model_version"] == "ifp-2.0.0" and not w6["served"]["fallback"]
-    assert w7["served"]["model_version"] == "ifp-1.0.0" and w7["served"]["fallback"]
+    assert w6["served"]["model_version"] == PRODUCTION and not w6["served"]["fallback"]
+    assert w7["served"]["model_version"] == FALLBACK and w7["served"]["fallback"]
     assert w6["production"]["usable_by_position"] == {"QB": 0, "RB": 1, "WR": 1, "TE": 1}   # TNF players excluded
     codes = {i["code"]: i for i in rep["issues"]}
     assert codes["evidence_stage_not_run"]["severity"] == eh.FAIL

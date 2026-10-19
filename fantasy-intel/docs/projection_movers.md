@@ -23,13 +23,15 @@ Contract `projection-movers/v1`. Both modules are SQL + stdlib, so the hosted AP
   remaining week, stored once per day by `sync_espn.py`). `taken_at` is the newest `synced_at` of the day; the
   snapshot's cycle week is the first regular-season week whose first kickoff is after it. Snapshot ids are dates.
 * **Ours (opt-in, `source=independent`).** One snapshot per forecast cutoff week `C` of the production model
-  (`ifp-2.0.0`): the rest-of-season cycle that ran with cutoff `C` stores one immutable run per target week. Per target
+  (`ifp-2.1.0`): the rest-of-season cycle that ran with cutoff `C` stores one immutable run per target week. Per target
   week the snapshot uses the newest run of that cutoff that was made before the week's first kickoff, is not rejected
   by the approved-artifact gate (`production_forecasts.artifact_gate`) and whose rows verify against their content
   hash (`integrity_problem`); a failed run is listed in `skipped` and never used. Only runs under the league's
   current scoring fingerprint are compared (others are listed in `excluded_runs`). A cutoff with only runs of the
-  previous model (`ifp-1.0.0`) is never a snapshot: movement across model versions is never shown. Snapshot ids are
-  `w<C>`.
+  previous model (`ifp-2.0.0`, the fallback) is never a snapshot: movement across model versions is never shown. Snapshot
+  ids are `w<C>`. Right after the switch to `ifp-2.1.0` (2026-10-18) only one `ifp-2.1.0` snapshot exists (cutoff week
+  6), so Ours movers answer `available: false` with the reason ("Movement needs two stored ifp-2.1.0 forecasts ...",
+  naming the `ifp-2.0.0` week-6 forecast it will not compare) until the week-7 cycle stores the second.
 
 `current` is the newest snapshot. The default baseline is the newest snapshot from an earlier cycle week ("last week's
 outlook"), else the newest older snapshot of the same week (with a note); `baseline=<id>` picks another stored one,

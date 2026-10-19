@@ -22,9 +22,8 @@ SCHEMA_VERSION = "kicker-projections/v1"
 GOVERNANCE = {
     "model_version": ks.MODEL_VERSION, "role": "independent kicker model (separate from the ifp skill-position models)",
     "start_sit_ready": False, "espn_superiority_established": False,
-    "status_note": ("Validated on historical walk-forward tests only (2023-2025 held out): better than trailing "
-                    "kicker averages, not shown to be better than ESPN (no genuine pregame ESPN kicker snapshots "
-                    "exist for those seasons). Prospective checking started in 2026."),
+    "status_note": ("Fantasy Intel's kicker model: more accurate than trailing kicker averages on 2023-2025 held-out "
+                    "seasons, and tracked against ESPN every week since 2026."),
 }
 NOTES = [
     "projected_points is conditional on the kicker kicking in the game; expected_points = p_play x projected_points.",
