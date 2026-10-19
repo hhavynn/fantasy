@@ -2,12 +2,11 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { MovesTable } from "@/components/MovesTable";
-import { TeamLink } from "@/components/TeamLink";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
-  Badge, EmptyState, Method, Notice, PageHeader, Pos, Rating, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
+  Badge, EmptyState, Glossary, Method, Notice, PageHeader, Pos, Rating, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { StartSitInput, WaiverInput } from "@/lib/action-items";
@@ -21,7 +20,6 @@ import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import { isUnknownTeam, readTeamSelection, withTeamId, type Perspective } from "@/lib/team-perspective";
 import type { League, Move, Need, RosterPlayer, SyncInfo, Team } from "@/lib/types";
 import { WeekBand, WeekBandSkeleton } from "./WeekBand";
-import styles from "./home.module.css";
 
 // The template does not apply to a page in the layout's own segment, so the full title is given.
 export const metadata = { title: { absolute: "Overview · Fantasy Intel" } };
@@ -101,7 +99,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       <PageHeader
         eyebrow={`Week ${o.league.current_week} · ${o.league.name}`}
         title={me ? me.name : "Team overview"}
-        meta={`${o.league.season} season · ${o.league.size} teams · ${scoring}${o.league.is_faab ? ` · FAAB $${o.league.faab_budget}` : " · waiver priority"}`}
+        meta={`${me ? `${me.wins}–${me.losses}${me.ties ? `–${me.ties}` : ""}${rank ? ` · ${ordinal(rank)} of ${n}` : ""} · ` : ""}${o.league.season} season · ${o.league.size} teams · ${scoring}${o.league.is_faab ? ` · FAAB $${o.league.faab_budget}` : " · waiver priority"}`}
         actions={<TeamPerspective path="/" sp={sp} current={me?.team_id ?? null} />}
       />
 
@@ -121,28 +119,27 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       {band}
 
       {me && (
-        <StatStrip>
+        <StatStrip compact>
           <Stat label="Record" value={`${me.wins}–${me.losses}${me.ties ? `–${me.ties}` : ""}`} note={rank ? `${ordinal(rank)} of ${n}` : undefined} />
-          <Stat label="Points for" value={num(me.points_for, 1)} note={pfRank ? `${ordinal(pfRank)} most in league` : undefined} />
-          <Stat label="Points against" value={num(me.points_against, 1)} note={paRank ? `${ordinal(paRank)} most in league` : undefined} />
+          <Stat label="Pts for" value={num(me.points_for, 1)} note={pfRank ? `${ordinal(pfRank)} in league` : undefined} />
+          <Stat label="Pts against" value={num(me.points_against, 1)} note={paRank ? `${ordinal(paRank)} most allowed` : undefined} />
           <Stat
             label={o.league.is_faab ? "FAAB left" : "Waiver priority"}
             value={o.league.is_faab ? `$${(o.league.faab_budget ?? 0) - (me.faab_spent ?? 0)}` : `#${me.waiver_rank ?? "?"}`}
             note={o.league.is_faab ? `of $${o.league.faab_budget ?? "?"}` : `of ${n} teams`}
           />
-          <Stat label="Injury designations" value={o.injuries.length} note="on the roster" />
+          <Stat label="Injuries" value={o.injuries.length} note="designations on the roster" />
         </StatStrip>
       )}
 
-      <ToolShortcuts />
-
       <div className="grid-main">
-        <Section title="Current roster" flush>
+        <Section title="Current roster" subtitle={`${o.roster.filter((p) => p.is_starter).length} starters · ${o.roster.filter((p) => !p.is_starter).length} bench and IR`} flush>
           <RosterTable rows={o.roster} />
         </Section>
 
         <div className="stack">
-          <Section title="Biggest roster needs" flush>
+          {o.injuries.length > 0 && <InjuriesSection injuries={o.injuries} />}
+          <Section title="Biggest roster needs" subtitle="Where the lineup is thinnest against the league" flush>
             <div className="table-wrap">
               <table>
                 <thead>
@@ -174,38 +171,17 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
             </p>
           </Method>
 
-          {o.injuries.length > 0 && (
-            <Section title="Injuries on the roster" flush>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>Player</th><th>ESPN</th><th>NFL report</th></tr></thead>
-                  <tbody>
-                    {o.injuries.map((p) => (
-                      <tr key={p.espn_player_id}>
-                        <td><PlayerLink id={p.espn_player_id} name={p.full_name} /> <Pos value={p.position} /></td>
-                        <td><Badge value={p.injury_status} /></td>
-                        <td>
-                          {p.nfl_injury
-                            ? <><Badge value={p.nfl_injury.report_status ?? "none"} /> <span className="faint">wk {p.nfl_injury.week}{p.nfl_injury.report_primary_injury ? ` · ${p.nfl_injury.report_primary_injury}` : ""}</span></>
-                            : <span className="missing" title="No NFL injury report row">—</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Section>
-          )}
+          <StandingsSection standings={o.standings} sp={sp} selected={me?.team_id ?? null} />
         </div>
       </div>
 
-      <div className={styles.pair}>
-        <StandingsSection standings={o.standings} sp={sp} selected={me?.team_id ?? null} />
+      <div className="stack">
         <Section title="Recent league transactions" flush={o.recent_transactions.length > 0}>
           {o.recent_transactions.length === 0
             ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next ESPN sync.</EmptyState>
             : <MovesTable moves={o.recent_transactions} />}
         </Section>
+        <Glossary terms={["PPR/g", "xFP/g", "Value rating", "Projected points", "FAAB", "Q / D / O", "—"]} />
       </div>
     </div>
   );
@@ -256,6 +232,31 @@ function StandingsSection({ standings, sp, selected }: { standings: Team[]; sp: 
   );
 }
 
+function InjuriesSection({ injuries }: { injuries: RosterPlayer[] }) {
+  return (
+    <Section title="Injuries on the roster" subtitle={`${injuries.length} ${injuries.length === 1 ? "player" : "players"} with a designation`} flush>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Player</th><th>ESPN</th><th>NFL report</th></tr></thead>
+          <tbody>
+            {injuries.map((p) => (
+              <tr key={p.espn_player_id}>
+                <td><PlayerLink id={p.espn_player_id} name={p.full_name} /> <Pos value={p.position} /></td>
+                <td><Badge value={p.injury_status} /></td>
+                <td>
+                  {p.nfl_injury
+                    ? <><Badge value={p.nfl_injury.report_status ?? "none"} /> <span className="faint">wk {p.nfl_injury.week}{p.nfl_injury.report_primary_injury ? ` · ${p.nfl_injury.report_primary_injury}` : ""}</span></>
+                    : <span className="missing" title="No NFL injury report row">—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Section>
+  );
+}
+
 function avail(v: number | null | undefined) {
   if (v === null || v === undefined) return <span className="missing" title="Not computed">—</span>;
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
@@ -271,19 +272,19 @@ function RosterTable({ rows }: { rows: RosterPlayer[] }) {
       <table>
         <thead>
           <tr>
-            <th>Slot</th><th>Player</th><th>Status</th><th title="Season PPR/game (nflverse)" className="num">PPR/g</th>
+            <th>Player</th><th>Status</th><th title="Season PPR/game (nflverse)" className="num">PPR/g</th>
             <th title="Expected PPR/game from role (nflverse xFP)" className="num">xFP/g</th><th>Trend</th><th title="Market signal (BUY needs a meaningful absolute role)">Signal</th>
             <th title={`Value rating, 0–100: ${RATING_DESCRIPTION.value}. ${RATING_CAVEAT}`}>Value</th>
           </tr>
         </thead>
         {groups.map(([title, ps]) => (
           <tbody key={title}>
-            <tr className="group"><td colSpan={8}>{title}</td></tr>
+            <tr className="group"><td colSpan={7}>{title}</td></tr>
             {ps.map((p) => (
               <tr key={p.espn_player_id}>
-                <td className="slot">{p.lineup_slot}</td>
                 <td>
                   <PlayerIdentity id={p.espn_player_id} name={p.full_name} position={p.position} team={p.pro_team}
+                                  lead={<span title="Lineup slot">{p.lineup_slot}</span>}
                                   meta={p.on_bye ? <Badge value="BYE" tone="warn" /> : null} />
                 </td>
                 <td>{p.availability && p.availability.status !== "AVAILABLE"
@@ -299,37 +300,5 @@ function RosterTable({ rows }: { rows: RosterPlayer[] }) {
         ))}
       </table>
     </div>
-  );
-}
-
-const TOOLS = [
-  { href: "/start-sit", title: "Start/Sit", text: "The submitted lineup against the best projected one, swap by swap.",
-    icon: <><path d="M4 9.5 7.5 13 14 5.5" /></> },
-  { href: "/waivers", title: "Waivers", text: "Pickups the analysis supports for this roster, with the drop.",
-    icon: <><path d="M9 3.5v11M3.5 9h11" /></> },
-  { href: "/trades", title: "Trade analyzer", text: "Exact lineup impact of any trade, week by week.",
-    icon: <><path d="M3 6h11l-3-3" /><path d="M15 12H4l3 3" /></> },
-  { href: "/research", title: "Research lab", text: "Who has the biggest roles, and whether production is keeping up.",
-    icon: <><circle cx="8" cy="8" r="4.5" /><path d="m11.5 11.5 3.5 3.5" /></> },
-] as const;
-
-/** Where to go next: the four workspaces most weeks start from. Copy describes the tool, never a recommendation. */
-function ToolShortcuts() {
-  return (
-    <nav aria-label="Tools">
-      <ul className={styles.tools}>
-        {TOOLS.map((t) => (
-          <li key={t.href}>
-            <TeamLink className={styles.tool} href={t.href}>
-              <span className={styles.toolIcon}>
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{t.icon}</svg>
-              </span>
-              <span className={styles.toolTitle}>{t.title}</span>
-              <span className={styles.toolText}>{t.text}</span>
-            </TeamLink>
-          </li>
-        ))}
-      </ul>
-    </nav>
   );
 }

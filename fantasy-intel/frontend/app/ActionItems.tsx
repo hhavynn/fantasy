@@ -1,6 +1,7 @@
 import { TeamLink as Link } from "@/components/TeamLink";
 import { EmptyState, Notice, Section, ToneIcon } from "@/components/ui";
 import type { ActionList } from "@/lib/action-items";
+import { ToolShortcuts } from "./ToolShortcuts";
 import styles from "./home.module.css";
 
 /**
@@ -12,7 +13,8 @@ export function ActionItems({ list, week }: { list: ActionList; week: number | n
   const { items, more, unavailable } = list;
   const allDown = unavailable.length === 4;
   return (
-    <Section title="Action items" flush={items.length > 0}>
+    <Section title="Before kickoff" subtitle={week ? `Week ${week} · what to change, in priority order` : "What to change, in priority order"} flush className={styles.actionCard}
+             actions={items.length > 0 ? <span className={styles.count}>{items.length} {items.length === 1 ? "item" : "items"}</span> : undefined}>
       {items.length > 0 ? (
         <ul className={styles.items}>
           {items.map((it) => (
@@ -45,6 +47,7 @@ export function ActionItems({ list, week }: { list: ActionList; week: number | n
           {allDown ? "None of the sources behind this list loaded." : "Items from those sources are missing from this list."}
         </Notice>
       ) : null}
+      <ToolShortcuts />
     </Section>
   );
 }

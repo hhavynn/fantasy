@@ -8,7 +8,7 @@ import { TableScroll } from "@/components/TableScroll";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { api } from "@/lib/api";
 import { getProjectionSource } from "@/lib/projection-source.server";
-import type { StatusPayload } from "@/lib/sync-status";
+import { computeSyncSummary, type StatusPayload } from "@/lib/sync-status";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
@@ -60,6 +60,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const [status, projection] = await Promise.all([api<NonNullable<StatusPayload>>("/api/status"), getProjectionSource()]);
   const s = status.data;
+  const sync = computeSyncSummary(s ?? null);
   return (
     // suppressHydrationWarning: the inline script below sets data-theme on <html> before React hydrates.
     <html lang="en" className={`${barlowCondensed.variable} ${plexSans.variable} ${plexSansGreek.variable} ${plexMono.variable}`} suppressHydrationWarning>
@@ -84,11 +85,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               <ProjectionSwitch value={projection} className="topbar-proj" />
               <ThemeSwitch className="topbar-theme" />
               <SyncPill status={s ?? null} />
-              <MobileNav projection={projection} />
+              <MobileNav projection={projection} sync={{ state: sync.state, text: sync.text }} />
             </div>
           </div>
-          <SubNav />
         </header>
+        <SubNav />
         <main>{children}</main>
         <TabBar />
         <TableScroll />

@@ -16,6 +16,11 @@ export type ApiResult<T> =
   | { ok: true; data: T; error: null }
   | { ok: false; data: null; error: string; kind?: ApiErrorKind; status?: number };
 
+/** True when the backend says no league has been imported yet (a first run): a setup step, not a failure. */
+export function isFirstRun(detail: string | null | undefined): boolean {
+  return !!detail && /no database yet/i.test(detail);
+}
+
 /** Classify a non-2xx backend response from its `detail` message (the stale-schema 503 names the database schema). */
 export function classifyHttpError(detail: string): "schema" | "http" {
   return /database schema/i.test(detail) ? "schema" : "http";

@@ -13,3 +13,14 @@
 .commands code { padding: 0; background: none; font-size: inherit; }
 .detail { color: var(--ink-faint); font-size: 12px; }
 .firstRun { margin-top: 12px; color: var(--ink-muted); }
+
+/* First-run guide: a calm setup surface, not an error. */
+.guide { max-width: 760px; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.guideEyebrow { margin: 0 0 6px; color: var(--accent); font-size: 11px; line-height: 16px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.guideTitle { margin: 0 0 8px; font-family: var(--font-display); font-size: 28px; line-height: 32px; font-weight: 600; }
+.guideLead { margin: 0 0 16px; color: var(--ink-muted); font-size: 15px; line-height: 23px; }
+.steps { margin: 0 0 16px; padding-left: 22px; display: grid; gap: 12px; }
+.steps li { padding-left: 4px; line-height: 21px; }
+.steps li::marker { color: var(--accent); font-weight: 700; }
+.guideNote { margin: 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink-faint); font-size: 13px; line-height: 19px; }
+@media (max-width: 720px) { .guide { padding: 16px; } .guideTitle { font-size: 24px; line-height: 28px; } }
