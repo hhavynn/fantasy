@@ -244,14 +244,20 @@ def test_weekly_pipeline_never_imports_into_consumers():
         # imported, see tests/test_roster_context.py::test_app_never_imports_the_research_context_modules)
         # returning_context.py: research-only returning-teammate challenger built on the challenger (never
         # imported, see tests/test_returning_context.py::test_app_never_imports_the_research_module)
+        # penalty_erased.py: research-only penalty-erased opportunity challenger built on the challenger (never
+        # imported, see tests/test_penalty_erased.py::test_app_never_imports_the_research_module)
         if path.name in ("weekly_learning.py", "challenger.py", "source_provenance.py", "adaptive_workload.py",
                          "hgb_research.py", "opportunity_efficiency.py",
                          "espn_benchmark.py",   # research-only ESPN benchmark; reads label_outcomes (never imported)
                          "model_registry.py", "usage_signals.py", "context_challenger.py",
-                         "returning_context.py",
+                         "returning_context.py", "penalty_erased.py",
+                         "qb_receiver_compat.py",   # research-only ifp-qbr challenger (never imported, see
+                         # tests/test_qb_receiver_compat.py::test_app_never_imports_the_research_module)
                          "injury_challenger.py",    # research-only workload handoff challenger and its prospective
-                         "injury_prospective.py"):  # gate (never imported, see
+                         "injury_prospective.py",   # gate (never imported, see
             # tests/test_injury_workload.py::test_app_never_imports_the_injury_research_modules)
+                         "situational_usage.py"):   # research-only situational usage splits (never imported, see
+            # tests/test_situational_usage.py::test_research_module_is_never_imported_by_the_app)
             continue
         text = path.read_text()
         assert "weekly_learning" not in text and "from .challenger" not in text, path
