@@ -244,11 +244,13 @@ def test_weekly_pipeline_never_imports_into_consumers():
         # imported, see tests/test_roster_context.py::test_app_never_imports_the_research_context_modules)
         # returning_context.py: research-only returning-teammate challenger built on the challenger (never
         # imported, see tests/test_returning_context.py::test_app_never_imports_the_research_module)
+        # penalty_erased.py: research-only penalty-erased opportunity challenger built on the challenger (never
+        # imported, see tests/test_penalty_erased.py::test_app_never_imports_the_research_module)
         if path.name in ("weekly_learning.py", "challenger.py", "source_provenance.py", "adaptive_workload.py",
                          "hgb_research.py", "opportunity_efficiency.py",
                          "espn_benchmark.py",   # research-only ESPN benchmark; reads label_outcomes (never imported)
                          "model_registry.py", "usage_signals.py", "context_challenger.py",
-                         "returning_context.py",
+                         "returning_context.py", "penalty_erased.py",
                          "injury_challenger.py",    # research-only workload handoff challenger and its prospective
                          "injury_prospective.py",   # gate (never imported, see
             # tests/test_injury_workload.py::test_app_never_imports_the_injury_research_modules)
