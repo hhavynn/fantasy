@@ -22,6 +22,28 @@ def spc():
     return mod
 
 
+@pytest.fixture(autouse=True)
+def no_promoted(spc, monkeypatch):
+    """The ready / review paths are tested from an empty PROMOTED; the committed map is tested on its own below."""
+    monkeypatch.setattr(spc, "PROMOTED", {})
+
+
+def test_committed_promoted_map_is_what_ifp_2_2_ships(spc):
+    """ifp-2.2.0's shipped components (context_model.SHIPPED), by shadow, are exactly the committed PROMOTED map."""
+    spec = importlib.util.spec_from_file_location("shadow_promotion_check_committed", SCRIPTS / "shadow_promotion_check.py")
+    fresh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fresh)
+    real = fresh.PROMOTED
+    from app.analytics import context_model as cm
+    want: dict[str, set] = {}
+    for pos, comps in cm.SHIPPED.items():
+        for c in comps:
+            want.setdefault(cm.COMPONENTS[c]["shadow"], set()).add(pos)
+    assert {k: set(v["positions"]) for k, v in real.items()} == want
+    assert all(v["version"] == cm.MODEL_VERSION for v in real.values())
+    assert "ifp-fr-p1" not in real and "ipm-cal-0.1.0" not in real
+
+
 @pytest.fixture
 def dirs(tmp_path):
     return {"ifp": tmp_path / "models", "dst": tmp_path / "dst", "logs": tmp_path / "logs"}

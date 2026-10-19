@@ -399,7 +399,7 @@ def test_frozen_ifp2_configuration_and_groups_are_unchanged():
 def test_research_module_is_never_imported_by_the_app():
     root = pathlib.Path(__file__).resolve().parents[1] / "app"
     for path in root.rglob("*.py"):
-        if path.name == "usage_signals.py":
+        if path.name in ("usage_signals.py", "context_model.py"):   # context_model: the production model ifp-2.2.0 (offline; app.main never imports it, tests/test_context_model.py)
             continue
         assert "usage_signals" not in path.read_text(), path
     code = "import sys, app.main; assert 'app.analytics.usage_signals' not in sys.modules"

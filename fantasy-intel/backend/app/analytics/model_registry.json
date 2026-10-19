@@ -1,7 +1,7 @@
 {
  "schema": "model-registry/v1",
  "note": "Reviewed approval manifest (app/analytics/model_registry.py). Paths are relative to INDEPENDENT_MODEL_DIR (data/models). Read by research tooling only; the hosted app never reads it, and the projection switch reads projection_source.MODEL_VERSION, which must name the production model here, and serves an ifp-1.0.0 fallback run only when its artifact_id equals projection_source.FALLBACK_ARTIFACT_SHA256, which must equal the ifp-1.0.0 pin here (tested). Changing production is a separate, explicitly approved change to this file AND the consumer wiring (docs/independent_projection_engine.md, 'Model registry and promotion').",
- "production": {"family": "ifp", "version": "ifp-2.1.0"},
+ "production": {"family": "ifp", "version": "ifp-2.2.0"},
  "models": [
   {
    "family": "ifp",
@@ -49,7 +49,7 @@
   {
    "family": "ifp",
    "version": "ifp-2.1.0",
-   "state": "approved_production",
+   "state": "deprecated_or_rolled_back",
    "artifact": {"path": null, "sha256": null},
    "scoring_fingerprint": "e165b59686110c7d",
    "training_cutoff": null,
@@ -66,7 +66,30 @@
     {"kind": "historical_research", "path": "research/injury_workload_handoff.md", "sha256": null}
    ],
    "rollback_to": "ifp-2.0.0",
-   "reason": "Production since the owner approval above. Weekly-retrained like ifp-2.0.0 (injury_model.py, weekly_learning.train_production): each week's run (backtest_independent_projections.py project) uses the newest content-addressed ifp-2.1.0 artifact for that target week, trained on games before it, and records its file sha256 as the run's artifact_id (approved in approved_artifacts), so artifact.path and sha256 stay null here. Research evidence (historical, 2023-24 confirmation of the handoff features): pooled MAE -0.039 [-0.048, -0.031] vs ifp-2 on RB/WR/TE, every position better; rest-of-season P(plays) Brier for players Out/Doubtful at the cutoff 0.514 -> 0.239."
+   "reason": "Production since the owner approval above. Weekly-retrained like ifp-2.0.0 (injury_model.py, weekly_learning.train_production): each week's run (backtest_independent_projections.py project) uses the newest content-addressed ifp-2.1.0 artifact for that target week, trained on games before it, and records its file sha256 as the run's artifact_id (approved in approved_artifacts), so artifact.path and sha256 stay null here. Research evidence (historical, 2023-24 confirmation of the handoff features): pooled MAE -0.039 [-0.048, -0.031] vs ifp-2 on RB/WR/TE, every position better; rest-of-season P(plays) Brier for players Out/Doubtful at the cutoff 0.514 -> 0.239.",
+   "retired": {"at": "2026-10-19T02:00:00+00:00", "by": "hhavynn", "kind": "superseded", "reason": "Replaced by ifp-2.2.0 (owner decision). Still read by the projection switch for a week without an ifp-2.2.0 run, and the rollback target."}
+  },
+  {
+   "family": "ifp",
+   "version": "ifp-2.2.0",
+   "state": "approved_production",
+   "artifact": {"path": null, "sha256": null},
+   "scoring_fingerprint": "e165b59686110c7d",
+   "training_cutoff": null,
+   "approval": {
+    "kind": "owner_approval",
+    "approved_by": "hhavynn",
+    "approved_at": "2026-10-19T02:00:00+00:00",
+    "start_sit_ready": false,
+    "evidence_sha256": {},
+    "override": true,
+    "reason": "Owner decision (\"Force-promote shadows now: owner-override the prospective shadows into Ours today without waiting for evidence\"): the projection switch reads ifp-2.2.0, ifp-2.1.0 plus the frozen specs of the research shadows ifp-ctx-p2q (QB start probabilities and the two-scenario mixture), ifp-ctx-p1 (QB and teammate context for RB/WR), ifp-dct-p1 (pregame depth tier, QB/RB/WR) and ifp-awd-p1 (decline-only role, RB/WR/TE). Recorded as an owner override: every shadow's pre-registered prospective gate (>= 8 fully final weeks from 2026 week 7, >= 400 matched appearances) is unmet, ifp-ctx-p1's and ifp-ctx-p2's historical verdicts were retain_baseline, SHADOW_PROMOTION_CRITERIA and PROMOTION_CRITERIA are not met, and no prospective or held-out report is cited. ipm-cal-0.1.0 (the QB P(plays) map) was left out by the backtest guard and ifp-fr-p1 (FTN first reads) is excluded pending the owner's licensing decision. The shadows' prospective ledgers keep running unchanged as the post-hoc evidence. ifp-2.1.0 stays the rollback target and the fallback for a week without an ifp-2.2.0 run."
+   },
+   "validation_reports": [
+    {"kind": "historical_research", "path": "research/ifp22_promotion.md", "sha256": null}
+   ],
+   "rollback_to": "ifp-2.1.0",
+   "reason": "Production since the owner approval above. Weekly-retrained like ifp-2.1.0 (context_model.py, weekly_learning.train_context): each week's run (backtest_independent_projections.py project) uses the newest content-addressed ifp-2.2.0 artifact for that target week, trained on games before it, and records its file sha256 as the run's artifact_id (approved in approved_artifacts), so artifact.path and sha256 stay null here. Backtest guard (scripts/ifp22_backtest.py, 2023 - 2026 week 6, identical player-weeks, week-clustered 95% CIs, ifp-2.2.0 minus ifp-2.1.0 conditional MAE): QB -0.367 [-0.444, -0.276], RB -0.025 [-0.051, -0.003], WR -0.030 [-0.043, -0.018], TE +0.000 [-0.002, +0.002]; no points component's leave-one-out CI lies above 0. The QB P(plays) map raised unconditional QB MAE by +0.016 [+0.003, +0.031] and was left out."
   },
   {
    "family": "ifp",
@@ -115,6 +138,14 @@
    "production": "ifp-2.1.0",
    "by": "hhavynn",
    "reason": "Owner decision (\"upgrade it, and replace the ours\"): the projection switch reads ifp-2.1.0, ifp-2.0.0 plus the injury workload handoff (iwh-0.1.1) and the empirical return-rate P(plays) for players Out/Doubtful at the rest-of-season cutoff for the team's next two games (ros-avail-0.1.1). Recorded as an owner override: the handoff's pre-registered research verdict was retain_baseline (failed the returning-player mechanism check c7, diagnosed and fixed in iwh-0.1.1), the return-rate P(plays) overrides ros-avail-0.1.0's retain_current verdict (0.1.1 is a prospective-only candidate, docs/research/ros_availability.md), SHADOW_PROMOTION_CRITERIA and PROMOTION_CRITERIA are not met, and no prospective or held-out report is cited. ifp-2.0.0 stays the rollback target and the fallback for a week without an ifp-2.1.0 run."
+  },
+  {
+   "at": "2026-10-19T02:00:00+00:00",
+   "event": "promotion",
+   "from": "ifp-2.1.0",
+   "production": "ifp-2.2.0",
+   "by": "hhavynn",
+   "reason": "Owner decision (\"Force-promote shadows now: owner-override the prospective shadows into Ours today without waiting for evidence\"): the projection switch reads ifp-2.2.0, ifp-2.1.0 plus the frozen specs of the research shadows ifp-ctx-p2q (QB start probabilities and the two-scenario mixture), ifp-ctx-p1 (QB and teammate context for RB/WR), ifp-dct-p1 (pregame depth tier, QB/RB/WR) and ifp-awd-p1 (decline-only role, RB/WR/TE). Recorded as an owner override: every shadow's pre-registered prospective gate (>= 8 fully final weeks from 2026 week 7, >= 400 matched appearances) is unmet, ifp-ctx-p1's and ifp-ctx-p2's historical verdicts were retain_baseline, SHADOW_PROMOTION_CRITERIA and PROMOTION_CRITERIA are not met, and no prospective or held-out report is cited. ipm-cal-0.1.0 (the QB P(plays) map) was left out by the backtest guard and ifp-fr-p1 (FTN first reads) is excluded pending the owner's licensing decision. The shadows' prospective ledgers keep running unchanged as the post-hoc evidence. ifp-2.1.0 stays the rollback target and the fallback for a week without an ifp-2.2.0 run."
   }
  ]
 }

@@ -17,9 +17,9 @@ the next refresh_all.py publishes (skip it with --no-project).
 A cycle: lock -> preflight -> sync_nfl.py -> sync-exits -> pick the target week (the next week whose
 first kickoff, US Eastern from nflverse, is still ahead) -> readiness (every earlier game final,
 box scores / snaps / xFP synced) -> evaluate frozen forecasts -> train (reused when the training
-data, configuration and scoring fingerprint are unchanged; the ledger's ifp-1.0.0 / ifp-2.0.0 and the production
-ifp-2.1.0) -> predict (pregame only) -> project (the production ifp-2.1.0 run in the live DB; an identical run
-already stored is a no-op) -> report.
+data, configuration and scoring fingerprint are unchanged; the ledger's ifp-1.0.0 / ifp-2.0.0, the fallback ifp-2.1.0
+and the production ifp-2.2.0, whose depth charts sync-depth downloads right after sync-exits) -> predict (pregame only)
+-> project (the production ifp-2.2.0 run in the live DB; an identical run already stored is a no-op) -> report.
 The project stage also projects EVERY LATER regular-season week W+1..last from the same week-W artifact (rest-of-season
 projections, docs/independent_projection_engine.md; no training per week). A failure on one later week is listed under
 `projection.rest_of_season` and in `warnings`, and does not stop the other weeks or change the cycle status; skip all
@@ -83,6 +83,7 @@ sys.path.insert(0, str(SCRIPTS))
 import weekly_learning as cli  # noqa: E402  (the existing weekly_learning.py commands)
 
 from app.analytics import challenger as ch  # noqa: E402
+from app.analytics import context_model as cm  # noqa: E402
 from app.analytics import injury_model as im  # noqa: E402
 from app.analytics import weekly_learning as wl  # noqa: E402
 from app.config import get_settings  # noqa: E402
@@ -508,7 +509,7 @@ def stage_promotion_check(args, log_path: Path) -> dict:
         return {}
 
 
-def training_fingerprint(args, store, scoring, src=None, codes=None) -> str:
+def training_fingerprint(args, store, scoring, src=None, codes=None, conns=None) -> str:
     """Every training row, label and feature (scalar columns) plus everything else a fit depends on."""
     cols = [c for c, t in store.schema.items() if c not in ("key", "gsis_id", "label") and not t.is_nested()]
     return _sha({"data": wl.store_hash(store, cols) if store.height else None,
@@ -516,13 +517,27 @@ def training_fingerprint(args, store, scoring, src=None, codes=None) -> str:
                  "ifp_selection": hashlib.sha256((Path(args.ifp_dir) / "selection.json").read_bytes()).hexdigest(),
                  "ifp_report": hashlib.sha256((Path(args.ifp_dir) / "heldout_report.json").read_bytes()).hexdigest(),
                  "production_config": im.config_hash(ch.ChallengerConfig.load()),
+                 "context_config": cm.config_hash(ch.ChallengerConfig.load()),
+                 "context_inputs": context_inputs_fingerprint(args, src, conns),
                  # ifp-2.1.0 also reads injury reports, rosters, roster codes and the schedule (handoff, return table)
                  "injury_inputs": None if src is None else im.injury_inputs_hash(src, args.season, args.week, codes),
                  "scoring": scoring.fingerprint, "versions": list(TRAINED_VERSIONS),
                  "target": [args.season, args.week]})
 
 
-TRAINED_VERSIONS = (wl.MODEL_VERSION, ch.CHALLENGER_VERSION, im.MODEL_VERSION)   # ledger champion, challenger, production
+def context_inputs_fingerprint(args, src=None, conns=None) -> dict:
+    """What ifp-2.2.0 reads outside the training store: the context tables and depth snapshots before week W
+    (context_model.source_inputs_hash) and the frozen QB P(plays) map."""
+    pmap, note = cm.load_participation_map(Path(args.ifp_dir))
+    out = {"participation_map": (pmap or {}).get("sha256") or note, "sources": None}
+    if src is not None and conns:
+        inputs = cm.load_inputs(list(conns), Path(args.out) / cli.DEPTH_DIR, args.season)
+        out["sources"] = cm.source_inputs_hash(inputs, src, args.season, args.week)
+    return out
+
+
+# ledger champion, ledger challenger, fallback (ifp-2.1.0), production (ifp-2.2.0)
+TRAINED_VERSIONS = (wl.MODEL_VERSION, ch.CHALLENGER_VERSION, im.MODEL_VERSION, cm.MODEL_VERSION)
 
 
 def stage_train(args, src, scoring, live=None, hist=None) -> dict:
@@ -530,7 +545,7 @@ def stage_train(args, src, scoring, live=None, hist=None) -> dict:
     rows and features, configuration, production selection and scoring). Then reuse its artifacts.
     `--force-retrain` always refits; content addressing keeps every earlier artifact."""
     store = wl.training_store(src, args.season, args.week)
-    fp = training_fingerprint(args, store, scoring, src, cli.roster_codes(live, hist))
+    fp = training_fingerprint(args, store, scoring, src, cli.roster_codes(live, hist), conns=(hist, live))
     state_path = Path(args.out) / "state" / f"train-s{args.season}w{args.week:02d}.json"
     state = None
     if state_path.exists():
@@ -730,6 +745,9 @@ def run_cycle(args, now: datetime | None = None) -> tuple[int, dict]:
         else:
             stage("sync_nfl", stage_sync_nfl, args, Path(args.out) / "logs" / f"cycle-{stamp}.log")
             report["sync_exits"] = stage("sync_exits", stage_sync_exits, args)
+            report["sync_depth"] = stage("sync_depth", cli.cmd_sync_depth, args)     # never raises: warnings only
+            for w in report["sync_depth"].get("warnings") or []:
+                report["warnings"].append(f"sync_depth: {w}")
         live, hist, scoring, src = stage("load_sources", cli._context, args)
         conns += [live, hist]
         kick = week_kickoffs(live, args.season)

@@ -513,7 +513,7 @@ def pregame_forecasts(con, season: int, weeks: Iterable[int] | None = None, *,
     """(rows, exclusions). Per (season, week, espn_player_id): the row from the LATEST eligible run whose
     run created_at < that player's own kickoff. Eligible run = model_version match, scoring_fingerprint match,
     artifact_created_at < the week's first kickoff, integrity verified (row_count and content hash), and, once
-    the artifact rule of artifact_gate holds (ifp-1.0.0: the sha pin once set; ifp-2.1.0 / ifp-2.0.0: registered in approved_artifacts).
+    the artifact rule of artifact_gate holds (ifp-1.0.0: the sha pin once set; ifp-2.2.0 / ifp-2.1.0 / ifp-2.0.0: registered in approved_artifacts).
     exclusions: [{run_id, week, reason}]. Rows are never returned from another model version or scoring."""
     if not table_exists(con, RUNS):
         return [], []

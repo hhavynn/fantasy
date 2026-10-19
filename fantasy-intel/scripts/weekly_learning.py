@@ -1,10 +1,12 @@
 """Weekly learning CLI for the independent projection engine: the ledger's champion ifp-1.0.0 refit and
-challenger ifp-2.0.0, plus the production model ifp-2.1.0 (app.analytics.injury_model; `project` stores its run).
+challenger ifp-2.0.0, the fallback model ifp-2.1.0 (app.analytics.injury_model) and the production model ifp-2.2.0
+(app.analytics.context_model; `project` stores its run).
 Never writes the live database or the production model files.
 
     cd backend
     uv run python ../scripts/sync_nfl.py                                   # 1. nflverse (existing; Tuesday)
     uv run python ../scripts/weekly_learning.py sync-exits                 # 2. play-by-play injury evidence
+    uv run python ../scripts/weekly_learning.py sync-depth                 # 2b. depth charts (ifp-2.2.0)
     uv run python ../scripts/weekly_learning.py status  --week 7           # 3. readiness (read-only)
     uv run python ../scripts/weekly_learning.py train   --week 7           # 4. versioned artifacts
     uv run python ../scripts/weekly_learning.py predict --week 7           # 5. frozen pregame forecasts
@@ -21,7 +23,7 @@ reports/evaluate-<timestamp>.json.
 snaps or xFP, the league scoring differs from an artifact's, or week W has already kicked off
 (use --retrospective for a clearly labeled replay that never counts as pregame evidence).
 `train --after-kickoff` is the one exception for a week in progress that is NOT a replay: it trains only the
-production model (ifp-2.1.0) on exactly the pregame cutoff data, for a model introduced mid-week. The artifact
+production model (ifp-2.2.0) on exactly the pregame cutoff data, for a model introduced mid-week. The artifact
 records trained_after_first_kickoff, its fit time is after the week's first kickoff, and every evidence reader
 therefore excludes its runs for that week; nothing goes to the ledger.
 """
@@ -102,6 +104,44 @@ def _fetched_at(live, season: int):
     return nfl_fetch_times(live, season)["schedules"] if live is not None else None
 
 
+DEPTH_DIR = "depth_raw"      # <out>/depth_raw: ifp-2.2.0's nflverse depth-chart snapshots (content-addressed)
+
+
+def _load_depth(season: int):
+    import nflreadpy as nfl
+
+    return nfl.load_depth_charts([season])
+
+
+def sync_depth(raw_dir: Path, season: int, *, loader=None) -> dict:
+    """nflverse modern depth charts (ifp-2.2.0's depth_tier, 2025 on) into content-addressed snapshots
+    (usage_signals.write_snapshot): earlier seasons once, the live season every call. A failed download keeps the
+    stored snapshot and is reported, never raised (the depth tier is then missing-indicator input)."""
+    from app.analytics import context_model as cm
+    from app.analytics import usage_signals as us
+
+    loader = loader or _load_depth
+    cur = us.load_manifest(raw_dir)["current"]
+    out = {"dir": str(raw_dir), "snapshots": {}, "warnings": []}
+    for s in range(cm.DEPTH_FROM, season + 1):
+        k = f"depth_{s}"
+        if k in cur and s != season:
+            out["snapshots"][k] = {**cur[k], "fetched": False}
+            continue
+        try:
+            out["snapshots"][k] = {**us.write_snapshot(raw_dir, "depth", s, loader(s)), "fetched": True}
+        except Exception as err:      # noqa: BLE001  network / upstream: keep the stored snapshot
+            stored = us.load_manifest(raw_dir)["current"].get(k)
+            out["snapshots"][k] = {**(stored or {}), "fetched": False, "error": f"{type(err).__name__}: {err}"}
+            out["warnings"].append(f"{k} download failed ({type(err).__name__}: {err}); "
+                                   + ("using the stored snapshot" if stored else "no snapshot stored"))
+    return out
+
+
+def cmd_sync_depth(args, **_) -> dict:
+    return sync_depth(args.out / DEPTH_DIR, args.season)
+
+
 def cmd_status(args, src, live=None, **_) -> dict:
     return wl.readiness(src, args.season, args.week, _now(args), _fetched_at(live, args.season), con=live)
 
@@ -129,6 +169,19 @@ def roster_codes(live, hist) -> pl.DataFrame | None:
     return pl.concat(parts) if parts else None
 
 
+def train_context(args, src, scoring, store, live, hist, codes, *, after_kickoff: bool):
+    """The production model ifp-2.2.0 (app.analytics.context_model): its inputs are the history + live DB context
+    tables, the depth snapshots in <out>/depth_raw (sync-depth) and the frozen QB P(plays) map under --ifp-dir."""
+    from app.analytics import context_model as cm
+
+    inputs = cm.load_inputs([hist, live], args.out / DEPTH_DIR, args.season)
+    pmap, note = cm.load_participation_map(args.ifp_dir)
+    return wl.train_context(src, args.season, args.week, cfg=ch.ChallengerConfig.load(), scoring_desc=scoring.describe(),
+                            created_at=_now(args).isoformat(), inputs=inputs, participation_map=pmap,
+                            participation_note=note, retrospective=args.retrospective, store=store, roster_codes=codes,
+                            after_kickoff=after_kickoff)
+
+
 def cmd_train(args, src, scoring, store=None, live=None, hist=None, **_) -> dict:
     after = bool(getattr(args, "after_kickoff", False))
     if after and args.retrospective:
@@ -150,9 +203,12 @@ def cmd_train(args, src, scoring, store=None, live=None, hist=None, **_) -> dict
         arts += list(wl.train(src, args.season, args.week, ifp_selection=sel, ifp_report=rep, cfg=cfg,
                               scoring_desc=scoring.describe(), created_at=_now(args).isoformat(),
                               retrospective=args.retrospective, store=store))
-    arts.append(wl.train_production(src, args.season, args.week, cfg=cfg, scoring_desc=scoring.describe(),
-                                    created_at=_now(args).isoformat(), retrospective=args.retrospective, store=store,
-                                    roster_codes=roster_codes(live, hist), after_kickoff=after))
+    codes = roster_codes(live, hist)
+    if not after:       # ifp-2.1.0, the fallback model (its own week-W artifact)
+        arts.append(wl.train_production(src, args.season, args.week, cfg=cfg, scoring_desc=scoring.describe(),
+                                        created_at=_now(args).isoformat(), retrospective=args.retrospective,
+                                        store=store, roster_codes=codes, after_kickoff=after))
+    arts.append(train_context(args, src, scoring, store, live, hist, codes, after_kickoff=after))
     res = {}
     for art in arts:
         aid, path, created = wl.save_artifact(art, args.out)
@@ -288,7 +344,7 @@ def cmd_evaluate(args, src, live=None, scoring=None, **_) -> dict:
 
 
 def cmd_cycle(args, **ctx) -> dict:
-    out = {"sync_exits": cmd_sync_exits(args)}
+    out = {"sync_exits": cmd_sync_exits(args), "sync_depth": cmd_sync_depth(args)}   # depth before ifp-2.2.0 training
     live, hist, scoring, src = _context(args)
     ctx = {"live": live, "hist": hist, "src": src, "scoring": scoring}
     out["status"] = cmd_status(args, **ctx)
@@ -301,7 +357,7 @@ def cmd_cycle(args, **ctx) -> dict:
 def main(argv=None) -> int:
     settings = get_settings()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["sync-exits", "status", "train", "predict", "evaluate", "cycle"])
+    ap.add_argument("command", choices=["sync-exits", "sync-depth", "status", "train", "predict", "evaluate", "cycle"])
     ap.add_argument("--week", type=int)
     ap.add_argument("--season", type=int, default=settings.nfl_season)
     ap.add_argument("--history-seasons", help="sync-exits only, e.g. 2019-2025 (history database rosters)")
@@ -309,7 +365,7 @@ def main(argv=None) -> int:
                     help="replay a week that already started; stored as retrospective, never counted as pregame")
     ap.add_argument("--after-kickoff", action="store_true",
                     help="train only: the week already kicked off and this is NOT a replay: train the production model "
-                         "(ifp-2.1.0) alone on the pregame cutoff data (a model introduced mid-week; its runs for this "
+                         "(ifp-2.2.0) alone on the pregame cutoff data (a model introduced mid-week; its runs for this "
                          "week are never evidence)")
     ap.add_argument("--now", help="ISO timestamp to use as the current time (testing and audits)")
     ap.add_argument("--live-db", type=Path, default=settings.db_path)
@@ -323,6 +379,8 @@ def main(argv=None) -> int:
     try:
         if args.command == "sync-exits":
             result = cmd_sync_exits(args)
+        elif args.command == "sync-depth":
+            result = cmd_sync_depth(args)
         elif args.command == "cycle":
             result = cmd_cycle(args)
         else:

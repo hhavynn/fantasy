@@ -6,7 +6,7 @@ No training, no syncs, no ESPN calls and no writes. Independent estimates and ES
 are separate fields; an independent value is never replaced by ESPN's, and unknown is null.
 
 The run shown is the one every consumer view shows (projection_source.select_run): the production model
-(ifp-2.1.0) under the league's current scoring, else the labeled ifp-2.0.0 fallback, and only a run whose stored
+(ifp-2.2.0) under the league's current scoring, else the labeled ifp-2.1.0 fallback, and only a run whose stored
 rows verify against its content hash and whose artifact is approved. Players are served from exactly the rows
 that were verified. `governance` says what the served model's approval does and does not establish.
 """
