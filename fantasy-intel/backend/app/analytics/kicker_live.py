@@ -168,7 +168,7 @@ def _explain(art: km.KickerArtifact, scoring: KickerScoring, lam_fg, lam_pat, sk
             break
     d = pts(lam_fg=lam_fg0, lam_pat=lam_pat0) - pts(lam_fg=lam_fg0, lam_pat=league_pat)
     items.append({"feature": "pat_opportunity", "contribution": round(d, 2),
-                  "text": (f"touchdown volume: {lam_pat:.2f} expected PAT tries vs a league-average {league_pat:.2f} "
+                  "text": (f"touchdown volume: {lam_pat0:.2f} expected PAT tries vs a league-average {league_pat:.2f} "
                            f"(team offense {row.get('o_pat_att', float('nan')):.2f} PAT/game, opponent allows "
                            f"{row.get('d_pat_att', float('nan')):.2f})")})
     d = delta(skill=0.0)
