@@ -104,11 +104,9 @@ def build(args) -> tuple[pl.DataFrame, dict]:
     t = time.time()
     src, _ = hr._sources(args)
     ctx = ctxr.ctx_sources(args)
-    latest = src.panel.sort(["season", "week"]).group_by("gsis_id").agg(pl.col("position").last())
-    positions = dict(zip(latest["gsis_id"].to_list(), latest["position"].to_list()))
     parts = []
     for (season, week), rows in store.group_by("season", "week", maintain_order=True):
-        parts.append(qr.qbr_for_week(qb, rec, src.panel, ctx.starters, positions, int(season), int(week),
+        parts.append(qr.qbr_for_week(qb, rec, src.panel, ctx.starters, int(season), int(week),
                                      rows.select("gsis_id", "position", "expected_qb_id", "qb_epa_delta"))
                      .with_columns(pl.lit(int(season) * 100 + int(week)).alias("key")))
     store = store.join(pl.concat(parts), on=["key", "gsis_id"], how="left")

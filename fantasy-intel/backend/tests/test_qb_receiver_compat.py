@@ -122,7 +122,7 @@ def _rows(expected=BACKUP, epa_delta=-0.2, world=None):
                       "expected_qb_id": [expected] * 4, "qb_epa_delta": [epa_delta] * 4},
                      schema={"gsis_id": pl.String, "position": pl.String, "expected_qb_id": pl.String,
                              "qb_epa_delta": pl.Float64})
-    out = qr.qbr_for_week(qb, rec, panel, starters, POS, S, W, t)
+    out = qr.qbr_for_week(qb, rec, panel, starters, S, W, t)
     return {r["gsis_id"]: r for r in out.iter_rows(named=True)}
 
 
@@ -154,6 +154,18 @@ def test_week_w_and_later_plays_never_change_features():
     late_start = pl.DataFrame([{"season": S, "week": W, "team": "CHI", "qb_id": BACKUP}], schema=STARTER_SCHEMA)
     after = pl.DataFrame(list(_rows(world=(qb, rec, pl.concat([panel, late_panel]),
                                            pl.concat([starters, late_start]))).values()))
+    assert before.equals(after)
+
+
+def test_role_priors_use_positions_as_of_the_week_not_a_later_relisting():
+    qb, rec, panel, starters = _world()
+    # DEEP re-listed as a TE after W (and the next season): his week-W role prior must stay the WR one
+    later = pl.DataFrame([{"season": S, "week": W + 1, "gsis_id": DEEP, "team": "CHI", "position": "TE"},
+                          {"season": S + 1, "week": 1, "gsis_id": SHORT, "team": "CHI", "position": "RB"}])
+    assert qr.positions_before(pl.concat([panel, later]), S, W)[DEEP] == "WR"
+    assert qr.positions_before(pl.concat([panel, later]), S, W + 2)[DEEP] == "TE"
+    before = pl.DataFrame(list(_rows().values()))
+    after = pl.DataFrame(list(_rows(world=(qb, rec, pl.concat([panel, later]), starters)).values()))
     assert before.equals(after)
 
 

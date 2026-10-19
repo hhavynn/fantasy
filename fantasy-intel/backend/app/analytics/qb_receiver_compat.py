@@ -55,8 +55,8 @@ from .forecast_features import key
 from .independent_projections import MIN_TRAIN_ROWS, RidgeModel
 from .roster_context import LOW_VOLUME_QB_SEASON, QB_LOOKBACK_SEASONS, shrink
 
-QBR_VERSION = "qbr-0.1.0"                 # features
-QBR_CHALLENGER_VERSION = "ifp-qbr-0.1.0"
+QBR_VERSION = "qbr-0.1.1"                 # features. 0.1.0 (frozen, kept, never overwritten) read each receiver's
+QBR_CHALLENGER_VERSION = "ifp-qbr-0.1.1"   # position from his LAST panel row overall (look-ahead); 0.1.1 as of W
 QBR_STATUS = "research_only"
 WINDOWS = {"development": (2021, 2022), "confirmation": (2023, 2024), "exploratory": (2025, 2026)}
 
@@ -296,16 +296,25 @@ def _schema() -> dict:
     return {"gsis_id": pl.String, **{c: pl.Float64 for c in QBR_COLUMNS}}
 
 
+def positions_before(panel: pl.DataFrame, season: int, week: int) -> dict[str, str]:
+    """gsis -> position of the player's latest panel row strictly before (S, W): a later position change
+    (a WR re-listed as TE) never reaches an earlier week's role prior."""
+    p = panel.filter(pl.col("season") * 100 + pl.col("week") < key(season, week))
+    latest = p.sort(["season", "week"]).group_by("gsis_id").agg(pl.col("position").last())
+    return dict(zip(latest["gsis_id"].to_list(), latest["position"].to_list()))
+
+
 def qbr_for_week(qb_games: pl.DataFrame, rec_games: pl.DataFrame, panel: pl.DataFrame, starters: pl.DataFrame,
-                 positions: dict[str, str], season: int, week: int, targets: pl.DataFrame) -> pl.DataFrame:
+                 season: int, week: int, targets: pl.DataFrame) -> pl.DataFrame:
     """Role x QB features for `targets` (gsis_id, position, expected_qb_id, qb_epa_delta: the ifp-ctx
-    store columns) in week (S, W). Every input is from games strictly before (S, W) except the
-    pregame expected starter, which ifp-ctx identified."""
+    store columns) in week (S, W). Every input is from games strictly before (S, W), including the
+    positions behind the role priors (`positions_before`), except the pregame expected starter, which
+    ifp-ctx identified."""
     schema = _schema()
     if targets.height == 0:
         return pl.DataFrame(schema=schema)
     profiles, prior = qb_pass_profiles(qb_games, season, week)
-    roles = receiver_roles(rec_games, positions, season, week)
+    roles = receiver_roles(rec_games, positions_before(panel, season, week), season, week)
     recent = recent_starters(panel, starters, season, week)
     rows = []
     for g, pos, exp_id, epa_delta in targets.select("gsis_id", "position", "expected_qb_id",
@@ -420,5 +429,5 @@ def cohorts() -> dict[str, pl.Expr]:
 
 
 __all__ = ["QBR_VERSION", "QBR_CHALLENGER_VERSION", "QBR_STATUS", "QBR_DOCS", "GROUP", "CANDIDATES", "DECISION_RULES",
-           "pass_game_tables", "qb_pass_profiles", "receiver_roles", "recent_starters", "qbr_for_week",
+           "pass_game_tables", "qb_pass_profiles", "receiver_roles", "positions_before", "recent_starters", "qbr_for_week",
            "candidate_features", "fit_candidate", "walk_forward", "cohorts"]
