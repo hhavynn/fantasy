@@ -42,8 +42,10 @@ def test_split_reproduces_every_table_in_exactly_one_file(e2e, tmp_path):
 def test_versions_carry_the_file_digest_and_the_stamp(e2e, tmp_path):
     from app.db.r2 import file_sha256
     out = split_database(e2e, tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", stamp="2026-10-20T12:00:00")
-    assert out.league_version == "20261020T120000Z-" + file_sha256(out.league_path)[:24]
-    assert out.global_version == "20261020T120000Z-" + file_sha256(out.global_path)[:24]
+    from app.db.league_split import VERSION_RE
+    assert out.league_version == f"20261020T120000Z-{file_sha256(out.league_path)[:24]}-{out.league_path.stat().st_size}"
+    assert out.global_version == f"20261020T120000Z-{file_sha256(out.global_path)[:24]}-{out.global_path.stat().st_size}"
+    assert VERSION_RE.fullmatch(out.league_version) and len(out.league_version) <= 64
     con = duckdb.connect(str(out.league_path), read_only=True)
     assert con.execute("SELECT value FROM schema_meta WHERE key = 'published_at'").fetchone() == ("2026-10-20T12:00:00",)
     con.close()

@@ -625,3 +625,347 @@ git add fantasy-intel/backend/app/db/league_split.py fantasy-intel/backend/tests
 git commit -m "Phase 2: split the analytics database into a league file and a global file"
 ```
 
+
+### Task 3: League file cache (verified, atomic, downloaded once, byte-bounded LRU)
+
+**Files:**
+- Create: `fantasy-intel/backend/app/db/league_files.py`
+- Create: `fantasy-intel/backend/tests/test_league_files.py`
+- Modify: `fantasy-intel/backend/app/db/league_split.py (version = `<stamp>Z-<sha256[:24]>-<bytes>`, `VERSION_RE`)`
+- Modify: `fantasy-intel/backend/app/db/r2.py (`download(..., expected_sha256_prefix=None)` + size check)`
+- Modify: `fantasy-intel/backend/tests/test_league_split.py (version assertion)`
+
+**Interfaces:**
+- Consumes: `VERSION_RE` (Task 2), `r2.download(cfg, key, dest, size=, expected_sha256_prefix=)`.
+- Produces: `league_key(league_id, version) -> str`, `global_key(version) -> str`, `ObjectKeyError`, `R2Store(cfg)`, `DirStore(root)`, `LeagueFileCache(store, cache_dir, *, max_bytes=350 MiB, on_evict=None)` with `.league_file(league_id, version) -> Path`, `.global_file(version) -> Path`, `.bytes_used`.
+- Version carries the byte size so R2Store can use the 8-way ranged download from Phase 0b; downloads are verified against the sha256 prefix and size in the version.
+
+- [ ] **Step 1: Write the failing tests**
+
+`fantasy-intel/backend/tests/test_league_files.py`:
+
+```python
+"""The per-instance cache of league and global files: verified, atomic, downloaded once, byte-bounded."""
+import hashlib
+import threading
+
+import pytest
+
+from app.db.league_files import DirStore, LeagueFileCache, ObjectKeyError, R2Store, global_key, league_key
+from app.db.r2 import R2Error
+from fake_r2 import FakeR2
+
+LG = "lg_" + "a" * 24
+
+
+def blob(n: int, seed: int) -> bytes:
+    return (hashlib.sha256(str(seed).encode()).digest() * (n // 32 + 1))[:n]
+
+
+def version_of(data: bytes, stamp="20261020T120000Z") -> str:
+    return f"{stamp}-{hashlib.sha256(data).hexdigest()[:24]}-{len(data)}"
+
+
+@pytest.fixture
+def r2():
+    fake = FakeR2()
+    yield fake
+    fake.close()
+
+
+def put(fake, key, data):
+    fake.objects[key] = data
+
+
+def test_keys_are_derived_only_from_validated_ids_and_versions():
+    v = version_of(b"x" * 10)
+    assert league_key(LG, v) == f"leagues/{LG}/{v}.duckdb"
+    assert global_key(v) == f"global/{v}.duckdb"
+    for bad_lg, bad_v in ((LG + "/../x", v), ("lg_short", v), (LG, "../../etc"), (LG, v + "/x"), (LG, "2026-x")):
+        with pytest.raises(ObjectKeyError):
+            league_key(bad_lg, bad_v)
+
+
+def test_downloads_once_verifies_and_serves_the_same_path(r2, tmp_path):
+    data = blob(5000, 1)
+    v = version_of(data)
+    put(r2, league_key(LG, v), data)
+    cache = LeagueFileCache(R2Store(r2.config), tmp_path / "c", max_bytes=1 << 20)
+    p1 = cache.league_file(LG, v)
+    p2 = cache.league_file(LG, v)
+    assert p1 == p2 and p1.read_bytes() == data
+    assert [m for m, k, _ in r2.requests if m == "GET"] == ["GET"]
+    assert not list((tmp_path / "c").glob("*.part"))
+
+
+def test_concurrent_first_requests_download_once(r2, tmp_path):
+    data = blob(200_000, 2)
+    v = version_of(data)
+    put(r2, league_key(LG, v), data)
+    cache = LeagueFileCache(R2Store(r2.config), tmp_path / "c", max_bytes=10 << 20)
+    paths, barrier = [], threading.Barrier(8)
+
+    def go():
+        barrier.wait()
+        paths.append(cache.league_file(LG, v))
+
+    threads = [threading.Thread(target=go) for _ in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(set(paths)) == 1 and len([1 for m, k, _ in r2.requests if m == "GET"]) == 1
+
+
+@pytest.mark.parametrize("tamper", ["content", "size"])
+def test_a_corrupt_or_wrong_size_object_is_rejected_and_nothing_is_cached(r2, tmp_path, tamper):
+    data = blob(5000, 3)
+    v = version_of(data)
+    put(r2, league_key(LG, v), data[:-1] + b"!" if tamper == "content" else data + b"extra")
+    cache = LeagueFileCache(R2Store(r2.config), tmp_path / "c", max_bytes=1 << 20)
+    with pytest.raises(R2Error):
+        cache.league_file(LG, v)
+    assert list((tmp_path / "c").iterdir()) == [] and cache.bytes_used == 0
+
+
+def test_the_lru_never_exceeds_its_bound_under_a_20_league_mix(r2, tmp_path):
+    import random
+    rng = random.Random(7)
+    leagues = []
+    for i in range(20):
+        lg = f"lg_{i:024d}"
+        data = blob(rng.randint(30_000, 90_000), i)
+        v = version_of(data)
+        put(r2, league_key(lg, v), data)
+        leagues.append((lg, v))
+    bound = 300_000
+    evicted = []
+    cache = LeagueFileCache(R2Store(r2.config), tmp_path / "c", max_bytes=bound, on_evict=evicted.append)
+    for _ in range(200):
+        lg, v = rng.choice(leagues)
+        p = cache.league_file(lg, v)
+        assert p.exists()
+        on_disk = sum(f.stat().st_size for f in (tmp_path / "c").iterdir())
+        assert on_disk <= bound and cache.bytes_used == on_disk
+    assert evicted, "the mix is larger than the bound, so something must have been evicted"
+
+
+def test_a_file_larger_than_the_whole_cache_is_refused(r2, tmp_path):
+    data = blob(5000, 4)
+    v = version_of(data)
+    put(r2, league_key(LG, v), data)
+    with pytest.raises(ValueError, match="larger than the cache"):
+        LeagueFileCache(R2Store(r2.config), tmp_path / "c", max_bytes=4000).league_file(LG, v)
+
+
+def test_dir_store_serves_local_objects_with_the_same_checks(tmp_path):
+    data = blob(4000, 5)
+    v = version_of(data)
+    src = tmp_path / "objects" / f"global/{v}.duckdb"
+    src.parent.mkdir(parents=True)
+    src.write_bytes(data)
+    cache = LeagueFileCache(DirStore(tmp_path / "objects"), tmp_path / "c", max_bytes=1 << 20)
+    assert cache.global_file(v).read_bytes() == data
+    src.write_bytes(data[:-1] + b"?")
+    bad = version_of(b"other")
+    with pytest.raises(R2Error):
+        cache.global_file(bad)
+```
+
+```bash
+cd fantasy-intel/backend && uv run pytest tests/test_league_files.py -q
+```
+Expected: collection error (module missing)
+
+- [ ] **Step 2: Extend `r2.download` with `expected_sha256_prefix` and a size check (inside the existing try, before `part.replace(dest)`)**
+
+```bash
+#   if expected_sha256_prefix and not digest.startswith(expected_sha256_prefix): raise R2Error(None, "ChecksumMismatch", key)
+#   if size is not None and part.stat().st_size != size: raise R2Error(None, "SizeMismatch", key)
+```
+
+- [ ] **Step 3: Implement the cache**
+
+`fantasy-intel/backend/app/db/league_files.py`:
+
+```python
+"""Per-instance cache of immutable league and global DuckDB files (multi-league Phase 2).
+
+Objects are immutable: `leagues/<lg_id>/<version>.duckdb` and `global/<version>.duckdb`, where the version is
+`<stamp>Z-<sha256[:24]>-<bytes>` (app/db/league_split.py). A version therefore never goes stale, and every download
+is verified against its own name. Keys are built here from a validated league id and version only; nothing a
+request supplies reaches a path or an object key.
+
+The cache keeps files in `cache_dir` (Vercel: /tmp) under a byte bound (350 MB by default, /tmp is 500 MB).
+Downloads go to a temporary name and are renamed into place, so a reader never sees a partial file; one download
+per object at a time (other requests for the same object wait for it); least-recently-used files are evicted to
+stay under the bound, and `on_evict(path)` lets the connection cache close what it had open on them.
+
+The object store is R2 (read-only token) in production, or a local directory (`LEAGUE_FILES_DIR`) for development
+and the local golden check.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import shutil
+import threading
+from collections import OrderedDict
+from pathlib import Path
+from typing import Callable, Protocol
+
+from . import r2
+from .league_split import VERSION_RE
+
+DEFAULT_MAX_BYTES = 350 << 20
+_LEAGUE_ID = re.compile(r"lg_[A-Za-z0-9_-]{16,64}")
+
+
+class ObjectKeyError(ValueError):
+    """A league id or version that is not ours. Callers never get this from request input: authorization and the
+    database constraints come first; it is defence in depth."""
+
+
+def _check_version(version: str) -> re.Match:
+    m = VERSION_RE.fullmatch(version) if isinstance(version, str) else None
+    if m is None:
+        raise ObjectKeyError("malformed version")
+    return m
+
+
+def league_key(league_id: str, version: str) -> str:
+    if not isinstance(league_id, str) or not _LEAGUE_ID.fullmatch(league_id):
+        raise ObjectKeyError("malformed league id")
+    _check_version(version)
+    return f"leagues/{league_id}/{version}.duckdb"
+
+
+def global_key(version: str) -> str:
+    _check_version(version)
+    return f"global/{version}.duckdb"
+
+
+class ObjectStore(Protocol):
+    def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None: ...
+
+
+class R2Store:
+    """Production: the private bucket, read with the API's Object Read token."""
+
+    def __init__(self, cfg: r2.R2Config):
+        self.cfg = cfg
+
+    def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None:
+        r2.download(self.cfg, key, dest, size=size, expected_sha256_prefix=sha256_prefix)
+
+
+class DirStore:
+    """Development: objects laid out under a directory with the same keys."""
+
+    def __init__(self, root: Path):
+        self.root = Path(root)
+
+    def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None:
+        src = self.root / key
+        if not src.is_file():
+            raise r2.R2Error(404, "NoSuchKey", key)
+        part = dest.with_name(dest.name + ".part")
+        try:
+            shutil.copyfile(src, part)
+            if part.stat().st_size != size:
+                raise r2.R2Error(None, "SizeMismatch", key)
+            if not r2.file_sha256(part).startswith(sha256_prefix):
+                raise r2.R2Error(None, "ChecksumMismatch", key)
+            part.replace(dest)
+        finally:
+            part.unlink(missing_ok=True)
+
+
+class LeagueFileCache:
+    def __init__(self, store: ObjectStore, cache_dir: Path, *, max_bytes: int = DEFAULT_MAX_BYTES,
+                 on_evict: Callable[[Path], None] | None = None):
+        self.store, self.cache_dir, self.max_bytes = store, Path(cache_dir), int(max_bytes)
+        self.on_evict = on_evict
+        self._lock = threading.Lock()                       # guards _files and _downloading
+        self._files: OrderedDict[str, tuple[Path, int]] = OrderedDict()   # key -> (path, bytes), LRU order
+        self._downloading: dict[str, threading.Event] = {}
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        for leftover in self.cache_dir.iterdir():          # a fresh index: files from an earlier process are dropped
+            if leftover.is_file():
+                leftover.unlink(missing_ok=True)
+
+    @property
+    def bytes_used(self) -> int:
+        with self._lock:
+            return sum(size for _, size in self._files.values())
+
+    def league_file(self, league_id: str, version: str) -> Path:
+        return self._get(league_key(league_id, version), version)
+
+    def global_file(self, version: str) -> Path:
+        return self._get(global_key(version), version)
+
+    def _local_path(self, key: str) -> Path:
+        return self.cache_dir / key.replace("/", "__")
+
+    def _get(self, key: str, version: str) -> Path:
+        m = _check_version(version)
+        size = int(m["bytes"])
+        if size > self.max_bytes:
+            raise ValueError(f"{key} is larger than the cache ({size} > {self.max_bytes} bytes)")
+        while True:
+            with self._lock:
+                hit = self._files.get(key)
+                if hit is not None and hit[0].exists():
+                    self._files.move_to_end(key)
+                    return hit[0]
+                waiting = self._downloading.get(key)
+                if waiting is None:
+                    done = self._downloading[key] = threading.Event()
+                    break
+            waiting.wait()                                   # someone else is fetching this object; then re-check
+        path = self._local_path(key)
+        try:
+            self._make_room(size)
+            self.store.fetch(key, path, sha256_prefix=m["sha"], size=size)
+            with self._lock:
+                self._files[key] = (path, size)
+                self._files.move_to_end(key)
+            self._make_room(0)
+            return path
+        finally:
+            with self._lock:
+                self._downloading.pop(key, None)
+            done.set()
+
+    def _make_room(self, incoming: int) -> None:
+        """Evict least-recently-used files until `incoming` more bytes fit under the bound."""
+        evicted = []
+        with self._lock:
+            used = sum(size for _, size in self._files.values())
+            while self._files and used + incoming > self.max_bytes:
+                _, (path, size) = self._files.popitem(last=False)
+                used -= size
+                evicted.append(path)
+        for path in evicted:
+            if self.on_evict is not None:
+                self.on_evict(path)                          # close connections first, then free the space
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+```
+
+- [ ] **Step 4: Run the tests**
+
+```bash
+uv run pytest tests/test_league_files.py tests/test_league_split.py tests/test_r2.py tests/test_snapshot.py -q
+```
+Expected: all pass
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A fantasy-intel/backend/app/db fantasy-intel/backend/tests/test_league_files.py fantasy-intel/backend/tests/test_league_split.py
+git commit -m "Phase 2: verified, byte-bounded league file cache"
+```
+

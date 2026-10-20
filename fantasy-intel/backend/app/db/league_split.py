@@ -13,11 +13,13 @@ with `search_path = league, global` (app/db/league_conn.py). This module decides
 A table missing from all three sets fails tests/test_league_split.py: a new table must be classified on purpose,
 and when in doubt it is a league table (a misplaced league table in the global file would leak to every league).
 
-Versions are `<UTC stamp>-<sha256[:24]>` of the written file, so a download can be verified against its name.
+Versions are `<UTC stamp>Z-<sha256[:24]>-<bytes>` of the written file, so a download can be verified against its
+name and fetched with parallel ranged GETs.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -71,9 +73,13 @@ def _ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+VERSION_RE = re.compile(r"(?P<stamp>\d{8}T\d{6}Z)-(?P<sha>[0-9a-f]{24})-(?P<bytes>[1-9][0-9]{0,11})")
+
+
 def version_for(path: Path, stamp: str) -> str:
+    """`<UTC stamp>Z-<sha256[:24]>-<bytes>`: enough to verify a download and to fetch it with parallel ranges."""
     compact = stamp.replace("-", "").replace(":", "").split(".")[0]
-    return f"{compact}Z-{file_sha256(path)[:24]}"
+    return f"{compact}Z-{file_sha256(path)[:24]}-{Path(path).stat().st_size}"
 
 
 def _columns(con, table: str) -> set[str]:
