@@ -242,6 +242,14 @@ of the Los Subies league tables plus the global tables in `spike_fi_global`):
 | Migrations | Apply a schema change to 60 DBs | Time recorded |
 | Vercel Queues | Publish/consume from Python on this team | Available or fallback chosen |
 
+**Results (2026-10-20): conditional GO** — see [`fantasy-intel/spikes/motherduck/REPORT.md`](../../../fantasy-intel/spikes/motherduck/REPORT.md).
+Amendments adopted from it: API reads use a reader **service account** over per-league restricted shares
+(no in-identity mechanism blocks writes or `DROP DATABASE`); a per-instance attach lock with LRU detach;
+`Conflict on update/tuple deletion` is a transient sync error (orphaned transactions block ~30 s);
+the MotherDuck extension is bundled to cut cold starts; league API responses are cached after
+authorization, keyed by `(league, data_version, visibility_epoch, perspective, route, params)`, because
+Pulse bills ≥ 1 CU-second per query.
+
 Go = isolation story acceptable (server-enforced, with whatever guard exists), an affordable read-only
 mechanism exists, latency targets met, atomic writes and fencing hold, cost acceptable. Otherwise the
 spike report goes to Havyn with the numbers and B is revisited against A/C.

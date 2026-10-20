@@ -1,0 +1,811 @@
+{
+  "recorded_at": "2026-10-20T05:23:10+00:00",
+  "duckdb": "1.5.6",
+  "token": "MOTHERDUCK_API_TOKEN (standard read/write, same type as hosted API)",
+  "cases": [
+    {
+      "label": "plain attach_mode=single",
+      "dsn": "md:spike_lg_001?attach_mode=single&saas_mode=true",
+      "config": {},
+      "steps": [
+        {
+          "sql": "SELECT database_name FROM duckdb_databases() ORDER BY 1",
+          "ok": true,
+          "rows": [
+            [
+              "md_information_schema"
+            ],
+            [
+              "spike_lg_001"
+            ],
+            [
+              "system"
+            ],
+            [
+              "temp"
+            ]
+          ],
+          "ms": 1.2
+        },
+        {
+          "sql": "SELECT alias FROM md_list_databases() ORDER BY 1",
+          "ok": false,
+          "error": "CatalogException: Catalog Error: Table Function with name md_list_databases does not exist!\nDid you mean \"duckdb_databases\"?\n\nLINE 1: SELECT alias FROM md_list_databases() ORDER BY 1\n                          ^",
+          "ms": 57.6
+        },
+        {
+          "sql": "SELECT count(*) FROM spike_lg_002.main.fantasy_teams",
+          "ok": false,
+          "error": "BinderException: Binder Error: Catalog \"spike_lg_002\" does not exist!",
+          "ms": 0.9
+        },
+        {
+          "sql": "ATTACH 'md:spike_lg_002'",
+          "ok": true,
+          "rows": [],
+          "ms": 41.2
+        },
+        {
+          "sql": "SELECT count(*) FROM spike_lg_002.main.fantasy_teams",
+          "ok": true,
+          "rows": [
+            [
+              "12"
+            ]
+          ],
+          "ms": 35.1
+        },
+        {
+          "sql": "USE spike_lg_002",
+          "ok": true,
+          "rows": [],
+          "ms": 0.2
+        },
+        {
+          "sql": "USE spike_lg_001",
+          "ok": true,
+          "rows": [],
+          "ms": 0.1
+        },
+        {
+          "sql": "INSERT INTO spike_lg_002.main._sync_meta VALUES (999, 999, 'spike-intrusion', now())",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 41.6
+        },
+        {
+          "sql": "DELETE FROM spike_lg_002.main._sync_meta WHERE fence = 999",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 38.0
+        },
+        {
+          "sql": "CREATE DATABASE spike_tmp_isolation",
+          "ok": true,
+          "rows": [],
+          "ms": 331.9
+        },
+        {
+          "sql": "DROP DATABASE IF EXISTS spike_tmp_isolation",
+          "ok": true,
+          "rows": [],
+          "ms": 77.8
+        },
+        {
+          "sql": "INSERT INTO spike_lg_001.main._sync_meta VALUES (998, 998, 'spike-own-write', now())",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 40.1
+        },
+        {
+          "sql": "DELETE FROM spike_lg_001.main._sync_meta WHERE fence = 998",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 37.2
+        }
+      ]
+    },
+    {
+      "label": "global attached RO, then config locked",
+      "dsn": "md:spike_lg_001?attach_mode=single&saas_mode=true",
+      "config": {},
+      "steps": [
+        {
+          "sql": "ATTACH 'md:spike_fi_global' (READ_ONLY)",
+          "ok": true,
+          "rows": [],
+          "ms": 74.7
+        },
+        {
+          "sql": "SET search_path = 'spike_lg_001.main,spike_fi_global.main'",
+          "ok": true,
+          "rows": [],
+          "ms": 0.2
+        },
+        {
+          "sql": "SELECT count(*) FROM fantasy_teams",
+          "ok": true,
+          "rows": [
+            [
+              "12"
+            ]
+          ],
+          "ms": 33.3
+        },
+        {
+          "sql": "SELECT count(*) FROM nfl_schedules",
+          "ok": true,
+          "rows": [
+            [
+              "272"
+            ]
+          ],
+          "ms": 32.0
+        },
+        {
+          "sql": "INSERT INTO spike_fi_global.main._global_meta VALUES ('intrusion')",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot execute statement of type \"INSERT\" on database \"spike_fi_global\" which is attached in read-only mode!",
+          "ms": 1.3
+        },
+        {
+          "sql": "SET enable_external_access = false",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot change configuration option \"enable_external_access\" - the configuration has been locked",
+          "ms": 0.8
+        },
+        {
+          "sql": "SET lock_configuration = true",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot change configuration option \"lock_configuration\" - the configuration has been locked",
+          "ms": 0.7
+        },
+        {
+          "sql": "SELECT database_name FROM duckdb_databases() ORDER BY 1",
+          "ok": true,
+          "rows": [
+            [
+              "md_information_schema"
+            ],
+            [
+              "spike_fi_global"
+            ],
+            [
+              "spike_lg_001"
+            ],
+            [
+              "system"
+            ],
+            [
+              "temp"
+            ]
+          ],
+          "ms": 0.3
+        },
+        {
+          "sql": "SELECT alias FROM md_list_databases() ORDER BY 1",
+          "ok": false,
+          "error": "CatalogException: Catalog Error: Table Function with name md_list_databases does not exist!\nDid you mean \"duckdb_databases\"?\n\nLINE 1: SELECT alias FROM md_list_databases() ORDER BY 1\n                          ^",
+          "ms": 59.4
+        },
+        {
+          "sql": "SELECT count(*) FROM spike_lg_002.main.fantasy_teams",
+          "ok": false,
+          "error": "BinderException: Binder Error: Catalog \"spike_lg_002\" does not exist!",
+          "ms": 0.5
+        },
+        {
+          "sql": "ATTACH 'md:spike_lg_002'",
+          "ok": true,
+          "rows": [],
+          "ms": 37.3
+        },
+        {
+          "sql": "SELECT count(*) FROM spike_lg_002.main.fantasy_teams",
+          "ok": true,
+          "rows": [
+            [
+              "12"
+            ]
+          ],
+          "ms": 33.0
+        },
+        {
+          "sql": "USE spike_lg_002",
+          "ok": true,
+          "rows": [],
+          "ms": 0.2
+        },
+        {
+          "sql": "USE spike_lg_001",
+          "ok": true,
+          "rows": [],
+          "ms": 0.1
+        },
+        {
+          "sql": "INSERT INTO spike_lg_002.main._sync_meta VALUES (999, 999, 'spike-intrusion', now())",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 39.1
+        },
+        {
+          "sql": "DELETE FROM spike_lg_002.main._sync_meta WHERE fence = 999",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 37.5
+        },
+        {
+          "sql": "CREATE DATABASE spike_tmp_isolation",
+          "ok": true,
+          "rows": [],
+          "ms": 251.9
+        },
+        {
+          "sql": "DROP DATABASE IF EXISTS spike_tmp_isolation",
+          "ok": true,
+          "rows": [],
+          "ms": 80.3
+        },
+        {
+          "sql": "INSERT INTO spike_lg_001.main._sync_meta VALUES (998, 998, 'spike-own-write', now())",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 39.4
+        },
+        {
+          "sql": "DELETE FROM spike_lg_001.main._sync_meta WHERE fence = 998",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 38.6
+        }
+      ]
+    },
+    {
+      "label": "no saas_mode: global RO, external access off, config locked",
+      "dsn": "md:spike_lg_001?attach_mode=single",
+      "config": {},
+      "steps": [
+        {
+          "sql": "ATTACH 'md:spike_fi_global' (READ_ONLY)",
+          "ok": true,
+          "rows": [],
+          "ms": 71.8
+        },
+        {
+          "sql": "SET search_path = 'spike_lg_001.main,spike_fi_global.main'",
+          "ok": true,
+          "rows": [],
+          "ms": 0.2
+        },
+        {
+          "sql": "SET enable_external_access = false",
+          "ok": true,
+          "rows": [],
+          "ms": 0.8
+        },
+        {
+          "sql": "SET lock_configuration = true",
+          "ok": true,
+          "rows": [],
+          "ms": 0.1
+        },
+        {
+          "sql": "SELECT count(*) FROM fantasy_teams",
+          "ok": true,
+          "rows": [
+            [
+              "12"
+            ]
+          ],
+          "ms": 34.8
+        },
+        {
+          "sql": "SELECT count(*) FROM nfl_schedules",
+          "ok": true,
+          "rows": [
+            [
+              "272"
+            ]
+          ],
+          "ms": 34.3
+        },
+        {
+          "sql": "SELECT * FROM read_csv('/etc/hosts') LIMIT 1",
+          "ok": false,
+          "error": "PermissionException: Permission Error: Cannot access file \"/etc/hosts\" - file system operations are disabled by configuration\n\nLINE 1: SELECT * FROM read_csv('/etc/hosts') LIMIT 1\n                      ^",
+          "ms": 62.3
+        },
+        {
+          "sql": "SELECT database_name FROM duckdb_databases() ORDER BY 1",
+          "ok": true,
+          "rows": [
+            [
+              "md_information_schema"
+            ],
+            [
+              "spike_fi_global"
+            ],
+            [
+              "spike_lg_001"
+            ],
+            [
+              "system"
+            ],
+            [
+              "temp"
+            ]
+          ],
+          "ms": 0.6
+        },
+        {
+          "sql": "SELECT alias FROM md_list_databases() ORDER BY 1",
+          "ok": false,
+          "error": "CatalogException: Catalog Error: Table Function with name md_list_databases does not exist!\nDid you mean \"duckdb_databases\"?\n\nLINE 1: SELECT alias FROM md_list_databases() ORDER BY 1\n                          ^",
+          "ms": 57.8
+        },
+        {
+          "sql": "SELECT count(*) FROM spike_lg_002.main.fantasy_teams",
+          "ok": false,
+          "error": "BinderException: Binder Error: Catalog \"spike_lg_002\" does not exist!",
+          "ms": 0.7
+        },
+        {
+          "sql": "ATTACH 'md:spike_lg_002'",
+          "ok": true,
+          "rows": [],
+          "ms": 38.2
+        },
+        {
+          "sql": "SELECT count(*) FROM spike_lg_002.main.fantasy_teams",
+          "ok": true,
+          "rows": [
+            [
+              "12"
+            ]
+          ],
+          "ms": 34.3
+        },
+        {
+          "sql": "USE spike_lg_002",
+          "ok": true,
+          "rows": [],
+          "ms": 0.2
+        },
+        {
+          "sql": "USE spike_lg_001",
+          "ok": true,
+          "rows": [],
+          "ms": 0.1
+        },
+        {
+          "sql": "INSERT INTO spike_lg_002.main._sync_meta VALUES (999, 999, 'spike-intrusion', now())",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 38.2
+        },
+        {
+          "sql": "DELETE FROM spike_lg_002.main._sync_meta WHERE fence = 999",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 36.2
+        },
+        {
+          "sql": "CREATE DATABASE spike_tmp_isolation",
+          "ok": true,
+          "rows": [],
+          "ms": 245.9
+        },
+        {
+          "sql": "DROP DATABASE IF EXISTS spike_tmp_isolation",
+          "ok": true,
+          "rows": [],
+          "ms": 74.4
+        },
+        {
+          "sql": "INSERT INTO spike_lg_001.main._sync_meta VALUES (998, 998, 'spike-own-write', now())",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 37.7
+        },
+        {
+          "sql": "DELETE FROM spike_lg_001.main._sync_meta WHERE fence = 998",
+          "ok": true,
+          "rows": [
+            [
+              "1"
+            ]
+          ],
+          "ms": 37.5
+        }
+      ]
+    },
+    {
+      "label": "access_mode=read_only: drop an EXISTING other league db",
+      "dsn": "md:spike_lg_001?attach_mode=single&saas_mode=true",
+      "config": {
+        "access_mode": "read_only"
+      },
+      "steps": [
+        {
+          "sql": "DROP DATABASE IF EXISTS spike_lg_059",
+          "ok": true,
+          "rows": [],
+          "ms": 94.5
+        },
+        {
+          "sql": "SHOW ALL DATABASES",
+          "ok": true,
+          "rows": [
+            [
+              "fantasy_intel",
+              "False",
+              "motherduck",
+              "md:fantasy_intel"
+            ],
+            [
+              "my_db",
+              "False",
+              "motherduck",
+              "md:my_db"
+            ],
+            [
+              "spike_fi_global",
+              "False",
+              "motherduck",
+              "md:spike_fi_global"
+            ],
+            [
+              "spike_lg_001",
+              "True",
+              "motherduck",
+              "md:spike_lg_001"
+            ],
+            [
+              "spike_lg_002",
+              "False",
+              "motherduck",
+              "md:spike_lg_002"
+            ],
+            [
+              "spike_lg_003",
+              "False",
+              "motherduck",
+              "md:spike_lg_003"
+            ],
+            [
+              "spike_lg_004",
+              "False",
+              "motherduck",
+              "md:spike_lg_004"
+            ],
+            [
+              "spike_lg_005",
+              "False",
+              "motherduck",
+              "md:spike_lg_005"
+            ],
+            [
+              "spike_lg_006",
+              "False",
+              "motherduck",
+              "md:spike_lg_006"
+            ],
+            [
+              "spike_lg_007",
+              "False",
+              "motherduck",
+              "md:spike_lg_007"
+            ],
+            [
+              "spike_lg_008",
+              "False",
+              "motherduck",
+              "md:spike_lg_008"
+            ],
+            [
+              "spike_lg_009",
+              "False",
+              "motherduck",
+              "md:spike_lg_009"
+            ],
+            [
+              "spike_lg_010",
+              "False",
+              "motherduck",
+              "md:spike_lg_010"
+            ],
+            [
+              "spike_lg_011",
+              "False",
+              "motherduck",
+              "md:spike_lg_011"
+            ],
+            [
+              "spike_lg_012",
+              "False",
+              "motherduck",
+              "md:spike_lg_012"
+            ],
+            [
+              "spike_lg_013",
+              "False",
+              "motherduck",
+              "md:spike_lg_013"
+            ],
+            [
+              "spike_lg_014",
+              "False",
+              "motherduck",
+              "md:spike_lg_014"
+            ],
+            [
+              "spike_lg_015",
+              "False",
+              "motherduck",
+              "md:spike_lg_015"
+            ],
+            [
+              "spike_lg_016",
+              "False",
+              "motherduck",
+              "md:spike_lg_016"
+            ],
+            [
+              "spike_lg_017",
+              "False",
+              "motherduck",
+              "md:spike_lg_017"
+            ]
+          ],
+          "ms": 93.1
+        },
+        {
+          "sql": "SELECT database_name FROM duckdb_databases() ORDER BY 1",
+          "ok": true,
+          "rows": [
+            [
+              "md_information_schema"
+            ],
+            [
+              "spike_lg_001"
+            ],
+            [
+              "system"
+            ],
+            [
+              "temp"
+            ]
+          ],
+          "ms": 0.5
+        },
+        {
+          "sql": "SELECT alias FROM md_list_databases() ORDER BY 1",
+          "ok": false,
+          "error": "CatalogException: Catalog Error: Table Function with name md_list_databases does not exist!\nDid you mean \"duckdb_databases\"?\n\nLINE 1: SELECT alias FROM md_list_databases() ORDER BY 1\n                          ^",
+          "ms": 59.9
+        },
+        {
+          "sql": "SELECT count(*) FROM spike_lg_002.main.fantasy_teams",
+          "ok": false,
+          "error": "BinderException: Binder Error: Catalog \"spike_lg_002\" does not exist!",
+          "ms": 0.6
+        },
+        {
+          "sql": "ATTACH 'md:spike_lg_002'",
+          "ok": true,
+          "rows": [],
+          "ms": 37.9
+        },
+        {
+          "sql": "SELECT count(*) FROM spike_lg_002.main.fantasy_teams",
+          "ok": true,
+          "rows": [
+            [
+              "12"
+            ]
+          ],
+          "ms": 33.2
+        },
+        {
+          "sql": "USE spike_lg_002",
+          "ok": true,
+          "rows": [],
+          "ms": 0.2
+        },
+        {
+          "sql": "USE spike_lg_001",
+          "ok": true,
+          "rows": [],
+          "ms": 0.1
+        },
+        {
+          "sql": "INSERT INTO spike_lg_002.main._sync_meta VALUES (999, 999, 'spike-intrusion', now())",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot execute statement of type \"INSERT\" on database \"spike_lg_002\" which is attached in read-only mode!",
+          "ms": 1.2
+        },
+        {
+          "sql": "DELETE FROM spike_lg_002.main._sync_meta WHERE fence = 999",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot execute statement of type \"DELETE\" on database \"spike_lg_002\" which is attached in read-only mode!",
+          "ms": 0.9
+        },
+        {
+          "sql": "CREATE DATABASE spike_tmp_isolation",
+          "ok": true,
+          "rows": [],
+          "ms": 257.7
+        },
+        {
+          "sql": "DROP DATABASE IF EXISTS spike_tmp_isolation",
+          "ok": true,
+          "rows": [],
+          "ms": 73.0
+        },
+        {
+          "sql": "INSERT INTO spike_lg_001.main._sync_meta VALUES (998, 998, 'spike-own-write', now())",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot execute statement of type \"INSERT\" on database \"spike_lg_001\" which is attached in read-only mode!",
+          "ms": 1.4
+        },
+        {
+          "sql": "DELETE FROM spike_lg_001.main._sync_meta WHERE fence = 998",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot execute statement of type \"DELETE\" on database \"spike_lg_001\" which is attached in read-only mode!",
+          "ms": 1.0
+        }
+      ]
+    },
+    {
+      "label": "access_mode=read_only connection",
+      "dsn": "md:spike_lg_001?attach_mode=single&saas_mode=true",
+      "config": {
+        "access_mode": "read_only"
+      },
+      "steps": [
+        {
+          "sql": "SELECT database_name FROM duckdb_databases() ORDER BY 1",
+          "ok": true,
+          "rows": [
+            [
+              "md_information_schema"
+            ],
+            [
+              "spike_lg_001"
+            ],
+            [
+              "system"
+            ],
+            [
+              "temp"
+            ]
+          ],
+          "ms": 1.2
+        },
+        {
+          "sql": "SELECT alias FROM md_list_databases() ORDER BY 1",
+          "ok": false,
+          "error": "CatalogException: Catalog Error: Table Function with name md_list_databases does not exist!\nDid you mean \"duckdb_databases\"?\n\nLINE 1: SELECT alias FROM md_list_databases() ORDER BY 1\n                          ^",
+          "ms": 57.2
+        },
+        {
+          "sql": "SELECT count(*) FROM spike_lg_002.main.fantasy_teams",
+          "ok": false,
+          "error": "BinderException: Binder Error: Catalog \"spike_lg_002\" does not exist!",
+          "ms": 0.8
+        },
+        {
+          "sql": "ATTACH 'md:spike_lg_002'",
+          "ok": true,
+          "rows": [],
+          "ms": 37.1
+        },
+        {
+          "sql": "SELECT count(*) FROM spike_lg_002.main.fantasy_teams",
+          "ok": true,
+          "rows": [
+            [
+              "12"
+            ]
+          ],
+          "ms": 31.7
+        },
+        {
+          "sql": "USE spike_lg_002",
+          "ok": true,
+          "rows": [],
+          "ms": 0.2
+        },
+        {
+          "sql": "USE spike_lg_001",
+          "ok": true,
+          "rows": [],
+          "ms": 0.1
+        },
+        {
+          "sql": "INSERT INTO spike_lg_002.main._sync_meta VALUES (999, 999, 'spike-intrusion', now())",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot execute statement of type \"INSERT\" on database \"spike_lg_002\" which is attached in read-only mode!",
+          "ms": 1.4
+        },
+        {
+          "sql": "DELETE FROM spike_lg_002.main._sync_meta WHERE fence = 999",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot execute statement of type \"DELETE\" on database \"spike_lg_002\" which is attached in read-only mode!",
+          "ms": 1.0
+        },
+        {
+          "sql": "CREATE DATABASE spike_tmp_isolation",
+          "ok": true,
+          "rows": [],
+          "ms": 260.4
+        },
+        {
+          "sql": "DROP DATABASE IF EXISTS spike_tmp_isolation",
+          "ok": true,
+          "rows": [],
+          "ms": 79.2
+        },
+        {
+          "sql": "INSERT INTO spike_lg_001.main._sync_meta VALUES (998, 998, 'spike-own-write', now())",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot execute statement of type \"INSERT\" on database \"spike_lg_001\" which is attached in read-only mode!",
+          "ms": 2.4
+        },
+        {
+          "sql": "DELETE FROM spike_lg_001.main._sync_meta WHERE fence = 998",
+          "ok": false,
+          "error": "InvalidInputException: Invalid Input Error: Cannot execute statement of type \"DELETE\" on database \"spike_lg_001\" which is attached in read-only mode!",
+          "ms": 1.4
+        }
+      ]
+    }
+  ],
+  "share": {
+    "crash": "Traceback (most recent call last):\n  File \"/Users/havyn/Documents/CS/Fantasy/fantasy-intel/backend/../spikes/motherduck/isolation.py\", line 91, in <module>\n    main()\n  File \"/Users/havyn/Documents/CS/Fantasy/fantasy-intel/backend/../spikes/motherduck/isolation.py\", line 60, in main\n    print(json.dumps(share_case()))\n                     ^^^^^^^^^^^^\n  File \"/Users/havyn/Documents/CS/Fantasy/fantasy-intel/backend/../spikes/motherduck/isolation.py\", line 82, in share_case\n    c2 = connect(\"md:\", \"api\")\n         ^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/havyn/Documents/CS/Fantasy/fantasy-intel/spikes/motherduck/common.py\", line 49, in connect\n    return duckdb.connect(dsn, config={\"motherduck_token\": token(kind), **config})\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n_duckdb.ConnectionException: Connection Error: Can't open a connection to same database file with a different configuration than existing connections\n"
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "recorded_at": "2026-10-20T05:30:04+00:00",
+  "duckdb": "1.5.6",
+  "different_dbs": {
+    "wall_s": 43.7,
+    "writers": [
+      {
+        "db": "spike_lg_010",
+        "write_ms": {
+          "n": 10,
+          "p50": 974.6,
+          "p95": 1229.7,
+          "max": 1229.7,
+          "mean": 991.7
+        },
+        "errors": []
+      },
+      {
+        "db": "spike_lg_011",
+        "write_ms": {
+          "n": 10,
+          "p50": 954.7,
+          "p95": 1253.0,
+          "max": 1253.0,
+          "mean": 986.1
+        },
+        "errors": []
+      },
+      {
+        "db": "spike_lg_012",
+        "write_ms": {
+          "n": 10,
+          "p50": 961.5,
+          "p95": 1232.3,
+          "max": 1232.3,
+          "mean": 987.3
+        },
+        "errors": []
+      },
+      {
+        "db": "spike_lg_013",
+        "write_ms": {
+          "n": 10,
+          "p50": 947.6,
+          "p95": 1277.6,
+          "max": 1277.6,
+          "mean": 969.9
+        },
+        "errors": []
+      },
+      {
+        "db": "spike_lg_014",
+        "write_ms": {
+          "n": 10,
+          "p50": 943.0,
+          "p95": 1230.6,
+          "max": 1230.6,
+          "mean": 976.2
+        },
+        "errors": []
+      }
+    ],
+    "readers": [
+      {
+        "db": "spike_lg_010",
+        "reads": 213,
+        "torn_reads": 0,
+        "errors": []
+      },
+      {
+        "db": "spike_lg_011",
+        "reads": 204,
+        "torn_reads": 0,
+        "errors": []
+      },
+      {
+        "db": "spike_lg_012",
+        "reads": 209,
+        "torn_reads": 0,
+        "errors": []
+      },
+      {
+        "db": "spike_lg_013",
+        "reads": 201,
+        "torn_reads": 0,
+        "errors": []
+      },
+      {
+        "db": "spike_lg_014",
+        "reads": 212,
+        "torn_reads": 0,
+        "errors": []
+      }
+    ]
+  },
+  "same_db": {
+    "wall_s": 31.5,
+    "writers": [
+      {
+        "db": "spike_lg_020",
+        "write_ms": {
+          "n": 10,
+          "p50": 149.4,
+          "p95": 1237.4,
+          "max": 1237.4,
+          "mean": 498.1
+        },
+        "errors": [
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!"
+        ]
+      },
+      {
+        "db": "spike_lg_020",
+        "write_ms": {
+          "n": 10,
+          "p50": 143.0,
+          "p95": 1017.9,
+          "max": 1017.9,
+          "mean": 249.1
+        },
+        "errors": [
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!",
+          "TransactionContext Error: Conflict on tuple deletion!"
+        ]
+      }
+    ],
+    "reader": {
+      "db": "spike_lg_020",
+      "reads": 161,
+      "torn_reads": 0,
+      "errors": []
+    }
+  }
+}

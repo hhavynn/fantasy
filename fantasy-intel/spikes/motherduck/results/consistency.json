@@ -1,0 +1,97 @@
+{
+  "recorded_at": "2026-10-20T05:27:47+00:00",
+  "duckdb": "1.5.6",
+  "atomic_kill": {
+    "exit": 9,
+    "before": {
+      "fantasy_teams": 12,
+      "matchups": 84,
+      "transactions": 1119,
+      "lineup_snapshots": 1182,
+      "waiver_recommendations": 298,
+      "data_version": 0
+    },
+    "after": {
+      "fantasy_teams": 12,
+      "matchups": 84,
+      "transactions": 1119,
+      "lineup_snapshots": 1182,
+      "waiver_recommendations": 298,
+      "data_version": 0
+    },
+    "intact": true
+  },
+  "post_kill_writer_probe_s": [
+    [
+      0,
+      "TransactionContext Error: Conflict on update!"
+    ],
+    [
+      10,
+      "TransactionContext Error: Conflict on update!"
+    ],
+    [
+      20,
+      "TransactionContext Error: Conflict on update!"
+    ],
+    [
+      30,
+      "ok"
+    ]
+  ],
+  "fence": [
+    {
+      "token": 6,
+      "updated": 1,
+      "committed": true
+    },
+    {
+      "token": 5,
+      "updated": 0,
+      "committed": false
+    },
+    {
+      "token": 7,
+      "updated": 1,
+      "committed": true
+    }
+  ],
+  "fence_final": [
+    [
+      7,
+      "C"
+    ]
+  ],
+  "snapshot": {
+    "in_txn_before": [
+      0,
+      "v1"
+    ],
+    "in_txn_after_writer_commit": [
+      0,
+      "v1"
+    ],
+    "after_txn": [
+      1,
+      "v2"
+    ],
+    "stable_in_txn": true
+  },
+  "reader_poll_seen_after_s_raw": [
+    2.0689056670235004,
+    2.0794604169786908,
+    2.486046250007348,
+    1.9415852919919416,
+    2.3756223329983186,
+    2.5145451659918763,
+    0.43701058300212026,
+    3.160556874994654,
+    2.2046899590059184,
+    3.1595952500065323,
+    2.593142041005194,
+    3.1651917079871055,
+    3.0312088330101687,
+    3.281957750004949,
+    2.86636825001915
+  ]
+}
