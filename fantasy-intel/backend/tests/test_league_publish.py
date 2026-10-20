@@ -57,6 +57,9 @@ def test_first_publish_uploads_both_files_and_inserts_the_pointer(pg, r2, league
     assert res.applied and res.fence == 1
     assert pointer(pg, league) == (league_key(league, res.data_version), res.data_version, 1, res.global_version)
     assert {league_key(league, res.data_version), global_key(res.global_version)} <= set(r2.objects)
+    with pg.connect() as su:
+        assert su.execute("SELECT global_version FROM fi.global_snapshot").fetchone() == (res.global_version,), \
+            "the laptop publish names the current global file for sync jobs"
 
 
 def test_republishing_moves_the_pointer_and_keeps_three_versions(pg, r2, league, e2e, tmp_path):

@@ -108,3 +108,22 @@ def test_every_schema_sql_table_is_classified():
     created = set(re.findall(r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)\s*\(", schema, re.IGNORECASE))
     assert created
     assert not created - LEAGUE_TABLES - GLOBAL_TABLES - BOTH_TABLES, sorted(created - LEAGUE_TABLES - GLOBAL_TABLES - BOTH_TABLES)
+
+
+def test_content_hash_ignores_bytes_and_row_order_but_not_data(tmp_path):
+    from app.db.league_split import content_hash
+
+    def db(name, rows, stamp):
+        p = tmp_path / name
+        con = duckdb.connect(str(p))
+        con.execute("CREATE TABLE schema_meta (key VARCHAR, value VARCHAR)")
+        con.execute("INSERT INTO schema_meta VALUES ('published_at', ?), ('schema_version', '7')", [stamp])
+        con.execute("CREATE TABLE t (a INTEGER, b VARCHAR)")
+        con.executemany("INSERT INTO t VALUES (?, ?)", rows)
+        con.close()
+        return p
+
+    a = db("a.duckdb", [(1, "x"), (2, "y")], "2026-10-20T12:00:00")
+    b = db("b.duckdb", [(2, "y"), (1, "x")], "2026-10-21T12:00:00")
+    c = db("c.duckdb", [(1, "x"), (2, "z")], "2026-10-20T12:00:00")
+    assert content_hash(a) == content_hash(b) != content_hash(c)

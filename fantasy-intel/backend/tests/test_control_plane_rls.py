@@ -113,8 +113,12 @@ def test_fi_sync_reads_and_writes_only_the_sync_tables(pg, world):
         assert con.execute("SELECT count(*) FROM fi.leagues").fetchone() == (3,)      # sync sees every league row
         con.execute("UPDATE fi.leagues SET sync_fence = sync_fence + 1 WHERE id = %s", [world["pub"]])
         con.commit()
-        with pytest.raises(InsufficientPrivilege):
-            con.execute("UPDATE fi.leagues SET name = 'x' WHERE id = %s", [world["pub"]])
+        con.execute("UPDATE fi.leagues SET name = 'x' WHERE id = %s", [world["pub"]])   # refreshed from the provider
+        con.commit()
+        for column, value in (("external_id", "1"), ("deleted_at", None), ("last_viewed_at", None)):
+            with pytest.raises(InsufficientPrivilege):
+                con.execute(f"UPDATE fi.leagues SET {column} = %s WHERE id = %s", [value, world["pub"]])
+            con.rollback()
 
 
 def test_request_roles_can_only_touch_last_viewed_at_on_leagues(pg, world):
