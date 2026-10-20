@@ -1,6 +1,8 @@
 # Multi-league platform: design
 
-- Status: approved design (2026-10-19), Option B pending the Phase 0 MotherDuck spike
+- Status: approved design (2026-10-19), **revised 2026-10-20 for free tiers**: DuckDB files in Cloudflare R2,
+  GitHub Actions sync, Supabase free, no MotherDuck. The paid-tier Option B (database per league in
+  MotherDuck) is retired; its spike findings that still apply are folded in below.
 - Supersedes for the hosted product: parts of [ADR-0001](../../multileague/ADR-0001-league-context-and-tenancy.md)
   (custom user assertion, "never collect ESPN cookies") and the [roadmap](../../multileague/roadmap.md) phases 2–4.
   An ADR-0002 recording these changes lands with Phase 1.
@@ -9,60 +11,77 @@
 ## Goal
 
 Make the existing fantasy website usable by anyone for their own league, not only for Los Subies,
-without rebuilding features that already work. Anyone can view a public league; signed-in users can
-save preferences and connect private ESPN leagues; Sleeper leagues work too; every page reaches
-parity before sign-ups open.
+without rebuilding features that already work, **while staying on free tiers**. Anyone can view a public
+league; signed-in users can save preferences and connect private ESPN leagues; Sleeper leagues work too;
+every page reaches parity before sign-ups open.
 
-## Decisions (from brainstorming)
+## Decisions
 
 | Topic | Decision |
 |---|---|
-| Audience | Anyone on the internet |
+| Cost | Free tiers only. Any paid requirement is raised with a free alternative before building on it |
+| Audience | Anyone on the internet (non-commercial: no ads or payments, per Vercel Hobby terms; donations allowed) |
 | ESPN access | Public leagues by default (no cookies); opt-in private leagues with user-pasted `espn_s2`/`SWID`, encrypted |
 | Other providers | Sleeper (public API). Yahoo out of scope |
-| Accounts | Supabase Auth (Google + email magic link) |
-| Control plane | Supabase Postgres with RLS |
-| Sync host | Vercel Functions (team is on Vercel **Pro**, so per-minute cron is available) |
-| League data isolation | **Option B**: one MotherDuck database per league + one shared global database |
+| Accounts / control plane | Supabase free (Auth + Postgres with RLS), project `fantasy-intel` (us-east-1) |
+| League data | **One immutable DuckDB file per league version in Cloudflare R2**, plus one global file |
+| Read path | FastAPI on Vercel (Hobby) downloads the authorized league's current file to `/tmp`, opens it read-only |
+| Sync host | **GitHub Actions** (public repo: standard runners are free); Postgres queue stays authoritative |
 | Launch scope | Full parity on every page before sign-ups open |
-| Global data | Laptop keeps publishing `fi_global` for now; automated later (Phase 7) |
+| Global data | Laptop publishes `global.duckdb` to R2 for now; GitHub Actions takes over in Phase 7 |
 | UX | Preserve the current site; add sign-in, a league switcher, a perspective picker and a Connect flow |
+
+## Free-tier budget
+
+| Service (free tier) | Limit that matters | How the design stays inside it |
+|---|---|---|
+| Cloudflare R2 | 10 GB-month storage, 1M writes, 10M reads/month, **egress free** | Full-file downloads cost nothing in transfer; old versions garbage-collected (keep 3 per league) |
+| Vercel Hobby | 4 h Active CPU, 1M invocations, 360 GB-h memory/month; cron ≥ 1/day; 300 s max duration; `/tmp` 500 MB | Only serving runs on Vercel; queries are local and fast; sync never runs on Vercel |
+| GitHub Actions | Free for public repos; scheduled workflows ≥ 5 min, best effort; disabled after 60 days without repo activity; **logs are public** | Drain workflow every 15 min + `repository_dispatch`; jobs print nothing about league data |
+| Supabase free | 500 MB DB, 50k MAU, 5 GB egress, 2 active projects/org, pauses after 1 week idle | Control plane only (small rows); scheduled drains keep it active |
+| MotherDuck | Not used | Removed from the hosted path (Phase 1a); Lite's 10 CU-h cap was below today's traffic |
+
+Measured in Phase 0b: Vercel Blob (10 GB transfer, 2,000 uploads/month, 30-day lockout when exceeded) and
+Supabase Storage (50 MB max file, 5 GB egress) cannot carry full-file downloads; R2 is the only free
+store that can. Range reads (DuckDB `ATTACH` over HTTP) fetched ~100% of the file anyway, so they save no
+transfer.
 
 ## 1. Architecture
 
 ```
-Browser ── Next.js (Vercel) ── Supabase Auth (@supabase/ssr session cookie)
+Browser ── Next.js (Vercel Hobby) ── Supabase Auth (@supabase/ssr session cookie)
               │  forwards Authorization: Bearer <Supabase access token> (when signed in) + X-API-Key
               ▼
-         FastAPI (Vercel) ── verifies the Supabase JWT itself (JWKS, cached)
-              │            ── Supabase Postgres (control plane, RLS enforced for request traffic)
-              ▼
-         MotherDuck
-           md:fi_global      ← laptop publishes (Phase 7 automates it)
-           md:lg_<opaque id> ← one per league, written only by sync jobs
+         FastAPI (Vercel Hobby) ── verifies the Supabase JWT itself (JWKS, cached)
+              │                 ── Supabase Postgres: authorization + current snapshot pointer per league
+              ▼  (R2 read-only token)
+         Cloudflare R2 (private bucket)
+           global/<version>.duckdb          ← laptop publishes (Phase 7: GitHub Actions)
+           leagues/<lg_id>/<version>.duckdb ← written only by sync jobs (R2 read/write token)
+              ▲
+         GitHub Actions sync workers ── Supabase Postgres (fi_sync role: queue, leases, pointer swap)
 ```
 
 - **Auth.** FastAPI verifies Supabase access tokens directly: signature against the project's JWKS
   (`/auth/v1/.well-known/jwks.json`, cached, refreshed on unknown `kid`), `iss`, `aud=authenticated`,
   `exp`; the user id is `sub`. The Phase 1 HMAC user assertion is removed. `FANTASY_API_KEY` remains
   service authentication (only our Next.js server calls the API). No token = anonymous.
-- **Authorization** is decided in FastAPI from Postgres for every request, before any league database
-  is opened (Section 2). RLS is a second line of defense, not the only check.
-- **Read path.** After authorization, a cursor on `md:lg_<id>` with `fi_global` attached read-only and
-  `search_path = lg_<id>.main, fi_global.main`; the existing engines run with the request's
-  *perspective team* passed in instead of reading `fantasy_teams.is_mine`.
-- **MotherDuck is not a per-league security boundary.** MotherDuck documents no per-token database
-  restriction inside an account; `attach_mode=single` only sets the initial context. Cross-league
-  isolation is enforced by our server: the database name is derived only from an authorized
-  league id, no user-supplied SQL exists, and the leak tests in Section 5 cover every route. What
-  credentials *can* enforce (read-only reads, a reader identity that cannot write) is measured in
-  Phase 0.
-- **Global data.** `fi_global` holds league-independent data: nflverse, NFL schedule/context, Ours
-  component-stat projections, research/evaluation tables. The laptop publishes it (atomic
-  replace) until Phase 7.
+- **Authorization** is decided in FastAPI from Postgres for every request, before any league file is
+  touched (Section 2). The same query returns the league's current snapshot pointer. RLS is a second
+  line of defense, not the only check.
+- **Read path.** The pointer names an immutable object `leagues/<lg_id>/<version>.duckdb`. Each Vercel
+  instance keeps a byte-bounded LRU of files in `/tmp` (≤ 350 MB total; download to a temp name, then
+  atomic rename; one download per object per instance behind a lock). The request opens the league
+  file `read_only`, attaches the current global file read-only, sets `search_path = league, global`,
+  and runs the existing engines with the request's *perspective team* instead of
+  `fantasy_teams.is_mine`. A version changes only when a new object is published, so cached files
+  never go stale; responses carry the version they were served from.
+- **Credential-level read-only.** The API holds an R2 token scoped to **Object Read** on the bucket; only
+  sync workers and the global publisher hold write tokens. Cross-league isolation is server-enforced:
+  object keys are derived only from an authorized league id and its pointer, no user-supplied SQL or
+  paths exist, and the leak tests in Section 5 cover every route.
 - **UX.** Same pages, components and engines. Additions: sign-in/account menu, league switcher,
-  perspective picker, Connect flow. Current URLs keep working (redirect to the viewer's default
-  league).
+  perspective picker, Connect flow. Current URLs keep working (redirect to the viewer's default league).
 
 ## 2. Access model and lifecycle
 
@@ -81,7 +100,7 @@ Pins: `league_pins(user_id, league_id)` put a league in a signed-in user's switc
 - Importing a public league registers it once (`unique(provider, external_id, season)`) and pins it.
   Unpinning removes only the pin. No user can delete a public league's data.
 - A league with no pins and no views for 30 days becomes `dormant` (no scheduled sync). 90 days
-  dormant → database dropped; re-import rebuilds it from the provider.
+  dormant → league objects deleted; re-import rebuilds it from the provider.
 - Platform admins (`app_users.is_platform_admin`) can take a league down (abuse/legal).
 
 ### Private leagues
@@ -99,7 +118,7 @@ Pins: `league_pins(user_id, league_id)` put a league in a signed-in user's switc
   paused, members keep read access to the last data with an "as of …, sync paused" banner, admins
   notified. Credentials are never auto-deleted on provider errors; the owner re-enters or deletes them.
 - **Retention:** a private league stays `stale` with no active credential for 60 days → deleted, with an
-  in-app warning at day 30. Admin delete = 7-day soft delete, then the database drops.
+  in-app warning at day 30. Admin delete = 7-day soft delete, then the league's objects are deleted.
 - **Account deletion:** the user's credentials are crypto-erased immediately (ciphertext and wrapped
   key deleted); memberships, pins, selections and unredeemed invites removed. If they held the active
   credential the league goes `stale` (rules above). If they were the last admin, the longest-standing
@@ -122,17 +141,20 @@ Pins: `league_pins(user_id, league_id)` put a league in a signed-in user's switc
   responses are `Cache-Control: private, no-store`.
 
 ### Credential security
-- AES-256-GCM envelope encryption (`cryptography`): a random 256-bit data key per credential encrypts
-  `{"espn_s2","swid"}`; the data key is wrapped by `CREDENTIALS_KEK_v{n}` (Vercel env, sync project
-  only). AAD = `league_id ‖ credential_id ‖ owner_user_id ‖ key_version`, so a ciphertext moved to
-  another row fails to decrypt. 96-bit random nonces.
-- Rotation: add `KEK_v{n+1}`, a `rewrap` job unwraps/rewraps data keys only (cookies never decrypted),
-  then the old KEK is removed.
+- Envelope encryption with `cryptography`: a random 256-bit data key per credential encrypts
+  `{"espn_s2","swid"}` with AES-256-GCM (96-bit random nonce; AAD = `league_id ‖ credential_id ‖
+  owner_user_id ‖ key_version`, so a ciphertext moved to another row fails to decrypt).
+- The data key is wrapped with **RSA-OAEP-3072 (SHA-256)** under a public key `CREDENTIALS_PUBKEY_v{n}`
+  held by the API. The private key `CREDENTIALS_PRIVKEY_v{n}` exists only as a GitHub Actions secret,
+  so the internet-facing API can store credentials but never decrypt them.
+- Rotation: add keypair `v{n+1}`, a `rewrap` job in Actions unwraps/rewraps data keys only (cookies are
+  never decrypted), then the old private key is deleted.
 - ESPN cookies are account-wide session cookies. They are used only for GETs to ESPN's fantasy read
   endpoint for that league and season (URL allowlist enforced in the sync client); never for writes,
   other leagues or other ESPN endpoints; never logged, returned or included in errors (redaction
-  tests). Validated by one fetch at submission. Connecting requires explicit consent text: they grant
-  access to the user's ESPN account; signing out of ESPN everywhere revokes them.
+  tests; `::add-mask::` in Actions). Validated by one fetch at submission (the API does this before
+  encrypting). Connecting requires explicit consent text: they grant access to the user's ESPN
+  account; signing out of ESPN everywhere revokes them.
 
 ### Postgres roles (least privilege, no `BYPASSRLS`)
 - `fi_api` (request path): `NOINHERIT`, member of `authenticated` and `anon`. Each request transaction
@@ -140,35 +162,38 @@ Pins: `league_pins(user_id, league_id)` put a league in a signed-in user's switc
   true)`, so RLS and `auth.uid()` apply. No grants on `league_credentials`. Mutations that need more
   than RLS allows (redeem invite, store credential, transfer admin) go through `SECURITY DEFINER`
   functions that check `auth.uid()` themselves, with `search_path` pinned.
-- `fi_sync` (sync jobs): no `BYPASSRLS`. Table grants limited to `leagues`, `sync_jobs`,
-  `provider_slots`, `league_sync_runs`; RLS policies `TO fi_sync` on those tables. Credentials are read
+- `fi_sync` (sync workers in GitHub Actions): no `BYPASSRLS`. Table grants limited to `leagues`, `sync_jobs`,
+  `provider_slots`, `league_snapshots`, `league_snapshot_history`; RLS policies `TO fi_sync` on those tables. Credentials are read
   only through `SECURITY DEFINER sync_credential(job_id, lease_token)`, which returns ciphertext only for
   a league whose job is currently leased with that token.
-- The Supabase service-role key is never deployed to either project.
+- The Supabase service-role key is never deployed to Vercel or GitHub Actions.
 - Transaction-local claims are verified not to leak across pooled connections (Supavisor transaction
   mode) in Phase 1 tests.
 
 ## 3. Sync jobs
 
-Postgres is the authoritative queue. No extra infrastructure.
+Postgres is the authoritative queue. Workers run in GitHub Actions. No other infrastructure.
 
 ### 3.1 Tables
 - `sync_jobs(id, league_id, kind ∈ {initial, scheduled, manual, probe, recompute, rewrap}, status ∈
   {queued, running, succeeded, failed, dead}, attempt, max_attempts=5, run_after, lease_owner,
   lease_token, lease_expires_at, heartbeat_at, provider_slot, idempotency_key, error_code,
-  error_detail (redacted), fi_global_version, created_at, started_at, finished_at)`.
+  error_detail (redacted), global_version, created_at, started_at, finished_at)`.
 - `leagues.sync_fence BIGINT` — monotonic, incremented on every claim or reclaim of a job for that league.
+- `league_snapshots(league_id PK, object_key, data_version, fence, global_version, committed_at)` — the
+  current pointer. `league_snapshot_history` keeps the last 3 for rollback and garbage collection.
 - `provider_slots(provider, slot_no, job_id NULL, lease_expires_at)` — N rows per provider (ESPN 2,
   Sleeper 4).
 
 ### 3.2 Dispatch
-- Connecting a league inserts the `initial` job and commits. Then the request dispatches it via
-  Vercel Queues (`vercel-queue`, at-least-once delivery) and awaits the publish. A failed publish
-  is logged; the job row still exists.
-- Backstop: Vercel Cron calls `/internal/sync/drain` **every minute** (Pro). The drain enqueues due
-  scheduled refreshes (staggered per league, more often on game days) and claims queued jobs.
-- Phase 0 verifies Vercel Queues for Python on this team. If it is unavailable, the per-minute cron
-  alone dispatches (initial sync starts within ~60 s) and the UI shows "queued".
+- Connecting a league inserts the `initial` job and commits, then calls GitHub's `repository_dispatch`
+  (fine-grained token limited to this repo's dispatch permission, held by the API) and awaits the HTTP
+  response. A failed dispatch is logged; the job row still exists.
+- Backstop: a scheduled workflow every 15 minutes runs the drain (GitHub schedules are best effort and
+  can be delayed; the UI shows "queued" until a worker claims the job). The drain also enqueues due
+  scheduled refreshes (staggered per league, more often on game days, dormant leagues skipped).
+- A workflow `concurrency` group bounds parallel drains; each run claims jobs until the queue is empty
+  or its time budget (20 min) is used.
 
 ### 3.3 Claim, lock, lease, fence (one Postgres transaction)
 1. Pick a candidate: `status='queued' AND run_after <= now()`, or `status='running' AND lease_expires_at <
@@ -185,74 +210,56 @@ Postgres is the authoritative queue. No extra infrastructure.
 
 ### 3.4 Heartbeat and superseded workers
 - Every 30 s the worker runs `UPDATE sync_jobs SET lease_expires_at = now() + 2 min, heartbeat_at = now()
-  WHERE id=? AND lease_token=?` (also extends its slot). Zero rows → lease lost → abort without
-  committing.
-- Fencing at commit: each league database has `_sync_meta(fence BIGINT, data_version BIGINT,
-  fi_global_version VARCHAR, committed_at TIMESTAMP)`. The commit transaction first runs
-  `UPDATE _sync_meta SET fence = ? ... WHERE fence < ?`; if no row changed, it rolls back. A superseded
-  worker can therefore never overwrite data committed by a newer one, even after a pause past its lease.
-  The Postgres lease check before commit is best-effort; the DuckDB fence is the guarantee.
+  WHERE id=? AND lease_token=?` (also extends its slot). Zero rows → lease lost → abort without publishing.
+- **Fenced publish:** the only step that makes data visible is
+  `UPDATE league_snapshots SET object_key=?, data_version=?, fence=?, ... WHERE league_id=? AND fence < ?`.
+  A superseded worker (lower fence) updates zero rows, so it can never replace newer data, even after a
+  pause past its lease; its uploaded object is orphaned and garbage-collected.
 
 ### 3.5 Atomic updates
-- Fetch everything from the provider into memory (no writes) → compute derived tables (waivers,
-  managers, ROS projections, Ours re-scored to league scoring) reading `fi_global` inside one snapshot
-  and recording its version → write all tables plus `_sync_meta` in **one DuckDB transaction** on
-  `lg_<id>`. Any failure leaves the previous data intact.
-- The existing ESPN sync writes incrementally; it is restructured into fetch → compute → commit
-  (Phase 3) without changing parsing or engine logic.
-- Time budget: a job must fit one function's `maxDuration`; Phase 0 measures real durations. If it
-  does not fit, the fetch stage stores raw provider JSON in Postgres and a second job computes and
-  commits.
+- Fetch everything from the provider into memory (no writes) → build a complete league DuckDB file on
+  the runner (parsing, waivers, managers, ROS projections, Ours re-scored to league scoring, reading the
+  current global file and recording its version) → upload it as a new immutable object → fenced pointer
+  swap. Readers see the old file or the new file, never a mix. Any failure before the swap changes
+  nothing visible.
+- The existing ESPN sync already fetches before writing (`fetch_all` → `write_all`); the worker runs it
+  against a fresh local file instead of the shared database, without changing parsing or engine logic.
+- Measured: a full Los Subies sync takes ~46 s on a laptop (fetch 9 s, write 1.5 s, analytics 31 s).
 
 ### 3.6 Failure classification
 | Signal | Handling |
 |---|---|
-| Network error, 5xx, 429, MotherDuck transient | Retry with backoff + jitter: 1 m, 5 m, 20 m, 1 h, 3 h → `dead`. A 429 also pauses the provider (Retry-After) |
+| Network error, 5xx, 429, R2/Supabase transient | Retry with backoff + jitter: 1 m, 5 m, 20 m, 1 h, 3 h → `dead`. A 429 also pauses the provider (Retry-After) |
 | Authenticated 401/403 on a private league | Ambiguous until confirmed. Credential → `suspect`, retry. **Confirmed invalid** only when ≥3 authenticated attempts over ≥6 h all fail with 401/403 *and* a control request in the same run succeeds (ESPN reachable, e.g. a public league endpoint). Then `invalid`, league `stale`, owner notified. Never auto-delete the credential or data |
 | 404 league not found | Same confirmation rule (≥3 over ≥6 h, control succeeds) → league `unavailable`. Data kept; normal retention only |
 | Unauthenticated probe says private | Restrict immediately (safe direction); no data deleted |
 | Parse/schema error | `dead` immediately, alert; the previous data stays served |
 
 ### 3.7 Status reflects what readers see
-- Readers report the `_sync_meta` they actually read (`data_version`, `committed_at`,
-  `fi_global_version`) with every response; the "data as of" label comes from that, not from Postgres.
-- Postgres `leagues.last_committed_version` is only used to show "a newer sync is propagating" when it
-  is ahead of what the reader sees (read-replica lag).
-- When `fi_global` advances, a `recompute` job per active league rebuilds the derived tables from stored
-  league data (no provider fetch). Until it lands, responses carry both versions.
+- Every response carries the `data_version` and `global_version` of the files it actually read; the
+  "data as of" label comes from that.
+- When the global file advances, a `recompute` job per active league rebuilds the league file from its
+  stored raw provider data (no provider fetch). Until it lands, responses carry both versions.
 
-## 4. Phase 0: MotherDuck validation spike (go/no-go)
+### 3.8 Public logs and secrets in GitHub Actions
+- Workflows run only on `schedule`, `repository_dispatch` and `workflow_dispatch` — never on
+  `pull_request` from forks — so secrets (Postgres `fi_sync` URL, R2 write token, `CREDENTIALS_KEK_v{n}`,
+  GitHub dispatch is inbound only) are never exposed to forked code.
+- Logs are public: workers print only job ids, durations and error codes. Decrypted cookies are
+  registered with `::add-mask::` before use; exceptions are redacted before printing; no league data,
+  names or team names are logged.
 
-Using the API's real token type (`MOTHERDUCK_API_TOKEN`, a standard read/write token), from the laptop
-and from a real Vercel Function in the production region, against 60 `spike_lg_*` databases (copies
-of the Los Subies league tables plus the global tables in `spike_fi_global`):
+## 4. Spikes
 
-| Area | Test | Pass criterion |
-|---|---|---|
-| Isolation | SQL attempts from a connection opened as `md:spike_lg_001?attach_mode=single`: `SHOW DATABASES`, `ATTACH 'md:spike_lg_002'`, fully qualified `SELECT` from another league, `USE`, `CREATE DATABASE`, `DROP`, writes; with and without `SET enable_external_access=false` + `SET lock_configuration=true` | Documented truthfully. Expected: no credential-level boundary; whether config locking blocks `ATTACH` decides whether we get a defense-in-depth guard |
-| Read-only | Which mechanism blocks writes for the API: read-scaling token (plan?), read-only attach of shares, `access_mode`, separate reader identity | At least one affordable mechanism, or the gap is reported for an owner decision |
-| `fi_global` attach | Attach global read-only next to a league DB; `search_path` resolves unqualified names; writes to global fail | Works |
-| Latency | Connect + attach + first query, cold and warm, p50/p95 from Vercel | p95 cold < 1.5 s, warm added < 300 ms |
-| Concurrency | 5 parallel writers to different league DBs + readers; 2 writers to one DB | Different DBs independent; same-DB conflict behaviour documented; fence prevents stale overwrite |
-| Atomicity | Multi-table write transaction killed mid-way | Old data intact |
-| Snapshot | One `BEGIN` across league DB + `fi_global` while both are rewritten | Consistent snapshot across both, or the gap documented |
-| Replica lag | Commit from writer connection, poll from a separate reader connection/process | Lag measured; status rule in 3.7 holds |
-| Sync duration | Full Los Subies ESPN fetch + derived compute | Fits Vercel Pro `maxDuration`, or the split in 3.5 is required |
-| Cost/limits | Storage per league, compute per sync and per page view, database-count behaviour at 60, plan pricing | Monthly projection at 100 and 1,000 leagues |
-| Migrations | Apply a schema change to 60 DBs | Time recorded |
-| Vercel Queues | Publish/consume from Python on this team | Available or fallback chosen |
-
-**Results (2026-10-20): conditional GO** — see [`fantasy-intel/spikes/motherduck/REPORT.md`](../../../fantasy-intel/spikes/motherduck/REPORT.md).
-Amendments adopted from it: API reads use a reader **service account** over per-league restricted shares
-(no in-identity mechanism blocks writes or `DROP DATABASE`); a per-instance attach lock with LRU detach;
-`Conflict on update/tuple deletion` is a transient sync error (orphaned transactions block ~30 s);
-the MotherDuck extension is bundled to cut cold starts; league API responses are cached after
-authorization, keyed by `(league, data_version, visibility_epoch, perspective, route, params)`, because
-Pulse bills ≥ 1 CU-second per query.
-
-Go = isolation story acceptable (server-enforced, with whatever guard exists), an affordable read-only
-mechanism exists, latency targets met, atomic writes and fencing hold, cost acceptable. Otherwise the
-spike report goes to Havyn with the numbers and B is revisited against A/C.
+- **Phase 0 (MotherDuck, retired):** [`spikes/motherduck/REPORT.md`](../../../fantasy-intel/spikes/motherduck/REPORT.md).
+  Findings that still apply: multi-table writes are atomic and fencing works; a per-instance lock is
+  needed around shared per-instance resources (concurrent requests raced on `ATTACH`); a full sync
+  takes ~46 s. MotherDuck itself is dropped: Lite caps compute at 10 CU-hours/month with a 1 CU-second
+  minimum per query, below today's ~24 CU-hours/month of API traffic.
+- **Phase 0b (object storage):** [`spikes/storage/REPORT.md`](../../../fantasy-intel/spikes/storage/REPORT.md).
+  Go criterion: a free store that carries full-file downloads from `iad1` with p95 < 2 s for the
+  current 95 MB snapshot and no transfer charge. Vercel Blob and Supabase Storage fail on free-tier
+  transfer/file-size limits; R2 is pending account setup for its latency numbers.
 
 ## 5. Testing
 - **Los Subies golden tests:** before any refactor, record every existing GET endpoint's JSON against a

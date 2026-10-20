@@ -2,116 +2,119 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let anyone view a public ESPN or Sleeper league, and signed-in users connect private ESPN leagues, on the existing fantasy-intel site, with every page at parity and Los Subies unchanged.
+**Goal:** Let anyone view a public ESPN or Sleeper league, and signed-in users connect private ESPN leagues, on the existing fantasy-intel site, with every page at parity, Los Subies unchanged, and everything on free tiers.
 
-**Architecture:** Supabase Auth + Postgres control plane (RLS, least-privilege roles), FastAPI verifying Supabase JWTs and authorizing every request server-side, one MotherDuck database per league plus a shared read-only `fi_global`, sync as fenced Postgres-queued jobs in Vercel Functions. Spec: [2026-10-19-multi-league-platform-design.md](../specs/2026-10-19-multi-league-platform-design.md).
+**Architecture:** Supabase free (Auth + Postgres with RLS, least-privilege roles); FastAPI on Vercel Hobby verifying Supabase JWTs, authorizing every request, and serving from immutable per-league DuckDB files cached in `/tmp`; files live in a private Cloudflare R2 bucket (API holds a read-only token); sync runs as fenced Postgres-queued jobs in GitHub Actions. Spec: [2026-10-19-multi-league-platform-design.md](../specs/2026-10-19-multi-league-platform-design.md) (revised 2026-10-20 for free tiers).
 
-**Tech Stack:** FastAPI, DuckDB/MotherDuck, Supabase (Auth, Postgres, Supavisor), Next.js on Vercel Pro (Cron, Queues), `cryptography` (AES-256-GCM), PyJWT (JWKS), pytest, Playwright E2E.
+**Tech Stack:** FastAPI, DuckDB, Cloudflare R2 (S3 API, SigV4), Supabase (Auth, Postgres, Supavisor), Next.js on Vercel Hobby, GitHub Actions, `cryptography` (AES-256-GCM + RSA-OAEP), PyJWT (JWKS), pytest, Playwright E2E.
 
 ## Global Constraints
 
+- Free tiers only. A step that needs a paid feature stops and is raised with Havyn with a free alternative.
 - Phase N+1 starts only after Phase N's acceptance criteria hold and its PR is merged (Codex review → fix → merge, per the repo's merge process).
 - Each phase gets its own detailed task plan (`docs/superpowers/plans/2026-10-19-multi-league-phase-<N>.md`) written when the phase starts; this document fixes boundaries, acceptance and rollback.
-- No engine rewrites. Engines change only to (a) receive the perspective team instead of reading `fantasy_teams.is_mine`, and (b) read through the league connection chosen by the request.
-- Los Subies golden-response tests must pass at the end of every phase from Phase 2 on.
-- Flags default off; with every new flag off, production behaves exactly as today.
+- No engine rewrites. Engines change only to (a) receive the perspective team instead of reading `fantasy_teams.is_mine`, and (b) read through the connection chosen by the request.
+- Los Subies golden-response tests must pass at the end of every phase from Phase 1a on.
+- Flags default off; with every new flag off, production behaves as the previous phase left it.
 - Never deploy the Supabase service-role key; no Postgres role gets `BYPASSRLS`.
-- No ESPN cookie is ever logged, returned by an API, or used outside the league read allowlist.
+- The API holds only a read-only R2 token and only the credential *public* key.
+- No ESPN cookie is ever logged, returned by an API, or used outside the league read allowlist. GitHub Actions logs are public: workers log ids, durations and error codes only.
 - Ambiguous provider errors never revoke credentials or delete league data.
-- MotherDuck is not treated as a per-league security boundary; isolation is server-enforced and leak-tested.
 
 ---
 
-## Phase 0: MotherDuck validation spike (go/no-go)
+## Phase 0 (retired): MotherDuck spike
 
-**Detailed plan:** [2026-10-19-multi-league-phase-0-spike.md](2026-10-19-multi-league-phase-0-spike.md)
+Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). MotherDuck is dropped for cost; the `spike_*` databases and the `fi-md-spike` Vercel project are torn down in Phase 1a once the new read path is live.
 
-**Scope:** throwaway measurement harness under `fantasy-intel/spikes/motherduck/`, a throwaway Vercel project `fi-md-spike` for in-region latency, a written report. No production code changes.
+## Phase 0b: object storage spike
 
-**Acceptance (go):**
-- Isolation behaviour documented from real SQL attempts with the API's token type; a server-enforced isolation design that does not depend on `attach_mode=single`.
-- An affordable mechanism that makes API reads unable to write (or the gap reported as an owner decision).
-- `fi_global` attaches read-only beside a league DB and unqualified names resolve via `search_path`.
-- From Vercel (production region): connect+attach+first query p95 cold < 1.5 s, warm added p95 < 300 ms.
-- Single-league multi-table transaction is atomic under a mid-write kill; the `_sync_meta` fence rejects a stale commit.
-- Cross-database snapshot and reader lag measured; status rule (spec 3.7) shown to hold.
-- Full Los Subies sync duration measured against Vercel Pro `maxDuration`.
-- Monthly cost projection at 100 and 1,000 leagues.
-- Vercel Queues (Python) availability determined.
+**Scope:** benchmark private Vercel Blob, Supabase Storage and Cloudflare R2 from a Vercel Function in `iad1` with the real snapshot (95 MB full; 31 MB league + 47 MB global split): full download + open + an 8-query page mix, and DuckDB HTTP range reads; record free-tier budgets. Report in `fantasy-intel/spikes/storage/REPORT.md`.
 
-**No-go:** report numbers and blockers to Havyn; revisit Option B vs A/C before any Phase 1 work.
+**Acceptance:** one store meets p95 < 2 s for the 95 MB download from `iad1` with no transfer charge, and supports a read-only credential.
 
-**Rollback:** `uv run python spikes/motherduck/teardown.py` drops every `spike_*` MotherDuck database; delete the `fi-md-spike` Vercel project; nothing else changed.
+**Status:** Blob and Supabase measured (fast, but free-tier transfer/file-size limits rule them out); R2 numbers pending Havyn's account.
+
+**Rollback:** delete the `spike` objects/bucket in each store and the `fi-spike-blob` Blob store.
+
+## Phase 1a: move the current site off MotherDuck
+
+**Scope:** `backend/app/db/snapshot.py` (R2 SigV4 GET/PUT with the standard library, manifest, `/tmp` cache with lock and atomic rename); `api/deps.py` serves from the snapshot when `SNAPSHOT_BUCKET` is set; `scripts/publish_snapshot.py` builds a compact copy (`COPY FROM DATABASE`), uploads `snapshots/<stamp>.duckdb`, then `current.json`, keeps the last 3; `refresh_all.py` publishes the snapshot instead of MotherDuck; Vercel env on `fantasy-intel-api`: `SNAPSHOT_*` + read-only R2 token, `MOTHERDUCK_*` removed after verification; README hosting section updated.
+
+**Acceptance:**
+- Unit tests: manifest parsing, cache hit/miss, concurrent requests download once, atomic replace, corrupt/partial download rejected (size + sha256), read-only token never used for writes, SigV4 signing matches AWS's published test vector.
+- Golden check: every page's API responses from the snapshot path equal the MotherDuck path on the same publish.
+- Production: cold request p95 < 3 s (download + open), warm unchanged; `published_at` data version flows to the trade-search cache.
+- Free-tier check after a week: R2 reads ≪ 10M, Vercel Active CPU on track for < 4 h/month.
+
+**Rollback:** unset `SNAPSHOT_BUCKET` on Vercel → the API falls back to `MOTHERDUCK_DATABASE` (kept until MotherDuck's downgrade; after that, redeploy the previous commit).
 
 ## Phase 1: Control plane (invisible)
 
-**Scope:** Supabase project; migrations for `app_users`, `leagues`, `league_memberships`, `league_pins`, `team_selections`, `league_invites`, `league_credentials`, `sync_jobs`, `provider_slots`, `league_sync_runs`, `audit_log`; RLS policies; roles `fi_api`/`fi_sync`; SECURITY DEFINER functions (redeem invite, store credential, transfer admin, `sync_credential`); FastAPI JWT verification (JWKS) and `authorize_league(request, league_id) -> Access`; credential crypto module (AES-GCM envelope, AAD, rewrap); ADR-0002. The Phase 1 HMAC assertion code is removed. Nothing user-visible; `/v2` stays behind `MULTILEAGUE_ENABLED`.
+**Scope:** Supabase project `fantasy-intel` (created 2026-10-20, us-east-1); migrations for `app_users`, `leagues`, `league_memberships`, `league_pins`, `team_selections`, `league_invites`, `league_credentials`, `sync_jobs`, `provider_slots`, `league_snapshots`, `league_snapshot_history`, `audit_log`; RLS policies; roles `fi_api`/`fi_sync`; SECURITY DEFINER functions (redeem invite, store credential, transfer admin, `sync_credential`); FastAPI JWT verification (JWKS) and `authorize_league(request, league_id) -> Access` returning the snapshot pointer; credential crypto (AES-GCM data key, RSA-OAEP wrap, AAD, rewrap); ADR-0002. The HMAC assertion code is removed. Nothing user-visible; `/v2` stays behind `MULTILEAGUE_ENABLED`.
 
 **Acceptance:**
 - Authorization matrix tests green for every `/v2` league route (router-enumerated).
 - RLS tests: `anon` sees only public leagues; `authenticated` sees only own pins/selections/memberships; `fi_api` cannot select `league_credentials`; `fi_sync` cannot read memberships.
 - Claims isolation: two interleaved transactions on one pooled connection never see each other's `request.jwt.claims`.
-- Crypto: AAD-swap fails, rewrap round-trips, redaction tests green.
+- Crypto: AAD-swap fails, the API (public key only) cannot decrypt, rewrap round-trips, redaction tests green.
 - Existing suite + E2E green; production unchanged with flags off.
 
-**Rollback:** flags off (no traffic reaches the new code); Supabase migrations have down-migrations; the Supabase project can be paused. No existing table or route changed.
+**Rollback:** flags off; Supabase migrations have down-migrations. No existing table or route changed.
 
-## Phase 2: League-database read path, Los Subies migrated
+## Phase 2: League-file read path, Los Subies migrated
 
-**Scope:** golden-response recorder (first task, before any refactor); `fi_global`/league table split and `publish_motherduck.py` publishing `fi_global` only; Los Subies copied into `md:lg_<id>` with `_sync_meta`; request path: authorize → open league cursor (+ `fi_global` read-only, `search_path`, guard from Phase 0) → engines; perspective team passed into engines instead of `is_mine` (engines touched only at that seam); `/l/<lg_id>/…` routes, legacy URL redirect, league switcher, perspective picker (anonymous via URL/local storage), "data as of" from the reader's `_sync_meta`. Laptop sync still writes Los Subies (to its league DB) until Phase 3.
+**Scope:** golden-response recorder (first task); global/league table split; publisher writes `global/<version>.duckdb` and Los Subies `leagues/<lg_id>/<version>.duckdb` and updates `league_snapshots`; request path: authorize → pointer → `/tmp` LRU (≤ 350 MB) → open league read-only + attach global read-only + `search_path` → engines; perspective team passed in; `/l/<lg_id>/…` routes, legacy URL redirect, league switcher, perspective picker (anonymous via URL/local storage); "data as of" from the served version; per-instance response cache keyed by `(league, data_version, global_version, visibility_epoch, perspective, route, params)` after authorization.
 
 **Acceptance:**
-- Golden tests: every legacy GET endpoint byte-identical (volatile fields masked) via legacy URLs and via `/v2/leagues/{lg}/…`, on the E2E fixture in CI and on real Los Subies locally.
+- Golden tests: every legacy GET endpoint byte-identical (volatile fields masked) via legacy URLs and `/v2/leagues/{lg}/…`, on the E2E fixture in CI and on real Los Subies locally.
 - Two-league leak tests green for every route; interleaved-request cache test green.
 - Anonymous visitor can view a public fixture league from any perspective without signing in.
-- p95 page API latency within +300 ms of today's production.
+- `/tmp` LRU never exceeds its bound under a 20-league request mix; concurrent first requests download once.
 - `test_league_scope_audit.py` ratchet unchanged or lower.
 
-**Rollback:** `MULTILEAGUE_ENABLED` off routes everything through the legacy single-database path, which stays intact through Phase 5; `md:fantasy_intel` is kept untouched until Phase 5 sign-off, so reverting the publish script restores today's deployment.
+**Rollback:** `MULTILEAGUE_ENABLED` off routes everything through the Phase 1a single-snapshot path, which stays intact through Phase 5.
 
-## Phase 3: Sync jobs + ESPN connect flows
+## Phase 3: Sync jobs on GitHub Actions + ESPN connect flows
 
-**Scope:** ESPN sync restructured into fetch → compute → single-transaction commit with fence (parsing/engines unchanged); job worker (claim/reclaim-in-place, heartbeat, provider slots, fence, retries, failure classification per spec 3.6); dispatch via Vercel Queues (or per-minute cron fallback per Phase 0); drain cron (every minute); visibility prober; Connect flow UI (public URL import; private with consent + cookies + team pick); invites; credential lifecycle (`active`/`suspect`/`invalid`); stale/retention timers; Los Subies syncs through jobs with Havyn's private credential; launchd ESPN step removed (global steps remain).
+**Scope:** worker package run by `.github/workflows/sync-drain.yml` (`schedule: */15`, `repository_dispatch`, `workflow_dispatch`; concurrency group; 20-minute budget); claim/reclaim-in-place, heartbeat, provider slots, fence, retries, failure classification (spec 3.6); league file built on the runner from the existing `fetch_all`/`write_all` + analytics, uploaded, fenced pointer swap; raw provider JSON stored for `recompute`; garbage collection of orphaned objects; visibility prober; API `repository_dispatch` on connect; Connect flow UI (public URL import; private with consent + cookies + team pick); invites; credential lifecycle; stale/retention timers; Los Subies syncs through jobs with Havyn's private credential; launchd ESPN step removed (global steps remain).
 
 **Acceptance:**
-- Sync tests: reclaim in place, heartbeat loss aborts, stale fence rejected, slot cap under 10 concurrent claimers, duplicate enqueue collapses, mid-commit failure leaves data intact, ambiguous 403/404 never invalidates.
-- Golden tests still green with Los Subies produced by the job path (compared against the laptop path on the same provider responses).
-- End-to-end on staging: connect a public ESPN league → data visible < 2 min; flip it private on ESPN → access 404 within one probe; private connect → invite → viewer access.
-- Credentials never appear in logs (log scan in the E2E run).
+- Sync tests: reclaim in place, heartbeat loss aborts, stale fence publishes nothing, slot cap under 10 concurrent claimers, duplicate enqueue collapses, failure before the swap leaves the pointer unchanged, ambiguous 403/404 never invalidates.
+- Golden tests still green with Los Subies produced by the job path.
+- Public-log audit: a full drain run's log contains no team names, player names, cookies or league ids beyond the opaque `lg_` id (automated grep in the workflow).
+- End to end: connect a public ESPN league → data visible once the dispatch run finishes (target < 5 min); flip it private on ESPN → access 404 within one probe; private connect → invite → viewer access.
 
-**Rollback:** disable the drain cron and Queues consumer (flag `SYNC_JOBS_ENABLED`); re-enable the launchd ESPN step; league DBs keep their last committed data.
+**Rollback:** disable the workflow; re-enable the launchd ESPN step publishing Los Subies; league files keep their last version.
 
 ## Phase 4: Sleeper live + scoring-aware Ours
 
-**Scope:** Sleeper terms check recorded; Sleeper sync job using the existing `app/sleeper/` normalizer into a league DB; Ours re-scored per league scoring from component-stat projections in `fi_global` (QB/RB/WR/TE, K, D/ST) so leagues without ESPN projections get projections; engines read the league's projection source through the existing projection-source seam.
+**Scope:** Sleeper terms check recorded; Sleeper sync job using the existing `app/sleeper/` normalizer into a league file; Ours re-scored per league scoring from component-stat projections in the global file (QB/RB/WR/TE, K, D/ST) so leagues without ESPN projections get projections; engines read the league's projection source through the existing projection-source seam.
 
-**Acceptance:**
-- Re-scored Ours equals today's Ours for Los Subies scoring (golden).
-- Every page renders for a Sleeper fixture league with non-ESPN scoring (half-PPR, superflex, TE premium) with no empty or ESPN-shaped stand-ins.
-- Leak tests include a Sleeper league.
+**Acceptance:** re-scored Ours equals today's Ours for Los Subies scoring; every page renders for a Sleeper fixture league with non-ESPN scoring (half-PPR, superflex, TE premium) without empty or ESPN-shaped stand-ins; leak tests include a Sleeper league.
 
 **Rollback:** `SLEEPER_SOURCE=disabled`; Sleeper leagues show "temporarily unavailable"; ESPN leagues unaffected.
 
 ## Phase 5: Parity audit
 
-**Scope:** every page × {ESPN public, ESPN private, Sleeper} checked by E2E; fixes only where a page assumed Los Subies; owner-only research pages gated to platform admins; retire `md:fantasy_intel`.
+**Scope:** every page × {ESPN public, ESPN private, Sleeper} checked by E2E; fixes only where a page assumed Los Subies; owner-only research pages gated to platform admins; retire the Phase 1a single-snapshot path.
 
 **Acceptance:** E2E matrix green; no "coming soon" anywhere; Havyn signs off on Los Subies after a week of side-by-side use.
 
-**Rollback:** keep `md:fantasy_intel` and the legacy path until sign-off; reverting is a flag flip.
+**Rollback:** keep the Phase 1a path until sign-off; reverting is a flag flip.
 
 ## Phase 6: Launch gates, then open sign-ups
 
-**Scope:** privacy policy, terms acknowledgement (ESPN's API is undocumented; Sleeper terms) — Havyn's decision recorded; abuse limits (imports per user per day, active leagues per user, anonymous read rate limits); alerts on `dead` jobs and probe failures; account and league deletion flows tested end to end; `SIGNUPS_ENABLED` flag.
+**Scope:** privacy policy, terms acknowledgement (ESPN's API is undocumented; Sleeper terms; Vercel Hobby non-commercial) — Havyn's decision recorded; abuse limits (imports per user per day, active leagues per user, anonymous read rate limits); free-tier usage dashboard + alerts at 70% of each budget (Vercel Active CPU, R2 ops/storage, Supabase DB/egress); alerts on `dead` jobs; deletion flows tested; `SIGNUPS_ENABLED` flag.
 
-**Acceptance:** deletion flows verified (credentials crypto-erased, DB dropped after soft delete); rate limits enforced in tests; alerting fires on an injected dead job; Havyn approves launch.
+**Acceptance:** deletion flows verified (credentials crypto-erased, league objects deleted after soft delete); rate limits enforced in tests; usage alert fires on an injected threshold; Havyn approves launch.
 
 **Rollback:** `SIGNUPS_ENABLED` off closes registration; public viewing can be closed with `MULTILEAGUE_ENABLED` off.
 
 ## Phase 7: Automate global publishing
 
-**Scope:** GitHub Actions scheduled workflow running nflverse sync, the Ours pipeline and `fi_global` publish (atomic replace), plus `recompute` job fan-out; launchd global jobs retired.
+**Scope:** GitHub Actions scheduled workflow running nflverse sync, the Ours pipeline and the global-file publish, plus `recompute` job fan-out; launchd global jobs retired.
 
-**Acceptance:** two consecutive weeks of scheduled publishes with identical outputs to the laptop run; alert on a missed publish.
+**Acceptance:** two consecutive weeks of scheduled publishes with outputs identical to the laptop run; alert on a missed publish.
 
 **Rollback:** re-enable the launchd jobs; disable the workflow.
