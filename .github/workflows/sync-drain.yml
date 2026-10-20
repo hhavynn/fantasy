@@ -1,0 +1,65 @@
+# Multi-league sync drain (docs/superpowers/plans/2026-10-19-multi-league-phase-3.md, spec §3).
+# Never runs on pull requests (forked code must never see these secrets). Off until the repository variable
+# SYNC_DRAIN_ENABLED is "true". The log is public: the drain prints ids, durations and codes only, and the audit step
+# fails the run if anything credential- or provider-shaped appears.
+name: Sync drain
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-drain
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    name: Drain the sync queue
+    if: github.repository == 'hhavynn/fantasy' && vars.SYNC_DRAIN_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+        working-directory: fantasy-intel/backend
+    env:
+      TZ: UTC
+      PYTHONUNBUFFERED: "1"
+      PYTHONWARNINGS: ignore
+      FI_SYNC_DB_URL: ${{ secrets.FI_SYNC_DB_URL }}
+      SNAPSHOT_BUCKET: fantasy-intel
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      CREDENTIALS_PRIVKEY_V1: ${{ secrets.CREDENTIALS_PRIVKEY_V1 }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "fantasy-intel/backend/uv.lock"
+
+      - name: Install the sync dependencies
+        run: uv sync --frozen --no-dev --group sync
+
+      - name: Drain
+        run: uv run --no-sync python ../scripts/sync_drain.py --workers 2 --budget-min 18 2>&1 | tee "$RUNNER_TEMP/drain.log"
+
+      - name: Audit the public log
+        if: always()
+        run: python3 ../scripts/audit_drain_log.py "$RUNNER_TEMP/drain.log"
