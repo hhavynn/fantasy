@@ -812,3 +812,16 @@ def test_publish_records_from_logs_and_history(monkeypatch, tmp_path):
     runs = [{"log": "refresh-a.log", "publish": {"published_at": "2026-10-16T04:02:49"}}]
     got = eh.publish_records(tmp_path / "logs", runs)
     assert [g["published_at"] for g in got] == ["2026-10-16T04:02:49", "2026-10-16T04:46:22"]
+
+
+def test_an_r2_snapshot_publish_is_recognized_like_a_motherduck_one():
+    """Review P2 (#144): refresh_all may run publish_snapshot.py instead of publish_motherduck.py."""
+    text = "\n".join([
+        "==> publish_snapshot.py  (started 2026-10-20T06:00:00Z)",
+        "Published data/fantasy.duckdb -> r2:fantasy-intel/snapshots/20261020T060000.duckdb (95.4 MB) at 2026-10-20T06:00:01",
+        "<== exit 0 after 3.1s",
+        "Refresh complete.",
+    ])
+    r = eh.parse_refresh_log(text)
+    assert r["publish"]["ran"] and r["publish"]["step"] == "publish_snapshot.py"
+    assert r["publish"]["exit"] == 0 and r["publish"]["published_at"] == "2026-10-20T06:00:01"
