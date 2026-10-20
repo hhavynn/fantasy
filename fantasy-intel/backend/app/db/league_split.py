@@ -89,11 +89,13 @@ def _columns(con, table: str) -> set[str]:
 
 
 def split_database(src: Path, league_out: Path, global_out: Path, *, stamp: str,
-                   league: tuple[int, int] | None = None) -> SplitResult:
+                   league: tuple[int, int] | None = None, global_stamp: str | None = None) -> SplitResult:
     """Write `league_out` (the league's tables) and `global_out` from `src`, both stamped
     `schema_meta.published_at = stamp`. The source must hold exactly one league; `league` = (league_id, season), when
     given, asserts which one. Rows of tables with a league column are filtered to it as defence in depth. Existing
-    output files are replaced."""
+    output files are replaced. `global_stamp` (when given) is written into the global file instead of `stamp`: the
+    global file is then byte-identical for identical content, so a publisher can reuse an object already uploaded
+    (nothing reads the global file's stamp; the league file's `schema_meta` wins through search_path)."""
     src, league_out, global_out = Path(src), Path(league_out), Path(global_out)
     for out in (league_out, global_out):
         out.unlink(missing_ok=True)
@@ -134,7 +136,8 @@ def split_database(src: Path, league_out: Path, global_out: Path, *, stamp: str,
                 else:
                     con.execute(f"DROP TABLE {alias}.main.{_ident(t)}")
             con.execute(f"DELETE FROM {alias}.main.schema_meta WHERE key = 'published_at'")
-            con.execute(f"INSERT INTO {alias}.main.schema_meta VALUES ('published_at', ?)", [stamp])
+            con.execute(f"INSERT INTO {alias}.main.schema_meta VALUES ('published_at', ?)",
+                        [stamp if alias == "lg" or global_stamp is None else global_stamp])
             con.execute(f"CHECKPOINT {alias}")
             con.execute(f"DETACH {alias}")
     finally:

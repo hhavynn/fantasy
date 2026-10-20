@@ -1845,3 +1845,352 @@ git add -A fantasy-intel/backend
 git commit -m "Phase 2: per-instance response cache keyed after authorization"
 ```
 
+
+### Task 7: Publisher — upload immutable objects and move the fenced pointer
+
+**Files:**
+- Create: `fantasy-intel/backend/app/db/league_publish.py`
+- Create: `fantasy-intel/backend/tests/test_league_publish.py`
+- Create: `fantasy-intel/scripts/publish_leagues.py`
+- Modify: `fantasy-intel/backend/app/db/league_split.py (`global_stamp=`: the global file is byte-identical for identical content)`
+- Modify: `fantasy-intel/scripts/refresh_all.py (`PUBLISH_LEAGUES` after `PUBLISH_SNAPSHOT` when `LEAGUE_PUBLISH_ID` and `FI_SYNC_DB_URL` are set)`
+- Modify: `fantasy-intel/backend/tests/test_refresh_all.py`
+- Modify: `fantasy-intel/.env.example`
+- Modify: `fantasy-intel/backend/tests/test_no_credential_leaks.py (`FI_SYNC_DB_URL` is scanned as a secret)`
+
+**Interfaces:**
+- Consumes: `split_database` (Task 2), `league_key`/`global_key` (Task 3), the Phase 1 `fi_sync` grants.
+- Produces: `publish_league(src_db, writer, sync_con, league_id, *, stamp=None, keep=3) -> PublishResult(league_id, data_version, global_version, fence, applied, deleted)`; `R2Writer(cfg)`, `DirWriter(root)`; `GLOBAL_STAMP`.
+- Pointer: `UPDATE fi.leagues SET sync_fence = sync_fence + 1 RETURNING` then the spec's fenced upsert (`... WHERE fi.league_snapshots.fence < EXCLUDED.fence RETURNING`); no row → `applied=False`, nothing visible changed, the object is collected. History keeps 3; objects not referenced by a pointer or history are deleted; the newest global object is always kept.
+- Measured: identical global content splits to byte-identical files with a fixed internal stamp; the league file is not byte-deterministic (each publish is a new version anyway).
+
+- [ ] **Step 1: Write the failing tests**
+
+`fantasy-intel/backend/tests/test_league_publish.py`:
+
+```python
+"""Publishing a league: split, upload immutable objects, move the fenced pointer, keep three versions (Phase 2)."""
+import shutil
+
+import duckdb
+import psycopg
+import pytest
+
+from app.db.league_files import global_key, league_key
+from app.db.league_publish import R2Writer, publish_league
+from cp_seed import seed_league
+from fake_r2 import FakeR2
+from golden.golden import build_e2e_db
+
+
+@pytest.fixture(scope="module")
+def e2e(tmp_path_factory):
+    return build_e2e_db(tmp_path_factory.mktemp("pub") / "e2e.duckdb")
+
+
+@pytest.fixture
+def r2():
+    fake = FakeR2()
+    yield fake
+    fake.close()
+
+
+@pytest.fixture
+def league(pg):
+    with pg.connect() as con:
+        lid = seed_league(con, visibility="private", external_id="999")
+        con.commit()
+    return lid
+
+
+def sync_con(pg):
+    return psycopg.connect(pg.dsn_for("fi_sync"), prepare_threshold=None)
+
+
+def pointer(pg, lid):
+    with pg.connect() as con:
+        return con.execute("SELECT object_key, data_version, fence, global_version FROM fi.league_snapshots "
+                           "WHERE league_id = %s", [lid]).fetchone()
+
+
+def touched(src, dst, n):
+    shutil.copy(src, dst)
+    con = duckdb.connect(str(dst))
+    con.execute("UPDATE fantasy_teams SET name = name || ?", [f" v{n}"])
+    con.close()
+    return dst
+
+
+def test_first_publish_uploads_both_files_and_inserts_the_pointer(pg, r2, league, e2e):
+    with sync_con(pg) as con:
+        res = publish_league(e2e, R2Writer(r2.config), con, league, stamp="2026-10-20T12:00:00")
+    assert res.applied and res.fence == 1
+    assert pointer(pg, league) == (league_key(league, res.data_version), res.data_version, 1, res.global_version)
+    assert {league_key(league, res.data_version), global_key(res.global_version)} <= set(r2.objects)
+
+
+def test_republishing_moves_the_pointer_and_keeps_three_versions(pg, r2, league, e2e, tmp_path):
+    versions = []
+    with sync_con(pg) as con:
+        for n in range(5):
+            res = publish_league(touched(e2e, tmp_path / f"v{n}.duckdb", n), R2Writer(r2.config), con, league,
+                                 stamp=f"2026-10-20T12:0{n}:00")
+            versions.append(res.data_version)
+    assert pointer(pg, league)[1] == versions[-1] and pointer(pg, league)[2] == 5
+    kept = sorted(k for k in r2.objects if k.startswith(f"leagues/{league}/"))
+    assert kept == sorted(league_key(league, v) for v in versions[-3:])
+    with pg.connect() as su:
+        assert su.execute("SELECT count(*) FROM fi.league_snapshot_history WHERE league_id = %s", [league]).fetchone() == (3,)
+    globals_ = [k for k in r2.objects if k.startswith("global/")]
+    assert len(globals_) == 1, "unchanged global data is one object, uploaded once"
+
+
+def test_a_superseded_publisher_changes_nothing_visible(pg, r2, league, e2e, tmp_path):
+    with sync_con(pg) as con:
+        first = publish_league(e2e, R2Writer(r2.config), con, league, stamp="2026-10-20T12:00:00")
+    with pg.connect() as su:                 # a newer worker already published with a higher fence
+        su.execute("UPDATE fi.league_snapshots SET fence = 99 WHERE league_id = %s", [league])
+        su.execute("UPDATE fi.leagues SET sync_fence = 1 WHERE id = %s", [league])   # stale counter on this side
+        su.commit()
+    with sync_con(pg) as con:
+        stale = publish_league(touched(e2e, tmp_path / "late.duckdb", 1), R2Writer(r2.config), con, league,
+                               stamp="2026-10-20T12:05:00")
+    assert not stale.applied
+    assert pointer(pg, league)[1] == first.data_version
+    assert league_key(league, stale.data_version) not in r2.objects, "the orphan is collected"
+
+
+def test_the_publisher_role_cannot_touch_people_tables_and_unknown_leagues_are_refused(pg, r2, e2e):
+    with sync_con(pg) as con:
+        with pytest.raises(ValueError, match="not registered"):
+            publish_league(e2e, R2Writer(r2.config), con, "lg_" + "q" * 24, stamp="2026-10-20T12:00:00")
+    with sync_con(pg) as con, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        con.execute("SELECT count(*) FROM fi.league_memberships")
+```
+
+```bash
+cd fantasy-intel/backend && uv run pytest tests/test_league_publish.py -q
+```
+Expected: collection error (module missing)
+
+- [ ] **Step 2: Implement the publisher**
+
+`fantasy-intel/backend/app/db/league_publish.py`:
+
+```python
+"""Publish one league's files and move its fenced pointer (multi-league Phase 2).
+
+    split the analytics database -> upload global/<gv>.duckdb (skipped when that exact content is already there)
+    -> upload leagues/<lg>/<dv>.duckdb -> one fi_sync transaction: take the next fence, fenced upsert of
+    fi.league_snapshots, history row, keep three -> delete objects no pointer or history references.
+
+The pointer moves only through the spec's fenced upsert (§3.4): a publisher holding an older fence than the one
+already published changes nothing visible and its object is collected. Readers see the old pair of files or the new
+pair, never a mix. Runs as `fi_sync` (never the service role); prints ids, versions and counts only.
+"""
+
+from __future__ import annotations
+
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
+
+from . import r2
+from .connection import utcnow
+from .league_files import global_key, league_key
+from .league_split import SplitResult, split_database
+
+KEEP = 3
+GLOBAL_STAMP = "content-addressed"    # the global file's internal stamp: identical content, identical bytes
+
+_UPSERT = """
+INSERT INTO fi.league_snapshots (league_id, object_key, data_version, fence, global_version, committed_at)
+VALUES (%s, %s, %s, %s, %s, now())
+ON CONFLICT (league_id) DO UPDATE
+  SET object_key = EXCLUDED.object_key, data_version = EXCLUDED.data_version, fence = EXCLUDED.fence,
+      global_version = EXCLUDED.global_version, committed_at = EXCLUDED.committed_at
+  WHERE fi.league_snapshots.fence < EXCLUDED.fence
+RETURNING league_id
+"""
+
+
+class ObjectWriter(Protocol):
+    def put(self, key: str, path: Path) -> None: ...
+    def keys(self, prefix: str) -> list[str]: ...
+    def delete(self, key: str) -> None: ...
+
+
+class R2Writer:
+    """The bucket, with a read/write token (laptop or GitHub Actions only; the API's token is read-only)."""
+
+    def __init__(self, cfg: r2.R2Config):
+        self.cfg = cfg
+
+    def put(self, key: str, path: Path) -> None:
+        r2.put_file(self.cfg, key, path)
+
+    def keys(self, prefix: str) -> list[str]:
+        return r2.list_keys(self.cfg, prefix)
+
+    def delete(self, key: str) -> None:
+        r2.delete(self.cfg, key)
+
+
+class DirWriter:
+    """A local object directory (LEAGUE_FILES_DIR) with the same layout, for development."""
+
+    def __init__(self, root: Path):
+        self.root = Path(root)
+
+    def put(self, key: str, path: Path) -> None:
+        dest = self.root / key
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(dest.name + ".part")
+        tmp.write_bytes(Path(path).read_bytes())
+        tmp.replace(dest)
+
+    def keys(self, prefix: str) -> list[str]:
+        base = self.root / prefix
+        return sorted(str(p.relative_to(self.root)) for p in base.rglob("*.duckdb")) if base.exists() else []
+
+    def delete(self, key: str) -> None:
+        (self.root / key).unlink(missing_ok=True)
+
+
+@dataclass(frozen=True)
+class PublishResult:
+    league_id: str
+    data_version: str
+    global_version: str
+    fence: int
+    applied: bool          # False: a newer publish already holds the pointer; nothing visible changed
+    deleted: tuple[str, ...]
+
+
+def publish_league(src_db: Path, writer: ObjectWriter, sync_con, league_id: str, *, stamp: str | None = None,
+                   keep: int = KEEP) -> PublishResult:
+    """Publish `src_db` (one league's analytics database) as `league_id`. `sync_con` is a psycopg connection as
+    fi_sync; this function commits on it."""
+    stamp = stamp or utcnow().isoformat(timespec="seconds")
+    row = sync_con.execute("SELECT id FROM fi.leagues WHERE id = %s AND deleted_at IS NULL", [league_id]).fetchone()
+    sync_con.rollback()
+    if row is None:
+        raise ValueError(f"league {league_id} is not registered (or is deleted) in the control plane")
+    with tempfile.TemporaryDirectory() as tmp:
+        out = split_database(Path(src_db), Path(tmp) / "league.duckdb", Path(tmp) / "global.duckdb", stamp=stamp,
+                             global_stamp=GLOBAL_STAMP)
+        global_version = out.global_version
+        content = global_version.split("-", 1)[1]                 # <sha256[:24]>-<bytes>
+        existing = [k for k in writer.keys("global/") if k.endswith(f"-{content}.duckdb")]
+        if existing:                                               # same global data already uploaded: reuse it
+            global_version = sorted(existing)[0].removeprefix("global/").removesuffix(".duckdb")
+        else:
+            writer.put(global_key(global_version), out.global_path)
+        lkey = league_key(league_id, out.league_version)
+        writer.put(lkey, out.league_path)
+        out = SplitResult(out.league_path, out.global_path, out.league_version, global_version, out.league_id,
+                          out.season, out.schema_version)
+
+    with sync_con.transaction():
+        fence = sync_con.execute("UPDATE fi.leagues SET sync_fence = sync_fence + 1 WHERE id = %s RETURNING sync_fence",
+                                 [league_id]).fetchone()[0]
+        applied = sync_con.execute(_UPSERT, [league_id, lkey, out.league_version, fence, out.global_version]).fetchone()
+        if applied is not None:
+            sync_con.execute("INSERT INTO fi.league_snapshot_history (league_id, object_key, data_version, fence, "
+                             "global_version, committed_at) VALUES (%s, %s, %s, %s, %s, now())",
+                             [league_id, lkey, out.league_version, fence, out.global_version])
+            sync_con.execute("""DELETE FROM fi.league_snapshot_history WHERE league_id = %s AND id NOT IN (
+                                  SELECT id FROM fi.league_snapshot_history WHERE league_id = %s
+                                  ORDER BY fence DESC, id DESC LIMIT %s)""", [league_id, league_id, keep])
+    deleted = _collect(writer, sync_con, league_id)
+    return PublishResult(league_id, out.league_version, out.global_version, fence, applied is not None, deleted)
+
+
+def _collect(writer: ObjectWriter, sync_con, league_id: str) -> tuple[str, ...]:
+    """Delete this league's objects that no pointer or history row references, and global objects no league
+    references (the newest global object is always kept)."""
+    with sync_con.transaction():
+        league_refs = {r[0] for r in sync_con.execute(
+            "SELECT object_key FROM fi.league_snapshots WHERE league_id = %s UNION "
+            "SELECT object_key FROM fi.league_snapshot_history WHERE league_id = %s", [league_id, league_id])}
+        global_refs = {global_key(r[0]) for r in sync_con.execute(
+            "SELECT global_version FROM fi.league_snapshots UNION SELECT global_version FROM fi.league_snapshot_history")}
+    deleted = []
+    for key in writer.keys(f"leagues/{league_id}/"):
+        if key not in league_refs:
+            writer.delete(key)
+            deleted.append(key)
+    globals_ = sorted(writer.keys("global/"))
+    for key in globals_[:-1]:
+        if key not in global_refs:
+            writer.delete(key)
+            deleted.append(key)
+    return tuple(deleted)
+```
+
+- [ ] **Step 3: CLI**
+
+`fantasy-intel/scripts/publish_leagues.py`:
+
+```python
+"""Publish the local league as per-league files for the multi-league read path (Phase 2), after the syncs.
+
+    cd backend && uv run python ../scripts/publish_leagues.py
+
+Needs LEAGUE_PUBLISH_ID (the league's `lg_...` id in the control plane) and FI_SYNC_DB_URL (the fi_sync connection
+string; never the service-role key). Objects go to R2 when SNAPSHOT_BUCKET/R2_* are set (read/write token), else to
+LEAGUE_FILES_DIR. Prints ids, versions and counts only. The Phase 1a snapshot (publish_snapshot.py) keeps
+publishing alongside until Phase 5 retires it.
+"""
+import os
+import sys
+from pathlib import Path
+
+import _bootstrap  # noqa: F401
+
+from app.config import get_settings
+from app.db.league_publish import DirWriter, R2Writer, publish_league
+
+
+def main() -> int:
+    settings = get_settings()
+    league_id = (os.getenv("LEAGUE_PUBLISH_ID") or "").strip()
+    dsn = (os.getenv("FI_SYNC_DB_URL") or "").strip()
+    if not league_id or not dsn:
+        print("LEAGUE_PUBLISH_ID and FI_SYNC_DB_URL must both be set", file=sys.stderr)
+        return 2
+    files_dir = (os.getenv("LEAGUE_FILES_DIR") or "").strip()
+    writer = R2Writer(settings.r2_config()) if settings.r2_configured else DirWriter(Path(files_dir)) if files_dir else None
+    if writer is None:
+        print("no object store: set the R2 settings or LEAGUE_FILES_DIR", file=sys.stderr)
+        return 2
+    import psycopg
+    with psycopg.connect(dsn, prepare_threshold=None, connect_timeout=10) as con:
+        res = publish_league(settings.db_path, writer, con, league_id)
+    state = "published" if res.applied else "superseded by a newer publish (nothing changed)"
+    print(f"{league_id}: {state}; data {res.data_version}; global {res.global_version}; fence {res.fence}; "
+          f"collected {len(res.deleted)} old objects")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+- [ ] **Step 4: Hook into refresh_all: `PUBLISH_LEAGUES` joins `PUBLISHERS`; `plan(publish=True)` appends it after `PUBLISH_SNAPSHOT` only when both env vars are set (test in tests/test_refresh_all.py)**
+
+- [ ] **Step 5: Run the tests**
+
+```bash
+uv run pytest tests/test_league_publish.py tests/test_league_split.py tests/test_refresh_all.py tests/test_no_credential_leaks.py -q
+```
+Expected: all pass
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A fantasy-intel
+git commit -m "Phase 2: publish per-league files with a fenced pointer move"
+```
+
