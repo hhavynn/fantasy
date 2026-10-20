@@ -142,13 +142,18 @@ Pins: `league_pins(user_id, league_id)` put a league in a signed-in user's switc
 
 ### Credential security
 - Envelope encryption with `cryptography`: a random 256-bit data key per credential encrypts
-  `{"espn_s2","swid"}` with AES-256-GCM (96-bit random nonce; AAD = `league_id ‖ credential_id ‖
-  owner_user_id ‖ key_version`, so a ciphertext moved to another row fails to decrypt).
+  `{"espn_s2","swid"}` with AES-256-GCM (96-bit random nonce; AAD = `"fi-cred-v1" ‖ league_id ‖
+  credential_id ‖ owner_user_id`, so a ciphertext moved to another row fails to decrypt). The AAD holds
+  only values that never change for the life of the ciphertext; it deliberately excludes the wrapping-key
+  version.
 - The data key is wrapped with **RSA-OAEP-3072 (SHA-256)** under a public key `CREDENTIALS_PUBKEY_v{n}`
   held by the API. The private key `CREDENTIALS_PRIVKEY_v{n}` exists only as a GitHub Actions secret,
-  so the internet-facing API can store credentials but never decrypt them.
-- Rotation: add keypair `v{n+1}`, a `rewrap` job in Actions unwraps/rewraps data keys only (cookies are
-  never decrypted), then the old private key is deleted.
+  so the internet-facing API can store credentials but never decrypt them. Columns: `ciphertext`, `nonce`,
+  `aad_format` (immutable, `"fi-cred-v1"`), `wrapped_data_key`, `wrap_key_version` (mutable).
+- Rotation: add keypair `v{n+1}`; a `rewrap` job in Actions unwraps each data key with the private key
+  named by its row's `wrap_key_version`, rewraps it under `v{n+1}`, and updates `wrapped_data_key` and
+  `wrap_key_version` in one statement. The cookie ciphertext, nonce and AAD are untouched, so they still
+  authenticate. Once no row references `v{n}`, its private key is deleted.
 - ESPN cookies are account-wide session cookies. They are used only for GETs to ESPN's fantasy read
   endpoint for that league and season (URL allowlist enforced in the sync client); never for writes,
   other leagues or other ESPN endpoints; never logged, returned or included in errors (redaction
@@ -181,7 +186,8 @@ Postgres is the authoritative queue. Workers run in GitHub Actions. No other inf
   error_detail (redacted), global_version, created_at, started_at, finished_at)`.
 - `leagues.sync_fence BIGINT` — monotonic, incremented on every claim or reclaim of a job for that league.
 - `league_snapshots(league_id PK, object_key, data_version, fence, global_version, committed_at)` — the
-  current pointer. `league_snapshot_history` keeps the last 3 for rollback and garbage collection.
+  current pointer. A league has no row until its first publish; until then the API answers the league's
+  routes with a "first sync in progress" state (from `sync_jobs`), never with another league's data. `league_snapshot_history` keeps the last 3 for rollback and garbage collection.
 - `provider_slots(provider, slot_no, job_id NULL, lease_expires_at)` — N rows per provider (ESPN 2,
   Sleeper 4).
 
@@ -211,10 +217,21 @@ Postgres is the authoritative queue. Workers run in GitHub Actions. No other inf
 ### 3.4 Heartbeat and superseded workers
 - Every 30 s the worker runs `UPDATE sync_jobs SET lease_expires_at = now() + 2 min, heartbeat_at = now()
   WHERE id=? AND lease_token=?` (also extends its slot). Zero rows → lease lost → abort without publishing.
-- **Fenced publish:** the only step that makes data visible is
-  `UPDATE league_snapshots SET object_key=?, data_version=?, fence=?, ... WHERE league_id=? AND fence < ?`.
-  A superseded worker (lower fence) updates zero rows, so it can never replace newer data, even after a
-  pause past its lease; its uploaded object is orphaned and garbage-collected.
+- **Fenced publish:** the only step that makes data visible is an upsert whose update arm keeps the fence
+  check, so the first publish of a new league inserts the pointer and later publishes replace it only
+  when newer:
+  ```sql
+  INSERT INTO league_snapshots (league_id, object_key, data_version, fence, global_version, committed_at)
+  VALUES (?, ?, ?, ?, ?, now())
+  ON CONFLICT (league_id) DO UPDATE
+    SET object_key = EXCLUDED.object_key, data_version = EXCLUDED.data_version, fence = EXCLUDED.fence,
+        global_version = EXCLUDED.global_version, committed_at = EXCLUDED.committed_at
+    WHERE league_snapshots.fence < EXCLUDED.fence
+  RETURNING league_id;
+  ```
+  No row returned → a newer worker already published; this worker's object is orphaned and
+  garbage-collected. A superseded worker can therefore never replace newer data, even after a pause past
+  its lease, and two first publishes racing on a new league resolve the same way.
 
 ### 3.5 Atomic updates
 - Fetch everything from the provider into memory (no writes) → build a complete league DuckDB file on
@@ -272,9 +289,11 @@ Postgres is the authoritative queue. Workers run in GitHub Actions. No other inf
 - **Authorization matrix:** {anonymous, viewer, admin, non-member} × {public, private, stale,
   visibility-expired, flipped-private} × every league route, enumerated from the router so a new route
   without the guard fails CI.
-- **Credentials:** AAD swap fails; rewrap round-trips; URL allowlist; secrets absent from logs, errors,
+- **Credentials:** AAD swap fails; rewrap round-trips and the cookie ciphertext still decrypts under the new
+  key with the AAD unchanged; a row is never decrypted with a key other than its `wrap_key_version`; URL allowlist; secrets absent from logs, errors,
   reprs.
-- **Sync:** lease reclaim in place, heartbeat loss aborts, fence rejects a stale commit, slot cap under
+- **Sync:** lease reclaim in place, heartbeat loss aborts, fence rejects a stale commit, the first publish of a
+  new league inserts its pointer (and racing first publishes keep the higher fence), slot cap under
   concurrent claimers, duplicate enqueue collapse, failure classification (ambiguous 403 never
   invalidates), failure injected mid-commit leaves data intact.
 - **Postgres:** RLS per role, `SET LOCAL ROLE` + claims isolation across pooled connections,

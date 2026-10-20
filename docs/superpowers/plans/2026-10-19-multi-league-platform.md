@@ -57,7 +57,7 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 - Authorization matrix tests green for every `/v2` league route (router-enumerated).
 - RLS tests: `anon` sees only public leagues; `authenticated` sees only own pins/selections/memberships; `fi_api` cannot select `league_credentials`; `fi_sync` cannot read memberships.
 - Claims isolation: two interleaved transactions on one pooled connection never see each other's `request.jwt.claims`.
-- Crypto: AAD-swap fails, the API (public key only) cannot decrypt, rewrap round-trips, redaction tests green.
+- Crypto: AAD-swap fails, the API (public key only) cannot decrypt, rewrap to a new keypair leaves the cookie ciphertext and AAD untouched and it still decrypts, redaction tests green.
 - Existing suite + E2E green; production unchanged with flags off.
 
 **Rollback:** flags off; Supabase migrations have down-migrations. No existing table or route changed.
@@ -77,10 +77,10 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 
 ## Phase 3: Sync jobs on GitHub Actions + ESPN connect flows
 
-**Scope:** worker package run by `.github/workflows/sync-drain.yml` (`schedule: */15`, `repository_dispatch`, `workflow_dispatch`; concurrency group; 20-minute budget); claim/reclaim-in-place, heartbeat, provider slots, fence, retries, failure classification (spec 3.6); league file built on the runner from the existing `fetch_all`/`write_all` + analytics, uploaded, fenced pointer swap; raw provider JSON stored for `recompute`; garbage collection of orphaned objects; visibility prober; API `repository_dispatch` on connect; Connect flow UI (public URL import; private with consent + cookies + team pick); invites; credential lifecycle; stale/retention timers; Los Subies syncs through jobs with Havyn's private credential; launchd ESPN step removed (global steps remain).
+**Scope:** worker package run by `.github/workflows/sync-drain.yml` (`schedule: */15`, `repository_dispatch`, `workflow_dispatch`; concurrency group; 20-minute budget); claim/reclaim-in-place, heartbeat, provider slots, fence (publish = fenced upsert, so a new league's first publish inserts its pointer), retries, failure classification (spec 3.6); league file built on the runner from the existing `fetch_all`/`write_all` + analytics, uploaded, fenced pointer swap; raw provider JSON stored for `recompute`; garbage collection of orphaned objects; visibility prober; API `repository_dispatch` on connect; Connect flow UI (public URL import; private with consent + cookies + team pick); invites; credential lifecycle; stale/retention timers; Los Subies syncs through jobs with Havyn's private credential; launchd ESPN step removed (global steps remain).
 
 **Acceptance:**
-- Sync tests: reclaim in place, heartbeat loss aborts, stale fence publishes nothing, slot cap under 10 concurrent claimers, duplicate enqueue collapses, failure before the swap leaves the pointer unchanged, ambiguous 403/404 never invalidates.
+- Sync tests: reclaim in place, heartbeat loss aborts, stale fence publishes nothing, a new league's first publish becomes visible, racing first publishes keep the higher fence, slot cap under 10 concurrent claimers, duplicate enqueue collapses, failure before the swap leaves the pointer unchanged, ambiguous 403/404 never invalidates.
 - Golden tests still green with Los Subies produced by the job path.
 - Public-log audit: a full drain run's log contains no team names, player names, cookies or league ids beyond the opaque `lg_` id (automated grep in the workflow).
 - End to end: connect a public ESPN league → data visible once the dispatch run finishes (target < 5 min); flip it private on ESPN → access 404 within one probe; private connect → invite → viewer access.
