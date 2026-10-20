@@ -370,3 +370,45 @@ def test_the_last_two_members_deleting_their_accounts_concurrently_still_delete_
     with pg.connect() as su:
         assert su.execute("SELECT count(*) FROM fi.league_memberships WHERE league_id = %s", [league]).fetchone() == (0,)
         assert su.execute("SELECT deleted_at IS NOT NULL FROM fi.leagues WHERE id = %s", [league]).fetchone() == (True,)
+
+
+def test_redeeming_an_invite_while_the_last_member_is_deleted_fails_cleanly(pg, league):
+    """U2's invite outlives U2's revoked membership; U1 (the last active member) deletes their account while U3
+    redeems. The redemption must wait for the deletion and then refuse, not join a league being deleted."""
+    import threading
+    import time
+
+    with pg.connect() as su:
+        su.execute("UPDATE fi.league_memberships SET role = 'admin' WHERE user_id = %s AND league_id = %s", [U2, league])
+        su.commit()
+    with pg.connect(user="fi_api") as con:
+        call(con, "authenticated", U2, "SELECT fi.create_invite(%s, %s)", [league, HASH])
+    with pg.connect() as su:
+        su.execute("UPDATE fi.league_memberships SET revoked_at = now() WHERE user_id = %s", [U2])
+        su.commit()
+
+    deleter = pg.connect()
+    t = None
+    outcome = {}
+    try:
+        deleter.execute("DELETE FROM auth.users WHERE id = %s", [U1])       # soft-deletes the league; uncommitted
+
+        def redeem():
+            try:
+                with pg.connect(user="fi_api") as con:
+                    outcome["result"] = call(con, "authenticated", U3, "SELECT fi.redeem_invite(%s)", [HASH])
+            except Exception as err:   # noqa: BLE001 - asserted below
+                outcome["error"] = str(err)
+
+        t = threading.Thread(target=redeem)
+        t.start()
+        time.sleep(0.5)
+        deleter.commit()
+    finally:
+        deleter.rollback()
+        deleter.close()
+        if t is not None:
+            t.join(10)
+    assert "invite_invalid" in outcome.get("error", ""), outcome
+    with pg.connect() as su:
+        assert su.execute("SELECT count(*) FROM fi.league_memberships WHERE user_id = %s", [U3]).fetchone() == (0,)
