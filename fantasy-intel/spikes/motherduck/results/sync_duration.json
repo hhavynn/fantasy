@@ -1,0 +1,11 @@
+{
+  "recorded_at": "2026-10-20T05:35:23+00:00",
+  "duckdb": "1.5.6",
+  "fetch_s": 9.1,
+  "espn_requests": null,
+  "write_local_s": 1.5,
+  "analytics_local_s": 30.9,
+  "commit_to_motherduck_s": 4.7,
+  "total_s": 46.2,
+  "warnings": 0
+}

@@ -1,0 +1,73 @@
+{
+  "recorded_at": "2026-10-20T05:34:11+00:00",
+  "duckdb": "1.5.6",
+  "region": "iad1",
+  "errors": [],
+  "warm_instances_seen": 1,
+  "warm_reused_base_total_ms": {
+    "n": 80,
+    "p50": 83.8,
+    "p95": 168.9,
+    "max": 300.4,
+    "mean": 124.2
+  },
+  "warm_reused_base_attach_ms": {
+    "n": 80,
+    "p50": 1.5,
+    "p95": 88.3,
+    "max": 146.5,
+    "mean": 40.9
+  },
+  "warm_query_ms": {
+    "n": 80,
+    "p50": 80.6,
+    "p95": 82.3,
+    "max": 212.0,
+    "mean": 83.3
+  },
+  "warm_new_base_total_ms (instance's first request: extension + auth)": {},
+  "warm_client_ms": {
+    "n": 80,
+    "p50": 226.2,
+    "p95": 319.5,
+    "max": 411.2,
+    "mean": 247.4
+  },
+  "fresh_duckdb_instance_total_ms": {
+    "n": 15,
+    "p50": 981.2,
+    "p95": 1073.3,
+    "max": 1237.7,
+    "mean": 1001.6
+  },
+  "fresh_instance_connect_ms": {
+    "n": 15,
+    "p50": 743.6,
+    "p95": 761.5,
+    "max": 813.5,
+    "mean": 747.9
+  },
+  "cold_errors": [],
+  "burst10_instances": 9,
+  "burst10_ok": 16,
+  "burst10_errors": [
+    "BinderException: Binder Error: Failed to attach database: database with name \"spike_fi_global\" already exists",
+    "BinderException: Binder Error: Failed to attach database: database with name \"spike_fi_global\" already exists",
+    "BinderException: Binder Error: Failed to attach database: database with name \"spike_fi_global\" already exists",
+    "BinderException: Binder Error: Failed to attach database: database with name \"spike_fi_global\" already exists"
+  ],
+  "burst10_total_ms": {
+    "n": 16,
+    "p50": 209.6,
+    "p95": 365.2,
+    "max": 2073.9,
+    "mean": 322.9
+  },
+  "burst10_client_ms": {
+    "n": 20,
+    "p50": 404.4,
+    "p95": 2190.0,
+    "max": 2589.1,
+    "mean": 812.6
+  }
+}

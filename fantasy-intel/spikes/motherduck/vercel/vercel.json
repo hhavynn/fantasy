@@ -1,0 +1,1 @@
+{ "regions": ["iad1"], "functions": { "api/probe.py": { "maxDuration": 60, "memory": 1024 } } }

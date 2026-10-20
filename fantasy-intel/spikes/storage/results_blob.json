@@ -1,0 +1,405 @@
+{
+  "recorded_at": "2026-10-20T05:52:08+00:00",
+  "duckdb": "1.5.6",
+  "blob_download_compact": {
+    "n": 3,
+    "errors": [],
+    "fetch_ms": {
+      "n": 3,
+      "p50": 334.6,
+      "p95": 1608.4,
+      "max": 1608.4,
+      "mean": 754.2
+    },
+    "open_ms": {
+      "n": 3,
+      "p50": 47.0,
+      "p95": 55.1,
+      "max": 55.1,
+      "mean": 49.6
+    },
+    "queries_ms": {
+      "n": 3,
+      "p50": 21.2,
+      "p95": 67.3,
+      "max": 67.3,
+      "mean": 36.4
+    },
+    "total_ms": {
+      "n": 3,
+      "p50": 406.6,
+      "p95": 1734.8,
+      "max": 1734.8,
+      "mean": 844.1
+    },
+    "bytes": 94646272,
+    "warm_cached": {
+      "cached": true,
+      "fetch_ms": 0.0,
+      "bytes": 94646272,
+      "open_ms": 42.9,
+      "queries_ms": 17.4,
+      "per_query_ms": [
+        1.9,
+        1.2,
+        1.6,
+        2.2,
+        3.1,
+        1.0,
+        4.3,
+        2.0
+      ],
+      "total_ms": 64.3,
+      "handler_ms": 64.3,
+      "instance_started": 1792475474.2150671,
+      "instance_calls": 4,
+      "region": "iad1",
+      "client_ms": 189.8
+    }
+  },
+  "blob_range_compact": {
+    "n": 5,
+    "errors": [],
+    "queries_ms": {
+      "n": 5,
+      "p50": 63.7,
+      "p95": 117.2,
+      "max": 117.2,
+      "mean": 74.5
+    },
+    "total_ms": {
+      "n": 5,
+      "p50": 528.5,
+      "p95": 1178.9,
+      "max": 1178.9,
+      "mean": 665.8
+    },
+    "attach_ms": {
+      "n": 5,
+      "p50": 350.9,
+      "p95": 589.8,
+      "max": 589.8,
+      "mean": 389.1
+    },
+    "httpfs_load_ms": {
+      "n": 5,
+      "p50": 139.4,
+      "p95": 463.6,
+      "max": 463.6,
+      "mean": 196.4
+    },
+    "http_requests": {
+      "n": 5,
+      "p50": 31,
+      "p95": 31,
+      "max": 31,
+      "mean": 31
+    },
+    "http_bytes": {
+      "n": 5,
+      "p50": 102785028,
+      "p95": 102785028,
+      "max": 102785028,
+      "mean": 102785028
+    }
+  },
+  "blob_download_compact_league": {
+    "n": 3,
+    "errors": [],
+    "fetch_ms": {
+      "n": 3,
+      "p50": 118.9,
+      "p95": 801.2,
+      "max": 801.2,
+      "mean": 346.0
+    },
+    "open_ms": {
+      "n": 3,
+      "p50": 19.7,
+      "p95": 20.5,
+      "max": 20.5,
+      "mean": 19.8
+    },
+    "queries_ms": {
+      "n": 3,
+      "p50": 16.1,
+      "p95": 45.9,
+      "max": 45.9,
+      "mean": 25.7
+    },
+    "total_ms": {
+      "n": 3,
+      "p50": 157.5,
+      "p95": 870.9,
+      "max": 870.9,
+      "mean": 394.5
+    },
+    "bytes": 30945280,
+    "warm_cached": {
+      "cached": true,
+      "fetch_ms": 0.0,
+      "bytes": 30945280,
+      "open_ms": 18.0,
+      "queries_ms": 12.8,
+      "per_query_ms": [
+        2.0,
+        1.2,
+        1.6,
+        2.1,
+        3.0,
+        0.9,
+        null,
+        null
+      ],
+      "total_ms": 33.6,
+      "handler_ms": 33.7,
+      "instance_started": 1792475474.2150671,
+      "instance_calls": 13,
+      "region": "iad1",
+      "client_ms": 148.5
+    }
+  },
+  "blob_range_compact_league": {
+    "n": 5,
+    "errors": [],
+    "queries_ms": {
+      "n": 5,
+      "p50": 67.6,
+      "p95": 90.2,
+      "max": 90.2,
+      "mean": 70.6
+    },
+    "total_ms": {
+      "n": 5,
+      "p50": 486.0,
+      "p95": 524.2,
+      "max": 524.2,
+      "mean": 471.2
+    },
+    "attach_ms": {
+      "n": 5,
+      "p50": 275.8,
+      "p95": 299.1,
+      "max": 299.1,
+      "mean": 268.8
+    },
+    "httpfs_load_ms": {
+      "n": 5,
+      "p50": 128.5,
+      "p95": 141.2,
+      "max": 141.2,
+      "mean": 127.1
+    },
+    "http_requests": {
+      "n": 5,
+      "p50": 16,
+      "p95": 16,
+      "max": 16,
+      "mean": 16
+    },
+    "http_bytes": {
+      "n": 5,
+      "p50": 34627588,
+      "p95": 34627588,
+      "max": 34627588,
+      "mean": 34627588
+    }
+  },
+  "blob_download_compact_global": {
+    "n": 3,
+    "errors": [
+      "OSError: [Errno 28] No space left on device"
+    ],
+    "fetch_ms": {
+      "n": 2,
+      "p50": 156.3,
+      "p95": 1589.8,
+      "max": 1589.8,
+      "mean": 873.0
+    },
+    "open_ms": {
+      "n": 2,
+      "p50": 38.3,
+      "p95": 41.1,
+      "max": 41.1,
+      "mean": 39.7
+    },
+    "queries_ms": {
+      "n": 2,
+      "p50": 11.8,
+      "p95": 12.3,
+      "max": 12.3,
+      "mean": 12.1
+    },
+    "total_ms": {
+      "n": 2,
+      "p50": 209.7,
+      "p95": 1646.7,
+      "max": 1646.7,
+      "mean": 928.2
+    },
+    "bytes": 47198208,
+    "warm_cached": {
+      "error": "OSError: [Errno 28] No space left on device",
+      "handler_ms": 152.2,
+      "instance_started": 1792475474.2150671,
+      "instance_calls": 22,
+      "region": "iad1",
+      "client_ms": 278.4
+    }
+  },
+  "blob_range_compact_global": {
+    "n": 5,
+    "errors": [],
+    "queries_ms": {
+      "n": 5,
+      "p50": 29.5,
+      "p95": 74.8,
+      "max": 74.8,
+      "mean": 41.6
+    },
+    "total_ms": {
+      "n": 5,
+      "p50": 551.9,
+      "p95": 605.8,
+      "max": 605.8,
+      "mean": 551.3
+    },
+    "attach_ms": {
+      "n": 5,
+      "p50": 384.5,
+      "p95": 454.1,
+      "max": 454.1,
+      "mean": 377.8
+    },
+    "httpfs_load_ms": {
+      "n": 5,
+      "p50": 125.8,
+      "p95": 134.2,
+      "max": 134.2,
+      "mean": 126.8
+    },
+    "http_requests": {
+      "n": 5,
+      "p50": 23,
+      "p95": 23,
+      "max": 23,
+      "mean": 23
+    },
+    "http_bytes": {
+      "n": 5,
+      "p50": 52977668,
+      "p95": 52977668,
+      "max": 52977668,
+      "mean": 52977668
+    }
+  },
+  "supabase_download_compact_league": {
+    "n": 3,
+    "errors": [
+      "OSError: [Errno 28] No space left on device",
+      "OSError: [Errno 28] No space left on device",
+      "OSError: [Errno 28] No space left on device"
+    ]
+  },
+  "supabase_range_compact_league": {
+    "n": 5,
+    "errors": [],
+    "queries_ms": {
+      "n": 5,
+      "p50": 145.8,
+      "p95": 220.9,
+      "max": 220.9,
+      "mean": 163.4
+    },
+    "total_ms": {
+      "n": 5,
+      "p50": 889.1,
+      "p95": 1787.1,
+      "max": 1787.1,
+      "mean": 1055.5
+    },
+    "attach_ms": {
+      "n": 5,
+      "p50": 588.9,
+      "p95": 1435.2,
+      "max": 1435.2,
+      "mean": 766.3
+    },
+    "httpfs_load_ms": {
+      "n": 5,
+      "p50": 119.9,
+      "p95": 131.1,
+      "max": 131.1,
+      "mean": 121.6
+    },
+    "http_requests": {
+      "n": 5,
+      "p50": 16,
+      "p95": 16,
+      "max": 16,
+      "mean": 16
+    },
+    "http_bytes": {
+      "n": 5,
+      "p50": 34627588,
+      "p95": 34627588,
+      "max": 34627588,
+      "mean": 34627588
+    }
+  },
+  "supabase_download_compact_global": {
+    "n": 3,
+    "errors": [
+      "OSError: [Errno 28] No space left on device",
+      "OSError: [Errno 28] No space left on device",
+      "OSError: [Errno 28] No space left on device"
+    ]
+  },
+  "supabase_range_compact_global": {
+    "n": 5,
+    "errors": [],
+    "queries_ms": {
+      "n": 5,
+      "p50": 60.9,
+      "p95": 73.1,
+      "max": 73.1,
+      "mean": 58.4
+    },
+    "total_ms": {
+      "n": 5,
+      "p50": 1103.0,
+      "p95": 1446.7,
+      "max": 1446.7,
+      "mean": 1155.6
+    },
+    "attach_ms": {
+      "n": 5,
+      "p50": 895.3,
+      "p95": 1235.1,
+      "max": 1235.1,
+      "mean": 959.9
+    },
+    "httpfs_load_ms": {
+      "n": 5,
+      "p50": 133.6,
+      "p95": 141.5,
+      "max": 141.5,
+      "mean": 132.2
+    },
+    "http_requests": {
+      "n": 5,
+      "p50": 23,
+      "p95": 23,
+      "max": 23,
+      "mean": 23
+    },
+    "http_bytes": {
+      "n": 5,
+      "p50": 52977668,
+      "p95": 52977668,
+      "max": 52977668,
+      "mean": 52977668
+    }
+  }
+}
