@@ -220,16 +220,69 @@ def cutoff_teams(src: Sources, season: int, fw: int) -> pl.DataFrame:
             .select("gsis_id", pl.coalesce("_roster_team", "_last_team").alias("team")))
 
 
-def cutoff_targets(src: Sources, season: int, fw: int, week: int) -> pl.DataFrame:
+def load_roster_rows(cons: list) -> pl.DataFrame | None:
+    """nflverse REG weekly roster rows (season, week, gsis_id, status, abbr, team) as independent_projection_store's
+    _roster_rows reads them, from the open connections (history first; the live DB wins for its seasons)."""
+    from app.db.connection import fetch_dicts, table_exists
+
+    parts = []
+    for c in cons:
+        if c is None or not table_exists(c, "nfl_rosters_weekly"):
+            continue
+        df = pl.DataFrame(fetch_dicts(c, """
+            SELECT season, week, gsis_id, status, status_description_abbr AS abbr, team FROM nfl_rosters_weekly
+            WHERE (game_type = 'REG' OR game_type IS NULL) AND gsis_id IS NOT NULL"""),
+                          schema={"season": pl.Int64, "week": pl.Int64, "gsis_id": pl.String, "status": pl.String,
+                                  "abbr": pl.String, "team": pl.String})
+        if parts and df.height:
+            parts = [x.filter(~pl.col("season").is_in(df["season"].unique().to_list())) for x in parts]
+        parts.append(df)
+    return pl.concat(parts) if parts else None
+
+
+def withheld_at_cutoff(roster_rows: pl.DataFrame | None, games: pl.DataFrame, season: int, fw: int, week: int,
+                       team_of: dict[str, str]) -> set[str]:
+    """gsis_ids production would withhold for target `week` (> fw) from NFL roster state at the cutoff
+    (independent_projection_store.build_live, its NFL-roster rules): a reserve stint whose dated return is after
+    `week` (or undated), or any other non-active roster status (practice squad, suspended, released, exempt...). The
+    ESPN-status and fantasy-IR rules have no history and are not replayed."""
+    from app.analytics.independent_projection_store import ACTIVE_ROSTER, RESERVE_ROSTER
+    from app.analytics.player_availability import RESTRICTED, derive
+
+    if roster_rows is None:
+        return set()
+    r = roster_rows.filter((pl.col("season") == season) & (pl.col("week") <= fw)).sort("gsis_id", "week")
+    tw: dict[str, list[int]] = {}
+    for g in games.filter(pl.col("season") == season).iter_rows(named=True):
+        tw.setdefault(g["team"], []).append(int(g["week"]))
+    out = set()
+    for (gid,), rows in r.group_by("gsis_id"):
+        if gid not in team_of:
+            continue
+        hist = rows.sort("week").to_dicts()
+        status = (hist[-1].get("status") or "").upper()
+        if status in ACTIVE_ROSTER:
+            continue
+        avail = derive(espn_status=None, on_ir=False, rows=hist, team_games=tw.get(team_of[gid]), weeks=[week])
+        dated = status in RESERVE_ROSTER and avail["status"] in RESTRICTED and avail["earliest_eligible_week"] is not None
+        if (avail["status"] in RESTRICTED and week in avail["unavailable_weeks"]) or not dated:
+            out.add(gid)
+    return out
+
+
+def cutoff_targets(src: Sources, season: int, fw: int, week: int, roster_rows: pl.DataFrame | None = None) -> pl.DataFrame:
     """RB/WR/TE who appeared in `week` (> fw), with the team they had at the cutoff: their latest weekly roster row of
     the season with week <= fw (participation.live_population's roster_week rule), else their last game's team before
     fw. Opponent / home-away are that team's `week` game; a player whose cutoff team has no game that week is left
-    out (production would not project him for it). The label is his actual points in `week`."""
+    out (production would not project him for it), and so is a player production would withhold for that week from
+    his NFL roster state at the cutoff (withheld_at_cutoff). The label is his actual points in `week`."""
     app = played_targets(src, season, week).filter(pl.col("position").is_in(POS)).select(
         "gsis_id", "position", pl.col("league_points").alias("label"))
     games = src.games.filter((pl.col("season") == season) & (pl.col("week") == week)).select(
         "team", "opponent", "is_home")
-    return app.join(cutoff_teams(src, season, fw), on="gsis_id", how="inner").join(games, on="team", how="inner")
+    t = app.join(cutoff_teams(src, season, fw), on="gsis_id", how="inner").join(games, on="team", how="inner")
+    held = withheld_at_cutoff(roster_rows, src.games, season, fw, week, dict(zip(t["gsis_id"], t["team"])))
+    return t.filter(~pl.col("gsis_id").is_in(list(held)))
 
 
 def cmd_horizons(args) -> dict:
@@ -244,6 +297,7 @@ def cmd_horizons(args) -> dict:
     try:
         inputs = cm.load_inputs([hist, live], args.exits_dir / wlcli.DEPTH_DIR, args.season)
         codes = wlcli.roster_codes(live, hist)
+        roster_rows = load_roster_rows([hist, live])
     finally:
         for c in (live, hist):
             if c is not None:
@@ -259,7 +313,7 @@ def cmd_horizons(args) -> dict:
         for h in HORIZONS:
             if (s, fw + h) not in have:
                 continue
-            by_h[h] = cutoff_targets(src, s, fw, fw + h)
+            by_h[h] = cutoff_targets(src, s, fw, fw + h, roster_rows)
         if by_h:
             out.append(horizon_rows(src, inputs, codes, s, fw, by_h, games_kick))
         print(f"  {s} w{fw:02d} {time.time() - t0:.0f}s", file=sys.stderr, flush=True)

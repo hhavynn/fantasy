@@ -20,7 +20,7 @@ Code: `scripts/injury_return_research.py` (`horizons`, `run`, `example`). Output
 * **Cohort.** RB/WR/TE rows whose last appearance before the cutoff week W is an injury exit
   (`injury_exit_last = 1`), and whose last team played at least one game strictly between that appearance and W.
   These players are returning from an absence, not playing through the injury. 2023-2025: 238 rows at horizon 0
-  (RB 50, WR 127, TE 61) and 935 at horizons 1-3.
+  (RB 50, WR 127, TE 61) and 925 at horizons 1-3.
 * **Variants.** Each one changes cohort rows only, in training and in prediction alike.
   * `base`: ifp-2.2.0 exactly as shipped. It reproduces `ifp22_backtest.py`'s `pred_full` to 0.0 on all 20,328
     shared rows.
@@ -35,7 +35,10 @@ Code: `scripts/injury_return_research.py` (`horizons`, `run`, `example`). Output
 * **Horizons 1-3.** Features as of cutoff W, for players who appear in week W + h. They are built the way
   `independent_projection_store.project` builds a rest-of-season row: the player's team at the cutoff (his latest
   weekly roster row with week <= W, else his last game's team) and that team's W + h opponent, handoff for W + h with
-  the walk-forward return-rate table, context with W's report dropped, and role and depth at W. Bootstrap clusters
+  the walk-forward return-rate table, context with W's report dropped, and role and depth at W. A player production
+  would withhold for W + h from his NFL roster state at W (reserve with a later or undated return, practice squad,
+  suspended, released ...; `build_live`'s NFL-roster rules) is left out; its ESPN-status and fantasy-IR rules have
+  no history and are not replayed. Bootstrap clusters
   for horizon rows are target weeks, so a player-week seen from three cutoffs stays in one cluster.
 * **Rule.** `TU` ships iff all three hold:
   * On the pooled cohort at horizon 0, MAE(TU) - MAE(base) has a week-clustered 95% CI (2,000 draws) entirely
@@ -54,22 +57,22 @@ MAE(variant) - MAE(base), with week-clustered 95% CIs.
 | Cohort h0 RB | 50 | 5.146 | 5.635 | +0.489 [+0.129, +0.857] | +0.79 -> +1.91 | +0.307 [+0.053, +0.573] | +0.534 [+0.091, +0.974] |
 | Cohort h0 WR | 127 | 4.445 | 4.569 | +0.124 [-0.041, +0.283] | -0.81 -> -0.15 | +0.103 [-0.031, +0.230] | +0.153 [-0.047, +0.345] |
 | Cohort h0 TE | 61 | 2.830 | 2.946 | +0.116 [-0.074, +0.307] | -0.09 -> +0.39 | +0.061 [-0.054, +0.171] | +0.124 [-0.067, +0.317] |
-| **Cohort h1-3, RB/WR/TE** | 935 | 4.346 | 4.425 | **+0.079 [-0.004, +0.158]** | -1.00 -> -0.25 | +0.044 [-0.015, +0.101] | +0.111 [+0.011, +0.206] |
+| **Cohort h1-3, RB/WR/TE** | 925 | 4.368 | 4.448 | **+0.080 [-0.007, +0.160]** | -1.00 -> -0.24 | +0.044 [-0.017, +0.102] | +0.112 [+0.008, +0.208] |
 | Cohort h1-3 RB | 195 | 4.748 | 4.995 | +0.247 [+0.025, +0.484] | +0.08 -> +1.17 | +0.108 [-0.045, +0.270] | +0.349 [+0.081, +0.633] |
-| Cohort h1-3 WR | 481 | 4.460 | 4.484 | +0.024 [-0.085, +0.140] | -1.21 -> -0.50 | +0.021 [-0.064, +0.108] | +0.042 [-0.085, +0.171] |
+| Cohort h1-3 WR | 471 | 4.506 | 4.530 | +0.024 [-0.089, +0.143] | -1.20 -> -0.48 | +0.021 [-0.066, +0.109] | +0.041 [-0.090, +0.173] |
 | Cohort h1-3 TE | 259 | 3.833 | 3.887 | +0.054 [-0.056, +0.163] | -1.42 -> -0.87 | +0.038 [-0.036, +0.112] | +0.062 [-0.051, +0.172] |
 | All rows h0 | 18,079 | 3.714 | 3.715 | +0.001 [-0.001, +0.003] | -0.02 -> -0.02 | +0.001 [-0.001, +0.002] | +0.002 [-0.001, +0.004] |
-| All rows h1-3 | 47,277 | 3.831 | 3.831 | -0.000 [-0.002, +0.002] | -0.31 -> -0.31 | -0.000 [-0.001, +0.001] | +0.001 [-0.001, +0.002] |
+| All rows h1-3 | 45,989 | 3.880 | 3.880 | +0.000 [-0.002, +0.002] | -0.31 -> -0.31 | +0.000 [-0.001, +0.001] | +0.001 [-0.001, +0.003] |
 
-Per horizon on the cohort (TU - base): h1 +0.130 [+0.022, +0.239] (n = 305), h2 +0.059 [-0.044, +0.155] (n = 315),
-h3 +0.051 [-0.063, +0.167] (n = 315).
+Per horizon on the cohort (TU - base): h1 +0.130 [+0.020, +0.241] (n = 303), h2 +0.059 [-0.044, +0.158] (n = 311),
+h3 +0.051 [-0.065, +0.169] (n = 311).
 
 **Decision: dropped.** The cohort h0 CI lies entirely *above* 0, the h1-3 point estimate is above 0 (its CI just
 reaches 0), and no position is clearly worse on all rows. The lighter `T` variant (the trend swap alone) is also worse at h0: +0.136
 [+0.041, +0.228].
 
-2026 weeks 1-6 (exploratory): cohort h0 -0.110 [-0.706, +0.080] (n = 29, RB 5) and h1-3 -0.081 [-0.391, +0.166]
-(n = 70). The sample is too small to point either way.
+2026 weeks 1-6 (exploratory): cohort h0 -0.110 [-0.706, +0.080] (n = 29, RB 5) and h1-3 -0.109 [-0.391, +0.130]
+(n = 67). The sample is too small to point either way.
 
 ### Lead backs specifically (descriptive, after the decision)
 
@@ -107,7 +110,8 @@ horizon rows use the cutoff team (336 of 52,228 rows had taken a later team; 25 
 clustered horizon CIs by target week (h1-3 cohort CI [+0.013, +0.151] -> [-0.004, +0.158]), and let the example's
 cutoff-week row keep that week's report (Saquon W7 9.06 -> 8.89). A third pass recomputes each returning player's exit-free usage on its own (so the
 position priors stay those of the full panel) and gives the example the cutoff roster team; both change results
-only in the fourth decimal.
+only in the fourth decimal. A fourth pass leaves out horizon targets production would withhold at the cutoff
+(1,963 of 52,203 rows; cohort h1-3 935 -> 925, +0.079 -> +0.080).
 
 ## Side finding (not pre-registered; a lead only)
 
@@ -129,7 +133,7 @@ pre-registration scored on prospective weeks.
 export FANTASY_DB_PATH=<scratch>/fantasy.duckdb NFL_HISTORY_DB_PATH=<scratch>/nfl_history.duckdb \
        WEEKLY_MODEL_DIR=<scratch>/models/weekly IFP_MODEL_DIR=<scratch>/models
 uv run python ../scripts/ifp22_backtest.py build                 # the ifp-2.2.0 store (reused, ~10 min if absent)
-uv run python ../scripts/injury_return_research.py horizons      # ~1.5 min
+uv run python ../scripts/injury_return_research.py horizons      # ~3 min
 uv run python ../scripts/injury_return_research.py run           # ~1.5 min
 uv run python ../scripts/injury_return_research.py example --gsis 00-0034844 --season 2026 --week 7 --weeks 6
 ```
