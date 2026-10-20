@@ -11,8 +11,12 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from typing import TYPE_CHECKING
+
 from ..leagues.context import Principal
-from .pg import ControlPlane
+
+if TYPE_CHECKING:                                 # pg imports the Postgres driver; keep this module light
+    from .pg import ControlPlane
 
 PUBLIC_VISIBILITY_TTL = timedelta(hours=24)
 _LEAGUE_ID = re.compile(r"lg_[A-Za-z0-9_-]{16,64}")
@@ -82,7 +86,7 @@ FROM fi.leagues l
 LEFT JOIN fi.league_snapshots s ON s.league_id = l.id
 LEFT JOIN LATERAL (SELECT status FROM fi.sync_jobs x WHERE x.league_id = l.id ORDER BY created_at DESC LIMIT 1) j ON true
 {member_joins}
-WHERE l.id = %s
+WHERE l.id = ANY(%s)
 """
 # anon has no grants on the per-user tables, so its query must not touch them.
 _SQL_ANON = _BASE.format(member_cols="NULL::text AS member_role, false AS pinned, NULL::text AS perspective",
@@ -102,19 +106,15 @@ def _sync_state(has_snapshot: bool, job_status: str | None) -> str:
             "failed": "first_sync_failed", "dead": "first_sync_failed"}.get(job_status or "", "no_data")
 
 
-def authorize_league_in(con, principal: Principal, league_id: str) -> Access:
-    league_id = check_league_id(league_id)
-    sql = _SQL_USER if principal.is_authenticated else _SQL_ANON
-    row = con.execute(sql, [league_id]).fetchone()
-    if row is None:
-        raise LeagueNotFound("unknown league")
+def _access_from_row(row, principal: Principal) -> Access | None:
+    """The Access a row grants, or None when it grants nothing (the caller turns that into LeagueNotFound)."""
     (lid, provider, external_id, season, name, visibility, checked_at, epoch, status,
      member_role, pinned, perspective, object_key, data_version, global_version, committed_at, job_status, db_now) = row
     if visibility != "public" and member_role is None:
-        raise LeagueNotFound("unknown league")           # RLS already hides this; defence in depth
+        return None                                      # RLS already hides this; defence in depth
     if member_role is None:                              # public reader: the last anonymous probe must be fresh
         if checked_at is None or db_now - checked_at > PUBLIC_VISIBILITY_TTL:
-            raise LeagueNotFound("unknown league")       # Phase 3: trigger a probe here (<= 1 per league per 5 min)
+            return None                                  # Phase 3: trigger a probe here (<= 1 per league per 5 min)
     snapshot = None
     if object_key is not None:
         snapshot = SnapshotPointer(object_key, data_version, global_version, committed_at)
@@ -122,7 +122,32 @@ def authorize_league_in(con, principal: Principal, league_id: str) -> Access:
                   bool(pinned), perspective, snapshot, _sync_state(snapshot is not None, job_status), principal)
 
 
-def authorize_league(plane: ControlPlane, principal: Principal, league_id: str) -> Access:
+def authorize_leagues_in(con, principal: Principal, league_ids: list[str]) -> list[Access]:
+    """Every league in `league_ids` the caller may see, in the given order, in one query. Malformed, unknown and
+    unauthorized ids are simply absent."""
+    ids = [i for i in league_ids if isinstance(i, str) and _LEAGUE_ID.fullmatch(i)]
+    if not ids:
+        return []
+    sql = _SQL_USER if principal.is_authenticated else _SQL_ANON
+    found = {}
+    for row in con.execute(sql, [ids]).fetchall():
+        access = _access_from_row(row, principal)
+        if access is not None:
+            found[access.league_id] = access
+    return [found[i] for i in ids if i in found]
+
+
+def authorize_league_in(con, principal: Principal, league_id: str) -> Access:
+    league_id = check_league_id(league_id)
+    sql = _SQL_USER if principal.is_authenticated else _SQL_ANON
+    row = con.execute(sql, [[league_id]]).fetchone()
+    access = _access_from_row(row, principal) if row is not None else None
+    if access is None:
+        raise LeagueNotFound("unknown league")
+    return access
+
+
+def authorize_league(plane: "ControlPlane", principal: Principal, league_id: str) -> Access:
     league_id = check_league_id(league_id)               # before any connection is opened
     with plane.request_tx(principal) as con:
         return authorize_league_in(con, principal, league_id)

@@ -238,3 +238,15 @@ def test_hosted_request_reads_one_snapshot(api_db, monkeypatch):
     with deps.db() as cur:
         assert deps.data_version(cur) == "md:fantasy_intel:v2"
     shared.close()
+
+
+
+def test_the_legacy_app_does_not_load_the_control_plane_libraries():
+    """app.main imports the /v2 router unconditionally; its Postgres, JWT and crypto libraries load only when a /v2
+    request needs them, so legacy cold starts do not pay for them."""
+    probe = ("import sys, app.main; "
+             "print(','.join(sorted(m for m in ('psycopg', 'psycopg_pool', 'jwt', 'cryptography') if m in sys.modules)))")
+    out = subprocess.run([sys.executable, "-c", probe], cwd=BACKEND, capture_output=True, text=True,
+                         env={"PATH": "/usr/bin:/bin", "TZ": "UTC"})
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "", f"loaded at import: {out.stdout.strip()}"

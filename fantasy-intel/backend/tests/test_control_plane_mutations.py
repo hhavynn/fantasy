@@ -74,16 +74,6 @@ def test_pins_and_perspective_are_per_user_and_need_a_visible_league(plane, leag
         m.set_perspective(con, ANON, pub, "6")
 
 
-def test_touch_league_only_moves_last_viewed_at(pg, plane, leagues):
-    pub, priv = leagues
-    with plane.request_tx(ANON) as con:
-        m.touch_league(con, pub)
-        m.touch_league(con, priv)        # the private one is invisible: silently no-op
-    with pg.connect() as su:
-        rows = dict(su.execute("SELECT id, last_viewed_at IS NOT NULL FROM fi.leagues").fetchall())
-    assert rows[pub] is True and rows[priv] is False
-
-
 def test_invite_flow_through_the_wrappers(plane, leagues):
     _, priv = leagues
     with plane.request_tx(user(U1)) as con:

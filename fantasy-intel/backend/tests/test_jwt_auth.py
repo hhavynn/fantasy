@@ -137,3 +137,11 @@ def test_dependency_is_401_when_supabase_url_is_not_configured(client, keys, mon
     monkeypatch.delenv("SUPABASE_URL")
     assert client.get("/whoami").json() == {"user_id": None}
     assert client.get("/whoami", headers={"Authorization": f"Bearer {mint(keys)}"}).status_code == 401
+
+
+
+def test_supabase_anonymous_sign_in_sessions_are_visitors_not_accounts(client, keys):
+    r = client.get("/whoami", headers={"Authorization": f"Bearer {mint(keys, is_anonymous=True)}"})
+    assert r.json() == {"user_id": None}
+    r = client.get("/whoami", headers={"Authorization": f"Bearer {mint(keys, is_anonymous=False)}"})
+    assert r.json() == {"user_id": SUB}

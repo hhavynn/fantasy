@@ -15,6 +15,15 @@ def principal(uid):
     return Principal.from_claims({"sub": uid, "role": "authenticated", "aud": "authenticated", "exp": 2_000_000_000})
 
 
+@pytest.fixture(autouse=True)
+def accounts(pg):
+    from cp_seed import seed_auth_user
+    with pg.connect() as con:
+        seed_auth_user(con, U1)
+        seed_auth_user(con, U2)
+        con.commit()
+
+
 @pytest.fixture
 def cp(pg):
     plane = ControlPlane(pg.dsn_for("fi_api"), max_size=1)      # one physical connection: every tx shares it
@@ -110,3 +119,18 @@ def test_get_control_plane_requires_the_dsn(monkeypatch):
     monkeypatch.setattr(module, "_PLANES", {})
     with pytest.raises(ControlPlaneUnavailable):
         module.get_control_plane()
+
+
+
+def test_setup_is_one_round_trip_and_a_deleted_account_is_refused(cp, pg):
+    import uuid
+
+    from app.control_plane.pg import AccountGone
+    ghost = principal(str(uuid.uuid4()))                        # valid claims, no auth.users row
+    with pytest.raises(AccountGone):
+        with cp.request_tx(ghost):
+            pass
+    with cp.request_tx(principal(U1)) as con:                  # timeout set transaction-locally with the claims
+        assert con.execute("SHOW statement_timeout").fetchone() == ("5s",)
+    with cp._pool.connection() as raw, raw.transaction():
+        assert raw.execute("SHOW statement_timeout").fetchone() != ("5s",)

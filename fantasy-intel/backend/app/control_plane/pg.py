@@ -28,6 +28,10 @@ class ControlPlaneUnavailable(RuntimeError):
     """Postgres cannot be reached or is not configured. Routes answer 503; nothing is ever treated as 'denied'."""
 
 
+class AccountGone(RuntimeError):
+    """A signature-valid token whose Supabase account no longer exists. Routes answer 401: the caller is signed out."""
+
+
 class ControlPlane:
     def __init__(self, dsn: str, *, max_size: int = 4):
         self._pool = ConnectionPool(dsn, min_size=0, max_size=max_size, open=False, timeout=5,
@@ -50,9 +54,17 @@ class ControlPlane:
         try:
             with self._pool.connection() as con:
                 with con.transaction():
-                    con.execute(_ROLE_SQL[principal.is_authenticated])
-                    con.execute("SELECT set_config('request.jwt.claims', %s, true)", [principal.claims_json])
-                    con.execute(f"SET LOCAL statement_timeout = {STATEMENT_TIMEOUT_MS}")
+                    # One round trip for the whole setup (pipeline mode): role, claims, timeout and, for a signed-in
+                    # caller, whether the account still exists.
+                    with con.pipeline():
+                        con.execute(_ROLE_SQL[principal.is_authenticated])
+                        con.execute("SELECT set_config('request.jwt.claims', %s, true), "
+                                    "set_config('statement_timeout', %s, true)",
+                                    [principal.claims_json, str(STATEMENT_TIMEOUT_MS)])
+                        account = (con.execute("SELECT fi.current_account_exists()")
+                                   if principal.is_authenticated else None)
+                    if account is not None and not account.fetchone()[0]:
+                        raise AccountGone("account no longer exists")
                     yield con
         except (psycopg.OperationalError, PoolTimeout) as err:
             log.warning("control plane unavailable: %s", type(err).__name__)

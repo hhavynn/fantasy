@@ -116,10 +116,6 @@ def set_perspective(con, principal: Principal, league_id: str, team_external_id:
                 [uid, league_id, team_external_id])
 
 
-def touch_league(con, league_id: str) -> None:
-    con.execute("UPDATE fi.leagues SET last_viewed_at = now() WHERE id = %s", [league_id])
-
-
 def _hash(token: str) -> bytes:
     return hashlib.sha256(token.encode("ascii")).digest()
 

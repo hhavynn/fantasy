@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import re
 import threading
-import time
 import uuid
 
 import jwt
@@ -45,7 +44,7 @@ def jwks_client(supabase_url: str) -> jwt.PyJWKClient:
         return client
 
 
-def verify_supabase_jwt(token: str, *, jwks: jwt.PyJWKClient, issuer: str, now: float | None = None) -> dict:
+def verify_supabase_jwt(token: str, *, jwks: jwt.PyJWKClient, issuer: str) -> dict:
     if not isinstance(token, str) or not token or len(token) > _MAX_TOKEN or token.count(".") != 2:
         raise InvalidToken("malformed")
     try:
@@ -64,8 +63,6 @@ def verify_supabase_jwt(token: str, *, jwks: jwt.PyJWKClient, issuer: str, now: 
         uuid.UUID(str(claims.get("sub")))
     except (ValueError, TypeError, AttributeError):
         raise InvalidToken("subject") from None
-    if now is not None and claims["exp"] < now - 30:
-        raise InvalidToken("expired")
     return claims
 
 
@@ -80,7 +77,11 @@ def current_principal(request: Request) -> Principal:
         raise HTTPException(401, REJECTED)
     try:
         claims = verify_supabase_jwt(m.group(1), jwks=jwks_client(settings.supabase_url),
-                                     issuer=settings.supabase_issuer, now=time.time())
+                                     issuer=settings.supabase_issuer)
+        if claims.get("is_anonymous") is True:
+            # Supabase "anonymous sign-in" sessions are real tokens without an identity behind them: they get
+            # exactly what a visitor without a token gets, never an account, pins, invites or credentials.
+            return Principal.anonymous()
         return Principal.from_claims(claims)
     except (InvalidToken, ValueError):
         raise HTTPException(401, REJECTED) from None

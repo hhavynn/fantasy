@@ -6,25 +6,21 @@ unknown, someone else's, deleted, expired-public and malformed league ids are th
 a mutation check sign-in (401). Pins and perspective are preferences: never verified against league data, never
 granting anything. Phase 2 adds the league-file read routes; Phase 3 adds connect, invites and credentials on top of
 app/control_plane/mutations.py.
+
+The control-plane modules (Postgres driver, JWT, cryptography) are imported inside the dependencies, not at module
+load: app.main imports this router unconditionally, and legacy cold starts must not pay for code only /v2 uses.
 """
 
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
 from typing import Any, Iterator, Protocol
 
-from psycopg.errors import InsufficientPrivilege
-
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StrictStr
 
 from ..config import get_settings
-from ..control_plane import mutations
-from ..control_plane.authz import Access, LeagueNotFound, authorize_league_in, check_league_id
-from ..control_plane.jwt_auth import current_principal
-from ..control_plane.pg import ControlPlaneUnavailable, get_control_plane
 from ..leagues.capabilities import ProviderCapabilities
 from ..leagues.context import Principal, Provider
 
@@ -43,6 +39,12 @@ def require_enabled() -> None:
 
 
 router = APIRouter(prefix="/v2", dependencies=[Depends(require_enabled)])
+
+
+def current_principal(request: Request) -> Principal:
+    """The verified caller (app/control_plane/jwt_auth.py), imported on first use."""
+    from ..control_plane.jwt_auth import current_principal as verify
+    return verify(request)
 
 
 # ---- dependencies (override in tests via app.dependency_overrides) --------------------------------
@@ -65,12 +67,12 @@ def request_tx(principal: Principal = Depends(current_principal)) -> Iterator[tu
     Always declared through REQUEST_TX (scope "function"): the transaction commits when this generator resumes, and
     that must happen before the response is sent, so a failed commit is a 503 rather than a 200 for a rolled-back
     write."""
+    from ..control_plane.pg import AccountGone, ControlPlaneUnavailable, get_control_plane
     try:
         with get_control_plane().request_tx(principal) as con:
-            # A signature-valid token can outlive its Supabase account: that caller is signed out on every route.
-            if principal.is_authenticated and not con.execute("SELECT fi.current_account_exists()").fetchone()[0]:
-                raise HTTPException(401, SIGN_IN)
             yield con, principal
+    except AccountGone:          # a signature-valid token can outlive its Supabase account: signed out everywhere
+        raise HTTPException(401, SIGN_IN) from None
     except ControlPlaneUnavailable:
         raise HTTPException(503, UNAVAILABLE) from None
 
@@ -81,15 +83,17 @@ REQUEST_TX = Depends(request_tx, scope="function")
 def valid_league_id(league_id: str) -> str:
     """The path parameter's shape, checked before any Postgres work: a malformed id never takes a pool slot and is
     the same 404 even while the control plane is down."""
+    from ..control_plane.authz import LeagueNotFound, check_league_id
     try:
         return check_league_id(league_id)
     except LeagueNotFound:
         raise HTTPException(404, NOT_FOUND) from None
 
 
-def league_tx(league_id: str = Depends(valid_league_id), tx=REQUEST_TX) -> tuple[Any, Access]:
+def league_tx(league_id: str = Depends(valid_league_id), tx=REQUEST_TX) -> tuple:
     """Authorize FIRST. Everything a league route does happens inside this transaction, after this check.
     `league_id` is declared before `tx`, so FastAPI validates it before request_tx opens a connection."""
+    from ..control_plane.authz import LeagueNotFound, authorize_league_in
     con, principal = tx
     try:
         return con, authorize_league_in(con, principal, league_id)
@@ -97,20 +101,7 @@ def league_tx(league_id: str = Depends(valid_league_id), tx=REQUEST_TX) -> tuple
         raise HTTPException(404, NOT_FOUND) from None
 
 
-@contextmanager
-def _still_visible() -> Iterator[None]:
-    """A preference write after `league_tx` authorized. Statements run at READ COMMITTED, so a sync can make the
-    league private (or revoke the membership) in between; the write's RLS check then denies it. That is the same
-    answer authorization would now give: 404. Any other permission error is a bug and stays a 500."""
-    try:
-        yield
-    except InsufficientPrivilege as err:
-        if "row-level security" not in str(err):
-            raise
-        raise HTTPException(404, NOT_FOUND) from None
-
-
-def _signed_in(access: Access) -> Principal:
+def _signed_in(access) -> Principal:
     if not access.principal.is_authenticated:
         raise HTTPException(401, SIGN_IN)
     return access.principal
@@ -136,6 +127,7 @@ def list_providers(registry: ProviderRegistry = Depends(provider_registry),
 
 @router.get("/me")
 def me(tx=REQUEST_TX):
+    from ..control_plane import mutations
     con, principal = tx
     try:
         return _json(mutations.me(con, principal))
@@ -145,18 +137,15 @@ def me(tx=REQUEST_TX):
 
 @router.get("/leagues")
 def list_leagues(tx=REQUEST_TX):
+    from ..control_plane import mutations
+    from ..control_plane.authz import authorize_leagues_in
     con, principal = tx
     try:
         ids = mutations.list_my_leagues(con, principal)
     except mutations.SignInRequired:
         raise HTTPException(401, SIGN_IN) from None
-    out = []
-    for league_id in ids:
-        try:
-            out.append(authorize_league_in(con, principal, league_id).to_json())
-        except LeagueNotFound:
-            continue     # pinned, then went private or expired: it simply drops out of the list
-    return _json({"leagues": out})
+    # One query for the whole list; a league that was pinned and then went private or expired simply drops out.
+    return _json({"leagues": [a.to_json() for a in authorize_leagues_in(con, principal, ids)]})
 
 
 @router.get("/leagues/{league_id}")
@@ -165,19 +154,30 @@ def get_league(ltx=Depends(league_tx, scope="function")):
     return _json(access.to_json())
 
 
-def _write_and_recheck(con, access: Access, write) -> Access:
+def _write_and_recheck(con, access, write):
     """Run a preference write for an authorized caller, then authorize again in the same transaction.
 
     Statements run at READ COMMITTED, so a sync can make the league private (or revoke the membership) after
-    `league_tx` authorized. An insert or update then fails its RLS check (`_still_visible`); a delete has no such
-    check, so the re-authorization after the write is what notices. Either way the answer is the route's 404 and
-    the HTTPException rolls the transaction back."""
+    `league_tx` authorized. The write runs in a savepoint: if Postgres refuses it, the savepoint rolls back and the
+    league is authorized again; when the caller no longer sees it, that refusal was the race and the answer is the
+    route's 404, otherwise the error is a real bug and propagates (500). A delete has no RLS check that could refuse
+    it, so the re-authorization after every write is what notices there. No error text is parsed."""
+    from psycopg.errors import InsufficientPrivilege
+
+    from ..control_plane import mutations
+    from ..control_plane.authz import LeagueNotFound, authorize_league_in
     principal = _signed_in(access)
     try:
-        with _still_visible():
+        with con.transaction():                      # a savepoint inside the request transaction
             write(principal)
-    except mutations.SignInRequired:      # a signature-valid token whose Supabase account no longer exists
+    except mutations.SignInRequired:                  # a signature-valid token whose Supabase account is gone
         raise HTTPException(401, SIGN_IN) from None
+    except InsufficientPrivilege:
+        try:
+            authorize_league_in(con, principal, access.league_id)
+        except LeagueNotFound:
+            raise HTTPException(404, NOT_FOUND) from None
+        raise
     try:
         return authorize_league_in(con, principal, access.league_id)
     except LeagueNotFound:
@@ -192,6 +192,7 @@ class PerspectiveBody(BaseModel):
 
 @router.put("/leagues/{league_id}/pin", status_code=204)
 def pin_league(ltx=Depends(league_tx, scope="function")):
+    from ..control_plane import mutations
     con, access = ltx
     _write_and_recheck(con, access, lambda principal: mutations.set_pin(con, principal, access.league_id, True))
     return _no_content()
@@ -199,6 +200,7 @@ def pin_league(ltx=Depends(league_tx, scope="function")):
 
 @router.delete("/leagues/{league_id}/pin", status_code=204)
 def unpin_league(ltx=Depends(league_tx, scope="function")):
+    from ..control_plane import mutations
     con, access = ltx
     _write_and_recheck(con, access, lambda principal: mutations.set_pin(con, principal, access.league_id, False))
     return _no_content()
@@ -208,6 +210,7 @@ def unpin_league(ltx=Depends(league_tx, scope="function")):
 def set_perspective(body: PerspectiveBody, ltx=Depends(league_tx, scope="function")):
     """A plain `def`, so FastAPI runs it (and its Postgres work) in the thread pool, never on the event loop.
     `league_tx` raises its 404 before the body is validated, so an invisible league never reveals a 422."""
+    from ..control_plane import mutations
     con, access = ltx
     try:
         refreshed = _write_and_recheck(
@@ -220,6 +223,7 @@ def set_perspective(body: PerspectiveBody, ltx=Depends(league_tx, scope="functio
 
 @router.delete("/leagues/{league_id}/perspective", status_code=204)
 def clear_perspective(ltx=Depends(league_tx, scope="function")):
+    from ..control_plane import mutations
     con, access = ltx
     _write_and_recheck(con, access, lambda principal: mutations.set_perspective(con, principal, access.league_id, None))
     return _no_content()
