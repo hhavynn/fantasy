@@ -8,6 +8,7 @@ pointers. Design: [ADR-0002](../../docs/multileague/ADR-0002-supabase-control-pl
 |---|---|
 | `migrations/20261020120000_control_plane.sql` | Schema `fi`, roles `fi_api` / `fi_sync`, tables, grants, RLS |
 | `migrations/20261020120100_control_plane_functions.sql` | SECURITY DEFINER functions, append-only audit trigger |
+| `migrations/20261020120200_audit_trigger_search_path.sql` | Pins `search_path` on the audit trigger (security advisor) |
 | `down/*.sql` | Down-migrations, applied in reverse order to roll Phase 1 back |
 
 Every migration is idempotent (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
@@ -28,7 +29,7 @@ supabase link --project-ref kdikrcmvfuzqsgahqaxf
 supabase db push
 ```
 
-Afterwards, check the security advisors and confirm no `fi` table reports RLS disabled.
+Afterwards, check the security advisors. Two INFO notes are expected and intended: `fi.audit_log` and `fi.league_credentials` have RLS on with no policies, which denies every request role. No WARN should remain.
 
 ## One-time: give the service roles a password
 

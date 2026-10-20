@@ -175,3 +175,21 @@ def test_functions_are_not_executable_by_public_or_anon(pg):
             WHERE n.nspname = 'fi' AND has_function_privilege('anon', p.oid, 'EXECUTE')
               AND p.proname NOT IN ('is_member', 'is_admin')""").fetchall()
     assert rows == []
+
+
+def test_every_control_plane_function_pins_its_search_path(pg):
+    """Supabase's advisor flags a mutable search_path; a SECURITY DEFINER function without one can be hijacked."""
+    with pg.connect() as con:
+        rows = con.execute("""
+            SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'fi' AND NOT EXISTS (
+              SELECT 1 FROM unnest(coalesce(p.proconfig, '{}')) c WHERE c LIKE 'search_path=%')""").fetchall()
+    assert rows == []
+
+
+def test_rls_is_enabled_on_every_control_plane_table(pg):
+    with pg.connect() as con:
+        rows = con.execute("""
+            SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'fi' AND c.relkind = 'r' AND NOT c.relrowsecurity""").fetchall()
+    assert rows == []
