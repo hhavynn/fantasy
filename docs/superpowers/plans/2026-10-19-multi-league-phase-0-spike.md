@@ -39,7 +39,7 @@
 - [ ] Each league DB gets `_sync_meta(fence BIGINT, data_version BIGINT, fi_global_version VARCHAR, committed_at TIMESTAMP)` with one row `(0, 0, 'v0', now())`.
 
 ### Task 2: Isolation (real SQL, API token type)
-From `duckdb.connect('md:spike_lg_001?attach_mode=single', config={'motherduck_token': API token})` record success/failure + error text for each:
+From `duckdb.connect('md:spike_lg_001?attach_mode=single', config={'motherduck_token': <API token>})` record success/failure + error text for each:
 - [ ] `SELECT database_name FROM duckdb_databases()` and `SHOW ALL DATABASES` / `FROM md_list_databases()` (what is visible).
 - [ ] `ATTACH 'md:spike_lg_002'`; `SELECT count(*) FROM spike_lg_002.main.fantasy_teams`.
 - [ ] Without attaching: `SELECT count(*) FROM spike_lg_002.main.fantasy_teams` (lazy attach?).
