@@ -42,6 +42,8 @@ class ObjectWriter(Protocol):
     def put(self, key: str, path: Path) -> None: ...
     def keys(self, prefix: str) -> list[str]: ...
     def delete(self, key: str) -> None: ...
+    def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None: ...   # verified download
+    def get_bytes(self, key: str) -> bytes: ...
 
 
 class R2Writer:
@@ -58,6 +60,12 @@ class R2Writer:
 
     def delete(self, key: str) -> None:
         r2.delete(self.cfg, key)
+
+    def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None:
+        r2.download(self.cfg, key, dest, size=size, expected_sha256_prefix=sha256_prefix)
+
+    def get_bytes(self, key: str) -> bytes:
+        return r2.get_bytes(self.cfg, key, timeout=60)
 
 
 class DirWriter:
@@ -80,6 +88,16 @@ class DirWriter:
 
     def delete(self, key: str) -> None:
         (self.root / key).unlink(missing_ok=True)
+
+    def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None:
+        from .league_files import DirStore
+        DirStore(self.root).fetch(key, dest, sha256_prefix=sha256_prefix, size=size)
+
+    def get_bytes(self, key: str) -> bytes:
+        src = self.root / key
+        if not src.is_file():
+            raise r2.R2Error(404, "NoSuchKey", key)
+        return src.read_bytes()
 
 
 @dataclass(frozen=True)
