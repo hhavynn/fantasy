@@ -31,7 +31,9 @@ writes only <ifp-dir>/research/context/). Skip them with --no-kicker / --no-ctx-
 the same way right after it (RESEARCH_SHADOWS; skip with --no-qb-scenario-shadow / --no-ipm-cal-shadow /
 --no-signal-shadows): `qb_scenario_shadow` (ifp-ctx-p2q, scripts/qb_scenario_shadow.py cycle), `ipm_cal_shadow` (the QB
 isotonic participation map, scripts/participation_cal_shadow.py cycle) and `signal_shadows` (ifp-fr-p1 / ifp-dct-p1 /
-ifp-awd-p1, scripts/signal_shadows.py cycle, writes only <ifp-dir>/research/signal_shadows/). A further research shadow, `dst_shadow`
+ifp-awd-p1, scripts/signal_shadows.py cycle, writes only <ifp-dir>/research/signal_shadows/) and `injury_return_shadow`
+(ifp-irs-p1 / ifp-irb-p1, scripts/injury_return_shadow.py cycle, writes only <ifp-dir>/research/injury_return_shadow/;
+skip with --no-injury-return-shadow). A further research shadow, `dst_shadow`
 (scripts/dst_shadow.py cycle: the D/ST model dfp-r1 vs ESPN; writes only data/models/dst/shadow/), follows them;
 skip it with --no-dst-shadow.
 The production D/ST model runs as `dst_project` right after `kicker` (scripts/dst_projections.py: the target
@@ -383,7 +385,9 @@ CTX_SHADOW_TIMEOUT_S = 45 * 60       # the whole research stage (store build + s
 # The other research shadows: (stage / report key, script, --no-* attribute, warning label). Same contract as ctx_shadow.
 RESEARCH_SHADOWS = (("qb_scenario_shadow", "qb_scenario_shadow.py", "no_qb_scenario_shadow", "ifp-ctx-p2q shadow"),
                     ("ipm_cal_shadow", "participation_cal_shadow.py", "no_ipm_cal_shadow", "ipm-cal-0.1.0 shadow"),
-                    ("signal_shadows", "signal_shadows.py", "no_signal_shadows", "signal shadows"))
+                    ("signal_shadows", "signal_shadows.py", "no_signal_shadows", "signal shadows"),
+                    ("injury_return_shadow", "injury_return_shadow.py", "no_injury_return_shadow",
+                     "ifp-irs-p1 / ifp-irb-p1 shadow"))
 
 
 def stage_ctx_shadow(args, conns: list, log_path: Path) -> dict:
@@ -1096,6 +1100,8 @@ def parse(argv=None):
                     help="do not run the QB participation-calibration re-test (scripts/participation_cal_shadow.py cycle)")
     ap.add_argument("--no-signal-shadows", action="store_true",
                     help="do not run the ifp-fr-p1 / ifp-dct-p1 / ifp-awd-p1 research shadows (signal_shadows.py cycle)")
+    ap.add_argument("--no-injury-return-shadow", action="store_true",
+                    help="do not run the ifp-irs-p1 / ifp-irb-p1 research shadow (injury_return_shadow.py cycle)")
     ap.add_argument("--ctx-dir", type=Path, default=None,
                     help="model directory holding research/ for the research shadows (default: each script's, "
                          "data/models)")

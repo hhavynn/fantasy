@@ -141,11 +141,28 @@ def write_signal(d, ok, weeks, *, only=None):
                        "ifp-awd-p1": cand("ifp-awd-p1", ["RB", "WR", "TE"])}})
 
 
+def write_injury_return(d, ok, weeks, *, choice=None):
+    def cand():
+        checks = {"cohort_ci_below_0": ok, "overall_not_worse": True, "no_position_clearly_worse": True}
+        status = "accumulating" if weeks < 8 else "passes" if ok else "fails"
+        return {"positions": {p: {"n": 300} for p in ("RB", "WR", "TE")},
+                "gate": {"status": status, "checks": checks, "weeks": weeks}}
+    _put(d["ifp"] / "research" / "injury_return_shadow" / "scores.json", {
+        "scored_at": NOW, "scored_weeks": list(range(202608, 202608 + weeks)),
+        "candidates": {"ifp-irs-p1": cand(), "ifp-irb-p1": cand()},
+        "both": {"candidate": "ifp-irsb-p1", "reported_only": True, "choice": choice,
+                 "positions": {p: {"n": 300} for p in ("RB", "WR", "TE")}}})
+
+
 WRITERS = {"ifp-ctx-p1": (write_ctx, ["RB", "WR"]), "ifp-ctx-p2q": (write_p2q, ["QB"]),
            "ipm-cal-0.1.0": (write_ipm, ["QB"]), "dfp-r1": (write_dst, ["DST"]),
            "ifpd-0.1.0": (write_dist, ["RB", "WR"]), "ifp-iwh-0.1.1": (write_iwh, ["RB", "TE", "WR"]),
            "ifp-fr-p1": (write_signal, ["RB", "WR"]), "ifp-dct-p1": (write_signal, ["QB"]),
-           "ifp-awd-p1": (write_signal, ["RB", "TE", "WR"])}
+           "ifp-awd-p1": (write_signal, ["RB", "TE", "WR"]),
+           "ifp-irs-p1": (write_injury_return, ["RB", "TE", "WR"]),
+           "ifp-irb-p1": (write_injury_return, ["RB", "TE", "WR"]),
+           "ifp-irsb-p1": (lambda d, ok, weeks: write_injury_return(
+               d, ok, weeks, choice={"ship": "both", "added": []} if ok and weeks >= 8 else None), ["RB", "TE", "WR"])}
 
 
 def _cand(summary, name):
@@ -205,6 +222,23 @@ def test_the_distribution_ledger_gets_the_week_floor_and_qb_stays_restricted(spc
     c = _cand(spc.run_check(_args(spc, dirs, "--dry-run")), "ifpd-0.1.0")
     assert c["ready_positions"] == ["RB", "WR"]
     assert c["positions"]["QB"]["failing_checks"] == ["position_not_restricted"]
+
+
+@pytest.mark.parametrize("ship,ready", [("ifp-irs-p1", ["ifp-irs-p1"]), ("ifp-irb-p1", ["ifp-irb-p1"]),
+                                        ("both", ["ifp-irsb-p1"])])
+def test_injury_return_only_the_jointly_selected_implementation_is_ready(spc, dirs, ship, ready):
+    """Both candidates pass: the shadow's frozen joint rule (both.choice) selects ONE implementation, and only it is
+    ready and queued. "both" is the single combined entry ifp-irsb-p1, never the two singles as separate plans."""
+    write_injury_return(dirs, True, 11, choice={"ship": ship, "added": []})
+    s = spc.run_check(_args(spc, dirs))
+    assert sorted(r["candidate"] for r in s["ready"]) == sorted(ready)
+    queue = json.loads((dirs["logs"] / "promotion-queue.json").read_text())["entries"]
+    assert sorted(k for k in queue if k.startswith("ifp-ir")) == sorted(ready)
+    for name in {"ifp-irs-p1", "ifp-irb-p1", "ifp-irsb-p1"} - set(ready):
+        c = _cand(s, name)
+        assert c["status"] == spc.FAILS and c["ready_positions"] == []
+        assert c["positions"]["RB"]["failing_checks"] == (
+            ["joint_rule_selects_both"] if name == "ifp-irsb-p1" else ["selected_by_joint_rule"])
 
 
 def test_signal_shadows_are_judged_per_candidate(spc, dirs):
@@ -278,7 +312,7 @@ def test_the_queue_keeps_first_ready_and_marks_a_candidate_that_stops_passing(sp
     e = json.loads((dirs["logs"] / "promotion-queue.json").read_text())["entries"]["dfp-r1"]
     assert e["status"] == "no_longer_ready" and e["first_ready_at"].startswith("2026-12-01")
     assert (dirs["logs"] / "shadow-promotion.log").read_text().splitlines()[-1].endswith(
-        "no candidate ready (0 accumulating, 1 failing, 8 without a scored week)")
+        "no candidate ready (0 accumulating, 1 failing, 11 without a scored week)")
 
 
 def test_a_dry_run_or_a_simulated_clock_writes_nothing(spc, dirs):

@@ -79,7 +79,8 @@ def env(base, tmp_path, lc):
 
 
 def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False, research_shadows=False,
-          dst_shadow=False, dist_ledger=False, signal_shadows=False, promotion_check=False, dst_project=False):
+          dst_shadow=False, dist_ledger=False, signal_shadows=False, promotion_check=False, dst_project=False,
+          injury_return_shadow=False):
     """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it, and the kicker stage
     (after project), the ifp-ctx-p1 / dfp-r1 shadow stages, the other research shadows and the distribution-ledger
     stage (and the signal shadows) only when a test asks for them too."""
@@ -92,6 +93,7 @@ def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=
                      *([] if research_shadows else ["--no-qb-scenario-shadow", "--no-ipm-cal-shadow"]),
                      "--dst-dir", str(env / "dst"), *([] if dst_shadow else ["--no-dst-shadow"]),
                      *([] if signal_shadows else ["--no-signal-shadows"]),
+                     *([] if injury_return_shadow else ["--no-injury-return-shadow"]),
                      "--promotion-logs-dir", str(env / "plogs"), *([] if promotion_check else ["--no-promotion-check"]),
                      *([] if dst_project else ["--no-dst-project"]), *extra])
 
@@ -1049,7 +1051,7 @@ def test_promotion_check_stage_runs_last_and_writes_nothing_in_a_dry_cycle(lc, e
     assert code == lc.EXIT_OK, rep["errors"]
     assert _stages(rep)[-2:] == [("dist_ledger", "ok"), ("promotion_check", "ok")]
     pc = rep["promotion_check"]
-    assert pc["dry_run"] and pc["ready"] == [] and pc["counts"]["no_evidence"] == len(pc["candidates"]) == 9
+    assert pc["dry_run"] and pc["ready"] == [] and pc["counts"]["no_evidence"] == len(pc["candidates"]) == 12
     assert rep["promotion_ready"] == [] and not [w for w in rep["warnings"] if "promotion check" in w]
     assert not (env / "plogs").exists()
 

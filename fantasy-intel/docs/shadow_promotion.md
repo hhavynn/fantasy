@@ -8,7 +8,7 @@ Nobody has to remember to look.
 ## What runs, and when
 
 The weekly learning cycle (`scripts/learning_cycle.py run`, Tue-Thu) runs `promotion_check` as its last stage, after
-`ctx_shadow`, the `RESEARCH_SHADOWS`, `dst_shadow` and `dist_ledger`. It is a research stage like the others: a failure
+`ctx_shadow`, the `RESEARCH_SHADOWS` (`injury_return_shadow` among them), `dst_shadow` and `dist_ledger`. It is a research stage like the others: a failure
 is a warning in the cycle report and never fails the cycle or touches the production run. Skip it with
 `--no-promotion-check`.
 
@@ -23,6 +23,7 @@ The check reads each shadow's saved gate result. It never re-scores a ledger and
 | ifpd-0.1.0 | distribution_ledger.py | `data/models/research/point_distributions/ledger/scores.json` | every applicable range `within_bounds` |
 | ifp-iwh-0.1.1 | injury_workload_research.py `prospective` | `data/models/research/injury_workload/prospective_ifp-iwh-0.1.1.json` | `meets_gate` |
 | ifp-fr-p1, ifp-dct-p1, ifp-awd-p1 | signal_shadows.py | `data/models/research/signal_shadows/scores.json` | `eligible_for_review` |
+| ifp-irs-p1, ifp-irb-p1, ifp-irsb-p1 | injury_return_shadow.py | `data/models/research/injury_return_shadow/scores.json` | `passes` (one look after 2026 week 18); if both singles pass, only the frozen joint choice is ready (`ifp-irsb-p1` = both columns together) |
 
 For each candidate and position the summary lists the weeks scored, the matched appearances, the shadow's own gate
 status and checks, and the checks that fail. `ready_to_promote` is true only when all of these hold:
