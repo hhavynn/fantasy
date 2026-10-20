@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -112,13 +113,21 @@ class LeagueKey:
         return f"{self.provider.value}:{self.external_league_id}:{self.season}"
 
 
+ANON_CLAIMS = '{"role": "anon"}'
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
 @dataclass(frozen=True)
 class Principal:
-    """Who is asking. `user_id` comes from a verified user assertion, never from a query parameter."""
+    """Who is asking. `user_id` is the verified Supabase JWT `sub` (a uuid), never a query parameter.
+    `claims_json` is the verified claim set as compact JSON; the control plane sets it as the transaction-local
+    `request.jwt.claims`, so Postgres's auth.uid() and the RLS policies see exactly what the API verified. It is
+    excluded from repr() and comparisons."""
     user_id: str | None
+    claims_json: str = field(default=ANON_CLAIMS, repr=False, compare=False)
 
     def __post_init__(self):
-        if self.user_id is not None and not _USER_ID.fullmatch(self.user_id):
+        if self.user_id is not None and not _UUID.fullmatch(self.user_id):
             raise ValueError("malformed user id")
 
     @property
@@ -128,6 +137,13 @@ class Principal:
     @classmethod
     def anonymous(cls) -> "Principal":
         return cls(None)
+
+    @classmethod
+    def from_claims(cls, claims: dict) -> "Principal":
+        sub = claims.get("sub") if isinstance(claims, dict) else None
+        if not isinstance(sub, str) or not _UUID.fullmatch(sub.lower()):
+            raise ValueError("claims must carry a uuid subject")
+        return cls(sub.lower(), json.dumps(claims, separators=(",", ":"), sort_keys=True, default=str))
 
 
 @dataclass(frozen=True)

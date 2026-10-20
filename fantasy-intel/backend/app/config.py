@@ -7,6 +7,7 @@ logged or written to the database.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -67,6 +68,11 @@ class Settings:
     api_key: str | None = field(default=None, repr=False)   # hosted mode: required `X-API-Key` header on every request
     # --- multi-league platform (Phase 1). Every flag defaults OFF, so today's behaviour is unchanged. ---
     multileague_enabled: bool = False       # MULTILEAGUE_ENABLED=1: serves /v2/*; otherwise those routes 404
+    # Supabase control plane (docs/multileague/ADR-0002). Read only by /v2 routes; never opened with the flag off.
+    supabase_url: str | None = None         # SUPABASE_URL: https://<ref>.supabase.co (JWKS + token issuer)
+    supabase_db_url: str | None = field(default=None, repr=False)   # SUPABASE_DB_URL: fi_api DSN via the Supavisor pooler
+    credential_public_keys: dict = field(default_factory=dict, repr=False)   # CREDENTIALS_PUBKEY_V<n>: RSA public PEMs
+    credential_wrap_key_version: str | None = None                            # CREDENTIALS_WRAP_KEY_VERSION or the highest
     tenancy_db_path: Path = field(default_factory=lambda: DATA_DIR / "tenancy.duckdb")   # FANTASY_TENANCY_DB_PATH
     user_assertion_secret: str | None = field(default=None, repr=False)  # FANTASY_USER_ASSERTION_SECRET, >= 32 chars or treated as unset
     owner_user_id: str | None = None        # FANTASY_OWNER_USER_ID: the one user allowed AccessMethod.OWNER_ENV
@@ -77,6 +83,10 @@ class Settings:
     @property
     def has_espn_credentials(self) -> bool:
         return bool(self.espn_s2 and self.swid)
+
+    @property
+    def supabase_issuer(self) -> str | None:
+        return f"{self.supabase_url}/auth/v1" if self.supabase_url else None
 
     @property
     def r2_configured(self) -> bool:
@@ -108,6 +118,10 @@ def get_settings() -> Settings:
     if assertion_secret is not None and len(assertion_secret) < _MIN_ASSERTION_SECRET:
         assertion_secret = None
     api_key = (os.getenv("FANTASY_API_KEY") or "").strip() or None
+    pubkeys = {f"v{m.group(1)}": v.strip() for k, v in os.environ.items()
+               if (m := re.fullmatch(r"CREDENTIALS_PUBKEY_V([0-9]{1,4})", k)) and v.strip()}
+    wrap_version = _str_or_none(os.getenv("CREDENTIALS_WRAP_KEY_VERSION")) or (
+        max(pubkeys, key=lambda v: int(v[1:])) if pubkeys else None)
     # The API key travels on every request; if it also signed user assertions, any key holder could forge any user.
     if assertion_secret is not None and assertion_secret == api_key:
         assertion_secret = None
@@ -131,6 +145,10 @@ def get_settings() -> Settings:
         r2_endpoint=_str_or_none(os.getenv("R2_ENDPOINT")),
         api_key=api_key,
         multileague_enabled=_flag(os.getenv("MULTILEAGUE_ENABLED")),
+        supabase_url=(_str_or_none(os.getenv("SUPABASE_URL")) or "").rstrip("/") or None,
+        supabase_db_url=_str_or_none(os.getenv("SUPABASE_DB_URL")),
+        credential_public_keys=pubkeys,
+        credential_wrap_key_version=wrap_version,
         tenancy_db_path=tenancy_db_path,
         user_assertion_secret=assertion_secret,
         owner_user_id=_str_or_none(os.getenv("FANTASY_OWNER_USER_ID")),
