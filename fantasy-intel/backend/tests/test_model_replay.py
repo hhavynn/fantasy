@@ -23,16 +23,19 @@ def cell(n: int, model: float, prior: float | None = None, avg: float | None = N
                             "recent_avg": model + 0.3 if avg is None else avg}}
 
 
-def week(w: int, maes: dict[str, float], n: int = 10) -> dict:
+def week(w: int, maes: dict[str, float], n: int = 10, *, inp: str | None = None, out: str = "") -> dict:
     groups = {p: cell(n, maes[p]) for p in mr.POSITIONS}
     groups["ALL"] = cell(n * 4, sum(maes.values()) / 4)
-    return {"week": w, "groups": groups}
+    return {"week": w, "groups": groups, "input_fingerprint": inp or f"in-w{w}", "output_fingerprint": out or f"out-w{w}"}
 
 
 def snapshot(fp: str = "m1", data_fp: str = "d1", *, out_fp: str = "o1", at: str = "2026-10-10T00:00:00+00:00",
-             weeks: dict[int, dict[str, float]] | None = None) -> dict:
+             weeks: dict[int, dict[str, float]] | None = None, week_in: dict[int, str] | None = None,
+             week_out: dict[int, str] | None = None) -> dict:
+    """Per-week forecasts default to depending on the model fingerprint (another model forecasts differently)."""
     weeks = weeks or {1: {"QB": 6.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}, 2: {"QB": 7.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}}
-    wk = [week(w, m) for w, m in sorted(weeks.items())]
+    wk = [week(w, m, inp=(week_in or {}).get(w), out=(week_out or {}).get(w) or f"{fp}-w{w}")
+          for w, m in sorted(weeks.items())]
     totals = {g: {"n": sum(x["groups"][g]["n"] for x in wk),
                   "mae": {m: round(sum(x["groups"][g]["mae"][m] for x in wk) / len(wk), 4) for m in mr.METRICS}}
               for g in mr.GROUPS}
@@ -77,11 +80,20 @@ def test_fingerprints_follow_inputs_outputs_and_loaded_modules():
     mrs = importlib.import_module("model_replay")
     store = pl.DataFrame({"key": [202601, 202601], "gsis_id": ["a", "b"], "label": [1.0, 2.0], "dc_tier": [1, 2]})
     cands = pl.DataFrame({"key": [202601], "team": ["AAA"], "p": [0.9]})
-    base = mrs.data_fingerprint(store, cands, "s1")
-    assert mrs.data_fingerprint(store.with_columns(pl.Series("dc_tier", [1, 3])), cands, "s1") != base   # a feature
-    assert mrs.data_fingerprint(store, cands.with_columns(pl.lit(0.5).alias("p")), "s1") != base       # a QB input
-    assert mrs.data_fingerprint(store, cands, "s2") != base                                             # provenance
-    assert mrs.data_fingerprint(store.reverse(), cands, "s1") == base                                   # order-free
+    def fp(st, ca, prov="s1"):
+        return mrs.data_fingerprint(mrs.input_chain(st, ca), prov)
+
+    base = fp(store, cands)
+    assert fp(store.with_columns(pl.Series("dc_tier", [1, 3])), cands) != base   # a feature
+    assert fp(store, cands.with_columns(pl.lit(0.5).alias("p"))) != base       # a QB input
+    assert fp(store, cands, "s2") != base                                       # provenance
+    assert fp(store.reverse(), cands.select(reversed(cands.columns))) == base   # row and column order free
+    # per week: a change in week 2 leaves week 1's inputs alone and changes week 2's (and every later week's)
+    two = pl.concat([store, store.with_columns(pl.lit(202602, dtype=pl.Int64).alias("key"))])
+    c1 = mrs.input_chain(two, cands)
+    c2 = mrs.input_chain(two.with_columns(pl.when(pl.col("key") == 202602).then(9).otherwise(pl.col("dc_tier"))
+                                          .alias("dc_tier")), cands)
+    assert c1[202601] == c2[202601] and c1[202602] != c2[202602]
     preds = pl.DataFrame({"key": [202601], "gsis_id": ["a"], "label": [1.0], "pred_model": [2.0], "pred_prior": [2.0],
                           "pred_A1": [1.5]})
     assert mrs.output_fingerprint(preds) != mrs.output_fingerprint(preds.with_columns(pl.lit(2.1).alias("pred_model")))
@@ -105,12 +117,40 @@ def test_fingerprints_follow_inputs_outputs_and_loaded_modules():
     (lambda p: p["weeks"][0].update(gsis_id="00-1"), "identifier"),
     (lambda p: p["model"].update(fingerprint=""), "fingerprint"),
     (lambda p: p["data"].pop("output_fingerprint"), "output fingerprint"),
+    (lambda p: p["weeks"][0].pop("input_fingerprint"), "input or output fingerprint"),
 ])
 def test_invalid_snapshots_are_refused(con, mutate, reason):
     p = snapshot()
     mutate(p)
     with pytest.raises(ValueError, match=reason):
         mr.store_replay(con, p)
+
+
+def test_a_fingerprint_change_with_identical_forecasts_never_hides_the_real_previous_model(con):
+    mr.store_replay(con, snapshot("m1", at="2026-10-10T00:00:00+00:00"))                       # the real old model
+    mr.store_replay(con, snapshot("m2", "d2", at="2026-10-11T00:00:00+00:00",
+                                  weeks={1: {"QB": 5.0, "RB": 4.0, "WR": 4.0, "TE": 3.0},
+                                         2: {"QB": 7.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}}))     # the real new model
+    # an unrelated module edit: new model fingerprint, exactly m2's forecasts
+    mr.store_replay(con, snapshot("m3", "d2", at="2026-10-12T00:00:00+00:00", week_out={1: "m2-w1", 2: "m2-w2"},
+                                  weeks={1: {"QB": 5.0, "RB": 4.0, "WR": 4.0, "TE": 3.0},
+                                         2: {"QB": 7.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}}))
+    res = mr.response(con, 2026)
+    assert res["latest"]["model"]["fingerprint"] == "m3" and res["previous"]["model"]["fingerprint"] == "m1"
+    assert res["vs_previous"]["tally"]["QB"] == {"better": 1, "worse": 0, "same": 1}
+    assert [h["model"]["fingerprint"] for h in res["history"]] == ["m3", "m2", "m1"]          # from the index columns
+    assert res["history"][0]["weeks"] == [1, 2] and res["history"][0]["n"] == 80
+
+
+def test_weeks_with_changed_inputs_are_flagged_and_left_out_of_tally_and_season():
+    old = snapshot("m1", weeks={1: {"QB": 6.0, "RB": 4.0, "WR": 4.0, "TE": 3.0},
+                                2: {"QB": 7.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}})
+    new = snapshot("m2", week_in={2: "corrected"}, weeks={1: {"QB": 5.0, "RB": 4.0, "WR": 4.0, "TE": 3.0},
+                                                          2: {"QB": 9.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}})
+    c = mr.compare(new, old)
+    assert [(w["week"], w["inputs_changed"]) for w in c["weeks"]] == [(1, False), (2, True)]
+    assert c["inputs_changed_weeks"] == [2] and c["tally"]["QB"] == {"better": 1, "worse": 0, "same": 0}
+    assert c["season"]["weeks"] == [1] and c["season"]["groups"]["QB"]["diff"] == -1.0
 
 
 def test_damaged_row_is_skipped_never_served(con):
@@ -158,6 +198,8 @@ def test_summarize_scores_identical_player_weeks():
     assert [w["week"] for w in weeks] == [1]                     # week 2 has no paired row
     assert weeks[0]["groups"]["QB"] == {"n": 2, "mae": {"model": 2.0, "prior_version": 3.0, "recent_avg": 5.0}}
     assert weeks[0]["groups"]["ALL"]["n"] == 3 and totals["WR"]["n"] == 0
+    for w in weeks:          # build_payload adds the per-week fingerprints
+        w |= {"input_fingerprint": "i", "output_fingerprint": "o"}
     assert mr.validate(snapshot() | {"weeks": weeks, "totals": totals}) is None
 
 

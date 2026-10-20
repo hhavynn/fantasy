@@ -420,8 +420,11 @@ def run_report(log: Log, timeout: float | None = None) -> str | None:
 
 
 def run_replay(log: Log, timeout: float | None = None) -> str | None:
-    """Replay the production model on every fully final week and store a snapshot when the model or the weeks changed
-    (model_replay.py publish, one write-once row). Returns the problem, if any (logged as a WARNING). Never raises."""
+    """Replay the production model on every fully final week and store a snapshot when the model, its inputs or its
+    forecasts changed (model_replay.py publish, one write-once row). Returns the problem, if any (logged as a WARNING).
+    Never raises. It runs BEFORE the MotherDuck publish on purpose: the publish then carries this refresh's replay, at
+    the cost of its runtime (~1-2 min, the cached store) on the hosted data; after the publish the hosted replay would
+    always be one refresh behind, which matters right after a model change. --skip-replay leaves it out."""
     timeout = evidence_timeout() if timeout is None else timeout
     try:
         code = run_step([sys.executable, str(SCRIPTS / REPLAY), "publish"], log, timeout=timeout)

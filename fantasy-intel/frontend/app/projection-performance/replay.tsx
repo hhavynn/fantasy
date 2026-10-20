@@ -51,7 +51,8 @@ export function WeeklyReplay({ d }: { d: ReplayResponse }) {
           <tbody>
             {s.weeks.map((w) => (
               <tr key={w.week}>
-                <td>{w.week}</td>
+                <td>{w.week}{c.inputs_changed_weeks.includes(w.week) && (
+                  <span className="faint" title="This week's inputs changed between the two replays (data corrections): its change mixes model and data"> †</span>)}</td>
                 {REPLAY_GROUPS.map((g) => {
                   const cell = w.groups[g];
                   const dd = diffFor(c, w.week, g);

@@ -1011,6 +1011,10 @@ CREATE TABLE IF NOT EXISTS model_replays (
     generated_at         TIMESTAMP NOT NULL,    -- naive UTC, also inside the payload
     model_fingerprint    VARCHAR NOT NULL,      -- version, config and the source of every module the replay loaded
     data_fingerprint     VARCHAR NOT NULL,      -- the replay's inputs (store rows and features, QB candidates)
+    model_version        VARCHAR NOT NULL,      -- index columns for the history list (also inside the payload)
+    weeks                VARCHAR NOT NULL,      -- JSON list of the replayed weeks
+    mae_all              DOUBLE,                -- season MAE, all positions
+    n_all                INTEGER NOT NULL,
     payload              VARCHAR NOT NULL       -- canonical JSON (sorted keys, no NaN)
 );
 

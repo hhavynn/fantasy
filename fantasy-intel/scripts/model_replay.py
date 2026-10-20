@@ -93,14 +93,35 @@ def model_fingerprint(cfg) -> str:
     return h.hexdigest()[:16]
 
 
-def data_fingerprint(store: pl.DataFrame, cands: pl.DataFrame, store_fp: str | None) -> str:
-    """The replay's inputs: the labeled rows, every feature column of the store, the QB start candidates and the
-    store's own provenance fingerprint (its source frames). A corrected injury, roster or depth input changes it."""
-    h = hashlib.sha256((store_fp or "").encode())
-    for df in (store, cands):
-        h.update(",".join(sorted(df.columns)).encode())
-        h.update(np.sort(df.select(sorted(df.columns)).hash_rows(seed=0).to_numpy()).tobytes())
-    return h.hexdigest()[:16]
+def _canonical(df: pl.DataFrame) -> bytes:
+    """A serialization independent of row order and polars' hashing: columns by name, floats rounded to 6 places,
+    rows sorted by every column, written as CSV."""
+    if df.height == 0:
+        return ",".join(sorted(df.columns)).encode()
+    cols = sorted(df.columns)
+    out = df.select([pl.col(c).round(6) if df.schema[c].is_float() else pl.col(c) for c in cols])
+    return out.sort(cols, nulls_last=True).write_csv().encode()
+
+
+def input_chain(store: pl.DataFrame, cands: pl.DataFrame) -> dict[int, str]:
+    """{week key: fingerprint of every input up to and including that week}: store rows (features and labels) and
+    QB start candidates of all keys <= it, chained in key order. A forecast of week W reads only those, so two
+    snapshots with the same value for W replayed W on identical inputs."""
+    parts = [store.partition_by("key", as_dict=True), cands.partition_by("key", as_dict=True)]
+    keys = sorted({int(k[0]) for p in parts for k in p})
+    chain, h = {}, hashlib.sha256()
+    for k in keys:
+        for p in parts:
+            df = p.get((k,))
+            h.update(f"|{k}|".encode() + (b"" if df is None else hashlib.sha256(_canonical(df)).digest()))
+        chain[k] = h.copy().hexdigest()[:16]
+    return chain
+
+
+def data_fingerprint(chain: dict[int, str], store_fp: str | None) -> str:
+    """All of the replay's inputs: the full input chain plus the store's own provenance fingerprint (source frames)."""
+    last = chain[max(chain)] if chain else ""
+    return hashlib.sha256(f"{store_fp or ''}|{last}".encode()).hexdigest()[:16]
 
 
 def output_fingerprint(preds: pl.DataFrame) -> str:
@@ -145,12 +166,16 @@ def build_payload(args) -> dict:
     preds = replay(store, cands, weeks, cfg) if weeks else pl.DataFrame()
     wk, totals = summarize(preds) if weeks else ([], {g: {"n": 0, "mae": {m: None for m in mr.METRICS}}
                                                       for g in mr.GROUPS})
+    chain = input_chain(store, cands)
+    for w in wk:      # per week: what the forecast read, and what it produced
+        w["input_fingerprint"] = chain[args.season * 100 + w["week"]]
+        w["output_fingerprint"] = output_fingerprint(preds.filter(pl.col("week") == w["week"]))
     return {"schema_version": mr.SCHEMA_VERSION, "season": args.season,
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "model": {"version": cm.MODEL_VERSION, "fingerprint": model_fingerprint(cfg),
                       "components": {p: list(cm.SHIPPED[p]) for p in POSITIONS}},
             "prior_version": {"version": PRIOR_VERSION},
-            "data": {"fingerprint": data_fingerprint(store, cands, prov.get("fingerprint")),
+            "data": {"fingerprint": data_fingerprint(chain, prov.get("fingerprint")),
                      "store_fingerprint": prov.get("fingerprint"), "output_fingerprint": output_fingerprint(preds),
                      "last_week": max((w for _, w in weeks), default=None)},
             "population": "players who played and had a recent game; identical player-weeks for every forecast",

@@ -19,9 +19,12 @@ export type DiffCell = { diff: number; direction: Direction; n_new: number; n_ol
 export type SeasonCell = { mae_new: number | null; mae_old: number | null; diff: number | null; direction: Direction | null; n_new: number; n_old: number };
 export type ReplayComparison = {
   against?: { generated_at: string; model: ReplayModel };
-  weeks: { week: number; groups: Record<ReplayGroup, DiffCell> }[];
+  // inputs_changed: the week's inputs differ between the two replays (data corrections), so its change mixes model and
+  // data; the tally and the season block leave those weeks out.
+  weeks: { week: number; inputs_changed: boolean; groups: Record<ReplayGroup, DiffCell> }[];
   tally: Record<ReplayGroup, Record<Direction, number>>;
-  season: { weeks: number[]; groups: Record<ReplayGroup, SeasonCell> };   // both sides over the same weeks
+  inputs_changed_weeks: number[];
+  season: { weeks: number[]; groups: Record<ReplayGroup, SeasonCell> };   // both sides over the same clean weeks
 };
 export type ReplayHistoryRow = { generated_at: string; model: ReplayModel; weeks: number[]; mae: number | null; n: number };
 export type ReplayResponse = {
@@ -50,10 +53,23 @@ export function replayView(d: ReplayResponse): ReplayView | null {
 }
 
 export function weeksWith(c: ReplayComparison, group: ReplayGroup, dir: Direction): number[] {
-  return c.weeks.filter((w) => w.groups[group]?.direction === dir).map((w) => w.week);
+  return c.weeks.filter((w) => !w.inputs_changed && w.groups[group]?.direction === dir).map((w) => w.week);
 }
 
 const list = (weeks: number[]) => (weeks.length === 1 ? `week ${weeks[0]}` : `weeks ${weeks.slice(0, -1).join(", ")} and ${weeks[weeks.length - 1]}`);
+
+/** "1–3, 5, 7–8": sorted weeks with consecutive runs collapsed. */
+export function weekRanges(weeks: number[]): string {
+  const w = [...new Set(weeks)].sort((a, b) => a - b);
+  const out: string[] = [];
+  for (let i = 0; i < w.length; i++) {
+    let j = i;
+    while (j + 1 < w.length && w[j + 1] === w[j] + 1) j++;
+    out.push(j === i ? `${w[i]}` : `${w[i]}–${w[j]}`);
+    i = j;
+  }
+  return out.join(", ");
+}
 
 /** "Closer in weeks 1 and 3, further in week 2, about the same in week 4." (all positions together) */
 export function replaySummary(c: ReplayComparison, group: ReplayGroup = "ALL"): string {
@@ -64,20 +80,25 @@ export function replaySummary(c: ReplayComparison, group: ReplayGroup = "ALL"): 
   if (better.length) parts.push(`closer in ${list(better)}`);
   if (worse.length) parts.push(`further off in ${list(worse)}`);
   if (same.length) parts.push(`about the same in ${list(same)}`);
-  if (!parts.length) return "No week to compare yet.";
+  const changed = c.inputs_changed_weeks;
+  const note = changed.length
+    ? ` ${changed.length === 1 ? "Week" : "Weeks"} ${weekRanges(changed)} also had data corrections between the two replays, so ${changed.length === 1 ? "its" : "their"} change mixes model and data (marked †, left out of this summary).`
+    : "";
+  if (!parts.length) return (changed.length ? "No week with unchanged data to compare." : "No week to compare yet.") + note;
   const s = parts.join(", ");
-  return s[0].toUpperCase() + s.slice(1) + ".";
+  return s[0].toUpperCase() + s.slice(1) + "." + note;
 }
 
 export function diffFor(c: ReplayComparison, week: number, group: ReplayGroup): DiffCell {
   return c.weeks.find((w) => w.week === week)?.groups[group] ?? null;
 }
 
-/** The season row's label: plain "Season" when the comparison covers every replayed week, otherwise the weeks
- *  both sides replayed (the row's MAE and change are then both computed over those weeks only). */
+/** The season row's label: plain "Season" when the comparison covers exactly the replayed weeks, otherwise the weeks
+ *  it covers (the row's MAE and change are then both computed over those weeks only). */
 export function seasonLabel(c: ReplayComparison, replayedWeeks: number[]): string {
-  const shared = c.season.weeks;
-  if (shared.length === replayedWeeks.length) return "Season";
-  if (!shared.length) return "Season (no shared week)";
-  return `Weeks ${shared[0]}–${shared[shared.length - 1]} (both replays)`;
+  const shared = new Set(c.season.weeks);
+  const all = new Set(replayedWeeks);
+  if (shared.size === all.size && [...all].every((w) => shared.has(w))) return "Season";
+  if (!shared.size) return "Season (no comparable week)";
+  return `${shared.size === 1 ? "Week" : "Weeks"} ${weekRanges([...shared])} (compared)`;
 }
