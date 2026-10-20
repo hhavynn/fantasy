@@ -172,7 +172,7 @@ def freshness(con, season: int, week: int, at, base_created_at, sched: dict) -> 
 
 
 def build(con, sources, artifact, season: int, week: int, *, base: dict, participation=None,
-          artifact_sha256: str, context_inputs=None) -> dict:
+          artifact_sha256: str, context_inputs=None, news: list | None = None) -> dict:
     """Read-only. Re-project `week` with the base run's artifact and return {meta, rows, base_run_id, status, ...}
     for `store`. `status` is UNCHANGED when every re-projected row equals the base run's (nothing to write)."""
     sha = check_base(base, season, week, artifact.version)
@@ -181,7 +181,7 @@ def build(con, sources, artifact, season: int, week: int, *, base: dict, partici
                                "re-projection reuses the base run's approved artifact, never a newer model")
     check_participation(base, participation)
     meta, rows = build_live(con, sources, artifact, season, week, participation=participation,
-                            artifact_sha256=artifact_sha256, context_inputs=context_inputs)
+                            artifact_sha256=artifact_sha256, context_inputs=context_inputs, news=news)
     started, unknown, sched = kicked_off(con, season, week, meta["created_at"])
     # A team that had a game in the base run but is absent from the refreshed schedule (a transient feed gap) has an
     # unprovable kickoff too: freeze and carry it like an explicit unknown, never re-project it as a bye.

@@ -42,6 +42,15 @@ player designated Out/Doubtful at the cutoff gets the table's empirical return r
 undesignated estimate (flagged; the replaced estimate is kept in `participation`). ifp-1.0.0 / ifp-2.0.0 runs are
 unchanged.
 
+Availability news (app.analytics.availability_news, `news=` entries; the production `project` command passes the
+reviewed file): a player the news puts out for week T is withheld with the news note; one it puts back (reinstated,
+in or after a reported return window) is projected although a stale weekly roster status or a long-term ESPN status
+says otherwise (an NFL reserve-rule week and a horizon-0 ESPN OUT still withhold); in a return window P(plays) is
+the model's estimate times the window probability. At horizon 0 an "out" entry yields to the synced data when the
+week's nflverse report (published for his team) has no Out/Doubtful for him, his week-W roster row is ACT and ESPN
+does not list him OUT / IR / suspended: the row is flagged availability_news.OVERRIDDEN. The workload handoff sees the same states, so teammates absorb
+or return the volume. Training never reads it.
+
 An ifp-2.2.0 artifact (app.analytics.context_model) keeps all of that and adds the shipped research-shadow
 components as known at the cutoff week (QB start probabilities and the scenario mixture, QB and teammate context,
 the pregame depth tier from snapshots made before the run, the decline-only role); the frozen QB P(plays) map applies
@@ -62,6 +71,7 @@ from ..espn.constants import IR_SLOT
 from .forecast_features import POSITIONS, Sources, features_for_week, key
 from .independent_projections import Artifact, flags_for, missing_inputs, predict_frame
 from .league_scoring import resolve_skill_scoring
+from . import availability_news as an
 from .player_availability import RESTRICTED, derive
 from .production_forecasts import (HORIZON_NOTE, NEXT_GAME_ONLY, ROWS, RUNS, ImmutableRunError, annotate, content_sha256,
                                    horizon_of, team_kickoffs)
@@ -202,7 +212,8 @@ def check_horizon(sources: Sources, season: int, cutoff_week: int) -> None:
 
 def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int,
                participation=None, artifact_sha256: str | None = None, *,
-               projected_from_week: int | None = None, context_inputs=None) -> tuple[dict, list[dict]]:
+               projected_from_week: int | None = None, context_inputs=None,
+               news: list | None = None) -> tuple[dict, list[dict]]:
     """Run metadata + one row per candidate. `sources` must contain the live season (and
     ideally the previous season from the history DB). `participation`: optional
     ParticipationArtifact; without it p_play and expected_points stay null. `artifact_sha256`: sha256 of
@@ -210,7 +221,8 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     the run's artifact_id so it can be compared with the approval registry's pinned sha.
     `projected_from_week`: W, the first unplayed week, when `week` is a later target week T (rest-of-season
     projection, horizon T - W; see the module docstring). None (or == week) is the normal horizon-0 run.
-    `context_inputs`: app.analytics.context_model.Inputs, required for an ifp-2.2.0 artifact (context_model.load_inputs)."""
+    `context_inputs`: app.analytics.context_model.Inputs, required for an ifp-2.2.0 artifact (context_model.load_inputs).
+    `news`: availability_news entries (module docstring, "Availability news"); None or [] changes nothing."""
     fw = week if projected_from_week is None else projected_from_week
     context = _context_model(artifact)
     if context is not None and context_inputs is None:
@@ -230,6 +242,10 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     # read rows posted since; live, nothing exists after W anyway)
     rosters = _roster_rows(con, season, fw)
     on_ir = _fantasy_ir(con, season, fw)
+    # the EFFECTIVE news states: the loop below drops an entry a hard availability gate or (horizon 0) the synced
+    # report contradicts, and only what survives reaches the rows' P(plays) and the workload handoff
+    nstate = an.for_week(news, season, week, team_weeks) if news else {}
+    report = _week_report(sources, season, week) if nstate and not horizon else None
     rows, targets = [], []
     for c in candidates(con, season, week):
         rec = {"season": season, "week": week, "espn_player_id": c["espn_player_id"], "gsis_id": c["gsis_id"],
@@ -268,6 +284,20 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
         roster_status = (hist[-1].get("status") or "").upper() if hist else None
         if horizon:
             rec["flags"] += [FUTURE_NO_REPORT, HORIZON_NOTE.format(k=horizon)]
+        ns = nstate.get(c["gsis_id"])
+        if ns is not None and ns.p < 1 and report is not None and _synced_clear(report, c["gsis_id"], team, hist, week,
+                                                                                espn_status):
+            # Horizon 0: the week's synced report and active roster say he plays; a stale "out" entry must not
+            # withhold him (the teammates' handoff drops the entry too).
+            rec["flags"].append(f"{an.OVERRIDDEN} (week-{week} injury report has no Out/Doubtful for him and the "
+                                f"week-{week} roster is ACT); remove the entry: {ns.reason}")
+            nstate.pop(c["gsis_id"])
+            ns = None
+        if ns is not None and ns.p <= 0:
+            rec["coverage_status"] = "withheld_unavailable"
+            rec["missing_inputs"] = [ns.reason]
+            continue
+        news_back = ns is not None      # the news dates his availability for this week (p > 0)
         # Horizon >= 1: an NFL reserve-list player whose return derive() can date (reserve rule code -> earliest
         # eligible week) is withheld only for the weeks in unavailable_weeks and projected after them, even when ESPN
         # also lists INJURY_RESERVE; every other long-term status stays withheld for all remaining weeks.
@@ -275,17 +305,26 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
                             and avail["earliest_eligible_week"] is not None)
         # ESPN OUT is the next game only; INJURY_RESERVE / SUSPENSION last past it (horizon 0: all three withhold).
         espn_withheld = espn_status in (LONG_TERM_ESPN if horizon else WITHHELD_ESPN) \
-            and not (dated_return and espn_status == "INJURY_RESERVE")
+            and not (dated_return and espn_status == "INJURY_RESERVE") and not (horizon and news_back)
         if (avail["status"] in RESTRICTED and week in avail["unavailable_weeks"]) or espn_withheld:
+            if ns is not None:
+                # a hard constraint (NFL reserve-rule week, horizon-0 ESPN OUT / IR / suspension) beats positive news:
+                # the entry is dropped, so the teammates' handoff keeps the timeline's own status for him too
+                nstate.pop(c["gsis_id"])
+                rec["flags"].append(f"availability news not applied: {ns.reason}")
             rec["coverage_status"] = "withheld_unavailable"
             rec["missing_inputs"] = [w for w in avail["warnings"]] or [f"ESPN status {c['injury_status']}"]
             if horizon and espn_withheld:
                 rec["missing_inputs"] = [f"{LONG_TERM_UNAVAILABLE} (ESPN status {c['injury_status']})"]
             continue
         # (a dated return not yet reached was withheld above; from the eligible week on he is projected)
+        if news_back:
+            rec["flags"].append(ns.reason)
         if dated_return:
             rec["flags"].append(f"returns from reserve (eligible week {avail['earliest_eligible_week']}): return "
                                 "not confirmed, assumed available")
+        elif news_back:
+            pass        # the news puts him on the active roster whatever the synced weekly roster says
         elif roster_status and roster_status not in ACTIVE_ROSTER:
             # Exempt, suspended, practice squad, released, reserve of any kind: not on the active roster.
             rec["coverage_status"] = "withheld_unavailable"
@@ -313,7 +352,7 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
         tdf = pl.DataFrame(targets).unique("gsis_id", keep="first")
         feats = features_for_week(sources, season, fw, tdf)    # feature week W; opponent / home-away are T's
         if injury is not None:
-            feats = injury.augment(artifact, hsources, season, week, fw, feats, roster_codes=codes)
+            feats = injury.augment(artifact, hsources, season, week, fw, feats, roster_codes=codes, news=nstate)
         if context is not None:
             feats = context.augment(artifact, hsources if hsources is not None else sources, context_inputs, season,
                                     week, fw, feats, as_of=utcnow())
@@ -366,6 +405,8 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
                        participation=q, flags=rec["flags"] + q["flags"])
     if context is not None and participation is not None:
         context.calibrate_rows(artifact, rows, horizon)     # ifp-2.2.0: the frozen QB P(plays) map, horizon 0
+    if nstate and participation is not None:
+        _apply_news_p_play(rows, nstate)
     before = sources.panel.filter(pl.col("season") * 100 + pl.col("week") < key(season, fw))
     last = before.select(pl.col("season").max(), pl.col("week").filter(
         pl.col("season") == pl.col("season").max()).max()).row(0) if before.height else (None, None)
@@ -384,6 +425,57 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     for rec in rows:
         rec["run_id"] = meta["run_id"]
     return meta, rows
+
+
+def _week_report(sources: Sources, season: int, week: int) -> dict | None:
+    """The week's synced nflverse injury report as {team: {gsis_id: report_status}} (teams with any row), or None."""
+    if sources.injuries is None:
+        return None
+    out: dict = {}
+    cur = sources.injuries.filter((pl.col("season") == season) & (pl.col("week") == week))
+    for g, t, st in cur.select("gsis_id", "team", "report_status").iter_rows():
+        if t is not None:
+            out.setdefault(t, {})[g] = (st or "").strip().lower()
+    return out
+
+
+def _synced_clear(report: dict, gsis_id: str, team: str, hist: list[dict], week: int, espn_status: str) -> bool:
+    """Horizon-0 evidence that he plays: his team's week report is synced without Out/Doubtful for him, his week's
+    weekly roster row is ACT, and ESPN does not list him OUT / IR / suspended."""
+    if team not in report or report[team].get(gsis_id) in ("out", "doubtful"):
+        return False
+    if not hist or hist[-1]["week"] != week or (hist[-1].get("status") or "").upper() != "ACT":
+        return False
+    return espn_status not in WITHHELD_ESPN
+
+
+def _apply_news_p_play(rows: list[dict], nstate: dict) -> None:
+    """P(plays) of a projected row the availability news speaks for: the model's estimate times the news probability
+    (1 outside a return window). The news is more specific than the return-rate table, so a row whose estimate the
+    table replaced uses the undesignated estimate it replaced. A player the participation model has no estimate for (no ACT/INA weekly roster row
+    yet, e.g. reinstated from the exempt list) gets the median estimate of this run's projected rows at his position
+    without an injury flag on the participation model, labelled as such."""
+    typical: dict[str, float] = {}
+    for pos in {r["position"] for r in rows}:
+        ps = sorted(r["p_play"] for r in rows if r["position"] == pos and r.get("coverage_status") == "projected"
+                    and r.get("p_play") is not None and r["gsis_id"] not in nstate
+                    and (r.get("participation") or {}).get("model_version") != "return-rate-table")
+        if ps:
+            typical[pos] = ps[len(ps) // 2]
+    for rec in rows:
+        ns = nstate.get(rec.get("gsis_id"))
+        if ns is None or rec.get("coverage_status") != "projected":
+            continue
+        q = dict(rec.get("participation") or {})
+        base = q["undesignated_p_play"] if q.get("undesignated_p_play") is not None else rec.get("p_play")
+        if base is None:
+            base = typical.get(rec["position"])
+            if base is None:
+                continue
+            q["base_p_play_source"] = f"median P(plays) of this run's projected {rec['position']} rows (no estimate of his own)"
+        p = round(base * ns.p, 4)
+        q.update(news_p_play=ns.p, base_p_play=base, p_play=p, availability_news=an.NEWS_VERSION)
+        rec.update(p_play=p, expected_points=round(p * rec["projected_points"], 2), participation=q)
 
 
 def _injury_model(artifact):
