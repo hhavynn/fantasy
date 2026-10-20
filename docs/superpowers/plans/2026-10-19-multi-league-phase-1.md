@@ -3247,7 +3247,7 @@ Create `app/leagues/redaction.py` with the module docstring `"""Error text that 
     # --- multi-league platform. Every flag defaults OFF, so today's behaviour is unchanged. ---
     multileague_enabled: bool = False       # MULTILEAGUE_ENABLED=1: serves /v2/*; otherwise those routes 404
     supabase_url: str | None = None         # SUPABASE_URL: https://<ref>.supabase.co (JWKS + issuer)
-    supabase_db_url: str | None = field(default=None, repr=False)   # SUPABASE_DB_URL: fi_api DSN via the Supavisor pooler
+    supabase_db_url: str | None = field(default=None, repr=False)   # SUPABASE_DB_URL (the fi_api DSN, via the Supavisor pooler)
     credential_public_keys: dict = field(default_factory=dict, repr=False)   # CREDENTIALS_PUBKEY_V<n> (PEM)
     credential_wrap_key_version: str | None = None                            # CREDENTIALS_WRAP_KEY_VERSION or highest
     sleeper_source: str = "disabled"
@@ -3311,7 +3311,7 @@ git commit -m "Phase 1: /v2 on the Supabase control plane; remove the HMAC user 
 ```python
 """Every /v2 route with a {league_id} is enumerated from the live router and driven through the spec's matrix:
 {anonymous, viewer, admin, non-member} x {public, private, stale, visibility-expired, flipped-private, deleted}.
-A new league route that forgets `league_tx` fails here: for an unknown league id it would answer something other
+Routes are found by walking included routers (FastAPI 0.143 wraps them) and cross-checked against the OpenAPI paths. A new league route that forgets `league_tx` fails here: for an unknown league id it would answer something other
 than 404 (a 401, 422 or 200)."""
 import pytest
 
@@ -3341,7 +3341,7 @@ def league_routes():
         if path.startswith("/v2/") and "{league_id}" in path:
             for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
                 out.append((method, path))
-    assert len(out) >= 6, out
+    assert len(out) >= 5, out          # Phase 1: league view, pin x2, perspective x2
     return out
 
 

@@ -67,7 +67,7 @@ class Settings:
     multileague_enabled: bool = False       # MULTILEAGUE_ENABLED=1: serves /v2/*; otherwise those routes 404
     # Supabase control plane (docs/multileague/ADR-0002). Read only by /v2 routes; never opened with the flag off.
     supabase_url: str | None = None         # SUPABASE_URL: https://<ref>.supabase.co (JWKS + token issuer)
-    supabase_db_url: str | None = field(default=None, repr=False)   # SUPABASE_DB_URL: fi_api DSN via the Supavisor pooler
+    supabase_db_url: str | None = field(default=None, repr=False)   # SUPABASE_DB_URL (the fi_api DSN, via the Supavisor pooler)
     credential_public_keys: dict = field(default_factory=dict, repr=False)   # CREDENTIALS_PUBKEY_V<n>: RSA public PEMs
     credential_wrap_key_version: str | None = None                            # CREDENTIALS_WRAP_KEY_VERSION or the highest
     sleeper_source: str = "disabled"        # SLEEPER_SOURCE = disabled | fixture | live

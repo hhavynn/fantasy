@@ -1,11 +1,11 @@
 """No external-service credential is committed, logged, stored, echoed, or left in a repr / exception chain.
 
-Three layers:
+Four layers:
   1. a scan of every file git tracks (and every untracked, non-ignored file, so a secret is caught before it is
      committed) for credential shapes, with an explicit allowlist of the synthetic values the tests use;
-  2. a logging / response / storage capture through a connect flow that fails with an exception whose message
-     contains fake espn_s2 / SWID / token values;
-  3. repr / str / exception-chain checks on the objects that carry credentials.
+  2. provider adapters that fail with exceptions whose messages contain fake espn_s2 / SWID / token values;
+  3. repr / str / exception-chain checks on the objects that carry credentials;
+  4. the control plane: Supabase tokens, the Postgres DSN, credential public keys and encrypted envelopes.
 
 A new fake credential in a test is fine, but must be added to ALLOWED_SYNTHETIC on purpose: that is the point.
 `test_secN_...` tests reproduce fixed findings of the adversarial review and now guard against regressions.
@@ -20,28 +20,17 @@ import logging
 import pickle
 import re
 import subprocess
-import time
-from datetime import datetime
 from pathlib import Path
 
-import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.leagues_v2 import provider_registry
 from app.config import get_settings
-from app.leagues.auth import HEADER, sign_user_assertion
-from app.leagues.capabilities import Capability, CapabilityState, ProviderCapabilities, Support
-from app.leagues.context import AccessMethod, LeagueKey, Principal, Provider
-from app.leagues.credentials import EspnCookies, OwnerEnvCredentials, Secret
-from app.leagues.models import (
-    LeagueSettings, LineupRules, LineupSlot, PlayoffSettings, Provenance, Roster, RosterEntry, ScoringRules,
-    SlotKind, Sourced, Team, TradeSettings, WaiverSettings,
-)
-from app.leagues.identity import ProviderPlayerId
+from app.leagues.context import AccessMethod, LeagueKey, Provider
+from app.leagues.credentials import EspnCookies, Secret
 from app.leagues.providers import registry as real_registry
-from app.leagues.providers.base import LeagueAccess, LeagueProvider, ProviderError, ProviderUnavailable
-from app.leagues.store import TenancyStore, sanitize_error
+from app.leagues.providers.base import LeagueAccess, ProviderError
+from app.leagues.redaction import sanitize_error
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SECRET = "u" * 48
@@ -67,6 +56,8 @@ ALLOWED_SYNTHETIC = {
     "{B1A2C3D4-0000-4321-8765-0123456789AB}",
     "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJlc2lnbmF0dXJlMTIzNDU2",
     "AEBfakeespns2cookie%2Bvalue0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop0123456789",
+    # tests/test_credential_crypto.py, tests/test_control_plane_mutations.py and the Phase 1 plan: a fake SWID
+    "{11111111-2222-4333-8444-555555555555}",
     # tests/test_r2.py: AWS's own documented example key, from the published SigV4 test vector
     "AKIAIOSFODNN7EXAMPLE",
 }
@@ -90,7 +81,7 @@ PATTERNS: dict[str, re.Pattern] = {
 # excluded from this one because they assign test constants all the time; the shaped patterns above cover them.
 ENV_ASSIGNMENT = re.compile(
     r"""(?m)\b(FANTASY_API_KEY|API_KEY|SITE_PASSWORD|MOTHERDUCK_TOKEN|motherduck_token|ESPN_S2|SWID|"""
-    r"""FANTASY_USER_ASSERTION_SECRET|YAHOO_CLIENT_SECRET)\b["']?[ \t]*[=:][ \t]*["']?([^\s"'<>$#`),]+)""")
+    r"""SUPABASE_DB_URL|CREDENTIALS_PRIVKEY_V[0-9]+|YAHOO_CLIENT_SECRET)\b["']?[ \t]*[=:][ \t]*["']?([^\s"'<>$#`),]+)""")
 ENV_SCAN_SKIP_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".mjs", ".lock", ".json", ".svg", ".css")
 MAX_SCAN_BYTES = 2_000_000
 
@@ -178,94 +169,13 @@ def env(tmp_path, monkeypatch):
     for name in ("SLEEPER_SOURCE", "ESPN_PUBLIC_IMPORT_ENABLED", "YAHOO_CLIENT_ID", "MULTILEAGUE_UI_ENABLED"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("MULTILEAGUE_ENABLED", "1")
-    monkeypatch.setenv("FANTASY_TENANCY_DB_PATH", str(tmp_path / "tenancy.duckdb"))
-    monkeypatch.setenv("FANTASY_USER_ASSERTION_SECRET", SECRET)
+    monkeypatch.setenv("SUPABASE_DB_URL", f"postgresql://fi_api:{SECRET}@db.example.invalid:6543/postgres")
     monkeypatch.setenv("FANTASY_API_KEY", API_KEY)
-    monkeypatch.setenv("FANTASY_OWNER_USER_ID", "owner")
     monkeypatch.setenv("ESPN_S2", FAKE_S2)
     monkeypatch.setenv("SWID", FAKE_SWID)
     real_registry.reset_providers()
     yield monkeypatch
     real_registry.reset_providers()
-
-
-class LeakyEspn(LeagueProvider):
-    """An ESPN adapter whose upstream failure messages echo the request (cookies, tokens) like a careless
-    HTTP library would."""
-    provider = Provider.ESPN
-
-    def __init__(self):
-        self.fail_with: Exception | None = None
-        self.seen: list[object] = []
-
-    def capabilities(self):
-        ok = CapabilityState(Support.SUPPORTED)
-        return ProviderCapabilities(Provider.ESPN, True, None,
-                                    {c: ok for c in (Capability.LEAGUE_SETTINGS, Capability.TEAMS, Capability.ROSTERS)})
-
-    def _go(self, key, access):
-        self.seen.append(access.credential)
-        if self.fail_with is not None:
-            raise self.fail_with
-        return Provenance(Provider.ESPN, "espn:test", datetime(2026, 9, 1, 12))
-
-    def fetch_settings(self, key, access):
-        prov = self._go(key, access)
-        lineup = LineupRules((LineupSlot("QB", 1, SlotKind.STARTER, frozenset({"QB"}), "QB"),))
-        return Sourced(LeagueSettings(key, "Owner League", 2, lineup, ScoringRules({"53": 1.0}, {"rec": 1.0}, ()),
-                                      WaiverSettings(None), TradeSettings(), PlayoffSettings(), None, False), prov)
-
-    def fetch_teams(self, key, access):
-        return Sourced([Team(key, "1", "Team 1", ("espn:sha256:abc",)), Team(key, "2", "Team 2", ())],
-                       self._go(key, access))
-
-    def fetch_rosters(self, key, access):
-        entry = RosterEntry(ProviderPlayerId(Provider.ESPN, "1"), SlotKind.STARTER, "QB", name="QB One", position="QB")
-        return Sourced([Roster(key, "1", (entry,)), Roster(key, "2", ())], self._go(key, access))
-
-    def _no(self, *a, **k):
-        raise NotImplementedError
-
-    discover_leagues = fetch_scoring = fetch_matchups = fetch_standings = _no
-    fetch_free_agents = fetch_transactions = fetch_projections = _no
-
-
-class Registry:
-    def __init__(self, espn):
-        self.espn = espn
-
-    def get_provider(self, provider):
-        if provider is Provider.ESPN:
-            return self.espn
-        raise ProviderUnavailable("not enabled")
-
-    def all_capabilities(self):
-        return [self.espn.capabilities()]
-
-
-@pytest.fixture
-def leaky(env):
-    from app.main import app
-    espn = LeakyEspn()
-    app.dependency_overrides[provider_registry] = lambda: Registry(espn)
-    yield espn, TestClient(app)
-    app.dependency_overrides.clear()
-
-
-def hdr(user, **kw):
-    return {"X-API-Key": API_KEY, HEADER: sign_user_assertion(user, SECRET, time.time(), **kw)}
-
-
-def dump_tenancy_db() -> str:
-    path = get_settings().tenancy_db_path
-    con = duckdb.connect(str(path), read_only=True)
-    try:
-        chunks = []
-        for (table,) in con.execute("SELECT table_name FROM duckdb_tables()").fetchall():
-            chunks.append(f"{table}: {con.execute(f'SELECT * FROM {table}').fetchall()!r}")
-        return "\n".join(chunks)
-    finally:
-        con.close()
 
 
 def assert_clean(text: str, where: str, extra=()):
@@ -293,127 +203,13 @@ def _chained():
         return err
 
 
-@pytest.mark.parametrize("label,make", FAILURES, ids=[f[0] for f in FAILURES])
-def test_a_failing_connect_leaks_no_credential_into_logs_responses_or_storage(leaky, caplog, label, make):
-    espn, client = leaky
-    caplog.set_level(logging.DEBUG)                                      # root logger, every level
-    ok = client.post("/v2/leagues", json={"provider": "espn", "external_league_id": "777", "season": 2026},
-                     headers=hdr("owner"))
-    assert ok.status_code == 201 and ok.json()["access"] == "owner_env"
-    assert isinstance(espn.seen[0], EspnCookies)                         # the owner's cookies really were in play
-    lid = ok.json()["league_id"]
-
-    espn.fail_with = make()
-    bad = client.post("/v2/leagues", json={"provider": "espn", "external_league_id": "777", "season": 2026},
-                      headers=hdr("owner"))
-    assert bad.status_code in (502, 503, 404), bad.text
-    assert_clean(bad.text, "the HTTP error response")
-    assert_clean(json.dumps(dict(bad.headers)), "the response headers")
-
-    view = client.get(f"/v2/leagues/{lid}", headers=hdr("owner")).json()
-    assert view["sync"]["status"] == "failed" and view["sync"]["last_error"]
-    assert_clean(json.dumps(view), "the league view")
-    stored = rows_last_error()
-    assert stored and all(len(e) <= 240 for e in stored)
-    assert_clean(" ".join(stored), "league_sync_status.last_error")
-    assert_clean(dump_tenancy_db(), "the tenancy database")
-    for path in ("", "/settings", "/teams"):
-        assert_clean(client.get(f"/v2/leagues/{lid}{path}", headers=hdr("owner")).text, f"GET league{path}")
-    assert_clean(client.get("/v2/leagues", headers=hdr("owner")).text, "league list")
-    assert_clean(client.get("/v2/providers", headers=hdr("owner")).text, "providers")
-
-    assert_clean(caplog.text, "captured logs")
-    for record in caplog.records:
-        assert_clean(record.getMessage(), f"log record {record.name}")
-        assert_clean(repr(record.args), "log record args")
-        assert record.exc_info is None or record.exc_info[1] is None, "an exception traceback was logged"
-        assert not record.exc_text, "a formatted traceback was logged"
-    assert any("league connect failed" in r.getMessage() for r in caplog.records), "the failure was not logged at all"
-
-
-def rows_last_error() -> list[str]:
-    con = duckdb.connect(str(get_settings().tenancy_db_path), read_only=True)
-    try:
-        return [r[0] for r in con.execute("SELECT last_error FROM league_sync_status WHERE last_error IS NOT NULL").fetchall()]
-    finally:
-        con.close()
-
-
-def test_a_user_who_is_not_connected_cannot_write_error_text_into_anyones_status(leaky):
-    espn, client = leaky
-    lid = client.post("/v2/leagues", json={"provider": "espn", "external_league_id": "777", "season": 2026},
-                      headers=hdr("owner")).json()["league_id"]
-    espn.fail_with = RuntimeError(f"stranger-controlled text espn_s2={FAKE_S2}")
-    # a stranger is not the owner: public access to a private league never reaches storage
-    r = client.post("/v2/leagues", json={"provider": "espn", "external_league_id": "777", "season": 2026},
-                    headers=hdr("mallory"))
-    assert r.status_code in (502, 503) and FAKE_S2 not in r.text
-    assert client.get(f"/v2/leagues/{lid}", headers=hdr("owner")).json()["sync"]["last_error"] is None
-    assert rows_last_error() == []
-
-
-def test_the_assertion_secret_api_key_and_headers_are_never_logged_or_stored(leaky, caplog):
-    espn, client = leaky
-    caplog.set_level(logging.DEBUG)
-    good = hdr("owner")
-    bad = {"X-API-Key": API_KEY, HEADER: good[HEADER][:-4] + "AAAA"}
-    expired = {"X-API-Key": API_KEY, HEADER: sign_user_assertion("owner", SECRET, time.time() - 5000)}
-    client.post("/v2/leagues", json={"provider": "espn", "external_league_id": "777", "season": 2026}, headers=good)
-    for headers in (bad, expired, {"X-API-Key": "wrong-key-value"}):
-        client.get("/v2/leagues", headers=headers)
-    blob = caplog.text + dump_tenancy_db()
-    for value in (good[HEADER], bad[HEADER], expired[HEADER], SECRET, API_KEY, "wrong-key-value"):
-        assert value not in blob
-        assert value.split(".")[-1] not in blob or len(value.split(".")[-1]) < 8
-
-
-@pytest.mark.parametrize("channel", ["body", "cookie header", "query", "header", "nested"])
-def test_user_supplied_cookies_are_rejected_or_ignored_in_every_channel(leaky, channel):
-    espn, client = leaky
-    payload = {"provider": "espn", "external_league_id": "777", "season": 2026}
-    kwargs: dict = {"headers": hdr("alice")}                              # Alice is NOT the owner
-    espn.fail_with = None
-    path = "/v2/leagues"
-    if channel == "body":
-        payload.update(espn_s2=FAKE_S2, SWID=FAKE_SWID)
-    elif channel == "nested":
-        payload.update(credentials={"espn_s2": FAKE_S2, "swid": FAKE_SWID})
-    elif channel == "cookie header":
-        kwargs["headers"]["Cookie"] = f"espn_s2={FAKE_S2}; SWID={FAKE_SWID}"
-    elif channel == "query":
-        path += f"?espn_s2={FAKE_S2}&swid={FAKE_SWID}"
-    else:
-        kwargs["headers"].update({"X-ESPN-S2": FAKE_S2, "X-ESPN-SWID": FAKE_SWID, "Authorization": f"Bearer {FAKE_BEARER}"})
-    r = client.post(path, json=payload, **kwargs)
-    if channel in ("body", "nested"):
-        assert r.status_code == 400, r.text                              # unknown fields are refused outright
-    else:
-        # ignored: Alice is not the owner, so her connect is a PUBLIC attempt on a private league
-        assert r.status_code == 422, r.text
-    assert_clean(r.text, f"the response ({channel})")
-    assert all(cred is None for cred in espn.seen if cred is not None) or not espn.seen
-    assert not any(isinstance(cred, EspnCookies) for cred in espn.seen), "user input reached the ESPN client as credentials"
-    assert_clean(dump_tenancy_db() if get_settings().tenancy_db_path.exists() else "", "the tenancy database")
-    assert client.get("/v2/leagues", headers=hdr("alice")).json() == {"leagues": []}
-
-
-def test_the_owner_cookies_come_only_from_the_server_environment_and_only_for_the_owner(leaky):
-    espn, client = leaky
-    client.post("/v2/leagues", json={"provider": "espn", "external_league_id": "777", "season": 2026}, headers=hdr("owner"))
-    cookies = espn.seen[0]
-    assert isinstance(cookies, EspnCookies) and cookies.espn_s2 == FAKE_S2 and cookies.swid == FAKE_SWID
-    espn.seen.clear()
-    client.post("/v2/leagues", json={"provider": "espn", "external_league_id": "778", "season": 2026}, headers=hdr("alice"))
-    assert not any(isinstance(c, EspnCookies) for c in espn.seen)
-
-
 # ---- 3. repr / str / exception chains ---------------------------------------------------------------
 
 def test_credential_objects_never_reveal_their_values(env):
     cookies = EspnCookies(FAKE_S2, FAKE_SWID)
     secret = Secret(FAKE_TOKEN)
-    access = LeagueAccess(AccessMethod.OWNER_ENV, cookies)
-    holders = [cookies, secret, access, LeagueAccess(AccessMethod.OWNER_ENV, secret), [cookies], {"c": cookies},
+    access = LeagueAccess(AccessMethod.COOKIES, cookies)
+    holders = [cookies, secret, access, LeagueAccess(AccessMethod.COOKIES, secret), [cookies], {"c": cookies},
                (access, secret)]
     for obj in holders:
         for text in (repr(obj), str(obj), f"{obj}", f"{obj!r}", "%s" % (obj,), "%r" % (obj,), format(obj, ""), ascii(obj)):
@@ -430,24 +226,7 @@ def test_credential_objects_never_reveal_their_values(env):
     assert not hasattr(cookies, "__dict__") and not hasattr(secret, "__dict__")
     with pytest.raises(AttributeError):
         cookies.espn_s2 = "x"                                             # type: ignore[misc]
-    assert OwnerEnvCredentials().for_owner(Principal("owner"), Provider.ESPN).espn_s2 == FAKE_S2   # the one way out
-
-
-def test_a_license_to_inspect_a_context_does_not_expose_credentials(env, tmp_path):
-    store = TenancyStore(tmp_path / "s.duckdb", capabilities=lambda: None)
-    ctx = store.connect(Principal("owner"), LeagueKey(Provider.ESPN, "777", 2026), AccessMethod.OWNER_ENV, name="L",
-                        is_public=False, data_origin="live")
-    assert_clean(repr(ctx) + str(ctx) + repr(ctx.freshness) + repr(ctx.principal), "LeagueContext repr")
-    assert_clean(dump_tenancy_db_at(store.path), "the store file")
-
-
-def dump_tenancy_db_at(path) -> str:
-    con = duckdb.connect(str(path), read_only=True)
-    try:
-        return "\n".join(f"{t}: {con.execute(f'SELECT * FROM {t}').fetchall()!r}"
-                         for (t,) in con.execute("SELECT table_name FROM duckdb_tables()").fetchall())
-    finally:
-        con.close()
+    assert cookies.espn_s2 == FAKE_S2 and cookies.as_cookies() == {"espn_s2": FAKE_S2, "SWID": FAKE_SWID}  # the one way out
 
 
 def _chain(err: BaseException):
@@ -496,7 +275,7 @@ def _exploding_espn(make):
 
 
 def _owner_access():
-    return LeagueAccess(AccessMethod.OWNER_ENV, EspnCookies(FAKE_S2, FAKE_SWID))
+    return LeagueAccess(AccessMethod.COOKIES, EspnCookies(FAKE_S2, FAKE_SWID))
 
 
 @pytest.mark.parametrize("label,make", CLASSIFIED, ids=[f[0] for f in CLASSIFIED])
@@ -580,3 +359,43 @@ def test_sec7_settings_repr_does_not_print_credentials(env):
     text = repr(get_settings()) + str(get_settings())
     for secret in (FAKE_S2, FAKE_SWID, API_KEY, SECRET):
         assert secret not in text
+
+
+# ---- 4. control plane: tokens, DSN, public keys, envelopes ------------------------------------------
+
+def test_a_bearer_token_is_never_logged_or_echoed(env, caplog):
+    """A rejected Supabase token: the 401 body is fixed text and the token appears in no log record."""
+    import jwt as pyjwt
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    import app.control_plane.jwt_auth as jwt_auth
+    from app.main import app
+    env.setenv("SUPABASE_URL", "https://example-project.supabase.co")
+    env.delenv("FANTASY_API_KEY")
+
+    def unreachable(url):
+        raise OSError(f"jwks fetch failed for {url}")
+
+    env.setattr(jwt_auth, "jwks_client", unreachable)
+    bad = pyjwt.encode({"sub": "00000000-0000-4000-8000-000000000000", "aud": "authenticated", "exp": 2_000_000_000},
+                       ec.generate_private_key(ec.SECP256R1()), algorithm="ES256", headers={"kid": "k"})
+    with caplog.at_level(logging.DEBUG):
+        r = TestClient(app).get("/v2/providers", headers={"Authorization": f"Bearer {bad}"})
+    assert r.status_code == 401 and r.json() == {"detail": "Invalid or expired session."}
+    assert bad not in caplog.text and bad[-30:] not in caplog.text and bad not in r.text
+
+
+def test_the_dsn_and_public_keys_are_absent_from_settings_repr(env):
+    env.setenv("CREDENTIALS_PUBKEY_V1", "-----BEGIN PUBLIC KEY-----\nMIIBfakefakefake\n-----END PUBLIC KEY-----")
+    text = repr(get_settings()) + str(get_settings())
+    assert SECRET not in text and "BEGIN PUBLIC KEY" not in text and "db.example.invalid" not in text
+
+
+def test_an_encrypted_credential_reveals_nothing(env):
+    from app.control_plane.credential_crypto import PublicKeyring, generate_keypair
+    enc = PublicKeyring({"v1": generate_keypair()[1]}).encrypt(
+        {"espn_s2": FAKE_S2, "swid": FAKE_SWID}, league_id="lg_" + "a" * 24,
+        credential_id="0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f", owner_user_id="11111111-1111-4111-8111-111111111111")
+    for text in (repr(enc), str(enc), f"{enc}"):
+        assert_clean(text, "EncryptedCredential repr")
+        assert enc.ciphertext.hex() not in text and enc.wrapped_data_key.hex()[:32] not in text
