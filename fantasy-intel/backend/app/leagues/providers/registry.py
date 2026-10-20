@@ -26,7 +26,7 @@ def _signature(provider: Provider) -> tuple:
     if provider is Provider.SLEEPER:
         return (provider, str(getattr(s, "sleeper_source", "disabled") or "disabled").strip().lower())
     if provider is Provider.ESPN:
-        return (provider, bool(getattr(s, "espn_public_import_enabled", False)), bool(s.has_espn_credentials))
+        return (provider, bool(getattr(s, "espn_public_import_enabled", False)), bool(s.credential_public_keys))
     if provider is Provider.YAHOO:
         return (provider, bool((getattr(s, "yahoo_client_id", None) or "").strip()))
     raise ValueError(f"no adapter for provider {provider!r}")
@@ -38,7 +38,7 @@ def _build(provider: Provider, sig: tuple) -> LeagueProvider:
         return SleeperProvider(source=sig[1])
     if provider is Provider.ESPN:
         from .espn import EspnProvider
-        return EspnProvider(public_import_enabled=sig[1], owner_credentials_configured=sig[2])
+        return EspnProvider(public_import_enabled=sig[1], private_access_enabled=sig[2])
     from .yahoo import YahooProvider
     return YahooProvider(client_id="present" if sig[1] else "", _use_settings=False)
 

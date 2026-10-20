@@ -14,6 +14,10 @@ dependencies = [
     "python-dotenv>=1.0",
     "numpy>=2.4.6",
     "requests>=2.31",
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
+    "pyjwt>=2.9",
+    "cryptography>=43",
 ]
 
 [dependency-groups]

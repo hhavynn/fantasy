@@ -2,12 +2,13 @@
 
 ESPN has no documented public fantasy API and no third-party authorization (no OAuth). This adapter is
 therefore enabled only for the two cases this deployment can defend:
-  (a) the deployment owner's own leagues, read with the owner's ESPN session cookies from the server
-      environment (`AccessMethod.OWNER_ENV`; the credential object exposes `espn_s2` / `swid`), and
+  (a) private leagues read with ESPN session cookies that a league member supplied with explicit consent,
+      decrypted only inside a sync job (`AccessMethod.COOKIES`; the credential object exposes `espn_s2` / `swid`;
+      see docs/multileague/ADR-0002), and
   (b) leagues ESPN serves without cookies (public leagues), only when ESPN_PUBLIC_IMPORT_ENABLED is on
       (`AccessMethod.PUBLIC`).
-Cookies are never collected from users, never stored here, never logged and never put in an error or
-repr. Every error message below is a fixed string; upstream exception text is dropped.
+This adapter never stores cookies, never logs them and never puts them in an error or repr. Every error message
+below is a fixed string; upstream exception text is dropped.
 
 Raw access is injectable: `client_factory(key, access)` returns an object with the methods of
 `app.espn.client.EspnClient` (`league()`, `transactions(week)`, `player_pool(period)`,
@@ -39,10 +40,10 @@ from .base import (FreeAgent, LeagueAccess, LeagueNotFound, LeagueProvider, Leag
                    ProviderUnavailable, Standing, Transaction)
 
 DISABLED_REASON = (
-    "ESPN has no documented public fantasy API and no third-party authorization. Private leagues need the "
-    "owner's espn_s2/SWID session cookies, which this service does not collect from users. ESPN import is "
-    "available only for the deployment owner's own league (server-side credentials) or, when "
-    "ESPN_PUBLIC_IMPORT_ENABLED is set, for leagues ESPN serves without credentials.")
+    "ESPN has no documented public fantasy API and no third-party authorization. Private leagues need a league "
+    "member's espn_s2/SWID session cookies, stored encrypted and used only by sync jobs; that requires a credential "
+    "wrapping key (CREDENTIALS_PUBKEY_V<n>), which this deployment does not have. Public leagues need "
+    "ESPN_PUBLIC_IMPORT_ENABLED.")
 
 T = TypeVar("T")
 ClientFactory = Callable[[LeagueKey, LeagueAccess], Any]
@@ -269,14 +270,16 @@ def transactions_from(raw: dict, key: LeagueKey, now: datetime) -> list[Transact
 # ---- the adapter -------------------------------------------------------------------------------
 
 def _settings_flags() -> tuple[bool, bool]:
+    """(public import enabled, private access enabled). Private access is cookie-backed and needs the encrypted
+    credential path (ADR-0002): a configured wrapping key, not the legacy server-owned ESPN_S2/SWID."""
     from ...config import get_settings
     s = get_settings()
-    return bool(getattr(s, "espn_public_import_enabled", False)), bool(getattr(s, "has_espn_credentials", False))
+    return bool(getattr(s, "espn_public_import_enabled", False)), bool(getattr(s, "credential_public_keys", None))
 
 
 def _default_client(key: LeagueKey, access: LeagueAccess):
     from ...espn.client import EspnClient
-    cred = access.credential if access.method is AccessMethod.OWNER_ENV else None
+    cred = access.credential if access.method is AccessMethod.COOKIES else None
     return EspnClient(int(key.external_league_id), key.season, getattr(cred, "espn_s2", None),
                       getattr(cred, "swid", None))
 
@@ -286,16 +289,15 @@ class EspnProvider(LeagueProvider):
     data_origin = "live"
 
     def __init__(self, client_factory: ClientFactory | None = None, *, public_import_enabled: bool | None = None,
-                 owner_credentials_configured: bool | None = None, clock: Callable[[], datetime] | None = None):
-        flags = None if public_import_enabled is not None and owner_credentials_configured is not None else _settings_flags()
+                 private_access_enabled: bool | None = None, clock: Callable[[], datetime] | None = None):
+        flags = None if public_import_enabled is not None and private_access_enabled is not None else _settings_flags()
         self.public_import_enabled = public_import_enabled if public_import_enabled is not None else flags[0]
-        self.owner_credentials_configured = (owner_credentials_configured if owner_credentials_configured is not None
-                                             else flags[1])
+        self.private_access_enabled = private_access_enabled if private_access_enabled is not None else flags[1]
         self._factory = client_factory or _default_client
         self._clock = clock or (lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     def capabilities(self) -> ProviderCapabilities:
-        enabled = self.public_import_enabled or self.owner_credentials_configured
+        enabled = self.public_import_enabled or self.private_access_enabled
         return ProviderCapabilities(provider=Provider.ESPN, enabled=enabled,
                                     reason=None if enabled else DISABLED_REASON, states=_states())
 
@@ -305,10 +307,12 @@ class EspnProvider(LeagueProvider):
         if access.method is AccessMethod.PUBLIC:
             if not self.public_import_enabled:
                 raise ProviderUnavailable("ESPN public-league import is not enabled in this deployment")
-        elif access.method is AccessMethod.OWNER_ENV:
+        elif access.method is AccessMethod.COOKIES:
+            if not self.private_access_enabled:
+                raise ProviderUnavailable("Private ESPN leagues are not enabled in this deployment")
             cred = access.credential
             if not (getattr(cred, "espn_s2", None) and getattr(cred, "swid", None)):
-                raise ProviderUnavailable("The deployment owner's ESPN session is not configured")
+                raise ProviderUnavailable("No ESPN cookie credential was supplied for this league")
         else:
             raise ProviderUnavailable("ESPN offers no OAuth or other third-party authorization")
         return self._factory(key, access)
@@ -436,5 +440,7 @@ def _states() -> dict[Capability, CapabilityState]:
         Capability.FREE_AGENTS: CapabilityState(S.SUPPORTED, "kona_player_info with FREEAGENT status; players on waivers are not included."),
         Capability.TRANSACTIONS: CapabilityState(S.SUPPORTED, "mTransactions2; executed adds, drops and trades only."),
         Capability.PROJECTIONS: CapabilityState(S.SUPPORTED, "ESPN's own per-week projection under the league's scoring (kona_player_info)."),
-        Capability.PRIVATE_LEAGUES: CapabilityState(S.REQUIRES_AUTH, "owner deployment only; no approved third-party authorization method"),
+        Capability.PRIVATE_LEAGUES: CapabilityState(S.REQUIRES_AUTH, (
+            "needs a league member's ESPN cookies, given with consent, stored encrypted and used only by sync jobs; "
+            "ESPN has no approved third-party authorization method")),
     }

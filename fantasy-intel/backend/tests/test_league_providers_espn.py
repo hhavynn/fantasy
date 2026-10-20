@@ -40,7 +40,7 @@ def make(league=None, *, public=True, owner=False, **kw):
         built.append((key, access, client))
         return client
 
-    return EspnProvider(factory, public_import_enabled=public, owner_credentials_configured=owner), built
+    return EspnProvider(factory, public_import_enabled=public, private_access_enabled=owner), built
 
 
 def with_op_slot(count=1):
@@ -51,12 +51,12 @@ def with_op_slot(count=1):
 
 # ---------------------------------------------------------------------------- capabilities --
 
-def test_enabled_only_for_owner_credentials_or_the_public_flag():
-    assert not EspnProvider(public_import_enabled=False, owner_credentials_configured=False).capabilities().enabled
-    reason = EspnProvider(public_import_enabled=False, owner_credentials_configured=False).capabilities().reason
-    assert "no documented public fantasy API" in reason and "not collect" in reason
-    assert EspnProvider(public_import_enabled=True, owner_credentials_configured=False).capabilities().enabled
-    assert EspnProvider(public_import_enabled=False, owner_credentials_configured=True).capabilities().enabled
+def test_enabled_only_for_the_encrypted_credential_path_or_the_public_flag():
+    assert not EspnProvider(public_import_enabled=False, private_access_enabled=False).capabilities().enabled
+    reason = EspnProvider(public_import_enabled=False, private_access_enabled=False).capabilities().reason
+    assert "no documented public fantasy API" in reason and "CREDENTIALS_PUBKEY_V" in reason
+    assert EspnProvider(public_import_enabled=True, private_access_enabled=False).capabilities().enabled
+    assert EspnProvider(public_import_enabled=False, private_access_enabled=True).capabilities().enabled
 
 
 def test_espn_is_not_enabled_by_environment_defaults(clean_env):
@@ -220,7 +220,7 @@ def test_provenance_and_the_fixture_client_is_the_only_source():
 
 # ----------------------------------------------------------------------------- access paths --
 
-def test_owner_env_credential_reaches_the_factory_and_nowhere_else():
+def test_cookie_credential_reaches_the_factory_and_nowhere_else():
     p, built = make(public=False, owner=True)
     access = owner_access()
     results = [p.fetch_settings(KEY, access), p.fetch_teams(KEY, access), p.fetch_rosters(KEY, access),
@@ -231,19 +231,19 @@ def test_owner_env_credential_reaches_the_factory_and_nowhere_else():
     assert S2_SECRET not in repr(access) and SWID_SECRET not in repr(access)
 
 
-def test_public_access_needs_the_flag_and_owner_access_needs_a_credential():
+def test_public_access_needs_the_flag_and_cookie_access_needs_a_credential():
     from app.leagues.providers.base import ProviderUnavailable
 
     p, built = make(public=False, owner=True)
     with pytest.raises(ProviderUnavailable, match="public-league"):
         p.fetch_settings(KEY, PUBLIC)
-    with pytest.raises(ProviderUnavailable, match="owner's ESPN session"):
-        p.fetch_settings(KEY, LeagueAccess(AccessMethod.OWNER_ENV, object()))
+    with pytest.raises(ProviderUnavailable, match="No ESPN cookie credential was supplied"):
+        p.fetch_settings(KEY, LeagueAccess(AccessMethod.COOKIES, object()))
     assert built == []
 
 
 def test_espn_never_builds_a_client_without_cookies_for_owner_access():
-    """The default factory passes cookies only for OWNER_ENV; PUBLIC leagues are fetched cookie-less."""
+    """The default factory passes cookies only for COOKIES; PUBLIC leagues are fetched cookie-less."""
     from app.leagues.providers import espn as mod
 
     seen = {}
@@ -261,7 +261,7 @@ def test_espn_never_builds_a_client_without_cookies_for_owner_access():
         mod._default_client(KEY, owner_access())
         assert seen["s2"] == S2_SECRET and seen["swid"] == SWID_SECRET
         mod._default_client(KEY, LeagueAccess(AccessMethod.OAUTH, owner_access().credential))
-        assert seen["s2"] is None, "cookies only travel with OWNER_ENV"
+        assert seen["s2"] is None, "cookies only travel with COOKIES"
     finally:
         client_mod.EspnClient = orig
 
@@ -270,7 +270,7 @@ def test_unsupported_and_disabled_paths():
     p, _ = make()
     with pytest.raises(CapabilityUnavailable):
         p.discover_leagues(PUBLIC, user_handle="x", season=SEASON)
-    off = EspnProvider(public_import_enabled=False, owner_credentials_configured=False)
+    off = EspnProvider(public_import_enabled=False, private_access_enabled=False)
     with pytest.raises(CapabilityUnavailable):
         off.fetch_free_agents(KEY, PUBLIC)
     assert off.capabilities().state(Capability.PRIVATE_LEAGUES).note.startswith("ESPN has no documented")

@@ -529,6 +529,20 @@ merges `main`.
 **Refreshing the hosted data:** run the syncs, then `publish_snapshot.py`. No redeploy is needed;
 each instance switches to the new snapshot within 30 seconds.
 
+**Control plane (Supabase, multi-league platform).** The multi-league API (`/v2`) authorizes every request
+against a Supabase Postgres control plane (schema `fi`; [ADR-0002](../docs/multileague/ADR-0002-supabase-control-plane.md)).
+With `MULTILEAGUE_ENABLED` unset, which is today's setting, none of the variables below are read and Postgres is
+never opened. When the feature is switched on, the backend project gets:
+
+| variable                | value                                                                        |
+|-------------------------|------------------------------------------------------------------------------|
+| `MULTILEAGUE_ENABLED`   | `1`                                                                          |
+| `SUPABASE_URL`          | `https://<project-ref>.supabase.co`                                          |
+| `SUPABASE_DB_URL`       | the `fi_api` transaction-pooler connection string (never the service-role key) |
+| `CREDENTIALS_PUBKEY_V1` | the public half of `backend/scripts/gen_credential_keypair.py`'s output     |
+
+Migrations and the one-time role-password step: [`supabase/README.md`](supabase/README.md).
+
 ## Scheduled refresh (macOS launchd)
 
 ESPN projections are only stored as history (`espn_projection_history`) when a sync runs, and

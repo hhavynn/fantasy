@@ -20,3 +20,32 @@ def con(tmp_path):
     init_db(c)
     yield c
     c.close()
+
+
+# ---- control-plane Postgres (tests/pg_harness.py) ----------------------------------------------------
+
+from pg_harness import PgCluster, PgDatabase  # noqa: E402
+
+
+@pytest.fixture(scope="session")
+def pg_cluster():
+    cluster = PgCluster()
+    cluster.start()
+    try:
+        yield cluster
+    finally:
+        cluster.stop()
+
+
+@pytest.fixture(scope="session")
+def pg_db(pg_cluster):
+    db = PgDatabase(pg_cluster)
+    db.wait_ready()
+    db.create()
+    return db
+
+
+@pytest.fixture
+def pg(pg_db):
+    pg_db.reset()
+    return pg_db
