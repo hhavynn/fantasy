@@ -3080,6 +3080,2421 @@ git add fantasy-intel/scripts/sync_drain.py fantasy-intel/scripts/audit_drain_lo
 git commit -m "Phase 3 task 9: drain CLI, sync-drain workflow (schedule + dispatch, off by default) and the public-log audit"
 ```
 
+
+### Task 10: Connect functions
+
+**Files:**
+- Create: `fantasy-intel/supabase/migrations/20261021130000_connect_flows.sql`
+- Create: `fantasy-intel/supabase/down/20261021130000_connect_flows.sql`
+- Create: `fantasy-intel/backend/tests/test_connect_functions.py`
+
+**Interfaces:**
+- Produces (SECURITY DEFINER, ensure_app_user first, then the league): fi.import_public_league(provider, external_id, season, name) -> text; fi.connect_private_league(provider, external_id, season, name, owns_team) -> text; fi.start_private_sync(league_id); fi.request_sync(league_id) -> uuid | NULL; fi.request_probe(league_id) -> boolean (anon too; only the API sees it); fi.delete_league(league_id). Internal: fi.check_league_quota (20 registrations per account per day), fi.queue_initial.
+
+- [ ] **Step 1: Write the failing tests**
+
+`fantasy-intel/backend/tests/test_connect_functions.py`:
+
+```python
+"""Phase 3b Postgres functions: public import, private connect, the first private sync, manual refresh, probe on
+expiry, admin delete (supabase/migrations/20261021130000_connect_flows.sql)."""
+import uuid
+
+import pytest
+from psycopg.errors import InsufficientPrivilege, RaiseException
+
+from cp_seed import U1, U2, U3, as_role, seed_league, seed_membership, seed_snapshot, seed_user
+
+CT, NONCE, WRAPPED = b"\x01" * 48, b"\x02" * 12, b"\x03" * 384
+IMPORT = "SELECT fi.import_public_league('espn', %s, 2026, 'Name')"
+CONNECT = "SELECT fi.connect_private_league('espn', %s, 2026, 'Name', %s)"
+
+
+def call(con, role, uid, sql, params=()):
+    with as_role(con, role, uid) as c:
+        return c.execute(sql, params).fetchall()
+
+
+def refused(con, role, uid, sql, params=(), match=None):
+    with pytest.raises((RaiseException, InsufficientPrivilege), match=match):
+        call(con, role, uid, sql, params)
+
+
+@pytest.fixture
+def users(pg):
+    with pg.connect() as su:
+        for u in (U1, U2, U3):
+            seed_user(su, u)
+        su.commit()
+
+
+def jobs(pg, lid):
+    with pg.connect() as su:
+        return su.execute("SELECT kind, status FROM fi.sync_jobs WHERE league_id = %s ORDER BY created_at", [lid]).fetchall()
+
+
+def test_import_registers_once_pins_and_queues_one_first_sync(pg, users):
+    with pg.connect(user="fi_api") as con:
+        a = call(con, "authenticated", U1, IMPORT, ["123"])[0][0]
+        b = call(con, "authenticated", U2, IMPORT, ["123"])[0][0]
+        refused(con, "anon", None, IMPORT, ["124"])
+    assert a == b and a.startswith("lg_")
+    assert jobs(pg, a) == [("initial", "queued")]
+    with pg.connect() as su:
+        assert su.execute("SELECT count(*) FROM fi.league_pins WHERE league_id = %s", [a]).fetchone() == (2,)
+        assert su.execute("SELECT visibility, visibility_checked_at > now() - interval '1 minute' FROM fi.leagues "
+                          "WHERE id = %s", [a]).fetchone() == ("public", True)
+
+
+def test_a_league_connected_privately_is_never_imported_as_public(pg, users):
+    with pg.connect(user="fi_api") as con:
+        call(con, "authenticated", U1, CONNECT, ["555", True])
+        refused(con, "authenticated", U2, IMPORT, ["555"], match="league_unavailable")
+
+
+def test_import_wakes_a_dormant_league(pg, users):
+    with pg.connect() as su:
+        lid = seed_league(su, external_id="777", status="dormant")
+        su.execute("UPDATE fi.leagues SET objects_purged_at = now() WHERE id = %s", [lid])
+        su.commit()
+    with pg.connect(user="fi_api") as con:
+        call(con, "authenticated", U1, IMPORT, ["777"])
+    with pg.connect() as su:
+        assert su.execute("SELECT status, objects_purged_at FROM fi.leagues WHERE id = %s", [lid]).fetchone() == ("active", None)
+    assert jobs(pg, lid) == [("initial", "queued")], "purged: no version left, so a first sync"
+
+
+def test_imports_are_capped_per_account_per_day(pg, users):
+    with pg.connect(user="fi_api") as con:
+        for n in range(20):
+            call(con, "authenticated", U1, IMPORT, [str(1000 + n)])
+        refused(con, "authenticated", U1, IMPORT, ["2000"], match="league_quota")
+        call(con, "authenticated", U2, IMPORT, ["2000"])
+
+
+def test_private_connect_makes_the_first_user_admin_and_later_owners_viewers(pg, users):
+    with pg.connect(user="fi_api") as con:
+        lid = call(con, "authenticated", U1, CONNECT, ["888", False])[0][0]
+        assert call(con, "authenticated", U2, CONNECT, ["888", True])[0][0] == lid
+        refused(con, "authenticated", U3, CONNECT, ["888", False], match="not_a_league_member")
+    with pg.connect() as su:
+        roles = dict(su.execute("SELECT user_id::text, role FROM fi.league_memberships WHERE league_id = %s", [lid]).fetchall())
+    assert roles == {U1: "admin", U2: "viewer"}
+
+
+def test_private_connect_refuses_a_public_league(pg, users):
+    with pg.connect(user="fi_api") as con:
+        call(con, "authenticated", U1, IMPORT, ["999"])
+        refused(con, "authenticated", U2, CONNECT, ["999", True], match="league_public")
+
+
+def test_the_first_private_sync_needs_membership_and_a_live_credential(pg, users):
+    with pg.connect(user="fi_api") as con:
+        lid = call(con, "authenticated", U1, CONNECT, ["4321", False])[0][0]
+        refused(con, "authenticated", U1, "SELECT fi.start_private_sync(%s)", [lid], match="no_credential")
+        call(con, "authenticated", U1, "SELECT fi.store_credential(%s, %s, %s, %s, %s, 'v1')",
+             [str(uuid.uuid4()), lid, CT, NONCE, WRAPPED])
+        refused(con, "authenticated", U2, "SELECT fi.start_private_sync(%s)", [lid], match="league_unavailable")
+        call(con, "authenticated", U1, "SELECT fi.start_private_sync(%s)", [lid])
+        call(con, "authenticated", U1, "SELECT fi.start_private_sync(%s)", [lid])
+    assert jobs(pg, lid) == [("initial", "queued")]
+
+
+def test_manual_refresh_is_for_members_or_public_and_at_most_every_fifteen_minutes(pg, users):
+    with pg.connect() as su:
+        pub, priv = seed_league(su), seed_league(su, visibility="private")
+        seed_membership(su, U1, priv, "viewer")
+        su.commit()
+    with pg.connect(user="fi_api") as con:
+        assert call(con, "authenticated", U2, "SELECT fi.request_sync(%s)::text", [pub])[0][0]
+        assert call(con, "authenticated", U3, "SELECT fi.request_sync(%s)::text", [pub])[0][0] is None, "already queued"
+        refused(con, "authenticated", U2, "SELECT fi.request_sync(%s)", [priv], match="league_unavailable")
+        assert call(con, "authenticated", U1, "SELECT fi.request_sync(%s)::text", [priv])[0][0]
+        refused(con, "anon", None, "SELECT fi.request_sync(%s)", [pub])
+    with pg.connect() as su:
+        su.execute("UPDATE fi.sync_jobs SET status = 'succeeded' WHERE league_id = %s", [pub])
+        su.commit()
+    with pg.connect(user="fi_api") as con:
+        assert call(con, "authenticated", U2, "SELECT fi.request_sync(%s)::text", [pub])[0][0] is None, "ran < 15 min ago"
+
+
+def test_an_expired_public_league_is_probed_once_per_five_minutes(pg):
+    with pg.connect() as su:
+        expired, fresh, private = (seed_league(su, checked_at="25 hours"), seed_league(su),
+                                   seed_league(su, visibility="private", checked_at="25 hours"))
+        su.commit()
+    with pg.connect(user="fi_api") as con:
+        queued = [call(con, "anon", None, "SELECT fi.request_probe(%s)", [lid])[0][0]
+                  for lid in (expired, expired, fresh, private, "lg_" + "z" * 24)]
+    assert queued == [True, False, False, False, False]
+    assert jobs(pg, expired) == [("probe", "queued")]
+    assert jobs(pg, fresh) == [] and jobs(pg, private) == []
+
+
+def test_only_an_admin_deletes_and_only_a_private_league(pg, users):
+    with pg.connect() as su:
+        priv, pub = seed_league(su, visibility="private"), seed_league(su)
+        seed_membership(su, U1, priv, "admin")
+        seed_membership(su, U2, priv, "viewer")
+        seed_membership(su, U1, pub, "admin")
+        su.commit()
+    with pg.connect(user="fi_api") as con:
+        refused(con, "authenticated", U2, "SELECT fi.delete_league(%s)", [priv], match="not_admin")
+        refused(con, "authenticated", U1, "SELECT fi.delete_league(%s)", [pub], match="league_public")
+        call(con, "authenticated", U1, "SELECT fi.delete_league(%s)", [priv])
+    with pg.connect() as su:
+        assert su.execute("SELECT deleted_at IS NOT NULL FROM fi.leagues WHERE id = %s", [priv]).fetchone() == (True,)
+        assert su.execute("SELECT count(*) FROM fi.audit_log WHERE action = 'league.delete'").fetchone() == (1,)
+
+
+def test_queue_initial_is_not_callable_by_request_roles(pg, users):
+    with pg.connect() as su:
+        lid = seed_league(su)
+        seed_snapshot(su, lid)
+        su.commit()
+    with pg.connect(user="fi_api") as con:
+        refused(con, "authenticated", U1, "SELECT fi.queue_initial(%s)", [lid])
+
+
+@pytest.mark.parametrize("fn", ["import_public_league", "connect_private_league", "start_private_sync", "request_sync",
+                                "delete_league"])
+def test_new_functions_lock_the_account_before_the_league(pg, fn):
+    with pg.connect() as con:
+        src = con.execute("SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+                          "WHERE n.nspname = 'fi' AND p.proname = %s", [fn]).fetchone()[0]
+    body = " ".join(src.split())
+    assert body.find("ensure_app_user") < body.find("FROM fi.leagues"), fn
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd fantasy-intel/backend && uv run pytest tests/test_connect_functions.py -q
+```
+Expected: FAIL (functions do not exist).
+
+- [ ] **Step 3: Implement**
+
+`fantasy-intel/supabase/migrations/20261021130000_connect_flows.sql`:
+
+```sql
+-- Phase 3b: registering leagues and asking for syncs, from the signed-in user's request (spec §2, §3.2).
+-- The API decides what it can verify (the league's visibility from an anonymous fetch, the caller's cookies from one
+-- authenticated fetch) before calling these; each function re-checks auth.uid() and the league's state under lock.
+-- Lock order everywhere: the account (ensure_app_user), the app user, the league, then the league's own rows.
+-- Idempotent. Down-migration: supabase/down/20261021130000_connect_flows.sql.
+
+CREATE INDEX IF NOT EXISTS audit_log_actor_action ON fi.audit_log (actor_user_id, action, at DESC);
+
+-- 20 registrations per account per day: a public import or private connect queues provider work.
+CREATE OR REPLACE FUNCTION fi.check_league_quota(p_user uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = '' AS $$
+BEGIN
+  IF (SELECT count(*) FROM fi.audit_log a WHERE a.actor_user_id = p_user AND a.action IN ('league.import', 'league.connect')
+      AND a.at > now() - interval '1 day') >= 20 THEN
+    RAISE EXCEPTION 'league_quota';
+  END IF;
+END $$;
+
+-- Internal: the first sync of a league that has no published version yet (no grant to request roles).
+CREATE OR REPLACE FUNCTION fi.queue_initial(p_league_id text) RETURNS void LANGUAGE sql SECURITY DEFINER
+SET search_path = '' AS $$
+  INSERT INTO fi.sync_jobs (league_id, kind, idempotency_key)
+  SELECT p_league_id, 'initial', 'initial:' || p_league_id
+  WHERE NOT EXISTS (SELECT 1 FROM fi.league_snapshots s WHERE s.league_id = p_league_id)
+  ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL AND status IN ('queued', 'running') DO NOTHING
+$$;
+
+-- Public import: the API has just read the league without cookies. Registers it once (unique provider/id/season),
+-- pins it for the caller and queues its first sync. A league registered privately is never imported as public.
+CREATE OR REPLACE FUNCTION fi.import_public_league(p_provider text, p_external_id text, p_season integer, p_name text)
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE v uuid := fi.ensure_app_user(); v_id text; v_vis text; v_deleted timestamptz;
+BEGIN
+  PERFORM fi.check_league_quota(v);
+  INSERT INTO fi.leagues (id, provider, external_id, season, name, visibility, visibility_checked_at)
+  VALUES ('lg_' || replace(gen_random_uuid()::text, '-', ''), p_provider, p_external_id, p_season, left(p_name, 200),
+          'public', now())
+  ON CONFLICT (provider, external_id, season) DO NOTHING;
+  SELECT l.id, l.visibility, l.deleted_at INTO v_id, v_vis, v_deleted FROM fi.leagues l
+  WHERE l.provider = p_provider AND l.external_id = p_external_id AND l.season = p_season FOR UPDATE;
+  IF v_vis <> 'public' OR v_deleted IS NOT NULL THEN RAISE EXCEPTION 'league_unavailable'; END IF;
+  -- A re-import wakes a dormant league (its next sync rebuilds purged objects) and counts as a fresh check.
+  UPDATE fi.leagues SET visibility_checked_at = now(),
+         status = CASE WHEN status = 'dormant' THEN 'active' ELSE status END,
+         objects_purged_at = CASE WHEN status = 'dormant' THEN NULL ELSE objects_purged_at END
+  WHERE id = v_id;
+  INSERT INTO fi.league_pins (user_id, league_id) VALUES (v, v_id) ON CONFLICT DO NOTHING;
+  PERFORM fi.queue_initial(v_id);
+  PERFORM fi.audit(v, 'league.import', 'league', v_id, '{}'::jsonb);
+  RETURN v_id;
+END $$;
+
+-- Private connect: the API has validated the caller's cookies with one fetch (and seen that the league is not
+-- public). A new league makes the caller its admin; an existing private league admits the caller as a viewer only
+-- when their own cookies show them owning a team in it (p_owns_team, checked by the API), never as admin. The
+-- credential is stored next (fi.store_credential) in the same transaction, then fi.queue_initial.
+CREATE OR REPLACE FUNCTION fi.connect_private_league(p_provider text, p_external_id text, p_season integer, p_name text,
+                                                     p_owns_team boolean)
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE v uuid := fi.ensure_app_user(); v_id text; v_vis text; v_deleted timestamptz; v_new boolean;
+BEGIN
+  PERFORM fi.check_league_quota(v);
+  INSERT INTO fi.leagues (id, provider, external_id, season, name, visibility, visibility_checked_at)
+  VALUES ('lg_' || replace(gen_random_uuid()::text, '-', ''), p_provider, p_external_id, p_season, left(p_name, 200),
+          'private', now())
+  ON CONFLICT (provider, external_id, season) DO NOTHING
+  RETURNING true INTO v_new;
+  SELECT l.id, l.visibility, l.deleted_at INTO v_id, v_vis, v_deleted FROM fi.leagues l
+  WHERE l.provider = p_provider AND l.external_id = p_external_id AND l.season = p_season FOR UPDATE;
+  IF v_deleted IS NOT NULL THEN RAISE EXCEPTION 'league_unavailable'; END IF;
+  IF coalesce(v_new, false) THEN
+    INSERT INTO fi.league_memberships (user_id, league_id, role) VALUES (v, v_id, 'admin');
+  ELSIF v_vis = 'public' THEN
+    RAISE EXCEPTION 'league_public';
+  ELSIF NOT fi.is_member(v_id) THEN
+    IF NOT p_owns_team THEN RAISE EXCEPTION 'not_a_league_member'; END IF;
+    INSERT INTO fi.league_memberships (user_id, league_id, role) VALUES (v, v_id, 'viewer')
+    ON CONFLICT (user_id, league_id) DO UPDATE SET revoked_at = NULL, role = 'viewer';
+  END IF;
+  PERFORM fi.audit(v, 'league.connect', 'league', v_id, jsonb_build_object('new', coalesce(v_new, false)));
+  RETURN v_id;
+END $$;
+
+-- The last step of a private connect, after fi.store_credential in the same transaction: a member of a league with a
+-- live credential queues its first sync.
+CREATE OR REPLACE FUNCTION fi.start_private_sync(p_league_id text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = '' AS $$
+BEGIN
+  PERFORM fi.ensure_app_user();
+  PERFORM 1 FROM fi.leagues l WHERE l.id = p_league_id AND l.deleted_at IS NULL FOR UPDATE;
+  IF NOT FOUND OR NOT fi.is_member(p_league_id) THEN RAISE EXCEPTION 'league_unavailable'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM fi.league_credentials c WHERE c.league_id = p_league_id AND c.status IN ('active', 'suspect')) THEN
+    RAISE EXCEPTION 'no_credential';
+  END IF;
+  PERFORM fi.queue_initial(p_league_id);
+END $$;
+
+-- A member (private) or anyone signed in (public) asks for a refresh: at most one manual sync per league per 15 min.
+-- Returns the queued job's id, or NULL when one is already queued or ran recently.
+CREATE OR REPLACE FUNCTION fi.request_sync(p_league_id text) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = '' AS $$
+DECLARE v uuid := fi.ensure_app_user(); v_vis text; v_status text; v_job uuid;
+BEGIN
+  SELECT l.visibility, l.status INTO v_vis, v_status FROM fi.leagues l
+  WHERE l.id = p_league_id AND l.deleted_at IS NULL FOR UPDATE;
+  IF v_vis IS NULL OR (v_vis = 'private' AND NOT fi.is_member(p_league_id)) THEN RAISE EXCEPTION 'league_unavailable'; END IF;
+  -- stale (the cookies stopped working) or unavailable (gone on the provider): a refresh cannot help
+  IF v_status NOT IN ('active', 'dormant') THEN RAISE EXCEPTION 'sync_paused'; END IF;
+  IF EXISTS (SELECT 1 FROM fi.sync_jobs j WHERE j.league_id = p_league_id AND j.kind = 'manual'
+             AND j.created_at > now() - interval '15 minutes') THEN
+    RETURN NULL;
+  END IF;
+  UPDATE fi.leagues SET status = 'active' WHERE id = p_league_id AND status = 'dormant';
+  INSERT INTO fi.sync_jobs (league_id, kind, idempotency_key) VALUES (p_league_id, 'manual', 'manual:' || p_league_id)
+  ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL AND status IN ('queued', 'running') DO NOTHING
+  RETURNING id INTO v_job;
+  PERFORM fi.audit(v, 'league.sync_requested', 'league', p_league_id, '{}'::jsonb);
+  RETURN v_job;
+END $$;
+
+-- Spec §2: the first viewer after a public league's visibility check expired triggers a probe (at most one per
+-- league per 5 minutes). True when a probe was queued; only the API sees the answer (it then starts the drain), the
+-- caller always gets the same 404.
+CREATE OR REPLACE FUNCTION fi.request_probe(p_league_id text) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = '' AS $$
+DECLARE v_job uuid;
+BEGIN
+  IF EXISTS (SELECT 1 FROM fi.leagues l WHERE l.id = p_league_id AND l.deleted_at IS NULL AND l.visibility = 'public'
+             AND (l.visibility_checked_at IS NULL OR l.visibility_checked_at < now() - interval '24 hours'))
+     AND NOT EXISTS (SELECT 1 FROM fi.sync_jobs j WHERE j.league_id = p_league_id AND j.kind = 'probe'
+                     AND j.created_at > now() - interval '5 minutes') THEN
+    INSERT INTO fi.sync_jobs (league_id, kind, idempotency_key) VALUES (p_league_id, 'probe', 'probe:' || p_league_id)
+    ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL AND status IN ('queued', 'running') DO NOTHING
+    RETURNING id INTO v_job;
+  END IF;
+  RETURN v_job IS NOT NULL;
+END $$;
+
+-- An admin deletes a private league: soft delete now, objects deleted 7 days later (fi.league_timers). Public
+-- leagues are platform-managed: users only unpin them.
+CREATE OR REPLACE FUNCTION fi.delete_league(p_league_id text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = '' AS $$
+DECLARE v uuid := fi.ensure_app_user(); v_vis text;
+BEGIN
+  SELECT l.visibility INTO v_vis FROM fi.leagues l WHERE l.id = p_league_id AND l.deleted_at IS NULL FOR UPDATE;
+  IF v_vis IS NULL OR NOT fi.is_admin(p_league_id) THEN RAISE EXCEPTION 'not_admin'; END IF;
+  IF v_vis <> 'private' THEN RAISE EXCEPTION 'league_public'; END IF;
+  UPDATE fi.leagues SET deleted_at = now() WHERE id = p_league_id;
+  PERFORM fi.audit(v, 'league.delete', 'league', p_league_id, '{}'::jsonb);
+END $$;
+
+REVOKE ALL ON FUNCTION fi.check_league_quota(uuid), fi.queue_initial(text),
+  fi.import_public_league(text, text, integer, text), fi.connect_private_league(text, text, integer, text, boolean),
+  fi.start_private_sync(text), fi.request_sync(text), fi.request_probe(text), fi.delete_league(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION fi.import_public_league(text, text, integer, text),
+  fi.connect_private_league(text, text, integer, text, boolean), fi.start_private_sync(text), fi.request_sync(text),
+  fi.delete_league(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION fi.request_probe(text) TO anon, authenticated;
+```
+
+`fantasy-intel/supabase/down/20261021130000_connect_flows.sql`:
+
+```sql
+-- Reverses 20261021130000_connect_flows.sql.
+
+DROP FUNCTION IF EXISTS fi.delete_league(text);
+DROP FUNCTION IF EXISTS fi.request_probe(text);
+DROP FUNCTION IF EXISTS fi.request_sync(text);
+DROP FUNCTION IF EXISTS fi.start_private_sync(text);
+DROP FUNCTION IF EXISTS fi.connect_private_league(text, text, integer, text, boolean);
+DROP FUNCTION IF EXISTS fi.import_public_league(text, text, integer, text);
+DROP FUNCTION IF EXISTS fi.queue_initial(text);
+DROP FUNCTION IF EXISTS fi.check_league_quota(uuid);
+DROP INDEX IF EXISTS fi.audit_log_actor_action;
+```
+
+- [ ] **Step 4: Run them and see them pass**
+
+```bash
+cd fantasy-intel/backend && uv run pytest tests/test_connect_functions.py -q
+```
+Expected: 16 passed.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add fantasy-intel/supabase/migrations/20261021130000_connect_flows.sql fantasy-intel/supabase/down/20261021130000_connect_flows.sql fantasy-intel/backend/tests/test_connect_functions.py
+git commit -m "Phase 3 task 10: connect functions (public import, private connect, first private sync, refresh, probe, delete)"
+```
+
+
+### Task 11: Connect API
+
+**Files:**
+- Create: `fantasy-intel/backend/app/api/connect.py`
+- Create: `fantasy-intel/backend/tests/test_connect_api.py`
+- Modify: `fantasy-intel/backend/app/control_plane/mutations.py`
+- Modify: `fantasy-intel/backend/app/config.py`
+- Modify: `fantasy-intel/backend/app/sync/espn_source.py`
+- Modify: `fantasy-intel/backend/app/api/leagues_v2.py`
+- Modify: `fantasy-intel/backend/app/api/league_scope.py`
+- Modify: `fantasy-intel/backend/app/main.py`
+- Modify: `fantasy-intel/backend/tests/test_v2_authorization_matrix.py`
+- Modify: `fantasy-intel/backend/tests/test_league_scope_audit.py`
+
+**Interfaces:**
+- Consumes: Task 10 functions through new mutations wrappers (import_public_league, connect_private_league, start_private_sync, request_sync, delete_league, request_probe, list_invites) and errors (LeagueUnavailable, LeaguePublic, LeagueQuota, NoCredential, NotLeagueOwner, SyncPaused); espn_source.read_league / league_teams (plain requests: the API has no espn_api).
+- Produces: routes POST /v2/leagues/import, POST /v2/leagues/connect, PUT|DELETE /v2/leagues/{lg}/credential, GET|POST /v2/leagues/{lg}/invites, DELETE /v2/leagues/{lg}/invites/{id}, POST /v2/invites/redeem, POST /v2/leagues/{lg}/sync, DELETE /v2/leagues/{lg}; nudge_probe(principal, league_id) on every 404; dispatch_drain() (workflow_dispatch, Actions: write token). Settings: multileague_connect_enabled (MULTILEAGUE_CONNECT_ENABLED), github_dispatch_token (GITHUB_DISPATCH_TOKEN).
+
+- [ ] **Step 1: Write the failing tests**
+
+`fantasy-intel/backend/tests/test_connect_api.py`:
+
+```python
+"""/v2 connect flows (Phase 3b): public import, private connect with cookies, the caller's credential, invites,
+refresh, delete and the probe on an expired public league. ESPN is a fake; the drain dispatch is recorded."""
+import json
+import uuid
+
+import pytest
+
+from app.control_plane.credential_crypto import EncryptedCredential, PrivateKeyring, generate_keypair
+from app.sync import espn_source
+from cp_seed import U1, U2, U3, seed_league, seed_membership, seed_user
+from test_leagues_api import bearer, env  # noqa: F401  (fixture)
+
+S2 = "AEB" + "s2cookievalue" * 4
+SWID = "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"
+OTHER_SWID = "{11111111-2222-3333-4444-555555555555}"
+PRIV, PUB = generate_keypair()
+
+
+def league_payload():
+    return {"id": 4242, "seasonId": 2026, "settings": {"name": "Secret League"},
+            "teams": [{"id": 1, "name": "Alpha", "owners": [SWID]}, {"id": 2, "name": "Bravo", "owners": [OTHER_SWID]}]}
+
+
+class FakeEspn:
+    def __init__(self):
+        self.anonymous = "public"
+        self.cookie_verdict = "ok"
+        self.reads = []
+
+    def probe(self, league_id, season):
+        return self.anonymous
+
+    def read_league(self, league_id, season, credential=None, *, views=("mSettings",), timeout=30):
+        self.reads.append({"league": league_id, "season": season, "cookies": dict(credential or {})})
+        if self.cookie_verdict != "ok":
+            return self.cookie_verdict, None
+        return "ok", league_payload()
+
+    league_teams = staticmethod(espn_source.league_teams)
+
+
+@pytest.fixture
+def espn():
+    return FakeEspn()
+
+
+@pytest.fixture
+def dispatched():
+    return []
+
+
+@pytest.fixture
+def client(env, monkeypatch, espn, dispatched):
+    from fastapi.testclient import TestClient
+
+    from app.api import connect
+    from app.main import app
+    monkeypatch.setenv("MULTILEAGUE_CONNECT_ENABLED", "1")
+    monkeypatch.setenv("CREDENTIALS_PUBKEY_V1", PUB)
+    monkeypatch.setattr(connect, "dispatch_drain", lambda: dispatched.append(1) or True)
+    app.dependency_overrides[connect.espn] = lambda: espn
+    app.dependency_overrides[connect.drain_dispatcher] = lambda: (lambda: dispatched.append(1) or True)
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def users(pg):
+    with pg.connect() as su:
+        for u in (U1, U2, U3):
+            seed_user(su, u)
+        su.commit()
+
+
+def one(pg, sql, params=()):
+    with pg.connect() as su:
+        return su.execute(sql, params).fetchone()
+
+
+COOKIES = {"espn_s2": S2, "swid": SWID, "consent": True}
+
+
+def test_everything_is_404_with_the_connect_flag_off(client, monkeypatch, users):
+    monkeypatch.delenv("MULTILEAGUE_CONNECT_ENABLED")
+    assert client.post("/v2/leagues/import", json={"league": "4242"}, headers=bearer(U1)).status_code == 404
+
+
+def test_a_public_league_is_imported_pinned_and_queued(client, pg, users, espn, dispatched):
+    r = client.post("/v2/leagues/import", json={"league": "https://fantasy.espn.com/football/league?leagueId=4242&seasonId=2026"},
+                    headers=bearer(U1))
+    assert r.status_code == 201, r.text
+    lid = r.json()["league_id"]
+    assert one(pg, "SELECT external_id, season, visibility FROM fi.leagues WHERE id = %s", [lid]) == ("4242", 2026, "public")
+    assert one(pg, "SELECT kind, status FROM fi.sync_jobs WHERE league_id = %s", [lid]) == ("initial", "queued")
+    assert one(pg, "SELECT count(*) FROM fi.league_pins WHERE league_id = %s", [lid]) == (1,)
+    assert dispatched == [1], "the drain is started once the job is committed"
+    assert espn.reads == [], "a public import never sends cookies"
+
+
+@pytest.mark.parametrize("verdict, status", [("private", 409), ("missing", 404), ("unknown", 503)])
+def test_import_answers_what_espn_said(client, users, espn, dispatched, verdict, status):
+    espn.anonymous = verdict
+    r = client.post("/v2/leagues/import", json={"league": "4242", "season": 2026}, headers=bearer(U1))
+    assert r.status_code == status
+    if verdict == "private":
+        assert r.json()["needs_cookies"] is True
+    assert dispatched == []
+
+
+def test_import_needs_sign_in_and_a_league_id(client, users):
+    assert client.post("/v2/leagues/import", json={"league": "4242"}).status_code == 401
+    assert client.post("/v2/leagues/import", json={"league": "not a league"}, headers=bearer(U1)).status_code == 422
+
+
+def test_a_private_connect_stores_encrypted_cookies_admin_and_the_owned_team(client, pg, users, espn, dispatched):
+    espn.anonymous = "private"
+    r = client.post("/v2/leagues/connect", json={"league": "4242", "season": 2026, **COOKIES}, headers=bearer(U1))
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert S2 not in r.text and "AAAAAAAA" not in r.text, "cookies are never echoed"
+    assert (body["visibility"], body["cookies"], body["team_id"]) == ("private", "stored", "1")
+    assert body["teams"] == [{"team_id": "1", "name": "Alpha"}, {"team_id": "2", "name": "Bravo"}]
+    lid = body["league_id"]
+    assert one(pg, "SELECT role FROM fi.league_memberships WHERE league_id = %s AND user_id = %s", [lid, U1]) == ("admin",)
+    assert one(pg, "SELECT team_external_id FROM fi.team_selections WHERE league_id = %s", [lid]) == ("1",)
+    assert one(pg, "SELECT kind FROM fi.sync_jobs WHERE league_id = %s", [lid]) == ("initial",)
+    row = one(pg, "SELECT id::text, ciphertext, nonce, aad_format, wrapped_data_key, wrap_key_version, owner_user_id::text "
+                  "FROM fi.league_credentials WHERE league_id = %s", [lid])
+    assert S2.encode() not in bytes(row[1])
+    enc = EncryptedCredential(bytes(row[1]), bytes(row[2]), row[3], bytes(row[4]), row[5])
+    assert PrivateKeyring({"v1": PRIV}).decrypt(enc, league_id=lid, credential_id=row[0], owner_user_id=row[6]) == \
+        {"espn_s2": S2, "swid": SWID}
+    assert espn.reads[0]["cookies"] == {"espn_s2": S2, "swid": SWID}
+    assert dispatched == [1]
+    assert one(pg, "SELECT count(*) FROM fi.audit_log WHERE meta::text LIKE %s", [f"%{S2[:12]}%"]) == (0,)
+
+
+def test_connecting_a_league_that_is_public_imports_it_and_drops_the_cookies(client, pg, users, espn):
+    r = client.post("/v2/leagues/connect", json={"league": "4242", **COOKIES}, headers=bearer(U1))
+    assert r.status_code == 201 and r.json()["cookies"] == "not_needed"
+    assert one(pg, "SELECT count(*) FROM fi.league_credentials") == (0,)
+    assert espn.reads == []
+
+
+def test_cookies_espn_refuses_store_nothing(client, pg, users, espn, dispatched):
+    espn.anonymous, espn.cookie_verdict = "private", "private"
+    r = client.post("/v2/leagues/connect", json={"league": "4242", **COOKIES}, headers=bearer(U1))
+    assert r.status_code == 400
+    assert one(pg, "SELECT count(*) FROM fi.leagues") == (0,) and dispatched == []
+
+
+@pytest.mark.parametrize("body", [
+    {"league": "4242", "espn_s2": S2, "swid": SWID},                       # no consent
+    {"league": "4242", "espn_s2": S2, "swid": "not-a-swid", "consent": True},
+    {"league": "4242", "espn_s2": ["list", S2], "swid": SWID, "consent": True},
+])
+def test_bad_input_is_refused_without_echoing_the_cookies(client, users, espn, body):
+    espn.anonymous = "private"
+    r = client.post("/v2/leagues/connect", json=body, headers=bearer(U1))
+    assert r.status_code == 422 and S2 not in r.text and "AAAAAAAA" not in r.text
+    r = client.post("/v2/leagues/connect", content=json.dumps(body)[:-3], headers={**bearer(U1), "content-type": "application/json"})
+    assert r.status_code == 422 and S2 not in r.text
+
+
+def test_a_second_owner_joins_as_viewer_without_replacing_the_credential(client, pg, users, espn, dispatched):
+    espn.anonymous = "private"
+    lid = client.post("/v2/leagues/connect", json={"league": "4242", **COOKIES}, headers=bearer(U1)).json()["league_id"]
+    # U2's cookies own team 2
+    r = client.post("/v2/leagues/connect", json={"league": "4242", "espn_s2": S2 + "x", "swid": OTHER_SWID,
+                                                 "consent": True}, headers=bearer(U2))
+    assert r.status_code == 201 and r.json()["cookies"] == "existing" and r.json()["team_id"] == "2"
+    assert one(pg, "SELECT role FROM fi.league_memberships WHERE league_id = %s AND user_id = %s", [lid, U2]) == ("viewer",)
+    assert one(pg, "SELECT owner_user_id::text FROM fi.league_credentials WHERE league_id = %s", [lid]) == (U1,)
+    assert one(pg, "SELECT count(*) FROM fi.sync_jobs WHERE league_id = %s", [lid]) == (1,)
+    # U3's cookies own no team: an invite is the way in
+    r = client.post("/v2/leagues/connect", json={"league": "4242", "espn_s2": S2,
+                                                 "swid": "{99999999-2222-3333-4444-555555555555}", "consent": True},
+                    headers=bearer(U3))
+    assert r.status_code == 403
+
+
+@pytest.fixture
+def private_league(pg, users):
+    with pg.connect() as su:
+        lid = seed_league(su, visibility="private", external_id="4242")
+        seed_membership(su, U1, lid, "admin")
+        seed_membership(su, U2, lid, "viewer")
+        su.commit()
+    return lid
+
+
+def test_invites_are_created_by_admins_redeemed_once_and_revocable(client, pg, private_league):
+    assert client.post(f"/v2/leagues/{private_league}/invites", headers=bearer(U2)).status_code == 403
+    r = client.post(f"/v2/leagues/{private_league}/invites", headers=bearer(U1))
+    assert r.status_code == 201
+    token, invite_id = r.json()["token"], r.json()["invite_id"]
+    listed = client.get(f"/v2/leagues/{private_league}/invites", headers=bearer(U1)).json()["invites"]
+    assert [i["invite_id"] for i in listed] == [invite_id] and token not in json.dumps(listed)
+    assert client.get(f"/v2/leagues/{private_league}", headers=bearer(U3)).status_code == 404
+    assert client.post("/v2/invites/redeem", json={"token": token}, headers=bearer(U3)).json() == {"league_id": private_league}
+    assert client.get(f"/v2/leagues/{private_league}", headers=bearer(U3)).json()["role"] == "viewer"
+    assert client.post("/v2/invites/redeem", json={"token": token}, headers=bearer(U3)).status_code == 404, "single use"
+    second = client.post(f"/v2/leagues/{private_league}/invites", headers=bearer(U1)).json()
+    assert client.delete(f"/v2/leagues/{private_league}/invites/{second['invite_id']}", headers=bearer(U1)).status_code == 204
+    with pg.connect() as su:
+        seed_user(su, "44444444-4444-4444-8444-444444444444")
+        su.commit()
+    assert client.post("/v2/invites/redeem", json={"token": second["token"]},
+                       headers=bearer("44444444-4444-4444-8444-444444444444")).status_code == 404
+
+
+def test_a_member_stores_and_removes_their_own_credential(client, pg, private_league, espn, dispatched):
+    r = client.put(f"/v2/leagues/{private_league}/credential", json=COOKIES, headers=bearer(U2))
+    assert r.status_code == 200 and S2 not in r.text
+    assert one(pg, "SELECT owner_user_id::text, status FROM fi.league_credentials") == (U2, "active")
+    assert client.put(f"/v2/leagues/{private_league}/credential", json=COOKIES, headers=bearer(U1)).status_code == 409
+    assert client.delete(f"/v2/leagues/{private_league}/credential", headers=bearer(U1)).status_code == 403
+    assert client.delete(f"/v2/leagues/{private_league}/credential", headers=bearer(U2)).status_code == 204
+    assert one(pg, "SELECT count(*) FROM fi.league_credentials") == (0,)
+
+
+def test_refresh_is_queued_once_and_a_stale_league_says_why(client, pg, private_league, dispatched):
+    assert client.post(f"/v2/leagues/{private_league}/sync", headers=bearer(U2)).json() == {"queued": True}
+    assert client.post(f"/v2/leagues/{private_league}/sync", headers=bearer(U2)).json() == {"queued": False}
+    assert dispatched == [1]
+    with pg.connect() as su:
+        su.execute("UPDATE fi.leagues SET status = 'stale' WHERE id = %s", [private_league])
+        su.commit()
+    r = client.post(f"/v2/leagues/{private_league}/sync", headers=bearer(U1))
+    assert r.status_code == 409 and "paused" in r.json()["detail"]
+
+
+def test_an_admin_deletes_a_private_league(client, pg, private_league):
+    assert client.delete(f"/v2/leagues/{private_league}", headers=bearer(U2)).status_code == 403
+    assert client.delete(f"/v2/leagues/{private_league}", headers=bearer(U1)).status_code == 204
+    assert client.get(f"/v2/leagues/{private_league}", headers=bearer(U1)).status_code == 404
+
+
+def test_a_404_on_an_expired_public_league_queues_one_probe_and_starts_the_drain(client, pg, users, dispatched):
+    with pg.connect() as su:
+        expired = seed_league(su, checked_at="25 hours")
+        su.commit()
+    for _ in range(3):
+        r = client.get(f"/v2/leagues/{expired}")
+        assert (r.status_code, r.json()) == (404, {"detail": "League not found."})
+    assert one(pg, "SELECT count(*) FROM fi.sync_jobs WHERE league_id = %s AND kind = 'probe'", [expired]) == (1,)
+    assert dispatched == [1]
+    assert client.get("/v2/leagues/lg_" + "n" * 24).status_code == 404 and dispatched == [1]
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd fantasy-intel/backend && uv run pytest tests/test_connect_api.py -q
+```
+Expected: FAIL (the routes do not exist).
+
+- [ ] **Step 3: Implement**
+
+`fantasy-intel/backend/app/api/connect.py`:
+
+```python
+"""Connect flows under /v2 (Phase 3b): import a public ESPN league, connect a private one with the caller's cookies,
+invites, the caller's credential, manual refresh, admin delete. Behind MULTILEAGUE_CONNECT_ENABLED (and
+MULTILEAGUE_ENABLED): with either off every route here is a plain 404.
+
+Every league route authorizes first (leagues_v2.league_tx). Cookies:
+  * are read from the request body by `secret_body`, which never echoes input in an error (FastAPI's 422 would);
+  * are checked with one GET of the league's own ESPN endpoint, then encrypted to the credential public key
+    (the API cannot decrypt them) and stored through fi.store_credential;
+  * are never logged, returned or kept in an exception message.
+After the request transaction committed work, a background task starts the sync drain with a fine-grained token
+that can only dispatch Actions (the job row exists whatever that call does).
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import uuid
+from typing import Any
+from urllib.parse import parse_qs, urlparse
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+
+from ..config import get_settings
+from .leagues_v2 import NOT_FOUND, REQUEST_TX, SIGN_IN, _json, _no_content, _signed_in, league_tx, require_enabled
+
+log = logging.getLogger(__name__)
+REPO = "hhavynn/fantasy"
+WORKFLOW = "sync-drain.yml"
+CONSENT = ("I understand these cookies give access to my ESPN account. They are stored encrypted, used only to read "
+           "this league, and stop working when I sign out of ESPN everywhere.")
+BAD_BODY = "The request body is not valid."
+ESPN_UNREACHABLE = "ESPN could not be reached. Try again in a few minutes."
+
+
+def require_connect_enabled() -> None:
+    if not get_settings().multileague_connect_enabled:
+        raise HTTPException(404, "Not Found")
+
+
+router = APIRouter(prefix="/v2", dependencies=[Depends(require_enabled), Depends(require_connect_enabled)])
+
+
+# ---- input ------------------------------------------------------------------------------------------
+
+async def secret_body(request: Request) -> dict:
+    """The JSON object body; a malformed one is a fixed 422 that never repeats what was sent."""
+    try:
+        body = await request.json()
+    except Exception:   # noqa: BLE001 - any decoding problem is the same answer
+        raise HTTPException(422, BAD_BODY) from None
+    if not isinstance(body, dict):
+        raise HTTPException(422, BAD_BODY)
+    return body
+
+
+_DIGITS = re.compile(r"[0-9]{1,12}")
+_COOKIE = re.compile(r"[A-Za-z0-9%+/=._-]{20,2000}")
+_SWID = re.compile(r"\{?[0-9A-Fa-f-]{36}\}?")
+
+
+def parse_league(value: Any, season: Any, default_season: int) -> tuple[str, int]:
+    """A league id or an ESPN league URL (…?leagueId=123&seasonId=2026), and the season."""
+    text = str(value or "").strip()
+    url_season = None
+    if not _DIGITS.fullmatch(text):
+        q = parse_qs(urlparse(text).query)
+        text = (q.get("leagueId") or [""])[0]
+        url_season = (q.get("seasonId") or [None])[0]
+    if not _DIGITS.fullmatch(text):
+        raise HTTPException(422, "Enter an ESPN league id or the league's URL.")
+    raw = season if season not in (None, "") else url_season
+    try:
+        year = int(raw) if raw not in (None, "") else int(default_season)
+    except (TypeError, ValueError):
+        raise HTTPException(422, "The season must be a year.") from None
+    if not 1990 <= year <= 2100:
+        raise HTTPException(422, "The season must be a year.")
+    return text.lstrip("0") or "0", year
+
+
+def parse_cookies(body: dict) -> dict:
+    if body.get("consent") is not True:
+        raise HTTPException(422, "Confirm that you understand what the cookies give access to.")
+    s2, swid = body.get("espn_s2"), body.get("swid")
+    if not isinstance(s2, str) or not _COOKIE.fullmatch(s2.strip()) or not isinstance(swid, str) \
+            or not _SWID.fullmatch(swid.strip()):
+        raise HTTPException(422, "Paste both ESPN cookies: espn_s2 and SWID.")
+    swid = swid.strip()
+    return {"espn_s2": s2.strip(), "swid": swid if swid.startswith("{") else "{" + swid.strip("{}") + "}"}
+
+
+# ---- side effects (overridden in tests) -------------------------------------------------------------
+
+def espn():
+    """The ESPN reads this module uses; tests override it through app.dependency_overrides."""
+    from ..sync import espn_source
+    return espn_source
+
+
+def dispatch_drain() -> bool:
+    """Start the sync drain now (workflow_dispatch). Best effort: the scheduled drain picks the job up anyway."""
+    import requests
+    token = get_settings().github_dispatch_token
+    if not token:
+        return False
+    try:
+        r = requests.post(f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches",
+                          json={"ref": "main"}, timeout=5,
+                          headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                                   "X-GitHub-Api-Version": "2022-11-28"})
+    except requests.RequestException as err:
+        log.warning("sync drain dispatch failed: %s", type(err).__name__)
+        return False
+    if r.status_code != 204:
+        log.warning("sync drain dispatch answered HTTP %s", r.status_code)
+    return r.status_code == 204
+
+
+def drain_dispatcher():
+    return dispatch_drain
+
+
+def _keyring():
+    from ..control_plane.credential_crypto import PublicKeyring
+    keys = get_settings().credential_public_keys
+    if not keys:
+        raise HTTPException(503, "Private leagues are not available in this deployment.")
+    return PublicKeyring(keys)
+
+
+def _mutation_error(err) -> HTTPException:
+    from ..control_plane import mutations as m
+    status, detail = {
+        m.SignInRequired: (401, SIGN_IN),
+        m.NotAdmin: (403, "Only a league admin can do that."),
+        m.NotAMember: (404, NOT_FOUND),
+        m.NotOwner: (403, "Only the person who connected these cookies can remove them."),
+        m.CredentialExists: (409, "Another member's cookies already sync this league."),
+        m.LeagueUnavailable: (404, NOT_FOUND),
+        m.LeaguePublic: (409, "This league is public on ESPN: import it without cookies."),
+        m.LeagueQuota: (429, "You have added too many leagues today. Try again tomorrow."),
+        m.NoCredential: (409, "Store your ESPN cookies first."),
+        m.NotLeagueOwner: (403, "Your ESPN account does not own a team in this league. Ask a member for an invite."),
+        m.InviteInvalid: (404, "This invite is not valid (used, expired or revoked)."),
+        m.LastAdmin: (409, "A league needs at least one admin."),
+        m.SyncPaused: (409, "Syncing is paused for this league: its ESPN cookies stopped working or ESPN no longer has "
+                            "it. A member can store fresh cookies in the league's settings."),
+    }.get(type(err), (400, "That could not be done."))
+    return HTTPException(status, detail)
+
+
+def _mutate(fn):
+    from ..control_plane import mutations as m
+    try:
+        return fn()
+    except m.ControlPlaneError as err:
+        raise _mutation_error(err) from None
+
+
+# ---- import / connect -------------------------------------------------------------------------------
+
+@router.post("/leagues/import", status_code=201)
+def import_league(background: BackgroundTasks, body: dict = Depends(secret_body), tx=REQUEST_TX,
+                  source=Depends(espn), dispatch=Depends(drain_dispatcher)):
+    """A public ESPN league: read it once without cookies, register it, pin it, queue its first sync."""
+    from ..control_plane import mutations
+    con, principal = tx
+    if not principal.is_authenticated:
+        raise HTTPException(401, SIGN_IN)
+    external_id, season = parse_league(body.get("league"), body.get("season"), get_settings().season)
+    verdict = source.probe(int(external_id), season)
+    if verdict == "private":
+        return _json({"detail": "This league is private on ESPN. Connect it with your ESPN cookies.",
+                      "needs_cookies": True}, 409)
+    if verdict == "missing":
+        raise HTTPException(404, "ESPN has no league with that id for that season.")
+    if verdict != "public":
+        raise HTTPException(503, ESPN_UNREACHABLE)
+    league_id = _mutate(lambda: mutations.import_public_league(con, principal, "espn", external_id, season))
+    background.add_task(dispatch)
+    return _json({"league_id": league_id, "visibility": "public"}, 201)
+
+
+@router.post("/leagues/connect", status_code=201)
+def connect_league(background: BackgroundTasks, body: dict = Depends(secret_body), tx=REQUEST_TX,
+                   source=Depends(espn), dispatch=Depends(drain_dispatcher)):
+    """A private ESPN league with the caller's cookies (consent required). A league that turns out to be public is
+    imported instead and the cookies are dropped unused."""
+    from ..control_plane import mutations
+    con, principal = tx
+    if not principal.is_authenticated:
+        raise HTTPException(401, SIGN_IN)
+    external_id, season = parse_league(body.get("league"), body.get("season"), get_settings().season)
+    cookies = parse_cookies(body)
+    anonymous = source.probe(int(external_id), season)
+    if anonymous == "public":
+        league_id = _mutate(lambda: mutations.import_public_league(con, principal, "espn", external_id, season))
+        background.add_task(dispatch)
+        return _json({"league_id": league_id, "visibility": "public", "cookies": "not_needed"}, 201)
+    if anonymous == "unknown":
+        raise HTTPException(503, ESPN_UNREACHABLE)
+    verdict, payload = source.read_league(int(external_id), season, cookies, views=("mTeam", "mSettings"))
+    if verdict == "private":
+        raise HTTPException(400, "ESPN did not accept these cookies for this league.")
+    if verdict == "missing":
+        raise HTTPException(404, "ESPN has no league with that id for that season.")
+    if verdict != "ok":
+        raise HTTPException(503, ESPN_UNREACHABLE)
+    teams = source.league_teams(payload, cookies["swid"])
+    owned = next((t["team_id"] for t in teams if t["owned"]), None)
+    name = ((payload.get("settings") or {}).get("name") or None)
+    keyring = _keyring()
+    league_id = _mutate(lambda: mutations.connect_private_league(con, principal, "espn", external_id, season, name,
+                                                                 owned is not None))
+    credential = "stored"
+    try:
+        with con.transaction():                     # a savepoint: a member joining an already-synced league
+            cid = str(uuid.uuid4())
+            enc = keyring.encrypt(cookies, league_id=league_id, credential_id=cid, owner_user_id=principal.user_id)
+            mutations.store_credential(con, principal, league_id, enc, cid)
+            mutations.start_private_sync(con, principal, league_id)
+    except mutations.CredentialExists:
+        credential = "existing"                     # never replaces another member's live credential
+    except mutations.ControlPlaneError as err:
+        raise _mutation_error(err) from None
+    finally:
+        cookies.clear()
+    if owned is not None:
+        _mutate(lambda: mutations.set_perspective(con, principal, league_id, owned))
+    if credential == "stored":
+        background.add_task(dispatch)
+    return _json({"league_id": league_id, "visibility": "private", "cookies": credential, "team_id": owned,
+                  "teams": [{"team_id": t["team_id"], "name": t["name"]} for t in teams]}, 201)
+
+
+# ---- the caller's credential --------------------------------------------------------------------------
+
+def signed_in_league(ltx=Depends(league_tx, scope="function")):
+    """league_tx, then sign-in: an unknown league is 404 and an anonymous caller 401 before any body is read."""
+    con, access = ltx
+    return con, access, _signed_in(access)
+
+
+@router.put("/leagues/{league_id}/credential")
+def replace_credential(background: BackgroundTasks, sltx=Depends(signed_in_league),
+                       body: dict = Depends(secret_body), source=Depends(espn),
+                       dispatch=Depends(drain_dispatcher)):
+    """Attach or replace the caller's own cookies (a member; only when no one else's credential is live)."""
+    from ..control_plane import mutations
+    con, access, principal = sltx
+    cookies = parse_cookies(body)
+    row = con.execute("SELECT external_id, season FROM fi.leagues WHERE id = %s", [access.league_id]).fetchone()
+    verdict, _ = source.read_league(int(row[0]), row[1], cookies)
+    if verdict == "private":
+        raise HTTPException(400, "ESPN did not accept these cookies for this league.")
+    if verdict != "ok":
+        raise HTTPException(503, ESPN_UNREACHABLE)
+    keyring = _keyring()
+    try:
+        cid = str(uuid.uuid4())
+        enc = keyring.encrypt(cookies, league_id=access.league_id, credential_id=cid, owner_user_id=principal.user_id)
+        _mutate(lambda: mutations.store_credential(con, principal, access.league_id, enc, cid))
+        queued = _mutate(lambda: mutations.request_sync(con, principal, access.league_id))
+    finally:
+        cookies.clear()
+    if queued:
+        background.add_task(dispatch)
+    return _json({"cookies": "stored"})
+
+
+@router.delete("/leagues/{league_id}/credential", status_code=204)
+def remove_credential(ltx=Depends(league_tx, scope="function")):
+    from ..control_plane import mutations
+    con, access = ltx
+    principal = _signed_in(access)
+    _mutate(lambda: mutations.revoke_credential(con, principal, access.league_id))
+    return _no_content()
+
+
+# ---- invites ----------------------------------------------------------------------------------------------
+
+@router.get("/leagues/{league_id}/invites")
+def invites(ltx=Depends(league_tx, scope="function")):
+    from ..control_plane import mutations
+    con, access = ltx
+    principal = _signed_in(access)
+    if access.role != "admin":
+        raise HTTPException(403, "Only a league admin can do that.")
+    return _json({"invites": mutations.list_invites(con, principal, access.league_id)})
+
+
+@router.post("/leagues/{league_id}/invites", status_code=201)
+def create_invite(ltx=Depends(league_tx, scope="function")):
+    """A single-use, 7-day viewer invite. The token is returned once and only its hash is stored."""
+    from ..control_plane import mutations
+    con, access = ltx
+    principal = _signed_in(access)
+    invite_id, token = _mutate(lambda: mutations.create_invite(con, principal, access.league_id))
+    return _json({"invite_id": invite_id, "token": token}, 201)
+
+
+@router.delete("/leagues/{league_id}/invites/{invite_id}", status_code=204)
+def revoke_invite(invite_id: uuid.UUID, ltx=Depends(league_tx, scope="function")):
+    from ..control_plane import mutations
+    con, access = ltx
+    principal = _signed_in(access)
+    _mutate(lambda: mutations.revoke_invite(con, principal, str(invite_id)))
+    return _no_content()
+
+
+@router.post("/invites/redeem")
+def redeem_invite(body: dict = Depends(secret_body), tx=REQUEST_TX):
+    from ..control_plane import mutations
+    con, principal = tx
+    if not principal.is_authenticated:
+        raise HTTPException(401, SIGN_IN)
+    league_id = _mutate(lambda: mutations.redeem_invite(con, principal, body.get("token")))
+    return _json({"league_id": league_id})
+
+
+# ---- refresh and delete ------------------------------------------------------------------------------------
+
+@router.post("/leagues/{league_id}/sync", status_code=202)
+def refresh(background: BackgroundTasks, ltx=Depends(league_tx, scope="function"),
+            dispatch=Depends(drain_dispatcher)):
+    from ..control_plane import mutations
+    con, access = ltx
+    principal = _signed_in(access)
+    queued = _mutate(lambda: mutations.request_sync(con, principal, access.league_id))
+    if queued:
+        background.add_task(dispatch)
+    return _json({"queued": queued is not None}, 202)
+
+
+@router.delete("/leagues/{league_id}", status_code=204)
+def delete(ltx=Depends(league_tx, scope="function")):
+    from ..control_plane import mutations
+    con, access = ltx
+    principal = _signed_in(access)
+    _mutate(lambda: mutations.delete_league(con, principal, access.league_id))
+    return _no_content()
+
+
+def nudge_probe(principal, league_id: str) -> None:
+    """Spec §2: a 404 for a public league whose visibility check expired starts a probe (rate-limited in Postgres:
+    one per league per 5 minutes). Its own short transaction (the request's own rolls back with the 404); never
+    changes the answer, never raises. Called from the thread pool (league_tx, league_scope)."""
+    settings = get_settings()
+    if not (settings.multileague_connect_enabled and settings.supabase_db_url):
+        return
+    from ..control_plane import mutations
+    from ..control_plane.pg import get_control_plane
+    try:
+        with get_control_plane().request_tx(principal) as con:
+            queued = mutations.request_probe(con, league_id)
+    except Exception as err:   # noqa: BLE001 - best effort; the caller gets its 404 regardless
+        log.warning("probe request failed: %s", type(err).__name__)
+        return
+    if queued:
+        dispatch_drain()
+```
+
+Mount `connect_router` in `app/main.py`; `leagues_v2.league_tx` and `league_scope._resolve` call `nudge_probe` before their 404; the authorization matrix turns the connect flag on and gives the new routes their own rule (404 when invisible, 401 when anonymous, never 404 or 5xx otherwise); the legacy-import audit exempts `api/connect.py` like `api/leagues_v2.py`.
+
+- [ ] **Step 4: Run them and see them pass**
+
+```bash
+cd fantasy-intel/backend && uv run pytest tests/test_connect_api.py tests/test_v2_authorization_matrix.py tests/test_league_scope_audit.py -q
+```
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add fantasy-intel/backend/app/api/connect.py fantasy-intel/backend/tests/test_connect_api.py fantasy-intel/backend/app/control_plane/mutations.py fantasy-intel/backend/app/config.py fantasy-intel/backend/app/sync/espn_source.py fantasy-intel/backend/app/api/leagues_v2.py fantasy-intel/backend/app/api/league_scope.py fantasy-intel/backend/app/main.py fantasy-intel/backend/tests/test_v2_authorization_matrix.py fantasy-intel/backend/tests/test_league_scope_audit.py
+git commit -m "Phase 3 task 11: connect API (import, private connect, credential, invites, refresh, delete, probe on expiry)"
+```
+
+
+### Task 12: Sign-in
+
+**Files:**
+- Create: `fantasy-intel/frontend/lib/auth-config.ts`
+- Create: `fantasy-intel/frontend/lib/auth-config.test.ts`
+- Create: `fantasy-intel/frontend/lib/supabase/server.ts`
+- Create: `fantasy-intel/frontend/lib/supabase/proxy.ts`
+- Create: `fantasy-intel/frontend/lib/api-errors.ts`
+- Create: `fantasy-intel/frontend/app/login/page.tsx`
+- Create: `fantasy-intel/frontend/app/login/LoginForm.tsx`
+- Create: `fantasy-intel/frontend/app/login/actions.ts`
+- Create: `fantasy-intel/frontend/app/auth/callback/route.ts`
+- Create: `fantasy-intel/frontend/components/AccountMenu.tsx`
+- Modify: `fantasy-intel/frontend/proxy.ts`
+- Modify: `fantasy-intel/frontend/lib/api.ts`
+- Modify: `fantasy-intel/frontend/lib/league-scope.ts`
+- Modify: `fantasy-intel/frontend/lib/league-scope.test.ts`
+- Modify: `fantasy-intel/frontend/app/layout.tsx`
+- Modify: `fantasy-intel/frontend/app/globals.css`
+- Modify: `fantasy-intel/frontend/components/BackendProblem.tsx`
+- Modify: `fantasy-intel/frontend/package.json`
+
+**Interfaces:**
+- Produces: authConfig(env) -> {url, key, signupsOpen} | null; safeNext(); hasSessionCookie(); siteOrigin(); supabaseServer(), accessToken(), currentUser(); refreshSession(request, response); sendLink / signOut server actions; /auth/callback (PKCE). lib/api.ts forwards the access token on /v2 calls only. /login, /auth and /invite are never league-scoped by the proxy.
+- Dependencies: @supabase/ssr 0.12.7, @supabase/supabase-js 2.117.2 (exact, released over two weeks before use).
+
+- [ ] **Step 1: Write the failing tests**
+
+`fantasy-intel/frontend/lib/auth-config.test.ts`:
+
+```ts
+import assert from "node:assert/strict";
+import test from "node:test";
+import { EMAIL_RE, authConfig, hasSessionCookie, safeNext, siteOrigin } from "./auth-config.ts";
+
+const ENV = { MULTILEAGUE_UI_ENABLED: "1", SUPABASE_URL: "https://kdikrcmvfuzqsgahqaxf.supabase.co/", SUPABASE_PUBLISHABLE_KEY: "sb_publishable_x" };
+
+test("sign-in needs the UI flag and both Supabase settings; sign-ups stay closed unless opened", () => {
+  assert.deepEqual(authConfig(ENV), { url: "https://kdikrcmvfuzqsgahqaxf.supabase.co", key: "sb_publishable_x", signupsOpen: false });
+  assert.equal(authConfig({ ...ENV, MULTILEAGUE_UI_ENABLED: undefined }), null);
+  assert.equal(authConfig({ ...ENV, SUPABASE_PUBLISHABLE_KEY: "" }), null);
+  assert.equal(authConfig({ ...ENV, SUPABASE_URL: "https://evil.example" }), null);
+  assert.equal(authConfig({ ...ENV, SIGNUPS_OPEN: "1" })?.signupsOpen, true);
+});
+
+test("after sign-in the redirect stays inside the site", () => {
+  assert.equal(safeNext("/l/lg_abcdefghijklmnop/waivers"), "/l/lg_abcdefghijklmnop/waivers");
+  for (const bad of [null, "", "https://evil.example", "//evil.example", "/\\evil.example", "leagues"]) {
+    assert.equal(safeNext(bad), "/leagues", String(bad));
+  }
+});
+
+test("only Supabase's session cookies count as a session", () => {
+  assert.equal(hasSessionCookie(["fi_league", "sb-kdikrcmvfuzqsgahqaxf-auth-token"]), true);
+  assert.equal(hasSessionCookie(["sb-kdikrcmvfuzqsgahqaxf-auth-token.0"]), true);
+  assert.equal(hasSessionCookie(["fi_league", "sb-code-verifier", "theme"]), false);
+});
+
+test("the email link returns to the configured site, else to the request's host", () => {
+  const headers = (h: Record<string, string>) => (n: string) => h[n] ?? null;
+  assert.equal(siteOrigin(headers({ host: "x.vercel.app" }), { SITE_URL: "https://fantasy.example/" }), "https://fantasy.example");
+  assert.equal(siteOrigin(headers({ "x-forwarded-host": "x.vercel.app", "x-forwarded-proto": "https" }), {}), "https://x.vercel.app");
+  assert.equal(siteOrigin(headers({ host: "localhost:3000" }), {}), "http://localhost:3000");
+});
+
+test("email addresses are checked for shape only", () => {
+  assert.ok(EMAIL_RE.test("havyn@example.com"));
+  for (const bad of ["", "no-at", "a@b", "a b@c.de"]) assert.ok(!EMAIL_RE.test(bad), bad);
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd fantasy-intel/frontend && npm test
+```
+Expected: FAIL (module not found).
+
+- [ ] **Step 3: Implement**
+
+`fantasy-intel/frontend/lib/auth-config.ts`:
+
+```ts
+// Sign-in configuration and the small pure decisions around it (Supabase Auth, email link). No Next, no network:
+// node --test covers them. The Supabase client itself lives in lib/supabase/*.ts (server only).
+
+export type AuthConfig = { url: string; key: string; signupsOpen: boolean };
+
+/**
+ * Sign-in is on only with the multi-league UI flag and both Supabase settings. The URL and the publishable key are
+ * read on the server only (sign-in runs in server actions and the proxy), so nothing here reaches the browser.
+ * New accounts are refused until SIGNUPS_OPEN=1 (Phase 6's launch gate): until then only existing users sign in.
+ */
+export function authConfig(env: Record<string, string | undefined>): AuthConfig | null {
+  if (env.MULTILEAGUE_UI_ENABLED !== "1") return null;
+  const url = (env.SUPABASE_URL ?? "").trim().replace(/\/+$/, "");
+  const key = (env.SUPABASE_PUBLISHABLE_KEY ?? "").trim();
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(url) || !key) return null;
+  return { url, key, signupsOpen: env.SIGNUPS_OPEN === "1" };
+}
+
+/** Where to go after signing in: an in-app path only (never another origin), else the leagues page. */
+export function safeNext(value: string | null | undefined): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/leagues";
+  return value;
+}
+
+/** Supabase's session cookies are named sb-<project ref>-auth-token (possibly chunked: …-auth-token.0, .1). */
+export function hasSessionCookie(names: readonly string[]): boolean {
+  return names.some((n) => /^sb-[a-z0-9]+-auth-token(\.\d+)?$/.test(n));
+}
+
+/** The origin the email link must come back to: SITE_URL when set (production), else the request's own host. */
+export function siteOrigin(get: (name: string) => string | null, env: Record<string, string | undefined>): string {
+  const configured = (env.SITE_URL ?? "").trim().replace(/\/+$/, "");
+  if (/^https?:\/\/[^/]+$/.test(configured)) return configured;
+  const host = get("x-forwarded-host") ?? get("host") ?? "localhost:3000";
+  const proto = get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+export const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
+```
+
+`fantasy-intel/frontend/lib/supabase/server.ts`:
+
+```ts
+import "server-only";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { authConfig } from "../auth-config";
+
+// The Supabase client for server components, server actions and route handlers. Sessions live in Supabase's own
+// httpOnly cookies (set through Next's cookie store); the access token is forwarded to the API as a bearer token and
+// verified there (backend/app/control_plane/jwt_auth.py). Null when sign-in is off.
+
+export async function supabaseServer() {
+  const config = authConfig(process.env);
+  if (!config) return null;
+  const store = await cookies();
+  return createServerClient(config.url, config.key, {
+    cookies: {
+      getAll: () => store.getAll(),
+      setAll: (list) => {
+        try {
+          for (const { name, value, options } of list) store.set(name, value, options);
+        } catch {
+          // A server component cannot set cookies; the proxy refreshes the session on the next request.
+        }
+      },
+    },
+  });
+}
+
+/** The signed-in user's access token, or null (signed out, sign-in off, or an unreadable session). */
+export async function accessToken(): Promise<string | null> {
+  const supabase = await supabaseServer();
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export type SignedInUser = { id: string; email: string | null };
+
+/** The signed-in user from the verified token claims, or null. */
+export async function currentUser(): Promise<SignedInUser | null> {
+  const supabase = await supabaseServer();
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.auth.getClaims();
+    const claims = data?.claims;
+    if (!claims?.sub || claims.is_anonymous) return null;
+    return { id: String(claims.sub), email: typeof claims.email === "string" ? claims.email : null };
+  } catch {
+    return null;
+  }
+}
+```
+
+`fantasy-intel/frontend/lib/supabase/proxy.ts`:
+
+```ts
+import { createServerClient } from "@supabase/ssr";
+import type { NextRequest, NextResponse } from "next/server";
+import { authConfig, hasSessionCookie } from "../auth-config";
+
+/**
+ * Refresh an expiring Supabase session on the way through the proxy and copy the new cookies onto `response`.
+ * Only requests that already carry a session cookie pay for it: anonymous visitors never reach Supabase here.
+ */
+export async function refreshSession(request: NextRequest, response: NextResponse): Promise<NextResponse> {
+  const config = authConfig(process.env);
+  if (!config || !hasSessionCookie(request.cookies.getAll().map((c) => c.name))) return response;
+  const supabase = createServerClient(config.url, config.key, {
+    cookies: {
+      getAll: () => request.cookies.getAll(),
+      setAll: (list) => {
+        for (const { name, value, options } of list) {
+          request.cookies.set(name, value);
+          response.cookies.set(name, value, options);
+        }
+      },
+    },
+  });
+  try {
+    await supabase.auth.getClaims();      // refreshes the access token when it has expired
+  } catch {
+    // An unreachable Supabase must not take the site down: the page renders signed out.
+  }
+  return response;
+}
+```
+
+`fantasy-intel/frontend/app/login/actions.ts`:
+
+```ts
+"use server";
+
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { EMAIL_RE, authConfig, safeNext, siteOrigin } from "@/lib/auth-config";
+import { supabaseServer } from "@/lib/supabase/server";
+
+export type LoginState = { status: "idle" | "sent" | "error"; message: string | null };
+
+const OFF = "Sign-in is not available in this deployment.";
+
+/**
+ * Email a one-time sign-in link. Until sign-ups open (SIGNUPS_OPEN=1, Phase 6) only existing accounts get one; the
+ * answer is the same either way, so the form never tells anyone whether an address has an account.
+ */
+export async function sendLink(_prev: LoginState, form: FormData): Promise<LoginState> {
+  const config = authConfig(process.env);
+  const supabase = await supabaseServer();
+  if (!config || !supabase) return { status: "error", message: OFF };
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) return { status: "error", message: "Enter your email address." };
+  const h = await headers();
+  const next = safeNext(String(form.get("next") ?? ""));
+  const origin = siteOrigin((n) => h.get(n), process.env);
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: config.signupsOpen, emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}` },
+  });
+  if (error && error.status === 429) return { status: "error", message: "Too many sign-in emails. Try again in a little while." };
+  // Any other refusal (no such account while sign-ups are closed) looks the same as success.
+  return { status: "sent", message: "If this address has an account, a sign-in link is on its way. It works once, in this browser." };
+}
+
+export async function signOut(): Promise<void> {
+  const supabase = await supabaseServer();
+  if (supabase) await supabase.auth.signOut();
+  redirect("/");
+}
+```
+
+`fantasy-intel/frontend/app/auth/callback/route.ts`:
+
+```ts
+import { NextResponse, type NextRequest } from "next/server";
+import { safeNext } from "@/lib/auth-config";
+import { supabaseServer } from "@/lib/supabase/server";
+
+// The email link lands here with a one-time code (PKCE: the verifier is the cookie set when the link was requested,
+// so a link only works in the browser that asked for it). The session cookies are set, then the visitor goes on.
+export async function GET(request: NextRequest) {
+  const url = request.nextUrl;
+  const code = url.searchParams.get("code");
+  const next = safeNext(url.searchParams.get("next"));
+  const supabase = await supabaseServer();
+  if (supabase && code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) return NextResponse.redirect(new URL(next, url.origin));
+  }
+  return NextResponse.redirect(new URL(`/login?error=1&next=${encodeURIComponent(next)}`, url.origin));
+}
+```
+
+`fantasy-intel/frontend/components/AccountMenu.tsx`:
+
+```tsx
+import Link from "next/link";
+import { signOut } from "@/app/login/actions";
+import { authConfig } from "@/lib/auth-config";
+import { currentUser } from "@/lib/supabase/server";
+
+/** "Sign in" or the signed-in email with "Sign out"; nothing when sign-in is off. */
+export async function AccountMenu() {
+  if (!authConfig(process.env)) return null;
+  const user = await currentUser();
+  if (!user) {
+    return <Link href="/login" prefetch={false} className="account-link">Sign in</Link>;
+  }
+  return (
+    <details className="account-menu">
+      <summary className="account-link" title={user.email ?? undefined}>Account</summary>
+      <div className="account-pop" role="menu">
+        {user.email ? <p className="faint account-email">{user.email}</p> : null}
+        <Link role="menuitem" href="/leagues">Your leagues</Link>
+        <form action={signOut}><button type="submit" role="menuitem" className="account-signout">Sign out</button></form>
+      </div>
+    </details>
+  );
+}
+```
+
+- [ ] **Step 4: Run them and see them pass**
+
+```bash
+cd fantasy-intel/frontend && npm run lint && npm run typecheck && npm test && npm run build
+```
+Expected: clean; the build lists /login, /auth/callback, /invite, /leagues, /leagues/[league].
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add fantasy-intel/frontend/lib/auth-config.ts fantasy-intel/frontend/lib/auth-config.test.ts fantasy-intel/frontend/lib/supabase/server.ts fantasy-intel/frontend/lib/supabase/proxy.ts fantasy-intel/frontend/lib/api-errors.ts fantasy-intel/frontend/app/login/page.tsx fantasy-intel/frontend/app/login/LoginForm.tsx fantasy-intel/frontend/app/login/actions.ts fantasy-intel/frontend/app/auth/callback/route.ts fantasy-intel/frontend/components/AccountMenu.tsx fantasy-intel/frontend/proxy.ts fantasy-intel/frontend/lib/api.ts fantasy-intel/frontend/lib/league-scope.ts fantasy-intel/frontend/lib/league-scope.test.ts fantasy-intel/frontend/app/layout.tsx fantasy-intel/frontend/app/globals.css fantasy-intel/frontend/components/BackendProblem.tsx fantasy-intel/frontend/package.json
+git commit -m "Phase 3 tasks 12-13: sign-in (Supabase email link) and the connect / settings / invite pages"
+```
+
+
+### Task 13: Connect, settings and invite pages
+
+**Files:**
+- Create: `fantasy-intel/frontend/lib/my-leagues.ts`
+- Create: `fantasy-intel/frontend/lib/my-leagues.test.ts`
+- Create: `fantasy-intel/frontend/app/leagues/AddLeague.tsx`
+- Create: `fantasy-intel/frontend/app/leagues/LeagueActions.tsx`
+- Create: `fantasy-intel/frontend/app/leagues/[league]/page.tsx`
+- Create: `fantasy-intel/frontend/app/leagues/[league]/forms.tsx`
+- Create: `fantasy-intel/frontend/app/invite/page.tsx`
+- Create: `fantasy-intel/frontend/app/invite/RedeemInvite.tsx`
+- Modify: `fantasy-intel/frontend/app/leagues/page.tsx`
+- Modify: `fantasy-intel/frontend/app/leagues/actions.ts`
+- Modify: `fantasy-intel/frontend/app/leagues/leagues.module.css`
+
+**Interfaces:**
+- Consumes: Task 11 routes; Task 12 currentUser and the forwarded token.
+- Produces: parseMyLeague(s), leagueState, leagueName, parseLeagueInput, validSeason, cleanCookies, CONSENT_TEXT; server actions addLeague, connectPrivate, refreshLeague, pinLeague, unpinLeague, saveTeam, replaceCookies, removeCookies, createInvite, revokeInvite, deleteLeague, redeemInvite. The Phase 1 prototype's connect components and lib/leagues.ts are removed; the flag-off page keeps its text.
+
+- [ ] **Step 1: Write the failing tests**
+
+`fantasy-intel/frontend/lib/my-leagues.test.ts`:
+
+```ts
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  cleanCookies, defaultSeason, leagueName, leagueState, multileagueUiEnabled, parseLeagueInput, parseMyLeagues,
+  validSeason,
+} from "./my-leagues.ts";
+
+const ACCESS = {
+  league_id: "lg_abcdefghijklmnop", provider: "espn", external_league_id: "4242", season: 2026, name: null,
+  visibility: "private", status: "active", role: "admin", pinned: false, perspective_team_id: "3",
+  sync_state: "ready", data: { data_version: "v", global_version: "g", committed_at: "2026-10-21T12:00:00Z" },
+};
+
+test("the flag is exactly 1", () => {
+  assert.equal(multileagueUiEnabled("1"), true);
+  for (const v of [undefined, "", "0", "true"]) assert.equal(multileagueUiEnabled(v), false);
+});
+
+test("the backend's league list becomes the page's view model; malformed rows are dropped", () => {
+  const [l, ...rest] = parseMyLeagues({ leagues: [ACCESS, { league_id: 7 }, null] });
+  assert.equal(rest.length, 0);
+  assert.deepEqual(l, { id: "lg_abcdefghijklmnop", provider: "espn", externalId: "4242", season: 2026, name: null,
+    visibility: "private", status: "active", role: "admin", pinned: false, teamId: "3", syncState: "ready",
+    committedAt: "2026-10-21T12:00:00Z" });
+  assert.equal(leagueName(l), "ESPN league 4242");
+  assert.deepEqual(parseMyLeagues({}), []);
+});
+
+test("the league's state says what readers see and why", () => {
+  assert.equal(leagueState({ status: "stale", syncState: "ready", visibility: "private" }).label, "Sync paused");
+  assert.equal(leagueState({ status: "active", syncState: "first_sync_running", visibility: "public" }).tone, "info");
+  assert.match(leagueState({ status: "unavailable", syncState: "ready", visibility: "private" }).detail, /privately/);
+  assert.equal(leagueState({ status: "active", syncState: "ready", visibility: "public" }).label, "Up to date");
+});
+
+test("a league id or its ESPN URL", () => {
+  assert.deepEqual(parseLeagueInput(" 4242 "), { leagueId: "4242", season: null });
+  assert.deepEqual(parseLeagueInput("https://fantasy.espn.com/football/league?leagueId=4242&seasonId=2025"),
+    { leagueId: "4242", season: 2025 });
+  assert.equal(parseLeagueInput("https://fantasy.espn.com/football/"), null);
+  assert.equal(validSeason("2026"), 2026);
+  assert.equal(validSeason("26"), null);
+  assert.equal(defaultSeason(new Date("2026-03-01T00:00:00Z")), 2025);
+  assert.equal(defaultSeason(new Date("2026-10-01T00:00:00Z")), 2026);
+});
+
+test("cookies are trimmed and the SWID braced; anything else is refused", () => {
+  const s2 = "AEB" + "x".repeat(40);
+  assert.deepEqual(cleanCookies(` ${s2} `, "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"),
+    { espn_s2: s2, swid: "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}" });
+  assert.equal(cleanCookies("short", "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"), null);
+  assert.equal(cleanCookies(s2, "not-a-swid"), null);
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+```bash
+cd fantasy-intel/frontend && npm test
+```
+Expected: FAIL (module not found).
+
+- [ ] **Step 3: Implement**
+
+`fantasy-intel/frontend/lib/my-leagues.ts`:
+
+```ts
+// View-model logic for /leagues and a league's settings page (Phase 3): what the /v2 payloads mean for the UI.
+// Pure functions only (no Next, no fetch, no environment) so node --test covers them. The backend is authoritative.
+
+export const NOT_ENABLED_REASON = "Multi-league support is not enabled in this deployment.";
+
+/** The feature flag is exactly "1": anything else (unset, "0", "true") is off. */
+export function multileagueUiEnabled(value: string | undefined): boolean {
+  return value === "1";
+}
+
+export type Tone = "good" | "warn" | "bad" | "info" | "neutral";
+
+/** One league as GET /v2/leagues and GET /v2/leagues/{id} describe it (backend authz.Access.to_json). */
+export type MyLeague = {
+  id: string;
+  provider: string;
+  externalId: string;
+  season: number;
+  name: string | null;
+  visibility: "public" | "private";
+  status: string;                     // active | stale | unavailable | dormant
+  role: "admin" | "viewer" | null;
+  pinned: boolean;
+  teamId: string | null;              // the saved perspective
+  syncState: string;                  // ready | first_sync_queued | first_sync_running | first_sync_failed | no_data
+  committedAt: string | null;         // when the served version was published
+};
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
+
+export function parseMyLeague(raw: unknown): MyLeague | null {
+  if (!isRecord(raw)) return null;
+  const { league_id, provider, external_league_id, season } = raw;
+  if (typeof league_id !== "string" || typeof provider !== "string" || typeof external_league_id !== "string"
+      || typeof season !== "number") return null;
+  const data = isRecord(raw.data) ? raw.data : null;
+  return {
+    id: league_id, provider, externalId: external_league_id, season,
+    name: str(raw.name),
+    visibility: raw.visibility === "private" ? "private" : "public",
+    status: str(raw.status) ?? "active",
+    role: raw.role === "admin" || raw.role === "viewer" ? raw.role : null,
+    pinned: raw.pinned === true,
+    teamId: str(raw.perspective_team_id),
+    syncState: str(raw.sync_state) ?? "no_data",
+    committedAt: data ? str(data.committed_at) : null,
+  };
+}
+
+export function parseMyLeagues(payload: unknown): MyLeague[] {
+  const list = isRecord(payload) && Array.isArray(payload.leagues) ? payload.leagues : [];
+  return list.map(parseMyLeague).filter((l): l is MyLeague => l !== null);
+}
+
+export function leagueName(l: Pick<MyLeague, "name" | "externalId">): string {
+  return l.name?.trim() || `ESPN league ${l.externalId}`;
+}
+
+/** What a reader of this league sees right now, in words, and how worried to be. */
+export function leagueState(l: Pick<MyLeague, "status" | "syncState" | "visibility">): { label: string; tone: Tone; detail: string } {
+  if (l.status === "stale") {
+    return { label: "Sync paused", tone: "warn",
+      detail: "The ESPN cookies for this league stopped working. The last data stays readable; a member can store fresh cookies in Settings." };
+  }
+  if (l.status === "unavailable") {
+    return { label: "Unavailable on ESPN", tone: "bad",
+      detail: l.visibility === "private"
+        ? "ESPN no longer shows this league publicly. A member can connect it privately with their cookies."
+        : "ESPN no longer finds this league. The last data is kept for now." };
+  }
+  if (l.status === "dormant") {
+    return { label: "Paused (unused)", tone: "neutral", detail: "Nobody opened this league for 30 days. Opening it resumes syncing." };
+  }
+  switch (l.syncState) {
+    case "ready": return { label: "Up to date", tone: "good", detail: "Syncs every few hours, hourly on game days." };
+    case "first_sync_queued": return { label: "First sync queued", tone: "info", detail: "Usually ready within a few minutes." };
+    case "first_sync_running": return { label: "First sync running", tone: "info", detail: "Usually ready within a few minutes." };
+    case "first_sync_failed": return { label: "First sync failed", tone: "bad", detail: "It is retried automatically; you can also refresh it." };
+    default: return { label: "No data yet", tone: "neutral", detail: "Refresh to start a sync." };
+  }
+}
+
+// ---- forms ----------------------------------------------------------------------------------------
+
+export const MIN_SEASON = 1990;
+export const MAX_SEASON = 2100;
+
+/** The NFL season a fantasy league plays in: before August it is still last year's. */
+export function defaultSeason(now: Date): number {
+  return now.getUTCMonth() < 7 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
+}
+
+/** An ESPN league id, or the league page's URL (…leagueId=123…), and its season when the URL names one. */
+export function parseLeagueInput(text: string): { leagueId: string; season: number | null } | null {
+  const value = text.trim();
+  if (/^\d{1,12}$/.test(value)) return { leagueId: value, season: null };
+  const id = /[?&]leagueId=(\d{1,12})/.exec(value);
+  if (!id) return null;
+  const season = /[?&]seasonId=(\d{4})/.exec(value);
+  return { leagueId: id[1], season: season ? Number(season[1]) : null };
+}
+
+export function validSeason(value: string): number | null {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= MIN_SEASON && n <= MAX_SEASON ? n : null;
+}
+
+export const CONSENT_TEXT = "I understand these cookies give access to my ESPN account. They are stored encrypted, used only to read this league, and stop working when I sign out of ESPN everywhere.";
+
+/** espn_s2 and SWID as pasted from the browser: trimmed, SWID braced. Null when either is missing or malformed. */
+export function cleanCookies(s2: string, swid: string): { espn_s2: string; swid: string } | null {
+  const a = s2.trim();
+  const b = swid.trim().replace(/^\{?/, "{").replace(/\}?$/, "}");
+  if (!/^[A-Za-z0-9%+/=._-]{20,2000}$/.test(a) || !/^\{[0-9A-Fa-f-]{36}\}$/.test(b)) return null;
+  return { espn_s2: a, swid: b };
+}
+
+export function isLeagueRef(value: unknown): value is string {
+  return typeof value === "string" && /^lg_[A-Za-z0-9_-]{16,64}$/.test(value);
+}
+```
+
+`fantasy-intel/frontend/app/leagues/actions.ts`:
+
+```ts
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { apiRequest } from "@/lib/api";
+import { authConfig } from "@/lib/auth-config";
+import { cleanCookies, isLeagueRef, multileagueUiEnabled, NOT_ENABLED_REASON, parseLeagueInput, validSeason } from "@/lib/my-leagues";
+import { currentUser } from "@/lib/supabase/server";
+
+// Server actions are public POST endpoints: each re-checks the flag and the signed-in user on the server, and the
+// backend authorizes again with the user's own token (lib/api.ts forwards it). Cookies are passed straight to the
+// backend and never returned, logged or kept in state.
+
+export type AddState = {
+  status: "idle" | "ok" | "needs_cookies" | "error";
+  message: string | null;
+  leagueId?: string;
+  league?: string;
+  season?: number;
+};
+
+export type ActionResult = { ok: boolean; message: string | null };
+
+const SIGN_IN = "Sign in to add or change leagues.";
+
+async function gate(): Promise<string | null> {
+  if (!multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED)) return NOT_ENABLED_REASON;
+  if (!authConfig(process.env) || !(await currentUser())) return SIGN_IN;
+  return null;
+}
+
+function readLeague(form: FormData): { league: string; season: number } | { error: string } {
+  const parsed = parseLeagueInput(String(form.get("league") ?? ""));
+  if (!parsed) return { error: "Enter the league id (the number after leagueId= in the ESPN address) or paste the address." };
+  const season = parsed.season ?? validSeason(String(form.get("season") ?? ""));
+  if (!season) return { error: "Enter the season as a year, for example 2026." };
+  return { league: parsed.leagueId, season };
+}
+
+/** Step 1: try the league as a public one. ESPN saying "private" moves the form to step 2 (cookies). */
+export async function addLeague(_prev: AddState, form: FormData): Promise<AddState> {
+  const blocked = await gate();
+  if (blocked) return { status: "error", message: blocked };
+  const input = readLeague(form);
+  if ("error" in input) return { status: "error", message: input.error };
+  const res = await apiRequest<{ league_id: string }>("/v2/leagues/import", { body: input });
+  if (res.ok && res.data) {
+    revalidatePath("/leagues");
+    return { status: "ok", message: "Added. The first sync usually takes a few minutes.", leagueId: res.data.league_id };
+  }
+  if (!res.ok && res.status === 409) {
+    return { status: "needs_cookies", message: "This league is private on ESPN. To add it, paste your ESPN cookies below.", ...input };
+  }
+  return { status: "error", message: res.ok ? "The league could not be added." : res.error };
+}
+
+/** Step 2: a private league, with the visitor's own ESPN cookies and their explicit consent. */
+export async function connectPrivate(_prev: AddState, form: FormData): Promise<AddState> {
+  const blocked = await gate();
+  if (blocked) return { status: "error", message: blocked };
+  const input = readLeague(form);
+  if ("error" in input) return { status: "error", message: input.error };
+  if (form.get("consent") !== "on") return { status: "needs_cookies", message: "Tick the box to confirm you understand what the cookies give access to.", ...input };
+  const cookies = cleanCookies(String(form.get("espn_s2") ?? ""), String(form.get("swid") ?? ""));
+  if (!cookies) return { status: "needs_cookies", message: "Paste both cookies: espn_s2 (a long value) and SWID (in braces).", ...input };
+  const res = await apiRequest<{ league_id: string; cookies: string }>("/v2/leagues/connect",
+    { body: { ...input, ...cookies, consent: true } });
+  if (res.ok && res.data) {
+    revalidatePath("/leagues");
+    const joined = res.data.cookies === "existing";
+    return { status: "ok", leagueId: res.data.league_id,
+      message: joined ? "Joined. This league already syncs with another member's cookies." : "Connected. The first sync usually takes a few minutes." };
+  }
+  return { status: "needs_cookies", message: res.ok ? "The league could not be connected." : res.error, ...input };
+}
+
+async function leagueCall(leagueId: string, path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<ActionResult> {
+  const blocked = await gate();
+  if (blocked) return { ok: false, message: blocked };
+  if (!isLeagueRef(leagueId)) return { ok: false, message: "Unknown league." };
+  const res = await apiRequest(`/v2/leagues/${leagueId}${path}`, { method, body });
+  revalidatePath("/leagues");
+  revalidatePath(`/leagues/${leagueId}`);
+  return res.ok ? { ok: true, message: null } : { ok: false, message: res.error };
+}
+
+export async function refreshLeague(leagueId: string): Promise<ActionResult> {
+  return leagueCall(leagueId, "/sync", "POST", {});
+}
+
+export async function unpinLeague(leagueId: string): Promise<ActionResult> {
+  return leagueCall(leagueId, "/pin", "DELETE");
+}
+
+export async function pinLeague(leagueId: string): Promise<ActionResult> {
+  return leagueCall(leagueId, "/pin", "PUT", {});
+}
+
+export async function saveTeam(leagueId: string, _prev: ActionResult, form: FormData): Promise<ActionResult> {
+  const team = String(form.get("team") ?? "");
+  if (!team) return leagueCall(leagueId, "/perspective", "DELETE");
+  if (!/^\d{1,9}$/.test(team)) return { ok: false, message: "Pick a team." };
+  return leagueCall(leagueId, "/perspective", "PUT", { team_external_id: team });
+}
+
+export async function replaceCookies(leagueId: string, _prev: ActionResult, form: FormData): Promise<ActionResult> {
+  if (form.get("consent") !== "on") return { ok: false, message: "Tick the box to confirm you understand what the cookies give access to." };
+  const cookies = cleanCookies(String(form.get("espn_s2") ?? ""), String(form.get("swid") ?? ""));
+  if (!cookies) return { ok: false, message: "Paste both cookies: espn_s2 (a long value) and SWID (in braces)." };
+  return leagueCall(leagueId, "/credential", "PUT", { ...cookies, consent: true });
+}
+
+export async function removeCookies(leagueId: string): Promise<ActionResult> {
+  return leagueCall(leagueId, "/credential", "DELETE");
+}
+
+export type InviteState = ActionResult & { link?: string };
+
+export async function createInvite(leagueId: string, _prev: InviteState, _form: FormData): Promise<InviteState> {
+  void _form;
+  const blocked = await gate();
+  if (blocked) return { ok: false, message: blocked };
+  if (!isLeagueRef(leagueId)) return { ok: false, message: "Unknown league." };
+  const res = await apiRequest<{ token: string }>(`/v2/leagues/${leagueId}/invites`, { method: "POST", body: {} });
+  revalidatePath(`/leagues/${leagueId}`);
+  if (!res.ok || !res.data) return { ok: false, message: res.ok ? "No invite was created." : res.error };
+  // The token travels in the fragment: browsers never send it to a server, so it stays out of logs.
+  return { ok: true, message: null, link: `/invite#${res.data.token}` };
+}
+
+export async function revokeInvite(leagueId: string, inviteId: string): Promise<ActionResult> {
+  if (!/^[0-9a-f-]{36}$/.test(inviteId)) return { ok: false, message: "Unknown invite." };
+  return leagueCall(leagueId, `/invites/${inviteId}`, "DELETE");
+}
+
+export async function deleteLeague(leagueId: string): Promise<ActionResult> {
+  const result = await leagueCall(leagueId, "", "DELETE");
+  if (result.ok) redirect("/leagues");
+  return result;
+}
+
+export async function redeemInvite(token: string): Promise<ActionResult> {
+  const blocked = await gate();
+  if (blocked) return { ok: false, message: blocked };
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) return { ok: false, message: "This invite link is not complete." };
+  const res = await apiRequest<{ league_id: string }>("/v2/invites/redeem", { body: { token } });
+  if (!res.ok || !res.data) return { ok: false, message: res.ok ? "This invite is not valid." : res.error };
+  redirect(`/l/${res.data.league_id}`);
+}
+```
+
+`fantasy-intel/frontend/app/leagues/AddLeague.tsx`:
+
+```tsx
+"use client";
+
+import Link from "next/link";
+import { useActionState, useId } from "react";
+import { Notice } from "@/components/ui";
+import { leaguePath } from "@/lib/league-scope";
+import { CONSENT_TEXT } from "@/lib/my-leagues";
+import { addLeague, connectPrivate, type AddState } from "./actions";
+import styles from "./leagues.module.css";
+
+const IDLE: AddState = { status: "idle", message: null };
+
+/** Step 1 tries the league as a public one; when ESPN says it is private, step 2 asks for the visitor's cookies. */
+export function AddLeague({ defaultSeason }: { defaultSeason: number }) {
+  const [state, action, pending] = useActionState(addLeague, IDLE);
+  const id = useId();
+  if (state.status === "needs_cookies" && state.league && state.season) {
+    return <CookieForm league={state.league} season={state.season} intro={state.message} />;
+  }
+  return (
+    <form action={action} className={styles.form}>
+      <div className={styles.field}>
+        <label htmlFor={`${id}-league`}>ESPN league id or address</label>
+        <input id={`${id}-league`} name="league" type="text" autoComplete="off" autoCapitalize="off" spellCheck={false}
+               required aria-describedby={`${id}-league-hint`} />
+        <p id={`${id}-league-hint`} className={styles.hint}>
+          Open the league on fantasy.espn.com and paste the address, or just the number after <code>leagueId=</code>.
+        </p>
+      </div>
+      <div className={styles.field}>
+        <label htmlFor={`${id}-season`}>Season</label>
+        <input id={`${id}-season`} name="season" type="text" inputMode="numeric" autoComplete="off"
+               defaultValue={defaultSeason} className={styles.season} />
+      </div>
+      <div className={styles.actions}>
+        <button type="submit" disabled={pending}>{pending ? "Checking ESPN…" : "Add league"}</button>
+      </div>
+      <Outcome state={state} />
+    </form>
+  );
+}
+
+function CookieForm({ league, season, intro }: { league: string; season: number; intro: string | null }) {
+  const [state, action, pending] = useActionState(connectPrivate, IDLE);
+  const id = useId();
+  if (state.status === "ok") return <Outcome state={state} />;
+  const message = state.status === "idle" ? intro : state.message;
+  return (
+    <form action={action} className={styles.form}>
+      {message ? <Notice tone={state.status === "idle" ? "info" : "negative"} title="A private league">{message}</Notice> : null}
+      <input type="hidden" name="league" value={league} />
+      <input type="hidden" name="season" value={season} />
+      <details className={styles.details}>
+        <summary>Where to find the cookies</summary>
+        <ol className={styles.steps}>
+          <li>Sign in to fantasy.espn.com in this browser.</li>
+          <li>Open the browser&apos;s developer tools, then Application (Chrome) or Storage (Firefox, Safari), then Cookies for espn.com.</li>
+          <li>Copy the values of <code>espn_s2</code> and <code>SWID</code>.</li>
+        </ol>
+      </details>
+      <div className={styles.field}>
+        <label htmlFor={`${id}-s2`}>espn_s2</label>
+        <input id={`${id}-s2`} name="espn_s2" type="password" autoComplete="off" spellCheck={false} required />
+      </div>
+      <div className={styles.field}>
+        <label htmlFor={`${id}-swid`}>SWID</label>
+        <input id={`${id}-swid`} name="swid" type="password" autoComplete="off" spellCheck={false} required />
+      </div>
+      <label className={styles.consent}>
+        <input type="checkbox" name="consent" required /> {CONSENT_TEXT}
+      </label>
+      <div className={styles.actions}>
+        <button type="submit" disabled={pending}>{pending ? "Checking with ESPN…" : "Connect privately"}</button>
+      </div>
+    </form>
+  );
+}
+
+function Outcome({ state }: { state: AddState }) {
+  if (state.status === "error" && state.message) {
+    return <Notice tone="negative" title="Could not add the league">{state.message}</Notice>;
+  }
+  if (state.status === "ok") {
+    return (
+      <p className={styles.ok} role="status">
+        {state.message} {state.leagueId ? <Link href={leaguePath(state.leagueId, "/")} prefetch={false}>Open it</Link> : null}
+      </p>
+    );
+  }
+  return null;
+}
+```
+
+`fantasy-intel/frontend/app/leagues/page.tsx`:
+
+```tsx
+import Link from "next/link";
+import { connection } from "next/server";
+import { Badge, EmptyState, Notice, PageHeader, Section } from "@/components/ui";
+import { apiRequest } from "@/lib/api";
+import { authConfig } from "@/lib/auth-config";
+import { leaguePath } from "@/lib/league-scope";
+import { dataAsOf } from "@/lib/league-switcher";
+import { defaultSeason, leagueName, leagueState, multileagueUiEnabled, parseMyLeagues, type MyLeague } from "@/lib/my-leagues";
+import { currentUser } from "@/lib/supabase/server";
+import { AddLeague } from "./AddLeague";
+import { LeagueActions } from "./LeagueActions";
+import styles from "./leagues.module.css";
+
+export const metadata = { title: "Leagues" };
+
+export default async function LeaguesPage() {
+  // The flag and the signed-in user are per request, so never prerender this page.
+  await connection();
+  const enabled = multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED);
+  if (!enabled) return <SwitchedOff />;
+  const user = authConfig(process.env) ? await currentUser() : null;
+  return (
+    <div className="stack">
+      <PageHeader eyebrow="Connections" title="Leagues"
+                  meta="Add an ESPN league to analyse it with every page of this site. Public leagues need no cookies; anyone can view them from any team's perspective." />
+      {user ? <SignedIn /> : (
+        <Notice tone="info" title="Sign in to add leagues">
+          Viewing a public league needs no account: open its link. To add a league, save your team or connect a private
+          league, <Link href="/login?next=/leagues" prefetch={false}>sign in</Link>.
+        </Notice>
+      )}
+    </div>
+  );
+}
+
+async function SignedIn() {
+  const res = await apiRequest("/v2/leagues");
+  const leagues = res.ok ? parseMyLeagues(res.data) : [];
+  return (
+    <>
+      <Section title="Add an ESPN league" subtitle="Public leagues are read without cookies. A private league asks for yours next.">
+        <AddLeague defaultSeason={defaultSeason(new Date())} />
+      </Section>
+      <Section title="Your leagues" subtitle="Leagues you added, pinned or were invited to.">
+        {!res.ok ? (
+          <Notice tone="negative" title="Your leagues could not be loaded">{res.error}</Notice>
+        ) : leagues.length === 0 ? (
+          <EmptyState title="No leagues yet">Add one above, or open a league link someone shared.</EmptyState>
+        ) : (
+          <ul className={styles.leagues}>
+            {leagues.map((l) => <li key={l.id}><LeagueCard league={l} /></li>)}
+          </ul>
+        )}
+      </Section>
+    </>
+  );
+}
+
+function LeagueCard({ league }: { league: MyLeague }) {
+  const state = leagueState(league);
+  const asOf = dataAsOf(league.committedAt, "UTC");
+  const name = leagueName(league);
+  const headingId = `league-${league.id}`;
+  return (
+    <article className={styles.league} aria-labelledby={headingId}>
+      <div className={styles.cardHead}>
+        <h3 id={headingId} className={styles.cardTitle}>
+          <Link href={leaguePath(league.id, "/")} prefetch={false}>{name}</Link>
+        </h3>
+        <div className={styles.badges}>
+          <Badge value={`Season ${league.season}`} tone="" />
+          <Badge value={league.visibility === "private" ? "Private" : "Public"} tone="" />
+          {league.role ? <Badge value={league.role === "admin" ? "Admin" : "Member"} tone="" /> : null}
+        </div>
+      </div>
+      <dl className={styles.facts}>
+        <div>
+          <dt>Status</dt>
+          <dd><Badge value={state.label} tone={state.tone === "neutral" ? "" : state.tone} /> {state.detail}</dd>
+        </div>
+        <div>
+          <dt>Data</dt>
+          <dd>{asOf ? `${asOf} UTC` : "Not synced yet"}</dd>
+        </div>
+      </dl>
+      <div className={styles.manage}>
+        <LeagueActions leagueId={league.id} pinned={league.pinned} member={league.role !== null} />
+        <Link href={`/leagues/${league.id}`} prefetch={false}>Settings</Link>
+      </div>
+    </article>
+  );
+}
+
+function SwitchedOff() {
+  return (
+    <div className="stack">
+      <PageHeader eyebrow="Connections" title="Leagues"
+                  meta="Which fantasy providers this dashboard can read, and how it gets its league today." />
+      <Notice tone="info" title="Connecting leagues from the browser is switched off in this deployment">
+        This page is a prototype. Nothing can be connected or listed here, so no connect controls are shown. The rest of the dashboard works as before.
+      </Notice>
+      <Section title="How this dashboard gets its league" subtitle="The one setup that works today">
+        <ol className={styles.steps}>
+          <li>The deployment&apos;s owner sets <code>ESPN_LEAGUE_ID</code> (and the season, <code>ESPN_SEASON</code>) in <code>fantasy-intel/.env</code>. The id is the number after <code>leagueId=</code> in the league&apos;s fantasy.espn.com address.</li>
+          <li>A private ESPN league also needs the owner&apos;s <code>espn_s2</code> and <code>SWID</code> cookies in the same file, as <code>ESPN_S2</code> and <code>SWID</code>. They are read from the environment only.</li>
+          <li>The sync scripts import the league and NFL usage data; every page then reads from that import.</li>
+        </ol>
+      </Section>
+    </div>
+  );
+}
+```
+
+`fantasy-intel/frontend/app/leagues/[league]/page.tsx`:
+
+```tsx
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { connection } from "next/server";
+import { Badge, Notice, PageHeader, Section } from "@/components/ui";
+import { apiRequest } from "@/lib/api";
+import { authConfig } from "@/lib/auth-config";
+import { leaguePath } from "@/lib/league-scope";
+import { isLeagueRef, leagueName, leagueState, multileagueUiEnabled, parseMyLeague } from "@/lib/my-leagues";
+import { currentUser } from "@/lib/supabase/server";
+import { LeagueActions } from "../LeagueActions";
+import { CookieSettings, DeleteLeague, Invites, TeamForm } from "./forms";
+import styles from "../leagues.module.css";
+
+export const metadata = { title: "League settings" };
+
+type Team = { team_id: number; name: string };
+
+export default async function LeagueSettings({ params }: { params: Promise<{ league: string }> }) {
+  await connection();
+  const { league: id } = await params;
+  if (!multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED) || !isLeagueRef(id)) notFound();
+  const res = await apiRequest(`/v2/leagues/${id}`);
+  const league = res.ok ? parseMyLeague(res.data) : null;
+  if (!league) notFound();
+  const user = authConfig(process.env) ? await currentUser() : null;
+  const teamsRes = await apiRequest<{ teams: Team[] }>(`/v2/leagues/${id}/api/teams`);
+  const teams = teamsRes.ok && teamsRes.data ? teamsRes.data.teams.map((t) => ({ id: String(t.team_id), name: t.name })) : [];
+  const invites = league.role === "admin"
+    ? await apiRequest<{ invites: { invite_id: string; expires_at: string }[] }>(`/v2/leagues/${id}/invites`) : null;
+  const state = leagueState(league);
+  return (
+    <div className="stack">
+      <PageHeader eyebrow="League settings" title={leagueName(league)}
+                  meta={<Link href={leaguePath(id, "/")} prefetch={false}>Open the league</Link>} />
+      <Section title="Sync">
+        <p className={styles.plain}><Badge value={state.label} tone={state.tone === "neutral" ? "" : state.tone} /> {state.detail}</p>
+        {user ? <LeagueActions leagueId={id} pinned={league.pinned} member={league.role !== null} /> : null}
+      </Section>
+      <Section title="Your team" subtitle="A preference only: every page analyses the league from this team. You can view any team.">
+        {!user ? (
+          <p className={styles.plain}><Link href={`/login?next=/leagues/${id}`} prefetch={false}>Sign in</Link> to save your team. Until then, pick a team on any page.</p>
+        ) : teams.length === 0 ? (
+          <p className={styles.plain}>The team list appears after the first sync.</p>
+        ) : (
+          <TeamForm leagueId={id} teams={teams} selected={league.teamId} />
+        )}
+      </Section>
+      {user && league.visibility === "private" && league.role ? (
+        <Section title="Your ESPN cookies" subtitle="Stored encrypted; the website itself cannot read them back. Only the sync job uses them, to read this league.">
+          <CookieSettings leagueId={id} />
+        </Section>
+      ) : null}
+      {invites ? (
+        <Section title="Invites" subtitle="A link lets one person join as a viewer. It works once, for 7 days, and needs them to sign in.">
+          {invites.ok ? <Invites leagueId={id} open={invites.data?.invites ?? []} /> : <Notice tone="negative" title="Invites could not be loaded">{invites.error}</Notice>}
+        </Section>
+      ) : null}
+      {league.role === "admin" && league.visibility === "private" ? (
+        <Section title="Delete this league" subtitle="Removes it for every member. Its data is deleted after 7 days.">
+          <DeleteLeague leagueId={id} name={leagueName(league)} />
+        </Section>
+      ) : null}
+    </div>
+  );
+}
+```
+
+`fantasy-intel/frontend/app/leagues/[league]/forms.tsx`:
+
+```tsx
+"use client";
+
+import { useActionState, useId, useState, useTransition } from "react";
+import { Notice } from "@/components/ui";
+import { CONSENT_TEXT } from "@/lib/my-leagues";
+import {
+  createInvite, deleteLeague, removeCookies, replaceCookies, revokeInvite, saveTeam, type ActionResult, type InviteState,
+} from "../actions";
+import styles from "../leagues.module.css";
+
+const IDLE: ActionResult = { ok: false, message: null };
+
+function Result({ result, done }: { result: ActionResult; done?: string }) {
+  if (result.ok && done) return <p className={styles.ok} role="status">{done}</p>;
+  if (!result.ok && result.message) return <p className={styles.fieldError} role="status">{result.message}</p>;
+  return null;
+}
+
+export function TeamForm({ leagueId, teams, selected }: { leagueId: string; teams: { id: string; name: string }[]; selected: string | null }) {
+  const [state, action, pending] = useActionState(saveTeam.bind(null, leagueId), IDLE);
+  const id = useId();
+  return (
+    <form action={action} className={styles.teamForm}>
+      <div className={styles.field}>
+        <label htmlFor={`${id}-team`}>Team</label>
+        <select id={`${id}-team`} name="team" defaultValue={selected ?? ""}>
+          <option value="">No team (neutral view)</option>
+          {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      </div>
+      <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
+      <Result result={state} done="Saved." />
+    </form>
+  );
+}
+
+export function CookieSettings({ leagueId }: { leagueId: string }) {
+  const [state, action, pending] = useActionState(replaceCookies.bind(null, leagueId), IDLE);
+  const [removing, start] = useTransition();
+  const [removed, setRemoved] = useState<ActionResult | null>(null);
+  const id = useId();
+  return (
+    <div className={styles.form}>
+      <form action={action} className={styles.form}>
+        <p className={styles.plain}>Store or replace your own cookies, for example after signing out of ESPN everywhere.</p>
+        <div className={styles.field}>
+          <label htmlFor={`${id}-s2`}>espn_s2</label>
+          <input id={`${id}-s2`} name="espn_s2" type="password" autoComplete="off" spellCheck={false} required />
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`${id}-swid`}>SWID</label>
+          <input id={`${id}-swid`} name="swid" type="password" autoComplete="off" spellCheck={false} required />
+        </div>
+        <label className={styles.consent}><input type="checkbox" name="consent" required /> {CONSENT_TEXT}</label>
+        <div className={styles.actions}>
+          <button type="submit" disabled={pending}>{pending ? "Checking with ESPN…" : "Store my cookies"}</button>
+        </div>
+        <Result result={state} done="Stored. The next sync uses them." />
+      </form>
+      <div className={styles.actions}>
+        <button type="button" className={styles.danger} disabled={removing}
+                onClick={() => start(async () => setRemoved(await removeCookies(leagueId)))}>Remove my cookies</button>
+      </div>
+      {removed ? <Result result={removed} done="Removed. Syncing pauses until someone stores cookies again." /> : null}
+    </div>
+  );
+}
+
+const NO_INVITE: InviteState = { ok: false, message: null };
+
+export function Invites({ leagueId, open }: { leagueId: string; open: { invite_id: string; expires_at: string }[] }) {
+  const [state, action, pending] = useActionState(createInvite.bind(null, leagueId), NO_INVITE);
+  const [busy, start] = useTransition();
+  const [revoked, setRevoked] = useState<ActionResult | null>(null);
+  const link = state.ok && state.link && typeof window !== "undefined" ? `${window.location.origin}${state.link}` : state.link;
+  return (
+    <div className={styles.form}>
+      <form action={action} className={styles.actions}>
+        <button type="submit" disabled={pending}>{pending ? "Creating…" : "Create an invite link"}</button>
+      </form>
+      {state.ok && link ? (
+        <Notice tone="info" title="Copy this link now: it is shown only once">
+          <p className={styles.inviteLink}>{link}</p>
+        </Notice>
+      ) : <Result result={state} />}
+      {open.length > 0 ? (
+        <ul className={styles.inviteList}>
+          {open.map((i) => (
+            <li key={i.invite_id}>
+              <span>Open invite, expires {new Date(i.expires_at).toISOString().slice(0, 10)}</span>
+              <button type="button" className={styles.secondary} disabled={busy}
+                      onClick={() => start(async () => setRevoked(await revokeInvite(leagueId, i.invite_id)))}>Revoke</button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className={styles.plain}>No open invites.</p>}
+      {revoked ? <Result result={revoked} done="Revoked." /> : null}
+    </div>
+  );
+}
+
+export function DeleteLeague({ leagueId, name }: { leagueId: string; name: string }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, start] = useTransition();
+  const [result, setResult] = useState<ActionResult | null>(null);
+  if (!confirming) {
+    return <button type="button" className={styles.danger} onClick={() => setConfirming(true)}>Delete league…</button>;
+  }
+  return (
+    <div className={styles.confirm}>
+      <p className={styles.confirmText}>Delete {name} for every member? This cannot be undone after 7 days.</p>
+      <div className={styles.actions}>
+        <button type="button" className={styles.danger} disabled={busy}
+                onClick={() => start(async () => setResult(await deleteLeague(leagueId)))}>Delete</button>
+        <button type="button" className={styles.secondary} onClick={() => setConfirming(false)}>Cancel</button>
+      </div>
+      {result ? <Result result={result} /> : null}
+    </div>
+  );
+}
+```
+
+`fantasy-intel/frontend/app/invite/RedeemInvite.tsx`:
+
+```tsx
+"use client";
+
+import { useState, useSyncExternalStore, useTransition } from "react";
+import { Notice } from "@/components/ui";
+import { redeemInvite, type ActionResult } from "../leagues/actions";
+
+// The token is in the URL fragment (/invite#<token>): browsers never send a fragment to a server, so the token stays
+// out of request logs until this page posts it once.
+const noop = () => () => {};
+const readHash = () => window.location.hash.replace(/^#/, "");
+
+export function RedeemInvite() {
+  const token = useSyncExternalStore(noop, readHash, () => "");
+  const [busy, start] = useTransition();
+  const [result, setResult] = useState<ActionResult | null>(null);
+  if (!token) {
+    return <Notice tone="negative" title="This invite link is not complete">Copy the whole link from the person who invited you.</Notice>;
+  }
+  return (
+    <div className="stack">
+      <p>You were invited to a private league as a viewer.</p>
+      <div>
+        <button type="button" disabled={busy} onClick={() => start(async () => setResult(await redeemInvite(token)))}>
+          {busy ? "Joining…" : "Join the league"}
+        </button>
+      </div>
+      {result && !result.ok ? <Notice tone="negative" title="Could not join">{result.message}</Notice> : null}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: Run them and see them pass**
+
+```bash
+cd fantasy-intel/frontend && npm test
+```
+Expected: all pass; in the browser with the flag on, signed-out /leagues, /login and /invite render with no console errors.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add fantasy-intel/frontend/lib/my-leagues.ts fantasy-intel/frontend/lib/my-leagues.test.ts fantasy-intel/frontend/app/leagues/AddLeague.tsx fantasy-intel/frontend/app/leagues/LeagueActions.tsx fantasy-intel/frontend/app/leagues/[league]/page.tsx fantasy-intel/frontend/app/leagues/[league]/forms.tsx fantasy-intel/frontend/app/invite/page.tsx fantasy-intel/frontend/app/invite/RedeemInvite.tsx fantasy-intel/frontend/app/leagues/page.tsx fantasy-intel/frontend/app/leagues/actions.ts fantasy-intel/frontend/app/leagues/leagues.module.css
+git commit -m "Phase 3 tasks 12-13: sign-in (Supabase email link) and the connect / settings / invite pages"
+```
+
+
+### Task 14: Los Subies through the job path
+
+**Files:**
+- Modify: `fantasy-intel/scripts/golden_check.py`
+
+**Interfaces:**
+- Produces: scripts/golden_check.py --job-path [--paths]: one ESPN fetch applied the laptop way (legacy) and the job way (global published first, then app/sync/build.py, fenced publish), every legacy GET case compared; --paths prints differing key paths, never values.
+
+- [ ] **Step 1: There is no unit test: this is a local check on real Los Subies (never committed data).**
+
+
+- [ ] **Step 3: Implement**
+
+`fantasy-intel/scripts/golden_check.py`:
+
+```python
+"""Local check that a real league answers identically through the legacy path and the per-league path (Phase 2).
+
+    cd backend && uv run python ../scripts/golden_check.py [path/to/fantasy.duckdb] [--job-path]
+
+Copies the database (default: FANTASY_DB_PATH), starts a throwaway Postgres with the control-plane migrations,
+publishes the copy as a private league into a temporary object directory, makes a test user a member whose saved
+team is the database's own team (`is_mine`), then requests every legacy GET case both ways and compares them with
+the same masking as the committed goldens. Prints counts and the names of differing cases, never response bodies
+(the data is private). Needs `initdb`/`pg_ctl` (brew install postgresql). Exit 0 when every case matches.
+
+--job-path (Phase 3): the per-league side is built the way a sync job builds it. The league is fetched from ESPN once
+(with this laptop's .env cookies), then the same payloads are applied twice: the laptop way (write + analytics into
+the database copy, served by the legacy routes) and the job way (app/sync/build.py on the published global file and
+the previous league file, member SWIDs scrubbed, published with a fence and served by /v2).
+"""
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+import _bootstrap  # noqa: F401
+
+sys.path.insert(0, str(_bootstrap.BACKEND / "tests"))
+
+
+def job_build(pg, pub, db: Path, tmp: Path, settings, season: int) -> None:
+    """Refresh `db` the laptop way and publish a job-built version of the same league from the same payloads."""
+    import copy
+
+    import psycopg
+
+    from app.analytics.pipeline import run_analytics
+    from app.db.connection import open_db, utcnow
+    from app.db.league_publish import GLOBAL_STAMP, DirWriter, commit_league, publish_global
+    from app.db.league_split import split_database
+    from app.espn.sync import fetch_all, write_synced
+    from app.sync import espn_source
+    from app.sync.build import build_league_file
+    cred = {"espn_s2": settings.espn_s2, "swid": settings.swid} if settings.has_espn_credentials else None
+    with espn_source.espn_client(settings.league_id, season, cred) as client:
+        payloads = fetch_all(client)
+    with open_db(db) as con:
+        write_synced(con, copy.deepcopy(payloads), swid=settings.swid, my_team_id=settings.my_team_id)
+        run_analytics(con, season)
+    objects = tmp / "objects"
+    work = tmp / "job"
+    work.mkdir()
+    stamp = utcnow().isoformat(timespec="seconds")
+    with psycopg.connect(pg.dsn_for("fi_sync"), prepare_threshold=None) as con:
+        # The laptop's refresh also recomputed global tables: publish them first, as refresh_all does, so the job
+        # builds against (and readers attach) the same global file the legacy side reads.
+        split = split_database(db, work / "laptop-league.duckdb", work / "laptop-global.duckdb", stamp=stamp,
+                               global_stamp=GLOBAL_STAMP)
+        global_version = publish_global(split.global_path, split.global_version, DirWriter(objects), con)
+        built = build_league_file(work, global_path=objects / "global" / f"{global_version}.duckdb",
+                                  previous=objects / "leagues" / pub.league_id / f"{pub.data_version}.duckdb",
+                                  payloads=payloads, owner_swid=settings.swid, stamp=stamp)
+        fence = con.execute("UPDATE fi.leagues SET sync_fence = sync_fence + 1 WHERE id = %s RETURNING sync_fence",
+                            [pub.league_id]).fetchone()[0]
+        con.commit()
+        applied, _ = commit_league(DirWriter(objects), con, pub.league_id, built.league_path, built.league_version,
+                                   global_version, fence)
+    if not applied:
+        raise SystemExit("the job-built version was not published")
+    print("per-league side: built by the sync job path")
+
+
+def _differing_paths(a: str, b: str) -> list[str]:
+    """JSON key paths whose values differ (paths only: never the private values)."""
+    import json
+
+    def load(text):
+        return json.loads(text.split("\n", 1)[1] if text.startswith("//") else text)
+
+    out = []
+
+    def walk(x, y, path):
+        if type(x) is not type(y):
+            out.append(path or "$")
+        elif isinstance(x, dict):
+            for k in sorted(set(x) | set(y)):
+                walk(x.get(k), y.get(k), f"{path}.{k}")
+        elif isinstance(x, list):
+            if len(x) != len(y):
+                out.append(f"{path}[len]")
+            for i, (u, v) in enumerate(zip(x, y)):
+                walk(u, v, f"{path}[{i}]" if i < 1 else f"{path}[*]")
+        elif x != y:
+            out.append(path or "$")
+    try:
+        walk(load(a), load(b), "")
+    except ValueError:
+        return ["(not JSON)"]
+    return sorted(set(out))
+
+
+def main() -> int:
+    from app.config import get_settings
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    job_path = "--job-path" in sys.argv[1:]
+    settings = get_settings()
+    src = Path(args[0]) if args else settings.db_path
+    if not src.exists():
+        print(f"no database at {src}", file=sys.stderr)
+        return 2
+    import duckdb
+    from fastapi.testclient import TestClient
+
+    from cp_seed import U1, seed_membership, seed_user
+    from golden.golden import cases, response_text
+    from league_fixtures import publish_local
+    from pg_harness import PgCluster, PgDatabase
+    from test_leagues_api import URL, _jwks_client, bearer
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        db = tmp / "league.duckdb"
+        shutil.copyfile(src, db)                       # never hold a lock on the live file
+        con = duckdb.connect(str(db), read_only=True)
+        mine = con.execute("SELECT team_id FROM fantasy_teams WHERE is_mine").fetchone()
+        season = con.execute("SELECT season FROM leagues").fetchone()[0]
+        con.close()
+        cluster = PgCluster()
+        cluster.start()
+        try:
+            pg = PgDatabase(cluster, name="fi_golden")
+            pg.wait_ready()
+            pg.create()
+            pub = publish_local(pg, db, tmp / "objects", tmp / "work", visibility="private", name="League")
+            if job_path:
+                job_build(pg, pub, db, tmp, settings, season)
+            with pg.connect() as c:
+                seed_user(c, U1, admin=True)       # the owner-only research routes need a platform admin
+                seed_membership(c, U1, pub.league_id, "admin")
+                if mine:
+                    c.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, %s)",
+                              [U1, pub.league_id, str(mine[0])])
+                c.commit()
+            os.environ.update(FANTASY_DB_PATH=str(db), ESPN_SEASON=str(season), FANTASY_API_KEY="",
+                              MULTILEAGUE_ENABLED="1", SUPABASE_URL=URL, LEAGUE_FILES_DIR=str(tmp / "objects"),
+                              SNAPSHOT_BUCKET="", SERVE_SNAPSHOT="")
+            os.environ["SUPABASE_DB_URL"] = pg.dsn_for("fi_api")       # the throwaway cluster's fi_api role
+            import app.control_plane.jwt_auth as jwt_auth
+            client_jwks = _jwks_client()
+            jwt_auth.jwks_client = lambda url: client_jwks
+            import tempfile as tf
+            tf.tempdir = str(tmp / "cache")
+            (tmp / "cache").mkdir()
+            from app.main import app
+            client = TestClient(app, raise_server_exceptions=False)
+            con = duckdb.connect(str(db), read_only=True)
+            try:
+                cs = cases(app, con, client)
+            finally:
+                con.close()
+            headers = bearer(U1)
+
+            class Scoped:
+                def get(self, path):
+                    return client.get(f"/v2/leagues/{pub.league_id}{path}", headers=headers)
+
+            differ = []
+            for c in cs:
+                legacy, scoped = response_text(client, c), response_text(Scoped(), c)
+                if legacy != scoped:
+                    differ.append(c.name)
+                    if "--paths" in sys.argv[1:]:
+                        print(f"  {c.name}: {', '.join(_differing_paths(legacy, scoped)[:8])}")
+        finally:
+            cluster.stop()
+    print(f"{len(cs)} cases compared; {len(cs) - len(differ)} identical; {len(differ)} differ")
+    for name in differ:
+        print(f"  differs: {name}")
+    return 1 if differ else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+- [ ] **Step 4: Run them and see them pass**
+
+```bash
+cd fantasy-intel/backend && uv run python ../scripts/golden_check.py ../data/fantasy.duckdb --job-path
+```
+Expected: 52 cases compared; 52 identical; 0 differ (2026-10-20, after the fixes it found: runtime-created tables, roster order, perspective precedence).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add fantasy-intel/scripts/golden_check.py
+git commit -m "golden_check --job-path"
+```
+
 ## Acceptance (master plan, Phase 3)
 
 - Sync tests: reclaim in place, heartbeat loss aborts, a stale fence publishes nothing, a new league's first publish becomes visible, racing first publishes keep the higher fence, the slot cap holds under 10 concurrent claimers, duplicate enqueue collapses, a failure before the swap leaves the pointer unchanged, an ambiguous 403/404 never invalidates.
