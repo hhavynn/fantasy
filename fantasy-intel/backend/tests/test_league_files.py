@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from app.db.league_files import DirStore, LeagueFileCache, ObjectKeyError, R2Store, global_key, league_key
+from app.db.league_files import CacheFull, DirStore, LeagueFileCache, ObjectKeyError, R2Store, global_key, league_key
 from app.db.r2 import R2Error
 from fake_r2 import FakeR2
 
@@ -48,7 +48,7 @@ def test_downloads_once_verifies_and_serves_the_same_path(r2, tmp_path):
     p2 = cache.league_file(LG, v)
     assert p1 == p2 and p1.read_bytes() == data
     assert [m for m, k, _ in r2.requests if m == "GET"] == ["GET"]
-    assert not list((tmp_path / "c").glob("*.part"))
+    assert not list(cache.cache_dir.glob("*.part"))
 
 
 def test_concurrent_first_requests_download_once(r2, tmp_path):
@@ -76,7 +76,7 @@ def test_a_corrupt_or_wrong_size_object_is_rejected_and_nothing_is_cached(r2, tm
     cache = LeagueFileCache(R2Store(r2.config), tmp_path / "c", max_bytes=1 << 20)
     with pytest.raises(R2Error):
         cache.league_file(LG, v)
-    assert list((tmp_path / "c").iterdir()) == [] and cache.bytes_used == 0
+    assert list(cache.cache_dir.iterdir()) == [] and cache.bytes_used == 0
 
 
 def test_the_lru_never_exceeds_its_bound_under_a_20_league_mix(r2, tmp_path):
@@ -96,7 +96,7 @@ def test_the_lru_never_exceeds_its_bound_under_a_20_league_mix(r2, tmp_path):
         lg, v = rng.choice(leagues)
         p = cache.league_file(lg, v)
         assert p.exists()
-        on_disk = sum(f.stat().st_size for f in (tmp_path / "c").iterdir())
+        on_disk = sum(f.stat().st_size for f in cache.cache_dir.iterdir())
         assert on_disk <= bound and cache.bytes_used == on_disk
     assert evicted, "the mix is larger than the bound, so something must have been evicted"
 
@@ -121,3 +121,79 @@ def test_dir_store_serves_local_objects_with_the_same_checks(tmp_path):
     bad = version_of(b"other")
     with pytest.raises(R2Error):
         cache.global_file(bad)
+
+
+
+class SlowStore:
+    """Writes the object, then waits for a release, so concurrent downloads overlap."""
+    def __init__(self, objects, gate):
+        self.objects, self.gate, self.peak, self.cache = objects, gate, 0, None
+
+    def fetch(self, key, dest, *, sha256_prefix, size):
+        dest.with_name(dest.name + ".part").write_bytes(self.objects[key])
+        self.peak = max(self.peak, sum(f.stat().st_size for f in self.cache.cache_dir.iterdir()))
+        self.gate.wait(5)
+        dest.with_name(dest.name + ".part").replace(dest)
+
+
+def test_concurrent_first_downloads_stay_under_the_bound_together(tmp_path):
+    objects, keys = {}, []
+    for i in range(4):
+        data = blob(40_000, 10 + i)
+        v = version_of(data)
+        objects[league_key(f"lg_{i:024d}", v)] = data
+        keys.append((f"lg_{i:024d}", v))
+    gate = threading.Event()
+    store = SlowStore(objects, gate)
+    cache = LeagueFileCache(store, tmp_path / "c", max_bytes=100_000)
+    store.cache = cache
+    errors = []
+
+    def go(lg, v):
+        try:
+            cache.league_file(lg, v)
+        except CacheFull:
+            errors.append(lg)
+
+    threads = [threading.Thread(target=go, args=k) for k in keys]
+    [t.start() for t in threads]
+    import time
+    time.sleep(0.3)
+    assert cache.bytes_used <= 100_000, "reservations must keep in-flight downloads under the bound"
+    gate.set()
+    [t.join() for t in threads]
+    assert store.peak <= 100_000 and cache.bytes_used <= 100_000
+    assert errors, "with every slot reserved, the extra downloads are refused rather than overshooting"
+
+
+def test_a_pinned_file_is_never_evicted_and_a_full_cache_refuses(r2, tmp_path):
+    datas = [blob(60_000, 20 + i) for i in range(3)]
+    keys = []
+    for i, data in enumerate(datas):
+        v = version_of(data)
+        put(r2, league_key(f"lg_{i:024d}", v), data)
+        keys.append((f"lg_{i:024d}", v))
+    evicted = []
+    cache = LeagueFileCache(R2Store(r2.config), tmp_path / "c", max_bytes=130_000, on_evict=evicted.append)
+    a = cache.pin_league(*keys[0])
+    cache.league_file(*keys[1])
+    cache.league_file(*keys[2])                       # needs room: evicts b, never the pinned a
+    assert a.exists() and evicted and a not in evicted
+    b = cache.pin_league(*keys[1])                    # re-download b, pinned
+    with pytest.raises(CacheFull):
+        cache.pin_league(*keys[2])                    # a and b pinned (120k), c (60k) cannot fit
+    cache.release(a)
+    assert cache.pin_league(*keys[2]).exists()
+    cache.release(b)
+
+
+def test_processes_sharing_a_directory_keep_their_own_files(tmp_path):
+    import os
+    alive = tmp_path / "c" / f"p{os.getppid()}"      # another live process's directory
+    alive.mkdir(parents=True)
+    (alive / "x.duckdb").write_bytes(b"theirs")
+    dead = tmp_path / "c" / "p999999"                 # no such process
+    dead.mkdir()
+    (dead / "y.duckdb").write_bytes(b"stale")
+    LeagueFileCache(DirStore(tmp_path / "objects"), tmp_path / "c", max_bytes=1 << 20)
+    assert (alive / "x.duckdb").exists() and not dead.exists()

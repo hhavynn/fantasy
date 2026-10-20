@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import tempfile
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Protocol
 
@@ -22,7 +23,8 @@ from .league_files import global_key, league_key
 from .league_split import SplitResult, split_database
 
 KEEP = 3
-GLOBAL_STAMP = "content-addressed"    # the global file's internal stamp: identical content, identical bytes
+GLOBAL_STAMP = "content-addressed"
+GLOBAL_GRACE = timedelta(days=1)          # an unreferenced global object younger than this is never collected    # the global file's internal stamp: identical content, identical bytes
 
 _UPSERT = """
 INSERT INTO fi.league_snapshots (league_id, object_key, data_version, fence, global_version, committed_at)
@@ -141,9 +143,13 @@ def _collect(writer: ObjectWriter, sync_con, league_id: str) -> tuple[str, ...]:
         if key not in league_refs:
             writer.delete(key)
             deleted.append(key)
+    # A global object another publisher has just uploaded is not referenced until its pointer moves; keep every
+    # unreferenced global younger than GLOBAL_GRACE (by the stamp in its name) and always the newest one.
+    cutoff = (utcnow() - GLOBAL_GRACE).strftime("%Y%m%dT%H%M%SZ")
     globals_ = sorted(writer.keys("global/"))
     for key in globals_[:-1]:
-        if key not in global_refs:
+        stamp = key.removeprefix("global/").split("-", 1)[0]
+        if key not in global_refs and stamp < cutoff:
             writer.delete(key)
             deleted.append(key)
     return tuple(deleted)

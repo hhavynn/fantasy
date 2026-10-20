@@ -95,3 +95,19 @@ def test_the_publisher_role_cannot_touch_people_tables_and_unknown_leagues_are_r
             publish_league(e2e, R2Writer(r2.config), con, "lg_" + "q" * 24, stamp="2026-10-20T12:00:00")
     with sync_con(pg) as con, pytest.raises(psycopg.errors.InsufficientPrivilege):
         con.execute("SELECT count(*) FROM fi.league_memberships")
+
+
+
+def test_a_recent_unreferenced_global_is_kept_and_an_old_one_is_collected(pg, r2, league, e2e):
+    """Another publisher's freshly uploaded global is unreferenced until its pointer moves: never collect it early."""
+    from datetime import timedelta
+    from app.db.connection import utcnow
+    fmt = "%Y%m%dT%H%M%SZ"
+    now = utcnow()
+    other_new = global_key((now - timedelta(hours=2)).strftime(fmt) + "-" + "a" * 24 + "-100")   # recent, not newest
+    other_old = global_key((now - timedelta(days=3)).strftime(fmt) + "-" + "b" * 24 + "-100")
+    r2.objects[other_new] = b"x" * 100
+    r2.objects[other_old] = b"y" * 100
+    with sync_con(pg) as con:     # this publish's own global is stamped now: the newest key
+        publish_league(e2e, R2Writer(r2.config), con, league, stamp=now.isoformat(timespec="seconds"))
+    assert other_new in r2.objects and other_old not in r2.objects

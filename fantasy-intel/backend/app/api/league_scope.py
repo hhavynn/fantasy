@@ -69,16 +69,21 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
     except ControlPlaneUnavailable:
         raise HTTPException(503, UNAVAILABLE) from None
     if access.snapshot is None:
-        raise HTTPException(409, {"detail": FIRST_SYNC, "sync_state": access.sync_state})
+        # The detail stays a plain string (what the dashboard shows); the state travels in a header.
+        raise HTTPException(409, FIRST_SYNC, headers={"X-FI-Sync-State": access.sync_state})
     snap = access.snapshot
     if not VERSION_RE.fullmatch(snap.data_version) or not VERSION_RE.fullmatch(snap.global_version):
         log.warning("league %s has a pointer in an unsupported format", league_id)
         raise HTTPException(503, FILES_UNAVAILABLE)
     cache = league_file_cache()
+    league_path = None
     try:
-        league_path = cache.league_file(access.league_id, snap.data_version)
-        global_path = cache.global_file(snap.global_version)
-    except Exception as err:   # noqa: BLE001 - R2 errors, a missing object: never a 500 with details
+        # Pinned until the request ends (league_scope releases them): never evicted before the handler opens them.
+        league_path = cache.pin_league(access.league_id, snap.data_version)
+        global_path = cache.pin_global(snap.global_version)
+    except Exception as err:   # noqa: BLE001 - R2 errors, a missing object, a full cache: never a 500 with details
+        if league_path is not None:
+            cache.release(league_path)
         log.warning("league files unavailable for %s: %s", league_id, type(err).__name__)
         raise HTTPException(503, FILES_UNAVAILABLE) from None
     # "My team" (fantasy_teams.is_mine): the signed-in viewer's saved team, as the owner's team was on the legacy
@@ -173,6 +178,9 @@ async def league_scope(request: Request, league_id: str = Depends(valid_league_i
     if key is not None:
         hit = response_cache().get(key)
         if hit is not None:
+            cache = league_file_cache()
+            cache.release(scope.league_path)
+            cache.release(scope.global_path)
             raise CachedResponse(hit)
         request.state.fi_cache_key = key
     token = LEAGUE_SCOPE.set(scope)
@@ -180,6 +188,9 @@ async def league_scope(request: Request, league_id: str = Depends(valid_league_i
         yield scope
     finally:
         LEAGUE_SCOPE.reset(token)
+        cache = league_file_cache()
+        cache.release(scope.league_path)
+        cache.release(scope.global_path)
 
 
 LEAGUE_PREFIX = "/v2/leagues/{league_id}"

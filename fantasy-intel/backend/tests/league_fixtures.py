@@ -1,13 +1,13 @@
-"""Register split league files in the test control plane and serve them from a local object directory."""
+"""Register a league in the test control plane and publish it with the real publisher into a local object directory."""
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.db.league_files import global_key, league_key
-from app.db.league_split import split_database
-from cp_seed import new_league_id, seed_league
+import psycopg
+
+from app.db.league_publish import DirWriter, publish_league
+from cp_seed import seed_league
 
 
 @dataclass(frozen=True)
@@ -20,20 +20,20 @@ class Published:
 def publish_local(pg, src_db: Path, objects: Path, work: Path, *, visibility="public", name="League", checked_at="now()",
                   stamp="2026-10-20T12:00:00", league_id: str | None = None,
                   external_id: str | None = None) -> Published:
-    """Split `src_db`, lay the two files out under `objects` with their real keys, register the league and point
-    fi.league_snapshots at them (as the publisher does)."""
-    work.mkdir(parents=True, exist_ok=True)
-    out = split_database(src_db, work / "lg.duckdb", work / "gl.duckdb", stamp=stamp)
-    with pg.connect() as con:
-        lid = seed_league(con, league_id, visibility=visibility, name=name, checked_at=checked_at,
-                          external_id=external_id or str(out.league_id))
-        for key, path in ((league_key(lid, out.league_version), out.league_path),
-                          (global_key(out.global_version), out.global_path)):
-            dest = objects / key
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(path, dest)
-        con.execute("INSERT INTO fi.league_snapshots (league_id, object_key, data_version, fence, global_version) "
-                    "VALUES (%s, %s, %s, 1, %s)", [lid, league_key(lid, out.league_version), out.league_version,
-                                                  out.global_version])
-        con.commit()
-    return Published(lid, out.league_version, out.global_version)
+    """Register the league, then publish `src_db` exactly as production does (app/db/league_publish.py) as fi_sync,
+    with the objects laid out under `objects` (the API reads them through LEAGUE_FILES_DIR). `work` is unused and
+    kept for call-site compatibility."""
+    import duckdb
+    con = duckdb.connect(str(src_db), read_only=True)
+    try:
+        espn_id = con.execute("SELECT league_id FROM leagues").fetchone()[0]
+    finally:
+        con.close()
+    with pg.connect() as su:
+        lid = seed_league(su, league_id, visibility=visibility, name=name, checked_at=checked_at,
+                          external_id=external_id or str(espn_id))
+        su.commit()
+    with psycopg.connect(pg.dsn_for("fi_sync"), prepare_threshold=None) as sync:
+        res = publish_league(Path(src_db), DirWriter(objects), sync, lid, stamp=stamp)
+    assert res.applied
+    return Published(lid, res.data_version, res.global_version)

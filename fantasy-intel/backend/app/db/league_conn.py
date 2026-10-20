@@ -13,12 +13,18 @@ the viewer has no perspective. No engine changes; another cursor never sees this
 
 from __future__ import annotations
 
+import os
+import re
 import threading
 from pathlib import Path
 
 import duckdb
 
 _MAX_TEAM_ID = 1_000_000
+_MEMORY_LIMIT = (os.environ.get("LEAGUE_DUCKDB_MEMORY_LIMIT") or "256MB").strip()
+_THREADS = max(1, min(8, int(os.environ.get("LEAGUE_DUCKDB_THREADS") or 2)))
+if not re.fullmatch(r"[0-9]{1,5}(MB|GB)", _MEMORY_LIMIT):
+    _MEMORY_LIMIT = "256MB"
 
 
 def perspective_team(raw) -> int | None:
@@ -58,6 +64,9 @@ class LayeredDatabases:
                 inst = duckdb.connect(":memory:")
                 inst.execute(f"ATTACH '{_q(league_path)}' AS lg (READ_ONLY)")
                 inst.execute(f"ATTACH '{_q(global_path)}' AS gl (READ_ONLY)")
+                # Several instances share one function's memory: cap each (DuckDB defaults to 80% of RAM).
+                inst.execute(f"SET memory_limit = '{_MEMORY_LIMIT}'")
+                inst.execute(f"SET threads = {_THREADS}")
                 inst.execute("SET enable_external_access = false")
                 inst.execute("SET lock_configuration = true")
                 self._instances[key] = inst

@@ -91,23 +91,38 @@ class DirStore:
             part.unlink(missing_ok=True)
 
 
+class CacheFull(RuntimeError):
+    """Every cached file is in use by a running request and the new one does not fit: the caller answers 503."""
+
+
 class LeagueFileCache:
+    """Files are *pinned* while a request uses them (`pin()` / `release()`): eviction skips pinned files, so a path a
+    request has resolved is never unlinked before the request has opened it. In-flight downloads reserve their bytes,
+    so concurrent first loads cannot push the directory past the bound together. Each process has its own
+    subdirectory (several processes on one host never delete each other's files); directories of dead processes are
+    removed at start."""
+
     def __init__(self, store: ObjectStore, cache_dir: Path, *, max_bytes: int = DEFAULT_MAX_BYTES,
                  on_evict: Callable[[Path], None] | None = None):
-        self.store, self.cache_dir, self.max_bytes = store, Path(cache_dir), int(max_bytes)
+        self.store, self.max_bytes = store, int(max_bytes)
         self.on_evict = on_evict
-        self._lock = threading.Lock()                       # guards _files and _downloading
+        self._lock = threading.Lock()                       # guards every field below
         self._files: OrderedDict[str, tuple[Path, int]] = OrderedDict()   # key -> (path, bytes), LRU order
         self._downloading: dict[str, threading.Event] = {}
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        for leftover in self.cache_dir.iterdir():          # a fresh index: files from an earlier process are dropped
-            if leftover.is_file():
-                leftover.unlink(missing_ok=True)
+        self._reserved: dict[str, int] = {}                 # key -> bytes of an in-flight download
+        self._pins: dict[str, int] = {}                     # key -> requests currently using the file
+        root = Path(cache_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        _remove_dead_process_dirs(root)
+        self.cache_dir = root / f"p{os.getpid()}"
+        shutil.rmtree(self.cache_dir, ignore_errors=True)  # a fresh index for this process
+        self.cache_dir.mkdir(parents=True)
 
     @property
     def bytes_used(self) -> int:
+        """Bytes on disk: cached files plus in-flight downloads."""
         with self._lock:
-            return sum(size for _, size in self._files.values())
+            return sum(size for _, size in self._files.values()) + sum(self._reserved.values())
 
     def league_file(self, league_id: str, version: str) -> Path:
         return self._get(league_key(league_id, version), version)
@@ -115,10 +130,26 @@ class LeagueFileCache:
     def global_file(self, version: str) -> Path:
         return self._get(global_key(version), version)
 
+    def pin_league(self, league_id: str, version: str) -> Path:
+        """`league_file`, held until `release()`: never evicted meanwhile."""
+        return self._get(league_key(league_id, version), version, pin=True)
+
+    def pin_global(self, version: str) -> Path:
+        return self._get(global_key(version), version, pin=True)
+
+    def release(self, path: Path) -> None:
+        with self._lock:
+            for key, (p, _) in self._files.items():
+                if p == path and self._pins.get(key):
+                    self._pins[key] -= 1
+                    if not self._pins[key]:
+                        del self._pins[key]
+                    return
+
     def _local_path(self, key: str) -> Path:
         return self.cache_dir / key.replace("/", "__")
 
-    def _get(self, key: str, version: str) -> Path:
+    def _get(self, key: str, version: str, *, pin: bool = False) -> Path:
         m = _check_version(version)
         size = int(m["bytes"])
         if size > self.max_bytes:
@@ -128,6 +159,8 @@ class LeagueFileCache:
                 hit = self._files.get(key)
                 if hit is not None and hit[0].exists():
                     self._files.move_to_end(key)
+                    if pin:
+                        self._pins[key] = self._pins.get(key, 0) + 1
                     return hit[0]
                 waiting = self._downloading.get(key)
                 if waiting is None:
@@ -136,31 +169,59 @@ class LeagueFileCache:
             waiting.wait()                                   # someone else is fetching this object; then re-check
         path = self._local_path(key)
         try:
-            self._make_room(size)
-            self.store.fetch(key, path, sha256_prefix=m["sha"], size=size)
+            self._make_room(key, size)                       # reserves `size` for this download
+            try:
+                self.store.fetch(key, path, sha256_prefix=m["sha"], size=size)
+            finally:
+                with self._lock:
+                    self._reserved.pop(key, None)
             with self._lock:
                 self._files[key] = (path, size)
                 self._files.move_to_end(key)
-            self._make_room(0)
+                if pin:
+                    self._pins[key] = self._pins.get(key, 0) + 1
             return path
         finally:
             with self._lock:
                 self._downloading.pop(key, None)
             done.set()
 
-    def _make_room(self, incoming: int) -> None:
-        """Evict least-recently-used files until `incoming` more bytes fit under the bound."""
+    def _make_room(self, key: str, incoming: int) -> None:
+        """Evict least-recently-used unpinned files until `incoming` more bytes fit, then reserve them."""
         evicted = []
         with self._lock:
-            used = sum(size for _, size in self._files.values())
-            while self._files and used + incoming > self.max_bytes:
-                _, (path, size) = self._files.popitem(last=False)
+            used = sum(size for _, size in self._files.values()) + sum(self._reserved.values())
+            for old in list(self._files):
+                if used + incoming <= self.max_bytes:
+                    break
+                if self._pins.get(old):
+                    continue
+                path, size = self._files.pop(old)
                 used -= size
                 evicted.append(path)
+            if used + incoming > self.max_bytes:
+                raise CacheFull(f"no room for {key}: every cached file is in use")
+            self._reserved[key] = incoming
         for path in evicted:
             if self.on_evict is not None:
-                self.on_evict(path)                          # close connections first, then free the space
+                self.on_evict(path)                          # forget open instances, then free the space
             try:
                 os.unlink(path)
             except FileNotFoundError:
                 pass
+
+
+def _remove_dead_process_dirs(root: Path) -> None:
+    for d in root.glob("p*"):
+        try:
+            pid = int(d.name[1:])
+        except ValueError:
+            continue
+        if pid == os.getpid():
+            continue
+        try:
+            os.kill(pid, 0)                                  # alive (or not ours to signal): leave it
+        except ProcessLookupError:
+            shutil.rmtree(d, ignore_errors=True)
+        except PermissionError:
+            pass

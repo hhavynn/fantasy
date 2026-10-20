@@ -8,6 +8,8 @@ import {
   type PaletteItem, type SearchPlayer, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent, wrapIndex,
 } from "@/lib/palette";
 import { withTeam } from "@/lib/team-perspective";
+import { withLeague } from "@/lib/league-scope";
+import { useLeagueId } from "./useAppPathname";
 import { useTeam } from "./useTeam";
 import styles from "./CommandPalette.module.css";
 
@@ -93,6 +95,7 @@ export function CommandPalette() {
 type PlayerResult = { q: string; players: PaletteItem[]; failed: boolean };
 
 function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | null }) {
+  const league = useLeagueId();
   const router = useRouter();
   const uid = useId();
   const listId = `${uid}-list`;
@@ -152,8 +155,8 @@ function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | 
   const choose = useCallback((item: PaletteItem) => {
     writeRecents(pushRecent(readRecents(), item));
     onClose();
-    router.push(withTeam(item.href, team));
-  }, [onClose, router, team]);
+    router.push(withLeague(withTeam(item.href, team), league));
+  }, [league, onClose, router, team]);
 
   const move = (delta: number) => {
     const next = flat[wrapIndex(activeIndex, delta, flat.length)];

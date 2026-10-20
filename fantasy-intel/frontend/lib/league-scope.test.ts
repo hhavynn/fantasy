@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appPath, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath } from "./league-scope.ts";
+import { appPath, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath, withLeague } from "./league-scope.ts";
 
 const LG = "lg_" + "a".repeat(24);
 
@@ -47,5 +47,15 @@ test("old URLs go to the last-viewed league, and ?league=clear returns to the cl
 test("assets, Next internals, route handlers and the connections page are never redirected", () => {
   for (const p of ["/_next/static/x.js", "/api/thing", "/leagues", "/leagues/x", "/favicon.ico", "/icon.svg", "/apple-icon", "/robots.txt"]) {
     assert.deepEqual(proxyDecision({ enabled: true, pathname: p, search: "", cookie: LG }), { kind: "next" }, p);
+  }
+});
+
+test("withLeague prefixes in-app links for the current league and leaves the rest alone", () => {
+  assert.equal(withLeague("/waivers?team=2", LG), `/l/${LG}/waivers?team=2`);
+  assert.equal(withLeague("/", LG), `/l/${LG}`);
+  assert.equal(withLeague("/players/12#log", LG), `/l/${LG}/players/12#log`);
+  assert.equal(withLeague("/waivers", null), "/waivers");
+  for (const href of ["/leagues", "/favicon.ico", "https://espn.com/x", "//evil.example/x", `/l/${LG}/trades`, "/?league=clear", "/data?league=clear"]) {
+    assert.equal(withLeague(href, LG), href, href);
   }
 });

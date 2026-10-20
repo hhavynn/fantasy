@@ -130,7 +130,8 @@ def test_a_league_without_a_published_snapshot_is_first_sync_not_someone_elses_d
         con.commit()
     r = client.get(f"/v2/leagues/{lid}/api/overview")
     assert r.status_code == 409
-    assert r.json() == {"detail": {"detail": "First sync in progress.", "sync_state": "first_sync_running"}}
+    assert r.json() == {"detail": "First sync in progress."}
+    assert r.headers["x-fi-sync-state"] == "first_sync_running"
 
 
 def test_two_leagues_with_colliding_ids_never_leak(pg, served, client, e2e, e2e_b, tmp_path):

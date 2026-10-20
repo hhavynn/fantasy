@@ -33,6 +33,18 @@ export function leaguePath(league: string, path: string): string {
   return `/l/${league}${p === "/" ? "" : p}`;
 }
 
+/**
+ * An in-app href for the current league: `/waivers?team=2` -> `/l/<lg>/waivers?team=2`, so a click goes straight to
+ * the league page instead of through the proxy's cookie redirect. Unscoped targets (the connections page, assets,
+ * external links, `?league=clear`) and hrefs that already carry a league are returned unchanged.
+ */
+export function withLeague(href: string, league: string | null | undefined): string {
+  if (!league || !isLeagueId(league) || !href.startsWith("/") || href.startsWith("//")) return href;
+  const [path, query = ""] = href.split(/(?=[?#])/, 2);
+  if (splitLeaguePath(path).league || unscoped(path) || new URLSearchParams(query.replace(/^[?]/, "").split("#")[0]).get(CLEAR_PARAM) === "clear") return href;
+  return `${leaguePath(league, path)}${query}`;
+}
+
 /** Prefix a backend path with the league's /v2 mount. Only the legacy /api routes are league-scoped. */
 export function scopeApiPath(path: string, league: string | null | undefined): string {
   if (!league || !isLeagueId(league) || !path.startsWith("/api/")) return path;
