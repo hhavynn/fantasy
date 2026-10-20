@@ -218,7 +218,7 @@ def search_players(q: str = "", limit: int = Query(30, le=100)):
             SELECT {_player_cols(con)} FROM fantasy_players fp {_pj(lg["season"])}
             WHERE fp.position IN ('QB','RB','WR','TE','K','D/ST')
               AND (? = '' OR strip_accents(lower(fp.full_name)) LIKE '%' || strip_accents(lower(?)) || '%')
-            ORDER BY fp.percent_owned DESC NULLS LAST LIMIT ?
+            ORDER BY fp.percent_owned DESC NULLS LAST, fp.espn_player_id LIMIT ?
         """, [q.strip(), q.strip(), limit])
         for r in out:
             r["fantasy_team"] = teams.get(r["on_team_id"]) if r["availability_status"] == "ONTEAM" else None
@@ -481,7 +481,7 @@ def data_quality():
             WHERE m.match_method = 'unmatched' ORDER BY (fp.availability_status = 'ONTEAM') DESC,
                   fp.percent_owned DESC NULLS LAST LIMIT 200""")
         medium = rows(con, """SELECT m.*, fp.percent_owned FROM player_id_map m JOIN fantasy_players fp USING (espn_player_id)
-                              WHERE m.match_confidence = 'medium' ORDER BY fp.percent_owned DESC NULLS LAST LIMIT 100""")
+                              WHERE m.match_confidence = 'medium' ORDER BY fp.percent_owned DESC NULLS LAST, fp.espn_player_id LIMIT 100""")
         conflicts = rows(con, "SELECT * FROM player_id_map WHERE notes LIKE 'Conflicting%' LIMIT 100")
         runs = rows(con, f"SELECT run_id, source, started_at, finished_at, {_RUN_STATUS} AS status, message FROM sync_runs "
                     "ORDER BY started_at DESC LIMIT 30")
@@ -532,7 +532,7 @@ def _projection_quality(con) -> dict | None:
                    r.ros_weeks_expected, r.ros_weeks_available, r.missing_weeks
             FROM player_ros_projections r LEFT JOIN fantasy_players fp USING (espn_player_id)
             WHERE r.season = ? AND r.ros_projected_points IS NULL
-            ORDER BY (fp.availability_status = 'ONTEAM') DESC NULLS LAST, fp.percent_owned DESC NULLS LAST LIMIT 60""",
+            ORDER BY (fp.availability_status = 'ONTEAM') DESC NULLS LAST, fp.percent_owned DESC NULLS LAST, fp.espn_player_id LIMIT 60""",
                           [season])
     history = one(con, """SELECT count(*) AS rows, count(DISTINCT snapshot_date) AS days, max(snapshot_date) AS latest
                           FROM espn_projection_history WHERE season = ?""", [season])
