@@ -1,4 +1,4 @@
-"""Kicker projection engine (kfp-1.0.0): scoring, PBP tables, venues, weather, model, live runs, storage, consumers.
+"""Kicker projection engine (kfp-1.1.0): scoring, PBP tables, venues, weather, model, live runs, storage, consumers.
 
 Synthetic, deterministic fixtures only (tests/synthetic_kicker.py); no test makes a network request: every weather
 call goes through an injected http_get.
@@ -468,7 +468,7 @@ def test_weather_outage_never_breaks_a_run_and_weather_is_not_a_model_input(live
     nws = FakeNWS(hourly=_hourly(datetime(2026, 9, 22, 15, 0, tzinfo=timezone.utc), 10, wind="25 mph"))
     _, windy = _build(live, http_get=nws)
     pts = lambda rows: {r["espn_player_id"]: r["projected_points"] for r in rows}
-    assert pts(quiet) == pts(broken) == pts(windy)         # kfp-1.0.0 does not use weather
+    assert pts(quiet) == pts(broken) == pts(windy)         # kfp-1.1.0 does not use weather
     outdoor = [r for r in windy if r["coverage_status"] == "projected" and r["context"]["venue"]["roof"] == "open_air"]
     assert outdoor and all(r["context"]["weather"]["status"] in ("ok", "stale") for r in outdoor)
     for r in outdoor:
@@ -491,11 +491,11 @@ def test_write_once_integrity_and_gate(live):
         ks.write_run(con, meta, [{**rows[0], "projected_points": 99.0}, *rows[1:]])
     sel = ks.select_run(con, 2026, 4)
     assert sel["run"]["run_id"] == meta["run_id"] and sel["run"]["artifact_check"] == "unverified"
-    ks.register_artifact(con, model_version="kfp-1.0.0", artifact_sha256="b" * 64, target_season=2026,
+    ks.register_artifact(con, model_version="kfp-1.1.0", artifact_sha256="b" * 64, target_season=2026,
                          training_cutoff_key=202599, artifact_created_at=None)
     sel = ks.select_run(con, 2026, 4)
     assert sel["run"] is None and "not registered" in sel["skipped"][0]["reason"]
-    ks.register_artifact(con, model_version="kfp-1.0.0", artifact_sha256="a" * 64, target_season=2026,
+    ks.register_artifact(con, model_version="kfp-1.1.0", artifact_sha256="a" * 64, target_season=2026,
                          training_cutoff_key=202599, artifact_created_at=None)
     assert ks.select_run(con, 2026, 4)["run"]["artifact_check"] == "verified"
     con.execute("UPDATE kicker_projection_rows SET projected_points = projected_points + 1 "
@@ -545,7 +545,7 @@ def test_artifact_file_sha_is_the_run_identity(tmp_path, world, scoring):
     p = tmp_path / "a.json"
     p.write_text(json.dumps(art.to_dict()))
     assert kl.artifact_sha(p) == hashlib.sha256(p.read_bytes()).hexdigest()
-    assert kl.load_artifact(p).version == "kfp-1.0.0"
+    assert kl.load_artifact(p).version == "kfp-1.1.0"
 
 
 def test_backfill_script_replaces_only_its_seasons(tmp_path):
@@ -606,3 +606,81 @@ def test_register_command_approves_an_existing_artifact_idempotently(tmp_path, m
         cli.cmd_register(args)
     with pytest.raises(SystemExit):
         cli.cmd_register(argparse.Namespace(season=2027, live_db=db, out=out, artifact=None))
+
+
+def test_line_table_splits_the_total_by_the_home_favored_spread():
+    sched = pl.DataFrame({"game_id": ["g1", "g2"], "home_team": ["KC", "NYG"], "away_team": ["LV", "DAL"],
+                          "spread_line": [7.0, None], "total_line": [45.0, 41.5]})
+    t = {(r["game_id"], r["team"]): r["o_implied"] for r in km.line_table(sched).iter_rows(named=True)}
+    assert t == {("g1", "KC"): 26.0, ("g1", "LV"): 19.0}           # no spread, no implied total
+    assert km.line_table(sched.drop("spread_line")).height == 0      # a schedule without the line columns
+
+
+def test_retired_kfp_runs_serve_weeks_without_a_current_run(live):
+    from app.analytics import forward_ours as fo
+    from app.api.kicker_projections import build_response
+
+    con = live[0]
+    assert fo.KICKER_VERSION == ks.MODEL_VERSION and ks.CONSUMER_VERSIONS == (ks.MODEL_VERSION, "kfp-1.0.0")
+    meta, rows = _build(live)
+    old = {**meta, "run_id": "kfp-old-1-0", "model_version": "kfp-1.0.0"}
+    ks.write_run(con, old, rows)
+    # only a kfp-1.0.0 run (2026 weeks 1-6): it is served, under its own version, not ESPN's fallback
+    body = build_response(con, 4, None)
+    assert body["run"]["run_id"] == "kfp-old-1-0" and body["governance"]["model_version"] == "kfp-1.0.0"
+    assert {p["independent"]["model_version"] for p in body["players"]} == {"kfp-1.0.0"}
+    assert ks.overlay(con, 2026, 4)["run"]["model_version"] == "kfp-1.0.0"
+    # each version is gated by its own artifacts: a registered 1.0 artifact that is not this run's rejects it
+    ks.register_artifact(con, model_version="kfp-1.0.0", artifact_sha256="e" * 64, target_season=2026,
+                         training_cutoff_key=202599, artifact_created_at=None)
+    sel = ks.select_run(con, 2026, 4)
+    assert sel["run"] is None and "not registered" in sel["skipped"][0]["reason"]
+    ks.register_artifact(con, model_version="kfp-1.0.0", artifact_sha256="a" * 64, target_season=2026,
+                         training_cutoff_key=202599, artifact_created_at=None)
+    assert ks.select_run(con, 2026, 4)["run"]["artifact_check"] == "verified"
+    # both versions stored for the week: kfp-1.1.0 wins, even though the 1.0 run is newer
+    ks.write_run(con, {**meta, "created_at": "2026-09-01 00:00:00"}, rows)
+    sel = ks.select_run(con, 2026, 4)
+    assert sel["run"]["model_version"] == ks.MODEL_VERSION and sel["run"]["run_id"] == meta["run_id"]
+    assert build_response(con, 4, None)["governance"]["model_version"] == ks.MODEL_VERSION
+
+
+def test_fit_re_evaluates_a_report_from_another_model_version(tmp_path, monkeypatch):
+    import argparse
+    import importlib.util
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[2] / "scripts" / "kicker_projections.py"
+    monkeypatch.syspath_prepend(str(script.parent))
+    spec = importlib.util.spec_from_file_location("kicker_projections_cli", script)
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+
+    def report(version, median, config=None):
+        r = {"model_version": version, "generated_at": f"{version}-report", "league_median_points": median,
+             "test": {"common_support": {}}, "prospective": {}, "ablations_test": {}}
+        return {**r, "config": config} if config is not None else r
+
+    out = tmp_path / "kicker"
+    out.mkdir()
+    path = out / "kfp_evaluation.json"
+    path.write_text(json.dumps(report("kfp-1.0.0", 7.6)))           # left by the previous model (an upgrade)
+    calls = []
+
+    def evaluate(args):
+        calls.append(args)
+        path.write_text(json.dumps(report(km.MODEL_VERSION, 8.0, kb.cfg_dict(kb.PRODUCTION))))
+
+    monkeypatch.setattr(cli, "cmd_evaluate", evaluate)
+    args = argparse.Namespace(out=out)
+    ev = cli.artifact_evaluation(args, kb.PRODUCTION)
+    assert len(calls) == 1 and ev["league_median_points"] == 8.0 and ev["report_generated_at"] == "kfp-1.1.0-report"
+    assert cli.artifact_evaluation(args, kb.PRODUCTION)["league_median_points"] == 8.0 and len(calls) == 1  # current
+    # same version, different frozen config: also re-derived
+    assert cli.report_is_stale(report(km.MODEL_VERSION, 8.0, {**kb.cfg_dict(kb.PRODUCTION), "team_k": 9.0}),
+                               kb.PRODUCTION)
+    # an evaluate that still leaves a stale report: refuse rather than embed it
+    monkeypatch.setattr(cli, "cmd_evaluate", lambda a: path.write_text(json.dumps(report("kfp-1.0.0", 7.6))))
+    path.write_text(json.dumps(report("kfp-1.0.0", 7.6)))
+    with pytest.raises(SystemExit):
+        cli.artifact_evaluation(args, kb.PRODUCTION)

@@ -22,19 +22,19 @@ SCHEMA_VERSION = "kicker-projections/v1"
 GOVERNANCE = {
     "model_version": ks.MODEL_VERSION, "role": "independent kicker model (separate from the ifp skill-position models)",
     "start_sit_ready": False, "espn_superiority_established": False,
-    "status_note": ("Fantasy Intel's kicker model: more accurate than trailing kicker averages on 2023-2025 held-out "
-                    "seasons, and tracked against ESPN every week since 2026."),
+    "status_note": ("Fantasy Intel's kicker model: more accurate than trailing kicker averages in a 2023-2025 "
+                    "retrospective backtest, and tracked prospectively against ESPN every week since 2026."),
 }
 NOTES = [
     "projected_points is conditional on the kicker kicking in the game; expected_points = p_play x projected_points.",
     "stat_line holds the model's expected FG tries and makes by distance and expected PAT tries and makes.",
     "Weather is a forecast (NWS) shown with its retrieval time; it is a model input only when "
-    "context.weather.used_by_model is true (kfp-1.0.0: never).",
+    "context.weather.used_by_model is true (kfp-1.1.0: never).",
     "A retractable roof's game-day position is unknown before kickoff and is never assumed.",
 ]
 
 
-def player(r: dict, fantasy: dict, espn: dict) -> dict:
+def player(r: dict, fantasy: dict, espn: dict, model_version: str = ks.MODEL_VERSION) -> dict:
     f, e = fantasy.get(r["espn_player_id"]) or {}, espn.get(r["espn_player_id"]) or {}
     exp = r.get("expected_points")
     ep = e.get("projected_points")
@@ -48,7 +48,7 @@ def player(r: dict, fantasy: dict, espn: dict) -> dict:
                             "coverage_status": r.get("coverage_status"), "stat_line": r.get("stat_line"),
                             "context": r.get("context"), "explanation": r.get("explanation") or [],
                             "flags": r.get("flags") or [], "missing_inputs": r.get("missing_inputs") or [],
-                            "pregame": r.get("pregame"), "model_version": ks.MODEL_VERSION},
+                            "pregame": r.get("pregame"), "model_version": model_version},
             "espn": {"projected_points": ep},
             "comparison": {"expected_minus_espn": round(exp - ep, 2) if exp is not None and ep is not None else None}}
 
@@ -73,11 +73,13 @@ def build_response(con, week: int | None, team_id: int | None) -> dict:
         con, "SELECT espn_player_id, projected_points FROM espn_player_weekly_points WHERE season = ? "
              "AND scoring_period = ? AND espn_player_id IN (SELECT unnest(?))", [lg["season"], week, ids])} \
         if table_exists(con, "espn_player_weekly_points") else {}
-    players = [player(r, fantasy, espn) for r in sel["rows"]]
+    players = [player(r, fantasy, espn, run["model_version"]) for r in sel["rows"]]
     if team_id is not None:
         players = [p for p in players if p["fantasy_team_id"] == team_id]
     players.sort(key=lambda p: (p["independent"]["expected_points"] is None, -(p["independent"]["expected_points"] or 0),
                                 p["espn_player_id"]))
+    # a week projected before kfp-1.1.0 is served from its kfp-1.0.0 run, labeled as such
+    base["governance"] = {**GOVERNANCE, "model_version": run["model_version"]}
     return {**base, "available": True, "unavailable_reason": None, "skipped_runs": sel["skipped"],
             "run": {"run_id": run["run_id"], "model_version": run["model_version"], "created_at": str(run["created_at"]),
                     "artifact_id": run.get("artifact_id"), "artifact_verified": run.get("artifact_check") == "verified",
@@ -86,7 +88,7 @@ def build_response(con, week: int | None, team_id: int | None) -> dict:
                     "feature_cutoff": {"data_through_season": run.get("data_through_season"),
                                        "data_through_week": run.get("data_through_week")},
                     "forecast_horizon": int(run.get("forecast_horizon") or 0), "model_status": run.get("model_status"),
-                    "heldout_evaluation": run.get("evaluation"), "weather_summary": run.get("weather_summary")},
+                    "evaluation": run.get("evaluation"), "weather_summary": run.get("weather_summary")},
             "players": players}
 
 

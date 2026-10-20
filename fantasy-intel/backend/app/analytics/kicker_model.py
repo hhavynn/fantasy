@@ -41,9 +41,9 @@ import polars as pl
 from .kicker_scoring import KickerScoring
 from .kicker_venues import registry, resolve
 
-MODEL_VERSION = "kfp-1.0.0"
+MODEL_VERSION = "kfp-1.1.0"
 ARTIFACT_SCHEMA = "kicker-projections-artifact/v1"
-GROUPS = ("offense", "defense", "stadium", "weather", "script")
+GROUPS = ("offense", "defense", "stadium", "weather", "script", "line")
 MIN_DIST, MAX_DIST = 18, 70
 COLD_F = 40.0
 # Unknown wind at an open-air venue is imputed with this prior (the approximate mean of nflverse's observed outdoor
@@ -60,6 +60,7 @@ LAMBDA_FEATURES = {
     "stadium": ["is_home", "venue_fixed", "venue_retractable", "elev_km"],
     "weather": ["wx_wind", "wx_cold"],
     "script": ["o_net", "d_net", "o_fourth_go_rate", "o_two_pt_rate"],
+    "line": ["o_implied"],
 }
 CONVERSION_FEATURES = {      # added to the league FG curve
     "stadium": ["fixed", "retractable", "elev_x_dist"],
@@ -77,6 +78,7 @@ FEATURE_LABELS = {
     "wx_wind": "wind (mph, outdoor)", "wx_cold": "cold (< 40F, outdoor)", "wx_missing": "outdoor weather unknown",
     "o_net": "team point differential per game", "d_net": "opponent point differential per game",
     "o_fourth_go_rate": "team 4th-down go rate in FG range", "o_two_pt_rate": "team 2-pt tries per TD",
+    "o_implied": "team implied points from the betting line",
 }
 
 
@@ -115,12 +117,18 @@ def load_frames(con, seasons: list[int] | None = None) -> dict[str, pl.DataFrame
     from ..db.connection import table_exists
 
     where = f"AND season IN ({', '.join(str(int(s)) for s in seasons)})" if seasons else ""
+    cols = {r[0] for r in con.execute("SELECT column_name FROM information_schema.columns "
+                                      "WHERE table_name = 'nfl_schedules'").fetchall()}
+    # the betting line (kfp-1.1 "line" group); an older or synthetic schedule without it gets NULLs
+    line_cols = ", ".join(f"{c}::DOUBLE AS {c}" if c in cols else f"NULL::DOUBLE AS {c}"
+                          for c in ("spread_line", "total_line"))
     out: dict[str, pl.DataFrame] = {}
     for name, sql in (("kicks", f"SELECT * FROM nfl_kick_attempts WHERE true {where}"),
                       ("teams", f"SELECT * FROM nfl_team_game_drives WHERE true {where}"),
                       ("schedule", f"""SELECT game_id, season::INT AS season, week::INT AS week, gameday, gametime,
                                        home_team, away_team, home_score, away_score, location, roof, surface,
-                                       temp::DOUBLE AS temp, wind::DOUBLE AS wind, stadium_id, stadium
+                                       temp::DOUBLE AS temp, wind::DOUBLE AS wind, stadium_id, stadium,
+                                       {line_cols}
                                        FROM nfl_schedules WHERE game_type = 'REG' {where}""")):
         table = {"kicks": "nfl_kick_attempts", "teams": "nfl_team_game_drives", "schedule": "nfl_schedules"}[name]
         out[name] = pl.from_arrow(con.execute(sql).arrow()) if table_exists(con, table) else pl.DataFrame()
@@ -197,6 +205,20 @@ def team_games(frames: dict[str, pl.DataFrame], scoring: KickerScoring) -> pl.Da
            .with_columns(pl.col("label").fill_null(0.0), pl.col("k_fg_att").fill_null(0), pl.col("k_pat_att").fill_null(0),
                          pl.lit(True).alias("completed")))
     return out
+
+
+def line_table(schedule: pl.DataFrame) -> pl.DataFrame:
+    """(game_id, team, o_implied): each side's implied points from the stored line. nflverse's spread_line is positive
+    when the home team is favored, so home = (total + spread) / 2 and away = (total - spread) / 2. Games without a line
+    are left out (the GLM fills a missing value with its training mean, a league-average total)."""
+    schema = {"game_id": pl.String, "team": pl.String, "o_implied": pl.Float64}
+    if schedule.height == 0 or "spread_line" not in schedule.columns or "total_line" not in schedule.columns:
+        return pl.DataFrame(schema=schema)
+    g = schedule.filter(pl.col("spread_line").is_not_null() & pl.col("total_line").is_not_null())
+    tot, spr = pl.col("total_line").cast(pl.Float64), pl.col("spread_line").cast(pl.Float64)
+    return pl.concat([g.select("game_id", pl.col("home_team").alias("team"), ((tot + spr) / 2).alias("o_implied")),
+                      g.select("game_id", pl.col("away_team").alias("team"), ((tot - spr) / 2).alias("o_implied"))]
+                     ).unique(["game_id", "team"], keep="last").cast(schema)
 
 
 def target_rows(schedule: pl.DataFrame, season: int, weeks: list[int]) -> pl.DataFrame:

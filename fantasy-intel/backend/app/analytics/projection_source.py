@@ -15,7 +15,7 @@ each number came from (`origin`):
              game, uncertain ID mapping, no participation estimate): ESPN's projection, labeled.
 
 Kickers (K) are not in the skill-position run: they come from the separate kicker model's verified run
-(kicker_store.select_run: kfp-1.0.0, the league's kicker scoring, approved artifact, content hash), applied
+(kicker_store.select_run: kfp-1.1.0, the league's kicker scoring, approved artifact, content hash), applied
 by `_kicker_overlay` only to players the skill run left on ESPN, and reported under `kicker_run`. A week
 without a verified kicker run keeps ESPN's kicker numbers.
 D/ST works the same way with the D/ST model's verified run (dst_store.select_run: dfp-r1, the league's D/ST
@@ -288,6 +288,6 @@ NOTE = (f"Independent projections are Fantasy Intel's own model (expected points
         "quarterback, how that quarterback compares with the ones a player has been catching passes from, the depth "
         "chart, and a player whose role has been shrinking. A week without an eligible "
         f"{MODEL_VERSION} run shows the previous model {FALLBACK_VERSION} as a labeled fallback. Kickers come from the "
-        "separate kicker model kfp-1.0.0 when a verified kicker run exists. D/ST projections come from the "
+        "separate kicker model kfp-1.1.0 when a verified kicker run exists. D/ST projections come from the "
         "D/ST model dfp-r1 when a verified D/ST run exists. Players the models cannot project keep ESPN's number and "
         "are marked.")

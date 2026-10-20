@@ -84,12 +84,13 @@ def is_injury_artifact(artifact) -> bool:
 
 
 def handoff(sources: Sources, season: int, target_week: int, cutoff_week: int | None = None, *,
-            return_rates: dict | None = None, roster_codes: pl.DataFrame | None = None) -> pl.DataFrame:
+            return_rates: dict | None = None, roster_codes: pl.DataFrame | None = None,
+            news: dict | None = None) -> pl.DataFrame:
     """The iwh-0.1.1 handoff of every RB/WR/TE for (season, target week) as known at the cutoff week. The two model
     features are rounded to FEATURE_DECIMALS: polars' parallel sums differ by ~1e-15 between identical calls, and the
     training data hash and content-addressed artifact id must reproduce on identical inputs."""
     ho = iw.workload_handoff(sources, season, target_week, cutoff_week, return_rates=return_rates,
-                             roster_codes=roster_codes)
+                             roster_codes=roster_codes, news=news)
     return ho.with_columns(*[pl.col(c).round(FEATURE_DECIMALS) for c in HANDOFF_FEATURES])
 
 
@@ -135,15 +136,15 @@ def handoff_hash(store: pl.DataFrame) -> str:
 
 
 def augment(artifact, sources: Sources, season: int, week: int, feature_week: int, feats: pl.DataFrame, *,
-            roster_codes: pl.DataFrame | None = None) -> pl.DataFrame:
+            roster_codes: pl.DataFrame | None = None, news: dict | None = None) -> pl.DataFrame:
     """Live features (independent_projection_store.build_live) plus the handoff columns the artifact's models read.
     `sources` must already carry the cutoff week's designations the run uses (the ESPN status fallback for teams
     without a synced nflverse report, as for P(plays)). Horizon >= 1 mixes injured teammates' returns with the
-    artifact's own return-rate table."""
+    artifact's own return-rate table. `news`: the target week's availability_news states (live runs only)."""
     if not is_injury_artifact(artifact) or feats.height == 0:
         return feats
     rates = return_table(artifact) if week > feature_week else None
-    ho = handoff(sources, season, week, feature_week, return_rates=rates, roster_codes=roster_codes)
+    ho = handoff(sources, season, week, feature_week, return_rates=rates, roster_codes=roster_codes, news=news)
     ho = ho.select("gsis_id", *HANDOFF_FEATURES)
     return feats.drop([c for c in HANDOFF_FEATURES if c in feats.columns]).join(ho, on="gsis_id", how="left")
 

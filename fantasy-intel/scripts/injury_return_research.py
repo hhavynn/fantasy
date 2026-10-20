@@ -96,12 +96,15 @@ def with_cohort(rows: pl.DataFrame, games: pl.DataFrame, cutoff: str = "key") ->
     """`games_missed`: games of the player's last team strictly between his last appearance and the cutoff week;
     `ret_cohort`: injury_exit_last = 1 and games_missed >= 1."""
     g = games.select(pl.col("team").alias("last_team"), (pl.col("season") * 100 + pl.col("week")).alias("_gk")).unique()
-    r = rows.select("gsis_id", cutoff, "last_team", (pl.col("last_season") * 100 + pl.col("last_week")).alias("_lk"))
+    # one row per player and cutoff: horizon rows repeat a player under one cutoff, and the count must not multiply
+    r = rows.select("gsis_id", cutoff, "last_team", (pl.col("last_season") * 100 + pl.col("last_week")).alias("_lk")
+                    ).unique(["gsis_id", cutoff])
     miss = (r.drop_nulls(["last_team", "_lk"]).join(g, on="last_team")
             .filter((pl.col("_gk") > pl.col("_lk")) & (pl.col("_gk") < pl.col(cutoff)))
             .group_by("gsis_id", cutoff).agg(pl.len().cast(pl.Int64).alias("games_missed")))
     out = rows.drop([c for c in ("games_missed", "ret_cohort") if c in rows.columns]).join(
-        miss, on=["gsis_id", cutoff], how="left")
+        miss, on=["gsis_id", cutoff], how="left", validate="m:1")
+    assert out.height == rows.height
     return out.with_columns(pl.col("games_missed").fill_null(0)).with_columns(
         ((pl.col("injury_exit_last") == 1) & (pl.col("games_missed") >= 1) & pl.col("position").is_in(POS))
         .fill_null(False).alias("ret_cohort"))
@@ -109,22 +112,27 @@ def with_cohort(rows: pl.DataFrame, games: pl.DataFrame, cutoff: str = "key") ->
 
 def without_exit_game(src: Sources, rows: pl.DataFrame, season: int, week: int) -> pl.DataFrame:
     """(gsis_id, <col>_nx) for the cohort rows of one cutoff week: features_for_week with the player's last game (the
-    injury exit) removed from his own games, nothing else changed."""
+    injury exit) removed from his own games, nothing else changed. One player at a time, so position priors and every
+    other player's games come from the unmodified panel (removing several cohort members' games at once would shift
+    the shared priors)."""
     coh = rows.filter(pl.col("ret_cohort"))
     cols = USAGE + PRODUCTION
     if coh.height == 0:
         return pl.DataFrame(schema={"gsis_id": pl.String, **{f"{c}_nx": pl.Float64 for c in cols}})
     p = src.panel
-    drop = coh.select("gsis_id", pl.col("last_season").cast(p["season"].dtype).alias("season"),
-                      pl.col("last_week").cast(p["week"].dtype).alias("week"))
-    s2 = Sources(p.join(drop, on=["gsis_id", "season", "week"], how="anti"), src.games, src.defense, src.rosters,
-                 src.injuries, src.exits)
     # horizon rows repeat a player once per target week under one cutoff; the recomputed usage depends only on the
     # cutoff, so one target row per player (the opponent / home-away columns are not used here)
-    tg = coh.select("gsis_id", "position", "team", "opponent", pl.col("is_home").cast(pl.Boolean)).unique(
-        "gsis_id", keep="first", maintain_order=True)
-    f = features_for_week(s2, season, week, tg)
-    return f.select("gsis_id", *[pl.col(c).cast(pl.Float64).alias(f"{c}_nx") for c in cols])
+    coh = coh.unique("gsis_id", keep="first", maintain_order=True)
+    parts = []
+    for r in coh.iter_rows(named=True):
+        mine = ((pl.col("gsis_id") == r["gsis_id"]) & (pl.col("season") == r["last_season"])
+                & (pl.col("week") == r["last_week"]))
+        s2 = Sources(p.filter(~mine), src.games, src.defense, src.rosters, src.injuries, src.exits)
+        tg = pl.DataFrame({"gsis_id": [r["gsis_id"]], "position": [r["position"]], "team": [r["team"]],
+                           "opponent": [r["opponent"]], "is_home": [bool(r["is_home"])]})
+        parts.append(features_for_week(s2, season, week, tg).select(
+            "gsis_id", *[pl.col(c).cast(pl.Float64).alias(f"{c}_nx") for c in cols]))
+    return pl.concat(parts)
 
 
 def add_recomputed(src: Sources, rows: pl.DataFrame, cutoff: str = "key") -> pl.DataFrame:
@@ -166,21 +174,26 @@ def apply_variant(rows: pl.DataFrame, variant: str, means: dict) -> pl.DataFrame
 def horizon_rows(src: Sources, inputs, codes, season: int, fw: int, targets_by_h: dict[int, pl.DataFrame],
                  games_kick: pl.DataFrame) -> pl.DataFrame:
     """Rows of `targets_by_h` (h -> gsis_id, position, team, opponent, is_home[, label]) with features as of cutoff
-    fw, exactly as independent_projection_store.project builds a rest-of-season row of ifp-2.2.0."""
-    rates = {(c["position"], c["missed"], int(c["h"])): {"rate": float(c["rate"]), "n": int(c["n"])}
-             for c in im.fit_return_table(src, season, fw)}
+    fw, exactly as independent_projection_store.project builds a rest-of-season row of ifp-2.2.0. h = 0 (the cutoff
+    week's own game) keeps the cutoff week's report and reads context in "week" mode, as production's horizon 0 does;
+    a later target week drops that report and mixes injured teammates' returns with the return-rate table."""
+    rates = None
     free = cm._week_report_free(src, season, fw)
     out = []
     for h, tg in targets_by_h.items():
         if tg.height == 0:
             continue
+        if h and rates is None:
+            rates = {(c["position"], c["missed"], int(c["h"])): {"rate": float(c["rate"]), "n": int(c["n"])}
+                     for c in im.fit_return_table(src, season, fw)}
         t = season * 100 + fw + h
+        csrc, mode = (free, "none") if h else (src, "week")
         feats = features_for_week(src, season, fw, tg.select("gsis_id", "position", "team", "opponent", "is_home"))
-        ho = im.handoff(src, season, fw + h, fw, return_rates=rates, roster_codes=codes)
+        ho = im.handoff(src, season, fw + h, fw, return_rates=rates if h else None, roster_codes=codes)
         feats = feats.join(ho.select("gsis_id", *im.HANDOFF_FEATURES), on="gsis_id", how="left")
         t4 = feats.select("gsis_id", "position", "team", "opponent")
-        feats = feats.join(cm.context_columns(free, inputs, season, fw, t4, "none"), on="gsis_id", how="left")
-        feats = feats.join(cm.role_columns(free, season, fw, t4), on="gsis_id", how="left")
+        feats = feats.join(cm.context_columns(csrc, inputs, season, fw, t4, mode), on="gsis_id", how="left")
+        feats = feats.join(cm.role_columns(csrc, season, fw, t4), on="gsis_id", how="left")
         dt = t4.select(pl.lit(season, dtype=pl.Int64).alias("season"), pl.lit(fw, dtype=pl.Int64).alias("week"),
                        "gsis_id", "position", "team")
         dc = cm.depth_columns(src, inputs, dt, games=games_kick)
@@ -191,6 +204,85 @@ def horizon_rows(src: Sources, inputs, codes, season: int, fw: int, targets_by_h
             pl.lit(key(season, fw), dtype=pl.Int64).alias("key"), pl.lit(t, dtype=pl.Int64).alias("tkey"),
             pl.lit(h, dtype=pl.Int64).alias("h")))
     return pl.concat(out, how="diagonal_relaxed") if out else pl.DataFrame()
+
+
+def cutoff_teams(src: Sources, season: int, fw: int) -> pl.DataFrame:
+    """(gsis_id, team) at the cutoff: the latest weekly roster row of the season with week <= fw
+    (participation.live_population's roster_week rule), else the player's last game's team before fw."""
+    last = (src.panel.filter(pl.col("season") * 100 + pl.col("week") < key(season, fw)).sort("season", "week")
+            .group_by("gsis_id").agg(pl.col("team").last().alias("_last_team")))
+    if src.rosters is None:
+        return last.select("gsis_id", pl.col("_last_team").alias("team"))
+    r = (src.rosters.filter((pl.col("season") == season) & (pl.col("week") <= fw))
+         .sort("week", descending=True).group_by("gsis_id", maintain_order=True).first()
+         .select("gsis_id", pl.col("team").alias("_roster_team")))
+    return (last.join(r, on="gsis_id", how="full", coalesce=True)
+            .select("gsis_id", pl.coalesce("_roster_team", "_last_team").alias("team")))
+
+
+def load_roster_rows(cons: list) -> pl.DataFrame | None:
+    """nflverse REG weekly roster rows (season, week, gsis_id, status, abbr, team) as independent_projection_store's
+    _roster_rows reads them, from the open connections (history first; the live DB wins for its seasons)."""
+    from app.db.connection import fetch_dicts, table_exists
+
+    parts = []
+    for c in cons:
+        if c is None or not table_exists(c, "nfl_rosters_weekly"):
+            continue
+        df = pl.DataFrame(fetch_dicts(c, """
+            SELECT season, week, gsis_id, status, status_description_abbr AS abbr, team FROM nfl_rosters_weekly
+            WHERE (game_type = 'REG' OR game_type IS NULL) AND gsis_id IS NOT NULL"""),
+                          schema={"season": pl.Int64, "week": pl.Int64, "gsis_id": pl.String, "status": pl.String,
+                                  "abbr": pl.String, "team": pl.String})
+        if parts and df.height:
+            parts = [x.filter(~pl.col("season").is_in(df["season"].unique().to_list())) for x in parts]
+        parts.append(df)
+    return pl.concat(parts) if parts else None
+
+
+def withheld_at_cutoff(roster_rows: pl.DataFrame | None, games: pl.DataFrame, season: int, fw: int, week: int,
+                       team_of: dict[str, str]) -> set[str]:
+    """gsis_ids production would withhold for target `week` (> fw) from NFL roster state at the cutoff
+    (independent_projection_store.build_live, its NFL-roster rules): a reserve stint whose dated return is after
+    `week` (or undated), or any other non-active roster status (practice squad, suspended, released, exempt...). The
+    ESPN-status and fantasy-IR rules have no history and are not replayed."""
+    from app.analytics.independent_projection_store import ACTIVE_ROSTER, RESERVE_ROSTER
+    from app.analytics.player_availability import RESTRICTED, derive
+
+    if roster_rows is None:
+        return set()
+    r = roster_rows.filter((pl.col("season") == season) & (pl.col("week") <= fw)).sort("gsis_id", "week")
+    tw: dict[str, list[int]] = {}
+    for g in games.filter(pl.col("season") == season).iter_rows(named=True):
+        tw.setdefault(g["team"], []).append(int(g["week"]))
+    out = set()
+    for (gid,), rows in r.group_by("gsis_id"):
+        if gid not in team_of:
+            continue
+        hist = rows.sort("week").to_dicts()
+        status = (hist[-1].get("status") or "").upper()
+        if status in ACTIVE_ROSTER:
+            continue
+        avail = derive(espn_status=None, on_ir=False, rows=hist, team_games=tw.get(team_of[gid]), weeks=[week])
+        dated = status in RESERVE_ROSTER and avail["status"] in RESTRICTED and avail["earliest_eligible_week"] is not None
+        if (avail["status"] in RESTRICTED and week in avail["unavailable_weeks"]) or not dated:
+            out.add(gid)
+    return out
+
+
+def cutoff_targets(src: Sources, season: int, fw: int, week: int, roster_rows: pl.DataFrame | None = None) -> pl.DataFrame:
+    """RB/WR/TE who appeared in `week` (> fw), with the team they had at the cutoff: their latest weekly roster row of
+    the season with week <= fw (participation.live_population's roster_week rule), else their last game's team before
+    fw. Opponent / home-away are that team's `week` game; a player whose cutoff team has no game that week is left
+    out (production would not project him for it), and so is a player production would withhold for that week from
+    his NFL roster state at the cutoff (withheld_at_cutoff). The label is his actual points in `week`."""
+    app = played_targets(src, season, week).filter(pl.col("position").is_in(POS)).select(
+        "gsis_id", "position", pl.col("league_points").alias("label"))
+    games = src.games.filter((pl.col("season") == season) & (pl.col("week") == week)).select(
+        "team", "opponent", "is_home")
+    t = app.join(cutoff_teams(src, season, fw), on="gsis_id", how="inner").join(games, on="team", how="inner")
+    held = withheld_at_cutoff(roster_rows, src.games, season, fw, week, dict(zip(t["gsis_id"], t["team"])))
+    return t.filter(~pl.col("gsis_id").is_in(list(held)))
 
 
 def cmd_horizons(args) -> dict:
@@ -205,6 +297,7 @@ def cmd_horizons(args) -> dict:
     try:
         inputs = cm.load_inputs([hist, live], args.exits_dir / wlcli.DEPTH_DIR, args.season)
         codes = wlcli.roster_codes(live, hist)
+        roster_rows = load_roster_rows([hist, live])
     finally:
         for c in (live, hist):
             if c is not None:
@@ -220,8 +313,7 @@ def cmd_horizons(args) -> dict:
         for h in HORIZONS:
             if (s, fw + h) not in have:
                 continue
-            tg = played_targets(src, s, fw + h).filter(pl.col("position").is_in(POS))
-            by_h[h] = tg.rename({"league_points": "label"})
+            by_h[h] = cutoff_targets(src, s, fw, fw + h, roster_rows)
         if by_h:
             out.append(horizon_rows(src, inputs, codes, s, fw, by_h, games_kick))
         print(f"  {s} w{fw:02d} {time.time() - t0:.0f}s", file=sys.stderr, flush=True)
@@ -299,7 +391,9 @@ def summary(d: pl.DataFrame) -> dict:
 
 
 def report(p: pl.DataFrame, lo: int, hi: int) -> dict:
-    w = p.filter(pl.col("tkey").is_between(lo, hi))
+    # bootstrap clusters are target weeks: one realized player-week can appear at h1, h2 and h3 (three cutoffs), and
+    # its repeated outcome must fall in one cluster
+    w = p.filter(pl.col("tkey").is_between(lo, hi)).with_columns(pl.col("tkey").alias("key"))
     sets = {"h0": w.filter(pl.col("h") == 0), "h1-3": w.filter(pl.col("h") >= 1),
             **{f"h{h}": w.filter(pl.col("h") == h) for h in HORIZONS}}
     out = {}
@@ -367,7 +461,8 @@ def cmd_example(args) -> dict:
     s, fw = args.season, args.week
     last = src.panel.filter((pl.col("gsis_id") == args.gsis) & (pl.col("season") * 100 + pl.col("week") < key(s, fw))
                             ).sort("season", "week").tail(1)
-    team, pos = last["team"][0], last["position"][0]
+    pos = last["position"][0]
+    team = cutoff_teams(src, s, fw).filter(pl.col("gsis_id") == args.gsis)["team"][0]   # the roster team at the cutoff
     g = src.games.filter((pl.col("season") == s) & (pl.col("team") == team) & (pl.col("week") >= fw)).sort("week")
     by_h = {}
     for r in g.head(args.weeks).iter_rows(named=True):

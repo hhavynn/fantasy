@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { conditions, headline, rowFlags, splitPlayers, statLineText, statusText, type KickerContext, type KickerPlayer } from "./kickers.ts";
+import { conditions, factorChips, headline, outlook, usesBettingLine, rowFlags, splitPlayers, statLineText, statusText, type KickerContext, type KickerPlayer } from "./kickers.ts";
 
 const ctx = (over: Partial<KickerContext> = {}): KickerContext => ({
   expected_kicker_basis: "kicked the team's last game",
@@ -15,7 +15,7 @@ const player = (id: number, status: string, exp: number | null, name = `K${id}`)
   espn_player_id: id, name, nfl_team: "GB", opponent: "CHI", is_home: true, fantasy_team_id: null, injury_status: null,
   independent: { projected_points: exp, expected_points: exp, p_play: 0.99, interval_80: null, coverage_status: status,
     stat_line: null, context: null, explanation: [{ feature: "headline", contribution: null, text: "Strong kicking outlook" }],
-    flags: [], missing_inputs: [], pregame: true, model_version: "kfp-1.0.0" },
+    flags: [], missing_inputs: [], pregame: true, model_version: "kfp-1.1.0" },
   espn: { projected_points: 8 }, comparison: { expected_minus_espn: null },
 });
 
@@ -59,4 +59,35 @@ test("rowFlags drops the rest-of-season horizon flag and keeps the rest", () => 
   const flags = ["rest-of-season kicker forecast (horizon 2): experimental, not validated beyond the next week", "new signing"];
   assert.deepEqual(rowFlags(flags), ["new signing"]);
   assert.deepEqual(rowFlags([]), []);
+});
+
+test("factor chips are the model's point contributions, biggest first, with venue named by roof and elevation", () => {
+  const p = player(1, "projected", 9.4);
+  p.independent.context = ctx({ venue: { venue_id: "DEN00", name: "Empower Field", roof: "fixed", elevation_m: 1609, source: "registry", kickoff_utc: null } });
+  p.independent.explanation = [
+    { feature: "headline", contribution: null, text: "Strong kicking outlook" },
+    { feature: "venue", contribution: 0.4, text: "venue: Empower Field" },
+    { feature: "kicker_accuracy", contribution: 1.52, text: "kicker accuracy: 88% at 45 yards" },
+    { feature: "long_range_share", contribution: 0.05, text: "long-range usage" },
+    { feature: "pat_opportunity", contribution: -0.6, text: "touchdown volume" },
+  ];
+  assert.deepEqual(factorChips(p).map((c) => [c.label, c.points]),
+    [["Kicker accuracy", 1.52], ["TD volume", -0.6], ["Dome / altitude", 0.4]]);
+  assert.equal(factorChips(p, 1).length, 1);
+});
+
+test("the outlook drops the factor tail that the chips already show", () => {
+  const p = player(1, "projected", 8.7);
+  p.independent.explanation = [{ feature: "headline", contribution: null,
+    text: "Strong kicking outlook: 8.7 projected vs a 7.6 median (helped by pat opportunity and venue; held back by kicker accuracy)" }];
+  assert.equal(outlook(p), "Strong kicking outlook: 8.7 projected vs a 7.6 median");
+  p.independent.explanation[0].text = "Average kicking outlook: 7.6 projected vs a 7.6 median";
+  assert.equal(outlook(p), "Average kicking outlook: 7.6 projected vs a 7.6 median");
+});
+
+test("only kfp-1.1.0 and later are described as using the betting line", () => {
+  assert.equal(usesBettingLine("kfp-1.1.0"), true);
+  assert.equal(usesBettingLine("kfp-2.0.0"), true);
+  assert.equal(usesBettingLine("kfp-1.0.0"), false);
+  assert.equal(usesBettingLine("ifp-2.2.0"), false);
 });

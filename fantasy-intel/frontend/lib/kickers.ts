@@ -1,4 +1,4 @@
-// Types and pure helpers for the kicker projections page (GET /api/projections/kickers, kfp-1.0.0).
+// Types and pure helpers for the kicker projections page (GET /api/projections/kickers, kfp-1.1.0).
 
 export type DistanceKey = "0_39" | "40_49" | "50_59" | "60_plus";
 export const DISTANCES: { key: DistanceKey; label: string }[] = [
@@ -161,7 +161,57 @@ export function headline(p: KickerPlayer): string | null {
   return p.independent.explanation.find((e) => e.feature === "headline")?.text ?? null;
 }
 
+/** The headline without its "(helped by …; held back by …)" tail, for rows that show the factor chips instead. */
+export function outlook(p: KickerPlayer): string | null {
+  return headline(p)?.replace(/ \((helped|held back) by [^)]*\)$/, "") ?? null;
+}
+
+/** Whether a kfp model version uses the betting line (the implied team total), which started with kfp-1.1.0. Weeks
+ * served from an older run (2026 weeks 1-6 are kfp-1.0.0) are described without it. */
+export function usesBettingLine(version: string): boolean {
+  const m = /^kfp-(\d+)\.(\d+)/.exec(version);
+  if (!m) return false;
+  const [major, minor] = [Number(m[1]), Number(m[2])];
+  return major > 1 || (major === 1 && minor >= 1);
+}
+
 /** A kicker's row flags, minus the per-row rest-of-season horizon flag: the page states the run's horizon once. */
 export function rowFlags(flags: string[]): string[] {
   return flags.filter((f) => !f.startsWith("rest-of-season kicker forecast"));
+}
+
+export type FactorChip = { feature: string; label: string; points: number; text: string };
+
+const FACTOR_LABEL: Record<string, string> = {
+  pat_opportunity: "TD volume",
+  kicker_accuracy: "Kicker accuracy",
+  long_range_share: "Long-range tries",
+  implied_total: "Implied team total",
+};
+
+/** "Dome / altitude", "Dome", "Altitude", "Outdoors" or "Venue", from the stadium the run stored. */
+function venueLabel(ctx: KickerContext | null): string {
+  const dome = ctx?.venue.roof === "fixed";
+  const high = (ctx?.venue.elevation_m ?? 0) >= 500;
+  if (dome) return high ? "Dome / altitude" : "Dome";
+  if (high) return "Altitude";
+  return ctx?.venue.roof === "open_air" ? "Outdoors" : "Venue";
+}
+
+/**
+ * The model's own point contributions as short chips ("Kicker accuracy +1.5"), biggest first. Each is the change
+ * in projected points when that input is set to league average, so the chips explain the gap to an average
+ * kicker. Contributions under 0.15 points are left out as noise.
+ */
+export function factorChips(p: KickerPlayer, max = 4): FactorChip[] {
+  return p.independent.explanation
+    .filter((e) => e.feature !== "headline" && e.contribution !== null && Math.abs(e.contribution) >= 0.15)
+    .sort((a, b) => Math.abs(b.contribution!) - Math.abs(a.contribution!))
+    .slice(0, max)
+    .map((e) => ({
+      feature: e.feature,
+      label: e.feature === "venue" ? venueLabel(p.independent.context) : FACTOR_LABEL[e.feature] ?? e.feature.replace(/_/g, " "),
+      points: e.contribution!,
+      text: e.text,
+    }));
 }

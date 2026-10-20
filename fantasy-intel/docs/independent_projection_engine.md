@@ -410,7 +410,7 @@ slightly worse on the injury-exit rows themselves. The held-out seasons were not
 `ifp-2.2.0` re-test (2026-10-19, `docs/research/injury_return_snap_trend.md`). This was a narrow fix for players
 *returning* from an injury exit: injury exit last game, and at least 1 team game missed since. It neutralized
 `snap_trend` and `opp_trend` and recomputed usage averages without the exit game. On that cohort it was clearly
-worse: horizon-0 MAE +0.199 [+0.081, +0.320] (n = 238, 2023-25), and horizons 1-3 +0.079 [+0.013, +0.151] (n = 935). Returning
+worse: horizon-0 MAE +0.199 [+0.081, +0.320] (n = 238, 2023-25), and horizons 1-3 +0.080 [-0.007, +0.160] (n = 925). Returning
 RBs are already over-projected (+0.79), so the candidate was dropped and production is unchanged.
 
 ## Weekly evidence routine and promotion tracker
@@ -848,6 +848,34 @@ same direction (`tests/test_ros_projections.py`).
 | ESPN `DOUBTFUL` / `QUESTIONABLE` | flag, assumed to play | ignored (same flag) |
 | ESPN-status designation fallback for the participation model | used where nflverse has no report | never used |
 | Participation (`p_play`) | week-`W` injury report | no week-`T` report exists: undesignated `p_play` (the week-`W` report is not reused for `T`) |
+
+**Availability news (owner-curated, live runs only).** No synced source carries a reported timeline ("out 6-10
+weeks") or a reinstatement the nflverse weekly rosters have not published yet, so without help the table above
+projects an injured starter at full strength from the next week on and withholds a reinstated player all season.
+`backend/app/analytics/availability_news.json` (reviewed via PR; `app/analytics/availability_news.py`) lists such facts,
+and `project` / `reproject` apply them (`--no-news` leaves them out):
+
+| Entry | Weeks before `from_week` | `from_week` .. window start | In `return_window` [a, b] | After b |
+|---|---|---|---|---|
+| `out` with a window | unchanged | withheld (news note) | projected; P(plays) = model estimate x k/n (k-th of the team's n window games: the reported range read as a uniform return date) | assumed back (P(plays) x 1) |
+| `out`, no window | unchanged | withheld for the rest of the season | | |
+| `active` | unchanged | projected even when the weekly roster still says EXE / SUS / reserve without a rule week, or ESPN lists IR / suspension at h >= 1 | | |
+
+An NFL reserve-rule week (`unavailable_weeks`) and a horizon-0 ESPN OUT / IR / suspension still withhold, and the
+entry is then dropped ("availability news not applied"), so the handoff keeps the timeline's own status for him: the
+row and the handoff read one effective news state per player. At horizon 0 the synced data also beats an `out` entry:
+when his team's nflverse week report is published without Out/Doubtful for him, his week-W roster row is ACT and ESPN
+does not list him OUT / IR / suspended, he is projected and flagged "availability news overridden by the synced
+report" (`project` lists such players under `news_overridden`; delete the entry). A player the participation
+model has no estimate for (no ACT/INA roster row yet) takes the median P(plays) of the run's projected rows at his
+position, labelled `base_p_play_source`. The workload handoff (`injury_workload.workload_handoff(news=...)`) sees the
+same per-week states: out -> unavailable (his claim leaves the pool, the room absorbs it), in the window -> a
+present/absent scenario weighted by the news probability (at any horizon, in place of the return-rate table), back ->
+available or returning (his established claim re-enters and takes the temporary share back). Limits: the ifp-2.2.0
+context features (depth tier, decline-only role, QB/teammate context) still describe the cutoff week, and the handoff
+moves volume within a position group only (a WR's vacated targets go to the WRs, not the TEs). Training never reads the
+file, so the artifact, its approval and the evidence ledgers are unchanged; a row the news changes is flagged with the
+entry's note and moves the run's content digest. Remove an entry once the synced data says the same thing.
 
 Rows of a future week carry the flags "future week: no injury report yet" and "rest-of-season forecast (horizon k):
 experimental, not validated beyond the next week"; participation rows carry the same "future week" note. A bye in `T` is a

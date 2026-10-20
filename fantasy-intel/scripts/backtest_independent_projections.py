@@ -15,6 +15,10 @@
     uv run python ../scripts/backtest_independent_projections.py project --week 7 --through-week 18   # rest of the season
     uv run python ../scripts/backtest_independent_projections.py reproject   # week in progress, final injury reports
 
+`project` and `reproject` apply the reviewed availability news (app/analytics/availability_news.json: reported
+multi-week absences and reinstatements no synced source carries yet; docs/independent_projection_engine.md,
+"Availability news"); `--no-news` leaves it out.
+
 Inputs: the live DB (FANTASY_DB_PATH, opened read-only except by `project`) and the optional
 history DB from scripts/sync_nfl_history.py (NFL_HISTORY_DB_PATH, default data/nfl_history.duckdb).
 Outputs go to data/models/ (git-ignored): selection.json, heldout_report.json, artifact JSON, and for
@@ -299,6 +303,8 @@ def _summary(meta: dict, rows: list[dict], stored: dict, art, art_sha: str, t0: 
             "content_sha256": stored["content_sha256"], "coverage": by, "runtime_seconds": round(time.time() - t0, 2),
             "participation": meta["participation_version"],
             "with_expected_points": sum(r["expected_points"] is not None for r in rows),
+            "news_overridden": sorted(r["gsis_id"] for r in rows
+                                      if any(str(f).startswith("availability news overridden") for f in r["flags"])),
             "data_through": [meta["data_through_season"], meta["data_through_week"]]}
 
 
@@ -326,6 +332,7 @@ def cmd_project(args, hist, scoring) -> dict:
         weeks, from_week = [args.week], (art_week if art_week is not None else None)
         target0 = args.week
     art, art_bytes, exits, art_path = _project_artifact(args, scoring.require_supported())
+    news = _news(args)
     # Run provenance: sha256 of the artifact FILE bytes (the digest model_registry.json pins).
     art_sha = hashlib.sha256(art_bytes).hexdigest()
     ppath = args.out / f"participation_{pm.PARTICIPATION_VERSION}.json"
@@ -344,7 +351,7 @@ def cmd_project(args, hist, scoring) -> dict:
                     wl.check_artifact(art, args.season, target, scoring.fingerprint)
                 meta, rows = build_live(con, src, art, args.season, target, participation=part,
                                         artifact_sha256=art_sha, projected_from_week=from_week,
-                                        context_inputs=ctx_inputs)
+                                        context_inputs=ctx_inputs, news=news)
                 built.append((target, meta, rows, t0))
             except Exception as err:      # noqa: BLE001 - a later week's failure is reported, the others still run
                 if target == target0:
@@ -397,6 +404,13 @@ def cmd_project(args, hist, scoring) -> dict:
     return out
 
 
+def _news(args) -> list:
+    """The reviewed availability-news entries (app/analytics/availability_news.json) unless --no-news."""
+    from app.analytics import availability_news as an
+
+    return [] if getattr(args, "no_news", False) else an.load()
+
+
 def _artifact_by_sha(weekly_dir: Path, version: str, season: int, week: int, sha: str) -> tuple[Artifact, bytes, Path]:
     """The week's write-once store artifact whose FILE bytes hash to `sha` (a stored run's artifact_id)."""
     from app.analytics import weekly_learning as wl
@@ -443,7 +457,7 @@ def cmd_reproject(args, hist, scoring, now: datetime | None = None) -> dict:
         src = _sources(con, hist, scoring).with_exits(exits)
         built = fr.build(con, src, art, args.season, week, base=base, participation=part,
                          artifact_sha256=hashlib.sha256(data).hexdigest(),
-                         context_inputs=_context_inputs(args, art, con, hist))
+                         context_inputs=_context_inputs(args, art, con, hist), news=_news(args))
     if built["status"] == fr.WRITTEN:
         with open_db(args.live_db) as con:
             stored = fr.store(con, built)
@@ -483,6 +497,9 @@ def main(argv: list[str] | None = None) -> int:
                              "the live database's approved_artifacts (write-once); the consumer view serves only "
                              "registered artifacts of its version once one is registered. The learning cycle passes "
                              "learning_cycle; a manual pin is manual_pin")
+    parser.add_argument("--no-news", action="store_true", dest="no_news",
+                        help="project / reproject without the reviewed availability news "
+                             "(app/analytics/availability_news.json)")
     parser.add_argument("--synthetic-label", action="store_true", help="mark reports as synthetic-data runs")
     args = parser.parse_args(argv)
     protocol = Protocol(heldout_seasons=(2025, args.season) if args.season > 2025 else (2025,))

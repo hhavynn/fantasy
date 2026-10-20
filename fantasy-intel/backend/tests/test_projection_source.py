@@ -534,7 +534,7 @@ def _kicker_run(con, pid: int, status: str = "projected", expected: float | None
     items += [{"statId": 80, "points": 3.0}, {"statId": 77, "points": 4.0}, {"statId": 198, "points": 5.0},
               {"statId": 201, "points": 6.0}, {"statId": 85, "points": -1.0}, {"statId": 86, "points": 1.0}]
     con.execute("UPDATE leagues SET scoring_items = ?", [_json.dumps(items)])
-    meta = {"run_id": "kfp-test", "season": 2026, "week": 6, "model_version": "kfp-1.0.0",
+    meta = {"run_id": "kfp-test", "season": 2026, "week": 6, "model_version": "kfp-1.1.0",
             "scoring_fingerprint": resolve_kicker_scoring(items).fingerprint, "artifact_id": "c" * 64,
             "forecast_horizon": 0, "created_at": datetime(2026, 10, 10)}
     row = {"season": 2026, "week": 6, "espn_player_id": pid, "gsis_id": "K", "nfl_team": "AAA", "coverage_status": status,
@@ -550,7 +550,7 @@ def test_kicker_overlay_fills_only_kickers_and_leaves_the_skill_run_untouched(st
     _kicker_run(stored, 5)
     after = ps.weekly(stored, 2026, 6, "independent")
     assert after["origin"][5] == "ours" and after["values"][5] == 7.3
-    assert after["kicker_run"]["run_id"] == "kfp-test" and after["kicker_run"]["model_version"] == "kfp-1.0.0"
+    assert after["kicker_run"]["run_id"] == "kfp-test" and after["kicker_run"]["model_version"] == "kfp-1.1.0"
     others = {k: v for k, v in after["values"].items() if k != 5}
     assert others == {k: v for k, v in before["values"].items() if k != 5}          # every skill value unchanged
     assert {k: v for k, v in after["origin"].items() if k != 5} == {k: v for k, v in before["origin"].items() if k != 5}
