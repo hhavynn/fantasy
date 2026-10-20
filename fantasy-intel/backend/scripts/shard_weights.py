@@ -19,7 +19,10 @@ def main() -> int:
         m = LINE.match(line)
         if m:
             totals[m[2]] += float(m[1])
-    out = Path(__file__).resolve().parents[1] / "tests" / "shard_weights.json"
+    tests_dir = Path(__file__).resolve().parents[1] / "tests"
+    for f in tests_dir.glob("test_*.py"):            # files whose tests all ran under the durations threshold
+        totals.setdefault(f"tests/{f.name}", 0.1)
+    out = tests_dir / "shard_weights.json"
     out.write_text(json.dumps({f: round(s, 1) for f, s in sorted(totals.items())}, indent=0) + "\n")
     print(f"{len(totals)} files, {sum(totals.values()):.0f}s -> {out}")
     return 0

@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   backend-shard:
-    # The suite runs as SHARDS parallel jobs (whole test files, balanced by tests/shard_weights.json), each with its
+    # The suite runs as parallel shards (balanced by tests/shard_weights.json; whole files except the heaviest), each with its
     # own Postgres service. Rebuild the weights with scripts/shard_weights.py when the shards drift apart.
     name: Backend shard ${{ matrix.shard }}/${{ strategy.job-total }}
     runs-on: ubuntu-latest
