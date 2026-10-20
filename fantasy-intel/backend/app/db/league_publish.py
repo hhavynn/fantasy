@@ -75,7 +75,8 @@ class DirWriter:
 
     def keys(self, prefix: str) -> list[str]:
         base = self.root / prefix
-        return sorted(str(p.relative_to(self.root)) for p in base.rglob("*.duckdb")) if base.exists() else []
+        return sorted(str(p.relative_to(self.root)) for p in base.rglob("*") if p.is_file() and not p.name.endswith(".part")) \
+            if base.exists() else []
 
     def delete(self, key: str) -> None:
         (self.root / key).unlink(missing_ok=True)
@@ -169,6 +170,13 @@ def _collect(writer: ObjectWriter, sync_con, league_id: str, *, stale: str | Non
     newest = _stamp(current[0]) if current else ""
     for key in writer.keys(f"leagues/{league_id}/"):
         if key not in league_refs and (key == stale or _stamp(key) < newest):
+            writer.delete(key)
+            deleted.append(key)
+    # A version's raw payloads (sync jobs, app/sync/publish.py) live and die with its league object.
+    for key in writer.keys(f"raw/{league_id}/"):
+        version = key.rsplit("/", 1)[-1].removesuffix(".json.gz")
+        lkey = league_key(league_id, version)
+        if lkey not in league_refs and (lkey == stale or _stamp(lkey) < newest):
             writer.delete(key)
             deleted.append(key)
     # A global object another publisher has just uploaded is not referenced until its pointer moves; keep every
