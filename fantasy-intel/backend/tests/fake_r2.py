@@ -21,6 +21,8 @@ class FakeR2:
         self.bucket, self.objects, self.requests = bucket, {}, []
         self.fail_next: dict[str, int] = {}    # method -> HTTP status to return once
         self.truncate: set[str] = set()         # keys whose body is cut off mid-stream (IncompleteRead)
+        self.ranges: list[tuple[int, int]] = [] # Range requests served
+        self.ignore_range = False               # behave like a server without Range support
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -64,6 +66,10 @@ class FakeR2:
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body[: len(body) // 2])   # then the connection closes short of it
+                elif key in fake.objects and self.headers.get("Range") and not fake.ignore_range:
+                    start, end = (int(x) for x in self.headers["Range"].removeprefix("bytes=").split("-"))
+                    fake.ranges.append((start, end))
+                    self._send(206, fake.objects[key][start:end + 1], "application/octet-stream")
                 elif key in fake.objects:
                     self._send(200, fake.objects[key], "application/octet-stream")
                 else:

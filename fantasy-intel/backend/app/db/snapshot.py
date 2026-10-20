@@ -84,7 +84,7 @@ class SnapshotCache:
             if path.exists():
                 return
             self.cache_dir.mkdir(parents=True, exist_ok=True)
-            r2.download(self.cfg, m.key, path, expected_sha256=m.sha256)
+            r2.download(self.cfg, m.key, path, expected_sha256=m.sha256, size=m.bytes)
 
     def _switch_to(self, path: Path, m: Manifest) -> tuple[Path, Manifest]:
         """Serve `path` from now on and delete the other cached files (open read-only connections keep

@@ -60,3 +60,27 @@ def test_errors_carry_status_and_code_but_no_secret(fake):
         r2.get_bytes(fake.config, "snapshots/missing.json")
     assert (err.value.status, err.value.code) == (404, "NoSuchKey")
     assert "secret-test-key" not in str(err.value)
+
+
+def test_parallel_ranged_download_reassembles_the_object(fake, tmp_path):
+    body = bytes(range(256)) * 4000 + b"tail"                    # 1,024,004 bytes: uneven last range
+    fake.objects["snapshots/big.duckdb"] = body
+    out = r2.download(fake.config, "snapshots/big.duckdb", tmp_path / "big.duckdb",
+                      expected_sha256=hashlib.sha256(body).hexdigest(), size=len(body), parts=8, min_parallel_bytes=1)
+    assert out.read_bytes() == body
+    assert len(fake.ranges) == 8 and sorted(fake.ranges)[0][0] == 0 and max(e for _, e in fake.ranges) == len(body) - 1
+
+
+def test_a_server_ignoring_range_is_an_error_not_a_corrupt_file(fake, tmp_path):
+    body = b"x" * 100_000
+    fake.objects["k"] = body
+    fake.ignore_range = True
+    with pytest.raises(r2.R2Error) as err:
+        r2.download(fake.config, "k", tmp_path / "k", size=len(body), parts=4, min_parallel_bytes=1)
+    assert err.value.code == "RangeNotHonoured" and list(tmp_path.iterdir()) == []
+
+
+def test_small_objects_use_one_stream(fake, tmp_path):
+    fake.objects["k"] = b"small"
+    r2.download(fake.config, "k", tmp_path / "k", size=5)
+    assert fake.ranges == []

@@ -13,10 +13,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import http.client
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -121,26 +123,66 @@ def get_bytes(cfg: R2Config, key: str, timeout: float = 15) -> bytes:
             raise R2Error(None, type(err).__name__, key) from None
 
 
-def download(cfg: R2Config, key: str, dest: Path, expected_sha256: str | None = None, timeout: float = 120) -> Path:
+def download(cfg: R2Config, key: str, dest: Path, expected_sha256: str | None = None, timeout: float = 120,
+             size: int | None = None, parts: int = 8, min_parallel_bytes: int = 16 << 20) -> Path:
     """Stream `key` to `dest` via a temporary name, check its sha256, then rename into place, so a reader
-    never sees a partial file."""
+    never sees a partial file. When `size` is known and large, `parts` ranged GETs run in parallel: one R2
+    stream from Vercel's iad1 manages ~30 MB/s, eight together fetch the 95 MB snapshot in ~0.5-1 s."""
     dest = Path(dest)
     part = dest.with_name(dest.name + ".part")
-    h = hashlib.sha256()
     try:
-        with _request(cfg, "GET", key, timeout=timeout) as resp, open(part, "wb") as f:
-            try:
-                while chunk := resp.read(_CHUNK):
-                    h.update(chunk)
-                    f.write(chunk)
-            except _STREAM_ERRORS as err:   # a body cut off mid-stream is an R2 failure like any other
-                raise R2Error(None, type(err).__name__, key) from None
-        if expected_sha256 and h.hexdigest() != expected_sha256:
+        if size and size >= min_parallel_bytes and parts > 1:
+            _download_ranges(cfg, key, part, size, parts, timeout)
+            digest = file_sha256(part)
+        else:
+            digest = _download_stream(cfg, key, part, timeout)
+        if expected_sha256 and digest != expected_sha256:
             raise R2Error(None, "ChecksumMismatch", key)
         part.replace(dest)
     finally:
         part.unlink(missing_ok=True)
     return dest
+
+
+def _download_stream(cfg: R2Config, key: str, part: Path, timeout: float) -> str:
+    h = hashlib.sha256()
+    with _request(cfg, "GET", key, timeout=timeout) as resp, open(part, "wb") as f:
+        try:
+            while chunk := resp.read(_CHUNK):
+                h.update(chunk)
+                f.write(chunk)
+        except _STREAM_ERRORS as err:   # a body cut off mid-stream is an R2 failure like any other
+            raise R2Error(None, type(err).__name__, key) from None
+    return h.hexdigest()
+
+
+def _download_ranges(cfg: R2Config, key: str, part: Path, size: int, parts: int, timeout: float) -> None:
+    step = -(-size // parts)
+    fd = os.open(part, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.ftruncate(fd, size)
+
+        def fetch(start: int) -> int:
+            end = min(size, start + step) - 1
+            with _request(cfg, "GET", key, headers={"range": f"bytes={start}-{end}"}, timeout=timeout) as resp:
+                if resp.status != 206:   # a server that ignores Range would write the whole object at `start`
+                    raise R2Error(resp.status, "RangeNotHonoured", key)
+                off = start
+                try:
+                    while chunk := resp.read(_CHUNK):
+                        os.pwrite(fd, chunk, off)
+                        off += len(chunk)
+                except _STREAM_ERRORS as err:
+                    raise R2Error(None, type(err).__name__, key) from None
+            if off != end + 1:
+                raise R2Error(None, "ShortRange", key)
+            return off - start
+
+        with ThreadPoolExecutor(parts) as pool:
+            if sum(pool.map(fetch, range(0, size, step))) != size:
+                raise R2Error(None, "SizeMismatch", key)
+    finally:
+        os.close(fd)
 
 
 def put_file(cfg: R2Config, key: str, path: Path, content_type: str = "application/octet-stream",
