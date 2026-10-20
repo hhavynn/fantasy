@@ -60,7 +60,7 @@ def _real_refresh_log(refresh, monkeypatch, tmp_path, *argv, codes=None):
              "start_sit_evaluation.py": 0, "ctx_shadow.py": 0, "qb_scenario_shadow.py": 0, "signal_shadows.py": 0,
              "dst_shadow.py": 0,
              "distribution_ledger.py": 0, "participation_cal_shadow.py": 0, "espn_benchmark.py": 0,
-             "projection_performance.py": 0, "projection_ranges.py": 0,
+             "projection_performance.py": 0, "model_replay.py": 0, "projection_ranges.py": 0,
              **(codes or {})}
     for name, code in codes.items():
         # child output that imitates refresh_all's own markers must never be taken for them
