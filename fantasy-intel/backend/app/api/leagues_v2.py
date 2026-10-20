@@ -74,11 +74,21 @@ def request_tx(principal: Principal = Depends(current_principal)) -> Iterator[tu
 REQUEST_TX = Depends(request_tx, scope="function")
 
 
-def league_tx(league_id: str, tx=REQUEST_TX) -> tuple[Any, Access]:
-    """Authorize FIRST. Everything a league route does happens inside this transaction, after this check."""
+def valid_league_id(league_id: str) -> str:
+    """The path parameter's shape, checked before any Postgres work: a malformed id never takes a pool slot and is
+    the same 404 even while the control plane is down."""
+    try:
+        return check_league_id(league_id)
+    except LeagueNotFound:
+        raise HTTPException(404, NOT_FOUND) from None
+
+
+def league_tx(league_id: str = Depends(valid_league_id), tx=REQUEST_TX) -> tuple[Any, Access]:
+    """Authorize FIRST. Everything a league route does happens inside this transaction, after this check.
+    `league_id` is declared before `tx`, so FastAPI validates it before request_tx opens a connection."""
     con, principal = tx
     try:
-        return con, authorize_league_in(con, principal, check_league_id(league_id))
+        return con, authorize_league_in(con, principal, league_id)
     except LeagueNotFound:
         raise HTTPException(404, NOT_FOUND) from None
 

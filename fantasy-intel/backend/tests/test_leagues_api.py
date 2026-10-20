@@ -228,3 +228,18 @@ def test_a_league_that_turns_private_mid_request_is_a_404_not_a_500(client, worl
     with pg.connect() as su:
         assert su.execute("SELECT count(*) FROM fi.league_pins").fetchone() == (0,)
         assert su.execute("SELECT count(*) FROM fi.team_selections").fetchone() == (0,)
+
+
+@pytest.mark.parametrize("league_id", ["lg_short", "not-an-id", "lg_" + "a" * 65])
+@pytest.mark.parametrize("method,suffix", [("GET", ""), ("PUT", "/pin"), ("DELETE", "/pin"), ("PUT", "/perspective"),
+                                           ("DELETE", "/perspective")])
+def test_malformed_league_ids_are_404_without_opening_postgres(client, monkeypatch, league_id, method, suffix):
+    """Validation runs before the request transaction, so a malformed id never takes a pool slot and is the same
+    404 even while the control plane is down."""
+    from app.control_plane import pg as cp_pg
+    monkeypatch.setenv("SUPABASE_DB_URL", "host=/nonexistent user=fi_api dbname=nope connect_timeout=1")
+    monkeypatch.setattr(cp_pg, "_PLANES", {})
+    r = client.request(method, f"/v2/leagues/{league_id}{suffix}", headers=bearer(U1),
+                       json={"team_external_id": "6"} if suffix == "/perspective" and method == "PUT" else None)
+    assert (r.status_code, r.json()) == (404, {"detail": "League not found."})
+    assert cp_pg._PLANES == {}, "a malformed id must not even create a control-plane pool"
