@@ -57,5 +57,7 @@ rows; `results_r2*.json` hold the raw numbers.
 
 - Phase 1a ships the R2 read path with 8-part ranged downloads (PR #144). First real publish:
   `snapshots/20261020T063035.duckdb`, 94.4 MB, downloaded intact.
-- Cleanup after Phase 1a: delete the `fi-spike-blob` Blob store, the Supabase `spike` bucket and the
-  `fi-md-spike` Vercel project.
+- Production switched 2026-10-20: the API serves `snapshots/<stamp>.duckdb` from R2 (verified: requests
+  return 200 and MotherDuck shows no API queries after the deploy); the MotherDuck env vars were removed.
+- Cleaned up: the `fi-spike-blob` Blob store, the Supabase `spike` bucket, the `fi-md-spike` Vercel
+  project and the R2 `spike/` objects are deleted.

@@ -101,12 +101,9 @@ Storage is negligible ($0.04/GB-month; 1,000 leagues ≈ 16 GB). Vercel sync com
 separate and not measured here; it scales with sync frequency, so syncs should run only when a league
 is active.
 
-## Open items for Havyn
+## Outcome (2026-10-20)
 
-- Create one MotherDuck **service account** (Settings → Service accounts) and add its token to
-  `fantasy-intel/.env` as `MOTHERDUCK_READER_TOKEN`; the spike then proves read-only/no-drop via shares.
-- Choose the plan direction: stay on Lite/Pulse with response caching (cheapest at this scale), or plan
-  for Business later.
-- Teardown: `uv run python ../spikes/motherduck/teardown.py` (from `backend/`) drops all `spike_*`
-  databases and the spike share; the `fi-md-spike` Vercel project can then be deleted. Keeping both until
-  the service-account test finishes is cheaper than rebuilding them.
+MotherDuck was retired instead of fixing these items: Lite's 10 CU-hour cap (1 CU-second minimum per query)
+is below the hosted API's own traffic. The site now serves a DuckDB snapshot from Cloudflare R2
+(`spikes/storage/REPORT.md`, PR #144). All `spike_*` databases and the spike share were dropped with
+`teardown.py`; the `fi-md-spike` Vercel project was deleted.
