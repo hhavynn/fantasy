@@ -414,3 +414,60 @@ def test_an_unresolved_story_says_the_raw_targets():
     st, text = _unresolved([0.10, 0.04, 0.16, 0.26, 0.05])
     assert text["counts"] == "In raw targets: 9, then 2."
     assert list(text).index("counts") == list(text).index("support") + 1
+
+
+def _takeover_snap():
+    """A back whose share of the backfield's carries jumped, with the other back still playing (no absence)."""
+    snap = make_snapshot()
+    team = [24, 24, 24, 24, 24]
+    for gid, snaps, carries in (("00-RB1", [0.35, 0.35, 0.35, 0.75, 0.75], [6, 7, 6, 18, 19]),
+                                ("00-RB2", [0.65, 0.65, 0.65, 0.30, 0.30], [18, 17, 18, 6, 5])):
+        snap["tables"]["player_week_usage"] += [
+            {"week": w, "gsis_id": gid, "team": "NYJ", "opponent": "XXX", "position": "RB", "offense_snaps": int(s * 60),
+             "team_offense_snaps": 60, "offense_pct": s, "targets": 1, "target_share": 1 / 35, "air_yards": 0.0,
+             "air_yards_share": 0.0, "adot": 0.0, "carries": n, "designed_rushes": n, "backfield_rush_share": n / tn,
+             "team_rush_share": 0.4, "team_rb_carries": tn, "rz_targets": 0, "rz_carries": 0, "gl_carries": 0}
+            for w, (s, n, tn) in enumerate(zip(snaps, carries, team), start=1)]
+    snap["tables"]["nfl_players"] += [{"gsis_id": "00-RB1", "display_name": "Rising Back", "position": "RB"},
+                                      {"gsis_id": "00-RB2", "display_name": "Fading Back", "position": "RB"}]
+    return snap, "00-RB1"
+
+
+def _snap_held_smaller():
+    snap = _with_teammate({4})
+    for r in snap["tables"]["player_week_usage"]:
+        if r["gsis_id"] == "00-RISER" and r["week"] == 5:
+            r["offense_pct"], r["offense_snaps"] = 0.55, 33
+    return snap, "00-RISER"
+
+
+def _snap_unresolved():
+    snap = make_snapshot()
+    snap["tables"]["player_week_usage"] = [r for r in snap["tables"]["player_week_usage"] if r["gsis_id"] != "00-RISER"]
+    snap["tables"]["player_week_usage"] += _rows("00-RISER", "PHI", "WR", [0.20, 0.25, 0.20, 0.85, 0.90],
+                                                 [0.10, 0.04, 0.16, 0.12, 0.11])
+    return snap, "00-RISER"
+
+
+@pytest.mark.parametrize("make, want_story, want_ending", [
+    (lambda: (make_snapshot(), "00-RISER"), "breakout", "verdict"),
+    (_takeover_snap, "takeover", "cliffhanger"),
+    (_snap_unresolved, "unresolved", "cliffhanger"),
+    (lambda: (make_snapshot(), "00-FALLER"), "shrinking", "warning"),
+    (lambda: (_with_teammate({4}), "00-RISER"), "held", "verdict"),
+    (_snap_held_smaller, "held", "verdict"),
+])
+def test_template_stories_end_on_their_takeaway_and_pass_creative_qc(make, want_story, want_ending):
+    """The decision buttons close the Short, but the takeaway before them is the ending QC judges."""
+    from studio import creative
+    snap, gid = make()
+    f = build_facts(snap, ALL, set(), only=gid)
+    p, cl = f["players"][0], {c["id"]: c for c in f["claims"]}
+    assert storyline(p, cl) == want_story
+    segs, titles, structure = story.compose(f, cl, "seed", {})
+    assert structure["format"] == "template"
+    assert segs[-1]["scene"]["type"] == "decision" and segs[-2]["section"] == "takeaway"
+    assert structure["ending_mechanism"] == want_ending
+    names = {n: ok for n, ok, _ in creative.checks({"structure": structure, "narration_segments": segs,
+                                                     "shots": [s["scene"] for s in segs]})}
+    assert names["clear_takeaway"]
