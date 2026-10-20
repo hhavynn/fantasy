@@ -34,27 +34,15 @@ class Case:
     path: str          # request path with query string, relative to the API root (e.g. /api/overview?team_id=2)
 
 
-def _walk(routes):
-    for r in routes:
-        inner = getattr(r, "original_router", None)
-        if inner is not None:
-            yield from _walk(inner.routes)
-        else:
-            yield r
-
-
 def legacy_get_routes(app) -> list:
-    out = []
-    for r in _walk(app.routes):
-        path = getattr(r, "path", "")
-        if "GET" in getattr(r, "methods", set()) and not path.startswith(("/v2", "/docs", "/openapi", "/redoc")) \
-                and path != "/health":
-            out.append(r)
+    """The legacy single-league GET routes (full paths outside /v2), sorted by path."""
+    from app.api.routing import iter_routes
+    out = [r for r in iter_routes(app) if "GET" in r.methods and r.path.startswith("/api")]
     return sorted(out, key=lambda r: r.path)
 
 
-def _accepts(route, name: str) -> bool:
-    return any(p.name == name for p in route.dependant.query_params)
+def _accepts(info, name: str) -> bool:
+    return any(p.name == name for p in info.route.dependant.query_params)
 
 
 def sample_ids(con) -> dict:
@@ -103,13 +91,13 @@ def cases(app, con, client=None) -> list[Case]:
 
 
 def mask(value, key: str | None = None):
+    if key is not None and (key in VOLATILE_KEYS or key in VOLATILE_DIAGNOSTICS or key.startswith(VOLATILE_PREFIXES)) \
+            and value is not None:
+        return MASK                      # the whole value, even an object (e.g. per-stage timings)
     if isinstance(value, dict):
         return {k: mask(v, k) for k, v in value.items()}
     if isinstance(value, list):
         return [mask(v) for v in value]
-    if key is not None and (key in VOLATILE_KEYS or key in VOLATILE_DIAGNOSTICS or key.startswith(VOLATILE_PREFIXES)) \
-            and value is not None:
-        return MASK
     if isinstance(value, str) and _DATETIME.match(value):
         return MASK
     return value

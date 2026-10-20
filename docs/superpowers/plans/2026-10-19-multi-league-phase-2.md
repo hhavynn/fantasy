@@ -1151,3 +1151,443 @@ git add fantasy-intel/backend/app/db/league_conn.py fantasy-intel/backend/tests/
 git commit -m "Phase 2: layered read-only league connection with the perspective as is_mine"
 ```
 
+
+### Task 5: Serve every existing page for one league under /v2/leagues/{league_id}/api/...
+
+**Files:**
+- Create: `fantasy-intel/backend/app/api/league_scope.py`
+- Create: `fantasy-intel/backend/app/api/routing.py`
+- Create: `fantasy-intel/backend/tests/league_fixtures.py`
+- Create: `fantasy-intel/backend/tests/test_league_scope.py`
+- Modify: `fantasy-intel/backend/app/api/deps.py (`LeagueScope`, `LEAGUE_SCOPE`, `layered_databases()`, scope branch in `db()` and `data_version()`)`
+- Modify: `fantasy-intel/backend/app/main.py (mount + `add_scope_headers` middleware)`
+- Modify: `fantasy-intel/backend/tests/golden/golden.py (`legacy_get_routes` via `iter_routes`; mask whole diagnostic objects)`
+- Modify: `fantasy-intel/backend/tests/golden/e2e/*.json (re-recorded: timings masked as objects)`
+- Modify: `fantasy-intel/backend/tests/test_v2_authorization_matrix.py (shared enumerator; every /v2/leagues/{league_id} route runs league_tx or league_scope)`
+- Modify: `fantasy-intel/backend/tests/test_league_scope_audit.py (league_scope.py is an allowed authorizer caller)`
+
+**Interfaces:**
+- Consumes: `authorize_league_in` (Phase 1), `LeagueFileCache` (Task 3), `LayeredDatabases` (Task 4), `perspective_team` (Task 4).
+- Produces: `deps.LeagueScope(league_id, league_path, global_path, data_version, global_version, visibility_epoch, perspective)` with `.cache_key`; `deps.LEAGUE_SCOPE` (ContextVar); `league_scope.league_scope` (async dependency), `league_file_cache()`, `mount_legacy_routers(app, routers, require_enabled)`, `add_scope_headers` middleware, `LEAGUE_PREFIX`; `routing.iter_routes(app) -> RouteInfo(path, methods, route, include_dependencies, in_schema)` with `.dependency_calls()`.
+- Perspective rule: "my team" (`is_mine`) = the signed-in viewer's saved team, else `?team_id=`, else none. This keeps the legacy owner-default semantics exactly (golden parity) and gives anonymous visitors their URL team everywhere.
+- Errors: unknown/unauthorized 404 before any file is read; deleted account 401; no snapshot 409 `{detail, sync_state}`; control plane or file fetch down 503 with fixed text.
+
+- [ ] **Step 1: Write the shared route enumerator**
+
+`fantasy-intel/backend/app/api/routing.py`:
+
+```python
+"""Enumerate an app's HTTP routes with their full paths (FastAPI >= 0.140 keeps an included router's own paths and
+records the include prefix and dependencies on a wrapper). Used by the golden harness and the authorization tests."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Iterator
+
+
+@dataclass(frozen=True)
+class RouteInfo:
+    path: str                 # full path, include prefixes applied
+    methods: frozenset[str]
+    route: Any                # the APIRoute
+    include_dependencies: tuple  # dependencies added by include_router (outermost first)
+    in_schema: bool
+
+    def dependency_calls(self) -> set:
+        """Every dependency callable this route runs: include-level, route-level and their sub-dependencies."""
+        calls = {d.dependency for d in self.include_dependencies}
+        stack = list(getattr(self.route, "dependant", None).dependencies) if hasattr(self.route, "dependant") else []
+        while stack:
+            dep = stack.pop()
+            calls.add(dep.call)
+            stack.extend(dep.dependencies)
+        return calls
+
+
+def iter_routes(app) -> Iterator[RouteInfo]:
+    def walk(routes, prefix: str, deps: tuple, in_schema: bool):
+        for r in routes:
+            inner = getattr(r, "original_router", None)
+            if inner is not None:
+                ctx = r.include_context
+                yield from walk(inner.routes, prefix + (ctx.prefix or ""), deps + tuple(ctx.dependencies or ()),
+                                in_schema and ctx.include_in_schema is not False)
+            elif hasattr(r, "methods") and r.methods:
+                yield RouteInfo(prefix + r.path, frozenset(r.methods - {"HEAD", "OPTIONS"}), r, deps,
+                                in_schema and getattr(r, "include_in_schema", True))
+    yield from walk(app.routes, "", (), True)
+```
+
+- [ ] **Step 2: Write the test fixtures and the failing tests**
+
+`fantasy-intel/backend/tests/test_league_scope.py`:
+
+```python
+"""Every existing page served for one league from its files: /v2/leagues/{lg}/api/... (Phase 2).
+
+Golden parity (the E2E fixture league answers exactly the legacy goldens), authorization before any file is touched,
+two leagues with colliding team and player ids never leak into each other, anonymous perspective from the URL."""
+import shutil
+
+import duckdb
+import pytest
+from fastapi.testclient import TestClient
+
+from cp_seed import U1, U2, seed_membership, seed_user
+from golden.golden import E2E_DIR, E2E_SEASON, Case, build_e2e_db, read_golden, response_text
+from league_fixtures import publish_local
+from test_leagues_api import bearer, env  # noqa: F401  (fixture)
+
+
+@pytest.fixture(scope="module")
+def e2e(tmp_path_factory):
+    return build_e2e_db(tmp_path_factory.mktemp("scope") / "e2e.duckdb")
+
+
+MARK = "Zqleak"     # appears nowhere in the fixture league; B's team names carry it
+
+
+@pytest.fixture(scope="module")
+def e2e_b(tmp_path_factory, e2e):
+    """League B: the same ids as A (colliding team and player ids), different names and scoring results."""
+    b = tmp_path_factory.mktemp("scope_b") / "b.duckdb"
+    shutil.copy(e2e, b)
+    con = duckdb.connect(str(b))
+    con.execute(f"UPDATE fantasy_teams SET name = '{MARK} ' || name")
+    con.execute(f"UPDATE leagues SET name = 'League {MARK}'")
+    con.execute("UPDATE espn_player_weekly_points SET actual_points = actual_points * 2")
+    con.close()
+    return b
+
+
+def my_team(db) -> int:
+    con = duckdb.connect(str(db), read_only=True)
+    try:
+        return con.execute("SELECT team_id FROM fantasy_teams WHERE is_mine").fetchone()[0]
+    finally:
+        con.close()
+
+
+@pytest.fixture
+def served(env, pg, tmp_path, monkeypatch):   # noqa: F811
+    """Fresh per-process caches pointed at a local object directory."""
+    from app.api import deps, league_scope
+    objects = tmp_path / "objects"
+    monkeypatch.setenv("LEAGUE_FILES_DIR", str(objects))
+    monkeypatch.setenv("ESPN_SEASON", E2E_SEASON)
+    monkeypatch.setattr(league_scope, "_CACHE", {})
+    monkeypatch.setattr(deps, "_LAYERED", {})
+    monkeypatch.setattr("tempfile.tempdir", str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+    return objects
+
+
+@pytest.fixture
+def client(served):
+    from app.main import app
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_the_fixture_league_matches_every_golden_through_v2(pg, served, client, e2e, tmp_path):
+    """A signed-in member whose saved team is the legacy owner's team sees exactly the legacy answers."""
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="private")
+    with pg.connect() as con:
+        seed_user(con, U1)
+        seed_membership(con, U1, pub.league_id, "admin")
+        con.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, %s)",
+                    [U1, pub.league_id, str(my_team(e2e))])
+        con.commit()
+    import difflib
+    failures = []
+    for golden in sorted(E2E_DIR.glob("*.json")):
+        path, expected = read_golden(E2E_DIR, golden.stem)
+        r = client.get(f"/v2/leagues/{pub.league_id}{path}", headers=bearer(U1))
+        actual = response_text(_Fixed(r), Case(golden.stem, path))
+        if actual != expected:
+            diff = "\n".join(list(difflib.unified_diff(expected.splitlines(), actual.splitlines(), lineterm="", n=1))[:30])
+            failures.append(f"{golden.stem}: {diff}")
+    assert not failures, "\n\n".join(failures[:5]) + f"\n... {len(failures)} failing"
+
+
+class _Fixed:
+    """Adapts one already-made response to response_text()'s client.get()."""
+    def __init__(self, response):
+        self.response = response
+
+    def get(self, _path):
+        return self.response
+
+
+def test_responses_are_private_and_name_the_versions_read(pg, served, client, e2e, tmp_path):
+    pub = publish_local(pg, e2e, served, tmp_path / "w")
+    r = client.get(f"/v2/leagues/{pub.league_id}/api/overview")
+    assert r.status_code == 200
+    assert r.headers["cache-control"] == "private, no-store"
+    assert (r.headers["x-fi-data-version"], r.headers["x-fi-global-version"]) == (pub.data_version, pub.global_version)
+
+
+def test_an_anonymous_visitor_reads_a_public_league_from_any_perspective(pg, served, client, e2e, tmp_path):
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
+    for team in (1, 2, 3, 4):
+        r = client.get(f"/v2/leagues/{pub.league_id}/api/overview?team_id={team}")
+        assert r.status_code == 200, r.text
+        assert r.json()["perspective"]["team_id"] == team
+    # without a perspective the view has no "my team"; with ?team_id= that team is the visitor's default everywhere
+    assert client.get(f"/v2/leagues/{pub.league_id}/api/overview").json()["perspective"] is None
+    teams = client.get(f"/v2/leagues/{pub.league_id}/api/teams?team_id=3").json()["teams"]
+    assert [t["team_id"] for t in teams if t["is_owner_default"]] == [3]
+
+
+def test_private_leagues_and_unknown_ids_are_404_before_any_file_is_read(pg, served, client, e2e, tmp_path):
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="private")
+    for lg in (pub.league_id, "lg_" + "z" * 24):
+        r = client.get(f"/v2/leagues/{lg}/api/overview")
+        assert (r.status_code, r.json()) == (404, {"detail": "League not found."})
+    assert not list((tmp_path / "tmp" / "fantasy-leagues").glob("*")), "nothing may be downloaded for a 404"
+
+
+def test_a_league_without_a_published_snapshot_is_first_sync_not_someone_elses_data(pg, served, client):
+    from cp_seed import seed_job, seed_league
+    with pg.connect() as con:
+        lid = seed_league(con, visibility="public")
+        seed_job(con, lid, status="running")
+        con.commit()
+    r = client.get(f"/v2/leagues/{lid}/api/overview")
+    assert r.status_code == 409
+    assert r.json() == {"detail": {"detail": "First sync in progress.", "sync_state": "first_sync_running"}}
+
+
+def test_two_leagues_with_colliding_ids_never_leak(pg, served, client, e2e, e2e_b, tmp_path):
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
+    b = publish_local(pg, e2e_b, served, tmp_path / "b", visibility="private", name="B",
+                      stamp="2026-10-20T13:00:00", external_id="1999")   # another ESPN league; same team/player ids
+    with pg.connect() as con:
+        seed_user(con, U1)                     # a real account, just not a member of B
+        seed_user(con, U2)
+        seed_membership(con, U2, b.league_id, "viewer")
+        con.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '2')",
+                    [U2, b.league_id])
+        con.commit()
+    paths = sorted({read_golden(E2E_DIR, g.stem)[0] for g in E2E_DIR.glob("*.json")})
+    alone = {p: client.get(f"/v2/leagues/{a.league_id}{p}").text for p in paths}
+    for p in paths:                                   # interleave: B, then A, for every route
+        rb = client.get(f"/v2/leagues/{b.league_id}{p}", headers=bearer(U2))
+        assert rb.status_code == 200, (p, rb.text[:200])
+        ra = client.get(f"/v2/leagues/{a.league_id}{p}")
+        assert response_text(_Fixed(ra), Case("a", p)) == response_text(_Fixed(_Text(alone[p], ra.status_code)), Case("a", p)), p
+        assert MARK not in ra.text, p
+        assert MARK in rb.text or rb.json() == ra.json() or p.startswith("/api/research"), p
+    # B is private: an anonymous caller, or a user who is not B's member, gets the same 404 as an unknown league
+    assert client.get(f"/v2/leagues/{b.league_id}/api/overview").status_code == 404
+    assert client.get(f"/v2/leagues/{b.league_id}/api/overview", headers=bearer(U1)).status_code == 404
+
+
+class _Text:
+    def __init__(self, text, status):
+        self.text, self.status_code = text, status
+
+    def json(self):
+        import json
+        return json.loads(self.text)
+```
+
+- [ ] **Step 3: Fixture helper**
+
+`fantasy-intel/backend/tests/league_fixtures.py`:
+
+```python
+"""Register split league files in the test control plane and serve them from a local object directory."""
+from __future__ import annotations
+
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
+
+from app.db.league_files import global_key, league_key
+from app.db.league_split import split_database
+from cp_seed import new_league_id, seed_league
+
+
+@dataclass(frozen=True)
+class Published:
+    league_id: str
+    data_version: str
+    global_version: str
+
+
+def publish_local(pg, src_db: Path, objects: Path, work: Path, *, visibility="public", name="League", checked_at="now()",
+                  stamp="2026-10-20T12:00:00", league_id: str | None = None,
+                  external_id: str | None = None) -> Published:
+    """Split `src_db`, lay the two files out under `objects` with their real keys, register the league and point
+    fi.league_snapshots at them (as the publisher does)."""
+    work.mkdir(parents=True, exist_ok=True)
+    out = split_database(src_db, work / "lg.duckdb", work / "gl.duckdb", stamp=stamp)
+    with pg.connect() as con:
+        lid = seed_league(con, league_id, visibility=visibility, name=name, checked_at=checked_at,
+                          external_id=external_id or str(out.league_id))
+        for key, path in ((league_key(lid, out.league_version), out.league_path),
+                          (global_key(out.global_version), out.global_path)):
+            dest = objects / key
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, dest)
+        con.execute("INSERT INTO fi.league_snapshots (league_id, object_key, data_version, fence, global_version) "
+                    "VALUES (%s, %s, %s, 1, %s)", [lid, league_key(lid, out.league_version), out.league_version,
+                                                  out.global_version])
+        con.commit()
+    return Published(lid, out.league_version, out.global_version)
+```
+
+```bash
+cd fantasy-intel/backend && uv run pytest tests/test_league_scope.py -q
+```
+Expected: 404s for every /v2/leagues/{lg}/api route (not mounted yet)
+
+- [ ] **Step 4: Add the scope to deps.py: `LeagueScope`, `LEAGUE_SCOPE`, `layered_databases()`; in `db()` a scope yields `layered_databases().cursor(...)` after the schema-version check; `data_version()` returns `scope.cache_key`**
+
+- [ ] **Step 5: Implement the dependency and the mount**
+
+`fantasy-intel/backend/app/api/league_scope.py`:
+
+```python
+"""Serve the existing pages for one league: `/v2/leagues/{league_id}/api/...` (multi-league Phase 2).
+
+Every legacy router is mounted a second time under that prefix with the `league_scope` dependency, which runs before
+the handler and before any cache lookup:
+
+  1. authorize the caller for the league in Postgres (app/control_plane/authz.py): unknown and unauthorized are 404;
+  2. no published snapshot yet -> 409 "first sync in progress" (never another league's data);
+  3. fetch the league's file and the global file it was built against into the per-instance cache (verified);
+  4. pick the perspective ("my team"): the signed-in viewer's saved team, else `?team_id=`, else none;
+  5. set the LEAGUE_SCOPE ContextVar, which `deps.db()` turns into a layered read-only cursor.
+
+The handlers are unchanged. Responses carry `Cache-Control: private, no-store` and the versions actually read.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import tempfile
+import threading
+from pathlib import Path
+from typing import Any
+
+from fastapi import Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
+
+from ..config import get_settings
+from .deps import LEAGUE_SCOPE, LeagueScope, layered_databases
+from .leagues_v2 import NOT_FOUND, current_principal, valid_league_id
+
+log = logging.getLogger(__name__)
+FIRST_SYNC = "First sync in progress."
+FILES_UNAVAILABLE = "This league's data could not be loaded. Try again shortly."
+_CACHE: dict[str, Any] = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def league_file_cache():
+    """One cache per process: R2 (read-only token) in production, LEAGUE_FILES_DIR locally."""
+    from ..db.league_files import DEFAULT_MAX_BYTES, DirStore, LeagueFileCache, R2Store
+    with _CACHE_LOCK:
+        cache = _CACHE.get("files")
+        if cache is None:
+            settings = get_settings()
+            files_dir = os.environ.get("LEAGUE_FILES_DIR", "").strip()
+            store = DirStore(Path(files_dir)) if files_dir else R2Store(settings.r2_config())
+            max_bytes = int(os.environ.get("LEAGUE_CACHE_MAX_BYTES") or DEFAULT_MAX_BYTES)
+            cache = _CACHE["files"] = LeagueFileCache(
+                store, Path(tempfile.gettempdir()) / "fantasy-leagues", max_bytes=max_bytes,
+                on_evict=layered_databases().forget)
+        return cache
+
+
+def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
+    from ..control_plane.authz import LeagueNotFound, authorize_league_in
+    from ..control_plane.pg import AccountGone, ControlPlaneUnavailable, get_control_plane
+    from ..db.league_conn import perspective_team
+    from ..db.league_split import VERSION_RE
+    from .leagues_v2 import SIGN_IN, UNAVAILABLE
+    try:
+        with get_control_plane().request_tx(principal) as con:
+            access = authorize_league_in(con, principal, league_id)
+    except LeagueNotFound:
+        raise HTTPException(404, NOT_FOUND) from None
+    except AccountGone:
+        raise HTTPException(401, SIGN_IN) from None
+    except ControlPlaneUnavailable:
+        raise HTTPException(503, UNAVAILABLE) from None
+    if access.snapshot is None:
+        raise HTTPException(409, {"detail": FIRST_SYNC, "sync_state": access.sync_state})
+    snap = access.snapshot
+    if not VERSION_RE.fullmatch(snap.data_version) or not VERSION_RE.fullmatch(snap.global_version):
+        log.warning("league %s has a pointer in an unsupported format", league_id)
+        raise HTTPException(503, FILES_UNAVAILABLE)
+    cache = league_file_cache()
+    try:
+        league_path = cache.league_file(access.league_id, snap.data_version)
+        global_path = cache.global_file(snap.global_version)
+    except Exception as err:   # noqa: BLE001 - R2 errors, a missing object: never a 500 with details
+        log.warning("league files unavailable for %s: %s", league_id, type(err).__name__)
+        raise HTTPException(503, FILES_UNAVAILABLE) from None
+    # "My team" (fantasy_teams.is_mine): the signed-in viewer's saved team, as the owner's team was on the legacy
+    # site; an explicit ?team_id= stays an explicit choice the routes already handle. A viewer with no saved team
+    # (anonymous, or not chosen yet) takes the URL's team as their perspective everywhere.
+    chosen = perspective_team(access.perspective_team_id)
+    if chosen is None and team_param is not None:
+        chosen = perspective_team(team_param)
+    return LeagueScope(access.league_id, league_path, global_path, snap.data_version, snap.global_version,
+                       access.visibility_epoch, chosen)
+
+
+async def league_scope(request: Request, league_id: str = Depends(valid_league_id),
+                       principal=Depends(current_principal)):
+    """Async on purpose: the ContextVar is set in the request's own context, which FastAPI copies into the thread
+    pool that runs the (sync) legacy handler. The blocking work runs in the pool."""
+    scope = await run_in_threadpool(_resolve, principal, league_id, request.query_params.get("team_id"))
+    request.state.fi_scope = scope
+    token = LEAGUE_SCOPE.set(scope)
+    try:
+        yield scope
+    finally:
+        LEAGUE_SCOPE.reset(token)
+
+
+LEAGUE_PREFIX = "/v2/leagues/{league_id}"
+
+
+def mount_legacy_routers(app, routers, require_enabled) -> None:
+    """Mount each legacy router again under /v2/leagues/{league_id}. Not in the OpenAPI schema: the legacy entries
+    already document the operations."""
+    for r in routers:
+        app.include_router(r, prefix=LEAGUE_PREFIX, include_in_schema=False,
+                           dependencies=[Depends(require_enabled), Depends(league_scope, scope="function")])
+
+
+async def add_scope_headers(request: Request, call_next):
+    response = await call_next(request)
+    scope = getattr(request.state, "fi_scope", None)
+    if scope is not None:
+        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["X-FI-Data-Version"] = scope.data_version
+        response.headers["X-FI-Global-Version"] = scope.global_version
+    return response
+```
+
+- [ ] **Step 6: Mount in main.py after the legacy routers: `mount_legacy_routers(app, [<the 22 legacy routers>], require_enabled)` and `app.middleware("http")(add_scope_headers)`**
+
+- [ ] **Step 7: Run the scope, golden, matrix and audit suites**
+
+```bash
+uv run pytest tests/test_league_scope.py tests/test_golden_legacy.py tests/test_v2_authorization_matrix.py tests/test_league_scope_audit.py tests/test_hosting.py -q
+```
+Expected: all pass; the 52 goldens are identical through /v2 for a member whose saved team is the legacy owner's team
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add -A fantasy-intel/backend
+git commit -m "Phase 2: serve every existing page per league under /v2/leagues/{lg}/api"
+```
+

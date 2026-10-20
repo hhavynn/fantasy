@@ -55,10 +55,7 @@
     "not_qualified": 16,
     "qualified_found": 78,
     "screened_out_by_upper_bound": 814,
-    "seconds": {
-     "stage_a": 0.01,
-     "stage_b": 0.0
-    },
+    "seconds": "<masked>",
     "simpler_equivalents_hidden": 0,
     "survivors": 306,
     "termination": "all_candidates_evaluated"
@@ -55876,10 +55873,7 @@
    "not_qualified": 16,
    "qualified_found": 78,
    "screened_out_by_upper_bound": 814,
-   "seconds": {
-    "stage_a": 0.01,
-    "stage_b": 0.0
-   },
+   "seconds": "<masked>",
    "simpler_equivalents_hidden": 0,
    "survivors": 306,
    "termination": "all_candidates_evaluated"

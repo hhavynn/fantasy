@@ -27,25 +27,21 @@ def headers(actor):
     return bearer(uid) if uid else {}
 
 
-def _walk(routes):
-    """Every APIRoute, descending into included routers (FastAPI >= 0.140 wraps them in an _IncludedRouter)."""
-    for route in routes:
-        inner = getattr(route, "original_router", None)
-        if inner is not None:
-            yield from _walk(inner.routes)
-        else:
-            yield route
-
-
-def _league_route_objects():
+def _league_route_infos(include_mounted: bool = True):
+    from app.api.routing import iter_routes
     from app.main import app
-    return [r for r in _walk(app.routes) if getattr(r, "path", "").startswith("/v2/") and "{league_id}" in r.path]
+    return [r for r in iter_routes(app) if r.path.startswith("/v2/leagues/{league_id}")
+            and (include_mounted or not r.path.startswith(LEGACY_MOUNT))]
+
+
+LEGACY_MOUNT = "/v2/leagues/{league_id}/api/"
 
 
 def league_routes():
+    """The /v2 router's own league routes, cross-checked against the OpenAPI schema. The legacy routers mounted under
+    /v2/leagues/{league_id}/api/ are covered by tests/test_league_scope.py (they need league files to answer)."""
     from app.main import app
-    out = sorted((method, r.path) for r in _league_route_objects() for method in r.methods - {"HEAD", "OPTIONS"})
-    # cross-check against the public schema, so a route registered some other way cannot hide from the matrix
+    out = sorted((m, r.path) for r in _league_route_infos(include_mounted=False) for m in r.methods)
     schema = sorted((m.upper(), path) for path, ops in app.openapi()["paths"].items()
                     if path.startswith("/v2/") and "{league_id}" in path for m in ops)
     assert out == schema, (out, schema)
@@ -97,23 +93,30 @@ def test_unknown_league_is_404_on_every_route_before_anything_else(client, leagu
     assert (r.status_code, r.json()) == (404, {"detail": "League not found."}), (method, path, actor)
 
 
-def test_every_league_route_declares_the_authorizing_dependency():
-    """Belt and braces for the behavioural checks above: every league route depends on league_tx directly."""
-    routes = _league_route_objects()
-    assert routes
-    for route in routes:
-        names = {d.call.__name__ for d in route.dependant.dependencies}
-        assert "league_tx" in names, route.path
+def test_every_league_route_declares_an_authorizing_dependency():
+    """Every route under /v2/leagues/{league_id} runs league_tx (the /v2 router) or league_scope (the legacy mount),
+    and both authorize before anything else."""
+    from app.api import leagues_v2
+    from app.api.league_scope import league_scope
+    routes = _league_route_infos()
+    assert len(routes) > 40
+    for r in routes:
+        calls = r.dependency_calls()
+        assert leagues_v2.league_tx in calls or league_scope in calls, r.path
+        assert leagues_v2.require_enabled in calls or r.path.startswith("/v2/leagues/{league_id}") and \
+            not r.path.startswith(LEGACY_MOUNT), r.path
 
 
 def test_every_v2_transaction_dependency_finishes_before_the_response():
     """request_tx commits on exit; with FastAPI's default request scope that would run after the response is sent."""
     from app.api import leagues_v2
+    from app.api.routing import iter_routes
     from app.main import app
     checked = 0
-    for route in _walk(app.routes):
-        if not getattr(route, "path", "").startswith("/v2/"):
+    for info in iter_routes(app):
+        if not info.path.startswith("/v2/"):
             continue
+        route = info.route
         stack = list(route.dependant.dependencies)
         while stack:
             dep = stack.pop()
