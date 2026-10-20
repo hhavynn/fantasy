@@ -50,6 +50,52 @@ uv run python ../scripts/projection_performance.py publish --season 2026        
 `refresh_all.py --skip-report` skips the step. A failure is a `WARNING: report:` line; the previous report stays
 published and the refresh exit code is unchanged.
 
+## Weekly replay (hindsight, not evidence)
+
+The scorecard grows one week at a time and only for the model that was live that week, so a model change takes weeks
+to show up there. The **Weekly replay** section answers the faster question: if today's model had made every finished
+week of the season, how close would it have been, and is that better or worse than the previous model, week by week?
+
+```
+refresh_all.py  ... -> projection_performance.py publish -> model_replay.py publish -> publish_motherduck.py
+hosted API      GET /api/projections/replay        app/analytics/model_replay.py (SQL + stdlib only)
+page            /projection-performance            "Weekly replay" section, above the ESPN comparison
+```
+
+* **How:** for every fully final week W of the season, the production model (context_model, its SHIPPED components),
+  the previous version (ifp-2.1.0's frozen spec) and the recent-average baseline are refitted on rows of weeks
+  strictly before W (the walk-forward of `scripts/ifp22_backtest.py`, reusing its cached store) and predict W. MAE per
+  week and position on identical player-weeks.
+* **Which models:** the replay follows `app/analytics/context_model.py` (ifp-2.2.0, its SHIPPED components) and
+  replays `app/analytics/injury_model.py`'s spec (ifp-2.1.0) as the prior version. Whoever ships the next ifp version
+  updates both in `scripts/model_replay.py` (`replay` and `PRIOR_VERSION`).
+* **Snapshots:** `publish` stores one write-once row of `model_replays` (canonical JSON + sha256, like the report)
+  unless the newest row has the same model fingerprint (version, config and the source of every module the replay
+  loaded), data fingerprint (store rows and features, QB start candidates, the store's source provenance) AND output
+  fingerprint (every replayed forecast and outcome). A change the first two miss still shows in the output and stores
+  a new snapshot; only the model fingerprint decides which snapshot counts as "the previous model".
+* **Comparison:** the page shows the newest snapshot's MAE per week with the change against the previous model: the
+  newest earlier snapshot of a different model fingerprint whose forecasts differ on a shared week (per-week output
+  fingerprints), so an edit to a module that does not change any forecast never replaces the real previous model.
+  Before the first model change it compares against ifp-2.1.0 replayed on the same rows. A change under 0.05 points
+  reads as about the same; this is one season, not a significance test.
+* **Data drift:** each week also carries an input fingerprint (every store row and QB candidate up to that week). A week
+  whose inputs changed between the two snapshots (stat corrections, re-synced depth or injury data) is marked † on the
+  page; its change mixes model and data, so the summary, the tally and the season row leave it out.
+* **Limits:** hindsight. Inputs are today's data (stat corrections, depth charts and injury reports as synced now),
+  outcomes are conditional on playing (players with at least one recent game), and nothing here is what the site
+  showed that week. It never feeds a verdict, a promotion or the scorecard. ESPN is deliberately not part of it.
+
+```
+cd backend
+uv run python ../scripts/model_replay.py show       # replay and print, writes nothing (~1-2 min)
+uv run python ../scripts/model_replay.py publish    # store a snapshot if the model or weeks changed
+uv run python ../scripts/model_replay.py history    # stored snapshots and the week-by-week comparison
+```
+
+The season row compares both models over the weeks both replays cover (labelled with those weeks when the newer
+replay has more). `refresh_all.py --skip-replay` skips the replay step; `--skip-report` no longer affects it.
+
 ## What the report contains (aggregates only)
 
 No player, roster, league or fantasy-team identifier is ever published; only counts and error statistics.
