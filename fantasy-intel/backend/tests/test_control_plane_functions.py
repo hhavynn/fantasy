@@ -308,3 +308,65 @@ def test_deleting_an_account_leaves_public_leagues_and_other_admins_alone(pg, le
     with pg.connect() as su:
         assert su.execute("SELECT deleted_at IS NULL, status FROM fi.leagues WHERE id = %s", [pub]).fetchone() == (True, "active")
         assert su.execute("SELECT role FROM fi.league_memberships WHERE league_id = %s", [league]).fetchall() == [("admin",)]
+
+
+def test_a_validated_replacement_credential_restores_a_stale_league(pg, league, leased_job):
+    with pg.connect(user="fi_sync") as con:
+        assert con.execute(MARK, [leased_job["job"], 7, leased_job["cid"], "invalid"]).fetchone() == (True,)
+        con.commit()
+    new_cid = str(uuid.uuid4())
+    with pg.connect(user="fi_api") as con:           # the owner re-enters working cookies
+        call(con, "authenticated", U2, STORE, [new_cid, league, CT, NONCE, WRAPPED])
+    with pg.connect() as su:
+        assert su.execute("SELECT status FROM fi.leagues WHERE id = %s", [league]).fetchone() == ("stale",)
+    with pg.connect(user="fi_sync") as con:          # the next sync validates them
+        assert con.execute(MARK, [leased_job["job"], 7, new_cid, "active"]).fetchone() == (True,)
+        con.commit()
+    with pg.connect() as su:
+        assert su.execute("SELECT status FROM fi.leagues WHERE id = %s", [league]).fetchone() == ("active",)
+
+
+def test_a_validated_credential_never_revives_an_unavailable_or_dormant_league(pg, league, leased_job):
+    for status in ("unavailable", "dormant"):
+        with pg.connect() as su:
+            su.execute("UPDATE fi.leagues SET status = %s WHERE id = %s", [status, league])
+            su.commit()
+        with pg.connect(user="fi_sync") as con:
+            assert con.execute(MARK, [leased_job["job"], 7, leased_job["cid"], "active"]).fetchone() == (True,)
+            con.commit()
+        with pg.connect() as su:
+            assert su.execute("SELECT status FROM fi.leagues WHERE id = %s", [league]).fetchone() == (status,)
+
+
+def test_the_last_two_members_deleting_their_accounts_concurrently_still_delete_the_league(pg, league):
+    """Each deletion must lock the league before deciding, or both see the other's membership and neither acts."""
+    import threading
+    import time
+
+    first = pg.connect()
+    t = None
+    errors = []
+    try:
+        first.execute("DELETE FROM auth.users WHERE id = %s", [U1])          # uncommitted: holds whatever it locked
+
+        def second():
+            try:
+                with pg.connect() as con:
+                    con.execute("DELETE FROM auth.users WHERE id = %s", [U2])
+                    con.commit()
+            except Exception as err:   # noqa: BLE001 - reported below
+                errors.append(repr(err))
+
+        t = threading.Thread(target=second)
+        t.start()
+        time.sleep(0.5)
+        first.commit()
+    finally:
+        first.rollback()
+        first.close()
+        if t is not None:
+            t.join(10)
+    assert errors == []
+    with pg.connect() as su:
+        assert su.execute("SELECT count(*) FROM fi.league_memberships WHERE league_id = %s", [league]).fetchone() == (0,)
+        assert su.execute("SELECT deleted_at IS NOT NULL FROM fi.leagues WHERE id = %s", [league]).fetchone() == (True,)
