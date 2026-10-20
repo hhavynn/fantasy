@@ -395,7 +395,7 @@ def parse_refresh_log(text: str) -> dict:
             m = re.match(r"^Pregame check: week (\d+) ESPN snapshot captured at (\S+) \(", line)
             if m:
                 res["pregame"]["week"], res["pregame"]["captured_at"] = int(m.group(1)), m.group(2)
-        elif line.startswith("MotherDuck publish skipped"):
+        elif line.startswith(("Hosted publish skipped", "MotherDuck publish skipped")):  # older logs say MotherDuck
             res["publish"]["skipped"] = line
         elif line.startswith("FAILED: "):
             res["failed"], res["status"] = line[len("FAILED: "):], "failed"
@@ -403,7 +403,7 @@ def parse_refresh_log(text: str) -> dict:
             if res["status"] != "failed":
                 res["status"] = "complete"
     for s in steps:
-        if s["name"] == "publish_motherduck.py":
+        if s["name"] in ("publish_motherduck.py", "publish_snapshot.py"):
             res["publish"]["exit"] = s["exit"]
     if ev is None:
         res["evidence"] = {"ran": False, "status": "not_run", "steps": [], "problems": [], "notes": []}
@@ -457,8 +457,8 @@ def learning_cycle_runs(weekly_dir: Path) -> list[dict]:
 
 
 def publish_records(logs_dir: Path, runs: Sequence[dict]) -> list[dict]:
-    """Known MotherDuck publishes: 'Published ... at' lines of refresh logs, and publish-history.jsonl
-    (publish_motherduck.py appends one line per successful publish, including manual ones)."""
+    """Known hosted publishes: 'Published ... at' lines of refresh logs, and publish-history.jsonl
+    (publish_snapshot.py / publish_motherduck.py append one line per successful publish, manual ones too)."""
     out = [{"published_at": r["publish"]["published_at"], "source": r["log"]}
            for r in runs if r.get("publish", {}).get("published_at")]
     hist = Path(logs_dir) / "publish-history.jsonl"

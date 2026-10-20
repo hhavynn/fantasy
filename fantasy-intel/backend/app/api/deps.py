@@ -40,10 +40,37 @@ def _motherduck_cursor(database: str) -> duckdb.DuckDBPyConnection:
         return con.cursor()
 
 
+# Snapshot mode keeps one read-only connection per process on the downloaded file and swaps it when a
+# newer publish has been downloaded; each request gets its own cursor. Superseded connections are left
+# for garbage collection rather than closed, so a request still running on one is never cut off.
+_SNAP_LOCK = threading.Lock()
+_SNAP: dict[str, Any] = {}
+
+
+def _snapshot_cursor(settings) -> duckdb.DuckDBPyConnection:
+    from ..db.snapshot import SnapshotCache
+
+    with _SNAP_LOCK:
+        cache = _SNAP.get("cache")
+        if cache is None:
+            cache = _SNAP["cache"] = SnapshotCache(settings.r2_config(), prefix=settings.snapshot_prefix)
+    try:
+        path, _ = cache.local_path()
+    except Exception as err:  # R2Error, a bad manifest: nothing has been served yet in this instance
+        raise HTTPException(503, f"Cannot load the published snapshot: {err}")
+    with _SNAP_LOCK:
+        if _SNAP.get("path") != path:
+            _SNAP["con"], _SNAP["path"] = duckdb.connect(str(path), read_only=True), path
+        return _SNAP["con"].cursor()
+
+
 @contextmanager
 def db() -> Iterator[Any]:
     settings = get_settings()
-    if settings.motherduck_database:
+    hosted_md = bool(settings.motherduck_database) and not settings.snapshot_enabled
+    if settings.snapshot_enabled:
+        con = _snapshot_cursor(settings)   # an immutable file: no publish can commit under a request
+    elif hosted_md:
         con = _motherduck_cursor(settings.motherduck_database)
     else:
         if not settings.db_path.exists():
@@ -53,7 +80,7 @@ def db() -> Iterator[Any]:
         except DatabaseBusy:
             raise HTTPException(503, "Database is busy (a sync is probably running). Retry in a few seconds.")
     try:
-        if settings.motherduck_database:
+        if hosted_md:
             # One snapshot per request: a publish (scripts/publish_motherduck.py) can commit while a
             # request runs, and every query in the request must see the same version, including the
             # data_version stamp that keys the trade-search cache. The local file needs no such
@@ -65,12 +92,12 @@ def db() -> Iterator[Any]:
                                      "`uv run python ../scripts/sync_nfl.py` (and sync_espn.py) to migrate and rebuild.")
         yield con
     except duckdb.Error:
-        if settings.motherduck_database:  # possibly a dropped connection: the next request reconnects
+        if hosted_md:  # possibly a dropped connection: the next request reconnects
             with _MD_LOCK:
                 _MD_CONS.pop(settings.motherduck_database, None)
         raise
     finally:
-        if settings.motherduck_database:
+        if hosted_md:
             try:
                 con.execute("ROLLBACK")  # read-only request: nothing to commit
             except duckdb.Error:
@@ -80,8 +107,11 @@ def db() -> Iterator[Any]:
 
 def data_version(con) -> str:
     """Changes whenever the served data changes: the local file's mtime, or the publish stamp that
-    scripts/publish_motherduck.py writes into the hosted copy."""
+    scripts/publish_snapshot.py (or publish_motherduck.py) writes into the hosted copy."""
     settings = get_settings()
+    if settings.snapshot_enabled:
+        row = con.execute("SELECT value FROM schema_meta WHERE key = 'published_at'").fetchone()
+        return f"snapshot:{row[0] if row else ''}"
     if settings.motherduck_database:
         row = con.execute("SELECT value FROM schema_meta WHERE key = 'published_at'").fetchone()
         return f"md:{settings.motherduck_database}:{row[0] if row else ''}"

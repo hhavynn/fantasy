@@ -62,6 +62,8 @@ BACKEND = _bootstrap.BACKEND
 LOG_DIR = DATA_DIR / "logs"
 STEPS = ("sync_espn.py", "sync_nfl.py", "compute_analytics.py")
 PUBLISH = "publish_motherduck.py"
+PUBLISH_SNAPSHOT = "publish_snapshot.py"   # replaces PUBLISH when R2 is configured (free tiers; MotherDuck retired)
+PUBLISHERS = (PUBLISH, PUBLISH_SNAPSHOT)
 REPORT = "projection_performance.py"   # not in STEPS: run by run_report, whose failure never stops the chain
 REPLAY = "model_replay.py"             # not in STEPS: run by run_replay after the report, never stops the chain
 RANGES = "projection_ranges.py"         # not in STEPS: run by run_ranges before the publish, never stops the chain
@@ -82,11 +84,20 @@ DST_SHADOW_WARNINGS = 3              # dst_shadow.py: ran and printed missing-in
 DIST_LEDGER_WARNINGS = 3             # distribution_ledger.py: ran and printed WARNING lines (no artifact, missed week)
 
 
+def snapshot_configured() -> bool:
+    return all((os.getenv(k) or "").strip() for k in
+               ("SNAPSHOT_BUCKET", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"))
+
+
 def plan(publish: bool) -> list[str]:
-    """Step scripts in run order. Publishing needs a read/write MotherDuck token, which only the
-    hosted setup has, so a plain local install never pushes anywhere."""
+    """Step scripts in run order. Publishing needs R2 settings (the snapshot, preferred) or a read/write
+    MotherDuck token, which only the hosted setup has, so a plain local install never pushes anywhere."""
+    if not publish:
+        return list(STEPS)
+    if snapshot_configured():
+        return [*STEPS, PUBLISH_SNAPSHOT]
     has_token = bool((os.getenv("MOTHERDUCK_TOKEN") or "").strip())
-    return [*STEPS, PUBLISH] if publish and has_token else list(STEPS)
+    return [*STEPS, PUBLISH] if has_token else list(STEPS)
 
 
 class Log:
@@ -477,22 +488,24 @@ def main() -> int:
     try:
         if not args.check_only:
             steps = plan(publish=not args.no_publish)
-            if PUBLISH not in steps:
-                log("MotherDuck publish skipped (" + ("--no-publish" if args.no_publish else "MOTHERDUCK_TOKEN not set") + ")")
+            publishing = any(s in PUBLISHERS for s in steps)
+            if not publishing:
+                log("Hosted publish skipped (" + ("--no-publish" if args.no_publish
+                                                  else "neither R2 snapshot settings nor MOTHERDUCK_TOKEN set") + ")")
             failed: list[str] = []
             for step in steps:
                 if failed and step not in SYNCS:
                     log(f"SKIPPED: {step} (needs {', '.join(failed)}, which failed)")
                     continue
-                if step == PUBLISH and not args.skip_report:
+                if step in PUBLISHERS and not args.skip_report:
                     run_report(log)          # after analytics, so the publish carries the new report
-                if step == PUBLISH and not args.skip_replay:
+                if step in PUBLISHERS and not args.skip_replay:
                     run_replay(log)          # and the newest weekly model replay
-                if step == PUBLISH:
+                if step in PUBLISHERS:
                     run_ranges(log)          # so the publish carries the pinned floor / ceiling table
                 code = run_db_step([sys.executable, str(SCRIPTS / step)], log)
                 if code != 0:
-                    if step != PUBLISH:
+                    if step not in PUBLISHERS:
                         log(f"FAILED: {step} exited {code}; the steps that need it are not run. Log: {log.path}")
                         failed.append(step)
                         continue
@@ -511,11 +524,11 @@ def main() -> int:
                 if not args.skip_evidence:
                     run_shadows(log)
                 return 1
-            if PUBLISH not in steps and not args.skip_report:
+            if not publishing and not args.skip_report:
                 run_report(log)              # local install: the local API serves the report
-            if PUBLISH not in steps and not args.skip_replay:
+            if not publishing and not args.skip_replay:
                 run_replay(log)
-            if PUBLISH not in steps:
+            if not publishing:
                 run_ranges(log)
         try:
             check_pregame(log)
