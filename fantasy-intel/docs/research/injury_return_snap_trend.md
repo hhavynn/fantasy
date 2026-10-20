@@ -105,7 +105,9 @@ so a player who appeared in several of W+1..W+3 was counted several times (h1-3 
 The horizon numbers above are from the fixed run; h0 and the decision are unchanged. A second Codex pass made the
 horizon rows use the cutoff team (336 of 52,228 rows had taken a later team; 25 dropped for a cutoff-team bye),
 clustered horizon CIs by target week (h1-3 cohort CI [+0.013, +0.151] -> [-0.004, +0.158]), and let the example's
-cutoff-week row keep that week's report (Saquon W7 9.06 -> 8.89).
+cutoff-week row keep that week's report (Saquon W7 9.06 -> 8.89). A third pass recomputes each returning player's exit-free usage on its own (so the
+position priors stay those of the full panel) and gives the example the cutoff roster team; both change results
+only in the fourth decimal.
 
 ## Side finding (not pre-registered; a lead only)
 
@@ -128,6 +130,6 @@ export FANTASY_DB_PATH=<scratch>/fantasy.duckdb NFL_HISTORY_DB_PATH=<scratch>/nf
        WEEKLY_MODEL_DIR=<scratch>/models/weekly IFP_MODEL_DIR=<scratch>/models
 uv run python ../scripts/ifp22_backtest.py build                 # the ifp-2.2.0 store (reused, ~10 min if absent)
 uv run python ../scripts/injury_return_research.py horizons      # ~1.5 min
-uv run python ../scripts/injury_return_research.py run           # ~25 s
+uv run python ../scripts/injury_return_research.py run           # ~1.5 min
 uv run python ../scripts/injury_return_research.py example --gsis 00-0034844 --season 2026 --week 7 --weeks 6
 ```

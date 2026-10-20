@@ -112,22 +112,27 @@ def with_cohort(rows: pl.DataFrame, games: pl.DataFrame, cutoff: str = "key") ->
 
 def without_exit_game(src: Sources, rows: pl.DataFrame, season: int, week: int) -> pl.DataFrame:
     """(gsis_id, <col>_nx) for the cohort rows of one cutoff week: features_for_week with the player's last game (the
-    injury exit) removed from his own games, nothing else changed."""
+    injury exit) removed from his own games, nothing else changed. One player at a time, so position priors and every
+    other player's games come from the unmodified panel (removing several cohort members' games at once would shift
+    the shared priors)."""
     coh = rows.filter(pl.col("ret_cohort"))
     cols = USAGE + PRODUCTION
     if coh.height == 0:
         return pl.DataFrame(schema={"gsis_id": pl.String, **{f"{c}_nx": pl.Float64 for c in cols}})
     p = src.panel
-    drop = coh.select("gsis_id", pl.col("last_season").cast(p["season"].dtype).alias("season"),
-                      pl.col("last_week").cast(p["week"].dtype).alias("week"))
-    s2 = Sources(p.join(drop, on=["gsis_id", "season", "week"], how="anti"), src.games, src.defense, src.rosters,
-                 src.injuries, src.exits)
     # horizon rows repeat a player once per target week under one cutoff; the recomputed usage depends only on the
     # cutoff, so one target row per player (the opponent / home-away columns are not used here)
-    tg = coh.select("gsis_id", "position", "team", "opponent", pl.col("is_home").cast(pl.Boolean)).unique(
-        "gsis_id", keep="first", maintain_order=True)
-    f = features_for_week(s2, season, week, tg)
-    return f.select("gsis_id", *[pl.col(c).cast(pl.Float64).alias(f"{c}_nx") for c in cols])
+    coh = coh.unique("gsis_id", keep="first", maintain_order=True)
+    parts = []
+    for r in coh.iter_rows(named=True):
+        mine = ((pl.col("gsis_id") == r["gsis_id"]) & (pl.col("season") == r["last_season"])
+                & (pl.col("week") == r["last_week"]))
+        s2 = Sources(p.filter(~mine), src.games, src.defense, src.rosters, src.injuries, src.exits)
+        tg = pl.DataFrame({"gsis_id": [r["gsis_id"]], "position": [r["position"]], "team": [r["team"]],
+                           "opponent": [r["opponent"]], "is_home": [bool(r["is_home"])]})
+        parts.append(features_for_week(s2, season, week, tg).select(
+            "gsis_id", *[pl.col(c).cast(pl.Float64).alias(f"{c}_nx") for c in cols]))
+    return pl.concat(parts)
 
 
 def add_recomputed(src: Sources, rows: pl.DataFrame, cutoff: str = "key") -> pl.DataFrame:
@@ -201,6 +206,20 @@ def horizon_rows(src: Sources, inputs, codes, season: int, fw: int, targets_by_h
     return pl.concat(out, how="diagonal_relaxed") if out else pl.DataFrame()
 
 
+def cutoff_teams(src: Sources, season: int, fw: int) -> pl.DataFrame:
+    """(gsis_id, team) at the cutoff: the latest weekly roster row of the season with week <= fw
+    (participation.live_population's roster_week rule), else the player's last game's team before fw."""
+    last = (src.panel.filter(pl.col("season") * 100 + pl.col("week") < key(season, fw)).sort("season", "week")
+            .group_by("gsis_id").agg(pl.col("team").last().alias("_last_team")))
+    if src.rosters is None:
+        return last.select("gsis_id", pl.col("_last_team").alias("team"))
+    r = (src.rosters.filter((pl.col("season") == season) & (pl.col("week") <= fw))
+         .sort("week", descending=True).group_by("gsis_id", maintain_order=True).first()
+         .select("gsis_id", pl.col("team").alias("_roster_team")))
+    return (last.join(r, on="gsis_id", how="full", coalesce=True)
+            .select("gsis_id", pl.coalesce("_roster_team", "_last_team").alias("team")))
+
+
 def cutoff_targets(src: Sources, season: int, fw: int, week: int) -> pl.DataFrame:
     """RB/WR/TE who appeared in `week` (> fw), with the team they had at the cutoff: their latest weekly roster row of
     the season with week <= fw (participation.live_population's roster_week rule), else their last game's team before
@@ -208,18 +227,9 @@ def cutoff_targets(src: Sources, season: int, fw: int, week: int) -> pl.DataFram
     out (production would not project him for it). The label is his actual points in `week`."""
     app = played_targets(src, season, week).filter(pl.col("position").is_in(POS)).select(
         "gsis_id", "position", pl.col("league_points").alias("label"))
-    r = (src.rosters.filter((pl.col("season") == season) & (pl.col("week") <= fw))
-         .sort("week", descending=True).group_by("gsis_id", maintain_order=True).first()
-         .select("gsis_id", pl.col("team").alias("_roster_team"))) if src.rosters is not None else None
-    last = (src.panel.filter(pl.col("season") * 100 + pl.col("week") < key(season, fw)).sort("season", "week")
-            .group_by("gsis_id").agg(pl.col("team").last().alias("_last_team")))
-    t = app.join(last, on="gsis_id", how="left")
-    t = t.join(r, on="gsis_id", how="left") if r is not None else t.with_columns(pl.lit(None, dtype=pl.String)
-                                                                               .alias("_roster_team"))
     games = src.games.filter((pl.col("season") == season) & (pl.col("week") == week)).select(
         "team", "opponent", "is_home")
-    return (t.with_columns(pl.coalesce("_roster_team", "_last_team").alias("team")).drop("_roster_team", "_last_team")
-            .join(games, on="team", how="inner"))
+    return app.join(cutoff_teams(src, season, fw), on="gsis_id", how="inner").join(games, on="team", how="inner")
 
 
 def cmd_horizons(args) -> dict:
@@ -397,7 +407,8 @@ def cmd_example(args) -> dict:
     s, fw = args.season, args.week
     last = src.panel.filter((pl.col("gsis_id") == args.gsis) & (pl.col("season") * 100 + pl.col("week") < key(s, fw))
                             ).sort("season", "week").tail(1)
-    team, pos = last["team"][0], last["position"][0]
+    pos = last["position"][0]
+    team = cutoff_teams(src, s, fw).filter(pl.col("gsis_id") == args.gsis)["team"][0]   # the roster team at the cutoff
     g = src.games.filter((pl.col("season") == s) & (pl.col("team") == team) & (pl.col("week") >= fw)).sort("week")
     by_h = {}
     for r in g.head(args.weeks).iter_rows(named=True):
