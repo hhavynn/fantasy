@@ -228,6 +228,15 @@ p { margin: 0 0 8px; }
 .nav-groups a[aria-current]::after { background: var(--accent); }
 .topbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; min-width: 0; white-space: nowrap; }
 .league-chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: var(--ink-muted); }
+/* Account (sign-in) menu: shown only when sign-in is configured (components/AccountMenu.tsx). */
+.account-link { font-size: 13px; color: var(--ink-muted); white-space: nowrap; cursor: pointer; list-style: none; }
+.account-link::-webkit-details-marker { display: none; }
+.account-menu { position: relative; }
+.account-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; gap: 6px; min-width: 200px;
+  padding: 10px 12px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius); }
+.account-email { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.account-pop a, .account-signout { font-size: 13px; text-align: left; }
+.account-signout { background: transparent; border: 0; padding: 0; color: var(--ink); cursor: pointer; }
 .subnav { display: flex; gap: 2px; align-items: center; height: var(--subnav-h); padding: 0 var(--gutter); max-width: var(--page-max); margin: 0 auto; overflow-x: auto; scrollbar-width: none; }
 /* The sub-nav is its own sticky band under the app bar on desktop and tablets. On phones it scrolls away with the
    page (the bottom tab bar switches sections), so the only fixed chrome is the top bar and the tab bar. */

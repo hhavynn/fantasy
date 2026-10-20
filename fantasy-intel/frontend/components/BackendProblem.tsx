@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Notice } from "@/components/ui";
-import { isFirstRun, type ApiErrorKind } from "@/lib/api";
+import { isFirstRun, type ApiErrorKind } from "@/lib/api-errors";
 import styles from "./BackendProblem.module.css";
 
 /** A terminal command block. Paths are relative to the repository's `fantasy-intel/` folder. */
