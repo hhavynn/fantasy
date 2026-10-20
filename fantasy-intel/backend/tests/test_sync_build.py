@@ -1,0 +1,103 @@
+"""A league file built by a sync job equals what the laptop path produces from the same data (spec §3.5)."""
+import shutil
+from types import SimpleNamespace
+
+import duckdb
+import pytest
+
+from app.db.connection import open_db
+from app.db.league_split import split_database
+from app.espn.sync import fetch_all, run_espn_sync
+from app.sync.build import build_league_file, league_tables_equal
+from espn_fixture import MY_SWID, SEASON, FakeEspnClient
+from golden.golden import build_e2e_db
+
+# wall-clock stamps and per-run ids: different on every run of either path
+VOLATILE = frozenset({"synced_at", "detail_synced_at", "projection_synced_at", "run_id", "sync_run_id", "created_at", "computed_at", "started_at", "finished_at",
+                      "retrieved_at", "fetch_started_at", "generated_at", "updated_at", "snapshot_date", "as_of", "retrieval_id", "recorded_at"})
+IGNORE = frozenset({"sync_runs", "schema_meta"})
+
+
+@pytest.fixture(scope="module")
+def base(tmp_path_factory):
+    """The E2E fixture league split into its league and global files: what is published before the job runs."""
+    d = tmp_path_factory.mktemp("build")
+    db = build_e2e_db(d / "e2e.duckdb")
+    out = split_database(db, d / "prev.duckdb", d / "global.duckdb", stamp="2026-10-21T10:00:00",
+                         global_stamp="content-addressed")
+    return {"db": db, "prev": out.league_path, "global": out.global_path, "dir": d}
+
+
+def laptop_refresh(base, tmp_path):
+    """What the laptop does: sync into the full database, run analytics, split."""
+    from app.analytics.pipeline import run_analytics
+    db = tmp_path / "laptop.duckdb"
+    shutil.copy(base["db"], db)
+    run_espn_sync(lambda: open_db(db), SimpleNamespace(swid=MY_SWID, my_team_id=None), client=FakeEspnClient(),
+                  save_raw_payloads=False)
+    with open_db(db) as con:
+        run_analytics(con, SEASON)
+    return split_database(db, tmp_path / "laptop_league.duckdb", tmp_path / "laptop_global.duckdb",
+                          stamp="2026-10-21T12:00:00").league_path
+
+
+def test_a_job_build_equals_the_laptop_refresh_table_by_table(base, tmp_path):
+    reference = laptop_refresh(base, tmp_path)
+    work = tmp_path / "job"
+    work.mkdir()
+    built = build_league_file(work, global_path=base["global"], previous=base["prev"],
+                              payloads=fetch_all(FakeEspnClient()), owner_swid=MY_SWID, stamp="2026-10-21T12:00:00")
+    assert (built.external_id, built.season) == (999, SEASON)
+    assert league_tables_equal(reference, built.league_path, ignore_columns=VOLATILE, ignore_tables=IGNORE) == []
+    con = duckdb.connect(str(built.league_path), read_only=True)
+    try:
+        assert con.execute("SELECT count(*) FROM fantasy_teams WHERE is_mine").fetchone() == (1,), \
+            "the credential owner's team is the stored default perspective, as on the laptop"
+        assert "MY_SWID" not in str(con.execute("SELECT * FROM league_members").fetchall())
+    finally:
+        con.close()
+
+
+def test_tables_the_job_does_not_rebuild_carry_forward(base, tmp_path):
+    con = duckdb.connect(str(base["prev"]), read_only=True)
+    try:
+        before = con.execute("SELECT count(*) FROM projection_performance_reports").fetchone()[0], \
+            con.execute("SELECT count(*) FROM independent_projection_runs").fetchone()[0]
+    finally:
+        con.close()
+    work = tmp_path / "job"
+    work.mkdir()
+    built = build_league_file(work, global_path=base["global"], previous=base["prev"],
+                              payloads=fetch_all(FakeEspnClient()), owner_swid=None, stamp="2026-10-21T12:00:00")
+    con = duckdb.connect(str(built.league_path), read_only=True)
+    try:
+        assert (con.execute("SELECT count(*) FROM projection_performance_reports").fetchone()[0],
+                con.execute("SELECT count(*) FROM independent_projection_runs").fetchone()[0]) == before
+        assert con.execute("SELECT count(*) FROM fantasy_teams WHERE is_mine").fetchone() == (0,), "public: no owner"
+    finally:
+        con.close()
+
+
+def test_a_first_build_needs_no_previous_file(base, tmp_path):
+    work = tmp_path / "job"
+    work.mkdir()
+    built = build_league_file(work, global_path=base["global"], previous=None, payloads=fetch_all(FakeEspnClient()),
+                              owner_swid=None, stamp="2026-10-21T12:00:00")
+    con = duckdb.connect(str(built.league_path), read_only=True)
+    try:
+        assert con.execute("SELECT count(*) FROM fantasy_teams").fetchone()[0] == 4
+        assert {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()} >= {"leagues", "matchups"}
+    finally:
+        con.close()
+    assert sorted(p.name for p in work.iterdir()) == ["league.duckdb"], "only the league file is left"
+
+
+def test_a_failed_build_raises_and_publishes_nothing(base, tmp_path):
+    payloads = fetch_all(FakeEspnClient())
+    del payloads.league["id"]
+    work = tmp_path / "job"
+    work.mkdir()
+    with pytest.raises(KeyError):
+        build_league_file(work, global_path=base["global"], previous=base["prev"], payloads=payloads, owner_swid=None,
+                          stamp="2026-10-21T12:00:00")
+    assert not (work / "league.duckdb").exists()
