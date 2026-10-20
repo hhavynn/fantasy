@@ -327,7 +327,7 @@ def test_espn_access_methods_are_gated():
     with pytest.raises(ProviderUnavailable, match="public-league import is not enabled"):
         off.fetch_settings(ESPN_KEY, PUBLIC)
     with pytest.raises(ProviderUnavailable, match="owner's ESPN session is not configured"):
-        off.fetch_settings(ESPN_KEY, LeagueAccess(AccessMethod.OWNER_ENV, None))
+        off.fetch_settings(ESPN_KEY, LeagueAccess(AccessMethod.COOKIES, None))
     with pytest.raises(ProviderUnavailable, match="no OAuth"):
         off.fetch_settings(ESPN_KEY, LeagueAccess(AccessMethod.OAUTH, "token"))
     assert called == [], "the raw client is never built for a refused access method"

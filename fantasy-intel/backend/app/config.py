@@ -40,9 +40,6 @@ def _str_or_none(value: str | None) -> str | None:
     return (value or "").strip() or None
 
 
-_MIN_ASSERTION_SECRET = 32
-
-
 @dataclass(frozen=True)
 class Settings:
     league_id: int | None
@@ -66,16 +63,13 @@ class Settings:
     r2_secret_access_key: str | None = field(default=None, repr=False)  # R2_SECRET_ACCESS_KEY
     r2_endpoint: str | None = None          # R2_ENDPOINT: override the account endpoint (tests, local S3)
     api_key: str | None = field(default=None, repr=False)   # hosted mode: required `X-API-Key` header on every request
-    # --- multi-league platform (Phase 1). Every flag defaults OFF, so today's behaviour is unchanged. ---
+    # --- multi-league platform. Every flag defaults OFF, so today's behaviour is unchanged. ---
     multileague_enabled: bool = False       # MULTILEAGUE_ENABLED=1: serves /v2/*; otherwise those routes 404
     # Supabase control plane (docs/multileague/ADR-0002). Read only by /v2 routes; never opened with the flag off.
     supabase_url: str | None = None         # SUPABASE_URL: https://<ref>.supabase.co (JWKS + token issuer)
     supabase_db_url: str | None = field(default=None, repr=False)   # SUPABASE_DB_URL: fi_api DSN via the Supavisor pooler
     credential_public_keys: dict = field(default_factory=dict, repr=False)   # CREDENTIALS_PUBKEY_V<n>: RSA public PEMs
     credential_wrap_key_version: str | None = None                            # CREDENTIALS_WRAP_KEY_VERSION or the highest
-    tenancy_db_path: Path = field(default_factory=lambda: DATA_DIR / "tenancy.duckdb")   # FANTASY_TENANCY_DB_PATH
-    user_assertion_secret: str | None = field(default=None, repr=False)  # FANTASY_USER_ASSERTION_SECRET, >= 32 chars or treated as unset
-    owner_user_id: str | None = None        # FANTASY_OWNER_USER_ID: the one user allowed AccessMethod.OWNER_ENV
     sleeper_source: str = "disabled"        # SLEEPER_SOURCE = disabled | fixture | live
     espn_public_import_enabled: bool = False    # ESPN_PUBLIC_IMPORT_ENABLED=1
     yahoo_client_id: str | None = None      # YAHOO_CLIENT_ID (presence only; OAuth is not implemented)
@@ -110,21 +104,11 @@ def get_settings() -> Settings:
     db_path = Path(os.getenv("FANTASY_DB_PATH") or "data/fantasy.duckdb")
     if not db_path.is_absolute():
         db_path = REPO_ROOT / db_path
-    tenancy_db_path = Path(os.getenv("FANTASY_TENANCY_DB_PATH") or "data/tenancy.duckdb")
-    if not tenancy_db_path.is_absolute():
-        tenancy_db_path = REPO_ROOT / tenancy_db_path
-    # A short secret is no secret: treat it as unset so assertions are refused rather than forgeable.
-    assertion_secret = _str_or_none(os.getenv("FANTASY_USER_ASSERTION_SECRET"))
-    if assertion_secret is not None and len(assertion_secret) < _MIN_ASSERTION_SECRET:
-        assertion_secret = None
     api_key = (os.getenv("FANTASY_API_KEY") or "").strip() or None
     pubkeys = {f"v{m.group(1)}": v.strip() for k, v in os.environ.items()
                if (m := re.fullmatch(r"CREDENTIALS_PUBKEY_V([0-9]{1,4})", k)) and v.strip()}
     wrap_version = _str_or_none(os.getenv("CREDENTIALS_WRAP_KEY_VERSION")) or (
         max(pubkeys, key=lambda v: int(v[1:])) if pubkeys else None)
-    # The API key travels on every request; if it also signed user assertions, any key holder could forge any user.
-    if assertion_secret is not None and assertion_secret == api_key:
-        assertion_secret = None
     return Settings(
         league_id=_int_or_none(os.getenv("ESPN_LEAGUE_ID")),
         season=season,
@@ -149,9 +133,6 @@ def get_settings() -> Settings:
         supabase_db_url=_str_or_none(os.getenv("SUPABASE_DB_URL")),
         credential_public_keys=pubkeys,
         credential_wrap_key_version=wrap_version,
-        tenancy_db_path=tenancy_db_path,
-        user_assertion_secret=assertion_secret,
-        owner_user_id=_str_or_none(os.getenv("FANTASY_OWNER_USER_ID")),
         sleeper_source=(_str_or_none(os.getenv("SLEEPER_SOURCE")) or "disabled").lower(),
         espn_public_import_enabled=_flag(os.getenv("ESPN_PUBLIC_IMPORT_ENABLED")),
         yahoo_client_id=_str_or_none(os.getenv("YAHOO_CLIENT_ID")),

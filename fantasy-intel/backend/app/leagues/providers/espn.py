@@ -2,12 +2,13 @@
 
 ESPN has no documented public fantasy API and no third-party authorization (no OAuth). This adapter is
 therefore enabled only for the two cases this deployment can defend:
-  (a) the deployment owner's own leagues, read with the owner's ESPN session cookies from the server
-      environment (`AccessMethod.OWNER_ENV`; the credential object exposes `espn_s2` / `swid`), and
+  (a) private leagues read with ESPN session cookies that a league member supplied with explicit consent,
+      decrypted only inside a sync job (`AccessMethod.COOKIES`; the credential object exposes `espn_s2` / `swid`;
+      see docs/multileague/ADR-0002), and
   (b) leagues ESPN serves without cookies (public leagues), only when ESPN_PUBLIC_IMPORT_ENABLED is on
       (`AccessMethod.PUBLIC`).
-Cookies are never collected from users, never stored here, never logged and never put in an error or
-repr. Every error message below is a fixed string; upstream exception text is dropped.
+This adapter never stores cookies, never logs them and never puts them in an error or repr. Every error message
+below is a fixed string; upstream exception text is dropped.
 
 Raw access is injectable: `client_factory(key, access)` returns an object with the methods of
 `app.espn.client.EspnClient` (`league()`, `transactions(week)`, `player_pool(period)`,
@@ -276,7 +277,7 @@ def _settings_flags() -> tuple[bool, bool]:
 
 def _default_client(key: LeagueKey, access: LeagueAccess):
     from ...espn.client import EspnClient
-    cred = access.credential if access.method is AccessMethod.OWNER_ENV else None
+    cred = access.credential if access.method is AccessMethod.COOKIES else None
     return EspnClient(int(key.external_league_id), key.season, getattr(cred, "espn_s2", None),
                       getattr(cred, "swid", None))
 
@@ -305,7 +306,7 @@ class EspnProvider(LeagueProvider):
         if access.method is AccessMethod.PUBLIC:
             if not self.public_import_enabled:
                 raise ProviderUnavailable("ESPN public-league import is not enabled in this deployment")
-        elif access.method is AccessMethod.OWNER_ENV:
+        elif access.method is AccessMethod.COOKIES:
             cred = access.credential
             if not (getattr(cred, "espn_s2", None) and getattr(cred, "swid", None)):
                 raise ProviderUnavailable("The deployment owner's ESPN session is not configured")

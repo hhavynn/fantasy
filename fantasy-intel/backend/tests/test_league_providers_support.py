@@ -20,7 +20,7 @@ SWID_SECRET = "{11111111-SECRET-SWID-2222}"
 
 
 def owner_access() -> LeagueAccess:
-    return LeagueAccess(AccessMethod.OWNER_ENV, SimpleNamespace(espn_s2=S2_SECRET, swid=SWID_SECRET))
+    return LeagueAccess(AccessMethod.COOKIES, SimpleNamespace(espn_s2=S2_SECRET, swid=SWID_SECRET))
 
 
 def skey(league_id: str = SLEEPER_L1, season: int = SEASON) -> LeagueKey:

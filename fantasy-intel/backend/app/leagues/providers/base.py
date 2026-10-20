@@ -42,7 +42,7 @@ class LeagueNotFound(ProviderError):
 class LeagueAccess:
     """How to reach one league for one call. Credentials are opaque handles, never logged."""
     method: AccessMethod
-    credential: Any = field(default=None, repr=False)    # vault-resolved secret for OWNER_ENV / OAUTH
+    credential: Any = field(default=None, repr=False)    # vault-resolved secret for COOKIES / OAUTH
 
     def __repr__(self) -> str:
         return f"LeagueAccess(method={self.method.value}, credential={'<set>' if self.credential else None})"

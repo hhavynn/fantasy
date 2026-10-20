@@ -220,7 +220,7 @@ def test_provenance_and_the_fixture_client_is_the_only_source():
 
 # ----------------------------------------------------------------------------- access paths --
 
-def test_owner_env_credential_reaches_the_factory_and_nowhere_else():
+def test_cookie_credential_reaches_the_factory_and_nowhere_else():
     p, built = make(public=False, owner=True)
     access = owner_access()
     results = [p.fetch_settings(KEY, access), p.fetch_teams(KEY, access), p.fetch_rosters(KEY, access),
@@ -238,12 +238,12 @@ def test_public_access_needs_the_flag_and_owner_access_needs_a_credential():
     with pytest.raises(ProviderUnavailable, match="public-league"):
         p.fetch_settings(KEY, PUBLIC)
     with pytest.raises(ProviderUnavailable, match="owner's ESPN session"):
-        p.fetch_settings(KEY, LeagueAccess(AccessMethod.OWNER_ENV, object()))
+        p.fetch_settings(KEY, LeagueAccess(AccessMethod.COOKIES, object()))
     assert built == []
 
 
 def test_espn_never_builds_a_client_without_cookies_for_owner_access():
-    """The default factory passes cookies only for OWNER_ENV; PUBLIC leagues are fetched cookie-less."""
+    """The default factory passes cookies only for COOKIES; PUBLIC leagues are fetched cookie-less."""
     from app.leagues.providers import espn as mod
 
     seen = {}
@@ -261,7 +261,7 @@ def test_espn_never_builds_a_client_without_cookies_for_owner_access():
         mod._default_client(KEY, owner_access())
         assert seen["s2"] == S2_SECRET and seen["swid"] == SWID_SECRET
         mod._default_client(KEY, LeagueAccess(AccessMethod.OAUTH, owner_access().credential))
-        assert seen["s2"] is None, "cookies only travel with OWNER_ENV"
+        assert seen["s2"] is None, "cookies only travel with COOKIES"
     finally:
         client_mod.EspnClient = orig
 
