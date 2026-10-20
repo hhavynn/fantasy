@@ -18,9 +18,14 @@ exists:
 | 2020-2022 | ifp-2's development window ("development 2021-22 (all choices)", independent_projection_engine.md); the injury-exit descriptive study also covered 2020-2024 |
 | 2023-2025 | the window #135 inspected; both leads come from it |
 | 2026 weeks 1-6 | inspected by #135 (exploratory cohort numbers) |
-| 2026 week 7 | the main slate kicked off on 2026-10-18, before this note: a pregame forecast can no longer be frozen |
+| 2026 week 7 | ~~the main slate kicked off on 2026-10-18, before this note~~ **wrong, see the correction below**: week 7 is 2026-10-22 to 10-26 and was untouched |
 
-So the deciding window is **prospective: write-once pregame ledgers from 2026 week 8 on**, through the existing
+**Correction (2026-10-20, before any week-7 game and before any ledger was frozen).** The week-7 row above was
+wrong: the note was written between weeks 6 and 7, and no week-7 game had been played. The first prospective
+week is therefore 2026 week 7, not week 8. Nothing else in the pre-registration changes, and no outcome had been
+seen when this was corrected.
+
+So the deciding window is **prospective: write-once pregame ledgers from 2026 week 7 on**, through the existing
 research-shadow machinery (`scripts/injury_return_shadow.py`, modeled on `ctx_shadow.py` / `signal_shadows.py`;
 run by `refresh_all.py`'s evidence stage and by `learning_cycle.py`'s `RESEARCH_SHADOWS`; watched by
 `shadow_promotion_check.py`).
@@ -65,7 +70,7 @@ the candidate both forecast. Differences are MAE(candidate) - MAE(base), with a 
 (2,000 draws, seed 20261019, `forecast_backtest.week_bootstrap_mae_diff`).
 
 **One look only.** The decision is taken once, at the first scoring at which every 2026 regular-season week has
-been scored (week 18 fully final), on all frozen weeks from week 8. If at that look fewer than 8 weeks are scored
+been scored (week 18 fully final), on all frozen weeks from week 7. If at that look fewer than 8 weeks are scored
 or the cohort has fewer than 40 rows, the look moves to the first later scoring (2027 weeks) at which both
 minimums hold. Before the look the status is `accumulating`; interim numbers are shown but never decide. The
 decision is then written once (`decision_<candidate>.json`) and never re-evaluated.
@@ -135,4 +140,4 @@ Play-through rows appear once the week-8 injury report lands, because `injury_ex
 
 ## 3. Results
 
-None yet. The first ledger is 2026 week 8; the look is after week 18.
+None yet. The first ledger is 2026 week 7 (frozen at the 2026-10-25 refresh); the look is after week 18.
