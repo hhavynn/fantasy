@@ -3,25 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { apiRequest, type ApiResult } from "@/lib/api";
 import {
-  NO_SIGNING_REASON, NOT_ENABLED_REASON, SIGNED_OUT_REASON, isInternalLeagueId, isProviderId, multileagueUiEnabled,
+  NOT_ENABLED_REASON, SIGNED_OUT_REASON, isInternalLeagueId, isProviderId, multileagueUiEnabled,
   parseLeague, validTeamId, validateConnect,
 } from "@/lib/leagues";
-import { currentUserId, userAssertionHeaders } from "@/lib/user-assertion.server";
 import type { ActionState } from "./state";
 
 // Server actions are public POST endpoints: every one re-checks the flag and the user itself and takes
-// the user from the server, never from the form. The assertion header is built here and sent straight
-// to the backend; it is never returned to the browser.
+// the user from the server, never from the form. There is no sign-in yet, so every mutation is refused here
+// and never forwarded; Phase 2 (Supabase Auth) forwards the verified session and Phase 3 rebuilds connect.
 
-type Guard = { ok: true; headers: Record<string, string> } | { ok: false; state: ActionState };
+type Guard = { ok: true } | { ok: false; state: ActionState };
 
 async function guard(): Promise<Guard> {
   if (!multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED)) return fail(NOT_ENABLED_REASON);
-  const userId = await currentUserId();
-  if (!userId) return fail(SIGNED_OUT_REASON);
-  const headers = userAssertionHeaders(userId);
-  if (!headers) return fail(NO_SIGNING_REASON);
-  return { ok: true, headers };
+  return fail(SIGNED_OUT_REASON);
 }
 
 function fail(message: string): { ok: false; state: ActionState } {
@@ -46,7 +41,6 @@ export async function connectLeague(_prev: ActionState, formData: FormData): Pro
 
   const res = await apiRequest("/v2/leagues", {
     method: "POST",
-    headers: g.headers,
     body: { provider, external_league_id: checked.leagueId, season: checked.season },
   });
   if (!res.ok) return { status: "error", message: backendMessage(res) };
@@ -64,7 +58,6 @@ export async function setMyTeam(leagueId: string, _prev: ActionState, formData: 
 
   const res = await apiRequest(`/v2/leagues/${encodeURIComponent(leagueId)}/my-team`, {
     method: "PUT",
-    headers: g.headers,
     body: { external_team_id: teamId },
   });
   if (!res.ok) return { status: "error", message: backendMessage(res) };
@@ -77,7 +70,7 @@ export async function removeLeague(leagueId: string): Promise<ActionState> {
   if (!g.ok) return g.state;
   if (!isInternalLeagueId(leagueId)) return { status: "error", message: "Unknown league." };
 
-  const res = await apiRequest(`/v2/leagues/${encodeURIComponent(leagueId)}`, { method: "DELETE", headers: g.headers });
+  const res = await apiRequest(`/v2/leagues/${encodeURIComponent(leagueId)}`, { method: "DELETE" });
   if (!res.ok) return { status: "error", message: backendMessage(res) };
   revalidatePath("/leagues");
   return { status: "ok", message: "Connection removed." };

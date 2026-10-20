@@ -251,3 +251,8 @@ test("loadProblem keeps the backend detail in the message", () => {
   assert.equal(off.body, "The backend did not answer.");
   assert.ok(!off.body.includes("http"));
 });
+
+test("SIGNED_OUT_REASON explains that sign-in is coming, without mentioning assertions", () => {
+  assert.match(SIGNED_OUT_REASON, /sign-?in/i);
+  assert.doesNotMatch(SIGNED_OUT_REASON, /assertion|secret/i);
+});

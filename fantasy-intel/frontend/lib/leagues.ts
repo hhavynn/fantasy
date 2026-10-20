@@ -16,8 +16,7 @@ export function providerLabel(provider: string): string {
 }
 
 export const NOT_ENABLED_REASON = "Multi-league support is not enabled in this deployment.";
-export const SIGNED_OUT_REASON = "Sign-in is not available yet, so a league cannot be connected to an account.";
-export const NO_SIGNING_REASON = "This server cannot identify you to the backend yet (no assertion secret is configured).";
+export const SIGNED_OUT_REASON = "Sign-in is not available yet (it arrives with the league switcher), so leagues cannot be listed or connected here.";
 export const PROVIDERS_UNAVAILABLE_REASON = "Provider information is unavailable, so connecting is disabled.";
 
 /** The feature flag is exactly "1": anything else (unset, "0", "true") is off. */
