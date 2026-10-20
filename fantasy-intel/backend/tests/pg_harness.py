@@ -95,7 +95,7 @@ class PgDatabase:
     MIGRATIONS = sorted(MIGRATIONS_DIR.glob("*.sql"))
     FI_TABLES = ("audit_log", "league_credentials", "league_invites", "team_selections", "league_pins",
                  "league_memberships", "league_snapshot_history", "league_snapshots", "sync_jobs", "provider_slots",
-                 "leagues", "app_users")
+                 "leagues", "app_users", "global_snapshot")
 
     def __init__(self, cluster: PgCluster, name: str = "fi_test"):
         self.cluster, self.name = cluster, name

@@ -28,7 +28,7 @@ Master plan: [2026-10-19-multi-league-platform.md](2026-10-19-multi-league-platf
 | Topic | Decision | Why |
 |---|---|---|
 | Perspective seam | Per-request `CREATE TEMP VIEW fantasy_teams AS SELECT * REPLACE (team_id = <int> AS is_mine) FROM lg.main.fantasy_teams`; with no perspective, `false AS is_mine` | Every engine already derives "my team" from `is_mine` or `team_id`; zero engine edits (spike 2026-10-20: 0.1 ms per cursor) |
-| Where the perspective comes from | `?team_id=` on the request (already accepted by the routes) > the signed-in user's saved `team_selections` > none | Spec: preference only, never verified |
+| Where the perspective comes from | the signed-in user's saved `team_selections` > `?team_id=` on the request > none (corrected in Phase 3: `is_mine` is who the viewer is, as on the legacy site, while `?team_id=` picks the analysed team) | Spec: preference only, never verified; golden parity on real Los Subies |
 | Global file version | Each league pointer names the global version it was built against (`league_snapshots.global_version`); the request attaches exactly that one | Consistent pair; responses report both |
 | Integrity | `version = <UTC stamp>-<sha256[:24]>`; downloads re-hashed | No schema change needed for sha/size |
 | Local development | `LEAGUE_FILES_DIR` serves objects from a directory instead of R2 | Local golden check on real Los Subies; frontend dev without R2 |
@@ -2833,6 +2833,6 @@ The task sections above show the code as first written. Review then changed it a
   - The fence is reserved when a publish starts. Of two overlapping publishers, the one that started later wins.
   - A publisher that loses deletes its own object.
   - Unreferenced league objects stamped after the current pointer, and unreferenced globals younger than a day, are kept.
-- **Perspective.** An explicit `?team_id=` overrides the saved team, as the Decisions table says.
+- **Perspective.** A review briefly made an explicit `?team_id=` override the saved team. Phase 3 restored the saved team first: real Los Subies' `__team` goldens showed `is_mine` must stay the viewer's own team.
 - **Owner-only pages.** Projection performance, Ours promotion and research are mounted with `require_platform_admin`. Everyone else gets 404 (spec §6).
 - **Links.** Nav and command-palette links carry `/l/<lg>`, so a click skips the cookie redirect.

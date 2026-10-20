@@ -21,7 +21,7 @@ from typing import Protocol
 from . import r2
 from .connection import utcnow
 from .league_files import global_key, league_key
-from .league_split import SplitResult, split_database
+from .league_split import content_hash, split_database
 
 KEEP = 3
 GLOBAL_STAMP = "content-addressed"        # the global file's internal stamp: identical content, identical bytes
@@ -42,6 +42,8 @@ class ObjectWriter(Protocol):
     def put(self, key: str, path: Path) -> None: ...
     def keys(self, prefix: str) -> list[str]: ...
     def delete(self, key: str) -> None: ...
+    def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None: ...   # verified download
+    def get_bytes(self, key: str) -> bytes: ...
 
 
 class R2Writer:
@@ -59,6 +61,12 @@ class R2Writer:
     def delete(self, key: str) -> None:
         r2.delete(self.cfg, key)
 
+    def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None:
+        r2.download(self.cfg, key, dest, size=size, expected_sha256_prefix=sha256_prefix)
+
+    def get_bytes(self, key: str) -> bytes:
+        return r2.get_bytes(self.cfg, key, timeout=60)
+
 
 class DirWriter:
     """A local object directory (LEAGUE_FILES_DIR) with the same layout, for development."""
@@ -75,10 +83,21 @@ class DirWriter:
 
     def keys(self, prefix: str) -> list[str]:
         base = self.root / prefix
-        return sorted(str(p.relative_to(self.root)) for p in base.rglob("*.duckdb")) if base.exists() else []
+        return sorted(str(p.relative_to(self.root)) for p in base.rglob("*") if p.is_file() and not p.name.endswith(".part")) \
+            if base.exists() else []
 
     def delete(self, key: str) -> None:
         (self.root / key).unlink(missing_ok=True)
+
+    def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None:
+        from .league_files import DirStore
+        DirStore(self.root).fetch(key, dest, sha256_prefix=sha256_prefix, size=size)
+
+    def get_bytes(self, key: str) -> bytes:
+        src = self.root / key
+        if not src.is_file():
+            raise r2.R2Error(404, "NoSuchKey", key)
+        return src.read_bytes()
 
 
 @dataclass(frozen=True)
@@ -93,8 +112,8 @@ class PublishResult:
 
 def publish_league(src_db: Path, writer: ObjectWriter, sync_con, league_id: str, *, stamp: str | None = None,
                    keep: int = KEEP) -> PublishResult:
-    """Publish `src_db` (one league's analytics database) as `league_id`. `sync_con` is a psycopg connection as
-    fi_sync; this function commits on it."""
+    """Publish `src_db` (one league's analytics database, the laptop path) as `league_id`, and its global tables as
+    the current global file. `sync_con` is a psycopg connection as fi_sync; this function commits on it."""
     with sync_con.transaction():     # reserve the fence first: a publish that starts later always holds a larger one
         row = sync_con.execute("UPDATE fi.leagues SET sync_fence = sync_fence + 1 WHERE id = %s AND deleted_at IS NULL "
                                "RETURNING sync_fence", [league_id]).fetchone()
@@ -105,29 +124,46 @@ def publish_league(src_db: Path, writer: ObjectWriter, sync_con, league_id: str,
     with tempfile.TemporaryDirectory() as tmp:
         out = split_database(Path(src_db), Path(tmp) / "league.duckdb", Path(tmp) / "global.duckdb", stamp=stamp,
                              global_stamp=GLOBAL_STAMP)
-        global_version = out.global_version
-        content = global_version.split("-", 1)[1]                 # <sha256[:24]>-<bytes>
-        existing = [k for k in writer.keys("global/") if k.endswith(f"-{content}.duckdb")]
-        if existing:                                               # same global data already uploaded: reuse it
-            global_version = sorted(existing)[0].removeprefix("global/").removesuffix(".duckdb")
-        else:
-            writer.put(global_key(global_version), out.global_path)
-        lkey = league_key(league_id, out.league_version)
-        writer.put(lkey, out.league_path)
-        out = SplitResult(out.league_path, out.global_path, out.league_version, global_version, out.league_id,
-                          out.season, out.schema_version)
+        global_version = publish_global(out.global_path, out.global_version, writer, sync_con)
+        applied, deleted = commit_league(writer, sync_con, league_id, out.league_path, out.league_version,
+                                         global_version, fence, keep=keep)
+    return PublishResult(league_id, out.league_version, global_version, fence, applied, deleted)
 
+
+def publish_global(global_path: Path, global_version: str, writer: ObjectWriter, sync_con) -> str:
+    """Make `global_path` the current global file (fi.global_snapshot) and return the version to reference. When its
+    content equals the current global file's, nothing is uploaded and the current version is returned."""
+    digest = content_hash(global_path)
+    current = sync_con.execute("SELECT global_version, content_hash FROM fi.global_snapshot").fetchone()
+    sync_con.rollback()
+    if current is not None and current[1] == digest:
+        return current[0]
+    writer.put(global_key(global_version), global_path)
     with sync_con.transaction():
-        applied = sync_con.execute(_UPSERT, [league_id, lkey, out.league_version, fence, out.global_version]).fetchone()
+        sync_con.execute("""INSERT INTO fi.global_snapshot (global_version, content_hash) VALUES (%s, %s)
+                            ON CONFLICT (id) DO UPDATE SET global_version = EXCLUDED.global_version,
+                              content_hash = EXCLUDED.content_hash, committed_at = now()""", [global_version, digest])
+    return global_version
+
+
+def commit_league(writer: ObjectWriter, sync_con, league_id: str, league_path: Path, league_version: str,
+                  global_version: str, fence: int, *, keep: int = KEEP) -> tuple[bool, tuple[str, ...]]:
+    """Upload the league file and move the pointer with the spec's fenced upsert (§3.4), holding `fence` (reserved
+    before the build: by publish_league, or by a sync job's claim). Returns (applied, collected keys); not applied
+    means a newer publish holds the pointer and this object was deleted again."""
+    lkey = league_key(league_id, league_version)
+    writer.put(lkey, league_path)
+    with sync_con.transaction():
+        applied = sync_con.execute(_UPSERT, [league_id, lkey, league_version, fence, global_version]).fetchone()
         if applied is not None:
             sync_con.execute("INSERT INTO fi.league_snapshot_history (league_id, object_key, data_version, fence, "
                              "global_version, committed_at) VALUES (%s, %s, %s, %s, %s, now())",
-                             [league_id, lkey, out.league_version, fence, out.global_version])
+                             [league_id, lkey, league_version, fence, global_version])
             sync_con.execute("""DELETE FROM fi.league_snapshot_history WHERE league_id = %s AND id NOT IN (
                                   SELECT id FROM fi.league_snapshot_history WHERE league_id = %s
                                   ORDER BY fence DESC, id DESC LIMIT %s)""", [league_id, league_id, keep])
     deleted = _collect(writer, sync_con, league_id, stale=None if applied is not None else lkey)
-    return PublishResult(league_id, out.league_version, out.global_version, fence, applied is not None, deleted)
+    return applied is not None, deleted
 
 
 def _stamp(key: str) -> str:
@@ -146,11 +182,19 @@ def _collect(writer: ObjectWriter, sync_con, league_id: str, *, stale: str | Non
         current = sync_con.execute("SELECT object_key FROM fi.league_snapshots WHERE league_id = %s",
                                    [league_id]).fetchone()
         global_refs = {global_key(r[0]) for r in sync_con.execute(
-            "SELECT global_version FROM fi.league_snapshots UNION SELECT global_version FROM fi.league_snapshot_history")}
+            "SELECT global_version FROM fi.league_snapshots UNION SELECT global_version FROM fi.league_snapshot_history "
+            "UNION SELECT global_version FROM fi.global_snapshot")}
     deleted = []
     newest = _stamp(current[0]) if current else ""
     for key in writer.keys(f"leagues/{league_id}/"):
         if key not in league_refs and (key == stale or _stamp(key) < newest):
+            writer.delete(key)
+            deleted.append(key)
+    # A version's raw payloads (sync jobs, app/sync/publish.py) live and die with its league object.
+    for key in writer.keys(f"raw/{league_id}/"):
+        version = key.rsplit("/", 1)[-1].removesuffix(".json.gz")
+        lkey = league_key(league_id, version)
+        if lkey not in league_refs and (lkey == stale or _stamp(lkey) < newest):
             writer.delete(key)
             deleted.append(key)
     # A global object another publisher has just uploaded is not referenced until its pointer moves; keep every

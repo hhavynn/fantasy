@@ -19,6 +19,7 @@ name and fetched with parallel ranged GETs.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -85,6 +86,27 @@ def version_for(path: Path, stamp: str) -> str:
     """`<UTC stamp>Z-<sha256[:24]>-<bytes>`: enough to verify a download and to fetch it with parallel ranges."""
     compact = stamp.replace("-", "").replace(":", "").split(".")[0]
     return f"{compact}Z-{file_sha256(path)[:24]}-{Path(path).stat().st_size}"
+
+
+def content_hash(path: Path) -> str:
+    """sha256[:24] of every table's name, columns and rows (order-independent), leaving out schema_meta's
+    `published_at`. DuckDB does not write identical bytes for identical content, so the publisher recognises an
+    unchanged global file by this hash, not by the file's own."""
+    con = duckdb.connect()
+    try:
+        con.execute(f"ATTACH '{_q(Path(path))}' AS db (READ_ONLY)")
+        h = hashlib.sha256()
+        for (t,) in con.execute("SELECT table_name FROM duckdb_tables() WHERE database_name = 'db' AND schema_name = 'main' "
+                                "ORDER BY table_name").fetchall():
+            cols = con.execute("SELECT column_name, data_type FROM duckdb_columns() WHERE database_name = 'db' "
+                               "AND schema_name = 'main' AND table_name = ? ORDER BY column_index", [t]).fetchall()
+            where = " WHERE x.key <> 'published_at'" if t == "schema_meta" else ""
+            n, total = con.execute(f"SELECT count(*), coalesce(sum(hash(x)::HUGEINT), 0) FROM db.main.{_ident(t)} AS x"
+                                   f"{where}").fetchone()
+            h.update(repr((t, cols, n, int(total))).encode())
+        return h.hexdigest()[:24]
+    finally:
+        con.close()
 
 
 def _columns(con, table: str) -> set[str]:

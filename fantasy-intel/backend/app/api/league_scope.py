@@ -6,7 +6,7 @@ the handler and before any cache lookup:
   1. authorize the caller for the league in Postgres (app/control_plane/authz.py): unknown and unauthorized are 404;
   2. no published snapshot yet -> 409 "first sync in progress" (never another league's data);
   3. fetch the league's file and the global file it was built against into the per-instance cache (verified);
-  4. pick the perspective ("my team"): an explicit `?team_id=`, else the signed-in viewer's saved team, else none;
+  4. pick the perspective ("my team"): the signed-in viewer's saved team, else `?team_id=`, else none;
   5. set the LEAGUE_SCOPE ContextVar, which `deps.db()` turns into a layered read-only cursor.
 
 The owner-only research routers (projection performance, Ours promotion, research) are mounted with
@@ -89,11 +89,13 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
             cache.release(league_path)
         log.warning("league files unavailable for %s: %s", league_id, type(err).__name__)
         raise HTTPException(503, FILES_UNAVAILABLE) from None
-    # "My team" (fantasy_teams.is_mine): an explicit ?team_id= first, so a route that reads the parameter and the
-    # engines that read is_mine answer from one perspective; else the signed-in viewer's saved team; else none.
-    chosen = perspective_team(team_param) if team_param is not None else None
-    if chosen is None:
-        chosen = perspective_team(access.perspective_team_id)
+    # "My team" (fantasy_teams.is_mine) is who the viewer is, exactly as on the legacy site: the signed-in viewer's saved
+    # team, even while a route analyses another team through ?team_id= (legacy: is_mine stays the owner's team then).
+    # A viewer with no saved team (anonymous, or not chosen yet) takes the URL's team. Golden parity on real Los
+    # Subies depends on this order (the __team cases).
+    chosen = perspective_team(access.perspective_team_id)
+    if chosen is None and team_param is not None:
+        chosen = perspective_team(team_param)
     return LeagueScope(access.league_id, league_path, global_path, snap.data_version, snap.global_version,
                        access.visibility_epoch, chosen)
 

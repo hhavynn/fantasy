@@ -520,7 +520,8 @@ def build_waivers(con, kdst_streaming: bool = True) -> dict:
         FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
         LEFT JOIN player_id_map m USING (espn_player_id)
         WHERE l.league_id=? AND l.season=? AND l.scoring_period = ?
-    """, [league_id, season, week])
+        ORDER BY l.team_id, l.espn_player_id
+    """, [league_id, season, week])   # ordered: lineup ties and the needs' player lists must not depend on file layout
     rosters: dict[int, list[dict]] = defaultdict(list)
     for r in roster_rows:
         r["nfl_report_status"] = reports.get(r["gsis_id"])

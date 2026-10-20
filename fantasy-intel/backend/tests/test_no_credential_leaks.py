@@ -50,6 +50,9 @@ SECRET_VALUES = (FAKE_S2, FAKE_SWID, FAKE_TOKEN, FAKE_BEARER)
 # credential shape fails the scan, including a new fake: add it here on purpose.
 ALLOWED_SYNTHETIC = {
     FAKE_S2, FAKE_SWID, FAKE_TOKEN,
+    # Phase 3 sync and connect tests (tests/test_sync_*.py, tests/test_connect_api.py) and their plan
+    "{AAAA-BBBB}", "{11111111-2222-3333-4444-555555555555}", "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}",
+    "{99999999-2222-3333-4444-555555555555}", "S2-SECRET-COOKIE-VALUE", "S2SECRETVALUE",
     # tests/test_leagues_api.py, tests/test_leagues_store.py, tests/test_multileague_isolation.py
     "AEBsupersecretcookievalue0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij",
     "AEBkYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU2Nzg5QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo",

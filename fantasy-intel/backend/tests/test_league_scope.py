@@ -231,8 +231,8 @@ def test_owner_only_research_pages_need_a_platform_admin(pg, served, client, e2e
     assert client.get(f"/v2/leagues/{pub.league_id}/api/overview").status_code == 200
 
 
-def test_an_explicit_team_overrides_the_saved_perspective(pg, served, client, e2e, tmp_path):
-    """Plan precedence: ?team_id= > the signed-in viewer's saved team > none."""
+def test_the_saved_team_stays_my_team_while_another_team_is_analysed(pg, served, client, e2e, tmp_path):
+    """Legacy parity: is_mine is who the viewer is (their saved team); ?team_id= picks the team a route analyses."""
     pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="private")
     with pg.connect() as con:
         seed_user(con, U1)
@@ -240,8 +240,7 @@ def test_an_explicit_team_overrides_the_saved_perspective(pg, served, client, e2
         con.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '2')",
                     [U1, pub.league_id])
         con.commit()
-    base = f"/v2/leagues/{pub.league_id}/api/overview"
-    assert client.get(base, headers=bearer(U1)).json()["perspective"]["team_id"] == 2
-    assert client.get(base + "?team_id=3", headers=bearer(U1)).json()["perspective"]["team_id"] == 3
     teams = client.get(f"/v2/leagues/{pub.league_id}/api/teams?team_id=3", headers=bearer(U1)).json()["teams"]
-    assert [t["team_id"] for t in teams if t["is_owner_default"]] == [3]
+    assert [t["team_id"] for t in teams if t["is_owner_default"]] == [2]
+    assert client.get(f"/v2/leagues/{pub.league_id}/api/overview?team_id=3",
+                      headers=bearer(U1)).json()["perspective"]["team_id"] == 3
