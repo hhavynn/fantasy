@@ -1,5 +1,5 @@
-"""Final-designation re-projection of the kicker week run (kfp-*; docs/independent_projection_engine.md,
-"Final-designation re-projection", kicker section).
+"""Final-designation re-projection of the kicker week run (kfp-*; the projection engine doc, kicker section of
+"Final-designation re-projection").
 
 The learning cycle stores the week's kicker run Tue-Thu (stage_kicker, horizon 0), before the first kickoff. Five
 kicker inputs can still move after it: the betting line (kfp-1.1.0's team implied total, posted or moved late), the nflverse game designation (Friday's final report; kicker_live.participation
