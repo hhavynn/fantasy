@@ -114,3 +114,18 @@ export function headline(p: DstPlayer): string | null {
 function fmt(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
+
+/** Expected sacks + takeaways: how often the defense makes a splash play (the chart's "disruption"). */
+export function disruption(s: DstStatLine | null): number | null {
+  const t = takeaways(s);
+  if (!s || s.sacks === null || t === null) return null;
+  return s.sacks + t;
+}
+
+/** Middle value of a list (mean of the two middle values when even); null when empty. */
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const v = [...values].sort((a, b) => a - b);
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}

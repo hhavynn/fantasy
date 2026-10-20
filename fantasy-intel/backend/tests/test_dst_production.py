@@ -111,7 +111,7 @@ def test_the_artifact_gate_and_the_scoring_gate(con):
                          training_cutoff_key=202600, artifact_created_at=None)
     assert st.select_run(con, 2026, 6)["run"]["artifact_check"] == "verified"
     with pytest.raises(ValueError):
-        st.register_artifact(con, model_version="kfp-1.0.0", artifact_sha256="d" * 64, target_season=2026,
+        st.register_artifact(con, model_version="kfp-1.1.0", artifact_sha256="d" * 64, target_season=2026,
                              training_cutoff_key=None, artifact_created_at=None)
     _league(con, LEAGUE + [{"statId": 107, "points": 0.1}])  # the league now scores tackles: the model abstains
     sel = st.select_run(con, 2026, 6)

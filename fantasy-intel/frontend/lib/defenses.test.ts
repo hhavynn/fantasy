@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { headline, lineText, splitDefenses, statusText, takeaways, type DstPlayer } from "./defenses.ts";
+import { disruption, headline, lineText, median, splitDefenses, statusText, takeaways, type DstPlayer } from "./defenses.ts";
 
 const dst = (id: number, team: string, status: string, exp: number | null): DstPlayer => ({
   espn_player_id: id, name: `${team} D/ST`, nfl_team: team, opponent: "NYG", is_home: true, fantasy_team_id: null,
@@ -35,4 +35,17 @@ test("takeaways, headline and status text", () => {
   assert.equal(headline(p), "NYG are expected to score 17.2 points.");
   assert.equal(statusText("bye"), "Bye week");
   assert.equal(statusText("something_else"), "something else");
+});
+
+test("disruption is expected sacks plus takeaways, and missing when any part is", () => {
+  const p = dst(1, "HOU", "projected", 8.7);
+  assert.equal(disruption(p.independent.stat_line)?.toFixed(1), "4.4");
+  assert.equal(disruption({ ...p.independent.stat_line!, sacks: null }), null);
+  assert.equal(disruption(null), null);
+});
+
+test("median handles odd, even and empty lists", () => {
+  assert.equal(median([3, 1, 2]), 2);
+  assert.equal(median([4, 1, 3, 2]), 2.5);
+  assert.equal(median([]), null);
 });

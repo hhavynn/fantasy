@@ -590,7 +590,7 @@ def _room_evidence(games: list[tuple[int, dict[str, float]]], first: dict[str, i
 
 def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_week: int | None = None, *,
                      timeline: pl.DataFrame | None = None, return_rates: dict | None = None,
-                     roster_codes: pl.DataFrame | None = None) -> pl.DataFrame:
+                     roster_codes: pl.DataFrame | None = None, news: dict | None = None) -> pl.DataFrame:
     """Expected opportunities of every RB/WR/TE in week T (layer 3 of the module docstring), one row per player.
 
     Horizon 0: Out/Doubtful/reserve/inactive players leave the pool; Questionable players stay (conditional on
@@ -598,7 +598,13 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
     Horizon >= 1 (T after the cutoff): a player injured at the cutoff is `uncertain`. With `return_rates`
     ({(position, missed_bucket, horizon): rate} from `fit_return_rates`, an empirical frequency fitted on earlier
     seasons) the expected shares are the probability-weighted mixture over his presence/absence scenarios;
-    without it he stays out of the pool and every row reports ho_scenarios = 0 (status quo, labeled)."""
+    without it he stays out of the pool and every row reports ho_scenarios = 0 (status quo, labeled).
+
+    `news` ({gsis_id: availability_news.NewsState} for the target week, live production runs only) overrides a
+    player's status class: P(plays) 0 -> unavailable (an injury absence: he stays in the everyone-available
+    baseline), 1 -> available (returning when he has missed team games), in between -> a present/absent scenario
+    weighted by that probability at any horizon, in place of the return-rate table."""
+    news = news or {}
     cut = _cut(sources, season, target_week, cutoff_week, roster_codes)
     tl = timeline if timeline is not None else pl.DataFrame(_timeline_rows(cut), schema=TIMELINE_SCHEMA, orient="row")
     tl = tl.filter(pl.col("position").is_in(SKILL))
@@ -640,18 +646,23 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
                 cs, ts, gls = r["role_car_share"], r["role_tgt_share"], r["role_gl_share"]
             claims["car"][g], claims["tgt"][g], claims["gl"][g] = cs * part[g], ts * part[g], gls * part[g]
         status = {g: info[g]["status_class"] for g in members}
+        newsed = {g: news[g] for g in members if g in news}
+        for g, s in newsed.items():
+            status[g] = (UNAVAILABLE if s.p <= 0 else UNCERTAIN if s.p < 1
+                         else RETURNING if (info[g]["missed_team_games"] or 0) > 0 else AVAILABLE)
         out_now = {g for g in members if status[g] == UNAVAILABLE}
         uncertain = {g for g in members if status[g] == UNCERTAIN}
+        news_mix = {g for g in uncertain if g in newsed}
         if not horizon:
-            uncertain_mix = set()          # horizon 0: Questionable players stay in the pool (see docstring)
+            uncertain_mix = news_mix       # horizon 0: Questionable players stay in the pool (see docstring)
         else:
-            uncertain_mix = uncertain if return_rates is not None else set()
+            uncertain_mix = (uncertain if return_rates is not None else set()) | news_mix
             out_now |= (uncertain - uncertain_mix)
         returning_now = {g for g in members if status[g] == RETURNING}
         # unavailable for a non-injury reason (practice squad, released, exempt...) or out for TEAM_WINDOW+ team games
         # (long-term reserve): not part of the recent room, so not in the everyone-available baseline either (a
         # recently injured player is)
-        not_in_room = {g for g in out_now if not _injury_absent(info[g])
+        not_in_room = {g for g in out_now if (g not in newsed and not _injury_absent(info[g]))
                        or (info[g]["missed_team_games"] or 0) >= TEAM_WINDOW}
         room_games = {"car": _team_game_shares(cut, team, "car_sh"), "tgt": _team_game_shares(cut, team, "tgt_sh")}
         cache: dict[tuple, tuple[dict, dict]] = {}
@@ -683,7 +694,7 @@ def workload_handoff(sources: Sources, season: int, target_week: int, cutoff_wee
                 fixed_out.discard(g)
                 scenarios = [((), 1.0)]
                 for m in mix:
-                    p = _return_rate(return_rates, info[m], team_h)
+                    p = newsed[m].p if m in newsed else _return_rate(return_rates, info[m], team_h)
                     scenarios = [(s + ((m, True),), w * p) for s, w in scenarios] + \
                                 [(s + ((m, False),), w * (1 - p)) for s, w in scenarios]
                 scen_n = max(scen_n, len(mix))

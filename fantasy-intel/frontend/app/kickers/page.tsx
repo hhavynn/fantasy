@@ -2,7 +2,7 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { Badge, EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
-import { DISTANCES, conditions, headline, rowFlags, splitPlayers, statusText, type KickerPlayer, type KickerResponse } from "@/lib/kickers";
+import { DISTANCES, conditions, factorChips, outlook, usesBettingLine, rowFlags, splitPlayers, statusText, type KickerPlayer, type KickerResponse } from "@/lib/kickers";
 import styles from "./kickers.module.css";
 
 export const metadata = { title: "Kicker outlook" };
@@ -16,7 +16,7 @@ function Row({ p, rank }: { p: KickerPlayer; rank: number }) {
   const i = p.independent;
   const s = i.stat_line;
   const c = conditions(i.context);
-  const reasons = i.explanation.filter((e) => e.feature !== "headline" && e.contribution !== null && Math.abs(e.contribution) >= 0.15);
+  const chips = factorChips(p);
   return (
     <tr>
       <td className={styles.num}>{rank}</td>
@@ -41,11 +41,13 @@ function Row({ p, rank }: { p: KickerPlayer; rank: number }) {
       <td className={styles.num}>{s ? `${s.pat_made.toFixed(1)} / ${s.pat_att.toFixed(1)}` : <Missing />}</td>
       <td className={styles.cond} title={c.detail ?? undefined}>{c.text}</td>
       <td className={styles.why}>
-        {headline(p) ?? ""}
-        {reasons.length > 0 && (
-          <ul>
-            {reasons.slice(0, 3).map((e) => (
-              <li key={e.feature}>{e.contribution! > 0 ? "+" : ""}{e.contribution!.toFixed(1)} pts · {e.text}</li>
+        {outlook(p) ?? ""}
+        {chips.length > 0 && (
+          <ul className={styles.chips} aria-label="Points vs a league-average kicker">
+            {chips.map((c) => (
+              <li key={c.feature} className={c.points > 0 ? styles.up : styles.down} title={c.text}>
+                {c.label} <b>{c.points > 0 ? "+" : "−"}{Math.abs(c.points).toFixed(1)}</b>
+              </li>
             ))}
           </ul>
         )}
@@ -74,10 +76,12 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
       <button type="submit">Show</button>
     </form>
   );
+  const line = usesBettingLine(d.governance.model_version);
   const meta = (
     <>
-      {d.governance.model_version} · week {d.week} {d.league.season}. Expected points from opportunity (FG and PAT tries) ×
-      conversion (distance, kicker accuracy, venue), scored with this league&apos;s kicker rules.
+      {d.governance.model_version} · week {d.week} {d.league.season}. Expected points from opportunity (FG and PAT tries
+      {line ? ", including the betting line" : ""}) × conversion (distance, kicker accuracy, venue), scored with this league&apos;s
+      kicker rules.
     </>
   );
   if (!d.available || !d.run) {
@@ -105,7 +109,7 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
         </Notice>
       )}
       <Section title={`Projected kickers (${projected.length})`}
-        subtitle="Points are expected points (chance he kicks × points if he does). FG makes by distance: 0–39 / 40–49 / 50–59 / 60+." flush>
+        subtitle="Points are expected points (chance he kicks × points if he does). FG makes by distance: 0–39 / 40–49 / 50–59 / 60+. Chips show how many points each factor adds or takes away against a league-average kicker; hover one for the detail." flush>
         <div className="table-wrap">
           <table>
             <thead>
@@ -140,8 +144,21 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
       )}
       <Method title="How kicker projections work">
         <p>
-          Expected FG tries come from the league rate (team and opponent context did not improve held-out accuracy for FG volume);
-          expected PAT tries come from the team&apos;s touchdown rate and the opponent&apos;s, shrunk toward the league. Each FG try&apos;s
+          {line ? (
+            <>
+              Expected FG tries come from the league rate adjusted by the team&apos;s implied points from the betting line (other
+              team and opponent stats did not improve validation accuracy for FG volume); expected PAT tries come from the
+              team&apos;s touchdown rate and the opponent&apos;s, shrunk toward the league, plus the same implied total. A game
+              without a posted line uses a league-average implied total.
+            </>
+          ) : (
+            <>
+              Expected FG tries come from the league rate (team and opponent context did not improve validation accuracy for FG
+              volume); expected PAT tries come from the team&apos;s touchdown rate and the opponent&apos;s, shrunk toward the
+              league. This week was projected by {d.governance.model_version}, before the betting line became an input.
+            </>
+          )}{" "}
+          Each FG try&apos;s
           distance follows the league distribution tilted by the kicker&apos;s own long-range share, and its make chance is a smooth
           distance curve plus venue terms plus the kicker&apos;s accuracy, estimated from every earlier kick (misses and blocks
           included) and shrunk toward league average by sample size. Weather forecasts (NWS) are shown with their retrieval time;
