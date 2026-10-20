@@ -79,7 +79,7 @@ class DirStore:
         src = self.root / key
         if not src.is_file():
             raise r2.R2Error(404, "NoSuchKey", key)
-        part = dest.with_name(dest.name + ".part")
+        part = r2._part_path(dest)
         try:
             shutil.copyfile(src, part)
             if part.stat().st_size != size:

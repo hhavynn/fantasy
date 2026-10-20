@@ -44,13 +44,14 @@ def league_file_cache():
     """One cache per process: R2 (read-only token) in production, LEAGUE_FILES_DIR locally."""
     from ..db.league_files import DEFAULT_MAX_BYTES, DirStore, LeagueFileCache, R2Store
     with _CACHE_LOCK:
-        cache = _CACHE.get("files")
+        key = ("files", os.getpid())       # per process: a forked worker never reuses its parent's directory
+        cache = _CACHE.get(key)
         if cache is None:
             settings = get_settings()
             files_dir = os.environ.get("LEAGUE_FILES_DIR", "").strip()
             store = DirStore(Path(files_dir)) if files_dir else R2Store(settings.r2_config())
             max_bytes = int(os.environ.get("LEAGUE_CACHE_MAX_BYTES") or DEFAULT_MAX_BYTES)
-            cache = _CACHE["files"] = LeagueFileCache(
+            cache = _CACHE[key] = LeagueFileCache(
                 store, Path(tempfile.gettempdir()) / "fantasy-leagues", max_bytes=max_bytes,
                 on_evict=layered_databases().forget)
         return cache
@@ -89,7 +90,8 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
     except Exception as err:   # noqa: BLE001 - R2 errors, a missing object, a full cache: never a 500 with details
         if league_path is not None:
             cache.release(league_path)
-        log.warning("league files unavailable for %s: %s", league_id, type(err).__name__)
+        log.warning("league files unavailable for %s: %s %s %s", league_id, type(err).__name__,
+                    getattr(err, "status", ""), getattr(err, "code", ""))
         raise HTTPException(503, FILES_UNAVAILABLE) from None
     # "My team" (fantasy_teams.is_mine) is who the viewer is, exactly as on the legacy site: the signed-in viewer's saved
     # team, even while a route analyses another team through ?team_id= (legacy: is_mine stays the owner's team then).

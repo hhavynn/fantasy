@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -101,10 +102,11 @@ _LAYERED: dict[str, Any] = {}
 
 def layered_databases():
     from ..db.league_conn import LayeredDatabases
+    key = ("dbs", os.getpid())     # per process: DuckDB instances never cross a fork
     with _SNAP_LOCK:
-        inst = _LAYERED.get("dbs")
+        inst = _LAYERED.get(key)
         if inst is None:
-            inst = _LAYERED["dbs"] = LayeredDatabases()
+            inst = _LAYERED[key] = LayeredDatabases()
         return inst
 
 

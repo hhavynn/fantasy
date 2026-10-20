@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import http.client
 import os
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -123,6 +124,12 @@ def get_bytes(cfg: R2Config, key: str, timeout: float = 15) -> bytes:
             raise R2Error(None, type(err).__name__, key) from None
 
 
+def _part_path(dest: Path) -> Path:
+    """A temporary name no other download can share: two processes (or threads) fetching the same object at once
+    each write their own file and rename it into place, so neither truncates or deletes the other's."""
+    return dest.with_name(f"{dest.name}.{os.getpid()}.{threading.get_ident()}.part")
+
+
 def download(cfg: R2Config, key: str, dest: Path, expected_sha256: str | None = None, timeout: float = 120,
              size: int | None = None, parts: int = 8, min_parallel_bytes: int = 16 << 20,
              expected_sha256_prefix: str | None = None) -> Path:
@@ -130,7 +137,7 @@ def download(cfg: R2Config, key: str, dest: Path, expected_sha256: str | None = 
     never sees a partial file. When `size` is known and large, `parts` ranged GETs run in parallel: one R2
     stream from Vercel's iad1 manages ~30 MB/s, eight together fetch the 95 MB snapshot in ~0.5-1 s."""
     dest = Path(dest)
-    part = dest.with_name(dest.name + ".part")
+    part = _part_path(dest)
     try:
         if size and size >= min_parallel_bytes and parts > 1:
             _download_ranges(cfg, key, part, size, parts, timeout)

@@ -230,3 +230,43 @@ def test_a_key_being_evicted_is_not_fetched_again_until_its_file_is_gone(r2, tmp
     assert seen["waited"]
     assert seen.get("full") or seen["path"].exists(), "never a pinned path that was unlinked"
     assert cache.bytes_used <= 130_000
+
+
+def test_concurrent_downloads_of_one_object_by_two_caches_never_share_a_temporary_file(r2, tmp_path):
+    """Two processes (or a cache inherited across a fork) fetching the same object at once: each download has its
+    own temporary name, so neither truncates or deletes the other's partial file."""
+    import threading
+    data = blob(40_000_000, 99)                     # large enough for parallel ranged parts
+    v = version_of(data)
+    put(r2, league_key(LG, v), data)
+    dest = tmp_path / "same.duckdb"
+    errors, barrier = [], threading.Barrier(4)
+
+    def fetch():
+        try:
+            barrier.wait()
+            R2Store(r2.config).fetch(league_key(LG, v), dest, sha256_prefix=v.split("-")[1], size=len(data))
+        except Exception as err:   # noqa: BLE001 - collected below
+            errors.append(repr(err))
+
+    threads = [threading.Thread(target=fetch) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(60)
+    assert errors == [] and dest.read_bytes() == data
+
+
+def test_the_file_cache_and_layered_databases_are_per_process(monkeypatch, tmp_path):
+    """A forked worker must not reuse its parent's cache directory or DuckDB instances."""
+    from app.api import deps, league_scope
+    monkeypatch.setenv("LEAGUE_FILES_DIR", str(tmp_path / "objects"))
+    monkeypatch.setattr(league_scope, "_CACHE", {})
+    monkeypatch.setattr(deps, "_LAYERED", {})
+    monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
+    parent_cache, parent_dbs = league_scope.league_file_cache(), deps.layered_databases()
+    real_pid = __import__("os").getpid()
+    monkeypatch.setattr("os.getpid", lambda: real_pid + 1)
+    child_cache, child_dbs = league_scope.league_file_cache(), deps.layered_databases()
+    assert child_cache is not parent_cache and child_cache.cache_dir != parent_cache.cache_dir
+    assert child_dbs is not parent_dbs
