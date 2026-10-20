@@ -407,6 +407,12 @@ conditional model `ifp-1.0.0` is **unchanged**: a validation-only ablation (`sna
 validation MAE by -0.006 / -0.004 / -0.002 / 0.000 (QB/RB/WR/TE), every 95% CI spanning 0, and was
 slightly worse on the injury-exit rows themselves. The held-out seasons were not used for it.
 
+`ifp-2.2.0` re-test (2026-10-19, `docs/research/injury_return_snap_trend.md`). This was a narrow fix for players
+*returning* from an injury exit: injury exit last game, and at least 1 team game missed since. It neutralized
+`snap_trend` and `opp_trend` and recomputed usage averages without the exit game. On that cohort it was clearly
+worse: horizon-0 MAE +0.199 [+0.081, +0.320] (n = 238, 2023-25), and horizons 1-3 +0.080 [-0.007, +0.160] (n = 925). Returning
+RBs are already over-projected (+0.79), so the candidate was dropped and production is unchanged.
+
 ## Weekly evidence routine and promotion tracker
 
 The ESPN criterion can only be met with ESPN projections captured **before** kickoff, and ESPN
