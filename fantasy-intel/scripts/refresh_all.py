@@ -43,6 +43,7 @@ gate decides whether the injury evidence is good enough.
 
 import argparse
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -532,5 +533,14 @@ def main() -> int:
         log.close()
 
 
+def keep_awake() -> None:
+    """macOS: hold an idle-sleep (and, on power, system-sleep) assertion until this process exits, so a run started
+    on a scheduled wake, on login or by the guard is not cut short when the Mac dozes off again. No-op elsewhere."""
+    exe = shutil.which("caffeinate")
+    if exe:
+        subprocess.Popen([exe, "-i", "-s", "-w", str(os.getpid())], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 if __name__ == "__main__":
+    keep_awake()
     sys.exit(main())

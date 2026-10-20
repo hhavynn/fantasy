@@ -196,14 +196,14 @@ def test_templates_are_strict_plists_that_render(job, tmp_path):
     assert plist["ProgramArguments"][0] == "/opt/homebrew/bin/uv"
     assert plist["WorkingDirectory"] == f"{ROOT}/backend" and plist["StandardErrorPath"].startswith(f"{ROOT}/data/logs/")
     assert plist.get("StartCalendarInterval") or plist.get("StartInterval")
-    assert plist["RunAtLoad"] is False
+    assert plist["RunAtLoad"] is (job == "pregame-guard")     # only the cheap guard check runs at login
 
 
 def test_guard_template_runs_the_guard_every_half_hour(tmp_path):
     paths = eh.default_paths(ROOT, tmp_path / "x.duckdb", env={}, home=tmp_path)
     plist, _ = eh.expected_plist(paths, "pregame-guard", "uv")
     assert plist["StartInterval"] == 1800
-    assert plist["ProgramArguments"][-3:] == ["guard", "--execute", "--notify"]
+    assert plist["ProgramArguments"][-4:] == ["guard", "--execute", "--catch-up", "--notify"]
 
 
 def test_drift_ignores_formatting_but_reports_schedule_changes(tmp_path):
@@ -724,6 +724,37 @@ def test_guard_defers_to_a_scheduled_refresh_that_covers_the_kickoff():
     assert eh.guard_decision(LONDON - timedelta(hours=3), [LONDON], [], {}, {}, cfg, [sun_0800])["action"] == "run"
 
 
+TUE_0800 = datetime(2026, 10, 20, 15, 0, tzinfo=UTC)       # the refresh job's Tuesday 08:00 PDT firing
+
+
+def test_catchup_decisions():
+    cfg = eh.CatchupConfig()
+    fired = [datetime(2026, 10, 19, 22, 0, tzinfo=UTC), TUE_0800]    # Mon 15:00 and Tue 08:00 PDT
+    later = TUE_0800 + timedelta(hours=3)
+    # the Mac was off through Tuesday 08:00: the next check runs it, once for the latest firing only
+    d = eh.catchup_decision(later, fired, [], {}, cfg)
+    assert d["action"] == "run" and d["slot"] == TUE_0800.isoformat() and d["attempt"] == 1
+    # a completed refresh after the firing (scheduled or manual) covers it; one before it does not
+    assert eh.catchup_decision(later, fired, [_log(TUE_0800 + timedelta(seconds=4))], {}, cfg)["action"] == "covered"
+    assert eh.catchup_decision(later, fired, [_log(TUE_0800 - timedelta(minutes=5))], {}, cfg)["action"] == "run"
+    # a failed or killed run is retried; a running one is waited for
+    failed = [_log(TUE_0800 + timedelta(seconds=4), status="failed")]
+    d = eh.catchup_decision(later, fired, failed, {}, cfg)
+    assert d["action"] == "run" and "failed" in d["reason"]
+    assert eh.catchup_decision(later, fired, [_log(later, status="running")], {}, cfg)["action"] == "wait"
+    # right after the firing the scheduled run may still be starting
+    assert eh.catchup_decision(TUE_0800 + timedelta(minutes=5), fired, [], {}, cfg)["slot"] == fired[0].isoformat()
+    # bounded retries, spaced
+    slot = TUE_0800.isoformat()
+    recent = {slot: [{"at": (later - timedelta(minutes=5)).isoformat(), "exit": 1}]}
+    assert eh.catchup_decision(later, fired, [], recent, cfg)["action"] == "wait"
+    spent = {slot: [{"at": (later - timedelta(hours=h)).isoformat(), "exit": 1} for h in (2.5, 2, 1)]}
+    assert eh.catchup_decision(later, fired, [], spent, cfg)["action"] == "gave_up"
+    # nothing in the lookback window: nothing to catch up
+    assert eh.catchup_decision(later + timedelta(days=8), fired, [], {}, cfg)["action"] == "idle"
+    assert eh.catchup_decision(later, [], [], {}, cfg)["action"] == "idle"
+
+
 def _guard_args(world, now, **kw):
     base = dict(root=str(world.root), db=str(world.db), now=now.isoformat(), season=None, from_week=None, hosted=False,
                 database="fantasy_intel", notify=False, execute=True, lead_hours=6.0, max_age_hours=12.0,
@@ -748,6 +779,40 @@ def test_guard_runs_bounded_retries_and_records_them(cli, world, capsys):
     ran.clear()
     cli.cmd_guard(_guard_args(world, t0, execute=False), refresh=lambda: ran.append(1) or 0, runner=LAUNCHD)
     assert ran == [] and not (world.state / "guard.lock").exists()
+
+
+@pytest.fixture
+def pacific_mac():
+    """launchd's calendar is the Mac's local clock: pin it to Pacific (CI runs in UTC)."""
+    import time
+    original = os.environ.get("TZ")
+    os.environ["TZ"] = "America/Los_Angeles"
+    time.tzset()
+    yield
+    if original is None:
+        os.environ.pop("TZ", None)
+    else:
+        os.environ["TZ"] = original
+    time.tzset()
+
+
+def test_guard_catches_up_a_missed_scheduled_refresh(cli, world, capsys, pacific_mac):
+    ran = []
+    sat_noon = SAT                                           # last firing: Thu 15:00 PDT, whose refresh completed
+    cli.cmd_guard(_guard_args(world, sat_noon, catch_up=True), refresh=lambda: ran.append(1) or 0, runner=LAUNCHD)
+    d = json.loads(capsys.readouterr().out)
+    assert d["catchup"]["action"] == "covered" and ran == []
+    # Monday 20:00 PDT, the Mac was off from Saturday: Sunday 08:00 and Monday 15:00 were missed -> one refresh
+    mon = datetime(2026, 10, 20, 3, 0, tzinfo=UTC)
+    cli.cmd_guard(_guard_args(world, mon, catch_up=True), refresh=lambda: ran.append(1) or 1, runner=LAUNCHD)
+    d = json.loads(capsys.readouterr().out)
+    assert d["catchup"]["action"] == "run" and d["executed"] is True and ran == [1]
+    assert d["catchup"]["slot"] == datetime(2026, 10, 19, 22, 0, tzinfo=UTC).isoformat()
+    state = json.loads((world.state / "guard-state.json").read_text())
+    assert [a["exit"] for a in state["catchup_attempts"][d["catchup"]["slot"]]] == [1]
+    # without the flag the guard behaves as before
+    cli.cmd_guard(_guard_args(world, mon + timedelta(hours=1)), refresh=lambda: ran.append(1) or 0, runner=LAUNCHD)
+    assert "catchup" not in json.loads(capsys.readouterr().out) and ran == [1]
 
 
 def test_guard_does_nothing_far_from_kickoff_or_without_execute(cli, world, capsys):

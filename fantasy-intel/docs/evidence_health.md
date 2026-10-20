@@ -119,7 +119,18 @@ Those fixed times miss kickoffs that they do not closely precede:
 6. with `--notify` it posts one notification per new warn/fail issue, including "guard gave up before
    kickoff X".
 
-There is no loop inside the process: each launchd firing does one check and exits. A sleeping Mac runs the
+7. with `--catch-up` (on in the template) it also catches up a **scheduled refresh the Mac missed**. The slot is
+   the latest firing of the loaded refresh job's calendar at least 15 min ago (within 7 days). It is covered once
+   a refresh that started after it completed, manual runs included. Otherwise (the Mac slept through it, was shut
+   down, or the run failed or was killed) the guard runs `refresh_all.py`: at most **3** attempts per firing,
+   **25 min** apart, recorded under `catchup_attempts` in `guard-state.json`. Only the latest firing is chased,
+   so a week with the Mac off costs one refresh. The job runs at load (`RunAtLoad`), so a Mac that was shut down
+   catches up minutes after login. This is what keeps the Weekly recap current after Monday night without a
+   manual run.
+
+There is no loop inside the process: each launchd firing does one check and exits. `refresh_all.py` holds a
+`caffeinate -i -s` assertion for its own lifetime, so a run started on a scheduled wake or by the guard is not cut
+short when the Mac dozes off again (system sleep is only held off on power; a closed lid on battery still sleeps). A sleeping Mac runs the
 check on wake. A Mac that is off captures nothing. `pmset repeat wakeorpoweron` can wake it, but there is one
 schedule per Mac, so the guard cannot cover a 6:30 PT London kickoff while the Mac sleeps until 6:55. Wake it
 earlier on those Sundays, or run `refresh_all.py` by hand the night before.

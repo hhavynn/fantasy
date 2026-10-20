@@ -209,28 +209,50 @@ def cmd_guard(args, refresh=run_refresh, runner=None) -> int:
                     if (t := eh.utc(k)) and t > now - timedelta(days=7)}
         d = eh.guard_decision(now, kicks, runs, espn, attempts, cfg, scheduled)
         d.update(season=season, checked_at=now.isoformat(), db_note=note)
-        if d["action"] == "run" and args.execute:
+        c, caught = None, {}
+        if getattr(args, "catch_up", False):
+            # a scheduled firing the Mac slept or was shut down through: run it now (on wake or login)
+            ccfg = eh.CatchupConfig()
+            caught = {k: v for k, v in state.get("catchup_attempts", {}).items()
+                      if (t := eh.utc(k)) and t > now - timedelta(days=ccfg.lookback_d + 1)}
+            fired = eh.occurrences(job["_entries"], now - timedelta(days=ccfg.lookback_d), now) \
+                if job["launchctl"].get("loaded") else []
+            c = eh.catchup_decision(now, fired, runs, caught, ccfg)
+            d["catchup"] = c
+        due = d["action"] == "run" or (c is not None and c["action"] == "run")
+        if due and args.execute:
             code = refresh()
-            attempts.setdefault(d["slot"], []).append({"at": now.isoformat(), "exit": code})
+            if d["action"] == "run":
+                attempts.setdefault(d["slot"], []).append({"at": now.isoformat(), "exit": code})
+            if c is not None and c["action"] == "run":
+                caught.setdefault(c["slot"], []).append({"at": now.isoformat(), "exit": code})
             d.update(executed=True, refresh_exit=code)
-        elif d["action"] == "run":
+        elif due:
             d["executed"] = False
             d["would_run"] = f"cd {BACKEND} && {sys.executable} ../scripts/refresh_all.py"
         state.update(attempts=attempts, last=d)
+        if c is not None:
+            state["catchup_attempts"] = caught
         eh.write_json_atomic(state_file, state)
     if args.notify:
         alerts = []
         if d["action"] == "gave_up":
             alerts.append({"fingerprint": f"guard_gave_up:{d['slot']}", "severity": eh.FAIL,
                            "message": f"pregame guard gave up before kickoff {d['slot']}: {d['reason']}"})
+        c = d.get("catchup") or {}
+        if c.get("action") == "gave_up":
+            alerts.append({"fingerprint": f"catchup_gave_up:{c['slot']}", "severity": eh.FAIL,
+                           "message": f"refresh catch-up gave up on the {c['slot']} firing: {c['reason']}"})
         if d.get("executed") and d.get("refresh_exit") != 0:
-            alerts.append({"fingerprint": f"guard_refresh_failed:{d['slot']}", "severity": eh.WARN,
-                           "message": f"guard refresh for kickoff {d['slot']} exited {d['refresh_exit']}"})
+            slot = d["slot"] if d["action"] == "run" else f"catch-up {c.get('slot')}"
+            alerts.append({"fingerprint": f"guard_refresh_failed:{slot}", "severity": eh.WARN,
+                           "message": f"guard refresh for {'kickoff ' if d['action'] == 'run' else ''}{slot} "
+                                      f"exited {d['refresh_exit']}"})
         report = build_report(args, now, runner)
         report["issues"] = report["issues"] + alerts
         d["notified"] = [i["fingerprint"] for i in notify(report, paths, now, runner)]
     print(json.dumps(d, indent=1, default=str))
-    return 1 if d["action"] == "gave_up" else 0
+    return 1 if d["action"] == "gave_up" or (d.get("catchup") or {}).get("action") == "gave_up" else 0
 
 
 # ----------------------------------------------------------------------------- launchd
@@ -373,6 +395,8 @@ def main(argv=None) -> int:
     g.add_argument("--max-age-hours", type=float, default=eh.GuardConfig.max_age_h)
     g.add_argument("--max-attempts", type=int, default=eh.GuardConfig.max_attempts)
     g.add_argument("--retry-minutes", type=float, default=eh.GuardConfig.retry_min)
+    g.add_argument("--catch-up", action="store_true",
+                   help="also run a scheduled refresh the Mac missed (asleep or shut down), on the next check")
     ld = sub.add_parser("launchd", help="verify or (idempotently) install the launchd jobs")
     ld.add_argument("action", choices=["verify", "install"])
     ld.add_argument("--jobs", default=",".join(eh.REQUIRED_JOBS), help=f"comma list of {', '.join(eh.JOBS)}")

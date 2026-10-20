@@ -17,7 +17,8 @@
   Add the skip-evidence flag to ProgramArguments to turn it off (named without its leading hyphens:
   two hyphens are invalid inside an XML comment). Problems are WARNING lines in the log and never
   change the exit code.
-  A run missed while the Mac sleeps fires on wake; one missed while it is powered off is skipped.
+  A run missed while the Mac sleeps fires on wake; one missed while it is powered off is skipped, unless the
+  optional pregame-guard job is installed: its catch-up check runs it after the next login.
 -->
 <plist version="1.0">
 <dict>

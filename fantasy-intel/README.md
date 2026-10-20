@@ -551,7 +551,10 @@ uv run python ../scripts/refresh_all.py --check-only   # only the pregame snapsh
 `scripts/launchd/com.fantasy-intel.refresh.plist` is a template; nothing installs it for you.
 It runs the refresh on **Thursday 3pm, Sunday 8am, Monday 3pm and Tuesday 8am**, in the
 Mac's local time zone (the times assume Pacific; edit them otherwise). A run missed while the
-Mac sleeps fires when it wakes; one missed while it is shut down is skipped.
+Mac sleeps fires when it wakes; one missed while it is shut down is skipped unless the optional
+pregame guard is installed (`evidence_health.py launchd install --apply --jobs pregame-guard`): its
+catch-up check runs a missed or failed scheduled refresh on the next wake or login
+(docs/evidence_health.md). Each refresh keeps the Mac awake (`caffeinate`) until it finishes.
 
 **Install** (from `fantasy-intel/` in the checkout that has your `.env`):
 
