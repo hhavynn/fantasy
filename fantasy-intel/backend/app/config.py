@@ -72,6 +72,10 @@ class Settings:
     credential_wrap_key_version: str | None = None                            # CREDENTIALS_WRAP_KEY_VERSION or the highest
     sleeper_source: str = "disabled"        # SLEEPER_SOURCE = disabled | fixture | live
     espn_public_import_enabled: bool = False    # ESPN_PUBLIC_IMPORT_ENABLED=1
+    # Phase 3: import / connect / invites / credentials under /v2 (needs MULTILEAGUE_ENABLED too)
+    multileague_connect_enabled: bool = False   # MULTILEAGUE_CONNECT_ENABLED=1
+    # fine-grained token with Actions: write on this repo only; starts the sync drain after a connect
+    github_dispatch_token: str | None = field(default=None, repr=False)   # GITHUB_DISPATCH_TOKEN
     yahoo_client_id: str | None = None      # YAHOO_CLIENT_ID (presence only; OAuth is not implemented)
 
     @property
@@ -135,5 +139,7 @@ def get_settings() -> Settings:
         credential_wrap_key_version=wrap_version,
         sleeper_source=(_str_or_none(os.getenv("SLEEPER_SOURCE")) or "disabled").lower(),
         espn_public_import_enabled=_flag(os.getenv("ESPN_PUBLIC_IMPORT_ENABLED")),
+        multileague_connect_enabled=_flag(os.getenv("MULTILEAGUE_CONNECT_ENABLED")),
+        github_dispatch_token=_str_or_none(os.getenv("GITHUB_DISPATCH_TOKEN")),
         yahoo_client_id=_str_or_none(os.getenv("YAHOO_CLIENT_ID")),
     )

@@ -59,3 +59,9 @@ test("withLeague prefixes in-app links for the current league and leaves the res
     assert.equal(withLeague(href, LG), href, href);
   }
 });
+
+test("sign-in, its callback and invites are never scoped to the cookie's league", () => {
+  for (const pathname of ["/login", "/auth/callback", "/invite"]) {
+    assert.deepEqual(proxyDecision({ enabled: true, pathname, search: "?next=/leagues", cookie: LG }), { kind: "next" }, pathname);
+  }
+});

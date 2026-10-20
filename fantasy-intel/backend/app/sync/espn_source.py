@@ -71,11 +71,49 @@ def control_request(season: int) -> bool:
         return False
 
 
+_VERDICT = {200: "ok", 401: "private", 403: "private", 404: "missing"}
+
+
+def read_league(league_id: int, season: int, credential: dict | None = None, *,
+                views: tuple[str, ...] = ("mSettings",), timeout: float = 30) -> tuple[str, dict | None]:
+    """One GET of the league's own endpoint: ("ok", payload), or ("private" | "missing" | "unknown", None).
+    With a credential, "private" means ESPN refused these cookies. Plain `requests` (the API has no espn_api), and
+    the URL is the league's own endpoint, so the cookies stay inside the allowlist."""
+    cookies = {"espn_s2": credential["espn_s2"], "SWID": credential["swid"]} if credential else None
+    try:
+        r = requests.get(_prefixes(int(league_id), int(season))[0], params={"view": list(views)}, cookies=cookies,
+                         timeout=timeout)
+    except requests.RequestException:
+        return "unknown", None
+    verdict = _VERDICT.get(r.status_code, "unknown")
+    if verdict != "ok":
+        return verdict, None
+    try:
+        body = r.json()
+    except ValueError:
+        return "unknown", None
+    return ("ok", body) if isinstance(body, dict) else ("unknown", None)
+
+
 def probe(league_id: int, season: int) -> str:
     """The league as an anonymous visitor sees it: "public", "private" (401/403), "missing" (404) or "unknown"
     (anything else, including a network error: callers keep a league closed on "unknown")."""
-    try:
-        r = requests.get(_prefixes(int(league_id), int(season))[0], params={"view": "mSettings"}, timeout=30)
-    except requests.RequestException:
-        return "unknown"
-    return {200: "public", 401: "private", 403: "private", 404: "missing"}.get(r.status_code, "unknown")
+    verdict, _ = read_league(league_id, season)
+    return "public" if verdict == "ok" else verdict
+
+
+def _swid(value) -> str:
+    return str(value or "").strip().strip("{}").lower()
+
+
+def league_teams(payload: dict, swid: str | None = None) -> list[dict]:
+    """[{team_id, name, owned}] from a league payload (mTeam view); `owned`: the SWID is among the team's owners."""
+    mine = _swid(swid)
+    out = []
+    for t in payload.get("teams") or []:
+        if not isinstance(t, dict) or not isinstance(t.get("id"), int):
+            continue
+        name = t.get("name") or " ".join(x for x in (t.get("location"), t.get("nickname")) if x) or f"Team {t['id']}"
+        owners = [_swid(o) for o in t.get("owners") or []]
+        out.append({"team_id": str(t["id"]), "name": str(name)[:100], "owned": bool(mine) and mine in owners})
+    return out

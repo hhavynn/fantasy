@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { AccountMenu } from "@/components/AccountMenu";
 import { CommandPalette } from "@/components/CommandPalette";
 import { LeagueSwitcher } from "@/components/LeagueSwitcher";
 import { BrandLink, BrandMark, MobileNav, NavGroups, SubNav, TabBar } from "@/components/Nav";
@@ -88,6 +89,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               <ProjectionSwitch value={projection} className="topbar-proj" />
               <ThemeSwitch className="topbar-theme" />
               <SyncPill status={s ?? null} />
+              <AccountMenu />
               <MobileNav projection={projection} sync={{ state: sync.state, text: sync.text }} />
             </div>
           </div>

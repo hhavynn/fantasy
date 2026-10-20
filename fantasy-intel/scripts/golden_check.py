@@ -1,12 +1,17 @@
 """Local check that a real league answers identically through the legacy path and the per-league path (Phase 2).
 
-    cd backend && uv run python ../scripts/golden_check.py [path/to/fantasy.duckdb]
+    cd backend && uv run python ../scripts/golden_check.py [path/to/fantasy.duckdb] [--job-path]
 
 Copies the database (default: FANTASY_DB_PATH), starts a throwaway Postgres with the control-plane migrations,
 publishes the copy as a private league into a temporary object directory, makes a test user a member whose saved
 team is the database's own team (`is_mine`), then requests every legacy GET case both ways and compares them with
 the same masking as the committed goldens. Prints counts and the names of differing cases, never response bodies
 (the data is private). Needs `initdb`/`pg_ctl` (brew install postgresql). Exit 0 when every case matches.
+
+--job-path (Phase 3): the per-league side is built the way a sync job builds it. The league is fetched from ESPN once
+(with this laptop's .env cookies), then the same payloads are applied twice: the laptop way (write + analytics into
+the database copy, served by the legacy routes) and the job way (app/sync/build.py on the published global file and
+the previous league file, member SWIDs scrubbed, published with a fence and served by /v2).
 """
 import os
 import shutil
@@ -19,9 +24,83 @@ import _bootstrap  # noqa: F401
 sys.path.insert(0, str(_bootstrap.BACKEND / "tests"))
 
 
+def job_build(pg, pub, db: Path, tmp: Path, settings, season: int) -> None:
+    """Refresh `db` the laptop way and publish a job-built version of the same league from the same payloads."""
+    import copy
+
+    import psycopg
+
+    from app.analytics.pipeline import run_analytics
+    from app.db.connection import open_db, utcnow
+    from app.db.league_publish import GLOBAL_STAMP, DirWriter, commit_league, publish_global
+    from app.db.league_split import split_database
+    from app.espn.sync import fetch_all, write_synced
+    from app.sync import espn_source
+    from app.sync.build import build_league_file
+    cred = {"espn_s2": settings.espn_s2, "swid": settings.swid} if settings.has_espn_credentials else None
+    with espn_source.espn_client(settings.league_id, season, cred) as client:
+        payloads = fetch_all(client)
+    with open_db(db) as con:
+        write_synced(con, copy.deepcopy(payloads), swid=settings.swid, my_team_id=settings.my_team_id)
+        run_analytics(con, season)
+    objects = tmp / "objects"
+    work = tmp / "job"
+    work.mkdir()
+    stamp = utcnow().isoformat(timespec="seconds")
+    with psycopg.connect(pg.dsn_for("fi_sync"), prepare_threshold=None) as con:
+        # The laptop's refresh also recomputed global tables: publish them first, as refresh_all does, so the job
+        # builds against (and readers attach) the same global file the legacy side reads.
+        split = split_database(db, work / "laptop-league.duckdb", work / "laptop-global.duckdb", stamp=stamp,
+                               global_stamp=GLOBAL_STAMP)
+        global_version = publish_global(split.global_path, split.global_version, DirWriter(objects), con)
+        built = build_league_file(work, global_path=objects / "global" / f"{global_version}.duckdb",
+                                  previous=objects / "leagues" / pub.league_id / f"{pub.data_version}.duckdb",
+                                  payloads=payloads, owner_swid=settings.swid, stamp=stamp)
+        fence = con.execute("UPDATE fi.leagues SET sync_fence = sync_fence + 1 WHERE id = %s RETURNING sync_fence",
+                            [pub.league_id]).fetchone()[0]
+        con.commit()
+        applied, _ = commit_league(DirWriter(objects), con, pub.league_id, built.league_path, built.league_version,
+                                   global_version, fence)
+    if not applied:
+        raise SystemExit("the job-built version was not published")
+    print("per-league side: built by the sync job path")
+
+
+def _differing_paths(a: str, b: str) -> list[str]:
+    """JSON key paths whose values differ (paths only: never the private values)."""
+    import json
+
+    def load(text):
+        return json.loads(text.split("\n", 1)[1] if text.startswith("//") else text)
+
+    out = []
+
+    def walk(x, y, path):
+        if type(x) is not type(y):
+            out.append(path or "$")
+        elif isinstance(x, dict):
+            for k in sorted(set(x) | set(y)):
+                walk(x.get(k), y.get(k), f"{path}.{k}")
+        elif isinstance(x, list):
+            if len(x) != len(y):
+                out.append(f"{path}[len]")
+            for i, (u, v) in enumerate(zip(x, y)):
+                walk(u, v, f"{path}[{i}]" if i < 1 else f"{path}[*]")
+        elif x != y:
+            out.append(path or "$")
+    try:
+        walk(load(a), load(b), "")
+    except ValueError:
+        return ["(not JSON)"]
+    return sorted(set(out))
+
+
 def main() -> int:
     from app.config import get_settings
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else get_settings().db_path
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    job_path = "--job-path" in sys.argv[1:]
+    settings = get_settings()
+    src = Path(args[0]) if args else settings.db_path
     if not src.exists():
         print(f"no database at {src}", file=sys.stderr)
         return 2
@@ -49,8 +128,10 @@ def main() -> int:
             pg.wait_ready()
             pg.create()
             pub = publish_local(pg, db, tmp / "objects", tmp / "work", visibility="private", name="League")
+            if job_path:
+                job_build(pg, pub, db, tmp, settings, season)
             with pg.connect() as c:
-                seed_user(c, U1)
+                seed_user(c, U1, admin=True)       # the owner-only research routes need a platform admin
                 seed_membership(c, U1, pub.league_id, "admin")
                 if mine:
                     c.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, %s)",
@@ -79,7 +160,13 @@ def main() -> int:
                 def get(self, path):
                     return client.get(f"/v2/leagues/{pub.league_id}{path}", headers=headers)
 
-            differ = [c.name for c in cs if response_text(client, c) != response_text(Scoped(), c)]
+            differ = []
+            for c in cs:
+                legacy, scoped = response_text(client, c), response_text(Scoped(), c)
+                if legacy != scoped:
+                    differ.append(c.name)
+                    if "--paths" in sys.argv[1:]:
+                        print(f"  {c.name}: {', '.join(_differing_paths(legacy, scoped)[:8])}")
         finally:
             cluster.stop()
     print(f"{len(cs)} cases compared; {len(cs) - len(differ)} identical; {len(differ)} differ")

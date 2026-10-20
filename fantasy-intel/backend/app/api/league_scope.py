@@ -66,6 +66,8 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
         with get_control_plane().request_tx(principal) as con:
             access = authorize_league_in(con, principal, league_id)
     except LeagueNotFound:
+        from .connect import nudge_probe
+        nudge_probe(principal, league_id)      # an expired public league starts a probe; the answer stays 404
         raise HTTPException(404, NOT_FOUND) from None
     except AccountGone:
         raise HTTPException(401, SIGN_IN) from None

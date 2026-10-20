@@ -1,5 +1,8 @@
 // Server-side fetch helper for the local FastAPI backend (GET, or POST when a body is given).
+import type { ApiErrorKind } from "./api-errors.ts";
 import { LEAGUE_HEADER, scopeApiPath } from "./league-scope.ts";
+
+export { isFirstRun, type ApiErrorKind } from "./api-errors.ts";
 
 const API_URL = process.env.API_URL ?? "http://127.0.0.1:8000";
 
@@ -24,22 +27,23 @@ export async function scopedPath(path: string): Promise<string> {
 const AUTH: Record<string, string> = process.env.API_KEY ? { "X-API-Key": process.env.API_KEY } : {};
 
 /**
- * What went wrong, so the UI can say something useful:
- * - offline: the backend did not answer (not running, wrong port)
- * - schema: the backend answered 503 because the database schema is older than the code
- * - http: the backend answered with an error status (detail is the backend's own message)
- * - unknown: anything else (e.g. a response that is not JSON)
+ * The signed-in visitor's Supabase access token for /v2 calls (the API verifies it and authorizes the league), or
+ * nothing: legacy paths never carry identity, and signed out (or sign-in off, or a unit test) adds no header.
  */
-export type ApiErrorKind = "offline" | "schema" | "http" | "unknown";
+async function userAuth(path: string): Promise<Record<string, string>> {
+  if (!path.startsWith("/v2/")) return {};
+  try {
+    const { accessToken } = await import("./supabase/server");
+    const token = await accessToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
 
 export type ApiResult<T> =
   | { ok: true; data: T; error: null }
   | { ok: false; data: null; error: string; kind?: ApiErrorKind; status?: number };
-
-/** True when the backend says no league has been imported yet (a first run): a setup step, not a failure. */
-export function isFirstRun(detail: string | null | undefined): boolean {
-  return !!detail && /no database yet/i.test(detail);
-}
 
 /** Classify a non-2xx backend response from its `detail` message (the stale-schema 503 names the database schema). */
 export function classifyHttpError(detail: string): "schema" | "http" {
@@ -48,9 +52,10 @@ export function classifyHttpError(detail: string): "schema" | "http" {
 
 export async function api<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
   path = await scopedPath(path);
+  const auth = { ...(await userAuth(path)), ...AUTH };
   const init: RequestInit = body === undefined
-    ? { cache: "no-store", headers: AUTH }
-    : { cache: "no-store", method: "POST", headers: { ...AUTH, "Content-Type": "application/json" }, body: JSON.stringify(body) };
+    ? { cache: "no-store", headers: auth }
+    : { cache: "no-store", method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify(body) };
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, init);
@@ -106,6 +111,7 @@ export async function apiRequest<T = null>(path: string, options: ApiRequestOpti
     method,
     headers: {
       ...headers,
+      ...(await userAuth(path)),
       ...AUTH,
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
