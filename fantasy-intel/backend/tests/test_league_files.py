@@ -197,3 +197,36 @@ def test_processes_sharing_a_directory_keep_their_own_files(tmp_path):
     (dead / "y.duckdb").write_bytes(b"stale")
     LeagueFileCache(DirStore(tmp_path / "objects"), tmp_path / "c", max_bytes=1 << 20)
     assert (alive / "x.duckdb").exists() and not dead.exists()
+
+
+def test_a_key_being_evicted_is_not_fetched_again_until_its_file_is_gone(r2, tmp_path):
+    """A request for a key mid-eviction waits; otherwise its fresh copy (same local path) would be unlinked."""
+    datas = [blob(60_000, 40 + i) for i in range(2)]
+    keys = []
+    for i, data in enumerate(datas):
+        v = version_of(data)
+        put(r2, league_key(f"lg_{i:024d}", v), data)
+        keys.append((f"lg_{i:024d}", v))
+    seen = {}
+
+    def refetch():
+        try:
+            seen["path"] = cache.pin_league(*keys[0])
+        except CacheFull:
+            seen["full"] = True
+
+    def on_evict(path):
+        t = seen["thread"] = threading.Thread(target=refetch)
+        t.start()
+        t.join(0.3)
+        seen["waited"] = t.is_alive()             # still waiting for this eviction to finish
+
+    cache = LeagueFileCache(R2Store(r2.config), tmp_path / "c", max_bytes=130_000, on_evict=on_evict)
+    cache.league_file(*keys[0])
+    b = blob(80_000, 50)
+    put(r2, league_key("lg_" + "b" * 24, version_of(b)), b)
+    cache.league_file("lg_" + "b" * 24, version_of(b))      # 60k + 80k > 130k: evicts a
+    seen["thread"].join(5)
+    assert seen["waited"]
+    assert seen.get("full") or seen["path"].exists(), "never a pinned path that was unlinked"
+    assert cache.bytes_used <= 130_000

@@ -29,6 +29,7 @@ function readRecent(): RecentLeague[] {
   }
 }
 const EMPTY: RecentLeague[] = [];
+const noopSubscribe = () => () => {};
 
 /** Which league the site is showing, when its data is from, and the leagues recently viewed in this browser. */
 export function LeagueSwitcher({ current }: { current: ScopedLeague }) {
@@ -42,7 +43,13 @@ export function LeagueSwitcher({ current }: { current: ScopedLeague }) {
     }
     listeners.forEach((l) => l());
   }, [current.id, current.name]);
-  const asOf = dataAsOf(current.committedAt);
+  // The server and the hydrating browser both render UTC (no hydration mismatch); the browser's own time zone
+  // replaces it right after hydration.
+  const asOf = useSyncExternalStore(
+    noopSubscribe,
+    () => dataAsOf(current.committedAt),
+    () => { const utc = dataAsOf(current.committedAt, "UTC"); return utc && `${utc} UTC`; },
+  );
   return (
     <details className={styles.switcher}>
       <summary className={styles.summary} title={asOf ?? undefined}>

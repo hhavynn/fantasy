@@ -172,10 +172,12 @@ class LeagueFileCache:
             self._make_room(key, size)                       # reserves `size` for this download
             try:
                 self.store.fetch(key, path, sha256_prefix=m["sha"], size=size)
-            finally:
+            except BaseException:
                 with self._lock:
                     self._reserved.pop(key, None)
-            with self._lock:
+                raise
+            with self._lock:                                 # reservation -> index in one step: never uncounted
+                self._reserved.pop(key, None)
                 self._files[key] = (path, size)
                 self._files.move_to_end(key)
                 if pin:
@@ -187,7 +189,9 @@ class LeagueFileCache:
             done.set()
 
     def _make_room(self, key: str, incoming: int) -> None:
-        """Evict least-recently-used unpinned files until `incoming` more bytes fit, then reserve them."""
+        """Evict least-recently-used unpinned files until `incoming` more bytes fit, then reserve them. An evicted key
+        is marked as downloading until its file is unlinked, so a request for it waits instead of fetching a new copy
+        to the same path that this unlink would then remove."""
         evicted = []
         with self._lock:
             used = sum(size for _, size in self._files.values()) + sum(self._reserved.values())
@@ -198,17 +202,27 @@ class LeagueFileCache:
                     continue
                 path, size = self._files.pop(old)
                 used -= size
-                evicted.append(path)
-            if used + incoming > self.max_bytes:
-                raise CacheFull(f"no room for {key}: every cached file is in use")
-            self._reserved[key] = incoming
-        for path in evicted:
-            if self.on_evict is not None:
-                self.on_evict(path)                          # forget open instances, then free the space
-            try:
-                os.unlink(path)
-            except FileNotFoundError:
-                pass
+                evicted.append((old, path, self._downloading.setdefault(old, threading.Event())))
+            fits = used + incoming <= self.max_bytes
+            if fits:
+                self._reserved[key] = incoming
+        try:
+            for _, path, _ in evicted:
+                if self.on_evict is not None:
+                    self.on_evict(path)                      # forget open instances, then free the space
+                try:
+                    os.unlink(path)
+                except FileNotFoundError:
+                    pass
+        finally:
+            with self._lock:
+                for old, _, done in evicted:
+                    if self._downloading.get(old) is done:
+                        del self._downloading[old]
+            for _, _, done in evicted:
+                done.set()
+        if not fits:
+            raise CacheFull(f"no room for {key}: every cached file is in use")
 
 
 def _remove_dead_process_dirs(root: Path) -> None:
