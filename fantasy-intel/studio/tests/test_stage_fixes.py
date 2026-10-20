@@ -59,3 +59,15 @@ def test_provenance_records_the_voice_that_spoke(tmp_path, monkeypatch):
     assert provenance.spoken_voice(ep, {})[0] == shorts_voice          # no record: the Short's own setting
     long_ep = _ep(tmp_path / "long", monkeypatch, fmt="long")
     assert provenance.spoken_voice(long_ep, {})[0] == long_ep.cfg["tts"]["voice"]
+
+
+def test_name_suffixes_are_spoken_as_words_one_token_each():
+    """"Jr." is read "junior" (not "jay are"); each suffix stays one inline word so timestamps line up."""
+    lex = tts.load_pronunciations()
+    for text, word, phon in [("Is Kevin Coleman Jr.'s new role real?", "Jr.'s", "ʤˈunjəɹz"),
+                             ("Kevin Coleman Jr. went from 10% to 27%.", "Jr.", "ʤˈunjəɹ"),
+                             ("Odell Beckham Jr's role", "Jr's", "ʤˈunjəɹz"),
+                             ("Marvin Harrison Jr", "Jr", "ʤˈunjəɹ"),
+                             ("Coleman Sr. played", "Sr.", "sˈinjəɹ")]:
+        out = tts.apply_pronunciations(text, lex)
+        assert f"[{word}](/{phon}/)" in out and out.count("[") == 1, out
