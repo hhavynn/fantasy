@@ -9,6 +9,7 @@ pointers. Design: [ADR-0002](../../docs/multileague/ADR-0002-supabase-control-pl
 | `migrations/20261020120000_control_plane.sql` | Schema `fi`, roles `fi_api` / `fi_sync`, tables, grants, RLS |
 | `migrations/20261020120100_control_plane_functions.sql` | SECURITY DEFINER functions, append-only audit trigger |
 | `migrations/20261020120200_audit_trigger_search_path.sql` | Pins `search_path` on the audit trigger (security advisor) |
+| `migrations/20261020120300_preference_policies_recheck_visibility.sql` | Pins and perspectives are reachable only while the league is visible, for every command (DELETE has no WITH CHECK) |
 | `down/*.sql` | Down-migrations, applied in reverse order to roll Phase 1 back |
 
 Every migration is idempotent (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).

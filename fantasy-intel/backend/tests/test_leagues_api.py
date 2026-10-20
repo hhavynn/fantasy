@@ -243,3 +243,41 @@ def test_malformed_league_ids_are_404_without_opening_postgres(client, monkeypat
                        json={"team_external_id": "6"} if suffix == "/perspective" and method == "PUT" else None)
     assert (r.status_code, r.json()) == (404, {"detail": "League not found."})
     assert cp_pg._PLANES == {}, "a malformed id must not even create a control-plane pool"
+
+
+@pytest.mark.parametrize("suffix,seed", [("pin", "INSERT INTO fi.league_pins (user_id, league_id) VALUES (%s, %s)"),
+                                         ("perspective", "INSERT INTO fi.team_selections (user_id, league_id, team_external_id) "
+                                                         "VALUES (%s, %s, '6')")])
+def test_a_delete_racing_a_visibility_flip_is_a_404_and_changes_nothing(client, world, pg, monkeypatch, suffix, seed):
+    """DELETE policies have no WITH CHECK, so the delete itself cannot notice the league went private; the route
+    re-authorizes after the write and rolls back with a 404."""
+    from app.control_plane import mutations
+    with pg.connect() as su:
+        su.execute(seed, [U2, world["pub"]])
+        su.commit()
+
+    def flip_first(real):
+        def wrapper(con, principal, league_id, *args):
+            with pg.connect() as su:
+                su.execute("UPDATE fi.leagues SET visibility = 'private', visibility_epoch = visibility_epoch + 1 "
+                           "WHERE id = %s", [league_id])
+                su.commit()
+            return real(con, principal, league_id, *args)
+        return wrapper
+
+    monkeypatch.setattr(mutations, "set_pin", flip_first(mutations.set_pin))
+    monkeypatch.setattr(mutations, "set_perspective", flip_first(mutations.set_perspective))
+    r = client.delete(f"/v2/leagues/{world['pub']}/{suffix}", headers=bearer(U2))
+    assert (r.status_code, r.json()) == (404, {"detail": "League not found."})
+    with pg.connect() as su:
+        table = "league_pins" if suffix == "pin" else "team_selections"
+        assert su.execute(f"SELECT count(*) FROM fi.{table} WHERE user_id = %s", [U2]).fetchone() == (1,)
+
+
+def test_the_perspective_route_does_not_block_the_event_loop():
+    """Every /v2 route that touches Postgres is a plain `def`, so FastAPI runs it in the thread pool."""
+    import inspect
+
+    from app.api import leagues_v2
+    for name in ("me", "list_leagues", "get_league", "pin_league", "unpin_league", "set_perspective", "clear_perspective"):
+        assert not inspect.iscoroutinefunction(getattr(leagues_v2, name)), name

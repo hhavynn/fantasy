@@ -16,8 +16,9 @@ from typing import Any, Iterator, Protocol
 
 from psycopg.errors import InsufficientPrivilege
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, StrictStr
 
 from ..config import get_settings
 from ..control_plane import mutations
@@ -120,16 +121,6 @@ def _no_content() -> Response:
     return Response(status_code=204, headers=NO_STORE)
 
 
-async def _json_object(request: Request) -> dict:
-    try:
-        body = await request.json()
-    except ValueError:
-        raise HTTPException(422, "Request body must be a JSON object.") from None
-    if not isinstance(body, dict):
-        raise HTTPException(422, "Request body must be a JSON object.")
-    return body
-
-
 # ---- routes ---------------------------------------------------------------------------------------
 
 @router.get("/providers")
@@ -171,47 +162,58 @@ def get_league(ltx=Depends(league_tx, scope="function")):
     return _json(access.to_json())
 
 
+def _write_and_recheck(con, access: Access, write) -> Access:
+    """Run a preference write for an authorized caller, then authorize again in the same transaction.
+
+    Statements run at READ COMMITTED, so a sync can make the league private (or revoke the membership) after
+    `league_tx` authorized. An insert or update then fails its RLS check (`_still_visible`); a delete has no such
+    check, so the re-authorization after the write is what notices. Either way the answer is the route's 404 and
+    the HTTPException rolls the transaction back."""
+    principal = _signed_in(access)
+    with _still_visible():
+        write(principal)
+    try:
+        return authorize_league_in(con, principal, access.league_id)
+    except LeagueNotFound:
+        raise HTTPException(404, NOT_FOUND) from None
+
+
+class PerspectiveBody(BaseModel):
+    """`{"team_external_id": "<team id as a string>"}`, nothing else. A preference: never checked against a roster."""
+    model_config = ConfigDict(extra="forbid")
+    team_external_id: StrictStr
+
+
 @router.put("/leagues/{league_id}/pin", status_code=204)
 def pin_league(ltx=Depends(league_tx, scope="function")):
     con, access = ltx
-    principal = _signed_in(access)
-    with _still_visible():
-        mutations.set_pin(con, principal, access.league_id, True)
+    _write_and_recheck(con, access, lambda principal: mutations.set_pin(con, principal, access.league_id, True))
     return _no_content()
 
 
 @router.delete("/leagues/{league_id}/pin", status_code=204)
 def unpin_league(ltx=Depends(league_tx, scope="function")):
     con, access = ltx
-    principal = _signed_in(access)
-    with _still_visible():
-        mutations.set_pin(con, principal, access.league_id, False)
+    _write_and_recheck(con, access, lambda principal: mutations.set_pin(con, principal, access.league_id, False))
     return _no_content()
 
 
 @router.put("/leagues/{league_id}/perspective")
-async def set_perspective(request: Request, ltx=Depends(league_tx, scope="function")):
+def set_perspective(body: PerspectiveBody, ltx=Depends(league_tx, scope="function")):
+    """A plain `def`, so FastAPI runs it (and its Postgres work) in the thread pool, never on the event loop.
+    `league_tx` raises its 404 before the body is validated, so an invisible league never reveals a 422."""
     con, access = ltx
-    principal = _signed_in(access)
-    body = await _json_object(request)
-    team_id = body.get("team_external_id")
-    if set(body) != {"team_external_id"} or not isinstance(team_id, str):
-        raise HTTPException(422, 'Send {"team_external_id": "<team id as a string>"}.')
     try:
-        with _still_visible():
-            mutations.set_perspective(con, principal, access.league_id, team_id)
+        refreshed = _write_and_recheck(
+            con, access, lambda principal: mutations.set_perspective(con, principal, access.league_id,
+                                                                     body.team_external_id))
     except ValueError as err:
         raise HTTPException(422, str(err)) from None
-    try:
-        return _json(authorize_league_in(con, principal, access.league_id).to_json())
-    except LeagueNotFound:
-        raise HTTPException(404, NOT_FOUND) from None
+    return _json(refreshed.to_json())
 
 
 @router.delete("/leagues/{league_id}/perspective", status_code=204)
 def clear_perspective(ltx=Depends(league_tx, scope="function")):
     con, access = ltx
-    principal = _signed_in(access)
-    with _still_visible():
-        mutations.set_perspective(con, principal, access.league_id, None)
+    _write_and_recheck(con, access, lambda principal: mutations.set_perspective(con, principal, access.league_id, None))
     return _no_content()

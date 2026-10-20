@@ -193,3 +193,18 @@ def test_rls_is_enabled_on_every_control_plane_table(pg):
             SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'fi' AND c.relkind = 'r' AND NOT c.relrowsecurity""").fetchall()
     assert rows == []
+
+
+def test_a_user_cannot_delete_preferences_in_a_league_they_can_no_longer_see(pg, world):
+    """DELETE policies have no WITH CHECK, so visibility must be part of USING."""
+    with pg.connect() as su:
+        su.execute("INSERT INTO fi.team_selections VALUES (%s, %s, '6', now())", [U1, world["priv"]])
+        su.execute("INSERT INTO fi.league_pins VALUES (%s, %s, now())", [U1, world["priv"]])
+        su.execute("UPDATE fi.league_memberships SET revoked_at = now() WHERE user_id = %s", [U1])
+        su.commit()
+    with pg.connect(user="fi_api") as con:
+        with as_role(con, "authenticated", U1) as c:
+            assert c.execute("DELETE FROM fi.league_pins WHERE league_id = %s", [world["priv"]]).rowcount == 0
+            assert c.execute("DELETE FROM fi.team_selections WHERE league_id = %s", [world["priv"]]).rowcount == 0
+            assert c.execute("UPDATE fi.team_selections SET team_external_id = '7' WHERE league_id = %s",
+                             [world["priv"]]).rowcount == 0
