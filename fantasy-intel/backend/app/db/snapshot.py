@@ -52,10 +52,13 @@ class SnapshotCache:
                  ttl_s: float = 30.0, clock=time.monotonic):
         self.cfg, self.prefix, self.ttl_s, self.clock = cfg, prefix.strip("/"), ttl_s, clock
         self.cache_dir = Path(cache_dir or Path(tempfile.gettempdir()) / "fantasy-snapshots")
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()            # guards the fields below; never held across a download
+        self._download_lock = threading.Lock()   # one download at a time per instance
         self._manifest: Manifest | None = None
         self._checked_at: float | None = None
         self._served: tuple[Path, Manifest] | None = None
+        self._failed: tuple[str, float] | None = None   # (key, when) of the last failed background download
+        self._background: threading.Thread | None = None
 
     def manifest(self) -> Manifest:
         now = self.clock()
@@ -72,22 +75,56 @@ class SnapshotCache:
         self._manifest, self._checked_at = fresh, now
         return fresh
 
+    def _path(self, m: Manifest) -> Path:
+        # The digest is part of the name: a key re-published with other content is a different file.
+        return self.cache_dir / f"{m.sha256[:16]}-{Path(m.key).name}"
+
+    def _fetch(self, m: Manifest, path: Path) -> None:
+        with self._download_lock:
+            if path.exists():
+                return
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            r2.download(self.cfg, m.key, path, expected_sha256=m.sha256)
+
+    def _switch_to(self, path: Path, m: Manifest) -> tuple[Path, Manifest]:
+        """Serve `path` from now on and delete the other cached files (open read-only connections keep
+        their inode). Call with self._lock held."""
+        self._served, self._failed = (path, m), None
+        for old in self.cache_dir.iterdir():
+            if old != path and not old.name.endswith(".part"):
+                old.unlink(missing_ok=True)
+        return self._served
+
+    def _fetch_in_background(self, m: Manifest, path: Path) -> None:
+        try:
+            self._fetch(m, path)
+        except r2.R2Error as err:
+            log.warning("snapshot %s unavailable (%s); still serving the previous one", m.key, err)
+            with self._lock:
+                self._failed = (m.key, self.clock())
+            return
+        with self._lock:
+            if self._manifest is None or self._manifest.key == m.key:
+                self._switch_to(path, m)
+
     def local_path(self) -> tuple[Path, Manifest]:
-        """The local file for the current manifest, downloading it first if this instance lacks it."""
+        """The local file to serve. With nothing cached yet this downloads the current snapshot first; once a
+        file is cached, a newer publish is fetched by one background thread while requests keep getting the
+        cached file, and a failed fetch is retried after one TTL rather than on every request."""
         with self._lock:
             m = self.manifest()
-            path = self.cache_dir / Path(m.key).name
-            if not path.exists():
-                self.cache_dir.mkdir(parents=True, exist_ok=True)
-                try:
-                    r2.download(self.cfg, m.key, path, expected_sha256=m.sha256)
-                except r2.R2Error as err:
-                    if self._served is None or not self._served[0].exists():
-                        raise
-                    log.warning("snapshot %s unavailable (%s); serving %s", m.key, err, self._served[1].key)
-                    return self._served
-                for old in self.cache_dir.iterdir():
-                    if old != path:
-                        old.unlink(missing_ok=True)   # open read-only connections keep their inode
-            self._served = (path, m)
-            return path, m
+            path = self._path(m)
+            if path.exists():
+                return self._switch_to(path, m) if self._served != (path, m) else self._served
+            if self._served is not None and self._served[0].exists():
+                recently_failed = (self._failed is not None and self._failed[0] == m.key
+                                   and self.clock() - self._failed[1] < self.ttl_s)
+                busy = self._background is not None and self._background.is_alive()
+                if not (recently_failed or busy):
+                    self._background = threading.Thread(target=self._fetch_in_background, args=(m, path),
+                                                        name="snapshot-download", daemon=True)
+                    self._background.start()
+                return self._served
+        self._fetch(m, path)   # first request in this instance: nothing to fall back to, so wait
+        with self._lock:
+            return self._switch_to(path, m)

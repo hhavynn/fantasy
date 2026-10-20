@@ -20,6 +20,7 @@ class FakeR2:
     def __init__(self, bucket: str = "fantasy-intel"):
         self.bucket, self.objects, self.requests = bucket, {}, []
         self.fail_next: dict[str, int] = {}    # method -> HTTP status to return once
+        self.truncate: set[str] = set()         # keys whose body is cut off mid-stream (IncompleteRead)
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -57,6 +58,12 @@ class FakeR2:
                     items = "".join(f"<Contents><Key>{k}</Key></Contents>" for k in sorted(fake.objects) if k.startswith(prefix))
                     self._send(200, f'<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">{items}'
                                     f'<IsTruncated>false</IsTruncated></ListBucketResult>'.encode())
+                elif key in fake.truncate and key in fake.objects:
+                    body = fake.objects[key]
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body[: len(body) // 2])   # then the connection closes short of it
                 elif key in fake.objects:
                     self._send(200, fake.objects[key], "application/octet-stream")
                 else:

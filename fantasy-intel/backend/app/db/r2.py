@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import http.client
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -109,9 +110,15 @@ def _request(cfg: R2Config, method: str, key: str, *, query: dict[str, str] | No
         raise R2Error(None, type(err).__name__, key) from None
 
 
+_STREAM_ERRORS = (OSError, http.client.HTTPException)   # timeouts, resets, IncompleteRead while reading a body
+
+
 def get_bytes(cfg: R2Config, key: str, timeout: float = 15) -> bytes:
     with _request(cfg, "GET", key, timeout=timeout) as resp:
-        return resp.read()
+        try:
+            return resp.read()
+        except _STREAM_ERRORS as err:
+            raise R2Error(None, type(err).__name__, key) from None
 
 
 def download(cfg: R2Config, key: str, dest: Path, expected_sha256: str | None = None, timeout: float = 120) -> Path:
@@ -122,9 +129,12 @@ def download(cfg: R2Config, key: str, dest: Path, expected_sha256: str | None = 
     h = hashlib.sha256()
     try:
         with _request(cfg, "GET", key, timeout=timeout) as resp, open(part, "wb") as f:
-            while chunk := resp.read(_CHUNK):
-                h.update(chunk)
-                f.write(chunk)
+            try:
+                while chunk := resp.read(_CHUNK):
+                    h.update(chunk)
+                    f.write(chunk)
+            except _STREAM_ERRORS as err:   # a body cut off mid-stream is an R2 failure like any other
+                raise R2Error(None, type(err).__name__, key) from None
         if expected_sha256 and h.hexdigest() != expected_sha256:
             raise R2Error(None, "ChecksumMismatch", key)
         part.replace(dest)

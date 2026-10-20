@@ -89,6 +89,12 @@ def test_publish_refuses_missing_or_unsynced_local_db(fake, tmp_path):
 # ----------------------------------------------------------------------------- the API's cache
 
 
+def _settle(cache):
+    """Wait for the cache's background download, if one is running."""
+    if cache._background is not None:
+        cache._background.join(10)
+
+
 def test_cache_downloads_once_for_concurrent_requests(fake, tmp_path):
     m = _put_snapshot(fake, "snapshots/a.duckdb", b"A" * 500_000)
     cache = SnapshotCache(fake.config, cache_dir=tmp_path / "cache")
@@ -96,23 +102,38 @@ def test_cache_downloads_once_for_concurrent_requests(fake, tmp_path):
     threads = [threading.Thread(target=lambda: results.append(cache.local_path())) for _ in range(10)]
     [t.start() for t in threads]
     [t.join() for t in threads]
-    assert {p for p, _ in results} == {tmp_path / "cache" / "a.duckdb"} and results[0][1] == m
+    assert len({p for p, _ in results}) == 1 and results[0][1] == m
+    assert results[0][0].name.endswith("a.duckdb") and results[0][0].read_bytes() == b"A" * 500_000
     assert _gets(fake, "snapshots/a.duckdb") == 1
 
 
-def test_cache_rereads_the_manifest_only_after_its_ttl_and_evicts_old_files(fake, tmp_path):
+def test_a_new_publish_is_fetched_in_the_background_while_the_old_file_is_served(fake, tmp_path):
     now = [0.0]
     cache = SnapshotCache(fake.config, cache_dir=tmp_path / "cache", ttl_s=30, clock=lambda: now[0])
     _put_snapshot(fake, "snapshots/a.duckdb", b"A")
-    assert cache.local_path()[0].name == "a.duckdb"
+    first = cache.local_path()
     _put_snapshot(fake, "snapshots/b.duckdb", b"B", published_at="2026-10-21T00:00:00")
     now[0] = 10
-    assert cache.local_path()[0].name == "a.duckdb"             # within the TTL: no manifest request
+    assert cache.local_path() == first                          # within the TTL: no manifest request
     assert _gets(fake, f"snapshots/{MANIFEST}") == 1
     now[0] = 31
+    assert cache.local_path() == first                          # never blocks on the new download
+    _settle(cache)
     path, m = cache.local_path()
-    assert path.name == "b.duckdb" and m.published_at == "2026-10-21T00:00:00"
-    assert sorted(p.name for p in (tmp_path / "cache").iterdir()) == ["b.duckdb"]
+    assert path.read_bytes() == b"B" and m.published_at == "2026-10-21T00:00:00"
+    assert [p.read_bytes() for p in (tmp_path / "cache").iterdir()] == [b"B"]
+
+
+def test_a_key_republished_with_other_content_is_downloaded_again(fake, tmp_path):
+    now = [0.0]
+    cache = SnapshotCache(fake.config, cache_dir=tmp_path / "cache", ttl_s=30, clock=lambda: now[0])
+    _put_snapshot(fake, "snapshots/a.duckdb", b"first")
+    cache.local_path()
+    _put_snapshot(fake, "snapshots/a.duckdb", b"second")      # same key, same second, different bytes
+    now[0] = 31
+    cache.local_path()
+    _settle(cache)
+    assert cache.local_path()[0].read_bytes() == b"second"
 
 
 def test_cache_keeps_serving_when_r2_fails_after_a_first_success(fake, tmp_path):
@@ -127,6 +148,37 @@ def test_cache_keeps_serving_when_r2_fails_after_a_first_success(fake, tmp_path)
     fake.objects["snapshots/b.duckdb"] = b"corrupt"             # the new file fails its checksum
     now[0] = 200
     assert cache.local_path() == first
+    _settle(cache)
+    now[0] = 210
+    assert cache.local_path() == first                          # a failed fetch is not retried within the TTL
+    _settle(cache)
+    assert _gets(fake, "snapshots/b.duckdb") == 1
+    now[0] = 241
+    cache.local_path()
+    _settle(cache)
+    assert _gets(fake, "snapshots/b.duckdb") == 2               # ... and is retried after it
+
+
+def test_a_body_cut_off_mid_stream_falls_back_to_the_cached_file(fake, tmp_path):
+    now = [0.0]
+    cache = SnapshotCache(fake.config, cache_dir=tmp_path / "cache", ttl_s=30, clock=lambda: now[0])
+    _put_snapshot(fake, "snapshots/a.duckdb", b"A")
+    first = cache.local_path()
+    _put_snapshot(fake, "snapshots/b.duckdb", b"B" * 100_000)
+    fake.truncate.add("snapshots/b.duckdb")
+    now[0] = 31
+    assert cache.local_path() == first
+    _settle(cache)
+    assert cache.local_path() == first and cache._failed[0] == "snapshots/b.duckdb"
+    assert not [p for p in (tmp_path / "cache").iterdir() if p.name.endswith(".part")]
+
+
+def test_a_truncated_body_is_an_r2_error(fake, tmp_path):
+    fake.objects["k"] = b"x" * 10
+    fake.truncate.add("k")
+    with pytest.raises(r2.R2Error) as err:
+        r2.get_bytes(fake.config, "k")
+    assert err.value.code == "IncompleteRead"
 
 
 def test_cache_raises_when_nothing_was_ever_served(fake, tmp_path):
@@ -175,6 +227,34 @@ def test_r2_settings_alone_do_not_switch_the_local_api(fake, synced_db, monkeypa
     from app.main import app
     assert TestClient(app).get("/api/overview").status_code == 200
     assert fake.requests == []
+
+
+def test_api_keeps_its_open_snapshot_when_a_new_one_cannot_be_opened(fake, synced_db, monkeypatch, tmp_path):
+    """A file that passes its checksum but DuckDB cannot open (e.g. a newer storage version)."""
+    import tempfile
+    from app.api import deps
+    from app.db import snapshot as snapshot_mod
+    publish_snapshot(synced_db, fake.config)
+    for key, value in {"SERVE_SNAPSHOT": "1", "SNAPSHOT_BUCKET": fake.bucket, "R2_ACCOUNT_ID": "acct",
+                       "R2_ACCESS_KEY_ID": "AKIDTEST", "R2_SECRET_ACCESS_KEY": "secret-test-key",
+                       "R2_ENDPOINT": fake.config.endpoint}.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("FANTASY_API_KEY", raising=False)
+    monkeypatch.setattr(deps, "_SNAP", {})
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    from app.main import app
+    client = TestClient(app)
+    assert client.get("/api/overview").status_code == 200
+    cache = deps._SNAP["cache"]
+    _put_snapshot(fake, "snapshots/garbage.duckdb", b"not a duckdb file")
+    cache._checked_at = -1e9                                     # expire the manifest TTL
+    client.get("/api/overview")
+    _settle(cache)
+    assert cache.local_path()[0].name.endswith("garbage.duckdb")
+    assert client.get("/api/overview").status_code == 200      # still served from the open connection
+    monkeypatch.setattr(deps, "_SNAP", {})                      # a fresh instance has nothing to fall back to
+    r = client.get("/api/overview")
+    assert r.status_code == 503 and "Cannot open the published snapshot" in r.json()["detail"]
 
 
 def test_api_without_a_reachable_snapshot_answers_503(fake, monkeypatch, tmp_path):

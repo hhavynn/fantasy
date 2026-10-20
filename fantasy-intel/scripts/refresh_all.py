@@ -84,17 +84,12 @@ DST_SHADOW_WARNINGS = 3              # dst_shadow.py: ran and printed missing-in
 DIST_LEDGER_WARNINGS = 3             # distribution_ledger.py: ran and printed WARNING lines (no artifact, missed week)
 
 
-def snapshot_configured() -> bool:
-    return all((os.getenv(k) or "").strip() for k in
-               ("SNAPSHOT_BUCKET", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"))
-
-
 def plan(publish: bool) -> list[str]:
     """Step scripts in run order. Publishing needs R2 settings (the snapshot, preferred) or a read/write
     MotherDuck token, which only the hosted setup has, so a plain local install never pushes anywhere."""
     if not publish:
         return list(STEPS)
-    if snapshot_configured():
+    if get_settings().r2_configured:
         return [*STEPS, PUBLISH_SNAPSHOT]
     has_token = bool((os.getenv("MOTHERDUCK_TOKEN") or "").strip())
     return [*STEPS, PUBLISH] if has_token else list(STEPS)

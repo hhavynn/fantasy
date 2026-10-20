@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from contextlib import contextmanager
 from typing import Any, Iterator
@@ -10,6 +11,8 @@ from fastapi import HTTPException
 
 from ..config import get_settings
 from ..db.connection import MIN_READ_SCHEMA_VERSION, SCHEMA_VERSION, DatabaseBusy, connect, connect_motherduck, fetch_dicts, schema_version
+
+log = logging.getLogger(__name__)
 
 JSON_COLUMNS = {"components", "reasons", "competitors", "roster_slots", "owner_ids", "matchup_acquisitions",
                 "stats", "details", "eligible_slots", "scoring_items", "waiver_process_days",
@@ -60,7 +63,12 @@ def _snapshot_cursor(settings) -> duckdb.DuckDBPyConnection:
         raise HTTPException(503, f"Cannot load the published snapshot: {err}")
     with _SNAP_LOCK:
         if _SNAP.get("path") != path:
-            _SNAP["con"], _SNAP["path"] = duckdb.connect(str(path), read_only=True), path
+            try:
+                _SNAP["con"], _SNAP["path"] = duckdb.connect(str(path), read_only=True), path
+            except duckdb.Error as err:   # e.g. written by a newer DuckDB than this bundle's
+                if _SNAP.get("con") is None:
+                    raise HTTPException(503, f"Cannot open the published snapshot: {err}")
+                log.warning("cannot open snapshot %s (%s); still serving %s", path.name, err, _SNAP["path"].name)
         return _SNAP["con"].cursor()
 
 
@@ -109,12 +117,10 @@ def data_version(con) -> str:
     """Changes whenever the served data changes: the local file's mtime, or the publish stamp that
     scripts/publish_snapshot.py (or publish_motherduck.py) writes into the hosted copy."""
     settings = get_settings()
-    if settings.snapshot_enabled:
+    if settings.snapshot_enabled or settings.motherduck_database:
         row = con.execute("SELECT value FROM schema_meta WHERE key = 'published_at'").fetchone()
-        return f"snapshot:{row[0] if row else ''}"
-    if settings.motherduck_database:
-        row = con.execute("SELECT value FROM schema_meta WHERE key = 'published_at'").fetchone()
-        return f"md:{settings.motherduck_database}:{row[0] if row else ''}"
+        stamp = row[0] if row else ""
+        return f"snapshot:{stamp}" if settings.snapshot_enabled else f"md:{settings.motherduck_database}:{stamp}"
     return f"{settings.db_path}:{settings.db_path.stat().st_mtime_ns}"
 
 
