@@ -182,3 +182,25 @@ def test_legacy_routes_and_service_auth_are_unchanged_with_the_flag_on(client, m
     assert client.get("/api/overview").status_code == 401
     assert client.get("/api/overview", headers={"X-API-Key": "k" * 40}).status_code == 503   # no db: same as before
     assert client.get("/v2/providers", headers={"X-API-Key": "k" * 40}).status_code == 200
+
+
+def test_a_commit_that_fails_after_the_handler_is_a_503_not_a_success(client, world, monkeypatch):
+    """The request transaction commits when the dependency's context exits. That must happen before the response is
+    sent (dependency scope "function"), so a commit failure becomes a 503 instead of a 200/204 for a rolled-back
+    write."""
+    from contextlib import contextmanager
+
+    from app.control_plane import pg as cp_pg
+    real = cp_pg.ControlPlane.request_tx
+
+    @contextmanager
+    def failing_commit(self, principal):
+        with real(self, principal) as con:
+            yield con
+        raise cp_pg.ControlPlaneUnavailable("commit failed")
+
+    monkeypatch.setattr(cp_pg.ControlPlane, "request_tx", failing_commit)
+    r = client.put(f"/v2/leagues/{world['pub']}/pin", headers=bearer(U1))
+    assert (r.status_code, r.json()) == (503, {"detail": "The control plane is unavailable."})
+    r = client.get(f"/v2/leagues/{world['pub']}")
+    assert r.status_code == 503

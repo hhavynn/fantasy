@@ -14,11 +14,14 @@ import time
 from pathlib import Path
 
 import psycopg
+import psycopg.sql
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS_DIR = REPO_ROOT / "fantasy-intel" / "supabase" / "migrations"
 SHIM = Path(__file__).with_name("pg_shim.sql")
+# Test-only: used solely for the throwaway test database's service roles, never anywhere real.
+TEST_ROLE_PASSWORD = "fi-test-role-only"
 _PG_BIN_DIRS = ("/opt/homebrew/opt/postgresql@18/bin", "/opt/homebrew/opt/postgresql@17/bin",
                 "/usr/lib/postgresql/17/bin", "/usr/lib/postgresql/16/bin")
 
@@ -80,7 +83,11 @@ class PgCluster:
         return f"host={self._dir} user=postgres dbname={db}"
 
     def dsn(self, db: str, user: str) -> str:
-        return psycopg.conninfo.make_conninfo(self.superuser_dsn(db), user=user)
+        if user == "postgres":
+            return self.superuser_dsn(db)
+        # The service roles get a throwaway password (set in PgDatabase.create): the CI container authenticates
+        # TCP connections by password, and the superuser DSN's password is not theirs.
+        return psycopg.conninfo.make_conninfo(self.superuser_dsn(db), user=user, password=TEST_ROLE_PASSWORD)
 
 
 class PgDatabase:
@@ -101,9 +108,11 @@ class PgDatabase:
             con.execute(SHIM.read_text())
             for path in self.MIGRATIONS:
                 con.execute(path.read_text())
-            # The migration creates the service roles NOLOGIN (Havyn sets LOGIN + a password on Supabase).
-            con.execute("ALTER ROLE fi_api LOGIN")
-            con.execute("ALTER ROLE fi_sync LOGIN")
+            # The migration creates the service roles NOLOGIN (Havyn sets LOGIN + a password on Supabase). Here they
+            # get a test-only password, which a throwaway cluster or CI container is the only place it exists.
+            for role in ("fi_api", "fi_sync"):
+                con.execute(psycopg.sql.SQL("ALTER ROLE {} LOGIN PASSWORD {}").format(
+                    psycopg.sql.Identifier(role), psycopg.sql.Literal(TEST_ROLE_PASSWORD)))
 
     def dsn_for(self, user: str = "postgres") -> str:
         return self.cluster.dsn(self.name, user)

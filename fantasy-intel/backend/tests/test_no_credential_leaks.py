@@ -271,7 +271,7 @@ def _exploding_espn(make):
                 raise make()
             return call
 
-    return EspnProvider(lambda k, a: Boom(), public_import_enabled=False, owner_credentials_configured=True)
+    return EspnProvider(lambda k, a: Boom(), public_import_enabled=False, private_access_enabled=True)
 
 
 def _owner_access():

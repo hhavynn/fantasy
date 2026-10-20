@@ -104,3 +104,21 @@ def test_every_league_route_declares_the_authorizing_dependency():
     for route in routes:
         names = {d.call.__name__ for d in route.dependant.dependencies}
         assert "league_tx" in names, route.path
+
+
+def test_every_v2_transaction_dependency_finishes_before_the_response():
+    """request_tx commits on exit; with FastAPI's default request scope that would run after the response is sent."""
+    from app.api import leagues_v2
+    from app.main import app
+    checked = 0
+    for route in _walk(app.routes):
+        if not getattr(route, "path", "").startswith("/v2/"):
+            continue
+        stack = list(route.dependant.dependencies)
+        while stack:
+            dep = stack.pop()
+            if dep.call in (leagues_v2.request_tx, leagues_v2.league_tx):
+                assert dep.scope == "function", (route.path, dep.call.__name__, dep.scope)
+                checked += 1
+            stack.extend(dep.dependencies)
+    assert checked >= 7

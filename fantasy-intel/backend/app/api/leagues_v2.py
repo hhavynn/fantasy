@@ -57,7 +57,10 @@ def provider_registry() -> ProviderRegistry:
 
 
 def request_tx(principal: Principal = Depends(current_principal)) -> Iterator[tuple[Any, Principal]]:
-    """One Postgres transaction per request, as the request's role (anon | authenticated) with its verified claims."""
+    """One Postgres transaction per request, as the request's role (anon | authenticated) with its verified claims.
+    Always declared through REQUEST_TX (scope "function"): the transaction commits when this generator resumes, and
+    that must happen before the response is sent, so a failed commit is a 503 rather than a 200 for a rolled-back
+    write."""
     try:
         with get_control_plane().request_tx(principal) as con:
             yield con, principal
@@ -65,7 +68,10 @@ def request_tx(principal: Principal = Depends(current_principal)) -> Iterator[tu
         raise HTTPException(503, UNAVAILABLE) from None
 
 
-def league_tx(league_id: str, tx=Depends(request_tx)) -> tuple[Any, Access]:
+REQUEST_TX = Depends(request_tx, scope="function")
+
+
+def league_tx(league_id: str, tx=REQUEST_TX) -> tuple[Any, Access]:
     """Authorize FIRST. Everything a league route does happens inside this transaction, after this check."""
     con, principal = tx
     try:
@@ -109,7 +115,7 @@ def list_providers(registry: ProviderRegistry = Depends(provider_registry),
 
 
 @router.get("/me")
-def me(tx=Depends(request_tx)):
+def me(tx=REQUEST_TX):
     con, principal = tx
     try:
         return _json(mutations.me(con, principal))
@@ -118,7 +124,7 @@ def me(tx=Depends(request_tx)):
 
 
 @router.get("/leagues")
-def list_leagues(tx=Depends(request_tx)):
+def list_leagues(tx=REQUEST_TX):
     con, principal = tx
     try:
         ids = mutations.list_my_leagues(con, principal)
@@ -134,27 +140,27 @@ def list_leagues(tx=Depends(request_tx)):
 
 
 @router.get("/leagues/{league_id}")
-def get_league(ltx=Depends(league_tx)):
+def get_league(ltx=Depends(league_tx, scope="function")):
     _, access = ltx
     return _json(access.to_json())
 
 
 @router.put("/leagues/{league_id}/pin", status_code=204)
-def pin_league(ltx=Depends(league_tx)):
+def pin_league(ltx=Depends(league_tx, scope="function")):
     con, access = ltx
     mutations.set_pin(con, _signed_in(access), access.league_id, True)
     return _no_content()
 
 
 @router.delete("/leagues/{league_id}/pin", status_code=204)
-def unpin_league(ltx=Depends(league_tx)):
+def unpin_league(ltx=Depends(league_tx, scope="function")):
     con, access = ltx
     mutations.set_pin(con, _signed_in(access), access.league_id, False)
     return _no_content()
 
 
 @router.put("/leagues/{league_id}/perspective")
-async def set_perspective(request: Request, ltx=Depends(league_tx)):
+async def set_perspective(request: Request, ltx=Depends(league_tx, scope="function")):
     con, access = ltx
     principal = _signed_in(access)
     body = await _json_object(request)
@@ -169,7 +175,7 @@ async def set_perspective(request: Request, ltx=Depends(league_tx)):
 
 
 @router.delete("/leagues/{league_id}/perspective", status_code=204)
-def clear_perspective(ltx=Depends(league_tx)):
+def clear_perspective(ltx=Depends(league_tx, scope="function")):
     con, access = ltx
     mutations.set_perspective(con, _signed_in(access), access.league_id, None)
     return _no_content()
