@@ -46,7 +46,9 @@ Availability news (app.analytics.availability_news, `news=` entries; the product
 reviewed file): a player the news puts out for week T is withheld with the news note; one it puts back (reinstated,
 in or after a reported return window) is projected although a stale weekly roster status or a long-term ESPN status
 says otherwise (an NFL reserve-rule week and a horizon-0 ESPN OUT still withhold); in a return window P(plays) is
-the model's estimate times the window probability. The workload handoff sees the same states, so teammates absorb
+the model's estimate times the window probability. At horizon 0 an "out" entry yields to the synced data when the
+week's nflverse report (published for his team) has no Out/Doubtful for him, his week-W roster row is ACT and ESPN
+does not list him OUT / IR / suspended: the row is flagged availability_news.OVERRIDDEN. The workload handoff sees the same states, so teammates absorb
 or return the volume. Training never reads it.
 
 An ifp-2.2.0 artifact (app.analytics.context_model) keeps all of that and adds the shipped research-shadow
@@ -240,7 +242,10 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     # read rows posted since; live, nothing exists after W anyway)
     rosters = _roster_rows(con, season, fw)
     on_ir = _fantasy_ir(con, season, fw)
+    # the EFFECTIVE news states: the loop below drops an entry a hard availability gate or (horizon 0) the synced
+    # report contradicts, and only what survives reaches the rows' P(plays) and the workload handoff
     nstate = an.for_week(news, season, week, team_weeks) if news else {}
+    report = _week_report(sources, season, week) if nstate and not horizon else None
     rows, targets = [], []
     for c in candidates(con, season, week):
         rec = {"season": season, "week": week, "espn_player_id": c["espn_player_id"], "gsis_id": c["gsis_id"],
@@ -280,6 +285,14 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
         if horizon:
             rec["flags"] += [FUTURE_NO_REPORT, HORIZON_NOTE.format(k=horizon)]
         ns = nstate.get(c["gsis_id"])
+        if ns is not None and ns.p < 1 and report is not None and _synced_clear(report, c["gsis_id"], team, hist, week,
+                                                                                espn_status):
+            # Horizon 0: the week's synced report and active roster say he plays; a stale "out" entry must not
+            # withhold him (the teammates' handoff drops the entry too).
+            rec["flags"].append(f"{an.OVERRIDDEN} (week-{week} injury report has no Out/Doubtful for him and the "
+                                f"week-{week} roster is ACT); remove the entry: {ns.reason}")
+            nstate.pop(c["gsis_id"])
+            ns = None
         if ns is not None and ns.p <= 0:
             rec["coverage_status"] = "withheld_unavailable"
             rec["missing_inputs"] = [ns.reason]
@@ -294,6 +307,11 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
         espn_withheld = espn_status in (LONG_TERM_ESPN if horizon else WITHHELD_ESPN) \
             and not (dated_return and espn_status == "INJURY_RESERVE") and not (horizon and news_back)
         if (avail["status"] in RESTRICTED and week in avail["unavailable_weeks"]) or espn_withheld:
+            if ns is not None:
+                # a hard constraint (NFL reserve-rule week, horizon-0 ESPN OUT / IR / suspension) beats positive news:
+                # the entry is dropped, so the teammates' handoff keeps the timeline's own status for him too
+                nstate.pop(c["gsis_id"])
+                rec["flags"].append(f"availability news not applied: {ns.reason}")
             rec["coverage_status"] = "withheld_unavailable"
             rec["missing_inputs"] = [w for w in avail["warnings"]] or [f"ESPN status {c['injury_status']}"]
             if horizon and espn_withheld:
@@ -407,6 +425,28 @@ def build_live(con, sources: Sources, artifact: Artifact, season: int, week: int
     for rec in rows:
         rec["run_id"] = meta["run_id"]
     return meta, rows
+
+
+def _week_report(sources: Sources, season: int, week: int) -> dict | None:
+    """The week's synced nflverse injury report as {team: {gsis_id: report_status}} (teams with any row), or None."""
+    if sources.injuries is None:
+        return None
+    out: dict = {}
+    cur = sources.injuries.filter((pl.col("season") == season) & (pl.col("week") == week))
+    for g, t, st in cur.select("gsis_id", "team", "report_status").iter_rows():
+        if t is not None:
+            out.setdefault(t, {})[g] = (st or "").strip().lower()
+    return out
+
+
+def _synced_clear(report: dict, gsis_id: str, team: str, hist: list[dict], week: int, espn_status: str) -> bool:
+    """Horizon-0 evidence that he plays: his team's week report is synced without Out/Doubtful for him, his week's
+    weekly roster row is ACT, and ESPN does not list him OUT / IR / suspended."""
+    if team not in report or report[team].get(gsis_id) in ("out", "doubtful"):
+        return False
+    if not hist or hist[-1]["week"] != week or (hist[-1].get("status") or "").upper() != "ACT":
+        return False
+    return espn_status not in WITHHELD_ESPN
 
 
 def _apply_news_p_play(rows: list[dict], nstate: dict) -> None:

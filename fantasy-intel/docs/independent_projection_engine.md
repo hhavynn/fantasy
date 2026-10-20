@@ -855,7 +855,12 @@ and `project` / `reproject` apply them (`--no-news` leaves them out):
 | `out`, no window | unchanged | withheld for the rest of the season | | |
 | `active` | unchanged | projected even when the weekly roster still says EXE / SUS / reserve without a rule week, or ESPN lists IR / suspension at h >= 1 | | |
 
-An NFL reserve-rule week (`unavailable_weeks`) and a horizon-0 ESPN OUT still withhold. A player the participation
+An NFL reserve-rule week (`unavailable_weeks`) and a horizon-0 ESPN OUT / IR / suspension still withhold, and the
+entry is then dropped ("availability news not applied"), so the handoff keeps the timeline's own status for him: the
+row and the handoff read one effective news state per player. At horizon 0 the synced data also beats an `out` entry:
+when his team's nflverse week report is published without Out/Doubtful for him, his week-W roster row is ACT and ESPN
+does not list him OUT / IR / suspended, he is projected and flagged "availability news overridden by the synced
+report" (`project` lists such players under `news_overridden`; delete the entry). A player the participation
 model has no estimate for (no ACT/INA roster row yet) takes the median P(plays) of the run's projected rows at his
 position, labelled `base_p_play_source`. The workload handoff (`injury_workload.workload_handoff(news=...)`) sees the
 same per-week states: out -> unavailable (his claim leaves the pool, the room absorbs it), in the window -> a

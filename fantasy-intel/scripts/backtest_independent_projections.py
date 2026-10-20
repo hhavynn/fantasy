@@ -303,6 +303,8 @@ def _summary(meta: dict, rows: list[dict], stored: dict, art, art_sha: str, t0: 
             "content_sha256": stored["content_sha256"], "coverage": by, "runtime_seconds": round(time.time() - t0, 2),
             "participation": meta["participation_version"],
             "with_expected_points": sum(r["expected_points"] is not None for r in rows),
+            "news_overridden": sorted(r["gsis_id"] for r in rows
+                                      if any(str(f).startswith("availability news overridden") for f in r["flags"])),
             "data_through": [meta["data_through_season"], meta["data_through_week"]]}
 
 

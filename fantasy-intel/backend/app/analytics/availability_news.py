@@ -1,4 +1,4 @@
-"""Owner-curated availability news for live production runs (docs/independent_projection_engine.md,
+"""Owner-curated availability news for live production runs (the projection engine doc, section
 "Availability news").
 
 No synced source carries a reported injury timeline ("out 6-10 weeks") or a reinstatement the nflverse weekly
@@ -28,6 +28,7 @@ NEWS_VERSION = "news-0.1.0"
 DEFAULT_PATH = Path(__file__).with_name("availability_news.json")
 SCHEMA = "availability-news/v1"
 KINDS = ("out", "active")
+OVERRIDDEN = "availability news overridden by the synced report"   # flag prefix of a row the live run kept
 
 
 @dataclass(frozen=True)
@@ -122,4 +123,4 @@ def for_week(entries: list[Entry], season: int, week: int, team_weeks: dict[str,
     return out
 
 
-__all__ = ["NEWS_VERSION", "DEFAULT_PATH", "Entry", "NewsState", "parse", "load", "state", "for_week"]
+__all__ = ["NEWS_VERSION", "OVERRIDDEN", "DEFAULT_PATH", "Entry", "NewsState", "parse", "load", "state", "for_week"]

@@ -170,3 +170,60 @@ def test_news_replaces_the_return_rate_table_for_an_out_at_the_cutoff_player(tra
     back = by_id(build_live(con, src, tab, 2026, 7, participation=part, artifact_sha256="a" * 64, projected_from_week=W,
                             news=news(entry(gsis_id=gsis_of(out_rb), team="DDD", kind="active", return_window=None)))[1])
     assert back[out_rb]["p_play"] == plain["participation"]["undesignated_p_play"] != 0.25
+
+
+def test_at_horizon_zero_a_synced_report_beats_a_stale_out_entry(trained):  # noqa: F811
+    """HEALTHY_WR (AAA) is ACT on the week-6 roster. An `out` entry withholds him until AAA's week-6 report is synced;
+    with the report published and no Out/Doubtful for him the synced data wins (flagged); listed Out, he stays out."""
+    from test_ros_projections import sources_with_injuries
+
+    con, src, art = trained
+    part = participation_artifact()
+    g = gsis_of(HEALTHY_WR)
+    entries = news(entry(gsis_id=g, team="AAA", from_week=W, return_window=[9, 10]))
+
+    def row(s):
+        return by_id(build_live(con, s, art, 2026, W, participation=part, artifact_sha256="a" * 64, news=entries)[1])[
+            HEALTHY_WR]
+
+    assert row(src)["coverage_status"] == "withheld_unavailable"                     # no AAA report synced yet
+    teammate = gsis_of(10)                                                           # AAA QB: AAA's report exists
+    clear = row(sources_with_injuries(src, [(W, teammate, "AAA", "Questionable")]))
+    assert clear["coverage_status"] == "projected"
+    assert any(f.startswith(an.OVERRIDDEN) for f in clear["flags"])
+    assert "news_p_play" not in (clear["participation"] or {})                       # the entry no longer applies
+    listed = row(sources_with_injuries(src, [(W, teammate, "AAA", "Questionable"), (W, g, "AAA", "Out")]))
+    assert listed["coverage_status"] == "withheld_unavailable"
+
+
+@pytest.mark.parametrize("case", ["active_vs_espn_out_h0", "window_in_reserve_week"])
+def test_a_hard_gate_beats_positive_news_in_the_row_and_the_handoff(trained, monkeypatch, case):  # noqa: F811
+    """One source of truth: news a hard availability gate contradicts (horizon-0 ESPN OUT; an NFL reserve-rule week)
+    is dropped, so the row is withheld AND the handoff never sees the entry (every other row equals a no-news run)."""
+    from test_ros_projections import RESERVE_ID
+
+    con, src, art = trained
+    part = with_table(art, rate=0.25)
+    if case == "active_vs_espn_out_h0":
+        pid, target, fw = 2, W, None                                     # OUT_RB: ESPN OUT for week 6
+        e = entry(gsis_id=gsis_of(pid), team="DDD", kind="active", from_week=W, return_window=None)
+    else:
+        pid, target, fw = RESERVE_ID, 7, W                               # RES (R48) since week 4: eligible week 8
+        e = entry(gsis_id=gsis_of(pid), team="BBB", from_week=W, return_window=[7, 8])
+    seen = []
+    real = im.augment
+
+    def spy(*a, **kw):
+        seen.append(dict(kw.get("news") or {}))
+        return real(*a, **kw)
+
+    monkeypatch.setattr(im, "augment", spy)
+    run = dict(participation=participation_artifact(), artifact_sha256="a" * 64, projected_from_week=fw)
+    plain = by_id(build_live(con, src, part, 2026, target, **run)[1])
+    withn = by_id(build_live(con, src, part, 2026, target, news=news(e), **run)[1])
+    assert withn[pid]["coverage_status"] == "withheld_unavailable"
+    assert any(f.startswith("availability news not applied") for f in withn[pid]["flags"])
+    assert gsis_of(pid) not in seen[-1]                                  # the handoff never saw the entry
+    for k, r in plain.items():
+        if k != pid:
+            assert (withn[k]["projected_points"], withn[k]["p_play"]) == (r["projected_points"], r["p_play"])
