@@ -543,6 +543,18 @@ never opened. When the feature is switched on, the backend project gets:
 
 Migrations and the one-time role-password step: [`supabase/README.md`](supabase/README.md).
 
+**Per-league files (Phase 2).** With the control plane set up, the laptop can publish the league as two immutable
+files (`leagues/<lg_id>/<version>.duckdb` and `global/<version>.duckdb`) and move its pointer in Postgres; the API
+serves every existing page for that league under `/v2/leagues/<lg_id>/api/...`, and the dashboard under
+`/l/<lg_id>/...` (with `MULTILEAGUE_UI_ENABLED=1`). Add to `.env`: `LEAGUE_PUBLISH_ID` (Los Subies:
+`lg_KxH_Y1Y56aM7qnCCseKvs1sU`) and `FI_SYNC_DB_URL` (the `fi_sync` connection string); `refresh_all.py` then runs
+`publish_leagues.py` after `publish_snapshot.py`, which keeps publishing the single snapshot as the rollback path.
+To check that a real league answers identically both ways (no data leaves your machine):
+
+```bash
+cd backend && uv run python ../scripts/golden_check.py
+```
+
 ## Scheduled refresh (macOS launchd)
 
 ESPN projections are only stored as history (`espn_projection_history`) when a sync runs, and

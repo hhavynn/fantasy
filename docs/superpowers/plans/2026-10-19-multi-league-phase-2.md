@@ -2649,3 +2649,151 @@ git add -A fantasy-intel/frontend
 git commit -m "Phase 2: /l/<lg> league URLs, legacy redirect, scoped API calls, league switcher"
 ```
 
+
+### Task 9: Los Subies migrated — real-data golden check, registration, docs
+
+**Files:**
+- Create: `fantasy-intel/scripts/golden_check.py`
+- Create: `fantasy-intel/supabase/runbook-los-subies.sql`
+- Modify: `fantasy-intel/backend/app/db/league_split.py (nflverse raw tables global; projection_range_quantiles league)`
+- Modify: `fantasy-intel/backend/tests/test_league_split.py (every NFL-sync table is global; every schema.sql table is classified)`
+- Modify: `fantasy-intel/README.md`
+- Modify: `fantasy-intel/supabase/README.md`
+- Modify: `docs/multileague/ADR-0002-supabase-control-plane.md`
+
+**Interfaces:**
+- `scripts/golden_check.py [db]`: copies the database, throwaway Postgres, publishes it as a private league, a member whose saved team is the database's `is_mine` team, compares every legacy GET case legacy vs `/v2/leagues/{lg}`; prints counts and case names only; exit 0 when all match.
+- Result on real Los Subies (2026-10-20): 52 cases compared; 52 identical; 0 differ. The first run stopped on 14 tables the fixture does not have (raw nflverse datasets the NFL sync creates on the fly, and projection_range_quantiles) — the splitter refuses unclassified tables by design; they are now classified and guarded by tests.
+- Los Subies is registered in project `fantasy-intel` as `lg_KxH_Y1Y56aM7qnCCseKvs1sU` (private, no members, no pointer until the first `publish_leagues.py` run, which needs Havyn's `FI_SYNC_DB_URL`).
+
+- [ ] **Step 1: Write the check**
+
+`fantasy-intel/scripts/golden_check.py`:
+
+```python
+"""Local check that a real league answers identically through the legacy path and the per-league path (Phase 2).
+
+    cd backend && uv run python ../scripts/golden_check.py [path/to/fantasy.duckdb]
+
+Copies the database (default: FANTASY_DB_PATH), starts a throwaway Postgres with the control-plane migrations,
+publishes the copy as a private league into a temporary object directory, makes a test user a member whose saved
+team is the database's own team (`is_mine`), then requests every legacy GET case both ways and compares them with
+the same masking as the committed goldens. Prints counts and the names of differing cases, never response bodies
+(the data is private). Needs `initdb`/`pg_ctl` (brew install postgresql). Exit 0 when every case matches.
+"""
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+import _bootstrap  # noqa: F401
+
+sys.path.insert(0, str(_bootstrap.BACKEND / "tests"))
+
+
+def main() -> int:
+    from app.config import get_settings
+    src = Path(sys.argv[1]) if len(sys.argv) > 1 else get_settings().db_path
+    if not src.exists():
+        print(f"no database at {src}", file=sys.stderr)
+        return 2
+    import duckdb
+    from fastapi.testclient import TestClient
+
+    from cp_seed import U1, seed_membership, seed_user
+    from golden.golden import cases, response_text
+    from league_fixtures import publish_local
+    from pg_harness import PgCluster, PgDatabase
+    from test_leagues_api import URL, _jwks_client, bearer
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        db = tmp / "league.duckdb"
+        shutil.copyfile(src, db)                       # never hold a lock on the live file
+        con = duckdb.connect(str(db), read_only=True)
+        mine = con.execute("SELECT team_id FROM fantasy_teams WHERE is_mine").fetchone()
+        season = con.execute("SELECT season FROM leagues").fetchone()[0]
+        con.close()
+        cluster = PgCluster()
+        cluster.start()
+        try:
+            pg = PgDatabase(cluster, name="fi_golden")
+            pg.wait_ready()
+            pg.create()
+            pub = publish_local(pg, db, tmp / "objects", tmp / "work", visibility="private", name="League")
+            with pg.connect() as c:
+                seed_user(c, U1)
+                seed_membership(c, U1, pub.league_id, "admin")
+                if mine:
+                    c.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, %s)",
+                              [U1, pub.league_id, str(mine[0])])
+                c.commit()
+            os.environ.update(FANTASY_DB_PATH=str(db), ESPN_SEASON=str(season), FANTASY_API_KEY="",
+                              MULTILEAGUE_ENABLED="1", SUPABASE_URL=URL, SUPABASE_DB_URL=pg.dsn_for("fi_api"),
+                              LEAGUE_FILES_DIR=str(tmp / "objects"), SNAPSHOT_BUCKET="", SERVE_SNAPSHOT="")
+            import app.control_plane.jwt_auth as jwt_auth
+            client_jwks = _jwks_client()
+            jwt_auth.jwks_client = lambda url: client_jwks
+            import tempfile as tf
+            tf.tempdir = str(tmp / "cache")
+            (tmp / "cache").mkdir()
+            from app.main import app
+            client = TestClient(app, raise_server_exceptions=False)
+            con = duckdb.connect(str(db), read_only=True)
+            try:
+                cs = cases(app, con, client)
+            finally:
+                con.close()
+            headers = bearer(U1)
+
+            class Scoped:
+                def get(self, path):
+                    return client.get(f"/v2/leagues/{pub.league_id}{path}", headers=headers)
+
+            differ = [c.name for c in cs if response_text(client, c) != response_text(Scoped(), c)]
+        finally:
+            cluster.stop()
+    print(f"{len(cs)} cases compared; {len(cs) - len(differ)} identical; {len(differ)} differ")
+    for name in differ:
+        print(f"  differs: {name}")
+    return 1 if differ else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+- [ ] **Step 2: Run it on the real database**
+
+```bash
+cd fantasy-intel/backend && uv run python ../scripts/golden_check.py
+```
+Expected: 52 cases compared; 52 identical; 0 differ
+
+- [ ] **Step 3: Register Los Subies (Supabase connector, project owner)**
+
+`fantasy-intel/supabase/runbook-los-subies.sql`:
+
+```sql
+-- One-time registration of Los Subies in the control plane (multi-league Phase 2). Applied 2026-10-20 through the
+-- Supabase connector as the project owner. Private, with no members: invisible to everyone until Havyn signs in and
+-- is made its admin (Phase 3), and it has no snapshot pointer until the first scripts/publish_leagues.py run.
+-- Idempotent: the unique (provider, external_id, season) key makes a second run a no-op.
+INSERT INTO fi.leagues (id, provider, external_id, season, name, visibility, status)
+VALUES ('lg_KxH_Y1Y56aM7qnCCseKvs1sU', 'espn', '854268537', 2026, 'Los Subies', 'private', 'active')
+ON CONFLICT (provider, external_id, season) DO NOTHING;
+
+-- After Havyn's first sign-in (Phase 3), make the account the league's admin with its own team as perspective:
+--   INSERT INTO fi.app_users (id) VALUES ('<auth.users id>') ON CONFLICT DO NOTHING;
+--   INSERT INTO fi.league_memberships (user_id, league_id, role) VALUES ('<auth.users id>', 'lg_KxH_Y1Y56aM7qnCCseKvs1sU', 'admin');
+--   INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES ('<auth.users id>', 'lg_KxH_Y1Y56aM7qnCCseKvs1sU', '<team id>');
+```
+
+- [ ] **Step 4: Docs and commit**
+
+```bash
+git add -A fantasy-intel docs
+git commit -m "Phase 2: Los Subies golden-identical through the per-league path; registration; docs"
+```
+

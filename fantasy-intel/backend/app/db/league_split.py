@@ -40,13 +40,18 @@ LEAGUE_TABLES = frozenset({
     # Ours, kicker and D/ST runs carry a scoring fingerprint: league scoring
     "independent_projection_runs", "independent_projection_rows", "independent_player_projections",
     "kicker_projection_runs", "kicker_projection_rows", "dst_projection_runs", "dst_projection_rows",
-    # owner research and run bookkeeping of this database
-    "projection_performance_reports", "model_replays", "sync_runs", "validation_issues",
+    # owner research and run bookkeeping of this database; projection ranges carry a scoring fingerprint
+    "projection_performance_reports", "model_replays", "sync_runs", "validation_issues", "projection_range_quantiles",
 })
 
 GLOBAL_TABLES = frozenset({
     "nfl_players", "nfl_schedules", "nfl_defense_week", "nfl_kick_attempts", "nfl_pbp_player_week",
-    "nfl_team_game_drives", "nfl_team_week", "player_week_usage", "player_context", "defense_context", "team_context",
+    "nfl_team_game_drives", "nfl_team_week",
+    # raw nflverse datasets the NFL sync creates on the fly (app/nfl/sync.py RAW_DATASETS)
+    "nfl_weekly_stats", "nfl_snap_counts", "nfl_injuries", "nfl_rosters_weekly", "nfl_ff_opportunity", "nfl_depth_charts",
+    "nfl_ff_playerids", "nfl_pfr_rush", "nfl_pfr_rec", "nfl_pfr_pass", "nfl_ngs_rushing", "nfl_ngs_receiving",
+    "nfl_ngs_passing",
+    "player_week_usage", "player_context", "defense_context", "team_context",
     "team_game_lines", "weather_forecasts", "external_player_map", "external_player_week_usage",
     "external_player_week_usage_revisions", "external_usage_imports", "external_usage_issues", "approved_artifacts",
 })

@@ -27,8 +27,8 @@ def test_every_schema_table_is_classified_exactly_once(e2e):
 
 def test_split_reproduces_every_table_in_exactly_one_file(e2e, tmp_path):
     out = split_database(e2e, tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", stamp="2026-10-20T12:00:00")
-    league, glob = _tables(out.league_path), _tables(out.global_path)
-    assert league == LEAGUE_TABLES | BOTH_TABLES and glob == GLOBAL_TABLES | BOTH_TABLES
+    league, glob, src = _tables(out.league_path), _tables(out.global_path), _tables(e2e)
+    assert league == (LEAGUE_TABLES | BOTH_TABLES) & src and glob == (GLOBAL_TABLES | BOTH_TABLES) & src
     con = duckdb.connect()
     con.execute(f"ATTACH '{e2e}' AS src (READ_ONLY)")
     con.execute(f"ATTACH '{out.league_path}' AS lg (READ_ONLY)")
@@ -83,3 +83,28 @@ def con_league(path):
         return con.execute("SELECT league_id, season FROM leagues").fetchone()
     finally:
         con.close()
+
+
+
+def test_every_table_the_nfl_sync_creates_is_global():
+    """The NFL sync creates raw nflverse tables on the fly (not in schema.sql); they are league-independent."""
+    import ast
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "app" / "nfl" / "sync.py").read_text()
+    tree = ast.parse(src)
+    names = set()
+    for node in ast.walk(tree):
+        target = node.target if isinstance(node, ast.AnnAssign) else (node.targets[0] if isinstance(node, ast.Assign) else None)
+        if getattr(target, "id", None) == "RAW_DATASETS" and isinstance(node.value, ast.Dict):
+            names = {k.value for k in node.value.keys if isinstance(k, ast.Constant)}
+    assert names, "RAW_DATASETS not found in app/nfl/sync.py"
+    assert names <= GLOBAL_TABLES, f"classify as global: {sorted(names - GLOBAL_TABLES)}"
+
+
+def test_every_schema_sql_table_is_classified():
+    import re
+    from pathlib import Path
+    schema = (Path(__file__).resolve().parents[1] / "app" / "db" / "schema.sql").read_text()
+    created = set(re.findall(r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)\s*\(", schema, re.IGNORECASE))
+    assert created
+    assert not created - LEAGUE_TABLES - GLOBAL_TABLES - BOTH_TABLES, sorted(created - LEAGUE_TABLES - GLOBAL_TABLES - BOTH_TABLES)
