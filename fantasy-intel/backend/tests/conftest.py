@@ -49,3 +49,45 @@ def pg_db(pg_cluster):
 def pg(pg_db):
     pg_db.reset()
     return pg_db
+
+
+# ---- CI sharding: `pytest --shard=K/N` runs whole test files of shard K ----------------------------------
+
+import json  # noqa: E402
+import re  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+SHARD_WEIGHTS = Path(__file__).with_name("shard_weights.json")   # seconds per test file (scripts/shard_weights.py)
+
+
+def pytest_addoption(parser):
+    parser.addoption("--shard", default=None, metavar="K/N",
+                     help="run only shard K of N (whole files, balanced by tests/shard_weights.json)")
+
+
+def shard_of(files, n: int, weights: dict[str, float]) -> dict[str, int]:
+    """Greedy longest-first: each file (heaviest first) goes to the lightest shard. Files missing from the weights
+    count as the median weight. Deterministic, so N runs with K = 1..N cover every file exactly once."""
+    known = sorted(weights.values())
+    default = known[len(known) // 2] if known else 1.0
+    loads, owner = [0.0] * n, {}
+    for f in sorted(files, key=lambda f: (-weights.get(f, default), f)):
+        k = min(range(n), key=lambda i: (loads[i], i))
+        owner[f] = k
+        loads[k] += weights.get(f, default)
+    return owner
+
+
+def pytest_collection_modifyitems(config, items):
+    spec = config.getoption("--shard")
+    if not spec:
+        return
+    m = re.fullmatch(r"(\d+)/(\d+)", spec)
+    if not m or not 1 <= int(m[1]) <= int(m[2]):
+        raise pytest.UsageError(f"--shard must be K/N with 1 <= K <= N, got {spec!r}")
+    k, n = int(m[1]) - 1, int(m[2])
+    weights = json.loads(SHARD_WEIGHTS.read_text()) if SHARD_WEIGHTS.exists() else {}
+    owner = shard_of({item.nodeid.split("::")[0] for item in items}, n, weights)
+    keep = [item for item in items if owner[item.nodeid.split("::")[0]] == k]
+    config.hook.pytest_deselected(items=[item for item in items if owner[item.nodeid.split("::")[0]] != k])
+    items[:] = keep
