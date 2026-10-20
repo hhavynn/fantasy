@@ -461,3 +461,61 @@ def test_account_deletion_overlapping_a_credential_mark_completes_without_deadlo
     with pg.connect() as su:
         assert su.execute("SELECT count(*) FROM fi.league_credentials").fetchone() == (0,)
         assert su.execute("SELECT status FROM fi.leagues WHERE id = %s", [league]).fetchone() == ("stale",)
+
+
+def test_redeem_invite_locks_the_league_before_the_invite(pg):
+    """Account deletion locks the league, then its created_by cascade deletes invites. redeem_invite must take the
+    league lock first too (and only then lock and re-check the invite), or the two can deadlock."""
+    with pg.connect() as con:
+        src = con.execute("SELECT pg_get_functiondef('fi.redeem_invite(bytea)'::regprocedure)").fetchone()[0]
+    body = " ".join(src.split())
+    first_lock = body.find("FOR UPDATE")
+    assert first_lock != -1
+    statement = body[:first_lock][body[:first_lock].rfind(";") + 1:]
+    assert "fi.leagues" in statement and "fi.league_invites" not in statement, statement
+    assert body.find("FROM fi.league_invites", first_lock) != -1, "the invite is re-read under lock after the league"
+
+
+def test_account_deletion_overlapping_a_redemption_completes_without_deadlock(pg, league):
+    """U1 (admin, still a member) created the invite; U3 redeems while U1's account is being deleted."""
+    import threading
+    import time
+
+    with pg.connect(user="fi_api") as con:
+        call(con, "authenticated", U1, "SELECT fi.create_invite(%s, %s)", [league, HASH])
+    deleter = pg.connect()
+    t = None
+    outcome = {}
+    try:
+        deleter.execute("DELETE FROM auth.users WHERE id = %s", [U1])    # locks the league, cascades the invite
+
+        def redeem():
+            try:
+                with pg.connect(user="fi_api") as con:
+                    outcome["result"] = call(con, "authenticated", U3, "SELECT fi.redeem_invite(%s)", [HASH])
+            except Exception as err:   # noqa: BLE001 - asserted below
+                outcome["error"] = str(err)
+
+        t = threading.Thread(target=redeem)
+        t.start()
+        time.sleep(0.5)
+        deleter.commit()
+    finally:
+        deleter.rollback()
+        deleter.close()
+        if t is not None:
+            t.join(10)
+    assert "deadlock" not in outcome.get("error", ""), outcome
+    assert "invite_invalid" in outcome.get("error", ""), outcome     # the invite went with its creator's account
+
+
+
+@pytest.mark.parametrize("fn", ["promote_admin", "demote_admin"])
+def test_membership_role_changes_lock_the_league_first(pg, fn):
+    with pg.connect() as con:
+        src = con.execute("SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+                          "WHERE n.nspname = 'fi' AND p.proname = %s", [fn]).fetchone()[0]
+    body = " ".join(src.split())
+    lock = body.find("FROM fi.leagues")
+    assert lock != -1 and "FOR UPDATE" in body[lock:lock + 80], fn
+    assert lock < body.find("UPDATE fi.league_memberships"), fn
