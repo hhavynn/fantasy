@@ -275,8 +275,9 @@ Postgres is the authoritative queue. Workers run in GitHub Actions. No other inf
   minimum per query, below today's ~24 CU-hours/month of API traffic.
 - **Phase 0b (object storage):** [`spikes/storage/REPORT.md`](../../../fantasy-intel/spikes/storage/REPORT.md).
   Go criterion: a free store that carries full-file downloads from `iad1` with p95 < 2 s for the
-  current 95 MB snapshot and no transfer charge. Vercel Blob and Supabase Storage fail on free-tier
-  transfer/file-size limits; R2 is pending account setup for its latency numbers.
+  current 95 MB snapshot and no transfer charge. **Result: R2**, with parallel ranged downloads (one
+  stream: p95 4.0 s; 4–16 parts: p95 ~1.0–1.4 s). Vercel Blob and Supabase Storage fail on free-tier
+  transfer/file-size limits.
 
 ## 5. Testing
 - **Los Subies golden tests:** before any refactor, record every existing GET endpoint's JSON against a

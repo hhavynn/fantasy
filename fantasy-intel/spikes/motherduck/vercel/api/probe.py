@@ -23,7 +23,8 @@ class handler(BaseHTTPRequestHandler):
             if q.get("mode") == "file":
                 hdr = {"Authorization": "Bearer " + os.environ["BLOB_READ_WRITE_TOKEN"]} if q.get("auth") == "blob" else {}
                 res = (file_probe.download(q["url"], q["name"], hdr) if q.get("method") == "download"
-                       else file_probe.range_read(q["url"], hdr))
+                       else file_probe.pdownload(q["url"], q["name"], int(q["total"]), int(q.get("parts", 8)))
+                       if q.get("method") == "pdownload" else file_probe.range_read(q["url"], hdr))
             else:
                 res = (probe_core.cold if q.get("mode") == "cold" else probe_core.warm_switch)(q["league"], os.environ["MOTHERDUCK_TOKEN"])
         except Exception as e:  # noqa: BLE001

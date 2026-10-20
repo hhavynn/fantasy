@@ -83,3 +83,37 @@ def range_read(url: str, headers: dict) -> dict:
     out["total_ms"] = _ms(t0)
     con.close()
     return out
+
+
+def pdownload(url: str, name: str, total: int, parts: int = 8) -> dict:
+    """Parallel ranged GETs into one preallocated file (os.pwrite), then open + queries."""
+    from concurrent.futures import ThreadPoolExecutor
+    path = os.path.join(TMP, name)
+    for old in os.listdir(TMP):
+        if old.endswith(".duckdb") and old != name:
+            os.remove(os.path.join(TMP, old))
+    t0 = time.perf_counter()
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.ftruncate(fd, total)
+    step = -(-total // parts)
+
+    def fetch(i):
+        start, end = i * step, min(total, (i + 1) * step) - 1
+        req = urllib.request.Request(url, headers={"Range": f"bytes={start}-{end}"})
+        off = start
+        with urllib.request.urlopen(req, timeout=120) as r:
+            while chunk := r.read(1 << 20):
+                os.pwrite(fd, chunk, off)
+                off += len(chunk)
+        return off - start
+
+    with ThreadPoolExecutor(parts) as ex:
+        got = sum(ex.map(fetch, range(parts)))
+    os.close(fd)
+    out = {"fetch_ms": _ms(t0), "bytes": got, "parts": parts}
+    t1 = time.perf_counter()
+    con = duckdb.connect(path, read_only=True)
+    out["open_ms"] = _ms(t1)
+    out.update(_run(con)); con.close()
+    out["total_ms"] = _ms(t0)
+    return out

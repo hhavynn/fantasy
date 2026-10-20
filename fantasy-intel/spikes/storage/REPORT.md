@@ -5,11 +5,13 @@ Files: today's database compacted with `COPY FROM DATABASE` (the 1.3 GB local fi
 blocks): **95 MB** full, or **31 MB league + 47 MB global** split. Raw results: `results_blob.json`
 (its Supabase rows failed on a full `/tmp`; superseded by `results_supabase.json`).
 
-## Verdict
+## Verdict: GO with Cloudflare R2
 
-Every store is fast enough from `iad1`; **only Cloudflare R2's free tier can pay for full-file
-downloads**, because its egress is free. R2 latency is pending Havyn's Cloudflare account; the decision
-does not depend on it unless R2 is unexpectedly slow (re-run `storage_bench.py` with an `r2` series).
+**Only Cloudflare R2's free tier can pay for full-file downloads**, because its egress is free. One R2
+stream from `iad1` is slower than Blob (~30 MB/s), so the client downloads large objects with parallel
+ranged GETs, which meets the target (95 MB: p50 ~0.4–1.0 s, p95 ~1.0–1.4 s with 4–16 parts; the
+shipped client uses 8). `r2_bench.py` (presigned URLs, so the probe never held a token) produced the R2
+rows; `results_r2*.json` hold the raw numbers.
 
 ## Measurements (p50 / p95, ms, server-side in the Function)
 
@@ -21,7 +23,12 @@ does not depend on it unless R2 is unexpectedly slow (re-run `storage_bench.py` 
 | Supabase Storage (private, signed URL) | full 95 MB | **upload rejected (50 MB max file on free)** | | | | | |
 | Supabase Storage | league 31 MB | 123 / 863 | 17 / 23 | 21 / 126 | 461 / 1,063 | 175 / 201 | 34.6 MB |
 | Supabase Storage | global 47 MB | 160 / 980 | 35 / 39 | 17 / 18 | 1,054 / 1,934 | 57 / 70 | 53.0 MB |
-| Cloudflare R2 | all | pending account | | | | | |
+| Cloudflare R2 (private, presigned, 1 stream) | full 95 MB | 2,971 / 4,042 | 38 / 49 | 34 / 50 | | | |
+| Cloudflare R2, 1 stream | league 31 MB | 1,403 / 2,170 | 14 / 18 | 19 / 20 | | | |
+| Cloudflare R2, 1 stream | global 47 MB | 734 / 2,355 | 33 / 34 | 12 / 18 | | | |
+| Cloudflare R2, 4 ranged parts | full 95 MB | 1,000 / 1,370 | | | | | |
+| Cloudflare R2, 8 ranged parts | full 95 MB | 437 / 2,569 (one outlier, n=5) | | | | | |
+| Cloudflare R2, 16 ranged parts | full 95 MB | 972 / 1,050 | | | | | |
 
 `httpfs` load on a fresh instance: ~125–140 ms (p95 up to ~500 ms).
 
@@ -42,12 +49,13 @@ does not depend on it unless R2 is unexpectedly slow (re-run `storage_bench.py` 
    hold a token that cannot write or delete. (Blob's store token is read-write; Supabase needs signed
    URLs minted with the service key.)
 
+5. **R2 needs parallel ranges.** A single stream manages ~30 MB/s from `iad1` (the bucket was created
+   with automatic location); 4–16 concurrent ranged GETs reach 70–200 MB/s. Uploads from the laptop:
+   95 MB in ~8 s.
+
 ## Next
 
-- Havyn: create the Cloudflare account, bucket `fantasy-intel`, an Object Read & Write token for the
-  publisher and an Object Read token for the API; add `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
-  `R2_SECRET_ACCESS_KEY` (read/write) to `fantasy-intel/.env`.
-- Then: add an `r2` series to `storage_bench.py`, run it, fill the table, and switch production
-  (Phase 1a).
+- Phase 1a ships the R2 read path with 8-part ranged downloads (PR #144). First real publish:
+  `snapshots/20261020T063035.duckdb`, 94.4 MB, downloaded intact.
 - Cleanup after Phase 1a: delete the `fi-spike-blob` Blob store, the Supabase `spike` bucket and the
   `fi-md-spike` Vercel project.

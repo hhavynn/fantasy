@@ -33,7 +33,7 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 
 **Acceptance:** one store meets p95 < 2 s for the 95 MB download from `iad1` with no transfer charge, and supports a read-only credential.
 
-**Status:** Blob and Supabase measured (fast, but free-tier transfer/file-size limits rule them out); R2 numbers pending Havyn's account.
+**Status:** done 2026-10-20 — R2 chosen; single-stream R2 misses the target (p95 4.0 s), parallel ranged GETs meet it (p95 ~1.0–1.4 s), so the client uses 8 ranges. Blob and Supabase are ruled out by free-tier transfer/file-size limits.
 
 **Rollback:** delete the `spike` objects/bucket in each store and the `fi-spike-blob` Blob store.
 
