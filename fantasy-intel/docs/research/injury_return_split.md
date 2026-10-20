@@ -133,6 +133,49 @@ Smoke test (scratch copies, 2026-10-19, week 8 frozen into a scratch directory o
 for the 28 teams not on bye, 8 returners. Saquon Barkley (games missed: 3) is base 7.21, `irs` 7.52, `irb` 7.44.
 Play-through rows appear once the week-8 injury report lands, because `injury_exit_last` needs the listing.
 
+## Backtest when promotion was considered (2026-10-20; not shipped)
+
+**Not evidence for the look.** This backtest runs on 2023 week 1 to 2026 week 5, a window that overlaps the 2023-25
+seasons injury_return_snap_trend.md already inspected. It does not count toward the shadow's one look in section 1.5,
+which still decides on the prospective ledgers alone.
+
+The owner considered promoting the pair into Ours ahead of the look, as `ifp-2.3.0` (ifp-2.2.0 plus both columns on
+RB, WR and TE). Before anything was run, the safeguard was written down: ifp-2.2.0's backtest guard
+(ifp22_promotion.md). It walks forward exactly as production trains, refitting every week on strictly earlier weeks
+with ifp-2.2.0's features, frozen penalties and recency. A component is left out of a position when its leave-one-out
+difference, MAE(both) - MAE(both without it), has a week-clustered 95% CI (2,000 draws) entirely above 0.
+
+Code: `scripts/injury_return_backtest.py`. It uses the shadow's own definitions on the ifp-2.2.0 guard's store; there
+is no production code. Scratch copies of both databases, 59 weeks.
+
+**Guard: nothing would be left out.** Leave-one-out, MAE(both) - MAE(both without c):
+
+| Position | n | `snap_trend_ret` | `ret_ind` |
+|---|---|---|---|
+| RB | 5,594 | +0.0006 [-0.0003, +0.0017] | +0.0005 [-0.0001, +0.0011] |
+| WR | 8,886 | -0.0006 [-0.0019, +0.0006] | -0.0001 [-0.0008, +0.0007] |
+| TE | 5,346 | +0.0006 [-0.0003, +0.0017] | +0.0012 [-0.0006, +0.0031] |
+
+**But the pair makes returners' forecasts worse.** MAE(model) - MAE(ifp-2.2.0) on identical rows:
+
+| Rows | n | Both | `irs` (slope only) | `irb` (bias only) |
+|---|---|---|---|---|
+| Returners, RB | 55 | **+0.220 [+0.046, +0.433]** | +0.166 [-0.006, +0.364] | **+0.180 [+0.047, +0.335]** |
+| Returners, WR | 142 | +0.079 [-0.045, +0.196] | +0.105 [-0.020, +0.226] | **+0.131 [+0.034, +0.223]** |
+| Returners, TE | 70 | **+0.230 [+0.108, +0.348]** | **+0.081 [+0.002, +0.165]** | **+0.180 [+0.067, +0.292]** |
+| Returners, pooled | 267 | **+0.148 [+0.059, +0.236]** | **+0.111 [+0.025, +0.201]** | **+0.154 [+0.086, +0.229]** |
+| Play-through, pooled | 330 | -0.026 [-0.060, +0.004] | -0.027 [-0.059, +0.003] | -0.024 [-0.056, +0.004] |
+| All rows, pooled | 19,826 | +0.0014 [-0.0000, +0.0030] | +0.0010 [-0.0004, +0.0025] | **+0.0014 [+0.0001, +0.0028]** |
+
+Read plainly: the returner terms over-fit the few returner rows in each week's training set, so returners' forecasts
+get worse out of sample at every position. Play-through rows improve slightly, which was #135's side finding.
+Overall the effect is flat.
+
+**Decision (owner, 2026-10-20): not shipped.** "Don't ship ifp-2.3.0. Keep the #137 shadow judging the pair
+prospectively; record the backtest result in the doc." Production stays ifp-2.2.0. No registry, production pin or
+promotion-check entry changed. The shadow keeps running unchanged against its frozen ifp-2.2.0 base, and its
+pre-registered look after week 18 decides.
+
 ## 3. Results
 
 None yet. The first ledger is 2026 week 8; the look is after week 18.
