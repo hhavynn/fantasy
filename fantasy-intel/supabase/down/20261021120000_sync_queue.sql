@@ -8,6 +8,7 @@ DROP FUNCTION IF EXISTS fi.record_credential_failure(uuid, bigint, uuid, boolean
 DROP TRIGGER IF EXISTS leagues_status_changed ON fi.leagues;
 DROP FUNCTION IF EXISTS fi.leagues_status_changed();
 REVOKE UPDATE (name) ON fi.leagues FROM fi_sync;
+ALTER TABLE fi.provider_slots DROP COLUMN IF EXISTS paused_until;
 ALTER TABLE fi.leagues DROP COLUMN IF EXISTS objects_purged_at;
 ALTER TABLE fi.leagues DROP COLUMN IF EXISTS missing_since;
 ALTER TABLE fi.leagues DROP COLUMN IF EXISTS missing_count;

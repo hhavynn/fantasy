@@ -210,3 +210,19 @@ def test_record_credential_failure_locks_the_league_before_the_credential(pg):
     lock = body.find("FROM fi.leagues")
     assert lock != -1 and "FOR UPDATE" in body[lock:lock + 200]
     assert lock < body.find("UPDATE fi.league_credentials")
+
+
+def test_a_purged_league_that_wakes_up_gets_a_first_sync(pg):
+    with pg.connect() as su:
+        seed_user(su, U2)
+        lid = seed_league(su, status="dormant")
+        su.execute("UPDATE fi.leagues SET objects_purged_at = now(), status_changed_at = now() - interval '100 days' "
+                   "WHERE id = %s", [lid])
+        su.execute("INSERT INTO fi.league_pins (user_id, league_id) VALUES (%s, %s)", [U2, lid])
+        su.commit()
+    with sync(pg) as con:
+        con.execute(TIMERS)
+        con.commit()
+    with pg.connect() as su:
+        assert su.execute("SELECT status, objects_purged_at FROM fi.leagues WHERE id = %s", [lid]).fetchone() == ("active", None)
+        assert su.execute("SELECT kind, status FROM fi.sync_jobs WHERE league_id = %s", [lid]).fetchall() == [("initial", "queued")]

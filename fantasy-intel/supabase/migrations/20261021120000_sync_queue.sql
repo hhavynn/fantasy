@@ -19,6 +19,9 @@ GRANT SELECT, INSERT, UPDATE ON fi.global_snapshot TO fi_sync;
 DROP POLICY IF EXISTS global_snapshot_sync ON fi.global_snapshot;
 CREATE POLICY global_snapshot_sync ON fi.global_snapshot FOR ALL TO fi_sync USING (true) WITH CHECK (true);
 
+-- A provider that answered 429 is paused for every worker until this time (claims skip its slots).
+ALTER TABLE fi.provider_slots ADD COLUMN IF NOT EXISTS paused_until timestamptz;
+
 ALTER TABLE fi.leagues ADD COLUMN IF NOT EXISTS status_changed_at timestamptz NOT NULL DEFAULT now();
 ALTER TABLE fi.leagues ADD COLUMN IF NOT EXISTS missing_count integer NOT NULL DEFAULT 0;
 ALTER TABLE fi.leagues ADD COLUMN IF NOT EXISTS missing_since timestamptz;
@@ -106,11 +109,19 @@ BEGIN
   WHERE l.deleted_at IS NULL AND l.visibility = 'public' AND l.status = 'active'
     AND coalesce(l.last_viewed_at, l.created_at) < now() - interval '30 days'
     AND NOT EXISTS (SELECT 1 FROM fi.league_pins p WHERE p.league_id = l.id);
-  -- ... and wakes up when someone views or pins it again (its next sync rebuilds purged objects).
-  UPDATE fi.leagues l SET status = 'active', objects_purged_at = NULL
-  WHERE l.deleted_at IS NULL AND l.status = 'dormant'
-    AND (l.last_viewed_at > l.status_changed_at
-         OR EXISTS (SELECT 1 FROM fi.league_pins p WHERE p.league_id = l.id AND p.created_at > l.status_changed_at));
+  -- ... and wakes up when someone views or pins it again. A league whose objects were purged has no version left:
+  -- its first sync is queued here (scheduled refreshes only follow a published version).
+  WITH woken AS (
+    UPDATE fi.leagues l SET status = 'active', objects_purged_at = NULL
+    WHERE l.deleted_at IS NULL AND l.status = 'dormant'
+      AND (l.last_viewed_at > l.status_changed_at
+           OR EXISTS (SELECT 1 FROM fi.league_pins p WHERE p.league_id = l.id AND p.created_at > l.status_changed_at))
+    RETURNING l.id
+  )
+  INSERT INTO fi.sync_jobs (league_id, kind, idempotency_key)
+  SELECT w.id, 'initial', 'initial:' || w.id FROM woken w
+  WHERE NOT EXISTS (SELECT 1 FROM fi.league_snapshots s WHERE s.league_id = w.id)
+  ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL AND status IN ('queued', 'running') DO NOTHING;
   -- A private league with no live credential: stale for 60 days, or private on the provider after a public import
   -- (unavailable) for 30 days, is deleted. A live credential always keeps it.
   UPDATE fi.leagues l SET deleted_at = now()

@@ -19,6 +19,11 @@ LEASE = timedelta(minutes=2)
 BACKOFF = (timedelta(minutes=1), timedelta(minutes=5), timedelta(minutes=20), timedelta(hours=1), timedelta(hours=3))
 JITTER = 0.2
 CANDIDATES = 8          # due jobs looked at per claim attempt (skipping locked or slot-less ones)
+# Outcomes Postgres confirms only after failures spanning 6 h (spec §3.6: a credential's 401s, a league's 404s) keep
+# retrying hourly past max_attempts, for about a day more, so the confirmation can happen at all.
+EXTENDED_ATTEMPTS = 24
+EXTENDED_DELAY = timedelta(hours=1)
+PROVIDER_PAUSE = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
@@ -80,6 +85,7 @@ def claim(con, owner: str, *, providers: tuple[str, ...] = ("espn", "sleeper")) 
             slot = con.execute("""
                 SELECT slot_no FROM fi.provider_slots
                 WHERE provider = %s AND (job_id IS NULL OR job_id = %s OR lease_expires_at < now())
+                  AND (paused_until IS NULL OR paused_until < now())
                 ORDER BY slot_no FOR UPDATE SKIP LOCKED LIMIT 1""", [provider, job_id]).fetchone()
             if slot is None:            # leaving the block commits a transaction that changed nothing
                 full.add(provider)
@@ -130,12 +136,22 @@ def backoff(attempt: int) -> timedelta:
     return base * (1 + random.uniform(-JITTER, JITTER))
 
 
-def fail(con, c: Claim, code: str, *, retry: bool, detail: str | None = None, retry_after: timedelta | None = None) -> bool:
+def pause_provider(con, provider: str, for_: timedelta = PROVIDER_PAUSE) -> None:
+    """Every worker stops claiming this provider's jobs for a while (it answered 429)."""
+    with con.transaction():
+        con.execute("UPDATE fi.provider_slots SET paused_until = greatest(coalesce(paused_until, now()), now() + %s) "
+                    "WHERE provider = %s", [for_, provider])
+
+
+def fail(con, c: Claim, code: str, *, retry: bool, detail: str | None = None, retry_after: timedelta | None = None,
+         extended: bool = False) -> bool:
     """Record a failure. `retry`: queue the job again after the backoff for this attempt (or `retry_after`, e.g. a
-    Retry-After), until max_attempts, then `dead`. Not retryable: `dead` at once. `detail` must already be redacted
+    Retry-After), until max_attempts, then `dead`; `extended` keeps retrying hourly for EXTENDED_ATTEMPTS more (an
+    outcome Postgres confirms only after 6 h). Not retryable: `dead` at once. `detail` must already be redacted
     (app/sync/redact.py)."""
-    if retry and c.attempt < c.max_attempts:
-        delay = retry_after or backoff(c.attempt)
+    limit = c.max_attempts + (EXTENDED_ATTEMPTS if extended else 0)
+    if retry and c.attempt < limit:
+        delay = retry_after or (backoff(c.attempt) if c.attempt < c.max_attempts else EXTENDED_DELAY)
         return _finish(con, c, """UPDATE fi.sync_jobs SET status = 'queued', run_after = now() + %s, error_code = %s,
                                   error_detail = %s, lease_expires_at = NULL, lease_owner = NULL""",
                        [delay, code, detail])
