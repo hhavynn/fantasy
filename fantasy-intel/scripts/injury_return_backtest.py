@@ -2,7 +2,7 @@
 read-only on both DBs; docs/research/injury_return_split.md section 4).
 
     cd backend
-    uv run python ../scripts/ifp22_backtest.py build                  # the ifp-2.2.0 guard's store (cached, reused here)
+    uv run python ../scripts/ifp22_backtest.py build                  # the ifp-2.2.0 guard's store (cached)
     uv run python ../scripts/injury_return_backtest.py run            # walk-forward, leave-one-out, the guard, slices
 
 This is the engineering check run when the owner considered promoting the pair as ifp-2.3.0 (not shipped: the
