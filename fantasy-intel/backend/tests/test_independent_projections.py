@@ -358,6 +358,7 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
     default), which only weekly Start/Sit, weekly Matchup and the opt-in player forward view
     (analytics/forward_ours.py) import (test below)."""
     allowed = {"projection_source.py",   # opt-in weekly source switch; SQL only, ESPN unless asked
+               "league_split.py",   # multi-league file split: names the tables to classify them, never reads them
                "production_forecasts.py",   # immutable run-keyed forecast store (SQL only); readers of the runs
                "independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
                "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",

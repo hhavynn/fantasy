@@ -57,8 +57,9 @@ def main() -> int:
                               [U1, pub.league_id, str(mine[0])])
                 c.commit()
             os.environ.update(FANTASY_DB_PATH=str(db), ESPN_SEASON=str(season), FANTASY_API_KEY="",
-                              MULTILEAGUE_ENABLED="1", SUPABASE_URL=URL, SUPABASE_DB_URL=pg.dsn_for("fi_api"),
-                              LEAGUE_FILES_DIR=str(tmp / "objects"), SNAPSHOT_BUCKET="", SERVE_SNAPSHOT="")
+                              MULTILEAGUE_ENABLED="1", SUPABASE_URL=URL, LEAGUE_FILES_DIR=str(tmp / "objects"),
+                              SNAPSHOT_BUCKET="", SERVE_SNAPSHOT="")
+            os.environ["SUPABASE_DB_URL"] = pg.dsn_for("fi_api")       # the throwaway cluster's fi_api role
             import app.control_plane.jwt_auth as jwt_auth
             client_jwks = _jwks_client()
             jwt_auth.jwks_client = lambda url: client_jwks
