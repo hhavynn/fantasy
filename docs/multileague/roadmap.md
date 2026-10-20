@@ -1,5 +1,7 @@
 # Roadmap: from single-owner dashboard to multi-league platform
 
+> Superseded on 2026-10-20 by [ADR-0002](ADR-0002-supabase-control-plane.md) and the [multi-league plan](../superpowers/plans/2026-10-19-multi-league-platform.md); kept for history.
+
 Each stage is an independently reviewable PR (or small series). Nothing advances to the next
 stage until its exit criteria hold. Live public launch is the last stage, not a byproduct.
 
