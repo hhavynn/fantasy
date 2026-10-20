@@ -203,14 +203,14 @@ def _kicker_overlay(con, season: int, week: int, players: list[dict]) -> dict | 
         r = rows.get(p["espn_player_id"])
         if p["position"] != "K" or r is None:
             continue
-        k = kicker_player(r, {}, {})["independent"]
+        k = kicker_player(r, {}, {}, sel["run"]["model_version"])["independent"]
         p["independent"] = {**p["independent"], "projected_points": k["projected_points"],
                             "expected_points": k["expected_points"], "interval_80": k["interval_80"],
-                            "model": "kicker_opportunity_conversion", "model_version": ks.MODEL_VERSION,
+                            "model": "kicker_opportunity_conversion", "model_version": k["model_version"],
                             "model_status": "kicker_model", "coverage_status": k["coverage_status"],
                             "flags": k["flags"], "missing_inputs": k["missing_inputs"], "explanation": k["explanation"],
                             "pregame": k["pregame"], "games_used": None, "latest_usage": None,
-                            "participation": {"p_play": k["p_play"], "model_version": ks.MODEL_VERSION,
+                            "participation": {"p_play": k["p_play"], "model_version": k["model_version"],
                                               "model_status": "empirical designation table", "explanation": [],
                                               "flags": [], "note": None, "expected_points_status": None,
                                               "depth_rank": None},

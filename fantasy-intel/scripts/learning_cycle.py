@@ -25,7 +25,7 @@ projections, docs/independent_projection_engine.md; no training per week). A fai
 `projection.rest_of_season` and in `warnings`, and does not stop the other weeks or change the cycle status; skip all
 of it with --no-rest-of-season.
 After the production run, two separate models run as non-fatal stages (a failure is a warning, never a failed cycle):
-`kicker` (kfp-1.0.0) and `ctx_shadow`, the research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py
+`kicker` (kfp-1.1.0) and `ctx_shadow`, the research shadow of the frozen ifp-ctx-p1 candidate (scripts/ctx_shadow.py
 cycle: scores its frozen pregame ledgers against actuals alongside ifp-2 and tries the gated write-once freeze; it
 writes only <ifp-dir>/research/context/). Skip them with --no-kicker / --no-ctx-shadow. Two more research shadows run
 the same way right after it (RESEARCH_SHADOWS; skip with --no-qb-scenario-shadow / --no-ipm-cal-shadow /
@@ -297,7 +297,7 @@ def stage_project(args, conns: list, log_path: Path) -> dict:
 
 
 def stage_kicker(args, log_path: Path) -> dict:
-    """Kicker model (kfp-1.0.0, scripts/kicker_projections.py): fit and approve the season's artifact once (it trains on
+    """Kicker model (kfp-1.1.0, scripts/kicker_projections.py): fit and approve the season's artifact once (it trains on
     finished seasons only, so one artifact serves every week of the season), then store the target week's kicker run
     and every later regular-season week's (experimental) run. Called after `project`, or after the cycle stopped at
     waiting_for_data (the kicker model does not need the ifp readiness gate; an identical rerun is a no-op and a later
@@ -322,7 +322,7 @@ def stage_kicker(args, log_path: Path) -> dict:
         except ValueError:
             return {}
 
-    if not (Path(args.kicker_dir) / f"kfp-1.0.0_{args.season}.json").exists():
+    if not (Path(args.kicker_dir) / f"kfp-1.1.0_{args.season}.json").exists():
         fit = run(["fit", "--register"])
         out["fit"] = {k: fit.get(k) for k in ("artifact", "sha256", "registered")}
     else:

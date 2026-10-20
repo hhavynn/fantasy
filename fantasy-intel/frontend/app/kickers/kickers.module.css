@@ -5,3 +5,10 @@
 .why li { margin: 1px 0; }
 .cond { white-space: nowrap; }
 .weekForm { display: flex; gap: 8px; align-items: center; }
+.why ul.chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; }
+.chips li { margin: 0; padding: 1px 8px; border-radius: 999px; font-size: 12px; line-height: 18px; white-space: nowrap; color: var(--ink); cursor: help; }
+.chips b { font-variant-numeric: tabular-nums; }
+.up { background: var(--positive-soft); }
+.up b { color: var(--positive); }
+.down { background: var(--negative-soft); }
+.down b { color: var(--negative); }
