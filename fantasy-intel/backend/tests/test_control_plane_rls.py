@@ -174,8 +174,9 @@ def test_snapshot_object_keys_are_bound_to_their_league(pg, world):
 
 def test_functions_are_not_executable_by_public_or_anon(pg):
     """Except the membership predicates RLS uses, and request_probe (Phase 3b): the first anonymous viewer of a public
-    league whose visibility check expired starts a probe (spec §2). It is rate-limited in Postgres and its answer goes
-    only to the API (the fi schema is not exposed through Supabase's Data API)."""
+    league whose visibility check expired starts a probe (spec §2). It is rate-limited in Postgres (one probe per
+    league per 5 minutes), and its boolean answer tells a caller nothing they could use: league ids are random, so a
+    caller who can name one already has its link."""
     with pg.connect() as con:
         rows = con.execute("""
             SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
