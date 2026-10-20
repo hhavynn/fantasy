@@ -2194,3 +2194,458 @@ git add -A fantasy-intel
 git commit -m "Phase 2: publish per-league files with a fenced pointer move"
 ```
 
+
+### Task 8: Frontend — `/l/<lg>/<page>`, legacy redirect, scoped API calls, league switcher
+
+**Files:**
+- Create: `fantasy-intel/frontend/lib/league-scope.ts`
+- Create: `fantasy-intel/frontend/lib/league-scope.test.ts`
+- Create: `fantasy-intel/frontend/lib/league-scope.server.ts`
+- Create: `fantasy-intel/frontend/lib/league-switcher.ts`
+- Create: `fantasy-intel/frontend/lib/league-switcher.test.ts`
+- Create: `fantasy-intel/frontend/components/useAppPathname.ts`
+- Create: `fantasy-intel/frontend/components/LeagueSwitcher.tsx`
+- Create: `fantasy-intel/frontend/components/LeagueSwitcher.module.css`
+- Modify: `fantasy-intel/frontend/proxy.ts (apply `proxyDecision` after the site password)`
+- Modify: `fantasy-intel/frontend/lib/api.ts (`scopedPath`: `/api/...` -> `/v2/leagues/<lg>/api/...` when the request carries `x-fi-league`)`
+- Modify: `fantasy-intel/frontend/components/Nav.tsx, components/SyncPopover.tsx (`useAppPathname` instead of `usePathname`)`
+- Modify: `fantasy-intel/frontend/components/useTeam.ts (per-league session key, explicit key in read/write)`
+- Modify: `fantasy-intel/frontend/app/layout.tsx (`LeagueSwitcher` replaces the league chip when scoped)`
+- Modify: `fantasy-intel/frontend/tsconfig.json (`allowImportingTsExtensions`: lib/api.ts is node-tested and imports a value from lib/league-scope.ts; `noEmit` is already on)`
+
+**Interfaces:**
+- Consumes: the backend mount `/v2/leagues/{lg}/api/...` (Task 5) and `GET /v2/leagues/{lg}` (Phase 1).
+- Produces: `proxyDecision({enabled, pathname, search, cookie}) -> next | rewrite{path, league} | redirect{location} | clear{location}`, `splitLeaguePath`, `appPath`, `leaguePath`, `scopeApiPath`, `isLeagueId`, `LEAGUE_HEADER` (`x-fi-league`), `LEAGUE_COOKIE` (`fi_league`); `currentLeague() -> {id, name, committedAt} | null`; `useAppPathname()`, `useLeagueId()`; `rememberLeague`, `parseRecent`, `dataAsOf`.
+- Behaviour with `MULTILEAGUE_UI_ENABLED=1`: `/l/<lg>/<page>` rewrites to `<page>` with the league header and sets the cookie; an unprefixed page with the cookie redirects into the league (every existing in-app link keeps working, one extra hop); `?league=clear` returns to the classic site; `/leagues`, `/api`, assets and Next internals are never redirected; a client-sent league header on an unscoped page is stripped. Flag unset: no change (E2E 228 passed / 16 skipped, same as main).
+- Verified live (local stack: throwaway Postgres + the E2E fixture published as a public league + flags on): `/l/<lg>` renders the overview with "Fixture League · Data as of …"; `?team=2` + clicking Waivers lands on `/l/<lg>/waivers?team=2` with the tab highlighted; `?league=clear` returns to the classic site; an unknown league shows the backend's 404 "League not found". Noted for the Phase 5 parity audit: the no-default-team notice still mentions ESPN_MY_TEAM_ID / .env.
+
+- [ ] **Step 1: Write the routing helpers' tests**
+
+`fantasy-intel/frontend/lib/league-scope.test.ts`:
+
+```ts
+import assert from "node:assert/strict";
+import test from "node:test";
+import { appPath, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath } from "./league-scope.ts";
+
+const LG = "lg_" + "a".repeat(24);
+
+test("splitLeaguePath recognises only our league ids", () => {
+  assert.deepEqual(splitLeaguePath(`/l/${LG}/waivers`), { league: LG, path: "/waivers" });
+  assert.deepEqual(splitLeaguePath(`/l/${LG}`), { league: LG, path: "/" });
+  assert.deepEqual(splitLeaguePath("/l/lg_short/waivers"), { league: null, path: "/l/lg_short/waivers" });
+  assert.deepEqual(splitLeaguePath("/waivers"), { league: null, path: "/waivers" });
+  assert.equal(appPath(`/l/${LG}/players/12`), "/players/12");
+});
+
+test("leaguePath and scopeApiPath", () => {
+  assert.equal(leaguePath(LG, "/"), `/l/${LG}`);
+  assert.equal(leaguePath(LG, "/trades"), `/l/${LG}/trades`);
+  assert.equal(scopeApiPath("/api/overview?team_id=2", LG), `/v2/leagues/${LG}/api/overview?team_id=2`);
+  assert.equal(scopeApiPath("/api/overview", null), "/api/overview");
+  assert.equal(scopeApiPath("/v2/providers", LG), "/v2/providers");
+  assert.equal(scopeApiPath("/api/overview", "lg_bad"), "/api/overview");
+});
+
+test("with the flag off nothing changes", () => {
+  assert.deepEqual(proxyDecision({ enabled: false, pathname: `/l/${LG}/waivers`, search: "", cookie: LG }), { kind: "next" });
+  assert.deepEqual(proxyDecision({ enabled: false, pathname: "/waivers", search: "", cookie: LG }), { kind: "next" });
+});
+
+test("league URLs rewrite to the page with the league in a header", () => {
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: `/l/${LG}/waivers`, search: "?team=2" }),
+    { kind: "rewrite", path: "/waivers?team=2", league: LG });
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: `/l/${LG}`, search: "" }), { kind: "rewrite", path: "/", league: LG });
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: "/l/lg_bad/waivers", search: "" }), { kind: "next" });
+});
+
+test("old URLs go to the last-viewed league, and ?league=clear returns to the classic site", () => {
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: "/trades", search: "?a=1", cookie: LG }),
+    { kind: "redirect", location: `/l/${LG}/trades?a=1` });
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: "/", search: "", cookie: LG }),
+    { kind: "redirect", location: `/l/${LG}` });
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: "/trades", search: "", cookie: null }), { kind: "next" });
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: "/trades", search: "?league=clear&x=1", cookie: LG }),
+    { kind: "clear", location: "/trades?x=1" });
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: "/trades", search: "", cookie: "lg_bad" }), { kind: "next" });
+});
+
+test("assets, Next internals, route handlers and the connections page are never redirected", () => {
+  for (const p of ["/_next/static/x.js", "/api/thing", "/leagues", "/leagues/x", "/favicon.ico", "/icon.svg", "/apple-icon", "/robots.txt"]) {
+    assert.deepEqual(proxyDecision({ enabled: true, pathname: p, search: "", cookie: LG }), { kind: "next" }, p);
+  }
+});
+```
+
+```bash
+cd fantasy-intel/frontend && node --experimental-strip-types --no-warnings=ExperimentalWarning --test lib/league-scope.test.ts
+```
+Expected: fails: module missing
+
+- [ ] **Step 2: Implement the routing helpers**
+
+`fantasy-intel/frontend/lib/league-scope.ts`:
+
+```ts
+// League scope for the multi-league site (Phase 2): `/l/<lg_id>/<page>` serves the existing page for that league.
+// Pure functions only (no Next imports) so node --test covers them; proxy.ts and lib/api.ts apply them.
+//
+//   /l/<lg>/<page>?q   -> rewrite to /<page>?q, header x-fi-league: <lg>, cookie fi_league=<lg> (last viewed)
+//   /<page>?q + cookie -> redirect to /l/<cookie>/<page>?q   ("old URLs go to the viewer's last-viewed league")
+//   /<page>?league=clear -> clear the cookie, serve the classic (unscoped) site
+// Everything else (assets, Next internals, the /leagues connections page) passes through untouched.
+
+export const LEAGUE_HEADER = "x-fi-league";
+export const LEAGUE_COOKIE = "fi_league";
+export const CLEAR_PARAM = "league";
+const LEAGUE_ID = /^lg_[A-Za-z0-9_-]{16,64}$/;
+const UNSCOPED_PREFIXES = ["/_next", "/api", "/leagues", "/favicon", "/icon", "/apple-icon", "/robots", "/sitemap"];
+
+export function isLeagueId(value: unknown): value is string {
+  return typeof value === "string" && LEAGUE_ID.test(value);
+}
+
+/** `/l/<lg>/rest` -> { league: lg, path: "/rest" }; anything else -> { league: null, path }. */
+export function splitLeaguePath(pathname: string): { league: string | null; path: string } {
+  const m = /^\/l\/([^/]+)(\/.*)?$/.exec(pathname);
+  if (!m || !isLeagueId(m[1])) return { league: null, path: pathname };
+  return { league: m[1], path: m[2] || "/" };
+}
+
+/** The app path without a league prefix (for nav highlighting and other path matching). */
+export function appPath(pathname: string): string {
+  return splitLeaguePath(pathname).path;
+}
+
+export function leaguePath(league: string, path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `/l/${league}${p === "/" ? "" : p}`;
+}
+
+/** Prefix a backend path with the league's /v2 mount. Only the legacy /api routes are league-scoped. */
+export function scopeApiPath(path: string, league: string | null | undefined): string {
+  if (!league || !isLeagueId(league) || !path.startsWith("/api/")) return path;
+  return `/v2/leagues/${league}${path}`;
+}
+
+function unscoped(path: string): boolean {
+  return UNSCOPED_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`) || path.startsWith(`${p}.`))
+    || /\.[A-Za-z0-9]{2,5}$/.test(path);
+}
+
+export type ProxyDecision =
+  | { kind: "next" }
+  | { kind: "rewrite"; path: string; league: string }
+  | { kind: "redirect"; location: string }
+  | { kind: "clear"; location: string };
+
+export function proxyDecision(args: { enabled: boolean; pathname: string; search: string; cookie?: string | null })
+  : ProxyDecision {
+  const { enabled, pathname, search, cookie } = args;
+  if (!enabled) return { kind: "next" };
+  const { league, path } = splitLeaguePath(pathname);
+  if (league) return { kind: "rewrite", path: `${path}${search}`, league };
+  if (pathname.startsWith("/l/") || pathname === "/l") return { kind: "next" };   // malformed id: the normal 404
+  if (unscoped(pathname)) return { kind: "next" };
+  const params = new URLSearchParams(search);
+  if (params.get(CLEAR_PARAM) === "clear") {
+    params.delete(CLEAR_PARAM);
+    const rest = params.toString();
+    return { kind: "clear", location: `${pathname}${rest ? `?${rest}` : ""}` };
+  }
+  if (isLeagueId(cookie)) return { kind: "redirect", location: `${leaguePath(cookie, pathname)}${search}` };
+  return { kind: "next" };
+}
+```
+
+- [ ] **Step 3: Apply them in the proxy**
+
+`fantasy-intel/frontend/proxy.ts`:
+
+```ts
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { LEAGUE_COOKIE, LEAGUE_HEADER, proxyDecision } from "./lib/league-scope";
+import { basicAuthOk } from "./lib/site-auth";
+
+// 1. Hosted mode: when SITE_PASSWORD is set, every page asks for it (browser Basic auth prompt). Locally unset: no-op.
+// 2. Multi-league (MULTILEAGUE_UI_ENABLED=1): /l/<lg>/<page> serves <page> for that league (lib/league-scope.ts).
+//    With the flag unset this does nothing, and the site behaves exactly as before.
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 180;
+
+export function proxy(request: NextRequest) {
+  const password = process.env.SITE_PASSWORD;
+  if (password && !basicAuthOk(request.headers.get("authorization"), password)) {
+    return new NextResponse("Password required", {
+      status: 401,
+      headers: { "WWW-Authenticate": 'Basic realm="fantasy-intel", charset="UTF-8"' },
+    });
+  }
+  const decision = proxyDecision({
+    enabled: process.env.MULTILEAGUE_UI_ENABLED === "1",
+    pathname: request.nextUrl.pathname,
+    search: request.nextUrl.search,
+    cookie: request.cookies.get(LEAGUE_COOKIE)?.value ?? null,
+  });
+  switch (decision.kind) {
+    case "rewrite": {
+      const headers = new Headers(request.headers);
+      headers.set(LEAGUE_HEADER, decision.league);
+      const response = NextResponse.rewrite(new URL(decision.path, request.url), { request: { headers } });
+      response.cookies.set(LEAGUE_COOKIE, decision.league, { path: "/", sameSite: "lax", maxAge: COOKIE_MAX_AGE, httpOnly: true });
+      return response;
+    }
+    case "redirect":
+      return NextResponse.redirect(new URL(decision.location, request.url), 307);
+    case "clear": {
+      const response = NextResponse.redirect(new URL(decision.location, request.url), 307);
+      response.cookies.delete(LEAGUE_COOKIE);
+      return response;
+    }
+    default: {
+      // Never let a client send its own league header to an unscoped page.
+      if (!request.headers.has(LEAGUE_HEADER)) return NextResponse.next();
+      const headers = new Headers(request.headers);
+      headers.delete(LEAGUE_HEADER);
+      return NextResponse.next({ request: { headers } });
+    }
+  }
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+};
+```
+
+- [ ] **Step 4: Scope API calls in lib/api.ts: `path = await scopedPath(path)` at the top of `api()` and `apiRequest()`; `requestLeague()` reads the header via a dynamic `next/headers` import (null outside a request)**
+
+- [ ] **Step 5: Strip the prefix in client path matching**
+
+`fantasy-intel/frontend/components/useAppPathname.ts`:
+
+```ts
+"use client";
+
+import { usePathname } from "next/navigation";
+import { appPath, splitLeaguePath } from "@/lib/league-scope";
+
+/** The page path without the `/l/<lg>` league prefix: what nav highlighting and page matching compare against. */
+export function useAppPathname(): string {
+  return appPath(usePathname());
+}
+
+/** The league the current page is scoped to (`/l/<lg>/...`), or null on the classic site. */
+export function useLeagueId(): string | null {
+  return splitLeaguePath(usePathname()).league;
+}
+```
+
+- [ ] **Step 6: Per-league team memory**
+
+`fantasy-intel/frontend/components/useTeam.ts`:
+
+```ts
+"use client";
+
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { isTeamScoped, navTeam, parseStoredTeam, teamParamFrom } from "@/lib/team-perspective";
+import { useAppPathname, useLeagueId } from "./useAppPathname";
+
+// The last team analyzed on a team-scoped page, for this browser tab only (sessionStorage): a new tab or a shared
+// link starts from the URL alone. Storage can be blocked; links then carry only the team in the current URL.
+// Per league: team 2 of one league is not team 2 of another. The classic (unscoped) site keeps the original key.
+const BASE_KEY = "fantasy-intel:team";
+const listeners = new Set<() => void>();
+const subscribe = (cb: () => void) => {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
+};
+
+export function teamStorageKey(league: string | null): string {
+  return league ? `${BASE_KEY}:${league}` : BASE_KEY;
+}
+
+function read(key: string): string | null {
+  try {
+    return parseStoredTeam(window.sessionStorage.getItem(key));
+  } catch {
+    return null;
+  }
+}
+
+function write(key: string, team: string | null) {
+  if (read(key) === team) return;
+  try {
+    if (team === null) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, team);
+  } catch {
+    return;
+  }
+  listeners.forEach((l) => l());
+}
+
+/**
+ * The analyzed team that links from this page should keep (`withTeam`): the URL's `?team=` on a team-scoped page,
+ * else the team last analyzed in this tab (in this league). Visiting a team-scoped page records its selection,
+ * including the default (no `team`), so "Back to default" sticks.
+ */
+export function useTeam(): string | null {
+  const key = teamStorageKey(useLeagueId());
+  const pathname = useAppPathname();
+  const urlTeam = teamParamFrom(useSearchParams());
+  const scoped = isTeamScoped(pathname);
+  const getSnapshot = useCallback(() => read(key), [key]);
+  const last = useSyncExternalStore(subscribe, getSnapshot, () => null);
+  useEffect(() => {
+    if (scoped) write(key, urlTeam);
+  }, [key, scoped, urlTeam]);
+  return navTeam(pathname, urlTeam, last);
+}
+```
+
+- [ ] **Step 7: Switcher helpers and tests**
+
+`fantasy-intel/frontend/lib/league-switcher.ts`:
+
+```ts
+// The league switcher's recent-leagues list (local storage) and its labels. Pure, so node --test covers it.
+import { isLeagueId } from "./league-scope.ts";
+
+export type RecentLeague = { id: string; name: string };
+export const RECENT_KEY = "fantasy-intel:leagues";
+export const MAX_RECENT = 8;
+
+/** Parse stored JSON defensively: anything malformed is dropped, never trusted. */
+export function parseRecent(raw: string | null): RecentLeague[] {
+  if (!raw) return [];
+  try {
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    return value.filter((x): x is RecentLeague => !!x && isLeagueId(x.id) && typeof x.name === "string")
+      .map((x) => ({ id: x.id, name: x.name.slice(0, 80) })).slice(0, MAX_RECENT);
+  } catch {
+    return [];
+  }
+}
+
+/** Most recent first, no duplicates, bounded. */
+export function rememberLeague(list: RecentLeague[], entry: RecentLeague): RecentLeague[] {
+  if (!isLeagueId(entry.id)) return list;
+  return [{ id: entry.id, name: entry.name.slice(0, 80) }, ...list.filter((x) => x.id !== entry.id)].slice(0, MAX_RECENT);
+}
+
+/** "Data as of Oct 20, 12:00" from the served version's commit time (ISO), or null. */
+export function dataAsOf(committedAt: string | null | undefined, timeZone?: string): string | null {
+  if (!committedAt) return null;
+  const d = new Date(committedAt);
+  if (Number.isNaN(d.getTime())) return null;
+  return `Data as of ${d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone })}`;
+}
+```
+
+- [ ] **Step 8: Switcher component**
+
+`fantasy-intel/frontend/components/LeagueSwitcher.tsx`:
+
+```ts
+"use client";
+
+import Link from "next/link";
+import { useEffect, useSyncExternalStore } from "react";
+import { leaguePath } from "@/lib/league-scope";
+import { RECENT_KEY, dataAsOf, parseRecent, rememberLeague, type RecentLeague } from "@/lib/league-switcher";
+import type { ScopedLeague } from "@/lib/league-scope.server";
+import styles from "./LeagueSwitcher.module.css";
+
+// Recently viewed leagues live in localStorage (per browser); storage can be blocked, then the menu lists only the
+// current league's escape links.
+const listeners = new Set<() => void>();
+const subscribe = (cb: () => void) => {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
+};
+let cachedRaw: string | null = null;
+let cached: RecentLeague[] = [];
+function readRecent(): RecentLeague[] {
+  try {
+    const raw = window.localStorage.getItem(RECENT_KEY);
+    if (raw !== cachedRaw) {            // a stable snapshot while storage is unchanged
+      cachedRaw = raw;
+      cached = parseRecent(raw);
+    }
+    return cached;
+  } catch {
+    return cached;
+  }
+}
+const EMPTY: RecentLeague[] = [];
+
+/** Which league the site is showing, when its data is from, and the leagues recently viewed in this browser. */
+export function LeagueSwitcher({ current }: { current: ScopedLeague }) {
+  const recent = useSyncExternalStore(subscribe, readRecent, () => EMPTY);
+  useEffect(() => {
+    try {
+      const next = rememberLeague(parseRecent(window.localStorage.getItem(RECENT_KEY)), { id: current.id, name: current.name });
+      window.localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    } catch {
+      return;
+    }
+    listeners.forEach((l) => l());
+  }, [current.id, current.name]);
+  const asOf = dataAsOf(current.committedAt);
+  return (
+    <details className={styles.switcher}>
+      <summary className={styles.summary} title={asOf ?? undefined}>
+        <span className={styles.name}>{current.name}</span>
+        {asOf ? <span className={styles.asof}>{asOf}</span> : null}
+      </summary>
+      <div className={styles.menu} role="menu">
+        {recent.filter((l) => l.id !== current.id).map((l) => (
+          <Link key={l.id} role="menuitem" href={leaguePath(l.id, "/")} className={styles.item}>{l.name}</Link>
+        ))}
+        <Link role="menuitem" href="/leagues" className={styles.item}>Leagues…</Link>
+        {/* prefetch off: following this link clears the league cookie, which a prefetch must not do */}
+        <Link role="menuitem" href="/?league=clear" prefetch={false} className={styles.item}>Classic site</Link>
+      </div>
+    </details>
+  );
+}
+```
+
+- [ ] **Step 9: Server helper for the layout**
+
+`fantasy-intel/frontend/lib/league-scope.server.ts`:
+
+```ts
+import "server-only";
+import { headers } from "next/headers";
+import { apiRequest } from "./api";
+import { LEAGUE_HEADER, isLeagueId } from "./league-scope";
+
+export type ScopedLeague = { id: string; name: string; committedAt: string | null };
+
+/** The league this page is scoped to (proxy.ts), with its name and served data time, or null on the classic site. */
+export async function currentLeague(): Promise<ScopedLeague | null> {
+  const id = (await headers()).get(LEAGUE_HEADER);
+  if (!isLeagueId(id)) return null;
+  const res = await apiRequest<{ name: string | null; data: { committed_at: string } | null }>(`/v2/leagues/${id}`);
+  if (!res.ok || !res.data) return { id, name: res.ok || res.status !== 404 ? "League" : "League not found", committedAt: null };
+  return { id, name: res.data.name || "League", committedAt: res.data.data?.committed_at ?? null };
+}
+```
+
+- [ ] **Step 10: Verify**
+
+```bash
+npm run lint && npm run typecheck && npm test && npm run build && npm run e2e
+```
+Expected: clean; 557 unit tests; E2E 228 passed, 16 skipped
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add -A fantasy-intel/frontend
+git commit -m "Phase 2: /l/<lg> league URLs, legacy redirect, scoped API calls, league switcher"
+```
+

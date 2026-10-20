@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useAppPathname } from "./useAppPathname";
 import {
   type CSSProperties, type FocusEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,
 } from "react";
@@ -24,7 +25,7 @@ export function BrandLink({ children }: { children: ReactNode }) {
 }
 
 export function NavGroups() {
-  const { activeGroup } = getActiveRoute(usePathname());
+  const { activeGroup } = getActiveRoute(useAppPathname());
   const team = useTeam();
   return (
     <nav className="nav-groups" aria-label="Sections">
@@ -38,7 +39,7 @@ export function NavGroups() {
 }
 
 export function SubNav() {
-  const { activeHref, activeGroup } = getActiveRoute(usePathname());
+  const { activeHref, activeGroup } = getActiveRoute(useAppPathname());
   const team = useTeam();
   if (!activeGroup) return null;
   return (
@@ -103,7 +104,7 @@ function rememberPage(group: string, entry: TabMemoryEntry) {
  * team); the tab of the current group goes back to the group's first page. The sub-nav lists the group's pages.
  */
 export function TabBar() {
-  const pathname = usePathname();
+  const pathname = useAppPathname();
   const search = useSearchParams();
   const team = useTeam();
   const query = search.toString();
@@ -143,7 +144,7 @@ export function BrandMark({ size = 22 }: { size?: number }) {
 
 /** Phones: the section row collapses into a menu button with every group's pages, the switches and data freshness. */
 export function MobileNav({ projection, sync }: { projection?: ProjectionSource; sync?: { state: SyncState; text: string } } = {}) {
-  const pathname = usePathname();
+  const pathname = useAppPathname();
   const search = useSearchParams();
   const { activeHref } = getActiveRoute(pathname);
   const team = useTeam();
