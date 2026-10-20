@@ -77,6 +77,13 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 - `/tmp` LRU never exceeds its bound under a 20-league request mix; concurrent first requests download once.
 - `test_league_scope_audit.py` ratchet unchanged or lower.
 
+**Status:** done 2026-10-20 (PR #151).
+- Every legacy router is mounted under `/v2/leagues/{lg}`. League and global files are served from a bounded, pinned `/tmp` cache, with the perspective applied through a per-request `fantasy_teams` view.
+- The publisher moves the league's pointer with a fence it reserves when it starts.
+- Owner-only research routes need a platform admin.
+- All 52 goldens are identical on the fixture and on real Los Subies (run locally).
+- Codex reviewed it for one round, after a `/code-review high` pass.
+
 **Rollback:** `MULTILEAGUE_ENABLED` off routes everything through the Phase 1a single-snapshot path, which stays intact through Phase 5.
 
 ## Phase 3: Sync jobs on GitHub Actions + ESPN connect flows
