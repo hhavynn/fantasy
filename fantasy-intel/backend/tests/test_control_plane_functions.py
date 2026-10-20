@@ -519,3 +519,44 @@ def test_membership_role_changes_lock_the_league_first(pg, fn):
     lock = body.find("FROM fi.leagues")
     assert lock != -1 and "FOR UPDATE" in body[lock:lock + 80], fn
     assert lock < body.find("UPDATE fi.league_memberships"), fn
+
+
+def test_store_credential_locks_the_owner_before_the_league(pg):
+    """Account deletion locks the user row, then the league. store_credential's insert needs the owner row (its
+    foreign key), so it must secure that row before the league lock."""
+    with pg.connect() as con:
+        src = con.execute("SELECT pg_get_functiondef('fi.store_credential(uuid, text, bytea, bytea, bytea, text)'::regprocedure)").fetchone()[0]
+    body = " ".join(src.split())
+    owner, league_lock = body.find("fi.ensure_app_user()"), body.find("FROM fi.leagues")
+    assert owner != -1 and league_lock != -1 and owner < league_lock, body[:400]
+
+
+def test_storing_cookies_while_the_account_is_deleted_is_a_sign_in_error(pg, league):
+    import threading
+    import time
+
+    deleter = pg.connect()
+    t = None
+    outcome = {}
+    try:
+        deleter.execute("DELETE FROM auth.users WHERE id = %s", [U2])          # holds U2's rows and the league
+
+        def store():
+            try:
+                with pg.connect(user="fi_api") as con:
+                    outcome["result"] = call(con, "authenticated", U2, STORE, [str(uuid.uuid4()), league, CT, NONCE, WRAPPED])
+            except Exception as err:   # noqa: BLE001 - asserted below
+                outcome["error"] = str(err)
+
+        t = threading.Thread(target=store)
+        t.start()
+        time.sleep(0.5)
+        deleter.commit()
+    finally:
+        deleter.rollback()
+        deleter.close()
+        if t is not None:
+            t.join(10)
+    assert "sign_in_required" in outcome.get("error", ""), outcome
+    with pg.connect() as su:
+        assert su.execute("SELECT count(*) FROM fi.league_credentials").fetchone() == (0,)

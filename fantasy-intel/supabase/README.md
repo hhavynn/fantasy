@@ -16,9 +16,15 @@ pointers. Design: [ADR-0002](../../docs/multileague/ADR-0002-supabase-control-pl
 | `migrations/20261020120700_redeem_invite_locks_league.sql` | Invite redemption locks and re-checks the league, so it cannot join a league an account deletion is removing |
 | `migrations/20261020120800_credential_lock_order.sql` | One lock order (league, then credential) for every credential path, so account deletion cannot deadlock with a sync or revoke |
 | `migrations/20261020120900_redeem_invite_lock_order.sql` | Invite redemption locks the league before the invite (same order as account deletion) and re-validates under lock |
+| `migrations/20261020121000_owner_lock_order.sql` | `ensure_app_user` locks the account first; `store_credential` secures its owner before the league |
 | `down/*.sql` | Down-migrations, applied in reverse order to roll Phase 1 back; each restores the previous definitions |
 
 Every migration is idempotent (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
+
+**Lock order.** Every function takes row locks in the order account deletion does: the account (`auth.users`),
+then the app user (`fi.app_users`), then the league (`fi.leagues`), then the league's own rows (credentials,
+memberships, invites, pins, perspectives). A new function that breaks this order can deadlock with account
+deletion; `backend/tests/test_control_plane_functions.py` checks the order in each installed definition.
 
 ## Applying migrations
 
