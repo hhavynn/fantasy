@@ -58,7 +58,7 @@ def _real_refresh_log(refresh, monkeypatch, tmp_path, *argv, codes=None):
     return the log text. `codes` maps a script name to its exit code."""
     codes = {"sync_espn.py": 0, "sync_nfl.py": 0, "compute_analytics.py": 0, "injury_freshness.py": 0,
              "start_sit_evaluation.py": 0, "ctx_shadow.py": 0, "qb_scenario_shadow.py": 0, "signal_shadows.py": 0,
-             "dst_shadow.py": 0,
+             "injury_return_shadow.py": 0, "dst_shadow.py": 0,
              "distribution_ledger.py": 0, "participation_cal_shadow.py": 0, "espn_benchmark.py": 0,
              "projection_performance.py": 0, "model_replay.py": 0, "projection_ranges.py": 0,
              **(codes or {})}
@@ -105,7 +105,8 @@ def test_a_real_refresh_log_parses_step_by_step(refresh, monkeypatch, tmp_path):
     assert ev["ran"] and ev["status"] == "ok" and ev["problems"] == []          # the child's fake WARNING is ignored
     assert [(s["name"], s["result"]) for s in ev["steps"]] == [
         ("injury_freshness.py", "ok"), ("start_sit_evaluation.py", "ok"), ("ctx_shadow.py", "ok"),
-        ("qb_scenario_shadow.py", "ok"), ("signal_shadows.py", "ok"), ("dst_shadow.py", "ok"),
+        ("qb_scenario_shadow.py", "ok"), ("signal_shadows.py", "ok"), ("injury_return_shadow.py", "ok"),
+        ("dst_shadow.py", "ok"),
         ("distribution_ledger.py", "ok"),
         ("participation_cal_shadow.py", "ok"), ("espn_benchmark.py", "ok")]
     assert r["pregame"]["week"] == 7 and r["pregame"]["captured_at"] == "2026-10-20T15:00:00+00:00"

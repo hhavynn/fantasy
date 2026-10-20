@@ -95,7 +95,7 @@ opens the databases read-only and never touches production, the registry, the AP
 
 | Job (existing) | Runs | Does |
 |---|---|---|
-| `refresh_all.py` evidence stage (every refresh and pregame-guard run) | `injury_return_shadow.py pregame --week <upcoming>` | the gated, write-once freeze. **Pending:** this step is added in a follow-up after hhavynn/fantasy#136, which also edits `refresh_all.py`, merges. Until then only the cycle's retry can freeze a week, and it normally defers, so weeks before the follow-up are usually recorded as missed |
+| `refresh_all.py` evidence stage (every refresh and pregame-guard run) | `injury_return_shadow.py pregame --week <upcoming>` | the gated, write-once freeze |
 | `learning_cycle.py`, `RESEARCH_SHADOWS` stage `injury_return_shadow` (Tue-Thu) | `injury_return_shadow.py cycle --week <target>` | scores fully final frozen weeks (and takes the look once due), records a missed week, retries the freeze (normally deferred) |
 | `learning_cycle.py`, last stage `promotion_check` | `shadow_promotion_check.py check` | reads `scores.json`; a pass is `PROMOTION READY: ifp-irs-p1 ...` plus a promotion-queue entry |
 
