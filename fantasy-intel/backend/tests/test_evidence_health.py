@@ -60,7 +60,7 @@ def _real_refresh_log(refresh, monkeypatch, tmp_path, *argv, codes=None):
              "start_sit_evaluation.py": 0, "ctx_shadow.py": 0, "qb_scenario_shadow.py": 0, "signal_shadows.py": 0,
              "dst_shadow.py": 0,
              "distribution_ledger.py": 0, "participation_cal_shadow.py": 0, "espn_benchmark.py": 0,
-             "projection_performance.py": 0, "projection_ranges.py": 0,
+             "projection_performance.py": 0, "model_replay.py": 0, "projection_ranges.py": 0,
              **(codes or {})}
     for name, code in codes.items():
         # child output that imitates refresh_all's own markers must never be taken for them
@@ -98,6 +98,7 @@ def test_a_real_refresh_log_parses_step_by_step(refresh, monkeypatch, tmp_path):
     assert code == 0 and r["status"] == "complete" and r["failed"] is None
     assert [s["name"] for s in r["steps"]] == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py",
                                                "projection_performance.py",   # the report step (never fatal)
+                                               "model_replay.py",             # the weekly replay (never fatal)
                                                "projection_ranges.py"]        # the ranges load (never fatal)
     assert all(s["exit"] == 0 for s in r["steps"])
     ev = r["evidence"]

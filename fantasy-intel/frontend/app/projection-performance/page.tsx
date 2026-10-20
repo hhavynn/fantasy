@@ -3,7 +3,9 @@ import { EmptyState, Notice, PageHeader, Section, Stat, StatStrip } from "@/comp
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { plural } from "@/lib/plural";
+import type { ReplayResponse } from "@/lib/model-replay";
 import { POSITIONS, headline, weeksText, type PerformanceResponse } from "@/lib/projection-performance";
+import { WeeklyReplay } from "./replay";
 import { Coverage, EspnComparison, Methodology, ModelVersions, PositionCards, RbVolume, StartSit, WeeklyTrend } from "./sections";
 import styles from "./performance.module.css";
 
@@ -13,7 +15,11 @@ const TITLE = "Projection performance";
 const META = "Fantasy Intel's production projections against ESPN's pregame projections, scored only on fully final NFL weeks.";
 
 export default async function ProjectionPerformancePage() {
-  const res = await api<PerformanceResponse>("/api/projections/performance");
+  const [res, rep] = await Promise.all([
+    api<PerformanceResponse>("/api/projections/performance"),
+    api<ReplayResponse>("/api/projections/replay"),
+  ]);
+  const replay = rep.ok ? <WeeklyReplay d={rep.data} /> : null;
   if (!res.ok) {
     return (
       <div className="stack">
@@ -31,6 +37,7 @@ export default async function ProjectionPerformancePage() {
       <div className="stack">
         <PageHeader eyebrow="Players · Research" title={TITLE} meta={META} />
         <Notice tone={h.tone} title={h.title}>{h.body}</Notice>
+        {replay}
         {d.rejected.length > 0 && (
           <Notice tone="caution" title={`${d.rejected.length} published ${plural(d.rejected.length, "report")} failed verification`}>
             {d.rejected.map((x) => x.reason).join("; ")}. Nothing from {d.rejected.length === 1 ? "it" : "them"} is shown.
@@ -84,6 +91,7 @@ export default async function ProjectionPerformancePage() {
           note={d.stale ? "may be out of date" : "verified against its content hash"} />
       </StatStrip>
 
+      {replay}
       <PositionCards r={r} />
       <EspnComparison r={r} />
       <RbVolume r={r} />

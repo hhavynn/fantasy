@@ -339,8 +339,9 @@ def test_sync_steps_get_no_deadline(refresh, monkeypatch, tmp_path):
     monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: seen.append(timeout) or 0)
     monkeypatch.setattr(refresh, "check_pregame", lambda log: None)
     monkeypatch.setattr(sys, "argv", ["refresh_all.py", "--no-publish", "--skip-evidence"])
-    # the three syncs run to completion; only the report step (not a sync) has the evidence deadline
-    assert refresh.main() == 0 and seen == [None, None, None, refresh.evidence_timeout(), None]   # report, ranges load
+    # the three syncs run to completion; only the report and replay steps (not syncs) have the evidence deadline
+    assert refresh.main() == 0 and seen == [None, None, None, refresh.evidence_timeout(), refresh.evidence_timeout(),
+                                            None]   # report, replay, ranges load
 
 
 def test_the_real_finality_check_on_a_synthetic_sources_world(refresh, tmp_path):
@@ -446,8 +447,8 @@ def test_a_failed_publish_still_runs_evidence_and_keeps_its_exit_code(refresh, m
     monkeypatch.setattr(refresh, "run_evidence", lambda log: events.append("evidence") or [])
     monkeypatch.setattr(sys, "argv", ["refresh_all.py"])
     assert refresh.main() == 1                                   # the publish failure still fails the refresh
-    assert events == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py", "projection_performance.py", "projection_ranges.py",
-                      "publish_motherduck.py", "evidence"]
+    assert events == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py", "projection_performance.py", "model_replay.py",
+                      "projection_ranges.py", "publish_motherduck.py", "evidence"]
     assert "FAILED: publish_motherduck.py exited 7" in next((tmp_path / "logs").glob("refresh-*.log")).read_text()
 
     events.clear()                                               # --skip-evidence is still honoured
