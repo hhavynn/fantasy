@@ -258,3 +258,53 @@ def test_a_lease_reclaimed_while_mark_credential_waits_is_honoured(pg, league, l
     assert result == {"marked": False}
     with pg.connect() as su:
         assert su.execute("SELECT status FROM fi.league_credentials").fetchone() == ("active",)
+
+
+def _delete_account(pg, uid):
+    with pg.connect() as su:
+        su.execute("DELETE FROM auth.users WHERE id = %s", [uid])      # what Supabase does on account deletion
+        su.commit()
+
+
+def test_deleting_the_credential_owner_marks_the_private_league_stale(pg, league):
+    with pg.connect(user="fi_api") as con:
+        call(con, "authenticated", U2, STORE, [str(uuid.uuid4()), league, CT, NONCE, WRAPPED])
+    _delete_account(pg, U2)
+    with pg.connect() as su:
+        assert su.execute("SELECT status FROM fi.leagues WHERE id = %s", [league]).fetchone() == ("stale",)
+        assert su.execute("SELECT count(*) FROM fi.league_credentials").fetchone() == (0,)
+
+
+def test_deleting_the_last_admin_promotes_the_longest_standing_member(pg, league):
+    with pg.connect() as su:
+        seed_membership_at = "UPDATE fi.league_memberships SET created_at = now() - %s::interval WHERE user_id = %s"
+        su.execute("INSERT INTO fi.league_memberships (user_id, league_id, role) VALUES (%s, %s, 'viewer')", [U3, league])
+        su.execute(seed_membership_at, ["2 days", U2])
+        su.execute(seed_membership_at, ["1 day", U3])
+        su.commit()
+    _delete_account(pg, U1)                           # the only admin
+    with pg.connect() as su:
+        roles = dict(su.execute("SELECT user_id::text, role FROM fi.league_memberships WHERE league_id = %s", [league]).fetchall())
+        assert roles == {U2: "admin", U3: "viewer"}
+        assert su.execute("SELECT deleted_at IS NULL FROM fi.leagues WHERE id = %s", [league]).fetchone() == (True,)
+        actions = [r[0] for r in su.execute("SELECT action FROM fi.audit_log WHERE target_id = %s ORDER BY id", [league])]
+        assert "membership.promote_on_account_deletion" in actions
+
+
+def test_deleting_the_last_member_deletes_the_private_league(pg, league):
+    _delete_account(pg, U2)
+    _delete_account(pg, U1)
+    with pg.connect() as su:
+        assert su.execute("SELECT deleted_at IS NOT NULL FROM fi.leagues WHERE id = %s", [league]).fetchone() == (True,)
+
+
+def test_deleting_an_account_leaves_public_leagues_and_other_admins_alone(pg, league):
+    with pg.connect() as su:
+        pub = seed_league(su, visibility="public")
+        seed_membership(su, U1, pub, "admin")
+        su.execute("UPDATE fi.league_memberships SET role = 'admin' WHERE user_id = %s AND league_id = %s", [U2, league])
+        su.commit()
+    _delete_account(pg, U1)
+    with pg.connect() as su:
+        assert su.execute("SELECT deleted_at IS NULL, status FROM fi.leagues WHERE id = %s", [pub]).fetchone() == (True, "active")
+        assert su.execute("SELECT role FROM fi.league_memberships WHERE league_id = %s", [league]).fetchall() == [("admin",)]

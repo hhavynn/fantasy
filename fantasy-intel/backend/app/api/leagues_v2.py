@@ -67,6 +67,9 @@ def request_tx(principal: Principal = Depends(current_principal)) -> Iterator[tu
     write."""
     try:
         with get_control_plane().request_tx(principal) as con:
+            # A signature-valid token can outlive its Supabase account: that caller is signed out on every route.
+            if principal.is_authenticated and not con.execute("SELECT fi.current_account_exists()").fetchone()[0]:
+                raise HTTPException(401, SIGN_IN)
             yield con, principal
     except ControlPlaneUnavailable:
         raise HTTPException(503, UNAVAILABLE) from None

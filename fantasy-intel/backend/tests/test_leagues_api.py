@@ -292,3 +292,11 @@ def test_a_token_for_a_deleted_account_is_a_sign_in_error(client, world):
     ghost = str(uuid.uuid4())                       # signature-valid token, no auth.users row any more
     assert client.get("/v2/me", headers=bearer(ghost)).status_code == 401
     assert client.put(f"/v2/leagues/{world['pub']}/pin", headers=bearer(ghost)).status_code == 401
+
+
+@pytest.mark.parametrize("method,path", [("GET", "/v2/me"), ("GET", "/v2/leagues"), ("GET", "/v2/leagues/{pub}"),
+                                         ("DELETE", "/v2/leagues/{pub}/perspective"), ("DELETE", "/v2/leagues/{pub}/pin")])
+def test_a_deleted_account_is_signed_out_on_every_route(client, world, method, path):
+    ghost = str(uuid.uuid4())                       # signature-valid token, no auth.users row any more
+    r = client.request(method, path.format(pub=world["pub"]), headers=bearer(ghost))
+    assert (r.status_code, r.json()) == (401, {"detail": "Sign in to use this endpoint."})
