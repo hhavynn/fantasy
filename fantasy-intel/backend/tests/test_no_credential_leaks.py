@@ -67,6 +67,8 @@ ALLOWED_SYNTHETIC = {
     "{B1A2C3D4-0000-4321-8765-0123456789AB}",
     "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJlc2lnbmF0dXJlMTIzNDU2",
     "AEBfakeespns2cookie%2Bvalue0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop0123456789",
+    # tests/test_r2.py: AWS's own documented example key, from the published SigV4 test vector
+    "AKIAIOSFODNN7EXAMPLE",
 }
 
 _PLACEHOLDER = re.compile(r"(?i)^(?:|\.\.\.|x+|\*+|changeme|change-me|your[-_].*|<.*>|\$.*|\{\{.*|example.*|todo|none|null|"

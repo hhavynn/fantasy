@@ -330,6 +330,9 @@ def _stamp(s: str) -> datetime:
     return datetime.strptime(s, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
 
 
+PUBLISH_STEPS = ("publish_snapshot.py", "publish_motherduck.py")   # refresh_all's hosted publish step, R2 or legacy
+
+
 def parse_refresh_log(text: str) -> dict:
     """Structure of one refresh_all.py log. Only refresh_all's own lines are interpreted: a line is a step's
     output between its `==> name` and `<== exit N` markers, so a child's output can never fake a result.
@@ -357,7 +360,7 @@ def parse_refresh_log(text: str) -> dict:
                 cur["exit"], cur = int(m.group(1)), None
             elif line.startswith("<== killed"):
                 cur["killed"], cur = True, None
-            elif cur["name"] == "publish_motherduck.py":
+            elif cur["name"] in PUBLISH_STEPS:
                 m = re.match(r"^Published .* at (\S+)$", line)
                 if m:
                     res["publish"]["published_at"] = m.group(1)
@@ -369,8 +372,8 @@ def parse_refresh_log(text: str) -> dict:
         if m:
             cur = {"name": m.group(1), "exit": None, "killed": False}
             (ev["steps"] if ev is not None else steps).append(cur)
-            if cur["name"] == "publish_motherduck.py":
-                res["publish"]["ran"] = True
+            if cur["name"] in PUBLISH_STEPS:
+                res["publish"]["ran"], res["publish"]["step"] = True, cur["name"]
             continue
         if line.startswith("WARNING: Evidence: "):
             evidence()["problems"].append(line[len("WARNING: Evidence: "):])
@@ -395,7 +398,7 @@ def parse_refresh_log(text: str) -> dict:
             m = re.match(r"^Pregame check: week (\d+) ESPN snapshot captured at (\S+) \(", line)
             if m:
                 res["pregame"]["week"], res["pregame"]["captured_at"] = int(m.group(1)), m.group(2)
-        elif line.startswith("MotherDuck publish skipped"):
+        elif line.startswith(("Hosted publish skipped", "MotherDuck publish skipped")):  # older logs say MotherDuck
             res["publish"]["skipped"] = line
         elif line.startswith("FAILED: "):
             res["failed"], res["status"] = line[len("FAILED: "):], "failed"
@@ -403,7 +406,7 @@ def parse_refresh_log(text: str) -> dict:
             if res["status"] != "failed":
                 res["status"] = "complete"
     for s in steps:
-        if s["name"] == "publish_motherduck.py":
+        if s["name"] in PUBLISH_STEPS:
             res["publish"]["exit"] = s["exit"]
     if ev is None:
         res["evidence"] = {"ran": False, "status": "not_run", "steps": [], "problems": [], "notes": []}
@@ -457,8 +460,8 @@ def learning_cycle_runs(weekly_dir: Path) -> list[dict]:
 
 
 def publish_records(logs_dir: Path, runs: Sequence[dict]) -> list[dict]:
-    """Known MotherDuck publishes: 'Published ... at' lines of refresh logs, and publish-history.jsonl
-    (publish_motherduck.py appends one line per successful publish, including manual ones)."""
+    """Known hosted publishes: 'Published ... at' lines of refresh logs, and publish-history.jsonl
+    (publish_snapshot.py / publish_motherduck.py append one line per successful publish, manual ones too)."""
     out = [{"published_at": r["publish"]["published_at"], "source": r["log"]}
            for r in runs if r.get("publish", {}).get("published_at")]
     hist = Path(logs_dir) / "publish-history.jsonl"
@@ -1086,6 +1089,14 @@ def _fix(ctx: Context, cmd: str) -> str:
     return f"cd {ctx.paths.root}/backend && {cmd}"
 
 
+def _publish_fix(ctx: Context, step: str | None = None) -> str:
+    """The publish command to suggest: the step that ran, else the R2 snapshot when it is configured."""
+    if step is None:
+        from app.config import get_settings
+        step = "publish_snapshot.py" if get_settings().r2_configured else "publish_motherduck.py"
+    return _fix(ctx, f"uv run python ../scripts/{step}")
+
+
 def build_issues(ctx: Context, report: dict) -> list[Issue]:
     """Turn the audit into issues with severities and remediation commands."""
     th, tz, now = ctx.thresholds, ctx.tz, ctx.now
@@ -1165,8 +1176,9 @@ def build_issues(ctx: Context, report: dict) -> list[Issue]:
                           + "; ".join(ev["problems"][:3]),
                           f"grep -n 'Evidence' {ctx.paths.logs}/{done['log']}"))
             if done.get("publish", {}).get("ran") and done["publish"].get("exit") not in (0, None):
-                add(Issue("publish_failed", WARN, "motherduck", f"MotherDuck publish exited {done['publish']['exit']} "
-                          f"in {done['log']}", _fix(ctx, "uv run python ../scripts/publish_motherduck.py")))
+                step = done["publish"].get("step") or "publish_motherduck.py"
+                add(Issue("publish_failed", WARN, "motherduck", f"hosted publish ({step}) exited "
+                          f"{done['publish']['exit']} in {done['log']}", _publish_fix(ctx, step)))
 
     # schema / hosted
     db = report["database"]
@@ -1183,17 +1195,17 @@ def build_issues(ctx: Context, report: dict) -> list[Issue]:
         else:
             if hosted.get("schema_version") != db.get("schema_version"):
                 add(Issue("hosted_schema_mismatch", FAIL, "motherduck", f"hosted schema v{hosted.get('schema_version')}"
-                          f" != local v{db.get('schema_version')}", _fix(ctx, "uv run python ../scripts/publish_motherduck.py")))
+                          f" != local v{db.get('schema_version')}", _publish_fix(ctx)))
             pub = utc(hosted.get("published_at"))
             if last_write and (pub is None or pub < last_write):
                 add(Issue("hosted_outdated", WARN, "motherduck", f"hosted copy published {show(pub, tz)}, local data "
-                          f"changed {show(last_write, tz)}", _fix(ctx, "uv run python ../scripts/publish_motherduck.py")))
+                          f"changed {show(last_write, tz)}", _publish_fix(ctx)))
     else:
         pub = utc(hosted.get("last_known_publish"))
         if last_write and (pub is None or pub < last_write):
             add(Issue("hosted_maybe_outdated", INFO, "motherduck", f"last recorded publish {show(pub, tz)} is older "
                       f"than the latest local write {show(last_write, tz)} (a later manual publish is only known "
-                      "with --hosted)", _fix(ctx, "uv run python ../scripts/publish_motherduck.py")))
+                      "with --hosted)", _publish_fix(ctx)))
 
     # weeks
     weeks = report["weeks"]

@@ -350,8 +350,10 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
                 code, _, detail = claims[tm["status"]]["value"]
                 beats.append(beat("status", f"Right now, he's {ph(tm['status'])}.", {"type": "status_stamp"},
                                   [], 1.05))
+                # the takeaway is the ending; the ADD / WAIT buttons after it are only the call to action
+                ending = "conditional"
                 if code == "ir":
-                    take = f"So for now, this role is {who['last']}'s."
+                    take, ending = f"So for now, this role is {who['last']}'s.", "verdict"
                 elif code == "none" or detail == "Full Participation in Practice":
                     take = f"If {last(tm['name'])} plays this week, this role gets tested right away."
                 else:
@@ -408,6 +410,8 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
         _fit(beats, counts_at + (story == "unresolved"), extra, claims)
 
     titles = None
+    if story == "fill_in":
+        return finish(beats, p, lead, story, hook_key, tm, who, ending=ending)
     if not kept:
         titles = [t.format(name=p["name"], Stat=lead["label"].title(), tm=who["tm"]) for t in TITLES["held_tested"]]
     return finish(beats, p, lead, story, hook_key, tm, who, titles=titles)

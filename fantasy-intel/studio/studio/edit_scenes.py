@@ -625,7 +625,10 @@ def scene_hx_rank(img, t, dur, spec, c):
     if t < swap - 0.02:
         M.put_text(img, f"{c.d(spec['games'])} {pos} GAMES THIS SEASON", M.CENTER_X, 300, size=58, fill=K.WHITE,
                    stroke=5, max_width=960)
-    K.slam(img, "NOBODY'S SEEN MORE" if spec.get("rank1") else f"{c.d(spec['rank']).upper()}-MOST",
+    sup = spec.get("sup", "MOST")                                    # a monster line's lead stat: HIGHEST, MOST
+    rank1 = ("NOBODY'S SEEN MORE" if sup == "MOST" and not spec.get("tied")
+             else f"{'TIED FOR ' if spec.get('tied') else ''}THE {sup}")
+    K.slam(img, rank1 if spec.get("rank1") else f"{c.d(spec['rank']).upper()}-{sup}",
            M.CENTER_X, 300, t, swap, 96, fill=GOLD, stroke=9)
     K.burst(img, cx, cy, K.hit_strength(t, [hit], 0.3), GOLD, rays=28, r0=r + 20)
     _finish(img, t, dur, spec, c, praise=True)

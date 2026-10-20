@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 from studio.core import Episode, read_json, write_json
 from studio.stages import facts, qc, story
 from studio.stages.facts import pick_stories
@@ -141,6 +143,30 @@ def test_vacated_role_makes_a_fill_in_story():
         {**s, "text_display": story.fill(s["text_template"], cl, "display"),
          "text_spoken": story.fill(s["text_template"], cl, "spoken")} for s in segs]}).passed
 
+
+
+def test_fill_in_story_ends_on_its_takeaway_and_passes_creative_qc():
+    """The ADD / WAIT buttons close the Short, but the takeaway before them is the ending QC judges."""
+    from studio import creative
+    inj = [{"gsis_id": "00-STAR", "team": "PHI", "week": w, "report_status": "Out",
+            "report_primary_injury": "Ankle", "practice_status": "Did Not Participate In Practice"} for w in (4, 5)]
+    f, p, cl = _riser(_with_teammate({4, 5}, inj))
+    assert storyline(p, cl) == "fill_in"
+    segs, titles, structure = story.compose(f, cl, "seed", {})
+    assert segs[-1]["scene"]["type"] == "decision" and segs[-2]["scene"].get("role") == "takeaway"
+    assert structure["ending_mechanism"] == "conditional"
+    names = {n: ok for n, ok, _ in creative.checks({"structure": structure, "narration_segments": segs,
+                                                     "shots": [s["scene"] for s in segs]})}
+    assert names["clear_takeaway"]
+
+
+@pytest.mark.parametrize("injury, said", [("Ankle", "an ankle injury"), ("Hamstring", "a hamstring injury"),
+                                          ("Upper Body", "an upper body injury")])
+def test_absence_reason_takes_the_right_article(injury, said):
+    inj = [{"gsis_id": "00-STAR", "team": "PHI", "week": w, "report_status": "Out",
+            "report_primary_injury": injury, "practice_status": "Did Not Participate In Practice"} for w in (4, 5)]
+    f, p, cl = _riser(_with_teammate({4, 5}, inj))
+    assert cl[p["teammate"]["reason"]]["display"] == said
 
 def _said(beats, cl):
     return [story.fill(b["text_template"].replace(story.PAUSE, ""), cl, "display") for b in beats]

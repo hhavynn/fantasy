@@ -302,3 +302,104 @@ def test_the_classic_template_still_composes():
     _, facts, claims = qb_facts()
     beats, titles, structure = flame.compose(facts, claims, {})
     assert structure["format"] == "flame" and beats[0]["scene"]["type"] == "fp_hook"
+
+
+# ------------------------------------------------------------- claim-backed premise, length floor (Week 7 fixes)
+
+def back(carries=17, rush=58, rtd=0, rec=1, ryds=2, tgt=1, rank=1, angle="monster_line"):
+    """A praise case for a running back (Derrick Henry, Week 7: every RB carry, 58 yards, no touchdown)."""
+    claims = {c["id"]: c for c in [
+        _c("car", carries), _c("ry", rush), _c("rtd", rtd), _c("rec", rec), _c("ryd", ryds), _c("rcd", 0),
+        _c("t", tgt), _c("lv", 1.0, "pct"), _c("lr", rank, "ordinal"), _c("lg", 304), _c("pts", 24),
+        _c("opts", 20), _c("res", "won", "text"), _c("ven", "vs", "text"), _c("opp", "CIN", "team"),
+        _c("tm", "BAL", "team"), _c("wk", 6, "week")]}
+    p = {"gsis_id": "RB1", "name": "Test Back", "position": "RB", "team": "BAL", "role": "praise", "flame": True,
+         "week": 6, "team_name": "tm", "opponent": "opp", "week_claim": "wk", "recognizable": True,
+         "recognition": "veteran", "draft_round": None, "years_exp": 9,
+         "lead": {"metric": "backfield_share", "label": "share of the running back carries",
+                  "screen": "SHARE OF RB CARRIES", "value": "lv", "rank": "lr", "games": "lg", "rank_value": rank,
+                  "games_value": 304, "sup": "highest", "tied": True},
+         "game": {"points": "pts", "opp_points": "opts", "result": "res", "venue": "ven", "result_value": "won",
+                  "home": True},
+         "box": {"targets": "t", "targets_value": tgt, "carries": "car", "carries_value": carries,
+                 "rushing_yards": "ry", "rushing_yards_value": rush, "rushing_tds": "rtd", "rushing_tds_value": rtd,
+                 "receptions": "rec", "receptions_value": rec, "receiving_yards": "ryd", "receiving_yards_value": ryds,
+                 "receiving_tds": "rcd", "receiving_tds_value": 0},
+         "angles": [{"id": angle, "broad": True, "flavor": "box", "strength": 3},
+                    {"id": "stat_outlier", "broad": False, "flavor": "stat", "strength": 2}]}
+    return p, claims
+
+
+def test_the_premise_only_claims_an_offense_was_out_targeted_when_one_was():
+    # CeeDee Lamb, Week 6: 18 targets; the Packers drew more and no team drew fewer than 18
+    p, claims = receiver(targets=18, opp_targets=30, teams_fewer=0, rank=4)
+    st = {"story_angle": "target_hog", "format_family": "main_character"}
+    line = SR.description(p, claims, st)[0]
+    assert "offense" not in line and "18 targets in one game" in line
+    p, claims = receiver(targets=18, opp_targets=30, teams_fewer=1, rank=4)
+    assert "more targets than an entire NFL offense" in SR.description(p, claims, st)[0]
+    p, claims = receiver(targets=18, opp_targets=30, teams_fewer=3, rank=4)
+    assert "more targets than 3 entire NFL offenses" in SR.description(p, claims, st)[0]
+    p, claims = receiver(targets=24, opp_targets=18)
+    assert "more targets than the entire opposing offense" in SR.description(p, claims, st)[0]
+    p, claims = receiver(targets=18, opp_targets=30, teams_fewer=0, rank=1)
+    assert "the most in any receiver game this season" in SR.description(p, claims, st)[0]
+    # the brief's premise reads the same values from the angle
+    p, _ = receiver(targets=18, opp_targets=30, teams_fewer=0, rank=4)
+    assert SR.premise(p, p["angles"][0]) == "18 targets in one game"
+
+
+def test_qc_re_derives_the_description_from_the_snapshot():
+    snap, facts, claims = qb_facts()
+    p = facts["players"][0]
+    brief = SR.choose(p, [], "courtroom")
+    beats, _ = SR.compose(facts, claims, brief)
+    st = SR.structure(brief, beats)
+    desc = "\n".join(flame.description_lines(p, claims, st) + ["", "Narrated with an AI voice."])
+    assert qc.gate_description(snap, facts, st, {"description": desc}).passed
+    lie = desc.replace(SR.premise(p, p["angles"][0]), "the best passing day in NFL history")
+    gate = qc.gate_description(snap, facts, st, {"description": lie})
+    assert not gate.passed and "not backed by the data" in gate.failures[0]
+
+
+def test_a_running_backs_slam_is_his_rushing_and_one_is_singular():
+    p, _ = back()
+    assert [w for _, w in SR._slams(p)] == ["carries", "yards"]          # not "1 targets! 1 catches! 2 yards!"
+    p, _ = back(rtd=1, rec=4, ryds=31)
+    assert [w for _, w in SR._slams(p)] == ["carries", "yards", "touchdown", "catches", "receiving yards"]
+
+
+def test_a_rank_one_share_is_not_a_monster_box_score():
+    from types import SimpleNamespace
+    p, _ = back()
+    assert "monster_line" not in [a["id"] for a in SR.angles(SimpleNamespace(add=None, claims=[]), {}, p)]
+    p, _ = back(carries=26, rush=171, rtd=2)
+    assert "monster_line" in [a["id"] for a in SR.angles(SimpleNamespace(add=None, claims=[]), {}, p)]
+
+
+def test_a_script_that_cannot_reach_the_format_minimum_is_not_chosen():
+    p, claims = back(rank=7)
+    facts = {"players": [p]}
+    assert SR.choose(p, [])["format"] is not None                        # without the check: a 7-second Short
+    brief = SR.choose(p, [], fits=SR.length_check(facts, claims))
+    assert brief["format"] is None and not brief["entertainment_test"]["pass"]
+    assert "minimum" in brief["entertainment_test"]["why"]
+    for fmt in ("main_character", "fan_meltdown"):
+        beats, _ = SR.compose(facts, claims, {"format": fmt, "angle": "monster_line"})
+        assert SR.estimate_seconds(beats, claims, fmt) < SR.min_seconds(fmt)
+    # a real monster line, with its season rank said, fills the format
+    p, claims = back(carries=26, rush=171, rtd=2, rec=4, ryds=31, rank=1)
+    brief = SR.choose(p, [], fits=SR.length_check({"players": [p]}, claims))
+    assert brief["format"] in ("main_character", "fan_meltdown")
+    beats, _ = SR.compose({"players": [p]}, claims, brief)
+    assert any("Tied for the highest share of the running back carries" in b["text_template"] for b in beats)
+    for b in beats:
+        assert not _loose_numbers(b["text_template"]), b["text_template"]
+
+
+def test_a_forced_treatment_that_cannot_tell_the_story_says_why():
+    p, _ = receiver(targets=16, opp_targets=30, teams_fewer=0)
+    brief = SR.choose(p, [], "comparison")
+    assert brief["format"] != "comparison"
+    assert "comparison" in brief["treatment_note"] and "missing the facts its joke needs" in brief["treatment_note"]
+    assert "treatment_note" not in SR.choose(p, [], "main_character")

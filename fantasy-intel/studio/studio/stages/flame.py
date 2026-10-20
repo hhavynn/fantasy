@@ -727,10 +727,12 @@ def _script_run(ep: Episode, used: dict, hook: str | None) -> None:
         ep.log(f"  story: {structure['angle']} (classic) / hook {structure['hook']}, {len(beats)} beats, {words} words")
         return
     recent = SR.series_history(ep.cfg.episodes_dir, ep.season) + story.get("recent_series", [])
-    brief = SR.choose(p, recent, story.get("treatment"))
+    brief = SR.choose(p, recent, story.get("treatment"), SR.length_check(facts, claims))
     write_json(ep.path("brief.json"), brief)
     ep.path("brief.md").write_text(SR.describe(ep, brief))
-    if not brief["entertainment_test"]["pass"] and not story.get("force"):
+    if brief.get("treatment_note"):
+        ep.log(f"  brief: {brief['treatment_note']}")
+    if brief["format"] is None or (not brief["entertainment_test"]["pass"] and not story.get("force")):
         raise NotEntertaining(f"{p['name']}: {brief['entertainment_test']['why']}")
     beats, titles = SR.compose(facts, claims, brief)
     SR.assign_sfx(beats, brief, recent, ep.id)

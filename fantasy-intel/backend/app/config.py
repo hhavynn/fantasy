@@ -54,6 +54,16 @@ class Settings:
     external_preferred_provider: str | None = None
     trade_max_players_per_side: int = 6     # manual trade analyzer guard (TRADE_MAX_PLAYERS_PER_SIDE, 1-10)
     motherduck_database: str | None = None  # hosted mode: the API reads md:<name> instead of db_path
+    # Hosted mode on free tiers: with SERVE_SNAPSHOT=1 (set on Vercel only) the API serves the snapshot that
+    # scripts/publish_snapshot.py put in R2, taking precedence over motherduck_database. The publisher needs
+    # only the bucket + a read/write token; the API's token should be scoped to Object Read.
+    serve_snapshot: bool = False            # SERVE_SNAPSHOT=1
+    snapshot_bucket: str | None = None      # SNAPSHOT_BUCKET
+    snapshot_prefix: str = "snapshots"      # SNAPSHOT_PREFIX
+    r2_account_id: str | None = None        # R2_ACCOUNT_ID
+    r2_access_key_id: str | None = field(default=None, repr=False)      # R2_ACCESS_KEY_ID
+    r2_secret_access_key: str | None = field(default=None, repr=False)  # R2_SECRET_ACCESS_KEY
+    r2_endpoint: str | None = None          # R2_ENDPOINT: override the account endpoint (tests, local S3)
     api_key: str | None = field(default=None, repr=False)   # hosted mode: required `X-API-Key` header on every request
     # --- multi-league platform (Phase 1). Every flag defaults OFF, so today's behaviour is unchanged. ---
     multileague_enabled: bool = False       # MULTILEAGUE_ENABLED=1: serves /v2/*; otherwise those routes 404
@@ -67,6 +77,22 @@ class Settings:
     @property
     def has_espn_credentials(self) -> bool:
         return bool(self.espn_s2 and self.swid)
+
+    @property
+    def r2_configured(self) -> bool:
+        return bool(self.snapshot_bucket and self.r2_account_id and self.r2_access_key_id and self.r2_secret_access_key)
+
+    @property
+    def snapshot_enabled(self) -> bool:
+        """The API serves the R2 snapshot (hosted mode)."""
+        return self.serve_snapshot and self.r2_configured
+
+    def r2_config(self):
+        from .db.r2 import R2Config
+        if not self.r2_configured:
+            raise ValueError("SNAPSHOT_BUCKET, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY must all be set")
+        return R2Config(self.r2_account_id, self.r2_access_key_id, self.r2_secret_access_key,
+                        bucket=self.snapshot_bucket, endpoint=self.r2_endpoint)
 
 
 def get_settings() -> Settings:
@@ -96,6 +122,13 @@ def get_settings() -> Settings:
         external_preferred_provider=(os.getenv("EXTERNAL_USAGE_PREFERRED_PROVIDER") or "").strip() or None,
         trade_max_players_per_side=max(1, min(10, _int_or_none(os.getenv("TRADE_MAX_PLAYERS_PER_SIDE")) or 6)),
         motherduck_database=(os.getenv("MOTHERDUCK_DATABASE") or "").strip() or None,
+        serve_snapshot=_flag(os.getenv("SERVE_SNAPSHOT")),
+        snapshot_bucket=_str_or_none(os.getenv("SNAPSHOT_BUCKET")),
+        snapshot_prefix=_str_or_none(os.getenv("SNAPSHOT_PREFIX")) or "snapshots",
+        r2_account_id=_str_or_none(os.getenv("R2_ACCOUNT_ID")),
+        r2_access_key_id=_str_or_none(os.getenv("R2_ACCESS_KEY_ID")),
+        r2_secret_access_key=_str_or_none(os.getenv("R2_SECRET_ACCESS_KEY")),
+        r2_endpoint=_str_or_none(os.getenv("R2_ENDPOINT")),
         api_key=api_key,
         multileague_enabled=_flag(os.getenv("MULTILEAGUE_ENABLED")),
         tenancy_db_path=tenancy_db_path,

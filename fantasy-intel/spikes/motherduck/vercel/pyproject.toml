@@ -1,0 +1,8 @@
+[project]
+name = "fi-md-spike"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = ["duckdb==1.5.6"]
+
+[tool.vercel]
+entrypoint = "api.probe:handler"

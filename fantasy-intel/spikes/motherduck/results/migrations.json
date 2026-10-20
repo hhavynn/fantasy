@@ -1,0 +1,8 @@
+{
+  "recorded_at": "2026-10-20T05:35:40+00:00",
+  "duckdb": "1.5.6",
+  "sequential_s": 5.1,
+  "parallel8_s": 0.7,
+  "seq_errors": [],
+  "par_errors": []
+}

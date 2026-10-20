@@ -288,7 +288,7 @@ def gate_pacing(ep: Episode, script: dict, history: list[dict]) -> Gate:
                                       "sfx_events", "max_sync_error_s")})
 
 
-SERIES_MIN_S = 10
+from .showrunner import SERIES_MIN_S  # noqa: E402  (a series format's floor: showrunner's length check reads it too)
 SERIES_FORMAT_RUN_MAX = 2             # a third series video in a row may not use the same format
 
 
@@ -439,6 +439,30 @@ def gate_metadata(meta: dict, thumbnail: Path, fmt: str = "long") -> Gate:
     return _gate("metadata", failures, title=meta["title"])
 
 
+def gate_description(snapshot: dict, facts: dict, structure: dict, meta: dict) -> Gate:
+    """Flame / praise: the description's story lines (stages/showrunner.description) re-derive from the snapshot.
+    Narration and titles are checked claim by claim; this holds the description's numbers and comparisons ("more
+    targets than an entire NFL offense") to the same data."""
+    from .flame import description_lines
+    known = {c["id"]: c for c in facts["claims"]}
+
+    class Rederived(dict):
+        def __missing__(self, cid):
+            c = known[cid]
+            value = evaluate_claim(snapshot, c["source"])
+            display, spoken = render(c["format"], value)
+            self[cid] = {**c, "value": value, "display": display, "spoken": spoken}
+            return self[cid]
+
+    try:
+        lines = description_lines(facts["players"][0], Rederived(), structure)
+    except Exception as exc:              # a claim that no longer resolves is a mismatch
+        return _gate("description", [f"cannot re-derive the description: {exc}"])
+    failures = [f"description line not backed by the data: expected {line!r}" for line in lines
+                if line not in meta["description"]]
+    return _gate("description", failures, lines_checked=len(lines))
+
+
 STAGES_BY_FORMAT = {"long": ("facts", "script", "tts", "charts", "assemble", "thumbnail", "metadata"),
                     "short": ("facts", "script", "tts", "render", "thumbnail", "metadata")}
 
@@ -493,6 +517,8 @@ def run_gates(ep: Episode) -> list[Gate]:
         *([gate_creative(ep, script, history)] if ep.fmt == "short" and script["structure"].get("family") else []),
         gate_licenses(ep.cfg, installed_distributions()),
         gate_metadata(read_json(ep.path("metadata.json")), ep.path("thumbnail.png"), ep.fmt),
+        *([gate_description(snapshot, facts, script["structure"], read_json(ep.path("metadata.json")))]
+          if facts["players"] and facts["players"][0].get("flame") else []),
         gate_integrity(ep),
     ]
 
