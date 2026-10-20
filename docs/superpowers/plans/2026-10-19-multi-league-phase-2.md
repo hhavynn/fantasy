@@ -2797,3 +2797,26 @@ git add -A fantasy-intel docs
 git commit -m "Phase 2: Los Subies golden-identical through the per-league path; registration; docs"
 ```
 
+
+### Task 10: Prove acceptance, full suite + E2E, PR
+
+| Criterion (master plan, Phase 2) | Evidence |
+|---|---|
+| Golden tests: every legacy GET endpoint byte-identical (volatile masked) via legacy URLs and `/v2/leagues/{lg}/…`, on the E2E fixture in CI | `tests/test_golden_legacy.py` (52 committed goldens), `tests/test_league_scope.py::test_the_fixture_league_matches_every_golden_through_v2` |
+| … and on real Los Subies locally | `scripts/golden_check.py`: 52 compared, 52 identical, 0 differ (2026-10-20) |
+| Two-league leak tests green for every route; interleaved-request cache test green | `test_two_leagues_with_colliding_ids_never_leak` (every golden route, B then A, colliding team and player ids); `test_responses_are_cached_per_league_version_and_perspective` |
+| Anonymous visitor views a public fixture league from any perspective without signing in | `test_an_anonymous_visitor_reads_a_public_league_from_any_perspective`; live browser check (Task 8) |
+| `/tmp` LRU never exceeds its bound under a 20-league mix; concurrent first requests download once | `tests/test_league_files.py` |
+| `test_league_scope_audit.py` ratchet unchanged or lower | unchanged pins (no new `ORDER BY synced_at DESC`); the authorizer-caller pin adds `api/league_scope.py` on purpose |
+| Flags off: production as Phase 1a left it | E2E 228 passed / 16 skipped (same as main); `/v2` 404 with the flag off; the snapshot publish keeps running |
+
+- [ ] **Step 1:** `cd fantasy-intel/backend && uv run pytest -q` (full suite) and `cd ../frontend && npm run lint && npm run typecheck && npm test && npm run build && npm run e2e`.
+- [ ] **Step 2:** Push `h/multileague-phase-2`, open the PR with the table above, wait for Codex's review (or `/code-review high` if Codex is out of quota), fix every finding, merge on green CI, record the Phase 2 status line in the master plan.
+
+## Self-review
+
+**Spec coverage.** Golden recorder first (Task 1). Global/league split (Task 2). Publisher writes `global/<version>` and `leagues/<lg>/<version>` and moves `league_snapshots` with the fenced upsert (Task 7). Request path: authorize → pointer → `/tmp` LRU ≤ 350 MB → league read-only + global read-only + `search_path` → engines (Tasks 3–5). Perspective team passed in (Task 4 view + Task 5 rule). `/l/<lg_id>/…`, legacy redirect, league switcher, anonymous perspective via URL and session storage, "data as of" from the served version (Task 8). Per-instance response cache keyed by league, data version, global version, visibility epoch, perspective, route, params, after authorization (Task 6). Sign-in UI is deferred to Phase 3 (Decision table).
+
+**Placeholders.** None: every code step embeds the shipped file. The PR number is filled at merge.
+
+**Type consistency.** `VERSION_RE` (Task 2) validates what `league_files` (Task 3) keys and `league_scope` (Task 5) checks; `LeagueScope.cache_key` (Task 5) is both `data_version()` for engine caches and the response-cache key prefix (Task 6); `publish_local` (tests) and `publish_league` (Task 7) write the same `league_snapshots` shape the API reads.
