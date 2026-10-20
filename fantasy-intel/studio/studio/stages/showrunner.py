@@ -8,7 +8,8 @@ module decides what makes it worth watching for someone who has never played fan
                 short_throws  a QB's passes went nowhere: his average throw against the league's, and (when true)
                               the shortest average throw of any QB with real volume this season
                 rough_day     a QB's afternoon fell apart: sacks, interceptions, points, the worst-of-season stat
-                target_hog    a receiver drew more targets than an entire NFL offense did that day
+                target_hog    a receiver's pile of targets: more than the other offense, or than whole NFL offenses,
+                              only when the week's team totals say so
                 monster_line  a big box score: catches, yards, touchdowns (or a QB's yards and touchdowns)
                 stat_outlier  the selection stat alone (fantasy-flavoured; usually fails the entertainment test)
   2. FORMATS  genuinely different shows, each with its own opening, joke construction, rhythm, scenes, look,
@@ -50,6 +51,8 @@ MONSTER_YARDS = {"QB": 350, "WR": 140, "TE": 110, "RB": 140}
 BEAT = "⏸"
 PART_PAUSE, BEAT_PAUSE = 0.06, 0.28
 BEAT_GAP, LAST_GAP = 0.08, 0.32        # silence after a beat, and after the last one (the cut lands on the joke)
+SERIES_MIN_S = 10              # QC's floor for any series video; a format's own floor is its length minus 2 s
+WORD_S = 0.38                  # seconds per spoken word at speed 1.22, comic-beat parts included (Week 7 renders: 0.34-0.41)
 # Endings this series never uses: fantasy strategy questions.
 FANTASY_ENDING = ("start", "bench", "sit ", "lineup", "waiver", "roster", "trade", "fantasy", "add him", "drop him")
 
@@ -216,10 +219,10 @@ def angles(book, snap: dict, p: dict) -> list[dict]:
         a["strength"] = 5 if a["beats_opponent"] else 4 if a["teams_fewer_value"] >= MIN_TEAMS_FEWER else 3
         out.append(a)
     if kind == "praise":
-        yards = box.get("passing_yards_value") if pos == "QB" else box.get("receiving_yards_value", 0) + (
+        yards = (box.get("passing_yards_value") or 0) if pos == "QB" else box.get("receiving_yards_value", 0) + (
             box.get("rushing_yards_value", 0) if pos == "RB" else 0)
         tds = box.get("passing_tds_value", 0) + box.get("receiving_tds_value", 0) + box.get("rushing_tds_value", 0)
-        if yards and (yards >= MONSTER_YARDS[pos] or tds >= 3 or lead["rank_value"] == 1):
+        if yards >= MONSTER_YARDS[pos] or tds >= 3:      # the box score itself: a rank-1 share is not a monster line
             out.append({"id": "monster_line", "broad": True, "flavor": "box", "strength": 3 + (tds >= 2)
                         + (yards >= MONSTER_YARDS[pos])})
     out.append({"id": "stat_outlier", "broad": lead["metric"] in ("air_yards", "targets", "ypa", "rec_air_yards"),
@@ -265,25 +268,44 @@ def entertainment_test(p: dict, angle: dict) -> tuple[bool, str]:
                   + ("a name people know (" + p["recognition"] + ")" if p["recognizable"] else "a season extreme"))
 
 
-def choose(p: dict, recent: list[dict], treatment: str | None = None) -> dict:
-    """The creative brief: angle, format, look, music, length, opening, joke mechanism, ending, and why."""
+def choose(p: dict, recent: list[dict], treatment: str | None = None, fits=None) -> dict:
+    """The creative brief: angle, format, look, music, length, opening, joke mechanism, ending, and why.
+    `fits(format, angle_id) -> (ok, why)` drops options whose script cannot reach the format's minimum length
+    (length_check); a forced treatment that cannot tell the story says why in `treatment_note`."""
     kind = p["role"]
-    options = []
+    options, rejected = [], {}
     for a in p["angles"]:
         for fmt, spec in FORMATS.items():
             fit = FIT.get((fmt, a["id"]), 0)
-            if kind not in spec["kinds"] or not fit or not eligible(fmt, a, p):
+            if kind not in spec["kinds"]:
                 continue
+            if not fit or not eligible(fmt, a, p):
+                rejected.setdefault(fmt, []).append(f"{a['id']}: " + ("not a story it tells" if not fit
+                                                                      else "missing the facts its joke needs"))
+                continue
+            if fits:
+                ok, why = fits(fmt, a["id"])
+                if not ok:
+                    rejected.setdefault(fmt, []).append(f"{a['id']}: {why}")
+                    continue
             pen, why = repetition(fmt, recent)
             options.append({"format": fmt, "angle": a, "fit": fit, "penalty": pen, "why_penalty": why,
                             "score": round(a["strength"] + fit - pen, 2)})
-    if treatment:
-        options = [o for o in options if o["format"] == treatment] or options
+    note = None
+    if treatment and options:
+        forced = [o for o in options if o["format"] == treatment]
+        if not forced:
+            why = "; ".join(rejected.get(treatment) or [f"not a {kind} format"])
+            note = f"treatment {treatment} cannot tell this story ({why}); chose among the other formats"
+        options = forced or options
     if not options:
         a = next(a for a in p["angles"] if a["id"] == "stat_outlier")
         ok, why = entertainment_test(p, a)
-        return {"series": SERIES, "kind": kind, "angle": a["id"], "format": None, "entertainment_test":
-                {"pass": False, "why": "no format can tell this story: " + why}, "options": []}
+        short = sorted({r for rs in rejected.values() for r in rs if "minimum" in r})
+        why = "; ".join(short) if short else why          # a story existed, its scripts ran short
+        return {"series": SERIES, "kind": kind, "player": p["name"], "angle": a["id"], "format": None,
+                "entertainment_test": {"pass": False, "why": "no format can tell this story: " + why},
+                "options": [], "rejected": rejected}
     options.sort(key=lambda o: (-o["score"], o["format"]))
     best = options[0]
     spec = FORMATS[best["format"]]
@@ -300,7 +322,33 @@ def choose(p: dict, recent: list[dict], treatment: str | None = None) -> dict:
             "why_not_repeated": best["why_penalty"] or ["nothing in the last two series videos matches"],
             "entertainment_test": {"pass": ok, "why": why},
             "options": [{k: o[k] for k in ("format", "fit", "penalty", "score")} | {"angle": o["angle"]["id"]}
-                        for o in options]}
+                        for o in options], "rejected": rejected, **({"treatment_note": note} if note else {})}
+
+
+def min_seconds(fmt: str) -> float:
+    """The shortest video QC passes for a format (qc.run_gates: its length minus 2 s, never under SERIES_MIN_S)."""
+    return max(SERIES_MIN_S, FORMATS[fmt]["length"][0] - 2)
+
+
+def estimate_seconds(beats: list[dict], claims: dict, fmt: str) -> float:
+    """The narration's length before any audio: spoken words at the format's speed, the comic beats, the gaps."""
+    from .script import fill
+    from .story import PAUSE
+    text = [fill(b["text_template"].replace(PAUSE, " ").replace(BEAT, " "), claims, "spoken") for b in beats]
+    words = sum(len(t.split()) for t in text)
+    return (words * WORD_S * 1.22 / FORMATS[fmt]["speed"] + BEAT_PAUSE * sum(b["text_template"].count(BEAT)
+                                                                             for b in beats)
+            + sum(b.get("pause") or 0 for b in beats))
+
+
+def length_check(facts: dict, claims: dict):
+    """choose()'s `fits`: compose the option's script and keep it only if it can reach the format's floor. A format
+    whose facts run out before its minimum length is not padded; it is not chosen."""
+    def fits(fmt: str, angle: str) -> tuple[bool, str]:
+        beats, _ = compose(facts, claims, {"format": fmt, "angle": angle})
+        est, floor = estimate_seconds(beats, claims, fmt), min_seconds(fmt)
+        return est >= floor, f"script ~{est:.1f}s, under {fmt}'s {floor:.0f}s minimum"
+    return fits
 
 
 def eligible(fmt: str, a: dict, p: dict) -> bool:
@@ -314,10 +362,23 @@ def eligible(fmt: str, a: dict, p: dict) -> bool:
     return True
 
 
-def premise(p: dict, a: dict) -> str:
+def premise(p: dict, a: dict, val=None) -> str:
+    """The story in one line (brief.md, the upload description). A comparison is only stated when the claims hold
+    it: `val` reads a claim's value (the description and QC pass theirs); without it, the values cached on the angle."""
+    if a["id"] == "target_hog":
+        get = (lambda cid, cached: val(cid)) if val else (lambda cid, cached: cached)
+        tgt = get(p["box"]["targets"], p["box"]["targets_value"])
+        who = f"one {POS_WORD[p['position']]}"
+        if get(a["opp_targets"], a["opp_targets_value"]) < tgt:
+            return f"{who} drew more targets than the entire opposing offense"
+        fewer = get(a["teams_fewer"], a["teams_fewer_value"])
+        if fewer >= 1:
+            return f"{who} drew more targets than {'an entire NFL offense' if fewer == 1 else f'{fewer} entire NFL offenses'}"
+        if get(a["rank"], a["rank_value"]) == 1:
+            return f"{tgt} targets, the most in any {POS_WORD[p['position']]} game this season"
+        return f"{tgt} targets in one game"
     return {"short_throws": "his passes barely left the line of scrimmage",
             "rough_day": "a passing afternoon that came apart",
-            "target_hog": "one receiver drew more targets than an NFL offense",
             "monster_line": "a monster box score",
             "stat_outlier": f"an extreme {p['lead']['label']}"}[a["id"]]
 
@@ -557,16 +618,49 @@ def _sacks(box: dict) -> tuple[str, str]:
     return ("sack", "SACK") if box["sacks_suffered_value"] == 1 else ("sacks", "SACKS")
 
 
+RB_CATCHES = 3                 # a running back's receiving line joins the slam from this many catches
+
+
 def _slams(p: dict) -> list[tuple[str, str]]:
-    """(claim, word) for the box-score slam, in the order a broadcast would say them."""
+    """(claim, word) for the box-score slam, in the order a broadcast would say them. A running back's line is his
+    rushing (his targets lead only on a target_hog day); zero touchdowns are never slammed; one is singular."""
     b = p["box"]
     if p["position"] == "QB":
         order = [("completions", "completions"), ("passing_yards", "yards"), ("passing_tds", "touchdowns")]
+    elif p["position"] == "RB":
+        order = [("carries", "carries"), ("rushing_yards", "yards"), ("rushing_tds", "touchdowns")]
+        if b.get("receptions_value", 0) >= RB_CATCHES:
+            order += [("receptions", "catches"), ("receiving_yards", "receiving yards"),
+                      ("receiving_tds", "receiving touchdowns")]
+        if b.get("targets_value", 0) >= HOG_TARGETS:
+            order.insert(0, ("targets", "targets"))
     else:
-        order = [("targets", "targets"), ("receptions", "catches"), ("receiving_yards", "yards")]
-        if b.get("receiving_tds_value"):
-            order.append(("receiving_tds", "touchdown" if b["receiving_tds_value"] == 1 else "touchdowns"))
-    return [(b[k], w) for k, w in order if k in b]
+        order = [("targets", "targets"), ("receptions", "catches"), ("receiving_yards", "yards"),
+                 ("receiving_tds", "touchdowns")]
+    out = []
+    for k, w in order:
+        if k not in b or (k.endswith("_tds") and not b[k + "_value"]):
+            continue
+        if b[k + "_value"] == 1:
+            w = {"carries": "carry", "catches": "catch"}.get(w, w.removesuffix("s"))
+        out.append((b[k], w))
+    return out
+
+
+def _lead_rank(ctx) -> dict | None:
+    """The selection stat's season rank, said when it is top three: the claim-backed line a monster box score
+    stands on beside its numbers. None when it is not top three or its label would put a number in the script."""
+    p, ph = ctx["p"], ctx["ph"]
+    lead = p["lead"]
+    if lead["rank_value"] > 3 or lead["sup"] not in ("most", "highest") or any(ch.isdigit() for ch in lead["label"]):
+        return None
+    pos, tied = POS_WORD[p["position"]], bool(lead.get("tied"))
+    if lead["rank_value"] == 1:
+        said = f"{'Tied for the' if tied else 'The'} {lead['sup']} {lead['label']} in any {pos} game this season"
+    else:
+        said = f"The {ph(lead['rank'])}-{lead['sup']} {lead['label']} of {ph(lead['games'])} {pos} games this season"
+    return {"said": said, "rank1": lead["rank_value"] == 1, "tied": tied, "sup": lead["sup"].upper(),
+            "claims": [lead["value"], lead["rank"], lead["games"]]}
 
 
 def build_main_character(ctx):
@@ -602,6 +696,12 @@ def build_main_character(ctx):
                                                "stage": "rank", "claims": [a["rank"], a["games"]]},
                            [_cue("hype_peak", word="more", at="end", context="glaze_peak")] if a["rank_value"] == 1 else [],
                            ["nobody"]))
+    elif a["id"] == "monster_line" and (lr := _lead_rank(ctx)):
+        lead = p["lead"]
+        beats.append(_beat(ctx, "rank", lr["said"] + ".",
+                           {"type": "hx_rank", "camera": "push", "transition": "cut", "games": lead["games"],
+                            "rank": lead["rank"], "rank1": lr["rank1"], "sup": lr["sup"], "tied": lr["tied"],
+                            "stage": "rank", "claims": lr["claims"]}))
     pts = lambda cid: ctx["claims"][cid]["value"]
     shootout = " a shootout" if min(pts(g["points"]), pts(g["opp_points"])) >= SHOOTOUT_POINTS else ""
     if g["result_value"] == "lost":
@@ -610,8 +710,9 @@ def build_main_character(ctx):
     else:
         end, tag = f"The {ctx['team']} {ph(g['result'])}{shootout}.{BEAT} {who} was the whole movie.", \
             "STARRING. DIRECTED BY. PRODUCED BY."
-    abbr = {"targets": "TGT", "catches": "REC", "yards": "YDS", "touchdown": "TD", "touchdowns": "TD",
-            "completions": "CMP"}
+    abbr = {"targets": "TGT", "catches": "REC", "catch": "REC", "yards": "YDS", "touchdown": "TD",
+            "touchdowns": "TD", "completions": "CMP", "carries": "CAR", "carry": "CAR", "receiving yards": "REC YDS",
+            "receiving touchdown": "REC TD", "receiving touchdowns": "REC TD"}
     beats.append(_beat(ctx, "poster", end, {"type": "hx_poster", "camera": "push", "transition": "zoom",
                                             "tagline": tag, "credits": [[c, abbr.get(w, w.upper())] for c, w in slams],
                                             "claims": [g["points"], g["opp_points"], g["result"], p["team_name"],
@@ -641,6 +742,11 @@ def build_fan_meltdown(ctx):
                             "word": "THE WHOLE OTHER TEAM", "transition": "cut",
                             "claims": [a["opp_targets"], p["opponent"]]},
                            [_cue("hype_peak", claim=a["opp_targets"], at="end", context="meltdown")]))
+    elif a["id"] == "monster_line" and (lr := _lead_rank(ctx)) and lr["rank1"]:
+        lead = p["lead"]
+        beats.append(_beat(ctx, "detail", lr["said"] + "!",
+                           {"type": "melt_stat", "camera": "still", "level": 4, "big": lead["value"],
+                            "word": lead["screen"], "transition": "cut", "claims": lr["claims"]}))
     beats.append(_beat(ctx, "scream", "We are not calm.‖ We will never be calm again.",
                        {"type": "melt_scream", "camera": "still", "transition": "cut", "claims": []},
                        [_cue("hard_stop", word="again", at="end")], ["never"],
@@ -711,6 +817,11 @@ def describe(ep: Episode, brief: dict) -> str:
              "Options considered (score = angle strength + format fit - repetition):", ""]
     lines += [f"- {o['format']} on {o['angle']}: fit {o['fit']}, repetition -{o['penalty']}, score {o['score']}"
               for o in brief.get("options", [])]
+    if brief.get("rejected"):
+        lines += ["", "Formats not considered:", ""]
+        lines += [f"- {fmt}: {'; '.join(why)}" for fmt, why in brief["rejected"].items()]
+    if brief.get("treatment_note"):
+        lines += ["", f"Note: {brief['treatment_note']}"]
     return "\n".join(lines) + "\n"
 
 
@@ -765,9 +876,13 @@ def thumbnail(p: dict, claims: dict, structure: dict) -> tuple[str, str, str]:
 
 
 def description(p: dict, claims: dict, structure: dict) -> list[str]:
+    """The upload description's story lines: every number and comparison read from the claims (QC re-derives
+    them from the snapshot and checks the description still says the same)."""
     d = lambda cid: claims[cid]["display"]
     g = p["game"]
-    lines = [f"{p['name']} vs the {d(p['opponent'])}, {d(p['week_claim'])}: {premise(p, next(a for a in p['angles'] if a['id'] == structure['story_angle']))}. "
+    a = next(a for a in p["angles"] if a["id"] == structure["story_angle"])
+    lines = [f"{p['name']} vs the {d(p['opponent'])}, {d(p['week_claim'])}: "
+             f"{premise(p, a, lambda cid: claims[cid]['value'])}. "
              f"Final: {d(g['points'])}-{d(g['opp_points'])} ({d(g['result'])}).",
              "Every stat is from nflverse game data; the jokes are jokes."]
     if FORMATS[structure["format_family"]].get("parody"):

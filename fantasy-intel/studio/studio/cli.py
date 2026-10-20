@@ -237,7 +237,7 @@ def make_flame_praise(cfg: Config, season: int, week: int, force: set[str], only
                 run(ep)
                 ep.log(f"  [{name} {time.time() - t0:.1f}s]")
         except flame.NotEntertaining as exc:
-            print(f"  skipped: fails the entertainment test ({exc}); see {ep.path('brief.md')}")
+            print(f"  skipped: {exc}; see {ep.path('brief.md')}")
             continue
         if read_json(ep.path("brief.json")).get("series"):
             recent.append(read_json(ep.path("script.json"))["structure"])
