@@ -969,3 +969,185 @@ git add -A fantasy-intel/backend/app/db fantasy-intel/backend/tests/test_league_
 git commit -m "Phase 2: verified, byte-bounded league file cache"
 ```
 
+
+### Task 4: Layered read-only connection with the perspective as `is_mine`
+
+**Files:**
+- Create: `fantasy-intel/backend/app/db/league_conn.py`
+- Create: `fantasy-intel/backend/tests/test_league_conn.py`
+
+**Interfaces:**
+- Consumes: split files (Task 2) as fixtures.
+- Produces: `perspective_team(raw) -> int | None`; `LayeredDatabases()` with `.cursor(league_path, global_path, *, perspective) -> duckdb cursor`, `.forget(path)` (the Task 3 cache's `on_evict`), `len()`.
+- Measured (spike 2026-10-20): instance + two attaches ~3 ms; per-request cursor + view ~0.1 ms; config lock still allows per-cursor `SET search_path`; external access and ATTACH are blocked; a cursor outlives a dropped instance.
+
+- [ ] **Step 1: Write the failing tests**
+
+`fantasy-intel/backend/tests/test_league_conn.py`:
+
+```python
+"""The layered connection: league file + global file attached read-only, league first, perspective as is_mine."""
+import duckdb
+import pytest
+
+from app.db.league_conn import LayeredDatabases, perspective_team
+from app.db.league_split import split_database
+from golden.golden import build_e2e_db
+
+
+@pytest.fixture(scope="module")
+def files(tmp_path_factory):
+    d = tmp_path_factory.mktemp("conn")
+    e2e = build_e2e_db(d / "e2e.duckdb")
+    out = split_database(e2e, d / "lg.duckdb", d / "gl.duckdb", stamp="2026-10-20T12:00:00")
+    return out
+
+
+def test_unqualified_names_resolve_league_first_then_global(files):
+    dbs = LayeredDatabases()
+    cur = dbs.cursor(files.league_path, files.global_path, perspective=None)
+    assert cur.execute("SELECT count(*) FROM fantasy_teams").fetchone()[0] == 4          # league table
+    assert cur.execute("SELECT count(*) FROM nfl_players").fetchone()[0] > 0             # global table
+    assert cur.execute("SELECT value FROM schema_meta WHERE key='published_at'").fetchone() == ("2026-10-20T12:00:00",)
+
+
+def test_the_perspective_team_is_the_only_is_mine_and_cursors_do_not_share_it(files):
+    dbs = LayeredDatabases()
+    a = dbs.cursor(files.league_path, files.global_path, perspective=2)
+    b = dbs.cursor(files.league_path, files.global_path, perspective=3)
+    none = dbs.cursor(files.league_path, files.global_path, perspective=None)
+    mine = "SELECT team_id FROM fantasy_teams WHERE is_mine"
+    assert a.execute(mine).fetchall() == [(2,)] and b.execute(mine).fetchall() == [(3,)]
+    assert none.execute(mine).fetchall() == []
+    assert len(dbs) == 1, "one instance per file pair"
+
+
+def test_the_files_are_read_only_and_nothing_else_is_reachable(files, tmp_path):
+    cur = LayeredDatabases().cursor(files.league_path, files.global_path, perspective=None)
+    for sql in ("INSERT INTO lg.main.fantasy_teams SELECT * FROM lg.main.fantasy_teams",
+                "CREATE TABLE lg.main.x (i INT)", f"ATTACH '{tmp_path / 'other.duckdb'}' AS other",
+                f"SELECT * FROM read_csv('{tmp_path / 'x.csv'}')", "SET enable_external_access = true"):
+        with pytest.raises(duckdb.Error):
+            cur.execute(sql)
+
+
+def test_dropping_an_instance_does_not_break_a_running_cursor(files):
+    dbs = LayeredDatabases()
+    cur = dbs.cursor(files.league_path, files.global_path, perspective=1)
+    dbs.forget(files.league_path)
+    assert len(dbs) == 0
+    assert cur.execute("SELECT count(*) FROM fantasy_teams WHERE is_mine").fetchone() == (1,)
+
+
+@pytest.mark.parametrize("raw,expected", [(None, None), ("6", 6), (6, 6), ("0", 0), ("abc", None), ("6; DROP", None),
+                                          ("-1", None), ("99999999999", None), (True, None)])
+def test_perspective_team_accepts_only_small_non_negative_integers(raw, expected):
+    assert perspective_team(raw) == expected
+```
+
+```bash
+cd fantasy-intel/backend && uv run pytest tests/test_league_conn.py -q
+```
+Expected: collection error (module missing)
+
+- [ ] **Step 2: Implement**
+
+`fantasy-intel/backend/app/db/league_conn.py`:
+
+```python
+"""Layered read-only connections for one league (multi-league Phase 2).
+
+One in-memory DuckDB instance per (league file, global file) pair, with both attached READ_ONLY as `lg` and `gl`,
+external access off and its configuration locked: nothing but those two files is readable, nothing is writable.
+Each request gets its own cursor (a separate DuckDB connection to the instance) with
+`search_path = lg.main, gl.main`, so every unqualified table name the engines use resolves to the league's copy
+first and the shared global data second.
+
+The perspective team reaches the engines through the column they already read: a cursor-local temporary view
+`fantasy_teams` shadows the league table with `is_mine = (team_id = <perspective>)`, or `false` for every team when
+the viewer has no perspective. No engine changes; another cursor never sees this one's view.
+"""
+
+from __future__ import annotations
+
+import threading
+from pathlib import Path
+
+import duckdb
+
+_MAX_TEAM_ID = 1_000_000
+
+
+def perspective_team(raw) -> int | None:
+    """The perspective as an integer team id, or None. Anything else (including injection attempts) is None: the
+    perspective is a preference, never trusted input."""
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, str) and raw.isascii() and raw.isdigit() and len(raw) <= 7:
+        value = int(raw)
+    else:
+        return None
+    return value if 0 <= value < _MAX_TEAM_ID else None
+
+
+def _q(path: Path) -> str:
+    return str(path).replace("'", "''")
+
+
+class LayeredDatabases:
+    """The per-process set of open instances, keyed by (league path, global path)."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._instances: dict[tuple[str, str], duckdb.DuckDBPyConnection] = {}
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._instances)
+
+    def _instance(self, league_path: Path, global_path: Path) -> duckdb.DuckDBPyConnection:
+        key = (str(league_path), str(global_path))
+        with self._lock:
+            inst = self._instances.get(key)
+            if inst is None:
+                inst = duckdb.connect(":memory:")
+                inst.execute(f"ATTACH '{_q(league_path)}' AS lg (READ_ONLY)")
+                inst.execute(f"ATTACH '{_q(global_path)}' AS gl (READ_ONLY)")
+                inst.execute("SET enable_external_access = false")
+                inst.execute("SET lock_configuration = true")
+                self._instances[key] = inst
+            return inst
+
+    def cursor(self, league_path: Path, global_path: Path, *, perspective: int | None) -> duckdb.DuckDBPyConnection:
+        cur = self._instance(league_path, global_path).cursor()
+        cur.execute("SET search_path = 'lg.main,gl.main'")
+        team = perspective_team(perspective)
+        mine = "false" if team is None else f"(team_id = {team})"        # an int we produced: safe to inline
+        cur.execute(f"CREATE TEMP VIEW fantasy_teams AS SELECT * REPLACE ({mine} AS is_mine) FROM lg.main.fantasy_teams")
+        return cur
+
+    def forget(self, path: Path) -> None:
+        """Drop instances using `path` (the file cache evicted it). Cursors already handed out keep working: DuckDB
+        keeps the instance alive until its last connection closes, then the file's space is freed."""
+        p = str(path)
+        with self._lock:
+            for key in [k for k in self._instances if p in k]:
+                del self._instances[key]
+```
+
+- [ ] **Step 3: Run the tests**
+
+```bash
+uv run pytest tests/test_league_conn.py -q
+```
+Expected: 13 passed
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add fantasy-intel/backend/app/db/league_conn.py fantasy-intel/backend/tests/test_league_conn.py
+git commit -m "Phase 2: layered read-only league connection with the perspective as is_mine"
+```
+
