@@ -1,0 +1,447 @@
+// /api/trades/options
+{
+ "body": {
+  "active_capacity": 12,
+  "availability_note": "NFL eligibility, ESPN injury designation and fantasy IR placement are separate. A verified NFL-ineligible week contributes nothing (ESPN's projection is kept and shown, never counted and never treated as 0). An earliest eligible week is a minimum, not a return date; after it ESPN's projection is used as published and no health or role is assumed.",
+  "evaluation": {
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "remaining_weeks": true,
+   "start_week": 3,
+   "start_week_reason": {
+    "current_week_completed": false,
+    "current_week_games": 16,
+    "current_week_games_final": 0,
+    "current_week_kicked_off": false,
+    "current_week_status": "not_started",
+    "espn_current_week": 3,
+    "evaluated_at": "<masked>",
+    "evaluation_start_week": 3,
+    "final_scoring_period": 17,
+    "reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+    "remaining_weeks": true,
+    "rule": "first scoring period from ESPN current_week whose NFL REG games have not kicked off; a week counts as kicked off once any game's scheduled kickoff (nfl_schedules gameday + gametime, US Eastern) is at or before now, or any game has a final score",
+    "uncertain": false,
+    "warning": null,
+    "weeks_checked": [
+     {
+      "detail": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00)",
+      "first_kickoff": "<masked>",
+      "games": 16,
+      "games_final": 0,
+      "games_kicked_off": 0,
+      "games_missing_kickoff": 0,
+      "kickoff_columns": true,
+      "last_kickoff": "<masked>",
+      "score_columns": true,
+      "status": "not_started",
+      "week": 3
+     }
+    ]
+   },
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  "league": {
+   "current_matchup_period": 3,
+   "current_week": 3,
+   "faab_budget": 100,
+   "final_scoring_period": 17,
+   "is_faab": true,
+   "league_id": 999,
+   "name": "Fixture League",
+   "playoff_teams": 2,
+   "reception_points": 1.0,
+   "reg_season_matchups": 14,
+   "roster_slots": {
+    "BE": 3,
+    "D/ST": 1,
+    "FLEX": 1,
+    "IR": 1,
+    "K": 1,
+    "QB": 1,
+    "RB": 2,
+    "TE": 1,
+    "WR": 2
+   },
+   "scoring_type": "H2H_POINTS",
+   "season": 2026,
+   "size": 4,
+   "synced_at": "<masked>",
+   "trade_deadline": "<masked>",
+   "waiver_process_days": null
+  },
+  "max_players_per_side": 6,
+  "position_limits": {},
+  "teams": [
+   {
+    "abbrev": "T1",
+    "is_mine": false,
+    "name": "Team 1",
+    "roster": [
+     {
+      "availability": null,
+      "espn_player_id": 101,
+      "injury_status": "ACTIVE",
+      "name": "Alpha QB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "QB",
+      "pro_team": "KC",
+      "ros_projected_points": 135.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 202,
+      "injury_status": "ACTIVE",
+      "name": "Foxtrot RB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "RB",
+      "pro_team": "BUF",
+      "ros_projected_points": 180.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 201,
+      "injury_status": "ACTIVE",
+      "name": "Echo RB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "RB",
+      "pro_team": "KC",
+      "ros_projected_points": 165.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 203,
+      "injury_status": "ACTIVE",
+      "name": "Golf RB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "RB",
+      "pro_team": "DET",
+      "ros_projected_points": 90.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 303,
+      "injury_status": "ACTIVE",
+      "name": "Oscar WR",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "WR",
+      "pro_team": "DET",
+      "ros_projected_points": 120.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 302,
+      "injury_status": "ACTIVE",
+      "name": "November WR",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "WR",
+      "pro_team": "BUF",
+      "ros_projected_points": 105.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 301,
+      "injury_status": "ACTIVE",
+      "name": "Mike WR",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "WR",
+      "pro_team": "KC",
+      "ros_projected_points": 90.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 401,
+      "injury_status": "ACTIVE",
+      "name": "Uniform TE",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "TE",
+      "pro_team": "KC",
+      "ros_projected_points": 120.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 501,
+      "injury_status": "ACTIVE",
+      "name": "Yankee K",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "K",
+      "pro_team": "KC",
+      "ros_projected_points": 150.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": -16012,
+      "injury_status": "ACTIVE",
+      "name": "Chiefs D/ST",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "D/ST",
+      "pro_team": "KC",
+      "ros_projected_points": 135.0
+     }
+    ],
+    "team_id": 1
+   },
+   {
+    "abbrev": "T2",
+    "is_mine": true,
+    "name": "Team 2",
+    "roster": [
+     {
+      "availability": null,
+      "espn_player_id": 102,
+      "injury_status": "ACTIVE",
+      "name": "Bravo QB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "QB",
+      "pro_team": "BUF",
+      "ros_projected_points": 150.0
+     },
+     {
+      "availability": {
+       "earliest_eligible_week": null,
+       "espn_injury_status": "ACTIVE",
+       "fantasy_ir_slot": true,
+       "nfl_designation_label": null,
+       "return_confirmed": false,
+       "status": "available",
+       "warnings": [
+        "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
+       ]
+      },
+      "espn_player_id": 207,
+      "injury_status": "ACTIVE",
+      "name": "Kilo RB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": true,
+      "position": "RB",
+      "pro_team": "TB",
+      "ros_projected_points": 150.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 206,
+      "injury_status": "ACTIVE",
+      "name": "Juliet RB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "RB",
+      "pro_team": "SEA",
+      "ros_projected_points": 135.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 205,
+      "injury_status": "ACTIVE",
+      "name": "India RB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "RB",
+      "pro_team": "SF",
+      "ros_projected_points": 120.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 204,
+      "injury_status": "ACTIVE",
+      "name": "Hotel RB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "RB",
+      "pro_team": "PHI",
+      "ros_projected_points": 105.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 307,
+      "injury_status": "ACTIVE",
+      "name": "Sierra WR",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "WR",
+      "pro_team": "TB",
+      "ros_projected_points": 180.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 306,
+      "injury_status": "ACTIVE",
+      "name": "Romeo WR",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "WR",
+      "pro_team": "SEA",
+      "ros_projected_points": 165.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 305,
+      "injury_status": "ACTIVE",
+      "name": "Quebec WR",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "WR",
+      "pro_team": "SF",
+      "ros_projected_points": 150.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 304,
+      "injury_status": "ACTIVE",
+      "name": "Papa WR",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "WR",
+      "pro_team": "PHI",
+      "ros_projected_points": 135.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 402,
+      "injury_status": "ACTIVE",
+      "name": "Victor TE",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "TE",
+      "pro_team": "BUF",
+      "ros_projected_points": 135.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 502,
+      "injury_status": "ACTIVE",
+      "name": "Zulu K",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "K",
+      "pro_team": "BUF",
+      "ros_projected_points": 165.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": -16002,
+      "injury_status": "ACTIVE",
+      "name": "Bills D/ST",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "D/ST",
+      "pro_team": "BUF",
+      "ros_projected_points": 90.0
+     }
+    ],
+    "team_id": 2
+   },
+   {
+    "abbrev": "T3",
+    "is_mine": false,
+    "name": "Team 3",
+    "roster": [
+     {
+      "availability": null,
+      "espn_player_id": 103,
+      "injury_status": "ACTIVE",
+      "name": "Charlie QB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "QB",
+      "pro_team": "DET",
+      "ros_projected_points": 165.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 208,
+      "injury_status": "ACTIVE",
+      "name": "Lima RB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "RB",
+      "pro_team": "WAS",
+      "ros_projected_points": 165.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 308,
+      "injury_status": "ACTIVE",
+      "name": "Tango WR",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "WR",
+      "pro_team": "WAS",
+      "ros_projected_points": 90.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 403,
+      "injury_status": "ACTIVE",
+      "name": "Whiskey TE",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "TE",
+      "pro_team": "DET",
+      "ros_projected_points": 150.0
+     }
+    ],
+    "team_id": 3
+   },
+   {
+    "abbrev": "T4",
+    "is_mine": false,
+    "name": "Team 4",
+    "roster": [
+     {
+      "availability": null,
+      "espn_player_id": 104,
+      "injury_status": "ACTIVE",
+      "name": "Delta QB",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "QB",
+      "pro_team": "PHI",
+      "ros_projected_points": 180.0
+     },
+     {
+      "availability": null,
+      "espn_player_id": 404,
+      "injury_status": "ACTIVE",
+      "name": "Xray TE",
+      "nfl_ineligible_weeks": [],
+      "on_ir": false,
+      "position": "TE",
+      "pro_team": "PHI",
+      "ros_projected_points": 165.0
+     }
+    ],
+    "team_id": 4
+   }
+  ]
+ },
+ "status": 200
+}

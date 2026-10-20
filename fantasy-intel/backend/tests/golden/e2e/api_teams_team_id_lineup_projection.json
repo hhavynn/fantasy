@@ -1,0 +1,3472 @@
+// /api/teams/2/lineup-projection
+{
+ "body": {
+  "evaluation": {
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "remaining_weeks": true,
+   "start_week": 3,
+   "start_week_reason": {
+    "current_week_completed": false,
+    "current_week_games": 16,
+    "current_week_games_final": 0,
+    "current_week_kicked_off": false,
+    "current_week_status": "not_started",
+    "espn_current_week": 3,
+    "evaluated_at": "<masked>",
+    "evaluation_start_week": 3,
+    "final_scoring_period": 17,
+    "reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+    "remaining_weeks": true,
+    "rule": "first scoring period from ESPN current_week whose NFL REG games have not kicked off; a week counts as kicked off once any game's scheduled kickoff (nfl_schedules gameday + gametime, US Eastern) is at or before now, or any game has a final score",
+    "uncertain": false,
+    "warning": null,
+    "weeks_checked": [
+     {
+      "detail": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00)",
+      "first_kickoff": "<masked>",
+      "games": 16,
+      "games_final": 0,
+      "games_kicked_off": 0,
+      "games_missing_kickoff": 0,
+      "kickoff_columns": true,
+      "last_kickoff": "<masked>",
+      "score_columns": true,
+      "status": "not_started",
+      "week": 3
+     }
+    ]
+   },
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  "league": {
+   "current_matchup_period": 3,
+   "current_week": 3,
+   "faab_budget": 100,
+   "final_scoring_period": 17,
+   "is_faab": true,
+   "league_id": 999,
+   "name": "Fixture League",
+   "playoff_teams": 2,
+   "reception_points": 1.0,
+   "reg_season_matchups": 14,
+   "roster_slots": {
+    "BE": 3,
+    "D/ST": 1,
+    "FLEX": 1,
+    "IR": 1,
+    "K": 1,
+    "QB": 1,
+    "RB": 2,
+    "TE": 1,
+    "WR": 2
+   },
+   "scoring_type": "H2H_POINTS",
+   "season": 2026,
+   "size": 4,
+   "synced_at": "<masked>",
+   "trade_deadline": "<masked>",
+   "waiver_process_days": null
+  },
+  "marginal_values": [
+   {
+    "espn_player_id": 502,
+    "known_marginal_lineup_points": 165.0,
+    "name": "Zulu K",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 34.8,
+    "position": "K",
+    "pro_team": "BUF",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 130.2,
+    "roster_marginal_lineup_points": 165.0,
+    "weeks": [
+     {
+      "known_marginal": 10.3,
+      "marginal": 10.3,
+      "phase": "regular",
+      "started": true,
+      "week": 3
+     },
+     {
+      "known_marginal": 10.4,
+      "marginal": 10.4,
+      "phase": "regular",
+      "started": true,
+      "week": 4
+     },
+     {
+      "known_marginal": 10.5,
+      "marginal": 10.5,
+      "phase": "regular",
+      "started": true,
+      "week": 5
+     },
+     {
+      "known_marginal": 10.6,
+      "marginal": 10.6,
+      "phase": "regular",
+      "started": true,
+      "week": 6
+     },
+     {
+      "known_marginal": 10.7,
+      "marginal": 10.7,
+      "phase": "regular",
+      "started": true,
+      "week": 7
+     },
+     {
+      "known_marginal": 10.8,
+      "marginal": 10.8,
+      "phase": "regular",
+      "started": true,
+      "week": 8
+     },
+     {
+      "known_marginal": 10.9,
+      "marginal": 10.9,
+      "phase": "regular",
+      "started": true,
+      "week": 9
+     },
+     {
+      "known_marginal": 11.0,
+      "marginal": 11.0,
+      "phase": "regular",
+      "started": true,
+      "week": 10
+     },
+     {
+      "known_marginal": 11.1,
+      "marginal": 11.1,
+      "phase": "regular",
+      "started": true,
+      "week": 11
+     },
+     {
+      "known_marginal": 11.2,
+      "marginal": 11.2,
+      "phase": "regular",
+      "started": true,
+      "week": 12
+     },
+     {
+      "known_marginal": 11.3,
+      "marginal": 11.3,
+      "phase": "regular",
+      "started": true,
+      "week": 13
+     },
+     {
+      "known_marginal": 11.4,
+      "marginal": 11.4,
+      "phase": "regular",
+      "started": true,
+      "week": 14
+     },
+     {
+      "known_marginal": 11.5,
+      "marginal": 11.5,
+      "phase": "playoff",
+      "started": true,
+      "week": 15
+     },
+     {
+      "known_marginal": 11.6,
+      "marginal": 11.6,
+      "phase": "playoff",
+      "started": true,
+      "week": 16
+     },
+     {
+      "known_marginal": 11.7,
+      "marginal": 11.7,
+      "phase": "playoff",
+      "started": true,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "espn_player_id": 102,
+    "known_marginal_lineup_points": 150.0,
+    "name": "Bravo QB",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 31.8,
+    "position": "QB",
+    "pro_team": "BUF",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 118.2,
+    "roster_marginal_lineup_points": 150.0,
+    "weeks": [
+     {
+      "known_marginal": 9.3,
+      "marginal": 9.3,
+      "phase": "regular",
+      "started": true,
+      "week": 3
+     },
+     {
+      "known_marginal": 9.4,
+      "marginal": 9.4,
+      "phase": "regular",
+      "started": true,
+      "week": 4
+     },
+     {
+      "known_marginal": 9.5,
+      "marginal": 9.5,
+      "phase": "regular",
+      "started": true,
+      "week": 5
+     },
+     {
+      "known_marginal": 9.6,
+      "marginal": 9.6,
+      "phase": "regular",
+      "started": true,
+      "week": 6
+     },
+     {
+      "known_marginal": 9.7,
+      "marginal": 9.7,
+      "phase": "regular",
+      "started": true,
+      "week": 7
+     },
+     {
+      "known_marginal": 9.8,
+      "marginal": 9.8,
+      "phase": "regular",
+      "started": true,
+      "week": 8
+     },
+     {
+      "known_marginal": 9.9,
+      "marginal": 9.9,
+      "phase": "regular",
+      "started": true,
+      "week": 9
+     },
+     {
+      "known_marginal": 10.0,
+      "marginal": 10.0,
+      "phase": "regular",
+      "started": true,
+      "week": 10
+     },
+     {
+      "known_marginal": 10.1,
+      "marginal": 10.1,
+      "phase": "regular",
+      "started": true,
+      "week": 11
+     },
+     {
+      "known_marginal": 10.2,
+      "marginal": 10.2,
+      "phase": "regular",
+      "started": true,
+      "week": 12
+     },
+     {
+      "known_marginal": 10.3,
+      "marginal": 10.3,
+      "phase": "regular",
+      "started": true,
+      "week": 13
+     },
+     {
+      "known_marginal": 10.4,
+      "marginal": 10.4,
+      "phase": "regular",
+      "started": true,
+      "week": 14
+     },
+     {
+      "known_marginal": 10.5,
+      "marginal": 10.5,
+      "phase": "playoff",
+      "started": true,
+      "week": 15
+     },
+     {
+      "known_marginal": 10.6,
+      "marginal": 10.6,
+      "phase": "playoff",
+      "started": true,
+      "week": 16
+     },
+     {
+      "known_marginal": 10.7,
+      "marginal": 10.7,
+      "phase": "playoff",
+      "started": true,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "espn_player_id": 402,
+    "known_marginal_lineup_points": 135.0,
+    "name": "Victor TE",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 28.8,
+    "position": "TE",
+    "pro_team": "BUF",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 106.2,
+    "roster_marginal_lineup_points": 135.0,
+    "weeks": [
+     {
+      "known_marginal": 8.3,
+      "marginal": 8.3,
+      "phase": "regular",
+      "started": true,
+      "week": 3
+     },
+     {
+      "known_marginal": 8.4,
+      "marginal": 8.4,
+      "phase": "regular",
+      "started": true,
+      "week": 4
+     },
+     {
+      "known_marginal": 8.5,
+      "marginal": 8.5,
+      "phase": "regular",
+      "started": true,
+      "week": 5
+     },
+     {
+      "known_marginal": 8.6,
+      "marginal": 8.6,
+      "phase": "regular",
+      "started": true,
+      "week": 6
+     },
+     {
+      "known_marginal": 8.7,
+      "marginal": 8.7,
+      "phase": "regular",
+      "started": true,
+      "week": 7
+     },
+     {
+      "known_marginal": 8.8,
+      "marginal": 8.8,
+      "phase": "regular",
+      "started": true,
+      "week": 8
+     },
+     {
+      "known_marginal": 8.9,
+      "marginal": 8.9,
+      "phase": "regular",
+      "started": true,
+      "week": 9
+     },
+     {
+      "known_marginal": 9.0,
+      "marginal": 9.0,
+      "phase": "regular",
+      "started": true,
+      "week": 10
+     },
+     {
+      "known_marginal": 9.1,
+      "marginal": 9.1,
+      "phase": "regular",
+      "started": true,
+      "week": 11
+     },
+     {
+      "known_marginal": 9.2,
+      "marginal": 9.2,
+      "phase": "regular",
+      "started": true,
+      "week": 12
+     },
+     {
+      "known_marginal": 9.3,
+      "marginal": 9.3,
+      "phase": "regular",
+      "started": true,
+      "week": 13
+     },
+     {
+      "known_marginal": 9.4,
+      "marginal": 9.4,
+      "phase": "regular",
+      "started": true,
+      "week": 14
+     },
+     {
+      "known_marginal": 9.5,
+      "marginal": 9.5,
+      "phase": "playoff",
+      "started": true,
+      "week": 15
+     },
+     {
+      "known_marginal": 9.6,
+      "marginal": 9.6,
+      "phase": "playoff",
+      "started": true,
+      "week": 16
+     },
+     {
+      "known_marginal": 9.7,
+      "marginal": 9.7,
+      "phase": "playoff",
+      "started": true,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "espn_player_id": -16002,
+    "known_marginal_lineup_points": 90.0,
+    "name": "Bills D/ST",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 19.8,
+    "position": "D/ST",
+    "pro_team": "BUF",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 70.2,
+    "roster_marginal_lineup_points": 90.0,
+    "weeks": [
+     {
+      "known_marginal": 5.3,
+      "marginal": 5.3,
+      "phase": "regular",
+      "started": true,
+      "week": 3
+     },
+     {
+      "known_marginal": 5.4,
+      "marginal": 5.4,
+      "phase": "regular",
+      "started": true,
+      "week": 4
+     },
+     {
+      "known_marginal": 5.5,
+      "marginal": 5.5,
+      "phase": "regular",
+      "started": true,
+      "week": 5
+     },
+     {
+      "known_marginal": 5.6,
+      "marginal": 5.6,
+      "phase": "regular",
+      "started": true,
+      "week": 6
+     },
+     {
+      "known_marginal": 5.7,
+      "marginal": 5.7,
+      "phase": "regular",
+      "started": true,
+      "week": 7
+     },
+     {
+      "known_marginal": 5.8,
+      "marginal": 5.8,
+      "phase": "regular",
+      "started": true,
+      "week": 8
+     },
+     {
+      "known_marginal": 5.9,
+      "marginal": 5.9,
+      "phase": "regular",
+      "started": true,
+      "week": 9
+     },
+     {
+      "known_marginal": 6.0,
+      "marginal": 6.0,
+      "phase": "regular",
+      "started": true,
+      "week": 10
+     },
+     {
+      "known_marginal": 6.1,
+      "marginal": 6.1,
+      "phase": "regular",
+      "started": true,
+      "week": 11
+     },
+     {
+      "known_marginal": 6.2,
+      "marginal": 6.2,
+      "phase": "regular",
+      "started": true,
+      "week": 12
+     },
+     {
+      "known_marginal": 6.3,
+      "marginal": 6.3,
+      "phase": "regular",
+      "started": true,
+      "week": 13
+     },
+     {
+      "known_marginal": 6.4,
+      "marginal": 6.4,
+      "phase": "regular",
+      "started": true,
+      "week": 14
+     },
+     {
+      "known_marginal": 6.5,
+      "marginal": 6.5,
+      "phase": "playoff",
+      "started": true,
+      "week": 15
+     },
+     {
+      "known_marginal": 6.6,
+      "marginal": 6.6,
+      "phase": "playoff",
+      "started": true,
+      "week": 16
+     },
+     {
+      "known_marginal": 6.7,
+      "marginal": 6.7,
+      "phase": "playoff",
+      "started": true,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "espn_player_id": 307,
+    "known_marginal_lineup_points": 45.0,
+    "name": "Sierra WR",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 9.0,
+    "position": "WR",
+    "pro_team": "TB",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 36.0,
+    "roster_marginal_lineup_points": 45.0,
+    "weeks": [
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 3
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 4
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 5
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 6
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 7
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 8
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 9
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 10
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 11
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 12
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 13
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "regular",
+      "started": true,
+      "week": 14
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 15
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 16
+     },
+     {
+      "known_marginal": 3.0,
+      "marginal": 3.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "espn_player_id": 206,
+    "known_marginal_lineup_points": 30.0,
+    "name": "Juliet RB",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 6.0,
+    "position": "RB",
+    "pro_team": "SEA",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 24.0,
+    "roster_marginal_lineup_points": 30.0,
+    "weeks": [
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 3
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 4
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 5
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 6
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 7
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 8
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 9
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 10
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 11
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 12
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 13
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 14
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 15
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 16
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "espn_player_id": 306,
+    "known_marginal_lineup_points": 30.0,
+    "name": "Romeo WR",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 6.0,
+    "position": "WR",
+    "pro_team": "SEA",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 24.0,
+    "roster_marginal_lineup_points": 30.0,
+    "weeks": [
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 3
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 4
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 5
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 6
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 7
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 8
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 9
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 10
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 11
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 12
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 13
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "regular",
+      "started": true,
+      "week": 14
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 15
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 16
+     },
+     {
+      "known_marginal": 2.0,
+      "marginal": 2.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "espn_player_id": 205,
+    "known_marginal_lineup_points": 15.0,
+    "name": "India RB",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 3.0,
+    "position": "RB",
+    "pro_team": "SF",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 12.0,
+    "roster_marginal_lineup_points": 15.0,
+    "weeks": [
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 3
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 4
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 5
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 6
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 7
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 8
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 9
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 10
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 11
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 12
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 13
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 14
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 15
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 16
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "espn_player_id": 305,
+    "known_marginal_lineup_points": 15.0,
+    "name": "Quebec WR",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 3.0,
+    "position": "WR",
+    "pro_team": "SF",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 12.0,
+    "roster_marginal_lineup_points": 15.0,
+    "weeks": [
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 3
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 4
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 5
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 6
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 7
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 8
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 9
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 10
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 11
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 12
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 13
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "regular",
+      "started": true,
+      "week": 14
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 15
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 16
+     },
+     {
+      "known_marginal": 1.0,
+      "marginal": 1.0,
+      "phase": "playoff",
+      "started": true,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "espn_player_id": 204,
+    "known_marginal_lineup_points": 0.0,
+    "name": "Hotel RB",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 0.0,
+    "position": "RB",
+    "pro_team": "PHI",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 0.0,
+    "roster_marginal_lineup_points": 0.0,
+    "weeks": [
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 3
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 4
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 5
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 6
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 7
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 8
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 9
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 10
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 11
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 12
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 13
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 14
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "playoff",
+      "started": false,
+      "week": 15
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "playoff",
+      "started": false,
+      "week": 16
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "playoff",
+      "started": false,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": []
+   },
+   {
+    "espn_player_id": 207,
+    "ir_activation_sensitivity": {
+     "assumption": "Current IR status is held constant for this hypothetical evaluation. This does not predict when a player will return. Activation upside is shown separately and may require a roster move.",
+     "espn_player_id": 207,
+     "known_lineup_points_upside": 30.0,
+     "label": "IR activation sensitivity (hypothetical free activation; not canonical)",
+     "lineup_points_upside": 30.0,
+     "nfl_ineligible_weeks": [],
+     "open_active_roster_spot": true,
+     "open_active_roster_spots": 1,
+     "playoff_upside": 6.0,
+     "projected_weeks": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+     ],
+     "projection_complete": true,
+     "regular_season_upside": 24.0,
+     "roster_move_note": null,
+     "unprojected_weeks": [],
+     "weekly_projection": {
+      "10": 10.0,
+      "11": 10.1,
+      "12": 10.2,
+      "13": 10.3,
+      "14": 10.4,
+      "15": 10.5,
+      "16": 10.6,
+      "17": 10.7,
+      "3": 9.3,
+      "4": 9.4,
+      "5": 9.5,
+      "6": 9.6,
+      "7": 9.7,
+      "8": 9.8,
+      "9": 9.9
+     },
+     "weeks": [
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 3,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 4,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 5,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 6,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 7,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 8,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 9,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 10,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 11,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 12,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 13,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "regular",
+       "upside": 2.0,
+       "week": 14,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "playoff",
+       "upside": 2.0,
+       "week": 15,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "playoff",
+       "upside": 2.0,
+       "week": 16,
+       "would_start": true
+      },
+      {
+       "known_upside": 2.0,
+       "phase": "playoff",
+       "upside": 2.0,
+       "week": 17,
+       "would_start": true
+      }
+     ],
+     "weeks_would_start": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+     ]
+    },
+    "known_marginal_lineup_points": 0.0,
+    "name": "Kilo RB",
+    "on_ir": true,
+    "playoff_marginal_lineup_points": 0.0,
+    "position": "RB",
+    "pro_team": "TB",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 0.0,
+    "roster_marginal_lineup_points": 0.0,
+    "weeks": [
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 3
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 4
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 5
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 6
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 7
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 8
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 9
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 10
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 11
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 12
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 13
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 14
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "playoff",
+      "started": false,
+      "week": 15
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "playoff",
+      "started": false,
+      "week": 16
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "playoff",
+      "started": false,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": []
+   },
+   {
+    "espn_player_id": 304,
+    "known_marginal_lineup_points": 0.0,
+    "name": "Papa WR",
+    "on_ir": false,
+    "playoff_marginal_lineup_points": 0.0,
+    "position": "WR",
+    "pro_team": "PHI",
+    "projection_complete": true,
+    "regular_season_marginal_lineup_points": 0.0,
+    "roster_marginal_lineup_points": 0.0,
+    "weeks": [
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 3
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 4
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 5
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 6
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 7
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 8
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 9
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 10
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 11
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 12
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 13
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "regular",
+      "started": false,
+      "week": 14
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "playoff",
+      "started": false,
+      "week": 15
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "playoff",
+      "started": false,
+      "week": 16
+     },
+     {
+      "known_marginal": 0.0,
+      "marginal": 0.0,
+      "phase": "playoff",
+      "started": false,
+      "week": 17
+     }
+    ],
+    "weeks_expected": 15,
+    "weeks_started": []
+   }
+  ],
+  "summary": {
+   "evaluation_start_week": 3,
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "missing_players": [],
+   "missing_weeks": [],
+   "playoff_known_starting_points": 274.2,
+   "playoff_projected_starting_points": 274.2,
+   "projection_complete": true,
+   "regular_season_known_starting_points": 1015.8,
+   "regular_season_projected_starting_points": 1015.8,
+   "ros_known_starting_points": 1290.0,
+   "ros_projected_starting_points": 1290.0,
+   "ros_weeks_complete": 15,
+   "ros_weeks_expected": 15
+  },
+  "team_id": 2,
+  "team_name": "Team 2",
+  "weeks": [
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 9.3,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 8.3,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 7.3,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 11.3,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 10.3,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 8.3,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 10.3,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 5.3,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 9.3,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 8.3,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 6.3,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 9.3,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 79.7,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 79.7,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 3
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 9.4,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 8.4,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 7.4,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 11.4,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 10.4,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 8.4,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 10.4,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 5.4,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 9.4,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 8.4,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 6.4,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 9.4,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 80.6,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 80.6,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 4
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 9.5,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 8.5,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 7.5,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 11.5,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 10.5,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 8.5,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 10.5,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 5.5,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 9.5,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 8.5,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 6.5,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 9.5,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 81.5,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 81.5,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 5
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 9.6,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 8.6,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 7.6,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 11.6,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 10.6,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 8.6,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 10.6,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 5.6,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 9.6,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 8.6,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 6.6,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 9.6,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 82.4,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 82.4,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 6
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 9.7,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 8.7,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 7.7,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 11.7,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 10.7,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 8.7,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 10.7,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 5.7,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 9.7,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 8.7,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 6.7,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 9.7,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 83.3,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 83.3,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 7
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 9.8,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 8.8,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 7.8,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 11.8,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 10.8,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 8.8,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 10.8,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 5.8,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 9.8,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 8.8,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 6.8,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 9.8,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 84.2,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 84.2,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 8
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 9.9,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 8.9,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 7.9,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 11.9,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 10.9,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 8.9,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 10.9,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 5.9,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 9.9,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 8.9,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 6.9,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 9.9,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 85.1,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 85.1,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 9
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 10.0,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 9.0,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 8.0,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 12.0,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 11.0,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 9.0,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 11.0,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 6.0,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 10.0,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 9.0,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 7.0,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 10.0,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 86.0,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 86.0,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 10
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 10.1,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 9.1,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 8.1,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 12.1,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 11.1,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 9.1,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 11.1,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 6.1,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 10.1,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 9.1,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 7.1,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 10.1,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 86.9,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 86.9,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 11
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 10.2,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 9.2,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 8.2,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 12.2,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 11.2,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 9.2,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 11.2,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 6.2,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 10.2,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 9.2,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 7.2,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 10.2,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 87.8,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 87.8,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 12
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 10.3,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 9.3,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 8.3,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 12.3,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 11.3,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 9.3,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 11.3,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 6.3,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 10.3,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 9.3,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 7.3,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 10.3,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 88.7,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 88.7,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 13
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 10.4,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 9.4,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 8.4,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 12.4,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 11.4,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 9.4,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 11.4,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 6.4,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 10.4,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 9.4,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 7.4,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 10.4,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 89.6,
+    "missing_projection_ids": [],
+    "phase": "regular",
+    "projected_lineup_points": 89.6,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 14
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 10.5,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 9.5,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 8.5,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 12.5,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 11.5,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 9.5,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 11.5,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 6.5,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 10.5,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 9.5,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 7.5,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 10.5,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 90.5,
+    "missing_projection_ids": [],
+    "phase": "playoff",
+    "projected_lineup_points": 90.5,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 15
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 10.6,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 9.6,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 8.6,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 12.6,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 11.6,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 9.6,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 11.6,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 6.6,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 10.6,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 9.6,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 7.6,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 10.6,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 91.4,
+    "missing_projection_ids": [],
+    "phase": "playoff",
+    "projected_lineup_points": 91.4,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 16
+   },
+   {
+    "assignment": [
+     {
+      "is_flex": false,
+      "name": "Bravo QB",
+      "player_id": 102,
+      "points": 10.7,
+      "position": "QB",
+      "slot": "QB"
+     },
+     {
+      "is_flex": false,
+      "name": "Juliet RB",
+      "player_id": 206,
+      "points": 9.7,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "India RB",
+      "player_id": 205,
+      "points": 8.7,
+      "position": "RB",
+      "slot": "RB"
+     },
+     {
+      "is_flex": false,
+      "name": "Sierra WR",
+      "player_id": 307,
+      "points": 12.7,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Romeo WR",
+      "player_id": 306,
+      "points": 11.7,
+      "position": "WR",
+      "slot": "WR"
+     },
+     {
+      "is_flex": false,
+      "name": "Victor TE",
+      "player_id": 402,
+      "points": 9.7,
+      "position": "TE",
+      "slot": "TE"
+     },
+     {
+      "is_flex": false,
+      "name": "Zulu K",
+      "player_id": 502,
+      "points": 11.7,
+      "position": "K",
+      "slot": "K"
+     },
+     {
+      "is_flex": false,
+      "name": "Bills D/ST",
+      "player_id": -16002,
+      "points": 6.7,
+      "position": "D/ST",
+      "slot": "D/ST"
+     },
+     {
+      "is_flex": true,
+      "name": "Quebec WR",
+      "player_id": 305,
+      "points": 10.7,
+      "position": "WR",
+      "slot": "FLEX"
+     }
+    ],
+    "bench": [
+     {
+      "name": "Papa WR",
+      "player_id": 304,
+      "points": 9.7,
+      "position": "WR"
+     },
+     {
+      "name": "Hotel RB",
+      "player_id": 204,
+      "points": 7.7,
+      "position": "RB"
+     }
+    ],
+    "ir": [
+     {
+      "name": "Kilo RB",
+      "player_id": 207,
+      "points": 10.7,
+      "position": "RB"
+     }
+    ],
+    "known_lineup_points": 92.3,
+    "missing_projection_ids": [],
+    "phase": "playoff",
+    "projected_lineup_points": 92.3,
+    "projection_complete": true,
+    "teamless_unprojected_ids": [],
+    "unavailable": [],
+    "week": 17
+   }
+  ]
+ },
+ "status": 200
+}

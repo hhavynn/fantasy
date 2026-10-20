@@ -1,0 +1,48 @@
+// /api/teams
+{
+ "body": {
+  "default_team_id": 2,
+  "league": {
+   "current_week": 3,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026,
+   "synced_at": "<masked>"
+  },
+  "teams": [
+   {
+    "abbrev": "T1",
+    "is_owner_default": false,
+    "name": "Team 1",
+    "roster_players": 10,
+    "roster_synced_at": "<masked>",
+    "team_id": 1
+   },
+   {
+    "abbrev": "T2",
+    "is_owner_default": true,
+    "name": "Team 2",
+    "roster_players": 12,
+    "roster_synced_at": "<masked>",
+    "team_id": 2
+   },
+   {
+    "abbrev": "T3",
+    "is_owner_default": false,
+    "name": "Team 3",
+    "roster_players": 4,
+    "roster_synced_at": "<masked>",
+    "team_id": 3
+   },
+   {
+    "abbrev": "T4",
+    "is_owner_default": false,
+    "name": "Team 4",
+    "roster_players": 2,
+    "roster_synced_at": "<masked>",
+    "team_id": 4
+   }
+  ]
+ },
+ "status": 200
+}

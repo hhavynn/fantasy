@@ -17,6 +17,7 @@ pointers. Design: [ADR-0002](../../docs/multileague/ADR-0002-supabase-control-pl
 | `migrations/20261020120800_credential_lock_order.sql` | One lock order (league, then credential) for every credential path, so account deletion cannot deadlock with a sync or revoke |
 | `migrations/20261020120900_redeem_invite_lock_order.sql` | Invite redemption locks the league before the invite (same order as account deletion) and re-validates under lock |
 | `migrations/20261020121000_owner_lock_order.sql` | `ensure_app_user` locks the account first; `store_credential` secures its owner before the league |
+| `runbook-los-subies.sql` | One-time registration of Los Subies (private, no members yet) |
 | `down/*.sql` | Down-migrations, applied in reverse order to roll Phase 1 back; each restores the previous definitions |
 
 Each migration runs once, in filename order. Re-running the whole chain in order is safe (every statement is `IF NOT EXISTS`, `CREATE OR REPLACE` or `DROP POLICY IF EXISTS`, and `backend/tests/test_pg_harness.py` checks it), but re-running one older migration on its own is not: later migrations redefine some of its functions and policies, and the older definitions would come back. To repair a function or policy, re-run the latest migration that defines it, or the whole chain.

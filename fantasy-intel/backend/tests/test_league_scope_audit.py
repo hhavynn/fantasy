@@ -137,7 +137,8 @@ def test_league_access_is_decided_only_by_the_control_plane_authorizer():
     assert builders == ["control_plane/authz.py"], f"only authz.py may construct an Access; got {builders}"
     callers = sorted(p.relative_to(APP).as_posix() for p in APP.rglob("*.py")
                      if re.search(r"\bauthorize_league(?:_in)?\(", p.read_text("utf-8")))
-    assert callers == ["api/leagues_v2.py", "control_plane/authz.py"], callers
+    # api/league_scope.py authorizes the legacy routers mounted under /v2/leagues/{league_id} (Phase 2).
+    assert callers == ["api/league_scope.py", "api/leagues_v2.py", "control_plane/authz.py"], callers
 
 
 def test_the_control_plane_pool_is_only_constructed_by_get_control_plane():
@@ -152,7 +153,8 @@ def test_legacy_routes_do_not_import_the_league_layer_or_the_control_plane():
     offenders = []
     for p in sorted(APP.rglob("*.py")):
         rel = p.relative_to(APP).as_posix()
-        if rel.startswith(("leagues/", "control_plane/")) or rel in ("api/leagues_v2.py", "main.py", "config.py"):
+        if rel.startswith(("leagues/", "control_plane/")) or rel in ("api/leagues_v2.py", "api/league_scope.py",
+                                                                      "main.py", "config.py"):
             continue
         if re.search(r"^\s*(?:from|import)\s+(?:app\.|\.+)?(?:\w+\.)*(?:leagues|control_plane)(?:\.|\s|$)",
                      p.read_text("utf-8"), re.M):

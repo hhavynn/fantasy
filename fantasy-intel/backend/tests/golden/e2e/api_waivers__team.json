@@ -1,0 +1,1345 @@
+// /api/waivers?team_id=2
+{
+ "body": {
+  "computed_at": "<masked>",
+  "coverage": {
+   "eligible": 4,
+   "evaluated": 4,
+   "excluded_by_limit": 0,
+   "excluded_rostered_conflicts": 0,
+   "limitation": "Coverage is the stored ESPN pool, not the entire NFL universe. Sync truncation may omit players.",
+   "method": "15 each: forward projection, depth-chart role, historical value, ownership; deduplicated lanes fill to 60/position",
+   "per_position_limit": 60,
+   "positions": {
+    "D/ST": {
+     "eligible": 0,
+     "evaluated": 0,
+     "excluded_by_limit": 0
+    },
+    "K": {
+     "eligible": 0,
+     "evaluated": 0,
+     "excluded_by_limit": 0
+    },
+    "QB": {
+     "eligible": 1,
+     "evaluated": 1,
+     "excluded_by_limit": 0
+    },
+    "RB": {
+     "eligible": 1,
+     "evaluated": 1,
+     "excluded_by_limit": 0
+    },
+    "TE": {
+     "eligible": 1,
+     "evaluated": 1,
+     "excluded_by_limit": 0
+    },
+    "WR": {
+     "eligible": 1,
+     "evaluated": 1,
+     "excluded_by_limit": 0
+    }
+   }
+  },
+  "league": {
+   "current_matchup_period": 3,
+   "current_week": 3,
+   "faab_budget": 100,
+   "final_scoring_period": 17,
+   "is_faab": true,
+   "league_id": 999,
+   "name": "Fixture League",
+   "playoff_teams": 2,
+   "reception_points": 1.0,
+   "reg_season_matchups": 14,
+   "roster_slots": {
+    "BE": 3,
+    "D/ST": 1,
+    "FLEX": 1,
+    "IR": 1,
+    "K": 1,
+    "QB": 1,
+    "RB": 2,
+    "TE": 1,
+    "WR": 2
+   },
+   "scoring_type": "H2H_POINTS",
+   "season": 2026,
+   "size": 4,
+   "synced_at": "<masked>",
+   "trade_deadline": "<masked>",
+   "waiver_process_days": null
+  },
+  "limit": 150,
+  "offset": 0,
+  "perspective": {
+   "abbrev": "T2",
+   "is_owner_default": true,
+   "league_id": 999,
+   "league_synced_at": "<masked>",
+   "name": "Team 2",
+   "roster_players": 12,
+   "roster_synced_at": "<masked>",
+   "season": 2026,
+   "source": "query",
+   "team_id": 2
+  },
+  "players": [
+   {
+    "availability_status": "FREEAGENT",
+    "classification": null,
+    "competitors": [
+     {
+      "interest": 0.575,
+      "name": "Team 3",
+      "reasons": [
+       "RB need 0.74",
+       "$70 FAAB left"
+      ],
+      "team_id": 3
+     },
+     {
+      "interest": 0.494,
+      "name": "Team 1",
+      "reasons": [
+       "$90 FAAB left"
+      ],
+      "team_id": 1
+     },
+     {
+      "interest": 0.485,
+      "name": "Team 4",
+      "reasons": [
+       "RB need 0.55",
+       "$60 FAAB left"
+      ],
+      "team_id": 4
+     }
+    ],
+    "components": {
+     "decision": {
+      "action": "VERIFY_LEGALITY",
+      "actionable": false,
+      "category": "UPGRADE",
+      "confidence": "LIMITED",
+      "coverage": {
+       "eligible": 4,
+       "evaluated": 4,
+       "excluded_by_limit": 0,
+       "excluded_rostered_conflicts": 0,
+       "limitation": "Coverage is the stored ESPN pool, not the entire NFL universe. Sync truncation may omit players.",
+       "method": "15 each: forward projection, depth-chart role, historical value, ownership; deduplicated lanes fill to 60/position",
+       "per_position_limit": 60,
+       "positions": {
+        "D/ST": {
+         "eligible": 0,
+         "evaluated": 0,
+         "excluded_by_limit": 0
+        },
+        "K": {
+         "eligible": 0,
+         "evaluated": 0,
+         "excluded_by_limit": 0
+        },
+        "QB": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "RB": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "TE": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "WR": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        }
+       }
+      },
+      "recommendation": "WAIT",
+      "resources": {
+       "alternative": null,
+       "bid": null,
+       "budget": 100,
+       "kind": "FREE_AGENT",
+       "preserve_priority": false,
+       "priority": 2,
+       "remaining": null,
+       "spends_priority": false,
+       "summary": "Available as a free agent: no waiver priority or FAAB claim spend indicated. Check ESPN transaction timing."
+      },
+      "risks": [
+       "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding."
+      ],
+      "roster_move": {
+       "active_count": 11,
+       "alternatives": [],
+       "capacity": 12,
+       "drop": null,
+       "drop_required": null,
+       "excluded": [],
+       "position_limits": {},
+       "status": "UNKNOWN",
+       "summary": "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding.",
+       "warnings": []
+      },
+      "streaming": null,
+      "utility": {
+       "depth_gain": 0.0,
+       "forward": {
+        "missing_weeks": [],
+        "total_gain": 60.0,
+        "weeks": [
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 3
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 4
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 5
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 6
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 7
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 8
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 9
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 10
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 11
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 12
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 13
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 14
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 15
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 16
+         },
+         {
+          "gain": 4.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 17
+         }
+        ]
+       },
+       "meaningful": true,
+       "ranking_utility": 4.55,
+       "starter_gain": 0.0,
+       "stash": false,
+       "summary": "Improves covered future lineups by 4.0 projected points per week."
+      },
+      "version": 3,
+      "weeks": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17
+      ]
+     },
+     "formula": "waiver_score = 0.55*opportunity + 0.45*fit + scarcity_bonus (legacy heuristic only); V3 actions use legal roster moves, demonstrated lineup/depth benefit and transaction resources",
+     "league": {
+      "attractiveness": 0.42,
+      "managers_interested": 1,
+      "max_manager_interest": 0.575,
+      "scarcity_available_startable": 1,
+      "scarcity_bonus": 0.0
+     },
+     "player": {
+      "availability": {
+       "sources": [
+        "ESPN ACTIVE"
+       ],
+       "status": "AVAILABLE",
+       "weight": 1.0
+      },
+      "base_opportunity": 5.0,
+      "base_opportunity_100": 50.0,
+      "basis": "espn_points",
+      "basis_description": "recent ESPN league-points percentile (no NFL usage data)",
+      "classification": null,
+      "injury_adj": 0.0,
+      "percent_change": 1.0,
+      "percent_owned": 50.0,
+      "recent_league_ppg": 9.5,
+      "trend_adj": 0.0,
+      "trend_label": null,
+      "value": 5.0,
+      "value_100": 50.0
+     },
+     "roster": {
+      "bench_upgrade": 0.0,
+      "depth_utility": 1.0,
+      "displaced_id": null,
+      "enters_lineup": false,
+      "fit_formula": "10*(0.35*need + 0.35*clamp(lineup_gain/3) + 0.30*upgrade_over_drop*depth_utility)",
+      "lineup_gain": 0.0,
+      "lineup_slot": null,
+      "my_starter_value": 5.0,
+      "my_weakest_starter_value": 5.0,
+      "need": 0.275,
+      "suggested_drop": null,
+      "upgrade": 0.0,
+      "value_margin_vs_drop": null
+     }
+    },
+    "computed_at": "<masked>",
+    "context_labels": null,
+    "drop_name": null,
+    "drop_on_roster": null,
+    "drop_position": null,
+    "espn_player_id": 209,
+    "fp_per_game": null,
+    "full_name": "Waiver RB",
+    "games": null,
+    "injury_status": "ACTIVE",
+    "interest_score": 0.187,
+    "league_id": 999,
+    "league_interest": "LOW",
+    "market_signal": null,
+    "opportunity_basis": null,
+    "opportunity_score": 5.0,
+    "opportunity_score_100": 50.0,
+    "opportunity_tier": null,
+    "percent_change": 1.0,
+    "percent_owned": 50.0,
+    "position": "RB",
+    "pro_team": "KC",
+    "reasons": [
+     "Opportunity 50.0/100 at RB: recent ESPN league-points percentile (no NFL usage data)",
+     "Improves covered future lineups by 4.0 projected points per week.",
+     "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding.",
+     "Available as a free agent: no waiver priority or FAAB claim spend indicated. Check ESPN transaction timing."
+    ],
+    "recommendation": "WAIT",
+    "role_trend": null,
+    "roster_fit_score": 1.0,
+    "season": 2026,
+    "suggested_drop_id": null,
+    "team_id": 2,
+    "trend_label": null,
+    "waiver_score": 3.2,
+    "xfp_per_game": null
+   },
+   {
+    "availability_status": "FREEAGENT",
+    "classification": null,
+    "competitors": [
+     {
+      "interest": 0.384,
+      "name": "Team 1",
+      "reasons": [
+       "$90 FAAB left"
+      ],
+      "team_id": 1
+     },
+     {
+      "interest": 0.28,
+      "name": "Team 3",
+      "reasons": [
+       "$70 FAAB left"
+      ],
+      "team_id": 3
+     },
+     {
+      "interest": 0.265,
+      "name": "Team 4",
+      "reasons": [
+       "$60 FAAB left"
+      ],
+      "team_id": 4
+     }
+    ],
+    "components": {
+     "decision": {
+      "action": "VERIFY_LEGALITY",
+      "actionable": false,
+      "category": "UPGRADE",
+      "confidence": "LIMITED",
+      "coverage": {
+       "eligible": 4,
+       "evaluated": 4,
+       "excluded_by_limit": 0,
+       "excluded_rostered_conflicts": 0,
+       "limitation": "Coverage is the stored ESPN pool, not the entire NFL universe. Sync truncation may omit players.",
+       "method": "15 each: forward projection, depth-chart role, historical value, ownership; deduplicated lanes fill to 60/position",
+       "per_position_limit": 60,
+       "positions": {
+        "D/ST": {
+         "eligible": 0,
+         "evaluated": 0,
+         "excluded_by_limit": 0
+        },
+        "K": {
+         "eligible": 0,
+         "evaluated": 0,
+         "excluded_by_limit": 0
+        },
+        "QB": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "RB": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "TE": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "WR": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        }
+       }
+      },
+      "recommendation": "WAIT",
+      "resources": {
+       "alternative": null,
+       "bid": null,
+       "budget": 100,
+       "kind": "FREE_AGENT",
+       "preserve_priority": false,
+       "priority": 2,
+       "remaining": null,
+       "spends_priority": false,
+       "summary": "Available as a free agent: no waiver priority or FAAB claim spend indicated. Check ESPN transaction timing."
+      },
+      "risks": [
+       "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding."
+      ],
+      "roster_move": {
+       "active_count": 11,
+       "alternatives": [],
+       "capacity": 12,
+       "drop": null,
+       "drop_required": null,
+       "excluded": [],
+       "position_limits": {},
+       "status": "UNKNOWN",
+       "summary": "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding.",
+       "warnings": []
+      },
+      "streaming": null,
+      "utility": {
+       "depth_gain": 0.0,
+       "forward": {
+        "missing_weeks": [],
+        "total_gain": 45.0,
+        "weeks": [
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 3
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 4
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 5
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 6
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 7
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 8
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 9
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 10
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 11
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 12
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 13
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 14
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 15
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 16
+         },
+         {
+          "gain": 3.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 17
+         }
+        ]
+       },
+       "meaningful": true,
+       "ranking_utility": 3.0,
+       "starter_gain": 0.0,
+       "stash": false,
+       "summary": "Improves covered future lineups by 3.0 projected points per week."
+      },
+      "version": 3,
+      "weeks": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17
+      ]
+     },
+     "formula": "waiver_score = 0.55*opportunity + 0.45*fit + scarcity_bonus (legacy heuristic only); V3 actions use legal roster moves, demonstrated lineup/depth benefit and transaction resources",
+     "league": {
+      "attractiveness": 0.42,
+      "managers_interested": 0,
+      "max_manager_interest": 0.384,
+      "scarcity_available_startable": 1,
+      "scarcity_bonus": 0.0
+     },
+     "player": {
+      "availability": {
+       "sources": [
+        "ESPN ACTIVE"
+       ],
+       "status": "AVAILABLE",
+       "weight": 1.0
+      },
+      "base_opportunity": 5.0,
+      "base_opportunity_100": 50.0,
+      "basis": "espn_points",
+      "basis_description": "recent ESPN league-points percentile (no NFL usage data)",
+      "classification": null,
+      "injury_adj": 0.0,
+      "percent_change": 1.0,
+      "percent_owned": 50.0,
+      "recent_league_ppg": 9.5,
+      "trend_adj": 0.0,
+      "trend_label": null,
+      "value": 5.0,
+      "value_100": 50.0
+     },
+     "roster": {
+      "bench_upgrade": 0.0,
+      "depth_utility": 0.3,
+      "displaced_id": null,
+      "enters_lineup": false,
+      "fit_formula": "10*(0.35*need + 0.35*clamp(lineup_gain/3) + 0.30*upgrade_over_drop*depth_utility)",
+      "lineup_gain": 0.0,
+      "lineup_slot": null,
+      "my_starter_value": 5.0,
+      "my_weakest_starter_value": 5.0,
+      "need": 0.0,
+      "suggested_drop": null,
+      "upgrade": 0.0,
+      "value_margin_vs_drop": null
+     }
+    },
+    "computed_at": "<masked>",
+    "context_labels": null,
+    "drop_name": null,
+    "drop_on_roster": null,
+    "drop_position": null,
+    "espn_player_id": 405,
+    "fp_per_game": null,
+    "full_name": "Waiver TE",
+    "games": null,
+    "injury_status": "ACTIVE",
+    "interest_score": 0.097,
+    "league_id": 999,
+    "league_interest": "LOW",
+    "market_signal": null,
+    "opportunity_basis": null,
+    "opportunity_score": 5.0,
+    "opportunity_score_100": 50.0,
+    "opportunity_tier": null,
+    "percent_change": 1.0,
+    "percent_owned": 50.0,
+    "position": "TE",
+    "pro_team": "DET",
+    "reasons": [
+     "Opportunity 50.0/100 at TE: recent ESPN league-points percentile (no NFL usage data)",
+     "Wouldn't start for you and a backup TE rarely plays",
+     "Improves covered future lineups by 3.0 projected points per week.",
+     "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding.",
+     "Available as a free agent: no waiver priority or FAAB claim spend indicated. Check ESPN transaction timing."
+    ],
+    "recommendation": "WAIT",
+    "role_trend": null,
+    "roster_fit_score": 0.0,
+    "season": 2026,
+    "suggested_drop_id": null,
+    "team_id": 2,
+    "trend_label": null,
+    "waiver_score": 2.75,
+    "xfp_per_game": null
+   },
+   {
+    "availability_status": "FREEAGENT",
+    "classification": null,
+    "competitors": [
+     {
+      "interest": 0.384,
+      "name": "Team 1",
+      "reasons": [
+       "$90 FAAB left"
+      ],
+      "team_id": 1
+     },
+     {
+      "interest": 0.28,
+      "name": "Team 3",
+      "reasons": [
+       "$70 FAAB left"
+      ],
+      "team_id": 3
+     },
+     {
+      "interest": 0.265,
+      "name": "Team 4",
+      "reasons": [
+       "$60 FAAB left"
+      ],
+      "team_id": 4
+     }
+    ],
+    "components": {
+     "decision": {
+      "action": "NOT_AN_UPGRADE",
+      "actionable": false,
+      "category": "UPGRADE",
+      "confidence": "LIMITED",
+      "coverage": {
+       "eligible": 4,
+       "evaluated": 4,
+       "excluded_by_limit": 0,
+       "excluded_rostered_conflicts": 0,
+       "limitation": "Coverage is the stored ESPN pool, not the entire NFL universe. Sync truncation may omit players.",
+       "method": "15 each: forward projection, depth-chart role, historical value, ownership; deduplicated lanes fill to 60/position",
+       "per_position_limit": 60,
+       "positions": {
+        "D/ST": {
+         "eligible": 0,
+         "evaluated": 0,
+         "excluded_by_limit": 0
+        },
+        "K": {
+         "eligible": 0,
+         "evaluated": 0,
+         "excluded_by_limit": 0
+        },
+        "QB": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "RB": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "TE": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "WR": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        }
+       }
+      },
+      "recommendation": "IGNORE",
+      "resources": {
+       "alternative": null,
+       "bid": null,
+       "budget": 100,
+       "kind": "FREE_AGENT",
+       "preserve_priority": false,
+       "priority": 2,
+       "remaining": null,
+       "spends_priority": false,
+       "summary": "Available as a free agent: no waiver priority or FAAB claim spend indicated. Check ESPN transaction timing."
+      },
+      "risks": [
+       "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding."
+      ],
+      "roster_move": {
+       "active_count": 11,
+       "alternatives": [],
+       "capacity": 12,
+       "drop": null,
+       "drop_required": null,
+       "excluded": [],
+       "position_limits": {},
+       "status": "UNKNOWN",
+       "summary": "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding.",
+       "warnings": []
+      },
+      "streaming": null,
+      "utility": {
+       "depth_gain": 0.0,
+       "forward": {
+        "missing_weeks": [],
+        "total_gain": 0.0,
+        "weeks": [
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 3
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 4
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 5
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 6
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 7
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 8
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 9
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 10
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 11
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 12
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 13
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 14
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 15
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 16
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 17
+         }
+        ]
+       },
+       "meaningful": false,
+       "ranking_utility": 0,
+       "starter_gain": 0.0,
+       "stash": false,
+       "summary": "No meaningful improvement over your current starters or positional depth is demonstrated."
+      },
+      "version": 3,
+      "weeks": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17
+      ]
+     },
+     "formula": "waiver_score = 0.55*opportunity + 0.45*fit + scarcity_bonus (legacy heuristic only); V3 actions use legal roster moves, demonstrated lineup/depth benefit and transaction resources",
+     "league": {
+      "attractiveness": 0.42,
+      "managers_interested": 0,
+      "max_manager_interest": 0.384,
+      "scarcity_available_startable": 1,
+      "scarcity_bonus": 0.0
+     },
+     "player": {
+      "availability": {
+       "sources": [
+        "ESPN ACTIVE"
+       ],
+       "status": "AVAILABLE",
+       "weight": 1.0
+      },
+      "base_opportunity": 5.0,
+      "base_opportunity_100": 50.0,
+      "basis": "espn_points",
+      "basis_description": "recent ESPN league-points percentile (no NFL usage data)",
+      "classification": null,
+      "injury_adj": 0.0,
+      "percent_change": 1.0,
+      "percent_owned": 50.0,
+      "recent_league_ppg": 9.5,
+      "trend_adj": 0.0,
+      "trend_label": null,
+      "value": 5.0,
+      "value_100": 50.0
+     },
+     "roster": {
+      "bench_upgrade": 0.0,
+      "depth_utility": 0.3,
+      "displaced_id": null,
+      "enters_lineup": false,
+      "fit_formula": "10*(0.35*need + 0.35*clamp(lineup_gain/3) + 0.30*upgrade_over_drop*depth_utility)",
+      "lineup_gain": 0.0,
+      "lineup_slot": null,
+      "my_starter_value": 5.0,
+      "my_weakest_starter_value": 5.0,
+      "need": 0.0,
+      "suggested_drop": null,
+      "upgrade": 0.0,
+      "value_margin_vs_drop": null
+     }
+    },
+    "computed_at": "<masked>",
+    "context_labels": null,
+    "drop_name": null,
+    "drop_on_roster": null,
+    "drop_position": null,
+    "espn_player_id": 105,
+    "fp_per_game": null,
+    "full_name": "Waiver QB",
+    "games": null,
+    "injury_status": "ACTIVE",
+    "interest_score": 0.097,
+    "league_id": 999,
+    "league_interest": "LOW",
+    "market_signal": null,
+    "opportunity_basis": null,
+    "opportunity_score": 5.0,
+    "opportunity_score_100": 50.0,
+    "opportunity_tier": null,
+    "percent_change": 1.0,
+    "percent_owned": 50.0,
+    "position": "QB",
+    "pro_team": "PHI",
+    "reasons": [
+     "Opportunity 50.0/100 at QB: recent ESPN league-points percentile (no NFL usage data)",
+     "Wouldn't start for you and a backup QB rarely plays",
+     "No meaningful improvement over your current starters or positional depth is demonstrated.",
+     "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding.",
+     "Available as a free agent: no waiver priority or FAAB claim spend indicated. Check ESPN transaction timing."
+    ],
+    "recommendation": "IGNORE",
+    "role_trend": null,
+    "roster_fit_score": 0.0,
+    "season": 2026,
+    "suggested_drop_id": null,
+    "team_id": 2,
+    "trend_label": null,
+    "waiver_score": 2.75,
+    "xfp_per_game": null
+   },
+   {
+    "availability_status": "WAIVERS",
+    "classification": null,
+    "competitors": [
+     {
+      "interest": 0.575,
+      "name": "Team 3",
+      "reasons": [
+       "WR need 0.74",
+       "$70 FAAB left"
+      ],
+      "team_id": 3
+     },
+     {
+      "interest": 0.485,
+      "name": "Team 4",
+      "reasons": [
+       "WR need 0.55",
+       "$60 FAAB left"
+      ],
+      "team_id": 4
+     },
+     {
+      "interest": 0.384,
+      "name": "Team 1",
+      "reasons": [
+       "$90 FAAB left"
+      ],
+      "team_id": 1
+     }
+    ],
+    "components": {
+     "decision": {
+      "action": "NOT_AN_UPGRADE",
+      "actionable": false,
+      "category": "UPGRADE",
+      "confidence": "LIMITED",
+      "coverage": {
+       "eligible": 4,
+       "evaluated": 4,
+       "excluded_by_limit": 0,
+       "excluded_rostered_conflicts": 0,
+       "limitation": "Coverage is the stored ESPN pool, not the entire NFL universe. Sync truncation may omit players.",
+       "method": "15 each: forward projection, depth-chart role, historical value, ownership; deduplicated lanes fill to 60/position",
+       "per_position_limit": 60,
+       "positions": {
+        "D/ST": {
+         "eligible": 0,
+         "evaluated": 0,
+         "excluded_by_limit": 0
+        },
+        "K": {
+         "eligible": 0,
+         "evaluated": 0,
+         "excluded_by_limit": 0
+        },
+        "QB": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "RB": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "TE": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        },
+        "WR": {
+         "eligible": 1,
+         "evaluated": 1,
+         "excluded_by_limit": 0
+        }
+       }
+      },
+      "recommendation": "IGNORE",
+      "resources": {
+       "alternative": null,
+       "bid": null,
+       "budget": 100,
+       "kind": "FAAB",
+       "preserve_priority": false,
+       "priority": 2,
+       "remaining": 80.0,
+       "spends_priority": false,
+       "summary": "FAAB claim: 80 of 100 budget remains; no calibrated bid estimate."
+      },
+      "risks": [
+       "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding."
+      ],
+      "roster_move": {
+       "active_count": 11,
+       "alternatives": [],
+       "capacity": 12,
+       "drop": null,
+       "drop_required": null,
+       "excluded": [],
+       "position_limits": {},
+       "status": "UNKNOWN",
+       "summary": "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding.",
+       "warnings": []
+      },
+      "streaming": null,
+      "utility": {
+       "depth_gain": 0.0,
+       "forward": {
+        "missing_weeks": [],
+        "total_gain": 0.0,
+        "weeks": [
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 3
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 4
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 5
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 6
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 7
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 8
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 9
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 10
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 11
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 12
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 13
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 14
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 15
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 16
+         },
+         {
+          "gain": 0.0,
+          "holes_after": 0,
+          "holes_before": 0,
+          "week": 17
+         }
+        ]
+       },
+       "meaningful": false,
+       "ranking_utility": 0,
+       "starter_gain": 0.0,
+       "stash": false,
+       "summary": "No meaningful improvement over your current starters or positional depth is demonstrated."
+      },
+      "version": 3,
+      "weeks": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17
+      ]
+     },
+     "formula": "waiver_score = 0.55*opportunity + 0.45*fit + scarcity_bonus (legacy heuristic only); V3 actions use legal roster moves, demonstrated lineup/depth benefit and transaction resources",
+     "league": {
+      "attractiveness": 0.42,
+      "managers_interested": 1,
+      "max_manager_interest": 0.575,
+      "scarcity_available_startable": 1,
+      "scarcity_bonus": 0.0
+     },
+     "player": {
+      "availability": {
+       "sources": [
+        "ESPN ACTIVE"
+       ],
+       "status": "AVAILABLE",
+       "weight": 1.0
+      },
+      "base_opportunity": 5.0,
+      "base_opportunity_100": 50.0,
+      "basis": "espn_points",
+      "basis_description": "recent ESPN league-points percentile (no NFL usage data)",
+      "classification": null,
+      "injury_adj": 0.0,
+      "percent_change": 1.0,
+      "percent_owned": 50.0,
+      "recent_league_ppg": 9.5,
+      "trend_adj": 0.0,
+      "trend_label": null,
+      "value": 5.0,
+      "value_100": 50.0
+     },
+     "roster": {
+      "bench_upgrade": 0.0,
+      "depth_utility": 1.0,
+      "displaced_id": null,
+      "enters_lineup": false,
+      "fit_formula": "10*(0.35*need + 0.35*clamp(lineup_gain/3) + 0.30*upgrade_over_drop*depth_utility)",
+      "lineup_gain": 0.0,
+      "lineup_slot": null,
+      "my_starter_value": 5.0,
+      "my_weakest_starter_value": 5.0,
+      "need": 0.0,
+      "suggested_drop": null,
+      "upgrade": 0.0,
+      "value_margin_vs_drop": null
+     }
+    },
+    "computed_at": "<masked>",
+    "context_labels": null,
+    "drop_name": null,
+    "drop_on_roster": null,
+    "drop_position": null,
+    "espn_player_id": 309,
+    "fp_per_game": null,
+    "full_name": "Waiver WR",
+    "games": null,
+    "injury_status": "ACTIVE",
+    "interest_score": 0.187,
+    "league_id": 999,
+    "league_interest": "LOW",
+    "market_signal": null,
+    "opportunity_basis": null,
+    "opportunity_score": 5.0,
+    "opportunity_score_100": 50.0,
+    "opportunity_tier": null,
+    "percent_change": 1.0,
+    "percent_owned": 50.0,
+    "position": "WR",
+    "pro_team": "BUF",
+    "reasons": [
+     "Opportunity 50.0/100 at WR: recent ESPN league-points percentile (no NFL usage data)",
+     "No meaningful improvement over your current starters or positional depth is demonstrated.",
+     "An IR occupant has healthy or unknown eligibility; resolve or verify IR eligibility in ESPN before adding.",
+     "FAAB claim: 80 of 100 budget remains; no calibrated bid estimate."
+    ],
+    "recommendation": "IGNORE",
+    "role_trend": null,
+    "roster_fit_score": 0.0,
+    "season": 2026,
+    "suggested_drop_id": null,
+    "team_id": 2,
+    "trend_label": null,
+    "waiver_score": 2.75,
+    "xfp_per_game": null
+   }
+  ],
+  "roster_newer_than_analysis": false,
+  "total": 4
+ },
+ "status": 200
+}

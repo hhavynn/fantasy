@@ -4,6 +4,9 @@ import json
 import logging
 import threading
 from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterator
 
 import duckdb
@@ -72,8 +75,55 @@ def _snapshot_cursor(settings) -> duckdb.DuckDBPyConnection:
         return _SNAP["con"].cursor()
 
 
+@dataclass(frozen=True)
+class LeagueScope:
+    """The league a /v2/leagues/{lg}/... request was authorized for (app/api/league_scope.py) and the files it reads.
+    Set only after authorization; read by db() and data_version()."""
+    league_id: str
+    league_path: Path
+    global_path: Path
+    data_version: str
+    global_version: str
+    visibility_epoch: int
+    perspective: int | None
+
+    @property
+    def cache_key(self) -> str:
+        """Every input that changes an answer for the same route and params (spec §1: league, data and global
+        versions, visibility epoch, perspective)."""
+        return (f"league:{self.league_id}:{self.data_version}:{self.global_version}:{self.visibility_epoch}:"
+                f"{'none' if self.perspective is None else self.perspective}")
+
+
+LEAGUE_SCOPE: ContextVar[LeagueScope | None] = ContextVar("league_scope", default=None)
+_LAYERED: dict[str, Any] = {}
+
+
+def layered_databases():
+    from ..db.league_conn import LayeredDatabases
+    with _SNAP_LOCK:
+        inst = _LAYERED.get("dbs")
+        if inst is None:
+            inst = _LAYERED["dbs"] = LayeredDatabases()
+        return inst
+
+
 @contextmanager
 def db() -> Iterator[Any]:
+    scope = LEAGUE_SCOPE.get()
+    if scope is not None:
+        # A /v2/leagues/{lg}/... request: this league's file and the global file it was built against, read-only,
+        # with the request's perspective as fantasy_teams.is_mine. Immutable files: no transaction needed.
+        con = layered_databases().cursor(scope.league_path, scope.global_path, perspective=scope.perspective)
+        try:
+            version = schema_version(con)
+            if version is None or version < MIN_READ_SCHEMA_VERSION:
+                raise HTTPException(503, f"This league's data (schema v{version or 1}) is older than v{SCHEMA_VERSION}; "
+                                         "it is rebuilt at its next sync.")
+            yield con
+        finally:
+            con.close()
+        return
     settings = get_settings()
     hosted_md = bool(settings.motherduck_database) and not settings.snapshot_enabled
     if settings.snapshot_enabled:
@@ -116,6 +166,9 @@ def db() -> Iterator[Any]:
 def data_version(con) -> str:
     """Changes whenever the served data changes: the local file's mtime, or the publish stamp that
     scripts/publish_snapshot.py (or publish_motherduck.py) writes into the hosted copy."""
+    scope = LEAGUE_SCOPE.get()
+    if scope is not None:
+        return scope.cache_key    # per league, file versions, visibility epoch and perspective: never shared
     settings = get_settings()
     if settings.snapshot_enabled or settings.motherduck_database:
         row = con.execute("SELECT value FROM schema_meta WHERE key = 'published_at'").fetchone()

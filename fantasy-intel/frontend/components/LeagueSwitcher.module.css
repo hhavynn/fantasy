@@ -1,0 +1,11 @@
+.switcher { position: relative; }
+.summary { list-style: none; cursor: pointer; display: inline-flex; flex-direction: column; line-height: 1.1;
+  padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line, rgba(127, 127, 127, 0.3)); }
+.summary::-webkit-details-marker { display: none; }
+.name { font-weight: 600; }
+.asof { font-size: 0.72rem; opacity: 0.75; }
+.menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; min-width: 200px; display: flex;
+  flex-direction: column; padding: 4px; border-radius: 8px; background: var(--surface, #fff);
+  border: 1px solid var(--line, rgba(127, 127, 127, 0.3)); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
+.item { padding: 6px 10px; border-radius: 6px; text-decoration: none; color: inherit; }
+.item:hover, .item:focus-visible { background: var(--hover, rgba(127, 127, 127, 0.12)); }

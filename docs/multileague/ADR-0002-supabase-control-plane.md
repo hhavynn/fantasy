@@ -82,8 +82,9 @@ immutable DuckDB snapshot in a private Cloudflare R2 bucket.
 
 ## Consequences
 
-- Phase 2 serves league files through `authorize_league` and adds Supabase sign-in, the league switcher and the
-  perspective picker to the dashboard. Until then the `/leagues` prototype lists providers only.
+- Phase 2 serves league files through `authorize_league` (`/v2/leagues/<lg>/api/...`, `/l/<lg>/...`) with the league
+  switcher and the URL perspective. Supabase sign-in in the dashboard moves to Phase 3, where Connect first needs it;
+  until then the `/leagues` prototype lists providers only and perspectives come from the URL.
 - Phase 3 adds sync jobs in GitHub Actions on top of `fi.sync_jobs`, `fi.provider_slots` and the fenced
   `fi.league_snapshots` pointer. It also rebuilds the connect flow on `fi.store_credential`.
 - Tests need Postgres. Locally they use a throwaway `initdb` cluster with a small shim for Supabase's `auth.*`

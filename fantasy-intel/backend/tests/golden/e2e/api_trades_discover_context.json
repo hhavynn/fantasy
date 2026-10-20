@@ -1,0 +1,150 @@
+// /api/trades/discover/context
+{
+ "body": {
+  "anchor": {
+   "abbrev": "T2",
+   "is_mine": true,
+   "name": "Team 2",
+   "team_id": 2
+  },
+  "categories": {
+   "CONSOLIDATION": "Uneven trade (2-for-1, 3-for-1, 3-for-2 and the reverse) in which the side receiving fewer players upgrades its starting lineup; the other side's depth, displacement and forced drops are shown.",
+   "IMPROVES_MINE_COSTS_THEIRS": "Your lineup gains; theirs projects to lose starting points.",
+   "IMPROVES_MINE_THEIRS_UNCHANGED": "Your lineup gains; theirs is projected unchanged.",
+   "MUTUAL_PROJECTED_IMPROVEMENT": "Both starting lineups project to gain.",
+   "PLAYOFF_FOCUSED": "Your playoff delta is positive while your regular-season delta is not.",
+   "REGULAR_SEASON_FOCUSED": "Your regular-season delta is positive while your playoff delta is not."
+  },
+  "evaluation": {
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "start_week": 3,
+   "start_week_reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  "exact_shapes": [
+   "1-for-1",
+   "2-for-1",
+   "1-for-2"
+  ],
+  "heuristic_shapes": [
+   "2-for-2",
+   "3-for-1",
+   "1-for-3",
+   "3-for-2",
+   "2-for-3",
+   "3-for-3"
+  ],
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "mode_text": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete packages set apart.",
+  "modes": {
+   "all": "All candidates (advanced): any sort or category over the whole search.",
+   "consolidation": "Consolidation deals: the side receiving fewer players upgrades its lineup; both sides are assessed.",
+   "fair": "Fairer asset exchanges: no significant asset imbalance; ordered by verdict, then Pareto front, then the asset-package ratio.",
+   "mutual": "Mutual improvement: both projected starting lineups gain (complete projections).",
+   "mutual_upgrades": "Best mutual upgrades: both starting lineups improve; ordered by verdict, then Pareto front, then the smaller side's gain.",
+   "playoff": "Playoff-focused trades: your fantasy-playoff lineup improves; ordered by verdict, then Pareto front, then the smaller side's playoff gain.",
+   "practical": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete packages set apart.",
+   "upside": "Maximum upside (exploratory): largest gain for you; their losses are labelled."
+  },
+  "phases": [
+   "ros",
+   "regular",
+   "playoff"
+  ],
+  "query": {
+   "category": null,
+   "heuristic": true,
+   "include_kdst": false,
+   "kdst_streaming": true,
+   "limit": 10,
+   "mode": "practical",
+   "opponent": null,
+   "phase": "ros",
+   "positions": [
+    "QB",
+    "RB",
+    "WR",
+    "TE"
+   ],
+   "shapes": [
+    "1-for-1",
+    "2-for-1",
+    "1-for-2",
+    "2-for-2",
+    "3-for-1",
+    "1-for-3",
+    "3-for-2",
+    "2-for-3"
+   ],
+   "sort": "my_gain",
+   "strictness": "standard",
+   "team_id": 2
+  },
+  "sorts": [
+   "my_gain",
+   "their_gain",
+   "combined",
+   "min_side",
+   "playoff_gain",
+   "min_side_regular",
+   "min_side_playoff"
+  ],
+  "strictness_options": {
+   "off": "No asset filter (labels still shown).",
+   "standard": "Leave out packages with a significant imbalance against them (or multiple strong assets for fewer).",
+   "strict": "Leave out any package in which they give up more asset value."
+  },
+  "teams": [
+   {
+    "abbrev": "T1",
+    "is_mine": false,
+    "name": "Team 1",
+    "team_id": 1
+   },
+   {
+    "abbrev": "T2",
+    "is_mine": true,
+    "name": "Team 2",
+    "team_id": 2
+   },
+   {
+    "abbrev": "T3",
+    "is_mine": false,
+    "name": "Team 3",
+    "team_id": 3
+   },
+   {
+    "abbrev": "T4",
+    "is_mine": false,
+    "name": "Team 4",
+    "team_id": 4
+   }
+  ]
+ },
+ "status": 200
+}

@@ -81,7 +81,7 @@ PATTERNS: dict[str, re.Pattern] = {
 # excluded from this one because they assign test constants all the time; the shaped patterns above cover them.
 ENV_ASSIGNMENT = re.compile(
     r"""(?m)\b(FANTASY_API_KEY|API_KEY|SITE_PASSWORD|MOTHERDUCK_TOKEN|motherduck_token|ESPN_S2|SWID|"""
-    r"""SUPABASE_DB_URL|CREDENTIALS_PRIVKEY_V[0-9]+|YAHOO_CLIENT_SECRET)\b["']?[ \t]*[=:][ \t]*["']?([^\s"'<>$#`),]+)""")
+    r"""SUPABASE_DB_URL|FI_SYNC_DB_URL|CREDENTIALS_PRIVKEY_V[0-9]+|YAHOO_CLIENT_SECRET)\b["']?[ \t]*[=:][ \t]*["']?([^\s"'<>$#`),]+)""")
 ENV_SCAN_SKIP_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".mjs", ".lock", ".json", ".svg", ".css")
 MAX_SCAN_BYTES = 2_000_000
 

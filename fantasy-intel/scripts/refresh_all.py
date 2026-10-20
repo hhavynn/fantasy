@@ -64,7 +64,8 @@ LOG_DIR = DATA_DIR / "logs"
 STEPS = ("sync_espn.py", "sync_nfl.py", "compute_analytics.py")
 PUBLISH = "publish_motherduck.py"
 PUBLISH_SNAPSHOT = "publish_snapshot.py"   # replaces PUBLISH when R2 is configured (free tiers; MotherDuck retired)
-PUBLISHERS = (PUBLISH, PUBLISH_SNAPSHOT)
+PUBLISH_LEAGUES = "publish_leagues.py"     # also, when LEAGUE_PUBLISH_ID + FI_SYNC_DB_URL are set (multi-league path)
+PUBLISHERS = (PUBLISH, PUBLISH_SNAPSHOT, PUBLISH_LEAGUES)
 REPORT = "projection_performance.py"   # not in STEPS: run by run_report, whose failure never stops the chain
 REPLAY = "model_replay.py"             # not in STEPS: run by run_replay after the report, never stops the chain
 RANGES = "projection_ranges.py"         # not in STEPS: run by run_ranges before the publish, never stops the chain
@@ -91,7 +92,8 @@ def plan(publish: bool) -> list[str]:
     if not publish:
         return list(STEPS)
     if get_settings().r2_configured:
-        return [*STEPS, PUBLISH_SNAPSHOT]
+        leagues = bool((os.getenv("LEAGUE_PUBLISH_ID") or "").strip() and (os.getenv("FI_SYNC_DB_URL") or "").strip())
+        return [*STEPS, PUBLISH_SNAPSHOT, *([PUBLISH_LEAGUES] if leagues else [])]
     has_token = bool((os.getenv("MOTHERDUCK_TOKEN") or "").strip())
     return [*STEPS, PUBLISH] if has_token else list(STEPS)
 

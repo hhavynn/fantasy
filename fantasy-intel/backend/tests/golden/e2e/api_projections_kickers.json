@@ -1,0 +1,30 @@
+// /api/projections/kickers
+{
+ "body": {
+  "available": false,
+  "governance": {
+   "espn_superiority_established": false,
+   "model_version": "kfp-1.1.0",
+   "role": "independent kicker model (separate from the ifp skill-position models)",
+   "start_sit_ready": false,
+   "status_note": "Fantasy Intel's kicker model: more accurate than trailing kicker averages in a 2023-2025 retrospective backtest, and tracked prospectively against ESPN every week since 2026."
+  },
+  "league": {
+   "id": 999,
+   "season": 2026
+  },
+  "notes": [
+   "projected_points is conditional on the kicker kicking in the game; expected_points = p_play x projected_points.",
+   "stat_line holds the model's expected FG tries and makes by distance and expected PAT tries and makes.",
+   "Weather is a forecast (NWS) shown with its retrieval time; it is a model input only when context.weather.used_by_model is true (kfp-1.1.0: never).",
+   "A retractable roof's game-day position is unknown before kickoff and is never assumed."
+  ],
+  "players": [],
+  "run": null,
+  "schema_version": "kicker-projections/v1",
+  "skipped_runs": [],
+  "unavailable_reason": "No kicker projections: the league's kicker scoring uses a rule the kicker model does not implement.",
+  "week": 3
+ },
+ "status": 200
+}

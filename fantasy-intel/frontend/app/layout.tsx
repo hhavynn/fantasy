@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { CommandPalette } from "@/components/CommandPalette";
+import { LeagueSwitcher } from "@/components/LeagueSwitcher";
 import { BrandLink, BrandMark, MobileNav, NavGroups, SubNav, TabBar } from "@/components/Nav";
 import { ProjectionSwitch } from "@/components/ProjectionSwitch";
 import { SyncPill } from "@/components/SyncPill";
 import { TableScroll } from "@/components/TableScroll";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { api } from "@/lib/api";
+import { currentLeague } from "@/lib/league-scope.server";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import { computeSyncSummary, type StatusPayload } from "@/lib/sync-status";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
@@ -58,7 +60,8 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [status, projection] = await Promise.all([api<NonNullable<StatusPayload>>("/api/status"), getProjectionSource()]);
+  const [status, projection, league] = await Promise.all([
+    api<NonNullable<StatusPayload>>("/api/status"), getProjectionSource(), currentLeague()]);
   const s = status.data;
   const sync = computeSyncSummary(s ?? null);
   return (
@@ -76,7 +79,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             </BrandLink>
             <NavGroups />
             <div className="topbar-end">
-              {s?.league && (
+              {league ? <LeagueSwitcher current={league} /> : s?.league && (
                 <span className="league-chip">
                   {s.league.name} <span className="faint">· wk {s.league.current_week}</span>
                 </span>

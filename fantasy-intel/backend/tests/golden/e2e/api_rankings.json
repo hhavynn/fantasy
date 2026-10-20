@@ -1,0 +1,2125 @@
+// /api/rankings
+{
+ "body": {
+  "counts": {
+   "matched": 28,
+   "pool": 28,
+   "ranked": 28,
+   "returned": 28,
+   "unranked": {
+    "bye": 0,
+    "incomplete": 0,
+    "missing": 0,
+    "no_ours": 0
+   }
+  },
+  "freshness": {
+   "espn_projections_synced_at": "<masked>",
+   "ours_run_created_at": null,
+   "player_scores_as_of_week": 7,
+   "player_scores_computed_at": "<masked>",
+   "players_synced_at": "<masked>"
+  },
+  "horizon": "week",
+  "league_context": {
+   "available": true,
+   "league_name": "Fixture League",
+   "my_team_id": 2,
+   "teams": 4
+  },
+  "notes": [
+   "Projected points are in league scoring; opportunity, production and consistency are full PPR (nflverse) and are not comparable to projections."
+  ],
+  "players": [
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 104,
+    "full_name": "Delta QB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "QB",
+    "pro_team": "PHI",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 11.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 11.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 1,
+     "position": 1,
+     "position_label": "QB1",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 4",
+     "fantasy_team_id": 4,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 202,
+    "full_name": "Foxtrot RB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "RB",
+    "pro_team": "BUF",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 11.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 11.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 1,
+     "position": 1,
+     "position_label": "RB1",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 307,
+    "full_name": "Sierra WR",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "LA",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "WR",
+    "pro_team": "TB",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 11.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 11.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 1,
+     "position": 1,
+     "position_label": "WR1",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 209,
+    "full_name": "Waiver RB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "RB",
+    "pro_team": "KC",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 11.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 11.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 1,
+     "position": 1,
+     "position_label": "RB1",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": null,
+     "fantasy_team_id": null,
+     "is_mine": false,
+     "status": "FREE_AGENT"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 405,
+    "full_name": "Waiver TE",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "TE",
+    "pro_team": "DET",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 11.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 11.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 1,
+     "position": 1,
+     "position_label": "TE1",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": null,
+     "fantasy_team_id": null,
+     "is_mine": false,
+     "status": "FREE_AGENT"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": 7,
+     "ppr_sd": 5.33
+    },
+    "espn_player_id": 201,
+    "full_name": "Echo RB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "week": 3
+    },
+    "games": 7,
+    "gsis_id": "00-SYNRB01",
+    "market_signal": "HOLD",
+    "opportunity": {
+     "basis": "xfp",
+     "recent_per_game": 13.75,
+     "tier": "HIGH",
+     "xfp_per_game": 14.51
+    },
+    "position": "RB",
+    "pro_team": "KC",
+    "production": {
+     "fp_minus_xfp": -0.13,
+     "ppr_per_game": 14.39,
+     "recent_ppr_per_game": 11.95,
+     "sustainability": "ALIGNED"
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 10.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 10.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 6,
+     "position": 3,
+     "position_label": "RB3",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": 79.0,
+     "overall": 77.0,
+     "production": 71.0
+    },
+    "role_trend": "FLAT",
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": 0.002,
+    "why": [
+     "High-volume role (13.8 xFP/g)",
+     "Production in line with role"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 103,
+    "full_name": "Charlie QB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "QB",
+    "pro_team": "DET",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 10.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 10.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 6,
+     "position": 2,
+     "position_label": "QB2",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 3",
+     "fantasy_team_id": 3,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 208,
+    "full_name": "Lima RB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "JAX",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "RB",
+    "pro_team": "WAS",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 10.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 10.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 6,
+     "position": 3,
+     "position_label": "RB3",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 3",
+     "fantasy_team_id": 3,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 306,
+    "full_name": "Romeo WR",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "LAC",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "WR",
+    "pro_team": "SEA",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 10.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 10.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 6,
+     "position": 2,
+     "position_label": "WR2",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 404,
+    "full_name": "Xray TE",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "TE",
+    "pro_team": "PHI",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 10.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 10.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 6,
+     "position": 2,
+     "position_label": "TE2",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 4",
+     "fantasy_team_id": 4,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 102,
+    "full_name": "Bravo QB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "QB",
+    "pro_team": "BUF",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 9.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 9.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 11,
+     "position": 3,
+     "position_label": "QB3",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 207,
+    "full_name": "Kilo RB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "LA",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "RB",
+    "pro_team": "TB",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 9.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 9.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 11,
+     "position": 5,
+     "position_label": "RB5",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 305,
+    "full_name": "Quebec WR",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "LV",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "WR",
+    "pro_team": "SF",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 9.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 9.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 11,
+     "position": 3,
+     "position_label": "WR3",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 403,
+    "full_name": "Whiskey TE",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "TE",
+    "pro_team": "DET",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 9.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 9.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 11,
+     "position": 3,
+     "position_label": "TE3",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 3",
+     "fantasy_team_id": 3,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 101,
+    "full_name": "Alpha QB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "QB",
+    "pro_team": "KC",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 8.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 8.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 15,
+     "position": 4,
+     "position_label": "QB4",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 206,
+    "full_name": "Juliet RB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "LAC",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "RB",
+    "pro_team": "SEA",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 8.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 8.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 15,
+     "position": 6,
+     "position_label": "RB6",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 304,
+    "full_name": "Papa WR",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "WR",
+    "pro_team": "PHI",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 8.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 8.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 15,
+     "position": 4,
+     "position_label": "WR4",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 402,
+    "full_name": "Victor TE",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "TE",
+    "pro_team": "BUF",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 8.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 8.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 15,
+     "position": 4,
+     "position_label": "TE4",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 205,
+    "full_name": "India RB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "LV",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "RB",
+    "pro_team": "SF",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 7.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 7.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 19,
+     "position": 7,
+     "position_label": "RB7",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 303,
+    "full_name": "Oscar WR",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "WR",
+    "pro_team": "DET",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 7.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 7.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 19,
+     "position": 5,
+     "position_label": "WR5",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 401,
+    "full_name": "Uniform TE",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "TE",
+    "pro_team": "KC",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 7.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 7.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 19,
+     "position": 5,
+     "position_label": "TE5",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 204,
+    "full_name": "Hotel RB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "RB",
+    "pro_team": "PHI",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 6.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 6.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 22,
+     "position": 8,
+     "position_label": "RB8",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 2",
+     "fantasy_team_id": 2,
+     "is_mine": true,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 302,
+    "full_name": "November WR",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "WR",
+    "pro_team": "BUF",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 6.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 6.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 22,
+     "position": 6,
+     "position_label": "WR6",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 309,
+    "full_name": "Waiver WR",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "WR",
+    "pro_team": "BUF",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 6.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 6.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 22,
+     "position": 6,
+     "position_label": "WR6",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": null,
+     "fantasy_team_id": null,
+     "is_mine": false,
+     "status": "WAIVERS"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 203,
+    "full_name": "Golf RB",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "RB",
+    "pro_team": "DET",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 5.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 5.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 25,
+     "position": 9,
+     "position_label": "RB9",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 301,
+    "full_name": "Mike WR",
+    "game": {
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "WR",
+    "pro_team": "KC",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 5.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 5.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 25,
+     "position": 8,
+     "position_label": "WR8",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 1",
+     "fantasy_team_id": 1,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 308,
+    "full_name": "Tango WR",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "JAX",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "WR",
+    "pro_team": "WAS",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 5.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 5.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 25,
+     "position": 8,
+     "position_label": "WR8",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": "Team 3",
+     "fantasy_team_id": 3,
+     "is_mine": false,
+     "status": "ROSTERED"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   },
+   {
+    "availability": {
+     "espn_injury_status": "ACTIVE",
+     "nfl_report_status": null,
+     "sources": [
+      "ESPN ACTIVE"
+     ],
+     "status": "AVAILABLE",
+     "weight": 1.0
+    },
+    "consistency": {
+     "games": null,
+     "ppr_sd": null
+    },
+    "espn_player_id": 105,
+    "full_name": "Waiver QB",
+    "game": {
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "week": 3
+    },
+    "games": null,
+    "gsis_id": null,
+    "market_signal": null,
+    "opportunity": {
+     "basis": null,
+     "recent_per_game": null,
+     "tier": null,
+     "xfp_per_game": null
+    },
+    "position": "QB",
+    "pro_team": "PHI",
+    "production": {
+     "fp_minus_xfp": null,
+     "ppr_per_game": null,
+     "recent_ppr_per_game": null,
+     "sustainability": null
+    },
+    "projection": {
+     "bye_weeks": [],
+     "espn": 5.3,
+     "missing_weeks": [],
+     "ours": null,
+     "ours_origin": null,
+     "status": "ok",
+     "value": 5.3,
+     "weeks_available": 1,
+     "weeks_expected": 1
+    },
+    "rank": {
+     "overall": 25,
+     "position": 5,
+     "position_label": "QB5",
+     "tied": true
+    },
+    "rating": {
+     "opportunity": null,
+     "overall": null,
+     "production": null
+    },
+    "role_trend": null,
+    "roster": {
+     "fantasy_team": null,
+     "fantasy_team_id": null,
+     "is_mine": false,
+     "status": "FREE_AGENT"
+    },
+    "usage_trend_score": null,
+    "why": [
+     "Ranked on projection only: no usage profile yet"
+    ]
+   }
+  ],
+  "position": "ALL",
+  "projection": {
+   "basis": "espn",
+   "espn": {
+    "label": "ESPN weekly projection, week 3 (league scoring)",
+    "synced_at": "<masked>"
+   },
+   "label": "ESPN weekly projection, week 3 (league scoring)",
+   "ours": null
+  },
+  "rating": {
+   "adapter": "player_scores 0-10 x 10",
+   "as_of_week": 7,
+   "computed_at": "<masked>",
+   "contract": "adapter",
+   "decimals": 1,
+   "scale": "0-100",
+   "semantics": "position-relative percentile; not a trade price; not comparable to points"
+  },
+  "scoring": {
+   "ours_reason": null,
+   "ours_supported": true,
+   "projection_units": "league scoring",
+   "rating_units": "full PPR (nflverse)"
+  },
+  "season": 2026,
+  "sort": {
+   "dir": "asc",
+   "key": "rank"
+  },
+  "source": "espn",
+  "week": 3,
+  "window": {
+   "first": 3,
+   "label": "Week 3",
+   "last": 3,
+   "last_regular_season_week": 14,
+   "note": null,
+   "regular_season_only": true,
+   "weeks": [
+    3
+   ]
+  }
+ },
+ "status": 200
+}

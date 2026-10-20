@@ -1,0 +1,458 @@
+// /api/weekly-recap
+{
+ "body": {
+  "available_periods": [
+   {
+    "matchup_period": 1,
+    "weeks": [
+     1
+    ]
+   },
+   {
+    "matchup_period": 2,
+    "weeks": [
+     2
+    ]
+   }
+  ],
+  "available_weeks": [
+   1,
+   2
+  ],
+  "awards": {
+   "biggest_blowout": {
+    "award_name": "Biggest blowout",
+    "description": "Largest margin of victory",
+    "is_tied": true,
+    "winners": [
+     {
+      "is_tie": false,
+      "loser_name": "Team 1",
+      "loser_team_id": 1,
+      "margin": 19.0,
+      "matchup_id": 3,
+      "score_summary": "115.00 - 96.00",
+      "winner_name": "Team 3",
+      "winner_team_id": 3
+     },
+     {
+      "is_tie": false,
+      "loser_name": "Team 2",
+      "loser_team_id": 2,
+      "margin": 19.0,
+      "matchup_id": 4,
+      "score_summary": "116.00 - 97.00",
+      "winner_name": "Team 4",
+      "winner_team_id": 4
+     }
+    ]
+   },
+   "biggest_upset": {
+    "award_name": "Biggest upset",
+    "description": "Underdog win against pregame projections",
+    "is_tied": false,
+    "omitted_reason": "Authentic pregame projected matchup scores are unavailable. Stored projection timestamps indicate post-hoc syncs; to protect data authenticity, this award is omitted.",
+    "winners": []
+   },
+   "closest_matchup": {
+    "award_name": "Closest matchup",
+    "description": "Narrowest margin, ties included",
+    "is_tied": true,
+    "winners": [
+     {
+      "is_tie": false,
+      "loser_name": "Team 1",
+      "loser_team_id": 1,
+      "margin": 19.0,
+      "matchup_id": 3,
+      "score_summary": "115.00 - 96.00",
+      "winner_name": "Team 3",
+      "winner_team_id": 3
+     },
+     {
+      "is_tie": false,
+      "loser_name": "Team 2",
+      "loser_team_id": 2,
+      "margin": 19.0,
+      "matchup_id": 4,
+      "score_summary": "116.00 - 97.00",
+      "winner_name": "Team 4",
+      "winner_team_id": 4
+     }
+    ]
+   },
+   "highest_score": {
+    "award_name": "Highest scorer",
+    "description": "Top-scoring team of the week",
+    "is_tied": false,
+    "winners": [
+     {
+      "abbrev": "T4",
+      "name": "Team 4",
+      "points": 116.0,
+      "team_id": 4
+     }
+    ]
+   },
+   "highest_scoring_loser": {
+    "award_name": "Tough luck",
+    "description": "Highest score in a losing effort",
+    "is_tied": false,
+    "winners": [
+     {
+      "abbrev": "T2",
+      "name": "Team 2",
+      "points": 97.0,
+      "team_id": 2
+     }
+    ]
+   }
+  },
+  "bench_standouts": [
+   {
+    "espn_player_id": 206,
+    "fantasy_team_id": 2,
+    "fantasy_team_name": "Team 2",
+    "full_name": "Juliet RB",
+    "lineup_status": "BENCH",
+    "points": 10.0,
+    "position": "RB",
+    "pro_team": "SEA"
+   },
+   {
+    "espn_player_id": 303,
+    "fantasy_team_id": 1,
+    "fantasy_team_name": "Team 1",
+    "full_name": "Oscar WR",
+    "lineup_status": "BENCH",
+    "points": 10.0,
+    "position": "WR",
+    "pro_team": "DET"
+   },
+   {
+    "espn_player_id": 307,
+    "fantasy_team_id": 2,
+    "fantasy_team_name": "Team 2",
+    "full_name": "Sierra WR",
+    "lineup_status": "BENCH",
+    "points": 10.0,
+    "position": "WR",
+    "pro_team": "TB"
+   }
+  ],
+  "is_completed_week": true,
+  "league_activity": {
+   "adds": [
+    {
+     "bid_amount": null,
+     "player_id": 307,
+     "player_name": "Sierra WR",
+     "position": "WR",
+     "processed_at": "<masked>",
+     "scoring_period": 2,
+     "team_id": 2,
+     "team_name": "Team 2",
+     "type": "FREEAGENT"
+    }
+   ],
+   "drops": [
+    {
+     "player_id": 309,
+     "player_name": "Waiver WR",
+     "position": "WR",
+     "processed_at": "<masked>",
+     "scoring_period": 2,
+     "team_id": 2,
+     "team_name": "Team 2",
+     "type": "FREEAGENT"
+    }
+   ],
+   "total_moves": 2,
+   "trades": [],
+   "unplaced_trades": 0
+  },
+  "league_id": 999,
+  "league_name": "Fixture League",
+  "matchups": [
+   {
+    "away_team": {
+     "abbrev": "T1",
+     "name": "Team 1",
+     "points": 96.0,
+     "team_id": 1
+    },
+    "home_team": {
+     "abbrev": "T3",
+     "name": "Team 3",
+     "points": 115.0,
+     "team_id": 3
+    },
+    "is_tie": false,
+    "margin": 19.0,
+    "matchup_id": 3,
+    "matchup_period": 2,
+    "playoff_tier": null,
+    "winner": "HOME"
+   },
+   {
+    "away_team": {
+     "abbrev": "T2",
+     "name": "Team 2",
+     "points": 97.0,
+     "team_id": 2
+    },
+    "home_team": {
+     "abbrev": "T4",
+     "name": "Team 4",
+     "points": 116.0,
+     "team_id": 4
+    },
+    "is_tie": false,
+    "margin": 19.0,
+    "matchup_id": 4,
+    "matchup_period": 2,
+    "playoff_tier": null,
+    "winner": "HOME"
+   }
+  ],
+  "notes": {
+   "byes": 0,
+   "espn_record_check": {
+    "compared": true,
+    "mismatched_team_ids": [
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   "lineup_snapshot_weeks": [
+    2
+   ],
+   "missing_scores": 0,
+   "partial_period_players": 0,
+   "pending_matchups": 0,
+   "rostered_without_points": 0,
+   "weeks_unmapped": false
+  },
+  "rules": {
+   "awards": "Awards compare matchup-period totals from completed matchups (ESPN winner home, away or tie). Margins are compared to the hundredth of a point; equal values share the award.",
+   "players": "Player points are ESPN's league-scored actual points for the period's scoring weeks. Lineup status comes from the stored roster snapshot of each week; a player on no snapshot is unrostered. A missing value is unknown, not zero.",
+   "standings": "Standings count completed regular-season matchups through the selected period only. Order: win percentage ((wins + half of ties) / games), then points for, then team id. A display order, not ESPN's playoff tiebreak.",
+   "trades": "A trade belongs to the scoring period of its ESPN transaction. Trades seen only in the league activity feed are placed in the single period whose executed transactions span the trade's date; otherwise they are left unplaced."
+  },
+  "scoring_periods": [
+   2
+  ],
+  "season": 2026,
+  "selected_week": 2,
+  "standings": [
+   {
+    "abbrev": "T3",
+    "games": 2,
+    "losses": 0,
+    "points_against": 193.0,
+    "points_for": 229.0,
+    "rank": 1,
+    "rank_change": 0,
+    "team_id": 3,
+    "team_name": "Team 3",
+    "ties": 0,
+    "weekly_result": "W",
+    "win_pct": 1.0,
+    "wins": 2
+   },
+   {
+    "abbrev": "T4",
+    "games": 2,
+    "losses": 1,
+    "points_against": 209.0,
+    "points_for": 215.0,
+    "rank": 2,
+    "rank_change": 1,
+    "team_id": 4,
+    "team_name": "Team 4",
+    "ties": 0,
+    "weekly_result": "W",
+    "win_pct": 0.5,
+    "wins": 1
+   },
+   {
+    "abbrev": "T1",
+    "games": 2,
+    "losses": 1,
+    "points_against": 214.0,
+    "points_for": 208.0,
+    "rank": 3,
+    "rank_change": -1,
+    "team_id": 1,
+    "team_name": "Team 1",
+    "ties": 0,
+    "weekly_result": "L",
+    "win_pct": 0.5,
+    "wins": 1
+   },
+   {
+    "abbrev": "T2",
+    "games": 2,
+    "losses": 2,
+    "points_against": 230.0,
+    "points_for": 194.0,
+    "rank": 4,
+    "rank_change": 0,
+    "team_id": 2,
+    "team_name": "Team 2",
+    "ties": 0,
+    "weekly_result": "L",
+    "win_pct": 0.0,
+    "wins": 0
+   }
+  ],
+  "standings_through": 2,
+  "standout_players": [
+   {
+    "espn_player_id": -16012,
+    "fantasy_team_id": 1,
+    "fantasy_team_name": "Team 1",
+    "full_name": "Chiefs D/ST",
+    "lineup_status": "STARTER",
+    "points": 10.0,
+    "position": "D/ST",
+    "pro_team": "KC"
+   },
+   {
+    "espn_player_id": -16002,
+    "fantasy_team_id": 2,
+    "fantasy_team_name": "Team 2",
+    "full_name": "Bills D/ST",
+    "lineup_status": "STARTER",
+    "points": 10.0,
+    "position": "D/ST",
+    "pro_team": "BUF"
+   },
+   {
+    "espn_player_id": 101,
+    "fantasy_team_id": 1,
+    "fantasy_team_name": "Team 1",
+    "full_name": "Alpha QB",
+    "lineup_status": "STARTER",
+    "points": 10.0,
+    "position": "QB",
+    "pro_team": "KC"
+   },
+   {
+    "espn_player_id": 102,
+    "fantasy_team_id": 2,
+    "fantasy_team_name": "Team 2",
+    "full_name": "Bravo QB",
+    "lineup_status": "STARTER",
+    "points": 10.0,
+    "position": "QB",
+    "pro_team": "BUF"
+   },
+   {
+    "espn_player_id": 103,
+    "fantasy_team_id": 3,
+    "fantasy_team_name": "Team 3",
+    "full_name": "Charlie QB",
+    "lineup_status": "STARTER",
+    "points": 10.0,
+    "position": "QB",
+    "pro_team": "DET"
+   },
+   {
+    "espn_player_id": 104,
+    "fantasy_team_id": 4,
+    "fantasy_team_name": "Team 4",
+    "full_name": "Delta QB",
+    "lineup_status": "STARTER",
+    "points": 10.0,
+    "position": "QB",
+    "pro_team": "PHI"
+   },
+   {
+    "espn_player_id": 105,
+    "fantasy_team_id": null,
+    "fantasy_team_name": null,
+    "full_name": "Waiver QB",
+    "lineup_status": "UNROSTERED",
+    "points": 10.0,
+    "position": "QB",
+    "pro_team": "PHI"
+   },
+   {
+    "espn_player_id": 201,
+    "fantasy_team_id": 1,
+    "fantasy_team_name": "Team 1",
+    "full_name": "Echo RB",
+    "lineup_status": "STARTER",
+    "points": 10.0,
+    "position": "RB",
+    "pro_team": "KC"
+   },
+   {
+    "espn_player_id": 202,
+    "fantasy_team_id": 1,
+    "fantasy_team_name": "Team 1",
+    "full_name": "Foxtrot RB",
+    "lineup_status": "STARTER",
+    "points": 10.0,
+    "position": "RB",
+    "pro_team": "BUF"
+   },
+   {
+    "espn_player_id": 203,
+    "fantasy_team_id": 1,
+    "fantasy_team_name": "Team 1",
+    "full_name": "Golf RB",
+    "lineup_status": "STARTER",
+    "points": 10.0,
+    "position": "RB",
+    "pro_team": "DET"
+   }
+  ],
+  "unrostered_standouts": [
+   {
+    "espn_player_id": 105,
+    "fantasy_team_id": null,
+    "fantasy_team_name": null,
+    "full_name": "Waiver QB",
+    "lineup_status": "UNROSTERED",
+    "points": 10.0,
+    "position": "QB",
+    "pro_team": "PHI"
+   },
+   {
+    "espn_player_id": 209,
+    "fantasy_team_id": null,
+    "fantasy_team_name": null,
+    "full_name": "Waiver RB",
+    "lineup_status": "UNROSTERED",
+    "points": 10.0,
+    "position": "RB",
+    "pro_team": "KC"
+   },
+   {
+    "espn_player_id": 309,
+    "fantasy_team_id": null,
+    "fantasy_team_name": null,
+    "full_name": "Waiver WR",
+    "lineup_status": "UNROSTERED",
+    "points": 10.0,
+    "position": "WR",
+    "pro_team": "BUF"
+   },
+   {
+    "espn_player_id": 405,
+    "fantasy_team_id": null,
+    "fantasy_team_name": null,
+    "full_name": "Waiver TE",
+    "lineup_status": "UNROSTERED",
+    "points": 10.0,
+    "position": "TE",
+    "pro_team": "DET"
+   }
+  ]
+ },
+ "status": 200
+}

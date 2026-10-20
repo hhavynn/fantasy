@@ -124,7 +124,8 @@ def get_bytes(cfg: R2Config, key: str, timeout: float = 15) -> bytes:
 
 
 def download(cfg: R2Config, key: str, dest: Path, expected_sha256: str | None = None, timeout: float = 120,
-             size: int | None = None, parts: int = 8, min_parallel_bytes: int = 16 << 20) -> Path:
+             size: int | None = None, parts: int = 8, min_parallel_bytes: int = 16 << 20,
+             expected_sha256_prefix: str | None = None) -> Path:
     """Stream `key` to `dest` via a temporary name, check its sha256, then rename into place, so a reader
     never sees a partial file. When `size` is known and large, `parts` ranged GETs run in parallel: one R2
     stream from Vercel's iad1 manages ~30 MB/s, eight together fetch the 95 MB snapshot in ~0.5-1 s."""
@@ -138,6 +139,10 @@ def download(cfg: R2Config, key: str, dest: Path, expected_sha256: str | None = 
             digest = _download_stream(cfg, key, part, timeout)
         if expected_sha256 and digest != expected_sha256:
             raise R2Error(None, "ChecksumMismatch", key)
+        if expected_sha256_prefix and not digest.startswith(expected_sha256_prefix):
+            raise R2Error(None, "ChecksumMismatch", key)
+        if size is not None and part.stat().st_size != size:
+            raise R2Error(None, "SizeMismatch", key)
         part.replace(dest)
     finally:
         part.unlink(missing_ok=True)

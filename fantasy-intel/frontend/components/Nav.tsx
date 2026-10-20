@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useAppPathname, useLeagueHref } from "./useAppPathname";
 import {
   type CSSProperties, type FocusEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,
 } from "react";
@@ -20,16 +21,18 @@ import { useTeam } from "./useTeam";
 /** The wordmark: home is the Overview, so it keeps the analyzed team like every other link to a team-scoped page. */
 export function BrandLink({ children }: { children: ReactNode }) {
   const team = useTeam();
-  return <Link href={withTeam("/", team)} className="brand" aria-label="Fantasy Intel home">{children}</Link>;
+  const leagueHref = useLeagueHref();
+  return <Link href={leagueHref(withTeam("/", team))} className="brand" aria-label="Fantasy Intel home">{children}</Link>;
 }
 
 export function NavGroups() {
-  const { activeGroup } = getActiveRoute(usePathname());
+  const { activeGroup } = getActiveRoute(useAppPathname());
   const team = useTeam();
+  const leagueHref = useLeagueHref();
   return (
     <nav className="nav-groups" aria-label="Sections">
       {NAV_GROUPS.map((g) => (
-        <Link key={g.label} href={withTeam(g.pages[0].href, team)} aria-current={g === activeGroup ? "true" : undefined}>
+        <Link key={g.label} href={leagueHref(withTeam(g.pages[0].href, team))} aria-current={g === activeGroup ? "true" : undefined}>
           {g.label}
         </Link>
       ))}
@@ -38,8 +41,9 @@ export function NavGroups() {
 }
 
 export function SubNav() {
-  const { activeHref, activeGroup } = getActiveRoute(usePathname());
+  const { activeHref, activeGroup } = getActiveRoute(useAppPathname());
   const team = useTeam();
+  const leagueHref = useLeagueHref();
   if (!activeGroup) return null;
   return (
     <div className="subnav-wrap">
@@ -49,7 +53,7 @@ export function SubNav() {
           <span key={c.title ?? ""} className="subnav-cluster">
             {c.title && <span className="subnav-section">{c.title}</span>}
             {c.pages.map((p) => (
-              <Link key={p.href} href={withTeam(p.href, team)} title={p.summary}
+              <Link key={p.href} href={leagueHref(withTeam(p.href, team))} title={p.summary}
                     aria-current={p.href === activeHref ? "page" : undefined}>
                 {p.label}
               </Link>
@@ -103,9 +107,10 @@ function rememberPage(group: string, entry: TabMemoryEntry) {
  * team); the tab of the current group goes back to the group's first page. The sub-nav lists the group's pages.
  */
 export function TabBar() {
-  const pathname = usePathname();
+  const pathname = useAppPathname();
   const search = useSearchParams();
   const team = useTeam();
+  const leagueHref = useLeagueHref();
   const query = search.toString();
   const { activeGroup } = getActiveRoute(pathname);
   const raw = useSyncExternalStore(subscribeMemory, readMemory, () => null);
@@ -119,7 +124,7 @@ export function TabBar() {
   return (
     <nav className="tabbar" aria-label="Sections" style={{ "--tabs": NAV_GROUPS.length } as CSSProperties}>
       {NAV_GROUPS.map((g) => (
-        <Link key={g.label} href={withTeam(tabTarget(g, g === activeGroup, memory[g.label], team), team)}
+        <Link key={g.label} href={leagueHref(withTeam(tabTarget(g, g === activeGroup, memory[g.label], team), team))}
               aria-current={g === activeGroup ? "true" : undefined}>
           <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             {GROUP_ICONS[g.label] ?? <circle cx="9" cy="9" r="3" />}
@@ -143,10 +148,11 @@ export function BrandMark({ size = 22 }: { size?: number }) {
 
 /** Phones: the section row collapses into a menu button with every group's pages, the switches and data freshness. */
 export function MobileNav({ projection, sync }: { projection?: ProjectionSource; sync?: { state: SyncState; text: string } } = {}) {
-  const pathname = usePathname();
+  const pathname = useAppPathname();
   const search = useSearchParams();
   const { activeHref } = getActiveRoute(pathname);
   const team = useTeam();
+  const leagueHref = useLeagueHref();
   const [open, setOpen] = useState(false);
   // The layout persists across navigation, so the menu closes whenever the URL changes, including back/forward and
   // query-only changes (a team switch), not only after a click inside it. Adjusting state during render on a changed
@@ -180,7 +186,7 @@ export function MobileNav({ projection, sync }: { projection?: ProjectionSource;
       {open && (
         <nav id="mobile-nav-panel" className="mobile-nav-panel" aria-label="All pages">
           {sync && (
-            <Link href="/data" className="mobile-nav-sync" data-state={sync.state} onClick={close}>
+            <Link href={leagueHref("/data")} className="mobile-nav-sync" data-state={sync.state} onClick={close}>
               <span><b>Data</b> · {sync.text}</span>
               <span aria-hidden="true">→</span>
             </Link>
@@ -192,7 +198,7 @@ export function MobileNav({ projection, sync }: { projection?: ProjectionSource;
                 <div key={c.title ?? ""} className="mobile-nav-cluster">
                   {c.title && <span className="mobile-nav-section">{c.title}</span>}
                   {c.pages.map((p) => (
-                    <Link key={p.href} href={withTeam(p.href, team)} aria-current={p.href === activeHref ? "page" : undefined} onClick={close}>
+                    <Link key={p.href} href={leagueHref(withTeam(p.href, team))} aria-current={p.href === activeHref ? "page" : undefined} onClick={close}>
                       {p.label}
                     </Link>
                   ))}
@@ -211,7 +217,7 @@ export function MobileNav({ projection, sync }: { projection?: ProjectionSource;
             </div>
           )}
           <div className="mobile-nav-foot">
-            <Link href="/data" aria-current={pathname === "/data" ? "page" : undefined} onClick={close}>Data quality</Link>
+            <Link href={leagueHref("/data")} aria-current={pathname === "/data" ? "page" : undefined} onClick={close}>Data quality</Link>
           </div>
         </nav>
       )}

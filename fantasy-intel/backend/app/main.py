@@ -86,6 +86,22 @@ app.include_router(power_rankings_router)
 app.include_router(projection_ranges_router)
 
 
+# The same routers again under /v2/leagues/{league_id}: authorized per league, served from that league's files
+# (app/api/league_scope.py). With MULTILEAGUE_ENABLED off these answer 404 like every other /v2 path.
+from .api.leagues_v2 import require_enabled  # noqa: E402
+from .api.league_scope import CachedResponse, add_scope_headers, mount_legacy_routers, serve_cached  # noqa: E402
+
+mount_legacy_routers(app, [
+    router, manager_scouting_router, trade_discovery_router, luck_lab_router, schedule_intelligence_router,
+    playoff_race_router, team_value_router, independent_projections_router, start_sit_router, matchup_router,
+    projection_promotion_router, projection_performance_router, projection_movers_router, weekly_recap_router,
+    research_router, player_compare_router, rankings_router, kicker_projections_router, dst_projections_router,
+    injury_impact_router, power_rankings_router, projection_ranges_router,
+], require_enabled, owner_only=[projection_promotion_router, projection_performance_router, research_router])
+app.middleware("http")(add_scope_headers)
+app.add_exception_handler(CachedResponse, serve_cached)
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
