@@ -18,11 +18,13 @@ import logging
 import os
 import tempfile
 import threading
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import Response
 
 from ..config import get_settings
 from .deps import LEAGUE_SCOPE, LeagueScope, layered_databases
@@ -89,12 +91,90 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
                        access.visibility_epoch, chosen)
 
 
+# ---- per-instance response cache ------------------------------------------------------------------------------------
+
+class ResponseCache:
+    """Successful GET responses keyed by (scope cache key, path, sorted query): league, data and global versions,
+    visibility epoch and perspective are all in the scope key, so two leagues, two versions or two perspectives never
+    share an entry. Looked up only after authorization (inside `league_scope`). Bounded by bytes, LRU."""
+
+    def __init__(self, max_bytes: int):
+        self.max_bytes = max_bytes
+        self._lock = threading.Lock()
+        self._entries: OrderedDict[str, tuple[int, bytes, str]] = OrderedDict()   # key -> (status, body, media type)
+        self.hits = 0
+
+    @property
+    def bytes_used(self) -> int:
+        with self._lock:
+            return sum(len(body) for _, body, _ in self._entries.values())
+
+    def statuses(self) -> list[int]:
+        with self._lock:
+            return [status for status, _, _ in self._entries.values()]
+
+    def get(self, key: str):
+        with self._lock:
+            hit = self._entries.get(key)
+            if hit is not None:
+                self._entries.move_to_end(key)
+                self.hits += 1
+            return hit
+
+    def put(self, key: str, status: int, body: bytes, media_type: str) -> None:
+        if status != 200 or len(body) > self.max_bytes // 4:          # one answer never takes most of the cache
+            return
+        with self._lock:
+            self._entries[key] = (status, body, media_type)
+            self._entries.move_to_end(key)
+            used = sum(len(b) for _, b, _ in self._entries.values())
+            while self._entries and used > self.max_bytes:
+                _, (_, old, _) = self._entries.popitem(last=False)
+                used -= len(old)
+
+
+_RESPONSES: dict[str, ResponseCache] = {}
+
+
+def response_cache() -> ResponseCache:
+    with _CACHE_LOCK:
+        cache = _RESPONSES.get("cache")
+        if cache is None:
+            cache = _RESPONSES["cache"] = ResponseCache(int(os.environ.get("LEAGUE_RESPONSE_CACHE_BYTES") or (32 << 20)))
+        return cache
+
+
+class CachedResponse(Exception):
+    """Raised by league_scope on a cache hit (after authorization) to answer without running the handler."""
+
+    def __init__(self, entry):
+        self.entry = entry
+
+
+async def serve_cached(request: Request, exc: CachedResponse) -> Response:
+    status, body, media_type = exc.entry
+    return Response(content=body, status_code=status, media_type=media_type, headers={"X-FI-Cache": "hit"})
+
+
+def _response_key(scope: LeagueScope, request: Request) -> str | None:
+    if request.method != "GET":
+        return None
+    query = "&".join(f"{k}={v}" for k, v in sorted(request.query_params.multi_items()))
+    return f"{scope.cache_key}|{request.url.path}|{query}"
+
+
 async def league_scope(request: Request, league_id: str = Depends(valid_league_id),
                        principal=Depends(current_principal)):
     """Async on purpose: the ContextVar is set in the request's own context, which FastAPI copies into the thread
     pool that runs the (sync) legacy handler. The blocking work runs in the pool."""
     scope = await run_in_threadpool(_resolve, principal, league_id, request.query_params.get("team_id"))
     request.state.fi_scope = scope
+    key = _response_key(scope, request)
+    if key is not None:
+        hit = response_cache().get(key)
+        if hit is not None:
+            raise CachedResponse(hit)
+        request.state.fi_cache_key = key
     token = LEAGUE_SCOPE.set(scope)
     try:
         yield scope
@@ -114,10 +194,21 @@ def mount_legacy_routers(app, routers, require_enabled) -> None:
 
 
 async def add_scope_headers(request: Request, call_next):
+    """Private, uncached by browsers and proxies, naming the versions read; successful GETs go into the response
+    cache on the way out."""
     response = await call_next(request)
     scope = getattr(request.state, "fi_scope", None)
-    if scope is not None:
-        response.headers["Cache-Control"] = "private, no-store"
-        response.headers["X-FI-Data-Version"] = scope.data_version
-        response.headers["X-FI-Global-Version"] = scope.global_version
+    if scope is None:
+        return response
+    key = getattr(request.state, "fi_cache_key", None)
+    if key is not None and response.status_code == 200 and "x-fi-cache" not in response.headers:
+        body = b"".join([chunk async for chunk in response.body_iterator])
+        response_cache().put(key, response.status_code, body, response.media_type or "application/json")
+        headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+        response = Response(content=body, status_code=response.status_code, headers=headers,
+                            media_type=response.media_type)
+        response.headers["X-FI-Cache"] = "miss"
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-FI-Data-Version"] = scope.data_version
+    response.headers["X-FI-Global-Version"] = scope.global_version
     return response

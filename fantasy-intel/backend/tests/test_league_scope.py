@@ -51,6 +51,7 @@ def served(env, pg, tmp_path, monkeypatch):   # noqa: F811
     monkeypatch.setenv("LEAGUE_FILES_DIR", str(objects))
     monkeypatch.setenv("ESPN_SEASON", E2E_SEASON)
     monkeypatch.setattr(league_scope, "_CACHE", {})
+    monkeypatch.setattr(league_scope, "_RESPONSES", {})
     monkeypatch.setattr(deps, "_LAYERED", {})
     monkeypatch.setattr("tempfile.tempdir", str(tmp_path / "tmp"))
     (tmp_path / "tmp").mkdir()
@@ -164,3 +165,46 @@ class _Text:
     def json(self):
         import json
         return json.loads(self.text)
+
+
+# ---- per-instance response cache (Task 6) -------------------------------------------------------------------------
+
+def test_responses_are_cached_per_league_version_and_perspective(pg, served, client, e2e, e2e_b, tmp_path):
+    from app.api import league_scope
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
+    b = publish_local(pg, e2e_b, served, tmp_path / "b", visibility="public", name="B", external_id="1999",
+                      stamp="2026-10-20T13:00:00")
+    cache = league_scope.response_cache()
+    first = client.get(f"/v2/leagues/{a.league_id}/api/overview?team_id=2")
+    other = client.get(f"/v2/leagues/{b.league_id}/api/overview?team_id=2")      # same route and params, league B
+    again = client.get(f"/v2/leagues/{a.league_id}/api/overview?team_id=2")
+    persp = client.get(f"/v2/leagues/{a.league_id}/api/overview?team_id=3")
+    assert first.status_code == other.status_code == again.status_code == persp.status_code == 200
+    assert again.content == first.content and MARK in other.text and MARK not in again.text
+    assert persp.json()["perspective"]["team_id"] == 3
+    assert again.headers["x-fi-cache"] == "hit" and first.headers["x-fi-cache"] == "miss"
+    assert other.headers["x-fi-cache"] == "miss" and persp.headers["x-fi-cache"] == "miss"
+    assert again.headers["cache-control"] == "private, no-store"
+    assert cache.hits == 1
+
+
+def test_authorization_runs_before_the_cache(pg, served, client, e2e, tmp_path):
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
+    assert client.get(f"/v2/leagues/{pub.league_id}/api/overview").status_code == 200
+    with pg.connect() as con:                       # the league turns private: cached public answers are unreachable
+        con.execute("UPDATE fi.leagues SET visibility = 'private', visibility_epoch = visibility_epoch + 1 WHERE id = %s",
+                    [pub.league_id])
+        con.commit()
+    assert client.get(f"/v2/leagues/{pub.league_id}/api/overview").status_code == 404
+
+
+def test_only_successful_gets_are_cached_and_the_cache_is_bounded(pg, served, client, e2e, tmp_path, monkeypatch):
+    from app.api import league_scope
+    monkeypatch.setattr(league_scope, "_RESPONSES", {})
+    monkeypatch.setenv("LEAGUE_RESPONSE_CACHE_BYTES", "200000")
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
+    for path in ("/api/compare?a=1&b=2", "/api/overview", "/api/standings", "/api/waivers", "/api/managers"):
+        client.get(f"/v2/leagues/{pub.league_id}{path}")
+    cache = league_scope.response_cache()
+    assert cache.bytes_used <= 200_000
+    assert all(status == 200 for status in cache.statuses())
