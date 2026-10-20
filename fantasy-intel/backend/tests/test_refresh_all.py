@@ -589,3 +589,14 @@ def test_log_since_returns_only_the_new_lines(refresh, tmp_path):
     log("b")
     log("c")
     assert log.since(mark) == ["b", "c"] and log.since(0) == ["a", "b", "c"]
+
+
+def test_r2_snapshot_publish_replaces_motherduck_when_configured(refresh, monkeypatch):
+    monkeypatch.setenv("MOTHERDUCK_TOKEN", "tok")
+    for key in ("SNAPSHOT_BUCKET", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID"):
+        monkeypatch.setenv(key, "x")
+    assert refresh.plan(publish=True)[-1] == "publish_motherduck.py"    # incomplete R2 settings: unchanged
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "y")
+    steps = refresh.plan(publish=True)
+    assert steps[-1] == "publish_snapshot.py" and "publish_motherduck.py" not in steps
+    assert refresh.plan(publish=False) == list(refresh.STEPS)

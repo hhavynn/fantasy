@@ -7,8 +7,8 @@ fantasy points, and how does my league behave?*
 
 Everything runs on your laptop: Python/FastAPI + DuckDB backend, Next.js dashboard.
 No accounts, no cloud, no LLM calls. All scores are deterministic and explainable.
-Optionally, a read-only copy can be hosted for free on Vercel + MotherDuck; see
-[Hosting](#hosting-vercel--motherduck).
+Optionally, a read-only copy can be hosted for free on Vercel + Cloudflare R2; see
+[Hosting](#hosting-vercel--cloudflare-r2-free-tiers).
 
 ---
 
@@ -447,36 +447,41 @@ cd backend
 SLEEPER_LIVE_LEAGUE_ID=<public league id> uv run pytest tests/test_sleeper_live.py -s
 ```
 
-## Hosting (Vercel + MotherDuck)
+## Hosting (Vercel + Cloudflare R2, free tiers)
 
-Optional. Syncs still run on your laptop against the local DuckDB file. A publish step
-copies that file to [MotherDuck](https://motherduck.com) (hosted DuckDB), and two Vercel
-projects serve it: the FastAPI backend reads MotherDuck, and the Next.js dashboard calls the
-backend. The free tiers of both cover this. The hosted side only reads: ESPN
-cookies stay in your local `.env`.
+Optional. Syncs still run on your laptop against the local DuckDB file. A publish step uploads a
+compact copy of that file to a private [Cloudflare R2](https://developers.cloudflare.com/r2/) bucket,
+and two Vercel projects serve it: the FastAPI backend downloads the current snapshot into the function's
+temp dir (once per instance and publish) and queries it locally, and the Next.js dashboard calls the
+backend. R2's free tier has no egress fees, so full-file downloads cost nothing. The hosted side only
+reads: ESPN cookies stay in your local `.env`, and the API's R2 token is read-only.
 
 ```
-laptop: sync_espn.py / sync_nfl.py -> data/fantasy.duckdb -> publish_motherduck.py
+laptop: sync_espn.py / sync_nfl.py -> data/fantasy.duckdb -> publish_snapshot.py
                                                                     |
-Vercel: dashboard (SITE_PASSWORD) -> API (X-API-Key) -> md:fantasy_intel
+Vercel: dashboard (SITE_PASSWORD) -> API (X-API-Key) -> r2://fantasy-intel/snapshots/<stamp>.duckdb
 ```
 
-**1. MotherDuck.** Sign up (the free Lite plan is enough) and create two access tokens under
-Settings -> Access Tokens: one for your laptop and one for the API, so either can be revoked on
-its own. Both are normal read/write tokens: read-only read-scaling tokens need MotherDuck's paid
-Business plan. The API never writes (it only runs SELECTs, with `saas_mode` on), and only the
-dashboard can call it (`FANTASY_API_KEY`); if you are on Business, a read-scaling token works too.
+**1. R2.** In Cloudflare, enable R2, create a bucket `fantasy-intel`, and create two R2 API tokens:
+**Object Read & Write** on that bucket for your laptop, and **Object Read** on that bucket for the API.
 
-**2. Publish from your laptop.** Add the laptop token to `.env` as `MOTHERDUCK_TOKEN`,
-then after any sync:
+**2. Publish from your laptop.** Add to `.env`: `SNAPSHOT_BUCKET=fantasy-intel`, `R2_ACCOUNT_ID`, and the
+read/write token's `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`. Then after any sync:
 
 ```bash
 cd backend
-uv run python ../scripts/publish_motherduck.py     # replaces md:fantasy_intel
+uv run python ../scripts/publish_snapshot.py     # uploads snapshots/<stamp>.duckdb, then current.json
 ```
 
-Do not put `MOTHERDUCK_DATABASE` in your local `.env`: it switches the local API to
-MotherDuck too.
+The upload is a compact copy (`COPY FROM DATABASE`; the local file accumulates free blocks), stamped with
+`schema_meta.published_at`, which the API uses as its data version. `current.json` is written only after
+the file is complete, and the last three snapshots stay in the bucket for rollback. These settings do
+not change the local API, which keeps serving the local file; only `SERVE_SNAPSHOT=1` (step 3, Vercel)
+makes an API serve the snapshot.
+
+MotherDuck (`publish_motherduck.py`, `MOTHERDUCK_DATABASE`) still works as before when no R2 settings are
+present, but its free Lite plan caps compute at 10 CU-hours a month with a 1 CU-second minimum per query,
+which the hosted API outgrows.
 
 **3. Backend project on Vercel.** Import this repository, set Root Directory to
 `fantasy-intel/backend` (FastAPI is detected; `[tool.vercel] entrypoint = "app.main:app"`).
@@ -484,14 +489,20 @@ Environment variables:
 
 | variable              | value                                             |
 |-----------------------|---------------------------------------------------|
-| `MOTHERDUCK_TOKEN`    | the API's access token from step 1               |
-| `MOTHERDUCK_DATABASE` | `fantasy_intel`                                   |
+| `SERVE_SNAPSHOT`      | `1`                                               |
+| `SNAPSHOT_BUCKET`     | `fantasy-intel`                                   |
+| `R2_ACCOUNT_ID`       | your Cloudflare account id                        |
+| `R2_ACCESS_KEY_ID`    | the **read-only** token's access key id (step 1)  |
+| `R2_SECRET_ACCESS_KEY`| the read-only token's secret                      |
 | `FANTASY_API_KEY`     | a long random string (`openssl rand -hex 32`)     |
 
 Vercel installs with `uv sync --no-dev`, which skips the sync-only packages (polars,
 nflreadpy, espn-api live in the `sync` dependency group) and keeps the function bundle
 around 310 MB, under Vercel's 500 MB limit. `tests/test_hosting.py` fails if an API route
-starts importing them. Cold starts download the MotherDuck extension (a couple of seconds).
+starts importing them. The R2 client (`app/db/r2.py`) is standard library only. A cold instance
+downloads the snapshot (~95 MB, about 0.3–1.6 s from `iad1`) into its temp dir; later requests on that
+instance query the local copy, and a new publish is picked up within 30 seconds (the manifest is re-read
+at most that often).
 The offline gradient-boosting research (`scripts/hgb_research.py`) needs scikit-learn, which
 lives in the `research` group (included by `dev`, so also skipped by `--no-dev`);
 `tests/test_hgb_research.py` fails if the API ever loads it.
@@ -515,8 +526,8 @@ deployment limit for production. Pull requests get no preview link; the GitHub A
 Vercel reads the rule from the pushed commit, so a branch created before this change deploys until it
 merges `main`.
 
-**Refreshing the hosted data:** run the syncs, then `publish_motherduck.py`. No redeploy is
-needed; the API reads the new copy on the next request.
+**Refreshing the hosted data:** run the syncs, then `publish_snapshot.py`. No redeploy is needed;
+each instance switches to the new snapshot within 30 seconds.
 
 ## Scheduled refresh (macOS launchd)
 
@@ -527,7 +538,8 @@ in your local `.env`, so it has to run on your Mac (not in GitHub Actions).
 
 `scripts/refresh_all.py` runs `sync_espn.py` → `sync_nfl.py` → `compute_analytics.py`, then builds the
 projection-performance report (`projection_performance.py publish`, one write-once row; a failure is a `WARNING:`
-line, never a stop; `--skip-report` skips it), then `publish_motherduck.py` only if `MOTHERDUCK_TOKEN` is set. Each step runs in its own process,
+line, never a stop; `--skip-report` skips it), then `publish_snapshot.py` when the R2 settings are present (or `publish_motherduck.py` when only
+`MOTHERDUCK_TOKEN` is set). Each step runs in its own process,
 and a failure skips every step that needs the failed one, and the script exits 1. The two syncs are separate sources: a
 failed ESPN sync still runs the nflverse sync (and the other way round), and the research shadows' pregame freezes
 (evidence steps labelled `<name> pregame week W`) still run on the stored data, since a missed freeze is never backfilled. Every step waits up to
@@ -544,7 +556,7 @@ routine (automated)") whose problems are `WARNING:` lines and never change the e
 ```bash
 cd backend
 uv run python ../scripts/refresh_all.py                # full refresh (+ publish when configured)
-uv run python ../scripts/refresh_all.py --no-publish   # never touch MotherDuck
+uv run python ../scripts/refresh_all.py --no-publish   # never publish to the hosted copy
 uv run python ../scripts/refresh_all.py --check-only   # only the pregame snapshot check
 ```
 
