@@ -6,12 +6,15 @@
     uv run python ../scripts/kicker_projections.py fit [--register]                # artifact for the live season
     uv run python ../scripts/kicker_projections.py register                        # approve an existing artifact file
     uv run python ../scripts/kicker_projections.py project [--week W] [--through-week T] [--no-weather]
+    uv run python ../scripts/kicker_projections.py reproject [--week W] [--no-weather]  # Fri / Sun morning
 
 Data: the history DB (NFL_HISTORY_DB_PATH, finished seasons) and the live DB (FANTASY_DB_PATH). Both need the
 kicker opportunity tables (scripts/sync_kicking_pbp.py backfills them; the regular syncs keep them current).
 Outputs: <out>/kfp_evaluation.json, <out>/kfp-1.1.0_<season>.json (artifact; <out> defaults to data/models/kicker,
-git-ignored). Only `project` and `fit --register` write to the live database: `project` appends one write-once
-kicker run per target week (an identical rerun is a no-op), `--register` approves the artifact file's sha256.
+git-ignored). Only `project`, `reproject` and `fit --register` write to the live database: `project` appends one
+write-once kicker run per target week (an identical rerun is a no-op), `reproject` appends a NEW run of the week in
+progress with the base run's artifact after the final injury designations (app/analytics/kicker_reprojection.py;
+exit 2 = refused, nothing written), `--register` approves the artifact file's sha256.
 """
 
 from __future__ import annotations
@@ -335,6 +338,39 @@ def cmd_project(args) -> dict:
     return {"artifact": str(path), "artifact_sha256": sha, "runs": results}
 
 
+def cmd_reproject(args) -> dict:
+    """Final-designation re-projection (app/analytics/kicker_reprojection.py): a NEW kicker run of the week in
+    progress with the artifact file of its newest verified horizon-0 run. Teams already kicked off keep their base-run
+    rows (carried, flagged); nothing is written when no row changed."""
+    from app.analytics import kicker_reprojection as kr
+    from app.analytics.kicker_live import load_artifact
+    from app.analytics.kicker_store import league_fingerprint
+
+    now = datetime.now(timezone.utc)
+    live, hist, _, _, frames = _load(args)
+    for c in (live, hist):
+        if c is not None:
+            c.close()
+    # one write connection: weather snapshots are appended as they are fetched, then (maybe) the run
+    with open_db(args.live_db) as con:
+        week = args.week or kr.in_progress_week(con, args.season, now)
+        if week is None:
+            raise kr.ReprojectRefused(f"no {args.season} regular-season kickoff is ahead of {now.isoformat()}")
+        fp, why = league_fingerprint(con, args.season)
+        if fp is None:
+            raise kr.ReprojectRefused(f"no kicker scoring to re-project under: {why}")
+        base = kr.base_run(con, args.season, week, fp)
+        sha = kr.check_base(base, args.season, week)
+        path = kr.artifact_file(args.out, sha)
+        built = kr.build(con, frames, load_artifact(path), args.season, week, base=base, artifact_sha256=sha, now=now,
+                         fetch_weather=not args.no_weather)
+        stored = kr.store(con, built)
+    keys = ("base_run_id", "base_run_created_at", "kicked_off_teams", "unknown_kickoff_teams",
+            "missing_from_schedule_teams", "reprojected", "carried", "dropped_post_kickoff", "changes")
+    return {"schema": kr.SCHEMA, "season": args.season, "week": week, "model_version": base["run"]["model_version"],
+            "artifact_id": sha, "artifact_file": path.name, **stored, **{k: built[k] for k in keys}}
+
+
 def kb_write(con, meta, rows, write_run):
     return write_run(con, meta, rows)
 
@@ -342,7 +378,7 @@ def kb_write(con, meta, rows, write_run):
 def main(argv=None) -> int:
     s = get_settings()
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=("reconcile", "evaluate", "fit", "register", "project"))
+    ap.add_argument("command", choices=("reconcile", "evaluate", "fit", "register", "project", "reproject"))
     ap.add_argument("--season", type=int, default=s.nfl_season)
     ap.add_argument("--week", type=int, default=None)
     ap.add_argument("--through-week", type=int, default=None)
@@ -352,10 +388,20 @@ def main(argv=None) -> int:
     ap.add_argument("--artifact", type=Path, default=None)
     ap.add_argument("--register", action="store_true", help="fit: approve the artifact in the live database")
     ap.add_argument("--overwrite", action="store_true")
-    ap.add_argument("--no-weather", action="store_true", help="project: use cached forecasts only, never fetch")
+    ap.add_argument("--no-weather", action="store_true",
+                    help="project / reproject: use cached forecasts only, never fetch")
     args = ap.parse_args(argv)
     fn = {"reconcile": cmd_reconcile, "evaluate": cmd_evaluate, "fit": cmd_fit, "register": cmd_register,
-          "project": cmd_project}[args.command]
+          "project": cmd_project, "reproject": cmd_reproject}[args.command]
+    if args.command == "reproject":
+        from app.analytics.kicker_reprojection import ReprojectRefused
+        try:
+            out = fn(args)
+        except ReprojectRefused as err:          # a refusal writes nothing: exit 2, the message on stderr
+            print(str(err), file=sys.stderr)
+            return 2
+        print(json.dumps(_clean(out), indent=2, default=str))
+        return 0
     print(json.dumps(_clean(fn(args)), indent=2, default=str))
     return 0
 

@@ -269,6 +269,7 @@ def test_learning_cycle_reproject_reports_and_never_runs_the_cycle_stages(week, 
     calls = []
     for name in ("stage_train", "stage_project", "stage_kicker", "stage_ctx_shadow"):
         monkeypatch.setattr(lc, name, lambda *a, _n=name, **k: calls.append(_n))
+    monkeypatch.setattr(lc, "stage_kicker_reproject", lambda a, p: {})     # its own test: test_kicker_reprojection.py
     monkeypatch.setattr(lc, "stage_reproject", lambda a, p: {"refused": "no verified run"})
     code, report = lc.run_reproject(args, now=FRIDAY.replace(tzinfo=timezone.utc))
     assert code == lc.EXIT_NOT_READY and report["status"] == "refused" and calls == []
