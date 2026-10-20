@@ -51,7 +51,9 @@ from app.config import get_settings  # noqa: E402
 
 SEED = b22.SEED
 RESAMPLES = b22.RESAMPLES
-EVALUATION = b22.EVALUATION
+# The decision-time window (docs/research/injury_return_split.md, the 59-week backtest): pinned, so a rerun after more
+# weeks are final still reproduces the documented result. A deliberate longer rerun passes --through.
+EVALUATION = ((2023, 1), (2026, 5))
 POSITIONS = irs.POSITIONS
 MODELS = {"base": (), "irs": irs.EXTRA[irs.IRS], "irb": irs.EXTRA[irs.IRB], "both": irs.EXTRA[irs.BOTH]}
 LEAVE_ONE_OUT = {"return_slope": "irb", "return_bias": "irs"}     # component -> `both` without it
@@ -121,14 +123,15 @@ def cmd_run(args) -> dict:
     src, _ = b22.hr._sources(args)
     store = irs.candidate_columns(store, src.games)
     cfg = ch.ChallengerConfig.load()
-    weeks = b22._weeks(store, EVALUATION)
+    window = (EVALUATION[0], tuple(args.through)) if args.through else EVALUATION
+    weeks = b22._weeks(store, window)
     preds = walk_forward(store, weeks, cfg)
     preds.write_parquet(_out(args) / "preds.parquet")
     rep = report(preds)
     out = {"schema": "injury-return-backtest/v1", "created_at": datetime.now(timezone.utc).isoformat(),
            "rule": "leave-one-out MAE(both) - MAE(both without c), week-clustered 95% CI (whole weeks resampled, "
                    f"{RESAMPLES} draws, seed {SEED}); CI entirely above 0 -> component left out for the position",
-           "evaluation_window": EVALUATION, "weeks": len(weeks),
+           "evaluation_window": window, "documented_window": window == EVALUATION, "weeks": len(weeks),
            "store": {k: prov.get(k) for k in ("fingerprint", "rows", "weeks")}, "report": rep,
            "guard_dropped": guard(rep), "runtime_seconds": round(time.time() - t, 1)}
     (_out(args) / "report.json").write_text(json.dumps(out, indent=1, default=str))
@@ -151,6 +154,9 @@ def main(argv=None) -> int:
     ap.add_argument("--history-db", type=Path, default=cr._path("NFL_HISTORY_DB_PATH", "data/nfl_history.duckdb"))
     ap.add_argument("--season", type=int, default=settings.nfl_season)
     ap.add_argument("--reuse", action="store_true", help="reuse the cached ifp-2.2.0 store whatever its fingerprint")
+    ap.add_argument("--through", type=int, nargs=2, metavar=("SEASON", "WEEK"),
+                    help="end the window at this week instead of the documented 2026 week 5 (a deliberate rerun; the "
+                         "result is then not the documented backtest)")
     args = ap.parse_args(argv)
     print(json.dumps({"run": cmd_run}[args.command](args), indent=1, default=str))
     return 0
