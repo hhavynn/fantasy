@@ -412,3 +412,52 @@ def test_redeeming_an_invite_while_the_last_member_is_deleted_fails_cleanly(pg, 
     assert "invite_invalid" in outcome.get("error", ""), outcome
     with pg.connect() as su:
         assert su.execute("SELECT count(*) FROM fi.league_memberships WHERE user_id = %s", [U3]).fetchone() == (0,)
+
+
+@pytest.mark.parametrize("fn", ["mark_credential", "revoke_credential", "store_credential"])
+def test_credential_paths_lock_the_league_before_touching_credentials(pg, fn):
+    """Account deletion locks the league, then its cascade deletes credentials. Every other path must take the same
+    order (league, then credential) or the two can deadlock and abort the account deletion."""
+    with pg.connect() as con:
+        src = con.execute("SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+                          "WHERE n.nspname = 'fi' AND p.proname = %s", [fn]).fetchone()[0]
+    body = " ".join(src.split())
+    league_lock = body.find("FROM fi.leagues")
+    assert league_lock != -1 and "FOR UPDATE" in body[league_lock:league_lock + 200], fn
+    for touch in ("UPDATE fi.league_credentials", "DELETE FROM fi.league_credentials", "INSERT INTO fi.league_credentials"):
+        at = body.find(touch)
+        if at != -1:
+            assert league_lock < at, f"{fn}: {touch} before the league lock"
+
+
+def test_account_deletion_overlapping_a_credential_mark_completes_without_deadlock(pg, league, leased_job):
+    import threading
+    import time
+
+    marker = pg.connect(user="fi_sync")
+    t = None
+    errors = []
+    try:
+        assert marker.execute(MARK, [leased_job["job"], 7, leased_job["cid"], "active"]).fetchone() == (True,)  # holds locks
+
+        def delete_owner():
+            try:
+                with pg.connect() as con:
+                    con.execute("DELETE FROM auth.users WHERE id = %s", [U2])
+                    con.commit()
+            except Exception as err:   # noqa: BLE001 - a deadlock would surface here
+                errors.append(repr(err))
+
+        t = threading.Thread(target=delete_owner)
+        t.start()
+        time.sleep(0.5)
+        marker.commit()
+    finally:
+        marker.rollback()
+        marker.close()
+        if t is not None:
+            t.join(10)
+    assert errors == []
+    with pg.connect() as su:
+        assert su.execute("SELECT count(*) FROM fi.league_credentials").fetchone() == (0,)
+        assert su.execute("SELECT status FROM fi.leagues WHERE id = %s", [league]).fetchone() == ("stale",)

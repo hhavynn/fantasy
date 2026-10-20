@@ -14,7 +14,8 @@ pointers. Design: [ADR-0002](../../docs/multileague/ADR-0002-supabase-control-pl
 | `migrations/20261020120500_account_deletion_rules.sql` | Account deletion: private leagues whose credential it owned go stale; the last admin's seat passes to the longest-standing member, or a memberless league is soft-deleted; `fi.current_account_exists()` |
 | `migrations/20261020120600_credential_recovery_and_deletion_serialization.sql` | A validated replacement credential revives a stale league; concurrent account deletions serialize per league |
 | `migrations/20261020120700_redeem_invite_locks_league.sql` | Invite redemption locks and re-checks the league, so it cannot join a league an account deletion is removing |
-| `down/*.sql` | Down-migrations, applied in reverse order to roll Phase 1 back |
+| `migrations/20261020120800_credential_lock_order.sql` | One lock order (league, then credential) for every credential path, so account deletion cannot deadlock with a sync or revoke |
+| `down/*.sql` | Down-migrations, applied in reverse order to roll Phase 1 back; each restores the previous definitions |
 
 Every migration is idempotent (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`).
 
