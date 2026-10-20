@@ -98,6 +98,7 @@ def test_a_real_refresh_log_parses_step_by_step(refresh, monkeypatch, tmp_path):
     assert code == 0 and r["status"] == "complete" and r["failed"] is None
     assert [s["name"] for s in r["steps"]] == ["sync_espn.py", "sync_nfl.py", "compute_analytics.py",
                                                "projection_performance.py",   # the report step (never fatal)
+                                               "model_replay.py",             # the weekly replay (never fatal)
                                                "projection_ranges.py"]        # the ranges load (never fatal)
     assert all(s["exit"] == 0 for s in r["steps"])
     ev = r["evidence"]
