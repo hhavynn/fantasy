@@ -139,7 +139,10 @@ def evaluate_claim(snap: dict, src: dict):
     if kind == "absence_reason":
         rows = [i for i in snap["tables"]["nfl_injuries"] if i["gsis_id"] == src["gsis_id"]
                 and i["week"] in src["weeks"] and i["report_primary_injury"]]
-        return f"a {rows[-1]['report_primary_injury'].lower()} injury" if rows else None
+        if not rows:
+            return None
+        injury = rows[-1]["report_primary_injury"].lower()
+        return f"{'an' if injury[:1] in 'aeiou' else 'a'} {injury} injury"
     if kind == "player_status":
         week = src["week"]
         if any(r["gsis_id"] == src["gsis_id"] and r["week"] == week and r["status"] == "RES"
