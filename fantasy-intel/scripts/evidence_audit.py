@@ -1578,6 +1578,45 @@ def guard_decision(now: datetime, kickoffs: Sequence[datetime], refresh: Sequenc
     return {**base, "action": "run", "reason": why, "attempt": len(tried) + 1}
 
 
+@dataclass(frozen=True)
+class CatchupConfig:
+    grace_min: float = 15.0          # a firing this recent may still be about to write its log
+    lookback_d: float = 7.0          # only the latest firing within this window is caught up
+    max_attempts: int = 3            # per missed firing
+    retry_min: float = 25.0          # between attempts
+
+
+def catchup_decision(now: datetime, firings: Sequence[datetime], refresh: Sequence[dict], attempts: Mapping[str, list],
+                     cfg: CatchupConfig = CatchupConfig(), job_running: bool = False) -> dict:
+    """Decide (pure) whether a scheduled refresh the Mac missed should run now.
+
+    The slot is the latest firing of the refresh job's calendar (`firings`) at least grace_min ago and within
+    lookback_d. It is covered once a refresh that started at or after it completed (a manual run counts). A firing
+    missed while the Mac was shut down, or a run that failed or was cut short, is run again: at most max_attempts
+    per firing, retry_min apart, never while a refresh is running: a running log, or `job_running` (launchd reports
+    the refresh job running, e.g. the calendar firing it replays on wake before its log exists). Only the latest
+    firing is chased: a week the Mac was off costs one refresh, not one per missed firing."""
+    past = [p for p in firings if now - timedelta(days=cfg.lookback_d) < p <= now - timedelta(minutes=cfg.grace_min)]
+    if not past:
+        return {"action": "idle", "reason": "no scheduled refresh firing to catch up", "slot": None}
+    p = max(past)
+    base = {"slot": _iso(p)}
+    after = [r for r in refresh if (s := utc(r["started_at"])) and s >= p]
+    if any(r["status"] == "complete" for r in after):
+        done = next(r for r in after if r["status"] == "complete")
+        return {**base, "action": "covered", "reason": f"refresh {done['log']} completed after the {_iso(p)} firing"}
+    if job_running or any(r["status"] == "running" for r in refresh):
+        return {**base, "action": "wait", "reason": "a refresh is running"}
+    tried = attempts.get(base["slot"]) or []
+    if len(tried) >= cfg.max_attempts:
+        return {**base, "action": "gave_up", "reason": f"{len(tried)} catch-up attempts for this firing already failed"}
+    if tried and now - utc(tried[-1]["at"]) < timedelta(minutes=cfg.retry_min):
+        return {**base, "action": "wait", "reason": f"last attempt under {cfg.retry_min:g} min ago"}
+    why = ("no refresh ran after the scheduled firing" if not after
+           else f"the refresh after the scheduled firing is {after[-1]['status']}")
+    return {**base, "action": "run", "reason": why, "attempt": len(tried) + 1}
+
+
 def pregame_capture_ok(run: Mapping) -> bool:
     """Did this refresh's evidence stage record the pregame Start/Sit set (or find nothing eligible)?"""
     steps = (run.get("evidence") or {}).get("steps") or []

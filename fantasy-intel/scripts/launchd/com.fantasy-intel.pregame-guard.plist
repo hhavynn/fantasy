@@ -16,9 +16,13 @@
   covers the kickoff, so the regular Thu/Sun/Mon kickoffs cost nothing extra). At most 3 attempts per
   kickoff, 25 minutes apart, never after kickoff (a missed capture is reported, never regenerated).
   Its record: data/logs/evidence_health/guard-state.json.
+  With the catch-up flag it also runs a scheduled refresh the Mac missed: when the latest firing of the refresh
+  job's calendar has no completed refresh after it (the Mac slept through it, was shut down, or the run failed),
+  the next check runs one (at most 3 attempts per firing, 25 minutes apart). It runs at load too, so a Mac that
+  was off catches up minutes after login.
   With the notify flag it also posts one macOS notification per new warn/fail health issue (no repeats).
-  A sleeping Mac runs the check on wake; a Mac that is off cannot capture anything (schedule a wake with
-  pmset, see README).
+  A sleeping Mac runs the check on wake; a Mac that is off cannot capture a pregame kickoff (schedule a wake
+  with pmset, see README).
 -->
 <plist version="1.0">
 <dict>
@@ -32,6 +36,7 @@
     <string>../scripts/evidence_health.py</string>
     <string>guard</string>
     <string>--execute</string>
+    <string>--catch-up</string>
     <string>--notify</string>
   </array>
   <key>WorkingDirectory</key>
@@ -44,7 +49,7 @@
   <key>StartInterval</key>
   <integer>1800</integer>
   <key>RunAtLoad</key>
-  <false/>
+  <true/>
   <key>ProcessType</key>
   <string>Background</string>
   <!-- The decision JSON of the latest check is in guard-state.json; a refresh it starts writes its own
