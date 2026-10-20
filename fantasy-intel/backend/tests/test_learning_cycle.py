@@ -1051,7 +1051,7 @@ def test_promotion_check_stage_runs_last_and_writes_nothing_in_a_dry_cycle(lc, e
     assert code == lc.EXIT_OK, rep["errors"]
     assert _stages(rep)[-2:] == [("dist_ledger", "ok"), ("promotion_check", "ok")]
     pc = rep["promotion_check"]
-    assert pc["dry_run"] and pc["ready"] == [] and pc["counts"]["no_evidence"] == len(pc["candidates"]) == 9
+    assert pc["dry_run"] and pc["ready"] == [] and pc["counts"]["no_evidence"] == len(pc["candidates"]) == 11
     assert rep["promotion_ready"] == [] and not [w for w in rep["warnings"] if "promotion check" in w]
     assert not (env / "plogs").exists()
 
