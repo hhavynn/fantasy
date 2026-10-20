@@ -31,8 +31,6 @@ Another is the D/ST research shadow of dfp-r1 (scripts/dst_shadow.py pregame): i
 D/ST ledger once the lines and the previous week's ESPN statistics are in, if the learning cycle has not already.
 The signal shadows (scripts/signal_shadows.py pregame: ifp-fr-p1 / ifp-dct-p1 / ifp-awd-p1) freeze their write-once
 ledger once the main slate is within 6 hours, after re-fetching the season's FTN, play-by-play and depth-chart files.
-The injury-return shadow (scripts/injury_return_shadow.py pregame: ifp-irs-p1 / ifp-irb-p1) freezes its write-once
-ledger under the same freeze rule.
 The frozen pregame point-distribution ledger (scripts/distribution_ledger.py freeze, research only) is a retry of
 the freeze learning_cycle.py normally makes right after its pregame forecast.
 The research shadows' evidence steps (labelled "<name> pregame week W" or named "<name>_shadow ...") also run after
@@ -74,8 +72,7 @@ LOCK_RETRY_DELAYS_S = (60, 180)      # a step that still failed on the DuckDB lo
 LOCK_MARKERS = ("DatabaseBusy", "Could not set lock", "Conflicting lock")
 SHADOW_STEP = " pregame week "       # a research shadow's evidence step is labelled "<name> pregame week W" or its
                                      # name ends in "_shadow" ("ipm_cal_shadow cycle"): those also run after a failed sync
-RESEARCH_SHADOW_LABELS = ("ctx_shadow", "qb_scenario_shadow", "ipm_cal_shadow", "signal_shadows",
-                          "injury_return_shadow")   # exit 3 = the shadow's own warnings
+RESEARCH_SHADOW_LABELS = ("ctx_shadow", "qb_scenario_shadow", "ipm_cal_shadow", "signal_shadows")   # exit 3 = the shadow's own warnings
 DST_SHADOW_WARNINGS = 3              # dst_shadow.py: ran and printed missing-input WARNING lines
 DIST_LEDGER_WARNINGS = 3             # distribution_ledger.py: ran and printed WARNING lines (no artifact, missed week)
 
@@ -315,9 +312,6 @@ def evidence_steps(sel: dict) -> list[tuple[str, list[str]]]:
         # research shadows (ifp-fr-p1 / ifp-dct-p1 / ifp-awd-p1): write-once ledger under data/models/research/signal_shadows/
         steps.append((f"signal_shadows pregame week {week}",
                       [py, str(SCRIPTS / "signal_shadows.py"), "pregame", "--season", season, "--week", week]))
-        # research shadow (ifp-irs-p1 / ifp-irb-p1): write-once ledger under data/models/research/injury_return_shadow/
-        steps.append((f"injury_return_shadow pregame week {week}",
-                      [py, str(SCRIPTS / "injury_return_shadow.py"), "pregame", "--season", season, "--week", week]))
         # research shadow (dfp-r1 D/ST): gated write-once pregame ledger under data/models/dst/shadow/
         steps.append((f"dst_shadow pregame week {week}",
                       [py, str(SCRIPTS / "dst_shadow.py"), "pregame", "--season", season, "--week", week]))
