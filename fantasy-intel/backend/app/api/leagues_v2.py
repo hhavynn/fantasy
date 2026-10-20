@@ -11,7 +11,10 @@ app/control_plane/mutations.py.
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from typing import Any, Iterator, Protocol
+
+from psycopg.errors import InsufficientPrivilege
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -77,6 +80,19 @@ def league_tx(league_id: str, tx=REQUEST_TX) -> tuple[Any, Access]:
     try:
         return con, authorize_league_in(con, principal, check_league_id(league_id))
     except LeagueNotFound:
+        raise HTTPException(404, NOT_FOUND) from None
+
+
+@contextmanager
+def _still_visible() -> Iterator[None]:
+    """A preference write after `league_tx` authorized. Statements run at READ COMMITTED, so a sync can make the
+    league private (or revoke the membership) in between; the write's RLS check then denies it. That is the same
+    answer authorization would now give: 404. Any other permission error is a bug and stays a 500."""
+    try:
+        yield
+    except InsufficientPrivilege as err:
+        if "row-level security" not in str(err):
+            raise
         raise HTTPException(404, NOT_FOUND) from None
 
 
@@ -148,14 +164,18 @@ def get_league(ltx=Depends(league_tx, scope="function")):
 @router.put("/leagues/{league_id}/pin", status_code=204)
 def pin_league(ltx=Depends(league_tx, scope="function")):
     con, access = ltx
-    mutations.set_pin(con, _signed_in(access), access.league_id, True)
+    principal = _signed_in(access)
+    with _still_visible():
+        mutations.set_pin(con, principal, access.league_id, True)
     return _no_content()
 
 
 @router.delete("/leagues/{league_id}/pin", status_code=204)
 def unpin_league(ltx=Depends(league_tx, scope="function")):
     con, access = ltx
-    mutations.set_pin(con, _signed_in(access), access.league_id, False)
+    principal = _signed_in(access)
+    with _still_visible():
+        mutations.set_pin(con, principal, access.league_id, False)
     return _no_content()
 
 
@@ -168,14 +188,20 @@ async def set_perspective(request: Request, ltx=Depends(league_tx, scope="functi
     if set(body) != {"team_external_id"} or not isinstance(team_id, str):
         raise HTTPException(422, 'Send {"team_external_id": "<team id as a string>"}.')
     try:
-        mutations.set_perspective(con, principal, access.league_id, team_id)
+        with _still_visible():
+            mutations.set_perspective(con, principal, access.league_id, team_id)
     except ValueError as err:
         raise HTTPException(422, str(err)) from None
-    return _json(authorize_league_in(con, principal, access.league_id).to_json())
+    try:
+        return _json(authorize_league_in(con, principal, access.league_id).to_json())
+    except LeagueNotFound:
+        raise HTTPException(404, NOT_FOUND) from None
 
 
 @router.delete("/leagues/{league_id}/perspective", status_code=204)
 def clear_perspective(ltx=Depends(league_tx, scope="function")):
     con, access = ltx
-    mutations.set_perspective(con, _signed_in(access), access.league_id, None)
+    principal = _signed_in(access)
+    with _still_visible():
+        mutations.set_perspective(con, principal, access.league_id, None)
     return _no_content()

@@ -204,3 +204,27 @@ def test_a_commit_that_fails_after_the_handler_is_a_503_not_a_success(client, wo
     assert (r.status_code, r.json()) == (503, {"detail": "The control plane is unavailable."})
     r = client.get(f"/v2/leagues/{world['pub']}")
     assert r.status_code == 503
+
+
+@pytest.mark.parametrize("method,suffix,body", [("PUT", "pin", None), ("PUT", "perspective", {"team_external_id": "6"})])
+def test_a_league_that_turns_private_mid_request_is_a_404_not_a_500(client, world, pg, monkeypatch, method, suffix, body):
+    """Authorization and the preference write are separate statements under READ COMMITTED. If a sync flips the
+    league private in between, the write's RLS check denies it: that must read as the route's 404."""
+    from app.control_plane import mutations
+
+    def flip_first(real):
+        def wrapper(con, principal, league_id, *args):
+            with pg.connect() as su:
+                su.execute("UPDATE fi.leagues SET visibility = 'private', visibility_epoch = visibility_epoch + 1 "
+                           "WHERE id = %s", [league_id])
+                su.commit()
+            return real(con, principal, league_id, *args)
+        return wrapper
+
+    monkeypatch.setattr(mutations, "set_pin", flip_first(mutations.set_pin))
+    monkeypatch.setattr(mutations, "set_perspective", flip_first(mutations.set_perspective))
+    r = client.request(method, f"/v2/leagues/{world['pub']}/{suffix}", headers=bearer(U2), json=body)
+    assert (r.status_code, r.json()) == (404, {"detail": "League not found."})
+    with pg.connect() as su:
+        assert su.execute("SELECT count(*) FROM fi.league_pins").fetchone() == (0,)
+        assert su.execute("SELECT count(*) FROM fi.team_selections").fetchone() == (0,)
