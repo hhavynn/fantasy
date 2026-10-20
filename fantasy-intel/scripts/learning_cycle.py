@@ -55,6 +55,9 @@ first kickoff passed without a frozen pregame forecast is recorded under <out>/m
 with the artifact of that week's newest verified production run, so Friday's final game designations reach
 expected_points (docs/independent_projection_engine.md, "Final-designation re-projection"). Teams already kicked off keep
 their base-run rows; no run, ledger entry or artifact is modified. Not scheduled yet (a launchd change needs the owner).
+The kicker model gets the same step right after it (`kicker_reproject`: kicker_projections.py reproject, a NEW kfp run
+with the base kicker run's artifact; non-fatal like `kicker`, also after the skill-position step refused or failed;
+skip it with --no-kicker).
 
 Injury-retrieval freshness (docs/injury_freshness.md section 5) is reported as `warnings` /
 `injury_freshness` in the cycle report; it never changes a status, an exit code or a forecast.
@@ -949,12 +952,35 @@ def stage_reproject(args, log_path: Path) -> dict:
         return {}
 
 
+def stage_kicker_reproject(args, log_path: Path) -> dict:
+    """kicker_projections.py reproject (app/analytics/kicker_reprojection.py): a NEW kfp run of the week in progress
+    with the base kicker run's artifact file. Exit 2 is a refusal, returned as {"refused": message}, never raised."""
+    cmd = [sys.executable, str(SCRIPTS / "kicker_projections.py"), "reproject", "--season", str(args.season),
+           "--live-db", str(args.live_db), "--history-db", str(args.history_db), "--out", str(args.kicker_dir)]
+    if args.week is not None:
+        cmd += ["--week", str(args.week)]
+    proc = subprocess.run(cmd, cwd=_bootstrap.BACKEND, capture_output=True, text=True, env=child_env())
+    out, err = proc.stdout or "", proc.stderr or ""
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"==> kicker_projections.py reproject {datetime.now(timezone.utc).isoformat()}\n{out}{err}")
+    if proc.returncode == 2:
+        return {"refused": err.strip()[-500:]}
+    if proc.returncode != 0:
+        raise RuntimeError(f"kicker reproject exited {proc.returncode}: {err.strip()[-400:]}")
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {}
+
+
 def run_reproject(args, now: datetime | None = None) -> tuple[int, dict]:
     """Friday / Sunday-morning step (docs/independent_projection_engine.md, "Final-designation re-projection"): lock
     -> preflight -> sync_nfl.py -> a NEW production run of the week in progress with its base run's artifact, so the
     final game designations reach expected_points. Teams already kicked off keep their base-run rows. Never trains,
     never predicts, never touches the ledger, the ESPN data or MotherDuck (the next refresh_all.py publishes).
     Exit codes: 0 written or unchanged; 3 refused (no base run / nothing pregame); 4 locked; 5 config; 1 failure.
+    The kicker re-projection follows once the data is synced (kicker_reprojection in the report); it never changes
+    the status or the exit code, a failure is a warning.
     Reports: <out>/reports/reproject-<UTC stamp>-<pid>.json (write-once), <out>/status/latest-reproject.json."""
     if now is None:
         now = datetime.fromisoformat(args.now) if args.now else datetime.now(timezone.utc)
@@ -962,8 +988,23 @@ def run_reproject(args, now: datetime | None = None) -> tuple[int, dict]:
     stamp = f"{now:%Y%m%dT%H%M%SZ}"
     report = {"schema": REPROJECT_SCHEMA, "started_at": now.isoformat(), "season": args.season, "week": args.week,
               "status": None, "stages": [], "errors": [], "required_actions": [], "reprojection": None}
-    lock, code = None, EXIT_OK
+    lock, code, synced = None, EXIT_OK, False
     log_path = Path(args.out) / "logs" / f"reproject-{stamp}.log"
+
+    def kicker_reproject():
+        """After the skill-position step (written, unchanged, refused or failed), never after a failed sync."""
+        if args.no_kicker or not synced:
+            return
+        t = time.monotonic()
+        try:
+            report["kicker_reprojection"] = kp = stage_kicker_reproject(args, log_path)
+            report["stages"].append({"name": "kicker_reproject", "status": "refused" if "refused" in kp else "ok",
+                                     "seconds": round(time.monotonic() - t, 2)})
+        except Exception as err:      # noqa: BLE001
+            report["stages"].append({"name": "kicker_reproject", "status": "failed_nonfatal", "error": str(err),
+                                     "seconds": round(time.monotonic() - t, 2)})
+            report.setdefault("warnings", []).append(f"kicker re-projection failed (skill-position step unaffected): "
+                                                     f"{err}")
     try:
         if args.now:
             raise CycleStop("config_error", EXIT_CONFIG, "--now is not supported by reproject: kickoffs are judged "
@@ -982,6 +1023,7 @@ def run_reproject(args, now: datetime | None = None) -> tuple[int, dict]:
                 raise CycleStop("failed", EXIT_FAILED, f"stage sync_nfl failed: {err}",
                                 ["retry later; the stored runs are unchanged"]) from err
             report["stages"].append({"name": "sync_nfl", "status": "ok", "seconds": round(time.monotonic() - t, 2)})
+        synced = True
         t = time.monotonic()
         try:
             rp = stage_reproject(args, log_path)
@@ -1005,6 +1047,7 @@ def run_reproject(args, now: datetime | None = None) -> tuple[int, dict]:
         report["status"], code = "failed", EXIT_FAILED
         report["errors"].append(f"{err.__class__.__name__}: {err}")
     finally:
+        kicker_reproject()
         release_lock(lock)
     report["finished_at"] = datetime.now(timezone.utc).isoformat()
     report["exit_code"] = code
@@ -1098,7 +1141,10 @@ def main(argv=None) -> int:
         rp = report.get("reprojection") or {}
         print(json.dumps({**{k: report.get(k) for k in keys},
                           **{k: rp.get(k) for k in ("run_id", "base_run_id", "kicked_off_teams", "reprojected",
-                                                    "carried", "changes")}}, indent=1, default=str))
+                                                    "carried", "changes")},
+                          "kicker_reprojection": {k: (report.get("kicker_reprojection") or {}).get(k)
+                                                  for k in ("status", "run_id", "week", "carried", "refused")},
+                          "warnings": report.get("warnings", [])}, indent=1, default=str))
         return code
     code, report = run_cycle(args)
     keys = ("status", "season", "target_week", "target_first_kickoff_eastern", "errors", "required_actions",
