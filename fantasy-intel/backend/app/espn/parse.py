@@ -40,8 +40,13 @@ def _norm_swid(swid: str | None) -> str:
 _SWID_RE = re.compile(r"^\{[0-9A-Za-z-]+\}$")
 
 
+_MEMBER_HASH = re.compile(r"^m_[0-9a-f]{12}$")
+
+
 def anon_member(member_id: Any) -> Any:
-    if not isinstance(member_id, str) or not member_id:
+    """"m_<12 hex of sha256>". Idempotent: an id that is already a member hash (payloads scrubbed before writing,
+    app/sync/raw_store.py) is returned unchanged, so scrubbed and unscrubbed payloads write the same rows."""
+    if not isinstance(member_id, str) or not member_id or _MEMBER_HASH.match(member_id):
         return member_id
     return "m_" + hashlib.sha256(_norm_swid(member_id).encode()).hexdigest()[:12]
 
