@@ -18,7 +18,7 @@ script only READS those saved results; it never re-scores a ledger or re-impleme
   ifp-iwh-0.1.1   injury_workload_research.py     <ifp-dir>/research/injury_workload/prospective_ifp-iwh-0.1.1.json
   ifp-fr-p1, ifp-dct-p1, ifp-awd-p1
                   signal_shadows.py               <ifp-dir>/research/signal_shadows/scores.json
-  ifp-irs-p1, ifp-irb-p1
+  ifp-irs-p1, ifp-irb-p1, ifp-irsb-p1 (both together; ready instead of the singles when the joint rule picks it)
                   injury_return_shadow.py         <ifp-dir>/research/injury_return_shadow/scores.json
 
 Per candidate and position it reports the weeks scored, the matched appearances, the shadow's own gate status and
@@ -172,24 +172,51 @@ def read_signal(name: str):
     return read
 
 
+IR_SINGLES = ("ifp-irs-p1", "ifp-irb-p1")
+
+
 def read_injury_return(name: str):
     def read(files: dict) -> tuple[dict, int | None]:
         d = files["scores"] or {}
         weeks = len(d.get("scored_weeks") or [])
         c = (d.get("candidates") or {}).get(name) or {}
         g = c.get("gate") or {}
-        # When both candidates pass, the shadow's joint rule (scores.json both.choice) picks ONE implementation: this
-        # candidate alone or "both". A passing candidate the choice did not select is never ready.
+        # When both candidates pass, the shadow's joint rule (scores.json both.choice, frozen write-once at the second
+        # decision) picks ONE implementation: this candidate alone, or the combination (ifp-irsb-p1, its own entry).
+        # A passing single the choice did not select is never ready.
         choice = (d.get("both") or {}).get("choice")
         checks = _bool_checks(g.get("checks"))
         if choice is not None:
-            checks["selected_by_joint_rule"] = choice.get("ship") in (name, "both")
+            checks["selected_by_joint_rule"] = choice.get("ship") == name
         out = {}
         for pos, v in (c.get("positions") or {}).items():      # one look, joint over RB/WR/TE (pooled cohort)
             out[pos] = {"weeks": g.get("weeks"), "appearances": v.get("n"), "gate_status": g.get("status"),
                         "checks": dict(checks)}
         return out, weeks
     return read
+
+
+def read_injury_return_both(files: dict) -> tuple[dict, int | None]:
+    """ifp-irsb-p1: both injury-return columns shipped together, ready only when both singles pass AND the frozen
+    joint choice is "both" (then neither single is ready: one combined promotion, never two plans)."""
+    d = files["scores"] or {}
+    weeks = len(d.get("scored_weeks") or [])
+    b = d.get("both") or {}
+    gates = [((d.get("candidates") or {}).get(n) or {}).get("gate") or {} for n in IR_SINGLES]
+    statuses = [g.get("status") for g in gates]
+    choice = b.get("choice")
+    if choice is not None:
+        status = "passes" if choice.get("ship") == "both" else "fails"
+    elif "fails" in statuses:
+        status = "fails"
+    else:
+        status = "accumulating"
+    checks = {"both_candidates_pass": all(x == "passes" for x in statuses),
+              "joint_rule_selects_both": choice is not None and choice.get("ship") == "both"}
+    gw = [g.get("weeks") for g in gates if g.get("weeks") is not None]
+    out = {pos: {"weeks": min(gw) if gw else None, "appearances": v.get("n"), "gate_status": status,
+                 "checks": dict(checks)} for pos, v in (b.get("positions") or {}).items()}
+    return out, weeks
 
 
 # ----------------------------------------------------------------------------- the shadows
@@ -241,6 +268,10 @@ SHADOWS = (
                                         "slope, RB/WR/TE)"),
                          ("ifp-irb-p1", "scripts/injury_return_shadow.py (ret_ind: position x returner indicator, "
                                         "RB/WR/TE)"))),
+    {"candidate": "ifp-irsb-p1", "shadow": "injury_return_shadow.py", "reader": read_injury_return_both,
+     "pass": "passes", "files": {"scores": lambda a: _ifp(a, "injury_return_shadow", "scores.json")},
+     "target": "ours", "doc": "docs/research/injury_return_split.md",
+     "implementation": "scripts/injury_return_shadow.py (snap_trend_ret AND ret_ind together, RB/WR/TE: one change)"},
 )
 
 

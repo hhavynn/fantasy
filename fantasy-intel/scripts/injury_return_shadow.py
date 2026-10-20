@@ -19,7 +19,9 @@ exit with `games_missed = 0`.
     uv run python ../scripts/injury_return_shadow.py pregame --week W --now 2026-11-01T12:00Z   # gate only (dry run)
 
 Who runs it (no new scheduler), exactly like scripts/signal_shadows.py:
-  * refresh_all.py's read-only evidence stage runs `pregame` for the upcoming week on every refresh.
+  * refresh_all.py's read-only evidence stage runs `pregame` for the upcoming week on every refresh. That step arrives
+    with the follow-up to this change (branch h/injury-return-refresh-step, merged right after it, behind #136);
+    until then only the cycle's retry can freeze a week.
   * learning_cycle.py runs `cycle` as a non-fatal RESEARCH_SHADOWS stage after the production run (Tue-Thu).
   * shadow_promotion_check.py reads scores.json; a pass is a "PROMOTION READY" line and a promotion-queue entry.
 
@@ -69,6 +71,7 @@ SHADOW = "injury_return_shadow"
 DOC = "docs/research/injury_return_split.md"
 IRS, IRB, BOTH = "ifp-irs-p1", "ifp-irb-p1", "both"
 CANDIDATES = (IRS, IRB)                       # judged, each on its own
+BOTH_CANDIDATE = "ifp-irsb-p1"                # the promotion name of `both` (shadow_promotion_check, rule 1.6)
 MODELS = (IRS, IRB, BOTH)                     # frozen in the ledger
 SHORT = {IRS: "irs", IRB: "irb", BOTH: "both"}      # ledger columns: <short>_points
 EXTRA = {IRS: ("snap_trend_ret",), IRB: ("ret_ind",), BOTH: ("snap_trend_ret", "ret_ind")}
@@ -84,6 +87,7 @@ SLATE_SHARE = 0.5
 DEADLINE_HOURS = 6.0
 INPUT_COLUMNS = ("injury_exit_last", "games_missed", "snap_trend", "games_recent")
 PASS, FAIL, ACCUMULATING = "passes", "fails", "accumulating"
+BASE_MOVED = "base moved"           # frozen_spec's refusal: the shadow cannot continue without a person deciding
 EXIT_OK, EXIT_FAILED, EXIT_WARNINGS = 0, 1, 3
 
 
@@ -145,12 +149,27 @@ def model_features(cfg, name: str, position: str) -> list[str]:
 
 
 def base_identity(cfg) -> dict:
-    """The ifp-2.2.0 base the candidates extend: context_model's version and config hash, and challenger.json's hash.
-    Frozen in the spec: a later run on a moved base is refused, and no ledger of another base is pooled."""
+    """The ifp-2.2.0 base the candidates extend, narrowed to what changes its RB/WR/TE forecasts: context_model's and
+    injury_model's definitions without their whole-config hashes and QB-only parts, plus each RB/WR/TE model's
+    features, shipped components and fit (penalty, loss, Huber threshold, recency, usage prior). An unrelated
+    challenger-config edit (a QB change, another shadow) leaves it unchanged. Frozen in the spec: a later run on a
+    moved base is refused, and no ledger of another base is pooled."""
     from app.analytics import context_model as cm
+    from app.analytics import injury_model as im
 
-    return {"base_version": cm.MODEL_VERSION, "base_config_hash": cm.config_hash(cfg),
-            "challenger_config_hash": cfg.hash()}
+    drop = {"base_config_hash", "features", "components", "guard_dropped", "qb_scenario_code_sha256",
+            "participation_calibration"}
+    positions = {}
+    for p in POSITIONS:
+        sp = cfg.spec(p)
+        positions[p] = {"features": cm.features(cfg, p), "components": list(cm.SHIPPED[p]),
+                        "guard_dropped": cm.GUARD_DROPPED.get(p, {}), "lam": sp.lam[p], "loss": sp.loss,
+                        "huber_c": sp.huber_c, "half_life_weeks": sp.half_life_weeks,
+                        "usage_prior_games": sp.usage_prior_games}
+    ident = {"context_model": {k: v for k, v in cm.config(cfg).items() if k not in drop},
+             "injury_model": {k: v for k, v in im.config(cfg).items() if k not in drop}, "positions": positions,
+             "usage_prior_games": cfg.usage_prior_games}
+    return {"base_version": cm.MODEL_VERSION, "rb_wr_te_hash": _sha(ident)}
 
 
 def spec(scoring_fp: str, base: dict) -> dict:
@@ -186,7 +205,7 @@ def frozen_spec(args, scoring_fp: str, base: dict, *, create: bool) -> dict | No
     prev = json.loads(path.read_text())
     if prev.get("base") != s["base"]:
         raise SystemExit(f"{path.name} was frozen on base {prev.get('base')}, this run's base is {s['base']}: the "
-                         "ifp-2.2.0 base moved; refusing")
+                         f"ifp-2.2.0 {BASE_MOVED}; refusing")
     if prev["config_hash"] != s["config_hash"]:
         raise SystemExit(f"{path.name} was frozen with a different spec or league scoring; refusing")
     return prev
@@ -247,14 +266,15 @@ def build(args):
             and json.loads(meta.read_text()).get("fingerprint") == fp:
         return src, scoring, pl.read_parquet(path), prov
     inputs, codes = _inputs(args)
+    prov_inputs = (inputs, codes)
     store = cm.with_training_inputs(src, build_store(src, weeks), inputs, codes)
     store = candidate_columns(store, src.games)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     store.write_parquet(tmp)
     os.replace(tmp, path)
-    meta.write_text(json.dumps({**prov, "rows": store.height}, default=str))
-    return src, scoring, store, prov
+    _replace_json(meta, {**prov, "rows": store.height})     # refresh's pregame and the cycle can overlap
+    return src, scoring, store, {**prov, "loaded_inputs": prov_inputs}   # in memory only: reused by predict
 
 
 # ----------------------------------------------------------------------------- predict (the freeze)
@@ -350,7 +370,7 @@ def cmd_predict(args, now: datetime | None = None) -> dict:
     if not open_teams:
         raise SystemExit(f"every week-{week} game has kicked off: no pregame forecast possible")
     models, n_train = fit_models(store, season, week, cfg)
-    inputs, codes = _inputs(args)
+    inputs, codes = prov.get("loaded_inputs") or _inputs(args)
     art = augment_artifact(cfg, src, season, week, scoring, models, inputs)
     feats, live_prov = live_features(args, src, art, inputs, codes, season, week, open_teams, now)
     rows = []
@@ -462,7 +482,14 @@ def run_pregame(args, season: int, week: int, *, now: datetime | None = None, ki
         if isinstance(err, KeyboardInterrupt):
             raise
         rec.update(status="failed", error=f"{err.__class__.__name__}: {err}")
-        rec["warnings"].append(f"pregame shadow forecast for week {week} failed: {err}")
+        if BASE_MOVED in str(err):
+            rec.update(status="base_moved", required_action=(
+                f"ifp-2.2.0's RB/WR/TE definition changed since {SHADOW} was pre-registered ({err}). No further "
+                f"ledger is frozen. Decide in {DOC}: end the shadow and judge it on the weeks frozen so far, or "
+                "pre-register a new one on the new base."))
+            rec["warnings"].append(f"ACTION REQUIRED: {rec['required_action']}")
+        else:
+            rec["warnings"].append(f"pregame shadow forecast for week {week} failed: {err}")
     rec["finished_at"] = _utcnow().isoformat()
     rec["record"] = str(_record(args, rec, now))
     return rec
@@ -568,9 +595,11 @@ def look_due(latest_final_key: int | None, ev: dict) -> tuple[bool, str]:
     return True, "look"
 
 
-def gate(args, ev: dict, name: str, latest_final_key: int | None, now: datetime, *, write: bool) -> dict:
-    """The candidate's status: its frozen decision if one exists, else the one look if due (written once), else
-    accumulating with interim checks (never decisive)."""
+def gate(args, ev: dict, name: str, latest_final_key: int | None, now: datetime, *, write: bool,
+         both_ev: dict | None = None) -> dict:
+    """The candidate's status: its frozen decision if one exists, else the one look if due (written once, with the
+    `both` evidence of that same scoring for the both-choice), else accumulating with interim checks (never
+    decisive)."""
     path = out_dir(args) / f"decision_{name}.json"
     if path.exists():
         d = json.loads(path.read_text())
@@ -582,23 +611,44 @@ def gate(args, ev: dict, name: str, latest_final_key: int | None, now: datetime,
         return {"status": ACCUMULATING, "checks": c, "weeks": ev["weeks"], "note": why, "interim": True}
     status = PASS if all(c.values()) else FAIL
     rec = {"candidate": name, "status": status, "checks": c, "weeks": ev["weeks"], "decided_at": now.isoformat(),
-           "evidence": ev, "latest_final_key": latest_final_key}
+           "evidence": ev, "both_evidence": both_ev, "latest_final_key": latest_final_key}
     if write:
         _write_once(path, rec)
     return {"status": status, "checks": c, "weeks": ev["weeks"], "decided_at": rec["decided_at"], "decision": str(path)}
 
 
-def both_choice(evs: dict, gates: dict) -> dict | None:
+def both_choice(singles: dict, both_ev: dict, statuses: dict) -> dict | None:
     """docs rule 1.6, when both candidates pass: `both` only if it meets rules 1-3 on each cohort and its overall MAE
-    is no higher than the better single's; otherwise the single with the lower overall MAE."""
-    if not all(gates[n]["status"] == PASS for n in CANDIDATES):
+    is no higher than the better single's; otherwise the single with the lower overall MAE. `singles`: each
+    candidate's evidence; `both_ev`: the `both` evidence (with its per-cohort differences)."""
+    if not all(statuses[n] == PASS for n in CANDIDATES):
         return None
-    b = evs[BOTH]
-    ok = all(checks({**b, "cohort": b["cohorts"][n]}).values() for n in CANDIDATES)
-    best = min(CANDIDATES, key=lambda n: evs[n]["overall"]["mae_candidate"])
-    if ok and b["overall"]["mae_candidate"] <= evs[best]["overall"]["mae_candidate"]:
+    ok = all(checks({**both_ev, "cohort": both_ev["cohorts"][n]}).values() for n in CANDIDATES)
+    best = min(CANDIDATES, key=lambda n: singles[n]["overall"]["mae_candidate"])
+    if ok and both_ev["overall"]["mae_candidate"] <= singles[best]["overall"]["mae_candidate"]:
         return {"ship": BOTH, "added": list(EXTRA[BOTH])}
     return {"ship": best, "added": list(EXTRA[best])}
+
+
+def frozen_choice(args, now: datetime, *, write: bool) -> dict | None:
+    """The both-choice, decided once: when every candidate has its decision, from decision-time evidence only (each
+    candidate's own decision record, and the `both` evidence saved with the later of the two decisions), written
+    once to decision_both.json; every later scoring and the promotion check read that file. None before."""
+    path = out_dir(args) / "decision_both.json"
+    if path.exists():
+        return json.loads(path.read_text())
+    recs = decided(args)
+    if len(recs) < len(CANDIDATES):
+        return None
+    last = max(recs.values(), key=lambda r: (r["decided_at"], r["candidate"]))
+    choice = both_choice({n: r["evidence"] for n, r in recs.items()}, last.get("both_evidence"),
+                         {n: r["status"] for n, r in recs.items()})
+    rec = {"choice": choice, "decided_at": now.isoformat(), "statuses": {n: r["status"] for n, r in recs.items()},
+           "both_evidence_from": last["candidate"],
+           "decisions": {n: str(out_dir(args) / f"decision_{n}.json") for n in recs}}
+    if write:
+        _write_once(path, rec)
+    return rec
 
 
 def score(args, store=None, *, now: datetime | None = None, write: bool = False) -> dict:
@@ -619,12 +669,14 @@ def score(args, store=None, *, now: datetime | None = None, write: bool = False)
     both = p.filter(pl.col("pred_both").is_not_null() & pl.col("pred_base").is_not_null())
     evs[BOTH]["cohorts"] = {n: {"name": COHORT[n], **_diff(both.filter(cohort_expr(n)), "pred_both")}
                             for n in CANDIDATES}
-    gates = {n: gate(args, evs[n], n, latest, now, write=write) for n in CANDIDATES}
+    gates = {n: gate(args, evs[n], n, latest, now, write=write, both_ev=evs[BOTH]) for n in CANDIDATES}
+    frozen = frozen_choice(args, now, write=write)
     out = {"ledgers": [x.name for x in paths], "scored_weeks": sorted(set(p["key"].to_list())),
            "latest_final_key": latest, "look": list(LOOK), "candidates": {}}
     for n in CANDIDATES:
         out["candidates"][n] = {**evs[n], "gate": gates[n]}
-    out["both"] = {**evs[BOTH], "reported_only": True, "choice": both_choice(evs, gates)}
+    out["both"] = {**evs[BOTH], "candidate": BOTH_CANDIDATE, "reported_only": True, "choice": None if frozen is None else frozen["choice"],
+                   "choice_decided_at": None if frozen is None else frozen["decided_at"]}
     return out
 
 
@@ -663,7 +715,7 @@ def run_score(args, *, now: datetime | None = None, scorer=None) -> dict:
 
 def _summary(rec: dict) -> dict:
     keep = ("kind", "season", "week", "status", "reason", "ledger", "ledger_sha256", "error", "record", "warnings",
-            "notes", "gate", "scored_weeks")
+            "notes", "gate", "scored_weeks", "required_action")
     out = {k: rec[k] for k in keep if k in rec}
     if "decision" in rec:
         out["decision"] = {k: rec["decision"][k] for k in ("action", "reason", "open_teams", "imminent_teams")}
@@ -694,8 +746,8 @@ def cmd_cycle(args, now: datetime) -> dict:
     import ctx_shadow as cs
     week = args.week if args.week is not None else cs._target_week(args, now)
     out = {"score": _summary(run_score(args, now=now))}
-    prev = week - 1 if week else cs._last_week(args)
-    missed = check_missed(args, args.season, prev, now=now) if prev else None
+    ps, pw = previous_week(args, week)
+    missed = check_missed(args, ps, pw, now=now) if pw else None
     out["missed"] = missed
     out["pregame"] = (_summary(run_pregame(args, args.season, week, now=now)) if week
                       else {"status": "no_upcoming_week", "warnings": [], "notes": []})
@@ -703,8 +755,34 @@ def cmd_cycle(args, now: datetime) -> dict:
     if missed:
         out["warnings"].append(f"week {missed['week']} started without a frozen injury-return ledger "
                                "(recorded as missed)")
-    out["status"] = "failed" if "failed" in (out["score"]["status"], out["pregame"]["status"]) else "ok"
+    if out["pregame"].get("required_action"):
+        out["required_action"] = out["pregame"]["required_action"]
+    out["status"] = "failed" if {"failed", "base_moved"} & {out["score"]["status"], out["pregame"]["status"]} \
+        else "ok"
     return out
+
+
+def last_reg_week(args, season: int) -> int | None:
+    from app.db.connection import connect as db_connect
+
+    con = db_connect(args.live_db, read_only=True)
+    try:
+        row = con.execute("SELECT max(week) FROM nfl_schedules WHERE season = ? AND game_type = 'REG'",
+                          [season]).fetchone()
+    finally:
+        con.close()
+    return None if row is None or row[0] is None else int(row[0])
+
+
+def previous_week(args, week: int | None, *, last=None) -> tuple[int, int | None]:
+    """(season, week) before the target: week - 1; at week 1 the previous season's last REG week; with no target
+    week left (after the season's last week has started) that last week. `last`: season -> last REG week (tests)."""
+    last = last or (lambda s: last_reg_week(args, s))
+    if week is None:
+        return args.season, last(args.season)
+    if week > 1:
+        return args.season, week - 1
+    return args.season - 1, last(args.season - 1)
 
 
 def cmd_status(args, now: datetime) -> dict:
@@ -759,6 +837,8 @@ def main(argv=None) -> int:
         return EXIT_OK
     for w in out.get("warnings", []):
         print(f"WARNING: injury-return shadow: {w}", file=sys.stderr)
+    if out.get("required_action"):
+        print(f"ACTION REQUIRED: injury-return shadow: {out['required_action']}", file=sys.stderr)
     if out.get("status") == "failed":
         return EXIT_FAILED
     return EXIT_WARNINGS if out.get("warnings") else EXIT_OK

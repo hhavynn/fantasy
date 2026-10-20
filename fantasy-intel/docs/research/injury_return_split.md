@@ -101,14 +101,22 @@ opens the databases read-only and never touches production, the registry, the AP
 
 * **Frozen spec.** `frozen/spec.json` is written once by the first freeze: the added columns, the cohort and
   returner definitions, the rule constants, the freeze rule and the league-scoring fingerprint. A later run with
-  any other spec is refused. The spec also freezes the ifp-2.2.0 base: `context_model.MODEL_VERSION`, its
-  config hash and `challenger.json`'s hash. A later freeze on a moved base is refused, every ledger records the
-  base it was fitted with, and `score` refuses to pool a ledger whose base differs from the spec's. So the look,
-  even one deferred into 2027, compares against the base that was registered. If production moves, the shadow
-  stops and says why; it does not silently switch bases.
+  any other spec is refused. The spec also freezes the ifp-2.2.0 base, narrowed to what moves its RB/WR/TE
+  forecasts (`base_identity`): `context_model.MODEL_VERSION` plus a hash of context_model's and injury_model's
+  definitions, without their whole-config hashes and QB-only parts, and of each RB/WR/TE model's features,
+  shipped components and fit. An unrelated `challenger.json` edit, such as a QB change or another shadow, leaves
+  it unchanged. A later freeze on a moved base is refused, every ledger records the base it was fitted with, and
+  `score` refuses to pool a ledger whose base differs from the spec's. So the look, even one deferred into 2027,
+  compares against the registered base.
+  * If the base moves, `pregame` returns `status: base_moved` with a `required_action`. The cycle reports it as
+    `ACTION REQUIRED` and exits 1, so the learning cycle shows the stage as failed. Someone then decides to end
+    the shadow on the weeks frozen so far, or to pre-register a new one; it never silently switches bases.
 * **Exact gate.** The gate and the both-choice compare unrounded MAE differences and CI bounds.
-* **Both pass.** `shadow_promotion_check.py` honors `both.choice`: only the selected implementation (one single,
-  or both together) is marked ready and queued.
+* **Both pass.** The rule 1.6 choice is made once, when the second decision lands, from decision-time evidence
+  only: each candidate's decision record, plus the `both` evidence saved with the later decision. It is written
+  once to `decision_both.json`, and later scorings and the promotion check only read it.
+  * `shadow_promotion_check.py` then marks exactly one implementation ready: the chosen single, or the combined
+    entry `ifp-irsb-p1` (both columns, one change). It never marks two singles as separate plans.
 * **Same-run base.** The `base` column is ifp-2.2.0 refitted in the run by `context_model`'s own rule; on the
   2026 week 8 smoke test it equals `context_model.fit` exactly (maximum prediction difference 0.0 for RB, WR and
   TE).

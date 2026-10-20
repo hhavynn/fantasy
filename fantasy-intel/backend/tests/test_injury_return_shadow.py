@@ -69,13 +69,26 @@ def test_models_are_ifp22_plus_only_their_added_columns(irs):
     assert set(irs.CANDIDATES) == {irs.IRS, irs.IRB} and irs.BOTH not in irs.COHORT
 
 
-BASE = {"base_version": "ifp-2.2.0", "base_config_hash": "aaaa", "challenger_config_hash": "cccc"}
+BASE = {"base_version": "ifp-2.2.0", "rb_wr_te_hash": "aaaa"}
 
 
-def test_base_identity_is_context_model_and_challenger_config(irs):
+def test_base_identity_follows_only_what_moves_rb_wr_te_forecasts(irs):
+    """A QB-only or notes-only challenger-config edit keeps the base; an RB/WR/TE fit or feature change moves it."""
+    import copy
+
     cfg = ch.ChallengerConfig.load()
-    assert irs.base_identity(cfg) == {"base_version": cm.MODEL_VERSION, "base_config_hash": cm.config_hash(cfg),
-                                      "challenger_config_hash": cfg.hash()}
+    base = irs.base_identity(cfg)
+    assert set(base) == {"base_version", "rb_wr_te_hash"} and base["base_version"] == cm.MODEL_VERSION
+    qb = copy.deepcopy(cfg)
+    qb.positions["QB"]["lam"] = qb.positions["QB"]["lam"] * 2
+    qb.notes = [*qb.notes, "an unrelated note"]
+    qb.intervals = {**qb.intervals, "QB": {}}
+    assert qb.hash() != cfg.hash() and irs.base_identity(qb) == base
+    for pos, change in (("RB", {"lam": cfg.positions["RB"]["lam"] * 2}), ("TE", {"half_life_weeks": 3.0}),
+                        ("WR", {"groups": cfg.positions["WR"].get("groups", "") + "X"})):
+        moved = copy.deepcopy(cfg)
+        moved.positions[pos] = {**moved.positions[pos], **change}
+        assert irs.base_identity(moved) != base, pos
 
 
 def test_spec_is_frozen_once_and_a_changed_rule_or_base_is_refused(irs, args, monkeypatch):
@@ -85,9 +98,9 @@ def test_spec_is_frozen_once_and_a_changed_rule_or_base_is_refused(irs, args, mo
     assert s["base"] == BASE
     assert irs.frozen_spec(args, "fp", BASE, create=True)["frozen_at"] == s["frozen_at"]
     with pytest.raises(SystemExit, match="base moved"):
-        irs.frozen_spec(args, "fp", {**BASE, "base_config_hash": "bbbb"}, create=True)
+        irs.frozen_spec(args, "fp", {**BASE, "rb_wr_te_hash": "bbbb"}, create=True)
     with pytest.raises(SystemExit, match="base moved"):
-        irs.frozen_spec(args, "fp", {**BASE, "challenger_config_hash": "dddd"}, create=False)
+        irs.frozen_spec(args, "fp", {**BASE, "base_version": "ifp-2.3.0"}, create=False)
     monkeypatch.setattr(irs, "MIN_COHORT", 20)
     with pytest.raises(SystemExit, match="different spec"):
         irs.frozen_spec(args, "fp", BASE, create=True)
@@ -229,7 +242,7 @@ def test_run_score_writes_scores_and_a_decided_shadow_stops_freezing(irs, args):
 
 
 def test_score_refuses_to_pool_a_ledger_frozen_on_another_base(irs, args):
-    store = _world(irs, args, range(8, 12), gain=1.0, bases={10: {**BASE, "base_config_hash": "moved"}})
+    store = _world(irs, args, range(8, 12), gain=1.0, bases={10: {**BASE, "rb_wr_te_hash": "moved"}})
     with pytest.raises(SystemExit, match="s2026w10.*another ifp-2.2.0 base"):
         irs.score(args, store)
     rec = irs.run_score(args, now=SUN, scorer=lambda a: irs.score(a, store, write=True))
@@ -242,3 +255,46 @@ def test_the_gate_uses_unrounded_differences(irs, args):
     res = irs.score(args, store, write=True)["candidates"][irs.IRS]
     assert round(res["cohort"]["ci95"][1], 4) == 0.0 and res["cohort"]["ci95"][1] < 0
     assert res["gate"]["status"] == irs.PASS
+
+
+def test_the_both_choice_is_frozen_at_decision_time(irs, args):
+    """Both pass at the look: the choice is written once from decision-time evidence; later scoring with other MAEs
+    (here the combination becomes clearly best) never changes it."""
+    store = _world(irs, args, range(8, 19), gain=1.0)
+    first = irs.score(args, store, write=True)["both"]
+    assert first["choice"]["ship"] in (irs.BOTH, irs.IRS, irs.IRB) and first["choice_decided_at"]
+    frozen = json.loads((Path(args.ifp_dir) / "research" / "injury_return_shadow" / "decision_both.json").read_text())
+    assert frozen["choice"] == first["choice"] and set(frozen["statuses"]) == set(irs.CANDIDATES)
+    d = Path(args.ifp_dir) / "research" / "injury_return_shadow" / "ledger"
+    for f in d.glob("*.json"):                     # rewrite: only `both` now beats base, by a lot
+        led = json.loads(f.read_text())
+        for r in led["rows"]:
+            r["both_points"] = r["base_points"] - 5.0 if r["inputs"]["injury_exit_last"] else r["base_points"] - 1.0
+            r["irs_points"] = r["irb_points"] = r["base_points"] + 3.0
+        f.write_text(json.dumps(led))
+    later = irs.score(args, store, write=True)["both"]
+    assert later["choice"] == first["choice"] and later["choice_decided_at"] == first["choice_decided_at"]
+
+
+def test_the_both_choice_waits_for_both_decisions(irs, args):
+    assert irs.frozen_choice(args, SUN, write=True) is None
+    store = _world(irs, args, range(8, 17), gain=1.0)                     # before the look
+    assert irs.score(args, store, write=True)["both"]["choice"] is None
+    assert not (Path(args.ifp_dir) / "research" / "injury_return_shadow" / "decision_both.json").exists()
+
+
+def test_previous_week_crosses_the_season_boundary(irs, args):
+    last = {2025: 18, 2026: 18}.get
+    assert irs.previous_week(args, 9, last=last) == (2026, 8)
+    assert irs.previous_week(args, 1, last=last) == (2025, 18)
+    assert irs.previous_week(args, None, last=last) == (2026, 18)
+
+
+def test_a_moved_base_is_a_loud_required_action(irs, args):
+    def moved(a, s, w):
+        raise SystemExit(f"spec.json was frozen on base X, this run's base is Y: the ifp-2.2.0 {irs.BASE_MOVED}; "
+                         "refusing")
+    rec = irs.run_pregame(args, 2026, 9, now=SUN, kickoffs=_kick(1), predict=moved)
+    assert rec["status"] == "base_moved" and "end the shadow" in rec["required_action"]
+    assert rec["warnings"][0].startswith("ACTION REQUIRED:")
+    assert irs._summary(rec)["required_action"] == rec["required_action"]
