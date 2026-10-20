@@ -18,6 +18,8 @@ script only READS those saved results; it never re-scores a ledger or re-impleme
   ifp-iwh-0.1.1   injury_workload_research.py     <ifp-dir>/research/injury_workload/prospective_ifp-iwh-0.1.1.json
   ifp-fr-p1, ifp-dct-p1, ifp-awd-p1
                   signal_shadows.py               <ifp-dir>/research/signal_shadows/scores.json
+  ifp-irs-p1, ifp-irb-p1
+                  injury_return_shadow.py         <ifp-dir>/research/injury_return_shadow/scores.json
 
 Per candidate and position it reports the weeks scored, the matched appearances, the shadow's own gate status and
 checks, and `ready_to_promote` when the shadow's gate passes, every one of its checks passes and at least MIN_WEEKS
@@ -170,6 +172,20 @@ def read_signal(name: str):
     return read
 
 
+def read_injury_return(name: str):
+    def read(files: dict) -> tuple[dict, int | None]:
+        d = files["scores"] or {}
+        weeks = len(d.get("scored_weeks") or [])
+        c = (d.get("candidates") or {}).get(name) or {}
+        g = c.get("gate") or {}
+        out = {}
+        for pos, v in (c.get("positions") or {}).items():      # one look, joint over RB/WR/TE (pooled cohort)
+            out[pos] = {"weeks": g.get("weeks"), "appearances": v.get("n"), "gate_status": g.get("status"),
+                        "checks": _bool_checks(g.get("checks"))}
+        return out, weeks
+    return read
+
+
 # ----------------------------------------------------------------------------- the shadows
 
 
@@ -212,6 +228,13 @@ SHADOWS = (
       for name, impl in (("ifp-fr-p1", "app/analytics/usage_signals.py (FTN first-read shares)"),
                          ("ifp-dct-p1", "app/analytics/usage_signals.py (pregame depth-chart tier)"),
                          ("ifp-awd-p1", "app/analytics/adaptive_workload.py (decline-only adaptive role)"))),
+    *({"candidate": name, "shadow": "injury_return_shadow.py", "reader": read_injury_return(name), "pass": "passes",
+       "files": {"scores": lambda a: _ifp(a, "injury_return_shadow", "scores.json")},
+       "target": "ours", "doc": "docs/research/injury_return_split.md", "implementation": impl}
+      for name, impl in (("ifp-irs-p1", "scripts/injury_return_shadow.py (snap_trend_ret: returners' own snap_trend "
+                                        "slope, RB/WR/TE)"),
+                         ("ifp-irb-p1", "scripts/injury_return_shadow.py (ret_ind: position x returner indicator, "
+                                        "RB/WR/TE)"))),
 )
 
 

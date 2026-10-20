@@ -141,11 +141,24 @@ def write_signal(d, ok, weeks, *, only=None):
                        "ifp-awd-p1": cand("ifp-awd-p1", ["RB", "WR", "TE"])}})
 
 
+def write_injury_return(d, ok, weeks):
+    def cand():
+        checks = {"cohort_ci_below_0": ok, "overall_not_worse": True, "no_position_clearly_worse": True}
+        status = "accumulating" if weeks < 8 else "passes" if ok else "fails"
+        return {"positions": {p: {"n": 300} for p in ("RB", "WR", "TE")},
+                "gate": {"status": status, "checks": checks, "weeks": weeks}}
+    _put(d["ifp"] / "research" / "injury_return_shadow" / "scores.json", {
+        "scored_at": NOW, "scored_weeks": list(range(202608, 202608 + weeks)),
+        "candidates": {"ifp-irs-p1": cand(), "ifp-irb-p1": cand()}})
+
+
 WRITERS = {"ifp-ctx-p1": (write_ctx, ["RB", "WR"]), "ifp-ctx-p2q": (write_p2q, ["QB"]),
            "ipm-cal-0.1.0": (write_ipm, ["QB"]), "dfp-r1": (write_dst, ["DST"]),
            "ifpd-0.1.0": (write_dist, ["RB", "WR"]), "ifp-iwh-0.1.1": (write_iwh, ["RB", "TE", "WR"]),
            "ifp-fr-p1": (write_signal, ["RB", "WR"]), "ifp-dct-p1": (write_signal, ["QB"]),
-           "ifp-awd-p1": (write_signal, ["RB", "TE", "WR"])}
+           "ifp-awd-p1": (write_signal, ["RB", "TE", "WR"]),
+           "ifp-irs-p1": (write_injury_return, ["RB", "TE", "WR"]),
+           "ifp-irb-p1": (write_injury_return, ["RB", "TE", "WR"])}
 
 
 def _cand(summary, name):
@@ -278,7 +291,7 @@ def test_the_queue_keeps_first_ready_and_marks_a_candidate_that_stops_passing(sp
     e = json.loads((dirs["logs"] / "promotion-queue.json").read_text())["entries"]["dfp-r1"]
     assert e["status"] == "no_longer_ready" and e["first_ready_at"].startswith("2026-12-01")
     assert (dirs["logs"] / "shadow-promotion.log").read_text().splitlines()[-1].endswith(
-        "no candidate ready (0 accumulating, 1 failing, 8 without a scored week)")
+        "no candidate ready (0 accumulating, 1 failing, 10 without a scored week)")
 
 
 def test_a_dry_run_or_a_simulated_clock_writes_nothing(spc, dirs):

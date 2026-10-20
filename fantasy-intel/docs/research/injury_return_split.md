@@ -88,6 +88,34 @@ candidate added to `PROMOTED`. If both pass, ifp-2.3.0 takes `both` only if `bot
 cohort and its overall MAE is no higher than the better single's; otherwise the single with the lower overall
 MAE. The scheduled job never edits production.
 
-## 2. Results
+## 2. How it runs (added after the pre-registration commit; section 1 is unchanged)
+
+`scripts/injury_return_shadow.py` (research only: it writes under `data/models/research/injury_return_shadow/`,
+opens the databases read-only and never touches production, the registry, the API or the frontend):
+
+| Job (existing) | Runs | Does |
+|---|---|---|
+| `refresh_all.py` evidence stage (every refresh and pregame-guard run) | `injury_return_shadow.py pregame --week <upcoming>` | the gated, write-once freeze |
+| `learning_cycle.py`, `RESEARCH_SHADOWS` stage `injury_return_shadow` (Tue-Thu) | `injury_return_shadow.py cycle --week <target>` | scores fully final frozen weeks (and takes the look once due), records a missed week, retries the freeze (normally deferred) |
+| `learning_cycle.py`, last stage `promotion_check` | `shadow_promotion_check.py check` | reads `scores.json`; a pass is `PROMOTION READY: ifp-irs-p1 ...` plus a promotion-queue entry |
+
+* **Frozen spec.** `frozen/spec.json` is written once by the first freeze: the added columns, the cohort and
+  returner definitions, the rule constants, the freeze rule and the league-scoring fingerprint. A later run with
+  any other spec is refused. The ifp-2.2.0 base itself is not frozen in the spec: every ledger records the base
+  version and config hash it was fitted with, and base and candidates always share the run.
+* **Same-run base.** The `base` column is ifp-2.2.0 refitted in the run by `context_model`'s own rule; on the
+  2026 week 8 smoke test it equals `context_model.fit` exactly (maximum prediction difference 0.0 for RB, WR and
+  TE).
+* **Ledger rows.** Every RB/WR/TE of the open teams' live population (ACT/INA weekly roster), with
+  `base_points`, `irs_points`, `irb_points`, `both_points`, `ret` and the inputs `injury_exit_last`,
+  `games_missed`, `snap_trend`. Cohort membership is read from the ledger, i.e. as it was known pregame.
+* **After the look.** Once both candidates have a decision, `pregame` stops freezing (`status: decided`). A failed
+  candidate is then recorded in section 3 and dropped.
+
+Smoke test (scratch copies, 2026-10-19, week 8 frozen into a scratch directory only): 82 s end to end, 377 rows
+for the 28 teams not on bye, 8 returners. Saquon Barkley (games missed: 3) is base 7.21, `irs` 7.52, `irb` 7.44.
+Play-through rows appear once the week-8 injury report lands, because `injury_exit_last` needs the listing.
+
+## 3. Results
 
 None yet. The first ledger is 2026 week 8; the look is after week 18.

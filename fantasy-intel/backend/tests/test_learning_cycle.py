@@ -79,7 +79,8 @@ def env(base, tmp_path, lc):
 
 
 def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=False, research_shadows=False,
-          dst_shadow=False, dist_ledger=False, signal_shadows=False, promotion_check=False, dst_project=False):
+          dst_shadow=False, dist_ledger=False, signal_shadows=False, promotion_check=False, dst_project=False,
+          injury_return_shadow=False):
     """Cycle arguments; the `project` stage (a live-database write) only when a test asks for it, and the kicker stage
     (after project), the ifp-ctx-p1 / dfp-r1 shadow stages, the other research shadows and the distribution-ledger
     stage (and the signal shadows) only when a test asks for them too."""
@@ -92,6 +93,7 @@ def _args(lc, env, now=PRE_W10, *extra, project=False, kicker=False, ctx_shadow=
                      *([] if research_shadows else ["--no-qb-scenario-shadow", "--no-ipm-cal-shadow"]),
                      "--dst-dir", str(env / "dst"), *([] if dst_shadow else ["--no-dst-shadow"]),
                      *([] if signal_shadows else ["--no-signal-shadows"]),
+                     *([] if injury_return_shadow else ["--no-injury-return-shadow"]),
                      "--promotion-logs-dir", str(env / "plogs"), *([] if promotion_check else ["--no-promotion-check"]),
                      *([] if dst_project else ["--no-dst-project"]), *extra])
 

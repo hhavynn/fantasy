@@ -128,7 +128,8 @@ def test_selection_reads_the_schedule_and_benchmarks_only_a_fully_final_week(ref
         assert "week 6 is not fully final (2/6 teams final)" in sel["notes"][0]
         assert [label for label, _ in refresh.evidence_steps(sel)] == [
             "injury_freshness week 7", "start_sit_evaluation week 7", "ctx_shadow pregame week 7",
-            "qb_scenario_shadow pregame week 7", "signal_shadows pregame week 7", "dst_shadow pregame week 7",
+            "qb_scenario_shadow pregame week 7", "signal_shadows pregame week 7",
+            "injury_return_shadow pregame week 7", "dst_shadow pregame week 7",
             "distribution_ledger pregame week 7", "ipm_cal_shadow cycle"]   # no benchmark
 
         sel = refresh.select_evidence(con, 2026, tue, final=lambda c, s, w: (True, ""))
@@ -136,9 +137,10 @@ def test_selection_reads_the_schedule_and_benchmarks_only_a_fully_final_week(ref
         steps = dict(refresh.evidence_steps(sel))
         assert list(steps) == ["injury_freshness week 7", "start_sit_evaluation week 7", "ctx_shadow pregame week 7",
                                "qb_scenario_shadow pregame week 7", "signal_shadows pregame week 7",
-                               "dst_shadow pregame week 7", "distribution_ledger pregame week 7", "ipm_cal_shadow cycle",
+                               "injury_return_shadow pregame week 7", "dst_shadow pregame week 7", "distribution_ledger pregame week 7", "ipm_cal_shadow cycle",
                                "espn_benchmark week 6"]
         assert steps["signal_shadows pregame week 7"][2:] == ["pregame", "--season", "2026", "--week", "7"]
+        assert steps["injury_return_shadow pregame week 7"][2:] == ["pregame", "--season", "2026", "--week", "7"]
         assert steps["distribution_ledger pregame week 7"][2:] == ["freeze", "--season", "2026", "--week", "7"]
         assert steps["ctx_shadow pregame week 7"][2:] == ["pregame", "--season", "2026", "--week", "7"]
         assert steps["qb_scenario_shadow pregame week 7"][2:] == ["pregame", "--season", "2026", "--week", "7"]
@@ -194,7 +196,8 @@ def test_run_evidence_runs_the_three_read_only_scripts(refresh, evidence_env, mo
     assert [(Path(c[1]).name, c[2], c[-1]) for c in ran] == [
         ("injury_freshness.py", "report", "7"), ("start_sit_evaluation.py", "record", "7"),
         ("ctx_shadow.py", "pregame", "7"), ("qb_scenario_shadow.py", "pregame", "7"),
-        ("signal_shadows.py", "pregame", "7"), ("dst_shadow.py", "pregame", "7"),
+        ("signal_shadows.py", "pregame", "7"), ("injury_return_shadow.py", "pregame", "7"),
+        ("dst_shadow.py", "pregame", "7"),
         ("distribution_ledger.py", "freeze", "7"), ("participation_cal_shadow.py", "cycle", "2026"),
         ("espn_benchmark.py", "record", "6")]
     text = evidence_env.path.read_text()
@@ -214,9 +217,9 @@ def test_every_evidence_step_failure_is_reported_and_none_raises(refresh, eviden
     monkeypatch.setattr(refresh, "run_step", fake)
     problems = refresh.run_evidence(evidence_env, now=TUE)
     assert calls == ["injury_freshness.py", "start_sit_evaluation.py", "ctx_shadow.py", "qb_scenario_shadow.py",
-                     "signal_shadows.py", "dst_shadow.py", "distribution_ledger.py", "participation_cal_shadow.py",
-                     "espn_benchmark.py"]                                     # a failure does not stop the rest
-    assert len(problems) == 9
+                     "signal_shadows.py", "injury_return_shadow.py", "dst_shadow.py", "distribution_ledger.py",
+                     "participation_cal_shadow.py", "espn_benchmark.py"]      # a failure does not stop the rest
+    assert len(problems) == 10
     text = evidence_env.path.read_text()
     assert "could not run: OSError('boom')" in text and "start_sit_evaluation week 7 exited 1" in text
     assert "espn_benchmark week 6 exited 3" in text
@@ -542,7 +545,7 @@ def test_shadows_only_runs_just_the_research_shadow_freezes(refresh, evidence_en
     assert refresh.run_evidence(evidence_env, now=TUE, shadows_only=True) == []        # exit 3: the shadow's warnings
     assert [(Path(c[1]).name, c[2]) for c in ran] == [          # every research shadow, nothing else
         ("ctx_shadow.py", "pregame"), ("qb_scenario_shadow.py", "pregame"), ("signal_shadows.py", "pregame"),
-        ("dst_shadow.py", "pregame"), ("distribution_ledger.py", "freeze"), ("participation_cal_shadow.py", "cycle")]
+        ("injury_return_shadow.py", "pregame"), ("dst_shadow.py", "pregame"), ("distribution_ledger.py", "freeze"), ("participation_cal_shadow.py", "cycle")]
     text = evidence_env.path.read_text()
     assert "research shadows only" in text and "INFO: Evidence: ctx_shadow pregame week 7 reported" in text
 
@@ -560,6 +563,7 @@ def test_any_pregame_week_step_counts_as_a_research_shadow(refresh, evidence_env
     assert refresh.is_shadow("dst_shadow pregame week 7") and not refresh.is_shadow("start_sit_evaluation week 7")
     assert refresh.is_shadow("ipm_cal_shadow cycle") and refresh.is_shadow("qb_scenario_shadow pregame week 7")
     assert refresh.is_shadow("signal_shadows pregame week 7")
+    assert refresh.is_shadow("injury_return_shadow pregame week 7")
     assert not refresh.is_shadow("injury_freshness week 7") and not refresh.is_shadow("espn_benchmark week 6")
 
 
