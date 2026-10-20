@@ -109,6 +109,9 @@ opens the databases read-only and never touches production, the registry, the AP
 * **Ledger rows.** Every RB/WR/TE of the open teams' live population (ACT/INA weekly roster), with
   `base_points`, `irs_points`, `irb_points`, `both_points`, `ret` and the inputs `injury_exit_last`,
   `games_missed`, `snap_trend`. Cohort membership is read from the ledger, i.e. as it was known pregame.
+* **Availability news** (#134) is a production overlay on the live run (`build_live`'s `news=`), not part of the
+  model. The shadow passes none, the default, which changes nothing. Base and candidates share the same rows either
+  way.
 * **After the look.** Once both candidates have a decision, `pregame` stops freezing (`status: decided`). A failed
   candidate is then recorded in section 3 and dropped.
 

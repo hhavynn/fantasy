@@ -127,6 +127,9 @@ about right). This contradicts neither the old ifp-1.0.0 ablation (a blanket swa
 rows) nor this note's decision. It was found after looking at the data, so it may only ship through a fresh
 pre-registration scored on prospective weeks.
 
+**Follow-up.** Both leads (the split slope and the returner bias) are pre-registered as prospective shadows in
+[injury_return_split.md](injury_return_split.md) (`ifp-irs-p1`, `ifp-irb-p1`, 2026 week 8 on).
+
 ## Reproduce (scratch copies only, from `backend/`)
 
 ```
