@@ -1138,8 +1138,47 @@ reports are out; before Saturday games late in the season) and **Sun 05:30 PT** 
 Each attempt is idempotent; a team already kicked off is carried, never recomputed.
 
 **Limitations.** ESPN status comes from the last `sync_espn.py` (`refresh_all.py`, Thu 15:00 / Sun 08:00 PT); the
-step does not sync ESPN. Game-day inactives (90 minutes before kickoff) are not covered. The kicker model
-(`kfp-1.0.0`, `kicker_live`) uses the same week / horizon pattern and is not re-projected here (follow-up).
+step does not sync ESPN. Game-day inactives (90 minutes before kickoff) are not covered. The kicker model gets its
+own step, below.
+
+#### Kicker re-projection (`kicker_projections.py reproject`)
+
+**Why the kicker needs it.** `stage_kicker` stores the week's `kfp-1.1.0` run with the cycle (Tue / Wed / Thu 07:00
+PT), and after Thursday night's kickoff the cycle targets the next week, so Sunday's kicker rows keep Thursday-morning
+inputs. Five `kicker_live` inputs move after that: the betting line (`o_implied`, kfp-1.1.0's team implied
+total: posted or moved late; a missing line is a flagged league-average fill), the nflverse game designation (Friday's final report; `participation`
+turns it into `p_play`), the ESPN status (OUT / IR / SUSPENSION -> `withheld_unavailable`), the NFL weekly roster
+(a weekend signing or release changes `expected_kickers`, so who gets the team's opportunities) and the NWS forecast
+(shown with the row; not a kfp model input). Re-running `project` would not do: it would also recompute
+teams already kicked off.
+
+**The step** (`app/analytics/kicker_reprojection.py`; `learning_cycle.py reproject` runs it as `kicker_reproject`
+right after the skill-position step, with the same lock and sync) follows the rules above:
+
+1. Week = the week of the next team kickoff (`--week` overrides). **Base run** = the horizon-0 kfp run of the week
+   consumers would pick (`kicker_store.CONSUMER_VERSIONS` in order, newest first; `verified_runs` must accept it)
+   under the league's kicker scoring; none -> refused. The new run keeps the base run's model version.
+2. **Same artifact.** The file in the kicker model directory whose sha256 equals the base run's `artifact_id`; no
+   such file, or a file of another model version -> refused. The league's kicker scoring must still match the base run's.
+3. `kicker_live.build_run` re-projects the week; every team whose kickoff is at or before the new run's
+   `created_at`, whose kickoff is unknown, or whose game is missing from the refreshed schedule keeps its kickers'
+   base rows byte-for-byte plus the same `kickoff passed before this re-projection: row carried unchanged from run
+   <base>` flag (stored `pregame = false`); a kicker of such a team with no base row is left out. All games kicked
+   off -> refused.
+4. **Nothing changed -> nothing written.** Rows are compared column by column except the weather bookkeeping
+   (retrieval / issue times, age, staleness and the forecast sentence that quotes them): a forecast re-read with the
+   same values writes nothing, a new forecast does. That is deliberate: kfp does not use weather, so its
+   numbers do not move, but every projected row shows the forecast, and a Friday / Sunday-morning forecast is the one
+   worth showing. With an outdoor game still ahead this is the usual case, so most re-projections write a run.
+   Otherwise a **new run** through `kicker_store.write_run` (append-only, content-hashed). The run's `weather_summary`
+   describes the stored rows (carried ones included).
+
+Nothing else changes: no stored kicker run, row or hash is modified; artifacts and `approved_artifacts` are untouched
+(the reused artifact is already registered); no ledger or evidence reader reads kicker runs. `kicker_store.select_run`
+and `overlay` serve the new run because it is the newest verified one. The kicker step never changes the
+`reproject` status or exit code: a refusal is reported under `kicker_reprojection`, a failure is a warning; it runs
+after the skill-position step whatever that step's outcome, but never after a failed sync, and `--no-kicker` skips it.
+Standalone: `kicker_projections.py reproject [--week W] [--no-weather]` (exit 2 = refused, nothing written).
 
 ### Pregame source provenance (`app/analytics/source_provenance.py`)
 
