@@ -101,8 +101,14 @@ opens the databases read-only and never touches production, the registry, the AP
 
 * **Frozen spec.** `frozen/spec.json` is written once by the first freeze: the added columns, the cohort and
   returner definitions, the rule constants, the freeze rule and the league-scoring fingerprint. A later run with
-  any other spec is refused. The ifp-2.2.0 base itself is not frozen in the spec: every ledger records the base
-  version and config hash it was fitted with, and base and candidates always share the run.
+  any other spec is refused. The spec also freezes the ifp-2.2.0 base: `context_model.MODEL_VERSION`, its
+  config hash and `challenger.json`'s hash. A later freeze on a moved base is refused, every ledger records the
+  base it was fitted with, and `score` refuses to pool a ledger whose base differs from the spec's. So the look,
+  even one deferred into 2027, compares against the base that was registered. If production moves, the shadow
+  stops and says why; it does not silently switch bases.
+* **Exact gate.** The gate and the both-choice compare unrounded MAE differences and CI bounds.
+* **Both pass.** `shadow_promotion_check.py` honors `both.choice`: only the selected implementation (one single,
+  or both together) is marked ready and queued.
 * **Same-run base.** The `base` column is ifp-2.2.0 refitted in the run by `context_model`'s own rule; on the
   2026 week 8 smoke test it equals `context_model.fit` exactly (maximum prediction difference 0.0 for RB, WR and
   TE).

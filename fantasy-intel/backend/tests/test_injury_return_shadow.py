@@ -69,17 +69,31 @@ def test_models_are_ifp22_plus_only_their_added_columns(irs):
     assert set(irs.CANDIDATES) == {irs.IRS, irs.IRB} and irs.BOTH not in irs.COHORT
 
 
-def test_spec_is_frozen_once_and_a_changed_rule_is_refused(irs, args, monkeypatch):
-    assert irs.frozen_spec(args, "fp", create=False) is None          # scoring never creates it
-    s = irs.frozen_spec(args, "fp", create=True)
+BASE = {"base_version": "ifp-2.2.0", "base_config_hash": "aaaa", "challenger_config_hash": "cccc"}
+
+
+def test_base_identity_is_context_model_and_challenger_config(irs):
+    cfg = ch.ChallengerConfig.load()
+    assert irs.base_identity(cfg) == {"base_version": cm.MODEL_VERSION, "base_config_hash": cm.config_hash(cfg),
+                                      "challenger_config_hash": cfg.hash()}
+
+
+def test_spec_is_frozen_once_and_a_changed_rule_or_base_is_refused(irs, args, monkeypatch):
+    assert irs.frozen_spec(args, "fp", BASE, create=False) is None          # scoring never creates it
+    s = irs.frozen_spec(args, "fp", BASE, create=True)
     assert s["first_week"] == [2026, 8] and s["look"] == [2026, 18] and s["rule"]["min_cohort"] == 40
-    assert irs.frozen_spec(args, "fp", create=True)["frozen_at"] == s["frozen_at"]
+    assert s["base"] == BASE
+    assert irs.frozen_spec(args, "fp", BASE, create=True)["frozen_at"] == s["frozen_at"]
+    with pytest.raises(SystemExit, match="base moved"):
+        irs.frozen_spec(args, "fp", {**BASE, "base_config_hash": "bbbb"}, create=True)
+    with pytest.raises(SystemExit, match="base moved"):
+        irs.frozen_spec(args, "fp", {**BASE, "challenger_config_hash": "dddd"}, create=False)
     monkeypatch.setattr(irs, "MIN_COHORT", 20)
     with pytest.raises(SystemExit, match="different spec"):
-        irs.frozen_spec(args, "fp", create=True)
+        irs.frozen_spec(args, "fp", BASE, create=True)
     monkeypatch.undo()
     with pytest.raises(SystemExit):
-        irs.frozen_spec(args, "other-scoring", create=False)
+        irs.frozen_spec(args, "other-scoring", BASE, create=False)
 
 
 def test_predict_refuses_weeks_before_the_preregistered_start(irs, args):
@@ -140,11 +154,12 @@ def test_missed_week_is_recorded_once_and_never_before_the_start(irs, args):
 # ----------------------------------------------------------------------------- score + the one-look gate
 
 
-def _world(irs, args, weeks, *, gain: float, overall_cost: float = 0.0):
+def _world(irs, args, weeks, *, gain: float, overall_cost: float = 0.0, bases: dict | None = None):
     """Ledgers for `weeks` (2026) and the labeled store: per week 4 returners (RB/WR), 4 play-through rows and 12
     normal rows. Candidates are `gain` closer to the label on injury-exit rows and `overall_cost` worse elsewhere."""
     d = Path(args.ifp_dir) / "research" / "injury_return_shadow" / "ledger"
     d.mkdir(parents=True, exist_ok=True)
+    irs.frozen_spec(args, "fp", BASE, create=True)
     lab = []
     for w in weeks:
         rows = []
@@ -158,7 +173,8 @@ def _world(irs, args, weeks, *, gain: float, overall_cost: float = 0.0):
                          **{f"{irs.SHORT[m]}_points": cand for m in irs.MODELS}, "ret": ret,
                          "inputs": {"injury_exit_last": 1 if exit_ else 0, "games_missed": 2 if ret else 0}})
             lab.append({"key": 202600 + w, "gsis_id": f"p{i}", "position": pos, "label": label})
-        (d / f"s2026w{w:02d}-pregame.json").write_text(json.dumps({"season": 2026, "week": w, "rows": rows}))
+        base = (bases or {}).get(w, BASE)
+        (d / f"s2026w{w:02d}-pregame.json").write_text(json.dumps({"season": 2026, "week": w, **base, "rows": rows}))
     return pl.DataFrame(lab)
 
 
@@ -210,3 +226,19 @@ def test_run_score_writes_scores_and_a_decided_shadow_stops_freezing(irs, args):
     rec = irs.run_pregame(args, 2027, 1, now=SUN, kickoffs=_kick(1), predict=_fake_predict(calls))
     assert rec["status"] == "decided"
     assert calls == [] and irs.check_missed(args, 2027, 1, now=SUN + timedelta(days=2), kickoffs=_kick(1)) is None
+
+
+def test_score_refuses_to_pool_a_ledger_frozen_on_another_base(irs, args):
+    store = _world(irs, args, range(8, 12), gain=1.0, bases={10: {**BASE, "base_config_hash": "moved"}})
+    with pytest.raises(SystemExit, match="s2026w10.*another ifp-2.2.0 base"):
+        irs.score(args, store)
+    rec = irs.run_score(args, now=SUN, scorer=lambda a: irs.score(a, store, write=True))
+    assert rec["status"] == "failed" and "another ifp-2.2.0 base" in rec["warnings"][0]
+
+
+def test_the_gate_uses_unrounded_differences(irs, args):
+    """A cohort gain of 0.00004 rounds to -0.0 at 4 decimals; the gate still sees it entirely below 0."""
+    store = _world(irs, args, range(8, 19), gain=0.00004)
+    res = irs.score(args, store, write=True)["candidates"][irs.IRS]
+    assert round(res["cohort"]["ci95"][1], 4) == 0.0 and res["cohort"]["ci95"][1] < 0
+    assert res["gate"]["status"] == irs.PASS

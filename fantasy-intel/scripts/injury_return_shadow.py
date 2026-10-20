@@ -144,9 +144,18 @@ def model_features(cfg, name: str, position: str) -> list[str]:
     return base + [c for c in EXTRA[name] if c not in base] if name != "base" else base
 
 
-def spec(scoring_fp: str) -> dict:
-    """The pre-registered definition (what a forecast depends on, except data and the ifp-2.2.0 base it extends:
-    the base's version and config hash are recorded in every ledger), hashed."""
+def base_identity(cfg) -> dict:
+    """The ifp-2.2.0 base the candidates extend: context_model's version and config hash, and challenger.json's hash.
+    Frozen in the spec: a later run on a moved base is refused, and no ledger of another base is pooled."""
+    from app.analytics import context_model as cm
+
+    return {"base_version": cm.MODEL_VERSION, "base_config_hash": cm.config_hash(cfg),
+            "challenger_config_hash": cfg.hash()}
+
+
+def spec(scoring_fp: str, base: dict) -> dict:
+    """The pre-registered definition (everything a forecast depends on except data, the ifp-2.2.0 base included),
+    hashed."""
     s = {"version": SHADOW, "status": "research_only", "doc": DOC, "positions": list(POSITIONS),
          "candidates": {n: {"added": list(EXTRA[n]), "cohort": COHORT.get(n), "judged": n in CANDIDATES}
                         for n in MODELS},
@@ -160,24 +169,41 @@ def spec(scoring_fp: str) -> dict:
                   "cohort_ci_entirely_below_0": True, "overall_diff_at_most_0": True,
                   "no_position_ci_entirely_above_0": True},
          "freeze_rule": {"slate_share": SLATE_SHARE, "deadline_hours": DEADLINE_HOURS},
-         "scoring_fingerprint": scoring_fp}
+         "scoring_fingerprint": scoring_fp, "base": dict(base)}
     s["config_hash"] = _sha(s)
     return s
 
 
-def frozen_spec(args, scoring_fp: str, *, create: bool) -> dict | None:
-    """The spec, frozen write-once by the first `predict`; any later run with another spec is refused. `score`
-    never creates it (scoring cannot precede the pre-registered spec)."""
-    s = spec(scoring_fp)
+def frozen_spec(args, scoring_fp: str, base: dict, *, create: bool) -> dict | None:
+    """The spec, frozen write-once by the first `predict`; any later run with another spec, league scoring or
+    ifp-2.2.0 base is refused. `score` never creates it (scoring cannot precede the pre-registered spec)."""
+    s = spec(scoring_fp, base)
     path = out_dir(args) / "frozen" / "spec.json"
     if create:
         _write_once(path, {**s, "frozen_at": _utcnow().isoformat()})
     if not path.exists():
         return None
     prev = json.loads(path.read_text())
+    if prev.get("base") != s["base"]:
+        raise SystemExit(f"{path.name} was frozen on base {prev.get('base')}, this run's base is {s['base']}: the "
+                         "ifp-2.2.0 base moved; refusing")
     if prev["config_hash"] != s["config_hash"]:
         raise SystemExit(f"{path.name} was frozen with a different spec or league scoring; refusing")
     return prev
+
+
+def check_ledger_bases(args, ledgers: list[dict]) -> None:
+    """Refuse to pool a ledger whose base differs from the frozen spec's (or any ledger without a frozen spec)."""
+    path = out_dir(args) / "frozen" / "spec.json"
+    if not ledgers:
+        return
+    if not path.exists():
+        raise SystemExit("ledgers exist but no frozen spec: refusing to score")
+    base = json.loads(path.read_text()).get("base") or {}
+    bad = [f"s{x['season']}w{x['week']:02d}" for x in ledgers if {k: x.get(k) for k in base} != base]
+    if bad:
+        raise SystemExit(f"ledgers {', '.join(bad)} were frozen on another ifp-2.2.0 base than the spec's {base}; "
+                         "refusing to pool them")
 
 
 # ----------------------------------------------------------------------------- store
@@ -314,8 +340,9 @@ def cmd_predict(args, now: datetime | None = None) -> dict:
         led = json.loads(lpath.read_text())
         return {"ledger": str(lpath), "written": False, "created_at": led["created_at"], "rows": len(led["rows"])}
     src, scoring, store, prov = build(args)
-    sp = frozen_spec(args, scoring.fingerprint, create=True)
     cfg = ch.ChallengerConfig.load()
+    base = base_identity(cfg)
+    sp = frozen_spec(args, scoring.fingerprint, base, create=True)
     kick = team_kickoffs(src, season, week)
     clock = (lambda: now) if now is not None else _utcnow       # `now`: a fixed clock (tests)
     now = clock()                                # after the slow build: never select on a stale clock
@@ -349,7 +376,7 @@ def cmd_predict(args, now: datetime | None = None) -> dict:
         raise SystemExit(f"every remaining week-{week} game kicked off while forecasting: nothing written")
     ledger = {"schema": LEDGER_SCHEMA, "kind": "pregame", "season": season, "week": week,
               "created_at": written_at.isoformat(), "spec_hash": sp["config_hash"],
-              "base_version": cm.MODEL_VERSION, "base_config_hash": cm.config_hash(cfg),
+              **base,
               "training_cutoff_key": season * 100 + week, "training_rows": n_train,
               "store_fingerprint": prov["fingerprint"],
               "teams_excluded_already_started": sorted(set(kick) - still_open),
@@ -488,13 +515,14 @@ def _diff(d, col: str) -> dict:
         return {"n": 0, "weeks": 0, "diff": None, "ci95": None}
     r = week_bootstrap_mae_diff(d, col, "pred_base", RESAMPLES, SEED, exact=True)
     y = d["label"].to_numpy()
+    # unrounded: the gate and the both-choice compare these exact values (round only when presenting them)
     return {"n": d.height, "weeks": d.select("key").n_unique(),
-            "mae_base": round(float(abs(d["pred_base"].to_numpy() - y).mean()), 4),
-            "mae_candidate": round(float(abs(d[col].to_numpy() - y).mean()), 4),
-            "bias_base": round(float((d["pred_base"].to_numpy() - y).mean()), 4),
-            "bias_candidate": round(float((d[col].to_numpy() - y).mean()), 4),
-            "diff": None if r["diff"] is None else round(r["diff"], 4),
-            "ci95": None if r["ci95"] is None else [round(x, 4) for x in r["ci95"]]}
+            "mae_base": float(abs(d["pred_base"].to_numpy() - y).mean()),
+            "mae_candidate": float(abs(d[col].to_numpy() - y).mean()),
+            "bias_base": float((d["pred_base"].to_numpy() - y).mean()),
+            "bias_candidate": float((d[col].to_numpy() - y).mean()),
+            "diff": None if r["diff"] is None else float(r["diff"]),
+            "ci95": None if r["ci95"] is None else [float(x) for x in r["ci95"]]}
 
 
 def cohort_expr(name: str):
@@ -584,7 +612,9 @@ def score(args, store=None, *, now: datetime | None = None, write: bool = False)
     lab = store.filter(pl.col("label").is_not_null())
     latest = int(lab["key"].max()) if lab.height else None
     lab = lab.select(pl.col("key").cast(pl.Int64), "gsis_id", "position", "label")
-    p = lab.join(ledger_frame([json.loads(x.read_text()) for x in paths]), on=["key", "gsis_id"], how="inner")
+    ledgers = [json.loads(x.read_text()) for x in paths]
+    check_ledger_bases(args, ledgers)
+    p = lab.join(ledger_frame(ledgers), on=["key", "gsis_id"], how="inner")
     evs = {n: evaluate(p, n) for n in MODELS}
     both = p.filter(pl.col("pred_both").is_not_null() & pl.col("pred_base").is_not_null())
     evs[BOTH]["cohorts"] = {n: {"name": COHORT[n], **_diff(both.filter(cohort_expr(n)), "pred_both")}

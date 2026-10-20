@@ -178,10 +178,16 @@ def read_injury_return(name: str):
         weeks = len(d.get("scored_weeks") or [])
         c = (d.get("candidates") or {}).get(name) or {}
         g = c.get("gate") or {}
+        # When both candidates pass, the shadow's joint rule (scores.json both.choice) picks ONE implementation: this
+        # candidate alone or "both". A passing candidate the choice did not select is never ready.
+        choice = (d.get("both") or {}).get("choice")
+        checks = _bool_checks(g.get("checks"))
+        if choice is not None:
+            checks["selected_by_joint_rule"] = choice.get("ship") in (name, "both")
         out = {}
         for pos, v in (c.get("positions") or {}).items():      # one look, joint over RB/WR/TE (pooled cohort)
             out[pos] = {"weeks": g.get("weeks"), "appearances": v.get("n"), "gate_status": g.get("status"),
-                        "checks": _bool_checks(g.get("checks"))}
+                        "checks": dict(checks)}
         return out, weeks
     return read
 
