@@ -798,7 +798,8 @@ def pacific_mac():
     time.tzset()
 
 
-def test_guard_catches_up_a_missed_scheduled_refresh(cli, world, capsys, pacific_mac):
+def test_guard_catches_up_a_missed_scheduled_refresh(cli, world, capsys, pacific_mac, monkeypatch):
+    monkeypatch.setenv("HOME", str(world.launch_agents.parent.parent))     # the world's LaunchAgents, not this Mac's
     ran = []
     sat_noon = SAT                                           # last firing: Thu 15:00 PDT, whose refresh completed
     cli.cmd_guard(_guard_args(world, sat_noon, catch_up=True), refresh=lambda: ran.append(1) or 0, runner=LAUNCHD)
