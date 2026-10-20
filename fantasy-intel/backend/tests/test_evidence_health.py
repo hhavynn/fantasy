@@ -742,6 +742,8 @@ def test_catchup_decisions():
     d = eh.catchup_decision(later, fired, failed, {}, cfg)
     assert d["action"] == "run" and "failed" in d["reason"]
     assert eh.catchup_decision(later, fired, [_log(later, status="running")], {}, cfg)["action"] == "wait"
+    # launchd already started the refresh it replays on wake, before that refresh wrote its log
+    assert eh.catchup_decision(later, fired, [], {}, cfg, job_running=True)["action"] == "wait"
     # right after the firing the scheduled run may still be starting
     assert eh.catchup_decision(TUE_0800 + timedelta(minutes=5), fired, [], {}, cfg)["slot"] == fired[0].isoformat()
     # bounded retries, spaced
@@ -758,7 +760,7 @@ def test_catchup_decisions():
 def _guard_args(world, now, **kw):
     base = dict(root=str(world.root), db=str(world.db), now=now.isoformat(), season=None, from_week=None, hosted=False,
                 database="fantasy_intel", notify=False, execute=True, lead_hours=6.0, max_age_hours=12.0,
-                max_attempts=3, retry_minutes=25.0)
+                max_attempts=3, retry_minutes=25.0, catch_up_settle_seconds=0)
     return argparse.Namespace(**{**base, **kw})
 
 
@@ -810,6 +812,18 @@ def test_guard_catches_up_a_missed_scheduled_refresh(cli, world, capsys, pacific
     assert d["catchup"]["slot"] == datetime(2026, 10, 19, 22, 0, tzinfo=UTC).isoformat()
     state = json.loads((world.state / "guard-state.json").read_text())
     assert [a["exit"] for a in state["catchup_attempts"][d["catchup"]["slot"]]] == [1]
+    # on wake launchd starts the missed firing itself: after the settle pause the guard sees it running and waits
+    calls = []
+
+    def waking(args):
+        if args[:2] == ["launchctl", "print"] and calls:
+            return 0, LOADED.replace("state = not running", "state = running")
+        return LAUNCHD(args)
+    tue = datetime(2026, 10, 20, 18, 0, tzinfo=UTC)
+    cli.cmd_guard(_guard_args(world, tue, catch_up=True, catch_up_settle_seconds=90),
+                  refresh=lambda: ran.append(1) or 0, runner=waking, sleep=calls.append)
+    d = json.loads(capsys.readouterr().out)
+    assert calls == [90] and d["catchup"]["action"] == "wait" and ran == [1]
     # without the flag the guard behaves as before
     cli.cmd_guard(_guard_args(world, mon + timedelta(hours=1)), refresh=lambda: ran.append(1) or 0, runner=LAUNCHD)
     assert "catchup" not in json.loads(capsys.readouterr().out) and ran == [1]

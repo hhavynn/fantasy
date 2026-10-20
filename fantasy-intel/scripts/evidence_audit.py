@@ -1587,14 +1587,15 @@ class CatchupConfig:
 
 
 def catchup_decision(now: datetime, firings: Sequence[datetime], refresh: Sequence[dict], attempts: Mapping[str, list],
-                     cfg: CatchupConfig = CatchupConfig()) -> dict:
+                     cfg: CatchupConfig = CatchupConfig(), job_running: bool = False) -> dict:
     """Decide (pure) whether a scheduled refresh the Mac missed should run now.
 
     The slot is the latest firing of the refresh job's calendar (`firings`) at least grace_min ago and within
     lookback_d. It is covered once a refresh that started at or after it completed (a manual run counts). A firing
     missed while the Mac was shut down, or a run that failed or was cut short, is run again: at most max_attempts
-    per firing, retry_min apart, never while a refresh is running. Only the latest firing is chased: a week the Mac
-    was off costs one refresh, not one per missed firing."""
+    per firing, retry_min apart, never while a refresh is running: a running log, or `job_running` (launchd reports
+    the refresh job running, e.g. the calendar firing it replays on wake before its log exists). Only the latest
+    firing is chased: a week the Mac was off costs one refresh, not one per missed firing."""
     past = [p for p in firings if now - timedelta(days=cfg.lookback_d) < p <= now - timedelta(minutes=cfg.grace_min)]
     if not past:
         return {"action": "idle", "reason": "no scheduled refresh firing to catch up", "slot": None}
@@ -1604,7 +1605,7 @@ def catchup_decision(now: datetime, firings: Sequence[datetime], refresh: Sequen
     if any(r["status"] == "complete" for r in after):
         done = next(r for r in after if r["status"] == "complete")
         return {**base, "action": "covered", "reason": f"refresh {done['log']} completed after the {_iso(p)} firing"}
-    if any(r["status"] == "running" for r in refresh):
+    if job_running or any(r["status"] == "running" for r in refresh):
         return {**base, "action": "wait", "reason": "a refresh is running"}
     tried = attempts.get(base["slot"]) or []
     if len(tried) >= cfg.max_attempts:

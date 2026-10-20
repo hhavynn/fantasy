@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -184,7 +185,7 @@ def run_refresh(timeout: float = REFRESH_TIMEOUT_S) -> int:
         return -999
 
 
-def cmd_guard(args, refresh=run_refresh, runner=None) -> int:
+def cmd_guard(args, refresh=run_refresh, runner=None, sleep=time.sleep) -> int:
     now, paths, runner = _now(args), _paths(args), runner or eh.run_command
     cfg = eh.GuardConfig(lead_h=args.lead_hours, max_age_h=args.max_age_hours, max_attempts=args.max_attempts,
                          retry_min=args.retry_minutes)
@@ -217,7 +218,14 @@ def cmd_guard(args, refresh=run_refresh, runner=None) -> int:
                       if (t := eh.utc(k)) and t > now - timedelta(days=ccfg.lookback_d + 1)}
             fired = eh.occurrences(job["_entries"], now - timedelta(days=ccfg.lookback_d), now) \
                 if job["launchctl"].get("loaded") else []
-            c = eh.catchup_decision(now, fired, runs, caught, ccfg)
+            c = eh.catchup_decision(now, fired, runs, caught, ccfg, job["launchctl"].get("state") == "running")
+            if c["action"] == "run" and d["action"] != "run" and args.execute and args.catch_up_settle_seconds > 0:
+                # on wake launchd replays the missed calendar firing too: give that refresh time to start, then
+                # look again, so the guard never launches a second one beside it
+                sleep(args.catch_up_settle_seconds)
+                job = eh.job_status(paths, "refresh", runner, _uv(), os.getuid())
+                runs = eh.refresh_runs(paths.logs, now)
+                c = eh.catchup_decision(now, fired, runs, caught, ccfg, job["launchctl"].get("state") == "running")
             d["catchup"] = c
         due = d["action"] == "run" or (c is not None and c["action"] == "run")
         if due and args.execute:
@@ -397,6 +405,8 @@ def main(argv=None) -> int:
     g.add_argument("--retry-minutes", type=float, default=eh.GuardConfig.retry_min)
     g.add_argument("--catch-up", action="store_true",
                    help="also run a scheduled refresh the Mac missed (asleep or shut down), on the next check")
+    g.add_argument("--catch-up-settle-seconds", type=float, default=90.0,
+                   help="before a catch-up run, wait this long and look again for a refresh launchd started on wake")
     ld = sub.add_parser("launchd", help="verify or (idempotently) install the launchd jobs")
     ld.add_argument("action", choices=["verify", "install"])
     ld.add_argument("--jobs", default=",".join(eh.REQUIRED_JOBS), help=f"comma list of {', '.join(eh.JOBS)}")

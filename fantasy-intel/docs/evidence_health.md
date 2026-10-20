@@ -123,7 +123,9 @@ Those fixed times miss kickoffs that they do not closely precede:
    the latest firing of the loaded refresh job's calendar at least 15 min ago (within 7 days). It is covered once
    a refresh that started after it completed, manual runs included. Otherwise (the Mac slept through it, was shut
    down, or the run failed or was killed) the guard runs `refresh_all.py`: at most **3** attempts per firing,
-   **25 min** apart, recorded under `catchup_attempts` in `guard-state.json`. Only the latest firing is chased,
+   **25 min** apart, recorded under `catchup_attempts` in `guard-state.json`. It never runs beside another
+   refresh: on wake launchd replays the missed calendar firing itself, so before a catch-up run the guard waits
+   **90 s** (`--catch-up-settle-seconds`) and looks again at the refresh logs and launchd's running state. Only the latest firing is chased,
    so a week with the Mac off costs one refresh. The job runs at load (`RunAtLoad`), so a Mac that was shut down
    catches up minutes after login. This is what keeps the Weekly recap current after Monday night without a
    manual run.
