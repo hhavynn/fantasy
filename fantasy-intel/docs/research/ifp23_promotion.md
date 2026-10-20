@@ -42,6 +42,32 @@ This is the same owner-approved safeguard as ifp-2.2.0 (`scripts/ifp22_backtest.
 * **Empty result.** If no component survives at any position, nothing ships and no version is made.
 * **Reported, not deciding.** `full` (as shipped) vs `b22` per position, on all rows and on the returner rows.
 
-## Results
+## Results (2026-10-20, scratch copies of both databases; 2023 week 1 to 2026 week 5, 59 weeks)
 
-Not run yet.
+**Guard: nothing is left out.** No leave-one-out CI lies entirely above 0, so by the rule both components ship at RB,
+WR and TE. Leave-one-out MAE(full) - MAE(drop_c), week-clustered 95% CI:
+
+| Position | n | `return_slope` | `return_bias` |
+|---|---|---|---|
+| RB | 5,594 | +0.0006 [-0.0003, +0.0017] | +0.0005 [-0.0001, +0.0011] |
+| WR | 8,886 | -0.0006 [-0.0019, +0.0006] | -0.0001 [-0.0008, +0.0007] |
+| TE | 5,346 | +0.0006 [-0.0003, +0.0017] | +0.0012 [-0.0006, +0.0031] |
+
+**Reported, not deciding: the pair makes returner forecasts worse.** MAE(model) - MAE(ifp-2.2.0) on identical rows:
+
+| Rows | n | Full pair | Slope only | Bias only |
+|---|---|---|---|---|
+| Returners, RB | 55 | **+0.220 [+0.046, +0.433]** | | |
+| Returners, WR | 142 | +0.079 [-0.045, +0.196] | | |
+| Returners, TE | 70 | **+0.230 [+0.108, +0.348]** | | |
+| Returners, pooled | 267 | **+0.148 [+0.059, +0.236]** | **+0.111 [+0.025, +0.201]** | **+0.154 [+0.086, +0.229]** |
+| Play-through, pooled | 330 | -0.026 [-0.060, +0.004] | -0.027 [-0.059, +0.003] | -0.024 [-0.056, +0.004] |
+| All RB | 5,594 | +0.0024 [-0.0001, +0.0051] | | |
+| All WR | 8,886 | +0.0004 [-0.0018, +0.0027] | | |
+| All TE | 5,346 | +0.0021 [-0.0003, +0.0045] | | |
+| All, pooled | 19,826 | +0.0014 [-0.0000, +0.0030] | +0.0010 [-0.0004, +0.0025] | **+0.0014 [+0.0001, +0.0028]** |
+
+Read plainly: the extra returner terms over-fit the few returner rows in each week's training set. Out of sample,
+returners' forecasts get worse at every position, clearly so at RB and TE. Play-through rows improve slightly, which
+was the side finding in #135. This window overlaps the 2023-25 seasons #135 already looked at, so these numbers are
+an engineering check, not evidence for either side.
