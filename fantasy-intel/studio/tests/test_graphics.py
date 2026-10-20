@@ -395,3 +395,19 @@ def test_big_compare_draws_inside_the_safe_zone_with_sourced_numbers(style):
                         c.claims, None)}
     for gate in ("vqa_safe_zone", "vqa_overlap", "vqa_numbers", "vqa_text_size", "vqa_caption_clear"):
         assert not result[gate], (gate, result[gate][:3])
+
+
+@pytest.mark.parametrize("style", [s for s in STYLES if s != "pixel"])
+def test_teammate_grid_keeps_the_latest_six_games_late_in_the_season(style):
+    f, c = _ctx(_fill_in(), "00-RISER")
+    scene = next(sc for sc, _ in _scenes_for(f, c) if sc["type"] == "teammate_out")
+    m, tm = c.p["metrics"][0], c.p["teammate"]
+    last = m["series"][-1]["week"]
+    extra = [{"week": last + i, "value": 0.25} for i in range(1, 5)]          # four more games: nine in all
+    m["series"] = m["series"] + extra
+    tm["series"] = tm["series"] + [dict(e) for e in extra]
+    c.tokens = scene["_tokens"]
+    F = vector.draw(style, scene, 3.9, 4.0, c, measure=True)
+    weeks = [e["text"] for e in F.log if e["role"] == "axis" and e["text"].startswith("Wk ")]
+    assert weeks == [f"Wk {w}" for w in range(last - 1, last + 5)]
+    assert all(e["cap_px"] >= 30 for e in F.log if e["role"] == "number")

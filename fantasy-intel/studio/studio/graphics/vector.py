@@ -678,17 +678,20 @@ def scene_presence(F, L, c, t, dur, spec):
         L.text(F, "100%", W - L.mr, y + 150, "label", L.faint, anchor="r", alpha=k, role="axis", src="axis")
 
 
+GRID_GAMES = 6          # the teammate grid's most columns: more and the numbers fall below phone size
+
+
 def scene_teammate_out(F, L, c, t, dur, spec):
     p, tm = c.p, c.p["teammate"]
     m = p["metrics"][0]
     tc = t + 5 if spec.get("phase") == 2 else t
     title_block(F, L, c, tc, "Why the role opened up", f"{tm['name']} missed time", )
-    weeks = [s["week"] for s in m["series"]]
+    weeks = [s["week"] for s in m["series"]][-GRID_GAMES:]     # late in the season: the latest games only
     missed = set(tm["missed_values"])
     tm_series = {x["week"]: x["value"] for x in tm["series"]}
     me = {s["week"]: s["value"] for s in m["series"]}
     n = len(weeks)
-    gap = 14 if n <= 5 else 8                 # six or more games: tighter cells keep the numbers phone-sized
+    gap = 14 if n <= 5 else 8                 # six games: tighter cells keep the numbers phone-sized
     x0 = L.mx + (210 if n <= 5 else 176)
     cw = (W - L.mr - x0 - gap * (n - 1)) / n
     out_x = [x0 + i * (cw + gap) for i, w in enumerate(weeks) if w in missed]
