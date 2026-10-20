@@ -104,6 +104,32 @@ The task sections below are appended as each task lands, with the shipped files 
 - Public-log audit: a full drain run's log contains no team names, player names, cookies or league ids beyond the opaque `lg_` id (automated in the workflow and in tests).
 - End to end: connect a public ESPN league → data visible once the dispatched run finishes (target < 5 min); flip it private on ESPN → access 404 within one probe; private connect → invite → viewer access.
 
+## Turning it on (production)
+
+Each step is reversible. With a step undone, the flags it gates stay off.
+
+1. **Supabase.**
+   - Apply `20261021120000_sync_queue.sql` and `20261021130000_connect_flows.sql`.
+   - Check the security advisors.
+   - Havyn gives `fi_api` and `fi_sync` their LOGIN passwords (`supabase/README.md`).
+   - In Auth, set the Site URL and add `<site>/auth/callback` (and `http://localhost:3000/auth/callback`) to the redirect URLs.
+   - Havyn creates their own user under Authentication, then Users. Sign-ups stay closed until Phase 6.
+2. **GitHub.**
+   - Secrets: `FI_SYNC_DB_URL`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (Object Read & Write on `fantasy-intel`) and `CREDENTIALS_PRIVKEY_V1`.
+   - Repository variable: `SYNC_DRAIN_ENABLED=true`.
+3. **Vercel API (`fantasy-intel-api`).**
+   - `SUPABASE_URL`, `SUPABASE_DB_URL` (fi_api) and `CREDENTIALS_PUBKEY_V1`.
+   - `GITHUB_DISPATCH_TOKEN`: fine-grained, this repository, Actions: write only.
+   - Then `MULTILEAGUE_ENABLED=1` and `MULTILEAGUE_CONNECT_ENABLED=1`.
+4. **Vercel web.**
+   - `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (the publishable key; never the secret or service-role key).
+   - `SITE_URL`, then `MULTILEAGUE_UI_ENABLED=1`.
+5. **Los Subies.**
+   - Havyn signs in once, and the runbook's admin and perspective rows are applied (`supabase/runbook-los-subies.sql`).
+   - Havyn stores their cookies on `/leagues/lg_KxH_Y1Y56aM7qnCCseKvs1sU`, which queues a manual sync.
+6. **The laptop.**
+   - `LEAGUE_PUBLISH_ID=lg_KxH_Y1Y56aM7qnCCseKvs1sU` and `FI_SYNC_DB_URL` in `.env`, so `refresh_all` keeps publishing the global file and Los Subies' research tables.
+
 ## Rollback
 
 - Unset `SYNC_DRAIN_ENABLED` (or disable the workflow) and `MULTILEAGUE_CONNECT_ENABLED`. League files keep their last version, and the laptop keeps publishing Los Subies as in Phase 2.
