@@ -49,8 +49,34 @@ class InviteInvalid(ControlPlaneError):
     code = "invite_invalid"
 
 
+class LeagueUnavailable(ControlPlaneError):
+    code = "league_unavailable"
+
+
+class LeaguePublic(ControlPlaneError):
+    code = "league_public"
+
+
+class LeagueQuota(ControlPlaneError):
+    code = "league_quota"
+
+
+class NoCredential(ControlPlaneError):
+    code = "no_credential"
+
+
+class SyncPaused(ControlPlaneError):
+    code = "sync_paused"
+
+
+class NotLeagueOwner(ControlPlaneError):
+    """Joining an existing private league needs the caller's own cookies to show a team they own."""
+    code = "not_a_league_member"
+
+
 _BY_CODE = {cls.code: cls for cls in (SignInRequired, NotAdmin, NotAMember, NotOwner, LastAdmin, CredentialExists,
-                                      InviteInvalid)}
+                                      InviteInvalid, LeagueUnavailable, LeaguePublic, LeagueQuota, NoCredential,
+                                      NotLeagueOwner, SyncPaused)}
 
 
 def _call(con, sql: str, params=()):
@@ -165,3 +191,47 @@ def store_credential(con, principal: Principal, league_id: str, enc: EncryptedCr
 def revoke_credential(con, principal: Principal, league_id: str) -> None:
     _require(principal)
     _call(con, "SELECT fi.revoke_credential(%s)", [league_id])
+
+
+# ---- Phase 3b: registering leagues and asking for syncs (supabase/migrations/20261021130000_connect_flows.sql) ----
+
+def import_public_league(con, principal: Principal, provider: str, external_id: str, season: int) -> str:
+    """Register (once) a league the API has just read without cookies, pin it, queue its first sync."""
+    _require(principal)
+    return _call(con, "SELECT fi.import_public_league(%s, %s, %s, NULL)", [provider, external_id, int(season)])[0]
+
+
+def connect_private_league(con, principal: Principal, provider: str, external_id: str, season: int, name: str | None,
+                           owns_team: bool) -> str:
+    _require(principal)
+    return _call(con, "SELECT fi.connect_private_league(%s, %s, %s, %s, %s)",
+                 [provider, external_id, int(season), name, bool(owns_team)])[0]
+
+
+def start_private_sync(con, principal: Principal, league_id: str) -> None:
+    _require(principal)
+    _call(con, "SELECT fi.start_private_sync(%s)", [league_id])
+
+
+def request_sync(con, principal: Principal, league_id: str) -> str | None:
+    _require(principal)
+    return _call(con, "SELECT fi.request_sync(%s)::text", [league_id])[0]
+
+
+def delete_league(con, principal: Principal, league_id: str) -> None:
+    _require(principal)
+    _call(con, "SELECT fi.delete_league(%s)", [league_id])
+
+
+def request_probe(con, league_id: str) -> bool:
+    """Any caller, signed in or not; the answer is for the API only (never sent to the client)."""
+    return bool(_call(con, "SELECT fi.request_probe(%s)", [league_id])[0])
+
+
+def list_invites(con, principal: Principal, league_id: str) -> list[dict]:
+    """The league's open invites (admins only, by RLS). Token hashes are never selected."""
+    _require(principal)
+    rows = con.execute("""SELECT id::text, created_at, expires_at FROM fi.league_invites
+                          WHERE league_id = %s AND redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > now()
+                          ORDER BY created_at DESC""", [league_id]).fetchall()
+    return [{"invite_id": r[0], "created_at": r[1].isoformat(), "expires_at": r[2].isoformat()} for r in rows]

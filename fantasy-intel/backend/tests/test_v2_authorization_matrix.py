@@ -49,6 +49,19 @@ def league_routes():
     return out
 
 
+# Phase 1's preference routes: a visible signed-in caller succeeds. The Phase 3 connect routes (invites, credential,
+# refresh, delete) have their own outcomes for a visible caller (403 for a viewer, 409, 422 for an empty body…):
+# here they must only never be the 404 an invisible league gets, never a 5xx, and always 401 when anonymous.
+PREFERENCE_ROUTES = {("GET", "/v2/leagues/{league_id}"), ("PUT", "/v2/leagues/{league_id}/pin"),
+                     ("DELETE", "/v2/leagues/{league_id}/pin"), ("PUT", "/v2/leagues/{league_id}/perspective"),
+                     ("DELETE", "/v2/leagues/{league_id}/perspective")}
+
+
+@pytest.fixture(autouse=True)
+def _connect_routes_on(monkeypatch):
+    monkeypatch.setenv("MULTILEAGUE_CONNECT_ENABLED", "1")
+
+
 def body_for(method, path):
     return {"team_external_id": "6"} if method == "PUT" and path.endswith("/perspective") else None
 
@@ -71,11 +84,16 @@ def leagues(pg):
 @pytest.mark.parametrize("state", list(STATES))
 @pytest.mark.parametrize("actor", list(ACTORS))
 def test_matrix(client, leagues, method, path, state, actor):
-    url = path.replace("{league_id}", leagues[state])
+    url = path.replace("{league_id}", leagues[state]).replace("{invite_id}", "00000000-0000-4000-8000-000000000000")
     r = client.request(method, url, headers=headers(actor), json=body_for(method, path))
     where = (method, path, state, actor)
     if actor not in VISIBLE[state]:
         assert (r.status_code, r.json()) == (404, {"detail": "League not found."}), where
+    elif (method, path) not in PREFERENCE_ROUTES:
+        if actor == "anon":
+            assert (r.status_code, r.json()) == (401, {"detail": "Sign in to use this endpoint."}), where
+        else:
+            assert r.status_code != 404 and r.status_code < 500, (where, r.status_code, r.text[:200])
     elif method == "GET":
         assert r.status_code == 200, where
         assert r.json()["role"] == {"viewer": "viewer", "admin": "admin"}.get(actor), where
@@ -88,7 +106,7 @@ def test_matrix(client, leagues, method, path, state, actor):
 @pytest.mark.parametrize("method,path", league_routes())
 @pytest.mark.parametrize("actor", list(ACTORS))
 def test_unknown_league_is_404_on_every_route_before_anything_else(client, leagues, method, path, actor):
-    url = path.replace("{league_id}", "lg_" + "q" * 24)
+    url = path.replace("{league_id}", "lg_" + "q" * 24).replace("{invite_id}", "00000000-0000-4000-8000-000000000000")
     r = client.request(method, url, headers=headers(actor), json={"garbage": True})
     assert (r.status_code, r.json()) == (404, {"detail": "League not found."}), (method, path, actor)
 

@@ -99,11 +99,13 @@ END $$;
 -- Returns the queued job's id, or NULL when one is already queued or ran recently.
 CREATE OR REPLACE FUNCTION fi.request_sync(p_league_id text) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = '' AS $$
-DECLARE v uuid := fi.ensure_app_user(); v_vis text; v_job uuid;
+DECLARE v uuid := fi.ensure_app_user(); v_vis text; v_status text; v_job uuid;
 BEGIN
-  SELECT l.visibility INTO v_vis FROM fi.leagues l
-  WHERE l.id = p_league_id AND l.deleted_at IS NULL AND l.status IN ('active', 'dormant') FOR UPDATE;
+  SELECT l.visibility, l.status INTO v_vis, v_status FROM fi.leagues l
+  WHERE l.id = p_league_id AND l.deleted_at IS NULL FOR UPDATE;
   IF v_vis IS NULL OR (v_vis = 'private' AND NOT fi.is_member(p_league_id)) THEN RAISE EXCEPTION 'league_unavailable'; END IF;
+  -- stale (the cookies stopped working) or unavailable (gone on the provider): a refresh cannot help
+  IF v_status NOT IN ('active', 'dormant') THEN RAISE EXCEPTION 'sync_paused'; END IF;
   IF EXISTS (SELECT 1 FROM fi.sync_jobs j WHERE j.league_id = p_league_id AND j.kind = 'manual'
              AND j.created_at > now() - interval '15 minutes') THEN
     RETURN NULL;
@@ -117,17 +119,21 @@ BEGIN
 END $$;
 
 -- Spec §2: the first viewer after a public league's visibility check expired triggers a probe (at most one per
--- league per 5 minutes). Says nothing back, so it reveals nothing about the league.
-CREATE OR REPLACE FUNCTION fi.request_probe(p_league_id text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+-- league per 5 minutes). True when a probe was queued; only the API sees the answer (it then starts the drain), the
+-- caller always gets the same 404.
+CREATE OR REPLACE FUNCTION fi.request_probe(p_league_id text) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = '' AS $$
+DECLARE v_job uuid;
 BEGIN
   IF EXISTS (SELECT 1 FROM fi.leagues l WHERE l.id = p_league_id AND l.deleted_at IS NULL AND l.visibility = 'public'
              AND (l.visibility_checked_at IS NULL OR l.visibility_checked_at < now() - interval '24 hours'))
      AND NOT EXISTS (SELECT 1 FROM fi.sync_jobs j WHERE j.league_id = p_league_id AND j.kind = 'probe'
                      AND j.created_at > now() - interval '5 minutes') THEN
     INSERT INTO fi.sync_jobs (league_id, kind, idempotency_key) VALUES (p_league_id, 'probe', 'probe:' || p_league_id)
-    ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL AND status IN ('queued', 'running') DO NOTHING;
+    ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL AND status IN ('queued', 'running') DO NOTHING
+    RETURNING id INTO v_job;
   END IF;
+  RETURN v_job IS NOT NULL;
 END $$;
 
 -- An admin deletes a private league: soft delete now, objects deleted 7 days later (fi.league_timers). Public

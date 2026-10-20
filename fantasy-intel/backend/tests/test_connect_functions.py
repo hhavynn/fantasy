@@ -120,15 +120,15 @@ def test_manual_refresh_is_for_members_or_public_and_at_most_every_fifteen_minut
         assert call(con, "authenticated", U2, "SELECT fi.request_sync(%s)::text", [pub])[0][0] is None, "ran < 15 min ago"
 
 
-def test_an_expired_public_league_is_probed_once_per_five_minutes_and_nothing_is_revealed(pg):
+def test_an_expired_public_league_is_probed_once_per_five_minutes(pg):
     with pg.connect() as su:
         expired, fresh, private = (seed_league(su, checked_at="25 hours"), seed_league(su),
                                    seed_league(su, visibility="private", checked_at="25 hours"))
         su.commit()
     with pg.connect(user="fi_api") as con:
-        answers = {str(call(con, "anon", None, "SELECT fi.request_probe(%s)", [lid]))
-                   for lid in (expired, expired, fresh, private, "lg_" + "z" * 24)}
-    assert len(answers) == 1, "the same answer whatever the league is"
+        queued = [call(con, "anon", None, "SELECT fi.request_probe(%s)", [lid])[0][0]
+                  for lid in (expired, expired, fresh, private, "lg_" + "z" * 24)]
+    assert queued == [True, False, False, False, False]
     assert jobs(pg, expired) == [("probe", "queued")]
     assert jobs(pg, fresh) == [] and jobs(pg, private) == []
 

@@ -98,6 +98,8 @@ def league_tx(league_id: str = Depends(valid_league_id), tx=REQUEST_TX) -> tuple
     try:
         return con, authorize_league_in(con, principal, league_id)
     except LeagueNotFound:
+        from .connect import nudge_probe
+        nudge_probe(principal, league_id)      # an expired public league starts a probe; the answer stays 404
         raise HTTPException(404, NOT_FOUND) from None
 
 
