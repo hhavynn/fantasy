@@ -23,6 +23,17 @@ jobs:
         working-directory: fantasy-intel/backend
     env:
       TZ: UTC
+      # Control-plane tests (tests/pg_harness.py) run against this service; locally they use a throwaway initdb cluster.
+      FI_TEST_PG_DSN: postgresql://postgres:postgres@localhost:5432/postgres
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+        ports:
+          - 5432:5432
 
     steps:
       - name: Checkout repository
