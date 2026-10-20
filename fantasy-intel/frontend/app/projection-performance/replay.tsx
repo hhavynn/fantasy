@@ -2,7 +2,7 @@ import { Delta, EmptyState, Pos, Section } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { num, when } from "@/lib/format";
 import {
-  REPLAY_GROUPS, diffFor, replaySummary, replayView, totalDiff, type ReplayGroup, type ReplayResponse,
+  REPLAY_GROUPS, diffFor, replaySummary, replayView, seasonLabel, type ReplayGroup, type ReplayResponse,
 } from "@/lib/model-replay";
 import styles from "./performance.module.css";
 
@@ -65,11 +65,14 @@ export function WeeklyReplay({ d }: { d: ReplayResponse }) {
               </tr>
             ))}
             <tr>
-              <td className={styles.strong}>Season</td>
-              {REPLAY_GROUPS.map((g) => [
-                <td key={`${g}m`} className={cx("num", styles.strong)} title={`${s.totals[g].n} player-weeks`}>{num(s.totals[g].mae.model, 2, "No player-weeks")}</td>,
-                <td key={`${g}d`} className="num"><DiffText diff={totalDiff(c, g)} same={d.same_within} /></td>,
-              ])}
+              <td className={styles.strong}>{seasonLabel(c, s.weeks.map((w) => w.week))}</td>
+              {REPLAY_GROUPS.map((g) => {
+                const sc = c.season.groups[g];
+                return [
+                  <td key={`${g}m`} className={cx("num", styles.strong)} title={`${sc.n_new} player-weeks`}>{num(sc.mae_new, 2, "No player-weeks")}</td>,
+                  <td key={`${g}d`} className="num" title={`${num(sc.mae_old, 2)} before, same weeks`}><DiffText diff={sc.diff} same={d.same_within} /></td>,
+                ];
+              })}
             </tr>
           </tbody>
         </table>

@@ -88,6 +88,13 @@ def test_fingerprints_follow_inputs_outputs_and_loaded_modules():
     files = {f.name for f in mrs.model_files()}
     assert {"context_model.py", "challenger.py", "challenger_config.json"} <= files
     assert not {"model_replay.py", "performance_report.py", "connection.py"} & files
+    # run as `python scripts/model_replay.py`, the script itself is __main__: still not part of the model
+    main = sys.modules.get("__main__")
+    try:
+        sys.modules["__main__"] = mrs
+        assert "model_replay.py" not in {f.name for f in mrs.model_files()}
+    finally:
+        sys.modules["__main__"] = main
 
 
 @pytest.mark.parametrize("mutate, reason", [
@@ -186,3 +193,30 @@ def test_a_failed_replay_is_a_warning_never_a_failed_refresh(monkeypatch, tmp_pa
     assert refresh.main() == 0
     assert calls.index(refresh.REPLAY) == calls.index(refresh.REPORT) + 1 and calls[-1] == refresh.PUBLISH
     assert "WARNING: replay: model_replay.py exited 2" in next(tmp_path.glob("refresh-*.log")).read_text()
+
+
+def test_season_comparison_uses_only_weeks_both_snapshots_replayed():
+    old = snapshot("m1", weeks={1: {"QB": 6.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}})
+    new = snapshot("m2", weeks={1: {"QB": 5.0, "RB": 4.0, "WR": 4.0, "TE": 3.0},
+                                2: {"QB": 20.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}})   # week 2 only in the new one
+    season = mr.compare(new, old)["season"]
+    assert season["weeks"] == [1]
+    assert season["groups"]["QB"] == {"mae_new": 5.0, "mae_old": 6.0, "diff": -1.0, "direction": "better",
+                                      "n_new": 10, "n_old": 10}
+    prior = mr.vs_prior(new)["season"]["groups"]["QB"]               # same rows: pooled over every week
+    assert prior["mae_new"] == 12.5 and prior["diff"] == -0.1
+
+
+@pytest.mark.parametrize("flag, ran_report, ran_replay", [
+    ("--skip-report", False, True), ("--skip-replay", True, False)])
+def test_skip_report_and_skip_replay_are_independent(monkeypatch, tmp_path, flag, ran_report, ran_replay):
+    import refresh_all as refresh
+
+    calls = []
+    monkeypatch.setenv("MOTHERDUCK_TOKEN", "tok")
+    monkeypatch.setattr(refresh, "run_step", lambda cmd, log, timeout=None: calls.append(Path(cmd[1]).name) or 0)
+    monkeypatch.setattr(refresh, "check_pregame", lambda log: None)
+    monkeypatch.setattr(refresh, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["refresh_all.py", "--skip-evidence", flag])
+    assert refresh.main() == 0
+    assert (refresh.REPORT in calls) == ran_report and (refresh.REPLAY in calls) == ran_replay

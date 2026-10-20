@@ -51,7 +51,7 @@ from app.db.connection import connect as db_connect  # noqa: E402
 # Model identity: the model version and config plus the source of every repo module the replay actually loaded
 # (context_model and everything it imports transitively, the store builders, the frozen QB scenario script). Modules
 # that only package or serve the replay are left out, so editing the page plumbing is not "a new model".
-NOT_MODEL = {"model_replay", "app.analytics.model_replay", "app.analytics.performance_report", "_bootstrap"}
+NOT_MODEL = {"__main__", "model_replay", "app.analytics.model_replay", "app.analytics.performance_report", "_bootstrap"}
 NOT_MODEL_PREFIXES = ("app.db", "app.api", "app.config")
 PRED = {"model": "pred_model", "prior_version": "pred_prior", "recent_avg": "pred_A1"}
 NOTES = [
@@ -75,6 +75,8 @@ def model_files() -> list[Path]:
         if not f or name in NOT_MODEL or name.startswith(NOT_MODEL_PREFIXES):
             continue
         path = Path(f).resolve()
+        if path == Path(__file__).resolve():        # this script, whatever name it was loaded under (__main__)
+            continue
         if path.is_relative_to(root / "backend" / "app") or path.parent == root / "scripts":
             files.add(path)
     files.add((root / "backend" / "app" / "analytics" / "challenger_config.json").resolve())

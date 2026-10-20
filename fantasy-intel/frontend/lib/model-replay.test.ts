@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { replaySummary, replayView, totalDiff, weeksWith, type ReplayComparison, type ReplayResponse } from "./model-replay.ts";
+import { replaySummary, replayView, seasonLabel, weeksWith, type ReplayComparison, type ReplayResponse } from "./model-replay.ts";
 
 const cell = (diff: number, n = 10) => ({ diff, direction: Math.abs(diff) < 0.05 ? "same" : diff < 0 ? "better" : "worse", n_new: n, n_old: n } as const);
 const comparison = (diffs: Record<number, number>): ReplayComparison => ({
   weeks: Object.entries(diffs).map(([w, d]) => ({
     week: Number(w), groups: { ALL: cell(d), QB: cell(d), RB: null, WR: cell(d, 30), TE: null },
   })),
+  season: { weeks: Object.keys(diffs).map(Number), groups: {} as ReplayComparison["season"]["groups"] },
   tally: { ALL: { better: 0, worse: 0, same: 0 }, QB: { better: 0, worse: 0, same: 0 }, RB: { better: 0, worse: 0, same: 0 },
     WR: { better: 0, worse: 0, same: 0 }, TE: { better: 0, worse: 0, same: 0 } },
 });
@@ -18,10 +19,11 @@ test("summary names the weeks that got closer, further off and stayed the same",
   assert.equal(replaySummary(comparison({})), "No week to compare yet.");
 });
 
-test("season difference is weighted by player-weeks and skips groups with nothing to compare", () => {
+test("the season row names the shared weeks when the newer replay has more", () => {
   const c = comparison({ 1: -0.2, 2: 0.1 });
-  assert.ok(Math.abs((totalDiff(c, "ALL") ?? NaN) - -0.05) < 1e-9);
-  assert.equal(totalDiff(c, "RB"), null);
+  assert.equal(seasonLabel(c, [1, 2]), "Season");
+  assert.equal(seasonLabel(c, [1, 2, 3]), "Weeks 1–2 (both replays)");
+  assert.equal(seasonLabel(comparison({}), [1]), "Season (no shared week)");
 });
 
 test("deltas are against the previous model once one exists, else the prior version", () => {

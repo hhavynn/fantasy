@@ -3,7 +3,7 @@ when MOTHERDUCK_TOKEN is set), then a check that this week's ESPN projections we
 first kickoff, then the read-only "evidence" stage (injury freshness report, start/sit decision set, ESPN
 benchmark). launchd runs it on a weekly schedule (see README "Scheduled refresh"); it is also fine by hand:
 
-    cd backend && uv run python ../scripts/refresh_all.py [--no-publish] [--check-only] [--skip-evidence] [--skip-report]
+    cd backend && uv run python ../scripts/refresh_all.py [--no-publish] [--check-only] [--skip-evidence] [--skip-report] [--skip-replay]
 
 Report step (docs/projection_performance.md): after the analytics step, scripts/projection_performance.py
 publish builds the accuracy scorecard from a read-only connection and inserts it as one write-once row, so the
@@ -460,6 +460,8 @@ def main() -> int:
                         help="skip the read-only evidence stage (injury report, start/sit record, ESPN benchmark)")
     parser.add_argument("--skip-report", action="store_true",
                         help="skip building the projection-performance report before the publish")
+    parser.add_argument("--skip-replay", action="store_true",
+                        help="skip the weekly model replay (model_replay.py publish) before the publish")
     args = parser.parse_args()
 
     log = Log(LOG_DIR / f"refresh-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.log")
@@ -475,6 +477,7 @@ def main() -> int:
                     continue
                 if step == PUBLISH and not args.skip_report:
                     run_report(log)          # after analytics, so the publish carries the new report
+                if step == PUBLISH and not args.skip_replay:
                     run_replay(log)          # and the newest weekly model replay
                 if step == PUBLISH:
                     run_ranges(log)          # so the publish carries the pinned floor / ceiling table
@@ -501,6 +504,7 @@ def main() -> int:
                 return 1
             if PUBLISH not in steps and not args.skip_report:
                 run_report(log)              # local install: the local API serves the report
+            if PUBLISH not in steps and not args.skip_replay:
                 run_replay(log)
             if PUBLISH not in steps:
                 run_ranges(log)

@@ -175,19 +175,36 @@ def _diff(new: dict, old: dict | None, metric_new: str = "model", metric_old: st
     return {"diff": d, "direction": direction(d), "n_new": new["n"], "n_old": old["n"]}
 
 
+def _pooled(cells: list[dict], metric: str) -> float | None:
+    """MAE over several weeks' cells: the n-weighted mean of their MAEs (= MAE over the pooled player-weeks)."""
+    n = sum(c["n"] for c in cells if c["n"])
+    return round(sum(c["mae"][metric] * c["n"] for c in cells if c["n"]) / n, 4) if n else None
+
+
+def _season(pairs: list[tuple[dict, dict]], metric_new: str = "model", metric_old: str = "model") -> dict:
+    """Per group, season MAE of both sides over the SAME weeks (`pairs`: (new week, old week)) and their difference,
+    so the season figures never mix a week only one side replayed."""
+    out = {}
+    for g in GROUPS:
+        new = [n["groups"][g] for n, o in pairs if n["groups"][g]["n"] and o["groups"][g]["n"]]
+        old = [o["groups"][g] for n, o in pairs if n["groups"][g]["n"] and o["groups"][g]["n"]]
+        a, b = _pooled(new, metric_new), _pooled(old, metric_old)
+        d = None if a is None or b is None else round(a - b, 4)
+        out[g] = {"mae_new": a, "mae_old": b, "diff": d, "direction": direction(d),
+                  "n_new": sum(c["n"] for c in new), "n_old": sum(c["n"] for c in old)}
+    return {"weeks": [n["week"] for n, _ in pairs], "groups": out}
+
+
 def compare(new: dict, old: dict) -> dict:
     """Per week and group: MAE(new snapshot's model) - MAE(old snapshot's model), on the weeks both replayed. The
     player-weeks can differ slightly (stat corrections, newly synced appearances), so both n are kept."""
     old_weeks = {w["week"]: w for w in old["weeks"]}
-    weeks = []
-    for w in new["weeks"]:
-        o = old_weeks.get(w["week"])
-        if o is None:
-            continue
-        weeks.append({"week": w["week"], "groups": {g: _diff(w["groups"][g], o["groups"][g]) for g in GROUPS}})
+    pairs = [(w, old_weeks[w["week"]]) for w in new["weeks"] if w["week"] in old_weeks]
+    weeks = [{"week": w["week"], "groups": {g: _diff(w["groups"][g], o["groups"][g]) for g in GROUPS}} for w, o in pairs]
     tally = {g: {k: sum(1 for w in weeks if (w["groups"][g] or {}).get("direction") == k)
                  for k in ("better", "worse", "same")} for g in GROUPS}
-    return {"against": {"generated_at": old["generated_at"], "model": old["model"]}, "weeks": weeks, "tally": tally}
+    return {"against": {"generated_at": old["generated_at"], "model": old["model"]}, "weeks": weeks, "tally": tally,
+            "season": _season(pairs)}
 
 
 def vs_prior(snapshot: dict) -> dict:
@@ -196,7 +213,8 @@ def vs_prior(snapshot: dict) -> dict:
                                              for g in GROUPS}} for w in snapshot["weeks"]]
     tally = {g: {k: sum(1 for w in weeks if (w["groups"][g] or {}).get("direction") == k)
                  for k in ("better", "worse", "same")} for g in GROUPS}
-    return {"weeks": weeks, "tally": tally}
+    return {"weeks": weeks, "tally": tally,
+            "season": _season([(w, w) for w in snapshot["weeks"]], "model", "prior_version")}
 
 
 def response(con, season: int) -> dict:

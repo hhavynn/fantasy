@@ -89,6 +89,9 @@ uv run python ../scripts/model_replay.py publish    # store a snapshot if the mo
 uv run python ../scripts/model_replay.py history    # stored snapshots and the week-by-week comparison
 ```
 
+The season row compares both models over the weeks both replays cover (labelled with those weeks when the newer
+replay has more). `refresh_all.py --skip-replay` skips the replay step; `--skip-report` no longer affects it.
+
 ## What the report contains (aggregates only)
 
 No player, roster, league or fantasy-team identifier is ever published; only counts and error statistics.

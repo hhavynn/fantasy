@@ -16,10 +16,12 @@ export type ReplaySnapshot = {
   weeks: ReplayWeek[]; totals: Record<ReplayGroup, ReplayCell>; notes: string[];
 };
 export type DiffCell = { diff: number; direction: Direction; n_new: number; n_old: number } | null;
+export type SeasonCell = { mae_new: number | null; mae_old: number | null; diff: number | null; direction: Direction | null; n_new: number; n_old: number };
 export type ReplayComparison = {
   against?: { generated_at: string; model: ReplayModel };
   weeks: { week: number; groups: Record<ReplayGroup, DiffCell> }[];
   tally: Record<ReplayGroup, Record<Direction, number>>;
+  season: { weeks: number[]; groups: Record<ReplayGroup, SeasonCell> };   // both sides over the same weeks
 };
 export type ReplayHistoryRow = { generated_at: string; model: ReplayModel; weeks: number[]; mae: number | null; n: number };
 export type ReplayResponse = {
@@ -71,12 +73,11 @@ export function diffFor(c: ReplayComparison, week: number, group: ReplayGroup): 
   return c.weeks.find((w) => w.week === week)?.groups[group] ?? null;
 }
 
-/** Whole-season difference for the totals row: weighted by the newer snapshot's n per week. */
-export function totalDiff(c: ReplayComparison, group: ReplayGroup): number | null {
-  let n = 0, s = 0;
-  for (const w of c.weeks) {
-    const g = w.groups[group];
-    if (g) { n += g.n_new; s += g.diff * g.n_new; }
-  }
-  return n ? s / n : null;
+/** The season row's label: plain "Season" when the comparison covers every replayed week, otherwise the weeks
+ *  both sides replayed (the row's MAE and change are then both computed over those weeks only). */
+export function seasonLabel(c: ReplayComparison, replayedWeeks: number[]): string {
+  const shared = c.season.weeks;
+  if (shared.length === replayedWeeks.length) return "Season";
+  if (!shared.length) return "Season (no shared week)";
+  return `Weeks ${shared[0]}–${shared[shared.length - 1]} (both replays)`;
 }
