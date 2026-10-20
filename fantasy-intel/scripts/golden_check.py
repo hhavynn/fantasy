@@ -60,6 +60,35 @@ def job_build(pg, pub, db: Path, tmp: Path, settings, season: int) -> None:
     print("per-league side: built by the sync job path")
 
 
+def _differing_paths(a: str, b: str) -> list[str]:
+    """JSON key paths whose values differ (paths only: never the private values)."""
+    import json
+
+    def load(text):
+        return json.loads(text.split("\n", 1)[1] if text.startswith("//") else text)
+
+    out = []
+
+    def walk(x, y, path):
+        if type(x) is not type(y):
+            out.append(path or "$")
+        elif isinstance(x, dict):
+            for k in sorted(set(x) | set(y)):
+                walk(x.get(k), y.get(k), f"{path}.{k}")
+        elif isinstance(x, list):
+            if len(x) != len(y):
+                out.append(f"{path}[len]")
+            for i, (u, v) in enumerate(zip(x, y)):
+                walk(u, v, f"{path}[{i}]" if i < 1 else f"{path}[*]")
+        elif x != y:
+            out.append(path or "$")
+    try:
+        walk(load(a), load(b), "")
+    except ValueError:
+        return ["(not JSON)"]
+    return sorted(set(out))
+
+
 def main() -> int:
     from app.config import get_settings
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
@@ -96,7 +125,7 @@ def main() -> int:
             if job_path:
                 job_build(pg, pub, db, tmp, settings, season)
             with pg.connect() as c:
-                seed_user(c, U1)
+                seed_user(c, U1, admin=True)       # the owner-only research routes need a platform admin
                 seed_membership(c, U1, pub.league_id, "admin")
                 if mine:
                     c.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, %s)",
@@ -125,7 +154,13 @@ def main() -> int:
                 def get(self, path):
                     return client.get(f"/v2/leagues/{pub.league_id}{path}", headers=headers)
 
-            differ = [c.name for c in cs if response_text(client, c) != response_text(Scoped(), c)]
+            differ = []
+            for c in cs:
+                legacy, scoped = response_text(client, c), response_text(Scoped(), c)
+                if legacy != scoped:
+                    differ.append(c.name)
+                    if "--paths" in sys.argv[1:]:
+                        print(f"  {c.name}: {', '.join(_differing_paths(legacy, scoped)[:8])}")
         finally:
             cluster.stop()
     print(f"{len(cs)} cases compared; {len(cs) - len(differ)} identical; {len(differ)} differ")
