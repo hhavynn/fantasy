@@ -29,7 +29,7 @@ $$;
 -- pins it for the caller and queues its first sync. A league registered privately is never imported as public.
 CREATE OR REPLACE FUNCTION fi.import_public_league(p_provider text, p_external_id text, p_season integer, p_name text)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE v uuid := fi.ensure_app_user(); v_id text; v_vis text; v_deleted timestamptz;
+DECLARE v uuid := fi.ensure_app_user(); v_id text; v_vis text; v_deleted timestamptz; v_status text;
 BEGIN
   PERFORM fi.check_league_quota(v);
   INSERT INTO fi.leagues (id, provider, external_id, season, name, visibility, visibility_checked_at)
@@ -39,13 +39,19 @@ BEGIN
   SELECT l.id, l.visibility, l.deleted_at INTO v_id, v_vis, v_deleted FROM fi.leagues l
   WHERE l.provider = p_provider AND l.external_id = p_external_id AND l.season = p_season FOR UPDATE;
   IF v_vis <> 'public' OR v_deleted IS NOT NULL THEN RAISE EXCEPTION 'league_unavailable'; END IF;
-  -- A re-import wakes a dormant league (its next sync rebuilds purged objects) and counts as a fresh check.
-  UPDATE fi.leagues SET visibility_checked_at = now(),
-         status = CASE WHEN status = 'dormant' THEN 'active' ELSE status END,
+  -- The API just read the league anonymously: a fresh visibility check, and proof it exists. A dormant league wakes
+  -- (its next sync rebuilds purged objects); an unavailable one (404s, or private for a while) is active again.
+  SELECT l.status INTO v_status FROM fi.leagues l WHERE l.id = v_id;
+  UPDATE fi.leagues SET visibility_checked_at = now(), missing_count = 0, missing_since = NULL,
+         status = CASE WHEN status IN ('dormant', 'unavailable') THEN 'active' ELSE status END,
          objects_purged_at = CASE WHEN status = 'dormant' THEN NULL ELSE objects_purged_at END
   WHERE id = v_id;
   INSERT INTO fi.league_pins (user_id, league_id) VALUES (v, v_id) ON CONFLICT DO NOTHING;
   PERFORM fi.queue_initial(v_id);
+  IF v_status = 'unavailable' THEN          -- a league with a version still needs a sync to catch up
+    INSERT INTO fi.sync_jobs (league_id, kind, idempotency_key) VALUES (v_id, 'manual', 'manual:' || v_id)
+    ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL AND status IN ('queued', 'running') DO NOTHING;
+  END IF;
   PERFORM fi.audit(v, 'league.import', 'league', v_id, '{}'::jsonb);
   RETURN v_id;
 END $$;
@@ -104,8 +110,14 @@ BEGIN
   SELECT l.visibility, l.status INTO v_vis, v_status FROM fi.leagues l
   WHERE l.id = p_league_id AND l.deleted_at IS NULL FOR UPDATE;
   IF v_vis IS NULL OR (v_vis = 'private' AND NOT fi.is_member(p_league_id)) THEN RAISE EXCEPTION 'league_unavailable'; END IF;
-  -- stale (the cookies stopped working) or unavailable (gone on the provider): a refresh cannot help
-  IF v_status NOT IN ('active', 'dormant') THEN RAISE EXCEPTION 'sync_paused'; END IF;
+  -- unavailable (gone on the provider), or stale with no live credential (the cookies stopped working and nobody
+  -- stored new ones): a refresh cannot help. Stale with a live credential is the recovery path: fresh cookies were
+  -- just stored, and the sync that validates them (fi.mark_credential 'active') makes the league active again.
+  IF v_status NOT IN ('active', 'dormant', 'stale')
+     OR (v_status = 'stale' AND NOT EXISTS (SELECT 1 FROM fi.league_credentials c WHERE c.league_id = p_league_id
+                                            AND c.status IN ('active', 'suspect'))) THEN
+    RAISE EXCEPTION 'sync_paused';
+  END IF;
   IF EXISTS (SELECT 1 FROM fi.sync_jobs j WHERE j.league_id = p_league_id AND j.kind = 'manual'
              AND j.created_at > now() - interval '15 minutes') THEN
     RETURN NULL;

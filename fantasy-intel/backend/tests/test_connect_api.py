@@ -246,3 +246,27 @@ def test_a_404_on_an_expired_public_league_queues_one_probe_and_starts_the_drain
     assert one(pg, "SELECT count(*) FROM fi.sync_jobs WHERE league_id = %s AND kind = 'probe'", [expired]) == (1,)
     assert dispatched == [1]
     assert client.get("/v2/leagues/lg_" + "n" * 24).status_code == 404 and dispatched == [1]
+
+
+def test_fresh_cookies_recover_a_stale_league(client, pg, private_league, espn, dispatched):
+    with pg.connect() as su:
+        su.execute("UPDATE fi.leagues SET status = 'stale' WHERE id = %s", [private_league])
+        su.commit()
+    r = client.put(f"/v2/leagues/{private_league}/credential", json=COOKIES, headers=bearer(U2))
+    assert r.status_code == 200, r.text
+    assert one(pg, "SELECT status FROM fi.league_credentials") == ("active",)
+    assert one(pg, "SELECT kind, status FROM fi.sync_jobs WHERE league_id = %s", [private_league]) == ("manual", "queued")
+    assert dispatched == [1]
+
+
+def test_reimporting_an_unavailable_public_league_reactivates_and_resyncs_it(client, pg, users, espn):
+    with pg.connect() as su:
+        lid = seed_league(su, external_id="4242", status="unavailable", checked_at="40 hours")
+        su.execute("UPDATE fi.leagues SET missing_count = 3 WHERE id = %s", [lid])
+        su.execute("INSERT INTO fi.league_snapshots (league_id, object_key, data_version, fence, global_version) "
+                   "VALUES (%s, %s, 'v1', 1, 'g1')", [lid, f"leagues/{lid}/v1.duckdb"])
+        su.commit()
+    r = client.post("/v2/leagues/import", json={"league": "4242", "season": 2026}, headers=bearer(U1))
+    assert r.status_code == 201 and r.json()["league_id"] == lid
+    assert one(pg, "SELECT status, missing_count FROM fi.leagues WHERE id = %s", [lid]) == ("active", 0)
+    assert one(pg, "SELECT kind FROM fi.sync_jobs WHERE league_id = %s", [lid]) == ("manual",)
