@@ -94,7 +94,7 @@ def test_base_identity_follows_only_what_moves_rb_wr_te_forecasts(irs):
 def test_spec_is_frozen_once_and_a_changed_rule_or_base_is_refused(irs, args, monkeypatch):
     assert irs.frozen_spec(args, "fp", BASE, create=False) is None          # scoring never creates it
     s = irs.frozen_spec(args, "fp", BASE, create=True)
-    assert s["first_week"] == [2026, 8] and s["look"] == [2026, 18] and s["rule"]["min_cohort"] == 40
+    assert s["first_week"] == [2026, 7] and s["look"] == [2026, 18] and s["rule"]["min_cohort"] == 40
     assert s["base"] == BASE
     assert irs.frozen_spec(args, "fp", BASE, create=True)["frozen_at"] == s["frozen_at"]
     with pytest.raises(SystemExit, match="base moved"):
@@ -110,8 +110,8 @@ def test_spec_is_frozen_once_and_a_changed_rule_or_base_is_refused(irs, args, mo
 
 
 def test_predict_refuses_weeks_before_the_preregistered_start(irs, args):
-    args.week = 7
-    with pytest.raises(SystemExit, match="pre-registered from 2026 week 8"):
+    args.week = 6
+    with pytest.raises(SystemExit, match="pre-registered from 2026 week 7"):
         irs.cmd_predict(args)
 
 
@@ -143,9 +143,9 @@ def test_pregame_freezes_once_when_the_slate_is_imminent(irs, args):
     assert again["status"] == "already_frozen" and calls == [8]
 
 
-def test_pregame_before_week_8_and_failures_never_raise(irs, args):
+def test_pregame_before_week_7_and_failures_never_raise(irs, args):
     calls = []
-    assert irs.run_pregame(args, 2026, 7, now=SUN, kickoffs=_kick(1),
+    assert irs.run_pregame(args, 2026, 6, now=SUN, kickoffs=_kick(1),
                            predict=_fake_predict(calls))["status"] == "before_prospective_start"
 
     def boom(a, s, w):
@@ -157,7 +157,7 @@ def test_pregame_before_week_8_and_failures_never_raise(irs, args):
 
 
 def test_missed_week_is_recorded_once_and_never_before_the_start(irs, args):
-    assert irs.check_missed(args, 2026, 7, now=SUN + timedelta(days=2), kickoffs=_kick(1)) is None
+    assert irs.check_missed(args, 2026, 6, now=SUN + timedelta(days=2), kickoffs=_kick(1)) is None
     assert irs.check_missed(args, 2026, 8, now=SUN, kickoffs=_kick(1)) is None       # not all kicked off
     rec = irs.check_missed(args, 2026, 8, now=SUN + timedelta(days=2), kickoffs=_kick(1))
     assert rec["week"] == 8
