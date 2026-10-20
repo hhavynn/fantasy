@@ -261,7 +261,8 @@ def compose(facts: dict, claims: dict, seed: str, used: dict, hook_override: str
     beats = [beat("hook", hook_text.format(**who), hook_scene, hook_emph, 1.14)]
     if story == "vanishing_targets":
         beats += vanishing_beats(p, claims, who, hook_key)
-        return finish(beats, p, lead, story, hook_key, tm, who)
+        # "isn't panic time. Just watch: does his share get back?": the open question is the ending
+        return finish(beats, p, lead, story, hook_key, tm, who, ending="cliffhanger")
 
     reveal = (f"His {lead['label']} went from {ph(lead['baseline'])} to "
               f"{'just ' if p['role'] == 'faller' else ''}{ph(lead['recent'])}.")

@@ -449,11 +449,21 @@ def _snap_unresolved():
     return snap, "00-RISER"
 
 
+def _snap_vanishing():
+    """A tight end whose snaps held while his targets fell."""
+    snap = make_snapshot()
+    snap["tables"]["player_week_usage"] = [r for r in snap["tables"]["player_week_usage"] if r["gsis_id"] != "00-FALLER"]
+    snap["tables"]["player_week_usage"] += _rows("00-FALLER", "DAL", "TE", [0.70, 0.66, 0.67, 0.65, 0.66],
+                                                 [0.21, 0.29, 0.12, 0.07, 0.11])
+    return snap, "00-FALLER"
+
+
 @pytest.mark.parametrize("make, want_story, want_ending", [
     (lambda: (make_snapshot(), "00-RISER"), "breakout", "verdict"),
     (_takeover_snap, "takeover", "cliffhanger"),
     (_snap_unresolved, "unresolved", "cliffhanger"),
     (lambda: (make_snapshot(), "00-FALLER"), "shrinking", "warning"),
+    (_snap_vanishing, "vanishing_targets", "cliffhanger"),
     (lambda: (_with_teammate({4}), "00-RISER"), "held", "verdict"),
     (_snap_held_smaller, "held", "verdict"),
 ])
