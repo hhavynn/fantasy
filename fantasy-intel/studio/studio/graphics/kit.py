@@ -92,13 +92,14 @@ def mix(c1, c2, k):
 
 # Type families a style can name in its tokens. Inter (regular..black) is the studio's own; Barlow Condensed and
 # IBM Plex Sans are the Fantasy Intel website's display and text faces (the basic-Latin subsets the site ships,
-# OFL-1.1). Plex is a variable font: the number is its weight axis.
+# OFL-1.1). Plex and Caveat are variable fonts: the number is the weight axis.
 FONT_FILES = {**{w: (f, None) for w, f in WEIGHTS.items()},
               "barlow": ("BarlowCondensed-SemiBold-latin.woff2", None),
               "plex": ("IBMPlexSans-SemiBold-latin.woff2", 400),
               "plex-medium": ("IBMPlexSans-SemiBold-latin.woff2", 500),
               "plex-semibold": ("IBMPlexSans-SemiBold-latin.woff2", 600),
-              "plex-bold": ("IBMPlexSans-SemiBold-latin.woff2", 700)}
+              "plex-bold": ("IBMPlexSans-SemiBold-latin.woff2", 700),
+              "hand": ("Caveat-wght.ttf", 700)}          # Caveat (OFL-1.1): the paper style's pen notes
 
 
 @lru_cache(maxsize=None)

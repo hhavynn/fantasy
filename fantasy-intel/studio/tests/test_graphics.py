@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 
 from conftest import _rows, make_snapshot
-from studio.graphics import STYLES, choose, kit, pixel, pixelart, vector, vqa
+from studio.graphics import STYLES, choose, kit, paper, pixel, pixelart, vector, vqa
 from studio.graphics.render import scene_types, unsupported
 from studio.stages import story
 from studio.stages.facts import ALL, build_facts
@@ -20,7 +20,7 @@ FORMAT_TYPES = ["mirror", "which", "rival", "zoom_out", "verdict", "volume_balls
 
 
 def test_tokens_define_every_style():
-    for name in ("premium", "broadcast"):
+    for name in ("premium", "broadcast", "paper"):
         tk = kit.tokens(name)
         for key in ("kicker", "label", "title", "display", "number_l", "number_m", "number_s"):
             weight, px, track = getattr(tk.type, key)
@@ -339,3 +339,59 @@ def test_square_and_football_counts_are_the_claims(style):
         finally:
             VF._cell = orig
         assert cells.count(False) == 38 and cells.count(True) == 2
+
+
+def test_paper_page_turn_runs_from_the_old_page_to_the_new():
+    a = Image.new("RGB", (1080, 1920), (200, 190, 170))
+    b = Image.new("RGB", (1080, 1920), (20, 30, 40))
+    assert np.array_equal(np.asarray(paper.page(a, b, 0.0)), np.asarray(a))
+    assert np.array_equal(np.asarray(paper.page(a, b, 1.0)), np.asarray(b))
+    mid = np.asarray(paper.page(a, b, 0.6))
+    assert (mid == (200, 190, 170)).all(axis=-1).any() and not (mid == (200, 190, 170)).all()   # sliding away
+
+
+def test_paper_pen_is_deterministic_and_draws_progressively():
+    def draw(k):
+        F = kit.Frame(Image.new("RGB", (1080, 1920), (0, 0, 0)))
+        paper.circle(F, (400, 600, 600, 700), k, (242, 189, 82), 7)
+        return np.asarray(F.img).sum(axis=-1) > 0
+    half, full = draw(0.5), draw(1.0)
+    assert not draw(0.0).any() and 0 < half.sum() < full.sum()
+    assert np.array_equal(full, draw(1.0))                 # the same strokes on every render
+    ys, xs = np.nonzero(full)
+    assert xs.min() < 400 and xs.max() > 600 and ys.min() < 600 and ys.max() > 700    # round the box, not on it
+
+
+def test_paper_sticker_has_a_white_outline():
+    im = Image.new("RGBA", (200, 300), (0, 0, 0, 0))
+    im.paste((180, 20, 40, 255), (40, 40, 160, 260))
+    st = paper.make_sticker(im, 14, 0)
+    a = np.asarray(st)
+    assert st.width > 200 and st.height > 300
+    rgb = a[..., :3].astype(int)
+    white = (rgb.min(axis=-1) > 230) & (a[..., 3] > 250)
+    assert white.sum() > 2 * 10 * (120 + 220)               # a band (~12 px of the 14) right round the subject
+
+
+def test_paper_sheet_is_seeded_grain():
+    base = Image.new("RGB", (1080, 1920), (7, 11, 18))
+    tk = kit.tokens("paper")
+    g1, g2 = np.asarray(paper.grain(base, tk), np.int16), np.asarray(paper.grain(base, tk), np.int16)
+    assert np.array_equal(g1, g2) and g1[..., 0].std() > 2
+
+
+@pytest.mark.parametrize("style", [s for s in STYLES if s != "pixel"])
+def test_big_compare_draws_inside_the_safe_zone_with_sourced_numbers(style):
+    f, c = _ctx(_vanishing(), "00-FALLER")
+    toks = [{"text": w, "start": 0.3 * i, "end": 0.3 * (i + 1), "claim": None, "emph": False}
+            for i, w in enumerate("his share went from here to there".split())]
+    c.tokens = toks
+    F = vector.draw(style, {"type": "big_compare", "metric": 0, "_start": 0.0, "_dur": 4.0}, 3.9, 4.0, c, measure=True)
+    log = F.log + vector.caption(style, F.img, toks[:3], 0, 1.0, c, measure=True)
+    assert sum(e["role"] == "number" for e in F.log) >= 2
+    sample = {"frame": "s0_97.png", "t": 3.9, "scene": "big_compare", "log": log}
+    result = {name: failures for name, failures, _ in
+              vqa.gates({"style": "x", "samples": [sample], "numbers_visible": {}, "caption_top": vector.CAPTION_ZONE},
+                        c.claims, None)}
+    for gate in ("vqa_safe_zone", "vqa_overlap", "vqa_numbers", "vqa_text_size", "vqa_caption_clear"):
+        assert not result[gate], (gate, result[gate][:3])

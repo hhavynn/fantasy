@@ -1,0 +1,89 @@
+# Style D: Paper. The premium Night palette and the site's faces on a dark paper grain, with an editorial
+# data-video grammar: one surface that builds element by element, hand-drawn marker callouts on the number
+# being said, a sticker cut-out of the player, and pages that slide away to uncover the next one.
+name = "paper"
+title = "Paper"
+
+[palette]                 # the Fantasy Intel website's Night theme (frontend/app/globals.css)
+bg = "#070B12"            # --bg
+bg_top = "#0D131C"        # --surface (the top of the frame lifts toward it)
+panel = "#0D131C"         # --surface
+panel_line = "#222C3A"    # --line
+grid = "#1F2835"          # --chart-grid
+ink = "#E9EEF4"           # --ink
+ink_muted = "#A3ADBA"     # --ink-muted
+ink_faint = "#8A95A5"     # --ink-faint
+up = "#5AD394"            # --positive
+down = "#FF8173"          # --negative
+highlight = "#6AAEFF"     # --accent: the single 'look here' colour, never decoration
+neutral_bar = "#2E3A4B"   # between --line and --line-control, so data bars sit back
+caution = "#F2BD52"       # --caution
+marker = "#F2BD52"        # the pen: circles, underlines, arrows and handwritten notes
+
+[type]                    # the site's faces: Barlow Condensed (display, numbers) and IBM Plex Sans (text)
+kicker = ["plex-semibold", 30, 0.08]     # [face, px, tracking in em]; the site's .eyebrow
+label = ["plex-semibold", 40, 0.0]
+body = ["plex", 40, 0.0]
+title = ["barlow", 90, 0.005]            # the site's h1
+display = ["barlow", 140, 0.0]
+number_xl = ["barlow", 236, 0.0]
+number_l = ["barlow", 152, 0.0]
+number_m = ["barlow", 86, 0.0]
+number_s = ["plex-semibold", 50, 0.0]
+hand = ["hand", 76, 0.0]                 # Caveat Bold: marker notes
+case = "title"            # titles in sentence case, kickers uppercase
+
+[space]                   # 8 px grid
+unit = 8
+scale = [8, 16, 24, 32, 48, 64, 96, 128]
+margin_x = 96
+margin_right = 16        # inside the safe zone's right edge (x = 950)
+content_top = 260
+content_bottom = 1360
+
+[stroke]
+hairline = 2
+rule = 3
+reference = 3
+
+[radius]                  # the site's radius family
+panel = 14                # --radius-lg
+bar = 4                   # --radius-xs
+chip = 999
+
+[motion]                  # cubic-bezier control points
+enter = [0.2, 0.7, 0.2, 1.0]        # the site's --ease-out, stretched to video length (no overshoot)
+move = [0.65, 0.0, 0.35, 1.0]
+enter_dur = 0.55
+stagger = 0.1
+transition = "page"
+transition_dur = 0.4
+marker_dur = 0.38          # a circle or underline drawing itself on
+camera_push = 0.0               # no global zoom: type and hairlines stay pixel-sharp
+punch = 0.0
+
+[paper]
+grain = 6                 # standard deviation of the grain, in 8-bit levels
+fibres = 220              # faint fibre strokes across the sheet
+vignette = 0.22           # how much the corners darken
+sticker_border = 14       # white outline around the player cut-out, px
+sticker_tilt = -4         # degrees
+marker_width = 7          # pen stroke, px
+
+[caption]
+weight = "barlow"
+size = 72
+case = "as_spoken"
+color = "#E9EEF4"
+active = "#F2BD52"
+band = 0.72               # opacity of the dark band behind captions
+
+[chart]
+bar_gap = 0.28            # of the column pitch
+value_size = 44
+axis_size = 28
+gridlines = 4
+
+[rules]
+icons = "none; numbers and marks carry the story"
+illustration = "player sticker (white outline, shadow, slight tilt); marker callouts only on numbers being said"
