@@ -32,7 +32,8 @@ def job_build(pg, pub, db: Path, tmp: Path, settings, season: int) -> None:
 
     from app.analytics.pipeline import run_analytics
     from app.db.connection import open_db, utcnow
-    from app.db.league_publish import DirWriter, commit_league
+    from app.db.league_publish import GLOBAL_STAMP, DirWriter, commit_league, publish_global
+    from app.db.league_split import split_database
     from app.espn.sync import fetch_all, write_synced
     from app.sync import espn_source
     from app.sync.build import build_league_file
@@ -45,16 +46,21 @@ def job_build(pg, pub, db: Path, tmp: Path, settings, season: int) -> None:
     objects = tmp / "objects"
     work = tmp / "job"
     work.mkdir()
-    built = build_league_file(work, global_path=objects / "global" / f"{pub.global_version}.duckdb",
-                              previous=objects / "leagues" / pub.league_id / f"{pub.data_version}.duckdb",
-                              payloads=payloads, owner_swid=settings.swid,
-                              stamp=utcnow().isoformat(timespec="seconds"))
+    stamp = utcnow().isoformat(timespec="seconds")
     with psycopg.connect(pg.dsn_for("fi_sync"), prepare_threshold=None) as con:
+        # The laptop's refresh also recomputed global tables: publish them first, as refresh_all does, so the job
+        # builds against (and readers attach) the same global file the legacy side reads.
+        split = split_database(db, work / "laptop-league.duckdb", work / "laptop-global.duckdb", stamp=stamp,
+                               global_stamp=GLOBAL_STAMP)
+        global_version = publish_global(split.global_path, split.global_version, DirWriter(objects), con)
+        built = build_league_file(work, global_path=objects / "global" / f"{global_version}.duckdb",
+                                  previous=objects / "leagues" / pub.league_id / f"{pub.data_version}.duckdb",
+                                  payloads=payloads, owner_swid=settings.swid, stamp=stamp)
         fence = con.execute("UPDATE fi.leagues SET sync_fence = sync_fence + 1 WHERE id = %s RETURNING sync_fence",
                             [pub.league_id]).fetchone()[0]
         con.commit()
         applied, _ = commit_league(DirWriter(objects), con, pub.league_id, built.league_path, built.league_version,
-                                   pub.global_version, fence)
+                                   global_version, fence)
     if not applied:
         raise SystemExit("the job-built version was not published")
     print("per-league side: built by the sync job path")
