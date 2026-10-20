@@ -244,3 +244,44 @@ def test_recompute_rebuilds_from_the_stored_raw_payloads_without_fetching(pg, wo
     assert [d[2] for d in drain(world["ctx"], budget_s=120)] == ["published"]
     assert world["calls"] == [], "no provider request"
     assert pointer(pg, lid)[0] != first
+
+
+def test_a_private_first_sync_keeps_retrying_while_the_credential_is_only_suspect(pg, world, private):
+    """The 6-hour confirmation rule must get to decide: the job is not dead after the usual five attempts."""
+    class Denied(FakeEspnClient):
+        def league(self):
+            raise ESPNAccessDenied("denied")
+
+    @contextmanager
+    def client(external_id, season, credential):
+        yield Denied()
+
+    world["ctx"].client = client
+    enqueue(pg, private["league"])
+    with pg.connect() as su:
+        su.execute("UPDATE fi.sync_jobs SET attempt = 5")
+        su.commit()
+    drain(world["ctx"], budget_s=60)
+    assert job(pg, private["league"])[:2] == ("queued", "provider_auth")
+
+
+def test_a_429_pauses_the_provider_for_every_worker(pg, world):
+    from espn_api.requests.espn_requests import ESPNUnknownError
+    with pg.connect() as su:
+        a, b = seed_league(su, external_id="999"), seed_league(su, external_id="998")
+        su.commit()
+
+    class Limited(FakeEspnClient):
+        def league(self):
+            raise ESPNUnknownError("ESPN returned an HTTP 429")
+
+    @contextmanager
+    def client(external_id, season, credential):
+        yield Limited()
+
+    world["ctx"].client = client
+    enqueue(pg, a)
+    enqueue(pg, b)
+    assert [d[2] for d in drain(world["ctx"], budget_s=60)] == ["provider_429"], "the second league waits"
+    with pg.connect() as su:
+        assert su.execute("SELECT bool_and(paused_until > now()) FROM fi.provider_slots WHERE provider = 'espn'").fetchone() == (True,)

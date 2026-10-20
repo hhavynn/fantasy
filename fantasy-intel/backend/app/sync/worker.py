@@ -230,7 +230,7 @@ def _record_failure(ctx: Context, con, claim: queue.Claim, err: BaseException, s
         status = con.execute("SELECT fi.record_credential_failure(%s, %s, %s, %s)",
                              [claim.job_id, claim.fence, credential_id, ctx.control(season)]).fetchone()[0]
         con.commit()
-        queue.fail(con, claim, out.code, retry=status != "invalid")
+        queue.fail(con, claim, out.code, retry=status != "invalid", extended=True)
         return f"{out.code}:{status}"
     if out.action == "private":
         _restrict(con, claim.league_id, has_credential=False)
@@ -240,8 +240,10 @@ def _record_failure(ctx: Context, con, claim: queue.Claim, err: BaseException, s
         status = con.execute("SELECT fi.record_league_missing(%s, %s, %s)",
                              [claim.job_id, claim.fence, ctx.control(season)]).fetchone()[0]
         con.commit()
-        queue.fail(con, claim, out.code, retry=status != "unavailable")
+        queue.fail(con, claim, out.code, retry=status != "unavailable", extended=True)
         return f"{out.code}:{status}"
+    if out.pause_provider:
+        queue.pause_provider(con, claim.provider)
     queue.fail(con, claim, out.code, retry=out.action == "retry", detail=f"{stage}:{type(err).__name__}")
     return out.code
 

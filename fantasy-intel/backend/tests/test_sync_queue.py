@@ -171,3 +171,34 @@ def test_claim_respects_the_lock_order_league_before_job(pg):
     import inspect
     src = inspect.getsource(queue.claim)
     assert src.index("FROM fi.leagues") < src.index("FROM fi.sync_jobs j WHERE j.id")
+
+
+def test_outcomes_confirmed_over_six_hours_keep_retrying_hourly_past_max_attempts(pg, lg):
+    with sync(pg) as con:
+        queue.enqueue(con, lg, "initial", key=f"initial:{lg}")
+        con.execute("UPDATE fi.sync_jobs SET attempt = 5")       # the normal retries are used up
+        con.commit()
+        c = queue.claim(con, "w1")
+        assert c.attempt == 6
+        assert queue.fail(con, c, "provider_auth", retry=True, extended=True)
+        status, wait = su_one(pg, "SELECT status, extract(epoch FROM run_after - now()) FROM fi.sync_jobs")
+        assert status == "queued" and 3500 < wait <= 3600
+        con.execute("UPDATE fi.sync_jobs SET run_after = now(), attempt = %s", [5 + queue.EXTENDED_ATTEMPTS])
+        con.commit()
+        c = queue.claim(con, "w1")
+        queue.fail(con, c, "provider_auth", retry=True, extended=True)
+    assert su_one(pg, "SELECT status FROM fi.sync_jobs") == ("dead",), "bounded: about a day of hourly retries"
+
+
+def test_a_provider_pause_stops_every_claim_for_that_provider(pg):
+    with pg.connect() as su:
+        a, b = seed_league(su), seed_league(su)
+        su.commit()
+    with sync(pg) as con:
+        for lid in (a, b):
+            queue.enqueue(con, lid, "scheduled", key=f"scheduled:{lid}")
+        queue.pause_provider(con, "espn")
+        assert queue.claim(con, "w1") is None
+        con.execute("UPDATE fi.provider_slots SET paused_until = now() - interval '1 second' WHERE provider = 'espn'")
+        con.commit()
+        assert queue.claim(con, "w1") is not None
