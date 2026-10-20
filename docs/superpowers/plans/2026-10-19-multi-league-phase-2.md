@@ -361,3 +361,267 @@ Expected: `recorded 52 golden responses`, then `2 passed`. Confirm determinism: 
 git add fantasy-intel/backend/tests/golden fantasy-intel/backend/tests/test_golden_legacy.py fantasy-intel/scripts/record_golden.py
 git commit -m "Phase 2: golden responses for every legacy GET endpoint on the E2E fixture league"
 ```
+
+### Task 2: Split the analytics database into a league file and a global file
+
+**Files:**
+- Create: `fantasy-intel/backend/app/db/league_split.py`
+- Create: `fantasy-intel/backend/tests/test_league_split.py`
+
+**Interfaces:**
+- Produces: `LEAGUE_TABLES`, `GLOBAL_TABLES`, `BOTH_TABLES` (frozensets), `SplitResult(league_path, global_path, league_version, global_version, league_id, season, schema_version)`, `version_for(path, stamp) -> str` (`<YYYYMMDDTHHMMSS>Z-<sha256[:24]>`), `split_database(src, league_out, global_out, *, stamp, league=None) -> SplitResult`.
+- Rule: global = league-independent facts only; anything keyed by an ESPN player id or computed in a league's scoring is a league table; an unclassified table is an error (test and runtime).
+
+- [ ] **Step 1: Write the failing tests**
+
+`fantasy-intel/backend/tests/test_league_split.py`:
+
+```python
+"""Splitting the analytics database into one league file and one global file (Phase 2)."""
+import duckdb
+import pytest
+
+from app.db.league_split import GLOBAL_TABLES, LEAGUE_TABLES, BOTH_TABLES, split_database
+from golden.golden import build_e2e_db
+
+
+@pytest.fixture(scope="module")
+def e2e(tmp_path_factory):
+    return build_e2e_db(tmp_path_factory.mktemp("split") / "e2e.duckdb")
+
+
+def _tables(path):
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        return {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables() WHERE schema_name = 'main'").fetchall()}
+    finally:
+        con.close()
+
+
+def test_every_schema_table_is_classified_exactly_once(e2e):
+    assert not (LEAGUE_TABLES & GLOBAL_TABLES) and not (BOTH_TABLES & (LEAGUE_TABLES | GLOBAL_TABLES))
+    unclassified = _tables(e2e) - LEAGUE_TABLES - GLOBAL_TABLES - BOTH_TABLES
+    assert not unclassified, f"classify these in app/db/league_split.py: {sorted(unclassified)}"
+
+
+def test_split_reproduces_every_table_in_exactly_one_file(e2e, tmp_path):
+    out = split_database(e2e, tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", stamp="2026-10-20T12:00:00")
+    league, glob = _tables(out.league_path), _tables(out.global_path)
+    assert league == LEAGUE_TABLES | BOTH_TABLES and glob == GLOBAL_TABLES | BOTH_TABLES
+    con = duckdb.connect()
+    con.execute(f"ATTACH '{e2e}' AS src (READ_ONLY)")
+    con.execute(f"ATTACH '{out.league_path}' AS lg (READ_ONLY)")
+    con.execute(f"ATTACH '{out.global_path}' AS gl (READ_ONLY)")
+    for t in sorted(_tables(e2e) - BOTH_TABLES):
+        db = "lg" if t in LEAGUE_TABLES else "gl"
+        assert con.execute(f'SELECT count(*) FROM (SELECT * FROM src.main."{t}" EXCEPT ALL SELECT * FROM {db}.main."{t}")').fetchone() == (0,), t
+        assert con.execute(f'SELECT count(*) FROM src.main."{t}"').fetchone() == con.execute(f'SELECT count(*) FROM {db}.main."{t}"').fetchone(), t
+
+
+def test_versions_carry_the_file_digest_and_the_stamp(e2e, tmp_path):
+    from app.db.r2 import file_sha256
+    out = split_database(e2e, tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", stamp="2026-10-20T12:00:00")
+    assert out.league_version == "20261020T120000Z-" + file_sha256(out.league_path)[:24]
+    assert out.global_version == "20261020T120000Z-" + file_sha256(out.global_path)[:24]
+    con = duckdb.connect(str(out.league_path), read_only=True)
+    assert con.execute("SELECT value FROM schema_meta WHERE key = 'published_at'").fetchone() == ("2026-10-20T12:00:00",)
+    con.close()
+
+
+def test_league_tables_keep_only_the_requested_league(e2e, tmp_path):
+    con = duckdb.connect(str(e2e), read_only=True)
+    league_id, season = con.execute("SELECT league_id, season FROM leagues").fetchone()
+    con.close()
+    out = split_database(e2e, tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", stamp="2026-10-20T12:00:00",
+                         league=(league_id, season))
+    lg = duckdb.connect(str(out.league_path), read_only=True)
+    assert lg.execute("SELECT DISTINCT league_id, season FROM fantasy_teams").fetchall() == [(league_id, season)]
+    lg.close()
+    with pytest.raises(ValueError, match="not in"):
+        split_database(e2e, tmp_path / "x.duckdb", tmp_path / "y.duckdb", stamp="2026-10-20T12:00:00", league=(1, 1999))
+
+
+def test_a_database_with_two_leagues_is_refused_even_when_one_is_named(e2e, tmp_path):
+    import shutil
+    two = tmp_path / "two.duckdb"
+    shutil.copy(e2e, two)
+    con = duckdb.connect(str(two))
+    con.execute("INSERT INTO leagues SELECT * REPLACE (league_id + 1 AS league_id) FROM leagues")
+    con.close()
+    for league in (None, con_league(e2e)):
+        with pytest.raises(ValueError, match="more than one league"):
+            split_database(two, tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", stamp="2026-10-20T12:00:00",
+                           league=league)
+
+
+def con_league(path):
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        return con.execute("SELECT league_id, season FROM leagues").fetchone()
+    finally:
+        con.close()
+```
+
+```bash
+cd fantasy-intel/backend && uv run pytest tests/test_league_split.py -q
+```
+Expected: collection error: No module named app.db.league_split
+
+- [ ] **Step 2: Implement the split**
+
+`fantasy-intel/backend/app/db/league_split.py`:
+
+```python
+"""Split the analytics database into one league file and one global file (multi-league Phase 2).
+
+The hosted API serves a league by attaching its league file and the global file it was built against, read-only,
+with `search_path = league, global` (app/db/league_conn.py). This module decides which table lives where:
+
+  * LEAGUE_TABLES hold one league's data, or values derived from its ESPN account or its scoring rules
+    (ADR-0001 "Audit": fantasy_players availability, ESPN points and projections, Ours runs keyed by a scoring
+    fingerprint, owner research built on them). A league file must never carry another league's rows.
+  * GLOBAL_TABLES hold league-independent facts: nflverse statistics, schedules, contexts, external usage, weather,
+    the model registry. Every league reads the same global file.
+  * BOTH_TABLES exist in both files (`schema_meta`: the league file's copy wins through search_path).
+
+A table missing from all three sets fails tests/test_league_split.py: a new table must be classified on purpose,
+and when in doubt it is a league table (a misplaced league table in the global file would leak to every league).
+
+Versions are `<UTC stamp>-<sha256[:24]>` of the written file, so a download can be verified against its name.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import duckdb
+
+from .r2 import file_sha256
+
+LEAGUE_TABLES = frozenset({
+    # one league's provider data
+    "leagues", "league_members", "fantasy_teams", "fantasy_players", "matchups", "draft_picks", "lineup_snapshots",
+    "roster_history", "transactions", "transaction_items", "activity_messages",
+    # ESPN values in the league's scoring / from its ESPN account
+    "espn_player_weekly_points", "espn_projection_history", "player_ros_projections", "player_ownership_history",
+    "player_id_map", "player_scores", "injury_retrievals",
+    # analytics computed for the league
+    "waiver_recommendations", "team_waiver_recommendations", "team_position_needs", "team_week_lineup_projections",
+    "team_ros_lineup_projections", "manager_metrics", "manager_classifications",
+    # Ours, kicker and D/ST runs carry a scoring fingerprint: league scoring
+    "independent_projection_runs", "independent_projection_rows", "independent_player_projections",
+    "kicker_projection_runs", "kicker_projection_rows", "dst_projection_runs", "dst_projection_rows",
+    # owner research and run bookkeeping of this database
+    "projection_performance_reports", "model_replays", "sync_runs", "validation_issues",
+})
+
+GLOBAL_TABLES = frozenset({
+    "nfl_players", "nfl_schedules", "nfl_defense_week", "nfl_kick_attempts", "nfl_pbp_player_week",
+    "nfl_team_game_drives", "nfl_team_week", "player_week_usage", "player_context", "defense_context", "team_context",
+    "team_game_lines", "weather_forecasts", "external_player_map", "external_player_week_usage",
+    "external_player_week_usage_revisions", "external_usage_imports", "external_usage_issues", "approved_artifacts",
+})
+
+BOTH_TABLES = frozenset({"schema_meta"})
+
+
+@dataclass(frozen=True)
+class SplitResult:
+    league_path: Path
+    global_path: Path
+    league_version: str
+    global_version: str
+    league_id: int
+    season: int
+    schema_version: int | None
+
+
+def _q(path: Path) -> str:
+    return str(path).replace("'", "''")
+
+
+def _ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def version_for(path: Path, stamp: str) -> str:
+    compact = stamp.replace("-", "").replace(":", "").split(".")[0]
+    return f"{compact}Z-{file_sha256(path)[:24]}"
+
+
+def _columns(con, table: str) -> set[str]:
+    return {r[0] for r in con.execute(
+        "SELECT column_name FROM duckdb_columns() WHERE database_name = 'src' AND schema_name = 'main' "
+        "AND table_name = ?", [table]).fetchall()}
+
+
+def split_database(src: Path, league_out: Path, global_out: Path, *, stamp: str,
+                   league: tuple[int, int] | None = None) -> SplitResult:
+    """Write `league_out` (the league's tables) and `global_out` from `src`, both stamped
+    `schema_meta.published_at = stamp`. The source must hold exactly one league; `league` = (league_id, season), when
+    given, asserts which one. Rows of tables with a league column are filtered to it as defence in depth. Existing
+    output files are replaced."""
+    src, league_out, global_out = Path(src), Path(league_out), Path(global_out)
+    for out in (league_out, global_out):
+        out.unlink(missing_ok=True)
+        Path(str(out) + ".wal").unlink(missing_ok=True)
+    con = duckdb.connect()
+    try:
+        con.execute(f"ATTACH '{_q(src)}' AS src (READ_ONLY)")
+        known = {r[0] for r in con.execute(
+            "SELECT table_name FROM duckdb_tables() WHERE database_name = 'src' AND schema_name = 'main'").fetchall()}
+        unclassified = known - LEAGUE_TABLES - GLOBAL_TABLES - BOTH_TABLES
+        if unclassified:
+            raise ValueError(f"unclassified tables (add them to app/db/league_split.py): {sorted(unclassified)}")
+        leagues = con.execute("SELECT DISTINCT league_id, season FROM src.main.leagues ORDER BY 1, 2").fetchall()
+        if len(leagues) != 1:
+            # Several league tables (fantasy_players, ESPN points and projections) have no league column, so a
+            # database holding two leagues cannot be split without mixing them. Each league is synced on its own.
+            raise ValueError(f"{src} holds more than one league ({len(leagues)}); league tables without a league "
+                             "column cannot be split safely")
+        if league is not None and tuple(league) != tuple(leagues[0]):
+            raise ValueError(f"league {league} is not in {src}")
+        league = leagues[0]
+        league_id, season = int(league[0]), int(league[1])
+        schema = con.execute("SELECT value FROM src.main.schema_meta WHERE key = 'schema_version'").fetchone()
+
+        for alias, out, tables in (("lg", league_out, LEAGUE_TABLES), ("gl", global_out, GLOBAL_TABLES)):
+            con.execute(f"ATTACH '{_q(out)}' AS {alias}")
+            con.execute(f"COPY FROM DATABASE src TO {alias} (SCHEMA)")      # tables with their exact types
+            for t in sorted(known):
+                if t in tables or t in BOTH_TABLES:
+                    cols = _columns(con, t)
+                    where, params = "", []
+                    if alias == "lg" and {"league_id", "season"} <= cols:
+                        where, params = " WHERE league_id = ? AND season = ?", [league_id, season]
+                    elif alias == "lg" and "league_id" in cols:
+                        where, params = " WHERE league_id = ?", [league_id]
+                    con.execute(f"INSERT INTO {alias}.main.{_ident(t)} SELECT * FROM src.main.{_ident(t)}{where}",
+                                params)
+                else:
+                    con.execute(f"DROP TABLE {alias}.main.{_ident(t)}")
+            con.execute(f"DELETE FROM {alias}.main.schema_meta WHERE key = 'published_at'")
+            con.execute(f"INSERT INTO {alias}.main.schema_meta VALUES ('published_at', ?)", [stamp])
+            con.execute(f"CHECKPOINT {alias}")
+            con.execute(f"DETACH {alias}")
+    finally:
+        con.close()
+    return SplitResult(league_out, global_out, version_for(league_out, stamp), version_for(global_out, stamp),
+                       league_id, season, int(schema[0]) if schema else None)
+```
+
+- [ ] **Step 3: Run the tests**
+
+```bash
+uv run pytest tests/test_league_split.py -q
+```
+Expected: 5 passed
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add fantasy-intel/backend/app/db/league_split.py fantasy-intel/backend/tests/test_league_split.py
+git commit -m "Phase 2: split the analytics database into a league file and a global file"
+```
+
