@@ -101,3 +101,24 @@ def test_a_failed_build_raises_and_publishes_nothing(base, tmp_path):
         build_league_file(work, global_path=base["global"], previous=base["prev"], payloads=payloads, owner_swid=None,
                           stamp="2026-10-21T12:00:00")
     assert not (work / "league.duckdb").exists()
+
+
+def test_a_league_table_created_at_runtime_carries_forward_with_its_definition(base, tmp_path):
+    """Some league tables are created by their own module (not schema.sql): the previous file's DDL recreates them."""
+    prev = tmp_path / "prev.duckdb"
+    shutil.copy(base["prev"], prev)
+    con = duckdb.connect(str(prev))
+    con.execute("CREATE TABLE projection_range_quantiles (k VARCHAR PRIMARY KEY, q DOUBLE)")
+    con.execute("INSERT INTO projection_range_quantiles VALUES ('a', 0.5), ('b', 0.9)")
+    con.close()
+    work = tmp_path / "job"
+    work.mkdir()
+    built = build_league_file(work, global_path=base["global"], previous=prev, payloads=fetch_all(FakeEspnClient()),
+                              owner_swid=None, stamp="2026-10-21T12:00:00")
+    con = duckdb.connect(str(built.league_path), read_only=True)
+    try:
+        assert con.execute("SELECT * FROM projection_range_quantiles ORDER BY k").fetchall() == [("a", 0.5), ("b", 0.9)]
+        assert "PRIMARY KEY" in con.execute("SELECT sql FROM duckdb_tables() WHERE table_name = 'projection_range_quantiles'"
+                                            ).fetchone()[0]
+    finally:
+        con.close()

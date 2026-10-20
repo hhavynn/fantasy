@@ -51,10 +51,15 @@ def _carry_forward(con, previous: Path, season: int) -> int:
         row = con.execute("SELECT max(season) FROM prev.main.leagues").fetchone()
         if not row or row[0] != season:
             return 0
-        tables = [r[0] for r in con.execute(
-            "SELECT table_name FROM duckdb_tables() WHERE database_name = 'prev' AND schema_name = 'main'").fetchall()]
+        tables = dict(con.execute(
+            "SELECT table_name, sql FROM duckdb_tables() WHERE database_name = 'prev' AND schema_name = 'main'").fetchall())
+        here = {r[0] for r in con.execute(
+            "SELECT table_name FROM duckdb_tables() WHERE database_name = current_database() AND schema_name = 'main'"
+        ).fetchall()}
         copied = 0
         for t in sorted(set(tables) & LEAGUE_TABLES):
+            if t not in here:          # created at runtime by its own module, not by schema.sql: same definition
+                con.execute(tables[t])
             con.execute(f"INSERT INTO main.{_ident(t)} BY NAME SELECT * FROM prev.main.{_ident(t)}")
             copied += 1
         return copied
