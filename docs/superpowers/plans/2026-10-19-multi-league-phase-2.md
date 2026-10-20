@@ -2821,3 +2821,18 @@ git commit -m "Phase 2: Los Subies golden-identical through the per-league path;
 **Placeholders.** None: every code step embeds the shipped file. The PR number is filled at merge.
 
 **Type consistency.** `VERSION_RE` (Task 2) validates what `league_files` (Task 3) keys and `league_scope` (Task 5) checks; `LeagueScope.cache_key` (Task 5) is both `data_version()` for engine caches and the response-cache key prefix (Task 6); `publish_local` (tests) and `publish_league` (Task 7) write the same `league_snapshots` shape the API reads.
+
+## Review fixes (PR #151)
+
+The task sections above show the code as first written. Review then changed it as follows; the branch holds the final code.
+
+- **League file cache.** Files a request uses are pinned until it ends. In-flight downloads reserve their bytes. A request that cannot fit gets `CacheFull`, answered as 503. Each process keeps its own directory.
+- **First sync.** The 409 carries `X-FI-Sync-State`.
+- **Layered DuckDB.** `memory_limit` (256 MB) and `threads` (2) are set before the configuration is locked.
+- **Publisher.**
+  - The fence is reserved when a publish starts. Of two overlapping publishers, the one that started later wins.
+  - A publisher that loses deletes its own object.
+  - Unreferenced league objects stamped after the current pointer, and unreferenced globals younger than a day, are kept.
+- **Perspective.** An explicit `?team_id=` overrides the saved team, as the Decisions table says.
+- **Owner-only pages.** Projection performance, Ours promotion and research are mounted with `require_platform_admin`. Everyone else gets 404 (spec §6).
+- **Links.** Nav and command-palette links carry `/l/<lg>`, so a click skips the cookie redirect.

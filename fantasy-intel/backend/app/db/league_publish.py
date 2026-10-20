@@ -1,11 +1,12 @@
 """Publish one league's files and move its fenced pointer (multi-league Phase 2).
 
-    split the analytics database -> upload global/<gv>.duckdb (skipped when that exact content is already there)
-    -> upload leagues/<lg>/<dv>.duckdb -> one fi_sync transaction: take the next fence, fenced upsert of
+    take the next fence -> split the analytics database -> upload global/<gv>.duckdb (skipped when that exact
+    content is already there) -> upload leagues/<lg>/<dv>.duckdb -> one fi_sync transaction: fenced upsert of
     fi.league_snapshots, history row, keep three -> delete objects no pointer or history references.
 
-The pointer moves only through the spec's fenced upsert (§3.4): a publisher holding an older fence than the one
-already published changes nothing visible and its object is collected. Readers see the old pair of files or the new
+The pointer moves only through the spec's fenced upsert (§3.4). The fence is reserved when the publish starts, so of
+two overlapping publishers the one that started later wins whichever finishes first; a publisher holding an older
+fence than the one already published changes nothing visible and deletes its own object. Readers see the old pair of files or the new
 pair, never a mix. Runs as `fi_sync` (never the service role); prints ids, versions and counts only.
 """
 
@@ -23,8 +24,8 @@ from .league_files import global_key, league_key
 from .league_split import SplitResult, split_database
 
 KEEP = 3
-GLOBAL_STAMP = "content-addressed"
-GLOBAL_GRACE = timedelta(days=1)          # an unreferenced global object younger than this is never collected    # the global file's internal stamp: identical content, identical bytes
+GLOBAL_STAMP = "content-addressed"        # the global file's internal stamp: identical content, identical bytes
+GLOBAL_GRACE = timedelta(days=1)          # an unreferenced global object younger than this is never collected
 
 _UPSERT = """
 INSERT INTO fi.league_snapshots (league_id, object_key, data_version, fence, global_version, committed_at)
@@ -94,11 +95,13 @@ def publish_league(src_db: Path, writer: ObjectWriter, sync_con, league_id: str,
                    keep: int = KEEP) -> PublishResult:
     """Publish `src_db` (one league's analytics database) as `league_id`. `sync_con` is a psycopg connection as
     fi_sync; this function commits on it."""
-    stamp = stamp or utcnow().isoformat(timespec="seconds")
-    row = sync_con.execute("SELECT id FROM fi.leagues WHERE id = %s AND deleted_at IS NULL", [league_id]).fetchone()
-    sync_con.rollback()
+    with sync_con.transaction():     # reserve the fence first: a publish that starts later always holds a larger one
+        row = sync_con.execute("UPDATE fi.leagues SET sync_fence = sync_fence + 1 WHERE id = %s AND deleted_at IS NULL "
+                               "RETURNING sync_fence", [league_id]).fetchone()
     if row is None:
         raise ValueError(f"league {league_id} is not registered (or is deleted) in the control plane")
+    fence = row[0]
+    stamp = stamp or utcnow().isoformat(timespec="seconds")
     with tempfile.TemporaryDirectory() as tmp:
         out = split_database(Path(src_db), Path(tmp) / "league.duckdb", Path(tmp) / "global.duckdb", stamp=stamp,
                              global_stamp=GLOBAL_STAMP)
@@ -115,8 +118,6 @@ def publish_league(src_db: Path, writer: ObjectWriter, sync_con, league_id: str,
                           out.season, out.schema_version)
 
     with sync_con.transaction():
-        fence = sync_con.execute("UPDATE fi.leagues SET sync_fence = sync_fence + 1 WHERE id = %s RETURNING sync_fence",
-                                 [league_id]).fetchone()[0]
         applied = sync_con.execute(_UPSERT, [league_id, lkey, out.league_version, fence, out.global_version]).fetchone()
         if applied is not None:
             sync_con.execute("INSERT INTO fi.league_snapshot_history (league_id, object_key, data_version, fence, "
@@ -125,22 +126,31 @@ def publish_league(src_db: Path, writer: ObjectWriter, sync_con, league_id: str,
             sync_con.execute("""DELETE FROM fi.league_snapshot_history WHERE league_id = %s AND id NOT IN (
                                   SELECT id FROM fi.league_snapshot_history WHERE league_id = %s
                                   ORDER BY fence DESC, id DESC LIMIT %s)""", [league_id, league_id, keep])
-    deleted = _collect(writer, sync_con, league_id)
+    deleted = _collect(writer, sync_con, league_id, stale=None if applied is not None else lkey)
     return PublishResult(league_id, out.league_version, out.global_version, fence, applied is not None, deleted)
 
 
-def _collect(writer: ObjectWriter, sync_con, league_id: str) -> tuple[str, ...]:
+def _stamp(key: str) -> str:
+    return key.rsplit("/", 1)[-1].split("-", 1)[0]
+
+
+def _collect(writer: ObjectWriter, sync_con, league_id: str, *, stale: str | None = None) -> tuple[str, ...]:
     """Delete this league's objects that no pointer or history row references, and global objects no league
-    references (the newest global object is always kept)."""
+    references (the newest global object is always kept). An unreferenced league object stamped after the current
+    pointer may belong to a newer publish whose pointer has not moved yet: kept, except `stale`, the object of this
+    publish when it lost to a newer fence."""
     with sync_con.transaction():
         league_refs = {r[0] for r in sync_con.execute(
             "SELECT object_key FROM fi.league_snapshots WHERE league_id = %s UNION "
             "SELECT object_key FROM fi.league_snapshot_history WHERE league_id = %s", [league_id, league_id])}
+        current = sync_con.execute("SELECT object_key FROM fi.league_snapshots WHERE league_id = %s",
+                                   [league_id]).fetchone()
         global_refs = {global_key(r[0]) for r in sync_con.execute(
             "SELECT global_version FROM fi.league_snapshots UNION SELECT global_version FROM fi.league_snapshot_history")}
     deleted = []
+    newest = _stamp(current[0]) if current else ""
     for key in writer.keys(f"leagues/{league_id}/"):
-        if key not in league_refs:
+        if key not in league_refs and (key == stale or _stamp(key) < newest):
             writer.delete(key)
             deleted.append(key)
     # A global object another publisher has just uploaded is not referenced until its pointer moves; keep every
@@ -148,8 +158,7 @@ def _collect(writer: ObjectWriter, sync_con, league_id: str) -> tuple[str, ...]:
     cutoff = (utcnow() - GLOBAL_GRACE).strftime("%Y%m%dT%H%M%SZ")
     globals_ = sorted(writer.keys("global/"))
     for key in globals_[:-1]:
-        stamp = key.removeprefix("global/").split("-", 1)[0]
-        if key not in global_refs and stamp < cutoff:
+        if key not in global_refs and _stamp(key) < cutoff:
             writer.delete(key)
             deleted.append(key)
     return tuple(deleted)

@@ -6,8 +6,11 @@ the handler and before any cache lookup:
   1. authorize the caller for the league in Postgres (app/control_plane/authz.py): unknown and unauthorized are 404;
   2. no published snapshot yet -> 409 "first sync in progress" (never another league's data);
   3. fetch the league's file and the global file it was built against into the per-instance cache (verified);
-  4. pick the perspective ("my team"): the signed-in viewer's saved team, else `?team_id=`, else none;
+  4. pick the perspective ("my team"): an explicit `?team_id=`, else the signed-in viewer's saved team, else none;
   5. set the LEAGUE_SCOPE ContextVar, which `deps.db()` turns into a layered read-only cursor.
+
+The owner-only research routers (projection performance, Ours promotion, research) are mounted with
+`require_platform_admin` as well: spec §6 keeps them platform-admin only, on every league (anyone else gets 404).
 
 The handlers are unchanged. Responses carry `Cache-Control: private, no-store` and the versions actually read.
 """
@@ -86,12 +89,11 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
             cache.release(league_path)
         log.warning("league files unavailable for %s: %s", league_id, type(err).__name__)
         raise HTTPException(503, FILES_UNAVAILABLE) from None
-    # "My team" (fantasy_teams.is_mine): the signed-in viewer's saved team, as the owner's team was on the legacy
-    # site; an explicit ?team_id= stays an explicit choice the routes already handle. A viewer with no saved team
-    # (anonymous, or not chosen yet) takes the URL's team as their perspective everywhere.
-    chosen = perspective_team(access.perspective_team_id)
-    if chosen is None and team_param is not None:
-        chosen = perspective_team(team_param)
+    # "My team" (fantasy_teams.is_mine): an explicit ?team_id= first, so a route that reads the parameter and the
+    # engines that read is_mine answer from one perspective; else the signed-in viewer's saved team; else none.
+    chosen = perspective_team(team_param) if team_param is not None else None
+    if chosen is None:
+        chosen = perspective_team(access.perspective_team_id)
     return LeagueScope(access.league_id, league_path, global_path, snap.data_version, snap.global_version,
                        access.visibility_epoch, chosen)
 
@@ -196,12 +198,33 @@ async def league_scope(request: Request, league_id: str = Depends(valid_league_i
 LEAGUE_PREFIX = "/v2/leagues/{league_id}"
 
 
-def mount_legacy_routers(app, routers, require_enabled) -> None:
-    """Mount each legacy router again under /v2/leagues/{league_id}. Not in the OpenAPI schema: the legacy entries
-    already document the operations."""
+def _is_platform_admin(principal) -> bool:
+    from ..control_plane.pg import AccountGone, ControlPlaneUnavailable, get_control_plane
+    from .leagues_v2 import SIGN_IN, UNAVAILABLE
+    try:
+        with get_control_plane().request_tx(principal) as con:
+            row = con.execute("SELECT is_platform_admin FROM fi.app_users WHERE id = %s", [principal.user_id]).fetchone()
+    except AccountGone:
+        raise HTTPException(401, SIGN_IN) from None
+    except ControlPlaneUnavailable:
+        raise HTTPException(503, UNAVAILABLE) from None
+    return bool(row and row[0])
+
+
+async def require_platform_admin(principal=Depends(current_principal)) -> None:
+    """Owner-only research pages: platform admins only. Everyone else gets the same 404 as an unknown league, and
+    the check runs before `league_scope` touches any file."""
+    if not principal.is_authenticated or not await run_in_threadpool(_is_platform_admin, principal):
+        raise HTTPException(404, NOT_FOUND)
+
+
+def mount_legacy_routers(app, routers, require_enabled, *, owner_only=()) -> None:
+    """Mount each legacy router again under /v2/leagues/{league_id}; the `owner_only` ones also require a platform
+    admin. Not in the OpenAPI schema: the legacy entries already document the operations."""
     for r in routers:
+        admin = [Depends(require_platform_admin)] if any(r is o for o in owner_only) else []
         app.include_router(r, prefix=LEAGUE_PREFIX, include_in_schema=False,
-                           dependencies=[Depends(require_enabled), Depends(league_scope, scope="function")])
+                           dependencies=[Depends(require_enabled), *admin, Depends(league_scope, scope="function")])
 
 
 async def add_scope_headers(request: Request, call_next):

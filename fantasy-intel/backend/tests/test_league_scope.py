@@ -68,7 +68,7 @@ def test_the_fixture_league_matches_every_golden_through_v2(pg, served, client, 
     """A signed-in member whose saved team is the legacy owner's team sees exactly the legacy answers."""
     pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="private")
     with pg.connect() as con:
-        seed_user(con, U1)
+        seed_user(con, U1, admin=True)      # the owner-only research pages need a platform admin
         seed_membership(con, U1, pub.league_id, "admin")
         con.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, %s)",
                     [U1, pub.league_id, str(my_team(e2e))])
@@ -140,17 +140,17 @@ def test_two_leagues_with_colliding_ids_never_leak(pg, served, client, e2e, e2e_
                       stamp="2026-10-20T13:00:00", external_id="1999")   # another ESPN league; same team/player ids
     with pg.connect() as con:
         seed_user(con, U1)                     # a real account, just not a member of B
-        seed_user(con, U2)
+        seed_user(con, U2, admin=True)         # a platform admin: the owner-only research routes are covered too
         seed_membership(con, U2, b.league_id, "viewer")
         con.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '2')",
                     [U2, b.league_id])
         con.commit()
     paths = sorted({read_golden(E2E_DIR, g.stem)[0] for g in E2E_DIR.glob("*.json")})
-    alone = {p: client.get(f"/v2/leagues/{a.league_id}{p}").text for p in paths}
+    alone = {p: client.get(f"/v2/leagues/{a.league_id}{p}", headers=bearer(U2)).text for p in paths}
     for p in paths:                                   # interleave: B, then A, for every route
         rb = client.get(f"/v2/leagues/{b.league_id}{p}", headers=bearer(U2))
         assert rb.status_code == 200, (p, rb.text[:200])
-        ra = client.get(f"/v2/leagues/{a.league_id}{p}")
+        ra = client.get(f"/v2/leagues/{a.league_id}{p}", headers=bearer(U2))
         assert response_text(_Fixed(ra), Case("a", p)) == response_text(_Fixed(_Text(alone[p], ra.status_code)), Case("a", p)), p
         assert MARK not in ra.text, p
         assert MARK in rb.text or rb.json() == ra.json() or p.startswith("/api/research"), p
@@ -209,3 +209,39 @@ def test_only_successful_gets_are_cached_and_the_cache_is_bounded(pg, served, cl
     cache = league_scope.response_cache()
     assert cache.bytes_used <= 200_000
     assert all(status == 200 for status in cache.statuses())
+
+
+OWNER_ONLY = ("/api/projections/performance", "/api/projections/independent/promotion",
+              "/api/research/opportunity?position=WR")
+
+
+def test_owner_only_research_pages_need_a_platform_admin(pg, served, client, e2e, tmp_path):
+    """Spec §6: projection performance, research and Ours promotion stay platform-admin only, even on a public league."""
+    pub = publish_local(pg, e2e, served, tmp_path / "w")
+    with pg.connect() as con:
+        seed_user(con, U1)
+        seed_membership(con, U1, pub.league_id, "admin")
+        seed_user(con, U2, admin=True)
+        con.commit()
+    for path in OWNER_ONLY:
+        url = f"/v2/leagues/{pub.league_id}{path}"
+        assert client.get(url).status_code == 404, path
+        assert client.get(url, headers=bearer(U1)).status_code == 404, path      # a league admin is not enough
+        assert client.get(url, headers=bearer(U2)).status_code == 200, path
+    assert client.get(f"/v2/leagues/{pub.league_id}/api/overview").status_code == 200
+
+
+def test_an_explicit_team_overrides_the_saved_perspective(pg, served, client, e2e, tmp_path):
+    """Plan precedence: ?team_id= > the signed-in viewer's saved team > none."""
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="private")
+    with pg.connect() as con:
+        seed_user(con, U1)
+        seed_membership(con, U1, pub.league_id, "viewer")
+        con.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '2')",
+                    [U1, pub.league_id])
+        con.commit()
+    base = f"/v2/leagues/{pub.league_id}/api/overview"
+    assert client.get(base, headers=bearer(U1)).json()["perspective"]["team_id"] == 2
+    assert client.get(base + "?team_id=3", headers=bearer(U1)).json()["perspective"]["team_id"] == 3
+    teams = client.get(f"/v2/leagues/{pub.league_id}/api/teams?team_id=3", headers=bearer(U1)).json()["teams"]
+    assert [t["team_id"] for t in teams if t["is_owner_default"]] == [3]
