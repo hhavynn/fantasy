@@ -48,11 +48,11 @@ from app.analytics.injury_model import MODEL_VERSION as PRIOR_VERSION  # noqa: E
 from app.config import get_settings  # noqa: E402
 from app.db.connection import connect as db_connect  # noqa: E402
 
-# Everything that defines the replayed forecasts: a change to any of these is a new model for the history.
-MODEL_FILES = ("backend/app/analytics/context_model.py", "backend/app/analytics/injury_model.py",
-               "backend/app/analytics/challenger.py", "backend/app/analytics/challenger_config.json",
-               "backend/app/analytics/forecast_features.py", "backend/app/analytics/independent_projections.py",
-               "scripts/qb_scenarios.py")
+# Model identity: the model version and config plus the source of every repo module the replay actually loaded
+# (context_model and everything it imports transitively, the store builders, the frozen QB scenario script). Modules
+# that only package or serve the replay are left out, so editing the page plumbing is not "a new model".
+NOT_MODEL = {"model_replay", "app.analytics.model_replay", "app.analytics.performance_report", "_bootstrap"}
+NOT_MODEL_PREFIXES = ("app.db", "app.api", "app.config")
 PRED = {"model": "pred_model", "prior_version": "pred_prior", "recent_avg": "pred_A1"}
 NOTES = [
     "Hindsight replay: for each finished week the model is refitted on earlier weeks only and predicts that week, "
@@ -60,23 +60,52 @@ NOTES = [
     "what the site showed that week and never counts as prospective evidence.",
     "Scored on players who played and had at least one recent game (rookies' debuts are left out); every forecast is "
     "scored on exactly the same player-weeks.",
-    "A new snapshot is stored when the model code/config or the finished weeks change; the page compares the newest "
+    "A new snapshot is stored when the model, its inputs or the replayed forecasts change; the page compares the newest "
     "snapshot with the newest one of the previous model, week by week.",
 ]
 
 
+def model_files() -> list[Path]:
+    """Repo source files of every module loaded so far, minus NOT_MODEL. Call after the replay ran, so every lazily
+    imported model module (e.g. context_model's _qs) is in sys.modules; config JSON next to app/analytics is added."""
+    root = SCRIPTS.parent.resolve()
+    files = set()
+    for name, mod in list(sys.modules.items()):
+        f = getattr(mod, "__file__", None)
+        if not f or name in NOT_MODEL or name.startswith(NOT_MODEL_PREFIXES):
+            continue
+        path = Path(f).resolve()
+        if path.is_relative_to(root / "backend" / "app") or path.parent == root / "scripts":
+            files.add(path)
+    files.add((root / "backend" / "app" / "analytics" / "challenger_config.json").resolve())
+    return sorted(files)
+
+
 def model_fingerprint(cfg) -> str:
-    root = SCRIPTS.parent
+    """Which model: version, config, shipped components and the source of every module the replay loaded."""
+    root = SCRIPTS.parent.resolve()
     h = hashlib.sha256(json.dumps({"version": cm.MODEL_VERSION, "config": cm.config_hash(cfg),
                                    "shipped": {p: list(cm.SHIPPED[p]) for p in POSITIONS}}, sort_keys=True).encode())
-    for f in MODEL_FILES:
-        h.update(f.encode() + b"\0" + (root / f).read_bytes())
+    for f in model_files():
+        h.update(str(f.relative_to(root)).encode() + b"\0" + f.read_bytes())
     return h.hexdigest()[:16]
 
 
-def data_fingerprint(store: pl.DataFrame) -> str:
-    """The labeled rows the replay trains and scores on (any added week or corrected stat changes it)."""
-    rows = store.select("key", "gsis_id", "position", pl.col("label").round(4)).sort("key", "gsis_id")
+def data_fingerprint(store: pl.DataFrame, cands: pl.DataFrame, store_fp: str | None) -> str:
+    """The replay's inputs: the labeled rows, every feature column of the store, the QB start candidates and the
+    store's own provenance fingerprint (its source frames). A corrected injury, roster or depth input changes it."""
+    h = hashlib.sha256((store_fp or "").encode())
+    for df in (store, cands):
+        h.update(",".join(sorted(df.columns)).encode())
+        h.update(np.sort(df.select(sorted(df.columns)).hash_rows(seed=0).to_numpy()).tobytes())
+    return h.hexdigest()[:16]
+
+
+def output_fingerprint(preds: pl.DataFrame) -> str:
+    """What the replay produced: every scored row's forecasts and outcome (rounded)."""
+    if preds.height == 0:
+        return hashlib.sha256(b"").hexdigest()[:16]
+    rows = preds.select("key", "gsis_id", *[pl.col(c).round(4) for c in (*PRED.values(), "label")]).sort("key", "gsis_id")
     return hashlib.sha256(rows.write_csv().encode()).hexdigest()[:16]
 
 
@@ -119,7 +148,8 @@ def build_payload(args) -> dict:
             "model": {"version": cm.MODEL_VERSION, "fingerprint": model_fingerprint(cfg),
                       "components": {p: list(cm.SHIPPED[p]) for p in POSITIONS}},
             "prior_version": {"version": PRIOR_VERSION},
-            "data": {"fingerprint": data_fingerprint(store), "store_fingerprint": prov.get("fingerprint"),
+            "data": {"fingerprint": data_fingerprint(store, cands, prov.get("fingerprint")),
+                     "store_fingerprint": prov.get("fingerprint"), "output_fingerprint": output_fingerprint(preds),
                      "last_week": max((w for _, w in weeks), default=None)},
             "population": "players who played and had a recent game; identical player-weeks for every forecast",
             "weeks": wk, "totals": totals, "notes": NOTES}
@@ -167,7 +197,7 @@ def cmd_publish(args) -> dict:
 
     with open_db(args.live_db) as con:       # one INSERT, after the read-only build has closed its connections
         sha, created = mr.store_replay(con, p)
-    print(f"{'stored' if created else 'unchanged (same model and data as the newest snapshot)'}: {sha[:16]} · "
+    print(f"{'stored' if created else 'unchanged (same model, inputs and forecasts as the newest snapshot)'}: {sha[:16]} · "
           f"weeks {[w['week'] for w in p['weeks']]} · MAE {p['totals']['ALL']['mae']['model']}")
     return p
 

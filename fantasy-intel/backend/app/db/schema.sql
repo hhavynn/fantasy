@@ -1003,14 +1003,14 @@ CREATE TABLE IF NOT EXISTS projection_performance_reports (
 -- Weekly model replays (create-only, no version bump): the production model refitted walk-forward on every fully
 -- final week of the season, built OFFLINE by scripts/model_replay.py and served by app/analytics/model_replay.py.
 -- Hindsight, never prospective evidence. Write-once rows keyed by the sha256 of the canonical JSON; a new row only
--- when the model or data fingerprint changed. Aggregates only. Never list this table in a connection._REBUILD entry.
+-- when the model, input (data) or output fingerprint changed. Aggregates only. Never list this table in a connection._REBUILD entry.
 CREATE TABLE IF NOT EXISTS model_replays (
     replay_sha256        VARCHAR PRIMARY KEY,   -- sha256 of `payload` (UTF-8 bytes, exactly as stored)
     season               INTEGER NOT NULL,
     schema_version       VARCHAR NOT NULL,      -- model_replay.SCHEMA_VERSION
     generated_at         TIMESTAMP NOT NULL,    -- naive UTC, also inside the payload
-    model_fingerprint    VARCHAR NOT NULL,      -- model code + config; changes when the model changes
-    data_fingerprint     VARCHAR NOT NULL,      -- the replay's input store; changes when weeks are added/corrected
+    model_fingerprint    VARCHAR NOT NULL,      -- version, config and the source of every module the replay loaded
+    data_fingerprint     VARCHAR NOT NULL,      -- the replay's inputs (store rows and features, QB candidates)
     payload              VARCHAR NOT NULL       -- canonical JSON (sorted keys, no NaN)
 );
 

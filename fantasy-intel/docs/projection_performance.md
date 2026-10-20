@@ -66,8 +66,14 @@ page            /projection-performance            "Weekly replay" section, abov
   the previous version (ifp-2.1.0's frozen spec) and the recent-average baseline are refitted on rows of weeks
   strictly before W (the walk-forward of `scripts/ifp22_backtest.py`, reusing its cached store) and predict W. MAE per
   week and position on identical player-weeks.
-* **Snapshots:** `publish` stores one write-once row of `model_replays` (canonical JSON + sha256, like the report) when
-  the model fingerprint (model code + config) or the data fingerprint (the labeled rows) changed; otherwise nothing.
+* **Which models:** the replay follows `app/analytics/context_model.py` (ifp-2.2.0, its SHIPPED components) and
+  replays `app/analytics/injury_model.py`'s spec (ifp-2.1.0) as the prior version. Whoever ships the next ifp version
+  updates both in `scripts/model_replay.py` (`replay` and `PRIOR_VERSION`).
+* **Snapshots:** `publish` stores one write-once row of `model_replays` (canonical JSON + sha256, like the report)
+  unless the newest row has the same model fingerprint (version, config and the source of every module the replay
+  loaded), data fingerprint (store rows and features, QB start candidates, the store's source provenance) AND output
+  fingerprint (every replayed forecast and outcome). A change the first two miss still shows in the output and stores
+  a new snapshot; only the model fingerprint decides which snapshot counts as "the previous model".
 * **Comparison:** the page shows the newest snapshot's MAE per week with the change against the newest snapshot of a
   DIFFERENT model fingerprint ("closer in weeks 1 and 3, further off in 2 and 4"). Before the first model change it
   compares against ifp-2.1.0 replayed on the same rows. A change under 0.05 points reads as about the same; this is one

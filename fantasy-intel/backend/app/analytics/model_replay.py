@@ -6,7 +6,7 @@ of the season, using only data from before that week, how close would it have be
 scripts/model_replay.py (the same walk-forward refit as scripts/ifp22_backtest.py: for week W the model is refitted
 on rows of weeks strictly before W) and stored as ONE write-once row of `model_replays` per distinct snapshot.
 
-Every refresh stores a new snapshot when the model code/config or the finished weeks changed, so after a model change
+Every refresh stores a new snapshot when the model, its inputs or the replayed forecasts changed, so after a model change
 the page can say, week by week, whether the new model was closer or further than the previous one. The replay is
 hindsight: features are rebuilt from today's data (stat corrections, depth snapshots, injury reports as synced
 now), and it scores players who played (conditional on appearing). It is never prospective evidence and never
@@ -86,8 +86,9 @@ def validate(payload, *, season: int | None = None) -> str | None:
     for k in ("model", "prior_version"):
         if not isinstance(payload[k], dict) or not payload[k].get("version"):
             return f"{k}.version missing"
-    if not payload["model"].get("fingerprint") or not (payload["data"] or {}).get("fingerprint"):
-        return "model or data fingerprint missing"
+    if not payload["model"].get("fingerprint") or not (payload["data"] or {}).get("fingerprint") \
+            or not payload["data"].get("output_fingerprint"):
+        return "model, data or output fingerprint missing"
     weeks = payload["weeks"]
     if not isinstance(weeks, list):
         return "weeks must be a list"
@@ -115,15 +116,18 @@ def validate(payload, *, season: int | None = None) -> str | None:
 
 def store_replay(con, payload: dict) -> tuple[str, bool]:
     """Insert the snapshot once (offline only). Returns (replay_sha256, created). Refuses a payload that would not
-    verify, and stores nothing when the newest snapshot of the season already has the same model and data
-    fingerprints (an unchanged model on unchanged weeks is the same replay)."""
+    verify, and stores nothing when the newest snapshot of the season has the same model, data AND output fingerprints
+    (same model, same inputs, same forecasts): a change to any of them, even one the model or data fingerprint missed,
+    stores a new snapshot. Only the model fingerprint decides which snapshot is "the previous model"."""
     problem = validate(payload)
     if problem:
         raise ValueError(f"refusing to store the replay: {problem}")
     newest = snapshots(con, payload["season"], limit=1)
-    if newest and newest[0]["payload"]["model"]["fingerprint"] == payload["model"]["fingerprint"] \
-            and newest[0]["payload"]["data"]["fingerprint"] == payload["data"]["fingerprint"]:
-        return newest[0]["replay_sha256"], False
+    if newest:
+        old = newest[0]["payload"]
+        if old["model"]["fingerprint"] == payload["model"]["fingerprint"] \
+                and all(old["data"].get(k) == payload["data"][k] for k in ("fingerprint", "output_fingerprint")):
+            return newest[0]["replay_sha256"], False
     text = canonical(payload)
     sha = sha256_text(text)
     before = con.execute(f"SELECT count(*) FROM {TABLE} WHERE replay_sha256 = ?", [sha]).fetchone()[0]

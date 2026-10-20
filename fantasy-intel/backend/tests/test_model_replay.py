@@ -29,7 +29,7 @@ def week(w: int, maes: dict[str, float], n: int = 10) -> dict:
     return {"week": w, "groups": groups}
 
 
-def snapshot(fp: str = "m1", data_fp: str = "d1", *, at: str = "2026-10-10T00:00:00+00:00",
+def snapshot(fp: str = "m1", data_fp: str = "d1", *, out_fp: str = "o1", at: str = "2026-10-10T00:00:00+00:00",
              weeks: dict[int, dict[str, float]] | None = None) -> dict:
     weeks = weeks or {1: {"QB": 6.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}, 2: {"QB": 7.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}}
     wk = [week(w, m) for w, m in sorted(weeks.items())]
@@ -38,7 +38,7 @@ def snapshot(fp: str = "m1", data_fp: str = "d1", *, at: str = "2026-10-10T00:00
               for g in mr.GROUPS}
     return {"schema_version": mr.SCHEMA_VERSION, "season": 2026, "generated_at": at,
             "model": {"version": "ifp-2.2.0", "fingerprint": fp}, "prior_version": {"version": "ifp-2.1.0"},
-            "data": {"fingerprint": data_fp, "last_week": max(weeks)}, "population": "players who played",
+            "data": {"fingerprint": data_fp, "output_fingerprint": out_fp, "last_week": max(weeks)}, "population": "players who played",
             "weeks": wk, "totals": totals, "notes": ["synthetic"]}
 
 
@@ -60,6 +60,36 @@ def test_snapshot_round_trip_and_unchanged_model_and_data_store_nothing(con):
     assert [s["payload"]["data"]["fingerprint"] for s in mr.snapshots(con, 2026)] == ["d2", "d1"]
 
 
+def test_changed_forecasts_store_a_snapshot_even_when_model_and_data_fingerprints_match(con):
+    """A corrected input the fingerprints missed (same labels, same code fingerprint) still changes the forecasts."""
+    mr.store_replay(con, snapshot())
+    _, created = mr.store_replay(con, snapshot(out_fp="o2", at="2026-10-11T00:00:00+00:00",
+                                               weeks={1: {"QB": 6.5, "RB": 4.0, "WR": 4.0, "TE": 3.0},
+                                                      2: {"QB": 7.0, "RB": 4.0, "WR": 4.0, "TE": 3.0}}))
+    assert created
+    newest = mr.snapshots(con, 2026)[0]["payload"]
+    assert newest["data"]["output_fingerprint"] == "o2" and newest["weeks"][0]["groups"]["QB"]["mae"]["model"] == 6.5
+    # the same model fingerprint is never "the previous model": nothing to compare against yet
+    assert mr.response(con, 2026)["vs_previous"] is None
+
+
+def test_fingerprints_follow_inputs_outputs_and_loaded_modules():
+    mrs = importlib.import_module("model_replay")
+    store = pl.DataFrame({"key": [202601, 202601], "gsis_id": ["a", "b"], "label": [1.0, 2.0], "dc_tier": [1, 2]})
+    cands = pl.DataFrame({"key": [202601], "team": ["AAA"], "p": [0.9]})
+    base = mrs.data_fingerprint(store, cands, "s1")
+    assert mrs.data_fingerprint(store.with_columns(pl.Series("dc_tier", [1, 3])), cands, "s1") != base   # a feature
+    assert mrs.data_fingerprint(store, cands.with_columns(pl.lit(0.5).alias("p")), "s1") != base       # a QB input
+    assert mrs.data_fingerprint(store, cands, "s2") != base                                             # provenance
+    assert mrs.data_fingerprint(store.reverse(), cands, "s1") == base                                   # order-free
+    preds = pl.DataFrame({"key": [202601], "gsis_id": ["a"], "label": [1.0], "pred_model": [2.0], "pred_prior": [2.0],
+                          "pred_A1": [1.5]})
+    assert mrs.output_fingerprint(preds) != mrs.output_fingerprint(preds.with_columns(pl.lit(2.1).alias("pred_model")))
+    files = {f.name for f in mrs.model_files()}
+    assert {"context_model.py", "challenger.py", "challenger_config.json"} <= files
+    assert not {"model_replay.py", "performance_report.py", "connection.py"} & files
+
+
 @pytest.mark.parametrize("mutate, reason", [
     (lambda p: p["weeks"][0]["groups"]["ALL"].update(n=1), "ALL n is not the sum"),
     (lambda p: p["totals"]["QB"].update(n=999), "totals QB"),
@@ -67,6 +97,7 @@ def test_snapshot_round_trip_and_unchanged_model_and_data_store_nothing(con):
     (lambda p: p["weeks"].reverse(), "ascending"),
     (lambda p: p["weeks"][0].update(gsis_id="00-1"), "identifier"),
     (lambda p: p["model"].update(fingerprint=""), "fingerprint"),
+    (lambda p: p["data"].pop("output_fingerprint"), "output fingerprint"),
 ])
 def test_invalid_snapshots_are_refused(con, mutate, reason):
     p = snapshot()
