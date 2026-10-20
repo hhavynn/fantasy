@@ -19,9 +19,7 @@ exit with `games_missed = 0`.
     uv run python ../scripts/injury_return_shadow.py pregame --week W --now 2026-11-01T12:00Z   # gate only (dry run)
 
 Who runs it (no new scheduler), exactly like scripts/signal_shadows.py:
-  * refresh_all.py's read-only evidence stage runs `pregame` for the upcoming week on every refresh. That step arrives
-    with the follow-up to this change (branch h/injury-return-refresh-step, merged right after it, behind #136);
-    until then only the cycle's retry can freeze a week.
+  * refresh_all.py's read-only evidence stage runs `pregame` for the upcoming week on every refresh.
   * learning_cycle.py runs `cycle` as a non-fatal RESEARCH_SHADOWS stage after the production run (Tue-Thu).
   * shadow_promotion_check.py reads scores.json; a pass is a "PROMOTION READY" line and a promotion-queue entry.
 
