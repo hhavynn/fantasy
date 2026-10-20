@@ -74,10 +74,14 @@ page            /projection-performance            "Weekly replay" section, abov
   loaded), data fingerprint (store rows and features, QB start candidates, the store's source provenance) AND output
   fingerprint (every replayed forecast and outcome). A change the first two miss still shows in the output and stores
   a new snapshot; only the model fingerprint decides which snapshot counts as "the previous model".
-* **Comparison:** the page shows the newest snapshot's MAE per week with the change against the newest snapshot of a
-  DIFFERENT model fingerprint ("closer in weeks 1 and 3, further off in 2 and 4"). Before the first model change it
-  compares against ifp-2.1.0 replayed on the same rows. A change under 0.05 points reads as about the same; this is one
-  season, not a significance test.
+* **Comparison:** the page shows the newest snapshot's MAE per week with the change against the previous model: the
+  newest earlier snapshot of a different model fingerprint whose forecasts differ on a shared week (per-week output
+  fingerprints), so an edit to a module that does not change any forecast never replaces the real previous model.
+  Before the first model change it compares against ifp-2.1.0 replayed on the same rows. A change under 0.05 points
+  reads as about the same; this is one season, not a significance test.
+* **Data drift:** each week also carries an input fingerprint (every store row and QB candidate up to that week). A week
+  whose inputs changed between the two snapshots (stat corrections, re-synced depth or injury data) is marked † on the
+  page; its change mixes model and data, so the summary, the tally and the season row leave it out.
 * **Limits:** hindsight. Inputs are today's data (stat corrections, depth charts and injury reports as synced now),
   outcomes are conditional on playing (players with at least one recent game), and nothing here is what the site
   showed that week. It never feeds a verdict, a promotion or the scorecard. ESPN is deliberately not part of it.
