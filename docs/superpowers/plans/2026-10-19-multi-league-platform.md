@@ -47,6 +47,8 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 - Production: cold request p95 < 3 s (download + open), warm unchanged; `published_at` data version flows to the trade-search cache.
 - Free-tier check after a week: R2 reads ≪ 10M, Vercel Active CPU on track for < 4 h/month.
 
+**Status:** done 2026-10-20 (PR #144). Production serves the R2 snapshot; MotherDuck env vars removed from `fantasy-intel-api`; the laptop refresh publishes with `publish_snapshot.py`.
+
 **Rollback:** unset `SNAPSHOT_BUCKET` on Vercel → the API falls back to `MOTHERDUCK_DATABASE` (kept until MotherDuck's downgrade; after that, redeploy the previous commit).
 
 ## Phase 1: Control plane (invisible)

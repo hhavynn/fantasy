@@ -3,7 +3,7 @@
 from common import connect
 
 con = connect("md:", "laptop")
-names = [r[0] for r in con.execute("SELECT database_name FROM MD_INFORMATION_SCHEMA.DATABASES").fetchall()
+names = [r[0] for r in con.execute("SELECT name FROM MD_INFORMATION_SCHEMA.DATABASES").fetchall()
          if r[0].startswith("spike_")]  # hard guard: never fantasy_intel/my_db
 con.execute("DROP SHARE IF EXISTS spike_share_a")  # a share pins its source database
 for n in names:
