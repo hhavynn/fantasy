@@ -7,7 +7,7 @@ from app.control_plane.authz import authorize_league_in
 from app.control_plane.credential_crypto import PublicKeyring, generate_keypair
 from app.control_plane.pg import ControlPlane
 from app.leagues.context import Principal
-from cp_seed import U1, U2, U3, seed_league, seed_membership, seed_user
+from cp_seed import U1, U2, U3, seed_auth_user, seed_league, seed_membership, seed_user
 
 ANON = Principal.anonymous()
 
@@ -28,6 +28,7 @@ def leagues(pg):
     with pg.connect() as con:
         for u in (U1, U2):
             seed_user(con, u)
+        seed_auth_user(con, U3)                 # an account that has not used the app yet
         pub = seed_league(con, visibility="public")
         priv = seed_league(con, visibility="private", checked_at=None)
         seed_membership(con, U1, priv, "admin")
@@ -36,7 +37,7 @@ def leagues(pg):
     return pub, priv
 
 
-def test_ensure_app_user_and_me(plane):
+def test_ensure_app_user_and_me(plane, leagues):
     with plane.request_tx(user(U3)) as con:
         assert m.ensure_app_user(con) == U3
         profile = m.me(con, user(U3))

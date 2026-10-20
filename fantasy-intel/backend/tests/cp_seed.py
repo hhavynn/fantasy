@@ -15,7 +15,14 @@ def new_league_id() -> str:
     return "lg_" + secrets.token_urlsafe(18)
 
 
+def seed_auth_user(con, uid: str) -> str:
+    """A Supabase account (auth.users row). fi.app_users rows reference it and are deleted with it."""
+    con.execute("INSERT INTO auth.users (id) VALUES (%s) ON CONFLICT (id) DO NOTHING", [uid])
+    return uid
+
+
 def seed_user(con, uid: str, *, admin: bool = False) -> str:
+    seed_auth_user(con, uid)
     con.execute("INSERT INTO fi.app_users (id, is_platform_admin) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING", [uid, admin])
     return uid
 

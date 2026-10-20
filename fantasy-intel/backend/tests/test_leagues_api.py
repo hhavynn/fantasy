@@ -110,8 +110,12 @@ def test_anonymous_rules(client, world):
     assert client.put(f"/v2/leagues/{world['pub']}/perspective", json={"team_external_id": "6"}).status_code == 401
 
 
-def test_me_creates_the_user_row_and_lists_pins(client, world):
+def test_me_creates_the_user_row_and_lists_pins(client, world, pg):
+    from cp_seed import seed_auth_user
     uid = str(uuid.uuid4())
+    with pg.connect() as su:
+        seed_auth_user(su, uid)
+        su.commit()
     first = client.get("/v2/me", headers=bearer(uid)).json()
     assert first == {"user_id": uid, "is_platform_admin": False, "pins": [], "created_at": first["created_at"]}
     assert client.put(f"/v2/leagues/{world['pub']}/pin", headers=bearer(uid)).status_code == 204
@@ -281,3 +285,10 @@ def test_the_perspective_route_does_not_block_the_event_loop():
     from app.api import leagues_v2
     for name in ("me", "list_leagues", "get_league", "pin_league", "unpin_league", "set_perspective", "clear_perspective"):
         assert not inspect.iscoroutinefunction(getattr(leagues_v2, name)), name
+
+
+
+def test_a_token_for_a_deleted_account_is_a_sign_in_error(client, world):
+    ghost = str(uuid.uuid4())                       # signature-valid token, no auth.users row any more
+    assert client.get("/v2/me", headers=bearer(ghost)).status_code == 401
+    assert client.put(f"/v2/leagues/{world['pub']}/pin", headers=bearer(ghost)).status_code == 401

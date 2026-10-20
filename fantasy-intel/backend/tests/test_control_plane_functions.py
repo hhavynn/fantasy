@@ -6,7 +6,7 @@ import uuid
 import pytest
 from psycopg.errors import InsufficientPrivilege, RaiseException
 
-from cp_seed import U1, U2, U3, as_role, seed_league, seed_membership, seed_user
+from cp_seed import U1, U2, U3, as_role, seed_auth_user, seed_league, seed_membership, seed_user
 
 TOKEN = secrets.token_bytes(16)
 HASH = hashlib.sha256(TOKEN).digest()
@@ -38,8 +38,11 @@ def raises(con, role, uid, sql, params=(), match=None):
 
 
 def test_ensure_app_user_inserts_once_and_refuses_anonymous(pg):
+    uid = str(uuid.uuid4())
+    with pg.connect() as su:
+        seed_auth_user(su, uid)
+        su.commit()
     with pg.connect(user="fi_api") as con:
-        uid = str(uuid.uuid4())
         assert call(con, "authenticated", uid, "SELECT fi.ensure_app_user()::text") == [(uid,)]
         assert call(con, "authenticated", uid, "SELECT fi.ensure_app_user()::text") == [(uid,)]
         assert call(con, "authenticated", uid, "SELECT count(*) FROM fi.app_users WHERE id = %s", [uid]) == [(1,)]
@@ -163,14 +166,17 @@ def test_sync_credential_needs_the_current_lease(pg, league, leased_job):
             call(con, "authenticated", U2, q, [leased_job["job"], 7])
 
 
+MARK = "SELECT fi.mark_credential(%s, %s, %s, %s)"
+
+
 def test_mark_credential_transitions(pg, league, leased_job):
     with pg.connect(user="fi_sync") as con:
-        def mark(status):
-            return con.execute("SELECT fi.mark_credential(%s, %s, %s)", [leased_job["job"], 7, status]).fetchone()[0]
+        def mark(status, token=7, cid=None):
+            return con.execute(MARK, [leased_job["job"], token, cid or leased_job["cid"], status]).fetchone()[0]
         assert mark("suspect") is True
         assert mark("active") is True
         assert mark("suspect") is True and mark("invalid") is True
-        assert con.execute("SELECT fi.mark_credential(%s, %s, 'active')", [leased_job["job"], 6]).fetchone() == (False,)
+        assert mark("active", token=6) is False
         con.commit()
     with pg.connect() as su:
         assert su.execute("SELECT status FROM fi.league_credentials").fetchone() == ("invalid",)
@@ -185,3 +191,70 @@ def test_audit_log_is_append_only_even_for_the_owner(pg, league):
             with pytest.raises(RaiseException, match="append-only"):
                 su.execute(sql)
             su.rollback()
+
+
+
+def test_a_deleted_supabase_account_crypto_erases_its_credentials_and_memberships(pg, league):
+    cid = str(uuid.uuid4())
+    with pg.connect(user="fi_api") as con:
+        call(con, "authenticated", U2, STORE, [cid, league, CT, NONCE, WRAPPED])
+    with pg.connect() as su:
+        su.execute("DELETE FROM auth.users WHERE id = %s", [U2])      # what Supabase does on account deletion
+        su.commit()
+        assert su.execute("SELECT count(*) FROM fi.league_credentials").fetchone() == (0,)
+        assert su.execute("SELECT count(*) FROM fi.app_users WHERE id = %s", [U2]).fetchone() == (0,)
+        assert su.execute("SELECT count(*) FROM fi.league_memberships WHERE user_id = %s", [U2]).fetchone() == (0,)
+
+
+def test_a_token_for_a_deleted_account_cannot_recreate_its_user_row(pg, league):
+    ghost = str(uuid.uuid4())                       # a still-valid JWT whose auth.users row is gone
+    with pg.connect(user="fi_api") as con:
+        raises(con, "authenticated", ghost, "SELECT fi.ensure_app_user()", match="sign_in_required")
+        call(con, "authenticated", U1, "SELECT fi.create_invite(%s, %s)", [league, HASH])
+        raises(con, "authenticated", ghost, "SELECT fi.redeem_invite(%s)", [HASH], "sign_in_required")
+
+
+def test_a_stale_worker_cannot_mark_the_credential_that_replaced_the_one_it_fetched(pg, league, leased_job):
+    new_cid = str(uuid.uuid4())
+    with pg.connect(user="fi_api") as con:            # the member re-enters cookies while the job runs
+        call(con, "authenticated", U2, STORE, [new_cid, league, CT, NONCE, WRAPPED])
+    with pg.connect(user="fi_sync") as con:
+        assert con.execute(MARK, [leased_job["job"], 7, leased_job["cid"], "invalid"]).fetchone() == (False,)
+        con.commit()
+    with pg.connect() as su:
+        assert su.execute("SELECT id::text, status FROM fi.league_credentials").fetchall() == [(new_cid, "active")]
+        assert su.execute("SELECT status FROM fi.leagues WHERE id = %s", [league]).fetchone() == ("active",)
+
+
+def test_a_lease_reclaimed_while_mark_credential_waits_is_honoured(pg, league, leased_job):
+    """The reclaim holds the job row; mark_credential must wait for it and then see the new lease token."""
+    import threading
+    import time
+
+    result = {}
+    reclaimer = pg.connect()
+    t = None
+    try:
+        reclaimer.execute("UPDATE fi.sync_jobs SET lease_token = 8 WHERE id = %s", [leased_job["job"]])  # locked, uncommitted
+
+        def stale_worker():
+            try:
+                with pg.connect(user="fi_sync") as con:
+                    result["marked"] = con.execute(MARK, [leased_job["job"], 7, leased_job["cid"], "invalid"]).fetchone()[0]
+                    con.commit()
+            except Exception as err:   # noqa: BLE001 - reported through `result`
+                result["error"] = repr(err)
+
+        t = threading.Thread(target=stale_worker)
+        t.start()
+        time.sleep(0.5)
+        assert t.is_alive(), f"mark_credential must block on the job row while a reclaim holds it: {result}"
+        reclaimer.commit()
+    finally:
+        reclaimer.rollback()      # never leave the row lock behind (the next test's reset would wait on it)
+        reclaimer.close()
+        if t is not None:
+            t.join(10)
+    assert result == {"marked": False}
+    with pg.connect() as su:
+        assert su.execute("SELECT status FROM fi.league_credentials").fetchone() == ("active",)

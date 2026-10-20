@@ -170,8 +170,11 @@ def _write_and_recheck(con, access: Access, write) -> Access:
     check, so the re-authorization after the write is what notices. Either way the answer is the route's 404 and
     the HTTPException rolls the transaction back."""
     principal = _signed_in(access)
-    with _still_visible():
-        write(principal)
+    try:
+        with _still_visible():
+            write(principal)
+    except mutations.SignInRequired:      # a signature-valid token whose Supabase account no longer exists
+        raise HTTPException(401, SIGN_IN) from None
     try:
         return authorize_league_in(con, principal, access.league_id)
     except LeagueNotFound:

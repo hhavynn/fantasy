@@ -122,7 +122,7 @@ class PgDatabase:
 
     def reset(self) -> None:
         with self.connect(autocommit=True) as con:
-            con.execute("TRUNCATE " + ", ".join(f"fi.{t}" for t in self.FI_TABLES) + " RESTART IDENTITY CASCADE")
+            con.execute("TRUNCATE auth.users, " + ", ".join(f"fi.{t}" for t in self.FI_TABLES) + " RESTART IDENTITY CASCADE")
             con.execute("SELECT fi.seed_provider_slots()")
 
     def wait_ready(self, timeout: float = 20) -> None:
