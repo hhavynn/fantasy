@@ -1,0 +1,2951 @@
+// /api/managers
+{
+ "body": {
+  "league": {
+   "current_matchup_period": 3,
+   "current_week": 3,
+   "faab_budget": 100,
+   "final_scoring_period": 17,
+   "is_faab": true,
+   "league_id": 999,
+   "name": "Fixture League",
+   "playoff_teams": 2,
+   "reception_points": 1.0,
+   "reg_season_matchups": 14,
+   "roster_slots": {
+    "BE": 3,
+    "D/ST": 1,
+    "FLEX": 1,
+    "IR": 1,
+    "K": 1,
+    "QB": 1,
+    "RB": 2,
+    "TE": 1,
+    "WR": 2
+   },
+   "scoring_type": "H2H_POINTS",
+   "season": 2026,
+   "size": 4,
+   "synced_at": "<masked>",
+   "trade_deadline": "<masked>",
+   "waiver_process_days": null
+  },
+  "managers": [
+   {
+    "abbrev": "T1",
+    "acquisitions": 2,
+    "classifications": {
+     "dst_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "dst_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_dst",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.0,
+      "z_score": null
+     },
+     "faab_spending": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "faab_spending",
+      "label": "LOW",
+      "league_id": 999,
+      "league_mean": 0.25,
+      "league_std": 0.11180339887498948,
+      "metric": "faab_spent_pct",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.2; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.1,
+      "z_score": -1.3416407864998738
+     },
+     "hold_patience": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "hold_patience",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "average_player_hold_length",
+      "min_sample": 4,
+      "rule": "Needs sample >= 4 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 1,
+      "value": null,
+      "z_score": null
+     },
+     "injury_response": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "injury_response",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "injury_replacement_rate",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 1).",
+      "sample_size": 1,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.0,
+      "z_score": null
+     },
+     "k_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "k_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_k",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.0,
+      "z_score": null
+     },
+     "qb_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "qb_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "qb_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 1).",
+      "sample_size": 1,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.0,
+      "z_score": null
+     },
+     "qb_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "qb_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_qb",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.0,
+      "z_score": null
+     },
+     "quick_drops": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "quick_drops",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "quick_drop_rate",
+      "min_sample": 4,
+      "rule": "Needs sample >= 4 (have 1).",
+      "sample_size": 1,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.0,
+      "z_score": null
+     },
+     "rb_hoarding": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "rb_hoarding",
+      "label": "MEDIUM",
+      "league_id": 999,
+      "league_mean": 2.0,
+      "league_std": 1.5811388300841898,
+      "metric": "avg_rbs_rostered",
+      "min_sample": 2,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean; LOW if <= 0.75 SD below",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 1,
+      "value": 3.0,
+      "z_score": 0.6324555320336759
+     },
+     "rb_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "rb_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "rb_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 1).",
+      "sample_size": 1,
+      "season": 2026,
+      "team_id": 1,
+      "value": 1.0,
+      "z_score": null
+     },
+     "rookie_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "rookie_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "rookie_add_rate",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 1,
+      "value": null,
+      "z_score": null
+     },
+     "roster_churn": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "roster_churn",
+      "label": "MEDIUM",
+      "league_id": 999,
+      "league_mean": 0.0625,
+      "league_std": 0.06909634979907082,
+      "metric": "roster_churn_rate",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.25; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.08333333333333333,
+      "z_score": 0.3015113445777636
+     },
+     "te_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "te_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "te_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 1).",
+      "sample_size": 1,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.0,
+      "z_score": null
+     },
+     "te_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "te_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_te",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.0,
+      "z_score": null
+     },
+     "trade_activity": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "trade_activity",
+      "label": "MEDIUM",
+      "league_id": 999,
+      "league_mean": 0.5,
+      "league_std": 0.5,
+      "metric": "trade_count",
+      "min_sample": 3,
+      "rule": "Absolute: LOW < 1 <= MEDIUM < 2 <= HIGH",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 1,
+      "value": 1.0,
+      "z_score": null
+     },
+     "waiver_aggression": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "waiver_aggression",
+      "label": "MEDIUM",
+      "league_id": 999,
+      "league_mean": 0.25,
+      "league_std": 0.2763853991962833,
+      "metric": "adds_per_week",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.5; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.3333333333333333,
+      "z_score": 0.3015113445777636
+     },
+     "wr_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "wr_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "wr_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 1).",
+      "sample_size": 1,
+      "season": 2026,
+      "team_id": 1,
+      "value": 0.0,
+      "z_score": null
+     }
+    },
+    "composition": {
+     "D/ST": 1,
+     "K": 1,
+     "QB": 1,
+     "RB": 3,
+     "TE": 1,
+     "WR": 3
+    },
+    "division_id": 0,
+    "drops": 2,
+    "faab_spent": 10.0,
+    "is_mine": false,
+    "league_id": 999,
+    "losses": 0,
+    "matchup_acquisitions": {
+     "1": 1
+    },
+    "metrics": {
+     "adds_per_week": {
+      "denominator": 3.0,
+      "metric": "adds_per_week",
+      "numerator": 1.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 0.3333333333333333
+     },
+     "adds_total": {
+      "denominator": null,
+      "metric": "adds_total",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "average_player_hold_length": {
+      "denominator": 0.0,
+      "metric": "average_player_hold_length",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": null
+     },
+     "avg_qbs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_qbs_rostered",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "avg_rbs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_rbs_rostered",
+      "numerator": 9.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 3.0
+     },
+     "avg_tes_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_tes_rostered",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "avg_wrs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_wrs_rostered",
+      "numerator": 9.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 3.0
+     },
+     "distinct_starters_dst": {
+      "denominator": null,
+      "metric": "distinct_starters_dst",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "distinct_starters_k": {
+      "denominator": null,
+      "metric": "distinct_starters_k",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "distinct_starters_qb": {
+      "denominator": null,
+      "metric": "distinct_starters_qb",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "distinct_starters_te": {
+      "denominator": null,
+      "metric": "distinct_starters_te",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "drops_per_week": {
+      "denominator": 3.0,
+      "metric": "drops_per_week",
+      "numerator": 1.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 0.3333333333333333
+     },
+     "drops_total": {
+      "denominator": null,
+      "metric": "drops_total",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "dst_add_share": {
+      "denominator": 1.0,
+      "metric": "dst_add_share",
+      "numerator": 0.0,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "dst_adds": {
+      "denominator": null,
+      "metric": "dst_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "dst_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "dst_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "faab_spent_pct": {
+      "denominator": 100.0,
+      "metric": "faab_spent_pct",
+      "numerator": 10.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 0.1
+     },
+     "failed_claims": {
+      "denominator": null,
+      "metric": "failed_claims",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "injury_replacement_rate": {
+      "denominator": 1.0,
+      "metric": "injury_replacement_rate",
+      "numerator": 0.0,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "ir_moves": {
+      "denominator": null,
+      "metric": "ir_moves",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "k_add_share": {
+      "denominator": 1.0,
+      "metric": "k_add_share",
+      "numerator": 0.0,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "k_adds": {
+      "denominator": null,
+      "metric": "k_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "k_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "k_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "players_received_in_trades": {
+      "denominator": null,
+      "metric": "players_received_in_trades",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "players_traded_away": {
+      "denominator": null,
+      "metric": "players_traded_away",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 2.0
+     },
+     "qb_add_share": {
+      "denominator": 1.0,
+      "metric": "qb_add_share",
+      "numerator": 0.0,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "qb_adds": {
+      "denominator": null,
+      "metric": "qb_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "qb_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "qb_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "quick_drop_rate": {
+      "denominator": 1.0,
+      "metric": "quick_drop_rate",
+      "numerator": 0.0,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "rb_add_share": {
+      "denominator": 1.0,
+      "metric": "rb_add_share",
+      "numerator": 1.0,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "rb_adds": {
+      "denominator": null,
+      "metric": "rb_adds",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "rookie_add_rate": {
+      "denominator": 0.0,
+      "metric": "rookie_add_rate",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": null
+     },
+     "roster_churn_rate": {
+      "denominator": 12.0,
+      "metric": "roster_churn_rate",
+      "numerator": 1.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 0.08333333333333333
+     },
+     "short_hold_share_dst": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_dst",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": null
+     },
+     "short_hold_share_k": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_k",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": null
+     },
+     "short_hold_share_qb": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_qb",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": null
+     },
+     "short_hold_share_te": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_te",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": null
+     },
+     "starter_turnover_dst": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_dst",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "starter_turnover_k": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_k",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "starter_turnover_qb": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_qb",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "starter_turnover_te": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_te",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "te_add_share": {
+      "denominator": 1.0,
+      "metric": "te_add_share",
+      "numerator": 0.0,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "te_adds": {
+      "denominator": null,
+      "metric": "te_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "te_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "te_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "trade_count": {
+      "denominator": null,
+      "metric": "trade_count",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "transactions_per_week": {
+      "denominator": 3.0,
+      "metric": "transactions_per_week",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "two_for_one_trade_count": {
+      "denominator": null,
+      "metric": "two_for_one_trade_count",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 1.0
+     },
+     "weeks_observed": {
+      "denominator": null,
+      "metric": "weeks_observed",
+      "numerator": null,
+      "sample_size": null,
+      "team_id": 1,
+      "value": 3.0
+     },
+     "wr_add_share": {
+      "denominator": 1.0,
+      "metric": "wr_add_share",
+      "numerator": 0.0,
+      "sample_size": 1,
+      "team_id": 1,
+      "value": 0.0
+     },
+     "wr_adds": {
+      "denominator": null,
+      "metric": "wr_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 1,
+      "value": 0.0
+     }
+    },
+    "move_to_ir": 0,
+    "name": "Team 1",
+    "owner_ids": [
+     "m_391887cbcf92"
+    ],
+    "owner_names": "rival",
+    "playoff_seed": 1,
+    "points_against": 90.0,
+    "points_for": 400.0,
+    "season": 2026,
+    "synced_at": "<masked>",
+    "team_id": 1,
+    "ties": 0,
+    "trades": 0,
+    "waiver_rank": 1,
+    "wins": 3
+   },
+   {
+    "abbrev": "T2",
+    "acquisitions": 2,
+    "classifications": {
+     "dst_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "dst_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_dst",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.0,
+      "z_score": null
+     },
+     "faab_spending": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "faab_spending",
+      "label": "MEDIUM",
+      "league_id": 999,
+      "league_mean": 0.25,
+      "league_std": 0.11180339887498948,
+      "metric": "faab_spent_pct",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.2; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.2,
+      "z_score": -0.44721359549995787
+     },
+     "hold_patience": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "hold_patience",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "average_player_hold_length",
+      "min_sample": 4,
+      "rule": "Needs sample >= 4 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 2,
+      "value": null,
+      "z_score": null
+     },
+     "injury_response": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "injury_response",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "injury_replacement_rate",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.5,
+      "z_score": null
+     },
+     "k_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "k_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_k",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.0,
+      "z_score": null
+     },
+     "qb_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "qb_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "qb_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.0,
+      "z_score": null
+     },
+     "qb_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "qb_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_qb",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.0,
+      "z_score": null
+     },
+     "quick_drops": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "quick_drops",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "quick_drop_rate",
+      "min_sample": 4,
+      "rule": "Needs sample >= 4 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.0,
+      "z_score": null
+     },
+     "rb_hoarding": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "rb_hoarding",
+      "label": "HIGH",
+      "league_id": 999,
+      "league_mean": 2.0,
+      "league_std": 1.5811388300841898,
+      "metric": "avg_rbs_rostered",
+      "min_sample": 2,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean; LOW if <= 0.75 SD below",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 2,
+      "value": 4.0,
+      "z_score": 1.2649110640673518
+     },
+     "rb_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "rb_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "rb_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.5,
+      "z_score": null
+     },
+     "rookie_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "rookie_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "rookie_add_rate",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 2,
+      "value": null,
+      "z_score": null
+     },
+     "roster_churn": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "roster_churn",
+      "label": "MEDIUM",
+      "league_id": 999,
+      "league_mean": 0.0625,
+      "league_std": 0.06909634979907082,
+      "metric": "roster_churn_rate",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.25; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.16666666666666666,
+      "z_score": 1.507556722888818
+     },
+     "te_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "te_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "te_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.0,
+      "z_score": null
+     },
+     "te_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "te_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_te",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.0,
+      "z_score": null
+     },
+     "trade_activity": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "trade_activity",
+      "label": "LOW",
+      "league_id": 999,
+      "league_mean": 0.5,
+      "league_std": 0.5,
+      "metric": "trade_count",
+      "min_sample": 3,
+      "rule": "Absolute: LOW < 1 <= MEDIUM < 2 <= HIGH",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.0,
+      "z_score": null
+     },
+     "waiver_aggression": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "waiver_aggression",
+      "label": "HIGH",
+      "league_id": 999,
+      "league_mean": 0.25,
+      "league_std": 0.2763853991962833,
+      "metric": "adds_per_week",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.5; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.6666666666666666,
+      "z_score": 1.507556722888818
+     },
+     "wr_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "wr_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "wr_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 2,
+      "value": 0.5,
+      "z_score": null
+     }
+    },
+    "composition": {
+     "D/ST": 1,
+     "K": 1,
+     "QB": 1,
+     "RB": 4,
+     "TE": 1,
+     "WR": 4
+    },
+    "division_id": 0,
+    "drops": 2,
+    "faab_spent": 20.0,
+    "is_mine": true,
+    "league_id": 999,
+    "losses": 1,
+    "matchup_acquisitions": {
+     "1": 1
+    },
+    "metrics": {
+     "adds_per_week": {
+      "denominator": 3.0,
+      "metric": "adds_per_week",
+      "numerator": 2.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 0.6666666666666666
+     },
+     "adds_total": {
+      "denominator": null,
+      "metric": "adds_total",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 2.0
+     },
+     "average_player_hold_length": {
+      "denominator": 0.0,
+      "metric": "average_player_hold_length",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": null
+     },
+     "avg_qbs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_qbs_rostered",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 1.0
+     },
+     "avg_rbs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_rbs_rostered",
+      "numerator": 12.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 4.0
+     },
+     "avg_tes_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_tes_rostered",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 1.0
+     },
+     "avg_wrs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_wrs_rostered",
+      "numerator": 12.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 4.0
+     },
+     "distinct_starters_dst": {
+      "denominator": null,
+      "metric": "distinct_starters_dst",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 1.0
+     },
+     "distinct_starters_k": {
+      "denominator": null,
+      "metric": "distinct_starters_k",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 1.0
+     },
+     "distinct_starters_qb": {
+      "denominator": null,
+      "metric": "distinct_starters_qb",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 1.0
+     },
+     "distinct_starters_te": {
+      "denominator": null,
+      "metric": "distinct_starters_te",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 1.0
+     },
+     "drops_per_week": {
+      "denominator": 3.0,
+      "metric": "drops_per_week",
+      "numerator": 1.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 0.3333333333333333
+     },
+     "drops_total": {
+      "denominator": null,
+      "metric": "drops_total",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 2,
+      "value": 1.0
+     },
+     "dst_add_share": {
+      "denominator": 2.0,
+      "metric": "dst_add_share",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "dst_adds": {
+      "denominator": null,
+      "metric": "dst_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "dst_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "dst_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "faab_spent_pct": {
+      "denominator": 100.0,
+      "metric": "faab_spent_pct",
+      "numerator": 20.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 0.2
+     },
+     "failed_claims": {
+      "denominator": null,
+      "metric": "failed_claims",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "injury_replacement_rate": {
+      "denominator": 2.0,
+      "metric": "injury_replacement_rate",
+      "numerator": 1.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.5
+     },
+     "ir_moves": {
+      "denominator": null,
+      "metric": "ir_moves",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 1.0
+     },
+     "k_add_share": {
+      "denominator": 2.0,
+      "metric": "k_add_share",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "k_adds": {
+      "denominator": null,
+      "metric": "k_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "k_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "k_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "players_received_in_trades": {
+      "denominator": null,
+      "metric": "players_received_in_trades",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "players_traded_away": {
+      "denominator": null,
+      "metric": "players_traded_away",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "qb_add_share": {
+      "denominator": 2.0,
+      "metric": "qb_add_share",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "qb_adds": {
+      "denominator": null,
+      "metric": "qb_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "qb_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "qb_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "quick_drop_rate": {
+      "denominator": 2.0,
+      "metric": "quick_drop_rate",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "rb_add_share": {
+      "denominator": 2.0,
+      "metric": "rb_add_share",
+      "numerator": 1.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.5
+     },
+     "rb_adds": {
+      "denominator": null,
+      "metric": "rb_adds",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 2,
+      "value": 1.0
+     },
+     "rookie_add_rate": {
+      "denominator": 0.0,
+      "metric": "rookie_add_rate",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": null
+     },
+     "roster_churn_rate": {
+      "denominator": 12.0,
+      "metric": "roster_churn_rate",
+      "numerator": 2.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 0.16666666666666666
+     },
+     "short_hold_share_dst": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_dst",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": null
+     },
+     "short_hold_share_k": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_k",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": null
+     },
+     "short_hold_share_qb": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_qb",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": null
+     },
+     "short_hold_share_te": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_te",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": null
+     },
+     "starter_turnover_dst": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_dst",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "starter_turnover_k": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_k",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "starter_turnover_qb": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_qb",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "starter_turnover_te": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_te",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "te_add_share": {
+      "denominator": 2.0,
+      "metric": "te_add_share",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "te_adds": {
+      "denominator": null,
+      "metric": "te_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "te_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "te_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "trade_count": {
+      "denominator": null,
+      "metric": "trade_count",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "transactions_per_week": {
+      "denominator": 3.0,
+      "metric": "transactions_per_week",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 2,
+      "value": 1.0
+     },
+     "two_for_one_trade_count": {
+      "denominator": null,
+      "metric": "two_for_one_trade_count",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 2,
+      "value": 0.0
+     },
+     "weeks_observed": {
+      "denominator": null,
+      "metric": "weeks_observed",
+      "numerator": null,
+      "sample_size": null,
+      "team_id": 2,
+      "value": 3.0
+     },
+     "wr_add_share": {
+      "denominator": 2.0,
+      "metric": "wr_add_share",
+      "numerator": 1.0,
+      "sample_size": 2,
+      "team_id": 2,
+      "value": 0.5
+     },
+     "wr_adds": {
+      "denominator": null,
+      "metric": "wr_adds",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 2,
+      "value": 1.0
+     }
+    },
+    "move_to_ir": 1,
+    "name": "Team 2",
+    "owner_ids": [
+     "m_56f763b09645"
+    ],
+    "owner_names": "me",
+    "playoff_seed": 2,
+    "points_against": 90.0,
+    "points_for": 300.0,
+    "season": 2026,
+    "synced_at": "<masked>",
+    "team_id": 2,
+    "ties": 0,
+    "trades": 0,
+    "waiver_rank": 2,
+    "wins": 2
+   },
+   {
+    "abbrev": "T3",
+    "acquisitions": 2,
+    "classifications": {
+     "dst_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "dst_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_dst",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 3,
+      "value": null,
+      "z_score": null
+     },
+     "faab_spending": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "faab_spending",
+      "label": "MEDIUM",
+      "league_id": 999,
+      "league_mean": 0.25,
+      "league_std": 0.11180339887498948,
+      "metric": "faab_spent_pct",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.2; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 3,
+      "value": 0.3,
+      "z_score": 0.44721359549995787
+     },
+     "hold_patience": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "hold_patience",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "average_player_hold_length",
+      "min_sample": 4,
+      "rule": "Needs sample >= 4 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 3,
+      "value": null,
+      "z_score": null
+     },
+     "injury_response": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "injury_response",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "injury_replacement_rate",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 3,
+      "value": null,
+      "z_score": null
+     },
+     "k_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "k_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_k",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 3,
+      "value": null,
+      "z_score": null
+     },
+     "qb_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "qb_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "qb_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 3,
+      "value": null,
+      "z_score": null
+     },
+     "qb_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "qb_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_qb",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 3,
+      "value": 0.0,
+      "z_score": null
+     },
+     "quick_drops": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "quick_drops",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "quick_drop_rate",
+      "min_sample": 4,
+      "rule": "Needs sample >= 4 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 3,
+      "value": null,
+      "z_score": null
+     },
+     "rb_hoarding": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "rb_hoarding",
+      "label": "MEDIUM",
+      "league_id": 999,
+      "league_mean": 2.0,
+      "league_std": 1.5811388300841898,
+      "metric": "avg_rbs_rostered",
+      "min_sample": 2,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean; LOW if <= 0.75 SD below",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 3,
+      "value": 1.0,
+      "z_score": -0.6324555320336759
+     },
+     "rb_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "rb_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "rb_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 3,
+      "value": null,
+      "z_score": null
+     },
+     "rookie_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "rookie_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "rookie_add_rate",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 3,
+      "value": null,
+      "z_score": null
+     },
+     "roster_churn": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "roster_churn",
+      "label": "LOW",
+      "league_id": 999,
+      "league_mean": 0.0625,
+      "league_std": 0.06909634979907082,
+      "metric": "roster_churn_rate",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.25; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 3,
+      "value": 0.0,
+      "z_score": -0.9045340337332909
+     },
+     "te_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "te_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "te_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 3,
+      "value": null,
+      "z_score": null
+     },
+     "te_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "te_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_te",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 3,
+      "value": 0.0,
+      "z_score": null
+     },
+     "trade_activity": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "trade_activity",
+      "label": "LOW",
+      "league_id": 999,
+      "league_mean": 0.5,
+      "league_std": 0.5,
+      "metric": "trade_count",
+      "min_sample": 3,
+      "rule": "Absolute: LOW < 1 <= MEDIUM < 2 <= HIGH",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 3,
+      "value": 0.0,
+      "z_score": null
+     },
+     "waiver_aggression": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "waiver_aggression",
+      "label": "LOW",
+      "league_id": 999,
+      "league_mean": 0.25,
+      "league_std": 0.2763853991962833,
+      "metric": "adds_per_week",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.5; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 3,
+      "value": 0.0,
+      "z_score": -0.9045340337332909
+     },
+     "wr_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "wr_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "wr_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 3,
+      "value": null,
+      "z_score": null
+     }
+    },
+    "composition": {
+     "QB": 1,
+     "RB": 1,
+     "TE": 1,
+     "WR": 1
+    },
+    "division_id": 0,
+    "drops": 2,
+    "faab_spent": 30.0,
+    "is_mine": false,
+    "league_id": 999,
+    "losses": 2,
+    "matchup_acquisitions": {
+     "1": 1
+    },
+    "metrics": {
+     "adds_per_week": {
+      "denominator": 3.0,
+      "metric": "adds_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "adds_total": {
+      "denominator": null,
+      "metric": "adds_total",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "average_player_hold_length": {
+      "denominator": 0.0,
+      "metric": "average_player_hold_length",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "avg_qbs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_qbs_rostered",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 1.0
+     },
+     "avg_rbs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_rbs_rostered",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 1.0
+     },
+     "avg_tes_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_tes_rostered",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 1.0
+     },
+     "avg_wrs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_wrs_rostered",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 1.0
+     },
+     "distinct_starters_dst": {
+      "denominator": null,
+      "metric": "distinct_starters_dst",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "distinct_starters_k": {
+      "denominator": null,
+      "metric": "distinct_starters_k",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "distinct_starters_qb": {
+      "denominator": null,
+      "metric": "distinct_starters_qb",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 3,
+      "value": 1.0
+     },
+     "distinct_starters_te": {
+      "denominator": null,
+      "metric": "distinct_starters_te",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 3,
+      "value": 1.0
+     },
+     "drops_per_week": {
+      "denominator": 3.0,
+      "metric": "drops_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "drops_total": {
+      "denominator": null,
+      "metric": "drops_total",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "dst_add_share": {
+      "denominator": 0.0,
+      "metric": "dst_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "dst_adds": {
+      "denominator": null,
+      "metric": "dst_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "dst_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "dst_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "faab_spent_pct": {
+      "denominator": 100.0,
+      "metric": "faab_spent_pct",
+      "numerator": 30.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.3
+     },
+     "failed_claims": {
+      "denominator": null,
+      "metric": "failed_claims",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 1.0
+     },
+     "injury_replacement_rate": {
+      "denominator": 0.0,
+      "metric": "injury_replacement_rate",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "ir_moves": {
+      "denominator": null,
+      "metric": "ir_moves",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "k_add_share": {
+      "denominator": 0.0,
+      "metric": "k_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "k_adds": {
+      "denominator": null,
+      "metric": "k_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "k_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "k_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "players_received_in_trades": {
+      "denominator": null,
+      "metric": "players_received_in_trades",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "players_traded_away": {
+      "denominator": null,
+      "metric": "players_traded_away",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "qb_add_share": {
+      "denominator": 0.0,
+      "metric": "qb_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "qb_adds": {
+      "denominator": null,
+      "metric": "qb_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "qb_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "qb_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "quick_drop_rate": {
+      "denominator": 0.0,
+      "metric": "quick_drop_rate",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "rb_add_share": {
+      "denominator": 0.0,
+      "metric": "rb_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "rb_adds": {
+      "denominator": null,
+      "metric": "rb_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "rookie_add_rate": {
+      "denominator": 0.0,
+      "metric": "rookie_add_rate",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "roster_churn_rate": {
+      "denominator": 12.0,
+      "metric": "roster_churn_rate",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "short_hold_share_dst": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_dst",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "short_hold_share_k": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_k",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "short_hold_share_qb": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_qb",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "short_hold_share_te": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_te",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "starter_turnover_dst": {
+      "denominator": 0.0,
+      "metric": "starter_turnover_dst",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "starter_turnover_k": {
+      "denominator": 0.0,
+      "metric": "starter_turnover_k",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "starter_turnover_qb": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_qb",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "starter_turnover_te": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_te",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "te_add_share": {
+      "denominator": 0.0,
+      "metric": "te_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "te_adds": {
+      "denominator": null,
+      "metric": "te_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "te_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "te_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "trade_count": {
+      "denominator": null,
+      "metric": "trade_count",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "transactions_per_week": {
+      "denominator": 3.0,
+      "metric": "transactions_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "two_for_one_trade_count": {
+      "denominator": null,
+      "metric": "two_for_one_trade_count",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     },
+     "weeks_observed": {
+      "denominator": null,
+      "metric": "weeks_observed",
+      "numerator": null,
+      "sample_size": null,
+      "team_id": 3,
+      "value": 3.0
+     },
+     "wr_add_share": {
+      "denominator": 0.0,
+      "metric": "wr_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": null
+     },
+     "wr_adds": {
+      "denominator": null,
+      "metric": "wr_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 3,
+      "value": 0.0
+     }
+    },
+    "move_to_ir": 0,
+    "name": "Team 3",
+    "owner_ids": [
+     "m_a4cbb901fc0b"
+    ],
+    "owner_names": null,
+    "playoff_seed": 3,
+    "points_against": 90.0,
+    "points_for": 200.0,
+    "season": 2026,
+    "synced_at": "<masked>",
+    "team_id": 3,
+    "ties": 0,
+    "trades": 0,
+    "waiver_rank": 3,
+    "wins": 1
+   },
+   {
+    "abbrev": "T4",
+    "acquisitions": 2,
+    "classifications": {
+     "dst_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "dst_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_dst",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 4,
+      "value": null,
+      "z_score": null
+     },
+     "faab_spending": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "faab_spending",
+      "label": "HIGH",
+      "league_id": 999,
+      "league_mean": 0.25,
+      "league_std": 0.11180339887498948,
+      "metric": "faab_spent_pct",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.2; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 4,
+      "value": 0.4,
+      "z_score": 1.341640786499874
+     },
+     "hold_patience": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "hold_patience",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "average_player_hold_length",
+      "min_sample": 4,
+      "rule": "Needs sample >= 4 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 4,
+      "value": null,
+      "z_score": null
+     },
+     "injury_response": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "injury_response",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "injury_replacement_rate",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 4,
+      "value": null,
+      "z_score": null
+     },
+     "k_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "k_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_k",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 4,
+      "value": null,
+      "z_score": null
+     },
+     "qb_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "qb_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "qb_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 4,
+      "value": null,
+      "z_score": null
+     },
+     "qb_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "qb_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_qb",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 4,
+      "value": 0.0,
+      "z_score": null
+     },
+     "quick_drops": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "quick_drops",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "quick_drop_rate",
+      "min_sample": 4,
+      "rule": "Needs sample >= 4 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 4,
+      "value": null,
+      "z_score": null
+     },
+     "rb_hoarding": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "rb_hoarding",
+      "label": "LOW",
+      "league_id": 999,
+      "league_mean": 2.0,
+      "league_std": 1.5811388300841898,
+      "metric": "avg_rbs_rostered",
+      "min_sample": 2,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean; LOW if <= 0.75 SD below",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 4,
+      "value": 0.0,
+      "z_score": -1.2649110640673518
+     },
+     "rb_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "rb_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "rb_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 4,
+      "value": null,
+      "z_score": null
+     },
+     "rookie_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "rookie_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "rookie_add_rate",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 4,
+      "value": null,
+      "z_score": null
+     },
+     "roster_churn": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "roster_churn",
+      "label": "LOW",
+      "league_id": 999,
+      "league_mean": 0.0625,
+      "league_std": 0.06909634979907082,
+      "metric": "roster_churn_rate",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.25; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 4,
+      "value": 0.0,
+      "z_score": -0.9045340337332909
+     },
+     "te_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "te_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "te_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 4,
+      "value": null,
+      "z_score": null
+     },
+     "te_streaming": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "te_streaming",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "starter_turnover_te",
+      "min_sample": 3,
+      "rule": "Needs sample >= 3 (have 2).",
+      "sample_size": 2,
+      "season": 2026,
+      "team_id": 4,
+      "value": 0.0,
+      "z_score": null
+     },
+     "trade_activity": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "trade_activity",
+      "label": "MEDIUM",
+      "league_id": 999,
+      "league_mean": 0.5,
+      "league_std": 0.5,
+      "metric": "trade_count",
+      "min_sample": 3,
+      "rule": "Absolute: LOW < 1 <= MEDIUM < 2 <= HIGH",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 4,
+      "value": 1.0,
+      "z_score": null
+     },
+     "waiver_aggression": {
+      "computed_at": "<masked>",
+      "confidence": "MEDIUM",
+      "dimension": "waiver_aggression",
+      "label": "LOW",
+      "league_id": 999,
+      "league_mean": 0.25,
+      "league_std": 0.2763853991962833,
+      "metric": "adds_per_week",
+      "min_sample": 3,
+      "rule": "League-relative: HIGH if >= 0.75 SD above league mean and value >= 0.5; LOW if <= 0.75 SD below; zero is always LOW",
+      "sample_size": 3,
+      "season": 2026,
+      "team_id": 4,
+      "value": 0.0,
+      "z_score": -0.9045340337332909
+     },
+     "wr_interest": {
+      "computed_at": "<masked>",
+      "confidence": "LOW",
+      "dimension": "wr_interest",
+      "label": "INSUFFICIENT",
+      "league_id": 999,
+      "league_mean": null,
+      "league_std": null,
+      "metric": "wr_add_share",
+      "min_sample": 5,
+      "rule": "Needs sample >= 5 (have 0).",
+      "sample_size": 0,
+      "season": 2026,
+      "team_id": 4,
+      "value": null,
+      "z_score": null
+     }
+    },
+    "composition": {
+     "QB": 1,
+     "TE": 1
+    },
+    "division_id": 0,
+    "drops": 2,
+    "faab_spent": 40.0,
+    "is_mine": false,
+    "league_id": 999,
+    "losses": 3,
+    "matchup_acquisitions": {
+     "1": 1
+    },
+    "metrics": {
+     "adds_per_week": {
+      "denominator": 3.0,
+      "metric": "adds_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "adds_total": {
+      "denominator": null,
+      "metric": "adds_total",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "average_player_hold_length": {
+      "denominator": 0.0,
+      "metric": "average_player_hold_length",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "avg_qbs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_qbs_rostered",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 1.0
+     },
+     "avg_rbs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_rbs_rostered",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "avg_tes_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_tes_rostered",
+      "numerator": 3.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 1.0
+     },
+     "avg_wrs_rostered": {
+      "denominator": 3.0,
+      "metric": "avg_wrs_rostered",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "distinct_starters_dst": {
+      "denominator": null,
+      "metric": "distinct_starters_dst",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "distinct_starters_k": {
+      "denominator": null,
+      "metric": "distinct_starters_k",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "distinct_starters_qb": {
+      "denominator": null,
+      "metric": "distinct_starters_qb",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 4,
+      "value": 1.0
+     },
+     "distinct_starters_te": {
+      "denominator": null,
+      "metric": "distinct_starters_te",
+      "numerator": null,
+      "sample_size": 2,
+      "team_id": 4,
+      "value": 1.0
+     },
+     "drops_per_week": {
+      "denominator": 3.0,
+      "metric": "drops_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "drops_total": {
+      "denominator": null,
+      "metric": "drops_total",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "dst_add_share": {
+      "denominator": 0.0,
+      "metric": "dst_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "dst_adds": {
+      "denominator": null,
+      "metric": "dst_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "dst_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "dst_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "faab_spent_pct": {
+      "denominator": 100.0,
+      "metric": "faab_spent_pct",
+      "numerator": 40.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.4
+     },
+     "failed_claims": {
+      "denominator": null,
+      "metric": "failed_claims",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "injury_replacement_rate": {
+      "denominator": 0.0,
+      "metric": "injury_replacement_rate",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "ir_moves": {
+      "denominator": null,
+      "metric": "ir_moves",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "k_add_share": {
+      "denominator": 0.0,
+      "metric": "k_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "k_adds": {
+      "denominator": null,
+      "metric": "k_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "k_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "k_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "players_received_in_trades": {
+      "denominator": null,
+      "metric": "players_received_in_trades",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 4,
+      "value": 2.0
+     },
+     "players_traded_away": {
+      "denominator": null,
+      "metric": "players_traded_away",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 4,
+      "value": 1.0
+     },
+     "qb_add_share": {
+      "denominator": 0.0,
+      "metric": "qb_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "qb_adds": {
+      "denominator": null,
+      "metric": "qb_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "qb_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "qb_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "quick_drop_rate": {
+      "denominator": 0.0,
+      "metric": "quick_drop_rate",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "rb_add_share": {
+      "denominator": 0.0,
+      "metric": "rb_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "rb_adds": {
+      "denominator": null,
+      "metric": "rb_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "rookie_add_rate": {
+      "denominator": 0.0,
+      "metric": "rookie_add_rate",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "roster_churn_rate": {
+      "denominator": 12.0,
+      "metric": "roster_churn_rate",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "short_hold_share_dst": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_dst",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "short_hold_share_k": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_k",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "short_hold_share_qb": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_qb",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "short_hold_share_te": {
+      "denominator": 0.0,
+      "metric": "short_hold_share_te",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "starter_turnover_dst": {
+      "denominator": 0.0,
+      "metric": "starter_turnover_dst",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "starter_turnover_k": {
+      "denominator": 0.0,
+      "metric": "starter_turnover_k",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "starter_turnover_qb": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_qb",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "starter_turnover_te": {
+      "denominator": 2.0,
+      "metric": "starter_turnover_te",
+      "numerator": 0.0,
+      "sample_size": 2,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "te_add_share": {
+      "denominator": 0.0,
+      "metric": "te_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "te_adds": {
+      "denominator": null,
+      "metric": "te_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "te_pickups_per_week": {
+      "denominator": 3.0,
+      "metric": "te_pickups_per_week",
+      "numerator": 0.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.0
+     },
+     "trade_count": {
+      "denominator": null,
+      "metric": "trade_count",
+      "numerator": null,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 1.0
+     },
+     "transactions_per_week": {
+      "denominator": 3.0,
+      "metric": "transactions_per_week",
+      "numerator": 1.0,
+      "sample_size": 3,
+      "team_id": 4,
+      "value": 0.3333333333333333
+     },
+     "two_for_one_trade_count": {
+      "denominator": null,
+      "metric": "two_for_one_trade_count",
+      "numerator": null,
+      "sample_size": 1,
+      "team_id": 4,
+      "value": 1.0
+     },
+     "weeks_observed": {
+      "denominator": null,
+      "metric": "weeks_observed",
+      "numerator": null,
+      "sample_size": null,
+      "team_id": 4,
+      "value": 3.0
+     },
+     "wr_add_share": {
+      "denominator": 0.0,
+      "metric": "wr_add_share",
+      "numerator": 0.0,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": null
+     },
+     "wr_adds": {
+      "denominator": null,
+      "metric": "wr_adds",
+      "numerator": null,
+      "sample_size": 0,
+      "team_id": 4,
+      "value": 0.0
+     }
+    },
+    "move_to_ir": 0,
+    "name": "Team 4",
+    "owner_ids": [
+     "m_c5405cb2a305"
+    ],
+    "owner_names": null,
+    "playoff_seed": 4,
+    "points_against": 90.0,
+    "points_for": 100.0,
+    "season": 2026,
+    "synced_at": "<masked>",
+    "team_id": 4,
+    "ties": 0,
+    "trades": 0,
+    "waiver_rank": 4,
+    "wins": 0
+   }
+  ]
+ },
+ "status": 200
+}

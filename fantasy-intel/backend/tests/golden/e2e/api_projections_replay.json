@@ -1,0 +1,16 @@
+// /api/projections/replay
+{
+ "body": {
+  "available": false,
+  "history": [],
+  "latest": null,
+  "previous": null,
+  "same_within": 0.05,
+  "schema_version": "model-replay-api/v1",
+  "season": 2026,
+  "unavailable_reason": "No replay has been stored for this season yet. It is built offline by the scheduled refresh (scripts/model_replay.py) once a week is fully final.",
+  "vs_previous": null,
+  "vs_prior": null
+ },
+ "status": 200
+}

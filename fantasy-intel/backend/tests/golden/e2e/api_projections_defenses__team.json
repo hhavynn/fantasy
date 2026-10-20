@@ -1,0 +1,29 @@
+// /api/projections/defenses?team_id=2
+{
+ "body": {
+  "available": false,
+  "governance": {
+   "approval": "owner_override",
+   "model_version": "dfp-r1",
+   "role": "Fantasy Intel's D/ST model",
+   "start_sit_ready": false,
+   "status_note": "Fantasy Intel's D/ST model: each defense's sack, turnover, points-allowed and yards-allowed rates against this opponent, combined with the betting line, scored with this league's D/ST rules. Projects the coming week."
+  },
+  "league": {
+   "id": 999,
+   "season": 2026
+  },
+  "notes": [
+   "expected_points is the D/ST's projected fantasy points under this league's D/ST scoring (a D/ST always plays its game, so it equals projected_points; a bye is 0).",
+   "stat_line holds the model's expected sacks, interceptions, fumble recoveries, points and yards allowed, and the chance of at least one D/ST touchdown.",
+   "context holds the betting line the run used, as stored when the run was made: the spread, the total and the opponent's implied team total."
+  ],
+  "players": [],
+  "run": null,
+  "schema_version": "dst-projections/v1",
+  "skipped_runs": [],
+  "unavailable_reason": "No D/ST projections: the league scores no D/ST statistic.",
+  "week": 3
+ },
+ "status": 200
+}

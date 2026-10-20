@@ -1,0 +1,502 @@
+// /api/research/players/00-SYNRB01
+{
+ "body": {
+  "data": {
+   "analytics_computed_at": "<masked>",
+   "latest_week": 7,
+   "nfl_synced_at": "<masked>",
+   "route_rows": 0,
+   "scoring_basis": "nflverse full PPR (1 per reception); xFP is nflverse ffopportunity expected PPR points",
+   "season": 2026,
+   "team_totals_source": "player_week_usage",
+   "weeks_missing_xfp": [],
+   "weeks_with_data": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "xfp_through_week": 7
+  },
+  "groups_info": {
+   "emerging_role": {
+    "caveat": "Recent windows are short. A one-week spike from an injury elsewhere on the roster can reverse when that player returns.",
+    "rule": "xFP/G over the recent 2-3 games up by the trend threshold or more against the games before, or the existing composite role trend is up.",
+    "title": "Emerging role increases"
+   },
+   "production_ahead": {
+    "caveat": "Often touchdown or efficiency driven. Elite players can beat an average-player model for a long time; this is not a prediction of regression.",
+    "rule": "PPR/G above xFP/G by the value-gap margin while xFP/G is below the high-opportunity line.",
+    "title": "Production ahead of measured opportunity"
+   },
+   "underperforming_opportunity": {
+    "caveat": "A negative FPOE says the box score lags the role, not that it will catch up. Check the role is stable and whether the player is below average at converting it.",
+    "rule": "xFP/G at or above the high-opportunity line, PPR/G below xFP/G by the value-gap margin, role trend not falling.",
+    "title": "Underperforming opportunity leaders"
+   }
+  },
+  "high_opportunity_xfp": 12.0,
+  "league": {
+   "availability_status": "ONTEAM",
+   "is_mine": false,
+   "my_team_id": 2,
+   "on_team_id": 1
+  },
+  "momentum": {
+   "baseline_weeks": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "confidence": {
+    "label": "3 recent vs 4 earlier games",
+    "level": "HIGH",
+    "n_baseline": 4,
+    "n_recent": 3
+   },
+   "label": "FLAT",
+   "metrics": {
+    "backfield_rush_share": {
+     "baseline_avg": 0.7604,
+     "baseline_weeks": [
+      1,
+      2,
+      3,
+      4
+     ],
+     "delta": 0.0312,
+     "label": "FLAT",
+     "metric": "backfield_rush_share",
+     "n_baseline": 4,
+     "n_recent": 3,
+     "recent_avg": 0.7917,
+     "recent_weeks": [
+      5,
+      6,
+      7
+     ],
+     "slope": 0.0164,
+     "threshold": 0.1
+    },
+    "fantasy_points_ppr": {
+     "baseline_avg": 16.2125,
+     "baseline_weeks": [
+      1,
+      2,
+      3,
+      4
+     ],
+     "delta": -4.2625,
+     "label": "DOWN",
+     "metric": "fantasy_points_ppr",
+     "n_baseline": 4,
+     "n_recent": 3,
+     "recent_avg": 11.95,
+     "recent_weeks": [
+      5,
+      6,
+      7
+     ],
+     "slope": -0.5161,
+     "threshold": 2.0
+    },
+    "offense_pct": {
+     "baseline_avg": 0.8063,
+     "baseline_weeks": [
+      1,
+      2,
+      3,
+      4
+     ],
+     "delta": 0.0187,
+     "label": "FLAT",
+     "metric": "offense_pct",
+     "n_baseline": 4,
+     "n_recent": 3,
+     "recent_avg": 0.825,
+     "recent_weeks": [
+      5,
+      6,
+      7
+     ],
+     "slope": 0.0098,
+     "threshold": 0.08
+    },
+    "opportunities": {
+     "baseline_avg": 21.5,
+     "baseline_weeks": [
+      1,
+      2,
+      3,
+      4
+     ],
+     "delta": -0.5,
+     "label": "FLAT",
+     "metric": "opportunities",
+     "n_baseline": 4,
+     "n_recent": 3,
+     "recent_avg": 21,
+     "recent_weeks": [
+      5,
+      6,
+      7
+     ],
+     "slope": 0.2143,
+     "threshold": 3.0
+    },
+    "xfp": {
+     "baseline_avg": 15.0875,
+     "baseline_weeks": [
+      1,
+      2,
+      3,
+      4
+     ],
+     "delta": -1.3375,
+     "label": "FLAT",
+     "metric": "xfp",
+     "n_baseline": 4,
+     "n_recent": 3,
+     "recent_avg": 13.75,
+     "recent_weeks": [
+      5,
+      6,
+      7
+     ],
+     "slope": -0.0339,
+     "threshold": 2.0
+    }
+   },
+   "ppr_baseline": 16.2125,
+   "ppr_delta": -4.2625,
+   "ppr_recent": 11.95,
+   "reading": "No clear workload change",
+   "recent_weeks": [
+    5,
+    6,
+    7
+   ],
+   "share_metric": "backfield_rush_share",
+   "volume_metric": "opportunities",
+   "xfp_baseline": 15.0875,
+   "xfp_delta": -1.3375,
+   "xfp_recent": 13.75
+  },
+  "player": {
+   "espn_player_id": 201,
+   "excluded_games": null,
+   "games_played": 7,
+   "gsis_id": "00-SYNRB01",
+   "injury": null,
+   "last_game_week": 7,
+   "mapping_status": "verified",
+   "market": {
+    "as_of_week": 7,
+    "fp_minus_xfp": -0.13,
+    "games": 7,
+    "market_signal": "HOLD",
+    "opportunity_tier": "HIGH",
+    "production_sustainability": "ALIGNED",
+    "role_trend": "FLAT",
+    "value_gap_label": "ALIGNED"
+   },
+   "name": "Synthetic RB 1",
+   "position": "RB",
+   "team": "BUF"
+  },
+  "season": 2026,
+  "timeline": [
+   {
+    "air_yards": 0.0,
+    "air_yards_share": 0.0,
+    "backfield_rush_share": 0.7917,
+    "carries": 19,
+    "designed_rushes": 19,
+    "fantasy_points_ppr": 21.05,
+    "fpoe": 4.5,
+    "gl_carries": 1,
+    "label": "Played",
+    "offense_pct": 0.825,
+    "opponent": "OPP",
+    "opportunities": 23,
+    "routes": null,
+    "rz_carries": 3,
+    "rz_targets": 1,
+    "state": "played",
+    "target_share": 0.1176,
+    "targets": 4,
+    "team": "BUF",
+    "week": 1,
+    "xfp": 16.55
+   },
+   {
+    "air_yards": 0.0,
+    "air_yards_share": 0.0,
+    "backfield_rush_share": 0.6667,
+    "carries": 16,
+    "designed_rushes": 16,
+    "fantasy_points_ppr": 9.4,
+    "fpoe": -2.7,
+    "gl_carries": 1,
+    "label": "Played",
+    "offense_pct": 0.75,
+    "opponent": "OPP",
+    "opportunities": 18,
+    "routes": null,
+    "rz_carries": 2,
+    "rz_targets": 0,
+    "state": "played",
+    "target_share": 0.0588,
+    "targets": 2,
+    "team": "BUF",
+    "week": 2,
+    "xfp": 12.1
+   },
+   {
+    "air_yards": 0.0,
+    "air_yards_share": 0.0,
+    "backfield_rush_share": 0.75,
+    "carries": 18,
+    "designed_rushes": 18,
+    "fantasy_points_ppr": 14.6,
+    "fpoe": 0.0,
+    "gl_carries": 1,
+    "label": "Played",
+    "offense_pct": 0.8,
+    "opponent": "OPP",
+    "opportunities": 21,
+    "routes": null,
+    "rz_carries": 3,
+    "rz_targets": 1,
+    "state": "played",
+    "target_share": 0.0882,
+    "targets": 3,
+    "team": "BUF",
+    "week": 3,
+    "xfp": 14.6
+   },
+   {
+    "air_yards": 0.0,
+    "air_yards_share": 0.0,
+    "backfield_rush_share": 0.8333,
+    "carries": 20,
+    "designed_rushes": 20,
+    "fantasy_points_ppr": 19.8,
+    "fpoe": 2.7,
+    "gl_carries": 1,
+    "label": "Played",
+    "offense_pct": 0.85,
+    "opponent": "OPP",
+    "opportunities": 24,
+    "routes": null,
+    "rz_carries": 3,
+    "rz_targets": 1,
+    "state": "played",
+    "target_share": 0.1176,
+    "targets": 4,
+    "team": "BUF",
+    "week": 4,
+    "xfp": 17.1
+   },
+   {
+    "air_yards": 0.0,
+    "air_yards_share": 0.0,
+    "backfield_rush_share": 0.7083,
+    "carries": 17,
+    "designed_rushes": 17,
+    "fantasy_points_ppr": 6.75,
+    "fpoe": -4.5,
+    "gl_carries": 1,
+    "label": "Played",
+    "offense_pct": 0.775,
+    "opponent": "OPP",
+    "opportunities": 18,
+    "routes": null,
+    "rz_carries": 2,
+    "rz_targets": 0,
+    "state": "played",
+    "target_share": 0.0294,
+    "targets": 1,
+    "team": "BUF",
+    "week": 5,
+    "xfp": 11.25
+   },
+   {
+    "air_yards": 0.0,
+    "air_yards_share": 0.0,
+    "backfield_rush_share": 0.7917,
+    "carries": 19,
+    "designed_rushes": 19,
+    "fantasy_points_ppr": 11.95,
+    "fpoe": -1.8,
+    "gl_carries": 1,
+    "label": "Played",
+    "offense_pct": 0.825,
+    "opponent": "OPP",
+    "opportunities": 21,
+    "routes": null,
+    "rz_carries": 3,
+    "rz_targets": 0,
+    "state": "played",
+    "target_share": 0.0588,
+    "targets": 2,
+    "team": "BUF",
+    "week": 6,
+    "xfp": 13.75
+   },
+   {
+    "air_yards": 0.0,
+    "air_yards_share": 0.0,
+    "backfield_rush_share": 0.875,
+    "carries": 21,
+    "designed_rushes": 21,
+    "fantasy_points_ppr": 17.15,
+    "fpoe": 0.9,
+    "gl_carries": 1,
+    "label": "Played",
+    "offense_pct": 0.875,
+    "opponent": "OPP",
+    "opportunities": 24,
+    "routes": null,
+    "rz_carries": 3,
+    "rz_targets": 1,
+    "state": "played",
+    "target_share": 0.0882,
+    "targets": 3,
+    "team": "BUF",
+    "week": 7,
+    "xfp": 16.25
+   }
+  ],
+  "windows": {
+   "last3": {
+    "group": {
+     "gap": "ALIGNED",
+     "high_opportunity": true,
+     "key": "high_inline",
+     "label": "High opportunity, production in line",
+     "production": "inline"
+    },
+    "research_groups": [],
+    "window": {
+     "backfield_rush_share": 0.7917,
+     "carries_pg": 19.0,
+     "coverage": {},
+     "designed_rushes_pg": 19.0,
+     "fpoe_pg": -1.8,
+     "games": 3,
+     "gl_carries_pg": 1.0,
+     "gl_carries_total": 3,
+     "opportunities_pg": 21.0,
+     "ppr_pg": 11.95,
+     "ppr_total": 35.85,
+     "receptions_pg": 1.0,
+     "rz_carries_pg": 2.6667,
+     "rz_carries_total": 8,
+     "rz_targets_pg": 0.3333,
+     "rz_targets_total": 1,
+     "snap_share": 0.825,
+     "target_share": 0.0638,
+     "targets_pg": 2.0,
+     "team_rush_share": 0.6333,
+     "weeks": [
+      5,
+      6,
+      7
+     ],
+     "xfp_pg": 13.75,
+     "xfp_total": 41.25
+    }
+   },
+   "last5": {
+    "group": {
+     "gap": "ALIGNED",
+     "high_opportunity": true,
+     "key": "high_inline",
+     "label": "High opportunity, production in line",
+     "production": "inline"
+    },
+    "research_groups": [],
+    "window": {
+     "backfield_rush_share": 0.7917,
+     "carries_pg": 19.0,
+     "coverage": {},
+     "designed_rushes_pg": 19.0,
+     "fpoe_pg": -0.54,
+     "games": 5,
+     "gl_carries_pg": 1.0,
+     "gl_carries_total": 5,
+     "opportunities_pg": 21.6,
+     "ppr_pg": 14.05,
+     "ppr_total": 70.25,
+     "receptions_pg": 1.6,
+     "rz_carries_pg": 2.8,
+     "rz_carries_total": 14,
+     "rz_targets_pg": 0.6,
+     "rz_targets_total": 3,
+     "snap_share": 0.825,
+     "target_share": 0.0765,
+     "targets_pg": 2.6,
+     "team_rush_share": 0.6333,
+     "weeks": [
+      3,
+      4,
+      5,
+      6,
+      7
+     ],
+     "xfp_pg": 14.59,
+     "xfp_total": 72.95
+    }
+   },
+   "season": {
+    "group": {
+     "gap": "ALIGNED",
+     "high_opportunity": true,
+     "key": "high_inline",
+     "label": "High opportunity, production in line",
+     "production": "inline"
+    },
+    "research_groups": [],
+    "window": {
+     "backfield_rush_share": 0.7738,
+     "carries_pg": 18.5714,
+     "coverage": {},
+     "designed_rushes_pg": 18.5714,
+     "fpoe_pg": -0.1286,
+     "games": 7,
+     "gl_carries_pg": 1.0,
+     "gl_carries_total": 7,
+     "opportunities_pg": 21.2857,
+     "ppr_pg": 14.3857,
+     "ppr_total": 100.7,
+     "receptions_pg": 1.7143,
+     "rz_carries_pg": 2.7143,
+     "rz_carries_total": 19,
+     "rz_targets_pg": 0.5714,
+     "rz_targets_total": 4,
+     "snap_share": 0.8143,
+     "target_share": 0.0852,
+     "targets_pg": 2.7143,
+     "team_rush_share": 0.619,
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+     ],
+     "xfp_pg": 14.5143,
+     "xfp_total": 101.6
+    }
+   }
+  }
+ },
+ "status": 200
+}

@@ -1,0 +1,323 @@
+// /api/players/-16012
+{
+ "body": {
+  "context": null,
+  "depth_chart": null,
+  "forward_projection": {
+   "note": "ESPN projection is the forward fantasy-point baseline. Role, sustainability, schedule and league context are evaluated separately.",
+   "projection_synced_at": "<masked>",
+   "schedule_available": true,
+   "source": "ESPN",
+   "summary": {
+    "as_of_week": 3,
+    "bye_weeks": [],
+    "bye_weeks_remaining": 0,
+    "current_week_projection": 8.3,
+    "final_week": 17,
+    "last_regular_season_week": 14,
+    "missing_weeks": [],
+    "playoff_projected_points": 28.8,
+    "playoff_weeks_available": 3,
+    "playoff_weeks_expected": 3,
+    "projection_source": "ESPN",
+    "regular_season_projected_points": 106.2,
+    "regular_season_weeks_available": 12,
+    "regular_season_weeks_expected": 12,
+    "ros_coverage": 1.0,
+    "ros_projected_points": 135.0,
+    "ros_weeks_available": 15,
+    "ros_weeks_expected": 15
+   },
+   "weeks": [
+    {
+     "espn_projected_points": 8.3,
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NYJ",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 3
+    },
+    {
+     "espn_projected_points": 8.4,
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NYG",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 4
+    },
+    {
+     "espn_projected_points": 8.5,
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "NO",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 5
+    },
+    {
+     "espn_projected_points": 8.6,
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "NE",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 6
+    },
+    {
+     "espn_projected_points": 8.7,
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "MIN",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 7
+    },
+    {
+     "espn_projected_points": 8.8,
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "MIA",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 8
+    },
+    {
+     "espn_projected_points": 8.9,
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "LV",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 9
+    },
+    {
+     "espn_projected_points": 9.0,
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "LAC",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 10
+    },
+    {
+     "espn_projected_points": 9.1,
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "LA",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 11
+    },
+    {
+     "espn_projected_points": 9.2,
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "JAX",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 12
+    },
+    {
+     "espn_projected_points": 9.3,
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "IND",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 13
+    },
+    {
+     "espn_projected_points": 9.4,
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "HOU",
+     "phase": "regular",
+     "projection_available": true,
+     "week": 14
+    },
+    {
+     "espn_projected_points": 9.5,
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "GB",
+     "phase": "playoff",
+     "projection_available": true,
+     "week": 15
+    },
+    {
+     "espn_projected_points": 9.6,
+     "is_home": false,
+     "on_bye": false,
+     "opponent": "DEN",
+     "phase": "playoff",
+     "projection_available": true,
+     "week": 16
+    },
+    {
+     "espn_projected_points": 9.7,
+     "is_home": true,
+     "on_bye": false,
+     "opponent": "DAL",
+     "phase": "playoff",
+     "projection_available": true,
+     "week": 17
+    }
+   ]
+  },
+  "ftn_read_semantics": {
+   "assumed_primary_read_code": "1",
+   "note": "Official dictionary documents 0 = primary read, but observed data conflicts; shown as 'FTN progression read-code 1 share' for exploration only.",
+   "read_semantics_status": "UNVERIFIED",
+   "reference": "https://github.com/nflverse/nflreadr/issues/325"
+  },
+  "injuries": [],
+  "league_points": [
+   {
+    "actual_points": 9.0,
+    "projected_points": 11.0,
+    "scoring_period": 1
+   },
+   {
+    "actual_points": 10.0,
+    "projected_points": 11.0,
+    "scoring_period": 2
+   },
+   {
+    "actual_points": null,
+    "projected_points": 8.3,
+    "scoring_period": 3
+   },
+   {
+    "actual_points": null,
+    "projected_points": 8.4,
+    "scoring_period": 4
+   },
+   {
+    "actual_points": null,
+    "projected_points": 8.5,
+    "scoring_period": 5
+   },
+   {
+    "actual_points": null,
+    "projected_points": 8.6,
+    "scoring_period": 6
+   },
+   {
+    "actual_points": null,
+    "projected_points": 8.7,
+    "scoring_period": 7
+   },
+   {
+    "actual_points": null,
+    "projected_points": 8.8,
+    "scoring_period": 8
+   },
+   {
+    "actual_points": null,
+    "projected_points": 8.9,
+    "scoring_period": 9
+   },
+   {
+    "actual_points": null,
+    "projected_points": 9.0,
+    "scoring_period": 10
+   },
+   {
+    "actual_points": null,
+    "projected_points": 9.1,
+    "scoring_period": 11
+   },
+   {
+    "actual_points": null,
+    "projected_points": 9.2,
+    "scoring_period": 12
+   },
+   {
+    "actual_points": null,
+    "projected_points": 9.3,
+    "scoring_period": 13
+   },
+   {
+    "actual_points": null,
+    "projected_points": 9.4,
+    "scoring_period": 14
+   },
+   {
+    "actual_points": null,
+    "projected_points": 9.5,
+    "scoring_period": 15
+   },
+   {
+    "actual_points": null,
+    "projected_points": 9.6,
+    "scoring_period": 16
+   },
+   {
+    "actual_points": null,
+    "projected_points": 9.7,
+    "scoring_period": 17
+   }
+  ],
+  "opponent_defense": null,
+  "ownership": [
+   {
+    "percent_change": 1.0,
+    "percent_owned": 50.0,
+    "snapshot_date": "2026-10-20"
+   }
+  ],
+  "player": {
+   "availability_status": "ONTEAM",
+   "classification": null,
+   "espn_player_id": -16012,
+   "fantasy_team": "Team 1",
+   "fp_minus_xfp": null,
+   "fp_per_game": null,
+   "full_name": "Chiefs D/ST",
+   "games": null,
+   "gsis_id": null,
+   "injury_status": "ACTIVE",
+   "mapping_notes": null,
+   "market_signal": null,
+   "match_confidence": null,
+   "match_method": null,
+   "nfl_name": null,
+   "nfl_team": null,
+   "on_team_id": 1,
+   "opportunity_basis": null,
+   "opportunity_score": null,
+   "opportunity_score_100": null,
+   "opportunity_tier": null,
+   "percent_change": 1.0,
+   "percent_owned": 50.0,
+   "position": "D/ST",
+   "pro_team": "KC",
+   "production_score": null,
+   "production_score_100": null,
+   "production_sustainability": null,
+   "rating_scale_version": null,
+   "role_trend": null,
+   "season_avg_points": null,
+   "season_points": null,
+   "trend_label": null,
+   "usage_trend_score": null,
+   "value_gap_label": null,
+   "value_score": null,
+   "value_score_100": null,
+   "xfp_per_game": null
+  },
+  "route_data": null,
+  "score": null,
+  "team_context": null,
+  "unavailable_metrics": {
+   "man_zone_splits": "unavailable: not in free data",
+   "route_participation": "unavailable: nflverse participation data is not published for the current season",
+   "routes_run": "unavailable"
+  },
+  "waiver": null,
+  "weekly": []
+ },
+ "status": 200
+}

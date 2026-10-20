@@ -1,0 +1,1147 @@
+// /api/luck-lab
+{
+ "body": {
+  "all_schedules": [
+   {
+    "actual": {
+     "losses": 2,
+     "ties": 0,
+     "win_equivalents": 0.0,
+     "wins": 0
+    },
+    "actual_pct": 0.0,
+    "counterfactual": {
+     "losses": 2,
+     "ties": 0,
+     "win_equivalents": 0.0,
+     "wins": 0
+    },
+    "counterfactual_pct": 0.0,
+    "excluded": [],
+    "flips": {
+     "loss_to_win": [],
+     "other_changes": [],
+     "win_to_loss": []
+    },
+    "name": "Team 1",
+    "periods_compared": [
+     1,
+     2
+    ],
+    "same_periods_as_all_eligible": true,
+    "schedule_of": 1,
+    "win_equivalent_difference": 0.0
+   },
+   {
+    "actual": {
+     "losses": 1,
+     "ties": 0,
+     "win_equivalents": 0.0,
+     "wins": 0
+    },
+    "actual_pct": 0.0,
+    "counterfactual": {
+     "losses": 0,
+     "ties": 0,
+     "win_equivalents": 1.0,
+     "wins": 1
+    },
+    "counterfactual_pct": 1.0,
+    "excluded": [
+     {
+      "matchup_period": 1,
+      "reason": "team 3 played team 2 this period (self-matchup)"
+     }
+    ],
+    "flips": {
+     "loss_to_win": [
+      2
+     ],
+     "other_changes": [],
+     "win_to_loss": []
+    },
+    "name": "Team 3",
+    "periods_compared": [
+     2
+    ],
+    "same_periods_as_all_eligible": false,
+    "schedule_of": 3,
+    "win_equivalent_difference": 1.0
+   },
+   {
+    "actual": {
+     "losses": 1,
+     "ties": 0,
+     "win_equivalents": 0.0,
+     "wins": 0
+    },
+    "actual_pct": 0.0,
+    "counterfactual": {
+     "losses": 1,
+     "ties": 0,
+     "win_equivalents": 0.0,
+     "wins": 0
+    },
+    "counterfactual_pct": 0.0,
+    "excluded": [
+     {
+      "matchup_period": 2,
+      "reason": "team 4 played team 2 this period (self-matchup)"
+     }
+    ],
+    "flips": {
+     "loss_to_win": [],
+     "other_changes": [],
+     "win_to_loss": []
+    },
+    "name": "Team 4",
+    "periods_compared": [
+     1
+    ],
+    "same_periods_as_all_eligible": false,
+    "schedule_of": 4,
+    "win_equivalent_difference": 0.0
+   }
+  ],
+  "biggest_contributors": [
+   {
+    "cumulative_luck": -0.3333,
+    "expected_wins": 0.3333,
+    "flags": [
+     "lost_to_top_scorer"
+    ],
+    "luck": -0.3333,
+    "margin": -19.0,
+    "matchup_period": 2,
+    "median": 106.0,
+    "opponent_id": 4,
+    "opponent_name": "Team 4",
+    "opponent_rank": 1,
+    "opponent_score": 116.0,
+    "rank": 3,
+    "result": "L",
+    "score": 97.0,
+    "teams": 4,
+    "weeks": [
+     2
+    ]
+   },
+   {
+    "cumulative_luck": 0.0,
+    "expected_wins": 0.0,
+    "flags": [
+     "lost_to_top_scorer"
+    ],
+    "luck": 0.0,
+    "margin": -17.0,
+    "matchup_period": 1,
+    "median": 105.5,
+    "opponent_id": 3,
+    "opponent_name": "Team 3",
+    "opponent_rank": 1,
+    "opponent_score": 114.0,
+    "rank": 4,
+    "result": "L",
+    "score": 97.0,
+    "teams": 4,
+    "weeks": [
+     1
+    ]
+   }
+  ],
+  "counterfactual": null,
+  "coverage": {
+   "data_notes": {
+    "conflicting_ids": [],
+    "duplicate_ids_merged": [],
+    "missing_ids": 0,
+    "no_period": [],
+    "playoff_rows": 0
+   },
+   "eligible_periods": [
+    1,
+    2
+   ],
+   "excluded_periods": [
+    {
+     "kind": "not_completed",
+     "matchup_period": 3,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      3
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 4,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      4
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 5,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      5
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 6,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      6
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 7,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      7
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 8,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      8
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 9,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      9
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 10,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      10
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 11,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      11
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 12,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      12
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 13,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      13
+     ]
+    },
+    {
+     "kind": "not_completed",
+     "matchup_period": 14,
+     "reasons": [
+      "2 matchup(s) not final (no ESPN winner yet)"
+     ],
+     "teams": 4,
+     "teams_with_final_scores": 0,
+     "weeks": [
+      14
+     ]
+    }
+   ],
+   "rule": "A period is eligible only when every league team has exactly one completed regular-season two-team matchup with both scores present. Otherwise it is excluded for every team (reasons listed), so no team is compared with an incomplete pool.",
+   "teams": 4
+  },
+  "focus_team_id": 2,
+  "leaderboard": [
+   {
+    "actual": {
+     "losses": 1,
+     "ties": 0,
+     "win_equivalents": 1.0,
+     "wins": 1
+    },
+    "all_play": {
+     "losses": 4,
+     "pct": 0.3333,
+     "ties": 0,
+     "wins": 2
+    },
+    "difficulty_rank": 2,
+    "espn_record": {
+     "losses": 0,
+     "ties": 0,
+     "wins": 3
+    },
+    "expected_wins": 0.667,
+    "expected_wins_rank": 3,
+    "is_mine": false,
+    "luck_rank": 1,
+    "name": "Team 1",
+    "opponent_points_mean": 107.0,
+    "periods": 2,
+    "schedule_luck": 0.333,
+    "scoring_mean": 104.0,
+    "scoring_rank": 3,
+    "team_id": 1
+   },
+   {
+    "actual": {
+     "losses": 0,
+     "ties": 0,
+     "win_equivalents": 2.0,
+     "wins": 2
+    },
+    "all_play": {
+     "losses": 1,
+     "pct": 0.8333,
+     "ties": 0,
+     "wins": 5
+    },
+    "difficulty_rank": 4,
+    "espn_record": {
+     "losses": 2,
+     "ties": 0,
+     "wins": 1
+    },
+    "expected_wins": 1.667,
+    "expected_wins_rank": 1,
+    "is_mine": false,
+    "luck_rank": 1,
+    "name": "Team 3",
+    "opponent_points_mean": 96.5,
+    "periods": 2,
+    "schedule_luck": 0.333,
+    "scoring_mean": 114.5,
+    "scoring_rank": 1,
+    "team_id": 3
+   },
+   {
+    "actual": {
+     "losses": 2,
+     "ties": 0,
+     "win_equivalents": 0.0,
+     "wins": 0
+    },
+    "all_play": {
+     "losses": 5,
+     "pct": 0.1667,
+     "ties": 0,
+     "wins": 1
+    },
+    "difficulty_rank": 1,
+    "espn_record": {
+     "losses": 1,
+     "ties": 0,
+     "wins": 2
+    },
+    "expected_wins": 0.333,
+    "expected_wins_rank": 4,
+    "is_mine": true,
+    "luck_rank": 3,
+    "name": "Team 2",
+    "opponent_points_mean": 115.0,
+    "periods": 2,
+    "schedule_luck": -0.333,
+    "scoring_mean": 97.0,
+    "scoring_rank": 4,
+    "team_id": 2
+   },
+   {
+    "actual": {
+     "losses": 1,
+     "ties": 0,
+     "win_equivalents": 1.0,
+     "wins": 1
+    },
+    "all_play": {
+     "losses": 2,
+     "pct": 0.6667,
+     "ties": 0,
+     "wins": 4
+    },
+    "difficulty_rank": 3,
+    "espn_record": {
+     "losses": 3,
+     "ties": 0,
+     "wins": 0
+    },
+    "expected_wins": 1.333,
+    "expected_wins_rank": 2,
+    "is_mine": false,
+    "luck_rank": 3,
+    "name": "Team 4",
+    "opponent_points_mean": 104.5,
+    "periods": 2,
+    "schedule_luck": -0.333,
+    "scoring_mean": 107.5,
+    "scoring_rank": 2,
+    "team_id": 4
+   }
+  ],
+  "league": {
+   "current_week": 3,
+   "league_id": 999,
+   "name": "Fixture League",
+   "reg_season_matchups": 14,
+   "season": 2026
+  },
+  "matrix": {
+   "periods": [
+    {
+     "matchup_period": 1,
+     "weeks": [
+      1
+     ]
+    },
+    {
+     "matchup_period": 2,
+     "weeks": [
+      2
+     ]
+    }
+   ],
+   "teams": [
+    {
+     "cells": [
+      {
+       "expected_wins": 0.6667,
+       "flags": [],
+       "matchup_period": 1,
+       "rank": 2,
+       "result": "W",
+       "score": 112.0
+      },
+      {
+       "expected_wins": 0.0,
+       "flags": [],
+       "matchup_period": 2,
+       "rank": 4,
+       "result": "L",
+       "score": 96.0
+      }
+     ],
+     "name": "Team 1",
+     "team_id": 1
+    },
+    {
+     "cells": [
+      {
+       "expected_wins": 0.0,
+       "flags": [
+        "lost_to_top_scorer"
+       ],
+       "matchup_period": 1,
+       "rank": 4,
+       "result": "L",
+       "score": 97.0
+      },
+      {
+       "expected_wins": 0.3333,
+       "flags": [
+        "lost_to_top_scorer"
+       ],
+       "matchup_period": 2,
+       "rank": 3,
+       "result": "L",
+       "score": 97.0
+      }
+     ],
+     "name": "Team 2",
+     "team_id": 2
+    },
+    {
+     "cells": [
+      {
+       "expected_wins": 1.0,
+       "flags": [],
+       "matchup_period": 1,
+       "rank": 1,
+       "result": "W",
+       "score": 114.0
+      },
+      {
+       "expected_wins": 0.6667,
+       "flags": [],
+       "matchup_period": 2,
+       "rank": 2,
+       "result": "W",
+       "score": 115.0
+      }
+     ],
+     "name": "Team 3",
+     "team_id": 3
+    },
+    {
+     "cells": [
+      {
+       "expected_wins": 0.3333,
+       "flags": [],
+       "matchup_period": 1,
+       "rank": 3,
+       "result": "L",
+       "score": 99.0
+      },
+      {
+       "expected_wins": 1.0,
+       "flags": [],
+       "matchup_period": 2,
+       "rank": 1,
+       "result": "W",
+       "score": 116.0
+      }
+     ],
+     "name": "Team 4",
+     "team_id": 4
+    }
+   ]
+  },
+  "notes": [
+   "Historical and explanatory only: no projections, no win probabilities, no future expected wins.",
+   "Scores are ESPN matchup-period totals; lineup decisions are taken as they happened (no hypothetical optimized past lineups).",
+   "Schedule luck describes how actual matchups compare with weekly scoring ranks; it does not show cause."
+  ],
+  "rules": {
+   "band_size": 2,
+   "bands": "Top/bottom band = the 2 highest / lowest weekly scores (three, or half the league when it has fewer than six teams; this league has 4). Descriptive ranks, not thresholds that predict anything.",
+   "counterfactual": "Counterfactual: keep the selected team's actual score each period and compare it with the actual score of the opponent the other manager faced that period. A period where that opponent is the selected team itself is excluded. These are hypothetical opponent assignments, not a valid reconstructed league schedule; the hypothetical result compares points (ESPN tiebreaks are not applied). Actual and counterfactual records use exactly the same periods.",
+   "eligible": "A period is eligible only when every league team has exactly one completed regular-season two-team matchup with both scores present. Otherwise it is excluded for every team (reasons listed), so no team is compared with an incomplete pool.",
+   "expected": "Expected wins in a period = (teams outscored + 0.5 x teams tied) / (teams - 1), comparing a team's matchup-period score with every other team's score in the same period. Season expected wins = the sum over eligible periods. An all-play win equivalent, not a probability of winning the actual matchup.",
+   "luck": "Schedule luck = actual win equivalents (win 1, tie 0.5) minus expected wins, over the same eligible periods. Positive: more actual wins than the weekly scoring rank implies. An observed result gap, not proof of luck or skill and not a prediction of regression.",
+   "result_source": "Actual results are ESPN's winner field; a points tie that ESPN broke with a league tiebreak counts as ESPN recorded it."
+  },
+  "schedule_of": null,
+  "spotlight": {
+   "actual": {
+    "losses": 2,
+    "ties": 0,
+    "win_equivalents": 0.0,
+    "wins": 0
+   },
+   "all_play": {
+    "losses": 5,
+    "pct": 0.1667,
+    "ties": 0,
+    "wins": 1
+   },
+   "difficulty": {
+    "easiest": {
+     "flags": [
+      "lost_to_top_scorer"
+     ],
+     "margin": -17.0,
+     "matchup_period": 1,
+     "opponent_id": 3,
+     "opponent_rank": 1,
+     "opponent_score": 114.0,
+     "rank": 4,
+     "result": "L",
+     "score": 97.0,
+     "teams": 4,
+     "weeks": [
+      1
+     ]
+    },
+    "hardest": {
+     "flags": [
+      "lost_to_top_scorer"
+     ],
+     "margin": -19.0,
+     "matchup_period": 2,
+     "opponent_id": 4,
+     "opponent_rank": 1,
+     "opponent_score": 116.0,
+     "rank": 3,
+     "result": "L",
+     "score": 97.0,
+     "teams": 4,
+     "weeks": [
+      2
+     ]
+    },
+    "opponent_points_mean": 115.0,
+    "opponent_points_total": 230.0,
+    "opponent_season_share_mean": 0.75,
+    "opponent_share_mean": 1.0,
+    "opponents_bottom_band": 0,
+    "opponents_top_band": 2
+   },
+   "difficulty_rank": 1,
+   "espn_points_against": 90.0,
+   "espn_points_for": 300.0,
+   "espn_record": {
+    "losses": 1,
+    "ties": 0,
+    "wins": 2
+   },
+   "expected_losses": 1.667,
+   "expected_wins": 0.333,
+   "is_mine": true,
+   "luck_rank": 3,
+   "name": "Team 2",
+   "notable": {
+    "brutal_losses": [
+     {
+      "flags": [
+       "lost_to_top_scorer"
+      ],
+      "margin": -19.0,
+      "matchup_period": 2,
+      "opponent_id": 4,
+      "opponent_rank": 1,
+      "opponent_score": 116.0,
+      "rank": 3,
+      "result": "L",
+      "score": 97.0,
+      "teams": 4,
+      "weeks": [
+       2
+      ]
+     },
+     {
+      "flags": [
+       "lost_to_top_scorer"
+      ],
+      "margin": -17.0,
+      "matchup_period": 1,
+      "opponent_id": 3,
+      "opponent_rank": 1,
+      "opponent_score": 114.0,
+      "rank": 4,
+      "result": "L",
+      "score": 97.0,
+      "teams": 4,
+      "weeks": [
+       1
+      ]
+     }
+    ],
+    "fortunate_wins": []
+   },
+   "periods": 2,
+   "schedule_luck": -0.333,
+   "scoring": {
+    "first_place": 0,
+    "iqr": 0.0,
+    "last_place": 1,
+    "max": 97.0,
+    "mean": 97.0,
+    "median": 97.0,
+    "min": 97.0,
+    "q1": 97.0,
+    "q3": 97.0,
+    "range": 0.0,
+    "top_half_pct": 0.0,
+    "total": 194.0
+   },
+   "scoring_rank": 4,
+   "team_id": 2,
+   "teams_ranked": 4
+  },
+  "summaries": {
+   "1": {
+    "actual": {
+     "losses": 1,
+     "ties": 0,
+     "win_equivalents": 1.0,
+     "wins": 1
+    },
+    "all_play": {
+     "losses": 4,
+     "pct": 0.3333,
+     "ties": 0,
+     "wins": 2
+    },
+    "difficulty": {
+     "easiest": {
+      "flags": [],
+      "margin": 13.0,
+      "matchup_period": 1,
+      "opponent_id": 4,
+      "opponent_rank": 3,
+      "opponent_score": 99.0,
+      "rank": 2,
+      "result": "W",
+      "score": 112.0,
+      "teams": 4,
+      "weeks": [
+       1
+      ]
+     },
+     "hardest": {
+      "flags": [],
+      "margin": -19.0,
+      "matchup_period": 2,
+      "opponent_id": 3,
+      "opponent_rank": 2,
+      "opponent_score": 115.0,
+      "rank": 4,
+      "result": "L",
+      "score": 96.0,
+      "teams": 4,
+      "weeks": [
+       2
+      ]
+     },
+     "opponent_points_mean": 107.0,
+     "opponent_points_total": 214.0,
+     "opponent_season_share_mean": 0.75,
+     "opponent_share_mean": 0.5,
+     "opponents_bottom_band": 1,
+     "opponents_top_band": 1
+    },
+    "espn_points_against": 90.0,
+    "espn_points_for": 400.0,
+    "espn_record": {
+     "losses": 0,
+     "ties": 0,
+     "wins": 3
+    },
+    "expected_losses": 1.333,
+    "expected_wins": 0.667,
+    "is_mine": false,
+    "name": "Team 1",
+    "notable": {
+     "brutal_losses": [],
+     "fortunate_wins": []
+    },
+    "periods": 2,
+    "schedule_luck": 0.333,
+    "scoring": {
+     "first_place": 0,
+     "iqr": 8.0,
+     "last_place": 1,
+     "max": 112.0,
+     "mean": 104.0,
+     "median": 104.0,
+     "min": 96.0,
+     "q1": 100.0,
+     "q3": 108.0,
+     "range": 16.0,
+     "top_half_pct": 0.5,
+     "total": 208.0
+    },
+    "team_id": 1
+   },
+   "2": {
+    "actual": {
+     "losses": 2,
+     "ties": 0,
+     "win_equivalents": 0.0,
+     "wins": 0
+    },
+    "all_play": {
+     "losses": 5,
+     "pct": 0.1667,
+     "ties": 0,
+     "wins": 1
+    },
+    "difficulty": {
+     "easiest": {
+      "flags": [
+       "lost_to_top_scorer"
+      ],
+      "margin": -17.0,
+      "matchup_period": 1,
+      "opponent_id": 3,
+      "opponent_rank": 1,
+      "opponent_score": 114.0,
+      "rank": 4,
+      "result": "L",
+      "score": 97.0,
+      "teams": 4,
+      "weeks": [
+       1
+      ]
+     },
+     "hardest": {
+      "flags": [
+       "lost_to_top_scorer"
+      ],
+      "margin": -19.0,
+      "matchup_period": 2,
+      "opponent_id": 4,
+      "opponent_rank": 1,
+      "opponent_score": 116.0,
+      "rank": 3,
+      "result": "L",
+      "score": 97.0,
+      "teams": 4,
+      "weeks": [
+       2
+      ]
+     },
+     "opponent_points_mean": 115.0,
+     "opponent_points_total": 230.0,
+     "opponent_season_share_mean": 0.75,
+     "opponent_share_mean": 1.0,
+     "opponents_bottom_band": 0,
+     "opponents_top_band": 2
+    },
+    "espn_points_against": 90.0,
+    "espn_points_for": 300.0,
+    "espn_record": {
+     "losses": 1,
+     "ties": 0,
+     "wins": 2
+    },
+    "expected_losses": 1.667,
+    "expected_wins": 0.333,
+    "is_mine": true,
+    "name": "Team 2",
+    "notable": {
+     "brutal_losses": [
+      {
+       "flags": [
+        "lost_to_top_scorer"
+       ],
+       "margin": -19.0,
+       "matchup_period": 2,
+       "opponent_id": 4,
+       "opponent_rank": 1,
+       "opponent_score": 116.0,
+       "rank": 3,
+       "result": "L",
+       "score": 97.0,
+       "teams": 4,
+       "weeks": [
+        2
+       ]
+      },
+      {
+       "flags": [
+        "lost_to_top_scorer"
+       ],
+       "margin": -17.0,
+       "matchup_period": 1,
+       "opponent_id": 3,
+       "opponent_rank": 1,
+       "opponent_score": 114.0,
+       "rank": 4,
+       "result": "L",
+       "score": 97.0,
+       "teams": 4,
+       "weeks": [
+        1
+       ]
+      }
+     ],
+     "fortunate_wins": []
+    },
+    "periods": 2,
+    "schedule_luck": -0.333,
+    "scoring": {
+     "first_place": 0,
+     "iqr": 0.0,
+     "last_place": 1,
+     "max": 97.0,
+     "mean": 97.0,
+     "median": 97.0,
+     "min": 97.0,
+     "q1": 97.0,
+     "q3": 97.0,
+     "range": 0.0,
+     "top_half_pct": 0.0,
+     "total": 194.0
+    },
+    "team_id": 2
+   },
+   "3": {
+    "actual": {
+     "losses": 0,
+     "ties": 0,
+     "win_equivalents": 2.0,
+     "wins": 2
+    },
+    "all_play": {
+     "losses": 1,
+     "pct": 0.8333,
+     "ties": 0,
+     "wins": 5
+    },
+    "difficulty": {
+     "easiest": {
+      "flags": [],
+      "margin": 19.0,
+      "matchup_period": 2,
+      "opponent_id": 1,
+      "opponent_rank": 4,
+      "opponent_score": 96.0,
+      "rank": 2,
+      "result": "W",
+      "score": 115.0,
+      "teams": 4,
+      "weeks": [
+       2
+      ]
+     },
+     "hardest": {
+      "flags": [],
+      "margin": 17.0,
+      "matchup_period": 1,
+      "opponent_id": 2,
+      "opponent_rank": 4,
+      "opponent_score": 97.0,
+      "rank": 1,
+      "result": "W",
+      "score": 114.0,
+      "teams": 4,
+      "weeks": [
+       1
+      ]
+     },
+     "opponent_points_mean": 96.5,
+     "opponent_points_total": 193.0,
+     "opponent_season_share_mean": 0.25,
+     "opponent_share_mean": 0.0,
+     "opponents_bottom_band": 2,
+     "opponents_top_band": 0
+    },
+    "espn_points_against": 90.0,
+    "espn_points_for": 200.0,
+    "espn_record": {
+     "losses": 2,
+     "ties": 0,
+     "wins": 1
+    },
+    "expected_losses": 0.333,
+    "expected_wins": 1.667,
+    "is_mine": false,
+    "name": "Team 3",
+    "notable": {
+     "brutal_losses": [],
+     "fortunate_wins": []
+    },
+    "periods": 2,
+    "schedule_luck": 0.333,
+    "scoring": {
+     "first_place": 1,
+     "iqr": 0.5,
+     "last_place": 0,
+     "max": 115.0,
+     "mean": 114.5,
+     "median": 114.5,
+     "min": 114.0,
+     "q1": 114.25,
+     "q3": 114.75,
+     "range": 1.0,
+     "top_half_pct": 1.0,
+     "total": 229.0
+    },
+    "team_id": 3
+   },
+   "4": {
+    "actual": {
+     "losses": 1,
+     "ties": 0,
+     "win_equivalents": 1.0,
+     "wins": 1
+    },
+    "all_play": {
+     "losses": 2,
+     "pct": 0.6667,
+     "ties": 0,
+     "wins": 4
+    },
+    "difficulty": {
+     "easiest": {
+      "flags": [],
+      "margin": 19.0,
+      "matchup_period": 2,
+      "opponent_id": 2,
+      "opponent_rank": 3,
+      "opponent_score": 97.0,
+      "rank": 1,
+      "result": "W",
+      "score": 116.0,
+      "teams": 4,
+      "weeks": [
+       2
+      ]
+     },
+     "hardest": {
+      "flags": [],
+      "margin": -13.0,
+      "matchup_period": 1,
+      "opponent_id": 1,
+      "opponent_rank": 2,
+      "opponent_score": 112.0,
+      "rank": 3,
+      "result": "L",
+      "score": 99.0,
+      "teams": 4,
+      "weeks": [
+       1
+      ]
+     },
+     "opponent_points_mean": 104.5,
+     "opponent_points_total": 209.0,
+     "opponent_season_share_mean": 0.25,
+     "opponent_share_mean": 0.5,
+     "opponents_bottom_band": 1,
+     "opponents_top_band": 1
+    },
+    "espn_points_against": 90.0,
+    "espn_points_for": 100.0,
+    "espn_record": {
+     "losses": 3,
+     "ties": 0,
+     "wins": 0
+    },
+    "expected_losses": 0.667,
+    "expected_wins": 1.333,
+    "is_mine": false,
+    "name": "Team 4",
+    "notable": {
+     "brutal_losses": [],
+     "fortunate_wins": []
+    },
+    "periods": 2,
+    "schedule_luck": -0.333,
+    "scoring": {
+     "first_place": 1,
+     "iqr": 8.5,
+     "last_place": 0,
+     "max": 116.0,
+     "mean": 107.5,
+     "median": 107.5,
+     "min": 99.0,
+     "q1": 103.25,
+     "q3": 111.75,
+     "range": 17.0,
+     "top_half_pct": 0.5,
+     "total": 215.0
+    },
+    "team_id": 4
+   }
+  },
+  "teams": [
+   {
+    "is_mine": false,
+    "name": "Team 1",
+    "team_id": 1
+   },
+   {
+    "is_mine": true,
+    "name": "Team 2",
+    "team_id": 2
+   },
+   {
+    "is_mine": false,
+    "name": "Team 3",
+    "team_id": 3
+   },
+   {
+    "is_mine": false,
+    "name": "Team 4",
+    "team_id": 4
+   }
+  ],
+  "timeline": [
+   {
+    "cumulative_luck": 0.0,
+    "expected_wins": 0.0,
+    "flags": [
+     "lost_to_top_scorer"
+    ],
+    "luck": 0.0,
+    "margin": -17.0,
+    "matchup_period": 1,
+    "median": 105.5,
+    "opponent_id": 3,
+    "opponent_name": "Team 3",
+    "opponent_rank": 1,
+    "opponent_score": 114.0,
+    "rank": 4,
+    "result": "L",
+    "score": 97.0,
+    "teams": 4,
+    "weeks": [
+     1
+    ]
+   },
+   {
+    "cumulative_luck": -0.3333,
+    "expected_wins": 0.3333,
+    "flags": [
+     "lost_to_top_scorer"
+    ],
+    "luck": -0.3333,
+    "margin": -19.0,
+    "matchup_period": 2,
+    "median": 106.0,
+    "opponent_id": 4,
+    "opponent_name": "Team 4",
+    "opponent_rank": 1,
+    "opponent_score": 116.0,
+    "rank": 3,
+    "result": "L",
+    "score": 97.0,
+    "teams": 4,
+    "weeks": [
+     2
+    ]
+   }
+  ]
+ },
+ "status": 200
+}

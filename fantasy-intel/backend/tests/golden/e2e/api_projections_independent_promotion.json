@@ -1,0 +1,145 @@
+// /api/projections/independent/promotion
+{
+ "body": {
+  "available": true,
+  "criteria": {
+   "espn_min_matched_per_position": 300,
+   "espn_rule": "Start/Sit readiness additionally requires primary MAE <= ESPN MAE on >= espn_min_matched matched pregame observations per position; otherwise start_sit_ready is false.",
+   "heldout_min_observations_per_position": 400,
+   "min_relative_mae_improvement_vs_best_trailing_baseline": 0.03,
+   "require_bootstrap_ci_upper_below_zero": true
+  },
+  "current_week": 3,
+  "espn": {
+   "available": true,
+   "by_week": [],
+   "excluded_runs": [],
+   "matched_observations": 0,
+   "unavailable_reason": null
+  },
+  "governance": {
+   "espn_superiority_established": false,
+   "fallback_version": "ifp-2.1.0",
+   "is_fallback": false,
+   "production_approval": "owner_override",
+   "production_evidence": "Historical research: backtest of every component on 2023-26 (docs/research/ifp22_promotion.md); accuracy is tracked weekly from frozen pregame forecasts.",
+   "production_version": "ifp-2.2.0",
+   "served_version": "ifp-2.2.0",
+   "start_sit_ready": false,
+   "status_note": "Production model: injury-aware, with starting-QB odds, QB and teammate context and depth charts; retrained weekly."
+  },
+  "model_version": "ifp-2.2.0",
+  "notes": [
+   "Read-only progress of the production model ifp-2.2.0 toward the frozen PROMOTION_CRITERIA (forecast_backtest.py). Nothing on this page promotes, approves or rolls back a model.",
+   "ifp-2.2.0 is the production model behind Ours. A position is marked Start/Sit-ready once it clears these criteria.",
+   "Independent projections reach Start/Sit, Matchup and Home only when the projection switch is set to the independent source (ESPN is the default); trades, waivers, team value and the playoff race stay on ESPN. A week without an eligible ifp-2.2.0 run shows the ifp-2.1.0 fallback, labeled.",
+   "Matched = a player-week with an ESPN projection captured strictly before the player's kickoff, a completed appearance (league points from nflverse box scores) and a stored independent projection of the current model under the current league scoring, from an artifact fitted before that week's first kickoff.",
+   "MAE is in league points and conditional on the player appearing, the population of the frozen criterion."
+  ],
+  "positions": [
+   {
+    "espn": {
+     "criterion_met": false,
+     "mae_espn": null,
+     "mae_independent": null,
+     "n": 0,
+     "pregame_completed": 0,
+     "required": 300
+    },
+    "model": {
+     "best_trailing_baseline": null,
+     "ci95_primary_minus_baseline": null,
+     "heldout_n": null,
+     "mae_best_baseline": null,
+     "mae_primary": null,
+     "reasons": [],
+     "relative_mae_improvement": null,
+     "start_sit_ready": null,
+     "status": null
+    },
+    "position": "QB"
+   },
+   {
+    "espn": {
+     "criterion_met": false,
+     "mae_espn": null,
+     "mae_independent": null,
+     "n": 0,
+     "pregame_completed": 0,
+     "required": 300
+    },
+    "model": {
+     "best_trailing_baseline": null,
+     "ci95_primary_minus_baseline": null,
+     "heldout_n": null,
+     "mae_best_baseline": null,
+     "mae_primary": null,
+     "reasons": [],
+     "relative_mae_improvement": null,
+     "start_sit_ready": null,
+     "status": null
+    },
+    "position": "RB"
+   },
+   {
+    "espn": {
+     "criterion_met": false,
+     "mae_espn": null,
+     "mae_independent": null,
+     "n": 0,
+     "pregame_completed": 0,
+     "required": 300
+    },
+    "model": {
+     "best_trailing_baseline": null,
+     "ci95_primary_minus_baseline": null,
+     "heldout_n": null,
+     "mae_best_baseline": null,
+     "mae_primary": null,
+     "reasons": [],
+     "relative_mae_improvement": null,
+     "start_sit_ready": null,
+     "status": null
+    },
+    "position": "WR"
+   },
+   {
+    "espn": {
+     "criterion_met": false,
+     "mae_espn": null,
+     "mae_independent": null,
+     "n": 0,
+     "pregame_completed": 0,
+     "required": 300
+    },
+    "model": {
+     "best_trailing_baseline": null,
+     "ci95_primary_minus_baseline": null,
+     "heldout_n": null,
+     "mae_best_baseline": null,
+     "mae_primary": null,
+     "reasons": [],
+     "relative_mae_improvement": null,
+     "start_sit_ready": null,
+     "status": null
+    },
+    "position": "TE"
+   }
+  ],
+  "pregame_snapshot": {
+   "captured": true,
+   "first_kickoff": "<masked>",
+   "last_kickoff": "<masked>",
+   "latest_pregame_snapshot_at": "<masked>",
+   "latest_snapshot_at": "<masked>",
+   "players": 32,
+   "week": 3
+  },
+  "run": null,
+  "run_missing_reason": "No independent projection run is stored for this season, so the held-out status is not shown. From backend/, run `uv run python ../scripts/backtest_independent_projections.py project --week N` (for a manual run add `--register-artifact manual_pin` so its ifp-2.2.0 artifact is approved; it needs the fitted artifacts in data/models; see the runbook in docs/independent_projection_engine.md).",
+  "schema_version": "independent-promotion/v1",
+  "season": 2026,
+  "unavailable_reason": null
+ },
+ "status": 200
+}

@@ -1,0 +1,4281 @@
+// /api/trades/discover/summary
+{
+ "body": {
+  "anchor": {
+   "abbrev": "T2",
+   "is_mine": true,
+   "name": "Team 2",
+   "team_id": 2
+  },
+  "asset_note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+  "asset_thresholds": {
+   "balanced_ratio": 0.667,
+   "replacement_per_week": 1.0,
+   "significant_ratio": 0.4
+  },
+  "assumptions": [
+   "Projected points source: ESPN weekly projections, unmodified (no role, matchup, schedule, injury or market multipliers).",
+   "Trade impact: our exact optimal-lineup simulation for every remaining fantasy week, using the league's real roster slots and FLEX rules.",
+   "K and D/ST are valued against weekly streaming: each week either slot can be filled from free agents at that week's streaming baseline (the #3 available player's ESPN projection at the position). A rostered kicker or defense counts only in weeks he projects at least that much, so trading for or adding one is worth what he adds above streaming, and losing one costs only the gap down to it. The streamer is a weekly add/drop: it uses no extra roster spot in this model.",
+   "Only starters count; bench points are never value.",
+   "A projected 0 (bye, injury) is a real value; a missing projection is unknown and is never treated as 0.",
+   "Incoming players occupy active roster spots; they are never assumed to go to IR (a traded IR player arrives as an active-roster asset, subject to capacity and forced drops).",
+   "NFL availability is separate from the fantasy IR slot: in weeks a player is verified NFL-ineligible (reserve list, minimum-games rule not yet met) he cannot start for either team, whatever ESPN projects; his projection is shown, never counted and never treated as 0. An earliest eligible week is a minimum, not a return date.",
+   "Players currently in an IR slot stay rostered but inactive: they never enter the canonical starting lineup and their projection never affects completeness until a future sync shows ESPN moved them off IR.",
+   "Current IR status is held constant for this hypothetical evaluation. This does not predict when a player will return. Activation upside is shown separately and may require a roster move.",
+   "IR activation sensitivity (what an IR player would add if activated for free) is shown separately, is deliberately optimistic, and is never in the canonical delta.",
+   "Evaluation window: a trade proposed now starts at the first scoring period none of whose NFL games has kicked off; weeks already under way are never credited (no partial-week simulation).",
+   "Regular season and playoffs are reported separately and never weighted against each other.",
+   "Apart from that weekly K/D/ST stream, each team's current roster is assumed to be its roster for every remaining week (no other waiver moves)."
+  ],
+  "availability_note": "NFL eligibility, ESPN injury designation and fantasy IR placement are separate. A verified NFL-ineligible week contributes nothing (ESPN's projection is kept and shown, never counted and never treated as 0). An earliest eligible week is a minimum, not a return date; after it ESPN's projection is used as published and no health or role is assumed.",
+  "categories": {
+   "CONSOLIDATION": "Uneven trade (2-for-1, 3-for-1, 3-for-2 and the reverse) in which the side receiving fewer players upgrades its starting lineup; the other side's depth, displacement and forced drops are shown.",
+   "IMPROVES_MINE_COSTS_THEIRS": "Your lineup gains; theirs projects to lose starting points.",
+   "IMPROVES_MINE_THEIRS_UNCHANGED": "Your lineup gains; theirs is projected unchanged.",
+   "MUTUAL_PROJECTED_IMPROVEMENT": "Both starting lineups project to gain.",
+   "PLAYOFF_FOCUSED": "Your playoff delta is positive while your regular-season delta is not.",
+   "REGULAR_SEASON_FOCUSED": "Your regular-season delta is positive while your playoff delta is not."
+  },
+  "coverage": {
+   "exact": {
+    "bounds_valid": true,
+    "candidates_considered": 1120,
+    "exact_evaluations_cached": 136,
+    "excluded_invalid_roster": 0,
+    "excluded_missing_data": 0,
+    "exhaustive": true,
+    "fully_evaluated": 94,
+    "largest_unevaluated_upper_bound": null,
+    "lineup_solves_stage_a": "<masked>",
+    "matching_filters": 94,
+    "max_exact": 20000,
+    "not_evaluated": 0,
+    "not_evaluated_reason": null,
+    "not_qualified": 16,
+    "qualified_found": 78,
+    "screened_out_by_upper_bound": 814,
+    "seconds": {
+     "stage_a": 0.01,
+     "stage_b": 0.0
+    },
+    "simpler_equivalents_hidden": 0,
+    "survivors": 306,
+    "termination": "all_candidates_evaluated"
+   },
+   "exact_shapes": [
+    "1-for-1",
+    "2-for-1",
+    "1-for-2"
+   ],
+   "heuristic": {
+    "beam": {
+     "pool_per_signal": 4,
+     "seeds": 6,
+     "width": 6
+    },
+    "exhaustive": false,
+    "method": "heuristic_beam",
+    "note": "Exact evaluation of every listed package, but candidate generation is a bounded beam: packages outside the pools and the beam were never evaluated, so this is not a proven top list.",
+    "packages_evaluated": 281,
+    "per_opponent": [
+     {
+      "evaluated": 125,
+      "opponent_team_id": 1,
+      "pool_mine": [
+       207,
+       304,
+       305,
+       306,
+       307
+      ],
+      "pool_theirs": [
+       101,
+       201,
+       202,
+       203,
+       301
+      ],
+      "rows": 25,
+      "seeds": 6
+     },
+     {
+      "evaluated": 107,
+      "opponent_team_id": 3,
+      "pool_mine": [
+       207,
+       304,
+       305,
+       306,
+       307
+      ],
+      "pool_theirs": [
+       103,
+       208,
+       308,
+       403
+      ],
+      "rows": 25,
+      "seeds": 6
+     },
+     {
+      "evaluated": 49,
+      "opponent_team_id": 4,
+      "pool_mine": [
+       207,
+       304,
+       305,
+       306,
+       307
+      ],
+      "pool_theirs": [
+       104,
+       404
+      ],
+      "rows": 10,
+      "seeds": 6
+     }
+    ],
+    "qualifying_rows": 60,
+    "seconds": "<masked>",
+    "shapes": [
+     "2-for-2",
+     "3-for-1",
+     "1-for-3",
+     "3-for-2",
+     "2-for-3"
+    ]
+   },
+   "heuristic_shapes": [
+    "2-for-2",
+    "3-for-1",
+    "1-for-3",
+    "3-for-2",
+    "2-for-3"
+   ],
+   "positions": [
+    "QB",
+    "RB",
+    "TE",
+    "WR"
+   ]
+  },
+  "criteria": {
+   "asset_balance": "The asset packages are reasonably balanced (points above replacement).",
+   "depth_cost": "No starter-caliber player is forced off a roster and no starting slot is left empty.",
+   "free_agent_alternative": "The trade adds more than the best available free agent would (your side).",
+   "lineup_gain": "Both projected starting lineups improve (starters only; bench points never count).",
+   "positional_fit": "Each side receives a player who starts at least half of the remaining weeks.",
+   "uncertainty": "No injury, eligibility or missing-projection uncertainty on the traded players."
+  },
+  "evaluation": {
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "start_week": 3,
+   "start_week_reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  "exact_shapes": [
+   "1-for-1",
+   "2-for-1",
+   "1-for-2"
+  ],
+  "excluded": {
+   "lopsided": 6,
+   "one_sided": 0,
+   "similar_variants": 2
+  },
+  "heuristic_shapes": [
+   "2-for-2",
+   "3-for-1",
+   "1-for-3",
+   "3-for-2",
+   "2-for-3",
+   "3-for-3"
+  ],
+  "kdst_policy": "Kickers and team defenses are left out of automatic discovery by default: ESPN's weekly D/ST and K projections swing with matchups and both positions are routinely streamed from free agents. They stay fully available in the manual analyzer. Every lineup, before and after a trade, can stream K and D/ST from free agents each week, so a kicker or defense counts only for what it adds above that weekly streaming baseline.",
+  "kdst_streaming": {
+   "enabled": true,
+   "note": "K and D/ST are valued against weekly streaming: each week either slot can be filled from free agents at that week's streaming baseline (the #3 available player's ESPN projection at the position). A rostered kicker or defense counts only in weeks he projects at least that much, so trading for or adding one is worth what he adds above streaming, and losing one costs only the gap down to it. The streamer is a weekly add/drop: it uses no extra roster spot in this model.",
+   "positions": [],
+   "rank": 3
+  },
+  "league": {
+   "current_week": 3,
+   "final_scoring_period": 17,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "lens": {
+   "label": "Practical trades",
+   "mode": "practical",
+   "pool_rule": "the exact top 100 by smaller-side ros gain among mutual-improvement trades plus the heuristic larger-shape rows"
+  },
+  "lens_note": null,
+  "limitations": [
+   "ESPN projections can be wrong.",
+   "Projections are not adjusted by our role/usage context yet; that context is shown for explanation only.",
+   "Future injuries are unknowable.",
+   "Future waiver acquisitions are not guaranteed; hypothetical FA replacements are shown separately and never included in the trade delta.",
+   "ESPN undroppable-list restrictions are not modeled.",
+   "Manager acceptance is not predicted.",
+   "Exact discovery covers 1-for-1, 2-for-1 and 1-for-2 trades with one other team (proven top lists). Larger shapes come from a bounded beam search: exact rows, not a proven top list. Multi-team trades are not searched.",
+   "A roster need or asset balance is not a willingness to trade; nothing here estimates acceptance.",
+   "Lenses rank a labelled candidate pool drawn from the exact search; the ranking does not change which trades the exact search proves."
+  ],
+  "mode_text": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete packages set apart.",
+  "modes": {
+   "all": "All candidates (advanced): any sort or category over the whole search.",
+   "consolidation": "Consolidation deals: the side receiving fewer players upgrades its lineup; both sides are assessed.",
+   "fair": "Fairer asset exchanges: no significant asset imbalance; ordered by verdict, then Pareto front, then the asset-package ratio.",
+   "mutual": "Mutual improvement: both projected starting lineups gain (complete projections).",
+   "mutual_upgrades": "Best mutual upgrades: both starting lineups improve; ordered by verdict, then Pareto front, then the smaller side's gain.",
+   "playoff": "Playoff-focused trades: your fantasy-playoff lineup improves; ordered by verdict, then Pareto front, then the smaller side's playoff gain.",
+   "practical": "Practical trades: both lineups improve, packages not lopsided against them, injured or incomplete packages set apart.",
+   "upside": "Maximum upside (exploratory): largest gain for you; their losses are labelled."
+  },
+  "my_needs": {
+   "D/ST": {
+    "incomplete": false,
+    "league_rank": 2,
+    "short": false,
+    "slot_points_per_week": 6.0,
+    "slots": 1,
+    "surplus": [],
+    "teams": 4
+   },
+   "K": {
+    "incomplete": false,
+    "league_rank": 1,
+    "short": false,
+    "slot_points_per_week": 11.0,
+    "slots": 1,
+    "surplus": [],
+    "teams": 4
+   },
+   "QB": {
+    "incomplete": false,
+    "league_rank": 3,
+    "short": true,
+    "slot_points_per_week": 10.0,
+    "slots": 1,
+    "surplus": [],
+    "teams": 4
+   },
+   "RB": {
+    "incomplete": false,
+    "league_rank": 2,
+    "short": false,
+    "slot_points_per_week": 8.5,
+    "slots": 2,
+    "surplus": [
+     204
+    ],
+    "teams": 4
+   },
+   "TE": {
+    "incomplete": false,
+    "league_rank": 3,
+    "short": true,
+    "slot_points_per_week": 9.0,
+    "slots": 1,
+    "surplus": [],
+    "teams": 4
+   },
+   "WR": {
+    "incomplete": false,
+    "league_rank": 1,
+    "short": false,
+    "slot_points_per_week": 11.5,
+    "slots": 2,
+    "surplus": [
+     304
+    ],
+    "teams": 4
+   }
+  },
+  "names": {
+   "102": {
+    "injury_status": "ACTIVE",
+    "name": "Bravo QB",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "QB",
+    "pro_team": "BUF"
+   },
+   "103": {
+    "injury_status": "ACTIVE",
+    "name": "Charlie QB",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "QB",
+    "pro_team": "DET"
+   },
+   "104": {
+    "injury_status": "ACTIVE",
+    "name": "Delta QB",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "QB",
+    "pro_team": "PHI"
+   },
+   "204": {
+    "injury_status": "ACTIVE",
+    "name": "Hotel RB",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "RB",
+    "pro_team": "PHI"
+   },
+   "205": {
+    "injury_status": "ACTIVE",
+    "name": "India RB",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "RB",
+    "pro_team": "SF"
+   },
+   "206": {
+    "injury_status": "ACTIVE",
+    "name": "Juliet RB",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "RB",
+    "pro_team": "SEA"
+   },
+   "207": {
+    "injury_status": "ACTIVE",
+    "name": "Kilo RB",
+    "nfl_ineligible_weeks": [],
+    "on_ir": true,
+    "position": "RB",
+    "pro_team": "TB"
+   },
+   "208": {
+    "injury_status": "ACTIVE",
+    "name": "Lima RB",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "RB",
+    "pro_team": "WAS"
+   },
+   "304": {
+    "injury_status": "ACTIVE",
+    "name": "Papa WR",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "WR",
+    "pro_team": "PHI"
+   },
+   "305": {
+    "injury_status": "ACTIVE",
+    "name": "Quebec WR",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "WR",
+    "pro_team": "SF"
+   },
+   "402": {
+    "injury_status": "ACTIVE",
+    "name": "Victor TE",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "TE",
+    "pro_team": "BUF"
+   },
+   "403": {
+    "injury_status": "ACTIVE",
+    "name": "Whiskey TE",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "TE",
+    "pro_team": "DET"
+   },
+   "404": {
+    "injury_status": "ACTIVE",
+    "name": "Xray TE",
+    "nfl_ineligible_weeks": [],
+    "on_ir": false,
+    "position": "TE",
+    "pro_team": "PHI"
+   }
+  },
+  "note": "Every candidate's impact is the exact weekly optimal-lineup simulation on ESPN's projections, the same computation as the manual evaluator. Categories and orderings describe projected starting-lineup results only; they do not estimate whether a manager would accept.",
+  "opponents": [
+   {
+    "best": null,
+    "needs": {
+     "D/ST": {
+      "incomplete": false,
+      "league_rank": 1,
+      "short": false,
+      "slot_points_per_week": 9.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "K": {
+      "incomplete": false,
+      "league_rank": 2,
+      "short": false,
+      "slot_points_per_week": 10.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "QB": {
+      "incomplete": false,
+      "league_rank": 4,
+      "short": true,
+      "slot_points_per_week": 9.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "RB": {
+      "incomplete": false,
+      "league_rank": 1,
+      "short": false,
+      "slot_points_per_week": 11.5,
+      "slots": 2,
+      "surplus": [],
+      "teams": 4
+     },
+     "TE": {
+      "incomplete": false,
+      "league_rank": 4,
+      "short": true,
+      "slot_points_per_week": 8.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "WR": {
+      "incomplete": false,
+      "league_rank": 2,
+      "short": false,
+      "slot_points_per_week": 7.5,
+      "slots": 2,
+      "surplus": [
+       301
+      ],
+      "teams": 4
+     }
+    },
+    "opponent_team_id": 1,
+    "team_name": "Team 1"
+   },
+   {
+    "best": {
+     "asset_label": "replacement_level",
+     "key": "2-for-1:3:204-205:208",
+     "mine": {
+      "average_weekly_delta": 3.0,
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0,
+      "weekly_known_deltas": [
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "receives": [
+      208
+     ],
+     "search_method": "exact",
+     "sends": [
+      204,
+      205
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 4.0,
+      "known_ros_delta": 60.0,
+      "playoff_delta": 13.8,
+      "projection_complete": true,
+      "regular_season_delta": 46.2,
+      "ros_delta": 60.0,
+      "weekly_known_deltas": [
+       3.3,
+       3.4,
+       3.5,
+       3.6,
+       3.7,
+       3.8,
+       3.9,
+       4.0,
+       4.1,
+       4.2,
+       4.3,
+       4.4,
+       4.5,
+       4.6,
+       4.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "practical"
+    },
+    "needs": {
+     "D/ST": {
+      "incomplete": false,
+      "league_rank": 3,
+      "short": true,
+      "slot_points_per_week": 0.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "K": {
+      "incomplete": false,
+      "league_rank": 3,
+      "short": true,
+      "slot_points_per_week": 0.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "QB": {
+      "incomplete": false,
+      "league_rank": 2,
+      "short": false,
+      "slot_points_per_week": 11.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "RB": {
+      "incomplete": false,
+      "league_rank": 3,
+      "short": true,
+      "slot_points_per_week": 5.5,
+      "slots": 2,
+      "surplus": [],
+      "teams": 4
+     },
+     "TE": {
+      "incomplete": false,
+      "league_rank": 2,
+      "short": false,
+      "slot_points_per_week": 10.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "WR": {
+      "incomplete": false,
+      "league_rank": 3,
+      "short": true,
+      "slot_points_per_week": 3.0,
+      "slots": 2,
+      "surplus": [],
+      "teams": 4
+     }
+    },
+    "opponent_team_id": 3,
+    "team_name": "Team 3"
+   },
+   {
+    "best": {
+     "asset_label": "balanced",
+     "key": "2-for-1:4:102-304:104",
+     "mine": {
+      "average_weekly_delta": 2.0,
+      "known_ros_delta": 30.0,
+      "playoff_delta": 6.0,
+      "projection_complete": true,
+      "regular_season_delta": 24.0,
+      "ros_delta": 30.0,
+      "weekly_known_deltas": [
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "receives": [
+      104
+     ],
+     "search_method": "exact",
+     "sends": [
+      102,
+      304
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 7.0,
+      "known_ros_delta": 105.0,
+      "playoff_delta": 22.8,
+      "projection_complete": true,
+      "regular_season_delta": 82.2,
+      "ros_delta": 105.0,
+      "weekly_known_deltas": [
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7,
+       6.8,
+       6.9,
+       7.0,
+       7.1,
+       7.2,
+       7.3,
+       7.4,
+       7.5,
+       7.6,
+       7.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "practical"
+    },
+    "needs": {
+     "D/ST": {
+      "incomplete": false,
+      "league_rank": 3,
+      "short": true,
+      "slot_points_per_week": 0.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "K": {
+      "incomplete": false,
+      "league_rank": 3,
+      "short": true,
+      "slot_points_per_week": 0.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "QB": {
+      "incomplete": false,
+      "league_rank": 1,
+      "short": false,
+      "slot_points_per_week": 12.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "RB": {
+      "incomplete": false,
+      "league_rank": 4,
+      "short": true,
+      "slot_points_per_week": 0.0,
+      "slots": 2,
+      "surplus": [],
+      "teams": 4
+     },
+     "TE": {
+      "incomplete": false,
+      "league_rank": 1,
+      "short": false,
+      "slot_points_per_week": 11.0,
+      "slots": 1,
+      "surplus": [],
+      "teams": 4
+     },
+     "WR": {
+      "incomplete": false,
+      "league_rank": 4,
+      "short": true,
+      "slot_points_per_week": 0.0,
+      "slots": 2,
+      "surplus": [],
+      "teams": 4
+     }
+    },
+    "opponent_team_id": 4,
+    "team_name": "Team 4"
+   }
+  ],
+  "phases": [
+   "ros",
+   "regular",
+   "playoff"
+  ],
+  "pool_rule": "the exact top 100 by smaller-side ros gain among mutual-improvement trades plus the heuristic larger-shape rows",
+  "pool_size": 103,
+  "projection_source": {
+   "experimental_comparison": null,
+   "note": "ESPN is the only canonical projection source for trade evaluation. The independent model (ifp-2) is not wired into the trade state for long horizons and is unvalidated there, so it is never mixed into a scenario and never the default; no comparison is shown.",
+   "used": "espn"
+  },
+  "query": {
+   "category": null,
+   "heuristic": true,
+   "include_kdst": false,
+   "kdst_streaming": true,
+   "limit": 10,
+   "mode": "practical",
+   "opponent": null,
+   "phase": "ros",
+   "positions": [
+    "QB",
+    "RB",
+    "WR",
+    "TE"
+   ],
+   "shapes": [
+    "1-for-1",
+    "2-for-1",
+    "1-for-2",
+    "2-for-2",
+    "3-for-1",
+    "1-for-3",
+    "3-for-2",
+    "2-for-3"
+   ],
+   "sort": "my_gain",
+   "strictness": "standard",
+   "team_id": 2
+  },
+  "ranking_policy": "Trades are ordered by verdict (sensible, sensible with concerns, unlikely to be mutually attractive, asset-fair without a lineup gain, one-sided, incomplete), then by Pareto front over three separately measured axes: the smaller side's projected starting-lineup gain (points), the asset-package ratio (smaller package as a share of the larger, points above replacement) and certainty (fewer injury and missing-data flags). Within a verdict a trade is in a later front only when another trade is at least as good on all three and better on one. Within a front the view's own measure decides (e.g. the smaller side's gain), then the exact search order. No axis is converted into another and nothing estimates whether a manager would accept.",
+  "search": {
+   "bounds_valid": true,
+   "candidates_considered": 1120,
+   "consistency_checked": 18,
+   "consistency_failures": 0,
+   "exact_evaluations_cached": 136,
+   "excluded_invalid_roster": 0,
+   "excluded_missing_data": 0,
+   "exhaustive": true,
+   "fully_evaluated": 94,
+   "largest_unevaluated_upper_bound": null,
+   "lineup_solves_stage_a": "<masked>",
+   "matching_filters": 94,
+   "max_exact": 20000,
+   "not_evaluated": 0,
+   "not_evaluated_reason": null,
+   "not_qualified": 16,
+   "qualified_found": 78,
+   "screened_out_by_upper_bound": 814,
+   "seconds": {
+    "stage_a": 0.01,
+    "stage_b": 0.0
+   },
+   "simpler_equivalents_hidden": 0,
+   "survivors": 306,
+   "termination": "all_candidates_evaluated"
+  },
+  "sections": {
+   "concerns": [
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "you_surrender_multiple_strong",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 0.0,
+      "text": "You surrender multiple strong assets for fewer",
+      "they_send_par": 0.0,
+      "you_send_par": 30.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 135.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": "Team 3",
+       "imbalance": "significant",
+       "label": "you_surrender_multiple_strong",
+       "ratio": 0.0,
+       "text": "You surrender multiple strong assets for fewer",
+       "they_send_par": 0.0,
+       "you_send_par": 30.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "fail"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 141.0,
+         "regular": 519.0,
+         "ros": 660.0
+        },
+        "average_weekly_delta": 6.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 90.0,
+         "playoff": 19.8,
+         "regular": 70.2,
+         "ros": 90.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 283.2,
+         "regular": 1051.8,
+         "ros": 1335.0
+        },
+        "average_weekly_delta": 3.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 45.0,
+         "playoff": 9.0,
+         "regular": 36.0,
+         "ros": 45.0
+        }
+       }
+      },
+      "main_concern": "You surrender multiple strong assets for fewer (30 vs 0 points above replacement).",
+      "them_change": "India RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+      "verdict": "unlikely_mutual",
+      "verdict_text": "Both starting lineups improve, but the asset packages are lopsided: unlikely to be mutually attractive.",
+      "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup in place of India RB (RB)."
+     },
+     "key": "2-for-1:3:205-304:208",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 45.0,
+     "mine": {
+      "average_weekly_delta": 3.0,
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0,
+      "weekly_known_deltas": [
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
+       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      208
+     ],
+     "search_method": "exact",
+     "sends": [
+      205,
+      304
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 6.0,
+      "known_ros_delta": 90.0,
+      "playoff_delta": 19.8,
+      "projection_complete": true,
+      "regular_season_delta": 70.2,
+      "ros_delta": 90.0,
+      "weekly_known_deltas": [
+       5.3,
+       5.4,
+       5.5,
+       5.6,
+       5.7,
+       5.8,
+       5.9,
+       6.0,
+       6.1,
+       6.2,
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "concerns"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "you_surrender_multiple_strong",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 0.0,
+      "text": "You surrender multiple strong assets for fewer",
+      "they_send_par": 0.0,
+      "you_send_par": 30.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 120.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": "Team 3",
+       "imbalance": "significant",
+       "label": "you_surrender_multiple_strong",
+       "ratio": 0.0,
+       "text": "You surrender multiple strong assets for fewer",
+       "they_send_par": 0.0,
+       "you_send_par": 30.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "fail"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 138.0,
+         "regular": 507.0,
+         "ros": 645.0
+        },
+        "average_weekly_delta": 5.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 75.0,
+         "playoff": 16.8,
+         "regular": 58.2,
+         "ros": 75.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 283.2,
+         "regular": 1051.8,
+         "ros": 1335.0
+        },
+        "average_weekly_delta": 3.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 45.0,
+         "playoff": 9.0,
+         "regular": 36.0,
+         "ros": 45.0
+        }
+       }
+      },
+      "main_concern": "You surrender multiple strong assets for fewer (30 vs 0 points above replacement).",
+      "them_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+      "verdict": "unlikely_mutual",
+      "verdict_text": "Both starting lineups improve, but the asset packages are lopsided: unlikely to be mutually attractive.",
+      "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup, replacing India RB (RB) in 15."
+     },
+     "key": "2-for-1:3:204-304:208",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 45.0,
+     "mine": {
+      "average_weekly_delta": 3.0,
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0,
+      "weekly_known_deltas": [
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
+       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      208
+     ],
+     "search_method": "exact",
+     "sends": [
+      204,
+      304
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 5.0,
+      "known_ros_delta": 75.0,
+      "playoff_delta": 16.8,
+      "projection_complete": true,
+      "regular_season_delta": 58.2,
+      "ros_delta": 75.0,
+      "weekly_known_deltas": [
+       4.3,
+       4.4,
+       4.5,
+       4.6,
+       4.7,
+       4.8,
+       4.9,
+       5.0,
+       5.1,
+       5.2,
+       5.3,
+       5.4,
+       5.5,
+       5.6,
+       5.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "concerns"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "you_surrender_multiple_strong",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 0.0,
+      "text": "You surrender multiple strong assets for fewer",
+      "they_send_par": 0.0,
+      "you_send_par": 45.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 135.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": "Team 3",
+       "imbalance": "significant",
+       "label": "you_surrender_multiple_strong",
+       "ratio": 0.0,
+       "text": "You surrender multiple strong assets for fewer",
+       "they_send_par": 0.0,
+       "you_send_par": 45.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "fail"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 144.0,
+         "regular": 531.0,
+         "ros": 675.0
+        },
+        "average_weekly_delta": 7.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 105.0,
+         "playoff": 22.8,
+         "regular": 82.2,
+         "ros": 105.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 280.2,
+         "regular": 1039.8,
+         "ros": 1320.0
+        },
+        "average_weekly_delta": 2.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 30.0,
+         "playoff": 6.0,
+         "regular": 24.0,
+         "ros": 30.0
+        }
+       }
+      },
+      "main_concern": "You surrender multiple strong assets for fewer (45 vs 0 points above replacement).",
+      "them_change": "India RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+      "verdict": "unlikely_mutual",
+      "verdict_text": "Both starting lineups improve, but the asset packages are lopsided: unlikely to be mutually attractive.",
+      "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup in place of India RB (RB)."
+     },
+     "key": "2-for-1:3:205-305:208",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 30.0,
+     "mine": {
+      "average_weekly_delta": 2.0,
+      "known_ros_delta": 30.0,
+      "playoff_delta": 6.0,
+      "projection_complete": true,
+      "regular_season_delta": 24.0,
+      "ros_delta": 30.0,
+      "weekly_known_deltas": [
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
+       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      208
+     ],
+     "search_method": "exact",
+     "sends": [
+      205,
+      305
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 7.0,
+      "known_ros_delta": 105.0,
+      "playoff_delta": 22.8,
+      "projection_complete": true,
+      "regular_season_delta": 82.2,
+      "ros_delta": 105.0,
+      "weekly_known_deltas": [
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7,
+       6.8,
+       6.9,
+       7.0,
+       7.1,
+       7.2,
+       7.3,
+       7.4,
+       7.5,
+       7.6,
+       7.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "concerns"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "you_surrender_multiple_strong",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 0.0,
+      "text": "You surrender multiple strong assets for fewer",
+      "they_send_par": 0.0,
+      "you_send_par": 30.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 135.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": "Team 3",
+       "imbalance": "significant",
+       "label": "you_surrender_multiple_strong",
+       "ratio": 0.0,
+       "text": "You surrender multiple strong assets for fewer",
+       "they_send_par": 0.0,
+       "you_send_par": 30.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "fail"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 144.0,
+         "regular": 531.0,
+         "ros": 675.0
+        },
+        "average_weekly_delta": 7.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 105.0,
+         "playoff": 22.8,
+         "regular": 82.2,
+         "ros": 105.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 280.2,
+         "regular": 1039.8,
+         "ros": 1320.0
+        },
+        "average_weekly_delta": 2.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 30.0,
+         "playoff": 6.0,
+         "regular": 24.0,
+         "ros": 30.0
+        }
+       }
+      },
+      "main_concern": "You surrender multiple strong assets for fewer (30 vs 0 points above replacement).",
+      "them_change": "Juliet RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+      "verdict": "unlikely_mutual",
+      "verdict_text": "Both starting lineups improve, but the asset packages are lopsided: unlikely to be mutually attractive.",
+      "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup in place of Juliet RB (RB)."
+     },
+     "key": "2-for-1:3:206-304:208",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 30.0,
+     "mine": {
+      "average_weekly_delta": 2.0,
+      "known_ros_delta": 30.0,
+      "playoff_delta": 6.0,
+      "projection_complete": true,
+      "regular_season_delta": 24.0,
+      "ros_delta": 30.0,
+      "weekly_known_deltas": [
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
+       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      208
+     ],
+     "search_method": "exact",
+     "sends": [
+      206,
+      304
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 7.0,
+      "known_ros_delta": 105.0,
+      "playoff_delta": 22.8,
+      "projection_complete": true,
+      "regular_season_delta": 82.2,
+      "ros_delta": 105.0,
+      "weekly_known_deltas": [
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7,
+       6.8,
+       6.9,
+       7.0,
+       7.1,
+       7.2,
+       7.3,
+       7.4,
+       7.5,
+       7.6,
+       7.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "concerns"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "you_surrender_multiple_strong",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 0.0,
+      "text": "You surrender multiple strong assets for fewer",
+      "they_send_par": 0.0,
+      "you_send_par": 30.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 135.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": "Team 4",
+       "imbalance": "significant",
+       "label": "you_surrender_multiple_strong",
+       "ratio": 0.0,
+       "text": "You surrender multiple strong assets for fewer",
+       "they_send_par": 0.0,
+       "you_send_par": 30.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "fail"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "pass"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 95.4,
+         "regular": 354.6,
+         "ros": 450.0
+        },
+        "average_weekly_delta": 7.0,
+        "before": {
+         "playoff": 72.6,
+         "regular": 272.4,
+         "ros": 345.0
+        },
+        "delta": {
+         "known_ros": 105.0,
+         "playoff": 22.8,
+         "regular": 82.2,
+         "ros": 105.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 280.2,
+         "regular": 1039.8,
+         "ros": 1320.0
+        },
+        "average_weekly_delta": 2.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 30.0,
+         "playoff": 6.0,
+         "regular": 24.0,
+         "ros": 30.0
+        }
+       }
+      },
+      "main_concern": "You surrender multiple strong assets for fewer (30 vs 0 points above replacement).",
+      "them_change": "Papa WR (WR) starts 15 of 15 weeks in Team 4's lineup in place of Xray TE (TE).",
+      "verdict": "unlikely_mutual",
+      "verdict_text": "Both starting lineups improve, but the asset packages are lopsided: unlikely to be mutually attractive.",
+      "you_change": "Xray TE (TE) starts 15 of 15 weeks in your lineup in place of Victor TE (TE)."
+     },
+     "key": "2-for-1:4:304-402:404",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 1,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 30.0,
+     "mine": {
+      "average_weekly_delta": 2.0,
+      "known_ros_delta": 30.0,
+      "playoff_delta": 6.0,
+      "projection_complete": true,
+      "regular_season_delta": 24.0,
+      "ros_delta": 30.0,
+      "weekly_known_deltas": [
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 4",
+     "opponent_team_id": 4,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Xray TE (15 of 15).",
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      404
+     ],
+     "search_method": "exact",
+     "sends": [
+      304,
+      402
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 7.0,
+      "known_ros_delta": 105.0,
+      "playoff_delta": 22.8,
+      "projection_complete": true,
+      "regular_season_delta": 82.2,
+      "ros_delta": 105.0,
+      "weekly_known_deltas": [
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7,
+       6.8,
+       6.9,
+       7.0,
+       7.1,
+       7.2,
+       7.3,
+       7.4,
+       7.5,
+       7.6,
+       7.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "concerns"
+    }
+   ],
+   "practical": [
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "replacement_level",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 1.0,
+      "text": "Replacement-level package (little value above free agents on either side)",
+      "they_send_par": 0.0,
+      "you_send_par": 0.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 105.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "replacement_level",
+       "ratio": 1.0,
+       "text": "Replacement-level package (little value above free agents on either side)",
+       "they_send_par": 0.0,
+       "you_send_par": 0.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 135.0,
+         "regular": 495.0,
+         "ros": 630.0
+        },
+        "average_weekly_delta": 4.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 60.0,
+         "playoff": 13.8,
+         "regular": 46.2,
+         "ros": 60.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 283.2,
+         "regular": 1051.8,
+         "ros": 1335.0
+        },
+        "average_weekly_delta": 3.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 45.0,
+         "playoff": 9.0,
+         "regular": 36.0,
+         "ros": 45.0
+        }
+       }
+      },
+      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "them_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+      "verdict": "sensible_with_concerns",
+      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup in place of India RB (RB)."
+     },
+     "key": "2-for-1:3:204-205:208",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 45.0,
+     "mine": {
+      "average_weekly_delta": 3.0,
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0,
+      "weekly_known_deltas": [
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
+       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      208
+     ],
+     "search_method": "exact",
+     "sends": [
+      204,
+      205
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 4.0,
+      "known_ros_delta": 60.0,
+      "playoff_delta": 13.8,
+      "projection_complete": true,
+      "regular_season_delta": 46.2,
+      "ros_delta": 60.0,
+      "weekly_known_deltas": [
+       3.3,
+       3.4,
+       3.5,
+       3.6,
+       3.7,
+       3.8,
+       3.9,
+       4.0,
+       4.1,
+       4.2,
+       4.3,
+       4.4,
+       4.5,
+       4.6,
+       4.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "practical"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "balanced",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 1.0,
+      "text": "Asset packages appear relatively balanced",
+      "they_send_par": 90.0,
+      "you_send_par": 90.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 135.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "balanced",
+       "ratio": 1.0,
+       "text": "Asset packages appear relatively balanced",
+       "they_send_par": 90.0,
+       "you_send_par": 90.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "pass"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 95.4,
+         "regular": 354.6,
+         "ros": 450.0
+        },
+        "average_weekly_delta": 7.0,
+        "before": {
+         "playoff": 72.6,
+         "regular": 272.4,
+         "ros": 345.0
+        },
+        "delta": {
+         "known_ros": 105.0,
+         "playoff": 22.8,
+         "regular": 82.2,
+         "ros": 105.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 280.2,
+         "regular": 1039.8,
+         "ros": 1320.0
+        },
+        "average_weekly_delta": 2.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 30.0,
+         "playoff": 6.0,
+         "regular": 24.0,
+         "ros": 30.0
+        }
+       }
+      },
+      "main_concern": null,
+      "them_change": "Bravo QB (QB) starts 15 of 15 weeks in Team 4's lineup in place of Delta QB (QB).",
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
+      "you_change": "Delta QB (QB) starts 15 of 15 weeks in your lineup in place of Bravo QB (QB)."
+     },
+     "key": "2-for-1:4:102-304:104",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 1,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 30.0,
+     "mine": {
+      "average_weekly_delta": 2.0,
+      "known_ros_delta": 30.0,
+      "playoff_delta": 6.0,
+      "projection_complete": true,
+      "regular_season_delta": 24.0,
+      "ros_delta": 30.0,
+      "weekly_known_deltas": [
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 4",
+     "opponent_team_id": 4,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Delta QB (15 of 15)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      104
+     ],
+     "search_method": "exact",
+     "sends": [
+      102,
+      304
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 7.0,
+      "known_ros_delta": 105.0,
+      "playoff_delta": 22.8,
+      "projection_complete": true,
+      "regular_season_delta": 82.2,
+      "ros_delta": 105.0,
+      "weekly_known_deltas": [
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7,
+       6.8,
+       6.9,
+       7.0,
+       7.1,
+       7.2,
+       7.3,
+       7.4,
+       7.5,
+       7.6,
+       7.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "practical"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "replacement_level",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 1.0,
+      "text": "Replacement-level package (little value above free agents on either side)",
+      "they_send_par": 0.0,
+      "you_send_par": 0.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 105.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "replacement_level",
+       "ratio": 1.0,
+       "text": "Replacement-level package (little value above free agents on either side)",
+       "they_send_par": 0.0,
+       "you_send_par": 0.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 138.0,
+         "regular": 507.0,
+         "ros": 645.0
+        },
+        "average_weekly_delta": 5.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 75.0,
+         "playoff": 16.8,
+         "regular": 58.2,
+         "ros": 75.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 280.2,
+         "regular": 1039.8,
+         "ros": 1320.0
+        },
+        "average_weekly_delta": 2.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 30.0,
+         "playoff": 6.0,
+         "regular": 24.0,
+         "ros": 30.0
+        }
+       }
+      },
+      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "them_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+      "verdict": "sensible_with_concerns",
+      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup in place of Juliet RB (RB)."
+     },
+     "key": "2-for-1:3:204-206:208",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 30.0,
+     "mine": {
+      "average_weekly_delta": 2.0,
+      "known_ros_delta": 30.0,
+      "playoff_delta": 6.0,
+      "projection_complete": true,
+      "regular_season_delta": 24.0,
+      "ros_delta": 30.0,
+      "weekly_known_deltas": [
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
+       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      208
+     ],
+     "search_method": "exact",
+     "sends": [
+      204,
+      206
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 5.0,
+      "known_ros_delta": 75.0,
+      "playoff_delta": 16.8,
+      "projection_complete": true,
+      "regular_season_delta": 58.2,
+      "ros_delta": 75.0,
+      "weekly_known_deltas": [
+       4.3,
+       4.4,
+       4.5,
+       4.6,
+       4.7,
+       4.8,
+       4.9,
+       5.0,
+       5.1,
+       5.2,
+       5.3,
+       5.4,
+       5.5,
+       5.6,
+       5.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "practical"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "balanced",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 0.667,
+      "text": "Asset packages appear relatively balanced",
+      "they_send_par": 90.0,
+      "you_send_par": 60.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 105.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "balanced",
+       "ratio": 0.667,
+       "text": "Asset packages appear relatively balanced",
+       "they_send_par": 90.0,
+       "you_send_par": 60.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "pass"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 89.4,
+         "regular": 330.6,
+         "ros": 420.0
+        },
+        "average_weekly_delta": 5.0,
+        "before": {
+         "playoff": 72.6,
+         "regular": 272.4,
+         "ros": 345.0
+        },
+        "delta": {
+         "known_ros": 75.0,
+         "playoff": 16.8,
+         "regular": 58.2,
+         "ros": 75.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 280.2,
+         "regular": 1039.8,
+         "ros": 1320.0
+        },
+        "average_weekly_delta": 2.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 30.0,
+         "playoff": 6.0,
+         "regular": 24.0,
+         "ros": 30.0
+        }
+       }
+      },
+      "main_concern": null,
+      "them_change": "Bravo QB (QB) starts 15 of 15 weeks in Team 4's lineup in place of Delta QB (QB).",
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
+      "you_change": "Delta QB (QB) starts 15 of 15 weeks in your lineup in place of Bravo QB (QB)."
+     },
+     "key": "2-for-1:4:102-204:104",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 1,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 30.0,
+     "mine": {
+      "average_weekly_delta": 2.0,
+      "known_ros_delta": 30.0,
+      "playoff_delta": 6.0,
+      "projection_complete": true,
+      "regular_season_delta": 24.0,
+      "ros_delta": 30.0,
+      "weekly_known_deltas": [
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 4",
+     "opponent_team_id": 4,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Delta QB (15 of 15)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      104
+     ],
+     "search_method": "exact",
+     "sends": [
+      102,
+      204
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 5.0,
+      "known_ros_delta": 75.0,
+      "playoff_delta": 16.8,
+      "projection_complete": true,
+      "regular_season_delta": 58.2,
+      "ros_delta": 75.0,
+      "weekly_known_deltas": [
+       4.3,
+       4.4,
+       4.5,
+       4.6,
+       4.7,
+       4.8,
+       4.9,
+       5.0,
+       5.1,
+       5.2,
+       5.3,
+       5.4,
+       5.5,
+       5.6,
+       5.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "practical"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "replacement_level",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 1.0,
+      "text": "Replacement-level package (little value above free agents on either side)",
+      "they_send_par": 0.0,
+      "you_send_par": 0.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 105.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "replacement_level",
+       "ratio": 1.0,
+       "text": "Replacement-level package (little value above free agents on either side)",
+       "they_send_par": 0.0,
+       "you_send_par": 0.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "pass"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 89.4,
+         "regular": 330.6,
+         "ros": 420.0
+        },
+        "average_weekly_delta": 5.0,
+        "before": {
+         "playoff": 72.6,
+         "regular": 272.4,
+         "ros": 345.0
+        },
+        "delta": {
+         "known_ros": 75.0,
+         "playoff": 16.8,
+         "regular": 58.2,
+         "ros": 75.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 280.2,
+         "regular": 1039.8,
+         "ros": 1320.0
+        },
+        "average_weekly_delta": 2.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 30.0,
+         "playoff": 6.0,
+         "regular": 24.0,
+         "ros": 30.0
+        }
+       }
+      },
+      "main_concern": null,
+      "them_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 4's lineup in place of Xray TE (TE).",
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
+      "you_change": "Xray TE (TE) starts 15 of 15 weeks in your lineup in place of Victor TE (TE)."
+     },
+     "key": "2-for-1:4:204-402:404",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 1,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 30.0,
+     "mine": {
+      "average_weekly_delta": 2.0,
+      "known_ros_delta": 30.0,
+      "playoff_delta": 6.0,
+      "projection_complete": true,
+      "regular_season_delta": 24.0,
+      "ros_delta": 30.0,
+      "weekly_known_deltas": [
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0,
+       2.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 4",
+     "opponent_team_id": 4,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Xray TE (15 of 15)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      404
+     ],
+     "search_method": "exact",
+     "sends": [
+      204,
+      402
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 5.0,
+      "known_ros_delta": 75.0,
+      "playoff_delta": 16.8,
+      "projection_complete": true,
+      "regular_season_delta": 58.2,
+      "ros_delta": 75.0,
+      "weekly_known_deltas": [
+       4.3,
+       4.4,
+       4.5,
+       4.6,
+       4.7,
+       4.8,
+       4.9,
+       5.0,
+       5.1,
+       5.2,
+       5.3,
+       5.4,
+       5.5,
+       5.6,
+       5.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "practical"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "replacement_level",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 1.0,
+      "text": "Replacement-level package (little value above free agents on either side)",
+      "they_send_par": 0.0,
+      "you_send_par": 0.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 105.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "replacement_level",
+       "ratio": 1.0,
+       "text": "Replacement-level package (little value above free agents on either side)",
+       "they_send_par": 0.0,
+       "you_send_par": 0.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "pass"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 92.4,
+         "regular": 342.6,
+         "ros": 435.0
+        },
+        "average_weekly_delta": 6.0,
+        "before": {
+         "playoff": 72.6,
+         "regular": 272.4,
+         "ros": 345.0
+        },
+        "delta": {
+         "known_ros": 90.0,
+         "playoff": 19.8,
+         "regular": 70.2,
+         "ros": 90.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 277.2,
+         "regular": 1027.8,
+         "ros": 1305.0
+        },
+        "average_weekly_delta": 1.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 15.0,
+         "playoff": 3.0,
+         "regular": 12.0,
+         "ros": 15.0
+        }
+       }
+      },
+      "main_concern": null,
+      "them_change": "India RB (RB) starts 15 of 15 weeks in Team 4's lineup in place of Xray TE (TE).",
+      "verdict": "sensible",
+      "verdict_text": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
+      "you_change": "Xray TE (TE) starts 15 of 15 weeks in your lineup in place of India RB (RB)."
+     },
+     "key": "2-for-1:4:205-402:404",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 1,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 15.0,
+     "mine": {
+      "average_weekly_delta": 1.0,
+      "known_ros_delta": 15.0,
+      "playoff_delta": 3.0,
+      "projection_complete": true,
+      "regular_season_delta": 12.0,
+      "ros_delta": 15.0,
+      "weekly_known_deltas": [
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 4",
+     "opponent_team_id": 4,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Xray TE (15 of 15)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      404
+     ],
+     "search_method": "exact",
+     "sends": [
+      205,
+      402
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 6.0,
+      "known_ros_delta": 90.0,
+      "playoff_delta": 19.8,
+      "projection_complete": true,
+      "regular_season_delta": 70.2,
+      "ros_delta": 90.0,
+      "weekly_known_deltas": [
+       5.3,
+       5.4,
+       5.5,
+       5.6,
+       5.7,
+       5.8,
+       5.9,
+       6.0,
+       6.1,
+       6.2,
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "practical"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "balanced",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 0.8,
+      "text": "Asset packages appear relatively balanced",
+      "they_send_par": 75.0,
+      "you_send_par": 60.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 105.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "balanced",
+       "ratio": 0.8,
+       "text": "Asset packages appear relatively balanced",
+       "they_send_par": 75.0,
+       "you_send_par": 60.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 141.0,
+         "regular": 519.0,
+         "ros": 660.0
+        },
+        "average_weekly_delta": 6.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 90.0,
+         "playoff": 19.8,
+         "regular": 70.2,
+         "ros": 90.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 277.2,
+         "regular": 1027.8,
+         "ros": 1305.0
+        },
+        "average_weekly_delta": 1.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 15.0,
+         "playoff": 3.0,
+         "regular": 12.0,
+         "ros": 15.0
+        }
+       }
+      },
+      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "them_change": "Bravo QB (QB) starts 15 of 15 weeks in Team 3's lineup in place of Charlie QB (QB).",
+      "verdict": "sensible_with_concerns",
+      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "you_change": "Charlie QB (QB) starts 15 of 15 weeks in your lineup in place of Bravo QB (QB)."
+     },
+     "key": "2-for-1:3:102-204:103",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 15.0,
+     "mine": {
+      "average_weekly_delta": 1.0,
+      "known_ros_delta": 15.0,
+      "playoff_delta": 3.0,
+      "projection_complete": true,
+      "regular_season_delta": 12.0,
+      "ros_delta": 15.0,
+      "weekly_known_deltas": [
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Charlie QB (15 of 15).",
+       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      103
+     ],
+     "search_method": "exact",
+     "sends": [
+      102,
+      204
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 6.0,
+      "known_ros_delta": 90.0,
+      "playoff_delta": 19.8,
+      "projection_complete": true,
+      "regular_season_delta": 70.2,
+      "ros_delta": 90.0,
+      "weekly_known_deltas": [
+       5.3,
+       5.4,
+       5.5,
+       5.6,
+       5.7,
+       5.8,
+       5.9,
+       6.0,
+       6.1,
+       6.2,
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "practical"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "replacement_level",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 1.0,
+      "text": "Replacement-level package (little value above free agents on either side)",
+      "they_send_par": 0.0,
+      "you_send_par": 0.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 105.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "replacement_level",
+       "ratio": 1.0,
+       "text": "Replacement-level package (little value above free agents on either side)",
+       "they_send_par": 0.0,
+       "you_send_par": 0.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "pass"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 141.0,
+         "regular": 519.0,
+         "ros": 660.0
+        },
+        "average_weekly_delta": 6.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 90.0,
+         "playoff": 19.8,
+         "regular": 70.2,
+         "ros": 90.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 277.2,
+         "regular": 1027.8,
+         "ros": 1305.0
+        },
+        "average_weekly_delta": 1.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 15.0,
+         "playoff": 3.0,
+         "regular": 12.0,
+         "ros": 15.0
+        }
+       }
+      },
+      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "them_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Whiskey TE (TE).",
+      "verdict": "sensible_with_concerns",
+      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "you_change": "Whiskey TE (TE) starts 15 of 15 weeks in your lineup in place of Victor TE (TE)."
+     },
+     "key": "2-for-1:3:204-402:403",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 15.0,
+     "mine": {
+      "average_weekly_delta": 1.0,
+      "known_ros_delta": 15.0,
+      "playoff_delta": 3.0,
+      "projection_complete": true,
+      "regular_season_delta": 12.0,
+      "ros_delta": 15.0,
+      "weekly_known_deltas": [
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15).",
+       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left)."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      403
+     ],
+     "search_method": "exact",
+     "sends": [
+      204,
+      402
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 6.0,
+      "known_ros_delta": 90.0,
+      "playoff_delta": 19.8,
+      "projection_complete": true,
+      "regular_season_delta": 70.2,
+      "ros_delta": 90.0,
+      "weekly_known_deltas": [
+       5.3,
+       5.4,
+       5.5,
+       5.6,
+       5.7,
+       5.8,
+       5.9,
+       6.0,
+       6.1,
+       6.2,
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "practical"
+    }
+   ],
+   "speculative": [
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "you_surrender_multiple_strong",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 0.0,
+      "text": "You surrender multiple strong assets for fewer",
+      "they_send_par": 0.0,
+      "you_send_par": 30.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 165.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": "Team 3",
+       "imbalance": "significant",
+       "label": "you_surrender_multiple_strong",
+       "ratio": 0.0,
+       "text": "You surrender multiple strong assets for fewer",
+       "they_send_par": 0.0,
+       "you_send_par": 30.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "fail"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "concern"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 147.0,
+         "regular": 543.0,
+         "ros": 690.0
+        },
+        "average_weekly_delta": 8.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 120.0,
+         "playoff": 25.8,
+         "regular": 94.2,
+         "ros": 120.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 283.2,
+         "regular": 1051.8,
+         "ros": 1335.0
+        },
+        "average_weekly_delta": 3.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 45.0,
+         "playoff": 9.0,
+         "regular": 36.0,
+         "ros": 45.0
+        }
+       }
+      },
+      "main_concern": "You surrender multiple strong assets for fewer (30 vs 0 points above replacement).",
+      "them_change": "Kilo RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+      "verdict": "unlikely_mutual",
+      "verdict_text": "Both starting lineups improve, but the asset packages are lopsided: unlikely to be mutually attractive.",
+      "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup, replacing India RB (RB) in 15."
+     },
+     "key": "2-for-1:3:207-304:208",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 45.0,
+     "mine": {
+      "average_weekly_delta": 3.0,
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0,
+      "weekly_known_deltas": [
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
+       "Team 3 would have an empty RB slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
+       "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      208
+     ],
+     "search_method": "exact",
+     "sends": [
+      207,
+      304
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 8.0,
+      "known_ros_delta": 120.0,
+      "playoff_delta": 25.8,
+      "projection_complete": true,
+      "regular_season_delta": 94.2,
+      "ros_delta": 120.0,
+      "weekly_known_deltas": [
+       7.3,
+       7.4,
+       7.5,
+       7.6,
+       7.7,
+       7.8,
+       7.9,
+       8.0,
+       8.1,
+       8.2,
+       8.3,
+       8.4,
+       8.5,
+       8.6,
+       8.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "speculative"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "you_surrender_multiple_strong",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 0.0,
+      "text": "You surrender multiple strong assets for fewer",
+      "they_send_par": 0.0,
+      "you_send_par": 75.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 165.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": "Team 3",
+       "imbalance": "significant",
+       "label": "you_surrender_multiple_strong",
+       "ratio": 0.0,
+       "text": "You surrender multiple strong assets for fewer",
+       "they_send_par": 0.0,
+       "you_send_par": 75.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "fail"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "concern"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 147.0,
+         "regular": 543.0,
+         "ros": 690.0
+        },
+        "average_weekly_delta": 8.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 120.0,
+         "playoff": 25.8,
+         "regular": 94.2,
+         "ros": 120.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 283.2,
+         "regular": 1051.8,
+         "ros": 1335.0
+        },
+        "average_weekly_delta": 3.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 45.0,
+         "playoff": 9.0,
+         "regular": 36.0,
+         "ros": 45.0
+        }
+       }
+      },
+      "main_concern": "You surrender multiple strong assets for fewer (75 vs 0 points above replacement).",
+      "them_change": "Kilo RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+      "verdict": "unlikely_mutual",
+      "verdict_text": "Both starting lineups improve, but the asset packages are lopsided: unlikely to be mutually attractive.",
+      "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup, replacing India RB (RB) in 15."
+     },
+     "key": "3-for-2:3:207-304-305:208-403",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 45.0,
+     "mine": {
+      "average_weekly_delta": 3.0,
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0,
+      "weekly_known_deltas": [
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
+       "They surrender a player who currently starts in most weeks: Whiskey TE (15 of 15).",
+       "The asset packages appear uneven despite the lineup benefits: you surrender multiple strong assets for fewer.",
+       "Team 3 would have an empty RB/TE slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
+       "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      208,
+      403
+     ],
+     "search_method": "heuristic_beam",
+     "sends": [
+      207,
+      304,
+      305
+     ],
+     "shape": "3-for-2",
+     "theirs": {
+      "average_weekly_delta": 8.0,
+      "known_ros_delta": 120.0,
+      "playoff_delta": 25.8,
+      "projection_complete": true,
+      "regular_season_delta": 94.2,
+      "ros_delta": 120.0,
+      "weekly_known_deltas": [
+       7.3,
+       7.4,
+       7.5,
+       7.6,
+       7.7,
+       7.8,
+       7.9,
+       8.0,
+       8.1,
+       8.2,
+       8.3,
+       8.4,
+       8.5,
+       8.6,
+       8.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "speculative"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "replacement_level",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 1.0,
+      "text": "Replacement-level package (little value above free agents on either side)",
+      "they_send_par": 0.0,
+      "you_send_par": 0.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 150.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "replacement_level",
+       "ratio": 1.0,
+       "text": "Replacement-level package (little value above free agents on either side)",
+       "they_send_par": 0.0,
+       "you_send_par": 0.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "concern"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 144.0,
+         "regular": 531.0,
+         "ros": 675.0
+        },
+        "average_weekly_delta": 7.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 105.0,
+         "playoff": 22.8,
+         "regular": 82.2,
+         "ros": 105.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 283.2,
+         "regular": 1051.8,
+         "ros": 1335.0
+        },
+        "average_weekly_delta": 3.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 45.0,
+         "playoff": 9.0,
+         "regular": 36.0,
+         "ros": 45.0
+        }
+       }
+      },
+      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "them_change": "India RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+      "verdict": "sensible_with_concerns",
+      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup in place of India RB (RB)."
+     },
+     "key": "2-for-1:3:205-207:208",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 45.0,
+     "mine": {
+      "average_weekly_delta": 3.0,
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0,
+      "weekly_known_deltas": [
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
+       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
+       "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      208
+     ],
+     "search_method": "exact",
+     "sends": [
+      205,
+      207
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 7.0,
+      "known_ros_delta": 105.0,
+      "playoff_delta": 22.8,
+      "projection_complete": true,
+      "regular_season_delta": 82.2,
+      "ros_delta": 105.0,
+      "weekly_known_deltas": [
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7,
+       6.8,
+       6.9,
+       7.0,
+       7.1,
+       7.2,
+       7.3,
+       7.4,
+       7.5,
+       7.6,
+       7.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "speculative"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "replacement_level",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 1.0,
+      "text": "Replacement-level package (little value above free agents on either side)",
+      "they_send_par": 0.0,
+      "you_send_par": 0.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 135.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "replacement_level",
+       "ratio": 1.0,
+       "text": "Replacement-level package (little value above free agents on either side)",
+       "they_send_par": 0.0,
+       "you_send_par": 0.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "concern"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 141.0,
+         "regular": 519.0,
+         "ros": 660.0
+        },
+        "average_weekly_delta": 6.0,
+        "before": {
+         "playoff": 121.2,
+         "regular": 448.8,
+         "ros": 570.0
+        },
+        "delta": {
+         "known_ros": 90.0,
+         "playoff": 19.8,
+         "regular": 70.2,
+         "ros": 90.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 283.2,
+         "regular": 1051.8,
+         "ros": 1335.0
+        },
+        "average_weekly_delta": 3.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 45.0,
+         "playoff": 9.0,
+         "regular": 36.0,
+         "ros": 45.0
+        }
+       }
+      },
+      "main_concern": "Team 3 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "them_change": "Hotel RB (RB) starts 15 of 15 weeks in Team 3's lineup in place of Lima RB (RB).",
+      "verdict": "sensible_with_concerns",
+      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "you_change": "Lima RB (RB) starts 15 of 15 weeks in your lineup, replacing India RB (RB) in 15."
+     },
+     "key": "2-for-1:3:204-207:208",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 0,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 45.0,
+     "mine": {
+      "average_weekly_delta": 3.0,
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0,
+      "weekly_known_deltas": [
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 3",
+     "opponent_team_id": 3,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Lima RB (15 of 15).",
+       "Team 3 would have an empty WR slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
+       "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      208
+     ],
+     "search_method": "exact",
+     "sends": [
+      204,
+      207
+     ],
+     "shape": "2-for-1",
+     "theirs": {
+      "average_weekly_delta": 6.0,
+      "known_ros_delta": 90.0,
+      "playoff_delta": 19.8,
+      "projection_complete": true,
+      "regular_season_delta": 70.2,
+      "ros_delta": 90.0,
+      "weekly_known_deltas": [
+       5.3,
+       5.4,
+       5.5,
+       5.6,
+       5.7,
+       5.8,
+       5.9,
+       6.0,
+       6.1,
+       6.2,
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "speculative"
+    },
+    {
+     "anchor_team_id": 2,
+     "asset_balance": {
+      "label": "balanced",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "ratio": 0.833,
+      "text": "Asset packages appear relatively balanced",
+      "they_send_par": 90.0,
+      "you_send_par": 75.0
+     },
+     "categories": [
+      "MUTUAL_PROJECTED_IMPROVEMENT",
+      "CONSOLIDATION"
+     ],
+     "combined_ros_delta": 135.0,
+     "consistent_with_manual_evaluator": true,
+     "dual_value_summary": {
+      "asset": {
+       "favours": null,
+       "imbalance": "none",
+       "label": "balanced",
+       "ratio": 0.833,
+       "text": "Asset packages appear relatively balanced",
+       "they_send_par": 90.0,
+       "you_send_par": 75.0
+      },
+      "checks": [
+       {
+        "criterion": "lineup_gain",
+        "status": "pass"
+       },
+       {
+        "criterion": "asset_balance",
+        "status": "pass"
+       },
+       {
+        "criterion": "positional_fit",
+        "status": "pass"
+       },
+       {
+        "criterion": "depth_cost",
+        "status": "fail"
+       },
+       {
+        "criterion": "free_agent_alternative",
+        "status": "pass"
+       },
+       {
+        "criterion": "uncertainty",
+        "status": "concern"
+       }
+      ],
+      "front": null,
+      "lineup": {
+       "them": {
+        "after": {
+         "playoff": 92.4,
+         "regular": 342.6,
+         "ros": 435.0
+        },
+        "average_weekly_delta": 6.0,
+        "before": {
+         "playoff": 72.6,
+         "regular": 272.4,
+         "ros": 345.0
+        },
+        "delta": {
+         "known_ros": 90.0,
+         "playoff": 19.8,
+         "regular": 70.2,
+         "ros": 90.0
+        }
+       },
+       "you": {
+        "after": {
+         "playoff": 283.2,
+         "regular": 1051.8,
+         "ros": 1335.0
+        },
+        "average_weekly_delta": 3.0,
+        "before": {
+         "playoff": 274.2,
+         "regular": 1015.8,
+         "ros": 1290.0
+        },
+        "delta": {
+         "known_ros": 45.0,
+         "playoff": 9.0,
+         "regular": 36.0,
+         "ros": 45.0
+        }
+       }
+      },
+      "main_concern": "Team 4 would have an empty starting slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17.",
+      "them_change": "Kilo RB (RB) starts 15 of 15 weeks in Team 4's lineup in place of Delta QB (QB).",
+      "verdict": "sensible_with_concerns",
+      "verdict_text": "Both starting lineups improve, with concerns to weigh.",
+      "you_change": "Delta QB (QB) starts 15 of 15 weeks in your lineup, replacing Bravo QB (QB) in 15."
+     },
+     "key": "3-for-2:4:207-304-305:104-404",
+     "manager_context": {
+      "trade_history": {
+       "completed_trades": 1,
+       "confidence": "INSUFFICIENT"
+      }
+     },
+     "min_side_ros_delta": 45.0,
+     "mine": {
+      "average_weekly_delta": 3.0,
+      "known_ros_delta": 45.0,
+      "playoff_delta": 9.0,
+      "projection_complete": true,
+      "regular_season_delta": 36.0,
+      "ros_delta": 45.0,
+      "weekly_known_deltas": [
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0,
+       3.0
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "opponent_name": "Team 4",
+     "opponent_team_id": 4,
+     "rationale": {
+      "concerns": [
+       "They surrender a player who currently starts in most weeks: Delta QB (15 of 15).",
+       "They surrender a player who currently starts in most weeks: Xray TE (15 of 15).",
+       "Team 4 would have an empty QB/TE slot in week(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 after the trade (no eligible player left).",
+       "In a fantasy IR slot but not NFL-ineligible: the fantasy slot is held as synced (the evaluator's IR assumption); activation upside is shown separately."
+      ],
+      "trade_type": {
+       "kind": "consolidation",
+       "text": "Consolidation: you turn depth into fewer, stronger players."
+      }
+     },
+     "receives": [
+      104,
+      404
+     ],
+     "search_method": "heuristic_beam",
+     "sends": [
+      207,
+      304,
+      305
+     ],
+     "shape": "3-for-2",
+     "theirs": {
+      "average_weekly_delta": 6.0,
+      "known_ros_delta": 90.0,
+      "playoff_delta": 19.8,
+      "projection_complete": true,
+      "regular_season_delta": 70.2,
+      "ros_delta": 90.0,
+      "weekly_known_deltas": [
+       5.3,
+       5.4,
+       5.5,
+       5.6,
+       5.7,
+       5.8,
+       5.9,
+       6.0,
+       6.1,
+       6.2,
+       6.3,
+       6.4,
+       6.5,
+       6.6,
+       6.7
+      ],
+      "weeks_improved": 15,
+      "weeks_incomplete": [],
+      "weeks_unchanged": 0,
+      "weeks_worsened": 0
+     },
+     "tier": "speculative"
+    }
+   ]
+  },
+  "sorts": [
+   "my_gain",
+   "their_gain",
+   "combined",
+   "min_side",
+   "playoff_gain",
+   "min_side_regular",
+   "min_side_playoff"
+  ],
+  "strictness_options": {
+   "off": "No asset filter (labels still shown).",
+   "standard": "Leave out packages with a significant imbalance against them (or multiple strong assets for fewer).",
+   "strict": "Leave out any package in which they give up more asset value."
+  },
+  "teams": [
+   {
+    "abbrev": "T1",
+    "is_mine": false,
+    "name": "Team 1",
+    "team_id": 1
+   },
+   {
+    "abbrev": "T2",
+    "is_mine": true,
+    "name": "Team 2",
+    "team_id": 2
+   },
+   {
+    "abbrev": "T3",
+    "is_mine": false,
+    "name": "Team 3",
+    "team_id": 3
+   },
+   {
+    "abbrev": "T4",
+    "is_mine": false,
+    "name": "Team 4",
+    "team_id": 4
+   }
+  ],
+  "tiers": {
+   "concerns": "Both lineups improve, with concerns to weigh",
+   "practical": "Practical: both lineups improve and the packages are not lopsided",
+   "speculative": "Speculative or incomplete: depends on missing projections or an unconfirmed return"
+  },
+  "verdicts": {
+   "fair_no_lineup_gain": "Asset-fair exchange, but {who} starting lineup does not improve.",
+   "incomplete": "Incomplete: missing projections or asset data, so it is not ranked against complete trades.",
+   "one_sided": "One-sided: {who} starting lineup does not improve and the asset packages are not balanced.",
+   "sensible": "Sensible for both managers: both starting lineups improve, the asset packages are comparable and nothing major is given up.",
+   "sensible_with_concerns": "Both starting lineups improve, with concerns to weigh.",
+   "unlikely_mutual": "Both starting lineups improve, but the asset packages are lopsided: unlikely to be mutually attractive."
+  }
+ },
+ "status": 200
+}

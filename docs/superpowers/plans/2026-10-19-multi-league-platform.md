@@ -62,6 +62,8 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 - Crypto: AAD-swap fails, the API (public key only) cannot decrypt, rewrap to a new keypair leaves the cookie ciphertext and AAD untouched and it still decrypts, redaction tests green.
 - Existing suite + E2E green; production unchanged with flags off.
 
+**Status:** done 2026-10-20 (PR #150). Supabase schema `fi` applied (11 migrations, each with a restoring down-migration); FastAPI verifies Supabase JWTs via JWKS; `authorize_league` gates every `/v2` league route (router-enumerated matrix); credential envelope crypto shipped; HMAC assertion and DuckDB tenancy store removed. Reviewed by Codex for 11 rounds, then `/code-review high` after Codex's quota ran out. Pending from Havyn: `fi_api`/`fi_sync` passwords, `SUPABASE_URL`/`SUPABASE_DB_URL` on Vercel (before the flag flips), the credential keypair (Phase 3).
+
 **Rollback:** flags off; Supabase migrations have down-migrations. No existing table or route changed.
 
 ## Phase 2: League-file read path, Los Subies migrated

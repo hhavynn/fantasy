@@ -1,0 +1,2427 @@
+// /api/lineup-projections
+{
+ "body": {
+  "evaluation": {
+   "final_week": 17,
+   "last_regular_season_week": 14,
+   "remaining_weeks": true,
+   "start_week": 3,
+   "start_week_reason": {
+    "current_week_completed": false,
+    "current_week_games": 16,
+    "current_week_games_final": 0,
+    "current_week_kicked_off": false,
+    "current_week_status": "not_started",
+    "espn_current_week": 3,
+    "evaluated_at": "<masked>",
+    "evaluation_start_week": 3,
+    "final_scoring_period": 17,
+    "reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+    "remaining_weeks": true,
+    "rule": "first scoring period from ESPN current_week whose NFL REG games have not kicked off; a week counts as kicked off once any game's scheduled kickoff (nfl_schedules gameday + gametime, US Eastern) is at or before now, or any game has a final score",
+    "uncertain": false,
+    "warning": null,
+    "weeks_checked": [
+     {
+      "detail": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00)",
+      "first_kickoff": "<masked>",
+      "games": 16,
+      "games_final": 0,
+      "games_kicked_off": 0,
+      "games_missing_kickoff": 0,
+      "kickoff_columns": true,
+      "last_kickoff": "<masked>",
+      "score_columns": true,
+      "status": "not_started",
+      "week": 3
+     }
+    ]
+   },
+   "uncertain": false,
+   "warning": null,
+   "weeks": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+   ]
+  },
+  "league": {
+   "current_matchup_period": 3,
+   "current_week": 3,
+   "faab_budget": 100,
+   "final_scoring_period": 17,
+   "is_faab": true,
+   "league_id": 999,
+   "name": "Fixture League",
+   "playoff_teams": 2,
+   "reception_points": 1.0,
+   "reg_season_matchups": 14,
+   "roster_slots": {
+    "BE": 3,
+    "D/ST": 1,
+    "FLEX": 1,
+    "IR": 1,
+    "K": 1,
+    "QB": 1,
+    "RB": 2,
+    "TE": 1,
+    "WR": 2
+   },
+   "scoring_type": "H2H_POINTS",
+   "season": 2026,
+   "size": 4,
+   "synced_at": "<masked>",
+   "trade_deadline": "<masked>",
+   "waiver_process_days": null
+  },
+  "note": "ESPN projection is the forward fantasy-point baseline. Role, sustainability, schedule and league context are evaluated separately.",
+  "projection_source": "ESPN",
+  "replacement_market": {
+   "groups": [
+    {
+     "eligible_positions": [
+      "QB"
+     ],
+     "group": "QB"
+    },
+    {
+     "eligible_positions": [
+      "RB"
+     ],
+     "group": "RB"
+    },
+    {
+     "eligible_positions": [
+      "WR"
+     ],
+     "group": "WR"
+    },
+    {
+     "eligible_positions": [
+      "TE"
+     ],
+     "group": "TE"
+    },
+    {
+     "eligible_positions": [
+      "K"
+     ],
+     "group": "K"
+    },
+    {
+     "eligible_positions": [
+      "D/ST"
+     ],
+     "group": "D/ST"
+    },
+    {
+     "eligible_positions": [
+      "RB",
+      "WR",
+      "TE"
+     ],
+     "group": "FLEX"
+    }
+   ],
+   "label": "replacement market (available-player frontier)",
+   "pool_size": 4,
+   "projection_source": "ESPN",
+   "statuses": [
+    "FREEAGENT",
+    "WAIVERS"
+   ],
+   "weeks": [
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.3,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.3,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.3,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.3,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.3,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 5.3,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 5.3,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 5.3,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.3,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.3,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.3,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 11.3,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 11.3,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.3,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 6.3,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 6.3,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.3,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 3
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.4,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.4,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.4,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.4,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.4,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 5.4,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 5.4,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 5.4,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.4,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.4,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.4,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 11.4,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 11.4,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.4,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 6.4,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 6.4,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.4,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 4
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.5,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.5,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.5,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.5,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.5,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 5.5,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 5.5,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 5.5,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.5,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.5,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.5,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 11.5,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 11.5,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.5,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 6.5,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 6.5,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.5,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 5
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.6,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.6,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.6,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.6,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.6,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 5.6,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 5.6,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 5.6,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.6,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.6,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.6,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 11.6,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 11.6,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.6,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 6.6,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 6.6,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.6,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 6
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.7,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.7,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.7,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.7,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.7,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 5.7,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 5.7,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 5.7,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.7,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.7,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.7,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 11.7,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 11.7,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.7,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 6.7,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 6.7,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.7,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 7
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.8,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.8,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.8,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.8,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.8,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 5.8,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 5.8,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 5.8,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.8,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.8,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.8,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 11.8,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 11.8,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.8,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 6.8,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 6.8,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.8,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 8
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.9,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.9,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.9,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.9,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.9,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 5.9,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 5.9,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 5.9,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 11.9,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 11.9,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 11.9,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 11.9,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 11.9,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 11.9,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 6.9,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 6.9,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 6.9,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 9
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.0,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.0,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.0,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.0,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.0,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 6.0,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 6.0,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 6.0,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.0,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.0,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.0,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 12.0,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 12.0,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.0,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 7.0,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 7.0,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.0,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 10
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.1,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.1,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.1,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.1,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.1,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 6.1,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 6.1,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 6.1,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.1,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.1,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.1,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 12.1,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 12.1,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.1,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 7.1,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 7.1,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.1,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 11
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.2,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.2,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.2,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.2,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.2,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 6.2,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 6.2,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 6.2,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.2,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.2,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.2,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 12.2,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 12.2,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.2,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 7.2,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 7.2,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.2,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 12
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.3,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.3,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.3,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.3,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.3,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 6.3,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 6.3,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 6.3,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.3,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.3,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.3,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 12.3,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 12.3,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.3,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 7.3,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 7.3,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.3,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 13
+    },
+    {
+     "phase": "regular",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.4,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.4,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.4,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.4,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.4,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 6.4,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 6.4,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 6.4,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.4,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.4,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.4,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 12.4,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 12.4,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.4,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 7.4,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 7.4,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.4,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 14
+    },
+    {
+     "phase": "playoff",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.5,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.5,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.5,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.5,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.5,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 6.5,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 6.5,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 6.5,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.5,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.5,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.5,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 12.5,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 12.5,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.5,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 7.5,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 7.5,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.5,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 15
+    },
+    {
+     "phase": "playoff",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.6,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.6,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.6,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.6,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.6,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 6.6,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 6.6,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 6.6,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.6,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.6,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.6,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 12.6,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 12.6,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.6,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 7.6,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 7.6,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.6,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 16
+    },
+    {
+     "phase": "playoff",
+     "positions": {
+      "D/ST": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "FLEX": {
+       "available_count": 3,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.7,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.7,
+       "projected_count": 3,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.7,
+         "position": "RB",
+         "pro_team": "KC"
+        },
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.7,
+         "position": "TE",
+         "pro_team": "DET"
+        },
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.7,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "K": {
+       "available_count": 0,
+       "best_available": null,
+       "best_available_projection": null,
+       "projected_count": 0,
+       "top_available": [],
+       "unprojected_count": 0
+      },
+      "QB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 105,
+        "name": "Waiver QB",
+        "points": 6.7,
+        "position": "QB",
+        "pro_team": "PHI"
+       },
+       "best_available_projection": 6.7,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 105,
+         "name": "Waiver QB",
+         "points": 6.7,
+         "position": "QB",
+         "pro_team": "PHI"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "RB": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 209,
+        "name": "Waiver RB",
+        "points": 12.7,
+        "position": "RB",
+        "pro_team": "KC"
+       },
+       "best_available_projection": 12.7,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 209,
+         "name": "Waiver RB",
+         "points": 12.7,
+         "position": "RB",
+         "pro_team": "KC"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "TE": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 405,
+        "name": "Waiver TE",
+        "points": 12.7,
+        "position": "TE",
+        "pro_team": "DET"
+       },
+       "best_available_projection": 12.7,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 405,
+         "name": "Waiver TE",
+         "points": 12.7,
+         "position": "TE",
+         "pro_team": "DET"
+        }
+       ],
+       "unprojected_count": 0
+      },
+      "WR": {
+       "available_count": 1,
+       "best_available": {
+        "espn_player_id": 309,
+        "name": "Waiver WR",
+        "points": 7.7,
+        "position": "WR",
+        "pro_team": "BUF"
+       },
+       "best_available_projection": 7.7,
+       "projected_count": 1,
+       "top_available": [
+        {
+         "espn_player_id": 309,
+         "name": "Waiver WR",
+         "points": 7.7,
+         "position": "WR",
+         "pro_team": "BUF"
+        }
+       ],
+       "unprojected_count": 0
+      }
+     },
+     "week": 17
+    }
+   ]
+  },
+  "teams": [
+   {
+    "abbrev": "T2",
+    "computed_at": "<masked>",
+    "evaluation_start_week": 3,
+    "final_week": 17,
+    "is_mine": true,
+    "last_regular_season_week": 14,
+    "league_id": 999,
+    "missing_players": [],
+    "missing_weeks": [],
+    "name": "Team 2",
+    "playoff_projected_starting_points": 274.2,
+    "regular_season_projected_starting_points": 1015.8,
+    "ros_known_starting_points": 1290.0,
+    "ros_projected_starting_points": 1290.0,
+    "ros_weeks_complete": 15,
+    "ros_weeks_expected": 15,
+    "season": 2026,
+    "start_week_reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+    "team_id": 2
+   },
+   {
+    "abbrev": "T1",
+    "computed_at": "<masked>",
+    "evaluation_start_week": 3,
+    "final_week": 17,
+    "is_mine": false,
+    "last_regular_season_week": 14,
+    "league_id": 999,
+    "missing_players": [],
+    "missing_weeks": [],
+    "name": "Team 1",
+    "playoff_projected_starting_points": 256.2,
+    "regular_season_projected_starting_points": 943.8,
+    "ros_known_starting_points": 1200.0,
+    "ros_projected_starting_points": 1200.0,
+    "ros_weeks_complete": 15,
+    "ros_weeks_expected": 15,
+    "season": 2026,
+    "start_week_reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+    "team_id": 1
+   },
+   {
+    "abbrev": "T3",
+    "computed_at": "<masked>",
+    "evaluation_start_week": 3,
+    "final_week": 17,
+    "is_mine": false,
+    "last_regular_season_week": 14,
+    "league_id": 999,
+    "missing_players": [],
+    "missing_weeks": [],
+    "name": "Team 3",
+    "playoff_projected_starting_points": 121.2,
+    "regular_season_projected_starting_points": 448.8,
+    "ros_known_starting_points": 570.0,
+    "ros_projected_starting_points": 570.0,
+    "ros_weeks_complete": 15,
+    "ros_weeks_expected": 15,
+    "season": 2026,
+    "start_week_reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+    "team_id": 3
+   },
+   {
+    "abbrev": "T4",
+    "computed_at": "<masked>",
+    "evaluation_start_week": 3,
+    "final_week": 17,
+    "is_mine": false,
+    "last_regular_season_week": 14,
+    "league_id": 999,
+    "missing_players": [],
+    "missing_weeks": [],
+    "name": "Team 4",
+    "playoff_projected_starting_points": 72.6,
+    "regular_season_projected_starting_points": 272.4,
+    "ros_known_starting_points": 345.0,
+    "ros_projected_starting_points": 345.0,
+    "ros_weeks_complete": 15,
+    "ros_weeks_expected": 15,
+    "season": 2026,
+    "start_week_reason": "no REG game of week 3 has kicked off (first kickoff 2099-10-03T17:00:00+00:00): evaluation starts at week 3",
+    "team_id": 4
+   }
+  ],
+  "teams_note": null
+ },
+ "status": 200
+}

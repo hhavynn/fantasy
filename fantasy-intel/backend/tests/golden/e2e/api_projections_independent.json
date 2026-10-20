@@ -1,0 +1,40 @@
+// /api/projections/independent
+{
+ "body": {
+  "available": false,
+  "dst_run": null,
+  "governance": {
+   "espn_superiority_established": false,
+   "fallback_version": "ifp-2.1.0",
+   "is_fallback": false,
+   "production_approval": "owner_override",
+   "production_evidence": "Historical research: backtest of every component on 2023-26 (docs/research/ifp22_promotion.md); accuracy is tracked weekly from frozen pregame forecasts.",
+   "production_version": "ifp-2.2.0",
+   "served_version": null,
+   "start_sit_ready": false,
+   "status_note": null
+  },
+  "kicker_run": null,
+  "league": {
+   "id": 999,
+   "season": 2026
+  },
+  "model_status": null,
+  "notes": [
+   "independent.projected_points is Fantasy Intelligence's NFL-evidence model; it never uses ESPN projections.",
+   "espn.projected_points is ESPN's number as synced; it is shown for comparison only.",
+   "A null independent value means no independent estimate (see coverage_status); it is not zero.",
+   "independent.projected_points is conditional on the player appearing. independent.expected_points = participation.p_play * projected_points is the unconditional expectation (null without a participation estimate).",
+   "Compare ESPN with expected_points (comparison.expected_minus_espn): both are unconditional. independent_minus_espn compares a conditional estimate and is marked not comparable when ESPN projects 0.",
+   "The production model is ifp-2.2.0 (see governance). A week without an eligible ifp-2.2.0 run shows the ifp-2.1.0 fallback, labeled.",
+   "This is the live view (the newest verified run). independent.pregame says whether a row was made before the player's own kickoff; only pregame rows are ever used as accuracy evidence."
+  ],
+  "players": [],
+  "ranges": null,
+  "run": null,
+  "schema_version": "independent-projections/v2",
+  "unavailable_reason": "No independent projection run of ifp-2.2.0 (or ifp-2.1.0) under the current league scoring is stored for week 3, so ESPN projections are shown.",
+  "week": 3
+ },
+ "status": 200
+}
