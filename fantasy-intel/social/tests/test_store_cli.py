@@ -8,7 +8,7 @@ from datetime import timedelta
 from conftest import NOW, make_post
 
 from social_intel import cli
-from social_intel.contract import Engagement
+from social_intel.contract import Engagement, utcnow
 
 
 def test_upsert_dedups_and_appends_snapshots(store):
@@ -50,6 +50,7 @@ def test_cli_workflow(tmp_path, monkeypatch, capsys, adapter):
              make_post("c", "Travis Kelce is washed, sell", likes=400, comments=500, author="c")]
     for p in posts:
         p.created_at = None  # first-seen time = now, so the window always includes them
+        p.collected_at = utcnow()    # the CLI ranks against the real clock, not the fixture's NOW
         adapter.annotate(p)
     s.upsert_posts(posts, "nfl")
     s.close()
