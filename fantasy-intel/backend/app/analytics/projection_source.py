@@ -123,10 +123,26 @@ def league_projections(con, season: int, weeks, source: str) -> dict[int, dict[i
                                      AND projected_points IS NOT NULL""", [season, min(weeks), max(weeks)]):
             out.setdefault(r["espn_player_id"], {})[r["scoring_period"]] = (float(r["projected_points"]), r["synced_at"])
         return out
+    from .forward_ours import _select_batch     # one runs query for every week (forward_ours imports this module)
+
+    batch, _ = _select_batch(con, season, weeks)
     for w in weeks:
-        x = weekly(con, season, w, "independent")
-        stamp = (x.get("run") or {}).get("created_at")
-        for pid, v in x["values"].items():
+        # exactly `weekly(con, season, w, "independent")["values"]`, with the week's run already selected
+        values = dict(_espn(con, season, w))
+        sel = batch.get(w) or {}
+        stamp = None
+        if sel.get("run") is not None:
+            stamp = sel["run"]["created_at"]
+            origin = {pid: ESPN for pid in values}
+            for r in sel["rows"]:
+                pid = r["espn_player_id"]
+                if r["coverage_status"] == "projected" and r["expected_points"] is not None:
+                    values[pid], origin[pid] = float(r["expected_points"]), OURS
+                elif r["coverage_status"] in ZERO_STATUSES:
+                    values[pid], origin[pid] = 0.0, OURS_ZERO
+            _kicker_overlay(con, season, w, values, origin)
+            _dst_overlay(con, season, w, values, origin)
+        for pid, v in values.items():
             if v is not None:
                 out.setdefault(pid, {})[w] = (float(v), stamp)
     _carry_dst_forward(con, season, weeks, out)

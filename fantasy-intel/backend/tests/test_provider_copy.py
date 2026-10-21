@@ -82,3 +82,6 @@ def test_projection_wording_becomes_ours_and_provider_facts_become_sleeper():
     assert t("ESPN") == "Ours"
     assert provider_copy.rewrite({"a": ["ESPN winner", 3], "ESPN key": None}) == {"a": ["Sleeper result", 3],
                                                                                  "ESPN key": None}
+    # names are data: a team called "ESPN Refugees" keeps its name
+    assert provider_copy.rewrite({"name": "ESPN Refugees", "team_name": "ESPN Refugees", "note": "ESPN winner"}) == \
+        {"name": "ESPN Refugees", "team_name": "ESPN Refugees", "note": "Sleeper result"}

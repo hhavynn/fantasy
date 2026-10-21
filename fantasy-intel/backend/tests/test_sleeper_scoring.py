@@ -36,7 +36,7 @@ def test_sleepers_default_rules_are_supported_by_every_family():
     assert skill.weights["special_teams_tds"] == 6
     assert resolve_kicker_scoring(items).supported
     weights, why = dst_store.scoring_weights(items)
-    assert why is None and weights[106] == 1 and weights[1089] == 10 and 1093 not in weights   # 21-27 is worth 0
+    assert why is None and weights[1106] == 1 and weights[1089] == 10 and 1093 not in weights   # 21-27 is worth 0
     assert any("def_st_fum_rec" in n for n in notes) and not any("def_st_ff" in n for n in notes)
     assert any(n.startswith("st_ff") for n in notes)
 

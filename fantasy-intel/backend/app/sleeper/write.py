@@ -118,6 +118,27 @@ def espn_ids(con, players: dict) -> dict[str, tuple[int, str | None, str]]:
     return out
 
 
+def _unique(ids: dict[str, tuple], rostered: set[str], stats: dict) -> dict[str, tuple]:
+    """One Sleeper player per ESPN id: when the map gives two Sleeper ids the same ESPN id, the rostered one keeps it
+    (then the lower Sleeper id) and the other gets his synthetic id, with a warning."""
+    by_espn: dict[int, list[str]] = {}
+    for s_id, (e, _, _) in ids.items():
+        if e is not None:
+            by_espn.setdefault(e, []).append(s_id)
+    out = dict(ids)
+    for e, s_ids in by_espn.items():
+        if len(s_ids) < 2:
+            continue
+        keep = sorted(s_ids, key=lambda x: (x not in rostered, x))[0]
+        for s_id in s_ids:
+            if s_id != keep:
+                n = _int_or_none(s_id)
+                out[s_id] = ((-(SYNTHETIC_BASE + n), ids[s_id][1], "synthetic_duplicate") if n is not None
+                             else (None, ids[s_id][1], "unmapped"))
+        stats["warnings"].append(f"{len(s_ids)} Sleeper players map to one ESPN id; one keeps it")
+    return out
+
+
 def _nfl(code: str | None) -> str | None:
     from .constants import nflverse_team
     return nflverse_team(code)
@@ -148,7 +169,8 @@ def _write(con, p: SleeperPayloads, now: datetime) -> dict:
     lg = league_row(league, state, now)
     league_id, season, current = int(league.league_id), int(league.season), lg["current_week"]
     items, unsupported, notes = to_scoring_items(league.scoring_settings)
-    ids = espn_ids(con, players)
+    rostered_now = {x for r in rosters for x in (*r.players, *r.reserve, *r.taxi)}
+    ids = _unique(espn_ids(con, players), rostered_now, stats)
     pid = {s: v[0] for s, v in ids.items() if v[0] is not None}
     stats["players_mapped"] = Counter(v[2] for v in ids.values())
     rostered = {x for r in rosters for x in (*r.players, *r.reserve, *r.taxi)}
@@ -198,6 +220,8 @@ def _write(con, p: SleeperPayloads, now: datetime) -> dict:
             day=date.today(), now=now)
         con.execute("DELETE FROM fantasy_players")
         stats["players"] = upsert_rows(con, "fantasy_players", universe, ["espn_player_id"])
+        # Every sync fetches every week: the season's points are rewritten, so a stat correction reaches them
+        con.execute("DELETE FROM espn_player_weekly_points WHERE season = ?", [season])
         weekly = [{"season": season, "espn_player_id": e, "scoring_period": w, "actual_points": v,
                    "projected_points": None, "synced_at": now} for (e, w), v in points.items()]
         stats["weekly_points"] = upsert_rows(con, "espn_player_weekly_points", weekly,

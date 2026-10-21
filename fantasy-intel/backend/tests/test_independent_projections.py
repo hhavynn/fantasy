@@ -359,7 +359,6 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
     (analytics/forward_ours.py) import (test below)."""
     allowed = {"projection_source.py",   # opt-in weekly source switch; SQL only, ESPN unless asked
                "league_split.py",   # multi-league file split: names the tables to classify them, never reads them
-               "write.py",   # sleeper/write.py: free agents' actual points are box scores in the league's scoring
                "rescore.py",   # multi-league builds: writes a league's run tables from the global references (copies or
                                # re-scores sealed runs); consumers still reach them only through projection_source
                "production_forecasts.py",   # immutable run-keyed forecast store (SQL only); readers of the runs
@@ -395,8 +394,10 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                # local-only writer of the final-designation re-projection run (never imported by the app, see
                # tests/test_final_reprojection.py::test_the_app_never_imports_the_reprojection_writer)
                "final_reprojection.py"}
+    # by path: sleeper/write.py scores free agents' actual points as box scores in the league's scoring
+    allowed_paths = {"sleeper/write.py"}
     for f in APP.rglob("*"):
-        if f.suffix not in (".py", ".sql") or f.name in allowed:
+        if f.suffix not in (".py", ".sql") or f.name in allowed or f.relative_to(APP).as_posix() in allowed_paths:
             continue
         text = f.read_text()
         for needle in ("independent_projection", "independent_player_projections", "forecast_features",

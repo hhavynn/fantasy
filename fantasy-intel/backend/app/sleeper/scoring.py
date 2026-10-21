@@ -48,7 +48,7 @@ KICKER: dict[str, tuple[int, ...]] = {
 }
 # D/ST: Sleeper key -> statIds (dst_research: ESPN's, plus synthetic 1089-1095 for Sleeper's points-allowed tiers)
 DEFENSE: dict[str, tuple[int, ...]] = {
-    "sack": (99,), "def_sack": (99,), "int": (95,), "fum_rec": (96,), "ff": (106,), "safe": (98,), "blk_kick": (97,),
+    "sack": (99,), "def_sack": (99,), "int": (95,), "fum_rec": (96,), "ff": (1106,), "safe": (98,), "blk_kick": (97,),
     "def_td": (103, 104),                 # interception and fumble return TDs
     "def_st_td": (101, 102, 93),          # the D/ST's kick, punt and blocked-kick return TDs
     "def_kr_td": (101,), "def_pr_td": (102,), "def_2pt": (206,),
@@ -66,7 +66,7 @@ KICKER_PREFIXES = ("fgm", "fgmiss", "fga", "xp")
 IDP_PREFIXES = ("idp_",)
 
 
-ST_FUMBLES = {"def_st_ff": "ff", "def_st_fum_rec": "fum_rec"}
+ST_FUMBLES = {"def_st_ff": "ff", "def_st_fum_rec": "fum_rec"}     # ESPN's D/ST counts include special teams
 PLAYER_ST = ("st_ff", "st_fum_rec")
 
 
@@ -105,6 +105,9 @@ def to_scoring_items(settings: Mapping[str, float]) -> tuple[list[dict], list[st
         elif key in DEFENSE:
             for sid in DEFENSE[key]:
                 add(sid, value, DST)
+            if key == "ff":
+                notes.append("ff: the D/ST's forced fumbles are estimated from its expected fumble recoveries "
+                             "(not a validated part of the D/ST model)")
         elif key.startswith(IDP_PREFIXES):
             unsupported.append(key)           # individual defensive players: not a lineup slot we project
         else:

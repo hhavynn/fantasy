@@ -36,7 +36,7 @@ def test_league_projections_equal_what_the_weekly_switch_shows(no_provider):
     got = ps.league_projections(con, 2026, [6], "independent")
     want = ps.weekly(con, 2026, 6, "independent")
     assert {pid: w[6][0] for pid, w in got.items()} == {pid: v for pid, v in want["values"].items() if v is not None}
-    assert all(w[6][1] == want["run"]["created_at"] for w in got.values())
+    assert all(str(w[6][1]) == want["run"]["created_at"] for w in got.values())
     assert ps.league_projections(con, 2026, [6], "espn") == {}
 
 

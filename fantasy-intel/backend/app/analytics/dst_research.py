@@ -84,12 +84,16 @@ YA_TIERS: dict[int, tuple[float | None, float | None]] = {
 # (never ESPN's), from the same kernel as ESPN's tiers (multi-league Phase 4; app/sleeper/scoring.py).
 SLEEPER_PA_TIERS: dict[int, tuple[float | None, float | None]] = {
     1089: (None, 0), 1090: (1, 6), 1091: (7, 13), 1092: (14, 20), 1093: (21, 27), 1094: (28, 34), 1095: (35, None)}
-FF_STAT = 106      # forced fumbles: E[FF] = E[fumble recoveries] x the training window's forced-per-recovered ratio
+# Forced fumbles for providers that score them on the D/ST (Sleeper's `ff`), as a synthetic id: E[FF] = E[fumble
+# recoveries] x the training window's forced-per-recovered ratio (ESPN's stat 106). An approximation the backtests
+# never validated, so ESPN's own 106 stays unmodeled (an ESPN league scoring it keeps ESPN's D/ST numbers).
+ESPN_FF_STAT, FF_STAT = 106, 1106
 MODELED = set(COUNT_STATS) | {PA_STAT, YA_STAT, FF_STAT} | set(PA_TIERS) | set(YA_TIERS) | set(SLEEPER_PA_TIERS)
 # Every statId ESPN reports on a D/ST (actual or projected, 2019-2026). A non-zero item outside this set is
 # not something a D/ST accrues (it is a player statistic) and is ignored; one inside it but outside MODELED
 # (tackles, return yards, the alternative 187-196 points-allowed family, ...) is unmodeled: the model abstains.
-DST_UNIVERSE = set(range(89, 138)) | {155, 156, 160} | set(range(187, 197)) | {205, 206, 209, 210} | set(SLEEPER_PA_TIERS)
+DST_UNIVERSE = (set(range(89, 138)) | {155, 156, 160} | set(range(187, 197)) | {205, 206, 209, 210}
+                | set(SLEEPER_PA_TIERS) | {FF_STAT})
 TD_STATS = (93, 101, 102, 103, 104)
 
 
@@ -259,7 +263,7 @@ def _components(stats: Mapping) -> dict:
             "saf": _num(stats, 98), "ret_td": _num(stats, 101) + _num(stats, 102), "pa": _num(stats, PA_STAT),
             "ya": _num(stats, YA_STAT), "blk_td": _num(stats, 93), "kr_td": _num(stats, 101),
             "pr_td": _num(stats, 102), "int_td": _num(stats, 103), "fr_td": _num(stats, 104),
-            "ret2": _num(stats, 206), "saf1": _num(stats, 209), "ff": _num(stats, FF_STAT)}
+            "ret2": _num(stats, 206), "saf1": _num(stats, 209), "ff": _num(stats, ESPN_FF_STAT)}
 
 
 # ----------------------------------------------------------------------------- ratings

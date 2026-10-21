@@ -138,3 +138,22 @@ def test_a_written_sleeper_league_splits_like_any_league(con, tmp_path):
     out = split_database(path, tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", stamp="2026-10-21T00:00:00",
                          league=(1180000000000000001, 2026))
     assert out.league_id == 1180000000000000001
+
+
+def test_two_sleeper_players_on_one_espn_id_keep_the_rostered_one_and_warn(con):
+    p = payloads()
+    clone = dict(p.players["4046"], player_id="88888", full_name="Duplicate Arbor")
+    p.players["88888"] = clone                      # same espn_id as 4046 (rostered)
+    stats = write_sleeper(con, p)
+    rows = {r["full_name"]: r["espn_player_id"] for r in fetch_dicts(con, "SELECT * FROM fantasy_players")}
+    assert rows["Quinn Arbor"] == 3139477 and rows["Duplicate Arbor"] == -(SYNTHETIC_BASE + 88888)
+    assert any("map to one ESPN id" in w for w in stats["warnings"])
+
+
+def test_a_rerun_takes_corrected_points(con):
+    write_sleeper(con, payloads())
+    p = payloads()
+    p.matchups[5][0]["players_points"]["4046"] = 9.9
+    write_sleeper(con, p)
+    assert con.execute("SELECT actual_points FROM espn_player_weekly_points WHERE espn_player_id = 3139477 "
+                       "AND scoring_period = 5").fetchone() == (9.9,)

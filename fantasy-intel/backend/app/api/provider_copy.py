@@ -85,13 +85,18 @@ def text(s: str) -> str:
     return s
 
 
-def rewrite(obj: Any) -> Any:
+# Keys whose values are data (names people and providers chose), never the site's wording.
+DATA_KEYS = frozenset({"name", "full_name", "team_name", "owner_names", "display_name", "manager", "manager_name",
+                       "player_name", "abbrev", "league_name", "nickname", "first_name", "last_name", "team"})
+
+
+def rewrite(obj: Any, key: str | None = None) -> Any:
     if isinstance(obj, str):
-        return text(obj)
+        return obj if key in DATA_KEYS or (key or "").endswith("_name") else text(obj)
     if isinstance(obj, list):
-        return [rewrite(v) for v in obj]
+        return [rewrite(v, key) for v in obj]
     if isinstance(obj, dict):
-        return {k: rewrite(v) for k, v in obj.items()}
+        return {k: rewrite(v, k) for k, v in obj.items()}
     return obj
 
 

@@ -27,7 +27,9 @@ LAST_WEEK = 18
 
 
 def client(work_root: Path | None = None) -> SleeperClient:
-    return SleeperClient(cache_dir=Path(tempfile.mkdtemp(prefix="fi-sleeper-", dir=work_root)), timeout=30.0)
+    """One cache directory per working root (the runner's temp dir, or the system's), reused by every call."""
+    root = Path(work_root) if work_root is not None else Path(tempfile.gettempdir())
+    return SleeperClient(cache_dir=root / "fi-sleeper", timeout=30.0)
 
 
 def players(sleeper: SleeperClient, objects, now: float | None = None) -> dict[str, dict]:
