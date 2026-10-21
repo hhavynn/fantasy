@@ -85,11 +85,75 @@ GOVERNANCE = {
 OVERRIDE_STATUS = "owner_override"
 
 
-def normalize(source: str | None) -> str:
-    s = (source or "espn").lower()
+def normalize(source: str | None, con=None, season: int | None = None) -> str:
+    """An explicit source, validated; no source: the league's default (`default_source`) when a connection is given,
+    else "espn"."""
+    if not source:
+        return default_source(con, season) if con is not None else "espn"
+    s = source.lower()
     if s not in SOURCES:
         raise ValueError(f"source must be one of {', '.join(SOURCES)}")
     return s
+
+
+def default_source(con, season: int | None = None) -> str:
+    """The league's default projection source (multi-league Phase 4b): "espn" for an ESPN league, "independent" for a
+    league whose provider publishes no projections (Sleeper: app/sleeper/write.py marks `settings_raw.provider`), so
+    Fantasy Intel's own are the only ones. An explicit `source=` always wins."""
+    if con is None or not table_exists(con, "leagues"):
+        return "espn"
+    sql = "SELECT settings_raw FROM leagues" + (" WHERE season = ?" if season else "") + " ORDER BY synced_at DESC LIMIT 1"
+    row = con.execute(sql, [season] if season else []).fetchone()
+    raw = row[0] if row else None
+    settings = json.loads(raw) if isinstance(raw, str) else (raw or {})
+    return "independent" if isinstance(settings, dict) and settings.get("provider") == "sleeper" else "espn"
+
+
+def league_projections(con, season: int, weeks, source: str) -> dict[int, dict[int, tuple[float, object]]]:
+    """{player: {week: (points, stamp)}} for the league's weeks from `source`: "espn" reads the provider's stored
+    weekly projections (stamp = synced_at), "independent" exactly what `weekly(..., "independent")` shows for each week
+    (Ours, its K and D/ST overlays, the provider's number where the models abstain; stamp = the run's created_at)."""
+    out: dict[int, dict[int, tuple[float, object]]] = {}
+    weeks = list(weeks)
+    if not weeks:
+        return out
+    if source == "espn":
+        for r in fetch_dicts(con, """SELECT espn_player_id, scoring_period, projected_points, synced_at
+                                     FROM espn_player_weekly_points WHERE season = ? AND scoring_period BETWEEN ? AND ?
+                                     AND projected_points IS NOT NULL""", [season, min(weeks), max(weeks)]):
+            out.setdefault(r["espn_player_id"], {})[r["scoring_period"]] = (float(r["projected_points"]), r["synced_at"])
+        return out
+    for w in weeks:
+        x = weekly(con, season, w, "independent")
+        stamp = (x.get("run") or {}).get("created_at")
+        for pid, v in x["values"].items():
+            if v is not None:
+                out.setdefault(pid, {})[w] = (float(v), stamp)
+    _carry_dst_forward(con, season, weeks, out)
+    return out
+
+
+def _carry_dst_forward(con, season: int, weeks: list[int], out: dict) -> None:
+    """The D/ST model projects the coming week only. For the weeks after it, a defense keeps its latest projection
+    (flat, labeled by the stamp of the run it came from) in every week its NFL team plays; a bye stays empty. Without
+    this every lineup with a D/ST would be incomplete beyond next week in a league with no provider projections."""
+    dsts = {pid for pid in out if -17000 < pid <= -16000}
+    if not dsts or not table_exists(con, "nfl_schedules") or not table_exists(con, "fantasy_players"):
+        return
+    teams = {r["espn_player_id"]: r["pro_team"] for r in fetch_dicts(
+        con, "SELECT espn_player_id, pro_team FROM fantasy_players WHERE espn_player_id BETWEEN -16999 AND -16000")}
+    plays: dict[str, set[int]] = {}
+    for r in fetch_dicts(con, "SELECT week, home_team, away_team FROM nfl_schedules WHERE season = ? AND "
+                              "coalesce(game_type, 'REG') = 'REG'", [season]):
+        for t in (r["home_team"], r["away_team"]):
+            plays.setdefault(t, set()).add(int(r["week"]))
+    for pid in dsts:
+        by_week, last = out[pid], None
+        for w in weeks:
+            if w in by_week:
+                last = by_week[w]
+            elif last is not None and w in plays.get(teams.get(pid), set()):
+                by_week[w] = last
 
 
 def _espn(con, season: int, week: int) -> dict[int, float | None]:

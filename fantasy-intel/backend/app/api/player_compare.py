@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api", tags=["player comparison"])
 
 @router.get("/compare")
 def compare_players(a: int, b: int,
-                    source: str = Query("espn", description="Projection source: espn (default) | independent")):
+                    source: str | None = Query(None, description="Projection source: espn | independent (default: the league's own, espn when it has ESPN projections, else independent)")):
     """Side-by-side comparison of two ESPN player ids (a == b is allowed).
 
     422 for a non-integer id or a bad source, 404 naming `a` or `b` for an unknown player (`a` is checked first),

@@ -76,6 +76,16 @@ PROJECTION_SOURCE = {
     "note": "ESPN is the only canonical projection source for trade evaluation. The independent model (ifp-2) is not "
             "wired into the trade state for long horizons and is unvalidated there, so it is never mixed into a "
             "scenario and never the default; no comparison is shown."}
+# a league without provider projections (Sleeper): Fantasy Intel's own are the only ones (multi-league Phase 4b)
+OURS_PROJECTION_SOURCE = {
+    "used": "independent", "experimental_comparison": None,
+    "note": "This league's provider publishes no projections, so trades are evaluated with Fantasy Intel's own "
+            "projections (Ours, re-scored to this league's scoring): weekly forecasts for the coming weeks and "
+            "experimental rest-of-season forecasts beyond them. Nothing is mixed with another source."}
+
+
+def projection_source_for(state) -> dict:
+    return OURS_PROJECTION_SOURCE if getattr(state, "projection_source", "espn") == "independent" else PROJECTION_SOURCE
 PHASE_TEXT = {"ros": "rest-of-season", "regular": "regular-season", "playoff": "fantasy-playoff"}
 PHASES = {"ros": ("min_side", "ros_delta"), "regular": ("min_side_regular", "regular_season_delta"),
           "playoff": ("min_side_playoff", "playoff_delta")}
@@ -549,7 +559,7 @@ def discover(ts: TradeSearch, mode: str = "practical", phase: str = "ros", oppon
         (f"Sensible sections: at most {PER_IDEA} variants per manager and set of players received, and {PER_MANAGER} "
          "per manager in each; similar variants are counted, not re-ranked.") if lens else None,
         "ranking_policy": dual.RANKING_POLICY, "verdicts": dual.VERDICTS, "criteria": dual.CRITERIA,
-        "projection_source": PROJECTION_SOURCE,
+        "projection_source": projection_source_for(ts.state),
         "coverage": {"exact": exact_search, "heuristic": heur_search,
                      "exact_shapes": ts.shapes, "heuristic_shapes": ts.heuristic_shapes,
                      "positions": list(ts.positions) if ts.positions else None},

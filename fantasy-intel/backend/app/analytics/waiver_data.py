@@ -91,8 +91,12 @@ def select_candidates(pool: list[dict], values: dict, projections: dict, depth: 
                       "limitation": "Coverage is the stored ESPN pool, not the entire NFL universe. Sync truncation may omit players."}
 
 
-def load_waiver_context(con, league: dict, now: datetime | None = None) -> dict:
+def load_waiver_context(con, league: dict, now: datetime | None = None, source: str | None = None) -> dict:
+    """`source`: None = the league's default (projection_source.default_source). Ours values carry their run's
+    creation time; the 72-hour staleness rule is for daily provider snapshots and does not apply to them."""
+    from .projection_source import league_projections, normalize
     now = now or datetime.now(timezone.utc)
+    source = normalize(source, con, league.get("season"))
     current, final = league.get("current_week"), league.get("final_scoring_period")
     actionable = current <= final if current and final else None
     start = current or 1
@@ -127,7 +131,13 @@ def load_waiver_context(con, league: dict, now: datetime | None = None) -> dict:
         warnings.append("Actionable scoring window is unknown; final scoring period/current week is missing.")
     projections, synced, projection_stamps = defaultdict(dict), {}, defaultdict(dict)
     stale_count = 0
-    if weeks:
+    if weeks and source != "espn":
+        for pid, by_week in league_projections(con, league["season"], weeks, source).items():
+            for w, (v, stamp) in by_week.items():
+                projections[pid][w] = v
+                projection_stamps[pid][w] = stamp
+                synced[pid] = max(synced.get(pid) or stamp, stamp) if stamp else synced.get(pid)
+    elif weeks:
         for r in fetch_dicts(con, """SELECT espn_player_id, scoring_period, projected_points, synced_at
                                     FROM espn_player_weekly_points WHERE season=? AND scoring_period BETWEEN ? AND ?
                                     AND projected_points IS NOT NULL""", [league["season"], weeks[0], weeks[-1]]):
@@ -157,6 +167,7 @@ def load_waiver_context(con, league: dict, now: datetime | None = None) -> dict:
     constraints = roster_constraints(league)
     return {"weeks": weeks, "actionable": actionable, "projections": dict(projections), "projection_synced": synced,
             "projection_stamps": dict(projection_stamps), "stale_projection_count": stale_count,
+            "projection_source": source,
             "games": games, "covered": covered, "lines": lines, "offenses": offenses, "defenses": defenses,
             "constraints": constraints, "rules": rules,
             "warnings": warnings, "now": now}
@@ -201,7 +212,9 @@ def streaming_evidence(c: dict, state: dict, ctx: dict, pool: list[dict]) -> dic
             "opponent_implied_total": ctx["lines"].get((opp, w), {}).get("implied_total"),
             "team_implied_total": ctx["lines"].get((c.get("pro_team"), w), {}).get("implied_total"),
             "opponent_offense": ctx["offenses"].get(opp), "defense_performance": ctx["defenses"].get(c.get("pro_team")),
-            "projection_source": "Stored ESPN league-scoring projections",
+            "projection_source": ("Fantasy Intel's own projections (Ours), in league scoring"
+                                  if ctx.get("projection_source") == "independent"
+                                  else "Stored ESPN league-scoring projections"),
             "projection_synced_at": ctx["projection_synced"].get(c["espn_player_id"])}
 
 

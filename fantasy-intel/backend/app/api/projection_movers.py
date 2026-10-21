@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api", tags=["projection movers"])
 
 
 @router.get("/projections/movers")
-def projection_movers(source: str = "espn", view: str = "ros", position: str | None = None,
+def projection_movers(source: str | None = None, view: str = "ros", position: str | None = None,
                       baseline: str | None = None, limit: int = Query(15, ge=1, le=pm.MAX_LIMIT),
                       season: int | None = None):
     season = season or get_settings().nfl_season

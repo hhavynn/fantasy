@@ -39,6 +39,12 @@ from dataclasses import dataclass, replace
 from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible
 
 PROJECTION_SOURCE = "ESPN"
+
+
+def source_label(source: str | None) -> str:
+    """The projection source a response names: ESPN's stored projections, or Ours (Fantasy Intel's own model) for a
+    league without provider projections (multi-league Phase 4b; projection_source.default_source)."""
+    return "Ours" if source == "independent" else PROJECTION_SOURCE
 FA_STATUSES = ("FREEAGENT", "WAIVERS")
 NDIGITS = 2
 ACTIVATION_DROP_NOTE = ("Activation would require a roster move/drop that is not modeled in this "
@@ -413,7 +419,7 @@ def market_groups(slots: list[str]) -> list[tuple[str, tuple[str, ...]]]:
 
 
 def replacement_market(free_agents: list[RosterPlayer], slots: list[str], window: Window, proj: Projections,
-                       top_n: int = 5) -> dict:
+                       top_n: int = 5, projection_source: str = PROJECTION_SOURCE) -> dict:
     """The league's available-player frontier per week and position: only players whose ESPN
     availability is FREEAGENT/WAIVERS (the caller supplies them), only ESPN's projections. An
     unprojected free agent counts toward availability but never gets a manufactured projection."""
@@ -436,7 +442,7 @@ def replacement_market(free_agents: list[RosterPlayer], slots: list[str], window
         weeks.append({"week": w, "phase": window.phase(w), "positions": per})
     return {"label": "replacement market (available-player frontier)", "statuses": list(FA_STATUSES),
             "pool_size": len(free_agents), "groups": [{"group": g, "eligible_positions": list(e)} for g, e in groups],
-            "weeks": weeks, "projection_source": PROJECTION_SOURCE}
+            "weeks": weeks, "projection_source": projection_source}
 
 
 def _pareto(cands: list[RosterPlayer], weeks: tuple[int, ...], proj: Projections) -> list[RosterPlayer]:

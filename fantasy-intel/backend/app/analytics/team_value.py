@@ -30,7 +30,7 @@ from ..db.connection import fetch_dicts, table_exists
 from .lineup import FLEX_ELIGIBILITY, eligible
 from .playoff_race import RaceData, build_playoff_race, load_race_data
 from .team_lineups import (STREAM_NOTE, STREAM_POSITIONS, RosterPlayer, best_fa_addition, compare, project_team,
-                           projection, r, replacement_market, roster_marginal_value, slot_filled, starters,
+                           projection, r, replacement_market, roster_marginal_value, slot_filled, source_label, starters,
                            stream_summary, without)
 from .trade_discovery import TradeSearch, detail
 from .trades import TradeError, with_streaming
@@ -478,7 +478,8 @@ def build_team_value(race: RaceData, extras: dict, team_id: int | None = None, t
                     "note": CONSOLIDATION_NOTE}
 
     # E. upgrades --------------------------------------------------------------
-    market = replacement_market(state.free_agents, slots, window, proj, top_n=1)
+    market = replacement_market(state.free_agents, slots, window, proj, top_n=1,
+                                projection_source=source_label(state.projection_source))
     gaps = []
     for bw, mw in zip(base["weeks"], market["weeks"]):
         if not bw["projection_complete"]:

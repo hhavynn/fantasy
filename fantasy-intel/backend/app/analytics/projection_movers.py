@@ -452,12 +452,12 @@ def _payload(season: int, source: str, view: str, position: str | None, ctx: dic
             "thresholds": dict(THRESHOLDS)}
 
 
-def movement(con, season: int, *, source: str = "espn", view: str = "ros", position: str | None = None,
+def movement(con, season: int, *, source: str | None = None, view: str = "ros", position: str | None = None,
              baseline: str | None = None, limit: int = 15) -> dict:
     """The `projection-movers/v1` payload (module docstring). ValueError for an invalid source, view, position or
     baseline (a baseline that is unknown or not older than the latest snapshot). Every mover's `evidence` is None:
     app.analytics.mover_evidence.attach fills it for the listed risers and fallers."""
-    source = ps.normalize(source)
+    source = ps.normalize(source, con, season)
     if view not in VIEWS:
         raise ValueError(f"view must be one of {', '.join(VIEWS)}")
     position = position.upper() if position else None
@@ -595,6 +595,6 @@ def _notes(ours: bool, experimental: bool) -> list[str]:
 def snapshots(con, season: int, source: str) -> list[dict]:
     """Newest-first stored snapshots of the source: {id, label, taken_at (ISO), cycle_week, model_version, run_ids}.
     ours lists only cutoffs that have a candidate run made before its week's kickoff (rows are not read here)."""
-    source = ps.normalize(source)
+    source = ps.normalize(source, con, season)
     snaps = _ours_index(con, season)["snaps"] if source == "independent" else _espn_snapshots(con, season)
     return [_public(s) for s in snaps]

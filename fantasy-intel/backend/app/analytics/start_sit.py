@@ -695,13 +695,13 @@ def load_start_sit_evaluation(
     team_id: int | None = None,
     week: int | None = None,
     now: datetime | None = None,
-    source: str = "espn",
+    source: str | None = None,
 ) -> dict:
     """Full evaluation payload for Start/Sit Command Center. `source` is "espn" (default) or
     "independent" (Fantasy Intel's model, see analytics/projection_source.py)."""
     from .projection_source import describe, normalize, weekly
 
-    source = normalize(source)
+    source = normalize(source, con)
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)

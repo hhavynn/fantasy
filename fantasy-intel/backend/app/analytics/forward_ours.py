@@ -38,9 +38,9 @@ BYE = "bye"
 LABEL = f"Fantasy Intel projections ({PRIMARY})"
 
 
-def normalize(source: str | None) -> str:
-    """The same validation as the weekly switch (ValueError for an unknown source)."""
-    return ps.normalize(source)
+def normalize(source: str | None, con=None, season: int | None = None) -> str:
+    """The same validation and league default as the weekly switch (ValueError for an unknown source)."""
+    return ps.normalize(source, con, season)
 
 
 def label_for(versions: list[str]) -> str:

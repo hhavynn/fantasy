@@ -357,11 +357,12 @@ def _ordered(players: list[dict], key: str, direction: str) -> list[dict]:
     return present + absent
 
 
-def build_rankings(con, *, position: str = "ALL", horizon: str = "week", source: str = "espn", sort: str = "rank",
+def build_rankings(con, *, position: str = "ALL", horizon: str = "week", source: str | None = None, sort: str = "rank",
                    dir: str | None = None, q: str = "", status: str = "all", limit: int = 100,
                    offset: int = 0) -> dict:
     """The Player Rankings payload. ValueError (naming the parameter) for a bad value; RankingsUnavailable when
     the league is not synced or its current week is unknown."""
+    source = ps.normalize(source, con)      # no source: the league's default (Phase 4b)
     position, horizon, source, sort_key, direction, needle, status, limit, offset = _validate(
         position, horizon, source, sort, dir, q, status, limit, offset)
     lg = latest_league(con, ["league_id", "season", "name"])

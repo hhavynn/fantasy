@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api", tags=["matchup"])
 def get_matchup(
     week: int | None = Query(None, description="Fantasy week / matchup period (defaults to the current league week)"),
     team_id: int | None = Query(None, description="Fantasy team ID (defaults to the user's team)"),
-    source: str = Query("espn", description="Projection source: espn (default) | independent"),
+    source: str | None = Query(None, description="Projection source: espn | independent (default: the league's own, espn when it has ESPN projections, else independent)"),
 ):
     """One team against its opponent for one week.
 

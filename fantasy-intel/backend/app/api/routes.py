@@ -12,7 +12,7 @@ from ..analytics.availability import availability, injury_order_sql, latest_inju
 from ..analytics import forward_ours
 from ..analytics.context import ftn_semantics
 from ..analytics.projections import BASELINE_NOTE, league_window, player_forward
-from ..analytics.team_lineups import project_team, public_weeks, replacement_market, roster_marginal_value
+from ..analytics.team_lineups import project_team, public_weeks, replacement_market, roster_marginal_value, source_label
 from ..analytics.trade_data import (load_league_state, manager_context, named_weeks, player_intelligence,
                                     player_names)
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
@@ -87,6 +87,20 @@ def _nfl_latest_week(con, season: int) -> int | None:
     if not table_exists(con, "nfl_weekly_stats"):
         return None
     return con.execute("SELECT max(week) FROM nfl_weekly_stats WHERE season = ?", [season]).fetchone()[0]
+
+
+@router.get("/league-profile")
+def league_profile():
+    """Which provider this league comes from and which projections its pages show by default (multi-league Phase
+    4b): ESPN's for an ESPN league, Fantasy Intel's own (Ours) for a Sleeper league, whose provider publishes none."""
+    from ..analytics.projection_source import default_source
+    with db() as con:
+        lg = one(con, "SELECT settings_raw FROM leagues ORDER BY synced_at DESC LIMIT 1")
+        raw = (lg or {}).get("settings_raw")
+        settings = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        provider = settings.get("provider") if isinstance(settings, dict) and settings.get("provider") else "espn"
+        source = default_source(con)
+        return {"provider": provider, "default_source": source, "provider_projections": source == "espn"}
 
 
 @router.get("/status")
@@ -278,7 +292,7 @@ def player_detail(espn_player_id: int):
 
 @router.get("/players/{espn_player_id}/forward")
 def player_forward_view(espn_player_id: int,
-                        source: str = Query("espn", description="Projection source: espn (default) | independent")):
+                        source: str | None = Query(None, description="Projection source: espn | independent (default: the league's own, espn when it has ESPN projections, else independent)")):
     """ESPN's projection for every remaining fantasy week (unmodified) + the ROS summary.
 
     With source=independent the response also carries `ours`: Fantasy Intel's production model (ifp-2.2.0) for
@@ -604,7 +618,8 @@ def lineup_projections():
         return {"league": lg, "evaluation": _window_info(state), "teams": teams,
                 "teams_note": None if window.weeks else
                 "No remaining fantasy scoring periods: these are the stored rows from the last actionable window.",
-                "replacement_market": replacement_market(state.free_agents, state.slots, window, state.projections)
+                "replacement_market": replacement_market(state.free_agents, state.slots, window, state.projections,
+                                                         projection_source=source_label(state.projection_source))
                 if window.weeks else None,
                 "projection_source": "ESPN", "note": BASELINE_NOTE}
 

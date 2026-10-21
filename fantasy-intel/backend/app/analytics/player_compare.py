@@ -819,10 +819,10 @@ def _freshness(con) -> dict:
     return {"espn_synced_at": _iso(last.get("espn")), "nfl_synced_at": _iso(last.get("nfl"))}
 
 
-def compare(con, a: int, b: int, source: str = "espn", now=None) -> dict:
+def compare(con, a: int, b: int, source: str | None = None, now=None) -> dict:
     """The comparison payload (docs/player_comparison_lab.md). Raises ValueError for an unknown `source`,
     UnknownPlayer (`a` first) for an unknown id and LeagueUnavailable without a synced league."""
-    source = forward_ours.normalize(source)
+    source = forward_ours.normalize(source, con)
     lg = load_league(con)
     season, as_of = lg["season"], int(lg["current_week"])
     done = as_of - 1
