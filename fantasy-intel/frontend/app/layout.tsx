@@ -11,6 +11,7 @@ import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { api } from "@/lib/api";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { currentLeague } from "@/lib/league-scope.server";
+import { NavVisibility } from "@/components/NavVisibility";
 import { projectionSwitchVisible } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import { computeSyncSummary, type StatusPayload } from "@/lib/sync-status";
@@ -63,8 +64,12 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [status, projection, league, profile] = await Promise.all([
-    api<NonNullable<StatusPayload>>("/api/status"), getProjectionSource(), currentLeague(), getLeagueProfile()]);
+  const [status, projection, league, profile, me] = await Promise.all([
+    api<NonNullable<StatusPayload>>("/api/status"), getProjectionSource(), currentLeague(), getLeagueProfile(),
+    api<{ is_platform_admin?: boolean }>("/v2/me")]);
+  // A league page hides the owner research from everyone but platform admins (the API answers them 404 anyway);
+  // the classic site is the owner's own.
+  const hideOwnerOnly = league !== null && !(me.ok && me.data.is_platform_admin === true);
   const s = status.data;
   const sync = computeSyncSummary(s ?? null, undefined, profile.provider);
   // A league whose provider has no projections (Sleeper) is always on Ours: no switch to show.
@@ -76,6 +81,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body>
+        <NavVisibility hideOwnerOnly={hideOwnerOnly}>
         <header className="appbar">
           <div className="topbar">
             <BrandLink>
@@ -102,6 +108,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <main>{children}</main>
         <TabBar />
         <TableScroll />
+        </NavVisibility>
       </body>
     </html>
   );

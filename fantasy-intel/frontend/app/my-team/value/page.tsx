@@ -12,7 +12,7 @@ import {
   TradePreview, ValueMethod, WaiverMoves, WeeklyChart,
 } from "./sections";
 import styles from "./value.module.css";
-import { TeamPerspective } from "@/components/TeamPerspective";
+import { ChooseTeam, TeamPerspective, needsTeam } from "@/components/TeamPerspective";
 import { TeamLink } from "@/components/TeamLink";
 
 export const metadata = { title: "Team value" };
@@ -55,7 +55,8 @@ export default async function TeamValuePage({ searchParams }: PageProps<"/my-tea
     return (
       <div className="stack">
         <PageHeader title="My team value" />
-        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+        {needsTeam(res) ? <ChooseTeam path={PATH} sp={sp} what="its roster value and lineup strength" />
+          : <BackendProblem error={res.error} kind={res.kind} status={res.status} />}
       </div>
     );
   }

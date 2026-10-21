@@ -141,12 +141,23 @@ jobs:
   e2e:
     name: E2E smoke (Playwright)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: fantasy-intel/frontend
     env:
       TZ: UTC
+      # The multi-league parity matrix's control plane (scripts/e2e_multileague.py via tests/pg_harness.py)
+      FI_TEST_PG_DSN: postgresql://postgres:postgres@localhost:5432/postgres
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+        ports:
+          - 5432:5432
 
     steps:
       - name: Checkout repository
@@ -191,6 +202,11 @@ jobs:
       - name: Run Sleeper league smoke test
         run: npm run e2e:sleeper
 
+      # Every page on the multi-league site for an ESPN public, an ESPN private (signed in) and a Sleeper league:
+      # throwaway Postgres, a fake Supabase JWKS and three published league files (scripts/e2e_multileague.py).
+      - name: Run multi-league parity matrix
+        run: npm run e2e:multileague
+
       - name: Upload Playwright traces and report
         if: failure()
         uses: actions/upload-artifact@v4
@@ -201,4 +217,6 @@ jobs:
             fantasy-intel/frontend/playwright-report/
             fantasy-intel/frontend/test-results-sleeper/
             fantasy-intel/frontend/playwright-report-sleeper/
+            fantasy-intel/frontend/test-results-multileague/
+            fantasy-intel/frontend/playwright-report-multileague/
           retention-days: 14

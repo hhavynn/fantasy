@@ -12,6 +12,7 @@ import {
 import type { ProjectionSource } from "@/lib/projection-source";
 import type { SyncState } from "@/lib/sync-status";
 import { withTeam } from "@/lib/team-perspective";
+import { useNavGroups } from "./NavVisibility";
 import { ProjectionSwitch } from "./ProjectionSwitch";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { ScrollToActive } from "./ui/ScrollToActive";
@@ -41,7 +42,9 @@ export function NavGroups() {
 }
 
 export function SubNav() {
-  const { activeHref, activeGroup } = getActiveRoute(useAppPathname());
+  const { activeHref, activeGroup: found } = getActiveRoute(useAppPathname());
+  const groups = useNavGroups();
+  const activeGroup = found ? groups.find((g) => g.label === found.label) ?? found : null;
   const team = useTeam();
   const leagueHref = useLeagueHref();
   if (!activeGroup) return null;
@@ -151,6 +154,7 @@ export function MobileNav({ projection, sync }: { projection?: ProjectionSource;
   const pathname = useAppPathname();
   const search = useSearchParams();
   const { activeHref } = getActiveRoute(pathname);
+  const groups = useNavGroups();
   const team = useTeam();
   const leagueHref = useLeagueHref();
   const [open, setOpen] = useState(false);
@@ -191,7 +195,7 @@ export function MobileNav({ projection, sync }: { projection?: ProjectionSource;
               <span aria-hidden="true">→</span>
             </Link>
           )}
-          {NAV_GROUPS.map((g) => (
+          {groups.map((g) => (
             <div key={g.label} className="mobile-nav-group" role="group" aria-labelledby={`mnav-${g.label}`}>
               <span id={`mnav-${g.label}`} className="mobile-nav-title">{g.label}</span>
               {navClusters(g).map((c) => (

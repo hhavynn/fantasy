@@ -6,6 +6,9 @@ export type NavPage = {
   summary?: string;
   /** A labelled cluster inside the group (the advanced "Research" tools); absent = the group's everyday pages. */
   section?: string;
+  /** Owner research (the model's evidence): on the multi-league site only platform admins see it (the API answers
+   *  everyone else 404). */
+  ownerOnly?: boolean;
 };
 export type NavGroup = { label: string; pages: NavPage[] };
 
@@ -43,10 +46,10 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/rankings", label: "Rankings", summary: "Every player ranked by projection, filtered by position and horizon" },
       { href: "/players", label: "Player profile", summary: "One player's usage, game log and outlook" },
       { href: "/compare", label: "Compare", summary: "Players side by side on projection, usage and schedule" },
-      { href: "/research", label: "Research lab", section: "Research", summary: "Opportunity against production for WR, RB and TE" },
+      { href: "/research", label: "Research lab", section: "Research", summary: "Opportunity against production for WR, RB and TE" , ownerOnly: true },
       { href: "/schedule-intelligence", label: "Schedule", section: "Research", summary: "Upcoming opponents for each rostered player" },
       { href: "/movers", label: "Projection movers", section: "Research", summary: "Who moved between two stored forecasts" },
-      { href: "/projection-performance", label: "Projection accuracy", section: "Research", summary: "How past projections compared with results" },
+      { href: "/projection-performance", label: "Projection accuracy", section: "Research", summary: "How past projections compared with results" , ownerOnly: true },
     ],
   },
   {
@@ -69,6 +72,12 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 export const ALL_NAV_PAGES: NavPage[] = NAV_GROUPS.flatMap((g) => g.pages);
+
+/** The groups a visitor may see: without the owner research pages when `hideOwnerOnly`. */
+export function visibleGroups(hideOwnerOnly: boolean): NavGroup[] {
+  if (!hideOwnerOnly) return NAV_GROUPS;
+  return NAV_GROUPS.map((g) => ({ ...g, pages: g.pages.filter((p) => !p.ownerOnly) }));
+}
 
 export type NavCluster = { title: string | null; pages: NavPage[] };
 

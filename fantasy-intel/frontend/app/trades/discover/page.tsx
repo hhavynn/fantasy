@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Fragment, Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
+import { ChooseTeam, needsTeam } from "@/components/TeamPerspective";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
   Badge, Delta, EmptyState, Glossary, Method, Notice, PageHeader, Pos, Section, Skeleton, SkeletonStatStrip, SkeletonTable, SortableTh, Stat, StatStrip, Tabs, VisuallyHidden,
@@ -66,7 +67,8 @@ export default async function DiscoverPage({ searchParams }: PageProps<"/trades/
       {!res.ok ? (
         <>
           <PageHeader title="Trade discovery" actions={<TeamLink href="/trades">Trade analyzer</TeamLink>} />
-          <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+          {needsTeam(res) ? <ChooseTeam path="/trades/discover" sp={sp} what="trade ideas for its roster" />
+            : <BackendProblem error={res.error} kind={res.kind} status={res.status} />}
         </>
       ) : <Body c={res.data} summary={summary} q={q} sp={sp} defaultSource={profile.defaultSource} />}
     </div>

@@ -12,6 +12,14 @@ test("sign-in needs the UI flag and both Supabase settings; sign-ups stay closed
   assert.equal(authConfig({ ...ENV, SIGNUPS_OPEN: "1" })?.signupsOpen, true);
 });
 
+test("a local Supabase needs SUPABASE_LOCAL=1, a loopback address, and never runs on Vercel", () => {
+  const local = { ...ENV, SUPABASE_URL: "http://127.0.0.1:54321" };
+  assert.equal(authConfig(local), null);
+  assert.equal(authConfig({ ...local, SUPABASE_LOCAL: "1" })?.url, "http://127.0.0.1:54321");
+  assert.equal(authConfig({ ...local, SUPABASE_LOCAL: "1", VERCEL: "1" }), null);
+  assert.equal(authConfig({ ...local, SUPABASE_LOCAL: "1", SUPABASE_URL: "http://evil.example:80" }), null);
+});
+
 test("after sign-in the redirect stays inside the site", () => {
   assert.equal(safeNext("/l/lg_abcdefghijklmnop/waivers"), "/l/lg_abcdefghijklmnop/waivers");
   for (const bad of [null, "", "https://evil.example", "//evil.example", "/\\evil.example", "leagues"]) {

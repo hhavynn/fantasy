@@ -68,3 +68,22 @@ export function UnknownTeam({ path, sel, detail }: { path: string; sel: TeamSele
     </Notice>
   );
 }
+
+
+/**
+ * The backend's answer when a page needs a team and the visitor has none: an anonymous visitor to a public league
+ * on the multi-league site (the classic site always had a team marked as yours).
+ */
+export function needsTeam(res: { ok: boolean; status?: number | null; error?: string | null }): boolean {
+  return !res.ok && (res.status === 404 || res.status === 422) && /No team is marked as yours/.test(res.error ?? "");
+}
+
+/** In place of an error: the team picker and what picking one shows. */
+export async function ChooseTeam({ path, sp, what }: { path: string; sp: SP; what: string }) {
+  return (
+    <>
+      <TeamPerspective path={path} sp={sp} current={null} />
+      <Notice tone="info" title="Pick a team">Pick a team above to see {what}.</Notice>
+    </>
+  );
+}

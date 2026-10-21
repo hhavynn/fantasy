@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { NAV_GROUPS } from "@/lib/navigation";
 import {
   type PaletteItem, type SearchPlayer, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent, wrapIndex,
 } from "@/lib/palette";
@@ -11,11 +10,11 @@ import { withTeam } from "@/lib/team-perspective";
 import { withLeague } from "@/lib/league-scope";
 import { useLeagueId } from "./useAppPathname";
 import { useTeam } from "./useTeam";
+import { useNavGroups } from "./NavVisibility";
 import styles from "./CommandPalette.module.css";
 
 const RECENT_KEY = "fantasy-intel:palette-recent";
 const DEBOUNCE_MS = 150;
-const PAGES = pageItems(NAV_GROUPS);
 const NO_PLAYERS: PaletteItem[] = [];
 
 function readRecents(): PaletteItem[] {
@@ -109,7 +108,9 @@ function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | 
   const q = query.trim();
   const pending = q !== "" && result.q !== q;
   const players = result.q === q ? result.players : NO_PLAYERS;
-  const sections = useMemo(() => buildSections(q, PAGES, players, recents, pending), [q, players, recents, pending]);
+  const groups = useNavGroups();
+  const pages = useMemo(() => pageItems(groups), [groups]);
+  const sections = useMemo(() => buildSections(q, pages, players, recents, pending), [q, pages, players, recents, pending]);
   const flat = useMemo(() => flattenSections(sections), [sections]);
   const activeIndex = Math.max(0, flat.findIndex((i) => i.id === activeId));
   const active = flat[activeIndex] ?? null;

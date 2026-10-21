@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
+import { ChooseTeam, needsTeam } from "@/components/TeamPerspective";
 import { PlayerLink } from "@/components/PlayerLink";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
 import {
@@ -73,7 +74,8 @@ export default async function ScheduleIntelligencePage({ searchParams }: PagePro
     return (
       <div className="stack">
         <PageHeader title="Schedule intelligence" />
-        <BackendProblem error={res.error} kind={res.kind} status={res.status} />
+        {needsTeam(res) ? <ChooseTeam path="/schedule-intelligence" sp={sp} what="its players' upcoming schedule" />
+          : <BackendProblem error={res.error} kind={res.kind} status={res.status} />}
       </div>
     );
   }
