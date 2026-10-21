@@ -157,3 +157,49 @@ def test_deleting_one_member_leaves_a_shared_league_and_promotes_the_heir(client
     assert one(pg, "SELECT role FROM fi.league_memberships WHERE user_id = %s AND league_id = %s", [U2, lid]) == ("admin",)
     assert one(pg, "SELECT deleted_at FROM fi.leagues WHERE id = %s", [lid]) == (None,)
 
+
+
+def test_concurrent_inserts_for_one_account_cannot_pass_the_cap_together(pg):
+    import threading
+    with pg.connect() as su:
+        seed_user(su, U1)
+        leagues = [seed_league(su) for _ in range(26)]
+        for lid in leagues[:24]:
+            su.execute("INSERT INTO fi.league_pins (user_id, league_id) VALUES (%s, %s)", [U1, lid])
+        su.commit()
+    first = pg.connect()
+    first.execute("INSERT INTO fi.league_pins (user_id, league_id) VALUES (%s, %s)", [U1, leagues[24]])  # 25th, open
+    outcome = {}
+
+    def second():
+        with pg.connect() as con:
+            try:
+                con.execute("INSERT INTO fi.league_pins (user_id, league_id) VALUES (%s, %s)", [U1, leagues[25]])
+                con.commit()
+                outcome["result"] = "inserted"
+            except RaiseException as err:
+                outcome["result"] = err.diag.message_primary
+
+    t = threading.Thread(target=second)
+    t.start()
+    t.join(1.0)
+    assert t.is_alive(), "the second insert waits for the account lock"
+    first.commit()
+    first.close()
+    t.join(10)
+    assert outcome == {"result": "league_limit"}
+    assert one(pg, "SELECT count(*) FROM fi.league_pins WHERE user_id = %s", [U1]) == (25,)
+
+
+def test_audit_rows_older_than_a_year_are_pruned_and_newer_ones_stay_append_only(pg):
+    with pg.connect() as su:
+        su.execute("INSERT INTO fi.audit_log (at, action, target_type, target_id) VALUES "
+                   "(now() - interval '366 days', 'old.action', 'league', 'lg_x'), (now(), 'new.action', 'league', 'lg_x')")
+        su.commit()
+        with pytest.raises(RaiseException, match="append-only"):
+            su.execute("DELETE FROM fi.audit_log WHERE action = 'new.action'")
+        su.rollback()
+    with psycopg.connect(pg.dsn_for("fi_sync"), prepare_threshold=None) as con:
+        assert maintenance.prune_audit_log(con) == 1
+        assert maintenance.prune_audit_log(con) == 0
+    assert one(pg, "SELECT array_agg(action) FROM fi.audit_log") == (["new.action"],)

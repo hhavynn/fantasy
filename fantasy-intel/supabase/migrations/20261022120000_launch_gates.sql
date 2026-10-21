@@ -4,6 +4,8 @@
 --     Auth can be called directly with the publishable key, so this is the gate that matters: a new auth user gets
 --     no rows and no data access until sign-ups open. Unset (direct SQL, tests) keeps the old behavior.
 --   * At most 25 leagues per account (pins and live memberships, counted once per league), on every insert path.
+--   * Audit retention (privacy policy: one year): rows older than a year may be deleted, only by
+--     fi.prune_audit_log(), which the drain's maintenance runs as fi_sync. Newer rows stay append-only.
 --   * Account deletion by the account itself: deletes its own auth.users row; the Phase 1 cascade and the
 --     fi.app_users delete rules do the rest (credentials crypto-erased, heir promoted, empty league soft-deleted).
 -- Idempotent. Down-migration: supabase/down/20261022120000_launch_gates.sql.
@@ -25,11 +27,14 @@ REVOKE ALL ON FUNCTION fi.ensure_app_user() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION fi.ensure_app_user() TO authenticated;
 
 -- 25 leagues per account. A league the account already has (pinned, or a live member) is never counted twice, so
--- re-importing or re-pinning it at the cap still works. No lock: two racing inserts can land one over the cap, which
--- is harmless (the cap bounds sync work, it is not a security boundary) and keeps the canonical lock order.
+-- re-importing or re-pinning it at the cap still works. The account's app-user row is locked first, so concurrent
+-- inserts for one account count one after another (READ COMMITTED: each count sees the commits it waited for).
+-- Every request path already holds that lock from fi.ensure_app_user's upsert, so the canonical lock order (account,
+-- app user, league, league's rows) is unchanged.
 CREATE OR REPLACE FUNCTION fi.check_active_leagues() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = '' AS $$
 BEGIN
+  PERFORM 1 FROM fi.app_users a WHERE a.id = NEW.user_id FOR UPDATE;
   IF EXISTS (SELECT 1 FROM fi.league_pins p WHERE p.user_id = NEW.user_id AND p.league_id = NEW.league_id)
      OR EXISTS (SELECT 1 FROM fi.league_memberships m
                 WHERE m.user_id = NEW.user_id AND m.league_id = NEW.league_id AND m.revoked_at IS NULL) THEN
@@ -63,3 +68,25 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION fi.delete_my_account() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION fi.delete_my_account() TO authenticated;
+
+-- The audit log stays append-only, except that a row older than a year may be deleted. Only the table owner holds
+-- DELETE, so in practice the only delete is fi.prune_audit_log().
+CREATE OR REPLACE FUNCTION fi.audit_log_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  IF TG_OP = 'DELETE' AND OLD.at < now() - interval '1 year' THEN
+    RETURN OLD;
+  END IF;
+  RAISE EXCEPTION 'fi.audit_log is append-only';
+END $$;
+REVOKE ALL ON FUNCTION fi.audit_log_immutable() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION fi.prune_audit_log() RETURNS integer LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = '' AS $$
+DECLARE n integer;
+BEGIN
+  DELETE FROM fi.audit_log a WHERE a.at < now() - interval '1 year';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n;
+END $$;
+REVOKE ALL ON FUNCTION fi.prune_audit_log() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION fi.prune_audit_log() TO fi_sync;

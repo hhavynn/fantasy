@@ -1,6 +1,12 @@
--- Reverses 20261022120000_launch_gates.sql: drops the account deletion function and the league cap, and restores
+-- Reverses 20261022120000_launch_gates.sql: drops audit pruning, the account deletion function and the league cap, and restores
 -- fi.ensure_app_user as 20261020121000_owner_lock_order.sql left it.
 
+DROP FUNCTION IF EXISTS fi.prune_audit_log();
+CREATE OR REPLACE FUNCTION fi.audit_log_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  RAISE EXCEPTION 'fi.audit_log is append-only';
+END $$;
+REVOKE ALL ON FUNCTION fi.audit_log_immutable() FROM PUBLIC;
 DROP FUNCTION IF EXISTS fi.delete_my_account();
 DROP TRIGGER IF EXISTS league_memberships_cap ON fi.league_memberships;
 DROP TRIGGER IF EXISTS league_pins_cap ON fi.league_pins;

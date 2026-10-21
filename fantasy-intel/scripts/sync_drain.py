@@ -71,6 +71,7 @@ def maintenance() -> int:
     try:
         with connect(os.environ["FI_SYNC_DB_URL"]) as con:
             purged = m.purge_expired(con, objects_from_env())
+            m.prune_audit_log(con)
             counts = m.enqueue_due(con)
     except Exception as err:   # noqa: BLE001
         out(f"maintenance failed: {type(err).__name__}")
