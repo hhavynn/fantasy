@@ -153,3 +153,31 @@ def test_an_unreferenced_league_object_newer_than_the_pointer_is_kept(pg, r2, le
         league_publish._collect(R2Writer(r2.config), con, league)
     assert in_flight in r2.objects and stale not in r2.objects
     assert league_key(league, res.data_version) in r2.objects
+
+
+def test_the_global_only_publisher_uploads_once_and_reuses_unchanged_content(pg, e2e, tmp_path, monkeypatch, capsys):
+    """scripts/publish_global.py (Phase 4): the laptop publishes the global file only; a rerun with the same content
+    uploads nothing and keeps the current version."""
+    import importlib.util
+    from pathlib import Path
+
+    files = tmp_path / "objects"
+    monkeypatch.setenv("FANTASY_DB_PATH", str(e2e))
+    monkeypatch.setenv("FI_SYNC_DB_URL", pg.dsn_for("fi_sync"))
+    monkeypatch.setenv("LEAGUE_FILES_DIR", str(files))
+    for k in ("SNAPSHOT_BUCKET", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    script = Path(__file__).resolve().parents[2] / "scripts" / "publish_global.py"
+    spec = importlib.util.spec_from_file_location("publish_global", script)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.main() == 0
+    first = capsys.readouterr().out
+    objects = sorted(p.relative_to(files).as_posix() for p in files.rglob("*") if p.is_file())
+    assert len(objects) == 1 and objects[0].startswith("global/") and "published" in first
+    with pg.connect() as con:
+        version = con.execute("SELECT global_version FROM fi.global_snapshot").fetchone()[0]
+    assert objects[0] == global_key(version)
+    assert mod.main() == 0
+    assert "unchanged" in capsys.readouterr().out
+    assert sorted(p.relative_to(files).as_posix() for p in files.rglob("*") if p.is_file()) == objects

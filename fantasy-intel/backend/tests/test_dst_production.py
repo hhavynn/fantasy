@@ -19,6 +19,7 @@ from app.analytics import dst_research as dr
 from app.analytics import dst_store as st
 from app.analytics import projection_source as ps
 from test_dst_research import LEAGUE
+from test_dst_research import world as research_world  # noqa: F401  (fixture)
 from app.analytics.independent_projection_store import build_live as build_ifp, write_live
 from test_dst_shadow import TEAMS, world, write_cache
 from test_dst_shadow import build_live as build_dst_world
@@ -77,6 +78,32 @@ def test_the_numpy_free_fingerprint_equals_the_research_model(con):
     assert st.MODELED == dr.MODELED and st.DST_UNIVERSE == dr.DST_UNIVERSE and st.MODEL_VERSION == dr.MODEL_VERSION
     assert st.scoring_fingerprint(LEAGUE + [{"statId": 107, "points": 0.1}])[0] is None      # unmodeled: abstain
     assert st.scoring_fingerprint(None)[0] is None
+
+
+OTHER_DST = [{"statId": 99, "points": 1.0}, {"statId": 95, "points": 2.0}, {"statId": 96, "points": 2.0},
+             {"statId": 89, "points": 10.0}, {"statId": 90, "points": 7.0}, {"statId": 91, "points": 4.0},
+             {"statId": 125, "points": -4.0}, {"statId": 103, "points": 6.0}]
+
+
+@pytest.mark.parametrize("items", [LEAGUE, OTHER_DST], ids=["league", "other"])
+def test_scoring_stats_rescore_exactly_and_the_numpy_free_description_matches(research_world, items):
+    """dst_store re-scores a row's expected statistics to any league's points exactly as the model would, and
+    describes the scoring exactly as dst_research does (multi-league Phase 4)."""
+    rows, teams, scoring, hist = research_world
+    cfg = dr.DConfig(k=3.0)
+    feats = dr.rating_features(rows, hist, teams, cfg, 1)
+    tr = [i for i, r in enumerate(rows) if r["season"] in (2020, 2021, 2022)]
+    te = [i for i, r in enumerate(rows) if r["season"] == 2023][:6]
+    target = dr.resolve_dst_scoring(items)
+    ref = dr.project_season([rows[i] for i in tr], [feats[i] for i in tr], [rows[i] for i in te],
+                            [feats[i] for i in te], scoring, cfg)
+    direct = dr.project_season([rows[i] for i in tr], [feats[i] for i in tr], [rows[i] for i in te],
+                               [feats[i] for i in te], target, cfg)
+    weights, why = st.scoring_weights(items)
+    assert why is None and weights == target.weights
+    for a, b in zip(ref, direct):
+        assert st.expected_points(weights, json.loads(json.dumps(a["scoring_stats"]))) == pytest.approx(b["pred"], abs=1e-5)
+    assert st.describe_scoring(items) == target.describe()
 
 
 def test_runs_are_write_once_verified_and_selected_under_the_league_scoring(con):

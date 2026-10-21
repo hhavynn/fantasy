@@ -26,6 +26,9 @@ VOLATILE_PREFIXES = ("lineup_solves",)
 VOLATILE_DIAGNOSTICS = {"seconds"}
 # ISO-8601 datetimes with a time part (dates alone are data: game dates, weeks).
 _DATETIME = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$")
+# A sync stamp inside text ("ESPN injury status INJURY_RESERVE (synced 2026-10-20 18:02:11.5)"); other datetimes in
+# text are data (kickoffs)
+_SYNCED_STAMP = re.compile(r"(synced )\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?")
 
 
 @dataclass(frozen=True)
@@ -100,6 +103,8 @@ def mask(value, key: str | None = None):
         return [mask(v) for v in value]
     if isinstance(value, str) and _DATETIME.match(value):
         return MASK
+    if isinstance(value, str):
+        return _SYNCED_STAMP.sub(r"\1" + MASK, value)
     return value
 
 

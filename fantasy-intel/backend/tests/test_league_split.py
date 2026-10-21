@@ -2,7 +2,10 @@
 import duckdb
 import pytest
 
-from app.db.league_split import GLOBAL_TABLES, LEAGUE_TABLES, BOTH_TABLES, split_database
+import json
+
+from app.db.league_split import (BOTH_TABLES, GLOBAL_TABLES, LEAGUE_TABLES, REFERENCE_SCORING, REFERENCE_TABLES,
+                                 split_database)
 from golden.golden import build_e2e_db
 
 
@@ -28,7 +31,8 @@ def test_every_schema_table_is_classified_exactly_once(e2e):
 def test_split_reproduces_every_table_in_exactly_one_file(e2e, tmp_path):
     out = split_database(e2e, tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", stamp="2026-10-20T12:00:00")
     league, glob, src = _tables(out.league_path), _tables(out.global_path), _tables(e2e)
-    assert league == (LEAGUE_TABLES | BOTH_TABLES) & src and glob == (GLOBAL_TABLES | BOTH_TABLES) & src
+    refs = {REFERENCE_TABLES[t] for t in src if t in REFERENCE_TABLES} | {REFERENCE_SCORING}
+    assert league == (LEAGUE_TABLES | BOTH_TABLES) & src and glob == ((GLOBAL_TABLES | BOTH_TABLES) & src) | refs
     con = duckdb.connect()
     con.execute(f"ATTACH '{e2e}' AS src (READ_ONLY)")
     con.execute(f"ATTACH '{out.league_path}' AS lg (READ_ONLY)")
@@ -127,3 +131,51 @@ def test_content_hash_ignores_bytes_and_row_order_but_not_data(tmp_path):
     b = db("b.duckdb", [(2, "y"), (1, "x")], "2026-10-21T12:00:00")
     c = db("c.duckdb", [(1, "x"), (2, "z")], "2026-10-20T12:00:00")
     assert content_hash(a) == content_hash(b) != content_hash(c)
+
+
+# ----------------------------------------------------------------------------- reference copies (Phase 4)
+
+def test_the_global_file_carries_reference_copies_of_the_model_runs(e2e, tmp_path):
+    out = split_database(e2e, tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", stamp="2026-10-21T00:00:00")
+    con = duckdb.connect()
+    con.execute(f"ATTACH '{e2e}' AS src (READ_ONLY)")
+    con.execute(f"ATTACH '{out.global_path}' AS gl (READ_ONLY)")
+    for source, ref in REFERENCE_TABLES.items():
+        if source not in _tables(e2e):
+            continue
+        assert con.execute(f'SELECT count(*) FROM (SELECT * FROM src.main."{source}" EXCEPT ALL '
+                           f'SELECT * FROM gl.main."{ref}")').fetchone() == (0,), source
+        assert con.execute(f'SELECT count(*) FROM src.main."{source}"').fetchone() == \
+            con.execute(f'SELECT count(*) FROM gl.main."{ref}"').fetchone(), source
+    got = con.execute(f"SELECT season, scoring_items FROM gl.main.{REFERENCE_SCORING}").fetchall()
+    want = con.execute("SELECT season, scoring_items FROM src.main.leagues").fetchall()
+    assert [(s, json.loads(i)) for s, i in got] == [(s, json.loads(i)) for s, i in want]
+
+
+def test_reference_tables_hold_no_league_identity(e2e):
+    """Columns that identify a league, team or member never reach the global file through a reference copy."""
+    forbidden = {"league_id", "team_id", "owner_id", "member_id", "swid", "team_name", "abbrev", "is_mine", "owners"}
+    con = duckdb.connect(str(e2e), read_only=True)
+    try:
+        for source in REFERENCE_TABLES:
+            if source in _tables(e2e):
+                cols = {r[0] for r in con.execute(f'DESCRIBE "{source}"').fetchall()}
+                assert not cols & forbidden, (source, cols & forbidden)
+    finally:
+        con.close()
+
+
+def test_a_working_copy_that_already_holds_references_is_split_without_copying_them_twice(e2e, tmp_path):
+    first = split_database(e2e, tmp_path / "lg1.duckdb", tmp_path / "gl1.duckdb", stamp="2026-10-21T00:00:00")
+    work = tmp_path / "work.duckdb"
+    con = duckdb.connect(str(work))
+    con.execute(f"ATTACH '{first.global_path}' AS gl (READ_ONLY)")
+    con.execute(f"ATTACH '{first.league_path}' AS lg (READ_ONLY)")
+    con.execute("COPY FROM DATABASE gl TO work")
+    for t in sorted(_tables(first.league_path) - BOTH_TABLES):
+        con.execute(f'CREATE TABLE "{t}" AS SELECT * FROM lg.main."{t}"')
+    con.close()
+    second = split_database(work, tmp_path / "lg2.duckdb", tmp_path / "gl2.duckdb", stamp="2026-10-21T00:00:00")
+    a = duckdb.connect(str(second.global_path), read_only=True)
+    assert a.execute(f"SELECT count(*) FROM {REFERENCE_SCORING}").fetchone() == (1,)
+    a.close()

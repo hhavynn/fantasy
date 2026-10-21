@@ -158,6 +158,18 @@ class KickerScoring:
         return self
 
 
+# The four disjoint distance buckets every supported scoring is built from (the others are their unions), with one
+# yardage inside each: a kick anywhere in a bucket scores the same (tests/test_kicker_projections.py).
+SCORING_BUCKETS = {"0_39": 30, "40_49": 45, "50_59": 55, "60_plus": 62}
+
+
+def expected_points(scoring: KickerScoring, s: dict) -> float:
+    """League points of a kicker's expected statistics (`stat_line.scoring_stats`: expected made / missed / blocked
+    field goals per bucket and PAT outcomes). Exact for every supported scoring, which is linear in the counts."""
+    fg = sum(n * scoring.fg_points(SCORING_BUCKETS[b], o) for o, by in s["fg"].items() for b, n in by.items())
+    return round(fg + sum(n * scoring.pat_points(o) for o, n in s["pat"].items()), 6)
+
+
 def _k_value(item: dict) -> float:
     overrides = {str(k): v for k, v in (item.get("pointsOverrides") or {}).items()}
     return float(overrides[K_SLOT] if K_SLOT in overrides else (item.get("points") or 0.0))
