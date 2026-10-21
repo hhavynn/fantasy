@@ -10,8 +10,10 @@ Serve it with FANTASY_DB_PATH=<path> ESPN_SEASON=2026 (the fixture season).
 
 import json
 import sys
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import _bootstrap  # noqa: F401
 
@@ -23,9 +25,19 @@ from espn_fixture import CURRENT, MY_SWID, SEASON, FakeEspnClient  # noqa: E402
 
 from app.analytics.pipeline import run_analytics  # noqa: E402
 from app.db.connection import connect, fetch_dicts, open_db  # noqa: E402
+from app.espn import sync as espn_sync  # noqa: E402
 from app.espn.sync import run_espn_sync  # noqa: E402
 
 REGULAR_PERIODS = 14
+# The ESPN sync dates its snapshots (ownership, projection history, roster history) by today's date. The fixture is
+# dated by the day its goldens were recorded instead, so the goldens do not change at midnight UTC.
+FIXTURE_DAY = date(2026, 10, 20)
+
+
+class _FixtureDate(date):
+    @classmethod
+    def today(cls) -> date:
+        return FIXTURE_DAY
 TEAMS = [1, 2, 3, 4]
 
 
@@ -42,8 +54,9 @@ def build(db_path: Path) -> dict:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     for p in (db_path, db_path.with_suffix(db_path.suffix + ".wal")):
         p.unlink(missing_ok=True)
-    run_espn_sync(lambda: open_db(db_path), SimpleNamespace(swid=MY_SWID, my_team_id=None),
-                  client=FakeEspnClient(), save_raw_payloads=False)
+    with patch.object(espn_sync, "date", _FixtureDate):
+        run_espn_sync(lambda: open_db(db_path), SimpleNamespace(swid=MY_SWID, my_team_id=None),
+                      client=FakeEspnClient(), save_raw_payloads=False)
     con = connect(db_path)
     try:
         # A full regular season: weeks before CURRENT final, the rest scheduled and unplayed.
