@@ -42,7 +42,12 @@ def _slot_row(slot: str, pick: dict | None) -> dict:
 
 
 def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
-    """Exact max-value assignment of flex slots (small: <= a few slots)."""
+    """Exact max-value assignment of flex slots: the first maximum in depth-first order over candidates sorted by
+    (value desc, id), as an exhaustive search would return it. Two prunings keep that answer and skip the rest:
+      * consecutive identical slots take candidates in increasing order (any other order of the same players is a
+        later permutation with an equal total, which never replaces the best);
+      * a branch whose upper bound (picked so far + the best positive values still eligible) cannot beat the best
+        by more than the tie tolerance is cut (only a strictly larger total replaces the best)."""
     # Only the top len(flex) remaining players per position can matter.
     per_pos: dict[str, list[dict]] = {}
     for p in pool:
@@ -51,21 +56,46 @@ def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
             lst.append(p)
     cands = sorted((p for lst in per_pos.values() for p in lst),
                    key=lambda p: (-(p.get("value") or 0.0), p["espn_player_id"]))
-    best: tuple[float, list] = (-1.0, [None] * len(flex))
+    vals = [c.get("value") or 0.0 for c in cands]
+    # one bit per player id, not per candidate: the same player listed twice still takes one slot
+    ids: dict = {}
+    bit = [1 << ids.setdefault(c["espn_player_id"], len(ids)) for c in cands]
+    ok = [[eligible(s, c.get("position")) for c in cands] for s in flex]
+    n, k = len(cands), len(flex)
+    # any_ok[i][j]: candidate j fits one of the slots i.. (for the bound)
+    any_ok = [[False] * n for _ in range(k + 1)]
+    for i in range(k - 1, -1, -1):
+        any_ok[i] = [a or b for a, b in zip(any_ok[i + 1], ok[i])]
+    best: tuple[float, list] = (-1.0, [None] * k)
 
-    def dfs(i: int, used: frozenset, picks: list, total: float) -> None:
+    def bound(i: int, used: int) -> float:
+        left, total = k - i, 0.0
+        for j in range(n):
+            if left == 0 or vals[j] <= 0.0:
+                break
+            if any_ok[i][j] and not used & bit[j]:
+                total += vals[j]
+                left -= 1
+        return total
+
+    def dfs(i: int, used: int, picks: list, total: float, prev: int) -> None:
         nonlocal best
-        if i == len(flex):
+        if i == k:
             if total > best[0] + 1e-12:
                 best = (total, list(picks))
             return
-        options = [p for p in cands if p["espn_player_id"] not in used and eligible(flex[i], p.get("position"))]
-        for p in options:
-            dfs(i + 1, used | {p["espn_player_id"]}, picks + [p], total + (p.get("value") or 0.0))
+        if total + bound(i, used) + 1e-9 < best[0] + 1e-12:
+            return
+        options = [j for j in range(n) if ok[i][j] and not used & bit[j]]
         if not options:
-            dfs(i + 1, used, picks + [None], total)
+            dfs(i + 1, used, picks + [None], total, -1)
+            return
+        start = prev + 1 if i and flex[i] == flex[i - 1] else 0
+        for j in options:
+            if j >= start:
+                dfs(i + 1, used | bit[j], picks + [cands[j]], total + vals[j], j)
 
-    dfs(0, frozenset(), [], 0.0)
+    dfs(0, 0, [], 0.0, -1)
     return best[1]
 
 
