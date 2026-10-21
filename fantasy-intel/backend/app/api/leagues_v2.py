@@ -155,6 +155,23 @@ def delete_me(tx=REQUEST_TX):
     return _no_content()
 
 
+@router.get("/admin/usage")
+def admin_usage(tx=REQUEST_TX):
+    """Free-tier usage (Phase 6): the latest sample per metric and its 7-day max, written hourly by the platform
+    monitor. Platform admins only; everyone else, anonymous included, gets the same 404 as an unknown route."""
+    con, principal = tx
+    if not principal.is_authenticated:
+        raise HTTPException(404, "Not Found")
+    row = con.execute("SELECT is_platform_admin FROM fi.app_users WHERE id = %s", [principal.user_id]).fetchone()
+    if not (row and row[0]):
+        raise HTTPException(404, "Not Found")
+    rows = con.execute("SELECT metric, used, quota, unit, sampled_at, max_used_7d FROM fi.usage_overview()").fetchall()
+    return _json({"metrics": [
+        {"metric": m, "used": used, "quota": quota, "unit": unit, "sampled_at": at.isoformat(), "max_used_7d": peak,
+         "percent": round(used / quota * 100, 1) if quota else None}
+        for m, used, quota, unit, at, peak in rows]})
+
+
 @router.get("/leagues")
 def list_leagues(tx=REQUEST_TX):
     from ..control_plane import mutations

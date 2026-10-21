@@ -3,12 +3,10 @@
 import { redirect } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { authConfig } from "@/lib/auth-config";
-import { supabaseServer, currentUser } from "@/lib/supabase/server";
+import { currentUser, supabaseServer } from "@/lib/supabase/server";
+import { CONFIRM_WORD } from "./confirm";
 
 export type DeleteState = { ok: boolean; message: string | null };
-
-/** The word the visitor types to confirm. */
-export const CONFIRM_WORD = "DELETE";
 
 /**
  * Delete the signed-in account (Phase 6). A public POST endpoint like every server action: it re-checks the user,

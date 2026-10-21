@@ -114,6 +114,11 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 
 **Rollback:** `SLEEPER_SOURCE=disabled`; Sleeper leagues show "temporarily unavailable"; ESPN leagues unaffected.
 
+**Status (2026-10-20):** merged in PRs #157 (reference runs re-scored per league) and #158 (Sleeper).
+- The job-built Los Subies Ours, K and D/ST tables equal the laptop's.
+- `SLEEPER_SOURCE=live` is set on the API and in Actions. Sleeper answers live.
+- A first real Sleeper league import is still to come.
+
 ## Phase 5: Parity audit
 
 **Scope:** every page × {ESPN public, ESPN private, Sleeper} checked by E2E; fixes only where a page assumed Los Subies; owner-only research pages gated to platform admins; retire the Phase 1a single-snapshot path.
@@ -121,6 +126,11 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 **Acceptance:** E2E matrix green; no "coming soon" anywhere; Havyn signs off on Los Subies after a week of side-by-side use.
 
 **Rollback:** keep the Phase 1a path until sign-off; reverting is a flag flip.
+
+**Status (2026-10-20):** merged in PR #159; the matrix is 68 of 68.
+- Havyn signed off on 2026-10-20, and `CLASSIC_SITE_ENABLED=0` is set on the web, the API and the laptop.
+- The classic `/api/*` routes answer 404.
+- The refresh chain no longer publishes the snapshot.
 
 ## Phase 6: Launch gates, then open sign-ups
 

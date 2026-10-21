@@ -79,7 +79,7 @@ test("with the classic site retired an unscoped page always goes to a league", (
 
 test("account settings, the terms and the privacy policy are never scoped, with the classic site on or retired", () => {
   for (const classic of [true, false]) {
-    for (const pathname of ["/account", "/terms", "/privacy"]) {
+    for (const pathname of ["/account", "/admin/usage", "/terms", "/privacy"]) {
       for (const cookie of [LG, null]) {
         assert.deepEqual(proxyDecision({ enabled: true, pathname, search: "", cookie, classic }), { kind: "next" },
           `${pathname} classic=${classic} cookie=${cookie}`);

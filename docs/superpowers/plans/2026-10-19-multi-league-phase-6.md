@@ -55,7 +55,15 @@ Master plan: [2026-10-19-multi-league-platform.md](2026-10-19-multi-league-platf
 
 ## Status
 
-Planned.
+Tasks 1–4 are built:
+- Terms and privacy pages, linked from sign-in, Connect and the account menu.
+- The sign-up gate (`SIGNUPS_ENABLED`, default closed).
+- The 25-league cap: a trigger on pins and memberships, so every insert path is covered.
+- Account deletion (`DELETE /v2/me`, `/account`), tested from the API down to the purge of the league's objects.
+- The read rate limit (`RATE_LIMIT_PER_MINUTE`, off when unset).
+- The platform monitor (hourly workflow, GitHub issue alerts, `/admin/usage`).
+
+The monitor's log is checked by `scripts/audit_drain_log.py --monitor`, an allowlist of its own line shapes. The Vercel and Cloudflare collectors are tested against the documented response shapes only; they run once Havyn adds `VERCEL_USAGE_TOKEN` and `CLOUDFLARE_ANALYTICS_TOKEN`. Task 5 (launch) follows the merge.
 
 ## Tasks
 
@@ -97,7 +105,8 @@ Planned.
   - `github.py`: open, update or close issues through `gh`, deduplicated by a state marker in the issue body.
 - `scripts/platform_monitor.py`: `--inject metric=used/quota` forces a sample, to prove that an alert fires.
 - `.github/workflows/platform-monitor.yml`: hourly plus `workflow_dispatch` (inject input). Never on PRs. Permissions are `issues: write` and `contents: read`. It uses the existing sync secrets plus the optional tokens.
-- `GET /v2/admin/usage` (platform admin, else 404) and `frontend/app/admin/usage/page.tsx`.
+- `GET /v2/admin/usage` in `leagues_v2.py` (platform admin, else 404) and `frontend/app/admin/usage/page.tsx` (`/admin` is unscoped).
+- The workflow audits its own log with `scripts/audit_drain_log.py --monitor`.
 - Tests:
   - collectors with fake clients;
   - alert thresholds at 69.9% and 70%;

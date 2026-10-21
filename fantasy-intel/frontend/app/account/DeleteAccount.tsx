@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useId } from "react";
-import { CONFIRM_WORD, deleteAccount, type DeleteState } from "./actions";
+import { deleteAccount, type DeleteState } from "./actions";
+import { CONFIRM_WORD } from "./confirm";
 import styles from "../leagues/leagues.module.css";
 
 const IDLE: DeleteState = { ok: false, message: null };

@@ -17,7 +17,8 @@ def user(uid):
 
 
 @pytest.fixture
-def plane(pg):
+def plane(pg, monkeypatch):
+    monkeypatch.setenv("SIGNUPS_ENABLED", "1")          # these tests create accounts; the gate is tested in test_launch_gates
     p = ControlPlane(pg.dsn_for("fi_api"), max_size=2)
     yield p
     p.close()
