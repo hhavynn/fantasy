@@ -28,6 +28,10 @@ Master plan: [2026-10-19-multi-league-platform.md](2026-10-19-multi-league-platf
 | Matrix shape | 3 leagues × every navigable page (owner-only research pages excluded), plus a manager and a player page. Checks per page: 200, one h1, no error state, no console error, and no "ESPN" for Sleeper. A signed-out visitor sees nothing of the private league. A member who is not an admin sees no owner research | The master plan's acceptance |
 | Retiring Phase 1a | `CLASSIC_SITE_ENABLED`, default `1` | Off means: the API answers 404 on the classic `/api/*` routes (except `/health` and `/v2`); the refresh chain stops `publish_snapshot.py`; an unscoped page redirects to the viewer's last league, or to `/leagues`. Rollback is turning it back on, since the snapshot stays published until then. The master plan keeps the classic path until Havyn's sign-off |
 
+## Status
+
+Tasks 1–4 are built. The matrix is 68 of 68 locally. The first run found two things, both fixed: anonymous visitors hit an error instead of a team picker on three pages, and the private league needed a local-Supabase option for the harness. Task 5 waits on CI and on Havyn's week of side-by-side use.
+
 ## Tasks
 
 ### Task 1: The parity matrix harness

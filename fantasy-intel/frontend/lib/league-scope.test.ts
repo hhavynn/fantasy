@@ -65,3 +65,14 @@ test("sign-in, its callback and invites are never scoped to the cookie's league"
     assert.deepEqual(proxyDecision({ enabled: true, pathname, search: "?next=/leagues", cookie: LG }), { kind: "next" }, pathname);
   }
 });
+
+test("with the classic site retired an unscoped page always goes to a league", () => {
+  const off = { enabled: true, search: "", classic: false };
+  assert.deepEqual(proxyDecision({ ...off, pathname: "/waivers", cookie: LG }), { kind: "redirect", location: `/l/${LG}/waivers` });
+  assert.deepEqual(proxyDecision({ ...off, pathname: "/waivers", cookie: null }), { kind: "redirect", location: "/leagues" });
+  assert.deepEqual(proxyDecision({ ...off, pathname: "/leagues", cookie: null }), { kind: "next" });
+  assert.deepEqual(proxyDecision({ ...off, pathname: "/login", cookie: null }), { kind: "next" });
+  assert.deepEqual(proxyDecision({ ...off, pathname: `/l/${LG}/waivers`, cookie: null }), { kind: "rewrite", path: "/waivers", league: LG });
+  // the classic site stays as it is until then
+  assert.deepEqual(proxyDecision({ enabled: true, search: "", pathname: "/waivers", cookie: null }), { kind: "next" });
+});

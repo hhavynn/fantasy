@@ -23,6 +23,7 @@ export async function proxy(request: NextRequest) {
     pathname: request.nextUrl.pathname,
     search: request.nextUrl.search,
     cookie: request.cookies.get(LEAGUE_COOKIE)?.value ?? null,
+    classic: process.env.CLASSIC_SITE_ENABLED !== "0",
   });
   switch (decision.kind) {
     case "rewrite": {

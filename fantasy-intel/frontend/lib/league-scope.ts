@@ -64,9 +64,13 @@ export type ProxyDecision =
   | { kind: "redirect"; location: string }
   | { kind: "clear"; location: string };
 
-export function proxyDecision(args: { enabled: boolean; pathname: string; search: string; cookie?: string | null })
-  : ProxyDecision {
-  const { enabled, pathname, search, cookie } = args;
+export function proxyDecision(args: {
+  enabled: boolean; pathname: string; search: string; cookie?: string | null;
+  /** CLASSIC_SITE_ENABLED: false once the single-league site is retired (Phase 5): an unscoped page then always goes to
+   *  a league, the last one viewed or the leagues page. */
+  classic?: boolean;
+}): ProxyDecision {
+  const { enabled, pathname, search, cookie, classic = true } = args;
   if (!enabled) return { kind: "next" };
   const { league, path } = splitLeaguePath(pathname);
   if (league) return { kind: "rewrite", path: `${path}${search}`, league };
@@ -76,8 +80,8 @@ export function proxyDecision(args: { enabled: boolean; pathname: string; search
   if (params.get(CLEAR_PARAM) === "clear") {
     params.delete(CLEAR_PARAM);
     const rest = params.toString();
-    return { kind: "clear", location: `${pathname}${rest ? `?${rest}` : ""}` };
+    return { kind: "clear", location: classic ? `${pathname}${rest ? `?${rest}` : ""}` : "/leagues" };
   }
   if (isLeagueId(cookie)) return { kind: "redirect", location: `${leaguePath(cookie, pathname)}${search}` };
-  return { kind: "next" };
+  return classic ? { kind: "next" } : { kind: "redirect", location: "/leagues" };
 }
