@@ -96,6 +96,14 @@ Done 2026-10-20 ([report](../../../fantasy-intel/spikes/motherduck/REPORT.md)). 
 - Public-log audit: a full drain run's log contains no team names, player names, cookies or league ids beyond the opaque `lg_` id (automated grep in the workflow).
 - End to end: connect a public ESPN league → data visible once the dispatch run finishes (target < 5 min); flip it private on ESPN → access 404 within one probe; private connect → invite → viewer access.
 
+**Status:** done 2026-10-21 (PRs #153, #154, #155, #156).
+- Los Subies syncs by jobs with Havyn's private credential.
+- A public ESPN league imported on production published through the dispatch path, and its public log audit was clean.
+- Its first sync took 19.7 minutes. Cause: the waiver engine's flex-lineup search on a 3 FLEX + OP roster. PR #156 makes that search prune, with the same answers, and the league's build fell from 416 s to 33 s.
+- The golden check on real Los Subies through the job path: 52 of 52 identical.
+- The invite → viewer step was not run on production (it needs a second account). It is covered by the connect API tests and the authorization matrix.
+- The flip-to-private probe is covered by the worker tests; it was not flipped on production.
+
 **Rollback:** disable the workflow; re-enable the launchd ESPN step publishing Los Subies; league files keep their last version.
 
 ## Phase 4: Sleeper live + scoring-aware Ours
