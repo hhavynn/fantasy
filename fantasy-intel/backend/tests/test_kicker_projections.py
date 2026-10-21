@@ -365,6 +365,40 @@ def test_expected_points_and_stat_line_are_consistent(world, scoring):
     assert more_tds - e["points"] == pytest.approx(line["points_per_pat_try"], abs=1e-3)
 
 
+SCORINGS = {
+    "league": LEAGUE,
+    "standard": [{"statId": 80, "points": 3.0}, {"statId": 77, "points": 4.0}, {"statId": 74, "points": 5.0},
+                 {"statId": 85, "points": -1.0}, {"statId": 86, "points": 1.0}],
+    "flat": [{"statId": 83, "points": 3.0}, {"statId": 86, "points": 1.0}],
+    "harsh": [{"statId": 80, "points": 3.0}, {"statId": 77, "points": 3.0}, {"statId": 74, "points": 5.0},
+              {"statId": 82, "points": -2.0}, {"statId": 79, "points": -1.0}, {"statId": 88, "points": -1.0},
+              {"statId": 86, "points": 1.0}],
+}
+
+
+@pytest.mark.parametrize("name", sorted(SCORINGS))
+def test_scoring_stats_rescore_exactly_to_the_models_own_points(world, scoring, name):
+    """The stored expected statistics reproduce the model's points under any supported scoring (Phase 4 re-scoring),
+    because every such scoring is constant within the four distance buckets and linear in the counts."""
+    from app.analytics.kicker_scoring import expected_points
+
+    art = sk.artifact(world, scoring)
+    target = resolve_kicker_scoring(SCORINGS[name]).require_supported()
+    for lam_fg, lam_pat, skill, long_share in ((2.0, 3.0, 0.0, 0.2), (1.4, 2.2, 0.3, 0.35), (0.0, 0.0, 0.0, 0.2)):
+        line = km.expected_kicking(art.conversion, scoring, lam_fg, lam_pat, skill, long_share, {})["stat_line"]
+        direct = km.expected_kicking(art.conversion, target, lam_fg, lam_pat, skill, long_share, {})["points"]
+        assert expected_points(target, line["scoring_stats"]) == pytest.approx(direct, abs=1e-6)
+
+
+def test_expected_points_of_one_kick_per_bucket_and_outcome():
+    from app.analytics.kicker_scoring import expected_points
+
+    split = resolve_kicker_scoring([{"statId": 80, "points": 3.0}, {"statId": 86, "points": 1.0}])
+    stats = {"fg": {o: {b: 1.0 for b in ("0_39", "40_49", "50_59", "60_plus")} for o in ("made", "missed", "blocked")},
+             "pat": {"made": 1.0, "missed": 0.0, "blocked": 0.0}}
+    assert expected_points(split, stats) == pytest.approx(3.0 + 1.0)
+
+
 def test_artifact_roundtrip(world, scoring):
     art = sk.artifact(world, scoring)
     back = km.KickerArtifact.from_dict(json.loads(json.dumps(art.to_dict())))

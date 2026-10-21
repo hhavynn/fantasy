@@ -480,7 +480,9 @@ def project_season(train_rows, train_feats, rows, feats, scoring: DstScoring, cf
                     "p_any_td": 1 - math.exp(-lam_td), **{"e_" + k: v for k, v in e.items()},
                     "p_pa_tier": {t: float(pa_p[i, j]) for j, t in enumerate(PA_TIERS)},
                     "p_ya_tier": {t: float(ya_p[i, j]) for j, t in enumerate(YA_TIERS)},
-                    "unweighted_stats": [s for s in w if s not in stats]})
+                    "unweighted_stats": [s for s in w if s not in stats],
+                    # what `pts` scored: any league's D/ST rules applied to it give that league's points
+                    "scoring_stats": {str(k): v for k, v in stats.items()}})
     return out
 
 
