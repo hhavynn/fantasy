@@ -19,8 +19,8 @@ tables every consumer reads:
 
 Every derived run is sealed with its store's own `content_sha256`, keeps its artifact_id (the approved artifact made
 it) and says what it was derived from in `evaluation.rescored_from`. Runs whose reference weights are unknown (a run
-under an older reference scoring) are skipped. Research tables (projection ranges, performance reports, replays) are
-evaluations of the reference scoring: copied only on a fingerprint match.
+under an older reference scoring) are skipped. Projection ranges are calibrated in the reference scoring: copied only
+on a fingerprint match. Owner research (performance reports, replays) is the laptop league's own and not shipped.
 
 SQL + stdlib only (the runner and the API share it; no numpy).
 """
@@ -42,13 +42,14 @@ MIX_MIN_GAMES = 3
 SHIFT_BELOW = 1.0            # reference mix points under this: additive shift instead of a ratio
 RESCORED_FLAG = "re-scored to this league's scoring"
 NO_MIX_FLAG = "no box-score mix to re-score from"
+SHIFTED_FLAG = "explanation contributions are in the reference scoring"
 
 SKILL = ("independent_projection_runs", "independent_projection_rows")
 KICKER = ("kicker_projection_runs", "kicker_projection_rows")
 DST = ("dst_projection_runs", "dst_projection_rows")
-# copied only when the league's skill scoring is the reference's
-RESEARCH = ("projection_range_quantiles", "projection_performance_reports", "model_replays")
-DERIVED_TABLES = frozenset((*SKILL, *KICKER, *DST, *RESEARCH))
+# calibrated in the reference scoring: copied only when the league's skill scoring is the reference's
+RANGES = ("projection_range_quantiles",)
+DERIVED_TABLES = frozenset((*SKILL, *KICKER, *DST, *RANGES))
 
 
 def _json(v):
@@ -112,7 +113,7 @@ def rescore_skill_rows(rows: Iterable[dict], mix: dict, ref: SkillScoring, targe
         a = None if m is None else points(m, ref)
         b = None if m is None else points(m, target)
         if a is None or b is None:
-            out.append({**r, "coverage_status": "no_estimate", "projected_points": None, "interval_low": None,
+            out.append({**r, "coverage_status": "insufficient_data", "projected_points": None, "interval_low": None,
                         "interval_high": None, "expected_points": None, "flags": [*flags, NO_MIX_FLAG]})
             continue
         expl = _json(r["explanation"])
@@ -125,6 +126,7 @@ def rescore_skill_rows(rows: Iterable[dict], mix: dict, ref: SkillScoring, targe
             d = b - a
             new = {k: None if r[k] is None else round(max(r[k] + d, 0.0), 2)
                    for k in ("projected_points", "interval_low", "interval_high")}
+            flags.append(SHIFTED_FLAG)
         p_play = r.get("p_play")
         out.append({**r, **new, "explanation": expl, "flags": [*flags, RESCORED_FLAG],
                     "expected_points": None if p_play is None else round(new["projected_points"] * p_play, 2)})
@@ -170,8 +172,7 @@ def rescore_dst_rows(rows: Iterable[dict], weights: dict[int, float]) -> list[di
 def _copy(con, table: str, where: str = "", params: list | None = None) -> int:
     if not table_exists(con, table):      # created at runtime by its own module (projection ranges): same columns
         con.execute(f"CREATE TABLE {table} AS SELECT * FROM {_ref(table)} WHERE false")
-    con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM {_ref(table)} {where}", params or [])
-    return con.execute(f"SELECT count(*) FROM {_ref(table)} {where}", params or []).fetchone()[0]
+    return con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM {_ref(table)} {where}", params or []).fetchone()[0]
 
 
 def _derive(con, family: tuple[str, str], run: dict, rows: list[dict], fp: str, *, method: str,
@@ -273,7 +274,7 @@ def apply_reference(con, season: int) -> dict:
             stats["rescored"] += 1
     out["dst"] = stats
 
-    # research: evaluations of the reference scoring
+    # projection ranges: calibrated in the reference scoring
     same = ref is not None and target.supported and ref.supported and ref.fingerprint == target.fingerprint
-    out["research"] = {t: _copy(con, t) if same and table_exists(con, _ref(t)) else 0 for t in RESEARCH}
+    out["ranges"] = {t: _copy(con, t) if same and table_exists(con, _ref(t)) else 0 for t in RANGES}
     return out

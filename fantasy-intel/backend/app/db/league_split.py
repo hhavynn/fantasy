@@ -62,11 +62,12 @@ BOTH_TABLES = frozenset({"schema_meta"})
 # Model outputs in the reference scoring (the laptop's league), shipped in the global file to every league build
 # (multi-league Phase 4): the job copies or re-scores them into the league's own tables (app/analytics/rescore.py).
 # They are league-independent: no rosters, teams or members (tests/test_league_split.py checks the columns).
-# `ref_league_scoring` holds the reference league's scoring items, which say what the runs were scored in.
+# `ref_league_scoring` holds the reference league's scoring items, which say what the runs were scored in. The owner
+# research tables (projection_performance_reports, model_replays) are NOT references: their start/sit evaluation is
+# computed from the laptop league's own lineup decisions, so they stay that league's tables.
 REFERENCE_TABLES = {t: "ref_" + t for t in (
     "independent_projection_runs", "independent_projection_rows", "kicker_projection_runs", "kicker_projection_rows",
-    "dst_projection_runs", "dst_projection_rows", "projection_range_quantiles", "projection_performance_reports",
-    "model_replays")}
+    "dst_projection_runs", "dst_projection_rows", "projection_range_quantiles")}
 REFERENCE_SCORING = "ref_league_scoring"
 GLOBAL_TABLES = GLOBAL_TABLES | frozenset(REFERENCE_TABLES.values()) | {REFERENCE_SCORING}
 

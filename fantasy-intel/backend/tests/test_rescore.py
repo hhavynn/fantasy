@@ -7,7 +7,8 @@ import pytest
 from app.analytics import production_forecasts as pf
 from app.analytics import projection_source as ps
 from app.analytics.league_scoring import COMPONENT_COLUMNS, resolve_skill_scoring
-from app.analytics.rescore import (DERIVED_TABLES, NO_MIX_FLAG, RESCORED_FLAG, apply_reference, rescore_dst_rows,
+from app.analytics.rescore import (DERIVED_TABLES, NO_MIX_FLAG, RESCORED_FLAG, SHIFTED_FLAG, apply_reference,
+                                   rescore_dst_rows,
                                    rescore_kicker_rows, rescore_skill_rows, stat_mix)
 from app.db.connection import fetch_dicts, table_exists
 from app.db.league_split import REFERENCE_TABLES
@@ -54,6 +55,7 @@ def test_a_tiny_reference_mix_shifts_instead_and_never_goes_below_zero():
     mix = {"g1": {**ZEROS, "receptions": 0.5, "receiving_yards": 2.0}}          # 0.7 PPR points a game
     (out,) = rescore_skill_rows([_row(projected_points=0.3, interval_low=0.0)], mix, PPR, resolve_skill_scoring(HALF))
     assert out["projected_points"] == round(0.3 - 0.25, 2) and out["interval_low"] == 0.0
+    assert SHIFTED_FLAG in out["flags"]
 
 
 def test_a_player_without_a_mix_takes_his_positions_and_without_either_is_not_estimated():
@@ -61,7 +63,7 @@ def test_a_player_without_a_mix_takes_his_positions_and_without_either_is_not_es
     (a,) = rescore_skill_rows([_row()], pos, PPR, resolve_skill_scoring(HALF))
     assert a["projected_points"] == round(17.0 * (2 + 5) / (4 + 5), 2)
     (b,) = rescore_skill_rows([_row()], {}, PPR, resolve_skill_scoring(HALF))
-    assert b["coverage_status"] == "no_estimate" and b["projected_points"] is None and NO_MIX_FLAG in b["flags"]
+    assert b["coverage_status"] == "insufficient_data" and b["projected_points"] is None and NO_MIX_FLAG in b["flags"]
 
 
 def test_rows_that_are_not_projected_are_unchanged():
@@ -175,14 +177,21 @@ def test_stat_mix_uses_the_last_games_up_to_the_cutoff_and_position_averages(liv
     assert earlier != mix                      # week 5's games are only in the later cutoff
 
 
-def test_research_tables_follow_only_the_reference_scoring_and_are_created_when_missing(live):  # noqa: F811
+def test_projection_ranges_follow_only_the_reference_scoring_and_are_created_when_missing(live):  # noqa: F811
     con, src, _ = live
     con.execute("CREATE TABLE projection_range_quantiles (pin_id VARCHAR, scoring_fingerprint VARCHAR, r50 DOUBLE)")
     con.execute("INSERT INTO projection_range_quantiles VALUES ('p1', ?, 1.5)", [PPR.fingerprint])
     _publish_reference(con)
     con.execute("DROP TABLE projection_range_quantiles")
-    assert apply_reference(con, 2026)["research"]["projection_range_quantiles"] == 1
+    assert apply_reference(con, 2026)["ranges"]["projection_range_quantiles"] == 1
     assert con.execute("SELECT * FROM projection_range_quantiles").fetchall() == [("p1", PPR.fingerprint, 1.5)]
     _set_scoring(con, HALF)
-    assert apply_reference(con, 2026)["research"]["projection_range_quantiles"] == 0
+    assert apply_reference(con, 2026)["ranges"]["projection_range_quantiles"] == 0
     assert con.execute("SELECT count(*) FROM projection_range_quantiles").fetchone() == (0,)
+
+
+def test_owner_research_is_not_a_reference_and_stays_the_laptop_leagues_own():
+    """Its start/sit evaluation comes from the laptop league's lineup decisions: never shipped to other leagues."""
+    from app.db.league_split import LEAGUE_TABLES
+    for t in ("projection_performance_reports", "model_replays"):
+        assert t not in REFERENCE_TABLES and t not in DERIVED_TABLES and t in LEAGUE_TABLES

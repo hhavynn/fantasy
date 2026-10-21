@@ -5,8 +5,9 @@ multi-league read path (Phase 4), after the syncs and analytics.
 
 Needs FI_SYNC_DB_URL (the fi_sync connection string; never the service-role key). Objects go to R2 when
 SNAPSHOT_BUCKET/R2_* are set (read/write token), else to LEAGUE_FILES_DIR. An unchanged global file uploads
-nothing. League files, Los Subies included, are built by the sync jobs from this file (app/sync/build.py);
-publish_leagues.py stays for a manual rollback. Prints versions only.
+nothing. The refresh chain's publish_leagues.py publishes the global file too, with the laptop league's own file;
+this script publishes the global file alone (new reference runs for the sync jobs without a league publish).
+Prints versions only.
 """
 import os
 import sys
