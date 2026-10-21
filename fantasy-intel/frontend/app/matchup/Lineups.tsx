@@ -11,10 +11,11 @@ import { EMPTY_RANGES, RANGE_FOOTNOTE, type RangeMap } from "@/lib/projection-ra
 import { PlayerCell, Points } from "./PlayerCell";
 import styles from "./matchup.module.css";
 
-const FOOTNOTE: Record<LineupView, string> = {
-  projected: "Each team's best lineup from ESPN's weekly projections. It is not necessarily the lineup the manager has set.",
-  set: "The lineups held in ESPN as of the last sync.",
-};
+/** `provider` is where lineups are held; `projBy` whose projections the page uses ("ESPN", or "Fantasy Intel"). */
+const footnote = (provider: string, projBy: string): Record<LineupView, string> => ({
+  projected: `Each team's best lineup from ${projBy}'s weekly projections. It is not necessarily the lineup the manager has set.`,
+  set: `The lineups held in ${provider} as of the last sync.`,
+});
 
 function valueHeading(view: LineupView, status: Matchup["status"]): string {
   return view === "set" && hasStarted(status) ? "Actual" : "Proj";
@@ -30,7 +31,7 @@ function TotalCell({ total, why }: { total: LineupTotal; why: string }) {
 }
 
 /** One side of a phone pair row: the name on top, position and team under it, the points on the inner edge. */
-function PairSide({ row, side, lead, ranges }: { row: PlayerRow | null; side: "left" | "right"; lead: boolean; ranges: RangeMap }) {
+function PairSide({ row, side, lead, ranges, projBy }: { row: PlayerRow | null; side: "left" | "right"; lead: boolean; ranges: RangeMap; projBy: string }) {
   return (
     <div className={`${styles.pairSide} ${side === "right" ? styles.pairRight : ""}`}>
       <div className={styles.pairWho}>
@@ -50,7 +51,7 @@ function PairSide({ row, side, lead, ranges }: { row: PlayerRow | null; side: "l
           )}
       </div>
       <span className={`${styles.pairPts} ${lead ? styles.pairLead : ""}`}>
-        <Points value={row ? row.value : null} why={row ? "No ESPN projection" : "No such slot"} row={row} ranges={ranges} />
+        <Points value={row ? row.value : null} why={row ? `No ${projBy} projection` : "No such slot"} row={row} ranges={ranges} />
         {lead ? <VisuallyHidden> (higher)</VisuallyHidden> : null}
       </span>
     </div>
@@ -58,9 +59,9 @@ function PairSide({ row, side, lead, ranges }: { row: PlayerRow | null; side: "l
 }
 
 /** Phone layout: the two lineups paired slot by slot, my player on the left and theirs on the right. */
-function PairList({ m, opponent, pairs, heading, meTotal, oppTotal, ranges }: {
+function PairList({ m, opponent, pairs, heading, meTotal, oppTotal, ranges, projBy }: {
   m: Matchup; opponent: TeamSide; pairs: SlotRow<PlayerRow>[]; heading: string; meTotal: LineupTotal; oppTotal: LineupTotal;
-  ranges: RangeMap;
+  ranges: RangeMap; projBy: string;
 }) {
   return (
     <ol className={styles.pairs} aria-label={`${m.me.name} against ${opponent.name}, slot by slot, ${heading === "Actual" ? "actual points" : "projected points"}`}>
@@ -73,9 +74,9 @@ function PairList({ m, opponent, pairs, heading, meTotal, oppTotal, ranges }: {
         const lead = leader(p.left?.value ?? null, p.right?.value ?? null);
         return (
           <li key={`${p.slot}-${i}`} className={styles.pair}>
-            <PairSide row={p.left} side="left" lead={lead === "left"} ranges={ranges} />
+            <PairSide row={p.left} side="left" lead={lead === "left"} ranges={ranges} projBy={projBy} />
             <span className={styles.pairSlot}>{p.slot}</span>
-            <PairSide row={p.right} side="right" lead={lead === "right"} ranges={ranges} />
+            <PairSide row={p.right} side="right" lead={lead === "right"} ranges={ranges} projBy={projBy} />
           </li>
         );
       })}
@@ -89,7 +90,10 @@ function PairList({ m, opponent, pairs, heading, meTotal, oppTotal, ranges }: {
 }
 
 /** The head-to-head: my player, points, slot, points, their player, aligned slot by slot. */
-export function Lineups({ m, opponent, view, actions, ranges = EMPTY_RANGES }: { m: Matchup; opponent: TeamSide; view: LineupView; actions?: ReactNode; ranges?: RangeMap }) {
+export function Lineups({ m, opponent, view, actions, ranges = EMPTY_RANGES, provider = "ESPN", projBy = "ESPN" }: {
+  m: Matchup; opponent: TeamSide; view: LineupView; actions?: ReactNode; ranges?: RangeMap; provider?: string; projBy?: string;
+}) {
+  const FOOTNOTE = footnote(provider, projBy);
   const meRows = lineupRows(m.me, view, m.status);
   const oppRows = lineupRows(opponent, view, m.status);
   const pairs = pairSlots(meRows ?? [], oppRows ?? []);
@@ -97,7 +101,7 @@ export function Lineups({ m, opponent, view, actions, ranges = EMPTY_RANGES }: {
   const meTotal = lineupTotal(m.me, view, meRows);
   const oppTotal = lineupTotal(opponent, view, oppRows);
   return (
-    <Section title={view === "set" ? "Lineups set in ESPN" : "Best projected lineups"} actions={actions} flush footnote={ranges.size > 0 ? `${FOOTNOTE[view]} ${RANGE_FOOTNOTE}` : FOOTNOTE[view]}>
+    <Section title={view === "set" ? `Lineups set in ${provider}` : "Best projected lineups"} actions={actions} flush footnote={ranges.size > 0 ? `${FOOTNOTE[view]} ${RANGE_FOOTNOTE}` : FOOTNOTE[view]}>
       <div className={styles.h2hWrap}>
         <div className="table-wrap">
           <table className={styles.h2h}>
@@ -117,12 +121,12 @@ export function Lineups({ m, opponent, view, actions, ranges = EMPTY_RANGES }: {
                   <tr key={`${p.slot}-${i}`}>
                     <td><PlayerCell row={p.left} /></td>
                     <td className={`${styles.pts} ${lead === "left" ? styles.lead : ""}`}>
-                      <Points value={p.left ? p.left.value : null} why={p.left ? "No ESPN projection" : "No such slot"} row={p.left} ranges={ranges} />
+                      <Points value={p.left ? p.left.value : null} why={p.left ? `No ${projBy} projection` : "No such slot"} row={p.left} ranges={ranges} />
                       {lead === "left" ? <VisuallyHidden> (higher)</VisuallyHidden> : null}
                     </td>
                     <td className={styles.slotCol}>{p.slot}</td>
                     <td className={`${styles.pts} ${lead === "right" ? styles.lead : ""}`}>
-                      <Points value={p.right ? p.right.value : null} why={p.right ? "No ESPN projection" : "No such slot"} row={p.right} ranges={ranges} />
+                      <Points value={p.right ? p.right.value : null} why={p.right ? `No ${projBy} projection` : "No such slot"} row={p.right} ranges={ranges} />
                       {lead === "right" ? <VisuallyHidden> (higher)</VisuallyHidden> : null}
                     </td>
                     <td className={styles.rightCol}><PlayerCell row={p.right} align="right" /></td>
@@ -143,14 +147,17 @@ export function Lineups({ m, opponent, view, actions, ranges = EMPTY_RANGES }: {
         </div>
       </div>
       <div className={styles.lists}>
-        <PairList m={m} opponent={opponent} pairs={pairs} heading={heading} meTotal={meTotal} oppTotal={oppTotal} ranges={ranges} />
+        <PairList m={m} opponent={opponent} pairs={pairs} heading={heading} meTotal={meTotal} oppTotal={oppTotal} ranges={ranges} projBy={projBy} />
       </div>
     </Section>
   );
 }
 
 /** Your own projected lineup when there is no opponent (bye week, pairings not set). */
-export function SoloLineup({ m, ranges = EMPTY_RANGES }: { m: Matchup; ranges?: RangeMap }) {
+export function SoloLineup({ m, ranges = EMPTY_RANGES, provider = "ESPN", projBy = "ESPN" }: {
+  m: Matchup; ranges?: RangeMap; provider?: string; projBy?: string;
+}) {
+  const FOOTNOTE = footnote(provider, projBy);
   const rows = lineupRows(m.me, "projected", m.status);
   if (rows === null) return null;
   const total = lineupTotal(m.me, "projected", rows);
@@ -164,7 +171,7 @@ export function SoloLineup({ m, ranges = EMPTY_RANGES }: { m: Matchup; ranges?: 
               <tr key={`${r.slot}-${i}`}>
                 <td className={styles.slotCol}>{r.slot}</td>
                 <td><PlayerCell row={r} /></td>
-                <td className={styles.pts}><Points value={r.value} row={r} ranges={ranges} /></td>
+                <td className={styles.pts}><Points value={r.value} why={`No ${projBy} projection`} row={r} ranges={ranges} /></td>
               </tr>
             ))}
           </tbody>

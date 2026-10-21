@@ -9,9 +9,10 @@ import styles from "./waivers.module.css";
 
 /**
  * Everything behind one recommendation: the roster move, what it costs, the evidence limits and the
- * competition. All of the old per-player copy lives here, one click from the table row.
+ * competition. All of the old per-player copy lives here, one click from the table row. `proj` names the forward
+ * projections ("ESPN", or "Ours" for a league whose provider publishes none).
  */
-export function Evidence({ row, decision: d }: { row: WaiverRow; decision: Decision }) {
+export function Evidence({ row, decision: d, proj = "ESPN" }: { row: WaiverRow; decision: Decision; proj?: string }) {
   const stream = d.streaming;
   const drop = d.roster_move.drop;
   return (
@@ -45,7 +46,7 @@ export function Evidence({ row, decision: d }: { row: WaiverRow; decision: Decis
 
       <p><b>Roster benefit.</b> {d.utility.summary}</p>
       <p>
-        Future lineup gain: {num(d.utility.forward.total_gain)} ESPN points across {d.utility.forward.weeks.length} comparable weeks.
+        Future lineup gain: {num(d.utility.forward.total_gain)} {proj} points across {d.utility.forward.weeks.length} comparable weeks.
         {d.utility.forward.missing_weeks.length > 0 && ` ${d.utility.forward.missing_weeks.length} weeks lack complete comparisons.`}
       </p>
       {drop && <ul>{drop.sacrifice.map((s) => <li key={s}>{s}</li>)}</ul>}

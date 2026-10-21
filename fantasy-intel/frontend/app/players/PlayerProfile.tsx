@@ -3,6 +3,9 @@ import { CompareLink } from "@/components/CompareLink";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
 import { Badge, Glossary, Notice, PageHeader, Pos, Rating, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
 import { label, num, pct, signed } from "@/lib/format";
+import { isOursNumber, oursBlock, oursByWeek } from "@/lib/forward-view";
+import { OWNERSHIP_UNAVAILABLE, ownershipAvailable, providerName } from "@/lib/labels";
+import { ESPN_PROFILE, type LeagueProfile } from "@/lib/league-profile";
 import { RATING_CAVEAT, ratingFor } from "@/lib/ratings";
 import { metricLabel, tidyReason } from "@/lib/reason-text";
 import { BASIS_LABEL } from "@/lib/types";
@@ -20,15 +23,19 @@ import { TeamLink } from "@/components/TeamLink";
 const SKILL = ["QB", "RB", "WR", "TE"];
 
 /** A player profile: who and what state, the key numbers, the verdict signals, then the evidence by week. */
-export function PlayerProfile({ d, q, cols, range = null }: { d: Detail; q: string; cols: "all" | "core"; range?: PlayerRange | null }) {
+export function PlayerProfile({ d, q, cols, range = null, profile = ESPN_PROFILE }: {
+  d: Detail; q: string; cols: "all" | "core"; range?: PlayerRange | null;
+  /** The league's provider and whether it publishes projections (a Sleeper league: no ESPN numbers, no ownership). */
+  profile?: LeagueProfile;
+}) {
   const p = d.player;
   const f = d.forward_projection;
   const hasUsage = d.weekly.length > 0 || d.score !== null;
   return (
     <div className="stack">
       <div className={styles.hero}>
-        <ProfileHeader d={d} q={q} />
-        <div className={styles.heroStrip}><KeyNumbers d={d} hasUsage={hasUsage} /></div>
+        <ProfileHeader d={d} q={q} profile={profile} />
+        <div className={styles.heroStrip}><KeyNumbers d={d} hasUsage={hasUsage} profile={profile} /></div>
         {hasUsage && (
           <p className={styles.explainer}>
             <b>PPR / game</b> is what the player scored. <b>Expected PPR</b> (nflverse xFP) is what an average player would score with the same targets,
@@ -39,7 +46,7 @@ export function PlayerProfile({ d, q, cols, range = null }: { d: Detail; q: stri
 
       {p.match_method === "unmatched" && (
         <Notice tone="caution" title="No usage data for this player">
-          There is no nflverse ID match for this ESPN player, so the usage numbers and charts below are empty. {p.mapping_notes}
+          There is no nflverse ID match for this {profile.provider === "espn" ? "ESPN player" : "player"}, so the usage numbers and charts below are empty. {p.mapping_notes}
         </Notice>
       )}
 
@@ -54,23 +61,24 @@ export function PlayerProfile({ d, q, cols, range = null }: { d: Detail; q: stri
       )}
 
       {/* Outlook first (what to expect), then the role behind it, then week-by-week evidence. */}
-      {f && <ForwardView f={f} range={range} />}
+      {f && <ForwardView f={f} range={range} espnProjections={profile.providerProjections} />}
       {SKILL.includes(p.position ?? "") && <ScheduleLink id={p.espn_player_id} />}
 
       {d.score && <ValueAndTrends d={d} />}
 
-      <UsageCharts d={d} />
+      <UsageCharts d={d} profile={profile} />
 
       {d.context && <ContextSection d={d} />}
       {d.route_data && <RouteSection r={d.route_data} />}
 
-      <GameLog d={d} all={cols === "all"} id={String(p.espn_player_id)} />
+      <GameLog d={d} all={cols === "all"} id={String(p.espn_player_id)} profile={profile} />
       <Glossary terms={["PPR/g", "xFP", "FPOE", "Snap share", "Target share", "Backfield share", "aDOT", "ROS", "Value rating", "—"]} />
     </div>
   );
 }
 
-function ProfileHeader({ d, q }: { d: Detail; q: string }) {
+function ProfileHeader({ d, q, profile }: { d: Detail; q: string; profile: LeagueProfile }) {
+  const provider = providerName(profile.provider);
   const p = d.player;
   const f = d.forward_projection;
   const owner = ownerBadge(p.fantasy_team, p.availability_status);
@@ -87,7 +95,7 @@ function ProfileHeader({ d, q }: { d: Detail; q: string }) {
           <span>{p.pro_team ?? "No NFL team"}</span>
           {byes.length > 0 && <span>· Bye week {byes.join(", ")}</span>}
           <Badge value={owner.text} tone={owner.tone} />
-          {hasInjuryDesignation(p.injury_status) && <Badge value={p.injury_status} title="ESPN injury designation" />}
+          {hasInjuryDesignation(p.injury_status) && <Badge value={p.injury_status} title={`${provider} injury designation`} />}
         </span>
       }
       actions={<>
@@ -97,11 +105,13 @@ function ProfileHeader({ d, q }: { d: Detail; q: string }) {
       </>}
     >
       <ul className={styles.facts}>
-        <li>{num(p.percent_owned, 1)}% owned ESPN-wide ({signed(p.percent_change)} this week)</li>
+        {ownershipAvailable(profile.provider)
+          ? <li>{num(p.percent_owned, 1)}% owned ESPN-wide ({signed(p.percent_change)} this week)</li>
+          : <li className="faint">{OWNERSHIP_UNAVAILABLE}</li>}
         <li>Season {num(p.season_points)} league pts ({num(p.season_avg_points)}/g)</li>
         {d.depth_chart && <li><span className={styles.factLabel}>Depth chart</span> {d.depth_chart.pos_abb}{d.depth_chart.pos_rank} ({d.depth_chart.team})</li>}
         {hasInjuryDesignation(p.injury_status) && (
-          <li><span className={styles.factLabel}>ESPN</span> <Badge value={p.injury_status} /></li>
+          <li><span className={styles.factLabel}>{provider}</span> <Badge value={p.injury_status} /></li>
         )}
         {report ? (
           <li>
@@ -112,7 +122,7 @@ function ProfileHeader({ d, q }: { d: Detail; q: string }) {
           <li><span className={styles.factLabel}>Practice wk {latestInj.week}</span> {latestInj.practice_status}</li>
         ) : null}
         <li>
-          <span className={styles.factLabel} title="How this ESPN player was matched to nflverse data; coverage is on the Data quality page">ID map</span> <span className="mono">{p.match_method ?? "none"}</span>
+          <span className={styles.factLabel} title={`How this ${profile.provider === "espn" ? "ESPN player" : "player"} was matched to nflverse data; coverage is on the Data quality page`}>ID map</span> <span className="mono">{p.match_method ?? "none"}</span>
           {p.match_confidence && !["high", "n/a"].includes(p.match_confidence) && (
             <Badge value={`${label(p.match_confidence)} confidence`} tone="warn" title="Matched by name rather than by an ID; verify before relying on the usage numbers" />
           )}
@@ -122,9 +132,22 @@ function ProfileHeader({ d, q }: { d: Detail; q: string }) {
   );
 }
 
-function KeyNumbers({ d, hasUsage }: { d: Detail; hasUsage: boolean }) {
+function KeyNumbers({ d, hasUsage, profile }: { d: Detail; hasUsage: boolean; profile: LeagueProfile }) {
   const p = d.player;
   const f = d.forward_projection;
+  if (!hasUsage && !profile.providerProjections) {
+    // A Sleeper league: no ESPN projections and no ownership; the forward numbers are Fantasy Intel's own.
+    const ours = f ? oursBlock(f) : null;
+    const week = ours?.available && f ? oursByWeek(ours).get(f.summary.as_of_week) : undefined;
+    return (
+      <StatStrip>
+        <Stat label="League pts / game" value={num(p.season_avg_points, 1, "No games yet")} note={<>{num(p.season_points)} season pts</>} />
+        <Stat label="This week (Ours)" value={num(week && isOursNumber(week) ? week.value : null, 1, "No Fantasy Intel projection for this week")} note={f ? `week ${f.summary.as_of_week}` : undefined} />
+        <Stat label="Regular season left (Ours)" value={num(ours?.available ? ours.ros_projected_points : null, 1, "Not every remaining week has a Fantasy Intel projection")} note={ours?.available ? `${ours.ros_weeks_available}/${ours.ros_weeks_expected} wk` : undefined} />
+        <Stat label="Owned" value={num(null, 1, OWNERSHIP_UNAVAILABLE)} note="Not available for Sleeper leagues" />
+      </StatStrip>
+    );
+  }
   if (!hasUsage) {
     return (
       <StatStrip>

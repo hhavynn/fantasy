@@ -1,6 +1,7 @@
 import { Section, Skeleton } from "@/components/ui";
 import { buildActionItems, type StartSitInput, type WaiverInput } from "@/lib/action-items";
 import type { ApiResult } from "@/lib/api";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import type { Matchup } from "@/lib/matchup-types";
 import type { RosterPlayer } from "@/lib/types";
 import { ActionItems } from "./ActionItems";
@@ -19,8 +20,9 @@ export async function WeekBand({ matchup, startSit, waivers, roster, fallbackWee
   roster: RosterPlayer[] | null;
   fallbackWeek: number | null;
 }) {
-  const [m, s, w] = await Promise.all([matchup, startSit, waivers]);
+  const [m, s, w, profile] = await Promise.all([matchup, startSit, waivers, getLeagueProfile()]);
   const actions = buildActionItems({
+    provider: profile.provider,
     roster,
     matchup: m.ok ? m.data : null,
     startSit: s.ok ? s.data : null,

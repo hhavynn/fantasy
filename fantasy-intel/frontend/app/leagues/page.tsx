@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { Badge, EmptyState, Notice, PageHeader, Section } from "@/components/ui";
 import { apiRequest } from "@/lib/api";
 import { authConfig } from "@/lib/auth-config";
+import { providerName } from "@/lib/labels";
 import { leaguePath } from "@/lib/league-scope";
 import { dataAsOf } from "@/lib/league-switcher";
 import { defaultSeason, leagueName, leagueState, multileagueUiEnabled, parseMyLeagues, type MyLeague } from "@/lib/my-leagues";
@@ -22,7 +23,7 @@ export default async function LeaguesPage() {
   return (
     <div className="stack">
       <PageHeader eyebrow="Connections" title="Leagues"
-                  meta="Add an ESPN league to analyse it with every page of this site. Public leagues need no cookies; anyone can view them from any team's perspective." />
+                  meta="Add an ESPN or Sleeper league to analyse it with every page of this site. Public leagues need no cookies; anyone can view them from any team's perspective." />
       {user ? <SignedIn /> : (
         <Notice tone="info" title="Sign in to add leagues">
           Viewing a public league needs no account: open its link. To add a league, save your team or connect a private
@@ -38,7 +39,7 @@ async function SignedIn() {
   const leagues = res.ok ? parseMyLeagues(res.data) : [];
   return (
     <>
-      <Section title="Add an ESPN league" subtitle="Public leagues are read without cookies. A private league asks for yours next.">
+      <Section title="Add a league" subtitle="ESPN or Sleeper. Public leagues are read without cookies. A private ESPN league asks for yours next.">
         <AddLeague defaultSeason={defaultSeason(new Date())} />
       </Section>
       <Section title="Your leagues" subtitle="Leagues you added, pinned or were invited to.">
@@ -68,6 +69,7 @@ function LeagueCard({ league }: { league: MyLeague }) {
           <Link href={leaguePath(league.id, "/")} prefetch={false}>{name}</Link>
         </h3>
         <div className={styles.badges}>
+          {league.provider !== "espn" ? <Badge value={providerName(league.provider)} tone="" /> : null}
           <Badge value={`Season ${league.season}`} tone="" />
           <Badge value={league.visibility === "private" ? "Private" : "Public"} tone="" />
           {league.role ? <Badge value={league.role === "admin" ? "Admin" : "Member"} tone="" /> : null}

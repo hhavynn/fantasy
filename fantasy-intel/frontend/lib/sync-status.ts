@@ -1,4 +1,5 @@
 import type { SyncInfo } from "./types.ts";
+import { normalizeProvider, providerName, type Provider } from "./labels.ts";
 
 export type StatusPayload = {
   sync: SyncInfo;
@@ -11,6 +12,12 @@ export const FEEDS = [
   { key: "nfl", label: "NFL stats" },
   { key: "analytics", label: "Analytics" },
 ] as const;
+/** The feeds of a league from `provider`: its league sync is recorded under the provider's own source key. */
+export function feedsFor(provider: Provider | string | null | undefined = "espn"): readonly { key: string; label: string }[] {
+  const p = normalizeProvider(provider);
+  if (p === "espn") return FEEDS;
+  return [{ key: p, label: `${providerName(p)} league` }, ...FEEDS.slice(1)];
+}
 export const STALE_HOURS = 36;
 
 /** The pill's dot: ok (green), stale (amber: old, failed or missing data), offline (red). */
@@ -40,7 +47,7 @@ export function ago(hours: number): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-const feedLabel = (source: string) => FEEDS.find((f) => f.key === source)?.label ?? source;
+const feedLabel = (source: string) => [...FEEDS, ...feedsFor("sleeper")].find((f) => f.key === source)?.label ?? source;
 
 /**
  * One conservative health summary for the /api/status payload.
@@ -48,14 +55,14 @@ const feedLabel = (source: string) => FEEDS.find((f) => f.key === source)?.label
  * - A failure counts only when it is its source's latest run and no newer success cleared it.
  * - Any feed never synced, or the oldest feed older than STALE_HOURS, is stale.
  */
-export function computeSyncSummary(data: StatusPayload, now: number = Date.now()): SyncSummary {
+export function computeSyncSummary(data: StatusPayload, now: number = Date.now(), provider: Provider = "espn"): SyncSummary {
   if (!data) {
     return { state: "offline", text: "Backend offline", feeds: [], activeFailures: [], nflLatestWeek: null };
   }
   const lastSuccess = data.sync?.last_success ?? {};
   const runs = data.sync?.latest_runs ?? [];
 
-  const feeds: FeedStatus[] = FEEDS.map((f) => {
+  const feeds: FeedStatus[] = feedsFor(provider).map((f) => {
     const timestamp = lastSuccess[f.key] ?? null;
     const t = parseTimestamp(timestamp);
     return { key: f.key, label: f.label, timestamp, hours: t === null ? null : Math.max(0, (now - t) / 36e5) };

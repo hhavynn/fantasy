@@ -5,10 +5,12 @@ import { api } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { feedHealth, mappingCoverage, validationCounts } from "@/lib/data-health";
 import { num, when } from "@/lib/format";
+import { OWNERSHIP_UNAVAILABLE, ownershipAvailable, providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { plural } from "@/lib/plural";
 import { parseSort, sortRows, type SearchParams, type SortState } from "@/lib/sort";
 import type { PromotionResponse } from "@/lib/promotion";
-import { ago } from "@/lib/sync-status";
+import { ago, feedsFor } from "@/lib/sync-status";
 import styles from "./data.module.css";
 import { PromotionSection } from "./PromotionSection";
 
@@ -73,15 +75,24 @@ const FEEDS = [
   { source: "analytics", label: "Last analytics run" },
 ] as const;
 
+/** The feeds for a league's provider: its league sync is recorded under the provider's own source ("sleeper"). */
+function feedsOf(provider: string): readonly { source: string; label: string }[] {
+  if (provider === "espn") return FEEDS;
+  const key = feedsFor(provider)[0].key;
+  return FEEDS.map((f) => (f.source === "espn" ? { source: key, label: `Last ${providerName(provider)} sync` } : f));
+}
+
 const MAP_SORTS = ["order", "player", "pos", "team", "status", "own"] as const;
 const MAP_DEFAULT: SortState = { key: "order", dir: "asc" };
 
 export default async function DataQualityPage({ searchParams }: PageProps<"/data">) {
   const sp = await searchParams;
-  const [res, promo] = await Promise.all([
+  const [res, promo, profile] = await Promise.all([
     api<DQ>("/api/data-quality"),
     api<PromotionResponse>("/api/projections/independent/promotion"),
+    getLeagueProfile(),
   ]);
+  const owned = ownershipAvailable(profile.provider);
   if (!res.ok) {
     return (
       <div className="stack">
@@ -99,11 +110,11 @@ export default async function DataQualityPage({ searchParams }: PageProps<"/data
       <PageHeader
         eyebrow="Data"
         title="Data quality"
-        meta="ESPN ↔ nflverse ID mapping, validation and sync history. Unmatched players are listed here, never silently dropped."
+        meta={`${profile.provider === "espn" ? "ESPN" : "Player"} ↔ nflverse ID mapping, validation and sync history. Unmatched players are listed here, never silently dropped.`}
       />
 
       <StatStrip>
-        {FEEDS.map((f) => {
+        {feedsOf(profile.provider).map((f) => {
           const h = feedHealth(d.sync_runs, f.source);
           return (
             <Stat
@@ -159,7 +170,8 @@ export default async function DataQualityPage({ searchParams }: PageProps<"/data
         )}
       </Section>
 
-      <MapTable title="Unmatched players" note="Rostered first, then by ownership." rows={d.unmatched} sp={sp} param="sort" />
+      <MapTable title="Unmatched players" note={owned ? "Rostered first, then by ownership." : `Rostered first. ${OWNERSHIP_UNAVAILABLE}`}
+        rows={d.unmatched} sp={sp} param="sort" owned={owned} />
 
       <div className={cx("grid grid-2", styles.alignStart)}>
         <Section title="ID mapping summary" flush footnote="Coverage counts every method except unmatched as matched. Team defenses map by team, not by player id.">
@@ -177,11 +189,15 @@ export default async function DataQualityPage({ searchParams }: PageProps<"/data
         <SyncRuns runs={d.sync_runs} />
       </div>
 
-      {d.medium_confidence.length > 0 && <MapTable title="Name-matched players (medium confidence: verify)" rows={d.medium_confidence} sp={sp} param="medium" />}
-      {d.conflicts.length > 0 && <MapTable title="Conflicting crosswalks" rows={d.conflicts} sp={sp} param="conflicts" />}
+      {d.medium_confidence.length > 0 && <MapTable title="Name-matched players (medium confidence: verify)" rows={d.medium_confidence} sp={sp} param="medium" owned={owned} />}
+      {d.conflicts.length > 0 && <MapTable title="Conflicting crosswalks" rows={d.conflicts} sp={sp} param="conflicts" owned={owned} />}
 
-      {d.espn_projections && <ProjectionSection p={d.espn_projections} />}
-      {promo.ok && promo.data.available ? <PromotionSection t={promo.data} /> : (
+      {d.espn_projections && profile.providerProjections && <ProjectionSection p={d.espn_projections} />}
+      {!profile.providerProjections ? (
+        <Notice tone="info" title="Independent projection promotion tracker">
+          The tracker compares Ours with the provider&apos;s pregame projections, and this league&apos;s provider publishes none.
+        </Notice>
+      ) : promo.ok && promo.data.available ? <PromotionSection t={promo.data} /> : (
         <Notice tone="caution" title="Independent projection promotion tracker unavailable">
           {promo.ok ? promo.data.unavailable_reason : promo.error}
         </Notice>
@@ -227,7 +243,8 @@ function SyncRuns({ runs }: { runs: DQ["sync_runs"] }) {
   );
 }
 
-function MapTable({ title, note, rows, sp, param }: { title: string; note?: string; rows: MapRow[]; sp: SearchParams; param: string }) {
+/** `owned` is false where ownership % is not available (Sleeper leagues): the column is left out. */
+function MapTable({ title, note, rows, sp, param, owned = true }: { title: string; note?: string; rows: MapRow[]; sp: SearchParams; param: string; owned?: boolean }) {
   const sort = parseSort(sp, MAP_SORTS, MAP_DEFAULT, param);
   const sorted = sortRows(rows.map((r, order) => ({ r, order })), ({ r, order }) => {
     switch (sort.key) {
@@ -235,7 +252,7 @@ function MapTable({ title, note, rows, sp, param }: { title: string; note?: stri
       case "pos": return r.espn_position;
       case "team": return r.espn_team;
       case "status": return r.availability_status;
-      case "own": return r.percent_owned;
+      case "own": return owned ? r.percent_owned : order;
       default: return order;
     }
   }, sort.dir).map((x) => x.r);
@@ -250,7 +267,7 @@ function MapTable({ title, note, rows, sp, param }: { title: string; note?: stri
             <thead>
               <tr>
                 {th("player", "ESPN player")}<th>ESPN id</th>{th("pos", "Pos")}{th("team", "Team")}{th("status", "Status")}
-                {th("own", "% own", "right", "Percent of ESPN leagues that roster the player")}<th>nflverse</th><th>Notes</th>
+                {owned && th("own", "% own", "right", "Percent of ESPN leagues that roster the player")}<th>nflverse</th><th>Notes</th>
               </tr>
             </thead>
             <tbody>
@@ -260,7 +277,7 @@ function MapTable({ title, note, rows, sp, param }: { title: string; note?: stri
                   <td className="mono">{r.espn_player_id}</td>
                   <td><Pos value={r.espn_position} /></td>
                   <td>{r.espn_team ?? <span className="missing" title="No NFL team">—</span>}</td>
-                  <td className="faint">{r.availability_status ?? ""}</td><td className="num">{num(r.percent_owned, 1)}</td>
+                  <td className="faint">{r.availability_status ?? ""}</td>{owned && <td className="num">{num(r.percent_owned, 1)}</td>}
                   <td>{r.gsis_id ? <span className="mono">{r.gsis_id}</span> : ""} {r.nfl_name} {r.nfl_team}</td>
                   <td className={cx(styles.wrap, "faint")}>{r.notes}</td>
                 </tr>

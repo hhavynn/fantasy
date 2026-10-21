@@ -6,6 +6,7 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { Badge, Notice, Pos } from "@/components/ui";
 import { num } from "@/lib/format";
+import { projectionName } from "@/lib/labels";
 import type { DEvidence } from "@/lib/trade-types";
 import { AssetEvidence, DepthEvidence, PlausibilityChecks, RatingsEvidence, WeeklyEvidence } from "./DualValueEvidence";
 import { VerdictBadge } from "./DualValueParts";
@@ -17,9 +18,10 @@ type Load = { status: "idle" | "loading" | "error" } | { status: "ready"; e: DEv
  * A trade's "Why this trade, concerns and evidence" panel. The evidence is fetched when the panel opens (or when the
  * pointer or focus reaches its summary, so it is usually there by the time it opens) instead of being rendered into
  * the page for every row. `src` is the row's `/api/trade-evidence` URL; the numbers are the same computation as the
- * table row's.
+ * table row's. `projLabel` names the page's projections ("ESPN", or "Ours" for a league whose provider has none) for an
+ * evidence payload that does not say.
  */
-export function TradeEvidence({ src, analyzer }: { src: string; analyzer: string }) {
+export function TradeEvidence({ src, analyzer, projLabel = "ESPN" }: { src: string; analyzer: string; projLabel?: string }) {
   const [load, setLoad] = useState<Load>({ status: "idle" });
   const started = useRef(false);
   const start = () => {
@@ -38,7 +40,7 @@ export function TradeEvidence({ src, analyzer }: { src: string; analyzer: string
     <details className={styles.detail} onToggle={(ev) => { if (ev.currentTarget.open) start(); }}>
       <summary onPointerEnter={start} onFocus={start}>Why this trade, concerns and evidence</summary>
       <div className={styles.detailBody} aria-busy={load.status === "loading"}>
-        {load.status === "ready" ? <Evidence e={load.e} analyzer={analyzer} />
+        {load.status === "ready" ? <Evidence e={load.e} analyzer={analyzer} projLabel={projLabel} />
           : load.status === "error" ? (
             <p className={styles.small}>
               The evidence for this trade did not load. Close and reopen this panel to retry, or <TeamLink href={analyzer}>open the trade in the analyzer</TeamLink>.
@@ -49,9 +51,10 @@ export function TradeEvidence({ src, analyzer }: { src: string; analyzer: string
   );
 }
 
-function Evidence({ e, analyzer }: { e: DEvidence; analyzer: string }) {
+function Evidence({ e, analyzer, projLabel }: { e: DEvidence; analyzer: string; projLabel: string }) {
   const concerns = e.rationale.concerns;
   const dv = e.dual_value ?? null;      // absent on an older backend: the classic evidence below still renders
+  const proj = dv?.projection_source ? projectionName(dv.projection_source) : projLabel;
   const names = e.names ?? null;
   return (
     <>
@@ -71,8 +74,8 @@ function Evidence({ e, analyzer }: { e: DEvidence; analyzer: string }) {
         </Notice>
       )}
       {e.rationale.points.length > 0 && <ul className={styles.list}>{e.rationale.points.map((p, i) => <li key={i}>{p}</li>)}</ul>}
-      <TradeVsFreeAgency t={e.trade_vs_free_agency} only="team_a" />
-      {dv ? <AssetEvidence dv={dv} /> : <AssetTable e={e} />}
+      <TradeVsFreeAgency t={e.trade_vs_free_agency} only="team_a" projLabel={proj} />
+      {dv ? <AssetEvidence dv={dv} /> : <AssetTable e={e} proj={proj} />}
       {dv && <DepthEvidence dv={dv} />}
       {dv && <RatingsEvidence ratings={e.ratings} sends={e.sends} receives={e.receives} names={names ?? namesFromAssets(dv)} />}
       {dv && <WeeklyEvidence dv={dv} names={names} />}
@@ -102,7 +105,7 @@ function namesFromAssets(dv: NonNullable<DEvidence["dual_value"]>): Record<strin
 }
 
 /** The classic asset table (no dual-value block in the payload). */
-function AssetTable({ e }: { e: DEvidence }) {
+function AssetTable({ e, proj }: { e: DEvidence; proj: string }) {
   const rows = [...e.asset_balance.you_send.map((p) => ({ p, who: "gives" })), ...e.asset_balance.they_send.map((p) => ({ p, who: "receives" }))];
   return (
     <div>
@@ -111,7 +114,7 @@ function AssetTable({ e }: { e: DEvidence }) {
           <thead>
             <tr>
               <th>Player</th><th>Side</th>
-              <th className="num" title="ESPN points above the best available free agent at his position, over his NFL-eligible weeks">Pts above repl.</th>
+              <th className="num" title={`${proj} points above the best available free agent at his position, over his NFL-eligible weeks`}>Pts above repl.</th>
               <th className="num">Repl. / wk</th><th>Position rank</th><th>Notes</th>
             </tr>
           </thead>

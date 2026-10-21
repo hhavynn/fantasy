@@ -1,4 +1,5 @@
 import { when } from "@/lib/format";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import {
   COMPONENT_SHORT_UNIT, componentValueText, movementText, ordinal, pctText, recordText, weightText,
   type PowerRankings, type PrTeam,
@@ -14,7 +15,8 @@ const slotText = (s: string) => SLOT_TEXT[s] ?? s;
  * their league scores and ranks, where the lineup is strongest and thinnest, and who would be hardest to replace.
  * Sized and framed for a screenshot; every number is the backend's.
  */
-export function TeamCard({ d, team, heading = "h2" }: { d: PowerRankings; team: PrTeam; heading?: "h2" | "h3" }) {
+export async function TeamCard({ d, team, heading = "h2" }: { d: PowerRankings; team: PrTeam; heading?: "h2" | "h3" }) {
+  const { providerProjections } = await getLeagueProfile();
   const H = heading;
   const ranked = d.teams.filter((t) => t.rank !== null).length;
   const move = movementText(team);
@@ -102,7 +104,7 @@ export function TeamCard({ d, team, heading = "h2" }: { d: PowerRankings; team: 
       )}
 
       <p className={styles.cardFoot}>
-        Fantasy Intel · ESPN projections and completed weeks, scaled within this league. A ranking, not a win probability.
+        Fantasy Intel · {providerProjections ? "ESPN projections" : "own projections (Ours)"} and completed weeks, scaled within this league. A ranking, not a win probability.
         {d.freshness.league_synced_at && <> Synced {when(d.freshness.league_synced_at)}.</>}
       </p>
     </article>

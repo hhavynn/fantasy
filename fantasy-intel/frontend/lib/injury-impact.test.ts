@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  absenceLabel, filterEntries, freshnessLabel, gameLabel, groupEntries, hoursAgo, injuryHref, parseInjuryFilters,
+  absenceLabel, filterEntries, levelLabel, freshnessLabel, gameLabel, groupEntries, hoursAgo, injuryHref, parseInjuryFilters,
   rosterActions, rosterText, snapSeries, waiversHref, type InjuryEntry, type Roster, type Teammate,
 } from "./injury-impact.ts";
 
@@ -135,6 +135,16 @@ test("freshness label names the source and never calls missing data fresh", () =
   assert.deepEqual(freshnessLabel({ ...f, status: "fresh", source_used: "nflverse", hours_since_retrieval: 3 }),
     { text: "Fresh", detail: "NFL report · 3h ago", tone: "good" });
   assert.equal(freshnessLabel({ ...f, status: "stale", source_used: "espn_status", hours_since_retrieval: 30 }).tone, "warn");
+  assert.equal(freshnessLabel({ ...f, status: "stale", source_used: "espn_status", hours_since_retrieval: 30 }).detail, "ESPN status · 30h ago");
+  // A Sleeper league's status is the provider's own, reported in the same field.
+  assert.equal(freshnessLabel({ ...f, status: "stale", source_used: "espn_status", hours_since_retrieval: 30 }, "Sleeper").detail,
+    "Sleeper status · 30h ago");
+});
+
+test("levelLabel reads the raw provider spellings like the normalized ones", () => {
+  assert.equal(levelLabel("INJURY_RESERVE" as never), "Injured reserve");
+  assert.equal(levelLabel("SUSPENSION" as never), "Suspended");
+  assert.equal(levelLabel("OUT"), "Out");
 });
 
 test("snap series keeps misses as gaps, never zeros", () => {

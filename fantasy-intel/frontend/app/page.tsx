@@ -11,6 +11,8 @@ import {
 import { api } from "@/lib/api";
 import type { StartSitInput, WaiverInput } from "@/lib/action-items";
 import { num } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
 import { ordinal } from "@/lib/matchup";
 import { withSource } from "@/lib/projection-source";
@@ -45,7 +47,8 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
   }
   // Each section has its own source; one failing endpoint degrades only its own section. The week band's three
   // sources start now but are not awaited here: the band streams in behind the header, stat strip and roster.
-  const projection = await getProjectionSource();
+  const [projection, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
+  const provider = providerName(profile.provider);
   // Every section is computed for the selected team (`?team=`); without one, the owner's team as before.
   const matchup = api<Matchup>(withTeamId(withSource("/api/matchup", projection), sel));
   const startSit = api<StartSitInput>(withTeamId(withSource("/api/start-sit", projection), sel));
@@ -103,14 +106,16 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         actions={<TeamPerspective path="/" sp={sp} current={me?.team_id ?? null} />}
       />
 
-      {!me && (
+      {!me && (profile.provider === "espn" ? (
         <Notice tone="caution">
           No default team is set (it wasn&apos;t identified from SWID). Pick a team above to analyze it, or set <code>ESPN_MY_TEAM_ID</code> in <code>.env</code> and re-sync.
         </Notice>
-      )}
+      ) : (
+        <Notice tone="caution">No default team is set. Pick a team above to analyze it.</Notice>
+      ))}
 
 
-      {projection === "ours" && (
+      {projection === "ours" && profile.providerProjections && (
         <Notice tone="info" title="This week's matchup and lineup use Fantasy Intel projections">
           Switched in the header (K and D/ST from our kicker and D/ST models). Waiver and rest-of-season numbers stay on ESPN.
         </Notice>
@@ -138,7 +143,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         </Section>
 
         <div className="stack">
-          {o.injuries.length > 0 && <InjuriesSection injuries={o.injuries} />}
+          {o.injuries.length > 0 && <InjuriesSection injuries={o.injuries} provider={provider} />}
           <Section title="Biggest roster needs" subtitle="Where the lineup is thinnest against the league" flush>
             <div className="table-wrap">
               <table>
@@ -178,10 +183,10 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       <div className="stack">
         <Section title="Recent league transactions" flush={o.recent_transactions.length > 0}>
           {o.recent_transactions.length === 0
-            ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next ESPN sync.</EmptyState>
+            ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next {provider} sync.</EmptyState>
             : <MovesTable moves={o.recent_transactions} />}
         </Section>
-        <Glossary terms={["PPR/g", "xFP/g", "Value rating", "Projected points", "FAAB", "Q / D / O", "—"]} />
+        <Glossary terms={["PPR/g", "xFP/g", "Value rating", "Projected points", "FAAB", "Q / D / O", "—"]} providerProjections={profile.providerProjections} />
       </div>
     </div>
   );
@@ -232,12 +237,12 @@ function StandingsSection({ standings, sp, selected }: { standings: Team[]; sp: 
   );
 }
 
-function InjuriesSection({ injuries }: { injuries: RosterPlayer[] }) {
+function InjuriesSection({ injuries, provider }: { injuries: RosterPlayer[]; provider: string }) {
   return (
     <Section title="Injuries on the roster" subtitle={`${injuries.length} ${injuries.length === 1 ? "player" : "players"} with a designation`} flush>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Player</th><th>ESPN</th><th>NFL report</th></tr></thead>
+          <thead><tr><th>Player</th><th>{provider}</th><th>NFL report</th></tr></thead>
           <tbody>
             {injuries.map((p) => (
               <tr key={p.espn_player_id}>

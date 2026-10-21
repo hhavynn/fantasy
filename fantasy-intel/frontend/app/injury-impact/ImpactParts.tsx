@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Badge, VisuallyHidden } from "@/components/ui";
 import { Missing, num } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { rosterText, type Roster } from "@/lib/injury-impact";
 import styles from "./injury-impact.module.css";
 
@@ -21,12 +23,13 @@ export function RosterBadge({ roster }: { roster: Roster }) {
   return <Badge value={text} tone={tone} title={roster.fantasy_team ?? owned} />;
 }
 
-/** The player cell: identity with photo and profile link when ESPN knows him, else his name. */
-export function Who({ id, name, position, team, meta }: {
+/** The player cell: identity with photo and profile link when the league's provider knows him, else his name. */
+export async function Who({ id, name, position, team, meta }: {
   id: number | null; name: string; position?: string | null; team?: string | null; meta?: ReactNode;
 }) {
   if (id === null) {
-    return <span className={styles.plainName} title="Not in this league's ESPN player pool">{name}</span>;
+    const provider = providerName((await getLeagueProfile()).provider);
+    return <span className={styles.plainName} title={`Not in this league's ${provider} player pool`}>{name}</span>;
   }
   return <PlayerIdentity id={id} name={name} position={position} team={team} meta={meta} />;
 }

@@ -2,6 +2,8 @@
 // Start/Sit moves it marks ACTIONABLE, starters the roster feed flags as unavailable, empty lineup slots in
 // the optimal projected lineup, and waiver pickups the waiver engine marks actionable. No number is computed here.
 
+import { providerName } from "./labels.ts";
+
 export type ActionTone = "negative" | "caution" | "info" | "positive";
 
 export type ActionItem = {
@@ -63,6 +65,8 @@ export type ActionSources = {
   startSit: StartSitInput | null;
   /** The BEST view of /api/waivers: a few rows plus `total`, the number of actionable pickups overall. */
   waivers: { players: WaiverInput[]; total: number } | null;
+  /** The league's provider, where a lineup is set ("espn" unless given). */
+  provider?: string;
 };
 
 export type ActionList = {
@@ -73,7 +77,11 @@ export type ActionList = {
   unavailable: string[];
 };
 
-const SEVERE: Record<string, string> = { OUT: "out", IR: "on injured reserve", SUSPENDED: "suspended", DOUBTFUL: "doubtful" };
+const SEVERE: Record<string, string> = {
+  OUT: "out", IR: "on injured reserve", SUSPENDED: "suspended", DOUBTFUL: "doubtful",
+  // The raw provider spellings (ESPN's vocabulary, which Sleeper statuses are mapped to).
+  INJURY_RESERVE: "on injured reserve", SUSPENSION: "suspended",
+};
 const SLOT_POSITIONS = new Set(["QB", "RB", "WR", "TE"]);
 
 const joinNames = (names: string[]) => (names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
@@ -124,7 +132,7 @@ export function buildActionItems(src: ActionSources, caps: { swaps?: number; wai
     if (src.startSit.summary.starters_count === 0) {
       lineup.push({
         id: "no-lineup", tone: "caution", title: `No lineup submitted for week ${src.startSit.scoring_period}`,
-        reason: "Start/Sit has nothing to compare against until a lineup is set in ESPN.", href: "/start-sit", cta: "Start/Sit",
+        reason: `Start/Sit has nothing to compare against until a lineup is set in ${providerName(src.provider)}.`, href: "/start-sit", cta: "Start/Sit",
       });
     } else {
       const moves = src.startSit.decisions

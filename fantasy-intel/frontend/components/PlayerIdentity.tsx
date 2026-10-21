@@ -23,7 +23,7 @@ export function PlayerIdentity({ id, name, position, team, meta, lead, size = "m
   link?: boolean;
   className?: string;
 }) {
-  const label = name ?? `ESPN #${id}`;
+  const label = name ?? `Player #${id}`;
   const showTeam = team !== undefined;
   return (
     <span className={cx("player-identity", styles.identity, size === "lg" && styles.lg, className)}>

@@ -5,12 +5,18 @@ import { Delta, Notice, Section } from "@/components/ui";
 import type { ApiResult } from "@/lib/api";
 import { cx } from "@/lib/cx";
 import { num } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { headline, margin, recordText, share, statusLabel, type Headline } from "@/lib/matchup";
 import type { Matchup, TeamSide } from "@/lib/matchup-types";
 import styles from "./home.module.css";
 
 /** One side of the scoreboard: team, record, the headline total and what that total is. */
-function Side({ side, h, status, mine, leads }: { side: TeamSide; h: Headline; status: Matchup["status"]; mine: boolean; leads: boolean }) {
+function Side({ side, h, status, mine, leads, projName }: {
+  side: TeamSide; h: Headline; status: Matchup["status"]; mine: boolean; leads: boolean;
+  /** Whose projections a missing number lacks: "ESPN", or "Fantasy Intel" where the provider has none. */
+  projName: string;
+}) {
   return (
     <div className={cx(styles.side, mine ? styles.sideMe : styles.sideOpp)}>
       <p className={styles.sideLabel}>{mine ? "Selected team" : "Opponent"}</p>
@@ -22,14 +28,16 @@ function Side({ side, h, status, mine, leads }: { side: TeamSide; h: Headline; s
         {num(h.value, 1, status === "final" ? "No score recorded" : "No projection for this week")}
       </p>
       <p className={styles.teamNote}>
-        {h.label}{h.incomplete ? ": some players have no ESPN projection, so this is not a full-lineup projection" : ""}
+        {h.label}{h.incomplete ? `: some players have no ${projName} projection, so this is not a full-lineup projection` : ""}
       </p>
     </div>
   );
 }
 
 /** Compact matchup scoreboard: both teams, totals, margin and share. Degrades to a notice when the call failed. */
-export function MatchupCard({ result }: { result: ApiResult<Matchup> }) {
+export async function MatchupCard({ result }: { result: ApiResult<Matchup> }) {
+  const profile = await getLeagueProfile();
+  const projName = profile.providerProjections ? "ESPN" : "Fantasy Intel";
   const link = <TeamLink className={styles.cardLink} href="/matchup">Full matchup →</TeamLink>;
   if (!result.ok) {
     return (
@@ -46,9 +54,9 @@ export function MatchupCard({ result }: { result: ApiResult<Matchup> }) {
       <Section title="This week" subtitle={when} actions={link}>
         <div className={styles.card}>
           <p className={styles.cardNone}>
-            {m.is_bye_week ? `${m.me.name} has a bye this week.` : "No opponent is scheduled in the synced ESPN schedule."}
+            {m.is_bye_week ? `${m.me.name} has a bye this week.` : `No opponent is scheduled in the synced ${providerName(profile.provider)} schedule.`}
           </p>
-          {mine.value !== null ? <div className={`${styles.board} ${styles.boardSolo}`}><Side side={m.me} h={mine} status={m.status} mine leads={false} /></div> : null}
+          {mine.value !== null ? <div className={`${styles.board} ${styles.boardSolo}`}><Side side={m.me} h={mine} status={m.status} mine leads={false} projName={projName} /></div> : null}
         </div>
       </Section>
     );
@@ -64,9 +72,9 @@ export function MatchupCard({ result }: { result: ApiResult<Matchup> }) {
     <Section title="This week" subtitle={when} actions={link}>
       <div className={styles.card}>
         <div className={styles.board}>
-          <Side side={m.me} h={me} status={m.status} mine leads={meLeads} />
+          <Side side={m.me} h={me} status={m.status} mine leads={meLeads} projName={projName} />
           <span className={styles.vs} aria-hidden="true">vs</span>
-          <Side side={m.opponent} h={opp} status={m.status} mine={false} leads={oppLeads} />
+          <Side side={m.opponent} h={opp} status={m.status} mine={false} leads={oppLeads} projName={projName} />
         </div>
         {mg.value !== null ? (
           <p className={styles.cardMargin}>

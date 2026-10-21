@@ -61,28 +61,32 @@ export function oursByWeek(ours: OursForward): Map<number, OursWeek> {
 }
 
 /** Caption for the total: why it is missing when it is, or what it covers. Previous-model weeks and genuine ESPN
- * fallback weeks are named differently (both are in `missing_weeks`). */
-export function oursTotalNote(ours: OursForward): string {
+ * fallback weeks are named differently (both are in `missing_weeks`). `espnProjections` false (a Sleeper league):
+ * there is no ESPN number to fall back to, so those weeks simply have no projection. */
+export function oursTotalNote(ours: OursForward, espnProjections = true): string {
   const span = `${ours.ros_weeks_available}/${ours.ros_weeks_expected} wk`;
   if (ours.ros_complete) return span;
   const other = new Set(ours.other_model_weeks);
   const espn = ours.missing_weeks.filter((w) => !other.has(w));
   const parts: string[] = [];
   if (other.size) parts.push(`previous model in wk ${[...other].join(", ")}`);
-  if (espn.length) parts.push(`ESPN's number in wk ${espn.join(", ")}`);
+  if (espn.length) parts.push(espnProjections ? `ESPN's number in wk ${espn.join(", ")}` : `no projection in wk ${espn.join(", ")}`);
   return `${span} · ${parts.length ? parts.join("; ") : "incomplete"}`;
 }
 
 /** The caution notice for the Ours series: why ESPN is shown instead (unavailable), or what is mixed, falls back
  * to ESPN or could not be verified while ours is shown. The title follows the actual fields, never a guess from
- * the reason being set. null = nothing to say. */
-export function oursNotice(ours: OursForward): { title: string; text: string } | null {
+ * the reason being set. null = nothing to say. `espnProjections` false (a Sleeper league): nothing falls back to ESPN. */
+export function oursNotice(ours: OursForward, espnProjections = true): { title: string; text: string } | null {
   if (!ours.available) {
-    return { title: "Showing ESPN projections", text: ours.reason ?? "Fantasy Intel has no projections for the remaining weeks yet." };
+    return {
+      title: espnProjections ? "Showing ESPN projections" : "Fantasy Intel projections are not ready yet",
+      text: ours.reason ?? "Fantasy Intel has no projections for the remaining weeks yet.",
+    };
   }
   if (!ours.reason) return null;
   if (ours.mixed_models) return { title: "Mixed projection models", text: ours.reason };
   if (ours.other_model_weeks.length > 0) return { title: "Previous model in some weeks", text: ours.reason };
-  if (ours.fallback_weeks.length > 0) return { title: "Ours: some weeks use ESPN", text: ours.reason };
+  if (ours.fallback_weeks.length > 0) return { title: espnProjections ? "Ours: some weeks use ESPN" : "Ours: some weeks have no projection", text: ours.reason };
   return { title: "Ours: see note", text: ours.reason };
 }

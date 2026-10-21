@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   cleanCookies, defaultSeason, leagueName, leagueState, multileagueUiEnabled, parseLeagueInput, parseMyLeagues,
+  parseProviderChoice, parseSleeperLeagueInput,
   validSeason,
 } from "./my-leagues.ts";
 
@@ -50,4 +51,39 @@ test("cookies are trimmed and the SWID braced; anything else is refused", () => 
     { espn_s2: s2, swid: "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}" });
   assert.equal(cleanCookies("short", "{AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE}"), null);
   assert.equal(cleanCookies(s2, "not-a-swid"), null);
+});
+
+test("parseSleeperLeagueInput takes a long id or a sleeper.com league address", () => {
+  const id = "1180208749051539456";
+  assert.deepEqual(parseSleeperLeagueInput(` ${id} `), { leagueId: id });
+  assert.deepEqual(parseSleeperLeagueInput(`https://sleeper.com/leagues/${id}/predraft`), { leagueId: id });
+  assert.deepEqual(parseSleeperLeagueInput(`sleeper.com/leagues/${id}`), { leagueId: id });
+  assert.deepEqual(parseSleeperLeagueInput(`https://sleeper.app/leagues/${id}?tab=matchup`), { leagueId: id });
+  assert.deepEqual(parseSleeperLeagueInput("123456"), { leagueId: "123456" });
+  assert.equal(parseSleeperLeagueInput("12345"), null);                       // too short
+  assert.equal(parseSleeperLeagueInput("1".repeat(21)), null);                 // too long
+  assert.equal(parseSleeperLeagueInput("https://fantasy.espn.com/football/league?leagueId=4242"), null);
+  assert.equal(parseSleeperLeagueInput(`https://evil.example/sleeper.com/leagues/${id}`), null);
+  assert.equal(parseSleeperLeagueInput(""), null);
+});
+
+test("parseProviderChoice: only an explicit sleeper is Sleeper", () => {
+  assert.equal(parseProviderChoice("sleeper"), "sleeper");
+  assert.equal(parseProviderChoice("espn"), "espn");
+  assert.equal(parseProviderChoice(null), "espn");
+});
+
+test("league names and states are provider-aware, ESPN wording unchanged", () => {
+  assert.equal(leagueName({ name: null, externalId: "4242", provider: "espn" }), "ESPN league 4242");
+  assert.equal(leagueName({ name: "  ", externalId: "118020874905", provider: "sleeper" }), "Sleeper league 118020874905");
+  assert.equal(leagueName({ name: "Dynasty", externalId: "1", provider: "sleeper" }), "Dynasty");
+  const espnStale = leagueState({ status: "stale", syncState: "ready", visibility: "private", provider: "espn" });
+  assert.match(espnStale.detail, /ESPN cookies/);
+  const sleeperStale = leagueState({ status: "stale", syncState: "ready", visibility: "public", provider: "sleeper" });
+  assert.equal(sleeperStale.label, "Sync paused");
+  assert.doesNotMatch(sleeperStale.detail, /ESPN|cookie/i);
+  const gone = leagueState({ status: "unavailable", syncState: "ready", visibility: "public", provider: "sleeper" });
+  assert.equal(gone.label, "Unavailable on Sleeper");
+  assert.doesNotMatch(gone.detail, /ESPN|cookie/i);
+  assert.equal(leagueState({ status: "unavailable", syncState: "ready", visibility: "public" }).label, "Unavailable on ESPN");
 });

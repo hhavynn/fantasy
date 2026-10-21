@@ -187,6 +187,10 @@ jobs:
       - name: Run route smoke test
         run: npm run e2e
 
+      # The same pages for a Sleeper league (scripts/build_e2e_sleeper.py): no error and no ESPN wording.
+      - name: Run Sleeper league smoke test
+        run: npm run e2e:sleeper
+
       - name: Upload Playwright traces and report
         if: failure()
         uses: actions/upload-artifact@v4
@@ -195,4 +199,6 @@ jobs:
           path: |
             fantasy-intel/frontend/test-results/
             fantasy-intel/frontend/playwright-report/
+            fantasy-intel/frontend/test-results-sleeper/
+            fantasy-intel/frontend/playwright-report-sleeper/
           retention-days: 14

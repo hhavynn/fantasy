@@ -10,15 +10,17 @@ const RATING_TITLE = "Overall rating, 0–100.0: a percentile within the player'
 
 /**
  * The desktop table. `sp` is the search params without `offset`, so a sort link starts again at page one.
- * `showOurs` adds the Fantasy Intel projection column (only when the page is ranked by Ours).
+ * `showOurs` adds the Fantasy Intel projection column (only when the page is ranked by Ours). `espnColumn` false drops
+ * the ESPN column for a league whose provider publishes no projections (Sleeper).
  */
-export function RankingsTable({ rows, sort, sp, showOurs, windowLabel, basis }: {
+export function RankingsTable({ rows, sort, sp, showOurs, windowLabel, basis, espnColumn = true }: {
   rows: RankingRow[];
   sort: SortState;
   sp: SearchParams;
   showOurs: boolean;
   windowLabel: string;
   basis: "espn" | "ours";
+  espnColumn?: boolean;
 }) {
   const projTitle = (who: string) => `${who} projected fantasy points for ${windowLabel}, in your league's scoring.`;
   return (
@@ -30,7 +32,7 @@ export function RankingsTable({ rows, sort, sp, showOurs, windowLabel, basis }: 
               title="Rank by projected points: position rank (WR3) with the overall rank beneath. T- means tied. Unranked players are listed last with the reason." />
             <SortableTh sortKey="name" label="Player" current={sort} searchParams={sp} defaultDir="asc" className={styles.playerCol} title="Player name, A to Z" />
             <th scope="col" title="Opponent in the ranked week">Opp</th>
-            <SortableTh sortKey="espn" label="ESPN pts" align="right" current={sort} searchParams={sp} title={projTitle("ESPN's")} />
+            {espnColumn && <SortableTh sortKey="espn" label="ESPN pts" align="right" current={sort} searchParams={sp} title={projTitle("ESPN's")} />}
             {showOurs && <SortableTh sortKey="ours" label="Ours pts" align="right" current={sort} searchParams={sp} title={projTitle("Fantasy Intel's")} />}
             <SortableTh sortKey="rating" label="Rating" align="right" current={sort} searchParams={sp} title={RATING_TITLE} />
             <SortableTh sortKey="opportunity" label="Opportunity" align="right" current={sort} searchParams={sp}
@@ -62,7 +64,7 @@ export function RankingsTable({ rows, sort, sp, showOurs, windowLabel, basis }: 
                   {why && <span className={styles.why}>{why}</span>}
                 </td>
                 <td className="dim">{opponentLabel(r.game)}</td>
-                <td className={`num ${basis === "espn" ? "key" : "dim"}`}><Points value={r.projection.espn} status={r.projection.status} /></td>
+                {espnColumn && <td className={`num ${basis === "espn" ? "key" : "dim"}`}><Points value={r.projection.espn} status={r.projection.status} /></td>}
                 {showOurs && <td className={`num ${basis === "ours" ? "key" : "dim"}`}><Points value={r.projection.ours} status={r.projection.status} /></td>}
                 <td className="num"><RatingBar value={r.rating.overall} label="Overall rating" /></td>
                 <td className="num"><RatingText value={r.rating.opportunity} /></td>

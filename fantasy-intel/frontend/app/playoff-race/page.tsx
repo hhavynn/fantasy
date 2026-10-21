@@ -5,6 +5,8 @@ import { BarChart } from "@/components/charts";
 import { Badge, EmptyState, Method, Notice, PageHeader, Section, Stat, StatStrip, Tabs } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cx } from "@/lib/cx";
+import { projectionName, providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import {
   backendQuery, cutlineIndex, parseRaceQuery, raceHref, weeksText, withCutline, withOverride, type RaceQuery,
 } from "@/lib/playoff-view";
@@ -19,6 +21,8 @@ export const metadata = { title: "Playoff race" };
 // Nothing here is a probability; no clinch or elimination is claimed.
 
 type Q = RaceQuery;
+/** Who the league data comes from (ESPN or Sleeper) and whose projections the scenarios use (the league default). */
+type L = { prov: string; proj: string };
 type Name = (id: number | null | undefined) => string;
 
 function rec(r: PrRecord | null | undefined): string {
@@ -45,7 +49,8 @@ function StatusBadge({ s, title }: { s: PrStatus | undefined; title?: string }) 
 export default async function PlayoffRacePage({ searchParams }: PageProps<"/playoff-race">) {
   const sp = await searchParams;
   const q = parseRaceQuery(sp);
-  const res = await api<PlayoffRace>(`/api/playoff-race?${backendQuery(q)}`);
+  const [res, profile] = await Promise.all([api<PlayoffRace>(`/api/playoff-race?${backendQuery(q)}`), getLeagueProfile()]);
+  const labels: L = { prov: providerName(profile.provider), proj: projectionName(profile.defaultSource) };
   if (!res.ok) {
     return (
       <div className="stack">
@@ -55,10 +60,10 @@ export default async function PlayoffRacePage({ searchParams }: PageProps<"/play
       </div>
     );
   }
-  return <Body d={res.data} q={q} />;
+  return <Body d={res.data} q={q} L={labels} />;
 }
 
-function Body({ d, q }: { d: PlayoffRace; q: Q }) {
+function Body({ d, q, L }: { d: PlayoffRace; q: Q; L: L }) {
   const teams = new Map(d.teams.map((t) => [t.team_id, t]));
   const focus = d.focus_team_id !== null ? teams.get(d.focus_team_id) : undefined;
   const name: Name = (id) => (id === null || id === undefined ? "?" : teams.get(id)?.name ?? `Team ${id}`);
@@ -69,13 +74,13 @@ function Body({ d, q }: { d: PlayoffRace; q: Q }) {
         eyebrow="League"
         title="Playoff race lab"
         meta={<>
-          {d.league.name} {d.league.season} · ESPN week {d.league.current_week}
+          {d.league.name} {d.league.season} · {L.prov} week {d.league.current_week}
           {d.league.reg_season_matchups !== null && <> · regular season: {d.league.reg_season_matchups} matchup periods
             {d.league.last_regular_season_week !== null && <> (through week {d.league.last_regular_season_week})</>}</>}
           {" "}· playoff spots {d.league.playoff_teams ?? <b>unknown</b>} (league settings)
           {" "}· first projectable week {d.window.first_actionable_week ?? "none"}
           {focus && <> · spotlight <b>{focus.name}</b>{focus.is_mine ? " (default team)" : ""}</>}
-          . Deterministic scenarios from ESPN projections, not probabilities.
+          . Deterministic scenarios from {L.proj} projections, not probabilities.
         </>}
         actions={
           <form action="/playoff-race" className={styles.spotlightForm}>
@@ -90,21 +95,21 @@ function Body({ d, q }: { d: PlayoffRace; q: Q }) {
       />
       {d.warnings.map((w, i) => <Notice key={i} tone="caution">{w}</Notice>)}
 
-      {focus && <FocusStrip d={d} t={focus} q={q} />}
+      {focus && <FocusStrip d={d} t={focus} q={q} L={L} />}
       <ScenarioBar d={d} q={q} name={name} />
       {focus && <Spotlight d={d} t={focus} q={q} name={name} />}
 
       <div className="grid grid-2">
-        <Standings d={d} name={name} />
+        <Standings d={d} name={name} L={L} />
         <Ladder d={d} name={name} />
       </div>
 
       <Race d={d} q={q} name={name} />
-      {focus && <Margins t={focus} />}
-      <Matchups d={d} q={q} open={open} />
-      <Power d={d} />
-      {d.matchups.playoff_known.length > 0 && <KnownPlayoffs d={d} />}
-      <MethodNotes d={d} />
+      {focus && <Margins t={focus} L={L} />}
+      <Matchups d={d} q={q} open={open} L={L} />
+      <Power d={d} L={L} />
+      {d.matchups.playoff_known.length > 0 && <KnownPlayoffs d={d} L={L} />}
+      <MethodNotes d={d} L={L} />
     </div>
   );
 }
@@ -115,12 +120,12 @@ function PlaceNote({ p }: { p: PrPlace }) {
   return <>{p.rank !== null ? `#${p.rank} ` : ""}<StatusBadge s={p.status} /></>;
 }
 
-function FocusStrip({ d, t, q }: { d: PlayoffRace; t: PrTeam; q: Q }) {
+function FocusStrip({ d, t, q, L }: { d: PlayoffRace; t: PrTeam; q: Q; L: L }) {
   const f = d.scenario.focus;
   if (!f) return null;
   return (
     <StatStrip>
-      <Stat label="Now (ESPN)" value={rec(t.record)} note={<>seed {t.espn_seed ?? "—"} · <StatusBadge s={t.current.status} title="Decided games only" /></>} />
+      <Stat label={`Now (${L.prov})`} value={rec(t.record)} note={<>seed {t.espn_seed ?? "—"} · <StatusBadge s={t.current.status} title="Decided games only" /></>} />
       <Stat label={q.base === "projected" ? "This scenario" : "Actual + overrides"} value={rec(f.scenario.record)} note={<PlaceNote p={f.scenario} />} />
       <Stat label={`Win all ${f.open_games} open`} value={rec(f.win_out.record)} note={<PlaceNote p={f.win_out} />} />
       <Stat label={`Lose all ${f.open_games} open`} value={rec(f.lose_out.record)} note={<PlaceNote p={f.lose_out} />} />
@@ -253,7 +258,7 @@ function LeverageTable({ rows, q, name, d, tid }: { rows: PrLeverage[]; q: Q; na
 
 // ----------------------------------------------------------------------- standings --
 
-function Standings({ d, name }: { d: PlayoffRace; name: Name }) {
+function Standings({ d, name, L }: { d: PlayoffRace; name: Name; L: L }) {
   const s = d.scenario;
   const spots = d.league.playoff_teams;
   const after = cutlineIndex(s.projected_standings, spots);
@@ -272,7 +277,7 @@ function Standings({ d, name }: { d: PlayoffRace; name: Name }) {
     >
       <div className="table-wrap">
         <table>
-          <thead><tr><th>#</th><th>Team</th><th>Now</th><th title="ESPN's own seed">ESPN seed</th><th>Scenario</th><th>Move</th><th>Status</th></tr></thead>
+          <thead><tr><th>#</th><th>Team</th><th>Now</th><th title={`${L.prov}'s own seed`}>{L.prov} seed</th><th>Scenario</th><th>Move</th><th>Status</th></tr></thead>
           <tbody>
             {items.map((it) => {
               if (it.kind === "cutline") {
@@ -333,13 +338,13 @@ function Ladder({ d, name }: { d: PlayoffRace; name: Name }) {
 
 // ------------------------------------------------------------- spotlight margins chart --
 
-function Margins({ t }: { t: PrTeam }) {
+function Margins({ t, L }: { t: PrTeam; L: L }) {
   const rows = t.remaining.filter((r) => r.status !== "bye");
   if (rows.length === 0) return null;
   return (
     <Section
       title={`${t.name}: projected margin by remaining matchup`}
-      footnote="Margins compare ESPN-projected optimal lineups; they are not win probabilities. A dash means no projected margin (game under way, a projection is incomplete, or its weeks are unknown)."
+      footnote={`Margins compare ${L.proj}-projected optimal lineups; they are not win probabilities. A dash means no projected margin (game under way, a projection is incomplete, or its weeks are unknown).`}
     >
       <BarChart
         orientation="horizontal"
@@ -416,11 +421,11 @@ function Race({ d, q, name }: { d: PlayoffRace; q: Q; name: Name }) {
 
 // ------------------------------------------------------------------ remaining matchups --
 
-function SideCell({ m, side }: { m: PrMatchup; side: "home" | "away" }) {
+function SideCell({ m, side, L }: { m: PrMatchup; side: "home" | "away"; L: L }) {
   const s = side === "home" ? m.home_projection : m.away_projection;
   if (m.status === "in_progress") {
     const v = side === "home" ? m.home_points : m.away_points;
-    return <span className="faint" title="ESPN points as of the last sync; not final">{pts(v)} live</span>;
+    return <span className="faint" title={`${L.prov} points as of the last sync; not final`}>{pts(v)} live</span>;
   }
   if (!s) return <span className="missing" title="No projection">—</span>;
   if (s.projected_points !== null) return <b>{pts(s.projected_points)}</b>;
@@ -456,7 +461,7 @@ function OverrideLinks({ m, q }: { m: PrMatchup; q: Q }) {
   );
 }
 
-function Matchups({ d, q, open }: { d: PlayoffRace; q: Q; open: PrMatchup[] }) {
+function Matchups({ d, q, open, L }: { d: PlayoffRace; q: Q; open: PrMatchup[]; L: L }) {
   const periods = [...new Set(open.map((m) => m.matchup_period))].sort((a, b) => a - b);
   const maxAbs = Math.max(1, ...open.map((m) => Math.abs(m.projected_margin ?? 0)));
   const focus = d.focus_team_id;
@@ -465,9 +470,9 @@ function Matchups({ d, q, open }: { d: PlayoffRace; q: Q; open: PrMatchup[] }) {
     <Section
       title="Remaining regular-season matchups"
       flush={open.length > 0}
-      footnote={open.length > 0 ? <>Projected totals are ESPN projections through the lineup optimizer. The margin is home minus away, drawn toward the projected leader. &ldquo;Close&rdquo; means within 5% of the mean projected total. Highlighted rows involve the spotlight team{highIds.size > 0 ? "; High leverage marks games that change its cutline status" : ""}. Overrides are in the URL.</> : undefined}
+      footnote={open.length > 0 ? <>Projected totals are {L.proj} projections through the lineup optimizer. The margin is home minus away, drawn toward the projected leader. &ldquo;Close&rdquo; means within 5% of the mean projected total. Highlighted rows involve the spotlight team{highIds.size > 0 ? "; High leverage marks games that change its cutline status" : ""}. Overrides are in the URL.</> : undefined}
     >
-      {open.length === 0 ? <EmptyState title="No remaining regular-season matchups">The ESPN schedule has no open regular-season games.</EmptyState> : (
+      {open.length === 0 ? <EmptyState title="No remaining regular-season matchups">The {L.prov} schedule has no open regular-season games.</EmptyState> : (
         <div className="table-wrap">
           <table>
             <thead><tr><th>Home</th><th className="num">Proj.</th><th>Margin</th><th className="num">Proj.</th><th>Away</th><th>Scenario</th><th>Override</th></tr></thead>
@@ -483,12 +488,12 @@ function Matchups({ d, q, open }: { d: PlayoffRace; q: Q; open: PrMatchup[] }) {
                     return (
                       <tr key={m.matchup_id} className={involves ? "mine" : ""}>
                         <td>{m.home_name}</td>
-                        <td className="num"><SideCell m={m} side="home" /></td>
+                        <td className="num"><SideCell m={m} side="home" L={L} /></td>
                         <td>
                           <MarginBar m={m} maxAbs={maxAbs} />
                           {m.close && <> <Badge value="Close" tone="warn" title="Projected margin within 5% of the mean projected total" /></>}
                         </td>
-                        <td className="num"><SideCell m={m} side="away" /></td>
+                        <td className="num"><SideCell m={m} side="away" L={L} /></td>
                         <td>{m.away_name}</td>
                         <td className={styles.scenarioCell}>
                           {res ? <b>{res === "tie" ? "Tie" : `${res === "home" ? m.home_name : m.away_name} wins`}</b> : <span className="faint">Unresolved</span>}
@@ -512,13 +517,13 @@ function Matchups({ d, q, open }: { d: PlayoffRace; q: Q; open: PrMatchup[] }) {
 
 // ------------------------------------------------------------------- power rankings --
 
-function Power({ d }: { d: PlayoffRace }) {
+function Power({ d, L }: { d: PlayoffRace; L: L }) {
   const rows = [...d.teams].sort((a, b) => (a.current.rank ?? 99) - (b.current.rank ?? 99) || (a.espn_seed ?? 99) - (b.espn_seed ?? 99) || a.team_id - b.team_id);
   return (
     <Section
       title="League power view: actual vs forward"
       flush
-      footnote="Ordered by actual standing. No composite power score: actual results (left) and ESPN-based forward projections (right) are kept separate. Badges: W, L or T is the result in this scenario (? = unresolved), followed by the projected margin from this team's side."
+      footnote={`Ordered by actual standing. No composite power score: actual results (left) and ${L.proj}-based forward projections (right) are kept separate. Badges: W, L or T is the result in this scenario (? = unresolved), followed by the projected margin from this team's side.`}
     >
       <div className="table-wrap">
         <table>
@@ -559,12 +564,12 @@ function Power({ d }: { d: PlayoffRace }) {
   );
 }
 
-function KnownPlayoffs({ d }: { d: PlayoffRace }) {
+function KnownPlayoffs({ d, L }: { d: PlayoffRace; L: L }) {
   return (
-    <Section title="Playoff matchups ESPN already lists" flush footnote="Shown as ESPN reports them; future playoff opponents are not modeled.">
+    <Section title={`Playoff matchups ${L.prov} already lists`} flush footnote={`Shown as ${L.prov} reports them; future playoff opponents are not modeled.`}>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Period</th><th>Tier</th><th>Home</th><th>Away</th><th>ESPN winner</th></tr></thead>
+          <thead><tr><th>Period</th><th>Tier</th><th>Home</th><th>Away</th><th>{L.prov} winner</th></tr></thead>
           <tbody>{d.matchups.playoff_known.map((m) => (
             <tr key={m.matchup_id}><td>{m.weeks?.join("–") ?? m.matchup_period}</td><td>{m.playoff_tier}</td><td>{m.home_name ?? "TBD"}</td><td>{m.away_name ?? "—"}</td><td>{m.espn_winner}</td></tr>
           ))}</tbody>
@@ -574,7 +579,7 @@ function KnownPlayoffs({ d }: { d: PlayoffRace }) {
   );
 }
 
-function MethodNotes({ d }: { d: PlayoffRace }) {
+function MethodNotes({ d, L }: { d: PlayoffRace; L: L }) {
   const cov = d.schedule_coverage;
   return (
     <Method title="How this works (and what it cannot say)">
@@ -584,7 +589,7 @@ function MethodNotes({ d }: { d: PlayoffRace }) {
         <li>{d.rules.close}</li>
         <li>{d.rules.clinch}</li>
         {d.notes.map((n, i) => <li key={i}>{n}</li>)}
-        <li>ESPN seeding/tie settings: {Object.keys(d.rules.espn_rules_reported).length
+        <li>{L.prov} seeding/tie settings: {Object.keys(d.rules.espn_rules_reported).length
           ? Object.entries(d.rules.espn_rules_reported).map(([k, v]) => `${k} = ${JSON.stringify(v)}`).join("; ") + ". "
           : ""}{d.rules.espn_rules_note}</li>
         <li>Schedule coverage: {cov.checked ? (cov.complete ? `every team has a matchup in all ${cov.regular_season_periods} regular-season periods`

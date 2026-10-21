@@ -49,8 +49,11 @@ function oneOf<T extends string>(value: string | undefined, allowed: readonly T[
  * direction on the rank column) with one difference that matches the API: a column given without a valid
  * `dir` starts in its natural direction, so `sort=rating` means highest first. It is written out here because
  * the unit-test runner cannot load a runtime import of ./sort.ts under the project's TypeScript settings.
+ *
+ * A league whose provider publishes no projections (`providerProjections` false, Sleeper) is always on Ours: a
+ * `source=espn` link is ignored there, so the page never asks the API for ESPN numbers it does not have.
  */
-export function parseRankingsFilters(sp: SearchParams | undefined, cookieSource?: ProjectionSource): RankingsFilters {
+export function parseRankingsFilters(sp: SearchParams | undefined, cookieSource?: ProjectionSource, providerProjections = true): RankingsFilters {
   const urlSource = first(sp?.source);
   const sortKey = first(sp?.sort);
   const dirParam = first(sp?.dir);
@@ -64,7 +67,8 @@ export function parseRankingsFilters(sp: SearchParams | undefined, cookieSource?
   return {
     pos: oneOf(first(sp?.pos), RANK_POSITIONS, "ALL"),
     horizon: oneOf(first(sp?.horizon), RANK_HORIZONS, "week"),
-    source: urlSource === "ours" || urlSource === "espn" ? urlSource : cookieSource === "ours" ? "ours" : "espn",
+    source: !providerProjections ? "ours"
+      : urlSource === "ours" || urlSource === "espn" ? urlSource : cookieSource === "ours" ? "ours" : "espn",
     status: oneOf(first(sp?.status), ROSTER_FILTERS, "all"),
     q: (first(sp?.q) ?? "").trim().slice(0, MAX_QUERY),
     sort: { key, dir },
@@ -229,6 +233,8 @@ export function rankLabel(row: Pick<RankingRow, "rank" | "projection">): string 
 
 const AVAILABILITY_WARNING: Record<string, string> = {
   OUT: "Out", IR: "Injured reserve", SUSPENDED: "Suspended", DOUBTFUL: "Doubtful", QUESTIONABLE: "Questionable",
+  // The raw provider spellings (ESPN's, which Sleeper statuses are mapped to) mean the same.
+  INJURY_RESERVE: "Injured reserve", SUSPENSION: "Suspended",
 };
 
 /** The one-line warning for a player, or null when he is healthy and plays. A bye outranks an injury. */

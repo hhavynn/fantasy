@@ -2,6 +2,8 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { Missing, num } from "@/lib/format";
 import { Notice, PageHeader, Stat, StatStrip, Tabs } from "@/components/ui";
 import { api } from "@/lib/api";
+import { projectionName, providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { parseSort, type SortState } from "@/lib/sort";
 import { PHASE_TEXT, parsePhase, phaseState, recordText, withParams } from "@/lib/team-value-helpers";
 import type { TeamValue, TvPhase, TvPhaseSplit } from "@/lib/types";
@@ -17,7 +19,8 @@ export const metadata = { title: "Team value" };
 
 // My Team Value: roster strength vs the league, who really moves the starting lineup, unused bench
 // projection, upgrades and the playoff-race context. Every number comes from the canonical engine
-// (ESPN weekly projections + the exact weekly lineup optimizer); nothing here is a probability.
+// (the league's default weekly projections: ESPN's, or Ours for a league whose provider publishes none, + the exact
+// weekly lineup optimizer); nothing here is a probability.
 
 const PATH = "/my-team/value";
 const MARGINAL_DEFAULT: SortState = { key: "marginal", dir: "desc" };
@@ -94,13 +97,15 @@ export default async function TeamValuePage({ searchParams }: PageProps<"/my-tea
   );
 }
 
-function Dashboard({ d, phase, trades, sort, sp }: {
+async function Dashboard({ d, phase, trades, sort, sp }: {
   d: TeamValue;
   phase: TvPhase;
   trades: boolean;
   sort: SortState;
   sp: Record<string, string | string[] | undefined>;
 }) {
+  const profile = await getLeagueProfile();
+  const words = { proj: projectionName(profile.defaultSource), pv: providerName(profile.provider) };
   const ov = d.overview!;
   const split = ov.phases[phase];
   const ranks = ov.league_ranks.phases[phase];
@@ -110,7 +115,7 @@ function Dashboard({ d, phase, trades, sort, sp }: {
     <>
       <StatStrip>
         <Stat
-          label="Record (ESPN)"
+          label={`Record (${words.pv})`}
           value={recordText(d.standing.record)}
           note={<>Seed {d.standing.espn_seed ?? "—"} · PF {num(d.standing.points_for, 1)} · PA {num(d.standing.points_against, 1)}</>}
         />
@@ -157,13 +162,13 @@ function Dashboard({ d, phase, trades, sort, sp }: {
       </div>
 
       <SlotStrength d={d} phase={phase} />
-      <MarginalTable d={d} phase={phase} sort={sort} sp={sp} />
-      <BenchSection d={d} />
+      <MarginalTable d={d} phase={phase} sort={sort} sp={sp} words={words} />
+      <BenchSection d={d} words={words} />
       <SlotGaps d={d} />
-      <WaiverMoves d={d} />
+      <WaiverMoves d={d} words={words} />
       <TradePreview d={d} trades={trades} sp={sp} />
       <RaceContext d={d} />
-      <ValueMethod d={d} />
+      <ValueMethod d={d} words={words} />
     </>
   );
 }

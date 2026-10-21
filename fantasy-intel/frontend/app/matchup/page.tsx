@@ -7,6 +7,8 @@ import {
   EmptyState, Glossary, Method, Notice, PageHeader, Tabs,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import { EMPTY_RANGES } from "@/lib/projection-ranges";
@@ -23,7 +25,7 @@ import styles from "./matchup.module.css";
 
 export const metadata = { title: "Matchup" };
 
-const VIEW_LABEL: Record<LineupView, string> = { projected: "Best projected", set: "Set in ESPN" };
+const viewLabel = (provider: string): Record<LineupView, string> => ({ projected: "Best projected", set: `Set in ${provider}` });
 
 /** The page shell for the states where there is nothing to show but an explanation. */
 function Shell({ title, children }: { title: string; children: ReactNode }) {
@@ -61,7 +63,11 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
 
   const qs = new URLSearchParams();
   if (wk.kind === "ok") qs.set("week", String(wk.week));
-  const source = await getProjectionSource();
+  const [source, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
+  // The league's provider (where lineups are set and schedules come from) and whose projections the page shows by
+  // default: ESPN's, or Fantasy Intel's own where the provider publishes none (Sleeper).
+  const provider = providerName(profile.provider);
+  const projBy = profile.providerProjections ? "ESPN" : "Fantasy Intel";
   const res = await api<Matchup>(withTeamId(withSource(`/api/matchup${qs.size ? `?${qs}` : ""}`, source), sel));
 
   if (!res.ok) {
@@ -132,11 +138,11 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
       </PageHeader>
 
       <ProjectionNotice detail={m.projection_source} />
-      {opp ? <Scoreboard m={m} opponent={opp} /> : (
+      {opp ? <Scoreboard m={m} opponent={opp} projBy={projBy} /> : (
         <EmptyState title={m.is_bye_week ? `${m.me.name} has a bye in week ${m.week}` : `No opponent scheduled for week ${m.week}`}>
           {m.is_bye_week
             ? "Other teams play this week; yours does not, so there is no matchup to compare."
-            : "The synced ESPN schedule has no pairing for this week yet. Playoff pairings appear once the regular season is decided."}
+            : `The synced ${provider} schedule has no pairing for this week yet. Playoff pairings appear once the regular season is decided.`}
         </EmptyState>
       )}
 
@@ -152,33 +158,37 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
           ranges={ranges}
           opponent={opp}
           view={view}
+          provider={provider}
+          projBy={projBy}
           actions={views.length > 1 ? (
             <Tabs
               label="Lineup shown"
               current={matchupHref({ week: m.week, lineup: view, ...keep })}
-              items={views.map((v) => ({ href: matchupHref({ week: m.week, lineup: v, ...keep }), label: VIEW_LABEL[v] }))}
+              items={views.map((v) => ({ href: matchupHref({ week: m.week, lineup: v, ...keep }), label: viewLabel(provider)[v] }))}
             />
           ) : undefined}
         />
       ) : null}
-      {!opp ? <SoloLineup m={m} ranges={ranges} /> : null}
+      {!opp ? <SoloLineup m={m} ranges={ranges} provider={provider} projBy={projBy} /> : null}
       {opp && !view ? (
         <EmptyState title="No lineups for this week yet">
-          ESPN has no projections or set lineups stored for week {m.week}. They appear after the next sync.
+          {profile.providerProjections
+            ? <>ESPN has no projections or set lineups stored for week {m.week}. They appear after the next sync.</>
+            : <>No projections or set lineups are stored for week {m.week}. They appear after the next sync.</>}
         </EmptyState>
       ) : null}
 
-      {view ? <Bench m={m} opponent={opp} view={opp ? view : "projected"} ranges={ranges} /> : null}
+      {view ? <Bench m={m} opponent={opp} view={opp ? view : "projected"} ranges={ranges} provider={provider} projBy={projBy} /> : null}
 
-      <Glossary terms={["Projected points", "Lineup points", "Bye", "Q / D / O", "—"]} />
+      <Glossary terms={["Projected points", "Lineup points", "Bye", "Q / D / O", "—"]} providerProjections={profile.providerProjections} />
       <Method title="How this page works">
         <p>
-          <b>Projected lineups.</b> ESPN&apos;s weekly projections, unmodified, run through the same optimal-lineup solver used across the site: for each
+          <b>Projected lineups.</b> {profile.providerProjections ? <>ESPN&apos;s weekly projections, unmodified,</> : <>Fantasy Intel&apos;s own weekly projections,</>} run through the same optimal-lineup solver used across the site: for each
           team, the best legal lineup (including FLEX) from rostered players who are not on IR or verified NFL-ineligible. It is the best lineup the
           roster could field, not necessarily the one the manager has set. Projections are kept only for weeks that have not been played.
         </p>
         <p>
-          <b>Missing is not zero.</b> A player ESPN has not projected is unknown. If a lineup-relevant player has no projection the team&apos;s total is
+          <b>Missing is not zero.</b> A player {projBy} has not projected is unknown. If a lineup-relevant player has no projection the team&apos;s total is
           shown as <i>known only</i> and no margin is drawn; a projected 0 (bye, injury) is a real value.
         </p>
         <p>
@@ -186,7 +196,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
           points after. The bar shows each team&apos;s share of the two totals combined. Neither is a win probability.
         </p>
         <p>
-          <b>Set lineups and actual points.</b> Set lineups come from the lineup snapshot ESPN holds. Actual points appear only once the matchup has
+          <b>Set lineups and actual points.</b> Set lineups come from the lineup snapshot {provider} holds. Actual points appear only once the matchup has
           started and are as of the last sync. Records are season records to date, not as of the week shown.
         </p>
       </Method>

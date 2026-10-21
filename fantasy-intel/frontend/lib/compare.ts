@@ -269,8 +269,12 @@ export function unknownPlayerSide(detail: string | null | undefined): { side: Si
   return { side: m[1] as Side, id: idMatch ? Number(idMatch[1]) : null };
 }
 
-/** "Projections: ESPN" or "Projections: ESPN + Ours". */
-export function projectionSourceLine(source: CompareSource | "ours" | "espn" | null | undefined): string {
+/**
+ * "Projections: ESPN" or "Projections: ESPN + Ours"; "Projections: Ours" for a league whose provider publishes no
+ * projections (`espnProjections` false, Sleeper).
+ */
+export function projectionSourceLine(source: CompareSource | "ours" | "espn" | null | undefined, espnProjections = true): string {
+  if (!espnProjections) return "Projections: Ours";
   return source === "independent" || source === "ours"
     ? "Projections: ESPN + Ours"
     : "Projections: ESPN";
@@ -356,7 +360,7 @@ export function edgeText(edge: Edge, nameA: string, nameB: string): string {
 
 export function playerName(card: Pick<CompareCard, "player"> | null | undefined): string {
   const p = card?.player;
-  return p?.full_name?.trim() || (p ? `ESPN #${p.espn_player_id}` : "Unknown player");
+  return p?.full_name?.trim() || (p ? `Player #${p.espn_player_id}` : "Unknown player");
 }
 
 export function sideCard(resp: CompareResponse, side: Side): CompareCard {
@@ -491,9 +495,14 @@ function displayRow(resp: CompareResponse, row: CompareRow): DisplayRow {
   };
 }
 
-/** Rows for the projection section, in the backend's order. */
-export function projectionRows(resp: CompareResponse): DisplayRow[] {
-  return resp.rows.filter(isProjectionRow).map((r) => displayRow(resp, r));
+/** The rows that carry ESPN's projection: left out for a league without ESPN projections (they would be all dashes). */
+export const ESPN_PROJECTION_KEYS = ["next_week_espn", "ros_espn"];
+
+const keepRow = (espnProjections: boolean) => (r: Pick<CompareRow, "key">) => espnProjections || !ESPN_PROJECTION_KEYS.includes(r.key);
+
+/** Rows for the projection section, in the backend's order (without the ESPN rows when `espnProjections` is false). */
+export function projectionRows(resp: CompareResponse, espnProjections = true): DisplayRow[] {
+  return resp.rows.filter(isProjectionRow).filter(keepRow(espnProjections)).map((r) => displayRow(resp, r));
 }
 
 /** Rows for the usage section: usage metrics, trend and ratings. */
@@ -501,9 +510,9 @@ export function usageRows(resp: CompareResponse): DisplayRow[] {
   return resp.rows.filter((r) => !isProjectionRow(r)).map((r) => displayRow(resp, r));
 }
 
-/** Every row, for the compact advantages table. */
-export function allRows(resp: CompareResponse): DisplayRow[] {
-  return resp.rows.map((r) => displayRow(resp, r));
+/** Every row, for the compact advantages table (without the ESPN rows when `espnProjections` is false). */
+export function allRows(resp: CompareResponse, espnProjections = true): DisplayRow[] {
+  return resp.rows.filter(keepRow(espnProjections)).map((r) => displayRow(resp, r));
 }
 
 // -------------------------------------------------------------------- projection context cells --

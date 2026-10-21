@@ -7,6 +7,8 @@ import {
 } from "@/components/ui";
 import { api, type ApiResult } from "@/lib/api";
 import { signed } from "@/lib/format";
+import { projectionName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { nextDir, sortHref, sortRows } from "@/lib/sort";
 import { discoverQuery, evidenceSrc, resolveSort, sortValue } from "@/lib/trade-discovery";
 import {
@@ -22,7 +24,8 @@ import { TeamLink } from "@/components/TeamLink";
 
 export const metadata = { title: "Discover trades" };
 
-// Trade Discovery 2.0. Every number is the exact weekly optimal-lineup simulation on ESPN's projections
+// Trade Discovery 2.0. Every number is the exact weekly optimal-lineup simulation on the league's default projections
+// (ESPN's; Fantasy Intel's own for a league whose provider publishes none)
 // (the manual analyzer's computation). A lens (mode) decides which exact trades are shown; each trade is judged
 // on two things kept apart, asset quality (points above replacement) and lineup benefit (starters only), plus
 // plausibility checks and a verdict that describes how they fit (docs/trade_discovery_dual_value.md).
@@ -44,7 +47,9 @@ const PHONE_SORTS: [string, string][] = [
   ["verdict", "Verdict"], ["my_gain", "Team Δ"], ["their_gain", "Partner Δ"], ["min_side", "Smaller side"], ["asset", "Asset balance"],
   ["partner", "Partner"], ["shape", "Shape"],
 ];
-const why = "Incomplete: a rostered player with an NFL team has no ESPN projection in some week (never treated as 0)";
+const whyFor = (proj: string) => `Incomplete: a rostered player with an NFL team has no ${proj} projection in some week (never treated as 0)`;
+/** The projections a payload was computed on, as it says ("espn" / "independent"); `fallback` when it does not. */
+const projOf = (d: { projection_source?: { used: string } | null }, fallback = "espn") => projectionName(d.projection_source?.used ?? fallback);
 
 type Params = Record<string, string | string[] | undefined>;
 
@@ -55,7 +60,7 @@ export default async function DiscoverPage({ searchParams }: PageProps<"/trades/
   const q = discoverQuery(sp).toString();
   // Start the search now; the header only waits for the light context call, the results stream in below it.
   const summary = api<DiscoverySummary>(`/api/trades/discover/summary?${q}`);
-  const res = await api<DiscoveryContext>(`/api/trades/discover/context?${q}`);
+  const [res, profile] = await Promise.all([api<DiscoveryContext>(`/api/trades/discover/context?${q}`), getLeagueProfile()]);
   return (
     <div className="stack">
       {!res.ok ? (
@@ -63,7 +68,7 @@ export default async function DiscoverPage({ searchParams }: PageProps<"/trades/
           <PageHeader title="Trade discovery" actions={<TeamLink href="/trades">Trade analyzer</TeamLink>} />
           <BackendProblem error={res.error} kind={res.kind} status={res.status} />
         </>
-      ) : <Body c={res.data} summary={summary} q={q} sp={sp} />}
+      ) : <Body c={res.data} summary={summary} q={q} sp={sp} defaultSource={profile.defaultSource} />}
     </div>
   );
 }
@@ -89,7 +94,9 @@ function analyzerHref(r: DSummaryRow) {
   return `/trades?${q.toString()}`;
 }
 
-function Body({ c: d, summary, q, sp }: { c: DiscoveryContext; summary: Promise<ApiResult<DiscoverySummary>>; q: string; sp: Params }) {
+function Body({ c: d, summary, q, sp, defaultSource }: {
+  c: DiscoveryContext; summary: Promise<ApiResult<DiscoverySummary>>; q: string; sp: Params; defaultSource: string;
+}) {
   const ev = d.evaluation;
   const modeHref = (m: string) => hrefFor(d, { mode: m });
   const tabs = lensTabs(d.query.mode);
@@ -98,7 +105,7 @@ function Body({ c: d, summary, q, sp }: { c: DiscoveryContext; summary: Promise<
       <PageHeader
         eyebrow="Trades"
         title="Trade discovery"
-        meta={<>Projected points: <b>ESPN</b> · Trade impact: <b>exact lineup simulation</b> for both teams · weeks {ev.start_week}–{ev.final_week}
+        meta={<>Projected points: <b>{projOf(d, defaultSource)}</b> · Trade impact: <b>exact lineup simulation</b> for both teams · weeks {ev.start_week}–{ev.final_week}
           {ev.last_regular_season_week !== null && <> (regular season through {ev.last_regular_season_week})</>}</>}
         actions={<TeamLink href="/trades">Trade analyzer</TeamLink>}
       >
@@ -133,7 +140,7 @@ function ResultsSkeleton() {
 
 /** Everything that needs the search: coverage, the trades, the per-manager view and the method notes. */
 async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<DiscoverySummary>>; q: string; sp: Params }) {
-  const res = await summary;
+  const [res, { providerProjections }] = await Promise.all([summary, getLeagueProfile()]);
   if (!res.ok) return <BackendProblem error={res.error} kind={res.kind} status={res.status} />;
   const d = res.data;
   const ev = d.evaluation;
@@ -164,7 +171,7 @@ async function Discovered({ summary, q, sp }: { summary: Promise<ApiResult<Disco
         <Coverage d={d} />
       </Method>
 
-      <Glossary terms={["Lineup points", "ROS", "Projected points", "—"]} />
+      <Glossary terms={["Lineup points", "ROS", "Projected points", "—"]} providerProjections={providerProjections} />
       <Method title="Method, assumptions and limitations">
         <p>{ev.start_week_reason}</p>
         <p>{d.note}</p>
@@ -337,7 +344,7 @@ function SeenFromThem({ label, ids, d }: { label: string; ids: number[]; d: Disc
   return <span className={styles.subline}><b>{label}</b> {ids.map((id) => d.names[id]?.name ?? `#${id}`).join(", ")}</span>;
 }
 
-function DeltaCell({ v, side }: { v: TradeDeltas; side?: DVSideSummary }) {
+function DeltaCell({ v, side, why }: { v: TradeDeltas; side?: DVSideSummary; why: string }) {
   return (
     <>
       {v.ros_delta === null
@@ -483,8 +490,8 @@ function PhoneTrades({ sorted, grouped, counts, d, q, verdictGroups }: {
                 <div><p className={styles.cardLabel}>Gets</p><Players ids={r.receives} d={d} /></div>
               </div>
               <dl className={styles.cardDeltas}>
-                <div><dt>Team Δ</dt><dd><DeltaCell v={r.mine} side={dv?.lineup.you} /></dd></div>
-                <div><dt>Partner Δ</dt><dd><DeltaCell v={r.theirs} side={dv?.lineup.them} /></dd></div>
+                <div><dt>Team Δ</dt><dd><DeltaCell v={r.mine} side={dv?.lineup.you} why={whyFor(projOf(d))} /></dd></div>
+                <div><dt>Partner Δ</dt><dd><DeltaCell v={r.theirs} side={dv?.lineup.them} why={whyFor(projOf(d))} /></dd></div>
               </dl>
               <div className={styles.tags}>
                 {dv && <VerdictBadge verdict={dv.verdict} text={dv.verdict_text} />}
@@ -514,7 +521,7 @@ function PhoneTrades({ sorted, grouped, counts, d, q, verdictGroups }: {
                   <span className={styles.subline}>{r.rationale.trade_type.text} · smaller side {r.min_side_ros_delta === null ? "—" : signedText(r.min_side_ros_delta)}</span>
                 </div>
               </details>
-              <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} />
+              <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} projLabel={projOf(d)} />
             </li>
           </Fragment>
         );
@@ -579,9 +586,9 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
             : <span className={styles.subline}><span className="missing" title="A player's points above replacement are unknown (missing projections), so no total is shown">—</span> points above replacement incomplete</span>}
           {fav && <span className={styles.subline}><b>{fav}</b></span>}
         </td>
-        <td className="num" data-label="Team Δ"><DeltaCell v={r.mine} side={dv?.lineup.you} /></td>
-        <td className="num" data-label="Partner Δ"><DeltaCell v={r.theirs} side={dv?.lineup.them} /></td>
-        <td className="num" data-label="Smaller side">{r.min_side_ros_delta === null ? <span className="missing" title={why}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
+        <td className="num" data-label="Team Δ"><DeltaCell v={r.mine} side={dv?.lineup.you} why={whyFor(projOf(d))} /></td>
+        <td className="num" data-label="Partner Δ"><DeltaCell v={r.theirs} side={dv?.lineup.them} why={whyFor(projOf(d))} /></td>
+        <td className="num" data-label="Smaller side">{r.min_side_ros_delta === null ? <span className="missing" title={whyFor(projOf(d))}>—</span> : <Delta value={r.min_side_ros_delta} />}</td>
         <td className={styles.changeCell} data-label="Lineup change">
           {dv?.you_change
             ? <>
@@ -605,7 +612,7 @@ function TradeRows({ tier, r, d, q, verdictGroups }: { tier: string; r: DSummary
       </tr>
       <tr className={styles.detailRow}>
         <td colSpan={10}>
-          <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} />
+          <TradeEvidence src={evidenceSrc(q, r.key)} analyzer={analyzerHref(r)} projLabel={projOf(d)} />
         </td>
       </tr>
     </tbody>

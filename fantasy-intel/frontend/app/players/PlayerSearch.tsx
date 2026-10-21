@@ -2,6 +2,7 @@ import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Badge, Delta, EmptyState, Rating, Section, TrendArrow } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { int, num } from "@/lib/format";
+import { ownershipAvailable, type Provider } from "@/lib/labels";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
 import { hasInjuryDesignation, ownerBadge } from "./helpers";
 import styles from "./players.module.css";
@@ -27,7 +28,9 @@ export function SearchForm({ q, compact = false, autoFocus = false }: { q: strin
 
 const OPP_TITLE = `Opportunity rating, 0–100: ${RATING_DESCRIPTION.opportunity}. ${RATING_CAVEAT}`;
 
-export function ResultsTable({ rows, q, limit }: { rows: PlayerListRow[]; q: string; limit: number }) {
+export function ResultsTable({ rows, q, limit, provider = "espn" }: { rows: PlayerListRow[]; q: string; limit: number; provider?: Provider }) {
+  // ESPN-wide ownership exists only for ESPN leagues; a Sleeper league lists players without it.
+  const owned = ownershipAvailable(provider);
   if (rows.length === 0) {
     return (
       <Section title={`Results for “${q}”`}>
@@ -39,11 +42,14 @@ export function ResultsTable({ rows, q, limit }: { rows: PlayerListRow[]; q: str
   }
   return (
     <Section
-      title={q ? `Results for “${q}”` : "Most-owned players"}
+      title={q ? `Results for “${q}”` : owned ? "Most-owned players" : "Players"}
       actions={<span className="faint">{rows.length} {rows.length === 1 ? "player" : "players"}</span>}
-      footnote={`${q
+      footnote={owned ? `${q
         ? (rows.length >= limit ? `Showing the first ${limit} matches, most-owned first. Add more of the name to narrow them.` : "Most-owned first.")
-        : `The ${limit} most-owned players across ESPN. Search above to find anyone else.`} Opportunity is a 0–100 relative rank within position, not a projection.`}
+        : `The ${limit} most-owned players across ESPN. Search above to find anyone else.`} Opportunity is a 0–100 relative rank within position, not a projection.`
+        : `${q
+        ? (rows.length >= limit ? `Showing the first ${limit} matches. Add more of the name to narrow them.` : "")
+        : `The first ${limit} players. Search above to find anyone else.`} Ownership % is not available for Sleeper leagues. Opportunity is a 0–100 relative rank within position, not a projection.`.trim()}
       flush
     >
       <div className="table-wrap">
@@ -51,7 +57,7 @@ export function ResultsTable({ rows, q, limit }: { rows: PlayerListRow[]; q: str
           <thead>
             <tr>
               <th>Player</th><th>Fantasy team</th>
-              <th className="num" title="Percent of ESPN leagues that roster the player">% own</th>
+              {owned && <th className="num" title="Percent of ESPN leagues that roster the player">% own</th>}
               <th className="num" title="NFL games with a usage record this season">G</th>
               <th className="num" title="PPR points per game (nflverse)">PPR/g</th>
               <th className="num" title="Expected PPR points per game from role (nflverse xFP): what an average player would score with this workload">xFP/g</th>
@@ -70,7 +76,7 @@ export function ResultsTable({ rows, q, limit }: { rows: PlayerListRow[]; q: str
                                     meta={hasInjuryDesignation(p.injury_status) ? <Badge value={p.injury_status} /> : null} />
                   </td>
                   <td><Badge value={owner.text} tone={owner.tone} /></td>
-                  <td className="num dim">{num(p.percent_owned, 1)}</td>
+                  {owned && <td className="num dim">{num(p.percent_owned, 1)}</td>}
                   <td className="num dim">{int(p.games, "No games / no NFL id")}</td>
                   <td className="num key">{num(p.fp_per_game, 1, "No games / no NFL id")}</td>
                   <td className="num">{num(p.xfp_per_game, 1, "No games / no NFL id")}</td>

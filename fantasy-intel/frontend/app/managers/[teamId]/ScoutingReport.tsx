@@ -1,6 +1,8 @@
 import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, Method, Notice, Pos, Score, Section } from "@/components/ui";
 import { date, int, num, pct, when } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { formatMetric } from "@/lib/managers";
 import type { ScoutingReport as Report, ScoutingSignal } from "@/lib/manager-scouting";
 import styles from "./scouting.module.css";
@@ -28,13 +30,14 @@ function Headline({ item: h }: { item: Report["headlines"][number] }) {
 }
 
 /** Overview tab: identity counters and the supported headline observations, each with its evidence. */
-export function ScoutingSummary({ report: d }: { report: Report }) {
+export async function ScoutingSummary({ report: d }: { report: Report }) {
+  const prov = providerName((await getLeagueProfile()).provider);
   const t = d.identity;
   const history = d.trade_history;
   return (
     <Section title="Scouting summary" footnote={<>Historical metrics updated {when(d.evidence.metrics_computed_at)}. Open an observation for its evidence; every one is limited to what the stored history supports.</>}>
       <dl className={styles.facts}>
-        <div><dt>Acquisitions / drops</dt><dd>{int(t.acquisitions)} / {int(t.drops)} <span>ESPN counters</span></dd></div>
+        <div><dt>Acquisitions / drops</dt><dd>{int(t.acquisitions)} / {int(t.drops)} <span>{prov} counters</span></dd></div>
         <div><dt>Observed adds / drops</dt><dd>{int(t.observed_adds)} / {int(t.observed_drops)} <span>metric history</span></dd></div>
         <div><dt>Completed trades</dt><dd>{history.completed_trades} <span>deduplicated</span></dd></div>
         <div><dt>{t.is_faab ? "FAAB remaining" : "Waiver position"}</dt><dd>{t.is_faab ? <>{num(t.faab_remaining, 0)} / {num(t.faab_budget, 0)} <span>spent {num(t.faab_spent, 0)}</span></> : int(t.waiver_rank)}</dd></div>
@@ -53,7 +56,8 @@ export function ScoutingSummary({ report: d }: { report: Report }) {
 }
 
 /** Scouting tab: the evidence tables behind the summary. */
-export function ScoutingEvidence({ report: d }: { report: Report }) {
+export async function ScoutingEvidence({ report: d }: { report: Report }) {
+  const prov = providerName((await getLeagueProfile()).provider);
   const t = d.identity;
   const history = d.trade_history;
   const c = d.current_roster;
@@ -131,7 +135,7 @@ export function ScoutingEvidence({ report: d }: { report: Report }) {
           <div className={styles.table} tabIndex={0} role="region" aria-label="Recent completed trades"><table>
             <thead><tr><th scope="col">Date</th><th scope="col">Players sent</th><th scope="col">Players received</th><th scope="col">Source</th></tr></thead>
             <tbody>{history.recent_trades.map((tr) => <tr key={tr.trade_id}>
-              <td>{date(tr.date)}</td>
+              <td>{date(tr.date, prov)}</td>
               <td className={styles.playerList}>{tr.players_sent.map((p) => <span key={p.espn_player_id}><PlayerLink id={p.espn_player_id} name={p.name ?? `Player ${p.espn_player_id}`} /> → team {p.to_team_id ?? "unknown"}</span>)}</td>
               <td className={styles.playerList}>{tr.players_received.map((p) => <span key={p.espn_player_id}><PlayerLink id={p.espn_player_id} name={p.name ?? `Player ${p.espn_player_id}`} /> ← team {p.from_team_id ?? "unknown"}</span>)}</td>
               <td className={styles.source}>{tr.sources.join(" + ")}<details><summary>Source ID</summary>{tr.trade_id}</details></td>

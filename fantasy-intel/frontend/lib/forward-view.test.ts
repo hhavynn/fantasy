@@ -96,3 +96,11 @@ test("oursTotalNote names previous-model weeks apart from ESPN fallback weeks", 
     "1/4 wk · previous model in wk 7; ESPN's number in wk 8, 9");
   assert.equal(oursTotalNote(ours(w, { ...base, missing_weeks: [] })), "1/4 wk · incomplete");
 });
+
+test("a league without ESPN projections (Sleeper) never mentions an ESPN fallback", () => {
+  const bad = ours([ow(6, "ours", 1), ow(7, "espn", null)], { ros_complete: false, ros_weeks_available: 1, ros_weeks_expected: 2, missing_weeks: [7] });
+  assert.equal(oursTotalNote(bad, false), "1/2 wk · no projection in wk 7");
+  assert.equal(oursNotice(ours([], { available: false, reason: null }), false)?.title, "Fantasy Intel projections are not ready yet");
+  assert.equal(oursNotice(ours([], { available: false, reason: null }))?.title, "Showing ESPN projections");
+  assert.equal(oursNotice(ours([ow(6, "ours", 1)], { reason: "x", fallback_weeks: [7] }), false)?.title, "Ours: some weeks have no projection");
+});

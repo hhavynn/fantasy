@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { when } from "@/lib/format";
+import type { Provider } from "@/lib/labels";
 import { type StatusPayload, computeSyncSummary } from "@/lib/sync-status";
 import { SyncPopover } from "./SyncPopover";
 
 /** One health dot for every feed; the details (and Data quality) open from it. Rendered per request
  * (the root layout is force-dynamic), so the ages are as of this request. */
-export function SyncPill({ status }: { status: StatusPayload }) {
-  const s = computeSyncSummary(status);
+export function SyncPill({ status, provider = "espn" }: { status: StatusPayload; provider?: Provider }) {
+  const s = computeSyncSummary(status, undefined, provider);
   return (
     <SyncPopover state={s.state} text={s.text}>
       {s.state === "offline" ? (

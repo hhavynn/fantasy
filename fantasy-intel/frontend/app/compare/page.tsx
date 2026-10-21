@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { EmptyState, Glossary, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import {
   type CompareResponse, type ParamError, type Side,
   compareHref, isCompareResponse, parseCompareParams, playerName, projectionSourceLine, unknownPlayerSide,
@@ -44,8 +46,12 @@ function Shell({ a, b, meta, children }: { a: PickerSelection | null; b: PickerS
 export default async function ComparePage({ searchParams }: PageProps<"/compare">) {
   const sp = await searchParams;
   const { a, b, errors } = parseCompareParams(sp);
-  const source = await getProjectionSource();
-  const sourceLine = projectionSourceLine(source === "ours" ? "independent" : "espn");
+  const [source, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
+  // A Sleeper league has no ESPN projections: no ESPN rows or chart, and no switch to point at.
+  const espnProjections = profile.providerProjections;
+  const switchHint = espnProjections ? SWITCH_HINT : null;
+  const provider = providerName(profile.provider);
+  const sourceLine = projectionSourceLine(source === "ours" ? "independent" : "espn", espnProjections);
 
   // Junk in the URL: say which side, keep the valid one, and make no backend call.
   if (errors.length > 0) {
@@ -62,7 +68,7 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
         <Section title="Pick two players">
           <EmptyState title="Nothing to compare yet" action={<Link href="/players">Browse players</Link>}>
             <p>Search for a player in each box above, or open a player&apos;s page and choose Compare to bring them here.</p>
-            <p>Kickers and team defenses can be compared too. {SWITCH_HINT}</p>
+            <p>Kickers and team defenses can be compared too.{switchHint ? <> {switchHint}</> : null}</p>
           </EmptyState>
         </Section>
       </Shell>
@@ -98,7 +104,7 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
               action={side ? <Link href={compareHref(side === "a" ? null : a, side === "b" ? null : b)}>Clear Player {side.toUpperCase()}</Link> : <Link href="/compare">Start over</Link>}
             >
               <p>
-                {id !== null ? <>No player in this league&apos;s ESPN pool has the id {id}</> : <>One of the ids is not in this league&apos;s ESPN pool</>}
+                {id !== null ? <>No player in this league&apos;s {provider} pool has the id {id}</> : <>One of the ids is not in this league&apos;s {provider} pool</>}
                 {side ? <> (Player {side.toUpperCase()})</> : null}. Pick a different player in the box above.
               </p>
             </EmptyState>
@@ -136,9 +142,9 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
   const pb = fromCard(r, "b");
   const meta = (
     <>
-      {projectionSourceLine(r.source)} · week {r.as_of_week} projections · usage and points through week {r.completed_through_week}
-      {" "}· scoring: {r.scoring.label}.{" "}
-      <span className={styles.switchHint}>{SWITCH_HINT}</span>
+      {projectionSourceLine(r.source, espnProjections)} · week {r.as_of_week} projections · usage and points through week {r.completed_through_week}
+      {" "}· scoring: {r.scoring.label}.
+      {switchHint ? <>{" "}<span className={styles.switchHint}>{switchHint}</span></> : null}
     </>
   );
 
@@ -148,7 +154,7 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
         <Notice tone="info" title="Same player on both sides">
           {playerName(r.players[0])} is picked twice, so there is nothing to compare. Change Player B above to choose a different player.
         </Notice>
-        <CompareHero r={r} only="a" />
+        <CompareHero r={r} only="a" profile={profile} />
         <SummarySection r={r} />
       </Shell>
     );
@@ -156,7 +162,7 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
 
   return (
     <Shell a={pa} b={pb} meta={meta}>
-      <CompareHero r={r} />
+      <CompareHero r={r} profile={profile} />
       {!r.same_position && (
         <Notice tone="caution" title="Different positions">
           {r.players[0].player.position ?? "?"} and {r.players[1].player.position ?? "?"} do not share every measure. Rows that mean nothing for a
@@ -166,10 +172,10 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
       <SummarySection r={r} />
       <Section
         title="Projection comparison"
-        subtitle={`${projectionSourceLine(r.source)}. ${r.scoring.note ?? ""}`.trim()}
+        subtitle={`${projectionSourceLine(r.source, espnProjections)}. ${r.scoring.note ?? ""}`.trim()}
         flush
       >
-        <ProjectionTable r={r} ranges={ranges} />
+        <ProjectionTable r={r} ranges={ranges} espnProjections={espnProjections} />
       </Section>
       <Section
         title="Usage comparison"
@@ -178,12 +184,12 @@ export default async function ComparePage({ searchParams }: PageProps<"/compare"
       >
         <UsageTable r={r} />
       </Section>
-      <ContextSection r={r} />
-      <ChartsSection r={r} />
+      <ContextSection r={r} profile={profile} />
+      <ChartsSection r={r} profile={profile} />
       <Section title="Statistical advantages" subtitle="Every measure in one compact table. An edge appears only when the gap passes a materiality threshold." flush>
-        <AdvantagesTable r={r} />
+        <AdvantagesTable r={r} espnProjections={espnProjections} />
       </Section>
-      <Glossary terms={["Projected points", "PPR/g", "xFP", "Snap share", "Target share", "ROS", "Value rating", "—"]} />
+      <Glossary terms={["Projected points", "PPR/g", "xFP", "Snap share", "Target share", "ROS", "Value rating", "—"]} providerProjections={profile.providerProjections} />
     </Shell>
   );
 }

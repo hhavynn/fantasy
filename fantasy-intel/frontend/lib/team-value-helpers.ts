@@ -41,7 +41,7 @@ export function topContributors(players: readonly TvPlayer[], phase: TvPhase, n:
     .filter((x): x is { p: TvPlayer; value: number } => x.value !== null && x.value > 0)
     .sort((a, b) => b.value - a.value || a.p.espn_player_id - b.p.espn_player_id)
     .slice(0, n)
-    .map(({ p, value }) => ({ name: p.name ?? `ESPN #${p.espn_player_id}`, value, exact: marginalFor(p, phase) !== null }));
+    .map(({ p, value }) => ({ name: p.name ?? `Player #${p.espn_player_id}`, value, exact: marginalFor(p, phase) !== null }));
 }
 
 /** "W-L" or "W-L-T"; a missing record is a dash. */
