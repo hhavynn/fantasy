@@ -127,12 +127,15 @@ def classic_provider(db_path: Path) -> str:
     provider = "espn"
     try:
         import duckdb
+
+        from ..analytics.legacy_league import latest_league
         con = duckdb.connect(str(db_path), read_only=True)
         try:
-            row = con.execute("SELECT settings_raw FROM leagues ORDER BY synced_at DESC LIMIT 1").fetchone()
+            row = latest_league(con, ["settings_raw"])
         finally:
             con.close()
-        raw = json.loads(row[0]) if row and isinstance(row[0], str) else (row[0] if row else None)
+        value = row["settings_raw"] if row else None
+        raw = json.loads(value) if isinstance(value, str) else value
         if isinstance(raw, dict) and raw.get("provider"):
             provider = str(raw["provider"])
     except Exception:          # noqa: BLE001 - an unreadable or locked file keeps ESPN's wording

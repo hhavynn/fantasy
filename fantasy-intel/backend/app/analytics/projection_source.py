@@ -100,11 +100,12 @@ def default_source(con, season: int | None = None) -> str:
     """The league's default projection source (multi-league Phase 4b): "espn" for an ESPN league, "independent" for a
     league whose provider publishes no projections (Sleeper: app/sleeper/write.py marks `settings_raw.provider`), so
     Fantasy Intel's own are the only ones. An explicit `source=` always wins."""
-    if con is None or not table_exists(con, "leagues"):
+    from .legacy_league import latest_league
+
+    if con is None:
         return "espn"
-    sql = "SELECT settings_raw FROM leagues" + (" WHERE season = ?" if season else "") + " ORDER BY synced_at DESC LIMIT 1"
-    row = con.execute(sql, [season] if season else []).fetchone()
-    raw = row[0] if row else None
+    row = latest_league(con, ["settings_raw"], season=season or None)
+    raw = row["settings_raw"] if row else None
     settings = json.loads(raw) if isinstance(raw, str) else (raw or {})
     return "independent" if isinstance(settings, dict) and settings.get("provider") == "sleeper" else "espn"
 

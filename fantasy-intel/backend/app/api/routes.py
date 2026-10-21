@@ -95,7 +95,8 @@ def league_profile():
     4b): ESPN's for an ESPN league, Fantasy Intel's own (Ours) for a Sleeper league, whose provider publishes none."""
     from ..analytics.projection_source import default_source
     with db() as con:
-        lg = one(con, "SELECT settings_raw FROM leagues ORDER BY synced_at DESC LIMIT 1")
+        from ..analytics.legacy_league import latest_league
+        lg = latest_league(con, ["settings_raw"])
         raw = (lg or {}).get("settings_raw")
         settings = json.loads(raw) if isinstance(raw, str) else (raw or {})
         provider = settings.get("provider") if isinstance(settings, dict) and settings.get("provider") else "espn"
