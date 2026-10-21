@@ -12,8 +12,10 @@ from typing import Any
 
 from ..espn.parse import scrub_member_ids
 from ..espn.sync import EspnPayloads
+from ..sleeper.write import SleeperPayloads
 
 FORMAT = "espn-payloads-v1"
+SLEEPER_FORMAT = "sleeper-payloads-v1"     # Sleeper's ids are public: nothing to scrub
 _INT_KEYED = ("rosters", "transactions", "projections", "projection_failures")
 _TIMES = ("fetch_started_at", "fetched_at")
 
@@ -29,7 +31,10 @@ def scrub(p: EspnPayloads) -> EspnPayloads:
     return p
 
 
-def dump_payloads(p: EspnPayloads) -> bytes:
+def dump_payloads(p: EspnPayloads | SleeperPayloads) -> bytes:
+    if isinstance(p, SleeperPayloads):
+        doc = {"format": SLEEPER_FORMAT, **p.to_json()}
+        return gzip.compress(json.dumps(doc, separators=(",", ":")).encode(), mtime=0)
     scrub(p)
     doc: dict[str, Any] = {"format": FORMAT}
     for name in ("league", "pro_players", "pool", "draft", "activity", "cards", "projection_weeks"):
@@ -42,8 +47,10 @@ def dump_payloads(p: EspnPayloads) -> bytes:
     return gzip.compress(json.dumps(doc, separators=(",", ":")).encode(), mtime=0)
 
 
-def load_payloads(blob: bytes) -> EspnPayloads:
+def load_payloads(blob: bytes) -> EspnPayloads | SleeperPayloads:
     doc = json.loads(gzip.decompress(blob))
+    if doc.get("format") == SLEEPER_FORMAT:
+        return SleeperPayloads.from_json(doc)
     if doc.get("format") != FORMAT:
         raise ValueError(f"unknown raw payload format {doc.get('format')!r}")
     p = EspnPayloads(league=doc["league"])

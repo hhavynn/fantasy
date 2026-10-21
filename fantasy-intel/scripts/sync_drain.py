@@ -34,6 +34,11 @@ def objects_from_env():
     return DirWriter(Path(files_dir))
 
 
+def providers() -> tuple[str, ...]:
+    """Sleeper leagues sync only with SLEEPER_SOURCE=live (the repository variable); otherwise their jobs wait."""
+    return ("espn", "sleeper") if (os.getenv("SLEEPER_SOURCE") or "").strip().lower() == "live" else ("espn",)
+
+
 def make_context(n: int):
     from app.sync import espn_source
     from app.sync.redact import Printer
@@ -50,7 +55,7 @@ def worker(n: int, budget_s: float) -> int:
     from app.sync.redact import Printer
     from app.sync.worker import drain
     try:
-        done = drain(make_context(n), budget_s=budget_s)
+        done = drain(make_context(n), budget_s=budget_s, providers=providers())
     except Exception as err:   # noqa: BLE001 - the type only: messages may carry connection strings or ids
         Printer()(f"worker {n} stopped: {type(err).__name__}")
         return 1

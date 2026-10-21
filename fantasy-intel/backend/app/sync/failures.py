@@ -41,7 +41,21 @@ def classify(err: BaseException, *, authenticated: bool, stage: str = "build") -
     from ..analytics.validation import ValidationError
     from ..db.r2 import R2Error
 
+    from ..sleeper.client import InvalidLeagueId, SleeperError, SleeperHTTPError, SleeperRateLimited
+
     if isinstance(err, (requests.ConnectionError, requests.Timeout)):
+        return Outcome("retry", "network")
+    if isinstance(err, InvalidLeagueId):
+        return Outcome("missing", "provider_not_found")
+    if isinstance(err, SleeperRateLimited):
+        return Outcome("retry", "provider_429", pause_provider=True)
+    if isinstance(err, SleeperHTTPError):
+        if err.status == 429:
+            return Outcome("retry", "provider_429", pause_provider=True)
+        return Outcome("retry", "provider_5xx" if err.status >= 500 else "provider_response")
+    if isinstance(err, SleeperError):
+        return Outcome("retry", "provider_response") if stage == "fetch" else Outcome("dead", "parse_error")
+    if isinstance(err, OSError) and stage == "fetch":      # the Sleeper client's network failures
         return Outcome("retry", "network")
     if isinstance(err, ESPNInvalidLeague):
         return Outcome("missing", "provider_not_found")
