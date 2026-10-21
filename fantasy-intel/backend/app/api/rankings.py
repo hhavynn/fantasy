@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api", tags=["rankings"])
 def get_rankings(
     position: str = Query("ALL", description="ALL | QB | RB | WR | TE"),
     horizon: str = Query("week", description="week (current scoring period) | ros (remaining regular season)"),
-    source: str = Query("espn", description="Projection that ranks: espn (default) | independent (Ours, opt-in)"),
+    source: str | None = Query(None, description="Projection source: espn | independent (default: the league's own, espn when it has ESPN projections, else independent)"),
     sort: str = Query("rank", description="rank | name | espn | ours | rating | opportunity | production | xfp | "
                                          "ppr | consistency | trend"),
     dir: str | None = Query(None, description="asc | desc (default: asc for rank/name/consistency, else desc)"),

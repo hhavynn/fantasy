@@ -44,7 +44,7 @@ from . import production_forecasts as pf
 from .lineup import FIXED_SLOTS
 from .playoff_race import NotSynced, RaceData, all_play, classify_matchups, load_race_data
 from .projection_backtest import _utc
-from .team_lineups import (STREAM_POSITIONS, RosterPlayer, project_team, r, replacement_market,
+from .team_lineups import (STREAM_POSITIONS, RosterPlayer, project_team, r, replacement_market, source_label,
                            roster_marginal_value, starters)
 from .team_value import NotFound, league_ranks, load_extras, position_strength
 from .trades import LeagueState, with_streaming
@@ -216,7 +216,8 @@ def edition(state: LeagueState, regular: list[dict], team_ids: list[int], team_n
     ranks = league_ranks(projections, window, team_names) if window.weeks else None
     comparable = ranks["phases"]["all"]["weeks"] if ranks else []
     strength = {x["team_id"]: x["average_weekly"] for x in ranks["phases"]["all"]["teams"]} if ranks else {}
-    market = replacement_market(state.free_agents, slots, window, proj, top_n=1) if comparable else None
+    market = replacement_market(state.free_agents, slots, window, proj, top_n=1,
+                                projection_source=source_label(state.projection_source)) if comparable else None
     ap = all_play_before(regular, team_ids, all_play_before_week)
     teams = {}
     for t in team_ids:

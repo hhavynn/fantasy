@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { providerName } from "@/lib/labels";
+import { ESPN_PROFILE, type LeagueProfile } from "@/lib/league-profile";
 import { EmptyState, Method, Section, Tabs } from "@/components/ui";
 import { int, num, pct } from "@/lib/format";
 import { FTN_READ1_NOTE } from "@/lib/types";
@@ -25,7 +27,7 @@ const notRB = (pos: string | null) => pos !== "RB";
  * Every column the old table showed. "Core" is the scannable default; the rest sit behind the
  * "All columns" tab. For a QB the receiving columns are rarely meaningful, so they move to "more".
  */
-function columns(pos: string | null): Col[] {
+function columns(pos: string | null, provider = "ESPN"): Col[] {
   const receiving: Tier = pos === "QB" ? "more" : "core";
   const all: Col[] = [
     { key: "snaps", label: "Snaps", tier: "more", cell: (w) => int(w.offense_snaps, "No snap record") },
@@ -52,7 +54,7 @@ function columns(pos: string | null): Col[] {
     { key: "gl_car", label: "GL car", tier: "more", cell: (w) => int(w.gl_carries, "No play-by-play") },
     { key: "td", label: "TD", tier: "core", cell: (w) => int((w.receiving_tds ?? 0) + (w.rushing_tds ?? 0)) },
     { key: "ppr", label: "PPR", tier: "core", cell: (w) => num(w.fantasy_points_ppr) },
-    { key: "league", label: "League pts", tier: "core", cell: (w) => num(w.league_points, 1, "No ESPN weekly points") },
+    { key: "league", label: "League pts", tier: "core", cell: (w) => num(w.league_points, 1, `No ${provider} weekly points`) },
     { key: "xfp", label: "xFP", tier: "core", cell: (w) => num(w.xfp, 1, "Not in nflverse ff_opportunity") },
     { key: "source", label: "Source", tier: "more", cell: (w) => <span className={styles.source}>{w.stats_source}</span> },
   ];
@@ -60,7 +62,8 @@ function columns(pos: string | null): Col[] {
 }
 
 /** Week-by-week table. `all` shows every column; the default shows the core set. */
-export function GameLog({ d, all, id }: { d: Detail; all: boolean; id: string }) {
+export function GameLog({ d, all, id, profile = ESPN_PROFILE }: { d: Detail; all: boolean; id: string; profile?: LeagueProfile }) {
+  const provider = providerName(profile.provider);
   const pos = d.player.position;
   const weeks = d.weekly;
   const route = d.route_data;
@@ -81,9 +84,9 @@ export function GameLog({ d, all, id }: { d: Detail; all: boolean; id: string })
     </Method>
   );
 
-  if (weeks.length === 0) return <LeagueLog d={d} notes={notes} />;
+  if (weeks.length === 0) return <LeagueLog d={d} notes={notes} provider={provider} espnProjections={profile.providerProjections} />;
 
-  const cols = columns(pos).filter((c) => all || c.tier === "core");
+  const cols = columns(pos, provider).filter((c) => all || c.tier === "core");
   const base = `?id=${encodeURIComponent(id)}`;
   return (
     <Section
@@ -120,14 +123,15 @@ export function GameLog({ d, all, id }: { d: Detail; all: boolean; id: string })
   );
 }
 
-/** Kickers, defenses and unmatched players have no NFL usage rows: show what ESPN scored and projected. */
-function LeagueLog({ d, notes }: { d: Detail; notes: ReactNode }) {
+/** Kickers, defenses and unmatched players have no NFL usage rows: show what ESPN scored and projected (a Sleeper league:
+ * what Sleeper scored; it publishes no projections). */
+function LeagueLog({ d, notes, provider, espnProjections }: { d: Detail; notes: ReactNode; provider: string; espnProjections: boolean }) {
   const asOf = d.forward_projection?.summary.as_of_week ?? null;
   const rows = d.league_points.filter((r) => r.actual_points !== null || (asOf !== null && r.scoring_period === asOf));
   if (rows.length === 0) {
     return (
       <Section title="Game log">
-        <EmptyState title="No games recorded">No NFL games or ESPN weekly points are stored for this player this season.</EmptyState>
+        <EmptyState title="No games recorded">No NFL games or {provider} weekly points are stored for this player this season.</EmptyState>
         <div className={styles.logNotesBare}>{notes}</div>
       </Section>
     );
@@ -137,21 +141,21 @@ function LeagueLog({ d, notes }: { d: Detail; notes: ReactNode }) {
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th scope="col">Wk</th><th scope="col" className="num">League pts</th><th scope="col" className="num">ESPN proj</th></tr>
+            <tr><th scope="col">Wk</th><th scope="col" className="num">League pts</th>{espnProjections && <th scope="col" className="num">ESPN proj</th>}</tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.scoring_period}>
                 <td><span className={styles.week}>{r.scoring_period}</span></td>
-                <td className="num">{num(r.actual_points, 1, "Not played yet / no ESPN points")}</td>
-                <td className="num">{num(r.projected_points, 1, "ESPN returned no projection for this week (unknown, not 0)")}</td>
+                <td className="num">{num(r.actual_points, 1, `Not played yet / no ${provider} points`)}</td>
+                {espnProjections && <td className="num">{num(r.projected_points, 1, "ESPN returned no projection for this week (unknown, not 0)")}</td>}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <div className={styles.logNotes}>
-        <p>No NFL usage rows are stored for this player, so only ESPN&apos;s weekly points are shown.</p>
+        <p>No NFL usage rows are stored for this player, so only {provider}&apos;s weekly points are shown.</p>
         {notes}
       </div>
     </Section>

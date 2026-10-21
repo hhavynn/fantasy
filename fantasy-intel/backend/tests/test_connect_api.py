@@ -270,3 +270,52 @@ def test_reimporting_an_unavailable_public_league_reactivates_and_resyncs_it(cli
     assert r.status_code == 201 and r.json()["league_id"] == lid
     assert one(pg, "SELECT status, missing_count FROM fi.leagues WHERE id = %s", [lid]) == ("active", 0)
     assert one(pg, "SELECT kind FROM fi.sync_jobs WHERE league_id = %s", [lid]) == ("manual",)
+
+
+# ----------------------------------------------------------------------------- Sleeper (Phase 4b)
+
+SLEEPER_ID = "1180000000000000001"
+
+
+@pytest.fixture
+def sleeper(client):
+    from app.api import connect
+    from app.main import app
+    from app.sleeper.client import InvalidLeagueId
+    known = {SLEEPER_ID: {"league_id": SLEEPER_ID, "season": "2026", "sport": "nfl", "name": "Sleeper League"}}
+    reads = []
+
+    def read(lid):
+        reads.append(lid)
+        if lid not in known:
+            raise InvalidLeagueId(lid, "Sleeper has no league with this id")
+        return known[lid]
+    app.dependency_overrides[connect.sleeper_reader] = lambda: read
+    return reads
+
+
+def test_a_sleeper_league_is_imported_from_its_address_without_cookies(client, pg, users, sleeper, espn, dispatched,
+                                                                       monkeypatch):
+    monkeypatch.setenv("SLEEPER_SOURCE", "live")
+    r = client.post("/v2/leagues/import", headers=bearer(U1),
+                    json={"provider": "sleeper", "league": f"https://sleeper.com/leagues/{SLEEPER_ID}/matchup"})
+    assert r.status_code == 201, r.text
+    lid = r.json()["league_id"]
+    assert one(pg, "SELECT provider, external_id, season, visibility FROM fi.leagues WHERE id = %s", [lid]) == \
+        ("sleeper", SLEEPER_ID, 2026, "public")
+    assert one(pg, "SELECT kind, status FROM fi.sync_jobs WHERE league_id = %s", [lid]) == ("initial", "queued")
+    assert sleeper == [SLEEPER_ID] and espn.reads == [] and dispatched == [1]
+
+
+def test_a_sleeper_import_is_refused_while_the_switch_is_off_and_unknown_leagues_are_404(client, users, sleeper,
+                                                                                        monkeypatch):
+    monkeypatch.delenv("SLEEPER_SOURCE", raising=False)
+    r = client.post("/v2/leagues/import", json={"provider": "sleeper", "league": SLEEPER_ID}, headers=bearer(U1))
+    assert r.status_code == 503 and sleeper == []
+    monkeypatch.setenv("SLEEPER_SOURCE", "live")
+    assert client.post("/v2/leagues/import", json={"provider": "sleeper", "league": "999999999999"},
+                       headers=bearer(U1)).status_code == 404
+    assert client.post("/v2/leagues/import", json={"provider": "sleeper", "league": "not a league"},
+                       headers=bearer(U1)).status_code == 422
+    assert client.post("/v2/leagues/import", json={"provider": "yahoo", "league": "4242"},
+                       headers=bearer(U1)).status_code == 422

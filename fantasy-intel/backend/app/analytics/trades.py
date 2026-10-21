@@ -21,7 +21,7 @@ from dataclasses import dataclass, field, replace
 from itertools import combinations
 
 from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, NOTE as AVAILABILITY_NOTE, is_restricted
-from .team_lineups import (IR_HOLD_NOTE, PROJECTION_SOURCE, STREAM_NOTE, STREAM_RANK, Projections, RosterPlayer,
+from .team_lineups import (IR_HOLD_NOTE, PROJECTION_SOURCE, STREAM_NOTE, source_label, STREAM_RANK, Projections, RosterPlayer,
                            StreamingProjections, Window, best_fa_addition, compare, ir_activation_sensitivity,
                            known_total, project_team, public_weeks, r, replacement_context, roster_marginal_value,
                            starters, stream_summary, with_stream)
@@ -93,6 +93,7 @@ class LeagueState:
     first_projection_week: int | None = None       # earliest week whose projections were loaded
     availability: dict = field(default_factory=dict)  # espn_player_id -> player_availability record (explanation)
     free_agent_status: dict = field(default_factory=dict)  # free agent id -> ESPN FREEAGENT | WAIVERS; absent = unknown
+    projection_source: str = "espn"                # "independent": Ours (a league without provider projections)
 
     def window(self, start_week: int | None = None) -> Window:
         start = self.start_week if start_week is None else start_week
@@ -627,7 +628,7 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
                             for p in players if p["availability"] and p["availability"]["warnings"]],
         "injury_scenarios": injury_scenarios(state, window, team_a, team_b, a_sends, b_sends) if scenarios else [],
         "availability_note": AVAILABILITY_NOTE,
-        "projection_source": PROJECTION_SOURCE,
+        "projection_source": source_label(state.projection_source),
         "trade_impact_source": "exact optimal-lineup simulation",
         "kdst_streaming": stream_summary(state.projections, window),
         "assumptions": assumptions(state),

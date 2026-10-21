@@ -104,9 +104,9 @@ function EdgeLegend() {
 }
 
 /** Position, schedule and the projection rows. */
-export function ProjectionTable({ r, ranges = EMPTY_RANGES }: { r: CompareResponse; ranges?: RangeMap }) {
+export function ProjectionTable({ r, ranges = EMPTY_RANGES, espnProjections = true }: { r: CompareResponse; ranges?: RangeMap; espnProjections?: boolean }) {
   const [a, b] = r.players;
-  const rows = projectionRows(r);
+  const rows = projectionRows(r, espnProjections);
   const noWindow = "The league's projection window is unknown.";
   return (
     <>
@@ -191,7 +191,7 @@ export function UsageTable({ r }: { r: CompareResponse }) {
 }
 
 /** Compact table of every statistical row: value, marker and accessible edge text. */
-export function AdvantagesTable({ r }: { r: CompareResponse }) {
+export function AdvantagesTable({ r, espnProjections = true }: { r: CompareResponse; espnProjections?: boolean }) {
   const [a, b] = r.players;
   const na = playerName(a);
   const nb = playerName(b);
@@ -201,7 +201,7 @@ export function AdvantagesTable({ r }: { r: CompareResponse }) {
         <table className={cx(styles.compareTable, styles.compact)}>
           <thead><tr><th scope="col">Measure</th><Names r={r} /></tr></thead>
           <tbody>
-            {allRows(r).map((row) => (
+            {allRows(r, espnProjections).map((row) => (
               <tr key={row.key}>
                 <th scope="row" className={styles.measure}><span className={styles.measureName}>{row.label}</span></th>
                 <td className={styles.cell}>{row.a.missing ? <span className="missing" title={row.a.why ?? undefined}>—</span> : <span className={styles.val}>{row.a.text}</span>}</td>

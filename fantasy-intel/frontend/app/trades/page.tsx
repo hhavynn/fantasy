@@ -5,6 +5,8 @@ import {
   Glossary, Method, Notice, PageHeader,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { projectionName, providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { canEvaluate, initialSelection, selectionKey } from "@/lib/trade-builder";
 import { readTeamSelection } from "@/lib/team-perspective";
 import type { TradeOptionsV3, TradeResultV3 } from "@/lib/trade-types";
@@ -14,7 +16,8 @@ import { TeamLink } from "@/components/TeamLink";
 
 export const metadata = { title: "Trade analyzer" };
 
-// Manual Trade Analyzer. Projected points: ESPN (unmodified). Trade impact: our exact weekly
+// Manual Trade Analyzer. Projected points: the league's default source (ESPN unmodified; Ours for a league whose
+// provider publishes no projections). Trade impact: our exact weekly
 // optimal-lineup simulation for both teams. Any player counts per side up to the configured limit.
 // No trade grade, no acceptance probability. Team and player selection is client-side (TradeBuilder);
 // the evaluation is rendered on the server for the URL selection only.
@@ -31,7 +34,10 @@ function one(v: string | string[] | undefined): number | null {
 
 export default async function TradesPage({ searchParams }: PageProps<"/trades">) {
   const sp = await searchParams;
-  const opts = await api<TradeOptionsV3>("/api/trades/options");
+  const [opts, profile] = await Promise.all([api<TradeOptionsV3>("/api/trades/options"), getLeagueProfile()]);
+  // Trades follow the league's default projections; the provider sets the roster rules.
+  const proj = projectionName(profile.defaultSource);
+  const pv = providerName(profile.provider);
   if (!opts.ok) {
     return (
       <div className="stack">
@@ -79,23 +85,24 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
       <PageHeader
         eyebrow="Trades"
         title="Trade analyzer"
-        meta={<>Projected points: <b>ESPN</b> · Trade impact: <b>our exact lineup simulation</b> · weeks {firstWeek}–{evaluation.final_week}</>}
+        meta={<>Projected points: <b>{proj}</b> · Trade impact: <b>our exact lineup simulation</b> · weeks {firstWeek}–{evaluation.final_week}</>}
         actions={<TeamLink href="/trades/discover">Discover trades</TeamLink>}
       />
       {evaluation.uncertain && evaluation.warning && <Notice tone="caution">{evaluation.warning}</Notice>}
       <TradeBuilder teams={teams} initial={initial} evaluatedKey={evaluated ? selectionKey(initial) : null} maxPerSide={maxPerSide}
-        capacity={opts.data.active_capacity} limits={opts.data.position_limits} firstWeek={firstWeek} finalWeek={evaluation.final_week}>
+        capacity={opts.data.active_capacity} limits={opts.data.position_limits} firstWeek={firstWeek} finalWeek={evaluation.final_week}
+        projLabel={proj} providerLabel={pv}>
         {evaluated && (
           <Suspense fallback={<EvaluatedTradeSkeleton />}>
             <EvaluatedTrade result={evaluated} />
           </Suspense>
         )}
       </TradeBuilder>
-      <Glossary terms={["Lineup points", "ROS", "Projected points", "FLEX", "IR", "—"]} />
+      <Glossary terms={["Lineup points", "ROS", "Projected points", "FLEX", "IR", "—"]} providerProjections={profile.providerProjections} />
       <Method title="How trades are evaluated">
         <p>
           Pick up to {maxPerSide} players from each roster. Every remaining week, both teams&apos; optimal lineups are rebuilt before and after the
-          trade with the league&apos;s real slots and FLEX rules; roster capacity and ESPN position limits are enforced with exact forced drops. Only
+          trade with the league&apos;s real slots and FLEX rules; roster capacity and {pv} position limits are enforced with exact forced drops. Only
           starters count. Evaluation starts at week {firstWeek}: {evaluation.start_week_reason.reason}
         </p>
       </Method>

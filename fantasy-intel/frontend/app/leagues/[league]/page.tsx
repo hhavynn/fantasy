@@ -45,7 +45,8 @@ export default async function LeagueSettings({ params }: { params: Promise<{ lea
           <TeamForm leagueId={id} teams={teams} selected={league.teamId} />
         )}
       </Section>
-      {user && league.visibility === "private" && league.role ? (
+      {/* Sleeper leagues are always public and never use cookies. */}
+      {user && league.provider === "espn" && league.visibility === "private" && league.role ? (
         <Section title="Your ESPN cookies" subtitle="Stored encrypted; the website itself cannot read them back. Only the sync job uses them, to read this league.">
           <CookieSettings leagueId={id} />
         </Section>

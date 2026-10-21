@@ -199,8 +199,11 @@ def _position_limits(settings: dict) -> dict[str, int]:
     return out
 
 
-def load_league_state(con, season: int | None = None, now: datetime | None = None) -> LeagueState | None:
-    """`now` (timezone-aware; default the current UTC time) decides which weeks have kicked off."""
+def load_league_state(con, season: int | None = None, now: datetime | None = None,
+                      source: str | None = None) -> LeagueState | None:
+    """`now` (timezone-aware; default the current UTC time) decides which weeks have kicked off. `source`: the
+    projections the state carries; None = the league's default (projection_source.default_source: ESPN's for an ESPN
+    league, Ours for a league without provider projections)."""
     lg = fetch_dicts(con, "SELECT * FROM leagues" + (" WHERE season = ?" if season else "") +
                      " ORDER BY synced_at DESC LIMIT 1", [season] if season else [])
     if not lg:
@@ -235,11 +238,17 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
                if f["espn_player_id"] not in rostered]
     free_agents = [RosterPlayer(f["espn_player_id"], f["position"], f["pro_team"], f["full_name"], False, f["injury_status"])
                    for f in fa_rows]
+    from .projection_source import league_projections, normalize
+    source = normalize(source, con, season)
     proj: dict[int, dict[int, float]] = {}
-    for p in fetch_dicts(con, """SELECT espn_player_id, scoring_period, projected_points FROM espn_player_weekly_points
-                                 WHERE season = ? AND scoring_period BETWEEN ? AND ? AND projected_points IS NOT NULL""",
-                         [season, window.current, window.final]):
-        proj.setdefault(p["espn_player_id"], {})[p["scoring_period"]] = float(p["projected_points"])
+    if source == "espn":
+        for p in fetch_dicts(con, """SELECT espn_player_id, scoring_period, projected_points FROM espn_player_weekly_points
+                                     WHERE season = ? AND scoring_period BETWEEN ? AND ? AND projected_points IS NOT NULL""",
+                             [season, window.current, window.final]):
+            proj.setdefault(p["espn_player_id"], {})[p["scoring_period"]] = float(p["projected_points"])
+    else:
+        for pid, by_week in league_projections(con, season, range(window.current, window.final + 1), source).items():
+            proj[pid] = {w: v for w, (v, _) in by_week.items()}
     # NFL availability (reserve-list eligibility) is applied once here, so every consumer of the
     # league state (evaluator, discovery, team value, playoff race) uses the same weeks.
     weeks = tuple(range(window.current, window.final + 1))
@@ -262,7 +271,7 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
         team_names={t["team_id"]: t["name"] for t in teams}, league_id=lg["league_id"], start_week_reason=start,
         undroppable_list_in_use=((settings.get("rosterSettings") or {}).get("isUsingUndroppableList")),
         first_projection_week=window.current, availability=availability,
-        free_agent_status={f["espn_player_id"]: f["availability_status"] for f in fa_rows})
+        free_agent_status={f["espn_player_id"]: f["availability_status"] for f in fa_rows}, projection_source=source)
 
 
 # ---------------------------------------------------------------------- context (display) --

@@ -9,7 +9,9 @@ import { SyncPill } from "@/components/SyncPill";
 import { TableScroll } from "@/components/TableScroll";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { api } from "@/lib/api";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { currentLeague } from "@/lib/league-scope.server";
+import { projectionSwitchVisible } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import { computeSyncSummary, type StatusPayload } from "@/lib/sync-status";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
@@ -61,10 +63,12 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [status, projection, league] = await Promise.all([
-    api<NonNullable<StatusPayload>>("/api/status"), getProjectionSource(), currentLeague()]);
+  const [status, projection, league, profile] = await Promise.all([
+    api<NonNullable<StatusPayload>>("/api/status"), getProjectionSource(), currentLeague(), getLeagueProfile()]);
   const s = status.data;
-  const sync = computeSyncSummary(s ?? null);
+  const sync = computeSyncSummary(s ?? null, undefined, profile.provider);
+  // A league whose provider has no projections (Sleeper) is always on Ours: no switch to show.
+  const showSwitch = projectionSwitchVisible(profile);
   return (
     // suppressHydrationWarning: the inline script below sets data-theme on <html> before React hydrates.
     <html lang="en" className={`${barlowCondensed.variable} ${plexSans.variable} ${plexSansGreek.variable} ${plexMono.variable}`} suppressHydrationWarning>
@@ -86,11 +90,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 </span>
               )}
               <CommandPalette />
-              <ProjectionSwitch value={projection} className="topbar-proj" />
+              {showSwitch && <ProjectionSwitch value={projection} className="topbar-proj" />}
               <ThemeSwitch className="topbar-theme" />
-              <SyncPill status={s ?? null} />
+              <SyncPill status={s ?? null} provider={profile.provider} />
               <AccountMenu />
-              <MobileNav projection={projection} sync={{ state: sync.state, text: sync.text }} />
+              <MobileNav projection={showSwitch ? projection : undefined} sync={{ state: sync.state, text: sync.text }} />
             </div>
           </div>
         </header>

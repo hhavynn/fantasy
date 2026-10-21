@@ -27,6 +27,10 @@
 .field label { font-size: 12px; font-weight: 600; color: var(--ink-muted); }
 .field input[type="text"], .field select { width: 100%; min-width: 0; }
 .field input[type="text"].season { max-width: 9ch; }
+/* Provider choice on the add-league form: two radio labels in a row, wrapping on narrow screens. */
+.providers { margin: 0; padding: 0; border: 0; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; }
+.providers legend { padding: 0; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--ink-muted); width: 100%; }
+.provider { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; font-size: 14px; cursor: pointer; }
 .fieldError { margin: 0; color: var(--negative); font-size: 12px; line-height: 17px; font-weight: 600; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .ok { margin: 0; color: var(--positive); font-size: 13px; font-weight: 600; }

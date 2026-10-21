@@ -19,7 +19,7 @@ class Published:
 
 def publish_local(pg, src_db: Path, objects: Path, work: Path, *, visibility="public", name="League", checked_at="now()",
                   stamp="2026-10-20T12:00:00", league_id: str | None = None,
-                  external_id: str | None = None) -> Published:
+                  external_id: str | None = None, provider: str = "espn") -> Published:
     """Register the league, then publish `src_db` exactly as production does (app/db/league_publish.py) as fi_sync,
     with the objects laid out under `objects` (the API reads them through LEAGUE_FILES_DIR). `work` is unused and
     kept for call-site compatibility."""
@@ -31,7 +31,7 @@ def publish_local(pg, src_db: Path, objects: Path, work: Path, *, visibility="pu
         con.close()
     with pg.connect() as su:
         lid = seed_league(su, league_id, visibility=visibility, name=name, checked_at=checked_at,
-                          external_id=external_id or str(espn_id))
+                          external_id=external_id or str(espn_id), provider=provider)
         su.commit()
     with psycopg.connect(pg.dsn_for("fi_sync"), prepare_threshold=None) as sync:
         res = publish_league(Path(src_db), DirWriter(objects), sync, lid, stamp=stamp)

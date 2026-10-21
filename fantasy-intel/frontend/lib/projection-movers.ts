@@ -148,16 +148,18 @@ export const BASELINE_PATTERN = /^(?:\d{4}-\d{2}-\d{2}|w\d{1,2})$/;
 /**
  * The page state from the URL. Anything unknown falls back to the default (ESPN, rest of season, all
  * positions, the backend's default baseline, the top riser), so a stale or hand-edited link never reaches
- * the API with a value it would reject. `source=ours` is accepted as an alias of `independent`.
+ * the API with a value it would reject. `source=ours` is accepted as an alias of `independent`. A league whose
+ * provider publishes no projections (`providerProjections` false, Sleeper) is always on Fantasy Intel's forecasts:
+ * the page never asks the API for ESPN snapshots it does not have.
  */
-export function parseMoversState(sp: Record<string, string | string[] | undefined> | undefined): MoversState {
+export function parseMoversState(sp: Record<string, string | string[] | undefined> | undefined, providerProjections = true): MoversState {
   const s = first(sp?.source);
   const v = first(sp?.view);
   const p = first(sp?.position)?.toUpperCase();
   const b = first(sp?.baseline);
   const id = first(sp?.player);
   return {
-    source: s === "independent" || s === "ours" ? "independent" : "espn",
+    source: !providerProjections || s === "independent" || s === "ours" ? "independent" : "espn",
     view: v === "week" ? "week" : "ros",
     position: (POSITIONS as readonly string[]).includes(p ?? "") ? (p as Position) : null,
     baseline: b && BASELINE_PATTERN.test(b) ? b : null,

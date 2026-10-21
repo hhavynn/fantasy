@@ -71,24 +71,36 @@ def _carry_forward(con, previous: Path, season: int, *, skip: frozenset[str] = f
         con.execute("DETACH prev")
 
 
-def build_league_file(work_dir: Path, *, global_path: Path, previous: Path | None, payloads: EspnPayloads,
+def build_league_file(work_dir: Path, *, global_path: Path, previous: Path | None, payloads,
                       owner_swid: str | None, stamp: str) -> Built:
-    """`owner_swid`: the credential owner's SWID for a private league (marks their team as the stored default
-    perspective, as on the laptop), None for a public one. `stamp`: the version's UTC time (ISO)."""
+    """`payloads`: EspnPayloads or SleeperPayloads (app/sleeper/write.py). `owner_swid`: the credential owner's SWID
+    for a private ESPN league (marks their team as the stored default perspective, as on the laptop), None for a
+    public one. `stamp`: the version's UTC time (ISO)."""
     from ..analytics.pipeline import run_analytics
+
+    from ..sleeper.write import SleeperPayloads, write_sleeper
 
     work_dir = Path(work_dir)
     work = work_dir / "work.duckdb"
     shutil.copyfile(global_path, work)
-    scrub(payloads)
-    season = int(payloads.league["seasonId"])
+    sleeper = isinstance(payloads, SleeperPayloads)
+    if sleeper:
+        external_id, season = int(payloads.league["league_id"]), int(payloads.league["season"])
+        name = payloads.league.get("name")
+    else:
+        scrub(payloads)
+        external_id, season = int(payloads.league["id"]), int(payloads.league["seasonId"])
+        name = (payloads.league.get("settings") or {}).get("name")
     con = connect(work)
     try:
         init_db(con)
         refs = table_exists(con, REFERENCE_SCORING)
         if previous is not None:
             _carry_forward(con, Path(previous), season, skip=DERIVED_TABLES if refs else frozenset())
-        write_synced(con, payloads, swid=anon_member(owner_swid) if owner_swid else None, my_team_id=None)
+        if sleeper:
+            write_sleeper(con, payloads)
+        else:
+            write_synced(con, payloads, swid=anon_member(owner_swid) if owner_swid else None, my_team_id=None)
         if refs:
             apply_reference(con, season)
         run_analytics(con, season)
@@ -97,11 +109,10 @@ def build_league_file(work_dir: Path, *, global_path: Path, previous: Path | Non
         con.close()
     league_out = work_dir / "league.duckdb"
     out = split_database(work, league_out, work_dir / "global-unused.duckdb", stamp=stamp,
-                         league=(int(payloads.league["id"]), season))
+                         league=(external_id, season))
     (work_dir / "global-unused.duckdb").unlink(missing_ok=True)
     work.unlink(missing_ok=True)
-    name = (payloads.league.get("settings") or {}).get("name")
-    return Built(out.league_path, out.league_version, int(payloads.league["id"]), season, name)
+    return Built(out.league_path, out.league_version, external_id, season, name)
 
 
 def league_tables_equal(a: Path, b: Path, *, ignore_columns: frozenset[str], ignore_tables: frozenset[str]) -> list[str]:

@@ -3,6 +3,8 @@ import { EmptyState, Method, Notice, PageHeader, Section } from "@/components/ui
 import { api } from "@/lib/api";
 import { headline, lineText, splitDefenses, statusText, takeaways, type DstPlayer, type DstResponse } from "@/lib/defenses";
 import { Missing, num, when } from "@/lib/format";
+import { ESPN_COMPARISON_UNAVAILABLE } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { DstChart } from "./DstChart";
 import styles from "./defenses.module.css";
 
@@ -13,7 +15,8 @@ const TITLE = "D/ST outlook";
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 
-function Row({ p, rank, selected }: { p: DstPlayer; rank: number; selected: boolean }) {
+/** `espn` is false for a league whose provider has no projections (Sleeper): no ESPN column to compare with. */
+function Row({ p, rank, selected, espn }: { p: DstPlayer; rank: number; selected: boolean; espn: boolean }) {
   const i = p.independent;
   const s = i.stat_line;
   const line = lineText(i.context);
@@ -31,7 +34,7 @@ function Row({ p, rank, selected }: { p: DstPlayer; rank: number; selected: bool
           {i.interval_80 ? `${i.interval_80.low.toFixed(1)}–${i.interval_80.high.toFixed(1)}` : <Missing why="No calibrated interval" />}
         </span>
       </td>
-      <td className={styles.num}>{num(p.espn.projected_points, 1)}</td>
+      {espn && <td className={styles.num}>{num(p.espn.projected_points, 1)}</td>}
       <td className={styles.num}>{num(i.context?.opponent_implied_total ?? null, 1)}</td>
       <td className={styles.num}>{num(s?.sacks ?? null, 1)}</td>
       <td className={styles.num}>{num(takeaways(s), 1)}</td>
@@ -50,7 +53,9 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
   const sp: SP = await searchParams;
   const week = Number(one(sp.week)) || undefined;
   const sel = Number(one(sp.sel)) || null;
-  const res = await api<DstResponse>(`/api/projections/defenses${week ? `?week=${week}` : ""}`);
+  const [res, profile] = await Promise.all([
+    api<DstResponse>(`/api/projections/defenses${week ? `?week=${week}` : ""}`), getLeagueProfile()]);
+  const espn = profile.providerProjections;
   if (!res.ok) {
     return (
       <div className="stack">
@@ -77,7 +82,7 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
       <div className="stack">
         <PageHeader eyebrow="Waivers · Streaming" title={TITLE} meta={meta} actions={weekForm} />
         <Section title="No D/ST run for this week">
-          <EmptyState title="ESPN's D/ST projections are shown elsewhere">{d.unavailable_reason}</EmptyState>
+          <EmptyState title={espn ? "ESPN's D/ST projections are shown elsewhere" : "No D/ST projections this week"}>{d.unavailable_reason}</EmptyState>
         </Section>
       </div>
     );
@@ -94,6 +99,7 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
       <Section title="Matchup map" subtitle="Weak opponent on the left, more splash plays up top, bubble size is expected points.">
         <DstChart players={projected} week={d.week} sel={sel} />
       </Section>
+      {!espn && <Notice tone="info" title="No projection comparison for this league">{ESPN_COMPARISON_UNAVAILABLE}</Notice>}
       <Section title={`Projected defenses (${projected.length})`}
         subtitle="Points are expected fantasy points under this league's D/ST scoring. Opp. total is the opponent's implied points from the line." flush>
         <div className="table-wrap">
@@ -101,12 +107,12 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
             <thead>
               <tr>
                 <th className={styles.num}>#</th><th>D/ST</th><th className={styles.num}>Ours</th>
-                <th className={styles.num}>ESPN</th><th className={styles.num}>Opp. total</th>
+                {espn && <th className={styles.num}>ESPN</th>}<th className={styles.num}>Opp. total</th>
                 <th className={styles.num}>Sacks</th><th className={styles.num}>Takeaways</th>
                 <th className={styles.num}>Pts allowed</th><th className={styles.num}>TD chance</th><th>Why</th>
               </tr>
             </thead>
-            <tbody>{projected.map((p, n) => <Row key={p.espn_player_id} p={p} rank={n + 1} selected={p.espn_player_id === sel} />)}</tbody>
+            <tbody>{projected.map((p, n) => <Row key={p.espn_player_id} p={p} rank={n + 1} selected={p.espn_player_id === sel} espn={espn} />)}</tbody>
           </table>
         </div>
       </Section>
@@ -134,7 +140,7 @@ export default async function DefensesPage({ searchParams }: PageProps<"/defense
           offensive ratings. A model fitted on earlier seasons combines those ratings with the betting line (the opponent&apos;s
           implied total and the expected margin) into expected counts. Points- and yards-allowed tiers are scored as
           probabilities, so 13 vs 14 points allowed lands on the right side of a tier edge, and touchdowns are a small, steady
-          expectation rather than a prediction. The coming week only: later weeks use ESPN&apos;s D/ST numbers.
+          expectation rather than a prediction. The coming week only{espn ? <>: later weeks use ESPN&apos;s D/ST numbers.</> : "."}
         </p>
         <ul>{d.notes.map((n) => <li key={n}>{n}</li>)}</ul>
       </Method>

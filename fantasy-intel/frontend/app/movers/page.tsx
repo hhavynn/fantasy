@@ -2,6 +2,7 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { BarChart } from "@/components/charts";
 import { EmptyState, Notice, PageHeader, Section } from "@/components/ui";
 import { api } from "@/lib/api";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import {
   CONTRACT, SOURCE_NAME, chartMovers, eyebrowText, freshnessText, moversQuery, parseMoversState, selectedMover, signedPts,
   totalsText, type MoversResponse,
@@ -23,7 +24,11 @@ const INTRO = "Whose projection changed since the last stored forecast, by how m
 
 export default async function MoversPage({ searchParams }: PageProps<"/movers">) {
   const sp = (await searchParams) as SearchParams;
-  let state = parseMoversState(sp);
+  const profile = await getLeagueProfile();
+  // A league whose provider publishes no projections (Sleeper) is always on Fantasy Intel's forecasts, so neither
+  // request below (nor the stale-baseline retry, which keeps the source) ever asks for ESPN snapshots.
+  const espnOn = profile.providerProjections;
+  let state = parseMoversState(sp, espnOn);
 
   let res = await api<MoversResponse>(`/api/projections/movers?${moversQuery(state)}`);
   let baselineDropped = false;
@@ -54,7 +59,8 @@ export default async function MoversPage({ searchParams }: PageProps<"/movers">)
   }
 
   const controls = (
-    <Controls state={state} baselines={d.baselines} currentId={d.current?.id ?? null} effectiveBaseline={d.baseline?.id ?? null} />
+    <Controls state={state} baselines={d.baselines} currentId={d.current?.id ?? null} effectiveBaseline={d.baseline?.id ?? null}
+      sourceChoice={espnOn} />
   );
   const dropped = baselineDropped && (
     <Notice tone="info" title="That comparison point is no longer available">The default comparison is shown instead.</Notice>
@@ -68,13 +74,13 @@ export default async function MoversPage({ searchParams }: PageProps<"/movers">)
         <Section title="Comparison">
           <EmptyState
             title={`${SOURCE_NAME[d.source]} cannot be compared right now`}
-            action={d.source === "independent" ? <Link href="/movers" prefetch={false}>Show ESPN projections</Link> : undefined}
+            action={d.source === "independent" && espnOn ? <Link href="/movers" prefetch={false}>Show ESPN projections</Link> : undefined}
           >
             {d.reason ?? "There are not enough stored forecasts to show movement."}
           </EmptyState>
         </Section>
         <AboutComparison d={d} />
-        <MoversMethod d={d} />
+        <MoversMethod d={d} provider={profile.provider} providerProjections={espnOn} />
       </div>
     );
   }
@@ -111,7 +117,7 @@ export default async function MoversPage({ searchParams }: PageProps<"/movers">)
 
       {mover && <Detail d={d} m={mover} requestedMissing={requestedMissing} />}
       <MoversTable d={d} state={state} sp={sp} />
-      <MoversMethod d={d} />
+      <MoversMethod d={d} provider={profile.provider} providerProjections={espnOn} />
     </div>
   );
 }

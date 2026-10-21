@@ -39,8 +39,9 @@ export function when(v: string | null | undefined): ReactNode {
   return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export function date(v: string | null | undefined): ReactNode {
-  if (!v) return <Missing why="No timestamp from ESPN" />;
+/** A short date; `provider` names who left it out when it is missing ("ESPN" unless the league is from elsewhere). */
+export function date(v: string | null | undefined, provider: string = "ESPN"): ReactNode {
+  if (!v) return <Missing why={`No timestamp from ${provider}`} />;
   const d = new Date(v.endsWith("Z") || v.includes("+") ? v : `${v}Z`);
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

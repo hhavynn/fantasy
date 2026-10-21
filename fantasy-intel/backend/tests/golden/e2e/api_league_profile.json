@@ -1,0 +1,9 @@
+// /api/league-profile
+{
+ "body": {
+  "default_source": "espn",
+  "provider": "espn",
+  "provider_projections": true
+ },
+ "status": 200
+}

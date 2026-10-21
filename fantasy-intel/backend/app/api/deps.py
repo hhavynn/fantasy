@@ -87,6 +87,7 @@ class LeagueScope:
     global_version: str
     visibility_epoch: int
     perspective: int | None
+    provider: str = "espn"          # "sleeper": responses use Sleeper's wording (app/api/provider_copy.py)
 
     @property
     def cache_key(self) -> str:

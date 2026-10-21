@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { computeSyncSummary, parseTimestamp } from "./sync-status.ts";
+import { FEEDS, computeSyncSummary, feedsFor, parseTimestamp } from "./sync-status.ts";
 import type { SyncInfo } from "./types.ts";
 
 const NOW = Date.parse("2026-10-14T14:00:00Z");
@@ -93,4 +93,22 @@ test("timestamps: naive values are UTC, offsets are honoured, garbage is null", 
   assert.equal(parseTimestamp("2026-10-14T05:00:00-07:00"), Date.parse("2026-10-14T12:00:00Z"));
   assert.equal(parseTimestamp("not a date"), null);
   assert.equal(parseTimestamp(null), null);
+});
+
+test("a Sleeper league's sync is read from its own source key", () => {
+  assert.equal(feedsFor("espn"), FEEDS);
+  assert.deepEqual(feedsFor("sleeper").map((f) => f.key), ["sleeper", "nfl", "analytics"]);
+  assert.equal(feedsFor("sleeper")[0].label, "Sleeper league");
+  const sync = {
+    last_success: { sleeper: "2026-10-14T12:00:00Z", nfl: "2026-10-14T11:05:00Z", analytics: "2026-10-14T12:10:00Z" },
+    latest_runs: [ok("sleeper", "2026-10-14T12:00:00Z"), ok("nfl", "2026-10-14T11:05:00Z"), ok("analytics", "2026-10-14T12:10:00Z")],
+  } as SyncInfo;
+  const r = computeSyncSummary(status(sync), NOW, "sleeper");
+  assert.equal(r.state, "ok");
+  assert.equal(r.feeds[0].label, "Sleeper league");
+  // Read as an ESPN league, the same payload has no ESPN sync.
+  assert.equal(computeSyncSummary(status(sync), NOW).text, "ESPN league never synced");
+  const failed = computeSyncSummary(status({ ...sync,
+    latest_runs: [...sync.latest_runs, { source: "sleeper", status: "failed", message: "boom", finished_at: "2026-10-14T13:00:00Z" }] }), NOW, "sleeper");
+  assert.equal(failed.text, "Sleeper league sync failed");
 });

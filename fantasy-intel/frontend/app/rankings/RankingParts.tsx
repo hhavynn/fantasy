@@ -18,6 +18,7 @@ export function RosterBadge({ roster }: { roster: RankingRow["roster"] }) {
 /** Badge values the shared `Badge` knows as availability codes (Q, D, O, IR, SSPD). */
 const AVAILABILITY_BADGE: Record<string, string> = {
   QUESTIONABLE: "QUESTIONABLE", DOUBTFUL: "DOUBTFUL", OUT: "OUT", IR: "IR", SUSPENDED: "SUSPENSION",
+  INJURY_RESERVE: "INJURY_RESERVE", SUSPENSION: "SUSPENSION",
 };
 
 /** Injury or bye marker for the identity line; nothing for a healthy player who plays. */

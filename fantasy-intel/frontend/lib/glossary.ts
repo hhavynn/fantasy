@@ -32,3 +32,16 @@ export const GLOSSARY = {
 } as const;
 
 export type GlossaryTerm = keyof typeof GLOSSARY;
+
+/**
+ * Definitions that change for a league whose provider publishes no projections (Sleeper): there every projection is
+ * Fantasy Intel's own. Elsewhere this is GLOSSARY unchanged.
+ */
+const NO_PROVIDER_PROJECTIONS: Partial<Record<GlossaryTerm, string>> = {
+  "Projected points": "A forecast of fantasy points in your league's scoring, from Fantasy Intel's own model: this league's provider publishes no projections.",
+  Ours: "Fantasy Intel's independent projection model. It is experimental; this league's provider publishes no projections, so every projection here is Ours.",
+};
+
+export function glossaryText(term: GlossaryTerm, providerProjections = true): string {
+  return (!providerProjections && NO_PROVIDER_PROJECTIONS[term]) || GLOSSARY[term];
+}

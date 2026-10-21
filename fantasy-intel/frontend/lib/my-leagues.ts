@@ -1,6 +1,8 @@
 // View-model logic for /leagues and a league's settings page (Phase 3): what the /v2 payloads mean for the UI.
 // Pure functions only (no Next, no fetch, no environment) so node --test covers them. The backend is authoritative.
 
+import { normalizeProvider, providerName, unnamedLeague } from "./labels.ts";
+
 export const NOT_ENABLED_REASON = "Multi-league support is not enabled in this deployment.";
 
 /** The feature flag is exactly "1": anything else (unset, "0", "true") is off. */
@@ -53,12 +55,20 @@ export function parseMyLeagues(payload: unknown): MyLeague[] {
   return list.map(parseMyLeague).filter((l): l is MyLeague => l !== null);
 }
 
-export function leagueName(l: Pick<MyLeague, "name" | "externalId">): string {
-  return l.name?.trim() || `ESPN league ${l.externalId}`;
+/** The league's stored name, or "ESPN league 123" / "Sleeper league 123" when it has none. */
+export function leagueName(l: Pick<MyLeague, "name" | "externalId"> & { provider?: string }): string {
+  return l.name?.trim() || unnamedLeague(l.provider, l.externalId);
 }
 
 /** What a reader of this league sees right now, in words, and how worried to be. */
-export function leagueState(l: Pick<MyLeague, "status" | "syncState" | "visibility">): { label: string; tone: Tone; detail: string } {
+export function leagueState(l: Pick<MyLeague, "status" | "syncState" | "visibility"> & { provider?: string }): { label: string; tone: Tone; detail: string } {
+  // Sleeper leagues are always public and need no cookies: a pause or a missing league is Sleeper's answer, not a credential.
+  if (normalizeProvider(l.provider) === "sleeper" && (l.status === "stale" || l.status === "unavailable")) {
+    const name = providerName(l.provider);
+    return l.status === "stale"
+      ? { label: "Sync paused", tone: "warn", detail: `${name} stopped answering for this league. The last data stays readable; syncing is retried automatically.` }
+      : { label: `Unavailable on ${name}`, tone: "bad", detail: `${name} no longer finds this league. The last data is kept for now.` };
+  }
   if (l.status === "stale") {
     return { label: "Sync paused", tone: "warn",
       detail: "The ESPN cookies for this league stopped working. The last data stays readable; a member can store fresh cookies in Settings." };
@@ -99,6 +109,21 @@ export function parseLeagueInput(text: string): { leagueId: string; season: numb
   if (!id) return null;
   const season = /[?&]seasonId=(\d{4})/.exec(value);
   return { leagueId: id[1], season: season ? Number(season[1]) : null };
+}
+
+/** A Sleeper league id (6 to 20 digits, usually 18), or a sleeper.com/leagues/<id>/… address. Null otherwise. */
+export function parseSleeperLeagueInput(text: string): { leagueId: string } | null {
+  const value = text.trim();
+  if (/^\d{6,20}$/.test(value)) return { leagueId: value };
+  const m = /^(?:https?:\/\/)?(?:www\.)?sleeper\.(?:com|app)\/leagues\/(\d{6,20})(?:[/?#].*)?$/i.exec(value);
+  return m ? { leagueId: m[1] } : null;
+}
+
+export type LeagueProviderChoice = "espn" | "sleeper";
+
+/** The provider picked on the add-league form; anything but "sleeper" is ESPN (the original form). */
+export function parseProviderChoice(value: unknown): LeagueProviderChoice {
+  return value === "sleeper" ? "sleeper" : "espn";
 }
 
 export function validSeason(value: string): number | null {

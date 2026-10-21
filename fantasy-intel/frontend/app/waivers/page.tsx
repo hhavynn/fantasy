@@ -6,6 +6,8 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
+import { OWNERSHIP_UNAVAILABLE, ownershipAvailable, projectionName, providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { parseSort, sortRows, type SearchParams } from "@/lib/sort";
 import { isUnknownTeam, readTeamSelection, selectedTeamId, withTeamId } from "@/lib/team-perspective";
 import { WAIVER_SORT_KEYS, competitionRank, pickTopClaims, trendRank, withParams } from "@/lib/waivers";
@@ -56,7 +58,14 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
   const recParam = first(sp.rec);
   const rec = recParam && ["CLAIM", "WAIT", "IGNORE"].includes(recParam) ? recParam : "ALL";
   const offset = Math.max(0, Number.parseInt(first(sp.offset) ?? "", 10) || 0);
-  const sort = parseSort(sp, WAIVER_SORT_KEYS, { key: "rank", dir: "asc" });
+  const profile = await getLeagueProfile();
+  const pv = providerName(profile.provider);
+  // Waivers follow the league's default projections (ESPN's; Ours where the provider publishes none).
+  const proj = projectionName(profile.defaultSource);
+  // Ownership % comes from ESPN only: a Sleeper league has none to show or sort by.
+  const ownership = ownershipAvailable(profile.provider);
+  const parsedSort = parseSort(sp, WAIVER_SORT_KEYS, { key: "rank", dir: "asc" });
+  const sort = !ownership && parsedSort.key === "owned" ? { key: "rank", dir: "asc" as const } : parsedSort;
 
   const query = (v: string, limit: number) => {
     const qs = new URLSearchParams({ view: v, limit: String(limit) });
@@ -103,8 +112,8 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
   const chipHref = (updates: Record<string, string | null>) => withParams(sp, { offset: null, ...updates });
 
   const empty = view === "BEST"
-    ? { title: "No supported actionable pickups in this view", body: "Check the watchlist for uncertain moves, or inspect all evaluated players and their constraints. Refresh ESPN and NFL data if snapshots are missing.", href: chipHref({ view: "WATCHLIST" }), linkText: "Browse stashes and watchlist" }
-    : { title: "No players match this view", body: "Loosen the position or recommendation filter, or inspect all evaluated players. Refresh ESPN and NFL data if snapshots are missing.", href: chipHref({ view: "ALL", pos: null, rec: null }), linkText: "Browse all evaluated players" };
+    ? { title: "No supported actionable pickups in this view", body: `Check the watchlist for uncertain moves, or inspect all evaluated players and their constraints. Refresh ${pv} and NFL data if snapshots are missing.`, href: chipHref({ view: "WATCHLIST" }), linkText: "Browse stashes and watchlist" }
+    : { title: "No players match this view", body: `Loosen the position or recommendation filter, or inspect all evaluated players. Refresh ${pv} and NFL data if snapshots are missing.`, href: chipHref({ view: "ALL", pos: null, rec: null }), linkText: "Browse all evaluated players" };
 
   return (
     <div className="stack">
@@ -116,13 +125,13 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
       />
       {res.data.roster_newer_than_analysis && (
         <Notice tone="caution" title="This roster changed after the waiver analysis ran">
-          ESPN rosters were re-synced after these suggestions were computed, so a suggested drop may already be gone and a fit may have changed.
+          {pv} rosters were re-synced after these suggestions were computed, so a suggested drop may already be gone and a fit may have changed.
           Rerun the analytics refresh before acting.
         </Notice>
       )}
 
       {band.ok
-        ? <TopClaims top={top} position={pos} />
+        ? <TopClaims top={top} position={pos} provider={pv} ownership={ownership} />
         : <Notice tone="caution" title="Top claims are unavailable">{band.error}</Notice>}
 
       <div className={styles.filters}>
@@ -163,11 +172,12 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         footnote={coverage
           ? <>
             {coverage.evaluated} of {coverage.eligible} eligible players in the stored pool evaluated · {coverage.excluded_by_limit} excluded by the per-position evaluation limit. {coverage.limitation}{" "}
-            Historical value and xFP are PPR-based heuristics; forward ESPN projections use the league&apos;s scoring. Advice reflects stored snapshots; verify transaction locks and current availability in ESPN.
+            Historical value and xFP are PPR-based heuristics; forward {proj} projections use the league&apos;s scoring. Advice reflects stored snapshots; verify transaction locks and current availability in {pv}.
+            {!ownership && <> {OWNERSHIP_UNAVAILABLE}</>}
           </>
           : "Decision coverage is unavailable. Run the analytics refresh to generate decision diagnostics."}
       >
-        <WaiverTable rows={pageRows} sort={sort} sp={spNoOffset} empty={empty} />
+        <WaiverTable rows={pageRows} sort={sort} sp={spNoOffset} empty={empty} ownership={ownership} proj={proj} />
       </Section>
 
       {/* An empty list already shows its EmptyState; no "0 results" line beneath it. */}
@@ -187,22 +197,22 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
             the recommendation itself does not come from the blended score. The waiver score stays on its own 0–10 scale; the opportunity and value ratings in the evidence are 0–100 relative ranks (legacy 0–10 values are labelled as such).
           </p>
           <ol>
-            <li><b>Player quality.</b> Historical opportunity and production, role trend, stored forward ESPN projections and context headlines. Unknown value stays unknown in a comparison.</li>
-            <li><b>Roster benefit.</b> The optimal current and fully comparable future starting lineups before and after the actual add and drop. A missing projection is never zero; a supplied zero is real. Future weeks use unmodified ESPN points and known byes, with IR excluded.</li>
+            <li><b>Player quality.</b> Historical opportunity and production, role trend, stored forward {proj} projections and context headlines. Unknown value stays unknown in a comparison.</li>
+            <li><b>Roster benefit.</b> The optimal current and fully comparable future starting lineups before and after the actual add and drop. A missing projection is never zero; a supplied zero is real. Future weeks use {proj === "ESPN" ? "unmodified ESPN points" : "Fantasy Intel's own projections (Ours)"} and known byes, with IR excluded.</li>
             <li><b>Feasibility and sacrifice.</b> Active capacity, positional caps, IR eligibility, snapshot freshness (72 hours) and starting-slot coverage. Every active single-player drop is considered; rejected choices and defensible alternatives are listed.</li>
             <li><b>Resources.</b> Free agent, waiver priority, FAAB or unknown rules. Priority in the top three is preserved for marginal gains. No precise bids and no claim-success probabilities.</li>
           </ol>
           <p>
             Thresholds are decision aids, not calibrated probabilities: a historical starter gain of at least 1 on the internal 0–10 value scale (about 10 points of the 0–100 value rating), a fully comparable forward gain of at least
-            1 ESPN point per week, and for a stash an internal value of at least 6 on that 0–10 scale with a same-position depth gain of at least 1 plus a real need or a rising role. Strong but unproven value stays at Monitor.
+            1 {proj} point per week, and for a stash an internal value of at least 6 on that 0–10 scale with a same-position depth gain of at least 1 plus a real need or a rising role. Strong but unproven value stays at Monitor.
           </p>
           <p>
             Kickers and defenses are compared forward against the team&apos;s weakest required starter. A gain of at least 1 upcoming point is a short-term stream; gains in two of the next three matchups make a multiweek hold.
             Lines and opponent context are shown as facts and never converted into invented fantasy points.
           </p>
           <p>
-            Competition is a coarse bucket from managers&apos; past adds and positional needs. It does not predict bids. Candidate coverage is the locally stored ESPN pool, up to 60 players per position
-            chosen from four lanes (forward projection, depth-chart role, historical value, ownership); it is not the whole NFL. Each pickup is a separate scenario against the team&apos;s current roster, not a combined claim queue.
+            Competition is a coarse bucket from managers&apos; past adds and positional needs. It does not predict bids. Candidate coverage is the locally stored {pv} pool, up to 60 players per position
+            chosen from four lanes (forward projection, depth-chart role, historical value{ownership ? ", ownership" : ""}); it is not the whole NFL. Each pickup is a separate scenario against the team&apos;s current roster, not a combined claim queue.
           </p>
         </div>
       </Method>

@@ -77,9 +77,12 @@ class ImmutableRunError(ValueError):
 
 _PA_TIERS = (89, 90, 91, 92, 121, 122, 123, 124, 125)
 _YA_TIERS = (128, 129, 130, 131, 132, 133, 134, 135, 136)
+_SLEEPER_PA_TIERS = (1089, 1090, 1091, 1092, 1093, 1094, 1095)     # synthetic ids of other providers' tiers
 _COUNT_STATS = (93, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 206, 209)
-MODELED = set(_COUNT_STATS) | {120, 127} | set(_PA_TIERS) | set(_YA_TIERS)
-DST_UNIVERSE = set(range(89, 138)) | {155, 156, 160} | set(range(187, 197)) | {205, 206, 209, 210}
+_SLEEPER_FF = 1106                                                  # forced fumbles, approximated (dst_research)
+MODELED = set(_COUNT_STATS) | {120, 127, _SLEEPER_FF} | set(_PA_TIERS) | set(_YA_TIERS) | set(_SLEEPER_PA_TIERS)
+DST_UNIVERSE = (set(range(89, 138)) | {155, 156, 160} | set(range(187, 197)) | {205, 206, 209, 210}
+                | set(_SLEEPER_PA_TIERS) | {_SLEEPER_FF})
 DST_SLOT = "16"
 
 

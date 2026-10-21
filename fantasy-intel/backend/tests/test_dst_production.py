@@ -83,9 +83,16 @@ def test_the_numpy_free_fingerprint_equals_the_research_model(con):
 OTHER_DST = [{"statId": 99, "points": 1.0}, {"statId": 95, "points": 2.0}, {"statId": 96, "points": 2.0},
              {"statId": 89, "points": 10.0}, {"statId": 90, "points": 7.0}, {"statId": 91, "points": 4.0},
              {"statId": 125, "points": -4.0}, {"statId": 103, "points": 6.0}]
+# Sleeper's default D/ST rules, translated: its points-allowed tiers (synthetic 1089-1095) and forced fumbles (106)
+SLEEPER_DST = [{"statId": 99, "points": 1.0}, {"statId": 95, "points": 2.0}, {"statId": 96, "points": 2.0},
+               {"statId": 1106, "points": 1.0}, {"statId": 98, "points": 2.0}, {"statId": 97, "points": 2.0},
+               {"statId": 103, "points": 6.0}, {"statId": 104, "points": 6.0},
+               {"statId": 1089, "points": 10.0}, {"statId": 1090, "points": 7.0}, {"statId": 1091, "points": 4.0},
+               {"statId": 1092, "points": 1.0}, {"statId": 1093, "points": 0.0}, {"statId": 1094, "points": -1.0},
+               {"statId": 1095, "points": -4.0}]
 
 
-@pytest.mark.parametrize("items", [LEAGUE, OTHER_DST], ids=["league", "other"])
+@pytest.mark.parametrize("items", [LEAGUE, OTHER_DST, SLEEPER_DST], ids=["league", "other", "sleeper"])
 def test_scoring_stats_rescore_exactly_and_the_numpy_free_description_matches(research_world, items):
     """dst_store re-scores a row's expected statistics to any league's points exactly as the model would, and
     describes the scoring exactly as dst_research does (multi-league Phase 4)."""
@@ -104,6 +111,27 @@ def test_scoring_stats_rescore_exactly_and_the_numpy_free_description_matches(re
     for a, b in zip(ref, direct):
         assert st.expected_points(weights, json.loads(json.dumps(a["scoring_stats"]))) == pytest.approx(b["pred"], abs=1e-5)
     assert st.describe_scoring(items) == target.describe()
+
+
+def test_sleeper_tiers_are_a_distribution_and_forced_fumbles_follow_recoveries(research_world):
+    rows, teams, scoring, hist = research_world
+    cfg = dr.DConfig(k=3.0)
+    feats = dr.rating_features(rows, hist, teams, cfg, 1)
+    tr = [i for i, r in enumerate(rows) if r["season"] in (2020, 2021, 2022)]
+    te = [i for i, r in enumerate(rows) if r["season"] == 2023][:6]
+    out = dr.project_season([rows[i] for i in tr], [feats[i] for i in tr], [rows[i] for i in te],
+                            [feats[i] for i in te], scoring, cfg)
+    for p in out:
+        s = p["scoring_stats"]
+        assert sum(s[str(t)] for t in dr.SLEEPER_PA_TIERS) == pytest.approx(1.0)
+        assert s["1106"] >= 0 and (s["1106"] == 0 or s["96"] > 0)
+
+
+def test_espn_points_are_unchanged_by_the_extra_statistics(research_world):
+    """No ESPN item weights the synthetic tiers, and the league fixture does not score forced fumbles."""
+    rows, teams, scoring, hist = research_world
+    assert not set(scoring.weights) & (set(dr.SLEEPER_PA_TIERS) | {dr.FF_STAT})
+    assert dr.ESPN_FF_STAT not in dr.MODELED      # an ESPN league scoring forced fumbles keeps ESPN's D/ST numbers
 
 
 def test_runs_are_write_once_verified_and_selected_under_the_league_scoring(con):

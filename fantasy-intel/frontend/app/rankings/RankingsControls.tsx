@@ -46,8 +46,13 @@ function Chips<T extends string>({ label, name, options, current, sp, param }: {
  * Position tabs, horizon / source / roster-status chips and the name search. Every control is a link or a
  * GET form, so the view lives in the URL (back, forward and sharing work). The roster filter needs the
  * league's rosters, so it appears only when the backend says the league context is available.
+ *
+ * `sourceChoice` false (a league whose provider publishes no projections, Sleeper) drops the ESPN / Ours chips: the
+ * page is always on Ours there.
  */
-export function RankingsControls({ sp, filters, leagueAvailable }: { sp: SearchParams; filters: RankingsFilters; leagueAvailable: boolean }) {
+export function RankingsControls({ sp, filters, leagueAvailable, sourceChoice = true }: {
+  sp: SearchParams; filters: RankingsFilters; leagueAvailable: boolean; sourceChoice?: boolean;
+}) {
   const posHref = (p: string) => rankingsHref(sp, { pos: p === "ALL" ? null : p });
   const hidden = carried(sp);
   const hasFilters = filters.pos !== "ALL" || filters.status !== "all" || filters.q !== "";
@@ -61,13 +66,13 @@ export function RankingsControls({ sp, filters, leagueAvailable }: { sp: SearchP
           <summary>
             <span className="filter-box-title">Filters</span>
             <span className="filter-box-summary">
-              {HORIZONS.find((h) => h.value === filters.horizon)?.label} · {SOURCES.find((x) => x.value === filters.source)?.label}
+              {HORIZONS.find((h) => h.value === filters.horizon)?.label}{sourceChoice ? ` · ${SOURCES.find((x) => x.value === filters.source)?.label}` : ""}
               {leagueAvailable ? ` · ${STATUSES.find((x) => x.value === filters.status)?.label === "All" ? "All players" : STATUSES.find((x) => x.value === filters.status)?.label}` : ""}
             </span>
           </summary>
           <div className={styles.chipRows}>
             <Chips label="Time window" name="Window" options={HORIZONS} current={filters.horizon} sp={sp} param="horizon" />
-            <Chips label="Projection source" name="Projections" options={SOURCES} current={filters.source} sp={sp} param="source" />
+            {sourceChoice && <Chips label="Projection source" name="Projections" options={SOURCES} current={filters.source} sp={sp} param="source" />}
             {leagueAvailable && <Chips label="Roster status" name="Roster" options={STATUSES} current={filters.status} sp={sp} param="status" />}
           </div>
         </details>

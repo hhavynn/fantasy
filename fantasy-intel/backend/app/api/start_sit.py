@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api", tags=["start-sit"])
 def get_start_sit(
     team_id: int | None = Query(None, description="Fantasy team ID (defaults to manager's team)"),
     week: int | None = Query(None, description="Fantasy scoring period / NFL week (defaults to current week)"),
-    source: str = Query("espn", description="Projection source: espn (default) | independent"),
+    source: str | None = Query(None, description="Projection source: espn | independent (default: the league's own, espn when it has ESPN projections, else independent)"),
 ):
     """Compare manager's actual ESPN lineup against optimal lock-constrained lineup."""
     with db() as con:

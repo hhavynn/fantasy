@@ -7,6 +7,8 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import {
   filterEntries, groupEntries, injuryHref, INJURY_POSITIONS, parseInjuryFilters, type InjuryEntry,
   type InjuryImpactResponse, type InjuryNotice,
@@ -38,19 +40,26 @@ const NOTICE_TITLE: Record<string, string> = {
   no_rosters: "League rosters not synced",
 };
 
-function DataNotices({ notices }: { notices: InjuryNotice[] }) {
+/** The notice titles that name the league's provider ("ESPN" unless the league is from elsewhere). */
+function noticeTitle(code: string, prov: string): string {
+  if (code === "espn_stale") return `${prov} statuses are old`;
+  if (code === "no_espn_players") return `No ${prov} players synced`;
+  return NOTICE_TITLE[code] ?? "Data notice";
+}
+
+function DataNotices({ notices, prov }: { notices: InjuryNotice[]; prov: string }) {
   if (notices.length === 0) return null;
   return (
     <div className={styles.notices}>
       {notices.map((n) => (
-        <Notice key={n.code} tone={n.tone} title={NOTICE_TITLE[n.code] ?? "Data notice"}>{n.text}</Notice>
+        <Notice key={n.code} tone={n.tone} title={noticeTitle(n.code, prov)}>{n.text}</Notice>
       ))}
     </div>
   );
 }
 
-function EntryList({ entries, team }: { entries: InjuryEntry[]; team: string | null }) {
-  return <div className={styles.entries}>{entries.map((e) => <ImpactEntry key={e.gsis_id} e={e} team={team} />)}</div>;
+function EntryList({ entries, team, labels }: { entries: InjuryEntry[]; team: string | null; labels: { prov: string; espn: boolean } }) {
+  return <div className={styles.entries}>{entries.map((e) => <ImpactEntry key={e.gsis_id} e={e} team={team} labels={labels} />)}</div>;
 }
 
 function Shell({ sp, current, week, children }: { sp: SearchParams; current: number | null; week?: number; children: ReactNode }) {
@@ -68,7 +77,9 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
   const sel = readTeamSelection(sp);
   if (sel.kind === "invalid") return <Shell sp={sp} current={null}><UnknownTeam path={PATH} sel={sel} /></Shell>;
   const filters = parseInjuryFilters(sp);
-  const res = await api<InjuryImpactResponse>(withTeamId("/api/injury-impact", sel));
+  const [res, profile] = await Promise.all([api<InjuryImpactResponse>(withTeamId("/api/injury-impact", sel)), getLeagueProfile()]);
+  const prov = providerName(profile.provider);
+  const labels = { prov, espn: profile.providerProjections };
 
   if (isUnknownTeam(res, sel)) {
     return <Shell sp={sp} current={null}><UnknownTeam path={PATH} sel={sel} detail={res.ok ? null : res.error} /></Shell>;
@@ -80,7 +91,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
         {notSynced ? (
           <Section>
             <EmptyState title="Your league isn't synced yet" action={<Link href="/data">Check data status</Link>}>
-              <p>The injury view needs your league&apos;s current week, ESPN players and the NFL usage history. Run the ESPN and NFL syncs, then reload this page.</p>
+              <p>The injury view needs your league&apos;s current week, {prov} players and the NFL usage history. Run the {prov} and NFL syncs, then reload this page.</p>
               <p className="faint">{res.error}</p>
             </EmptyState>
           </Section>
@@ -107,7 +118,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
           {report.available && report.current_week_rows > 0
             ? <>NFL injury report for week {data.week} synced</>
             : <>No week {data.week} NFL report yet</>}
-          {" "}· ESPN statuses {when(f.espn_players_synced_at)} · usage through week {f.usage_through_week ?? "—"}
+          {" "}· {prov} statuses {when(f.espn_players_synced_at)} · usage through week {f.usage_through_week ?? "—"}
           {f.depth_chart_as_of && <> · depth charts {when(f.depth_chart_as_of)}</>}.
         </p>
         <p className="faint">
@@ -119,12 +130,12 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
         </p>
       </div>
 
-      <DataNotices notices={data.notices} />
+      <DataNotices notices={data.notices} prov={prov} />
 
       <Notice tone="info" title="Observed history first, estimates labelled">
         Workloads and with/without splits are counted from this season&apos;s games. The pro-rata share (dashed) is a quick estimate of
         who absorbs the vacated volume; read it beside the observed games.
-        ESPN numbers are ESPN&apos;s own weekly projection.
+        {labels.espn && <>{" "}ESPN numbers are ESPN&apos;s own weekly projection.</>}
       </Notice>
 
       {data.league_context.available && (
@@ -166,7 +177,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
         <>
           <Section title={<>This week <span className={styles.count}>{groups.upcoming.length} {plural(groups.upcoming.length, "player")}</span></>}
             subtitle="Games still to play, most severe and biggest role first.">
-            {groups.upcoming.length > 0 ? <EntryList entries={groups.upcoming} team={team} />
+            {groups.upcoming.length > 0 ? <EntryList entries={groups.upcoming} team={team} labels={labels} />
               : <p className={styles.emptyGroup}>No absence in this view has a game still to play.</p>}
           </Section>
           {groups.longTerm.length > 0 && (
@@ -175,7 +186,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
                 Long-term absences <span className={styles.count}>{groups.longTerm.length}</span>
                 <span className={styles.summaryNote}>Out {data.method.thresholds.long_term_missed}+ straight games; teammates&apos; recent usage already reflects it</span>
               </summary>
-              <EntryList entries={groups.longTerm} team={team} />
+              <EntryList entries={groups.longTerm} team={team} labels={labels} />
             </details>
           )}
           {groups.done.length > 0 && (
@@ -184,7 +195,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
                 Already kicked off or on a bye <span className={styles.count}>{groups.done.length}</span>
                 <span className={styles.summaryNote}>Status no longer affects this week</span>
               </summary>
-              <EntryList entries={groups.done} team={team} />
+              <EntryList entries={groups.done} team={team} labels={labels} />
             </details>
           )}
         </>
@@ -194,7 +205,7 @@ export default async function InjuryImpactPage({ searchParams }: PageProps<"/inj
       <Method title="How injury impact is calculated">
         <div className={styles.method}>
           <p><b>Who is listed.</b> Every QB, RB, WR and TE whose status this week is questionable, doubtful, out, on injured reserve or suspended,
-            taking the more severe of ESPN&apos;s status and the week&apos;s NFL injury report. He must have played for his current team this season
+            taking the more severe of {prov}&apos;s status and the week&apos;s NFL injury report. He must have played for his current team this season
             with a real role (at least {Math.round(data.method.thresholds.min_snap_share * 100)}% of snaps or {data.method.thresholds.min_opportunities_per_game} carries
             plus targets a game; quarterbacks {Math.round(data.method.thresholds.min_qb_snap_share * 100)}% of snaps), or be on a fantasy roster in your league.
             {data.counts.skipped.no_games + data.counts.skipped.small_role > 0 && <> Left out this week: {data.counts.skipped.no_games} without a game this season and {data.counts.skipped.small_role} with a small role.</>}</p>

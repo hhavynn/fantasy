@@ -2,7 +2,7 @@ import { LineChart } from "@/components/charts";
 import { OriginTag } from "@/components/ProjectionNotice";
 import { RangeLine } from "@/components/RangeLine";
 import { Badge, Notice, Section, Stat, StatStrip } from "@/components/ui";
-import { oursBlock, oursByWeek, oursCell, oursNotice, oursPoints, oursTotalNote } from "@/lib/forward-view";
+import { isOursNumber, oursBlock, oursByWeek, oursCell, oursNotice, oursPoints, oursTotalNote } from "@/lib/forward-view";
 import { RANGE_FOOTNOTE, type PlayerRange } from "@/lib/projection-ranges";
 import { num, pct, when } from "@/lib/format";
 import { valueDomain } from "@/lib/player-usage";
@@ -13,14 +13,18 @@ const weeksRange = (weeks: number[]) => (weeks.length ? `wk ${weeks.join(", ")}`
 const INCOMPLETE = "Not every week in this window has an ESPN projection, so no total is shown (missing weeks are not counted as 0)";
 
 const OURS_INCOMPLETE = "Not every remaining week has a Fantasy Intel projection (ESPN's number is shown in those weeks), so no total is shown";
+const OURS_ONLY_INCOMPLETE = "Not every remaining week has a Fantasy Intel projection, so no total is shown (missing weeks are not counted as 0)";
 
 /**
  * ESPN's own weekly projections for every remaining fantasy week, shown unmodified: season-to-go
  * totals, a week-by-week table with the opponent, and the same numbers as a line (byes are gaps).
  * When the visitor's switch is on "Ours" the response also carries Fantasy Intel's series for the remaining
  * regular season: shown next to ESPN's, with ESPN-fallback weeks marked.
+ * `espnProjections` false (a Sleeper league, whose provider publishes no projections): only the Ours series is shown,
+ * with no ESPN column, totals or line.
  */
-export function ForwardView({ f, range = null }: { f: ForwardProjection; range?: PlayerRange | null }) {
+export function ForwardView({ f, range = null, espnProjections = true }: { f: ForwardProjection; range?: PlayerRange | null; espnProjections?: boolean }) {
+  if (!espnProjections) return <OursForwardView f={f} range={range} />;
   const s = f.summary;
   const span = (available: number | null, expected: number | null) => (expected === null ? "" : `${available}/${expected} wk`);
   const splitKnown = s.last_regular_season_week !== null;
@@ -117,6 +121,86 @@ export function ForwardView({ f, range = null }: { f: ForwardProjection; range?:
             {oursLine && fallback.length > 0 && <> Ours is also a gap in wk {fallback.join(", ")} (ESPN fallback).</>}
           </p>
         </div>
+      </div>
+    </Section>
+  );
+}
+
+/** The forward view of a league with no ESPN projections: Fantasy Intel's regular-season series alone. */
+function OursForwardView({ f, range }: { f: ForwardProjection; range: PlayerRange | null }) {
+  const s = f.summary;
+  const ours = oursBlock(f);
+  const oursOn = ours?.available === true;
+  const oursWeeks = ours && oursOn ? oursByWeek(ours) : null;
+  const oursLine = ours && oursOn ? oursPoints(f.weeks, ours) : null;
+  const notice = ours ? oursNotice(ours, false) : { title: "Fantasy Intel projections are not ready yet", text: "Fantasy Intel has no projections for the remaining weeks yet." };
+  const thisWeek = oursWeeks?.get(s.as_of_week);
+  const thisWeekOnBye = f.weeks.find((w) => w.week === s.as_of_week)?.on_bye === true;
+  const labels = f.weeks.map((w) => String(w.week));
+  return (
+    <Section
+      title="Forward view"
+      actions={<span className="faint">Ours · weeks {s.as_of_week}–{s.final_week}</span>}
+      flush
+      footnote={<>
+        {ours?.label ? <>{ours.label}. </> : null}Fantasy Intel&apos;s own weekly projections in your league&apos;s scoring; this league&apos;s provider
+        publishes none. Ours covers the regular season only, and totals require every week in the window (a projected 0 counts, a missing week does not).
+        Byes come from the NFL schedule, not from a 0 projection.
+        {oursOn && range && <> {RANGE_FOOTNOTE}</>}
+      </>}
+    >
+      {notice && <Notice tone="caution" title={notice.title}>{notice.text}</Notice>}
+      <div className={styles.stripBlock}>
+        <StatStrip>
+          <Stat label="This week"
+            value={thisWeekOnBye ? "Bye" : num(thisWeek && isOursNumber(thisWeek) ? thisWeek.value : null, 1, "No Fantasy Intel projection for this week")}
+            note={thisWeekOnBye ? `week ${s.as_of_week} · no game` : `week ${s.as_of_week}`} />
+          {ours && oursOn && (
+            <Stat label="Ours: regular season left" value={num(ours.ros_projected_points, 1, OURS_ONLY_INCOMPLETE)} note={oursTotalNote(ours, false)} />
+          )}
+          <Stat label="Remaining bye"
+            value={s.bye_weeks_remaining === null ? <span className="missing" title="NFL schedule or team unknown for at least one remaining week">?</span> : s.bye_weeks_remaining === 0 ? "None" : weeksRange(s.bye_weeks)} />
+        </StatStrip>
+      </div>
+      <div className={styles.forward}>
+        <div className={`table-wrap ${styles.forwardTable}`}>
+          <table>
+            <thead>
+              <tr><th>Week</th><th>Opponent</th><th className="num" title={ours?.label}>Ours</th><th>Bye</th><th>Phase</th></tr>
+            </thead>
+            <tbody>
+              {f.weeks.map((w) => (
+                <tr key={w.week}>
+                  <td>{w.week}</td>
+                  <td>
+                    {w.on_bye ? <span className="faint">—</span>
+                      : w.opponent ? `${w.is_home ? "vs" : "@"} ${w.opponent}`
+                        : <span className="missing" title="NFL schedule unavailable">—</span>}
+                  </td>
+                  <OursTd cell={oursCell(oursWeeks?.get(w.week), ours?.model_version)} range={w.week === s.as_of_week ? range : null} />
+                  <td>{w.on_bye === null ? <span className="missing" title="Schedule unknown">?</span> : w.on_bye ? <Badge value="BYE" tone="warn" /> : null}</td>
+                  <td className={styles.phase}>{w.phase === "playoff" ? "Playoffs" : w.phase === "regular" ? "Regular" : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {oursLine && (
+          <div className={styles.forwardChart}>
+            <h3 className={styles.chartTitle}>Projection by week</h3>
+            <LineChart
+              series={[{ id: "ours", label: "Ours", points: oursLine }]}
+              xLabels={labels}
+              yFormat={(v) => String(Math.round(v * 10) / 10)}
+              yDomain={valueDomain(oursLine, "pts")}
+              height={200}
+              width={420}
+              markers
+              ariaLabel="Ours projection by remaining week"
+            />
+            <p className={styles.chartNote}>Bye weeks are gaps: a bye is not a projected zero.</p>
+          </div>
+        )}
       </div>
     </Section>
   );

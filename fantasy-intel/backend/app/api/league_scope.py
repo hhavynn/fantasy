@@ -17,6 +17,7 @@ The handlers are unchanged. Responses carry `Cache-Control: private, no-store` a
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import tempfile
@@ -30,6 +31,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 
 from ..config import get_settings
+from . import provider_copy
 from .deps import LEAGUE_SCOPE, LeagueScope, layered_databases
 from .leagues_v2 import NOT_FOUND, current_principal, valid_league_id
 
@@ -74,6 +76,9 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
         raise HTTPException(401, SIGN_IN) from None
     except ControlPlaneUnavailable:
         raise HTTPException(503, UNAVAILABLE) from None
+    if access.provider == "sleeper" and get_settings().sleeper_source == "disabled":
+        from .connect import SLEEPER_UNAVAILABLE
+        raise HTTPException(503, SLEEPER_UNAVAILABLE)     # the rollback switch (SLEEPER_SOURCE=disabled)
     if access.snapshot is None:
         # The detail stays a plain string (what the dashboard shows); the state travels in a header.
         raise HTTPException(409, FIRST_SYNC, headers={"X-FI-Sync-State": access.sync_state})
@@ -101,7 +106,7 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
     if chosen is None and team_param is not None:
         chosen = perspective_team(team_param)
     return LeagueScope(access.league_id, league_path, global_path, snap.data_version, snap.global_version,
-                       access.visibility_epoch, chosen)
+                       access.visibility_epoch, chosen, access.provider)
 
 
 # ---- per-instance response cache ------------------------------------------------------------------------------------
@@ -233,6 +238,10 @@ def mount_legacy_routers(app, routers, require_enabled, *, owner_only=()) -> Non
                            dependencies=[Depends(require_enabled), *admin, Depends(league_scope, scope="function")])
 
 
+def _json_response(response) -> bool:
+    return (response.media_type or response.headers.get("content-type", "")).startswith("application/json")
+
+
 async def add_scope_headers(request: Request, call_next):
     """Private, uncached by browsers and proxies, naming the versions read; successful GETs go into the response
     cache on the way out."""
@@ -241,13 +250,20 @@ async def add_scope_headers(request: Request, call_next):
     if scope is None:
         return response
     key = getattr(request.state, "fi_cache_key", None)
-    if key is not None and response.status_code == 200 and "x-fi-cache" not in response.headers:
+    fresh = response.status_code == 200 and "x-fi-cache" not in response.headers
+    reword = fresh and scope.provider != "espn" and _json_response(response) and \
+        provider_copy.applies(request.url.path.split(f"/v2/leagues/{scope.league_id}", 1)[-1])
+    if (key is not None and fresh) or reword:
         body = b"".join([chunk async for chunk in response.body_iterator])
-        response_cache().put(key, response.status_code, body, response.media_type or "application/json")
+        if reword:          # before caching, so a cache hit is worded the same way
+            body = provider_copy.dumps(provider_copy.rewrite(json.loads(body)))
+        if key is not None and fresh:
+            response_cache().put(key, response.status_code, body, response.media_type or "application/json")
         headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
         response = Response(content=body, status_code=response.status_code, headers=headers,
                             media_type=response.media_type)
-        response.headers["X-FI-Cache"] = "miss"
+        if key is not None and fresh:
+            response.headers["X-FI-Cache"] = "miss"
     response.headers["Cache-Control"] = "private, no-store"
     response.headers["X-FI-Data-Version"] = scope.data_version
     response.headers["X-FI-Global-Version"] = scope.global_version

@@ -60,7 +60,7 @@ from __future__ import annotations
 from collections import Counter
 
 from .lineup import FLEX_ELIGIBILITY
-from .team_lineups import (PROJECTION_SOURCE, RosterPlayer, Window, _pareto, compare, lineup_relevant, project_team,
+from .team_lineups import (PROJECTION_SOURCE, RosterPlayer, source_label, Window, _pareto, compare, lineup_relevant, project_team,
                            project_week, projection, r, slot_filled, starters)
 from .trade_discovery import _Totals
 from .trades import EvaluationUnavailable, LeagueState, TradeError, choose_forced_drops, legal_roster, side_lineups
@@ -650,7 +650,7 @@ def analyze(state: LeagueState, team_a: int, team_b: int, a_sends: list[int], b_
         "pool": {"available_players_scored": len(board.pool),
                  "excluded_unprojected": dict(sorted(board.excluded_unprojected.items())),
                  "acquisition_types": dict(sorted(Counter(board.kind[p.espn_player_id] for p in board.pool).items()))},
-        "projection_source": PROJECTION_SOURCE,
+        "projection_source": source_label(state.projection_source),
         "assumptions": ASSUMPTIONS, "limitations": LIMITATIONS,
     }
 

@@ -9,6 +9,8 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, EmptyState, Method, Notice, PageHeader, Pos, Rating, Score, Section, Stat, StatStrip, Tabs } from "@/components/ui";
 import { api, type ApiResult } from "@/lib/api";
 import { date, num } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
 import { compositionSeries, parseTab } from "@/lib/manager-view";
 import { ConfDot, DIMENSION_TITLES, formatMetric, labelTone } from "@/lib/managers";
@@ -84,7 +86,8 @@ export default async function ManagerDetail({ params, searchParams }: PageProps<
 
 type ScoutingResult = ApiResult<Report> | null;
 
-function Overview({ d, scouting }: { d: Detail; scouting: ScoutingResult }) {
+async function Overview({ d, scouting }: { d: Detail; scouting: ScoutingResult }) {
+  const prov = providerName((await getLeagueProfile()).provider);
   const t = d.team;
   const league = d.league;
   const order = Object.keys(DIMENSION_TITLES);
@@ -97,7 +100,7 @@ function Overview({ d, scouting }: { d: Detail; scouting: ScoutingResult }) {
       <StatStrip>
         <Stat label="Record" value={`${t.wins}–${t.losses}${t.ties ? `–${t.ties}` : ""}`} note={t.playoff_seed ? `seed ${t.playoff_seed}` : "no seed yet"} />
         <Stat label="Points for" value={num(t.points_for, 1)} note={`${num(t.points_against, 1)} against`} />
-        <Stat label="Acquisitions / drops" value={`${t.acquisitions ?? "—"} / ${t.drops ?? "—"}`} note="ESPN counters" />
+        <Stat label="Acquisitions / drops" value={`${t.acquisitions ?? "—"} / ${t.drops ?? "—"}`} note={`${prov} counters`} />
         <Stat label="Trades" value={t.trades ?? "—"} note={t.move_to_ir !== null ? `${t.move_to_ir} IR moves` : undefined} />
         <Stat
           label={league.is_faab ? "FAAB spent" : "Waiver priority"}
@@ -232,18 +235,19 @@ function Overview({ d, scouting }: { d: Detail; scouting: ScoutingResult }) {
   );
 }
 
-function Transactions({ d }: { d: Detail }) {
+async function Transactions({ d }: { d: Detail }) {
+  const prov = providerName((await getLeagueProfile()).provider);
   return (
     <>
       {d.failed_claims.length > 0 && (
-        <Section title="Unsuccessful waiver claims" flush footnote="Visible in ESPN's transaction log.">
+        <Section title="Unsuccessful waiver claims" flush footnote={`Visible in ${prov}'s transaction log.`}>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Date</th><th>Wk</th><th>Player</th><th>Status</th><th className="num">Bid</th></tr></thead>
               <tbody>
                 {d.failed_claims.map((f) => (
                   <tr key={f.transaction_id}>
-                    <td>{date(f.date)}</td><td>{f.scoring_period}</td>
+                    <td>{date(f.date, prov)}</td><td>{f.scoring_period}</td>
                     <td>{f.full_name} {f.position && <Pos value={f.position} />}</td>
                     <td className="faint">{f.status}</td><td className="num">{f.bid_amount ? `$${f.bid_amount}` : ""}</td>
                   </tr>
@@ -253,9 +257,9 @@ function Transactions({ d }: { d: Detail }) {
           </div>
         </Section>
       )}
-      <Section title="Transaction history" flush={d.moves.length > 0} footnote="Adds, drops and trades as recorded by ESPN; the evidence behind the tendencies.">
+      <Section title="Transaction history" flush={d.moves.length > 0} footnote={`Adds, drops and trades as recorded by ${prov}; the evidence behind the tendencies.`}>
         {d.moves.length === 0
-          ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next ESPN sync.</EmptyState>
+          ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next {prov} sync.</EmptyState>
           : <MovesTable moves={d.moves} showTeam={false} />}
       </Section>
     </>

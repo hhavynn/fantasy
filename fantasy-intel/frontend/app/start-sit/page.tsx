@@ -12,6 +12,8 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { showingOurs, withSource } from "@/lib/projection-source";
 import { EMPTY_RANGES, RANGE_FOOTNOTE, rangeFor, type RangeMap } from "@/lib/projection-ranges";
 import { getRanges } from "@/lib/projection-ranges.server";
@@ -58,7 +60,11 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
     );
   }
 
-  const res = await api<StartSitResponse>(withTeamId(withSource(`/api/start-sit?${qs.toString()}`, await getProjectionSource()), sel));
+  const [source, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
+  const res = await api<StartSitResponse>(withTeamId(withSource(`/api/start-sit?${qs.toString()}`, source), sel));
+  // Where lineups are submitted, and whether ESPN projections exist at all (not for a Sleeper league: all Ours).
+  const provider = providerName(profile.provider);
+  const espnProjections = profile.providerProjections;
   if (isUnknownTeam(res, sel)) {
     return (
       <div className="stack">
@@ -81,7 +87,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
   const ours = showingOurs(d.projection_source_detail);
   const ranges = ours ? await getRanges(d.scoring_period) : EMPTY_RANGES;
   const rangeNote = ranges.size > 0 ? ` ${RANGE_FOOTNOTE}` : "";
-  const projLabel = ours ? "Fantasy Intel (research) projected points for the week" : "ESPN projected points for the week";
+  const projLabel = ours || !espnProjections ? "Fantasy Intel (research) projected points for the week" : "ESPN projected points for the week";
   const moves = decisions.filter((x) => x.action !== "NO_CHANGE");
   const actionable = moves.filter((x) => x.actionability === "ACTIONABLE").length;
   const hasLineup = summary.starters_count > 0;
@@ -133,7 +139,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
             <VerdictFigure
               label="Submitted (proj)"
               value={actual.value === null ? <Missing why="No submitted lineup for this week" /> : <>{num(actual.value, 1)}{actual.partial ? "*" : null}</>}
-              note={!hasLineup ? "No submitted lineup" : actual.partial ? "*Partial: some starters lack a projection" : "Current ESPN starters, projected pts"}
+              note={!hasLineup ? "No submitted lineup" : actual.partial ? "*Partial: some starters lack a projection" : `Current ${provider} starters, projected pts`}
             />
             <VerdictFigure
               label="Recommended (proj)"
@@ -168,7 +174,8 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
 
       {d.is_future_preview && (
         <Notice tone="info" title={`Future week preview (week ${d.scoring_period})`}>
-          Lineup assignments are an informational projection based on current roster assets. ESPN does not accept lineup submissions for a future scoring period until the current week concludes.
+          Lineup assignments are an informational projection based on current roster assets.
+          {profile.provider === "espn" ? " ESPN does not accept lineup submissions for a future scoring period until the current week concludes." : null}
         </Notice>
       )}
 
@@ -239,11 +246,13 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         unconstrained={unconstrained_lineup}
       />
 
-      <Glossary terms={["Projected points", "Projected gain", "Kickoff lock", "FLEX", "IR", "Ours", "—"]} />
+      <Glossary terms={["Projected points", "Projected gain", "Kickoff lock", "FLEX", "IR", "Ours", "—"]} providerProjections={profile.providerProjections} />
       <Method title="How this is calculated">
         <p className={styles.prose}>
-          Three lineups are compared for the week: the submitted ESPN lineup, the best lineup under kickoff locks (the one recommended here),
-          and an unconstrained optimum used only as a benchmark. {ours
+          Three lineups are compared for the week: the submitted {provider} lineup, the best lineup under kickoff locks (the one recommended here),
+          and an unconstrained optimum used only as a benchmark. {!espnProjections
+            ? "Projections are Fantasy Intel's independent expected points."
+            : ours
             ? "Projections are Fantasy Intel's independent expected points (switch in the header); players marked ESPN keep ESPN's number."
             : "Projections are unmodified ESPN weekly projections."} Players whose games
           have kicked off keep their slots, and fantasy IR or NFL-ineligible players are never promoted.
@@ -258,7 +267,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
       </Method>
 
       <p className={styles.fresh}>
-        Lineup synced {when(d.freshness.lineup_synced_at)} · ESPN projections synced {when(d.freshness.projection_synced_at)} · NFL schedule synced {when(d.freshness.nfl_schedule_synced_at)}
+        Lineup synced {when(d.freshness.lineup_synced_at)} · {espnProjections ? "ESPN projections" : "Projections"} synced {when(d.freshness.projection_synced_at)} · NFL schedule synced {when(d.freshness.nfl_schedule_synced_at)}
       </p>
     </div>
   );

@@ -35,7 +35,7 @@ from . import dst_store, kicker_store
 from . import production_forecasts as pf
 from .kicker_scoring import expected_points as kicker_points
 from .kicker_scoring import league_items, resolve_kicker_scoring
-from .league_scoring import COMPONENT_COLUMNS, SkillScoring, points, resolve_skill_scoring
+from .league_scoring import MIX_COLUMNS, SkillScoring, points, resolve_skill_scoring
 
 MIX_GAMES = 8
 MIX_MIN_GAMES = 3
@@ -70,7 +70,7 @@ def stat_mix(con, through: tuple[int, int]) -> dict[str, dict[str, float]]:
     season, week = through
     have = {r["column_name"] for r in fetch_dicts(
         con, "SELECT column_name FROM duckdb_columns() WHERE table_name = 'nfl_weekly_stats'")}
-    cols = [c for c in COMPONENT_COLUMNS if c in have]
+    cols = [c for c in MIX_COLUMNS if c in have]
     if not cols:
         return {}
     avg = ", ".join(f"avg(coalesce({c}, 0)) AS {c}" for c in cols)
@@ -110,8 +110,8 @@ def rescore_skill_rows(rows: Iterable[dict], mix: dict, ref: SkillScoring, targe
             continue
         flags = list(_json(r["flags"]) or [])
         m = mix.get(r["gsis_id"]) or mix.get("__pos__" + str(r["position"]))
-        a = None if m is None else points(m, ref)
-        b = None if m is None else points(m, target)
+        a = None if m is None else points(m, ref, r["position"])
+        b = None if m is None else points(m, target, r["position"])
         if a is None or b is None:
             out.append({**r, "coverage_status": "insufficient_data", "projected_points": None, "interval_low": None,
                         "interval_high": None, "expected_points": None, "flags": [*flags, NO_MIX_FLAG]})
@@ -146,7 +146,10 @@ def _rescore_expected(rows: Iterable[dict], score) -> list[dict] | None:
         line = _json(r["stat_line"]) or {}
         if "scoring_stats" not in line:
             return None
-        pts = round(score(line["scoring_stats"]), 2)
+        pts = score(line["scoring_stats"])
+        if pts is None:
+            return None
+        pts = round(pts, 2)
         old = r["projected_points"]
         shift = {k: None if r.get(k) is None else round(max(r[k] + pts - old, 0.0), 2)
                  for k in ("interval_low", "interval_high")}

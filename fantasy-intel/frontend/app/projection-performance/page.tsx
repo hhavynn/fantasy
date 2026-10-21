@@ -2,6 +2,7 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { EmptyState, Notice, PageHeader, Section, Stat, StatStrip } from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { plural } from "@/lib/plural";
 import type { ReplayResponse } from "@/lib/model-replay";
 import { POSITIONS, headline, weeksText, type PerformanceResponse } from "@/lib/projection-performance";
@@ -15,6 +16,18 @@ const TITLE = "Projection performance";
 const META = "Fantasy Intel's production projections against ESPN's pregame projections, scored only on fully final NFL weeks.";
 
 export default async function ProjectionPerformancePage() {
+  // The page scores Ours against ESPN's pregame projections: nothing to score where the provider publishes none.
+  if (!(await getLeagueProfile()).providerProjections) {
+    return (
+      <div className="stack">
+        <PageHeader eyebrow="Players · Research" title={TITLE} meta={META} />
+        <Notice tone="info" title="Not applicable for this league">
+          This page compares Fantasy Intel&apos;s projections with ESPN&apos;s pregame projections. This league&apos;s provider
+          publishes no projections, so every projection here is Fantasy Intel&apos;s own and there is no ESPN comparison to show.
+        </Notice>
+      </div>
+    );
+  }
   const [res, rep] = await Promise.all([
     api<PerformanceResponse>("/api/projections/performance"),
     api<ReplayResponse>("/api/projections/replay"),

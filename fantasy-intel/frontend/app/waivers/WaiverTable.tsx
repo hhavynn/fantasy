@@ -13,13 +13,16 @@ const COLS = 7;
 
 /**
  * One tbody per player: the decision row, then a quiet row holding the collapsible evidence.
- * `sp` is the search params without `offset`, so a sort link starts again from the first page.
+ * `sp` is the search params without `offset`, so a sort link starts again from the first page. `ownership` false
+ * (a Sleeper league: no ESPN ownership numbers) drops the % owned column; `proj` names the forward projections.
  */
-export function WaiverTable({ rows, sort, sp, empty }: {
+export function WaiverTable({ rows, sort, sp, empty, ownership = true, proj = "ESPN" }: {
   rows: WaiverRow[];
   sort: SortState;
   sp: SearchParams;
   empty: { title: string; body: string; href: string; linkText: string };
+  ownership?: boolean;
+  proj?: string;
 }) {
   if (rows.length === 0) {
     return (
@@ -37,7 +40,7 @@ export function WaiverTable({ rows, sort, sp, empty }: {
             <th scope="col">Move</th>
             <SortableTh sortKey="score" label="Score" align="right" current={sort} searchParams={sp} title="Waiver score, 0–10 (not a 0–100 rating): a compatibility heuristic, not a probability" />
             <SortableTh sortKey="trend" label="Role trend" defaultDir="desc" current={sort} searchParams={sp} title="Composite usage trend: rising, flat, falling" />
-            <SortableTh sortKey="owned" label="% owned" align="right" current={sort} searchParams={sp} title="ESPN % owned and its change this week; sorts by the change" />
+            {ownership && <SortableTh sortKey="owned" label="% owned" align="right" current={sort} searchParams={sp} title="ESPN % owned and its change this week; sorts by the change" />}
             <SortableTh sortKey="competition" label="Competition" defaultDir="desc" current={sort} searchParams={sp} title="League interest from managers' historical tendencies and needs; not a forecast of bids" />
             <th scope="col">Give up</th>
           </tr>
@@ -67,16 +70,16 @@ export function WaiverTable({ rows, sort, sp, empty }: {
                 </td>
                 <td className="num"><Score value={w.waiver_score} label="Waiver score" /></td>
                 <td><RoleTrend trend={w.role_trend} /></td>
-                <td className="num"><OwnedDelta row={w} /></td>
+                {ownership && <td className="num"><OwnedDelta row={w} /></td>}
                 <td><Competition row={w} /></td>
                 <td className={styles.giveUp}><GiveUp row={w} /></td>
               </tr>
               <tr className={styles.more}>
-                <td colSpan={COLS}>
+                <td colSpan={ownership ? COLS : COLS - 1}>
                   <details className={styles.details}>
                     <summary>Reasons, alternatives and trade-offs</summary>
                     {d
-                      ? <Evidence row={w} decision={d} />
+                      ? <Evidence row={w} decision={d} proj={proj} />
                       : (
                         <div className={styles.evidence}>
                           <p>Refresh analytics to generate roster legality and acquisition advice.</p>

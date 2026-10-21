@@ -1,7 +1,10 @@
 // Weekly projection source: ESPN (default) or Fantasy Intel's independent model ("ours").
 // The choice lives in a cookie so it follows the user across pages; the backend applies it when a
 // request carries `source=independent` (Start/Sit, Matchup and the player forward view; trades, waivers, team
-// value and the playoff race stay on ESPN).
+// value and the playoff race stay on ESPN). A league whose provider publishes no projections (Sleeper) has no
+// choice: every page is on Ours, the cookie is ignored and the switch is hidden.
+
+import type { LeagueProfile } from "./league-profile.ts";
 
 export type ProjectionSource = "espn" | "ours";
 export type ProjectionOrigin = "ours" | "ours_zero" | "espn";
@@ -37,6 +40,16 @@ export type ProjectionSourceDetail = {
 
 export function parseProjectionSource(v: string | null | undefined): ProjectionSource {
   return v === "ours" ? "ours" : "espn";
+}
+
+/** The source a page uses: the visitor's choice, except where the league's provider has no projections (always Ours). */
+export function effectiveProjectionSource(choice: ProjectionSource, profile: Pick<LeagueProfile, "providerProjections"> | null | undefined): ProjectionSource {
+  return profile && !profile.providerProjections ? "ours" : choice;
+}
+
+/** The ESPN / Ours switch only means something where the provider publishes projections. */
+export function projectionSwitchVisible(profile: Pick<LeagueProfile, "providerProjections"> | null | undefined): boolean {
+  return !profile || profile.providerProjections;
 }
 
 /** Add the backend's `source` parameter to an API path; the ESPN default leaves the path unchanged. */

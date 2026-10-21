@@ -5,6 +5,8 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { plural } from "@/lib/plural";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import {
@@ -30,8 +32,23 @@ function unrankedParts(u: RankingsResponse["counts"]["unranked"]): string[] {
   return parts;
 }
 
-function SourceNotices({ data, filters }: { data: RankingsResponse; filters: RankingsFilters }) {
+function SourceNotices({ data, filters, providerProjections }: { data: RankingsResponse; filters: RankingsFilters; providerProjections: boolean }) {
   const ours = data.projection.ours;
+  if (!providerProjections) {
+    // Sleeper: no ESPN numbers exist, so nothing is ranked "by ESPN" and there is nothing beside Ours.
+    if (data.projection.basis === "ours") {
+      return (
+        <Notice tone="info" title="Ranked by Fantasy Intel projections">
+          Ours is Fantasy Intel&apos;s own projection model; this league&apos;s provider publishes no projections. A player with no Ours estimate is listed unranked.
+        </Notice>
+      );
+    }
+    return (
+      <Notice tone="caution" title="Ours is unavailable here, so players are listed unranked">
+        {ours?.reason ?? data.scoring.ours_reason ?? "Fantasy Intel has no usable independent projections for this window."}
+      </Notice>
+    );
+  }
   if (data.projection.basis === "ours") {
     return (
       <Notice tone="info" title="Ranked by Fantasy Intel projections">
@@ -51,7 +68,12 @@ function SourceNotices({ data, filters }: { data: RankingsResponse; filters: Ran
 
 export default async function RankingsPage({ searchParams }: PageProps<"/rankings">) {
   const sp = (await searchParams) as SearchParams;
-  const filters = parseRankingsFilters(sp, await getProjectionSource());
+  const [source, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
+  const espnOn = profile.providerProjections;
+  const provider = providerName(profile.provider);
+  const parsed = parseRankingsFilters(sp, source, espnOn);
+  // No ESPN column to sort by where the provider publishes no projections: an old `sort=espn` link sorts by Ours.
+  const filters: RankingsFilters = !espnOn && parsed.sort.key === "espn" ? { ...parsed, sort: { ...parsed.sort, key: "ours" } } : parsed;
   const res = await api<RankingsResponse>(rankingsApiPath(filters));
 
   if (!res.ok) {
@@ -63,7 +85,7 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
         {notSynced ? (
           <Section>
             <EmptyState title="Your league isn't synced yet" action={<Link href="/data">Check data status</Link>}>
-              <p>Rankings need your league&apos;s ESPN players, projections and current week. Run the ESPN sync, then reload this page.</p>
+              <p>Rankings need your league&apos;s {provider} players, projections and current week. Run the {provider} sync, then reload this page.</p>
               <p className="faint">{res.error}</p>
             </EmptyState>
           </Section>
@@ -90,16 +112,20 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
     <div className="stack">
       <PageHeader eyebrow={`Players · Week ${data.week}`} title="Rankings" meta={QUESTION} />
 
-      <RankingsControls sp={sp} filters={filters} leagueAvailable={data.league_context.available} />
+      <RankingsControls sp={sp} filters={filters} leagueAvailable={data.league_context.available} sourceChoice={espnOn} />
 
       <p className={styles.sourceLine}>
         <strong>{data.projection.label}.</strong>{" "}
-        ESPN projections synced {when(f.espn_projections_synced_at)}
-        {showOurs && f.ours_run_created_at && <>; Fantasy Intel run {when(f.ours_run_created_at)}</>}
+        {espnOn ? (
+          <>
+            ESPN projections synced {when(f.espn_projections_synced_at)}
+            {showOurs && f.ours_run_created_at && <>; Fantasy Intel run {when(f.ours_run_created_at)}</>}
+          </>
+        ) : <>Fantasy Intel run {when(f.ours_run_created_at)}</>}
         {f.player_scores_as_of_week !== null && <>; ratings and usage as of week {f.player_scores_as_of_week}</>}.
       </p>
 
-      <SourceNotices data={data} filters={filters} />
+      <SourceNotices data={data} filters={filters} providerProjections={espnOn} />
 
       {counts.pool > 0 && counts.ranked === 0 && (
         <Notice tone="caution" title="No player has a rank in this view">
@@ -125,12 +151,12 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
       >
         {players.length > 0 ? (
           <>
-            <RankingsTable rows={players} sort={filters.sort} sp={spNoOffset} showOurs={showOurs} windowLabel={data.window.label} basis={data.projection.basis} />
-            <RankingsCards rows={players} showOurs={showOurs} basis={data.projection.basis} />
+            <RankingsTable rows={players} sort={filters.sort} sp={spNoOffset} showOurs={showOurs || !espnOn} windowLabel={data.window.label} basis={data.projection.basis} espnColumn={espnOn} />
+            <RankingsCards rows={players} showOurs={showOurs} basis={data.projection.basis} espnColumn={espnOn} />
           </>
         ) : counts.pool === 0 ? (
           <EmptyState title="No players in the pool yet" action={<Link href="/data">Check data status</Link>}>
-            Sync your ESPN league to load its player pool, then reload this page.
+            Sync your {provider} league to load its player pool, then reload this page.
           </EmptyState>
         ) : counts.matched === 0 ? (
           <EmptyState title="No players match these filters" action={<Link className="chip reset" href="/rankings">Clear filters</Link>}>
@@ -151,12 +177,14 @@ export default async function RankingsPage({ searchParams }: PageProps<"/ranking
         </nav>
       )}
 
-      <Glossary terms={["Projected points", "ROS", "Ratings (0–100)", "xFP/g", "PPR/g", "Ours", "Bye", "—"]} />
+      <Glossary terms={["Projected points", "ROS", "Ratings (0–100)", "xFP/g", "PPR/g", "Ours", "Bye", "—"]} providerProjections={profile.providerProjections} />
       <Method title="How rankings are calculated">
         <div className={styles.method}>
           <p>
-            Players are ranked by <b>projected fantasy points</b> for the window shown, in your league&apos;s scoring: ESPN&apos;s number as
-            published by default, or Fantasy Intel&apos;s independent model when you opt in with the source switch. Equal projections (to 0.01) share a rank, shown as T-WR3.
+            Players are ranked by <b>projected fantasy points</b> for the window shown, in your league&apos;s scoring: {espnOn
+              ? <>ESPN&apos;s number as
+            published by default, or Fantasy Intel&apos;s independent model when you opt in with the source switch.</>
+              : <>Fantasy Intel&apos;s independent model (this league&apos;s provider publishes no projections).</>} Equal projections (to 0.01) share a rank, shown as T-WR3.
             Ranks are computed before the position, roster and name filters, so a filter never renumbers anyone.
           </p>
           <p>

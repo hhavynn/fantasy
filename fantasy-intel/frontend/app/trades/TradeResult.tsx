@@ -6,6 +6,7 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { Badge, Delta, Method, Notice, Pos, Section, Stat, StatStrip, TrendArrow, Verdict as VerdictBand, VerdictFigure } from "@/components/ui";
 import { label, num, signed } from "@/lib/format";
+import { projectionName, providerName, type Provider } from "@/lib/labels";
 import { resultText, resultTone, signedText } from "@/lib/trade-format";
 import type { InjuryScenarios, TradeResultV3, TradeSideV3 } from "@/lib/trade-types";
 import type { IrActivation, LineupWeek } from "@/lib/types";
@@ -19,7 +20,9 @@ import { plural } from "@/lib/plural";
 type TradeResult = TradeResultV3;
 type TradeSide = TradeSideV3;
 
-const why = "Incomplete: a rostered player with an NFL team has no ESPN projection that week";
+/** The projections the evaluation ran on, as the response names them ("ESPN", or "Ours" for a Sleeper league). */
+const projOf = (r: TradeResult) => projectionName(r.projection_source);
+const whyOf = (r: TradeResult) => `Incomplete: a rostered player with an NFL team has no ${projOf(r)} projection that week`;
 const IR_HOLD_NOTE = "Current IR status is held constant for this hypothetical evaluation. This does not predict when a "
   + "player will return. Activation upside is shown separately and may require a roster move.";
 
@@ -43,17 +46,19 @@ function Players({ r, ids, links = false }: { r: TradeResult; ids: number[]; lin
 const nameOf = (r: TradeResult, id: number) => r.names[id]?.name ?? `#${id}`;
 const names = (r: TradeResult, list: number[]) => list.map((id) => nameOf(r, id)).join(", ");
 
-export function TradeResultView({ r }: { r: TradeResult }) {
+/** `provider` is the league's provider ("espn" unless given): it sets the roster rules and injury designations. */
+export function TradeResultView({ r, provider = "espn" }: { r: TradeResult; provider?: Provider }) {
+  const pv = providerName(provider);
   return (
     <div className="stack">
       <Verdict r={r} />
-      <RosterNotices r={r} />
+      <RosterNotices r={r} pv={pv} />
       <WeeklyDelta r={r} />
       <WeekTable r={r} />
-      <StarterChanges r={r} />
+      <StarterChanges r={r} pv={pv} />
       <Replacement r={r} />
-      <TradeVsFreeAgency t={r.trade_vs_free_agency} />
-      <PlayerContext r={r} />
+      <TradeVsFreeAgency t={r.trade_vs_free_agency} projLabel={projOf(r)} />
+      <PlayerContext r={r} pv={pv} />
       <InjuryScenarioPanel r={r} />
       <IrSensitivity r={r} />
       <ManagerContext r={r} />
@@ -68,6 +73,7 @@ export function TradeResultView({ r }: { r: TradeResult }) {
 // ---------------------------------------------------------------------------------- verdict --
 
 function TeamStrip({ r, s, side }: { r: TradeResult; s: TradeSide; side: "a" | "b" }) {
+  const why = whyOf(r);
   const d = s.deltas;
   const lastReg = r.evaluation.last_regular_season_week;
   const final = r.evaluation.weeks[r.evaluation.weeks.length - 1];
@@ -105,7 +111,7 @@ function Verdict({ r }: { r: TradeResult }) {
     <VerdictBand
       tone={tone === "good" ? "positive" : tone === "bad" ? "negative" : tone === "warn" ? "caution" : "info"}
       eyebrow={`Trade · ${r.trade.shape}${weeks.length > 0 ? ` · weeks ${weeks[0]}–${weeks[weeks.length - 1]}` : ""}`}
-      headline={resultText(r.result.label, an, bn)}
+      headline={resultText(r.result.label, an, bn, projOf(r))}
       figures={
         <>
           <VerdictFigure label={`${an} · rest of season`} emphasis value={<Delta value={A.deltas.ros_delta} />}
@@ -115,14 +121,14 @@ function Verdict({ r }: { r: TradeResult }) {
         </>
       }
     >
-      Regular season: {resultText(r.result.regular_season_label, an, bn)}. Playoffs: {resultText(r.result.playoff_label, an, bn)}.
+      Regular season: {resultText(r.result.regular_season_label, an, bn, projOf(r))}. Playoffs: {resultText(r.result.playoff_label, an, bn, projOf(r))}.
       {" "}A change in projected lineup points, not a grade or an acceptance estimate.
     </VerdictBand>
     <Section
       title="Who gets what"
-      actions={<Badge value={resultText(r.result.label, an, bn)} tone={tone} />}
+      actions={<Badge value={resultText(r.result.label, an, bn, projOf(r))} tone={tone} />}
       footnote={<>
-        Lineup-point deltas are the change in each team&apos;s projected starting points versus no trade (ESPN projections, exact optimal-lineup
+        Lineup-point deltas are the change in each team&apos;s projected starting points versus no trade ({projOf(r)} projections, exact optimal-lineup
         simulation). Combined {signedText(r.result.combined_ros_delta)} · smaller side {signedText(r.result.min_side_ros_delta)}. {r.result.note}
       </>}
     >
@@ -155,7 +161,7 @@ function Verdict({ r }: { r: TradeResult }) {
 
 // ---------------------------------------------------------------------------------- notices --
 
-function RosterNotices({ r }: { r: TradeResult }) {
+function RosterNotices({ r, pv }: { r: TradeResult; pv: string }) {
   const sides = [r.team_a, r.team_b];
   return (
     <>
@@ -172,7 +178,7 @@ function RosterNotices({ r }: { r: TradeResult }) {
                 ))}
                 {" "}must be dropped to fit the roster. Lineup cost {cost}.
               </p>
-              <p className="faint">Drop chosen as the legal removal that keeps the most projected starting points. ESPN undroppable-list restrictions are not modeled.</p>
+              <p className="faint">Drop chosen as the legal removal that keeps the most projected starting points. {pv} undroppable-list restrictions are not modeled.</p>
             </Notice>
           );
         }
@@ -199,7 +205,7 @@ function RosterNotices({ r }: { r: TradeResult }) {
       ))}
       {sides.filter((s) => s.incomplete.missing_weeks.length > 0).map((s) => (
         <Notice key={`inc-${s.team_id}`} tone="caution" title={`${s.team_name}: incomplete projections`}>
-          No ESPN projection for {names(r, s.incomplete.missing_players)} in {plural(s.incomplete.missing_weeks.length, "week")} {s.incomplete.missing_weeks.join(", ")}.
+          No {projOf(r)} projection for {names(r, s.incomplete.missing_players)} in {plural(s.incomplete.missing_weeks.length, "week")} {s.incomplete.missing_weeks.join(", ")}.
           Those weeks have no canonical total; missing is never treated as 0.
         </Notice>
       ))}
@@ -221,7 +227,7 @@ function WeeklyDelta({ r }: { r: TradeResult }) {
   return (
     <Section
       title="Weekly lineup change"
-      footnote="Bars are the change in projected starting points that week versus no trade. A dash is a week without a complete ESPN projection: missing, not zero."
+      footnote={`Bars are the change in projected starting points that week versus no trade. A dash is a week without a complete ${projOf(r)} projection: missing, not zero.`}
     >
       <div className={styles.charts}>
         {[r.team_a, r.team_b].map((s) => (
@@ -237,6 +243,7 @@ function WeeklyDelta({ r }: { r: TradeResult }) {
 }
 
 function WeekCells({ w, r }: { w: TradeSide["weekly"][number]; r: TradeResult }) {
+  const why = whyOf(r);
   return (
     <>
       <td className="num">{num(w.before, 1, why)}</td>
@@ -305,7 +312,7 @@ function LineupTable({ before, after }: { before: LineupWeek; after: LineupWeek 
   );
 }
 
-function TeamImpact({ s }: { s: TradeSide }) {
+function TeamImpact({ s, why, pv }: { s: TradeSide; why: string; pv: string }) {
   const ro = s.roster;
   const iss = ro.issues_before_drops;
   const cost = ro.forced_drop_lineup_cost === null ? `${ro.forced_drop_known_lineup_cost.toFixed(1)} known only` : ro.forced_drop_lineup_cost.toFixed(1);
@@ -327,7 +334,7 @@ function TeamImpact({ s }: { s: TradeSide }) {
         </dd>
         {iss.position_limits.length > 0 && <>
           <dt>Position limits</dt>
-          <dd>{iss.position_limits.map((x) => <span key={x.position}><b>{x.position}</b>: {x.count_before_drops} rostered, ESPN limit {x.limit} (over by {x.over_by})</span>)}</dd>
+          <dd>{iss.position_limits.map((x) => <span key={x.position}><b>{x.position}</b>: {x.count_before_drops} rostered, {pv} limit {x.limit} (over by {x.over_by})</span>)}</dd>
         </>}
         <dt>Mandatory drop</dt>
         <dd>
@@ -359,7 +366,7 @@ function TeamImpact({ s }: { s: TradeSide }) {
         </Notice>
       )}
       {ro.forced_drops.length > 0 && (
-        <p className={`faint ${styles.small} ${styles.details}`}>Drop chosen as the legal removal that keeps the most projected starting points. ESPN undroppable-list restrictions are not modeled.</p>
+        <p className={`faint ${styles.small} ${styles.details}`}>Drop chosen as the legal removal that keeps the most projected starting points. {pv} undroppable-list restrictions are not modeled.</p>
       )}
 
       <Method title="Weekly lineups before and after" className={styles.details}>
@@ -374,12 +381,12 @@ function TeamImpact({ s }: { s: TradeSide }) {
   );
 }
 
-function StarterChanges({ r }: { r: TradeResult }) {
+function StarterChanges({ r, pv }: { r: TradeResult; pv: string }) {
   return (
     <Section title="Roster limits and starting opportunities">
       <div className={styles.cols}>
-        <TeamImpact s={r.team_a} />
-        <TeamImpact s={r.team_b} />
+        <TeamImpact s={r.team_a} why={whyOf(r)} pv={pv} />
+        <TeamImpact s={r.team_b} why={whyOf(r)} pv={pv} />
       </div>
     </Section>
   );
@@ -388,6 +395,7 @@ function StarterChanges({ r }: { r: TradeResult }) {
 // --------------------------------------------------------------------- hypothetical replacement --
 
 function Replacement({ r }: { r: TradeResult }) {
+  const why = whyOf(r);
   return (
     <Section title="Hypothetical FA replacement (not in the trade delta)" flush>
       <p className={styles.intro}>
@@ -424,7 +432,9 @@ function Replacement({ r }: { r: TradeResult }) {
 
 // ---------------------------------------------------------------------------- player context --
 
-function PlayerContext({ r }: { r: TradeResult }) {
+function PlayerContext({ r, pv }: { r: TradeResult; pv: string }) {
+  const why = whyOf(r);
+  const proj = projOf(r);
   const A = r.team_a, B = r.team_b;
   const an = A.team_name ?? "Team A", bn = B.team_name ?? "Team B";
   return (
@@ -436,7 +446,7 @@ function PlayerContext({ r }: { r: TradeResult }) {
         <table>
           <thead>
             <tr>
-              <th>Player</th><th>To</th><th className="num">ESPN ROS</th><th className="num">ESPN playoffs</th>
+              <th>Player</th><th>To</th><th className="num">{proj} ROS</th><th className="num">{proj} playoffs</th>
               <th className="num" title="Optimal lineup with him minus without him, on his current team">Lineup value now</th>
               <th>Opportunity</th><th>Role trend</th><th>Production vs xFP</th><th>Market</th><th>Injury</th><th>Context</th>
             </tr>
@@ -449,8 +459,8 @@ function PlayerContext({ r }: { r: TradeResult }) {
                 <tr key={p.espn_player_id}>
                   <td><PlayerLink id={p.espn_player_id} name={p.name} /> <Pos value={p.position} /> <span className="faint">{p.pro_team ?? "FA"}</span></td>
                   <td>{p.to_team_id === A.team_id ? an : bn}</td>
-                  <td className="num">{num(i?.ros_projected_points, 1, "Incomplete ESPN coverage")}</td>
-                  <td className="num">{num(i?.playoff_projected_points, 1, "Incomplete ESPN coverage")}</td>
+                  <td className="num">{num(i?.ros_projected_points, 1, `Incomplete ${proj} coverage`)}</td>
+                  <td className="num">{num(i?.playoff_projected_points, 1, `Incomplete ${proj} coverage`)}</td>
                   <td className="num" title={`starts ${mv.weeks_started.length} of ${mv.weeks_expected} weeks`}>
                     {num(mv.roster_marginal_lineup_points, 1, why)} <span className="faint">({mv.weeks_started.length}/{mv.weeks_expected} starts)</span>
                     {mv.ir_activation_sensitivity && <div className="faint">IR · if activated {signed(mv.ir_activation_sensitivity.lineup_points_upside)}</div>}
@@ -461,7 +471,7 @@ function PlayerContext({ r }: { r: TradeResult }) {
                   <td><Badge value={i?.market_signal} /></td>
                   <td className="wrap">
                     {p.on_ir && <Badge value="fantasy IR slot" tone="bad" />}{" "}
-                    <Badge value={p.injury_status && !["ACTIVE", "NORMAL"].includes(p.injury_status) ? p.injury_status : null} title="ESPN designation" />
+                    <Badge value={p.injury_status && !["ACTIVE", "NORMAL"].includes(p.injury_status) ? p.injury_status : null} title={`${pv} designation`} />
                     {p.availability && p.availability.nfl_designation_label && (
                       <div className="faint">
                         NFL: {p.availability.nfl_designation_label}
@@ -487,7 +497,7 @@ function PlayerContext({ r }: { r: TradeResult }) {
 
 // ---------------------------------------------------------------------------- injury scenarios --
 
-function scen(v: InjuryScenarios["scenarios"][number]["team_a"]) {
+function scen(v: InjuryScenarios["scenarios"][number]["team_a"], why: string) {
   if (!v) return <span className="missing">—</span>;
   return v.ros_delta === null ? <span title={why}>{signedText(v.known_ros_delta)} known</span> : signed(v.ros_delta);
 }
@@ -517,9 +527,9 @@ function InjuryScenarioPanel({ r }: { r: TradeResult }) {
                       {x.canonical && <> <Badge value="canonical" tone="info" title="The scenario the deltas above use" /></>}
                       {x.error && <span className="faint"> ({x.error})</span>}
                     </td>
-                    <td className="num"><b>{scen(x.team_a)}</b></td>
+                    <td className="num"><b>{scen(x.team_a, whyOf(r))}</b></td>
                     <td className="num faint">{signedText(x.team_a?.regular_season_delta)} / {signedText(x.team_a?.playoff_delta)}</td>
-                    <td className="num"><b>{scen(x.team_b)}</b></td>
+                    <td className="num"><b>{scen(x.team_b, whyOf(r))}</b></td>
                     <td className="num faint">{signedText(x.team_b?.regular_season_delta)} / {signedText(x.team_b?.playoff_delta)}</td>
                   </tr>
                 ))}
@@ -535,7 +545,7 @@ function InjuryScenarioPanel({ r }: { r: TradeResult }) {
 
 // ------------------------------------------------------------------------------ IR sensitivity --
 
-function upside(s: IrActivation) {
+function upside(s: IrActivation, why: string) {
   return s.lineup_points_upside === null
     ? <span title={why}>incomplete ({signedText(s.known_lineup_points_upside)} known)</span>
     : signed(s.lineup_points_upside);
@@ -557,7 +567,7 @@ function IrSensitivity({ r }: { r: TradeResult }) {
         <table>
           <thead>
             <tr>
-              <th>Team</th><th>Player</th><th>ESPN projected weeks</th><th>Would start</th>
+              <th>Team</th><th>Player</th><th>{projOf(r)} projected weeks</th><th>Would start</th>
               <th className="num">Upside before trade</th><th className="num">Upside after trade</th><th>Open active spot</th>
             </tr>
           </thead>
@@ -576,8 +586,8 @@ function IrSensitivity({ r }: { r: TradeResult }) {
                     {b.unprojected_weeks.length > 0 && ` · no projection: ${b.unprojected_weeks.join(", ")}`}
                   </td>
                   <td className="faint wrap">{b.weeks_would_start.length ? b.weeks_would_start.join(", ") : "none"}</td>
-                  <td className="num">{upside(b)}</td>
-                  <td className="num">{p.after_trade ? upside(p.after_trade) : <span className="faint">—</span>}</td>
+                  <td className="num">{upside(b, whyOf(r))}</td>
+                  <td className="num">{p.after_trade ? upside(p.after_trade, whyOf(r)) : <span className="faint">—</span>}</td>
                   <td className="wrap">{b.open_active_roster_spot ? "yes" : <span className="faint">no. {b.roster_move_note}</span>}</td>
                 </tr>
               );

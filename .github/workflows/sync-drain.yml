@@ -36,6 +36,7 @@ jobs:
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       CREDENTIALS_PRIVKEY_V1: ${{ secrets.CREDENTIALS_PRIVKEY_V1 }}
+      SLEEPER_SOURCE: ${{ vars.SLEEPER_SOURCE }}      # "live" lets the drain claim Sleeper leagues (Phase 4b)
 
     steps:
       - name: Checkout repository

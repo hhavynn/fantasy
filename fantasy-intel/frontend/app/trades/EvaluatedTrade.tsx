@@ -1,6 +1,7 @@
 import { BackendProblem } from "@/components/BackendProblem";
 import { Section, Skeleton, SkeletonStatStrip, SkeletonTable } from "@/components/ui";
 import type { ApiResult } from "@/lib/api";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import type { TradeResultV3 } from "@/lib/trade-types";
 import { TradeResultView } from "./TradeResult";
 import styles from "./builder.module.css";
@@ -10,9 +11,9 @@ import styles from "./builder.module.css";
  * this inside a Suspense boundary: the builder is usable while the result streams in.
  */
 export async function EvaluatedTrade({ result }: { result: Promise<ApiResult<TradeResultV3>> }) {
-  const r = await result;
+  const [r, profile] = await Promise.all([result, getLeagueProfile()]);
   if (!r.ok) return <BackendProblem error={r.error} kind={r.kind} status={r.status} />;
-  return <TradeResultView r={r.data} />;
+  return <TradeResultView r={r.data} provider={profile.provider} />;
 }
 
 /** Placeholder for the result while the simulation runs. */

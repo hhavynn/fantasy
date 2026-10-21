@@ -212,7 +212,7 @@ function PlayerSlot({ side, selected, onPick, autoFocus = false }: {
         <div className={styles.picked}>
           <PlayerPhoto id={selected.id} name={selected.name} size={32} />
           <span className={styles.pickedText}>
-            <span className={styles.pickedName}>{selected.name ?? `ESPN #${selected.id}`}</span>
+            <span className={styles.pickedName}>{selected.name ?? `Player #${selected.id}`}</span>
             {(selected.position || selected.team) && (
               <span className={styles.optionMeta}><Pos value={selected.position} /> {selected.team ?? "FA"}</span>
             )}

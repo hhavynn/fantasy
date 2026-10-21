@@ -186,11 +186,11 @@ def independent_lineups(con, season: int, week: int, team_ids: list[int]) -> tup
     return w, rows
 
 
-def load_matchup(con, team_id: int | None = None, week: int | None = None, source: str = "espn") -> dict:
+def load_matchup(con, team_id: int | None = None, week: int | None = None, source: str | None = None) -> dict:
     """`source`: "espn" (default, the stored lineups) or "independent" (analytics/projection_source.py)."""
     from .projection_source import describe, normalize, weekly
 
-    source = normalize(source)
+    source = normalize(source, con)
     lgs = fetch_dicts(con, "SELECT league_id, season, name, current_week, final_scoring_period, reg_season_matchups, "
                            "settings_raw FROM leagues ORDER BY synced_at DESC LIMIT 1")
     if not lgs:

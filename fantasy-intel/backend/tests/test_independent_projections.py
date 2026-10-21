@@ -394,8 +394,10 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                # local-only writer of the final-designation re-projection run (never imported by the app, see
                # tests/test_final_reprojection.py::test_the_app_never_imports_the_reprojection_writer)
                "final_reprojection.py"}
+    # by path: sleeper/write.py scores free agents' actual points as box scores in the league's scoring
+    allowed_paths = {"sleeper/write.py"}
     for f in APP.rglob("*"):
-        if f.suffix not in (".py", ".sql") or f.name in allowed:
+        if f.suffix not in (".py", ".sql") or f.name in allowed or f.relative_to(APP).as_posix() in allowed_paths:
             continue
         text = f.read_text()
         for needle in ("independent_projection", "independent_player_projections", "forecast_features",
@@ -406,7 +408,9 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
 
 def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     """Weekly Start/Sit, weekly Matchup and the opt-in player forward view (analytics/forward_ours.py) are the
-    only consumers of the switch. Trades, waivers, team value and the playoff race stay ESPN."""
+    only consumers of the switch's weekly view. The source defaults to the league's own (multi-league Phase 4b):
+    ESPN's for an ESPN league, Ours only for a league without provider projections; the trade and waiver engines
+    read that default through projection_source.league_projections, never weekly() directly."""
     import inspect
 
     from app.analytics import forward_ours, matchup, projection_source, start_sit
@@ -421,12 +425,12 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
     assert projection_source.FALLBACK_VERSION == INJURY_VERSION == "ifp-2.1.0"
     assert projection_source.RETIRED_WEEKLY_VERSION == CHALLENGER_VERSION == "ifp-2.0.0"
     assert projection_source.RETIRED_VERSION == MODEL_VERSION == "ifp-1.0.0"
-    assert inspect.signature(start_sit.load_start_sit_evaluation).parameters["source"].default == "espn"
-    assert inspect.signature(matchup.load_matchup).parameters["source"].default == "espn"
-    # the forward view's entry point requires an explicit source (no default), and the route defaults to ESPN
+    assert inspect.signature(start_sit.load_start_sit_evaluation).parameters["source"].default is None
+    assert inspect.signature(matchup.load_matchup).parameters["source"].default is None
+    # the forward view's entry point requires an explicit source (no default); the route takes the league's default
     from app.api import routes
     assert inspect.signature(forward_ours.ours_forward).parameters["source"].default is inspect.Parameter.empty
-    assert inspect.signature(routes.player_forward_view).parameters["source"].default.default == "espn"
+    assert inspect.signature(routes.player_forward_view).parameters["source"].default.default is None
     import re
     imports = re.compile(r"from \.+(analytics\.)?projection_source import|import projection_source")
     users = {f.relative_to(APP).as_posix() for f in APP.rglob("*.py") if imports.search(f.read_text())}
@@ -439,7 +443,10 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
                "analytics/projection_movers.py",   # movement between stored forecasts (reads runs, never calls weekly())
                "analytics/rankings.py",   # opt-in Rankings (source=independent): the switch's selection via forward_ours
                "analytics/projection_ranges.py"}   # floor / ceiling ranges around the switch's run (select_run only)
-    assert switch <= users <= switch | readers
+    # engines that read the league's default source (Ours only for a league without provider projections)
+    engines = {"analytics/trade_data.py", "analytics/waiver_data.py",
+               "api/routes.py"}   # GET /api/league-profile names the league's default source (default_source only)
+    assert switch <= users <= switch | readers | engines
     assert {f for f in users if re.search(r"\bweekly\(", (APP / f).read_text())} == switch
 
 

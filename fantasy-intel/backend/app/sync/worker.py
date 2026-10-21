@@ -27,7 +27,7 @@ import psycopg
 from ..db.connection import utcnow
 from ..db.league_files import global_key, league_key
 from ..db.league_split import VERSION_RE
-from . import espn_source, queue
+from . import espn_source, queue, sleeper_source
 from .build import build_league_file
 from .failures import classify
 from .publish import publish_job, raw_key
@@ -49,6 +49,10 @@ class Context:
     probe: Callable[[int, int], str] = espn_source.probe
     heartbeat_s: float = HEARTBEAT_S
     work_root: Path | None = None
+    # Sleeper (public, no credential): (external_id, ctx) -> SleeperPayloads; external_id -> probe verdict
+    sleeper_fetch: Callable | None = None
+    sleeper_probe: Callable[[str], str] = sleeper_source.probe
+    sleeper_control: Callable[[int], bool] = sleeper_source.control_request
     _globals: dict = field(default_factory=dict)  # version -> local path, shared by this worker's jobs
 
 
@@ -144,6 +148,8 @@ def run_job(ctx: Context, con, claim: queue.Claim) -> str:
     con.rollback()
     provider, external_id, season, visibility = lg
     ctx.printer.sensitive([external_id])
+    if provider == "sleeper":
+        return _run_sleeper(ctx, con, claim, external_id, season)
     if provider != "espn":
         queue.fail(con, claim, "provider_unsupported", retry=False)
         return "provider_unsupported"
@@ -198,6 +204,83 @@ def run_job(ctx: Context, con, claim: queue.Claim) -> str:
     except Exception as err:   # noqa: BLE001 - every failure is classified and recorded; nothing escapes to the log
         con.rollback()
         return _record_failure(ctx, con, claim, err, stage, credential_id, season, visibility)
+
+
+def _sleeper_fetch(ctx: Context, external_id: str):
+    if ctx.sleeper_fetch is not None:
+        return ctx.sleeper_fetch(external_id, ctx)
+    return sleeper_source.fetch(sleeper_source.client(ctx.work_root), external_id, objects=ctx.objects)
+
+
+def _run_sleeper(ctx: Context, con, claim: queue.Claim, external_id: str, season: int) -> str:
+    """A Sleeper job: public, no credential. A probe only checks that the league still exists."""
+    if claim.kind == "probe":
+        verdict = ctx.sleeper_probe(external_id)
+        if verdict == "public":
+            with con.transaction():
+                con.execute("UPDATE fi.leagues SET visibility_checked_at = now() WHERE id = %s", [claim.league_id])
+                con.execute("SELECT fi.record_league_found(%s, %s)", [claim.job_id, claim.fence])
+            queue.complete(con, claim)
+            return "probe_public"
+        if verdict == "missing":
+            status = con.execute("SELECT fi.record_league_missing(%s, %s, %s)",
+                                 [claim.job_id, claim.fence, ctx.sleeper_control(season)]).fetchone()[0]
+            con.commit()
+            queue.complete(con, claim)
+            return f"probe_missing:{status}"
+        queue.fail(con, claim, "probe_unknown", retry=True)
+        return "probe_unknown"
+    stage = "fetch"
+    try:
+        with _Lease(ctx, claim) as lease:
+            gv = con.execute("SELECT global_version FROM fi.global_snapshot").fetchone()
+            prev = con.execute("SELECT data_version FROM fi.league_snapshots WHERE league_id = %s",
+                               [claim.league_id]).fetchone()
+            con.rollback()
+            if gv is None:
+                queue.fail(con, claim, "no_global", retry=True)
+                return "no_global"
+            with tempfile.TemporaryDirectory(dir=ctx.work_root) as tmp:
+                tmp = Path(tmp)
+                global_path = _global_file(ctx, gv[0])
+                previous = _fetch_version(ctx.objects, league_key(claim.league_id, prev[0]), prev[0],
+                                          tmp / "previous.duckdb") if prev else None
+                if claim.kind == "recompute" and prev:
+                    payloads = load_payloads(ctx.objects.get_bytes(raw_key(claim.league_id, prev[0])))
+                else:
+                    payloads = _sleeper_fetch(ctx, external_id)
+                ctx.printer.sensitive_from(payloads.league)
+                ctx.printer.sensitive_from(payloads.users)
+                lease.check("fetch")
+                stage = "build"
+                raw = dump_payloads(payloads)
+                work = tmp / "work"
+                work.mkdir()
+                built = build_league_file(work, global_path=global_path, previous=previous, payloads=payloads,
+                                          owner_swid=None, stamp=utcnow().isoformat(timespec="seconds"))
+                lease.check("build")
+                if not queue.heartbeat(con, claim):
+                    raise LeaseLost("publish")
+                stage = "publish"
+                applied, _ = publish_job(ctx.objects, con, claim, built, raw=raw, global_version=gv[0])
+            _after_success(con, claim, "public", None, built.name)
+            queue.complete(con, claim, global_version=gv[0])
+            return "published" if applied else "superseded"
+    except LeaseLost:
+        return "lease_lost"
+    except Exception as err:   # noqa: BLE001 - classified and recorded; nothing escapes to the log
+        con.rollback()
+        out = classify(err, authenticated=False, stage=stage)
+        if out.action == "missing":
+            status = con.execute("SELECT fi.record_league_missing(%s, %s, %s)",
+                                 [claim.job_id, claim.fence, ctx.sleeper_control(season)]).fetchone()[0]
+            con.commit()
+            queue.fail(con, claim, out.code, retry=status != "unavailable", extended=True)
+            return f"{out.code}:{status}"
+        if out.pause_provider:
+            queue.pause_provider(con, claim.provider)
+        queue.fail(con, claim, out.code, retry=out.action == "retry", detail=f"{stage}:{type(err).__name__}")
+        return out.code
 
 
 def _after_success(con, claim: queue.Claim, visibility: str, credential_id: str | None, name: str | None) -> None:

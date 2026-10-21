@@ -258,6 +258,10 @@ const LEVEL_LABEL: Record<InjuryLevel, string> = {
 };
 
 export function levelLabel(level: InjuryLevel): string {
+  // The raw provider spellings (ESPN's vocabulary, which Sleeper statuses are mapped to) read the same.
+  const raw = level as string;
+  if (raw === "INJURY_RESERVE") return LEVEL_LABEL.IR;
+  if (raw === "SUSPENSION") return LEVEL_LABEL.SUSPENDED;
   return LEVEL_LABEL[level] ?? level;
 }
 
@@ -284,11 +288,14 @@ const FRESH_LABEL: Record<FreshnessStatus, string> = {
   fresh: "Fresh", stale: "Stale", missing: "No report", post_kickoff_only: "After kickoff",
 };
 
-/** The badge word (fresh, stale, no report…) and a detail line naming the source and the retrieval age. */
-export function freshnessLabel(f: InjuryEntry["freshness"]): { text: string; detail: string | null; tone: "good" | "warn" | "bad" | "" } {
+/**
+ * The badge word (fresh, stale, no report…) and a detail line naming the source and the retrieval age. `provider` names
+ * the league's provider, whose status the backend reports as `espn_status` (Sleeper statuses use ESPN's vocabulary).
+ */
+export function freshnessLabel(f: InjuryEntry["freshness"], provider: string = "ESPN"): { text: string; detail: string | null; tone: "good" | "warn" | "bad" | "" } {
   if (!f) return { text: "Not on the slate", detail: null, tone: "" };
   const tone = f.status === "fresh" ? "good" : f.status === "missing" ? "bad" : f.status === "stale" ? "warn" : "";
-  const src = f.source_used === "nflverse" ? "NFL report" : f.source_used === "espn_status" ? "ESPN status" : "No source";
+  const src = f.source_used === "nflverse" ? "NFL report" : f.source_used === "espn_status" ? `${provider} status` : "No source";
   const age = f.hours_since_retrieval === null ? "" : ` · ${hoursAgo(f.hours_since_retrieval)}`;
   return { text: FRESH_LABEL[f.status], detail: `${src}${age}`, tone };
 }

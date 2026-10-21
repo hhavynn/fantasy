@@ -2,6 +2,8 @@ import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PageHeader, Section, EmptyState } from "@/components/ui";
 import { api } from "@/lib/api";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import type { ForwardProjection } from "@/lib/types";
@@ -21,6 +23,7 @@ export default async function PlayersPage({ searchParams }: PageProps<"/players"
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
   const id = typeof sp.id === "string" && /^-?\d+$/.test(sp.id) ? sp.id : null;
   const cols = sp.cols === "all" ? "all" : "core";
+  const profile = await getLeagueProfile();
 
   if (id) {
     const detail = await api<Detail>(`/api/players/${id}`);
@@ -31,7 +34,7 @@ export default async function PlayersPage({ searchParams }: PageProps<"/players"
           {detail.status === 404 ? (
             <Section>
               <EmptyState title="Player not found" action={<Link href="/players">Back to player search</Link>}>
-                No player in this league&apos;s ESPN pool has the id {id}.
+                No player in this league&apos;s {providerName(profile.provider)} pool has the id {id}.
               </EmptyState>
             </Section>
           ) : (
@@ -54,7 +57,7 @@ export default async function PlayersPage({ searchParams }: PageProps<"/players"
         range = rangeFor(ranges, Number(id));
       }
     }
-    return <PlayerProfile d={d} q={q} cols={cols} range={range} />;
+    return <PlayerProfile d={d} q={q} cols={cols} range={range} profile={profile} />;
   }
 
   const list = await api<PlayerListRow[]>(`/api/players?q=${encodeURIComponent(q)}&limit=${LIMIT}`);
@@ -76,7 +79,7 @@ export default async function PlayersPage({ searchParams }: PageProps<"/players"
         </dl>
       </PageHeader>
       {list.ok
-        ? <ResultsTable rows={list.data} q={q} limit={LIMIT} />
+        ? <ResultsTable rows={list.data} q={q} limit={LIMIT} provider={profile.provider} />
         : <BackendProblem error={list.error} kind={list.kind} status={list.status} />}
     </div>
   );

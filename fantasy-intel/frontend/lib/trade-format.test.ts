@@ -34,3 +34,9 @@ test("joinList reads naturally", () => {
   assert.equal(joinList(["a", "b"]), "a and b");
   assert.equal(joinList(["a", "b", "c"]), "a, b and c");
 });
+
+test("resultText names the projections behind an incomplete result (ESPN unless told otherwise)", () => {
+  assert.equal(resultText("INCOMPLETE_DATA", "A", "B"), "Incomplete ESPN projections: no canonical total");
+  assert.equal(resultText("INCOMPLETE_DATA", "A", "B", "Ours"), "Incomplete Ours projections: no canonical total");
+  assert.equal(resultText("BOTH_LOSE", "A", "B", "Ours"), "Both lineups project to lose");
+});

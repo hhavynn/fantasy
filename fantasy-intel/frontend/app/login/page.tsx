@@ -23,7 +23,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <div className="stack">
       <PageHeader eyebrow="Account" title="Sign in"
-                  meta="Signing in saves your team and pinned leagues, and lets you connect private ESPN leagues. Public leagues need no account." />
+                  meta="Signing in saves your team and pinned leagues, and lets you connect private ESPN leagues. Public ESPN leagues and Sleeper leagues need no account." />
       {params.error ? <Notice tone="negative" title="That sign-in link did not work">Links work once, in the browser that asked for them, for one hour. Ask for a new one.</Notice> : null}
       <Section title="Email link">
         <LoginForm next={next} />

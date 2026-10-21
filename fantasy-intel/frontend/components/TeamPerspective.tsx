@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { Notice } from "@/components/ui";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
+import { providerName } from "@/lib/labels";
+import { getLeagueProfile } from "@/lib/league-profile.server";
 import {
   perspectiveHref, teamOptionLabel, TEAM_SPECIFIC_PARAMS, type TeamSelection, type TeamsPayload,
 } from "@/lib/team-perspective";
@@ -25,7 +27,8 @@ export async function TeamPerspective({ path, sp, current, reset = TEAM_SPECIFIC
   /** The page's other header controls (week toggles), shown under the picker. */
   children?: ReactNode;
 }) {
-  const res = await api<TeamsPayload>("/api/teams");
+  const [res, profile] = await Promise.all([api<TeamsPayload>("/api/teams"), getLeagueProfile()]);
+  const provider = providerName(profile.provider);
   if (!res.ok || res.data.teams.length === 0) return children ? <div className={styles.perspective}>{children}</div> : null;
   const { teams, default_team_id: def } = res.data;
   const team = teams.find((t) => t.team_id === current) ?? null;
@@ -41,13 +44,13 @@ export async function TeamPerspective({ path, sp, current, reset = TEAM_SPECIFIC
         <p className={styles.fresh}>
           {team.team_id !== def && (
             <span className={styles.other}>
-              Viewing another team · read-only, nothing is sent to ESPN · <Link href={perspectiveHref(path, sp, null, reset)}>Back to default</Link>
+              Viewing another team · read-only, nothing is sent to {provider} · <Link href={perspectiveHref(path, sp, null, reset)}>Back to default</Link>
               <span aria-hidden="true"> · </span>
             </span>
           )}
           {team.roster_players > 0
-            ? <span title={`Roster as of the ESPN sync ${when(team.roster_synced_at)}`}>Roster synced {when(team.roster_synced_at)} · {team.roster_players} players</span>
-            : <>No roster in the latest ESPN sync</>}
+            ? <span title={`Roster as of the ${provider} sync ${when(team.roster_synced_at)}`}>Roster synced {when(team.roster_synced_at)} · {team.roster_players} players</span>
+            : <>No roster in the latest {provider} sync</>}
         </p>
       )}
       {children}

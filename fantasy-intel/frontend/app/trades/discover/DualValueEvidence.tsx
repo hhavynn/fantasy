@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, Delta, Pos } from "@/components/ui";
+import { projectionName } from "@/lib/labels";
 import {
   checkStatusInfo, favoursText, parText, playerLabel, ratingFields, ratioText, roleChangeText, weeklyChangeRow, weeksText,
 } from "@/lib/trade-dual-value";
@@ -52,10 +53,13 @@ function BestAsset({ label, a }: { label: string; a: DVBestAsset | null }) {
   );
 }
 
-function AssetRow({ p }: { p: DVPlayerAsset }) {
+/** The projections a dual-value block was computed on: "ESPN", or "Ours" for a league without provider projections. */
+const projOf = (dv: DualValue) => projectionName(dv.projection_source);
+
+function AssetRow({ p, proj }: { p: DVPlayerAsset; proj: string }) {
   const r = roleChangeText(p);
   const gaps = [
-    p.missing_weeks?.length ? `no ESPN projection in ${weeksText(p.missing_weeks)}` : "",
+    p.missing_weeks?.length ? `no ${proj} projection in ${weeksText(p.missing_weeks)}` : "",
     p.nfl_ineligible_weeks?.length ? `NFL-ineligible ${weeksText(p.nfl_ineligible_weeks)}, not counted` : "",
   ].filter(Boolean);
   return (
@@ -64,7 +68,7 @@ function AssetRow({ p }: { p: DVPlayerAsset }) {
       <td className="faint" data-label="Moves">{SIDE[p.from_side] ?? `${p.from_side} → ${p.to_side}`}</td>
       <td className="num" data-label="Points above replacement">
         {p.par === null
-          ? <span title={`Missing ESPN projections: ${parText(p.known_par)} known`}>incomplete ({parText(p.known_par)} known)</span>
+          ? <span title={`Missing ${proj} projections: ${parText(p.known_par)} known`}>incomplete ({parText(p.known_par)} known)</span>
           : parText(p.par)}
       </td>
       <td data-label="Position rank">
@@ -89,6 +93,7 @@ function AssetRow({ p }: { p: DVPlayerAsset }) {
 }
 
 export function AssetEvidence({ dv }: { dv: DualValue }) {
+  const proj = projOf(dv);
   const a = dv.asset;
   const fav = favoursText(a.favours);
   const rows = [...a.you_send, ...a.you_receive];
@@ -104,11 +109,11 @@ export function AssetEvidence({ dv }: { dv: DualValue }) {
         <thead>
           <tr>
             <th>Player</th><th>Moves</th>
-            <th className="num" title="ESPN points above the best available free agent at his position, over his NFL-eligible weeks">Pts above repl.</th>
+            <th className="num" title={`${proj} points above the best available free agent at his position, over his NFL-eligible weeks`}>Pts above repl.</th>
             <th>Position rank</th><th>Role (before → after)</th><th>Notes</th>
           </tr>
         </thead>
-        <tbody>{rows.map((p) => <AssetRow key={`${p.from_side}-${p.espn_player_id}`} p={p} />)}</tbody>
+        <tbody>{rows.map((p) => <AssetRow key={`${p.from_side}-${p.espn_player_id}`} p={p} proj={proj} />)}</tbody>
       </table>
       <div className={styles.pair}>
         <BestAsset label="Best asset you surrender" a={a.best_asset_surrendered.you} />
@@ -233,7 +238,7 @@ function PlayerChanges({ label, items }: { label: string; items: { espn_player_i
   );
 }
 
-function SideWeekly({ side, names, title }: { side: DVLineupSide; names: Names; title: string }) {
+function SideWeekly({ side, names, title, proj }: { side: DVLineupSide; names: Names; title: string; proj: string }) {
   const weeks = side.weekly.map((w) => weeklyChangeRow(w, names));
   return (
     <div>
@@ -244,7 +249,7 @@ function SideWeekly({ side, names, title }: { side: DVLineupSide; names: Names; 
             <span className={styles.weekHead}>
               <b>Week {w.week}</b> <span className="faint">{w.phase}</span>{" "}
               {w.delta === null
-                ? <span className="missing" title="Missing ESPN projections: no complete total for this week (never treated as 0)">—</span>
+                ? <span className="missing" title={`Missing ${proj} projections: no complete total for this week (never treated as 0)`}>—</span>
                 : <Delta value={w.delta} />}
             </span>
             {w.changed ? (
@@ -264,7 +269,7 @@ function SideWeekly({ side, names, title }: { side: DVLineupSide; names: Names; 
       )}
       {side.missing.weeks_incomplete > 0 && (
         <p className={`${styles.small} faint`}>
-          {side.missing.weeks_incomplete} {side.missing.weeks_incomplete === 1 ? "week has" : "weeks have"} missing ESPN projections ({weeksText(side.missing.weeks)}); those weeks are not counted as 0.
+          {side.missing.weeks_incomplete} {side.missing.weeks_incomplete === 1 ? "week has" : "weeks have"} missing {proj} projections ({weeksText(side.missing.weeks)}); those weeks are not counted as 0.
         </p>
       )}
     </div>
@@ -278,8 +283,8 @@ export function WeeklyEvidence({ dv, names }: { dv: DualValue; names: Names }) {
       <h4>Weekly lineup changes</h4>
       <p className={`${styles.small} faint`}>{basis}</p>
       <div className={styles.cols}>
-        <SideWeekly side={you} names={names} title={you.team_name ?? "Team"} />
-        <SideWeekly side={them} names={names} title={them.team_name ?? "Partner"} />
+        <SideWeekly side={you} names={names} title={you.team_name ?? "Team"} proj={projOf(dv)} />
+        <SideWeekly side={them} names={names} title={them.team_name ?? "Partner"} proj={projOf(dv)} />
       </div>
     </section>
   );

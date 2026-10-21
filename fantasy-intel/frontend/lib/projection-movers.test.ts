@@ -87,6 +87,13 @@ test("parseMoversState defaults to ESPN, rest of season, all positions", () => {
   assert.deepEqual(parseMoversState(undefined), { source: "espn", view: "ros", position: null, baseline: null, player: null });
 });
 
+test("parseMoversState: a league without provider projections is always on Fantasy Intel's forecasts", () => {
+  assert.equal(parseMoversState({}, false).source, "independent");
+  assert.equal(parseMoversState({ source: "espn" }, false).source, "independent");
+  assert.equal(parseMoversState({ source: "espn" }, true).source, "espn");
+  assert.doesNotMatch(moversQuery(parseMoversState({ source: "espn", baseline: "w6" }, false)), /source=espn/);
+});
+
 test("parseMoversState accepts the documented values, with ours as an alias", () => {
   assert.deepEqual(
     parseMoversState({ source: "independent", view: "week", position: "wr", baseline: "2026-10-14", player: "4262921" }),

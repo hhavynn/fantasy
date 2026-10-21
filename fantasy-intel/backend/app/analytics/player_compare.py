@@ -387,7 +387,8 @@ def lock_pregame_week(con, season: int, week: int, pid: int, team: str | None, f
                  "stored before kickoff.")
 
 
-def projection_block(fwd: dict | None, name: str, as_of_week: int, source: str) -> tuple[dict | None, list[str]]:
+def projection_block(fwd: dict | None, name: str, as_of_week: int, source: str,
+                     provider_projections: bool = True) -> tuple[dict | None, list[str]]:
     """The card's `projection` from `player_forward`'s output, and the limitations it implies. ESPN's numbers are
     taken as stored; a bye is never a 0 and a missing projection is None."""
     if fwd is None:
@@ -440,12 +441,15 @@ def projection_block(fwd: dict | None, name: str, as_of_week: int, source: str) 
         if entry is not None and entry.get("horizon") not in (None, 0):
             notes.append(f"{name}: the Fantasy Intel number for week {as_of_week} comes from a run made "
                          f"{entry['horizon']} week(s) earlier.")
-    if summary["ros_weeks_available"] == 0:
+    if not provider_projections:
+        pass        # a league whose provider publishes no projections: there is no ESPN number to miss
+    elif summary["ros_weeks_available"] == 0:
         notes.append(f"{name}: ESPN has no projection for any remaining week.")
     elif summary["ros_projected_points"] is None:
         notes.append(f"{name}: ESPN projects {summary['ros_weeks_available']} of {summary['ros_weeks_expected']} "
                      "remaining weeks, so a rest-of-season total is unavailable.")
-    if nw_src and not nw_src["on_bye"] and nw_src["espn_projected_points"] is None and summary["ros_weeks_available"]:
+    if (provider_projections and nw_src and not nw_src["on_bye"] and nw_src["espn_projected_points"] is None
+            and summary["ros_weeks_available"]):
         notes.append(f"{name}: ESPN has no projection for week {as_of_week}.")
     if not fwd.get("schedule_available"):
         notes.append("The NFL schedule is not loaded, so bye weeks and games remaining are unknown.")
@@ -529,7 +533,7 @@ def _load_side(con, ctx: dict, pid: int, which: str) -> Side:
     fwd, lock_note = lock_pregame_week(con, season, as_of, pid, team, fwd, ctx["now"], name)
     if lock_note:
         notes.append(lock_note)
-    projection, proj_notes = projection_block(fwd, name, as_of, ctx["source"])
+    projection, proj_notes = projection_block(fwd, name, as_of, ctx["source"], ctx.get("provider_projections", True))
     notes += proj_notes
 
     weekly = []
@@ -587,7 +591,7 @@ def _proj(s: Side) -> dict | None:
     return s.card["projection"]
 
 
-def build_rows(sa: Side, sb: Side, source: str, identical: bool) -> list[dict]:
+def build_rows(sa: Side, sb: Side, source: str, identical: bool, provider_projections: bool = True) -> list[dict]:
     independent = source == "independent"
     rows: list[dict] = []
 
@@ -612,7 +616,8 @@ def build_rows(sa: Side, sb: Side, source: str, identical: bool) -> list[dict]:
                 vb = nw[field_]
         rows.append(_row(key, label, "projection", "pts", va, vb, problems, identical))
 
-    next_week("espn", "Next week projection (ESPN)", "next_week_espn")
+    if provider_projections:
+        next_week("espn", "Next week projection (ESPN)", "next_week_espn")
     if independent:
         next_week("ours", "Next week projection (Fantasy Intel)", "next_week_ours")
 
@@ -633,7 +638,8 @@ def build_rows(sa: Side, sb: Side, source: str, identical: bool) -> list[dict]:
                                     f"({r['espn_weeks_available']} of {r['espn_weeks_expected']} weeks)")
         rows.append(_row(key, label, "projection", "pts", vals[0], vals[1], problems, identical, note))
 
-    ros("espn", "Rest-of-season projection (ESPN)", "ros_espn", None)
+    if provider_projections:
+        ros("espn", "Rest-of-season projection (ESPN)", "ros_espn", None)
     if independent:
         ros("ours", "Rest-of-season projection (Fantasy Intel)", "ros_ours",
             "Remaining regular-season weeks only")
@@ -819,10 +825,10 @@ def _freshness(con) -> dict:
     return {"espn_synced_at": _iso(last.get("espn")), "nfl_synced_at": _iso(last.get("nfl"))}
 
 
-def compare(con, a: int, b: int, source: str = "espn", now=None) -> dict:
+def compare(con, a: int, b: int, source: str | None = None, now=None) -> dict:
     """The comparison payload (docs/player_comparison_lab.md). Raises ValueError for an unknown `source`,
     UnknownPlayer (`a` first) for an unknown id and LeagueUnavailable without a synced league."""
-    source = forward_ours.normalize(source)
+    source = forward_ours.normalize(source, con)
     lg = load_league(con)
     season, as_of = lg["season"], int(lg["current_week"])
     done = as_of - 1
@@ -831,7 +837,8 @@ def compare(con, a: int, b: int, source: str = "espn", now=None) -> dict:
             raise UnknownPlayer(which, pid)
     sched_games, covered = load_schedule(con, season, list(range(1, done + 1))) if done >= 1 else ({}, set())
     ctx = {"season": season, "league_id": lg["league_id"], "as_of": as_of, "completed": done, "source": source,
-           "sched_games": sched_games, "covered": covered, "now": now or utcnow()}
+           "sched_games": sched_games, "covered": covered, "now": now or utcnow(),
+           "provider_projections": forward_ours.ps.default_source(con, season) == "espn"}
     sa = _load_side(con, ctx, a, "a")
     identical = a == b
     sb = Side(sa.pid, sa.name, sa.position, deepcopy(sa.card), sa.games, sa.league_games, list(sa.notes)) \
@@ -870,7 +877,8 @@ def compare(con, a: int, b: int, source: str = "espn", now=None) -> dict:
         "as_of_week": as_of, "completed_through_week": done, "final_week": window.final if window else None,
         "last_regular_season_week": window.last_regular if window else None, "source": source, "identical": identical,
         "same_position": sa.position == sb.position, "scoring": scoring, "players": [sa.card, sb.card],
-        "rows": build_rows(sa, sb, source, identical), "summary": summary, "limitations": limitations,
+        "rows": build_rows(sa, sb, source, identical, ctx["provider_projections"]), "summary": summary,
+        "limitations": limitations,
         "disclaimer": DISCLAIMER, "freshness": _freshness(con),
     }
 

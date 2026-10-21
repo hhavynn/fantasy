@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { authConfig } from "@/lib/auth-config";
-import { cleanCookies, isLeagueRef, multileagueUiEnabled, NOT_ENABLED_REASON, parseLeagueInput, validSeason } from "@/lib/my-leagues";
+import {
+  cleanCookies, isLeagueRef, multileagueUiEnabled, NOT_ENABLED_REASON, parseLeagueInput, parseProviderChoice,
+  parseSleeperLeagueInput, validSeason,
+} from "@/lib/my-leagues";
 import { currentUser } from "@/lib/supabase/server";
 
 // Server actions are public POST endpoints: each re-checks the flag and the signed-in user on the server, and the
@@ -37,10 +40,23 @@ function readLeague(form: FormData): { league: string; season: number } | { erro
   return { league: parsed.leagueId, season };
 }
 
+/** A Sleeper league: always public, so one step with no cookies. The backend's own message (503, 404, 422) is shown as-is. */
+async function addSleeperLeague(form: FormData): Promise<AddState> {
+  const parsed = parseSleeperLeagueInput(String(form.get("league") ?? ""));
+  if (!parsed) return { status: "error", message: "Enter the Sleeper league id (the long number in the sleeper.com/leagues/… address) or paste the address." };
+  const res = await apiRequest<{ league_id: string }>("/v2/leagues/import", { body: { provider: "sleeper", league: parsed.leagueId } });
+  if (res.ok && res.data) {
+    revalidatePath("/leagues");
+    return { status: "ok", message: "Added. The first sync usually takes a few minutes.", leagueId: res.data.league_id };
+  }
+  return { status: "error", message: res.ok ? "The league could not be added." : res.error };
+}
+
 /** Step 1: try the league as a public one. ESPN saying "private" moves the form to step 2 (cookies). */
 export async function addLeague(_prev: AddState, form: FormData): Promise<AddState> {
   const blocked = await gate();
   if (blocked) return { status: "error", message: blocked };
+  if (parseProviderChoice(form.get("provider")) === "sleeper") return addSleeperLeague(form);
   const input = readLeague(form);
   if ("error" in input) return { status: "error", message: input.error };
   const res = await apiRequest<{ league_id: string }>("/v2/leagues/import", { body: input });

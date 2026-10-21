@@ -19,9 +19,14 @@ import { withTeam } from "@/lib/team-perspective";
 import styles from "./builder.module.css";
 import { RosterPicker } from "./RosterPicker";
 
-export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacity, limits, firstWeek, finalWeek, children }: {
+export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacity, limits, firstWeek, finalWeek, children,
+  projLabel = "ESPN", providerLabel = "ESPN" }: {
   teams: OptionTeam[]; initial: Selection; evaluatedKey: string | null; maxPerSide: number; capacity: number;
   limits: Record<string, number>; firstWeek: number; finalWeek: number; children?: ReactNode;
+  /** The projections the roster values come from ("ESPN", or "Ours" for a Sleeper league). */
+  projLabel?: string;
+  /** The league's provider, whose roster rules apply ("ESPN" or "Sleeper"). */
+  providerLabel?: string;
 }) {
   const router = useRouter();
   // The analyzed team (`?team=`) is the page's perspective, separate from the two sides: evaluating keeps it.
@@ -99,6 +104,7 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
         <div className={styles.sides}>
           {teamA && (
             <RosterPicker role="Team A sends" className={styles.sideA} active={side === "a"} team={teamA} teams={teams} picked={sel.a} maxPerSide={maxPerSide}
+              projLabel={projLabel} providerLabel={providerLabel}
               onTeam={(id) => setSel(changeTeam(sel, teams, "a", id))}
               onToggle={(id) => setSel(togglePlayer(sel, "a", id, maxPerSide))} />
           )}
@@ -107,6 +113,7 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
           </span>
           {teamB && (
             <RosterPicker role="Team B sends" className={styles.sideB} active={side === "b"} team={teamB} teams={teams} picked={sel.b} maxPerSide={maxPerSide}
+              projLabel={projLabel} providerLabel={providerLabel}
               onTeam={(id) => setSel(changeTeam(sel, teams, "b", id))}
               onToggle={(id) => setSel(togglePlayer(sel, "b", id, maxPerSide))} />
           )}
@@ -120,7 +127,7 @@ export function TradeBuilder({ teams, initial, evaluatedKey, maxPerSide, capacit
         <Notice key={team.team_id} tone="caution" title={`${team.name}: roster limits`}>
           {pv.overCapacityBy > 0 && <>{pv.activeAfter} active players for {pv.capacity} active spots, so at least {pv.overCapacityBy} forced
             drop{pv.overCapacityBy > 1 ? "s" : ""}. </>}
-          {pv.positionsOver.map((x) => <span key={x.position}>{x.count} {x.position} over ESPN&apos;s limit of {x.limit}. </span>)}
+          {pv.positionsOver.map((x) => <span key={x.position}>{x.count} {x.position} over {providerLabel}&apos;s limit of {x.limit}. </span>)}
           The evaluator chooses the drops exactly (the legal removal that keeps the most projected starting points).
         </Notice>
       ))}

@@ -291,25 +291,161 @@ DERIVED_TABLES = frozenset({"independent_projection_runs", "independent_projecti
   3. check that Los Subies' `/v2` Ours pages are identical to before (the API response diff ignores timestamps), and that the public league shows Ours for `source=independent`.
 - [ ] Roll back: put `publish_leagues.py` back in the chain (one line) and the job keeps working on the old global file.
 
-## PR 4b (tasks detailed when 4a is merged)
+## PR 4b
 
-- **Task 7: Sleeper scoring.** `positionPoints` in `league_scoring` (+ kicker/D/ST translations), `app/sleeper/scoring.py`: Sleeper `scoring_settings` → ESPN-shaped items; unknown keys unsupported. Tests: the two fixture leagues' fingerprints; TE premium re-scores TE rows only.
-- **Task 8: Sleeper league writer.**
-  - `app/sleeper/write.py`: `write_sleeper(con, data, *, synced_at, my_user_id)` turns `normalize.build_rows` output into the league tables (`leagues`, `league_members`, `fantasy_teams`, `lineup_snapshots`, `matchups`, `transactions`, `fantasy_players`, `player_id_map`).
-  - Player ids are mapped through `nfl_ff_playerids`; actual points come from Sleeper matchups (`players_points`). There are no provider projections.
-  - Tests: a fixture Sleeper league file has every table the pages read, and no colliding ids with an ESPN league.
-- **Task 9: worker.**
-  - `app/sync/sleeper_source.py` (fetch with `SleeperClient`, 4 provider slots, 429 pauses the provider, probe = league exists), `build_league_file` for Sleeper payloads, and raw payloads for `recompute`.
-  - `SLEEPER_SOURCE=disabled` makes the claim skip Sleeper and the API answer "temporarily unavailable".
-  - Connect: `POST /v2/leagues/import` accepts `provider: "sleeper"`.
-- **Task 10: projection default.**
-  - `projection_source.default_source(con)` returns `espn` when the league has ESPN projections and `independent` otherwise.
-  - Every consumer's `source` default reads it.
-  - Waivers, trades, ROS and team value read weekly and rest-of-season projections through `projection_source.weekly` / the Ours horizon runs instead of `espn_player_weekly_points` directly, and only for leagues whose default is `independent`. ESPN leagues are unchanged (goldens).
-- **Task 11: pages.**
-  - Labels come from the response's `source` ("Ours" / "ESPN"), never hard-coded, and the Add League flow takes a Sleeper id.
-  - Playwright runs a Sleeper fixture league (half-PPR, superflex, TE premium) through every page with no "ESPN" label, no empty panel and no console error.
-- **Task 12: leak tests and acceptance.**
-  - `test_two_leagues_with_colliding_ids_never_leak` gains a Sleeper league.
-  - The authorization matrix includes a Sleeper league.
-  - Live run: import a public Sleeper league on production and check that it publishes.
+### Decisions taken while building 4b
+
+| Topic | Decision | Why |
+|---|---|---|
+| Default source | By provider, not by data. `settings_raw.provider == "sleeper"` (written by `write_sleeper`) makes the default `independent`; every other league defaults to `espn`, even before its projections sync | A data test misfires on an ESPN league with no projections yet, and the movers tests caught it |
+| D/ST beyond next week | `league_projections` carries a defense's latest Ours projection flat into later weeks its team plays; a bye stays empty | `dfp-r1` projects one week; without this, every Sleeper lineup with a D/ST was incomplete after next week, so trade, playoff-race and team-value totals were NULL |
+| Pages learn the provider | `GET /api/league-profile` gives `{provider, default_source, provider_projections}`. Adding a field to `/api/status` would have changed an existing golden | One new golden; all 52 existing goldens are byte-identical |
+| Wording | `app/api/provider_copy.py`: curated rules rewrite a Sleeper league's JSON. Projection wording becomes "Ours"; provider facts (records, results, transactions, statuses, the pool) become "Sleeper". It runs before the response cache on `/v2`, and as a classic-path middleware. ESPN leagues and the owner-only research endpoints are untouched | One place instead of about 40 module constants. A test runs every route against the Sleeper fixture: no "ESPN", and no projection credited to Sleeper |
+| Compare | No ESPN rows or ESPN-missing notes for a league without provider projections | They would be NULL columns |
+| Sleeper `ff`, special-teams fumbles | `ff` maps to ESPN stat 106, which the D/ST model now projects (recoveries × the window's ratio). A `def_st_ff` / `def_st_fum_rec` worth the same as its defensive key is covered by it (ESPN's counts include special teams); a different value is approximated and noted | Sleeper's defaults score them. Treating them as unsupported would have switched D/ST off for nearly every Sleeper league |
+| Browser test | `scripts/build_e2e_sleeper.py` and `playwright.sleeper.config.ts` (ports 8766/3101): every navigable page loads with 200, one h1, no error and no console error, and its text contains no "ESPN" | Runs beside the ESPN smoke test |
+
+### Facts these tasks rest on (surveyed 2026-10-21)
+
+- **Two loaders feed almost every engine:**
+  - `trade_data.load_league_state` (`trade_data.py:239-242`; projections dict `{pid: {week: pts}}`) feeds trades, discovery, practical, dual value, playoff race, team value, power rankings (current), lineup-projection routes, and the `team_week/ros_lineup_projections` writer. That writer is matchup's default lineups.
+  - `waiver_data.load_waiver_context` (`waiver_data.py:131-139`) is the only projection read of the four waiver modules.
+  - Both read `espn_player_weekly_points.projected_points` directly.
+- **Readers with their own SQL:**
+  - `projections._projections` (ROS writer)
+  - start/sit `target_week` (`start_sit.py:774-794`)
+  - the `rankings._pool` filter (`rankings.py:154-172`)
+  - `power_rankings._prior_projections` and `player_compare.lock_pregame_week` (both read `espn_projection_history`)
+  - movers (`_espn_snapshots`)
+- **Missing projections are never zero-filled.** Weeks become incomplete with NULL totals, and nothing raises.
+- **`forward_ours._select_batch(con, season, weeks)`** gives league-wide Ours rows per week at any horizon (rest-of-season runs included), under the same selection policy as `select_run`. `rankings._ours` already wraps it.
+- **Sleeper scoring keys that ESPN's resolvers cannot express:**
+  - **Positional reception bonus:** `bonus_rec_te|rb|wr`.
+  - **Points-allowed tiers:** 0, 1-6, 7-13, **14-20, 21-27**, 28-34, 35+. ESPN's edges are 17/18, 21/22 and 27/28.
+  - **Forced fumbles:** `ff` and `def_st_ff`; the D/ST model does not project forced fumbles.
+  - **Finer FG buckets:** `fgm_0_19`, `fgm_20_29`, `fgm_30_39`.
+  - Yardage allowed matches ESPN's tiers.
+- **Frontend:** about 360 user-visible "ESPN" strings.
+  - The provider reaches the layout through `currentLeague()` (`lib/league-scope.server.ts`), which today drops `MyLeague.provider`.
+  - `lib/projection-source.ts` is the single cookie-based source switch for Home, Matchup, Start/Sit, Players and Compare. Rankings and Movers parse their own.
+
+### Task 7: Sleeper scoring, every family supported
+
+**Files:**
+- Create `backend/app/sleeper/scoring.py`.
+- Modify `app/analytics/league_scoring.py`, `kicker_scoring.py`, `kicker_model.py`, `dst_research.py`, `dst_store.py`, `scripts/dst_projections.py`.
+- Tests: `tests/test_sleeper_scoring.py`, plus additions to the kicker and D/ST tests.
+
+**Interfaces:**
+- `to_scoring_items(settings: Mapping[str, float]) -> tuple[list[dict], list[str]]`: ESPN-shaped items, plus the keys with a non-zero value that no family understands. Zero-valued keys are ignored.
+- `SkillScoring.position_weights: dict[str, dict[str, float]]` (default `{}`): per-position additions. `points(row, scoring, position=None)` and `points_sql(scoring, alias, position_col=None)` apply them.
+- `fingerprint` hashes `position_weights` only when non-empty, so every ESPN fingerprint is unchanged (test: Los Subies' fingerprint string pinned).
+- An item `{statId, points, positionPoints: {"TE": 0.5}}` is how `to_scoring_items` expresses `bonus_rec_te`. `resolve_skill_scoring` reads `positionPoints`.
+- Kicker:
+  - `scoring_stats.fg[o]` gains the buckets `0_19`, `20_29` and `30_39`, which sum to `0_39`.
+  - `KickerScoring` gains the bucket names and synthetic statIds 1080–1085 (made/missed 0-19 / 20-29 / 30-39), never ESPN ids.
+  - `expected_points` uses the finest buckets present.
+- D/ST:
+  - The model also computes P(tier) for Sleeper's points-allowed tiers, as synthetic statIds 1089–1095 (same kernel), and E[forced fumbles] = E[fumble recoveries] / the league's recovery share over the training window, as synthetic statId 1106.
+  - These go into `stats`, and so into `scoring_stats`.
+  - ESPN fingerprints and points are unchanged, because no ESPN item weights them (test).
+  - `dst_store`'s copies of MODELED/UNIVERSE are extended to match (equality test).
+
+**Tests:**
+- Both fixture Sleeper leagues translate. League …002's `bonus_pass_yd_300` is listed as unsupported, so its skill scoring is unsupported and stated as such.
+- A half-PPR + superflex + TE-premium dict resolves supported in all three families.
+- TE premium re-scores TE rows only.
+- Sleeper D/ST tier and FF expectations re-score exactly to the model's direct points under a Sleeper scoring.
+- Los Subies fingerprints are pinned.
+
+### Task 8: Sleeper league writer
+
+**Files:**
+- Create `backend/app/sleeper/write.py`.
+- Test `tests/test_sleeper_write.py`.
+
+**Interface:** `write_sleeper(con, data: SleeperLeagueData, *, synced_at, owner_user_id: str | None) -> dict`. It fills the league tables from `normalize.build_rows(...)`:
+- `leagues`: `league_id` = the Sleeper id (BIGINT), `scoring_items` = `to_scoring_items(...)[0]`, and `roster_slots` in internal names (`SLOT_MAP`; superflex = `OP`).
+- `league_members`, `fantasy_teams`, `lineup_snapshots` (current week, plus every past week from matchups `starters` and `players_points`), and `matchups`.
+- `transactions` and `transaction_items` (Sleeper transactions per week; waiver bids as `bid_amount`), and `draft_picks`.
+- `fantasy_players`:
+  - The rostered players, plus every active Sleeper QB/RB/WR/TE/K/DEF with a team.
+  - `availability_status` is ONTEAM or FREEAGENT; percent owned and started are NULL.
+  - `injury_status` is mapped to ESPN's vocabulary: Questionable → QUESTIONABLE, Doubtful → DOUBTFUL, Out → OUT, IR → INJURY_RESERVE, PUP → INJURY_RESERVE, Sus → SUSPENSION, NA → OUT. Unknown values become NULL plus a validation warning.
+- `player_id_map`: Sleeper → ESPN through the global `nfl_ff_playerids` (`sleeper_id`, `espn_id`, `gsis_id`).
+  - DEF maps to `-16000 - proTeamId`.
+  - A player without an ESPN id gets `-(10_000_000 + int(sleeper_id))`, which cannot collide with ESPN ids or D/ST ids.
+- `espn_player_weekly_points.actual_points`:
+  - Sleeper's own `players_points` for rostered player-weeks.
+  - Otherwise skill players' nflverse box scores scored with the league's rules (`points_sql`, position weights applied).
+  - `projected_points` stays NULL: Sleeper provides none.
+
+**Tests:**
+- The fixture league file has every table the pages read.
+- Ids are mapped, and an unmapped player gets a synthetic id.
+- Starters' points equal Sleeper's.
+- Two Sleeper leagues with colliding roster ids stay apart once split.
+
+### Task 9: Sleeper jobs
+
+**Files:**
+- Create `backend/app/sync/sleeper_source.py`.
+- Modify `app/sync/worker.py`, `build.py`, `raw_store.py`, `app/api/connect.py`, `supabase/migrations/2026102114…_sleeper_import.sql` (if `fi.import_public_league` needs a provider argument).
+- Tests: `tests/test_sync_sleeper.py` and the connect API tests.
+
+**Interfaces:**
+- `fetch(client, league_id) -> SleeperPayloads` (league, users, rosters, state, matchups by week, transactions by week, drafts). The players list comes from the cached client.
+- `probe(league_id) -> "public"|"missing"|"unknown"`.
+- The worker dispatches on `provider`.
+  - A 429 pauses the `sleeper` provider slots.
+  - A 404 follows the §3.6 confirmation rule.
+- `build_league_file(..., payloads)` accepts `SleeperPayloads` (`write_sleeper` instead of `write_synced`).
+- `recompute` re-reads `raw/<lg>/<v>.json.gz`.
+
+**Flag and API:**
+- `SLEEPER_SOURCE=disabled` (the default) makes claims skip `sleeper`. The import route answers `503 provider_unavailable` and the league routes answer "temporarily unavailable".
+- `POST /v2/leagues/import` takes `{provider: "espn"|"sleeper", league, season}`. A Sleeper league is always public, needs no cookies, and is validated with one GET.
+
+**Tests:**
+- A fixture Sleeper league imports, syncs and publishes, and its pages answer.
+- A 429 pauses the slots.
+- The disabled flag refuses the import.
+- The public log audit stays clean.
+
+### Task 10: Projection default and engines through the seam
+
+**Files:**
+- Modify `app/analytics/projection_source.py` (`default_source(con)`, `league_projections(con, season, weeks, source) -> {pid: {week: pts}}` built on `forward_ours._select_batch` plus the K/D/ST overlays).
+- Modify `trade_data.load_league_state(..., source=None)`, `waiver_data.load_waiver_context(..., source=None)`, `projections._projections`, `start_sit` (`target_week`), `rankings._pool`, `api/deps.py` (`LeagueScope.default_source`) and every `Query("espn")` default.
+- Tests: `tests/test_projection_default.py`, plus additions to the engine tests.
+
+**Rules:**
+- `default_source(con)` is `"independent"` for a league marked `settings_raw.provider == "sleeper"` and `"espn"` otherwise (see the decisions above).
+- An explicit `source=` still wins.
+- ESPN leagues are byte-identical (goldens).
+
+**Tests:**
+- On a Sleeper fixture league, waivers, trades, playoff race, team value, ROS, start/sit, matchup and rankings produce non-NULL totals from Ours.
+- Every response's `projection_source` says "independent".
+
+### Task 11: Pages
+
+**Files:**
+- `frontend/lib/league-scope.server.ts` (keep `provider`), `lib/projection-source.ts`, `components/ProjectionNotice.tsx`, `components/ProjectionSwitch.tsx`.
+- `lib/labels.ts` (new): `providerName(provider)` and `projectionName(source)`.
+- The labels in the pages listed by the survey; `app/leagues/*` (provider choice, Sleeper id/URL parser, no cookie step for Sleeper).
+
+**Rules:**
+- Pages take the source from the response or the league default, never a hard-coded "ESPN".
+- The ESPN/Ours switch is hidden when the league has no ESPN projections.
+- Owner-only research pages that compare against ESPN show "not applicable for this league".
+
+**Tests:**
+- Unit tests for the label helpers.
+- Playwright against a Sleeper E2E fixture DB (`scripts/build_e2e_sleeper.py`: half-PPR, superflex, TE premium). Every page passes these checks: status 200, one h1, no error state, no "ESPN" in the page text (owner research excepted), and no console error.
+
+### Task 12: Leak tests and acceptance
+
+- `test_two_leagues_with_colliding_ids_never_leak` and the authorization matrix gain a Sleeper league.
+- Full suite, E2E (both fixture leagues), and the Los Subies job-path goldens.
+- Live: import a public Sleeper league on production with `SLEEPER_SOURCE=live` and check that it publishes. Then check one page against Sleeper's own app.

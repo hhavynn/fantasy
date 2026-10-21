@@ -373,7 +373,7 @@ def assess(mine: dict, theirs: dict, sends: list[int], receives: list[int], boar
         "rank_axes": {"lineup_min_side": None if m is None or t is None else min(m, t),
                       "asset_ratio": asset["ratio"], "certainty": -flags},
         "most_important_change": lineup["you"]["key_change"],
-        "projection_source": "espn",
+        "projection_source": getattr(board.state, "projection_source", "espn"),
     }
 
 
