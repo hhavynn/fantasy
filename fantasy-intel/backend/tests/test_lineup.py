@@ -72,3 +72,65 @@ def test_lineup_gain_reports_entry_and_displacement():
     assert g["enters_lineup"] and g["gain"] == 3.0 and g["displaced_id"] == 3   # flex RB (7) drops out
     g = lineup_gain(deep_roster(), slots, P(98, "RB", 2))
     assert not g["enters_lineup"] and g["gain"] == 0
+
+
+# ----------------------------------------------------------------------------- exact search, pruned
+
+def _reference_best_flex(flex, pool):
+    """The exhaustive search as it was before pruning (kept verbatim as the oracle)."""
+    from app.analytics.lineup import eligible
+
+    per_pos = {}
+    for p in pool:
+        lst = per_pos.setdefault(p.get("position"), [])
+        if len(lst) < len(flex):
+            lst.append(p)
+    cands = sorted((p for lst in per_pos.values() for p in lst),
+                   key=lambda p: (-(p.get("value") or 0.0), p["espn_player_id"]))
+    best = (-1.0, [None] * len(flex))
+
+    def dfs(i, used, picks, total):
+        nonlocal best
+        if i == len(flex):
+            if total > best[0] + 1e-12:
+                best = (total, list(picks))
+            return
+        options = [p for p in cands if p["espn_player_id"] not in used and eligible(flex[i], p.get("position"))]
+        for p in options:
+            dfs(i + 1, used | {p["espn_player_id"]}, picks + [p], total + (p.get("value") or 0.0))
+        if not options:
+            dfs(i + 1, used, picks + [None], total)
+
+    dfs(0, frozenset(), [], 0.0)
+    return best[1]
+
+
+def test_pruned_flex_search_returns_exactly_what_the_exhaustive_search_did():
+    import random
+
+    from app.analytics import lineup
+
+    rng = random.Random(20261021)
+    shapes = [["FLEX"], ["FLEX", "FLEX"], ["RB/WR", "WR/TE", "FLEX"], ["FLEX", "FLEX", "FLEX", "OP"],
+              ["WR/TE", "FLEX", "OP", "OP"], ["RB/WR", "RB/WR", "FLEX", "OP"], ["OP"], ["WR/TE", "WR/TE"]]
+    for trial in range(400):
+        flex = rng.choice(shapes)
+        n = rng.randint(0, 14)
+        # coarse values make exact ties common; a few None and negative values too
+        pool = [P(100 + i, rng.choice(["QB", "RB", "WR", "TE", "K"]),
+                  rng.choice([None, -1.0, 0.0] + [rng.randint(0, 12) / 2 for _ in range(6)])) for i in range(n)]
+        pool.sort(key=lambda p: (-(p.get("value") or 0.0), p["espn_player_id"]))
+        got = [p and p["espn_player_id"] for p in lineup._best_flex(flex, pool)]
+        want = [p and p["espn_player_id"] for p in _reference_best_flex(flex, pool)]
+        assert got == want, (trial, flex, pool)
+
+
+def test_three_flex_plus_superflex_is_fast():
+    import time
+
+    slots = lineup_slots({"QB": 2, "RB": 3, "WR": 4, "TE": 2, "OP": 1, "D/ST": 1, "K": 1, "FLEX": 3})
+    roster = [P(i, pos, 20 - i * 0.37) for i, pos in enumerate(["QB", "RB", "WR", "TE"] * 7)]
+    t = time.perf_counter()
+    for _ in range(2000):
+        assign_lineup(roster, slots)
+    assert time.perf_counter() - t < 0.5        # was ~3 ms a call: a 6-team league's waiver run took 20 minutes
