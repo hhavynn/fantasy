@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { ALL_NAV_PAGES, NAV_GROUPS } from "./navigation.ts";
 import {
   FUZZY_SCORE, QUICK_ACTIONS, RECENT_LIMIT, buildSections, flattenSections, pageItems, parseRecents, playerItem, pushRecent,
-  rankItems, scoreItem, wrapIndex,
+  rankItems, scoreItem, wrapIndex, type PaletteItem,
 } from "./palette.ts";
 
 const pages = pageItems(NAV_GROUPS);
@@ -144,4 +144,18 @@ test("pages in a labelled cluster say so in their hint, and their summary finds 
   assert.equal(movers.hint, "Players · Research");
   assert.equal(rankItems("schedule luck", [...QUICK_ACTIONS, ...pages])[0]?.href, "/luck-lab");
   assert.equal(rankItems("opponents", [...QUICK_ACTIONS, ...pages]).some((i) => i.href === "/schedule-intelligence"), true);
+});
+
+
+test("hidden routes leave quick actions, recents and pages alike", () => {
+  const hidden = new Set(["/research", "/projection-performance"]);
+  const recents = [{ id: "r1", kind: "page", label: "WR lab", href: "/research/wr?view=momentum" },
+                   { id: "r2", kind: "page", label: "Waivers", href: "/waivers" }] as PaletteItem[];
+  const pages = pageItems(NAV_GROUPS);
+  const hrefs = (secs: ReturnType<typeof buildSections>) => secs.flatMap((s) => s.items.map((i) => i.href));
+  const shown = hrefs(buildSections("", pages, [], recents, false, hidden));
+  assert.ok(!shown.some((h) => h.startsWith("/research") || h.startsWith("/projection-performance")), shown.join(","));
+  assert.ok(shown.includes("/waivers"));
+  assert.ok(!hrefs(buildSections("research", pages, [], recents, false, hidden)).some((h) => h.startsWith("/research")));
+  assert.ok(hrefs(buildSections("", pages, [], recents)).includes("/research"));   // nothing hidden: unchanged
 });

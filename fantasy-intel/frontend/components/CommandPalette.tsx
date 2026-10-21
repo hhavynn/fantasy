@@ -10,7 +10,7 @@ import { withTeam } from "@/lib/team-perspective";
 import { withLeague } from "@/lib/league-scope";
 import { useLeagueId } from "./useAppPathname";
 import { useTeam } from "./useTeam";
-import { useNavGroups } from "./NavVisibility";
+import { useHiddenHrefs, useNavGroups } from "./NavVisibility";
 import styles from "./CommandPalette.module.css";
 
 const RECENT_KEY = "fantasy-intel:palette-recent";
@@ -110,7 +110,9 @@ function PaletteDialog({ onClose, team }: { onClose: () => void; team: string | 
   const players = result.q === q ? result.players : NO_PLAYERS;
   const groups = useNavGroups();
   const pages = useMemo(() => pageItems(groups), [groups]);
-  const sections = useMemo(() => buildSections(q, pages, players, recents, pending), [q, pages, players, recents, pending]);
+  const hidden = useHiddenHrefs();
+  const sections = useMemo(() => buildSections(q, pages, players, recents, pending, hidden),
+    [q, pages, players, recents, pending, hidden]);
   const flat = useMemo(() => flattenSections(sections), [sections]);
   const activeIndex = Math.max(0, flat.findIndex((i) => i.id === activeId));
   const active = flat[activeIndex] ?? null;
