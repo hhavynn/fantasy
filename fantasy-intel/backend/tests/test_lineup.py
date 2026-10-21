@@ -119,10 +119,18 @@ def test_pruned_flex_search_returns_exactly_what_the_exhaustive_search_did():
         # coarse values make exact ties common; a few None and negative values too
         pool = [P(100 + i, rng.choice(["QB", "RB", "WR", "TE", "K"]),
                   rng.choice([None, -1.0, 0.0] + [rng.randint(0, 12) / 2 for _ in range(6)])) for i in range(n)]
+        # the same player listed twice (lineup_gain with a candidate already on the roster)
+        pool += [dict(rng.choice(pool), value=rng.randint(0, 12) / 2) for _ in range(rng.randint(0, 2) if pool else 0)]
         pool.sort(key=lambda p: (-(p.get("value") or 0.0), p["espn_player_id"]))
         got = [p and p["espn_player_id"] for p in lineup._best_flex(flex, pool)]
         want = [p and p["espn_player_id"] for p in _reference_best_flex(flex, pool)]
         assert got == want, (trial, flex, pool)
+
+
+def test_a_player_listed_twice_fills_one_flex_slot():
+    roster = [P(1, "RB", 9), P(1, "RB", 9), P(2, "WR", 3)]
+    picks = [a["player_id"] for a in assign_lineup(roster, lineup_slots({"FLEX": 2}))]
+    assert sorted(picks) == [1, 2]
 
 
 def test_three_flex_plus_superflex_is_fast():

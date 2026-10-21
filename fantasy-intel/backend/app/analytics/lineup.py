@@ -57,6 +57,9 @@ def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
     cands = sorted((p for lst in per_pos.values() for p in lst),
                    key=lambda p: (-(p.get("value") or 0.0), p["espn_player_id"]))
     vals = [c.get("value") or 0.0 for c in cands]
+    # one bit per player id, not per candidate: the same player listed twice still takes one slot
+    ids: dict = {}
+    bit = [1 << ids.setdefault(c["espn_player_id"], len(ids)) for c in cands]
     ok = [[eligible(s, c.get("position")) for c in cands] for s in flex]
     n, k = len(cands), len(flex)
     # any_ok[i][j]: candidate j fits one of the slots i.. (for the bound)
@@ -70,7 +73,7 @@ def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
         for j in range(n):
             if left == 0 or vals[j] <= 0.0:
                 break
-            if any_ok[i][j] and not used >> j & 1:
+            if any_ok[i][j] and not used & bit[j]:
                 total += vals[j]
                 left -= 1
         return total
@@ -83,14 +86,14 @@ def _best_flex(flex: list[str], pool: list[dict]) -> list[dict | None]:
             return
         if total + bound(i, used) + 1e-9 < best[0] + 1e-12:
             return
-        options = [j for j in range(n) if ok[i][j] and not used >> j & 1]
+        options = [j for j in range(n) if ok[i][j] and not used & bit[j]]
         if not options:
             dfs(i + 1, used, picks + [None], total, -1)
             return
         start = prev + 1 if i and flex[i] == flex[i - 1] else 0
         for j in options:
             if j >= start:
-                dfs(i + 1, used | 1 << j, picks + [cands[j]], total + vals[j], j)
+                dfs(i + 1, used | bit[j], picks + [cands[j]], total + vals[j], j)
 
     dfs(0, 0, [], 0.0, -1)
     return best[1]
