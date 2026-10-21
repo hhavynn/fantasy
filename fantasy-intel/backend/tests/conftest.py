@@ -48,7 +48,10 @@ def pg_db(pg_cluster):
 @pytest.fixture
 def pg(pg_db):
     pg_db.reset()
-    return pg_db
+    try:
+        yield pg_db
+    finally:
+        pg_db.close_open_connections()
 
 
 # ---- CI sharding: `pytest --shard=K/N` runs shard K of N ------------------------------------------------

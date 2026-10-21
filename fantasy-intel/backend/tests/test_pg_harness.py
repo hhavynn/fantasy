@@ -54,3 +54,79 @@ def test_every_migration_rolls_back_in_reverse_order_and_reapplies(pg_cluster):
     finally:
         with psycopg.connect(pg_cluster.superuser_dsn(), autocommit=True) as con:
             con.execute("DROP DATABASE IF EXISTS fi_rollback WITH (FORCE)")
+
+
+def test_unverified_external_dsn_rejected(monkeypatch):
+    import pytest
+    from pg_harness import _verify_safe_test_dsn
+
+    monkeypatch.delenv("FI_ALLOW_REMOTE_TEST_PG", raising=False)
+    with pytest.raises(ValueError, match="Refusing to run destructive test setup against unverified external DSN"):
+        _verify_safe_test_dsn("postgresql://postgres:secret@db.supabase.co:5432/postgres")
+
+    with pytest.raises(ValueError, match="Refusing to run destructive test setup against unverified external DSN"):
+        _verify_safe_test_dsn("postgresql://postgres:secret@production.rds.amazonaws.com:5432/postgres")
+
+    # Safe test hosts should pass without error
+    _verify_safe_test_dsn("postgresql://postgres:postgres@localhost:5432/postgres")
+    _verify_safe_test_dsn("postgresql://postgres:postgres@127.0.0.1:5432/postgres")
+    _verify_safe_test_dsn("host=/tmp/fipg user=postgres dbname=postgres")
+    _verify_safe_test_dsn(None)
+
+    # Explicit override allows intentional remote test clusters
+    monkeypatch.setenv("FI_ALLOW_REMOTE_TEST_PG", "1")
+    _verify_safe_test_dsn("postgresql://postgres:secret@db.supabase.co:5432/postgres")
+
+
+def test_tracked_connections_and_fixture_cleanup(pg):
+    con1 = pg.connect()
+    con2 = pg.connect()
+    assert not con1.closed and not con2.closed
+    closed = pg.close_open_connections()
+    assert closed >= 2
+    assert con1.closed and con2.closed
+
+
+def test_reset_cleans_up_abandoned_uncommitted_transaction(pg):
+    """When a failed test leaves an uncommitted transaction holding a row or table lock,
+    pg.reset() must not hang; it must safely clean up and reset."""
+    con = pg.connect()
+    con.execute("BEGIN")
+    con.execute("INSERT INTO fi.leagues (id, provider, external_id, season, name, status, visibility) VALUES "
+                "('lg_1234567890123456', 'espn', '123', 2026, 'Leak Test', 'active', 'public')")
+    # Leave transaction uncommitted on purpose
+    pg.reset(timeout=5.0)
+    with pg.connect() as check:
+        assert check.execute("SELECT count(*) FROM fi.leagues WHERE id = 'lg_1234567890123456'").fetchone() == (0,)
+
+
+def test_reset_terminates_orphaned_background_lock(pg):
+    """When an orphaned thread holds a table lock on the test DB, pg.reset() terminates
+    the lingering connection to the test database and succeeds cleanly within timeout."""
+    import threading
+    import time
+
+    lock_acquired = threading.Event()
+
+    def background_holder():
+        try:
+            with pg.connect() as con:
+                con.execute("BEGIN")
+                con.execute("LOCK TABLE fi.leagues IN EXCLUSIVE MODE")
+                lock_acquired.set()
+                # Simulate a hanging or orphaned thread
+                time.sleep(30)
+        except Exception:
+            pass  # Expected to be terminated by pg.reset()
+
+    t = threading.Thread(target=background_holder, daemon=True)
+    t.start()
+    assert lock_acquired.wait(timeout=5.0)
+
+    # pg.reset must terminate the blocking backend and complete quickly without hanging
+    start = time.monotonic()
+    pg.reset(timeout=5.0)
+    elapsed = time.monotonic() - start
+    assert elapsed < 4.0
+    t.join(timeout=1.0)
+
