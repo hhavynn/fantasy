@@ -26,6 +26,18 @@ from agent_check import (
 )
 
 
+def _make_valid_owner_json(cluster_dir: Path, runner_pid: int = 12345) -> dict:
+    data_dir = cluster_dir / "data"
+    return {
+        "runner_pid": runner_pid,
+        "created_at": time.time(),
+        "cluster_dir": str(cluster_dir.resolve()),
+        "data_dir": str(data_dir.resolve()),
+        "pg_ctl": "/opt/homebrew/bin/pg_ctl",
+        "harness": "fantasy-intel-pg-harness",
+    }
+
+
 def test_classify_changes():
     runner = VerificationRunner(mode="affected")
     files = [
@@ -82,25 +94,24 @@ def test_infer_affected_tests_for_sync_worker():
 
 def test_infer_affected_tests_for_frontend():
     runner = VerificationRunner(mode="affected")
-    # Component edit: lint, typecheck, unit_tests (no build required)
     _, actions, _ = runner.infer_affected_tests(["fantasy-intel/frontend/components/card.tsx"])
     assert "lint" in actions
     assert "typecheck" in actions
     assert "unit_tests" in actions
     assert "build" not in actions
 
-    # App route / server action edit: build required
     _, actions_build, _ = runner.infer_affected_tests(["fantasy-intel/frontend/app/layout.tsx"])
     assert "build" in actions_build
 
 
 def test_infer_affected_tests_conservative_fallback():
     runner = VerificationRunner(mode="affected")
-    # An unknown backend module should fall back to core conservative suites and record unmapped
     tests, _, unmapped = runner.infer_affected_tests(["fantasy-intel/backend/app/unknown_new_module.py"])
     assert "fantasy-intel/backend/app/unknown_new_module.py" in unmapped
     assert "tests/test_api.py" in tests
     assert "tests/test_authorize_league.py" in tests
+    assert "tests/test_league_scope_audit.py" in tests
+    assert "tests/test_v2_authorization_matrix.py" in tests
 
 
 def test_infer_affected_tests_prioritizes_direct_test_edits():
@@ -110,21 +121,18 @@ def test_infer_affected_tests_prioritizes_direct_test_edits():
         "fantasy-intel/backend/tests/test_trades.py",
     ]
     tests, _, _ = runner.infer_affected_tests(changed)
-    # Directly modified test must be prioritized first
     assert tests[0] == "tests/test_trades.py"
 
 
 def test_infer_affected_tests_handles_deleted_or_missing_files():
     runner = VerificationRunner(mode="affected")
-    # File that no longer exists on disk (e.g. deleted in git diff)
     changed = ["fantasy-intel/backend/app/deleted_old_feature.py"]
     tests, _, unmapped = runner.infer_affected_tests(changed)
     assert "fantasy-intel/backend/app/deleted_old_feature.py" in unmapped
-    assert len(tests) > 0  # Conservative fallback still triggers
+    assert len(tests) > 0
 
 
 def test_validate_test_mappings_clean():
-    # All mapped backend tests must exist on disk right now
     stale = validate_test_mappings()
     assert stale == [], f"Found stale test mappings in agent_check.py: {stale}"
 
@@ -147,10 +155,7 @@ def test_security_suites_all_exist():
 
 
 def test_is_exact_postgres_instance_rejects_unrelated_pids():
-    # Invalid PID
     assert not _is_exact_postgres_instance(99999999, "/tmp/fipg_dummy")
-
-    # Current process PID (python, not postgres)
     assert not _is_exact_postgres_instance(os.getpid(), "/tmp/fipg_dummy")
 
 
@@ -160,9 +165,8 @@ def test_classify_cluster_active_runner(tmp_path):
     data_dir = cluster_dir / "data"
     data_dir.mkdir()
 
-    # Write owner metadata with CURRENT runner PID (which is alive)
     owner_file = cluster_dir / "owner.json"
-    owner_file.write_text(json.dumps({"runner_pid": os.getpid()}))
+    owner_file.write_text(json.dumps(_make_valid_owner_json(cluster_dir, runner_pid=os.getpid())))
 
     result = classify_cluster(cluster_dir)
     assert result["status"] == "active"
@@ -172,13 +176,47 @@ def test_classify_cluster_active_runner(tmp_path):
 def test_classify_cluster_orphaned_dead_runner(tmp_path):
     cluster_dir = tmp_path / "fipg_orphan_test"
     cluster_dir.mkdir()
+    data_dir = cluster_dir / "data"
+    data_dir.mkdir()
 
-    # Write owner metadata with dead PID
     owner_file = cluster_dir / "owner.json"
-    owner_file.write_text(json.dumps({"runner_pid": 99999999}))
+    owner_file.write_text(json.dumps(_make_valid_owner_json(cluster_dir, runner_pid=99999999)))
 
     result = classify_cluster(cluster_dir)
     assert result["status"] == "orphaned"
+
+
+def test_classify_cluster_rejects_missing_owner_json(tmp_path):
+    # An unrelated same-user /tmp/fipg* directory with no owner.json must be classified as unknown
+    cluster_dir = tmp_path / "fipg_unrelated_same_user"
+    cluster_dir.mkdir()
+    data_dir = cluster_dir / "data"
+    data_dir.mkdir()
+
+    result = classify_cluster(cluster_dir)
+    assert result["status"] == "unknown"
+    assert "missing owner.json" in result["reason"]
+
+
+def test_classify_cluster_rejects_malformed_or_untrusted_owner_json(tmp_path):
+    cluster_dir = tmp_path / "fipg_malformed"
+    cluster_dir.mkdir()
+    data_dir = cluster_dir / "data"
+    data_dir.mkdir()
+
+    # Wrong harness
+    owner_file = cluster_dir / "owner.json"
+    owner_file.write_text(json.dumps({"harness": "other-tool", "runner_pid": 123}))
+    assert classify_cluster(cluster_dir)["status"] == "unknown"
+
+    # Directory mismatch
+    owner_file.write_text(json.dumps({
+        "harness": "fantasy-intel-pg-harness",
+        "runner_pid": 99999999,
+        "data_dir": "/tmp/some_other_data",
+        "cluster_dir": str(cluster_dir.resolve()),
+    }))
+    assert classify_cluster(cluster_dir)["status"] == "unknown"
 
 
 def test_classify_cluster_rejects_symlink(tmp_path):
@@ -192,13 +230,34 @@ def test_classify_cluster_rejects_symlink(tmp_path):
     assert "symlink detected" in result["reason"]
 
 
+def test_classify_cluster_rejects_nested_symlink(tmp_path):
+    cluster_dir = tmp_path / "fipg_nested_symlink"
+    cluster_dir.mkdir()
+    data_dir = cluster_dir / "data"
+    data_dir.mkdir()
+    (cluster_dir / "owner.json").write_text(json.dumps(_make_valid_owner_json(cluster_dir, runner_pid=os.getpid())))
+
+    # Inject a nested symlink inside data
+    fake_target = tmp_path / "secret"
+    fake_target.mkdir()
+    (data_dir / "evil_symlink").symlink_to(fake_target)
+
+    result = classify_cluster(cluster_dir)
+    assert result["status"] == "unknown"
+    assert "nested" in result["reason"].lower()
+
+
 def test_classify_cluster_rejects_pid_reuse(tmp_path):
     cluster_dir = tmp_path / "fipg_pid_reuse"
     cluster_dir.mkdir()
     data_dir = cluster_dir / "data"
     data_dir.mkdir()
 
-    # Write postmaster.pid with current Python process PID (which is alive, but NOT postgres!)
+    # Valid owner.json with dead runner
+    owner_file = cluster_dir / "owner.json"
+    owner_file.write_text(json.dumps(_make_valid_owner_json(cluster_dir, runner_pid=99999999)))
+
+    # Postmaster.pid with current Python process PID (which is alive, but NOT postgres!)
     pid_file = data_dir / "postmaster.pid"
     pid_file.write_text(f"{os.getpid()}\n/tmp/something\n")
 
@@ -208,38 +267,37 @@ def test_classify_cluster_rejects_pid_reuse(tmp_path):
 
 
 def test_clean_orphans_leaves_unknown_and_active_untouched(tmp_path, monkeypatch):
-    import agent_check
-
-    # Create dummy clusters in tmp_path
     active_dir = tmp_path / "fipg_active"
     active_dir.mkdir()
-    (active_dir / "owner.json").write_text(json.dumps({"runner_pid": os.getpid()}))
+    (active_dir / "data").mkdir()
+    (active_dir / "owner.json").write_text(json.dumps(_make_valid_owner_json(active_dir, runner_pid=os.getpid())))
 
     orphan_dir = tmp_path / "fipg_orphan"
     orphan_dir.mkdir()
-    (orphan_dir / "owner.json").write_text(json.dumps({"runner_pid": 99999999}))
+    (orphan_dir / "data").mkdir()
+    (orphan_dir / "owner.json").write_text(json.dumps(_make_valid_owner_json(orphan_dir, runner_pid=99999999)))
+
+    unrelated_dir = tmp_path / "fipg_unrelated_no_owner"
+    unrelated_dir.mkdir()
 
     symlink_target = tmp_path / "target"
     symlink_target.mkdir()
     unknown_symlink = tmp_path / "fipg_unknown"
     unknown_symlink.symlink_to(symlink_target)
 
-    # Monkeypatch Path("/tmp").glob to return our test clusters
-    monkeypatch.setattr(Path, "glob", lambda self, pattern: [active_dir, orphan_dir, unknown_symlink] if pattern == "fipg*" else [])
+    monkeypatch.setattr(Path, "glob", lambda self, pattern: [active_dir, orphan_dir, unrelated_dir, unknown_symlink] if pattern == "fipg*" else [])
 
     runner = VerificationRunner(mode="doctor")
-    # Run doctor with clean_orphans
     runner.run_doctor(clean_orphans=True)
 
-    # Assert orphan was cleaned, but active and unknown remain untouched
-    assert not orphan_dir.exists(), "Orphaned cluster should have been cleaned"
+    assert not orphan_dir.exists(), "Verified orphaned cluster should have been cleaned"
     assert active_dir.exists(), "Active cluster must remain untouched"
-    assert unknown_symlink.exists(), "Unknown / symlinked cluster must remain untouched"
+    assert unrelated_dir.exists(), "Unrelated same-user directory without owner.json must remain untouched"
+    assert unknown_symlink.exists(), "Symlinked cluster must remain untouched"
 
 
 def test_bounded_execution_timeout():
     runner = VerificationRunner(mode="quick")
-    # Run a synthetic hanging command with a 0.5s timeout
     cmd = [sys.executable, "-c", "import time; time.sleep(10)"]
     res = runner.run_command("Hang Test", cmd, cwd=REPO_ROOT, target="timeout test", timeout=0.5)
 
@@ -248,9 +306,33 @@ def test_bounded_execution_timeout():
     assert res.duration >= 0.4 and res.duration < 3.0
 
 
+def test_synthetic_secrets_comprehensive_redaction():
+    """Synthetic secrets (ESPN_S2, swid, postgres credentials, tokens, private keys)
+    must be completely redacted and never appear in stdout, stderr, summaries, or logs."""
+    test_str = (
+        "Error in connection postgresql://postgres:SecretPass123@127.0.0.1:5432/testdb\n"
+        "Cookie: espn_s2=AEA1234567890abcdef; ESPN_S2=UPPERCASE_COOKIE_123;\n"
+        "User SWID={12345678-ABCD-1234-ABCD-1234567890AB} and swid: 99999999-1111-2222-3333-444444444444\n"
+        "Authorization: Bearer my_secret_jwt_token_here\n"
+        "password=ConninfoSecretPassword456\n"
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0\n-----END RSA PRIVATE KEY-----"
+    )
+    redacted = _redact_sensitive(test_str)
+    assert "SecretPass123" not in redacted
+    assert "AEA1234567890abcdef" not in redacted
+    assert "UPPERCASE_COOKIE_123" not in redacted
+    assert "12345678-ABCD-1234-ABCD-1234567890AB" not in redacted
+    assert "99999999-1111-2222-3333-444444444444" not in redacted
+    assert "my_secret_jwt_token_here" not in redacted
+    assert "ConninfoSecretPassword456" not in redacted
+    assert "MIIEowIBAAKCAQEA0" not in redacted
+    assert "[REDACTED]" in redacted
+    assert "[TOKEN_REDACTED]" in redacted
+    assert "[PRIVATE_KEY_REDACTED]" in redacted
+
+
 def test_diagnostic_file_permissions_and_redaction():
     runner = VerificationRunner(mode="quick")
-    # Run command that fails and outputs sensitive data
     cmd = [
         sys.executable,
         "-c",
@@ -263,13 +345,11 @@ def test_diagnostic_file_permissions_and_redaction():
     log_path = Path(res.log_file)
     assert log_path.exists()
 
-    # Verify log permissions (0o600) and directory (0o700)
     log_mode = stat.S_IMODE(log_path.stat().st_mode)
     dir_mode = stat.S_IMODE(log_path.parent.stat().st_mode)
     assert log_mode == 0o600, f"Expected 0o600, got {oct(log_mode)}"
     assert dir_mode == 0o700, f"Expected 0o700, got {oct(dir_mode)}"
 
-    # Verify secrets are redacted in log file
     log_content = log_path.read_text()
     assert "supersecret" not in log_content
     assert "[REDACTED]" in log_content
@@ -277,11 +357,29 @@ def test_diagnostic_file_permissions_and_redaction():
     assert "[TOKEN_REDACTED]" in log_content
 
 
+def test_invalid_explicit_base_fails_and_does_not_silently_fallback():
+    runner = VerificationRunner(mode="affected", base_ref="invalid-nonexistent-ref-xyz-123")
+    code = runner.execute()
+    # Must return UNVERIFIED (2) or FAIL (1), never PASS (0)
+    assert code != 0
+    assert any("Base Ref Validation" in r.name for r in runner.results)
+    base_res = next(r for r in runner.results if "Base Ref Validation" in r.name)
+    assert base_res.status == "FAIL"
+
+
+def test_dry_run_never_reports_pass():
+    runner = VerificationRunner(mode="quick", dry_run=True)
+    code = runner.execute()
+    # Dry run reports DRY_RUN, not PASS
+    assert not any(r.status == "PASS" for r in runner.results)
+    # Runner results are SKIP
+    for r in runner.results:
+        assert r.status == "SKIP"
+
+
 def test_full_mode_e2e_unverified_when_playwright_missing(monkeypatch):
     runner = VerificationRunner(mode="full")
-    # Force check_playwright_installed to False
     monkeypatch.setattr(runner, "check_playwright_installed", lambda: False)
-    # Stub run_command to succeed for prior gates
     monkeypatch.setattr(
         runner,
         "run_command",
@@ -290,10 +388,8 @@ def test_full_mode_e2e_unverified_when_playwright_missing(monkeypatch):
     monkeypatch.setattr(runner, "run_frontend_actions", lambda actions: [])
 
     code = runner.execute()
-    # Overall code must be 2 (UNVERIFIED)
     assert code == 2
 
-    # Verify E2E results are UNVERIFIED
     e2e_results = [r for r in runner.results if "E2E" in r.name]
     assert len(e2e_results) == 3
     for r in e2e_results:
@@ -302,16 +398,12 @@ def test_full_mode_e2e_unverified_when_playwright_missing(monkeypatch):
 
 
 def test_authorization_doc_contract_enforces_adr0002():
-    """Verify that documentation enforces private league 404 indistinguishability per ADR-0002 §3,
-    and does not claim anonymous requests to private leagues return 401."""
     reviewer_doc = (REPO_ROOT / ".claude/agents/multileague-security-reviewer.md").read_text()
     arch_doc = (REPO_ROOT / ".claude/skills/fantasy-verify/references/architecture-map.md").read_text()
     claude_md = (REPO_ROOT / "CLAUDE.md").read_text()
 
     for doc, name in [(reviewer_doc, "reviewer"), (arch_doc, "arch"), (claude_md, "CLAUDE.md")]:
-        # Must mention 404 and indistinguishability
         assert "404" in doc, f"{name} missing 404 contract"
         assert "indistinguish" in doc.lower(), f"{name} must enforce 404 indistinguishability"
-        # Must not claim that anonymous private league requests return 401
         assert "anonymous private-league requests must return 401" not in doc.lower()
         assert "anonymous caller gets 401" not in doc.lower()

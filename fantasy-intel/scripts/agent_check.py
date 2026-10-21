@@ -25,6 +25,7 @@ import datetime
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -192,15 +193,42 @@ def _is_exact_postgres_instance(pid: int, data_dir: str | Path) -> bool:
     uid, cmd = info
     if uid != os.getuid():
         return False
-    if "postgres" not in cmd:
+    try:
+        tokens = shlex.split(cmd)
+    except Exception:
+        tokens = cmd.split()
+    if not tokens:
         return False
-    data_str = str(Path(data_dir).resolve())
-    return data_str in cmd or str(data_dir) in cmd
+    # Executable binary must be postgres
+    if Path(tokens[0]).name != "postgres":
+        return False
+    # Exact data directory must match -D argument
+    try:
+        target_data = Path(data_dir).resolve()
+    except Exception:
+        return False
+    has_matching_data_arg = False
+    for i, tok in enumerate(tokens):
+        if tok == "-D" and i + 1 < len(tokens):
+            try:
+                if Path(tokens[i + 1]).resolve() == target_data:
+                    has_matching_data_arg = True
+                    break
+            except Exception:
+                pass
+        elif tok.startswith("-D") and len(tok) > 2:
+            try:
+                if Path(tok[2:]).resolve() == target_data:
+                    has_matching_data_arg = True
+                    break
+            except Exception:
+                pass
+    return has_matching_data_arg
 
 
 def classify_cluster(cluster_dir: Path) -> dict:
     """Classify a /tmp/fipg* directory as 'active', 'orphaned', or 'unknown'."""
-    # 1. Path safety check: no symlinks, resolved inside /tmp
+    # 1. Path safety check: no symlinks, resolved inside temp directory
     if cluster_dir.is_symlink():
         return {"status": "unknown", "reason": "symlink detected (unsafe)", "dir": cluster_dir}
     try:
@@ -217,31 +245,86 @@ def classify_cluster(cluster_dir: Path) -> dict:
     except Exception as e:
         return {"status": "unknown", "reason": f"stat error: {e}", "dir": cluster_dir}
 
+    # 2. Check nested paths for unsafe symlinks
+    for root, dirs, files in os.walk(cluster_dir, followlinks=False):
+        for d in dirs:
+            if (Path(root) / d).is_symlink():
+                return {"status": "unknown", "reason": "nested directory symlink detected (unsafe)", "dir": cluster_dir}
+        for f in files:
+            if (Path(root) / f).is_symlink():
+                return {"status": "unknown", "reason": "nested file symlink detected (unsafe)", "dir": cluster_dir}
+
     data_dir = cluster_dir / "data"
     pid_file = data_dir / "postmaster.pid"
     owner_file = cluster_dir / "owner.json"
 
-    owner_data = {}
-    if owner_file.is_file():
+    # 3. Require verified harness ownership metadata (missing or malformed owner.json is UNKNOWN)
+    if not owner_file.is_file():
+        return {"status": "unknown", "reason": "missing owner.json (untrusted directory)", "dir": cluster_dir}
+
+    try:
+        owner_data = json.loads(owner_file.read_text(encoding="utf-8"))
+        if not isinstance(owner_data, dict):
+            return {"status": "unknown", "reason": "malformed owner.json", "dir": cluster_dir}
+    except Exception as e:
+        return {"status": "unknown", "reason": f"unreadable owner.json: {e}", "dir": cluster_dir}
+
+    if owner_data.get("harness") != "fantasy-intel-pg-harness":
+        return {"status": "unknown", "reason": "untrusted harness marker in owner.json", "dir": cluster_dir}
+
+    # Validate recorded directories match this exact cluster directory and data directory
+    recorded_data = owner_data.get("data_dir")
+    if not recorded_data:
+        return {"status": "unknown", "reason": "missing data_dir in owner.json", "dir": cluster_dir}
+    try:
+        if Path(recorded_data).resolve() != data_dir.resolve():
+            return {"status": "unknown", "reason": "recorded data_dir mismatch in owner.json", "dir": cluster_dir}
+    except Exception:
+        return {"status": "unknown", "reason": "invalid data_dir in owner.json", "dir": cluster_dir}
+
+    recorded_cluster = owner_data.get("cluster_dir")
+    if recorded_cluster:
         try:
-            owner_data = json.loads(owner_file.read_text())
+            if Path(recorded_cluster).resolve() != cluster_dir.resolve():
+                return {"status": "unknown", "reason": "recorded cluster_dir mismatch in owner.json", "dir": cluster_dir}
         except Exception:
-            pass
+            return {"status": "unknown", "reason": "invalid cluster_dir in owner.json", "dir": cluster_dir}
 
     runner_pid = owner_data.get("runner_pid")
-    runner_alive = False
-    if runner_pid:
-        try:
-            os.kill(runner_pid, 0)
-            runner_alive = True
-        except OSError:
-            runner_alive = False
+    if not isinstance(runner_pid, int) or runner_pid <= 0:
+        return {"status": "unknown", "reason": "invalid runner_pid in owner.json", "dir": cluster_dir}
 
+    # 4. Check runner liveness
+    try:
+        os.kill(runner_pid, 0)
+        runner_alive = True
+    except OSError:
+        runner_alive = False
+
+    if runner_alive:
+        pm_pid = None
+        if pid_file.is_file():
+            try:
+                pm_pid = int(pid_file.read_text().splitlines()[0].strip())
+            except Exception:
+                pass
+        return {
+            "status": "active",
+            "reason": f"active test cluster for runner PID {runner_pid}",
+            "dir": cluster_dir,
+            "data": data_dir,
+            "pid": pm_pid,
+        }
+
+    # Runner is confirmed dead. Now inspect postmaster.pid
     if not pid_file.is_file():
-        if runner_alive:
-            return {"status": "active", "reason": f"runner PID {runner_pid} is alive", "dir": cluster_dir}
-        else:
-            return {"status": "orphaned", "reason": "empty or incomplete cluster with no running postmaster", "dir": cluster_dir}
+        # Harness-owned cluster with dead runner and no postmaster running
+        return {
+            "status": "orphaned",
+            "reason": "verified harness cluster abandoned by dead runner",
+            "dir": cluster_dir,
+            "data": data_dir,
+        }
 
     try:
         lines = pid_file.read_text().splitlines()
@@ -249,44 +332,55 @@ def classify_cluster(cluster_dir: Path) -> dict:
     except Exception:
         return {"status": "unknown", "reason": "corrupted postmaster.pid", "dir": cluster_dir}
 
-    is_harness_pg = _is_exact_postgres_instance(pm_pid, data_dir)
-    if not is_harness_pg:
-        try:
-            os.kill(pm_pid, 0)
-            # Process is running, but commandline doesn't match our postgres instance! PID reuse!
-            return {"status": "unknown", "reason": f"PID {pm_pid} reused by unrelated process", "dir": cluster_dir}
-        except OSError:
-            # Dead PID file
-            if runner_alive:
-                return {"status": "active", "reason": f"runner PID {runner_pid} starting up", "dir": cluster_dir}
-            return {"status": "orphaned", "reason": "stale PID file from dead cluster", "dir": cluster_dir}
+    try:
+        os.kill(pm_pid, 0)
+        pm_alive = True
+    except OSError:
+        pm_alive = False
 
-    # Process is confirmed to be the exact postgres postmaster for this data dir
-    if runner_alive:
-        return {
-            "status": "active",
-            "reason": f"active test cluster for runner PID {runner_pid}",
-            "dir": cluster_dir,
-            "pid": pm_pid,
-            "data": data_dir,
-        }
+    if pm_alive:
+        is_harness_pg = _is_exact_postgres_instance(pm_pid, data_dir)
+        if is_harness_pg:
+            return {
+                "status": "orphaned",
+                "reason": f"runner dead, postmaster {pm_pid} running orphaned",
+                "dir": cluster_dir,
+                "pid": pm_pid,
+                "data": data_dir,
+                "pg_ctl": owner_data.get("pg_ctl"),
+            }
+        else:
+            # Running PID does not match exact postgres binary and data dir: PID reuse!
+            return {"status": "unknown", "reason": f"PID {pm_pid} reused by unrelated process", "dir": cluster_dir}
     else:
+        # Postmaster PID file exists but process is dead
         return {
             "status": "orphaned",
-            "reason": f"runner dead, postmaster {pm_pid} running orphaned",
+            "reason": "stale PID file from dead harness cluster",
             "dir": cluster_dir,
-            "pid": pm_pid,
             "data": data_dir,
-            "pg_ctl": owner_data.get("pg_ctl"),
         }
 
 
 def _redact_sensitive(text: str) -> str:
-    """Redact passwords, bearer tokens, cookies, and SWIDs from diagnostics."""
-    text = re.sub(r"(postgresql://[^:]+:)[^@]+(@)", r"\1[REDACTED]\2", text)
-    text = re.sub(r"(espn_s2=)[^\s;&\"']+", r"\1[REDACTED]", text)
-    text = re.sub(r"(password[:=]\s*)[^\s;&\"']+", r"\1[REDACTED]", text, flags=re.IGNORECASE)
-    text = re.sub(r"(Bearer\s+)[A-Za-z0-9_.-]+", r"\1[TOKEN_REDACTED]", text)
+    """Comprehensive redaction of passwords, bearer tokens, cookies, SWIDs, and API keys."""
+    if not text:
+        return ""
+    # PostgreSQL URIs with passwords
+    text = re.sub(r"(postgres(?:ql)?://[^:]+:)[^@]+(@)", r"\1[REDACTED]\2", text)
+    # Conninfo / parameter passwords
+    text = re.sub(r"(password\s*[:=]\s*)[^\s;&\"']+", r"\1[REDACTED]", text, flags=re.IGNORECASE)
+    # ESPN cookies (espn_s2, ESPN_S2, espn-s2, etc.)
+    text = re.sub(r"((?:espn_s2|espn-s2)\s*[:=]\s*)[^\s;&\"']+", r"\1[REDACTED]", text, flags=re.IGNORECASE)
+    # SWID in cookies or config (swid=, SWID=, swid:, SWID:)
+    text = re.sub(r"(\bswid\s*[:=]\s*)[^\s;&\"']+", r"\1[REDACTED]", text, flags=re.IGNORECASE)
+    # Explicit SWID UUID pattern {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}
+    text = re.sub(r"\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}", "{[SWID_REDACTED]}", text)
+    # Bearer tokens
+    text = re.sub(r"(Bearer\s+)[A-Za-z0-9_.\-]+", r"\1[TOKEN_REDACTED]", text)
+    # Generic secret/token/api_key
+    text = re.sub(r"((?:token|secret|api_key|apikey)\s*[:=]\s*)[^\s;&\"']+", r"\1[REDACTED]", text, flags=re.IGNORECASE)
+    # Private keys
     text = re.sub(r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+ PRIVATE KEY-----", "[PRIVATE_KEY_REDACTED]", text)
     return text
 
@@ -306,11 +400,13 @@ class StepResult:
 class VerificationRunner:
     def __init__(self, mode: str, base_ref: str | None = None, verbose: bool = False, dry_run: bool = False):
         self.mode = mode
+        self.explicit_base = base_ref is not None
         self.base_ref = base_ref or self._detect_default_base()
         self.verbose = verbose
         self.dry_run = dry_run
         self.results: list[StepResult] = []
         self.warnings: list[str] = []
+        self.coverage_error = False
         self.run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Automatically check for stale test mappings
@@ -348,16 +444,30 @@ class VerificationRunner:
         files: set[str] = set()
         warnings: list[str] = []
 
+        if self.explicit_base:
+            p_check = subprocess.run(["git", "rev-parse", "--verify", self.base_ref], capture_output=True, text=True)
+            if p_check.returncode != 0:
+                err_msg = f"Explicit base ref '{self.base_ref}' cannot be resolved in Git: {p_check.stderr.strip()}"
+                self.results.append(StepResult("Base Ref Validation", self.base_ref, "FAIL", 0.0, err_msg))
+                self.coverage_error = True
+                return [], [err_msg]
+
         # 1. Base diff
         cmd_diff = ["git", "diff", "--name-status", f"{self.base_ref}...HEAD"]
         p_diff = subprocess.run(cmd_diff, capture_output=True, text=True)
         if p_diff.returncode != 0:
+            if self.explicit_base:
+                err_msg = f"Failed to diff against explicit base '{self.base_ref}': {p_diff.stderr.strip()}"
+                self.results.append(StepResult("Base Ref Validation", self.base_ref, "FAIL", 0.0, err_msg))
+                self.coverage_error = True
+                return [], [err_msg]
             warnings.append(f"Failed to diff against '{self.base_ref}': {p_diff.stderr.strip() or 'unknown git error'}. Falling back to HEAD~1.")
             p_fallback = subprocess.run(["git", "diff", "--name-status", "HEAD~1...HEAD"], capture_output=True, text=True)
             if p_fallback.returncode == 0:
                 self._parse_name_status(p_fallback.stdout, files)
             else:
                 warnings.append("Failed to diff against HEAD~1 (initial commit or shallow clone).")
+                self.coverage_error = True
         else:
             self._parse_name_status(p_diff.stdout, files)
 
@@ -476,8 +586,10 @@ class VerificationRunner:
         return backend_tests, sorted(frontend_actions), unmapped_files
 
     def run_command(self, name: str, cmd: list[str], cwd: Path, target: str = "", timeout: float = 180.0) -> StepResult:
+        safe_cmd = [_redact_sensitive(c) for c in cmd]
+        target_display = _redact_sensitive(target)
         if self.dry_run:
-            res = StepResult(name, target, "SKIP", 0.0, f"Dry run: {' '.join(cmd)}")
+            res = StepResult(name, target_display, "SKIP", 0.0, f"Dry run: {' '.join(safe_cmd)}")
             self.results.append(res)
             return res
 
@@ -493,27 +605,31 @@ class VerificationRunner:
                 start_new_session=True,
             )
             try:
-                out, err = proc.communicate(timeout=timeout)
+                raw_out, raw_err = proc.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
                 try:
                     pgid = os.getpgid(proc.pid)
                     os.killpg(pgid, signal.SIGTERM)
                     try:
-                        out, err = proc.communicate(timeout=3)
+                        raw_out, raw_err = proc.communicate(timeout=3)
                     except subprocess.TimeoutExpired:
                         os.killpg(pgid, signal.SIGKILL)
-                        out, err = proc.communicate()
+                        raw_out, raw_err = proc.communicate()
                 except Exception:
                     proc.kill()
-                    out, err = proc.communicate()
+                    raw_out, raw_err = proc.communicate()
+                out = _redact_sensitive(raw_out or "")
+                err = _redact_sensitive(raw_err or "")
                 duration = time.time() - start_time
                 summary = f"TIMEOUT (exceeded {timeout}s limit)"
-                log_file = self._save_diagnostic(name, f"Command timed out after {timeout}s: {' '.join(cmd)}\n--- STDOUT ---\n{out}\n--- STDERR ---\n{err}")
-                res = StepResult(name, target, "FAIL", duration, summary, log_file, out, err)
+                log_file = self._save_diagnostic(name, f"Command timed out after {timeout}s: {' '.join(safe_cmd)}\n--- STDOUT ---\n{out}\n--- STDERR ---\n{err}")
+                res = StepResult(name, target_display, "FAIL", duration, summary, log_file, out, err)
                 self.results.append(res)
                 return res
 
             duration = time.time() - start_time
+            out = _redact_sensitive(raw_out or "")
+            err = _redact_sensitive(raw_err or "")
             status = "PASS" if proc.returncode == 0 else "FAIL"
 
             summary = ""
@@ -543,7 +659,7 @@ class VerificationRunner:
                 log_file = self._save_diagnostic(name, combined)
 
             # Cap in-memory representation to prevent excessive memory usage
-            res = StepResult(name, target, status, duration, summary, log_file, out[:10000], err[:10000])
+            res = StepResult(name, target_display, status, duration, summary, log_file, out[:10000], err[:10000])
             self.results.append(res)
             return res
 
@@ -720,6 +836,17 @@ class VerificationRunner:
         changed_files, warnings = self.get_changed_files()
         for w in warnings:
             print(f"[WARN] {w}")
+
+        if self.coverage_error:
+            self.results.append(StepResult(
+                name="Coverage Status",
+                target="Git Diff",
+                status="UNVERIFIED",
+                duration=0.0,
+                summary="Accurate change coverage could not be determined. Base ref invalid or git failure.",
+            ))
+            return self.print_summary()
+
         print(f"[agent_check] Detected {len(changed_files)} changed file(s)")
 
         classes = self.classify_changes(changed_files)
@@ -820,15 +947,19 @@ class VerificationRunner:
                 print(f"  ↳ Diagnostic log saved: {r.log_file}")
                 lines = [l for l in (r.stderr or r.stdout).splitlines() if "FAILED" in l or "Error:" in l or "error:" in l]
                 for l in lines[:3]:
-                    print(f"    • {l.strip()[:100]}")
+                    print(f"    • {_redact_sensitive(l.strip()[:100])}")
 
         print("-" * 80)
+        all_skipped = len(self.results) > 0 and all(r.status == "SKIP" for r in self.results)
         if any_failure:
             overall = "FAIL"
             exit_code = 1
         elif any_unverified:
             overall = "UNVERIFIED"
             exit_code = 2
+        elif self.dry_run or all_skipped:
+            overall = "DRY_RUN"
+            exit_code = 0
         else:
             overall = "PASS"
             exit_code = 0
@@ -839,7 +970,9 @@ class VerificationRunner:
         if any_failure:
             print("\nAction needed: inspect diagnostic logs or run targeted failed test directly.")
         elif any_unverified:
-            print("\nAction needed: local environment could not execute all full gates. Verify passing GitHub Actions CI for exact commit SHA before merge.")
+            print("\nAction needed: local environment or coverage could not execute/verify all required gates.")
+        elif self.dry_run or all_skipped:
+            print("\nNotice: dry-run mode completed. Checks were reported but not executed; no verification claimed.")
         else:
             if self.mode == "quick":
                 print("\nSuggested next step: python fantasy-intel/scripts/agent_check.py affected")

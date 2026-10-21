@@ -89,6 +89,28 @@ def get_analytics(league_id: str):
     assert any(f.rule_id == "AUTH001" for f in findings)
 
 
+def test_v2_league_route_id_validation_alone_is_flagged():
+    """valid_league_id merely validates path string syntax, not tenant authorization; it must be flagged."""
+    bad_route = """
+@router.get("/v2/leagues/{league_id}/stats")
+def get_stats(league_id: str = Depends(valid_league_id)):
+    return {"stats": True}
+"""
+    findings = check_source(bad_route, "fantasy-intel/backend/app/api/analytics_v2.py")
+    assert any(f.rule_id == "AUTH001" for f in findings)
+
+
+def test_v2_league_route_feature_flag_alone_is_flagged():
+    """require_enabled merely checks deployment feature flag, not tenant authorization; it must be flagged."""
+    bad_route = """
+@router.get("/v2/leagues/{league_id}/stats")
+def get_stats(league_id: str, _enabled = Depends(require_enabled)):
+    return {"stats": True}
+"""
+    findings = check_source(bad_route, "fantasy-intel/backend/app/api/analytics_v2.py")
+    assert any(f.rule_id == "AUTH001" for f in findings)
+
+
 def test_v2_league_route_auth_present_passes():
     good_route = """
 @router.get("/v2/leagues/{league_id}/analytics")
@@ -97,6 +119,14 @@ def get_analytics(ltx=Depends(league_tx)):
 """
     findings = check_source(good_route, "fantasy-intel/backend/app/api/analytics_v2.py")
     assert not any(f.rule_id == "AUTH001" for f in findings)
+
+    good_scope_route = """
+@router.get("/v2/leagues/{league_id}/projections")
+def get_projections(scope=Depends(league_scope)):
+    return {"projections": True}
+"""
+    findings_scope = check_source(good_scope_route, "fantasy-intel/backend/app/api/analytics_v2.py")
+    assert not any(f.rule_id == "AUTH001" for f in findings_scope)
 
 
 def test_current_codebase_clean():

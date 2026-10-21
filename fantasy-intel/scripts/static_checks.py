@@ -241,11 +241,19 @@ class PrivilegedConfigVisitor(ast.NodeVisitor):
 
 
 class V2LeagueRouteAuthVisitor(ast.NodeVisitor):
-    """Flags route handlers touching league paths without declaring tenant authorization dependencies."""
+    """Flags route handlers touching league paths without declaring tenant authorization dependencies.
+
+    Authorization vs Validation & Feature Flags:
+    - `valid_league_id` only validates parameter syntax; it does not authorize tenant access.
+    - `require_enabled` only checks deployment feature flags; it does not authorize tenant access.
+    - Actual tenant authorization requires establishing tenant context and checking visibility/membership:
+      `league_tx`, `league_scope`, `authorize_league`, `authorize_league_in`, `signed_in_league`,
+      `LeagueScope`, `LeagueAccess`, or `LeagueContext`.
+    """
 
     TENANT_DEPENDENCY_NAMES = {
-        "league_tx", "league_scope", "valid_league_id", "authorize_league",
-        "authorize_league_in", "signed_in_league", "require_enabled",
+        "league_tx", "league_scope", "authorize_league",
+        "authorize_league_in", "signed_in_league",
         "LeagueScope", "LeagueAccess", "LeagueContext"
     }
 

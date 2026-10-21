@@ -347,6 +347,8 @@ def test_research_module_is_never_imported_by_the_app():
 def test_dfp_r1_runs_only_from_its_scripts_and_the_shadow_stays_separate():
     """Only the research, shadow and production scripts import the model. learning_cycle.py / refresh_all.py launch
     them as separate processes (never an import); projection_source reads D/ST only through dst_store."""
+    import re
+
     root = Path(__file__).resolve().parents[2]
     scripts = root / "scripts"
     importers = {f.name for f in scripts.rglob("*.py") if "import dst_research" in f.read_text()
@@ -356,7 +358,18 @@ def test_dfp_r1_runs_only_from_its_scripts_and_the_shadow_stays_separate():
         text = (scripts / name).read_text()
         assert '"dst_shadow.py"' in text and "import dst_shadow" not in text and "from dst_shadow" not in text
     assert '"dst_projections.py"' in (scripts / "learning_cycle.py").read_text()
-    callers = {f.name for f in scripts.rglob("*.py") if "dst_shadow" in f.read_text()}
+
+    # Scripts that actually execute, import, or consume dst_shadow (excluding test runner test-file mappings)
+    def is_dst_shadow_caller(path: Path) -> bool:
+        text = path.read_text()
+        if "dst_shadow" not in text:
+            return False
+        # If the only occurrence of dst_shadow is in a test file name (e.g. "tests/test_dst_shadow.py"),
+        # it is test-selection tooling, not a production/pipeline caller of dst_shadow.
+        cleaned = re.sub(r"[\"'](?:tests/)?[^\"']*test_dst_shadow\.py[\"']", "", text)
+        return "dst_shadow" in cleaned
+
+    callers = {f.name for f in scripts.rglob("*.py") if is_dst_shadow_caller(f)}
     # shadow_promotion_check.py only reads the shadow's saved scores.json
     assert callers == {"dst_shadow.py", "dst_projections.py", "learning_cycle.py", "refresh_all.py",
                        "shadow_promotion_check.py"}

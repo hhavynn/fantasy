@@ -216,3 +216,64 @@ def test_concurrent_database_isolation(pg_cluster):
             con.execute("DROP DATABASE IF EXISTS fi_test_beta WITH (FORCE)")
 
 
+def test_overlapping_pytest_sessions_isolation(pg_cluster):
+    """Demonstrate that two independently launched pytest processes sharing the same
+    PostgreSQL cluster run concurrently without terminating each other's sessions or dropping data."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    backend_dir = Path(__file__).resolve().parents[1]
+    tests_dir = backend_dir / "tests"
+
+    # Create two test files in tests/ so pytest loads conftest.py
+    sub1 = tests_dir / f"_tmp_test_alpha_{os.getpid()}.py"
+    sub2 = tests_dir / f"_tmp_test_beta_{os.getpid()}.py"
+    try:
+        sub1.write_text("""
+import time
+def test_alpha_workload(pg):
+    with pg.connect() as con:
+        con.execute("SELECT fi.seed_provider_slots()")
+        time.sleep(1.2)
+        assert con.execute("SELECT count(*) FROM fi.provider_slots").fetchone() == (6,)
+""")
+
+        sub2.write_text("""
+import time
+def test_beta_workload(pg):
+    time.sleep(0.3)
+    with pg.connect() as con:
+        con.execute("SELECT fi.seed_provider_slots()")
+        time.sleep(1.2)
+        assert con.execute("SELECT count(*) FROM fi.provider_slots").fetchone() == (6,)
+""")
+
+        env1 = dict(os.environ)
+        env1["FI_ALLOW_REMOTE_TEST_PG"] = "1"
+        env1["FI_TEST_PG_DSN"] = pg_cluster.superuser_dsn()
+        env1["PYTEST_SESSION_ID"] = f"sess_alpha_{os.getpid()}"
+
+        env2 = dict(os.environ)
+        env2["FI_ALLOW_REMOTE_TEST_PG"] = "1"
+        env2["FI_TEST_PG_DSN"] = pg_cluster.superuser_dsn()
+        env2["PYTEST_SESSION_ID"] = f"sess_beta_{os.getpid()}"
+
+        cmd1 = ["uv", "run", "pytest", "-q", "--tb=short", str(sub1)]
+        cmd2 = ["uv", "run", "pytest", "-q", "--tb=short", str(sub2)]
+
+        p1 = subprocess.Popen(cmd1, cwd=backend_dir, env=env1, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        p2 = subprocess.Popen(cmd2, cwd=backend_dir, env=env2, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        out1, err1 = p1.communicate(timeout=20)
+        out2, err2 = p2.communicate(timeout=20)
+
+        assert p1.returncode == 0, f"Session 1 failed:\nSTDOUT: {out1}\nSTDERR: {err1}"
+        assert p2.returncode == 0, f"Session 2 failed:\nSTDOUT: {out2}\nSTDERR: {err2}"
+    finally:
+        sub1.unlink(missing_ok=True)
+        sub2.unlink(missing_ok=True)
+
+
+

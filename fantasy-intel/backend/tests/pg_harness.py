@@ -35,6 +35,7 @@ _PG_BIN_DIRS = ("/opt/homebrew/opt/postgresql@18/bin", "/opt/homebrew/opt/postgr
 def _is_exact_postgres_instance(pid: int, data_dir: str | Path) -> bool:
     """Check that PID is an active process owned by current user running postgres for exact data_dir.
     Protects against killing unrelated processes due to PID reuse."""
+    import shlex
     try:
         p = subprocess.run(["ps", "-p", str(pid), "-o", "uid=,args="], capture_output=True, text=True, timeout=2)
         if p.returncode != 0 or not p.stdout.strip():
@@ -45,10 +46,34 @@ def _is_exact_postgres_instance(pid: int, data_dir: str | Path) -> bool:
         uid, cmd = int(parts[0]), parts[1]
         if uid != os.getuid():
             return False
-        if "postgres" not in cmd:
+        try:
+            tokens = shlex.split(cmd)
+        except Exception:
+            tokens = cmd.split()
+        if not tokens:
             return False
-        data_str = str(Path(data_dir).resolve())
-        return data_str in cmd or str(data_dir) in cmd
+        # Actual binary must be postgres
+        if Path(tokens[0]).name != "postgres":
+            return False
+        # Exact data directory must match -D argument
+        target_data = Path(data_dir).resolve()
+        has_matching_data_arg = False
+        for i, tok in enumerate(tokens):
+            if tok == "-D" and i + 1 < len(tokens):
+                try:
+                    if Path(tokens[i + 1]).resolve() == target_data:
+                        has_matching_data_arg = True
+                        break
+                except Exception:
+                    pass
+            elif tok.startswith("-D") and len(tok) > 2:
+                try:
+                    if Path(tok[2:]).resolve() == target_data:
+                        has_matching_data_arg = True
+                        break
+                except Exception:
+                    pass
+        return has_matching_data_arg
     except Exception:
         return False
 
@@ -127,6 +152,7 @@ class PgCluster:
         owner_file.write_text(json.dumps({
             "runner_pid": os.getpid(),
             "created_at": time.time(),
+            "cluster_dir": str(Path(self._dir).resolve()),
             "data_dir": str(Path(data).resolve()),
             "pg_ctl": pg_ctl,
             "harness": "fantasy-intel-pg-harness"
