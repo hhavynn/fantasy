@@ -109,7 +109,8 @@ function CookieForm({ league, season, intro }: { league: string; season: number;
         <input id={`${id}-swid`} name="swid" type="password" autoComplete="off" spellCheck={false} required />
       </div>
       <label className={styles.consent}>
-        <input type="checkbox" name="consent" required /> {CONSENT_TEXT}
+        <input type="checkbox" name="consent" required />
+        <span>{CONSENT_TEXT} See the <Link href="/privacy" prefetch={false} target="_blank" rel="noopener">Privacy policy</Link>.</span>
       </label>
       <div className={styles.actions}>
         <button type="submit" disabled={pending}>{pending ? "Checking with ESPN…" : "Connect privately"}</button>

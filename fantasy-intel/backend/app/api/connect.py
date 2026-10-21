@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from ..config import get_settings
-from .leagues_v2 import NOT_FOUND, REQUEST_TX, SIGN_IN, _json, _no_content, _signed_in, league_tx, require_enabled
+from .leagues_v2 import LEAGUE_LIMIT, NOT_FOUND, REQUEST_TX, SIGN_IN, SIGNUPS_CLOSED, _json, _no_content, _signed_in, league_tx, require_enabled
 
 log = logging.getLogger(__name__)
 REPO = "hhavynn/fantasy"
@@ -145,6 +145,8 @@ def _mutation_error(err) -> HTTPException:
         m.NotLeagueOwner: (403, "Your ESPN account does not own a team in this league. Ask a member for an invite."),
         m.InviteInvalid: (404, "This invite is not valid (used, expired or revoked)."),
         m.LastAdmin: (409, "A league needs at least one admin."),
+        m.SignupsClosed: (403, SIGNUPS_CLOSED),
+        m.LeagueLimit: (409, LEAGUE_LIMIT),
         m.SyncPaused: (409, "Syncing is paused for this league: its ESPN cookies stopped working or ESPN no longer has "
                             "it. A member can store fresh cookies in the league's settings."),
     }.get(type(err), (400, "That could not be done."))

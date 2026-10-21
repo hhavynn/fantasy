@@ -27,6 +27,8 @@ from ..leagues.context import Principal, Provider
 log = logging.getLogger(__name__)
 NOT_FOUND = "League not found."
 SIGN_IN = "Sign in to use this endpoint."
+SIGNUPS_CLOSED = "Sign-ups are not open yet."
+LEAGUE_LIMIT = "You already follow 25 leagues. Unpin one first."
 UNAVAILABLE = "The control plane is unavailable."
 NO_STORE = {"Cache-Control": "private, no-store"}
 
@@ -135,6 +137,22 @@ def me(tx=REQUEST_TX):
         return _json(mutations.me(con, principal))
     except mutations.SignInRequired:
         raise HTTPException(401, SIGN_IN) from None
+    except mutations.SignupsClosed:
+        raise HTTPException(403, SIGNUPS_CLOSED) from None
+
+
+@router.delete("/me", status_code=204)
+def delete_me(tx=REQUEST_TX):
+    """Deletes the caller's account (Phase 6): their ESPN cookies are crypto-erased in this transaction, their
+    memberships, pins and team choices go, and a private league left without members is soft-deleted (its files
+    are deleted 7 days later by the drain's maintenance)."""
+    from ..control_plane import mutations
+    con, principal = tx
+    try:
+        mutations.delete_my_account(con, principal)
+    except mutations.SignInRequired:
+        raise HTTPException(401, SIGN_IN) from None
+    return _no_content()
 
 
 @router.get("/leagues")
@@ -174,6 +192,10 @@ def _write_and_recheck(con, access, write):
             write(principal)
     except mutations.SignInRequired:                  # a signature-valid token whose Supabase account is gone
         raise HTTPException(401, SIGN_IN) from None
+    except mutations.SignupsClosed:
+        raise HTTPException(403, SIGNUPS_CLOSED) from None
+    except mutations.LeagueLimit:
+        raise HTTPException(409, LEAGUE_LIMIT) from None
     except InsufficientPrivilege:
         try:
             authorize_league_in(con, principal, access.league_id)

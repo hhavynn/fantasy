@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useId } from "react";
 import { Notice } from "@/components/ui";
 import { sendLink, type LoginState } from "./actions";
@@ -24,6 +25,10 @@ export function LoginForm({ next }: { next: string }) {
       <div className={styles.actions}>
         <button type="submit" disabled={pending}>{pending ? "Sending…" : "Email me a sign-in link"}</button>
       </div>
+      <p className={styles.hint}>
+        By signing in you agree to the <Link href="/terms" prefetch={false}>Terms</Link> and
+        the <Link href="/privacy" prefetch={false}>Privacy policy</Link>.
+      </p>
       {state.status === "error" && state.message ? <Notice tone="negative" title="Could not send the link">{state.message}</Notice> : null}
     </form>
   );

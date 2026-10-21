@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { LEAGUE_COOKIE, LEAGUE_HEADER, proxyDecision } from "./lib/league-scope";
+import { FixedWindowLimiter, clientIp, limitFromEnv } from "./lib/rate-limit";
 import { basicAuthOk } from "./lib/site-auth";
 import { refreshSession } from "./lib/supabase/proxy";
 
@@ -8,7 +9,11 @@ import { refreshSession } from "./lib/supabase/proxy";
 // 2. Multi-league (MULTILEAGUE_UI_ENABLED=1): /l/<lg>/<page> serves <page> for that league (lib/league-scope.ts),
 //    and a signed-in visitor's Supabase session is refreshed on the way (lib/supabase/proxy.ts).
 //    With the flag unset this does nothing, and the site behaves exactly as before.
+// 3. Abuse limit (Phase 6, RATE_LIMIT_PER_MINUTE): requests per client IP per minute in this instance; off when unset.
+//    Every visitor is counted, signed in or not: a session cookie is not verified here, so it cannot buy a higher limit.
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 180;
+const perMinute = limitFromEnv(process.env.RATE_LIMIT_PER_MINUTE);
+const limiter = perMinute ? new FixedWindowLimiter(perMinute, 60_000) : null;
 
 export async function proxy(request: NextRequest) {
   const password = process.env.SITE_PASSWORD;
@@ -16,6 +21,14 @@ export async function proxy(request: NextRequest) {
     return new NextResponse("Password required", {
       status: 401,
       headers: { "WWW-Authenticate": 'Basic realm="fantasy-intel", charset="UTF-8"' },
+    });
+  }
+  const ip = limiter ? clientIp((name) => request.headers.get(name)) : null;
+  const verdict = limiter && ip ? limiter.check(ip, Date.now()) : null;
+  if (verdict && !verdict.ok) {
+    return new NextResponse("Too many requests. Try again in a minute.", {
+      status: 429,
+      headers: { "Retry-After": String(verdict.retryAfterSeconds), "Cache-Control": "no-store" },
     });
   }
   const decision = proxyDecision({
