@@ -80,11 +80,16 @@ PA_TIERS: dict[int, tuple[float | None, float | None]] = {
 YA_TIERS: dict[int, tuple[float | None, float | None]] = {
     128: (None, 99), 129: (100, 199), 130: (200, 299), 131: (300, 349), 132: (350, 399), 133: (400, 449),
     134: (450, 499), 135: (500, 549), 136: (550, None)}
-MODELED = set(COUNT_STATS) | {PA_STAT, YA_STAT} | set(PA_TIERS) | set(YA_TIERS)
+# Points-allowed tiers other providers score (Sleeper: 0, 1-6, 7-13, 14-20, 21-27, 28-34, 35+), as synthetic ids
+# (never ESPN's), from the same kernel as ESPN's tiers (multi-league Phase 4; app/sleeper/scoring.py).
+SLEEPER_PA_TIERS: dict[int, tuple[float | None, float | None]] = {
+    1089: (None, 0), 1090: (1, 6), 1091: (7, 13), 1092: (14, 20), 1093: (21, 27), 1094: (28, 34), 1095: (35, None)}
+FF_STAT = 106      # forced fumbles: E[FF] = E[fumble recoveries] x the training window's forced-per-recovered ratio
+MODELED = set(COUNT_STATS) | {PA_STAT, YA_STAT, FF_STAT} | set(PA_TIERS) | set(YA_TIERS) | set(SLEEPER_PA_TIERS)
 # Every statId ESPN reports on a D/ST (actual or projected, 2019-2026). A non-zero item outside this set is
 # not something a D/ST accrues (it is a player statistic) and is ignored; one inside it but outside MODELED
 # (tackles, return yards, the alternative 187-196 points-allowed family, ...) is unmodeled: the model abstains.
-DST_UNIVERSE = set(range(89, 138)) | {155, 156, 160} | set(range(187, 197)) | {205, 206, 209, 210}
+DST_UNIVERSE = set(range(89, 138)) | {155, 156, 160} | set(range(187, 197)) | {205, 206, 209, 210} | set(SLEEPER_PA_TIERS)
 TD_STATS = (93, 101, 102, 103, 104)
 
 
@@ -254,7 +259,7 @@ def _components(stats: Mapping) -> dict:
             "saf": _num(stats, 98), "ret_td": _num(stats, 101) + _num(stats, 102), "pa": _num(stats, PA_STAT),
             "ya": _num(stats, YA_STAT), "blk_td": _num(stats, 93), "kr_td": _num(stats, 101),
             "pr_td": _num(stats, 102), "int_td": _num(stats, 103), "fr_td": _num(stats, 104),
-            "ret2": _num(stats, 206), "saf1": _num(stats, 209)}
+            "ret2": _num(stats, 206), "saf1": _num(stats, 209), "ff": _num(stats, FF_STAT)}
 
 
 # ----------------------------------------------------------------------------- ratings
@@ -460,6 +465,12 @@ def project_season(train_rows, train_feats, rows, feats, scoring: DstScoring, cf
             p[use_market] = _kernel_tiers(fitted[x][1], y[tr_line], est[x][use_market], tiers, bw)
         probs[x] = p
     pa_p, ya_p = probs["pa"], probs["ya"]
+    y = np.array([r["pa"] for r in tr], dtype=float)
+    spa_p = _kernel_tiers(fitted["pa"][0], y, est["pa"], SLEEPER_PA_TIERS, cfg.bw_pa)
+    if use_market.any():
+        spa_p[use_market] = _kernel_tiers(fitted["pa"][1], y[tr_line], est["pa"][use_market], SLEEPER_PA_TIERS, cfg.bw_pa)
+    fr_seen = sum(r.get("fr", 0.0) for r in tr)
+    ff_per_fr = sum(r.get("ff", 0.0) for r in tr) / fr_seen if fr_seen else 0.0
     w = scoring.weights
     out = []
     for i, (r, f) in enumerate(zip(rows, feats)):
@@ -474,6 +485,9 @@ def project_season(train_rows, train_feats, rows, feats, scoring: DstScoring, cf
             stats[t] = float(pa_p[i, j])
         for j, t in enumerate(YA_TIERS):
             stats[t] = float(ya_p[i, j])
+        for j, t in enumerate(SLEEPER_PA_TIERS):
+            stats[t] = float(spa_p[i, j])
+        stats[FF_STAT] = e["fr"] * ff_per_fr
         lam_td = sum(stats[t] for t in TD_STATS)
         pts = scoring.points(stats)
         out.append({"pred": pts, "pred_td_points": scoring.td_points(stats), "lambda_td": lam_td,

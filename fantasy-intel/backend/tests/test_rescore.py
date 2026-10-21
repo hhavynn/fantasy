@@ -6,7 +6,7 @@ import pytest
 
 from app.analytics import production_forecasts as pf
 from app.analytics import projection_source as ps
-from app.analytics.league_scoring import COMPONENT_COLUMNS, resolve_skill_scoring
+from app.analytics.league_scoring import COMPONENT_COLUMNS, MIX_COLUMNS, resolve_skill_scoring
 from app.analytics.rescore import (DERIVED_TABLES, NO_MIX_FLAG, RESCORED_FLAG, SHIFTED_FLAG, apply_reference,
                                    rescore_dst_rows,
                                    rescore_kicker_rows, rescore_skill_rows, stat_mix)
@@ -172,7 +172,7 @@ def test_stat_mix_uses_the_last_games_up_to_the_cutoff_and_position_averages(liv
     mix = stat_mix(con, (2026, 5))
     assert any(k.startswith("__pos__") for k in mix)
     players = [k for k in mix if not k.startswith("__pos__")]
-    assert players and all(set(mix[p]) <= set(COMPONENT_COLUMNS) for p in players)
+    assert players and all(set(mix[p]) <= set(MIX_COLUMNS) for p in players)
     earlier = stat_mix(con, (2026, 4))
     assert earlier != mix                      # week 5's games are only in the later cutoff
 

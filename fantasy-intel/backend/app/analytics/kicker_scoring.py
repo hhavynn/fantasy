@@ -47,6 +47,7 @@ MAX_DISTANCE = 80          # yards; a kick beyond this has never been attempted 
 BUCKETS: dict[str, tuple[int, int | None]] = {
     "0_39": (0, 39), "40_49": (40, 49), "50_59": (50, 59), "60_plus": (60, None),
     "50_plus": (50, None), "any": (0, None),
+    "0_19": (0, 19), "20_29": (20, 29), "30_39": (30, 39),     # finer buckets other providers score (Sleeper)
 }
 # statId -> (outcome, bucket); outcome "attempted" applies to made, missed and blocked kicks alike.
 FG_ITEMS: dict[int, tuple[str, str]] = {
@@ -56,6 +57,9 @@ FG_ITEMS: dict[int, tuple[str, str]] = {
     201: ("made", "60_plus"), 202: ("attempted", "60_plus"), 203: ("missed", "60_plus"),
     74: ("made", "50_plus"), 75: ("attempted", "50_plus"), 76: ("missed", "50_plus"),
     83: ("made", "any"), 84: ("attempted", "any"), 85: ("missed", "any"),
+    # synthetic ids (never ESPN's) for the finer short-range buckets of translated provider items
+    1080: ("made", "0_19"), 1081: ("made", "20_29"), 1082: ("made", "30_39"),
+    1083: ("missed", "0_19"), 1084: ("missed", "20_29"), 1085: ("missed", "30_39"),
 }
 PAT_ITEMS: dict[int, str] = {86: "made", 87: "attempted", 88: "missed"}
 # Offensive statistics (league_scoring.DIRECT and return TDs): a K-slot player earns them on a fake or a
@@ -158,15 +162,22 @@ class KickerScoring:
         return self
 
 
-# The four disjoint distance buckets every supported scoring is built from (the others are their unions), with one
-# yardage inside each: a kick anywhere in a bucket scores the same (tests/test_kicker_projections.py).
-SCORING_BUCKETS = {"0_39": 30, "40_49": 45, "50_59": 55, "60_plus": 62}
+# The disjoint distance buckets every supported scoring is built from (the others are their unions), with one yardage
+# inside each: a kick anywhere in a bucket scores the same (tests/test_kicker_projections.py). Rows stored before
+# the finer short-range buckets have only "0_39" (COARSE_BUCKETS).
+SCORING_BUCKETS = {"0_19": 15, "20_29": 25, "30_39": 35, "40_49": 45, "50_59": 55, "60_plus": 62}
+COARSE_BUCKETS = {"0_39": 30, "40_49": 45, "50_59": 55, "60_plus": 62}
 
 
-def expected_points(scoring: KickerScoring, s: dict) -> float:
+def expected_points(scoring: KickerScoring, s: dict) -> float | None:
     """League points of a kicker's expected statistics (`stat_line.scoring_stats`: expected made / missed / blocked
-    field goals per bucket and PAT outcomes). Exact for every supported scoring, which is linear in the counts."""
-    fg = sum(n * scoring.fg_points(SCORING_BUCKETS[b], o) for o, by in s["fg"].items() for b, n in by.items())
+    field goals per bucket and PAT outcomes). Exact for every supported scoring, which is linear in the counts. None
+    when the row has only the coarse 0-39 bucket and the scoring splits it (no exact answer)."""
+    made = s["fg"].get("made", {})
+    yards = SCORING_BUCKETS if "0_19" in made else COARSE_BUCKETS
+    if yards is COARSE_BUCKETS and any(len({scoring.fg_points(d, o) for d in range(10, 40)}) > 1 for o in OUTCOMES):
+        return None
+    fg = sum(n * scoring.fg_points(yards[b], o) for o, by in s["fg"].items() for b, n in by.items() if b in yards)
     return round(fg + sum(n * scoring.pat_points(o) for o, n in s["pat"].items()), 6)
 
 

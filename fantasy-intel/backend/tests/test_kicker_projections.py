@@ -373,6 +373,10 @@ SCORINGS = {
     "harsh": [{"statId": 80, "points": 3.0}, {"statId": 77, "points": 3.0}, {"statId": 74, "points": 5.0},
               {"statId": 82, "points": -2.0}, {"statId": 79, "points": -1.0}, {"statId": 88, "points": -1.0},
               {"statId": 86, "points": 1.0}],
+    # a translated Sleeper league that splits 0-39 (synthetic ids 1080-1085)
+    "split": [{"statId": 1080, "points": 2.0}, {"statId": 1081, "points": 3.0}, {"statId": 1082, "points": 3.5},
+              {"statId": 77, "points": 4.0}, {"statId": 74, "points": 5.0}, {"statId": 1083, "points": -2.0},
+              {"statId": 86, "points": 1.0}],
 }
 
 
@@ -390,13 +394,23 @@ def test_scoring_stats_rescore_exactly_to_the_models_own_points(world, scoring, 
         assert expected_points(target, line["scoring_stats"]) == pytest.approx(direct, abs=1e-6)
 
 
+def test_a_row_with_only_the_coarse_bucket_cannot_be_rescored_to_a_split_scoring():
+    from app.analytics.kicker_scoring import expected_points
+
+    coarse = {"fg": {o: {"0_39": 1.0, "40_49": 0.0, "50_59": 0.0, "60_plus": 0.0} for o in ("made", "missed", "blocked")},
+              "pat": {"made": 0.0, "missed": 0.0, "blocked": 0.0}}
+    assert expected_points(resolve_kicker_scoring(SCORINGS["split"]), coarse) is None
+    assert expected_points(resolve_kicker_scoring(SCORINGS["standard"]), coarse) == pytest.approx(3.0 - 1.0 - 1.0)
+
+
 def test_expected_points_of_one_kick_per_bucket_and_outcome():
     from app.analytics.kicker_scoring import expected_points
 
     split = resolve_kicker_scoring([{"statId": 80, "points": 3.0}, {"statId": 86, "points": 1.0}])
-    stats = {"fg": {o: {b: 1.0 for b in ("0_39", "40_49", "50_59", "60_plus")} for o in ("made", "missed", "blocked")},
+    stats = {"fg": {o: {b: 1.0 for b in ("0_19", "20_29", "30_39", "40_49", "50_59", "60_plus")}
+                    for o in ("made", "missed", "blocked")},
              "pat": {"made": 1.0, "missed": 0.0, "blocked": 0.0}}
-    assert expected_points(split, stats) == pytest.approx(3.0 + 1.0)
+    assert expected_points(split, stats) == pytest.approx(3 * 3.0 + 1.0)
 
 
 def test_artifact_roundtrip(world, scoring):
