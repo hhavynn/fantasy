@@ -4,7 +4,8 @@
                + the league's previous league file (same season): tables a job does not rebuild carry forward
                + the ESPN payloads (write_synced: write_all + injury retrieval log), member SWIDs scrubbed
                + the league's Ours, K and D/ST runs from the global file's reference runs, in its own scoring
-                 (app/analytics/rescore.py; these are derived on every build, never carried forward)
+                 (app/analytics/rescore.py; derived on every build, not carried forward; a global file published
+                 before reference runs existed carries them forward instead, as before)
                + run_analytics (the laptop's pipeline, unchanged)
     -> split_database -> the league file. The runner's copy of the global tables is discarded: readers attach the
        published global file the job read, whose version the pointer names.
@@ -22,8 +23,8 @@ from pathlib import Path
 import duckdb
 
 from ..analytics.rescore import DERIVED_TABLES, apply_reference
-from ..db.connection import connect, init_db
-from ..db.league_split import LEAGUE_TABLES, split_database
+from ..db.connection import connect, init_db, table_exists
+from ..db.league_split import LEAGUE_TABLES, REFERENCE_SCORING, split_database
 from ..espn.parse import anon_member
 from ..espn.sync import EspnPayloads, write_synced
 from .raw_store import scrub
@@ -46,7 +47,7 @@ def _ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _carry_forward(con, previous: Path, season: int) -> int:
+def _carry_forward(con, previous: Path, season: int, *, skip: frozenset[str] = frozenset()) -> int:
     """Copy the previous league file's rows into the working DB (by column name). A previous file from another
     season starts the league over: a new season is a new league on the provider."""
     con.execute(f"ATTACH '{_q(previous)}' AS prev (READ_ONLY)")
@@ -60,7 +61,7 @@ def _carry_forward(con, previous: Path, season: int) -> int:
             "SELECT table_name FROM duckdb_tables() WHERE database_name = current_database() AND schema_name = 'main'"
         ).fetchall()}
         copied = 0
-        for t in sorted(set(tables) & (LEAGUE_TABLES - DERIVED_TABLES)):
+        for t in sorted(set(tables) & (LEAGUE_TABLES - skip)):
             if t not in here:          # created at runtime by its own module, not by schema.sql: same definition
                 con.execute(tables[t])
             con.execute(f"INSERT INTO main.{_ident(t)} BY NAME SELECT * FROM prev.main.{_ident(t)}")
@@ -84,10 +85,12 @@ def build_league_file(work_dir: Path, *, global_path: Path, previous: Path | Non
     con = connect(work)
     try:
         init_db(con)
+        refs = table_exists(con, REFERENCE_SCORING)
         if previous is not None:
-            _carry_forward(con, Path(previous), season)
+            _carry_forward(con, Path(previous), season, skip=DERIVED_TABLES if refs else frozenset())
         write_synced(con, payloads, swid=anon_member(owner_swid) if owner_swid else None, my_team_id=None)
-        apply_reference(con, season)
+        if refs:
+            apply_reference(con, season)
         run_analytics(con, season)
         con.execute("CHECKPOINT")
     finally:

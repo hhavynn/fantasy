@@ -133,6 +133,32 @@ def test_a_failed_build_raises_and_publishes_nothing(base, tmp_path):
     assert not (work / "league.duckdb").exists()
 
 
+def test_a_global_file_without_reference_runs_carries_the_previous_ours_forward(base, tmp_path):
+    """The switch-over: a global file published before reference runs existed (no ref_league_scoring) leaves the
+    previous league file's Ours, K and D/ST runs in place, as builds did before Phase 4."""
+    old_global = tmp_path / "old-global.duckdb"
+    shutil.copy(base["global"], old_global)
+    con = duckdb.connect(str(old_global))
+    for (t,) in con.execute("SELECT table_name FROM duckdb_tables() WHERE table_name LIKE 'ref\\_%' ESCAPE '\\'").fetchall():
+        con.execute(f'DROP TABLE "{t}"')
+    con.close()
+    prev = tmp_path / "prev.duckdb"
+    shutil.copy(base["prev"], prev)
+    con = duckdb.connect(str(prev))
+    con.execute("INSERT INTO kicker_projection_runs (run_id, season, week, model_version) "
+                "VALUES ('laptop-run', 2026, 1, 'kfp-1.1.0')")
+    con.close()
+    work = tmp_path / "job"
+    work.mkdir()
+    built = build_league_file(work, global_path=old_global, previous=prev, payloads=fetch_all(FakeEspnClient()),
+                              owner_swid=None, stamp="2026-10-21T12:00:00")
+    con = duckdb.connect(str(built.league_path), read_only=True)
+    try:
+        assert con.execute("SELECT count(*) FROM kicker_projection_runs WHERE run_id = 'laptop-run'").fetchone() == (1,)
+    finally:
+        con.close()
+
+
 def test_a_league_table_created_at_runtime_carries_forward_with_its_definition(base, tmp_path, monkeypatch):
     """A league table created by its own module (not schema.sql) is recreated from the previous file's DDL."""
     from app.db import league_split
