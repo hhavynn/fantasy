@@ -490,8 +490,12 @@ class VerificationRunner:
                 self.coverage_incomplete = True
             else:
                 warnings.append("Failed to diff against HEAD~1 (initial commit or shallow clone). Using working tree status.")
+                self.coverage_incomplete = True
         else:
             self._parse_name_status(p_diff.stdout, files, self._deleted_sources)
+            if not self.explicit_base and self.base_ref == "HEAD~1":
+                self.coverage_incomplete = True
+                warnings.append("Default base ref fell back to HEAD~1 (main branch not found). Partial view — run against full branch for accurate coverage.")
 
         # 2. Working tree status (staged, unstaged, untracked)
         cmd_status = ["git", "status", "--porcelain"]
@@ -891,15 +895,15 @@ class VerificationRunner:
 
         print(f"\n[agent_check] Detected {len(changed_files)} changed file(s)")
 
-        if self.coverage_incomplete:
+        if self.mode != "full" and self.coverage_incomplete:
             self.results.append(StepResult(
-                name="Coverage Note",
+                name="Coverage Status",
                 target="Git Diff",
-                status="WARN",
+                status="UNVERIFIED",
                 duration=0.0,
                 summary=(
                     "Diff fell back to HEAD~1 (single commit, not full branch). "
-                    "Tests are selected from this partial view only. "
+                    "Incomplete comparison: full affected-test coverage cannot be guaranteed. "
                     "Run with an explicit --base for accurate coverage."
                 ),
             ))

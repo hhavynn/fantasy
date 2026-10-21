@@ -157,8 +157,11 @@ def test_deleted_test_file_never_added_to_runnable_list():
 
 def test_head_tilde1_fallback_marks_coverage_incomplete(monkeypatch):
     """When the primary diff against the base ref fails and HEAD~1 succeeds,
-    coverage_incomplete must be set so execute() emits a warning step."""
+    coverage_incomplete must be set and emit UNVERIFIED in affected mode to prevent
+    falsely reporting full affected-test coverage."""
     runner = VerificationRunner(mode="affected")
+    runner.base_ref = "origin/main"
+    runner.explicit_base = False
 
     call_count = [0]
     original_run = __import__("subprocess").run
@@ -185,6 +188,21 @@ def test_head_tilde1_fallback_marks_coverage_incomplete(monkeypatch):
     changed_files, warnings = runner.get_changed_files()
     assert runner.coverage_incomplete is True
     assert any("partial" in w.lower() or "head~1" in w.lower() for w in warnings)
+
+    # In affected mode, execute() must emit UNVERIFIED and return exit code 2
+    monkeypatch.setattr(
+        runner,
+        "run_command",
+        lambda name, cmd, cwd=None, target="", timeout=300.0: StepResult(name, target, "PASS", 0.1, "Passed"),
+    )
+    monkeypatch.setattr(runner, "run_backend_tests", lambda tests, title="", timeout=300.0: None)
+    monkeypatch.setattr(runner, "run_frontend_actions", lambda actions: [])
+    code = runner.execute()
+    assert code == 2  # UNVERIFIED, never PASS
+    cov_results = [r for r in runner.results if "Coverage Status" in r.name]
+    assert len(cov_results) == 1
+    assert cov_results[0].status == "UNVERIFIED"
+    assert "Incomplete comparison" in cov_results[0].summary
 
 
 def test_validate_test_mappings_clean():
