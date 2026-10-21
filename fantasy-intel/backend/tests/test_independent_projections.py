@@ -359,6 +359,8 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
     (analytics/forward_ours.py) import (test below)."""
     allowed = {"projection_source.py",   # opt-in weekly source switch; SQL only, ESPN unless asked
                "league_split.py",   # multi-league file split: names the tables to classify them, never reads them
+               "rescore.py",   # multi-league builds: writes a league's run tables from the global references (copies or
+                               # re-scores sealed runs); consumers still reach them only through projection_source
                "production_forecasts.py",   # immutable run-keyed forecast store (SQL only); readers of the runs
                "independent_projections.py", "independent_projection_store.py", "forecast_backtest.py",
                "forecast_features.py", "league_scoring.py", "participation.py", "main.py", "schema.sql",
