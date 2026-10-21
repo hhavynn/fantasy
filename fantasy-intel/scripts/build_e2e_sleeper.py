@@ -19,6 +19,7 @@ import _bootstrap  # noqa: F401
 sys.path.insert(0, str(_bootstrap.BACKEND / "tests"))
 
 import synthetic_nfl as nfl  # noqa: E402
+import synthetic_research  # noqa: E402
 from espn_fixture import CURRENT, PLAYERS, ROSTERS, SEASON  # noqa: E402
 
 from app.analytics import dst_store, independent_projection_store as ips, kicker_store  # noqa: E402
@@ -114,6 +115,25 @@ def payloads() -> SleeperPayloads:
         matchups[week] = rows
     for week in range(REGULAR_PERIODS + 1, FINAL + 1):
         matchups[week] = []
+    # rosters carry the records and points their played matchups imply, as Sleeper's do
+    record = {t: {"wins": 0, "losses": 0, "ties": 0, "fpts": 0.0, "fpts_against": 0.0} for t in TEAMS}
+    for week, rows in matchups.items():
+        if week >= CURRENT:
+            continue
+        by_mid: dict[int, list[dict]] = {}
+        for row in rows:
+            by_mid.setdefault(row["matchup_id"], []).append(row)
+        for a, b in (pair for pair in by_mid.values() if len(pair) == 2):
+            for me, them in ((a, b), (b, a)):
+                r = record[me["roster_id"]]
+                r["fpts"] += me["points"]
+                r["fpts_against"] += them["points"]
+                r["wins" if me["points"] > them["points"] else "losses" if me["points"] < them["points"] else "ties"] += 1
+    for r in rosters:
+        rec = record[r["roster_id"]]
+        r["settings"].update(wins=rec["wins"], losses=rec["losses"], ties=rec["ties"], fpts=int(rec["fpts"]),
+                             fpts_decimal=round((rec["fpts"] % 1) * 100), fpts_against=int(rec["fpts_against"]),
+                             fpts_against_decimal=round((rec["fpts_against"] % 1) * 100))
     tx = {2: [{"type": "free_agent", "transaction_id": "1190000000000009001", "status": "complete",
                "status_updated": 1757600000000, "created": 1757600000000, "roster_ids": [3],
                "adds": {sleeper_id(209): 3}, "drops": None, "leg": 2, "creator": "700000000000000103",
@@ -197,8 +217,11 @@ def build(db_path: Path) -> dict:
         stats = {"sleeper": write_sleeper(con, payloads())}
         nfl.write(con, SEASON, nfl.schedule(18), set(range(1, CURRENT)))
         nfl.record_fetch(con)
+        # the viewer's saved team (on the site this is the signed-in member's perspective)
+        con.execute("UPDATE fantasy_teams SET is_mine = (team_id = 1)")
         stats["projections"] = projections(con)
         stats["analytics"] = run_analytics(con, SEASON)
+        stats["research"] = synthetic_research.write(con, SEASON)
         return stats
     finally:
         con.close()

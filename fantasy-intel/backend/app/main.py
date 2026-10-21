@@ -101,6 +101,8 @@ mount_legacy_routers(app, [
     injury_impact_router, power_rankings_router, projection_ranges_router,
 ], require_enabled, owner_only=[projection_promotion_router, projection_performance_router, research_router])
 app.middleware("http")(add_scope_headers)
+from .api.provider_copy import classic_copy  # noqa: E402
+app.middleware("http")(classic_copy)
 app.add_exception_handler(CachedResponse, serve_cached)
 
 

@@ -244,3 +244,40 @@ def test_the_saved_team_stays_my_team_while_another_team_is_analysed(pg, served,
     assert [t["team_id"] for t in teams if t["is_owner_default"]] == [2]
     assert client.get(f"/v2/leagues/{pub.league_id}/api/overview?team_id=3",
                       headers=bearer(U1)).json()["perspective"]["team_id"] == 3
+
+
+def test_a_sleeper_league_beside_an_espn_league_keeps_its_own_words_and_data(pg, served, client, e2e, tmp_path,
+                                                                             monkeypatch):
+    """Phase 4b: an ESPN league and a Sleeper league (the synthetic one, colliding team ids) served interleaved.
+    The ESPN league answers exactly as alone; the Sleeper league's answers never name ESPN or show its data."""
+    import importlib.util
+    import re
+    import sys
+    from pathlib import Path
+
+    from app.api import provider_copy
+
+    monkeypatch.setenv("SLEEPER_SOURCE", "live")
+    scripts = Path(__file__).resolve().parents[2] / "scripts"
+    sys.path.insert(0, str(scripts))
+    try:
+        spec = importlib.util.spec_from_file_location("build_e2e_sleeper", scripts / "build_e2e_sleeper.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        sleeper_db = tmp_path / "sleeper.duckdb"
+        mod.build(sleeper_db)
+    finally:
+        sys.path.remove(str(scripts))
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
+    s = publish_local(pg, sleeper_db, served, tmp_path / "s", visibility="public", name="S", provider="sleeper",
+                      stamp="2026-10-20T13:00:00")
+    paths = sorted({read_golden(E2E_DIR, g.stem)[0] for g in E2E_DIR.glob("*.json")})
+    alone = {p: client.get(f"/v2/leagues/{a.league_id}{p}").text for p in paths}
+    for p in paths:
+        rs = client.get(f"/v2/leagues/{s.league_id}{p}?team_id=1" if "?" not in p else f"/v2/leagues/{s.league_id}{p}")
+        ra = client.get(f"/v2/leagues/{a.league_id}{p}")
+        assert response_text(_Fixed(ra), Case("a", p)) == response_text(_Fixed(_Text(alone[p], ra.status_code)),
+                                                                        Case("a", p)), p
+        if rs.status_code == 200 and provider_copy.applies(p.split("?")[0]):
+            assert re.findall(r'"([^"]*ESPN[^"]*)"', rs.text) == [], p
+            assert "\"Fixture League\"" not in rs.text, p    # the ESPN league's name never reaches the Sleeper league
