@@ -33,7 +33,7 @@ This repository is `hhavynn/fantasy`, a high-performance fantasy football analyt
 ## Security & Subagents
 
 - For multi-league security or tenant isolation changes, invoke the subagent `.claude/agents/multileague-security-reviewer.md` before external Codex review.
-- The reviewer audits 401 vs 404 behavior, RLS policies, connection-pool claim isolation, worker fencing, and secret redaction.
+- The reviewer audits 401 vs 404 behavior (private league 404 indistinguishability per ADR-0002 §3; 401 for unusable JWTs), RLS policies, connection-pool claim isolation, worker fencing, and secret redaction.
 
 ## Development Reference & Subsystems
 

@@ -3,9 +3,17 @@
 
 Zero-dependency, fast (<0.05s) validation of repository-specific invariant rules:
 1. Blocking synchronous DB operations inside async FastAPI routes.
-2. Accidental logging or exposure of secrets (ESPN cookies, SWIDs, passwords, private keys).
-3. Accidental introduction of privileged DB credentials into API configuration.
-4. League routes in /v2 omitting tenant authorization dependencies.
+2. Synchronous DB dependencies (e.g. `Depends(league_tx)`) in async route handlers.
+3. Accidental logging or exposure of secrets (ESPN cookies, SWIDs, passwords, private keys).
+4. Accidental introduction of privileged DB credentials into API configuration.
+
+Detection boundaries:
+- What this AST checker detects: direct synchronous DB functions (`connect`, `open_db`, `fetch_all`, `run_analytics`),
+  synchronous connection methods (`con.execute`, `tx.execute`, `cur.execute`), synchronous DB dependencies
+  (`Depends(league_tx)`, `Depends(REQUEST_TX)`, `Depends(signed_in_league)`), and logging of known secret patterns.
+- What it does not detect: dynamic reflection or transitive cross-module helper calls where an async route
+  calls an arbitrary utility that internally performs I/O. Those boundaries are enforced by runtime authorization
+  matrices and concurrency tests.
 """
 from __future__ import annotations
 
@@ -35,12 +43,16 @@ class Finding:
 
 
 class AsyncRouteSyncDbVisitor(ast.NodeVisitor):
-    """Flags synchronous blocking database operations inside `async def` route handlers."""
+    """Flags synchronous blocking database operations or dependencies inside `async def` route handlers."""
 
     DANGEROUS_CALLS = {
         "connect", "open_db", "duckdb_connect", "psycopg_connect",
         "fetch_all", "run_analytics", "split_database", "build_league_file"
     }
+    DANGEROUS_SYNC_DEPENDENCIES = {
+        "league_tx", "REQUEST_TX", "signed_in_league", "db", "require_enabled"
+    }
+    DANGEROUS_METHODS = {"execute", "fetchall", "fetchone", "fetchmany", "commit", "rollback"}
 
     def __init__(self, file_path: str):
         self.file_path = file_path
@@ -53,6 +65,31 @@ class AsyncRouteSyncDbVisitor(ast.NodeVisitor):
         prev_name = self._current_func_name
         self._in_async_func = True
         self._current_func_name = node.name
+
+        # Check function parameters for synchronous DB dependencies like Depends(league_tx)
+        for default in node.args.defaults + [d for d in node.args.kw_defaults if d]:
+            if isinstance(default, ast.Call):
+                func_name = ""
+                if isinstance(default.func, ast.Name):
+                    func_name = default.func.id
+                if func_name == "Depends" and default.args:
+                    dep = default.args[0]
+                    dep_name = ""
+                    if isinstance(dep, ast.Name):
+                        dep_name = dep.id
+                    elif isinstance(dep, ast.Attribute):
+                        dep_name = dep.attr
+                    if dep_name in self.DANGEROUS_SYNC_DEPENDENCIES:
+                        self.findings.append(Finding(
+                            rule_id="ASYNC002",
+                            message=f"Async route handler '{node.name}' depends on synchronous database transaction dependency '{dep_name}'. "
+                                    "Declare handler with standard 'def' for automatic FastAPI worker threadpooling.",
+                            file_path=self.file_path,
+                            line=node.lineno,
+                            column=node.col_offset,
+                            severity="error",
+                        ))
+
         self.generic_visit(node)
         self._in_async_func = prev
         self._current_func_name = prev_name
@@ -60,15 +97,19 @@ class AsyncRouteSyncDbVisitor(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call):
         if self._in_async_func:
             call_name = ""
+            method_name = ""
+            receiver_name = ""
             if isinstance(node.func, ast.Name):
                 call_name = node.func.id
             elif isinstance(node.func, ast.Attribute):
                 call_name = node.func.attr
-                # e.g. duckdb.connect or psycopg.connect
+                method_name = node.func.attr
                 if isinstance(node.func.value, ast.Name):
-                    if node.func.value.id in ("duckdb", "psycopg", "dbc") and node.func.attr == "connect":
-                        call_name = f"{node.func.value.id}_connect"
+                    receiver_name = node.func.value.id
+                    if receiver_name in ("duckdb", "psycopg", "dbc") and node.func.attr == "connect":
+                        call_name = f"{receiver_name}_connect"
 
+            # Check direct dangerous calls
             if call_name in self.DANGEROUS_CALLS:
                 self.findings.append(Finding(
                     rule_id="ASYNC001",
@@ -79,6 +120,19 @@ class AsyncRouteSyncDbVisitor(ast.NodeVisitor):
                     column=node.col_offset,
                     severity="error",
                 ))
+
+            # Check con.execute, tx.execute, cur.execute on database variables
+            if method_name in self.DANGEROUS_METHODS and receiver_name in ("con", "conn", "cur", "cursor", "tx", "ltx", "db"):
+                self.findings.append(Finding(
+                    rule_id="ASYNC001",
+                    message=f"Dangerous blocking synchronous query execution '{receiver_name}.{method_name}()' in async function '{self._current_func_name}'. "
+                            "Use standard 'def' or run query asynchronously.",
+                    file_path=self.file_path,
+                    line=node.lineno,
+                    column=node.col_offset,
+                    severity="error",
+                ))
+
         self.generic_visit(node)
 
 
@@ -186,6 +240,76 @@ class PrivilegedConfigVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+class V2LeagueRouteAuthVisitor(ast.NodeVisitor):
+    """Flags route handlers touching league paths without declaring tenant authorization dependencies."""
+
+    TENANT_DEPENDENCY_NAMES = {
+        "league_tx", "league_scope", "valid_league_id", "authorize_league",
+        "authorize_league_in", "signed_in_league", "require_enabled",
+        "LeagueScope", "LeagueAccess", "LeagueContext"
+    }
+
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+        self.findings: list[Finding] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef):
+        self._check_route(node)
+        self.generic_visit(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
+        self._check_route(node)
+        self.generic_visit(node)
+
+    def _check_route(self, node: ast.FunctionDef | ast.AsyncFunctionDef):
+        route_path = None
+        for dec in node.decorator_list:
+            if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute):
+                if dec.func.attr in {"get", "post", "put", "delete", "patch", "api_route"}:
+                    if dec.args and isinstance(dec.args[0], ast.Constant) and isinstance(dec.args[0].value, str):
+                        p = dec.args[0].value
+                        if "{league_id}" in p:
+                            route_path = p
+                            break
+
+        if not route_path:
+            return
+
+        # Check if function has any tenant dependency
+        has_auth = False
+        all_defaults = [d for d in node.args.defaults + [kd for kd in node.args.kw_defaults if kd]]
+        for d in all_defaults:
+            if isinstance(d, ast.Call):
+                call_func = getattr(d.func, "id", getattr(d.func, "attr", ""))
+                if call_func == "Depends" and d.args:
+                    arg0 = d.args[0]
+                    dep_name = getattr(arg0, "id", getattr(arg0, "attr", ""))
+                    if dep_name in self.TENANT_DEPENDENCY_NAMES:
+                        has_auth = True
+                        break
+            dep_name = getattr(d, "id", getattr(d, "attr", ""))
+            if dep_name in self.TENANT_DEPENDENCY_NAMES:
+                has_auth = True
+                break
+
+        for arg in node.args.args + node.args.kwonlyargs:
+            if arg.annotation:
+                ann_str = ast.unparse(arg.annotation) if hasattr(ast, "unparse") else ""
+                if any(t in ann_str for t in self.TENANT_DEPENDENCY_NAMES):
+                    has_auth = True
+                    break
+
+        if not has_auth:
+            self.findings.append(Finding(
+                rule_id="AUTH001",
+                message=f"Route '{node.name}' handles league path '{route_path}' without declaring a tenant authorization dependency (e.g. Depends(league_tx) or Depends(league_scope))",
+                file_path=self.file_path,
+                line=node.lineno,
+                column=node.col_offset,
+                severity="error",
+            ))
+
+
 def check_source(source: str, file_path: str) -> list[Finding]:
     """Run all AST checks on Python source code."""
     findings: list[Finding] = []
@@ -196,11 +320,15 @@ def check_source(source: str, file_path: str) -> list[Finding]:
 
     rel_path = file_path.replace("\\", "/")
 
-    # Rule 1: Async DB check in API routes
+    # Rule 1 & Rule 4: Async DB check & League route auth in API routes
     if "/backend/app/api/" in rel_path or rel_path.startswith("app/api/"):
-        v = AsyncRouteSyncDbVisitor(file_path)
-        v.visit(tree)
-        findings.extend(v.findings)
+        v1 = AsyncRouteSyncDbVisitor(file_path)
+        v1.visit(tree)
+        findings.extend(v1.findings)
+
+        v4 = V2LeagueRouteAuthVisitor(file_path)
+        v4.visit(tree)
+        findings.extend(v4.findings)
 
     # Rule 2: Secret logging in backend
     if "/backend/" in rel_path or rel_path.startswith("backend/"):

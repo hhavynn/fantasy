@@ -34,10 +34,11 @@ Before modifying core subsystems or starting new phases, consult these authorita
 
 ## 3. Known Dangerous Architectural Boundaries
 
-1. **Private League Indistinguishability (401 vs 404)**
-   - Unauthenticated requests → `401`.
-   - Authenticated non-members requesting private leagues → `404` (never `403`).
-   - Leaking existence of private leagues to non-members is a security violation.
+1. **Private League Indistinguishability (401 vs 404 per ADR-0002 §3)**
+   - Unknown, someone else's, deleted, visibility-expired, and inaccessible private leagues must all return `404 Not Found` (never `403 Forbidden`).
+   - Both anonymous callers and authenticated non-members receive `404` for private leagues they cannot access. Private leagues that exist must be completely indistinguishable from non-existent leagues.
+   - Returning `401` on league data routes would leak the existence of a private league to anonymous callers and is a security violation.
+   - `401 Unauthorized` is reserved for invalid, expired, or malformed supplied JWTs (`Authorization: Bearer`), and dedicated endpoints explicitly requiring authentication (e.g. `/v2/connect/*`, `/v2/me`).
 
 2. **Database Concurrency & Row Locking**
    - Modifying league status, visibility, invites, or credentials requires row locks (`SELECT ... FOR UPDATE` on `fi.leagues`).

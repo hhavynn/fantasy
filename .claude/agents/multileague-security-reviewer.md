@@ -29,10 +29,11 @@ Review the diff against these specific multi-league invariant requirements:
    - Never rely on client-supplied headers without cryptographic JWT verification.
    - API must verify JWTs via JWKS; reject symmetric algorithms (HS256) or `none`.
 
-2. **401 vs 404 & Non-Member Indistinguishability (ADR-0001 §2.3)**
-   - Unauthenticated access to private leagues must return `401 Unauthorized`.
-   - Unauthorized access by an authenticated non-member to a private league must return `404 Not Found` (NEVER `403 Forbidden`).
-   - Private leagues that exist must be completely indistinguishable from non-existent leagues to non-members.
+2. **401 vs 404 & Non-Member Indistinguishability (ADR-0002 §3)**
+   - Unknown, inaccessible, or unauthorized leagues must return `404 Not Found` (NEVER `403 Forbidden`).
+   - Both anonymous callers and authenticated non-members requesting an inaccessible private league receive `404 Not Found`. Private leagues that exist must be completely indistinguishable from non-existent leagues.
+   - A supplied `Authorization: Bearer` token that is unusable (expired, wrong audience, bad signature, unknown `kid`, wrong algorithm) must return `401 Unauthorized` and is never downgraded to anonymous.
+   - Dedicated authentication-required routes (e.g. `/v2/connect/*`, `/v2/me`) follow their explicit route contracts for unauthenticated requests.
 
 3. **Supabase RLS Policy Completeness (`fi.*`)**
    - Check all four SQL operations: `SELECT`, `INSERT`, `UPDATE`, `DELETE`.

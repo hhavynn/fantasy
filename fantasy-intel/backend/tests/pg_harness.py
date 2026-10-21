@@ -7,6 +7,7 @@ DSN is mandatory: tests must never silently skip there.
 from __future__ import annotations
 
 import atexit
+import json
 import os
 import shutil
 import signal
@@ -31,6 +32,27 @@ _PG_BIN_DIRS = ("/opt/homebrew/opt/postgresql@18/bin", "/opt/homebrew/opt/postgr
                 "/usr/lib/postgresql/17/bin", "/usr/lib/postgresql/16/bin")
 
 
+def _is_exact_postgres_instance(pid: int, data_dir: str | Path) -> bool:
+    """Check that PID is an active process owned by current user running postgres for exact data_dir.
+    Protects against killing unrelated processes due to PID reuse."""
+    try:
+        p = subprocess.run(["ps", "-p", str(pid), "-o", "uid=,args="], capture_output=True, text=True, timeout=2)
+        if p.returncode != 0 or not p.stdout.strip():
+            return False
+        parts = p.stdout.strip().split(None, 1)
+        if len(parts) < 2:
+            return False
+        uid, cmd = int(parts[0]), parts[1]
+        if uid != os.getuid():
+            return False
+        if "postgres" not in cmd:
+            return False
+        data_str = str(Path(data_dir).resolve())
+        return data_str in cmd or str(data_dir) in cmd
+    except Exception:
+        return False
+
+
 def _verify_safe_test_dsn(dsn: str | None) -> None:
     """Refuse destructive test setup against an unverified external or production database."""
     if not dsn:
@@ -40,7 +62,7 @@ def _verify_safe_test_dsn(dsn: str | None) -> None:
     if os.environ.get("FI_ALLOW_REMOTE_TEST_PG") == "1":
         return
     safe_hosts = {"localhost", "127.0.0.1", "::1"}
-    if host in safe_hosts or not host or host.startswith("/") or host.endswith(".local") or host.endswith(".internal"):
+    if host in safe_hosts or not host or host.startswith("/"):
         return
     raise ValueError(
         f"Refusing to run destructive test setup against unverified external DSN host: {host!r}. "
@@ -100,6 +122,15 @@ class PgCluster:
                 self._pid = int(pid_file.read_text().splitlines()[0].strip())
             except Exception:
                 self._pid = None
+        # Record cluster identity for safe orphan cleanup and active cluster detection
+        owner_file = Path(self._dir) / "owner.json"
+        owner_file.write_text(json.dumps({
+            "runner_pid": os.getpid(),
+            "created_at": time.time(),
+            "data_dir": str(Path(data).resolve()),
+            "pg_ctl": pg_ctl,
+            "harness": "fantasy-intel-pg-harness"
+        }))
         atexit.register(self.stop)
 
     def stop(self) -> None:
@@ -108,17 +139,22 @@ class PgCluster:
         except Exception:
             pass
         if self._dir and self._pg_ctl and self._data:
+            data_path = Path(self._data).resolve()
             try:
-                subprocess.run([self._pg_ctl, "-D", self._data, "-m", "immediate", "-w", "stop"], capture_output=True,
+                subprocess.run([self._pg_ctl, "-D", str(data_path), "-m", "immediate", "-w", "stop"], capture_output=True,
                                timeout=10, env=getattr(self, "_env", None))
             except Exception:
                 pass
             if self._pid is not None:
-                try:
-                    os.kill(self._pid, 0)
-                    os.kill(self._pid, signal.SIGKILL)
-                except OSError:
-                    pass
+                # PID-reuse protection: only signal if process is still verified to be this exact postgres instance
+                if _is_exact_postgres_instance(self._pid, data_path):
+                    try:
+                        os.kill(self._pid, signal.SIGTERM)
+                        time.sleep(0.5)
+                        if _is_exact_postgres_instance(self._pid, data_path):
+                            os.kill(self._pid, signal.SIGKILL)
+                    except OSError:
+                        pass
                 self._pid = None
             shutil.rmtree(self._dir, ignore_errors=True)
             self._dir = None

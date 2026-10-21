@@ -38,8 +38,13 @@ def pg_cluster():
 
 
 @pytest.fixture(scope="session")
-def pg_db(pg_cluster):
-    db = PgDatabase(pg_cluster)
+def pg_db(pg_cluster, request):
+    worker_id = getattr(request.config, "workerinput", {}).get("workerid", "")
+    if not worker_id:
+        import os
+        worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
+    db_name = f"fi_test_{worker_id}" if worker_id else "fi_test"
+    db = PgDatabase(pg_cluster, name=db_name)
     db.wait_ready()
     db.create()
     return db

@@ -67,6 +67,12 @@ def test_unverified_external_dsn_rejected(monkeypatch):
     with pytest.raises(ValueError, match="Refusing to run destructive test setup against unverified external DSN"):
         _verify_safe_test_dsn("postgresql://postgres:secret@production.rds.amazonaws.com:5432/postgres")
 
+    with pytest.raises(ValueError, match="Refusing to run destructive test setup against unverified external DSN"):
+        _verify_safe_test_dsn("postgresql://postgres:secret@internal-db.local:5432/postgres")
+
+    with pytest.raises(ValueError, match="Refusing to run destructive test setup against unverified external DSN"):
+        _verify_safe_test_dsn("postgresql://postgres:secret@prod.corp.internal:5432/postgres")
+
     # Safe test hosts should pass without error
     _verify_safe_test_dsn("postgresql://postgres:postgres@localhost:5432/postgres")
     _verify_safe_test_dsn("postgresql://postgres:postgres@127.0.0.1:5432/postgres")
@@ -129,4 +135,84 @@ def test_reset_terminates_orphaned_background_lock(pg):
     elapsed = time.monotonic() - start
     assert elapsed < 4.0
     t.join(timeout=1.0)
+
+
+def test_is_exact_postgres_instance_rejects_unrelated_process():
+    import os
+    from pg_harness import _is_exact_postgres_instance
+
+    # Current process is python, not postgres
+    assert not _is_exact_postgres_instance(os.getpid(), "/tmp/fake_dir")
+    # Non-existent PID
+    assert not _is_exact_postgres_instance(99999999, "/tmp/fake_dir")
+
+
+def test_pg_cluster_stop_protects_against_pid_reuse(monkeypatch, tmp_path):
+    """If cluster._pid is replaced or reused by an unrelated process, PgCluster.stop()
+    must not terminate it."""
+    import subprocess
+    import sys
+    from pg_harness import PgCluster
+
+    # Start a benign dummy subprocess
+    dummy_proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"])
+    try:
+        # Create a mock PgCluster object without starting a real postgres server
+        cluster = object.__new__(PgCluster)
+        cluster._dir = str(tmp_path)
+        cluster._data = str(tmp_path / "data")
+        cluster._pg_ctl = None
+        cluster._pid = dummy_proc.pid
+
+        # Call stop(); dummy process must not be killed because it is python, not postgres
+        cluster.stop()
+
+        # Check that dummy_proc is still alive
+        assert dummy_proc.poll() is None, "dummy process should not have been terminated by PgCluster.stop()"
+    finally:
+        dummy_proc.terminate()
+        dummy_proc.wait(timeout=2)
+
+
+def test_concurrent_database_isolation(pg_cluster):
+    """Demonstrate that two concurrent test invocations (with isolated database identities)
+    cannot terminate each other's connections."""
+    import psycopg
+    from pg_harness import PgDatabase
+
+    db_alpha = PgDatabase(pg_cluster, name="fi_test_alpha")
+    db_beta = PgDatabase(pg_cluster, name="fi_test_beta")
+    db_alpha.create()
+    db_beta.create()
+
+    try:
+        con_alpha = db_alpha.connect()
+        con_beta = db_beta.connect()
+
+        assert con_alpha.execute("SELECT 1").fetchone() == (1,)
+        assert con_beta.execute("SELECT 1").fetchone() == (1,)
+
+        # Calling terminate_other_backends on db_alpha terminates db_alpha's connections
+        # but MUST NOT touch db_beta's connections.
+        terminated_alpha = db_alpha.terminate_other_backends()
+        assert terminated_alpha >= 1
+        # con_beta must still be completely unaffected and usable!
+        assert not con_beta.closed
+        assert con_beta.execute("SELECT 1").fetchone() == (1,)
+
+        # Reconnect db_alpha and now call terminate_other_backends on db_beta:
+        # db_beta terminates its own connections, but db_alpha's connection is untouched!
+        con_alpha2 = db_alpha.connect()
+        terminated_beta = db_beta.terminate_other_backends()
+        assert terminated_beta >= 1
+        # con_alpha2 must still be completely unaffected and usable!
+        assert not con_alpha2.closed
+        assert con_alpha2.execute("SELECT 1").fetchone() == (1,)
+
+        con_alpha2.close()
+    finally:
+        with psycopg.connect(pg_cluster.superuser_dsn(), autocommit=True) as con:
+            con.execute("DROP DATABASE IF EXISTS fi_test_alpha WITH (FORCE)")
+            con.execute("DROP DATABASE IF EXISTS fi_test_beta WITH (FORCE)")
+
 
