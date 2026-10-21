@@ -59,6 +59,17 @@ GLOBAL_TABLES = frozenset({
 
 BOTH_TABLES = frozenset({"schema_meta"})
 
+# Model outputs in the reference scoring (the laptop's league), shipped in the global file to every league build
+# (multi-league Phase 4): the job copies or re-scores them into the league's own tables (app/analytics/rescore.py).
+# They are league-independent: no rosters, teams or members (tests/test_league_split.py checks the columns).
+# `ref_league_scoring` holds the reference league's scoring items, which say what the runs were scored in.
+REFERENCE_TABLES = {t: "ref_" + t for t in (
+    "independent_projection_runs", "independent_projection_rows", "kicker_projection_runs", "kicker_projection_rows",
+    "dst_projection_runs", "dst_projection_rows", "projection_range_quantiles", "projection_performance_reports",
+    "model_replays")}
+REFERENCE_SCORING = "ref_league_scoring"
+GLOBAL_TABLES = GLOBAL_TABLES | frozenset(REFERENCE_TABLES.values()) | {REFERENCE_SCORING}
+
 
 @dataclass(frozen=True)
 class SplitResult:
@@ -162,6 +173,14 @@ def split_database(src: Path, league_out: Path, global_out: Path, *, stamp: str,
                                 params)
                 else:
                     con.execute(f"DROP TABLE {alias}.main.{_ident(t)}")
+            # A job's working copy already holds the references it read from the global file (copied above as global
+            # tables); only the laptop's own database makes new ones.
+            if alias == "gl" and REFERENCE_SCORING not in known:
+                for source, ref in REFERENCE_TABLES.items():
+                    if source in known:
+                        con.execute(f"CREATE TABLE gl.main.{_ident(ref)} AS SELECT * FROM src.main.{_ident(source)}")
+                con.execute(f"CREATE TABLE gl.main.{REFERENCE_SCORING} AS SELECT season, scoring_items "
+                            "FROM src.main.leagues")
             con.execute(f"DELETE FROM {alias}.main.schema_meta WHERE key = 'published_at'")
             con.execute(f"INSERT INTO {alias}.main.schema_meta VALUES ('published_at', ?)",
                         [stamp if alias == "lg" or global_stamp is None else global_stamp])
