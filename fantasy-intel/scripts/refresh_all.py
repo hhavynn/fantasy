@@ -64,8 +64,10 @@ LOG_DIR = DATA_DIR / "logs"
 STEPS = ("sync_espn.py", "sync_nfl.py", "compute_analytics.py")
 PUBLISH = "publish_motherduck.py"
 PUBLISH_SNAPSHOT = "publish_snapshot.py"   # replaces PUBLISH when R2 is configured (free tiers; MotherDuck retired)
-PUBLISH_LEAGUES = "publish_leagues.py"     # also, when LEAGUE_PUBLISH_ID + FI_SYNC_DB_URL are set (multi-league path)
-PUBLISHERS = (PUBLISH, PUBLISH_SNAPSHOT, PUBLISH_LEAGUES)
+PUBLISH_GLOBAL = "publish_global.py"       # also, when FI_SYNC_DB_URL is set: the multi-league global file. League files
+                                           # (Los Subies included) are built by the sync jobs from it (Phase 4);
+                                           # publish_leagues.py is kept for a manual rollback
+PUBLISHERS = (PUBLISH, PUBLISH_SNAPSHOT, PUBLISH_GLOBAL)
 REPORT = "projection_performance.py"   # not in STEPS: run by run_report, whose failure never stops the chain
 REPLAY = "model_replay.py"             # not in STEPS: run by run_replay after the report, never stops the chain
 RANGES = "projection_ranges.py"         # not in STEPS: run by run_ranges before the publish, never stops the chain
@@ -92,8 +94,8 @@ def plan(publish: bool) -> list[str]:
     if not publish:
         return list(STEPS)
     if get_settings().r2_configured:
-        leagues = bool((os.getenv("LEAGUE_PUBLISH_ID") or "").strip() and (os.getenv("FI_SYNC_DB_URL") or "").strip())
-        return [*STEPS, PUBLISH_SNAPSHOT, *([PUBLISH_LEAGUES] if leagues else [])]
+        multileague = bool((os.getenv("FI_SYNC_DB_URL") or "").strip())
+        return [*STEPS, PUBLISH_SNAPSHOT, *([PUBLISH_GLOBAL] if multileague else [])]
     has_token = bool((os.getenv("MOTHERDUCK_TOKEN") or "").strip())
     return [*STEPS, PUBLISH] if has_token else list(STEPS)
 

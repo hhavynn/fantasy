@@ -272,9 +272,9 @@ DERIVED_TABLES = frozenset({"independent_projection_runs", "independent_projecti
 
 ### Task 5: The laptop publishes only the global file
 
-**Files:** Create `scripts/publish_global.py`. Modify `scripts/refresh_all.py` and `scripts/learning_cycle.py` (publish the global after a successful cycle, when `FI_SYNC_DB_URL` and R2 are set). Test `backend/tests/test_refresh_all.py`.
+**Files:** Create `scripts/publish_global.py`. Modify `scripts/refresh_all.py`. Test `backend/tests/test_refresh_all.py`, `test_league_publish.py`. (`learning_cycle.py` publishes nothing itself; its runs reach the global file at the next refresh, as they reached the Los Subies file before.)
 
-- [ ] **Step 1: failing tests.** `refresh_all.plan()` with `LEAGUE_PUBLISH_ID`, `FI_SYNC_DB_URL` and R2 set lists `publish_global.py` and not `publish_leagues.py`. `publish_global.py` against a `DirWriter` writes one global object and updates `fi.global_snapshot` (pg_harness), and a second run with unchanged content uploads nothing.
+- [ ] **Step 1: failing tests.** `refresh_all.plan()` with `FI_SYNC_DB_URL` and R2 set lists `publish_global.py` and not `publish_leagues.py`. `publish_global.py` against a `DirWriter` writes one global object and updates `fi.global_snapshot` (pg_harness), and a second run with unchanged content uploads nothing.
 - [ ] **Step 2:** FAIL.
 - [ ] **Step 3: implement.** `publish_global.py`:
   1. `split_database(settings.db_path, tmp/"league-unused", tmp/"global", stamp=…, global_stamp=GLOBAL_STAMP)`;
