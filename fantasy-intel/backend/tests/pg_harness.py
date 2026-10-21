@@ -9,6 +9,7 @@ from __future__ import annotations
 import atexit
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -198,6 +199,23 @@ class PgCluster:
         return psycopg.conninfo.make_conninfo(self.superuser_dsn(db), user=user, password=TEST_ROLE_PASSWORD)
 
 
+_SAFE_DB_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+
+
+def _validate_test_db_name(name: str) -> None:
+    """Reject database names that are not safe for use in test DDL.
+
+    Accepts only lowercase identifiers matching the fi_test_* pattern
+    used by this harness. Raises ValueError if the name is unsafe.
+    This guards against unsafe values supplied via FI_TEST_DB_NAME.
+    """
+    if not _SAFE_DB_NAME_RE.match(name):
+        raise ValueError(
+            f"Unsafe test database name {name!r}. "
+            "Must match ^[a-z_][a-z0-9_]{0,62}$ (e.g. fi_test_abc123_gw0)."
+        )
+
+
 class PgDatabase:
     """One database with the shim + migrations applied. Connections for any role of the test cluster."""
     MIGRATIONS = sorted(MIGRATIONS_DIR.glob("*.sql"))
@@ -206,14 +224,16 @@ class PgDatabase:
                  "leagues", "app_users", "global_snapshot")
 
     def __init__(self, cluster: PgCluster, name: str = "fi_test"):
+        _validate_test_db_name(name)
         self.cluster, self.name = cluster, name
         self._tracked_connections: weakref.WeakSet[psycopg.Connection] = weakref.WeakSet()
 
     def create(self) -> None:
         self.terminate_other_backends()
+        db_ident = psycopg.sql.Identifier(self.name)
         with psycopg.connect(self.cluster.superuser_dsn(), autocommit=True) as con:
-            con.execute(f"DROP DATABASE IF EXISTS {self.name} WITH (FORCE)")
-            con.execute(f"CREATE DATABASE {self.name}")
+            con.execute(psycopg.sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(db_ident))
+            con.execute(psycopg.sql.SQL("CREATE DATABASE {}").format(db_ident))
         with psycopg.connect(self.cluster.superuser_dsn(self.name), autocommit=True) as con:
             con.execute(SHIM.read_text())
             for path in self.MIGRATIONS:

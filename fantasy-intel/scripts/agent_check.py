@@ -407,6 +407,7 @@ class VerificationRunner:
         self.results: list[StepResult] = []
         self.warnings: list[str] = []
         self.coverage_error = False
+        self.coverage_incomplete = False  # True when diff is a partial view (HEAD~1 fallback)
         self.run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Automatically check for stale test mappings
@@ -425,7 +426,14 @@ class VerificationRunner:
             return "main"
         return "HEAD~1"
 
-    def _parse_name_status(self, stdout: str, files: set[str]) -> None:
+    def _parse_name_status(self, stdout: str, files: set[str], deleted_sources: set[str] | None = None) -> None:
+        """Parse git --name-status output.
+
+        Non-deleted paths are added to *files* for test running.
+        Deleted source paths (not in tests/) are added to *deleted_sources* so that
+        test-mapping can still fire for the removed module — but only the mapped test
+        files (which still exist on disk) will be run, never the deleted path itself.
+        """
         for line in stdout.splitlines():
             line = line.strip()
             if not line:
@@ -433,7 +441,13 @@ class VerificationRunner:
             parts = line.split(maxsplit=2)
             status = parts[0]
             if status.startswith("D"):
-                # Deleted file - do not try to run tests on deleted files
+                # Deleted file: preserve source path for test-mapping inference only.
+                if len(parts) >= 2 and deleted_sources is not None:
+                    deleted_path = parts[1]
+                    # Don't add deleted test files — we can never run them.
+                    norm = deleted_path.replace("\\", "/")
+                    if "backend/tests/" not in norm:
+                        deleted_sources.add(deleted_path)
                 continue
             if len(parts) >= 2:
                 # If renamed (R100 old new), take the target file
@@ -441,7 +455,14 @@ class VerificationRunner:
                 files.add(file_path)
 
     def get_changed_files(self) -> tuple[list[str], list[str]]:
+        """Return (changed_files_for_running, warnings).
+
+        changed_files_for_running includes existing paths plus deleted source paths
+        (tagged internally via _deleted_sources so infer_affected_tests can map them
+        to surviving test files without trying to run the deleted paths themselves).
+        """
         files: set[str] = set()
+        self._deleted_sources: set[str] = set()
         warnings: list[str] = []
 
         if self.explicit_base:
@@ -461,14 +482,16 @@ class VerificationRunner:
                 self.results.append(StepResult("Base Ref Validation", self.base_ref, "FAIL", 0.0, err_msg))
                 self.coverage_error = True
                 return [], [err_msg]
-            warnings.append(f"Failed to diff against '{self.base_ref}': {p_diff.stderr.strip() or 'unknown git error'}. Falling back to HEAD~1.")
+            warnings.append(f"Failed to diff against '{self.base_ref}': {p_diff.stderr.strip() or 'unknown git error'}. Falling back to HEAD~1 (partial view — run against full branch for accurate coverage).")
             p_fallback = subprocess.run(["git", "diff", "--name-status", "HEAD~1...HEAD"], capture_output=True, text=True)
             if p_fallback.returncode == 0:
-                self._parse_name_status(p_fallback.stdout, files)
+                self._parse_name_status(p_fallback.stdout, files, self._deleted_sources)
+                # HEAD~1 is a single-commit view, not the full branch diff; flag as incomplete
+                self.coverage_incomplete = True
             else:
                 warnings.append("Failed to diff against HEAD~1 (initial commit or shallow clone). Using working tree status.")
         else:
-            self._parse_name_status(p_diff.stdout, files)
+            self._parse_name_status(p_diff.stdout, files, self._deleted_sources)
 
         # 2. Working tree status (staged, unstaged, untracked)
         cmd_status = ["git", "status", "--porcelain"]
@@ -479,6 +502,10 @@ class VerificationRunner:
                     code = line[:2]
                     path_part = line[3:].strip()
                     if "D" in code:
+                        # Preserve working-tree deleted sources for mapping
+                        norm = path_part.replace("\\", "/")
+                        if "backend/tests/" not in norm:
+                            self._deleted_sources.add(path_part)
                         continue
                     if " -> " in path_part:
                         path_part = path_part.split(" -> ")[1].strip()
@@ -521,7 +548,12 @@ class VerificationRunner:
         return classes
 
     def infer_affected_tests(self, changed_files: list[str]) -> tuple[list[str], list[str], list[str]]:
-        """Returns (prioritized_backend_tests, frontend_actions, unmapped_files)."""
+        """Returns (prioritized_backend_tests, frontend_actions, unmapped_files).
+
+        Deleted source files (tracked in self._deleted_sources after get_changed_files())
+        are included in mapping lookups so that removing a module still triggers its
+        associated tests. Deleted test files are never added to the runnable list.
+        """
         backend_tests: list[str] = []
         frontend_actions: set[str] = set()
         unmapped_files: list[str] = []
@@ -542,8 +574,12 @@ class VerificationRunner:
 
         backend_tests.extend(direct_tests)
 
-        # 2. Directly mapped tests for changed files
-        for f in changed_files:
+        # 2. Directly mapped tests for changed files, including deleted source files.
+        # Deleted source paths participate in mapping (their associated tests still exist
+        # and must run), but we never add the deleted path itself to the runnable list.
+        deleted_sources: set[str] = getattr(self, "_deleted_sources", set())
+        all_source_paths = list(changed_files) + [p for p in deleted_sources if p not in changed_files]
+        for f in all_source_paths:
             norm = f.replace("\\", "/")
             matched = False
             for pattern, test_list in BACKEND_TEST_MAPPINGS:
@@ -555,10 +591,17 @@ class VerificationRunner:
                 if is_match:
                     matched = True
                     for t in test_list:
+                        # Only add test files that actually exist on disk
                         if t not in backend_tests and (BACKEND_DIR / t).is_file():
                             backend_tests.append(t)
             if not matched and (f in classes["backend"] or f in classes["sql_migrations"]):
                 unmapped_files.append(f)
+            # Deleted source path with no mapping → include in unmapped for conservative fallback
+            if not matched and f in deleted_sources:
+                f_norm = f.replace("\\", "/")
+                if "backend/" in f_norm and "backend/tests/" not in f_norm:
+                    if f not in unmapped_files:
+                        unmapped_files.append(f)
 
         # 3. Frontend actions
         if classes["frontend"]:
@@ -846,7 +889,20 @@ class VerificationRunner:
             ))
             return self.print_summary()
 
-        print(f"[agent_check] Detected {len(changed_files)} changed file(s)")
+        print(f"\n[agent_check] Detected {len(changed_files)} changed file(s)")
+
+        if self.coverage_incomplete:
+            self.results.append(StepResult(
+                name="Coverage Note",
+                target="Git Diff",
+                status="WARN",
+                duration=0.0,
+                summary=(
+                    "Diff fell back to HEAD~1 (single commit, not full branch). "
+                    "Tests are selected from this partial view only. "
+                    "Run with an explicit --base for accurate coverage."
+                ),
+            ))
 
         classes = self.classify_changes(changed_files)
 

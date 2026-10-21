@@ -1,5 +1,43 @@
 """The throwaway Postgres: shim behaves like Supabase's auth helpers; migrations apply cleanly and idempotently."""
 import json
+import pytest
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from pg_harness import _validate_test_db_name
+
+
+# ---- _validate_test_db_name: safe SQL identifier guard -------------------------
+
+def test_validate_test_db_name_accepts_valid_names():
+    """All fi_test_* style names used by the harness must pass validation."""
+    for name in ("fi_test", "fi_test_abc123", "fi_test_abc_gw0", "fi_test_s12345_gw1", "fi_test_x"):
+        _validate_test_db_name(name)  # must not raise
+
+
+def test_validate_test_db_name_rejects_injection_attempts():
+    """Values that could inject SQL must be rejected before any DDL executes."""
+    bad_names = [
+        "fi_test; DROP TABLE users--",
+        "fi_test' OR '1'='1",
+        "fi_test\"; DROP DATABASE fi_test--",
+        "fi_test\n--",
+        "Fi_Test",          # uppercase
+        "1fi_test",         # leading digit
+        "",                 # empty
+        "a" * 64,           # too long (>63 chars)
+    ]
+    for name in bad_names:
+        with pytest.raises(ValueError, match="Unsafe"):
+            _validate_test_db_name(name)
+
+
+def test_pg_database_init_rejects_unsafe_name(pg_cluster):
+    """PgDatabase.__init__ must call _validate_test_db_name and reject unsafe names."""
+    from pg_harness import PgDatabase
+    with pytest.raises(ValueError, match="Unsafe"):
+        PgDatabase(pg_cluster, name="bad'; DROP DATABASE postgres--")
 
 
 def test_shim_auth_uid_reads_transaction_local_claims(pg):

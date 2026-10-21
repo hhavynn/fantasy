@@ -132,6 +132,61 @@ def test_infer_affected_tests_handles_deleted_or_missing_files():
     assert len(tests) > 0
 
 
+def test_deleted_source_still_maps_to_tests():
+    """A deleted backend source file must still trigger its mapped tests
+    even though it is not present on disk (it was removed, not renamed)."""
+    runner = VerificationRunner(mode="affected")
+    # Inject a deleted source path as if _parse_name_status collected it
+    runner._deleted_sources = {"fantasy-intel/backend/app/control_plane/jwt_auth.py"}
+    # No living changed files
+    tests, _, _ = runner.infer_affected_tests([])
+    # jwt_auth is mapped to test_jwt_auth.py and test_authorize_league.py
+    assert "tests/test_jwt_auth.py" in tests
+    assert "tests/test_authorize_league.py" in tests
+
+
+def test_deleted_test_file_never_added_to_runnable_list():
+    """A deleted test file must never appear in the runnable test list, even if
+    it was in the deleted_sources set (e.g. parsed from a git D-status line)."""
+    runner = VerificationRunner(mode="affected")
+    runner._deleted_sources = {"fantasy-intel/backend/tests/test_jwt_auth.py"}
+    tests, _, _ = runner.infer_affected_tests([])
+    # The deleted test itself must not be in the runnable list
+    assert "tests/test_jwt_auth.py" not in tests
+
+
+def test_head_tilde1_fallback_marks_coverage_incomplete(monkeypatch):
+    """When the primary diff against the base ref fails and HEAD~1 succeeds,
+    coverage_incomplete must be set so execute() emits a warning step."""
+    runner = VerificationRunner(mode="affected")
+
+    call_count = [0]
+    original_run = __import__("subprocess").run
+
+    def fake_run(cmd, **kwargs):
+        call_count[0] += 1
+        # First call (base diff): fail
+        if "--name-status" in cmd and "origin/main...HEAD" in " ".join(cmd):
+            class R:
+                returncode = 1
+                stdout = ""
+                stderr = "not a git repository"
+            return R()
+        # Second call (HEAD~1 fallback): succeed with one changed file
+        if "--name-status" in cmd and "HEAD~1...HEAD" in " ".join(cmd):
+            class R:
+                returncode = 0
+                stdout = "M\tfantasy-intel/backend/app/analytics/trades.py\n"
+                stderr = ""
+            return R()
+        return original_run(cmd, **kwargs)
+
+    monkeypatch.setattr("agent_check.subprocess.run", fake_run)
+    changed_files, warnings = runner.get_changed_files()
+    assert runner.coverage_incomplete is True
+    assert any("partial" in w.lower() or "head~1" in w.lower() for w in warnings)
+
+
 def test_validate_test_mappings_clean():
     stale = validate_test_mappings()
     assert stale == [], f"Found stale test mappings in agent_check.py: {stale}"

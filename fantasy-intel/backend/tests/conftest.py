@@ -27,7 +27,8 @@ def con(tmp_path):
 import os
 import uuid
 import psycopg
-from pg_harness import PgCluster, PgDatabase  # noqa: E402
+import psycopg.sql
+from pg_harness import PgCluster, PgDatabase, _validate_test_db_name  # noqa: E402
 
 
 def pytest_configure(config):
@@ -55,6 +56,7 @@ def pg_cluster():
 def pg_db(pg_cluster, request):
     override = os.environ.get("FI_TEST_DB_NAME")
     if override:
+        _validate_test_db_name(override)  # Reject unsafe external DB name before any DDL
         db_name = override
     else:
         worker_id = getattr(request.config, "workerinput", {}).get("workerid", "")
@@ -82,7 +84,11 @@ def pg_db(pg_cluster, request):
         db.terminate_other_backends()
         try:
             with psycopg.connect(pg_cluster.superuser_dsn(), autocommit=True) as con:
-                con.execute(f"DROP DATABASE IF EXISTS {db_name} WITH (FORCE)")
+                con.execute(
+                    psycopg.sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                        psycopg.sql.Identifier(db_name)
+                    )
+                )
         except Exception:
             pass
 
