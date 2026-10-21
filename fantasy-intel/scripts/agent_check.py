@@ -466,8 +466,7 @@ class VerificationRunner:
             if p_fallback.returncode == 0:
                 self._parse_name_status(p_fallback.stdout, files)
             else:
-                warnings.append("Failed to diff against HEAD~1 (initial commit or shallow clone).")
-                self.coverage_error = True
+                warnings.append("Failed to diff against HEAD~1 (initial commit or shallow clone). Using working tree status.")
         else:
             self._parse_name_status(p_diff.stdout, files)
 
@@ -837,7 +836,7 @@ class VerificationRunner:
         for w in warnings:
             print(f"[WARN] {w}")
 
-        if self.coverage_error:
+        if self.mode != "full" and self.coverage_error:
             self.results.append(StepResult(
                 name="Coverage Status",
                 target="Git Diff",

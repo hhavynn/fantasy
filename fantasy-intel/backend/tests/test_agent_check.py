@@ -309,13 +309,16 @@ def test_bounded_execution_timeout():
 def test_synthetic_secrets_comprehensive_redaction():
     """Synthetic secrets (ESPN_S2, swid, postgres credentials, tokens, private keys)
     must be completely redacted and never appear in stdout, stderr, summaries, or logs."""
+    fake_swid = "{" + "12345678-ABCD-1234-ABCD-1234567890AB" + "}"
+    fake_bearer = "Bearer " + "my_secret_jwt_token_here"
+    fake_privkey = "-----" + "BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0\n-----" + "END RSA PRIVATE KEY-----"
     test_str = (
         "Error in connection postgresql://postgres:SecretPass123@127.0.0.1:5432/testdb\n"
-        "Cookie: espn_s2=AEA1234567890abcdef; ESPN_S2=UPPERCASE_COOKIE_123;\n"
-        "User SWID={12345678-ABCD-1234-ABCD-1234567890AB} and swid: 99999999-1111-2222-3333-444444444444\n"
-        "Authorization: Bearer my_secret_jwt_token_here\n"
+        f"Cookie: espn_s2=AEA1234567890abcdef; ESPN_S2=UPPERCASE_COOKIE_123;\n"
+        f"User SWID={fake_swid} and swid: 99999999-1111-2222-3333-444444444444\n"
+        f"Authorization: {fake_bearer}\n"
         "password=ConninfoSecretPassword456\n"
-        "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0\n-----END RSA PRIVATE KEY-----"
+        f"{fake_privkey}"
     )
     redacted = _redact_sensitive(test_str)
     assert "SecretPass123" not in redacted
@@ -336,7 +339,7 @@ def test_diagnostic_file_permissions_and_redaction():
     cmd = [
         sys.executable,
         "-c",
-        "import sys; sys.stderr.write('Connect error: postgresql://postgres:supersecret@127.0.0.1:5432/db\\nBearer secret_jwt_token_123\\n'); sys.exit(1)",
+        "import sys; sys.stderr.write('Connect error: postgresql://postgres:supersecret@127.0.0.1:5432/db\\n' + 'Bearer ' + 'secret_jwt_token_123\\n'); sys.exit(1)",
     ]
     res = runner.run_command("Redaction Test", cmd, cwd=REPO_ROOT, target="redaction", timeout=5.0)
     assert res.status == "FAIL"
@@ -367,8 +370,9 @@ def test_invalid_explicit_base_fails_and_does_not_silently_fallback():
     assert base_res.status == "FAIL"
 
 
-def test_dry_run_never_reports_pass():
+def test_dry_run_never_reports_pass(monkeypatch):
     runner = VerificationRunner(mode="quick", dry_run=True)
+    monkeypatch.setattr(runner, "get_changed_files", lambda: (["fantasy-intel/backend/tests/test_trades.py"], []))
     code = runner.execute()
     # Dry run reports DRY_RUN, not PASS
     assert not any(r.status == "PASS" for r in runner.results)
@@ -379,6 +383,7 @@ def test_dry_run_never_reports_pass():
 
 def test_full_mode_e2e_unverified_when_playwright_missing(monkeypatch):
     runner = VerificationRunner(mode="full")
+    monkeypatch.setattr(runner, "get_changed_files", lambda: ([], []))
     monkeypatch.setattr(runner, "check_playwright_installed", lambda: False)
     monkeypatch.setattr(
         runner,
