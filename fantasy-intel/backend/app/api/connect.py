@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -160,14 +161,61 @@ def _mutate(fn):
 
 # ---- import / connect -------------------------------------------------------------------------------
 
+_SLEEPER_URL = re.compile(r"sleeper\.(?:com|app)/leagues/(\d{6,20})(?:/|$|\?)")
+SLEEPER_UNAVAILABLE = "Sleeper leagues are temporarily unavailable."
+
+
+def parse_sleeper_league(value: Any) -> str:
+    """A Sleeper league id (the long number) or a sleeper.com/leagues/<id>/… address."""
+    text = str(value or "").strip()
+    if re.fullmatch(r"\d{6,20}", text):
+        return text
+    m = _SLEEPER_URL.search(text)
+    if m is None:
+        raise HTTPException(422, "Enter a Sleeper league id or the league's sleeper.com address.")
+    return m[1]
+
+
+def sleeper_reader():
+    """league id -> Sleeper's league record (one GET; raises InvalidLeagueId when Sleeper has no NFL league)."""
+    import tempfile
+
+    from ..sleeper.client import SleeperClient
+    return lambda lid: SleeperClient(cache_dir=Path(tempfile.gettempdir()) / "fi-sleeper", timeout=10.0).league(lid)
+
+
+def _import_sleeper(background, body: dict, con, principal, read, dispatch):
+    from ..control_plane import mutations
+    from ..sleeper.client import InvalidLeagueId, SleeperError
+    if get_settings().sleeper_source != "live":
+        raise HTTPException(503, SLEEPER_UNAVAILABLE)
+    lid = parse_sleeper_league(body.get("league"))
+    try:
+        league = read(lid)
+    except InvalidLeagueId:
+        raise HTTPException(404, "Sleeper has no NFL league with that id.") from None
+    except (SleeperError, OSError):
+        raise HTTPException(503, "Sleeper could not be reached. Try again in a minute.") from None
+    season = int(league.get("season") or get_settings().season)
+    league_id = _mutate(lambda: mutations.import_public_league(con, principal, "sleeper", lid, season))
+    background.add_task(dispatch)
+    return _json({"league_id": league_id, "visibility": "public", "provider": "sleeper"}, 201)
+
+
 @router.post("/leagues/import", status_code=201)
 def import_league(background: BackgroundTasks, body: dict = Depends(secret_body), tx=REQUEST_TX,
-                  source=Depends(espn), dispatch=Depends(drain_dispatcher)):
-    """A public ESPN league: read it once without cookies, register it, pin it, queue its first sync."""
+                  source=Depends(espn), dispatch=Depends(drain_dispatcher), sleeper=Depends(sleeper_reader)):
+    """A public league: read it once without cookies, register it, pin it, queue its first sync. `provider`:
+    "espn" (default) or "sleeper" (always public; needs SLEEPER_SOURCE=live)."""
     from ..control_plane import mutations
     con, principal = tx
     if not principal.is_authenticated:
         raise HTTPException(401, SIGN_IN)
+    provider = str(body.get("provider") or "espn").strip().lower()
+    if provider == "sleeper":
+        return _import_sleeper(background, body, con, principal, sleeper, dispatch)
+    if provider != "espn":
+        raise HTTPException(422, "The provider must be espn or sleeper.")
     external_id, season = parse_league(body.get("league"), body.get("season"), get_settings().season)
     verdict = source.probe(int(external_id), season)
     if verdict == "private":

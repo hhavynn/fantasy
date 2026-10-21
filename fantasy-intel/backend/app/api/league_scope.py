@@ -74,6 +74,9 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
         raise HTTPException(401, SIGN_IN) from None
     except ControlPlaneUnavailable:
         raise HTTPException(503, UNAVAILABLE) from None
+    if access.provider == "sleeper" and get_settings().sleeper_source == "disabled":
+        from .connect import SLEEPER_UNAVAILABLE
+        raise HTTPException(503, SLEEPER_UNAVAILABLE)     # the rollback switch (SLEEPER_SOURCE=disabled)
     if access.snapshot is None:
         # The detail stays a plain string (what the dashboard shows); the state travels in a header.
         raise HTTPException(409, FIRST_SYNC, headers={"X-FI-Sync-State": access.sync_state})
