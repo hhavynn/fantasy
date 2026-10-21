@@ -10,7 +10,8 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "e2e": "playwright test",
-    "e2e:sleeper": "playwright test -c playwright.sleeper.config.ts"
+    "e2e:sleeper": "playwright test -c playwright.sleeper.config.ts",
+    "e2e:multileague": "playwright test -c playwright.multileague.config.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",

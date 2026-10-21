@@ -12,7 +12,10 @@ export function authConfig(env: Record<string, string | undefined>): AuthConfig 
   if (env.MULTILEAGUE_UI_ENABLED !== "1") return null;
   const url = (env.SUPABASE_URL ?? "").trim().replace(/\/+$/, "");
   const key = (env.SUPABASE_PUBLISHABLE_KEY ?? "").trim();
-  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(url) || !key) return null;
+  // A local Supabase (the Supabase CLI's http://127.0.0.1:54321, the browser tests' JWKS) only with SUPABASE_LOCAL=1, and
+  // never on Vercel: a deployment always talks to its hosted project over https.
+  const local = env.SUPABASE_LOCAL === "1" && !env.VERCEL && /^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/.test(url);
+  if ((!local && !/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(url)) || !key) return null;
   return { url, key, signupsOpen: env.SIGNUPS_OPEN === "1" };
 }
 

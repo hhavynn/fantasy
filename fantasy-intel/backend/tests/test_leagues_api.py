@@ -300,3 +300,13 @@ def test_a_deleted_account_is_signed_out_on_every_route(client, world, method, p
     ghost = str(uuid.uuid4())                       # signature-valid token, no auth.users row any more
     r = client.request(method, path.format(pub=world["pub"]), headers=bearer(ghost))
     assert (r.status_code, r.json()) == (401, {"detail": "Sign in to use this endpoint."})
+
+
+def test_retiring_the_classic_site_closes_only_the_single_league_routes(monkeypatch, client):  # noqa: F811
+    """CLASSIC_SITE_ENABLED=0 (Phase 5): /api/* answers 404, /health and /v2 keep working."""
+    monkeypatch.setenv("CLASSIC_SITE_ENABLED", "0")
+    assert client.get("/api/status").status_code == 404
+    assert client.get("/health").status_code == 200
+    assert client.get("/v2/providers").status_code == 200
+    monkeypatch.delenv("CLASSIC_SITE_ENABLED")
+    assert client.get("/health").json() == {"ok": True}

@@ -43,6 +43,7 @@ data/*.duckdb.wal
 data/raw/
 data/logs/
 fantasy-intel/data/*.duckdb
+fantasy-intel/data/e2e-multileague/
 fantasy-intel/data/*.duckdb.wal
 fantasy-intel/data/raw/
 fantasy-intel/data/sleeper/

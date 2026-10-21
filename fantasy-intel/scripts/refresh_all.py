@@ -93,7 +93,9 @@ def plan(publish: bool) -> list[str]:
         return list(STEPS)
     if get_settings().r2_configured:
         leagues = bool((os.getenv("LEAGUE_PUBLISH_ID") or "").strip() and (os.getenv("FI_SYNC_DB_URL") or "").strip())
-        return [*STEPS, PUBLISH_SNAPSHOT, *([PUBLISH_LEAGUES] if leagues else [])]
+        # CLASSIC_SITE_ENABLED=0: the single-league site is retired, so its snapshot is no longer published
+        classic = get_settings().classic_site_enabled
+        return [*STEPS, *([PUBLISH_SNAPSHOT] if classic else []), *([PUBLISH_LEAGUES] if leagues else [])]
     has_token = bool((os.getenv("MOTHERDUCK_TOKEN") or "").strip())
     return [*STEPS, PUBLISH] if has_token else list(STEPS)
 

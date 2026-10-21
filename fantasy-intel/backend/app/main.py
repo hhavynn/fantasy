@@ -53,6 +53,15 @@ async def require_api_key(request: Request, call_next):
 
 
 @app.middleware("http")
+async def retire_classic_site(request: Request, call_next):
+    """CLASSIC_SITE_ENABLED=0 (Phase 5, after the owner's sign-off): the single-league routes answer 404; every league
+    is served under /v2/leagues/{lg}. /health and /v2 are unaffected."""
+    if request.url.path.startswith("/api/") and not get_settings().classic_site_enabled:
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def hide_v2_when_disabled(request: Request, call_next):
     """With MULTILEAGUE_ENABLED off, every /v2 path, method and trailing-slash variant is a plain 404,
     so a disabled deployment does not reveal (via 405s or redirects) that the routes exist."""

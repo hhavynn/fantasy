@@ -22,7 +22,7 @@ const BACKEND_ENV = {
 
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: /sleeper\.spec\.ts/,     // the Sleeper league runs from playwright.sleeper.config.ts
+  testIgnore: /(sleeper|multileague)\.spec\.ts/,   // own configs: playwright.sleeper / playwright.multileague
   outputDir: "./test-results",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

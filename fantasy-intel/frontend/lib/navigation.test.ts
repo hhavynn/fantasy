@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  ALL_NAV_PAGES, NAV_GROUPS, getActiveRoute, navClusters, parseTabMemory, tabMemoryEntry, tabTarget,
+  ALL_NAV_PAGES, NAV_GROUPS, getActiveRoute, navClusters, parseTabMemory, tabMemoryEntry, tabTarget, visibleGroups,
 } from "./navigation.ts";
 
 const group = (path: string) => getActiveRoute(path).activeGroup?.label ?? null;
@@ -186,4 +186,12 @@ test("injury impact sits in My team, after the matchup", () => {
   assert.equal(group("/injury-impact"), "My team");
   const hrefs = NAV_GROUPS[0].pages.map((p) => p.href);
   assert.equal(hrefs[hrefs.indexOf("/matchup") + 1], "/injury-impact");
+});
+
+
+test("owner research pages are hidden only when asked, and nothing else is", () => {
+  const all = ALL_NAV_PAGES.map((p) => p.href);
+  const shown = visibleGroups(true).flatMap((g) => g.pages.map((p) => p.href));
+  assert.deepEqual(all.filter((h) => !shown.includes(h)).sort(), ["/projection-performance", "/research"]);
+  assert.equal(visibleGroups(false), NAV_GROUPS);
 });

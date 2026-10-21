@@ -614,3 +614,13 @@ def test_league_files_publish_after_the_snapshot_only_when_configured(refresh, m
     monkeypatch.setenv("FI_SYNC_DB_URL", "postgresql://fi_sync@db.invalid/postgres")
     assert refresh.plan(publish=True)[-2:] == [refresh.PUBLISH_SNAPSHOT, refresh.PUBLISH_LEAGUES]
     assert refresh.plan(publish=False)[-1] == "compute_analytics.py"
+
+
+def test_a_retired_classic_site_stops_the_snapshot_publish(refresh, monkeypatch):
+    for k, v in {"SNAPSHOT_BUCKET": "b", "R2_ACCOUNT_ID": "a", "R2_ACCESS_KEY_ID": "k", "R2_SECRET_ACCESS_KEY": "s",
+                 "LEAGUE_PUBLISH_ID": "lg_" + "a" * 24, "FI_SYNC_DB_URL": "postgresql://fi_sync@db.invalid/postgres"}.items():
+        monkeypatch.setenv(k, v)
+    assert refresh.PUBLISH_SNAPSHOT in refresh.plan(publish=True)
+    monkeypatch.setenv("CLASSIC_SITE_ENABLED", "0")
+    steps = refresh.plan(publish=True)
+    assert refresh.PUBLISH_SNAPSHOT not in steps and steps[-1] == refresh.PUBLISH_LEAGUES

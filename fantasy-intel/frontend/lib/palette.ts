@@ -105,22 +105,36 @@ const PLAYER_LIMIT = 8;
  * is a last resort: it is hidden while players exist or are still being searched, so a name such
  * as "chase" never lands on "Check data freshness" ahead of Ja'Marr Chase.
  */
+/** True when `href` is one of `hidden` or under it (`/research` hides `/research/wr?view=…`). */
+export function isHidden(href: string, hidden: ReadonlySet<string>): boolean {
+  const path = href.split(/[?#]/)[0];
+  for (const h of hidden) if (path === h || path.startsWith(`${h}/`)) return true;
+  return false;
+}
+
 export function buildSections(
   query: string, pages: readonly PaletteItem[], players: readonly PaletteItem[], recents: readonly PaletteItem[],
-  playersPending = false,
+  playersPending = false, hidden: ReadonlySet<string> = new Set(),
 ): PaletteSection[] {
+  // Routes this visitor may not open (the owner research on a league page) leave every source: actions, recents, pages.
+  if (hidden.size) {
+    const ok = (i: PaletteItem) => !isHidden(i.href, hidden);
+    pages = pages.filter(ok);
+    recents = recents.filter(ok);
+  }
+  const actions = hidden.size ? QUICK_ACTIONS.filter((a) => !isHidden(a.href, hidden)) : QUICK_ACTIONS;
   const q = query.trim();
   if (!q) {
     const recentHrefs = new Set(recents.map((r) => r.href));
     const rest = (items: readonly PaletteItem[]) => items.filter((i) => !recentHrefs.has(i.href));
     const sections: PaletteSection[] = [
       { key: "recent", title: "Recent", items: recents.slice() },
-      { key: "actions", title: "Quick actions", items: rest(QUICK_ACTIONS) },
+      { key: "actions", title: "Quick actions", items: rest(actions) },
       { key: "pages", title: "Pages", items: rest(pages) },
     ];
     return sections.filter((s) => s.items.length > 0);
   }
-  let matched = rankItems(q, [...QUICK_ACTIONS, ...pages]);
+  let matched = rankItems(q, [...actions, ...pages]);
   const weakOnly = matched.length > 0 && scoreItem(q, matched[0]) <= FUZZY_SCORE;
   if (weakOnly && (players.length > 0 || playersPending)) matched = [];
   const strongLocal = matched.length > 0 && scoreItem(q, matched[0]) >= 70;
