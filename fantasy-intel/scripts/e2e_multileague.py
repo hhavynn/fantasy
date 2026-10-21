@@ -86,6 +86,11 @@ def main() -> int:
 
     from app.db.league_publish import DirWriter, publish_league
 
+    from pg_harness import _find
+    if not os.environ.get("FI_TEST_PG_DSN") and not (_find("initdb") and _find("pg_ctl")):
+        print("e2e_multileague: needs Postgres: set FI_TEST_PG_DSN or install postgresql (initdb, pg_ctl)",
+              file=sys.stderr)
+        return 2
     cluster = PgCluster()
     cluster.start()
     db = PgDatabase(cluster, "fi_e2e")
