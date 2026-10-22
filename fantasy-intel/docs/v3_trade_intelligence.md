@@ -188,9 +188,19 @@ congestion.
 * **Replacement level** is what a manager can get for free: the best currently available free agent's ESPN
   projection at that position that week. This is a streaming baseline, and it is availability-aware.
   * If no free agent at the position is projected, the league-structure level is used instead: the projection of
-    the first player beyond the league's starters at that position (teams × fixed slots).
+    the first player beyond the league's starters at that position that week (see *League starters* below).
   * The baseline used is shown for each player.
-* **Starter-caliber**: PAR ranks within the league's starters at the position (teams × fixed starting slots). Positional
+* **League starters at a position** (`league_starters_at_position`) come from one league reference assignment: every
+  team's exact optimal projected lineup each week (the same `project_team` / `lineup.assign_lineup` lineups the trade
+  evaluator scores). A fixed slot (QB, RB, WR, TE, K, D/ST) counts teams × count for its own position. Each flexible
+  slot (FLEX, RB/WR, WR/TE, OP) counts once, for the position of the player who actually fills it that team-week, and
+  not at all when empty, so a superflex OP filled by a QB adds a QB starter and one filled by an RB adds an RB starter,
+  never both. The weekly counts set the league-structure replacement level; the season count used for starter-caliber
+  is the fixed count plus the weekly flex mean rounded half up. Flex demand is dynamic (projections, byes, injuries and
+  roster moves shift it), and the package note says so. A league without flexible slots gets exactly teams × fixed
+  slots. Roster needs ("short") still compare fixed slots only; surplus reads the flex-aware starter-caliber flag and
+  counts flex starts.
+* **Starter-caliber**: PAR ranks within the league's starters at the position (above). Positional
   PAR ranks are tie-aware (standard competition rank: 1 + count of players with strictly higher PAR using full-precision
   PAR with a 1e-9 tolerance). If a tie spans the starter cutoff, all tied players receive the same rank and qualify as
   starter-caliber (`rank <= starters`), even if that means more players qualify than the nominal starter count. Display

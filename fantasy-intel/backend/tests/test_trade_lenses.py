@@ -323,6 +323,12 @@ def test_detail_results_are_cached_on_the_search_and_reused(monkeypatch):
 # ------------------------------------------------------------------- legacy is unchanged --
 
 # Snapshots taken from the code path BEFORE the lenses were added (same leagues, same arguments).
+# Re-recorded for issue #229 (flex-aware asset reference): only the `excluded` counts changed, every shown row,
+# section and order is identical. Both leagues have a FLEX that RBs fill most weeks, so league RB starters rose
+# (market 8 -> 11, synth6 12 -> 16) and more RBs are starter-caliber: in market eight 2-for-1 rows sending RB 102
+# plus a WR now read "you surrender multiple strong" (concerns tier), leaving fewer practical rows over the
+# per-idea cap (similar_variants 59 -> 51); in synth6 two rows now read "they surrender multiple strong" and are
+# excluded as lopsided (0 -> 2), one fewer similar variant (22 -> 21).
 LEGACY = {'market': {'all_min_side': {'excluded': {'lopsided': 0, 'one_sided': 0, 'similar_variants': 0},
                              'pool_size': 12,
                              'sections': {'results': ['2-for-1:3:108-109:302', '2-for-2:3:106-107:302-305', '2-for-2:3:106-108:303-305',
@@ -337,13 +343,13 @@ LEGACY = {'market': {'all_min_side': {'excluded': {'lopsided': 0, 'one_sided': 0
                                'sections': {'results': ['2-for-1:3:108-109:302', '2-for-2:3:106-107:302-305', '2-for-2:3:106-108:303-305',
                                                         '2-for-2:3:107-108:304-305', '2-for-1:3:107-109:302', '2-for-1:3:108-109:303',
                                                         '2-for-2:3:106-107:302-304', '2-for-2:3:106-108:302-305']}},
-            'practical': {'excluded': {'lopsided': 3, 'one_sided': 0, 'similar_variants': 59},
+            'practical': {'excluded': {'lopsided': 3, 'one_sided': 0, 'similar_variants': 51},
                           'pool_size': 124,
                           'sections': {'concerns': ['2-for-1:3:108-109:302', '2-for-1:3:107-109:302', '2-for-1:3:108-109:303'],
                                        'practical': ['2-for-2:3:106-107:302-305', '2-for-2:3:106-108:303-305', '2-for-2:3:107-108:304-305',
                                                      '2-for-2:3:106-107:302-304', '2-for-2:2:105-106:202-208', '1-for-1:2:105:203'],
                                        'speculative': []}},
-            'practical_regular': {'excluded': {'lopsided': 3, 'one_sided': 23, 'similar_variants': 59},
+            'practical_regular': {'excluded': {'lopsided': 3, 'one_sided': 23, 'similar_variants': 51},
                                   'pool_size': 147,
                                   'sections': {'concerns': ['2-for-1:3:108-109:302', '2-for-1:3:107-109:302', '2-for-1:3:108-109:303'],
                                                'practical': ['2-for-2:3:106-107:302-305', '2-for-2:3:106-108:303-305',
@@ -363,7 +369,7 @@ LEGACY = {'market': {'all_min_side': {'excluded': {'lopsided': 0, 'one_sided': 0
                        'pool_size': 12,
                        'sections': {'results': ['1-for-2:4:1001:1062-1068', '1-for-2:4:1001:1055-1062', '1-for-2:4:1001:1054-1062',
                                                 '1-for-2:4:1001:1060-1068', '1-for-2:4:1001:1055-1060', '1-for-2:4:1001:1054-1060']}},
-            'practical': {'excluded': {'lopsided': 0, 'one_sided': 0, 'similar_variants': 22},
+            'practical': {'excluded': {'lopsided': 2, 'one_sided': 0, 'similar_variants': 21},
                           'pool_size': 123,
                           'sections': {'concerns': ['1-for-2:4:1001:1055-1062', '1-for-2:4:1001:1054-1062', '1-for-2:4:1001:1055-1060'],
                                        'practical': ['1-for-2:4:1001:1052-1062', '1-for-2:4:1001:1053-1062', '1-for-2:4:1001:1052-1063',

@@ -14,6 +14,7 @@ from app.analytics import trades as trades_mod
 from app.analytics.player_availability import (ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT, RETURNED, UNKNOWN,
                                                derive, load_availability)
 from app.analytics.team_lineups import known_total, project_team, project_week
+from app.analytics.lineup import lineup_slots
 from app.analytics.trade_assets import AssetBoard
 from app.analytics.trade_discovery import SHAPES, TradeSearch, detail
 from app.analytics.trade_practical import discover
@@ -23,6 +24,7 @@ from app.analytics.trades import (EvaluationUnavailable, TradeError, choose_forc
 from synthetic_league import add_free_agents, synthetic_league
 from synthetic_v3 import P, WEEKS, filler, league, market_league
 
+NO_FLEX = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "TE": 1, "K": 1, "D/ST": 1})
 KEYS = ("ros_delta", "regular_season_delta", "playoff_delta", "known_ros_delta")
 
 
@@ -644,9 +646,9 @@ def test_fantasy_ir_trade_with_lopsided_package_is_excluded_lopsided():
 def test_tied_par_at_starter_cutoff_both_qualify_as_starter_caliber():
     from app.analytics.trade_assets import AssetBoard
 
-    # 2 teams with slots ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'K', 'D/ST', 'FLEX']
-    # 2 RB fixed slots * 2 teams = 4 league starters at RB
-    st = synthetic_league(n_teams=2, weeks=range(10, 14))
+    # 2 teams with slots ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'K', 'D/ST'] (no flex slot, so the league's RB starters
+    # are exactly 2 RB fixed slots * 2 teams = 4; a FLEX would add the RB who fills it, see test_trade_assets_superflex)
+    st = synthetic_league(n_teams=2, weeks=range(10, 14), slots=NO_FLEX)
     st.free_agents = []
     st.rosters[1] = [P(101, "RB"), P(102, "RB"), P(103, "RB"), P(104, "RB"), P(105, "RB")]
     st.rosters[2] = [P(201, "WR")]
@@ -710,7 +712,7 @@ def test_tied_group_spanning_cutoff_and_entirely_above_or_below():
     from app.analytics.trade_assets import AssetBoard
 
     # 2 teams, 1 TE fixed slot * 2 teams = 2 TE league starters
-    st = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st = synthetic_league(n_teams=2, weeks=range(10, 14), slots=NO_FLEX)
     st.free_agents = []
 
     # Scenario A: Tie spans cutoff (Player 1 has rank 1, Players 2 and 3 tied at rank 2 <= 2)
@@ -752,7 +754,7 @@ def test_tied_group_spanning_cutoff_and_entirely_above_or_below():
 def test_par_difference_small_nonzero_not_tied():
     from app.analytics.trade_assets import AssetBoard
 
-    st = synthetic_league(n_teams=2, weeks=range(10, 14))
+    st = synthetic_league(n_teams=2, weeks=range(10, 14), slots=NO_FLEX)
     st.free_agents = []
     # 2 TE starters across league
     st.rosters[1] = [P(301, "TE"), P(302, "TE"), P(303, "TE")]

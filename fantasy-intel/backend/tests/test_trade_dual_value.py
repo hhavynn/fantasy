@@ -91,15 +91,18 @@ def bench_receiver_league():
     return st
 
 
-def consolidation_league(rb_value=11):
+def consolidation_league(rb_value=11, deep_rb=False):
     """Capacity 9. Team 2 holds exactly its nine lineup-relevant players plus RB 207 (`rb_value`), and receives two
-    WRs for one: someone must go. RB 207 is the cheapest drop (zero lineup cost) but a real asset."""
+    WRs for one: someone must go. RB 207 is the cheapest drop (zero lineup cost) but a real asset. `deep_rb` gives
+    Team 3 two more RBs (7) so that its FLEX takes an RB 7 and RB 207 at 6 ranks below the league's RB starters
+    (the asset board counts each FLEX for the position filling it, so RB 207, Team 2's FLEX starter before the
+    trade, is otherwise the 7th of 8 league RB starters)."""
     t1 = [(101, "QB", 20), (102, "RB", 15), (103, "RB", 14), (104, "WR", 16), (105, "WR", 14), (106, "WR", 13),
           (107, "TE", 7), (108, "K", 8), (109, "D/ST", 7), (110, "RB", 3)]
     t2 = [(201, "QB", 18), (202, "RB", 13), (203, "RB", 12), (204, "WR", 19, {"name": "Ember"}), (205, "WR", 17),
           (206, "TE", 6), (207, "RB", rb_value), (208, "K", 7), (209, "D/ST", 6)]
     fas = [(901, "QB", 12), (902, "RB", 5), (903, "WR", 6), (904, "TE", 4), (905, "K", 7), (906, "D/ST", 6)]
-    return league({1: t1, 2: t2, 3: filler(3, 300)}, fas, capacity=9)
+    return league({1: t1, 2: t2, 3: filler(3, 300, rb=(9, 8, 7, 7) if deep_rb else (9, 8, 4))}, fas, capacity=9)
 
 
 def playoff_league():
@@ -238,7 +241,7 @@ def test_fair_value_without_lineup_gain_is_flagged(trade, who):
 
 @pytest.mark.parametrize("rb_value,expect,starter_caliber", [(11, "fail", True), (6, "concern", False)])
 def test_consolidation_forced_drop_depth_cost(rb_value, expect, starter_caliber):
-    st = consolidation_league(rb_value)
+    st = consolidation_league(rb_value, deep_rb=not starter_caliber)
     res, mine, theirs = views(st, 1, 2, [105, 106], [204])           # Team 1 consolidates 2-for-1; Team 2 receives two
     dv = assess_trade(st, 1, 2, [105, 106], [204])
     you, them = dv["asset"]["depth"]["you"], dv["asset"]["depth"]["them"]

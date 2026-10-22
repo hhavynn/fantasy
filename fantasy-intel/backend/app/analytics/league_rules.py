@@ -701,10 +701,10 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
 
     # Superflex and flex slots (app/analytics/lineup.py, start_sit.build_slot_instances, trade_discovery._Totals).
     if roster["superflex"]:
-        rows.append({"rule": "Superflex (OP) slot", "status": PARTIAL,
+        rows.append({"rule": "Superflex (OP) slot", "status": HANDLED,
                      "detail": "Projected lineups, Start/Sit, Matchup, Waivers and the trade analyzer start a QB in "
-                               "the OP slot when he projects highest. Trade discovery's starter-caliber labels and "
-                               "replacement levels count only the fixed QB slots, so they understate QB demand."})
+                               "the OP slot when he projects highest. Waiver needs and trade discovery's replacement "
+                               "levels and starter-caliber labels count the QBs the league actually starts in OP."})
     flex = roster["flex_types"]
     if len(flex) > 1:
         rows.append({"rule": "Several flex slot types", "status": HANDLED,

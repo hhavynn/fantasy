@@ -93,8 +93,9 @@ SCENARIOS = [
      fair_no_gain, 2, [108], [209], "ros"),
     ("4. A 2-for-1 consolidation that forces a drop",
      "Team 1 turns RB depth and a weak WR2 into one star WR (Ember); Team 2, deep at WR and thin at RB, takes two "
-     "starters for one. Both lineups gain and the packages are balanced, but Team 2's roster is full: it must drop a "
-     "bench RB who still has asset value, so the depth check raises a concern.",
+     "starters for one. Both lineups gain and the packages are balanced, but Team 2's roster is full: it must drop RB "
+     "203, its RB2 before the trade and still one of the league's starting RBs (each FLEX counts for the position "
+     "that fills it), so the depth check fails and the verdict carries that concern.",
      consolidation, 2, [103, 106], [204], "ros"),
     ("5. A playoff-focused trade",
      "Team 1's RB2 is on a bye in the playoff week. Closer sits behind him all regular season (delta 0) and "
