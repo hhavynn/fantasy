@@ -181,7 +181,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       </div>
 
       <div className="stack">
-        <Section title="Recent league transactions" flush={o.recent_transactions.length > 0}>
+        <Section title="Recent league transactions" flush={o.recent_transactions.length > 0} footnote={o.recent_transactions.length > 0 ? <Link href="/transactions">See all transactions</Link> : undefined}>
           {o.recent_transactions.length === 0
             ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next {provider} sync.</EmptyState>
             : <MovesTable moves={o.recent_transactions} />}

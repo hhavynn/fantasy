@@ -63,6 +63,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "League",
     pages: [
       { href: "/weekly-recap", label: "Weekly recap", summary: "Scores, standouts and moves from a completed week" },
+      { href: "/transactions", label: "Transactions", summary: "Every add, drop and trade this season, filtered by manager, type, position and week" },
       { href: "/power-rankings", label: "Power rankings", summary: "Which rosters are strongest now, and who moved since last week" },
       { href: "/playoff-race", label: "Playoff race", summary: "Standings, remaining games and the playoff line" },
       { href: "/managers", label: "Managers", summary: "How each manager drafts, trades and sets lineups" },
