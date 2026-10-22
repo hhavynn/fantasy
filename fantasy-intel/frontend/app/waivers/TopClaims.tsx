@@ -1,3 +1,4 @@
+import { SavePlayer } from "./Shortlist";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Badge, Score, Verdict } from "@/components/ui";
 import type { TopClaims as Top } from "@/lib/waivers";
@@ -59,6 +60,7 @@ function ClaimCard({ row: w, rank, informational, ownership }: { row: WaiverRow;
           />
         </h3>
       </div>
+      <SavePlayer id={w.espn_player_id} name={w.full_name} />
       <div className={styles.claimAction}>
         <Badge value={w.recommendation} />
         <strong>{actionLabel(w) ?? "Refresh analytics"}</strong>

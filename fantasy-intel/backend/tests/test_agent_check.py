@@ -476,11 +476,11 @@ def test_full_mode_e2e_unverified_when_playwright_missing(monkeypatch):
 
 
 def test_authorization_doc_contract_enforces_adr0002():
-    reviewer_doc = (REPO_ROOT / ".claude/agents/multileague-security-reviewer.md").read_text()
+    reviewer_doc = (REPO_ROOT / "docs/agent-security-review.md").read_text()
     arch_doc = (REPO_ROOT / ".claude/skills/fantasy-verify/references/architecture-map.md").read_text()
-    claude_md = (REPO_ROOT / "CLAUDE.md").read_text()
+    workflow_doc = (REPO_ROOT / "docs/agent-workflow.md").read_text()
 
-    for doc, name in [(reviewer_doc, "reviewer"), (arch_doc, "arch"), (claude_md, "CLAUDE.md")]:
+    for doc, name in [(reviewer_doc, "reviewer"), (arch_doc, "arch"), (workflow_doc, "shared workflow")]:
         assert "404" in doc, f"{name} missing 404 contract"
         assert "indistinguish" in doc.lower(), f"{name} must enforce 404 indistinguishability"
         assert "anonymous private-league requests must return 401" not in doc.lower()

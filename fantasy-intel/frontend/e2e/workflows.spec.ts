@@ -202,3 +202,14 @@ test("phone fields use 16px text so iOS does not zoom on focus", async ({ page }
   const size = await page.locator("#rankings-q").evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
   expect(size).toBeGreaterThanOrEqual(16);
 });
+
+
+test("unscoped waiver shortlist cannot save into a shared fallback", async ({ page }) => {
+  await page.goto("/waivers?view=ALL");
+  const section = page.getByRole("region", { name: "Waiver shortlist" });
+  await expect(section).toContainText("Open a league to save");
+  const buttons = page.locator("table").getByRole("button", { name: /^Save .* to shortlist$/ });
+  expect(await buttons.count()).toBeGreaterThan(0);
+  for (const button of await buttons.all()) await expect(button).toBeDisabled();
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("fi:waiver-shortlist:")))).toEqual([]);
+});
