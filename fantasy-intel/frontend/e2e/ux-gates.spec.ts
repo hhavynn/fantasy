@@ -3,6 +3,7 @@ import {
   applyTheme, collectErrors, expectAccessible, expectAppBarFits, expectDecisionFirst, expectNoBrokenValues,
   expectNoSidewaysScroll, expectStructure, open, stubPhotos, tabThrough, useTheme,
 } from "./ux";
+import { RAIL_KEY } from "../lib/navigation";
 
 // UX acceptance gates for the core destinations (issue #202) on the demo/public ESPN fixture league
 // (scripts/build_e2e_db.py: team 2 is the owner default, team 1 a rival, 201 "Echo RB", 206/307 on team 2, 202 on
@@ -57,6 +58,26 @@ for (const route of CORE) {
     expect(errors, "console errors").toEqual([]);
   });
 }
+
+// The CORE runs above see the wide desktop with the workspace rail open (its default); this is the other state.
+test("the collapsed workspace rail meets the quality bar on a wide desktop", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) < 1200, "the rail is the wide desktop layout");
+  const errors = collectErrors(page);
+  await page.addInitScript((key) => {
+    try { window.localStorage.setItem(key, "collapsed"); } catch { /* storage blocked: the rail stays open */ }
+  }, RAIL_KEY);
+  for (const path of ["/", "/waivers", "/movers"]) {
+    await open(page, path);
+    await test.step(path, async () => {
+      await expect(page.locator("html")).toHaveAttribute("data-rail", "collapsed");
+      await expectStructure(page);
+      await expectAppBarFits(page);
+      await expectNoSidewaysScroll(page);
+      await expectAccessible(page, "rail collapsed");
+    });
+  }
+  expect(errors, "console errors").toEqual([]);
+});
 
 test("keyboard: every focus stop is visible and shows a focus ring, from the app bar into the page", async ({ page }) => {
   for (const path of ["/", "/start-sit", "/waivers", "/rankings"]) {

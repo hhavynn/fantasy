@@ -39,6 +39,15 @@ function write(key: string, team: string | null) {
 }
 
 /**
+ * Record `team` (null = the league's default team) as the team last analyzed in `league`, the way opening a
+ * team-scoped page does. The desktop rail's team picker uses it on league-wide pages, which never carry a team in
+ * their own URL.
+ */
+export function rememberTeam(league: string | null, team: string | null) {
+  write(teamStorageKey(league), parseStoredTeam(team));
+}
+
+/**
  * The analyzed team that links from this page should keep (`withTeam`): the URL's `?team=` on a team-scoped page,
  * else the team last analyzed in this tab (in this league). Visiting a team-scoped page records its selection,
  * including the default (no `team`), so "Back to default" sticks.

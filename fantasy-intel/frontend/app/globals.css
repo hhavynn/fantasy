@@ -399,6 +399,76 @@ p { margin: 0 0 8px; }
   .sync-pill { gap: 6px; padding: 3px 8px; font-size: 11px; }
 }
 
+/* ---------- Desktop workspace shell: workflow rail + page ---------- */
+/* Wide desktops (1200px and up) put the five groups in a left rail beside the page: each with its icon, label and
+   the job it is for, the current group's pages beneath, and the league week and team picker on top, so nothing is
+   behind a menu. The app bar keeps the brand, search, switches, sync and account; the section links and the sub-nav
+   band step aside. Collapsed (<html data-rail="collapsed">, the toggle at the rail's foot), the rail keeps only the
+   group icons and the sub-nav band comes back. Below 1200px the rail is not drawn at all: tablets keep the app-bar
+   links and phones the bottom tab bar, with no extra fixed layer. */
+.rail { display: none; }
+@media (min-width: 1200px) {
+  :root { --rail-w: 236px; --appbar-h: calc(var(--topbar-h) + 1px); }
+  :root[data-rail="collapsed"] { --rail-w: 68px; }
+  /* Collapsed, the sub-nav band returns only where the route has one: SubNav renders nothing outside NAV_GROUPS
+     (/data, /leagues, /account, /login), and there the rail and every sticky offset sit right under the app bar. */
+  :root[data-rail="collapsed"]:has(.subnav-wrap) { --appbar-h: calc(var(--topbar-h) + var(--subnav-h) + 2px); }
+  .topbar { max-width: calc(var(--page-max) + var(--rail-w)); }
+  .topbar .nav-groups { display: none; }
+  :root:not([data-rail="collapsed"]) .subnav-wrap { display: none; }
+  .subnav { max-width: calc(var(--page-max) + var(--rail-w)); padding-left: calc(var(--rail-w) + var(--gutter)); }
+  .shell { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); max-width: calc(var(--page-max) + var(--rail-w)); margin: 0 auto; }
+  .shell > main { min-width: 0; max-width: none; margin: 0; }
+
+  .rail {
+    position: sticky; top: var(--appbar-h); align-self: start;
+    display: flex; flex-direction: column; gap: 16px;
+    height: calc(100dvh - var(--appbar-h)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+    padding: 20px 12px 16px var(--gutter);
+    border-right: 1px solid var(--line);
+  }
+  .rail-context { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  .rail-week { margin: 0; color: var(--ink-muted); font-size: var(--text-2xs); line-height: 16px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+  .rail-field { display: grid; gap: 4px; min-width: 0; }
+  .rail-field-label { color: var(--ink-muted); font-size: var(--text-xs); font-weight: 600; }
+  .rail-field select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+
+  .rail-groups ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+  .rail-groups a {
+    position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; column-gap: 12px;
+    padding: 7px 10px; border-radius: var(--radius-sm); color: var(--ink-muted);
+  }
+  .rail-groups svg { grid-row: 1 / span 2; width: 18px; height: 18px; justify-self: center; }
+  .rail-label { color: var(--ink); font-size: var(--text-md); line-height: 20px; font-weight: 600; }
+  .rail-task { grid-column: 2; color: var(--ink-muted); font-size: var(--text-xs); line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rail-groups a:hover { background: var(--surface-hover); text-decoration: none; }
+  .rail-groups a[aria-current] { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  .rail-groups a[aria-current] svg, .rail-groups a[aria-current] .rail-label { color: var(--accent); }
+
+  .rail-pages { display: flex; flex-direction: column; gap: 2px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .rail-pages-title, .rail-section { padding: 0 10px 4px; color: var(--ink-faint); font-size: var(--text-2xs); line-height: 16px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+  .rail-cluster { display: flex; flex-direction: column; gap: 2px; }
+  .rail-cluster + .rail-cluster { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .rail-pages a { display: flex; align-items: center; min-height: 32px; padding: 0 10px; border-radius: var(--radius-sm); color: var(--ink-muted); font-size: var(--text-sm); }
+  .rail-pages a:hover { color: var(--ink); background: var(--surface-hover); text-decoration: none; }
+  .rail-pages a[aria-current] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+
+  .rail-toggle {
+    margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 8px;
+    height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: transparent; color: var(--ink-muted); font-size: var(--text-xs); font-weight: 500;
+  }
+  .rail-toggle:hover { color: var(--ink); border-color: var(--line-control); filter: none; }
+
+  /* Collapsed: the group icons (names stay accessible, and in the tooltip) and the toggle; pages go back to the band. */
+  :root[data-rail="collapsed"] .rail { align-items: center; padding: 16px 8px; }
+  :root[data-rail="collapsed"] :is(.rail-context, .rail-pages, .rail-task, .rail-toggle-text) { display: none; }
+  :root[data-rail="collapsed"] .rail-groups a { grid-template-columns: 20px; padding: 10px 14px; }
+  :root[data-rail="collapsed"] .rail-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  :root[data-rail="collapsed"] .rail-groups svg { grid-row: auto; }
+  :root[data-rail="collapsed"] .rail-toggle { align-self: center; padding: 0 9px; }
+}
+
 /* ---------- Page frame ---------- */
 main { padding: 28px var(--gutter) 72px; max-width: var(--page-max); margin: 0 auto; }
 @media (max-width: 720px) { main { padding: 16px 16px 48px; } }

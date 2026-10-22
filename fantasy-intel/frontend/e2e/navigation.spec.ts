@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { RAIL_KEY } from "../lib/navigation";
 
 // Navigation and analysis-context journeys against the synthetic league (scripts/build_e2e_db.py): team 2 is the
 // owner default, team 1 a rival, player 201 "Echo RB". The viewport comes from the Playwright project: desktop
@@ -9,6 +10,8 @@ const PIXEL_PNG = Buffer.from(
 const FAILURE_TEXT = /Can't reach the backend|The backend returned an error|Something went wrong|This page couldn't be rendered/;
 
 const isPhone = () => /^mobile/.test(test.info().project.name);
+/** Wide desktops (1200px and up) show the workflow rail instead of the app bar's section links and sub-nav band. */
+const hasRail = () => (test.info().project.use.viewport?.width ?? 0) >= 1200;
 
 test.beforeEach(async ({ page }) => {
   await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
@@ -205,16 +208,115 @@ test("key pages fit the viewport without sideways scroll", async ({ page }) => {
   }
 });
 
-test("desktop and tablet: the five section links are fully visible in the app bar", async ({ page }) => {
+test("desktop and tablet: the five section links are fully visible in the app bar or the workspace rail", async ({ page }) => {
   test.skip(isPhone(), "phones use the tab bar");
   await page.goto("/trades");
   await loaded(page);
-  const nav = page.locator(".nav-groups");
+  // The visible "Sections" nav: the app bar's links on the tablet, the workflow rail on wide desktops (#170).
+  const nav = sections(page);
   const fits = await nav.evaluate((n) => n.scrollWidth <= n.clientWidth);
   expect(fits, "section links clipped").toBe(true);
   for (const label of ["My team", "Waivers", "Players", "Trades", "League"]) {
     await expect(sections(page).getByRole("link", { name: label, exact: true })).toBeInViewport();
   }
+});
+
+// ---------- Wide desktop: the workspace rail (#170) ----------
+
+test("wide desktop: the rail shows the five tasks and the current group's pages without opening anything", async ({ page }) => {
+  test.skip(!hasRail(), "the rail is the wide desktop layout");
+  await page.goto("/kickers");
+  await loaded(page);
+  const rail = page.getByRole("complementary", { name: "Workspace" });
+  await expect(rail).toBeVisible();
+  for (const [label, task] of [
+    ["My team", /lineup/i], ["Waivers", /add and drop/i], ["Players", /players/i], ["Trades", /trades/i], ["League", /standings/i],
+  ] as const) {
+    const link = sections(page).getByRole("link", { name: label, exact: true });
+    await expect(link, label).toBeInViewport();
+    await expect(link, `${label}: the job it is for`).toHaveAccessibleDescription(task);
+  }
+  // The group's pages sit in the rail; the sub-nav band and the app-bar links step aside (one visible of each).
+  await expect(subnav(page, "Waivers").getByRole("link", { name: "Kickers", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.locator(".subnav-wrap")).toBeHidden();
+  await expect(page.locator(".topbar .nav-groups")).toBeHidden();
+  await expect(rail.getByRole("combobox", { name: "Team" })).toBeVisible();
+});
+
+test("wide desktop: collapsing the rail keeps the five sections, brings back the sub-nav band and is remembered", async ({ page }) => {
+  test.skip(!hasRail(), "the rail is the wide desktop layout");
+  await page.goto("/rankings");
+  await loaded(page);
+  const toggle = page.getByRole("button", { name: "Collapse navigation" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await toggle.click();
+  const expand = page.getByRole("button", { name: "Expand navigation" });
+  await expect(expand).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator("html")).toHaveAttribute("data-rail", "collapsed");
+  for (const label of ["My team", "Waivers", "Players", "Trades", "League"]) {
+    await expect(sections(page).getByRole("link", { name: label, exact: true }), label).toBeVisible();
+  }
+  await expect(page.locator(".subnav-wrap")).toBeVisible();
+  await expect(subnav(page, "Players").getByRole("link", { name: "Rankings", exact: true })).toHaveAttribute("aria-current", "page");
+  await noSidewaysScroll(page);
+
+  await page.reload();
+  await loaded(page);
+  await expect(page.locator("html")).toHaveAttribute("data-rail", "collapsed");
+  await page.getByRole("button", { name: "Expand navigation" }).click();
+  await expect(page.locator("html")).not.toHaveAttribute("data-rail", /./);
+  await expect(page.locator(".subnav-wrap")).toBeHidden();
+});
+
+test("wide desktop: the collapsed rail sits right under the app bar, and under the sub-nav band only where a route has one", async ({ page }) => {
+  test.skip(!hasRail(), "the rail is the wide desktop layout");
+  await page.addInitScript((key) => {
+    try { window.localStorage.setItem(key, "collapsed"); } catch { /* storage blocked: the rail stays open */ }
+  }, RAIL_KEY);
+  // The rail's sticky top is --appbar-h, the same offset every sticky bar and scroll-padding uses.
+  const railTop = () => page.locator(".rail").evaluate((e) => parseFloat(getComputedStyle(e).top));
+  const bottom = async (selector: string) => {
+    const box = await page.locator(selector).boundingBox();
+    return box ? box.y + box.height : NaN;
+  };
+  // /leagues is in no nav group, so it has no sub-nav band: no row may be reserved for one.
+  await page.goto("/leagues");
+  await loaded(page);
+  await expect(page.locator("html")).toHaveAttribute("data-rail", "collapsed");
+  await expect(page.locator(".subnav-wrap")).toHaveCount(0);
+  expect(await railTop(), "/leagues: rail top = app bar bottom").toBeCloseTo(await bottom(".appbar"), 0);
+  await page.goto("/rankings");
+  await loaded(page);
+  await expect(page.locator(".subnav-wrap")).toBeVisible();
+  expect(await railTop(), "/rankings: rail top = sub-nav band bottom").toBeCloseTo(await bottom(".subnav-wrap"), 0);
+});
+
+test("wide desktop: the rail's team picker reloads a team-scoped page and steers links from a league-wide one", async ({ page }) => {
+  test.skip(!hasRail(), "the rail is the wide desktop layout");
+  await page.goto("/waivers");
+  await loaded(page);
+  const picker = page.getByRole("complementary", { name: "Workspace" }).getByRole("combobox", { name: "Team" });
+  await picker.selectOption("1");
+  await expect(page).toHaveURL(/\/waivers\?team=1$/);
+  await loaded(page);
+  await expect(page.getByRole("combobox", { name: "Analyzing" })).toHaveValue(/team=1/);
+
+  // A league-wide page keeps its own clean URL; the pick changes the team its links to team-scoped pages carry.
+  await page.goto("/rankings");
+  await loaded(page);
+  await expect(picker).toHaveValue("1");
+  await picker.selectOption("2");
+  await expect(page).toHaveURL(/\/rankings$/);
+  await expect(sections(page).getByRole("link", { name: "My team", exact: true })).toHaveAttribute("href", "/");
+  await picker.selectOption("1");
+  await expect(sections(page).getByRole("link", { name: "My team", exact: true })).toHaveAttribute("href", "/?team=1");
+});
+
+test("tablets and phones never draw the rail", async ({ page }) => {
+  test.skip(hasRail(), "wide desktops draw the rail");
+  await page.goto("/rankings");
+  await loaded(page);
+  await expect(page.getByRole("complementary", { name: "Workspace" })).toBeHidden();
 });
 
 // ---------- Phones ----------

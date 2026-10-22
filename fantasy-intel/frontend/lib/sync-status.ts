@@ -30,7 +30,12 @@ export type SyncSummary = {
   feeds: FeedStatus[];
   activeFailures: SyncFailure[];
   nflLatestWeek: number | null;
+  /** The status read itself was served from the league's previous files (`ApiResult.stale`): the data may be older. */
+  degraded: boolean;
 };
+
+/** The pill's text when the backend served older files and nothing else is wrong. */
+export const DEGRADED_TEXT = "Showing older data";
 
 const OK = new Set(["ok", "success"]);
 
@@ -54,10 +59,13 @@ const feedLabel = (source: string) => [...FEEDS, ...feedsFor("sleeper")].find((f
  * - null (backend unreachable) is offline.
  * - A failure counts only when it is its source's latest run and no newer success cleared it.
  * - Any feed never synced, or the oldest feed older than STALE_HOURS, is stale.
+ * - `degraded` (the backend answered from the league's previous files) is stale too; a more specific problem keeps
+ *   its own text, and the popover says why either way.
  */
-export function computeSyncSummary(data: StatusPayload, now: number = Date.now(), provider: Provider = "espn"): SyncSummary {
+export function computeSyncSummary(data: StatusPayload, now: number = Date.now(), provider: Provider = "espn",
+                                   degraded = false): SyncSummary {
   if (!data) {
-    return { state: "offline", text: "Backend offline", feeds: [], activeFailures: [], nflLatestWeek: null };
+    return { state: "offline", text: "Backend offline", feeds: [], activeFailures: [], nflLatestWeek: null, degraded: false };
   }
   const lastSuccess = data.sync?.last_success ?? {};
   const runs = data.sync?.latest_runs ?? [];
@@ -84,7 +92,7 @@ export function computeSyncSummary(data: StatusPayload, now: number = Date.now()
                           message: run.message ?? null, finished_at: run.finished_at ?? null });
   }
 
-  const base = { feeds, activeFailures, nflLatestWeek: data.nfl_latest_week ?? null };
+  const base = { feeds, activeFailures, nflLatestWeek: data.nfl_latest_week ?? null, degraded };
   const missing = feeds.find((f) => f.hours === null);
   if (feeds.every((f) => f.hours === null) && runs.length === 0) return { ...base, state: "stale", text: "Not synced" };
   if (activeFailures.length) {
@@ -94,5 +102,6 @@ export function computeSyncSummary(data: StatusPayload, now: number = Date.now()
   if (missing) return { ...base, state: "stale", text: `${missing.label} never synced` };
   const oldest = feeds.reduce((m, f) => (f.hours! > m.hours! ? f : m));
   if (oldest.hours! > STALE_HOURS) return { ...base, state: "stale", text: `${oldest.label} ${ago(oldest.hours!)}` };
+  if (degraded) return { ...base, state: "stale", text: DEGRADED_TEXT };
   return { ...base, state: "ok", text: `Synced ${ago(oldest.hours!)}` };
 }

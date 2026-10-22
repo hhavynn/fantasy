@@ -5,9 +5,10 @@ import { type StatusPayload, computeSyncSummary } from "@/lib/sync-status";
 import { SyncPopover } from "./SyncPopover";
 
 /** One health dot for every feed; the details (and Data quality) open from it. Rendered per request
- * (the root layout is force-dynamic), so the ages are as of this request. */
-export function SyncPill({ status, provider = "espn" }: { status: StatusPayload; provider?: Provider }) {
-  const s = computeSyncSummary(status, undefined, provider);
+ * (the root layout is force-dynamic), so the ages are as of this request. `degraded`: the status read came back
+ * `stale` (lib/api.ts), the backend serving the league's previous files. */
+export function SyncPill({ status, provider = "espn", degraded = false }: { status: StatusPayload; provider?: Provider; degraded?: boolean }) {
+  const s = computeSyncSummary(status, undefined, provider, degraded);
   return (
     <SyncPopover state={s.state} text={s.text}>
       {s.state === "offline" ? (
@@ -17,6 +18,12 @@ export function SyncPill({ status, provider = "espn" }: { status: StatusPayload;
         </div>
       ) : (
         <>
+          {s.degraded && (
+            <div className="sync-callout warn">
+              <b>Showing older data.</b> The newest league files could not be loaded in time, so this page may use the
+              previous ones. Reload in a moment for the latest.
+            </div>
+          )}
           {s.activeFailures.map((f) => (
             <div key={f.source} className="sync-callout warn">
               <b>{f.label} sync {f.status}</b>

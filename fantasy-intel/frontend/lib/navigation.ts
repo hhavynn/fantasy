@@ -10,7 +10,13 @@ export type NavPage = {
    *  everyone else 404). */
   ownerOnly?: boolean;
 };
-export type NavGroup = { label: string; pages: NavPage[] };
+export type NavGroup = {
+  label: string;
+  /** The job the group is for, in a few words: the desktop workflow rail prints it under the label so a first-time
+   *  visitor sees the five main tasks without opening anything. Optional, so a group can be added as `{ label, pages }`. */
+  task?: string;
+  pages: NavPage[];
+};
 
 // Section groups, organised by the decision a manager came to make rather than by when a feature was built:
 // - My team: this week's lineup decisions for the analyzed roster (every page here is team-scoped).
@@ -18,12 +24,14 @@ export type NavGroup = { label: string; pages: NavPage[] };
 // - Players: find, rank and compare players; the "Research" cluster holds the model and opportunity tools.
 // - Trades: find a trade, then evaluate it.
 // - League: what happened and where the league stands.
-// Five groups fit a phone tab bar one-to-one. The app bar shows the groups and a sub-nav for the active group's
+// Five groups fit a phone tab bar one-to-one. Wide desktops show them in the workflow rail (label and task) with the
+// active group's pages beneath; narrower screens show the groups in the app bar and a sub-nav for the active group's
 // pages. Data quality is reached from the sync status, not the nav, and the multi-league prototype (/leagues)
 // stays out of it while it is feature-flagged.
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: "My team",
+    task: "Set this week's lineup",
     pages: [
       { href: "/", label: "Overview", summary: "This week at a glance: matchup, action items, roster and standings" },
       { href: "/start-sit", label: "Start/Sit", summary: "The submitted lineup against the best projected one" },
@@ -34,6 +42,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Waivers",
+    task: "Add and drop players",
     pages: [
       { href: "/waivers", label: "Waivers", summary: "Free agents the analysis supports for this roster, with the drop" },
       { href: "/kickers", label: "Kickers", summary: "Weekly kicker projections with game context, free agents included" },
@@ -42,6 +51,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Players",
+    task: "Rank and research players",
     pages: [
       { href: "/rankings", label: "Rankings", summary: "Every player ranked by projection, filtered by position and horizon" },
       { href: "/players", label: "Player profile", summary: "One player's usage, game log and outlook" },
@@ -54,6 +64,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Trades",
+    task: "Find and weigh trades",
     pages: [
       { href: "/trades", label: "Analyzer", summary: "Build a trade and see its exact lineup impact, week by week" },
       { href: "/trades/discover", label: "Discover", summary: "Trade ideas found by searching every roster" },
@@ -61,6 +72,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "League",
+    task: "Results, standings and rules",
     pages: [
       { href: "/weekly-recap", label: "Weekly recap", summary: "Scores, standouts and moves from a completed week" },
       { href: "/transactions", label: "Transactions", summary: "Every add, drop and trade this season, filtered by manager, type, position and week" },
@@ -93,6 +105,21 @@ export function navClusters(group: NavGroup): NavCluster[] {
     else out.push({ title, pages: [p] });
   }
   return out;
+}
+
+/** Where a page sits in the registry, for page-context lines: its group and, inside the group, its labelled cluster. */
+export type PageContext = { group: string; section: string | null; page: NavPage };
+
+/** The registry context of `pathname` (the same matching as `getActiveRoute`), or null for a route in no group. */
+export function pageContext(pathname: string | null | undefined): PageContext | null {
+  const { activeHref, activeGroup } = getActiveRoute(pathname);
+  const page = activeGroup?.pages.find((p) => p.href === activeHref);
+  return activeGroup && page ? { group: activeGroup.label, section: page.section ?? null, page } : null;
+}
+
+/** The context as an eyebrow line: "Players · Research", "Trades". */
+export function pageContextLabel(ctx: PageContext | null): string | null {
+  return ctx ? [ctx.group, ctx.section].filter(Boolean).join(" · ") : null;
 }
 
 export type ActiveRoute = { activeHref: string | null; activeGroup: NavGroup | null };
@@ -169,3 +196,21 @@ export function parseTabMemory(raw: string | null): TabMemory {
     return {};
   }
 }
+
+// ---------- Desktop workflow rail ----------
+// Wide desktops (see `.rail` in app/globals.css) show the five groups in a left rail. Collapsing it leaves the group
+// icons and brings back the horizontal sub-nav, so no page is ever one hidden menu away. The choice is a per-browser
+// convenience (localStorage), applied to <html data-rail> before the first paint like the theme.
+
+export const RAIL_KEY = "fantasy-intel:rail";
+export type RailState = "expanded" | "collapsed";
+
+/** A stored rail state; anything else (nothing stored, blocked storage, junk) is the default, expanded. */
+export function parseRail(raw: string | null | undefined): RailState {
+  return raw === "collapsed" ? "collapsed" : "expanded";
+}
+
+/** Runs in <head> before paint: a collapsed rail is on <html> before any content renders (no flash, no shift). */
+export const RAIL_INIT_SCRIPT =
+  `(function(){try{if(localStorage.getItem(${JSON.stringify(RAIL_KEY)})==="collapsed")` +
+  `document.documentElement.setAttribute("data-rail","collapsed")}catch(e){}})()`;
