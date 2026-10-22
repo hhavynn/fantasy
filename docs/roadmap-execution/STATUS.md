@@ -29,7 +29,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #170 desktop shell | 1 | MERGED | PR #239 → abe7664 | rail + team picker + stale SyncPill (#201); Codex P2 fixed; CI E2E green |
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
 | #166 action center | 2 | IN PROGRESS | `feature/fi-166-action-center` from c419856 | one agent; security tier + review required; no Nav/layout edits (#239 owns) |
-| #171 what-if lineup | 2 | NOT STARTED | — | reuse lineup.py locks |
+| #171 what-if lineup | 2 | IN PROGRESS | `feature/fi-171-what-if-lineup` from abe7664 | one agent; backend-validated swaps, URL scenario, no provider writes |
 | #177 bye/kickoff planner | 2 | NOT STARTED | — | |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
 | #187 player profile tabs | 2 | NOT STARTED | — | news tab optional on #186 |
