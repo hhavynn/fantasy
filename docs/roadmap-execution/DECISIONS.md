@@ -69,8 +69,7 @@ quick-tier timeouts. Rules from now on:
 An implementation agent deletes only what it created. Shared scratchpads, test databases or clusters, artifacts,
 logs, caches and other agents' worktrees are cleaned up by the coordinator after it checks for active users. Wildcard
 `rm` over a shared directory is not allowed. Why: the #229 agent ran `rm -rf <session scratchpad>/*`. D-08 and D-09
-reach `docs/agent-workflow.md` (inherited by new worktrees) through PR #237. Until #237 merges, agent briefs repeat
-them.
+reached `docs/agent-workflow.md` (inherited by new worktrees) with PR #237 (e6bb3f3).
 
 ## Open research gates (filled in as work reaches them)
 - #186 news: needs a free source with redistribution rights; otherwise the profile ships without a news tab.
