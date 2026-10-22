@@ -154,6 +154,15 @@ export function findExisting(leagues: MyLeague[], host: Host, externalId: string
     && (host === "sleeper" || season === null || l.season === season)) ?? null;
 }
 
+/**
+ * Whether entering a league the visitor already follows can go straight to its progress step. Not for a public league
+ * that went dormant or unavailable: importing it again is what wakes it and queues a catch-up sync
+ * (fi.import_public_league), and its progress step offers no other way back.
+ */
+export function canSkipImport(l: Pick<MyLeague, "visibility" | "status">): boolean {
+  return !(l.visibility === "public" && (l.status === "dormant" || l.status === "unavailable"));
+}
+
 // ---- connect errors: a clear message and the next action --------------------------------------------------------------
 
 export type NextAction = "fix_input" | "retry_later" | "sign_in" | "invite" | "cookies" | "manage" | "none";

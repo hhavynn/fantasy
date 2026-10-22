@@ -8,7 +8,7 @@ import {
   cleanCookies, isLeagueRef, multileagueUiEnabled, NOT_ENABLED_REASON, parseLeagueInput, parseMyLeagues, parseProviderChoice,
   parseSleeperLeagueInput, validSeason,
 } from "@/lib/my-leagues";
-import { connectProblem, findExisting, privateHref, progressHref, type Host, type NextAction } from "@/lib/onboarding";
+import { canSkipImport, connectProblem, findExisting, privateHref, progressHref, type Host, type NextAction } from "@/lib/onboarding";
 import { currentUser } from "@/lib/supabase/server";
 
 // Server actions are public POST endpoints: each re-checks the flag and the signed-in user on the server, and the
@@ -67,7 +67,8 @@ function readLeague(form: FormData): { league: string; season: number } | { erro
 /** The visitor's own list, to find a league they already follow before registering it again. Best effort. */
 async function alreadyFollowed(host: Host, externalId: string, season: number | null): Promise<string | null> {
   const res = await apiRequest("/v2/leagues");
-  return res.ok ? findExisting(parseMyLeagues(res.data), host, externalId, season)?.id ?? null : null;
+  const found = res.ok ? findExisting(parseMyLeagues(res.data), host, externalId, season) : null;
+  return found && canSkipImport(found) ? found.id : null;
 }
 
 /** A Sleeper league: always public, so one step with no cookies. */

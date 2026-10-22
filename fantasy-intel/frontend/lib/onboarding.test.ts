@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  capabilitySummary, connectProblem, findExisting, hostHref, normalizeExternalId, onboardingView, parseProviders,
+  canSkipImport, capabilitySummary, connectProblem, findExisting, hostHref, normalizeExternalId, onboardingView, parseProviders,
   privateHref, progressHref, supportWords, syncProgress,
 } from "./onboarding.ts";
 import { leagueState, parseMyLeague, type MyLeague } from "./my-leagues.ts";
@@ -148,4 +148,13 @@ test("the sync issue is parsed as a category, and the league card says retrying 
     "Retrying first sync");
   assert.match(leagueState({ status: "active", syncState: "first_sync_failed", visibility: "public", syncIssue: null }).detail,
     /stopped after repeated tries; refresh to try again/);
+});
+
+test("a dormant or unavailable public league goes through import again, which is what recovers it", () => {
+  assert.equal(canSkipImport({ visibility: "public", status: "active" }), true);
+  assert.equal(canSkipImport({ visibility: "public", status: "stale" }), true);
+  assert.equal(canSkipImport({ visibility: "public", status: "unavailable" }), false);
+  assert.equal(canSkipImport({ visibility: "public", status: "dormant" }), false);
+  // private leagues recover through fresh cookies on their progress step, never by re-sending cookies here
+  assert.equal(canSkipImport({ visibility: "private", status: "unavailable" }), true);
 });
