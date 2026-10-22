@@ -5,7 +5,7 @@ Short, dated records. Each one gives the decision, why, and what would change it
 ## D-01 · 2026-10-22 · One PR per issue, branches `feature/fi-<n>-<slug>`
 Each issue is built in its own worktree from fresh `origin/main` and delivered as a focused PR. A dependent branch is
 based on its prerequisite's exact commit and says so in the PR body. This checkpoint lives on
-`claude/fantasy-intel-roadmap-b6nrc8`. Nothing is merged by agents.
+`claude/fantasy-intel-roadmap-b6nrc8`. Implementation agents never merge (see D-07).
 
 ## D-02 · 2026-10-22 · PRODUCT.md data-trust rules stay binding
 No win probabilities, trade grades, acceptance likelihoods or expert-consensus numbers ship without a passing,
@@ -35,6 +35,19 @@ prerequisite has landed (or can be safely stacked on), and no active agent owns 
 issue is ready, its backend research (#212, #210, #226, #225) may run before its UI; the UI waits for #170, the
 owner of nav and layout. Prefer a section or tab of an existing page over a new page (Game Splits in Research,
 attribution in Projection movers). #224, #220 and #223 are research-first: the deliverable is a go/no-go note.
+
+## D-07 · 2026-10-22 · Owner authorization to merge roadmap PRs; integration queue
+The owner authorized the coordinator to merge #205, #227 and related fix/security PRs, one at a time, by squash. A PR
+merges only when CI is green on its exact head SHA, it has no unresolved material review or security findings, it has
+no conflicts, and no protection is bypassed. There are no admin overrides, force pushes or deploys. Implementation
+agents never merge.
+- Target at most 2 verified-but-unmerged feature PRs; if the queue grows, the coordinator integrates before starting
+  new work.
+- When a PR is stale but compatible, it merges as is. When a merge with main touches files shared with the merged
+  work, the affected tests run locally and CI must pass on the new head first. Full local suites are not rerun for code
+  already verified by CI.
+- A branch stacked on a squash-merged parent is retargeted to main and merged with main, keeping its own side of
+  files the parent already contained, after checking that main matches the parent's final commit there.
 
 ## Open research gates (filled in as work reaches them)
 - #186 news: needs a free source with redistribution rights; otherwise the profile ships without a news tab.

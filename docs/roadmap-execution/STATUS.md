@@ -3,7 +3,8 @@
 Tracks the 40 child issues of [#205](https://github.com/hhavynn/fantasy/issues/205). The issue text is the spec. This
 file records state, branches and the next action. Decisions and blockers are in [DECISIONS.md](DECISIONS.md).
 
-States: NOT STARTED · IN PROGRESS · READY FOR REVIEW (branch/PR open, gates recorded) · MERGED · BLOCKED · RESEARCH-ONLY.
+States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI green on head, reviews resolved) · MERGED (sha, date)
+· BLOCKED · RESEARCH-ONLY.
 "Pushed" is not "merged"; "tested locally" is not "CI-verified".
 
 ## Baseline (audit 2026-10-22)
@@ -21,18 +22,18 @@ States: NOT STARTED · IN PROGRESS · READY FOR REVIEW (branch/PR open, gates re
 | Issue | Phase | State | Branch / PR | Notes |
 |---|---|---|---|---|
 | #201 perf budgets | 1 | IN PROGRESS | `feature/fi-201-perf-budgets` | wave 3 agent |
-| #202 UX/visual gates | 1 | READY FOR REVIEW | `feature/fi-202-ux-gates` · PR #230 (CI green a7f261a) | visual gate armed only after the "Visual baselines" workflow is run and its PNGs are reviewed |
-| #168 signal provenance | 1 | READY FOR REVIEW | `feature/fi-168-signal-provenance` · PR #208 | contract `signal-provenance.v1` reused by #165+; security-reviewed; CI green on d42cee4 |
-| #169 league rules | 1 | READY FOR REVIEW | `feature/fi-169-league-rules` · PR #207 | contract `league-rules/v1`; security-reviewed; CI green on 5991d83 |
-| #167 onboarding | 1 | IN PROGRESS | `feature/fi-167-onboarding` | code done, security-reviewed; full suite running before push |
+| #202 UX/visual gates | 1 | VERIFIED / MERGE READY | PR #230 (a7f261a) | visual gate stays PENDING until reviewed baselines are committed (follow-up) |
+| #168 signal provenance | 1 | MERGED | PR #208 → `509a45f` (2026-10-22) | contract `signal-provenance.v1` |
+| #169 league rules | 1 | PR OPEN | PR #207 | main merged in (62a6463); CI re-running, merge next |
+| #167 onboarding | 1 | PR OPEN | PR #233 (609f00f) | security-reviewed; CI running |
 | #170 desktop shell | 1 | NOT STARTED | — | after wave 2; sole owner of Nav/globals |
-| #165 weekly hub | 2 | IN PROGRESS | `feature/fi-165-weekly-hub` (stacked on #208 @ d42cee4) | wave 3 agent |
+| #165 weekly hub | 2 | PR OPEN | PR #232 (240fdcd, retargeted to main after #208) | CI running |
 | #166 action center | 2 | NOT STARTED | — | after #165 |
 | #171 what-if lineup | 2 | NOT STARTED | — | reuse lineup.py locks |
 | #177 bye/kickoff planner | 2 | NOT STARTED | — | |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
 | #187 player profile tabs | 2 | NOT STARTED | — | news tab optional on #186 |
-| #193 transactions feed | 2 | READY FOR REVIEW | `feature/fi-193-transactions-feed` · PR #231 | security-reviewed; local full suite 4018 passed; CI green on 6334342 |
+| #193 transactions feed | 2 | VERIFIED / MERGE READY | PR #231 | CI green on 6334342; merges after #207 (shared router list/nav) |
 | #178 add/drop simulator | 3 | NOT STARTED | — | |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
@@ -90,7 +91,7 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 
 ## Out-of-roadmap fixes
 
-- PR #206 `fix/next-security-16-4-2`: Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
+- MERGED PR #206 → `c18374a` (2026-10-22): Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
   GHSA-673q-mjm6-r5xr. It also stops the intermittent `SecurityFatalError` build abort.
 - #228 and #229 are tracked in the expansion table above.
 - Known #202 triage to clear: matchup heading order, player-note links, trade checkbox size, Sleeper Start/Sit
