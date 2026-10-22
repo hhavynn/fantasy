@@ -1,6 +1,7 @@
 import type {
   ContextEvidence, ContextLabels, ForwardProjection, PlayerCore, RouteData, TrendInfo, UsageWeek,
 } from "@/lib/types";
+import type { ProvenancePayload } from "@/lib/signal-provenance";
 
 /** A row of `GET /api/players?q=`. */
 export type PlayerListRow = PlayerCore & { fantasy_team: string | null };
@@ -26,6 +27,8 @@ export type Detail = {
   depth_chart: { dt: string; team: string; pos_abb: string; pos_rank: number } | null;
   waiver: { recommendation: string; waiver_score: number; reasons: string[] } | null;
   unavailable_metrics: Record<string, string>;
+  /** signal-provenance.v1: league data, forward projections, usage and injury reports (lib/signal-provenance.ts). */
+  provenance?: ProvenancePayload | null;
   route_data: RouteData | null;
   context: { labels: ContextLabels; evidence: ContextEvidence } | null;
   team_context: {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import {
-  Glossary, Method, Notice, PageHeader, Section, Tabs,
+  Glossary, Method, Notice, PageHeader, ProvenanceBadge, Section, Tabs,
 } from "@/components/ui";
 import { currentLeague } from "@/lib/league-scope.server";
 import { ShortlistProvider, WaiverShortlist } from "./Shortlist";
@@ -11,6 +11,7 @@ import { when } from "@/lib/format";
 import { OWNERSHIP_UNAVAILABLE, ownershipAvailable, projectionName, providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { parseSort, sortRows, type SearchParams } from "@/lib/sort";
+import { signalsOf } from "@/lib/signal-provenance";
 import { isUnknownTeam, readTeamSelection, selectedTeamId, withTeamId } from "@/lib/team-perspective";
 import { WAIVER_SORT_KEYS, competitionRank, pickTopClaims, trendRank, withParams } from "@/lib/waivers";
 import { POSITIONS, PAGE_SIZE, RECS, REC_LABEL, VIEWS } from "./helpers";
@@ -125,6 +126,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         eyebrow="Waivers"
         title="Waivers"
         meta={<>Moves for {perspective ? <b>{perspective.name}</b> : "the default team"} · computed {when(computed_at)}</>}
+        provenance={<ProvenanceBadge signals={signalsOf(res.data.provenance)} />}
         actions={<TeamPerspective path="/waivers" sp={sp} current={perspective?.team_id ?? null} />}
       />
       {res.data.roster_newer_than_analysis && (

@@ -3,6 +3,7 @@ import { buildActionItems, type StartSitInput, type WaiverInput } from "@/lib/ac
 import type { ApiResult } from "@/lib/api";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import type { Matchup } from "@/lib/matchup-types";
+import { mergeSignals, type WithProvenance } from "@/lib/signal-provenance";
 import type { RosterPlayer } from "@/lib/types";
 import { ActionItems } from "./ActionItems";
 import { MatchupCard } from "./MatchupCard";
@@ -15,8 +16,8 @@ import styles from "./home.module.css";
  */
 export async function WeekBand({ matchup, startSit, waivers, roster, fallbackWeek }: {
   matchup: Promise<ApiResult<Matchup>>;
-  startSit: Promise<ApiResult<StartSitInput>>;
-  waivers: Promise<ApiResult<{ players: WaiverInput[]; total: number }>>;
+  startSit: Promise<ApiResult<StartSitInput & WithProvenance>>;
+  waivers: Promise<ApiResult<{ players: WaiverInput[]; total: number } & WithProvenance>>;
   roster: RosterPlayer[] | null;
   fallbackWeek: number | null;
 }) {
@@ -29,10 +30,12 @@ export async function WeekBand({ matchup, startSit, waivers, roster, fallbackWee
     waivers: w.ok ? w.data : null,
   });
   const week = m.ok ? m.data.league.current_week : fallbackWeek;
+  // The sources behind the action list, each signal once (the lineup, projections, injury reports, waiver analysis).
+  const provenance = mergeSignals(m.ok ? m.data.provenance : null, s.ok ? s.data.provenance : null, w.ok ? w.data.provenance : null);
   return (
     <div className={styles.band}>
       <MatchupCard result={m} />
-      <ActionItems list={actions} week={week} />
+      <ActionItems list={actions} week={week} provenance={provenance} />
     </div>
   );
 }

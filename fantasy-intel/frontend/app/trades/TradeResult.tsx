@@ -4,9 +4,10 @@ import { CompareLink } from "@/components/CompareLink";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
-import { Badge, Delta, Method, Notice, Pos, Section, Stat, StatStrip, TrendArrow, Verdict as VerdictBand, VerdictFigure } from "@/components/ui";
+import { Badge, Delta, Method, Notice, Pos, ProvenanceBadge, Section, Stat, StatStrip, TrendArrow, Verdict as VerdictBand, VerdictFigure } from "@/components/ui";
 import { label, num, signed } from "@/lib/format";
 import { projectionName, providerName, type Provider } from "@/lib/labels";
+import { signalsOf } from "@/lib/signal-provenance";
 import { resultText, resultTone, signedText } from "@/lib/trade-format";
 import type { InjuryScenarios, TradeResultV3, TradeSideV3 } from "@/lib/trade-types";
 import type { IrActivation, LineupWeek } from "@/lib/types";
@@ -123,6 +124,7 @@ function Verdict({ r }: { r: TradeResult }) {
     >
       Regular season: {resultText(r.result.regular_season_label, an, bn, projOf(r))}. Playoffs: {resultText(r.result.playoff_label, an, bn, projOf(r))}.
       {" "}A change in projected lineup points, not a grade or an acceptance estimate.
+      {signalsOf(r.provenance).length > 0 && <div className={styles.provenance}><ProvenanceBadge signals={signalsOf(r.provenance)} /></div>}
     </VerdictBand>
     <Section
       title="Who gets what"

@@ -1,4 +1,5 @@
 import type { ProjectionOrigin, ProjectionSourceDetail } from "@/lib/projection-source";
+import type { ProvenancePayload } from "@/lib/signal-provenance";
 
 export interface LineupPlayer {
   slot_id: string;
@@ -89,6 +90,8 @@ export interface InjuryWarning {
 }
 
 export interface StartSitResponse {
+  /** signal-provenance.v1: lineup, projections and injury reports (lib/signal-provenance.ts). */
+  provenance?: ProvenancePayload | null;
   league: {
     id: number;
     name: string;

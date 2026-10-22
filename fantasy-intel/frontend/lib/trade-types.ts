@@ -1,5 +1,6 @@
 // V3 trade analyzer + discovery API types (GET /api/trades/options, POST /api/trades/evaluate,
 // GET /api/trades/discover). Kept apart from lib/types.ts.
+import type { ProvenancePayload, WithProvenance } from "./signal-provenance";
 import type { KdstStreaming, League, ManagerContext, TradeDeltas, TradeResult, TradeSide, TradeWindow } from "@/lib/types";
 
 export type AvailabilityBrief = {
@@ -16,6 +17,8 @@ export type OptionTeam = { team_id: number; name: string; abbrev: string; is_min
 export type TradeOptionsV3 = {
   league: League; evaluation: TradeWindow; teams: OptionTeam[]; active_capacity: number;
   position_limits: Record<string, number>; max_players_per_side: number; availability_note: string;
+  /** signal-provenance.v1: league data, rest-of-season projections, injury reports (lib/signal-provenance.ts). */
+  provenance?: ProvenancePayload | null;
 };
 
 export type AvailabilityRecord = AvailabilityBrief & {
@@ -48,7 +51,7 @@ export type TradeSideV3 = TradeSide & {
   displaced: { espn_player_id: number; name: string | null; position: string | null; starts_lost: number[]; starts_gained: number[] }[];
 };
 
-export type TradeResultV3 = Omit<TradeResult, "team_a" | "team_b" | "players" | "trade"> & {
+export type TradeResultV3 = Omit<TradeResult, "team_a" | "team_b" | "players" | "trade"> & WithProvenance & {
   trade: TradeResult["trade"] & { team_a_sends_count: number; team_b_sends_count: number; max_players_per_side: number };
   team_a: TradeSideV3; team_b: TradeSideV3;
   players: (TradeResult["players"][number] & { availability: AvailabilityRecord | null })[];
@@ -242,7 +245,7 @@ export type DiscoveryV3 = {
 
 /** The page header and filters (`GET /api/trades/discover/context`): no search is run. */
 export type DiscoveryContext = Pick<DiscoveryV3, "league" | "anchor" | "teams" | "evaluation" | "query" | "mode_text" | "modes"
-  | "phases" | "strictness_options" | "categories" | "sorts" | "exact_shapes" | "heuristic_shapes"> & DualValueTop;
+  | "phases" | "strictness_options" | "categories" | "sorts" | "exact_shapes" | "heuristic_shapes"> & DualValueTop & WithProvenance;
 
 /** One results-table row (`GET /api/trades/discover/summary`); the rest of the row is its `DEvidence`. */
 export type DSummaryRow = Pick<DRow, "key" | "shape" | "search_method" | "anchor_team_id" | "opponent_team_id" | "opponent_name"
