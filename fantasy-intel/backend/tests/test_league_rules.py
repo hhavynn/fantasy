@@ -172,7 +172,7 @@ def test_unusual_espn_rules_and_engine_support():
     assert {("Roster slot", "ER"), ("Scoring rule", "stat 8888"), ("Roster limit", "position 99"),
             ("Setting", "acquisitionSettings.minimumBid")} <= unmapped
     rules = by_rule(out)
-    assert rules["Superflex (OP) slot"]["status"] == PARTIAL
+    assert rules["Superflex (OP) slot"]["status"] == HANDLED
     assert rules["Several flex slot types"]["status"] == HANDLED
     assert rules["Starting slots no engine fills"]["status"] == UNSUPPORTED
     assert "LB" in rules["Starting slots no engine fills"]["detail"] and "ER" in rules["Starting slots no engine fills"]["detail"]
@@ -217,7 +217,7 @@ def test_unusual_sleeper_rules_from_the_league_file(sleeper_con):
     assert out["trades"]["deadline"]["display"] == "Week 11" and out["trades"]["review"]["value"] == 2
     assert out["lineup_lock"]["value"] is None and out["lineup_lock"]["reason"]
     rules = by_rule(out)
-    assert rules["Superflex (OP) slot"]["status"] == PARTIAL
+    assert rules["Superflex (OP) slot"]["status"] == HANDLED
     assert rules["Several flex slot types"]["status"] == HANDLED
     assert rules["Taxi squad"]["status"] == HANDLED and "never start" in rules["Taxi squad"]["detail"]   # #228
     assert rules["Starting slots no engine fills"]["status"] == UNSUPPORTED
