@@ -130,6 +130,14 @@ def main() -> int:
                                  ("espn_stale", espn_db, "2026-10-14T12:00:00")):
             res = publish_league(src, DirWriter(objects), sync, leagues[kind], stamp=stamp)
             assert res.applied, kind
+    # publish_league commits the snapshot at now(); the stale league's control-plane snapshot (what league cards and the
+    # switcher show) must be as old as its data, or the "stale" fixture would read as freshly published.
+    with db.connect() as su:
+        su.execute("UPDATE fi.league_snapshots SET committed_at = %s WHERE league_id = %s",
+                   ["2026-10-14T12:00:00Z", leagues["espn_stale"]])
+        su.execute("UPDATE fi.league_snapshot_history SET committed_at = %s WHERE league_id = %s",
+                   ["2026-10-14T12:00:00Z", leagues["espn_stale"]])
+        su.commit()
     (out / "manifest.json").write_text(json.dumps({"leagues": leagues, "cookie": session_cookie(auth_url, VIEWER),
                                                     "auth_url": auth_url}, indent=1))
 

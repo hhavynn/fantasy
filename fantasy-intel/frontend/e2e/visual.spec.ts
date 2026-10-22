@@ -73,32 +73,34 @@ async function steady(page: Page) {
 
 const masks = (page: Page) => [page.locator(".sync-pill"), page.locator(".mobile-nav")];
 
+// One test per theme, so each page carries a single theme init script: init scripts survive navigations and their
+// order is undefined, so switching the theme on one page could draw a "-light" baseline in dark.
 for (const route of ROUTES) {
-  test(`${route.name}: first screenful`, async ({ page }, info) => {
-    for (const theme of themesFor(info.project.name)) {
-      await test.step(theme, async () => {
-        await useTheme(page, theme);
-        await open(page, route.path);
-        if (route.name === "trade-result") {
-          await expect(page.locator('main [class*="verdict"]').first()).toBeVisible({ timeout: 30_000 });
-        }
-        await steady(page);
-        await expect(page).toHaveScreenshot(`${route.name}-${theme}.png`, { mask: masks(page) });
-      });
-    }
-  });
-}
-
-test("player chart", async ({ page }, info) => {
-  test.skip(!info.project.name.includes("desktop"), "the chart is compared at desktop width only");
-  for (const theme of themesFor(info.project.name)) {
-    await test.step(theme, async () => {
+  for (const theme of ["dark", "light"] as const) {
+    test(`${route.name}: first screenful (${theme})`, async ({ page }, info) => {
+      test.skip(!themesFor(info.project.name).includes(theme), `${theme} is not compared on ${info.project.name}`);
       await useTheme(page, theme);
-      await open(page, "/players?id=201");
+      await open(page, route.path);
+      if (route.name === "trade-result") {
+        await expect(page.locator('main [class*="verdict"]').first()).toBeVisible({ timeout: 30_000 });
+      }
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await steady(page);
-      const chart = page.locator("main figure").first();
-      await chart.scrollIntoViewIfNeeded();
-      await expect(chart).toHaveScreenshot(`player-chart-${theme}.png`);
+      await expect(page).toHaveScreenshot(`${route.name}-${theme}.png`, { mask: masks(page) });
     });
   }
-});
+}
+
+for (const theme of ["dark", "light"] as const) {
+  test(`player chart (${theme})`, async ({ page }, info) => {
+    test.skip(!info.project.name.includes("desktop"), "the chart is compared at desktop width only");
+    test.skip(!themesFor(info.project.name).includes(theme), `${theme} is not compared on ${info.project.name}`);
+    await useTheme(page, theme);
+    await open(page, "/players?id=201");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await steady(page);
+    const chart = page.locator("main figure").first();
+    await chart.scrollIntoViewIfNeeded();
+    await expect(chart).toHaveScreenshot(`player-chart-${theme}.png`);
+  });
+}
