@@ -72,3 +72,6 @@
   .exchange { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .exchangeArrow { justify-self: center; transform: rotate(90deg); width: 32px; height: 32px; }
 }
+
+/* Data sources and age of the verdict (ProvenanceBadge). */
+.provenance { margin-top: 8px; }

@@ -9,7 +9,7 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { RangeLine } from "@/components/RangeLine";
 import { OriginTag, ProjectionNotice } from "@/components/ProjectionNotice";
 import {
-  Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, Section, SortableTh, Verdict, VerdictFigure,
+  Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, ProvenanceBadge, Section, SortableTh, Verdict, VerdictFigure,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
@@ -29,6 +29,7 @@ import {
   startSitVerdict,
 } from "@/lib/start-sit-helpers";
 import { StartSitControls } from "./StartSitControls";
+import { signalsOf } from "@/lib/signal-provenance";
 import type { BenchPlayer, DecisionPlayer, LineupPlayer, StartSitDecision, StartSitResponse } from "./types";
 import styles from "./start-sit.module.css";
 
@@ -116,6 +117,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         eyebrow={team.name}
         title={`Start/Sit · Week ${d.scoring_period}`}
         meta={`${team.name} (${team.abbrev}) · ${d.projection_source} projections · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
+        provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
         actions={
           <TeamPerspective path="/start-sit" sp={sp} current={team.id}>
             <StartSitControls

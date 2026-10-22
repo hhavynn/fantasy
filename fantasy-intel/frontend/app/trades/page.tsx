@@ -3,7 +3,7 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { RulesLink } from "@/components/RulesLink";
 import { UnknownTeam } from "@/components/TeamPerspective";
 import {
-  Glossary, Method, Notice, PageHeader,
+  Glossary, Method, Notice, PageHeader, ProvenanceBadge,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { projectionName, providerName } from "@/lib/labels";
@@ -11,6 +11,7 @@ import { getLeagueProfile } from "@/lib/league-profile.server";
 import { canEvaluate, initialSelection, selectionKey } from "@/lib/trade-builder";
 import { readTeamSelection } from "@/lib/team-perspective";
 import type { TradeOptionsV3, TradeResultV3 } from "@/lib/trade-types";
+import { signalsOf } from "@/lib/signal-provenance";
 import { EvaluatedTrade, EvaluatedTradeSkeleton } from "./EvaluatedTrade";
 import { TradeBuilder } from "./TradeBuilder";
 import { TeamLink } from "@/components/TeamLink";
@@ -87,6 +88,7 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
         eyebrow="Trades"
         title="Trade analyzer"
         meta={<>Projected points: <b>{proj}</b> · Trade impact: <b>our exact lineup simulation</b> · weeks {firstWeek}–{evaluation.final_week}</>}
+        provenance={<ProvenanceBadge signals={signalsOf(opts.data.provenance)} />}
         actions={<TeamLink href="/trades/discover">Discover trades</TeamLink>}
       />
       {evaluation.uncertain && evaluation.warning && <Notice tone="caution">{evaluation.warning}</Notice>}
