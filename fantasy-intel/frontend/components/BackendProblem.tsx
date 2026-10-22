@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Notice } from "@/components/ui";
-import { isFirstRun, type ApiErrorKind } from "@/lib/api-errors";
+import { isFirstRun, isFirstSync, type ApiErrorKind } from "@/lib/api-errors";
 import styles from "./BackendProblem.module.css";
 
 /** A terminal command block. Paths are relative to the repository's `fantasy-intel/` folder. */
@@ -72,6 +72,15 @@ export function BackendProblem({ error, kind = "unknown", status }: {
   let title: string;
   let body: ReactNode;
   if (kind === "http" && isFirstRun(error)) return <FirstRunGuide />;
+  if (isFirstSync(status, error)) {
+    // A league whose first sync has not published yet (the API's 409): a normal step of adding a league, not an error.
+    return (
+      <Notice tone="info" title="This league is still syncing for the first time">
+        <p>Its pages fill in once the first sync finishes, usually within a few minutes of adding it.</p>
+        <p><Link href="/leagues" prefetch={false}>See its progress on Leagues</Link>, where the steps update by themselves.</p>
+      </Notice>
+    );
+  }
 
   if (kind === "offline") {
     title = "Can't reach the backend";

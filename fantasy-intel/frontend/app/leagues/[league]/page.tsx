@@ -6,6 +6,7 @@ import { apiRequest } from "@/lib/api";
 import { authConfig } from "@/lib/auth-config";
 import { leaguePath } from "@/lib/league-scope";
 import { isLeagueRef, leagueName, leagueState, multileagueUiEnabled, parseMyLeague } from "@/lib/my-leagues";
+import { progressHref } from "@/lib/onboarding";
 import { currentUser } from "@/lib/supabase/server";
 import { LeagueActions } from "../LeagueActions";
 import { CookieSettings, DeleteLeague, Invites, TeamForm } from "./forms";
@@ -31,7 +32,9 @@ export default async function LeagueSettings({ params }: { params: Promise<{ lea
   return (
     <div className="stack">
       <PageHeader eyebrow="League settings" title={leagueName(league)}
-                  meta={<Link href={leaguePath(id, "/")} prefetch={false}>Open the league</Link>} />
+                  meta={league.syncState === "ready"
+                    ? <Link href={leaguePath(id, "/")} prefetch={false}>Open the league</Link>
+                    : <Link href={progressHref(id)} prefetch={false}>Follow its first sync</Link>} />
       <Section title="Sync">
         <p className={styles.plain}><Badge value={state.label} tone={state.tone === "neutral" ? "" : state.tone} /> {state.detail}</p>
         {user ? <LeagueActions leagueId={id} pinned={league.pinned} member={league.role !== null} /> : null}
