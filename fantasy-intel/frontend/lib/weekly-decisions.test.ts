@@ -251,3 +251,22 @@ test("the classic site with the owner's default team adds neither a league prefi
   const hub = hubOf(sources({ startSit: startSit([swap("a", 2)]), waivers: { players: [waiver(9)], total: 1 } }));
   assert.deepEqual([hub.primary!, ...hub.groups.flatMap((g) => g.decisions)].map((d) => d.href), ["/start-sit?week=6", "/waivers"]);
 });
+
+test("a week-based (Sleeper) deadline closes trades only once the league is past that week, and is noted this week and next", () => {
+  const roster = [starter(4, { market_signal: "SELL" })];
+  const at = (current: number, deadlineWeek: number | null) =>
+    buildActionItems(sources({ roster, provider: "sleeper", league: { trade_deadline: null, trade_deadline_week: deadlineWeek, current_week: current } }));
+  const kinds = (l: ReturnType<typeof at>) => l.items.filter((i) => i.category === "trade" || i.category === "league").map((i) => i.id);
+  assert.deepEqual(kinds(at(12, 11)), []);                                  // past the deadline week: no sell signal, no notice
+  assert.deepEqual(kinds(at(11, 11)), ["sell-signal", "trade-deadline"]);   // the deadline week itself: still open
+  assert.equal(at(11, 11).items.find((i) => i.id === "trade-deadline")?.title, "The trade deadline is this week (week 11)");
+  assert.equal(at(10, 11).items.find((i) => i.id === "trade-deadline")?.title, "The trade deadline is next week (week 11)");
+  assert.deepEqual(kinds(at(8, 11)), ["sell-signal"]);                      // further off: no notice
+  assert.deepEqual(kinds(at(12, null)), ["sell-signal"]);                   // unknown stays unknown: not closed, no notice
+  const noWeek = buildActionItems(sources({ roster, league: { trade_deadline: null, trade_deadline_week: 11, current_week: null } }));
+  assert.deepEqual(kinds(noWeek), ["sell-signal"]);
+  // a timestamp deadline (ESPN) wins over a week number
+  const both = buildActionItems(sources({ roster, now: Date.parse("2026-10-22T12:00:00Z"),
+    league: { trade_deadline: "2026-12-01T00:00:00Z", trade_deadline_week: 3, current_week: 8 } }));
+  assert.deepEqual(kinds(both), ["sell-signal"]);
+});

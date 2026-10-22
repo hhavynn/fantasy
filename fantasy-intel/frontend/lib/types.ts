@@ -9,6 +9,8 @@ export type League = {
   league_id: number; season: number; name: string; size: number; scoring_type: string;
   reception_points: number | null; is_faab: boolean; faab_budget: number | null; current_week: number;
   roster_slots: Record<string, number>; trade_deadline: string | null; synced_at: string;
+  /** A week-based trade deadline (Sleeper); null when the provider has none. Absent from older backends. */
+  trade_deadline_week?: number | null;
 };
 
 export type Team = {

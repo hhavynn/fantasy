@@ -92,8 +92,13 @@ export type WaiverInput = {
 
 /** The league settings the list reads (from /api/overview). */
 export type LeagueInput = {
-  /** The provider's trade deadline (ISO timestamp); null when the league has none or it was not synced. */
+  /** The provider's trade deadline (ISO timestamp, ESPN); null when the league has none or it was not synced. */
   trade_deadline: string | null;
+  /** A week-based trade deadline (Sleeper's setting): trades are taken to be open through that week. Null or absent
+   *  when the provider has none or an older backend did not send it. */
+  trade_deadline_week?: number | null;
+  /** The league's current scoring week, which a week-based deadline is compared with. */
+  current_week?: number | null;
 };
 
 export type ActionSources = {
@@ -306,7 +311,11 @@ export function buildActionItems(src: ActionSources, caps: { swaps?: number; wai
   const trade: ActionItem[] = [];
   const league: ActionItem[] = [];
   const deadline = deadlineTime(src.league);
-  const tradesClosed = deadline !== null && deadline <= now;
+  // A week-based deadline (Sleeper) is used only without a timestamp, and only with a known current week: trades count
+  // as closed once the league is past that week (not during it: the cut-off time within the week is not synced).
+  const deadlineWeek = deadline === null && src.league?.trade_deadline_week != null && src.league.current_week != null
+    ? { week: src.league.trade_deadline_week, current: src.league.current_week } : null;
+  const tradesClosed = (deadline !== null && deadline <= now) || (deadlineWeek !== null && deadlineWeek.current > deadlineWeek.week);
   const sells = (src.roster ?? []).filter((p) => p.market_signal === "SELL");
   if (sells.length > 0 && !tradesClosed) {
     trade.push(item({
@@ -325,6 +334,16 @@ export function buildActionItems(src: ActionSources, caps: { swaps?: number; wai
       id: "trade-deadline", tone: "info",
       title: days < 1 ? "The trade deadline is within a day" : `The trade deadline is in ${days} ${days === 1 ? "day" : "days"}`,
       reason: `From the league settings in ${providerName(src.provider)}.`, href: "/trades/discover", cta: "Discover trades",
+      category: "league", status: "informational", urgency: "low", source: "overview", signals: ["league"],
+    }));
+  }
+  if (deadlineWeek !== null && !tradesClosed && deadlineWeek.week - deadlineWeek.current <= 1) {
+    const thisWeek = deadlineWeek.week === deadlineWeek.current;
+    league.push(item({
+      id: "trade-deadline", tone: "info",
+      title: `The trade deadline is ${thisWeek ? "this week" : "next week"} (week ${deadlineWeek.week})`,
+      reason: `From the league settings in ${providerName(src.provider)}; the cut-off time within the week is not synced.`,
+      href: "/trades/discover", cta: "Discover trades",
       category: "league", status: "informational", urgency: "low", source: "overview", signals: ["league"],
     }));
   }

@@ -29,6 +29,7 @@
    "size": 4,
    "synced_at": "<masked>",
    "trade_deadline": "<masked>",
+   "trade_deadline_week": null,
    "waiver_process_days": null
   },
   "my_team": {
@@ -354,17 +355,17 @@
      "stale_reason": null
     },
     {
-     "captured_at": "<masked>",
+     "captured_at": null,
      "coverage": {
       "available": 0,
       "label": "rostered QB, RB, WR and TE with a market signal",
       "total": 10
      },
-     "label": "NFL usage and market signals (nflverse)",
-     "reason_unavailable": null,
+     "label": "Fantasy Intel market signals (from nflverse usage)",
+     "reason_unavailable": "No market signals are computed for this roster yet.",
      "signal": "usage",
      "snapshot_version": "<masked>",
-     "source": "nflverse",
+     "source": "fantasy_intel",
      "stale_after_hours": 36,
      "stale_reason": null
     }
