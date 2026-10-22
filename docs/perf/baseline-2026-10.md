@@ -123,7 +123,9 @@ dependency, and the frontend change adds no dependency.
    keyed with the scope cache key (so per league), with no lock and no single flight across threads.
 2. **Working sets larger than the file cache** (more than about 21 leagues of 16.5 MB open at once on one instance)
    thrash R2 and can still return 503 after the 8 s wait, because requests waiting for room occupy thread-pool
-   slots that pinned requests need. Raising `LEAGUE_CACHE_MAX_BYTES` is limited by Vercel's 500 MB `/tmp`.
+   slots that pinned requests need. Raising `LEAGUE_CACHE_MAX_BYTES` is limited by Vercel's 500 MB `/tmp`. The
+   recommended follow-up is to split `_resolve` into authorization and file loading, and to gate cold loads with a
+   small per-event-loop `asyncio.Semaphore` before entering the thread pool. Waiting loads would then hold no thread.
 3. The `stale: true` flag reaches `ApiResult` but is not displayed yet. The sync pill already shows the older file's
    own sync times, because `/api/status` is read from the file that was served. Showing a "data may be older" line
    is a one-line change in `app/layout.tsx` (pass `status?.stale` to `SyncPill`), which is outside this change's

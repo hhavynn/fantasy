@@ -233,11 +233,13 @@ class LeagueFileCache:
         return league_path, global_path
 
     def _pin_pair_blocking(self, league_id: str, data_version: str, global_version: str) -> tuple[Path, Path]:
-        league_path = self.pin_league(league_id, data_version)
+        """The shared global file first: a request waiting for room then holds only the file every request needs,
+        never its own league file while the one global download waits for room that league pins block."""
+        global_path = self.pin_global(global_version)
         try:
-            return league_path, self.pin_global(global_version)
+            return self.pin_league(league_id, data_version), global_path
         except BaseException:
-            self.release(league_path)
+            self.release(global_path)
             raise
 
     def prefetch(self, league_id: str, data_version: str, global_version: str) -> Future | None:
