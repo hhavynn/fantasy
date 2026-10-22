@@ -325,3 +325,19 @@ def test_v2_league_rules_are_404_for_unknown_and_inaccessible_leagues(pg, served
     assert r.status_code == 200 and r.json()["contract"] == CONTRACT
     assert r.headers["cache-control"] == "private, no-store"
     assert private.league_id not in r.text
+
+
+def test_dst_tables_and_check_match_the_research_model():
+    """league_rules keeps numpy-free copies (the app never imports dst_research); they must not drift."""
+    from app.analytics import dst_research as research
+    from app.analytics import league_rules as rules
+
+    assert rules.PA_TIERS == research.PA_TIERS and rules.YA_TIERS == research.YA_TIERS
+    assert rules.SLEEPER_PA_TIERS == research.SLEEPER_PA_TIERS
+    for items in (None, [], unusual_espn()["settings"]["scoringSettings"]["scoringItems"],
+                  [{"statId": 99, "points": 1.0}], [{"statId": 99, "points": 1.0, "isReverseItem": True}],
+                  [{"statId": 187, "points": 2.0}, {"statId": 99, "points": 1.0}]):
+        ok, unmodeled = rules.dst_unmodeled(items)
+        want = research.resolve_dst_scoring(items or None)
+        assert ok == want.supported
+        assert [u["stat_id"] for u in unmodeled] == [u["stat_id"] for u in want.unmodeled]

@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Any
 
 from ..espn.constants import DEFAULT_POSITION_MAP
-from .dst_research import COUNT_STATS, PA_TIERS, SLEEPER_PA_TIERS, YA_TIERS, resolve_dst_scoring
+from .dst_store import DST_SLOT, DST_UNIVERSE, MODELED as DST_MODELED
 from .kicker_scoring import FG_ITEMS, PAT_ITEMS, resolve_kicker_scoring
 from .league_scoring import DIRECT, EXTRA_DIRECT, resolve_skill_scoring
 
@@ -33,6 +33,39 @@ NOT_SYNCED = "No league has been synced yet, so there are no league rules to sho
 PROVIDERS = {"espn": "ESPN", "sleeper": "Sleeper"}
 
 HANDLED, PARTIAL, UNSUPPORTED, UNVERIFIED = "handled", "partial", "unsupported", "unverified"
+
+# D/ST tiers and the D/ST scoring check, numpy-free: the app never imports app/analytics/dst_research.py (it needs numpy;
+# tests/test_dst_research.py enforces it). Same values and rules as dst_research; tests/test_league_rules.py checks equality.
+PA_TIERS: dict[int, tuple[float | None, float | None]] = {
+    89: (None, 0), 90: (1, 6), 91: (7, 13), 92: (14, 17), 121: (18, 21), 122: (22, 27), 123: (28, 34),
+    124: (35, 45), 125: (46, None)}
+YA_TIERS: dict[int, tuple[float | None, float | None]] = {
+    128: (None, 99), 129: (100, 199), 130: (200, 299), 131: (300, 349), 132: (350, 399), 133: (400, 449),
+    134: (450, 499), 135: (500, 549), 136: (550, None)}
+SLEEPER_PA_TIERS: dict[int, tuple[float | None, float | None]] = {
+    1089: (None, 0), 1090: (1, 6), 1091: (7, 13), 1092: (14, 20), 1093: (21, 27), 1094: (28, 34), 1095: (35, None)}
+
+
+def dst_unmodeled(items: list[dict] | None) -> tuple[bool, list[dict]]:
+    """(whether the D/ST model scores this league, the D/ST rules it does not implement), as
+    dst_research.resolve_dst_scoring decides `supported` and `unmodeled`."""
+    if not items:
+        return False, [{"stat_id": None, "reason": "no scoring settings synced"}]
+    weighted, unmodeled = False, []
+    for item in items:
+        overrides = {str(k): v for k, v in (item.get("pointsOverrides") or {}).items()}
+        sid = item.get("statId")
+        value = float(overrides[DST_SLOT] if DST_SLOT in overrides else (item.get("points") or 0.0))
+        if not value or sid not in DST_UNIVERSE:
+            continue
+        if item.get("isReverseItem"):
+            unmodeled.append({"stat_id": sid, "reason": "reverse scoring item"})
+            continue
+        weighted = True
+        if sid not in DST_MODELED:
+            unmodeled.append({"stat_id": sid, "reason": "D/ST statistic the model does not project"})
+    return weighted and not unmodeled, unmodeled
+
 
 
 def fact(value: Any, display: str | None = None, reason: str | None = None) -> dict:
@@ -245,7 +278,7 @@ _SYNTHETIC = {**{sid: label for sid, (_, label) in EXTRA_DIRECT.items()},
               **{sid: f"{_FG_OUTCOME[o]}, {_BUCKET_TEXT[b]}" for sid, (o, b) in FG_ITEMS.items() if sid >= 1000},
               **{sid: _tier_text(lo, hi, "Points allowed") for sid, (lo, hi) in SLEEPER_PA_TIERS.items()},
               1106: "Forced fumble"}
-_ = COUNT_STATS, DIRECT        # the engines' own tables these labels restate (kept imported so a rename fails here)
+_ = DIRECT        # the engine's own table these labels restate (kept imported so a rename fails here)
 
 _SLEEPER_KEYS: dict[str, tuple[str, str]] = {
     "pass_yd": ("Passing", "Passing yards"), "pass_td": ("Passing", "Passing TD"),
@@ -692,7 +725,7 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
     # Projections in the league's scoring.
     skill = resolve_skill_scoring(items or None)
     kicker = resolve_kicker_scoring(items or None)
-    dst = resolve_dst_scoring(items or None)
+    dst_ok, dst_unmodeled_rules = dst_unmodeled(items or None)
     if provider == "espn":
         rows.append({"rule": "Projections in this league's scoring", "status": HANDLED,
                      "detail": "ESPN projects every player in this league's own scoring; those numbers are shown "
@@ -710,10 +743,10 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
                  "detail": "Field goals and extra points are scored with this league's distance rules."
                  if kicker.supported else
                  f"Kicker projections abstain: {_reasons(kicker.unsupported, sl_unsupported)}."})
-    rows.append({"rule": "D/ST projections", "status": HANDLED if dst.supported else UNSUPPORTED,
+    rows.append({"rule": "D/ST projections", "status": HANDLED if dst_ok else UNSUPPORTED,
                  "detail": "Sacks, takeaways, touchdowns and points-allowed tiers are scored with this league's rules."
-                 if dst.supported else
-                 f"D/ST projections abstain: {_reasons(dst.unmodeled, sl_unsupported) or 'the league scores no D/ST statistics'}."})
+                 if dst_ok else
+                 f"D/ST projections abstain: {_reasons(dst_unmodeled_rules, sl_unsupported) or 'the league scores no D/ST statistics'}."})
 
     te = scoring["te_premium"]["value"]
     if te:
