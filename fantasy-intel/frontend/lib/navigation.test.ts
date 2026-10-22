@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  ALL_NAV_PAGES, NAV_GROUPS, getActiveRoute, navClusters, parseTabMemory, tabMemoryEntry, tabTarget, visibleGroups,
+  ALL_NAV_PAGES, NAV_GROUPS, RAIL_INIT_SCRIPT, RAIL_KEY, getActiveRoute, navClusters, pageContext, pageContextLabel, parseRail,
+  parseTabMemory, tabMemoryEntry, tabTarget, visibleGroups,
 } from "./navigation.ts";
 
 const group = (path: string) => getActiveRoute(path).activeGroup?.label ?? null;
@@ -201,4 +202,42 @@ test("owner research pages are hidden only when asked, and nothing else is", () 
   const shown = visibleGroups(true).flatMap((g) => g.pages.map((p) => p.href));
   assert.deepEqual(all.filter((h) => !shown.includes(h)).sort(), ["/projection-performance", "/research"]);
   assert.equal(visibleGroups(false), NAV_GROUPS);
+});
+
+// ---------- Desktop workspace rail (#170) ----------
+
+test("every group names its job in a few words, for the rail's always-visible task line", () => {
+  for (const g of NAV_GROUPS) {
+    assert.ok(g.task && g.task.length <= 32, `${g.label}: a short task line`);
+    assert.match(g.task!, /^[A-Z][^.!]*$/, `${g.label}: sentence case, no closing punctuation`);
+  }
+  assert.equal(new Set(NAV_GROUPS.map((g) => g.task)).size, NAV_GROUPS.length, "each task is distinct");
+});
+
+test("page context names the group and, for the advanced tools, the Research cluster", () => {
+  assert.equal(pageContextLabel(pageContext("/start-sit")), "My team");
+  assert.equal(pageContextLabel(pageContext("/trades/discover")), "Trades");
+  assert.equal(pageContextLabel(pageContext("/movers")), "Players · Research");
+  assert.equal(pageContextLabel(pageContext("/managers/3")), "League");
+  assert.equal(pageContext("/kickers")?.page.label, "Kickers");
+  assert.equal(pageContext("/data"), null, "Data quality is reached from the sync status, not a group");
+  assert.equal(pageContextLabel(pageContext(null)), null);
+});
+
+test("the rail state: only an explicit collapsed choice collapses it", () => {
+  assert.equal(parseRail("collapsed"), "collapsed");
+  for (const raw of [null, undefined, "", "expanded", "COLLAPSED", "true"]) assert.equal(parseRail(raw), "expanded");
+});
+
+test("the rail init script marks <html> collapsed before paint and survives blocked storage", () => {
+  const attrs = new Map<string, string>();
+  const document = { documentElement: { setAttribute: (k: string, v: string) => attrs.set(k, v) } };
+  const run = (localStorage: unknown) => new Function("localStorage", "document", RAIL_INIT_SCRIPT)(localStorage, document);
+  run({ getItem: () => null });
+  assert.equal(attrs.get("data-rail"), undefined);
+  run({ getItem: (k: string) => (k === RAIL_KEY ? "collapsed" : null) });
+  assert.equal(attrs.get("data-rail"), "collapsed");
+  attrs.clear();
+  assert.doesNotThrow(() => run({ getItem: () => { throw new Error("blocked"); } }));
+  assert.equal(attrs.get("data-rail"), undefined);
 });
