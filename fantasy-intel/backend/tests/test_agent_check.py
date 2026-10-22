@@ -104,6 +104,34 @@ def test_validate_test_mappings_reports_a_missing_app_wide_audit(monkeypatch):
     monkeypatch.setattr(agent_check, "APP_WIDE_AUDITS", ["tests/test_no_such_audit.py"])
     assert any("App-wide audit" in e for e in agent_check.validate_test_mappings())
 
+def test_quick_defers_heavy_tests_and_keeps_priority_order():
+    import agent_check
+    tests = [
+        "tests/test_league_scope.py",
+        "tests/test_api.py",
+        "tests/test_v2_authorization_matrix.py",
+        "tests/test_league_scope_audit.py",
+        "tests/test_authorize_league.py",
+        "tests/test_db_and_sync.py",
+    ]
+    selected, deferred = agent_check.select_quick_tests(tests)
+    assert selected == ["tests/test_api.py", "tests/test_league_scope_audit.py", "tests/test_authorize_league.py"]
+    assert deferred == ["tests/test_league_scope.py", "tests/test_v2_authorization_matrix.py"]
+
+
+def test_affected_still_selects_tests_that_quick_defers():
+    runner = VerificationRunner(mode="affected")
+    tests, _, _ = runner.infer_affected_tests(["fantasy-intel/backend/app/api/league_scope.py"])
+    assert "tests/test_league_scope.py" in tests
+    assert "tests/test_v2_authorization_matrix.py" in __import__("agent_check").SECURITY_SUITES
+
+
+def test_validate_test_mappings_reports_a_missing_quick_exclusion(monkeypatch):
+    import agent_check
+    monkeypatch.setattr(agent_check, "QUICK_EXCLUDED_TESTS", {"tests/test_no_such_heavy.py": "~1 s"})
+    assert any("Quick exclusion" in e for e in agent_check.validate_test_mappings())
+
+
 def test_infer_affected_tests_for_sync_worker():
     runner = VerificationRunner(mode="affected")
     tests, actions, unmapped = runner.infer_affected_tests(

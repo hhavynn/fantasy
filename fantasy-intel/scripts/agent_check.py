@@ -2,7 +2,8 @@
 """Repo-native verification workflow for Claude Code and developers on fantasy-intel.
 
 Modes:
-  quick:     Fast checks for current changes (<10s). Runs prioritized TDD tests and AST checks.
+  quick:     Fast checks for current changes (<60s). Runs up to 3 prioritized test files and AST checks;
+             files listed in QUICK_EXCLUDED_TESTS are deferred to `affected`.
   affected:  Targeted tests conservatively inferred from changed files against a base ref.
              Automatically triggers security regression suite if security boundaries are touched.
   security:  Targeted multileague security, RLS, authorization, crypto, worker fencing, and static checks.
@@ -168,6 +169,23 @@ APP_WIDE_AUDITS: list[str] = [
     "tests/test_independent_projections.py",
 ]
 
+# Test files too slow for `quick` (each measured alone on 2026-10-22; slower under load). `quick` runs at most three
+# files under a 60 s budget, so these are left out of it and reported as deferred. Their coverage is unchanged:
+# `affected`, `security` and CI still run them whenever their mappings select them.
+QUICK_EXCLUDED_TESTS: dict[str, str] = {
+    "tests/test_league_scope.py": "~66-85 s",
+    "tests/test_v2_authorization_matrix.py": "~28 s",
+}
+QUICK_MAX_FILES = 3
+
+
+def select_quick_tests(backend_tests: list[str]) -> tuple[list[str], list[str]]:
+    """Return (files `quick` runs, heavy files it defers to `affected`), preserving priority order."""
+    deferred = [t for t in backend_tests if t in QUICK_EXCLUDED_TESTS]
+    selected = [t for t in backend_tests if t not in QUICK_EXCLUDED_TESTS][:QUICK_MAX_FILES]
+    return selected, deferred
+
+
 def validate_test_mappings() -> list[str]:
     """Audit all mapped test paths against disk. Returns list of stale test file errors."""
     stale = []
@@ -181,6 +199,9 @@ def validate_test_mappings() -> list[str]:
     for a in APP_WIDE_AUDITS:
         if not (BACKEND_DIR / a).is_file():
             stale.append(f"App-wide audit: test file '{a}' does not exist on disk")
+    for q in QUICK_EXCLUDED_TESTS:
+        if not (BACKEND_DIR / q).is_file():
+            stale.append(f"Quick exclusion: test file '{q}' does not exist on disk")
     return stale
 
 
@@ -953,10 +974,19 @@ class VerificationRunner:
         if self.mode == "quick":
             self.run_static_checks(changed_files)
             if backend_tests:
-                # Prioritize directly modified test files and top mapped tests
-                selected_quick = backend_tests[:3]
-                title = f"Quick Backend ({len(selected_quick)} of {len(backend_tests)} affected files)"
-                self.run_backend_tests(selected_quick, title=title, timeout=60.0)
+                # Prioritize directly modified test files and top mapped tests, leaving heavy files to `affected`
+                selected_quick, deferred = select_quick_tests(backend_tests)
+                if selected_quick:
+                    title = f"Quick Backend ({len(selected_quick)} of {len(backend_tests)} affected files)"
+                    self.run_backend_tests(selected_quick, title=title, timeout=60.0)
+                if deferred:
+                    self.results.append(StepResult(
+                        name="Quick Deferred",
+                        target="Heavy Backend Tests",
+                        status="SKIP",
+                        duration=0.0,
+                        summary=f"Too slow for quick, run by 'affected': {', '.join(deferred)}.",
+                    ))
             if "typecheck" in frontend_actions:
                 self.run_command("Frontend Typecheck", ["npm", "run", "typecheck"], cwd=FRONTEND_DIR, target="TypeScript", timeout=60.0)
             if "unit_tests" in frontend_actions:
