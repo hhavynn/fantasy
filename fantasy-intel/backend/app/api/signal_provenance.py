@@ -31,8 +31,8 @@ would outlive its truth. Precedence, first match wins:
     current      none of the above
 
 Everything here reads data the handler already loaded or cheap metadata (one sync_runs aggregate, the scope's
-versions); no dashboard joins. ``app/analytics/source_provenance.py`` is a different concern (frozen forecast
-snapshots).
+versions); no dashboard joins. The research pipeline's forecast-snapshot provenance is a different concern
+(frozen forecast snapshots).
 """
 
 from __future__ import annotations
