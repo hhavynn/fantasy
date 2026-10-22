@@ -13,10 +13,18 @@ The owner-only research routers (projection performance, Ours promotion, researc
 `require_platform_admin` as well: spec §6 keeps them platform-admin only, on every league (anyone else gets 404).
 
 The handlers are unchanged. Responses carry `Cache-Control: private, no-store` and the versions actually read.
+
+Performance (issue #201): the request's phases go into `Server-Timing` (app/monitor/timing.py, no league ids). When a
+league's pointer has moved to files this instance does not hold yet, the request waits at most
+LEAGUE_COLD_LOAD_BUDGET_S (3 s) for them and otherwise reads the league's own previous files, marked
+`X-FI-Degraded: stale-files` (app/db/league_files.py `pin_pair`). Identical concurrent GETs (same response-cache key:
+league, versions, visibility epoch, perspective, path and query) run the handler once; the others wait for its cached
+answer.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -32,6 +40,7 @@ from fastapi.responses import Response
 
 from ..config import get_settings
 from . import provider_copy
+from ..monitor.timing import Timing, request_timing, size_bucket, version_bytes
 from .deps import LEAGUE_SCOPE, LeagueScope, layered_databases
 from .leagues_v2 import NOT_FOUND, current_principal, valid_league_id
 
@@ -40,6 +49,15 @@ FIRST_SYNC = "First sync in progress."
 FILES_UNAVAILABLE = "This league's data could not be loaded. Try again shortly."
 _CACHE: dict[str, Any] = {}
 _CACHE_LOCK = threading.Lock()
+DEGRADED_HEADER = "X-FI-Degraded"
+FLIGHT_WAIT_S = 20.0           # longest an identical request waits for the first one's answer before running its own
+
+
+def cold_load_budget_s() -> float:
+    try:
+        return max(0.0, float(os.environ.get("LEAGUE_COLD_LOAD_BUDGET_S") or 3.0))
+    except ValueError:
+        return 3.0
 
 
 def league_file_cache():
@@ -59,14 +77,16 @@ def league_file_cache():
         return cache
 
 
-def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
+def _resolve(principal, league_id: str, team_param: str | None, timing: Timing | None = None):
+    """(scope, pinned pair): the caller releases the pair (`league_file_cache().release_pair`) when the request ends."""
+    timing = timing or Timing()
     from ..control_plane.authz import LeagueNotFound, authorize_league_in
     from ..control_plane.pg import AccountGone, ControlPlaneUnavailable, get_control_plane
     from ..db.league_conn import perspective_team
     from ..db.league_split import VERSION_RE
     from .leagues_v2 import SIGN_IN, UNAVAILABLE
     try:
-        with get_control_plane().request_tx(principal) as con:
+        with timing.phase("auth"), get_control_plane().request_tx(principal) as con:
             access = authorize_league_in(con, principal, league_id)
     except LeagueNotFound:
         from .connect import nudge_probe
@@ -87,17 +107,21 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
         log.warning("league %s has a pointer in an unsupported format", league_id)
         raise HTTPException(503, FILES_UNAVAILABLE)
     cache = league_file_cache()
-    league_path = None
     try:
         # Pinned until the request ends (league_scope releases them): never evicted before the handler opens them.
-        league_path = cache.pin_league(access.league_id, snap.data_version)
-        global_path = cache.pin_global(snap.global_version)
+        # With a newer pointer than this instance holds, at most the budget is spent waiting; then this league's own
+        # previous files are read and the response says so.
+        with timing.phase("files"):
+            pair = cache.pin_pair(access.league_id, snap.data_version, snap.global_version,
+                                  budget_s=cold_load_budget_s())
     except Exception as err:   # noqa: BLE001 - R2 errors, a missing object, a full cache: never a 500 with details
-        if league_path is not None:
-            cache.release(league_path)
         log.warning("league files unavailable for %s: %s %s %s", league_id, type(err).__name__,
                     getattr(err, "status", ""), getattr(err, "code", ""))
         raise HTTPException(503, FILES_UNAVAILABLE) from None
+    timing.set_code("files", "stale" if pair.degraded else "cold" if pair.cold else "warm")
+    timing.size = size_bucket(version_bytes(pair.data_version))
+    if pair.degraded:
+        log.warning("league %s served from its previous files (%s)", league_id, pair.degraded)
     # "My team" (fantasy_teams.is_mine) is who the viewer is, exactly as on the legacy site: the signed-in viewer's saved
     # team, even while a route analyses another team through ?team_id= (legacy: is_mine stays the owner's team then).
     # A viewer with no saved team (anonymous, or not chosen yet) takes the URL's team. Golden parity on real Los
@@ -105,8 +129,8 @@ def _resolve(principal, league_id: str, team_param: str | None) -> LeagueScope:
     chosen = perspective_team(access.perspective_team_id)
     if chosen is None and team_param is not None:
         chosen = perspective_team(team_param)
-    return LeagueScope(access.league_id, league_path, global_path, snap.data_version, snap.global_version,
-                       access.visibility_epoch, chosen, access.provider)
+    return LeagueScope(access.league_id, pair.league_path, pair.global_path, pair.data_version, pair.global_version,
+                       access.visibility_epoch, chosen, access.provider), pair
 
 
 # ---- per-instance response cache ------------------------------------------------------------------------------------
@@ -120,7 +144,9 @@ class ResponseCache:
         self.max_bytes = max_bytes
         self._lock = threading.Lock()
         self._entries: OrderedDict[str, tuple[int, bytes, str]] = OrderedDict()   # key -> (status, body, media type)
+        self._flights: dict[str, tuple[Any, asyncio.Event]] = {}                 # key -> (event loop, done)
         self.hits = 0
+        self.shared = 0              # answers a request received from an identical request it waited for
 
     @property
     def bytes_used(self) -> int:
@@ -138,6 +164,32 @@ class ResponseCache:
                 self._entries.move_to_end(key)
                 self.hits += 1
             return hit
+
+    def begin(self, key: str) -> tuple[str, asyncio.Event | None]:
+        """Single flight for one key, as (role, event):
+
+          ("lead", None)   the caller computes the answer and must call `land(key)` once its response is complete
+                           (whether or not it was cached);
+          ("wait", event)  an identical request on this event loop is computing it: wait, then look the key up again;
+          ("solo", None)   an identical request is in flight on another event loop (another worker thread): compute
+                           alone, never land (the flight is not this caller's to end)."""
+        loop = asyncio.get_running_loop()
+        with self._lock:
+            flight = self._flights.get(key)
+            if flight is None:
+                self._flights[key] = (loop, asyncio.Event())
+                return "lead", None
+            return ("wait", flight[1]) if flight[0] is loop else ("solo", None)
+
+    def land(self, key: str) -> None:
+        """End this loop's flight for `key` and wake its waiters. A flight owned by another loop is left alone."""
+        loop = asyncio.get_running_loop()
+        with self._lock:
+            flight = self._flights.get(key)
+            if flight is None or flight[0] is not loop:
+                return
+            del self._flights[key]
+        flight[1].set()
 
     def put(self, key: str, status: int, body: bytes, media_type: str) -> None:
         if status != 200 or len(body) > self.max_bytes // 4:          # one answer never takes most of the cache
@@ -181,29 +233,54 @@ def _response_key(scope: LeagueScope, request: Request) -> str | None:
     return f"{scope.cache_key}|{request.url.path}|{query}"
 
 
+async def _lookup(request: Request, scope: LeagueScope, timing: Timing) -> None:
+    """Raise CachedResponse with a cached answer (after waiting for an identical in-flight request, if any); otherwise
+    note the key for add_scope_headers to fill, leading the flight when no identical request is running."""
+    key = _response_key(scope, request)
+    if key is None:
+        return
+    cache = response_cache()
+    hit = cache.get(key)
+    if hit is None:
+        role, flight = cache.begin(key)
+        if role == "lead":
+            request.state.fi_flight = key            # add_scope_headers lands it once the answer is complete
+        elif role == "wait":
+            loop = asyncio.get_running_loop()
+            t0 = loop.time()
+            try:
+                await asyncio.wait_for(flight.wait(), FLIGHT_WAIT_S)
+            except TimeoutError:
+                pass
+            timing.add("wait", loop.time() - t0)
+            hit = cache.get(key)
+            if hit is not None:
+                cache.shared += 1
+    if hit is not None:
+        timing.add("cache", 0.0, "hit")
+        raise CachedResponse(hit)
+    request.state.fi_cache_key = key
+
+
 async def league_scope(request: Request, league_id: str = Depends(valid_league_id),
                        principal=Depends(current_principal)):
     """Async on purpose: the ContextVar is set in the request's own context, which FastAPI copies into the thread
     pool that runs the (sync) legacy handler. The blocking work runs in the pool."""
-    scope = await run_in_threadpool(_resolve, principal, league_id, request.query_params.get("team_id"))
+    timing = request_timing(request) or Timing()
+    scope, pair = await run_in_threadpool(_resolve, principal, league_id, request.query_params.get("team_id"), timing)
     request.state.fi_scope = scope
-    key = _response_key(scope, request)
-    if key is not None:
-        hit = response_cache().get(key)
-        if hit is not None:
-            cache = league_file_cache()
-            cache.release(scope.league_path)
-            cache.release(scope.global_path)
-            raise CachedResponse(hit)
-        request.state.fi_cache_key = key
+    request.state.fi_degraded = pair.degraded
+    try:
+        await _lookup(request, scope, timing)
+    except BaseException:                          # a cache hit, or a cancelled wait: unpin before leaving
+        league_file_cache().release_pair(pair)
+        raise
     token = LEAGUE_SCOPE.set(scope)
     try:
         yield scope
     finally:
         LEAGUE_SCOPE.reset(token)
-        cache = league_file_cache()
-        cache.release(scope.league_path)
-        cache.release(scope.global_path)
+        league_file_cache().release_pair(pair)
 
 
 LEAGUE_PREFIX = "/v2/leagues/{league_id}"
@@ -244,7 +321,16 @@ def _json_response(response) -> bool:
 
 async def add_scope_headers(request: Request, call_next):
     """Private, uncached by browsers and proxies, naming the versions read; successful GETs go into the response
-    cache on the way out."""
+    cache on the way out, and identical requests waiting on this one are woken once it is complete."""
+    try:
+        return await _add_scope_headers(request, call_next)
+    finally:
+        flight = getattr(request.state, "fi_flight", None)
+        if flight is not None:
+            response_cache().land(flight)
+
+
+async def _add_scope_headers(request: Request, call_next):
     response = await call_next(request)
     scope = getattr(request.state, "fi_scope", None)
     if scope is None:
@@ -267,4 +353,6 @@ async def add_scope_headers(request: Request, call_next):
     response.headers["Cache-Control"] = "private, no-store"
     response.headers["X-FI-Data-Version"] = scope.data_version
     response.headers["X-FI-Global-Version"] = scope.global_version
+    if getattr(request.state, "fi_degraded", None):
+        response.headers[DEGRADED_HEADER] = "stale-files"     # this league's previous files: data may be older
     return response

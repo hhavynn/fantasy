@@ -118,6 +118,9 @@ app.middleware("http")(add_scope_headers)
 from .api.provider_copy import classic_copy  # noqa: E402
 app.middleware("http")(classic_copy)
 app.add_exception_handler(CachedResponse, serve_cached)
+# Outermost: Server-Timing on every response, the sampled perf log off by default (app/monitor/timing.py).
+from .monitor.timing import ServerTimingMiddleware  # noqa: E402
+app.add_middleware(ServerTimingMiddleware)
 
 
 @app.get("/health")

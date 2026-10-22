@@ -11,16 +11,27 @@ per object at a time (other requests for the same object wait for it); least-rec
 stay under the bound, and `on_evict(path)` lets the connection cache close what it had open on them.
 
 The object store is R2 (read-only token) in production, or a local directory (`LEAGUE_FILES_DIR`) for development
-and the local golden check.
+and the local golden check. A request-path R2 read is retried once after a short jittered pause on a transient failure
+(network, 429, 5xx); never on a 403/404 or a checksum mismatch.
+
+Degraded reads (`pin_pair`, issue #201): when a league's pointer has moved to files this instance does not hold yet,
+the new pair is fetched in the background and the request waits at most `budget_s` for it. If it is not ready (slow or
+R2 unavailable), the request is served the last pair *this league* was served from in this process, still cached, and
+the result says so (`degraded`), so the page can say "data may be older" instead of timing out. The fallback is keyed
+by the validated league id only: a league never falls back to another league's files.
 """
 
 from __future__ import annotations
 
 import os
+import random
 import re
 import shutil
 import threading
+import time
 from collections import OrderedDict
+from concurrent.futures import Future
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -28,6 +39,11 @@ from . import r2
 from .league_split import VERSION_RE
 
 DEFAULT_MAX_BYTES = 350 << 20
+DEFAULT_COLD_BUDGET_S = 3.0          # longest a request waits for a newer pair while an older one can be served
+DEFAULT_ROOM_WAIT_S = 8.0            # a full cache (every file pinned) waits this long for a request to finish
+FAILED_FETCH_RETRY_S = 30.0          # a failed background fetch of one pair is not retried sooner (R2 down)
+_MAX_PREFETCHES = 4                  # background fetches in flight per process; more wait in the request instead
+_LAST_GOOD_LEAGUES = 4096            # leagues whose last served pair is remembered (ids and versions only)
 _LEAGUE_ID = re.compile(r"lg_[A-Za-z0-9_-]{16,64}")
 
 
@@ -41,6 +57,15 @@ def _check_version(version: str) -> re.Match:
     if m is None:
         raise ObjectKeyError("malformed version")
     return m
+
+
+def _older(fallback: tuple[str, str], pointer: tuple[str, str]) -> bool:
+    """True when the (data, global) pair `fallback` was built strictly before the pointer's: its league file is
+    stamped earlier and its global file no later. A pair that is not older (the pointer was rolled back, or re-stamped)
+    is never served in its place: a retracted version must not come back as "data may be older"."""
+    fd, fg = _check_version(fallback[0])["stamp"], _check_version(fallback[1])["stamp"]
+    pd, pg = _check_version(pointer[0])["stamp"], _check_version(pointer[1])["stamp"]
+    return fd < pd and fg <= pg          # stamps are fixed-width UTC (YYYYMMDDTHHMMSSZ): string order is time order
 
 
 def league_key(league_id: str, version: str) -> str:
@@ -59,14 +84,30 @@ class ObjectStore(Protocol):
     def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None: ...
 
 
-class R2Store:
-    """Production: the private bucket, read with the API's Object Read token."""
+def _transient(err: r2.R2Error) -> bool:
+    """Worth one retry: a network failure or a throttled / failing server. Never a 403/404 (retrying cannot help) or
+    a checksum/size mismatch (the object itself is wrong)."""
+    if err.status is None:
+        return err.code not in ("ChecksumMismatch", "SizeMismatch")
+    return err.status == 429 or 500 <= err.status <= 599
 
-    def __init__(self, cfg: r2.R2Config):
-        self.cfg = cfg
+
+class R2Store:
+    """Production: the private bucket, read with the API's Object Read token. One retry after a 0.2-0.5 s pause on a
+    transient failure: a request-path read, so the pause stays short and the attempts stay at two."""
+
+    def __init__(self, cfg: r2.R2Config, *, attempts: int = 2, sleep: Callable[[float], None] = time.sleep):
+        self.cfg, self.attempts, self.sleep = cfg, max(1, attempts), sleep
 
     def fetch(self, key: str, dest: Path, *, sha256_prefix: str, size: int) -> None:
-        r2.download(self.cfg, key, dest, size=size, expected_sha256_prefix=sha256_prefix)
+        for attempt in range(1, self.attempts + 1):
+            try:
+                r2.download(self.cfg, key, dest, size=size, expected_sha256_prefix=sha256_prefix)
+                return
+            except r2.R2Error as err:
+                if attempt == self.attempts or not _transient(err):
+                    raise
+            self.sleep(0.2 + random.random() * 0.3)
 
 
 class DirStore:
@@ -95,22 +136,43 @@ class CacheFull(RuntimeError):
     """Every cached file is in use by a running request and the new one does not fit: the caller answers 503."""
 
 
+@dataclass(frozen=True)
+class PinnedPair:
+    """A league file and the global file it was built against, both pinned until `release_pair()`.
+
+    `data_version` / `global_version` name the files actually pinned: the pointer's, or with `degraded` set, the last
+    pair this league was served from ("slow": the newer pair did not arrive within the budget; "unavailable": fetching
+    it failed). `cold` is True when this call had to fetch (or wait for) a file."""
+    league_path: Path
+    global_path: Path
+    data_version: str
+    global_version: str
+    degraded: str | None = None
+    cold: bool = False
+
+
 class LeagueFileCache:
     """Files are *pinned* while a request uses them (`pin()` / `release()`): eviction skips pinned files, so a path a
     request has resolved is never unlinked before the request has opened it. In-flight downloads reserve their bytes,
-    so concurrent first loads cannot push the directory past the bound together. Each process has its own
+    so concurrent first loads cannot push the directory past the bound together; when they would, the newcomer waits
+    (up to `room_wait_s`) for running requests to release files instead of failing at once. Each process has its own
     subdirectory (several processes on one host never delete each other's files); directories of dead processes are
     removed at start."""
 
     def __init__(self, store: ObjectStore, cache_dir: Path, *, max_bytes: int = DEFAULT_MAX_BYTES,
-                 on_evict: Callable[[Path], None] | None = None):
+                 on_evict: Callable[[Path], None] | None = None, clock: Callable[[], float] = time.monotonic,
+                 room_wait_s: float = DEFAULT_ROOM_WAIT_S):
         self.store, self.max_bytes = store, int(max_bytes)
-        self.on_evict = on_evict
+        self.on_evict, self.clock, self.room_wait_s = on_evict, clock, max(0.0, room_wait_s)
         self._lock = threading.Lock()                       # guards every field below
+        self._room = threading.Condition(self._lock)        # notified when a pin or a reservation is let go
         self._files: OrderedDict[str, tuple[Path, int]] = OrderedDict()   # key -> (path, bytes), LRU order
         self._downloading: dict[str, threading.Event] = {}
         self._reserved: dict[str, int] = {}                 # key -> bytes of an in-flight download
         self._pins: dict[str, int] = {}                     # key -> requests currently using the file
+        self._last_good: OrderedDict[str, tuple[str, str]] = OrderedDict()   # league id -> last served pair
+        self._prefetches: dict[tuple[str, str, str], Future] = {}             # pair -> background fetch
+        self._failed_fetches: dict[tuple[str, str, str], tuple[float, BaseException]] = {}
         root = Path(cache_dir)
         root.mkdir(parents=True, exist_ok=True)
         _remove_dead_process_dirs(root)
@@ -137,6 +199,156 @@ class LeagueFileCache:
     def pin_global(self, version: str) -> Path:
         return self._get(global_key(version), version, pin=True)
 
+    def pin_cached_league(self, league_id: str, version: str) -> Path | None:
+        """Pin the league file only if it is already cached; never downloads."""
+        return self._pin_cached(league_key(league_id, version))
+
+    def pin_cached_global(self, version: str) -> Path | None:
+        return self._pin_cached(global_key(version))
+
+    def _pin_cached(self, key: str) -> Path | None:
+        with self._lock:
+            hit = self._files.get(key)
+            if hit is None or key in self._downloading or not hit[0].exists():
+                return None
+            self._files.move_to_end(key)
+            self._pins[key] = self._pins.get(key, 0) + 1
+            return hit[0]
+
+    def release_pair(self, pair: PinnedPair) -> None:
+        self.release(pair.league_path)
+        self.release(pair.global_path)
+
+    def last_good(self, league_id: str) -> tuple[str, str] | None:
+        """The (data version, global version) this league was last served from in this process, or None."""
+        with self._lock:
+            return self._last_good.get(league_id)
+
+    def _remember(self, league_id: str, data_version: str, global_version: str) -> None:
+        with self._lock:
+            self._last_good[league_id] = (data_version, global_version)
+            self._last_good.move_to_end(league_id)
+            while len(self._last_good) > _LAST_GOOD_LEAGUES:
+                self._last_good.popitem(last=False)
+
+    def _forget_last_good(self, league_id: str, pair: tuple[str, str]) -> None:
+        with self._lock:
+            if self._last_good.get(league_id) == pair:
+                del self._last_good[league_id]
+
+    def _pin_pair_cached(self, league_id: str, data_version: str, global_version: str) -> tuple[Path, Path] | None:
+        league_path = self.pin_cached_league(league_id, data_version)
+        if league_path is None:
+            return None
+        global_path = self.pin_cached_global(global_version)
+        if global_path is None:
+            self.release(league_path)
+            return None
+        return league_path, global_path
+
+    def _pin_pair_blocking(self, league_id: str, data_version: str, global_version: str) -> tuple[Path, Path]:
+        """The shared global file first: a request waiting for room then holds only the file every request needs,
+        never its own league file while the one global download waits for room that league pins block."""
+        global_path = self.pin_global(global_version)
+        try:
+            return self.pin_league(league_id, data_version), global_path
+        except BaseException:
+            self.release(global_path)
+            raise
+
+    def prefetch(self, league_id: str, data_version: str, global_version: str) -> Future | None:
+        """Fetch a pair into the cache on a background thread (one per pair at a time; nothing is pinned). The future
+        has the pair's start time as `started` and fails with the fetch's error. None when too many fetches are
+        already running: the caller then waits in its own thread."""
+        league_key(league_id, data_version)                 # validate before any thread starts
+        global_key(global_version)
+        pair = (league_id, data_version, global_version)
+        with self._lock:
+            fut = self._prefetches.get(pair)
+            if fut is not None:
+                return fut
+            failed = self._failed_fetches.get(pair)
+            if failed is not None and self.clock() - failed[0] < FAILED_FETCH_RETRY_S:
+                fut = Future()
+                fut.started = failed[0]
+                fut.set_exception(failed[1])
+                return fut
+            if len(self._prefetches) >= _MAX_PREFETCHES:
+                return None
+            fut = self._prefetches[pair] = Future()
+            fut.started = self.clock()
+
+        def run():
+            try:
+                self.league_file(league_id, data_version)
+                self.global_file(global_version)
+            except BaseException as err:   # noqa: BLE001 - handed to the waiting requests through the future
+                err = err.with_traceback(None)              # kept for a while: hold no frames
+                with self._lock:
+                    self._prefetches.pop(pair, None)
+                    self._failed_fetches[pair] = (self.clock(), err)
+                    while len(self._failed_fetches) > _MAX_PREFETCHES * 16:
+                        self._failed_fetches.pop(next(iter(self._failed_fetches)))
+                fut.set_exception(err)
+                return
+            with self._lock:
+                self._prefetches.pop(pair, None)
+                self._failed_fetches.pop(pair, None)
+            fut.set_result(None)
+
+        threading.Thread(target=run, name="league-file-prefetch", daemon=True).start()
+        return fut
+
+    def pin_pair(self, league_id: str, data_version: str, global_version: str, *,
+                 budget_s: float = DEFAULT_COLD_BUDGET_S) -> PinnedPair:
+        """Pin the league's files for the pointer (data_version, global_version).
+
+        Already cached: pinned at once. Otherwise, when this league has a strictly older pair still cached here, that
+        pair is pinned *first* (so the new pair's download cannot evict it), the new pair is fetched in the background
+        and this request waits at most `budget_s` for it (counted from when that fetch started, so later requests do
+        not each wait the whole budget). Ready in time: the new pair. Not ready, failed, or no background slot free:
+        the older pair, with `degraded` set ("slow", "unavailable", "busy"). With a fallback held this never blocks
+        past the budget. Without one (none, evicted, or the pointer was rolled back to before it): the new pair is
+        fetched in this request, as before (errors propagate)."""
+        cached = self._pin_pair_cached(league_id, data_version, global_version)
+        if cached is not None:
+            self._remember(league_id, data_version, global_version)
+            return PinnedPair(*cached, data_version, global_version)
+        last = self.last_good(league_id)
+        if last is not None and not _older(last, (data_version, global_version)):
+            self._forget_last_good(league_id, last)          # rolled back past it (or the same pair): never a fallback
+            last = None
+        old = self._pin_pair_cached(league_id, *last) if last is not None else None
+        if old is None:                                      # nothing older to serve: wait for the new pair here
+            paths = self._pin_pair_blocking(league_id, data_version, global_version)
+            self._remember(league_id, data_version, global_version)
+            return PinnedPair(*paths, data_version, global_version, cold=True)
+        handed_over = False
+        try:
+            fut = self.prefetch(league_id, data_version, global_version)
+            if fut is None:
+                reason = "busy"                              # every background slot taken: serve the older pair now
+            else:
+                reason = None
+                try:
+                    fut.result(timeout=max(0.0, budget_s - (self.clock() - fut.started)))
+                except TimeoutError:
+                    reason = "slow"
+                except Exception:   # noqa: BLE001 - R2 errors, a full cache: the older pair is served instead
+                    reason = "unavailable"
+            if reason is None:
+                fresh = self._pin_pair_cached(league_id, data_version, global_version)   # no download while held
+                if fresh is not None:
+                    self._remember(league_id, data_version, global_version)
+                    return PinnedPair(*fresh, data_version, global_version, cold=True)
+                reason = "slow"                              # evicted again before it could be pinned
+            handed_over = True
+            return PinnedPair(*old, *last, degraded=reason, cold=True)
+        finally:
+            if not handed_over:
+                self.release(old[0])
+                self.release(old[1])
+
     def release(self, path: Path) -> None:
         with self._lock:
             for key, (p, _) in self._files.items():
@@ -144,6 +356,7 @@ class LeagueFileCache:
                     self._pins[key] -= 1
                     if not self._pins[key]:
                         del self._pins[key]
+                        self._room.notify_all()
                     return
 
     def _local_path(self, key: str) -> Path:
@@ -175,6 +388,7 @@ class LeagueFileCache:
             except BaseException:
                 with self._lock:
                     self._reserved.pop(key, None)
+                    self._room.notify_all()
                 raise
             with self._lock:                                 # reservation -> index in one step: never uncounted
                 self._reserved.pop(key, None)
@@ -189,6 +403,18 @@ class LeagueFileCache:
             done.set()
 
     def _make_room(self, key: str, incoming: int) -> None:
+        """Make room for `incoming` bytes and reserve them. When everything that could go is pinned by running
+        requests (more leagues loading at once than the cache holds), wait up to `room_wait_s` for a request to finish
+        and release its files rather than refusing at once; CacheFull (a 503) only after that."""
+        deadline = time.monotonic() + self.room_wait_s
+        while not self._try_make_room(key, incoming):
+            with self._lock:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise CacheFull(f"no room for {key}: every cached file is in use")
+                self._room.wait(min(remaining, 0.25))       # woken by release(); the timeout covers a missed wake
+
+    def _try_make_room(self, key: str, incoming: int) -> bool:
         """Evict least-recently-used unpinned files until `incoming` more bytes fit, then reserve them. An evicted key
         is marked as downloading until its file is unlinked, so a request for it waits instead of fetching a new copy
         to the same path that this unlink would then remove."""
@@ -221,8 +447,7 @@ class LeagueFileCache:
                         del self._downloading[old]
             for _, _, done in evicted:
                 done.set()
-        if not fits:
-            raise CacheFull(f"no room for {key}: every cached file is in use")
+        return fits
 
 
 def _remove_dead_process_dirs(root: Path) -> None:

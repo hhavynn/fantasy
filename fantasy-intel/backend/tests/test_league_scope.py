@@ -296,3 +296,135 @@ def test_a_sleeper_league_beside_an_espn_league_keeps_its_own_words_and_data(pg,
         if rs.status_code == 200 and provider_copy.applies(p.split("?")[0]):
             assert re.findall(r'"([^"]*ESPN[^"]*)"', rs.text) == [], p
             assert "\"Fixture League\"" not in rs.text, p    # the ESPN league's name never reaches the Sleeper league
+
+
+# ---- issue #201: concurrency, single flight, degraded reads, Server-Timing ------------------------------------------
+
+CONCURRENT_PATHS = ("/api/overview", "/api/teams", "/api/managers", "/api/waivers?view=BEST&limit=3", "/api/matchup",
+                    "/api/status")
+
+
+def test_concurrent_cold_loads_of_two_leagues_never_bleed(pg, served, e2e, e2e_b, tmp_path):
+    """Both leagues cold (empty file and response caches), every route of both requested at once from many threads:
+    each answer is its own league's."""
+    from concurrent.futures import ThreadPoolExecutor
+    from app.main import app
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
+    b = publish_local(pg, e2e_b, served, tmp_path / "b", visibility="public", name="B", external_id="1999",
+                      stamp="2026-10-20T13:00:00")
+    jobs = [(lg, p, team) for team in (1, 2) for p in CONCURRENT_PATHS for lg in (a.league_id, b.league_id)] * 2
+
+    def get(job):
+        lg, path, team = job
+        sep = "&" if "?" in path else "?"
+        r = TestClient(app).get(f"/v2/leagues/{lg}{path}" + (f"{sep}team_id={team}" if team else ""))
+        return lg, path, r.status_code, r.text, r.headers.get("x-fi-data-version")
+
+    with ThreadPoolExecutor(12) as pool:
+        results = list(pool.map(get, jobs))
+    for lg, path, status, text, version in results:
+        assert status == 200, (path, text[:200])
+        if lg == a.league_id:
+            assert MARK not in text and version == a.data_version, path
+        else:
+            assert version == b.data_version, path
+            if path in ("/api/overview", "/api/teams", "/api/managers"):
+                assert MARK in text, path
+
+
+def test_identical_concurrent_requests_run_the_handler_once(pg, served, e2e, tmp_path, monkeypatch):
+    import asyncio
+    import time as _time
+    import httpx
+    from app.api import league_scope, routes
+    from app.main import app
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
+    real, calls = routes._league, []
+
+    def slow_league(con):
+        calls.append(1)
+        _time.sleep(0.3)
+        return real(con)
+
+    monkeypatch.setattr(routes, "_league", slow_league)
+    url = f"/v2/leagues/{pub.league_id}/api/overview?team_id=2"
+
+    async def burst():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            await c.get(f"/v2/leagues/{pub.league_id}/api/status")          # files warm: the burst races the handler
+            return await asyncio.gather(*(c.get(url) for _ in range(6)))
+
+    responses = asyncio.run(burst())
+    assert [r.status_code for r in responses] == [200] * 6
+    assert len({r.content for r in responses}) == 1
+    assert sorted(r.headers["x-fi-cache"] for r in responses) == ["hit"] * 5 + ["miss"]
+    assert len(calls) == 1
+    assert league_scope.response_cache().shared >= 1
+    assert all(r.headers["cache-control"] == "private, no-store" for r in responses)
+    # another perspective is another key: never shared
+    other = asyncio.run(_one(app, f"/v2/leagues/{pub.league_id}/api/overview?team_id=3"))
+    assert other.headers["x-fi-cache"] == "miss" and other.json()["perspective"]["team_id"] == 3
+
+
+async def _one(app, url):
+    import httpx
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+        return await c.get(url)
+
+
+def test_a_new_version_that_cannot_be_fetched_serves_the_previous_files_marked(pg, served, client, e2e, tmp_path,
+                                                                                 monkeypatch):
+    import psycopg
+    from app.db import league_files
+    from app.db.league_files import league_key
+    from app.db.league_publish import DirWriter, publish_league
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
+    first = client.get(f"/v2/leagues/{pub.league_id}/api/overview")
+    assert first.status_code == 200 and "x-fi-degraded" not in first.headers
+    with psycopg.connect(pg.dsn_for("fi_sync"), prepare_threshold=None) as sync:
+        res = publish_league(e2e, DirWriter(served), sync, pub.league_id, stamp="2026-10-21T12:00:00")
+    assert res.applied and res.data_version != pub.data_version
+    obj = served / league_key(pub.league_id, res.data_version)
+    held = obj.read_bytes()
+    obj.unlink()                                               # R2 cannot deliver the new file
+    stale = client.get(f"/v2/leagues/{pub.league_id}/api/overview")
+    assert stale.status_code == 200
+    assert stale.headers["x-fi-degraded"] == "stale-files"
+    assert stale.headers["x-fi-data-version"] == pub.data_version
+    assert stale.json() == first.json()
+    obj.write_bytes(held)                                      # R2 is back; the failure back-off has passed
+    monkeypatch.setattr(league_files, "FAILED_FETCH_RETRY_S", 0.0)
+    fresh = None
+    for _ in range(50):
+        fresh = client.get(f"/v2/leagues/{pub.league_id}/api/overview")
+        if "x-fi-degraded" not in fresh.headers:
+            break
+        import time as _time
+        _time.sleep(0.05)
+    assert fresh.status_code == 200 and "x-fi-degraded" not in fresh.headers
+    assert fresh.headers["x-fi-data-version"] == res.data_version
+
+
+def test_server_timing_names_phases_without_the_league(pg, served, client, e2e, tmp_path, monkeypatch):
+    from app.monitor import timing as perf
+    lines = []
+
+    class Collect:
+        def info(self, line):
+            lines.append(line)
+
+    monkeypatch.setattr(perf, "_logger", lambda: Collect())
+    monkeypatch.setenv("FI_PERF_SAMPLE", "1")
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
+    cold = client.get(f"/v2/leagues/{pub.league_id}/api/overview?team_id=2")
+    assert lines and lines[-1].startswith("perf GET /v2/leagues/{league_id}/api/overview status=200 ")
+    assert pub.league_id not in lines[-1] and "team_id" not in lines[-1]
+    warm = client.get(f"/v2/leagues/{pub.league_id}/api/teams")
+    hit = client.get(f"/v2/leagues/{pub.league_id}/api/overview?team_id=2")
+    st = {k: r.headers["server-timing"] for k, r in (("cold", cold), ("warm", warm), ("hit", hit))}
+    assert 'files;dur=' in st["cold"] and 'desc="cold"' in st["cold"] and st["cold"].startswith("auth;dur=")
+    assert 'desc="warm"' in st["warm"]
+    assert 'cache;dur=0.0;desc="hit"' in st["hit"]
+    for header in st.values():
+        assert pub.league_id not in header and "app;dur=" in header
+    assert "server-timing" in client.get("/health").headers
