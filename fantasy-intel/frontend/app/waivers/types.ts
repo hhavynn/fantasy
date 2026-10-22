@@ -1,4 +1,5 @@
 import type { Perspective } from "@/lib/team-perspective";
+import type { ProvenancePayload } from "@/lib/signal-provenance";
 
 export type Coverage = { eligible: number; evaluated: number; excluded_by_limit: number; limitation: string };
 type Drop = { espn_player_id: number; name: string; position: string; sacrifice: string[] };
@@ -32,4 +33,6 @@ export type WaiversResponse = {
   perspective?: Perspective | null;
   /** The team's roster was re-synced after these suggestions were computed. */
   roster_newer_than_analysis?: boolean;
+  /** signal-provenance.v1: league data and the waiver analysis (lib/signal-provenance.ts). */
+  provenance?: ProvenancePayload | null;
 };

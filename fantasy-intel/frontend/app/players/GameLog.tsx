@@ -52,7 +52,7 @@ function columns(pos: string | null, provider = "ESPN"): Col[] {
     { key: "rz_tgt", label: "RZ tgt", tier: "more", cell: (w) => int(w.rz_targets, "No play-by-play") },
     { key: "rz_car", label: "RZ car", tier: "more", cell: (w) => int(w.rz_carries, "No play-by-play") },
     { key: "gl_car", label: "GL car", tier: "more", cell: (w) => int(w.gl_carries, "No play-by-play") },
-    { key: "td", label: "TD", tier: "core", cell: (w) => int((w.receiving_tds ?? 0) + (w.rushing_tds ?? 0)) },
+    { key: "td", label: "TD", tier: "core", cell: (w) => int(w.receiving_tds == null && w.rushing_tds == null ? null : (w.receiving_tds ?? 0) + (w.rushing_tds ?? 0), "No touchdown record") },
     { key: "ppr", label: "PPR", tier: "core", cell: (w) => num(w.fantasy_points_ppr) },
     { key: "league", label: "League pts", tier: "core", cell: (w) => num(w.league_points, 1, `No ${provider} weekly points`) },
     { key: "xfp", label: "xFP", tier: "core", cell: (w) => num(w.xfp, 1, "Not in nflverse ff_opportunity") },

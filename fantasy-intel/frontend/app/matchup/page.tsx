@@ -4,7 +4,7 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { ProjectionNotice } from "@/components/ProjectionNotice";
 import {
-  EmptyState, Glossary, Method, Notice, PageHeader, Tabs,
+  EmptyState, Glossary, Method, Notice, PageHeader, ProvenanceBadge, Tabs,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { providerName } from "@/lib/labels";
@@ -16,6 +16,7 @@ import { getRanges } from "@/lib/projection-ranges.server";
 import {
   availableViews, chooseView, matchupHref, parseWeekParam, statusLabel, switcherWeeks, type LineupView,
 } from "@/lib/matchup";
+import { signalsOf } from "@/lib/signal-provenance";
 import type { Matchup } from "@/lib/matchup-types";
 import { isUnknownTeam, readTeamSelection, withTeamId } from "@/lib/team-perspective";
 import { Bench } from "./Bench";
@@ -120,6 +121,7 @@ export default async function MatchupPage({ searchParams }: PageProps<"/matchup"
           m.league.name, phase, opp ? statusLabel(m.status) : null, m.week === here ? "current week" : null,
           m.period_weeks ? `Matchup period ${m.matchup_period} spans weeks ${m.period_weeks[0]}–${m.period_weeks[m.period_weeks.length - 1]}` : null,
         ].filter(Boolean).join(" · ")}
+        provenance={<ProvenanceBadge signals={signalsOf(m.provenance)} />}
         actions={
           <TeamPerspective path="/matchup" sp={sp} current={m.me.team_id}>
             <div className={styles.weekNav}>

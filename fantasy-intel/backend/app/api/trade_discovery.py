@@ -21,6 +21,7 @@ from ..analytics.team_lineups import STREAMER_IDS, stream_summary
 from ..analytics.trades import (LIMITATIONS, NoRemainingWeeksError, TradeError, assumptions, streaming_enabled,
                                 with_streaming)
 from .deps import data_version, db, one, rows
+from .signal_provenance import trade_provenance
 
 router = APIRouter(prefix="/api/trades", tags=["trade discovery"])
 
@@ -351,7 +352,8 @@ def discover_context(p: DiscoverParams = Depends()):
         if r.state.start_week is None:       # the same 409 the search raises (analytics/trade_discovery.py)
             reason = (r.state.start_week_reason or {}).get("reason") or "no actionable week"
             raise HTTPException(409, f"No remaining fantasy scoring periods ({reason}); there are no trades to discover.")
-        return _context(r, p, evaluation(r.state, r.state.window()))
+        return {**_context(r, p, evaluation(r.state, r.state.window())),
+                "provenance": trade_provenance(con, r.lg, r.state)}
 
 
 @router.get("/discover/summary")
