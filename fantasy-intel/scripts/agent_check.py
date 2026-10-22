@@ -159,6 +159,15 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
 ]
 
 
+# App-wide source audits: they read every file under backend/app/ (forbidden research imports, the documented readers
+# of projection_source / league_scoring), so a NEW app module can break them without any mapping pointing at them.
+# They are fast; `affected` adds them whenever an app/ source file changes so CI is not the first place they run.
+APP_WIDE_AUDITS: list[str] = [
+    "tests/test_weekly_learning.py",
+    "tests/test_dst_research.py",
+    "tests/test_independent_projections.py",
+]
+
 def validate_test_mappings() -> list[str]:
     """Audit all mapped test paths against disk. Returns list of stale test file errors."""
     stale = []
@@ -608,6 +617,12 @@ class VerificationRunner:
                 if "backend/" in f_norm and "backend/tests/" not in f_norm:
                     if f not in unmapped_files:
                         unmapped_files.append(f)
+
+        # 2b. App-wide source audits whenever any backend app/ source changed (including new modules).
+        if any("backend/app/" in p.replace("\\", "/") and p.endswith(".py") for p in all_source_paths):
+            for t in APP_WIDE_AUDITS:
+                if t not in backend_tests and (BACKEND_DIR / t).is_file():
+                    backend_tests.append(t)
 
         # 3. Frontend actions
         if classes["frontend"]:
