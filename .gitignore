@@ -60,6 +60,7 @@ fantasy-intel/data/logs/
 worktrees/
 .serena/
 .ruff_cache/
+.agent_diagnostics/
 
 # External utilization provider files (licensed/manual). Never commit.
 fantasy-intel/data/imports/

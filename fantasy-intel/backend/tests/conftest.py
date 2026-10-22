@@ -24,7 +24,22 @@ def con(tmp_path):
 
 # ---- control-plane Postgres (tests/pg_harness.py) ----------------------------------------------------
 
-from pg_harness import PgCluster, PgDatabase  # noqa: E402
+import os
+import uuid
+import psycopg
+import psycopg.sql
+from pg_harness import PgCluster, PgDatabase, _validate_test_db_name  # noqa: E402
+
+
+def pytest_configure(config):
+    if not hasattr(config, "fi_session_id"):
+        config.fi_session_id = os.environ.get("PYTEST_SESSION_ID") or uuid.uuid4().hex[:6]
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_configure_node(node):
+    # Pass session_id to pytest-xdist worker nodes if xdist is active
+    node.workerinput["fi_session_id"] = getattr(node.config, "fi_session_id", uuid.uuid4().hex[:6])
 
 
 @pytest.fixture(scope="session")
@@ -38,17 +53,53 @@ def pg_cluster():
 
 
 @pytest.fixture(scope="session")
-def pg_db(pg_cluster):
-    db = PgDatabase(pg_cluster)
+def pg_db(pg_cluster, request):
+    override = os.environ.get("FI_TEST_DB_NAME")
+    if override:
+        _validate_test_db_name(override)  # Reject unsafe external DB name before any DDL
+        db_name = override
+    else:
+        worker_id = getattr(request.config, "workerinput", {}).get("workerid", "")
+        if not worker_id:
+            worker_id = os.environ.get("PYTEST_XDIST_WORKER", "")
+
+        session_id = getattr(request.config, "fi_session_id", None)
+        if not session_id:
+            session_id = getattr(request.config, "workerinput", {}).get("fi_session_id", None)
+        if not session_id:
+            session_id = os.environ.get("PYTEST_SESSION_ID", f"s{os.getpid()}")
+
+        if worker_id:
+            db_name = f"fi_test_{session_id}_{worker_id}"
+        else:
+            db_name = f"fi_test_{session_id}"
+
+    db = PgDatabase(pg_cluster, name=db_name)
     db.wait_ready()
     db.create()
-    return db
+    try:
+        yield db
+    finally:
+        db.close_open_connections()
+        db.terminate_other_backends()
+        try:
+            with psycopg.connect(pg_cluster.superuser_dsn(), autocommit=True) as con:
+                con.execute(
+                    psycopg.sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                        psycopg.sql.Identifier(db_name)
+                    )
+                )
+        except Exception:
+            pass
 
 
 @pytest.fixture
 def pg(pg_db):
     pg_db.reset()
-    return pg_db
+    try:
+        yield pg_db
+    finally:
+        pg_db.close_open_connections()
 
 
 # ---- CI sharding: `pytest --shard=K/N` runs shard K of N ------------------------------------------------
