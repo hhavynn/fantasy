@@ -26,7 +26,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #168 signal provenance | 1 | MERGED | PR #208 → `509a45f` (2026-10-22) | contract `signal-provenance.v1` |
 | #169 league rules | 1 | MERGED | PR #207 → `7574d6e` (2026-10-22) | |
 | #167 onboarding | 1 | MERGED | PR #233 → `2a6c47d` (2026-10-22) | real-league demo needs a backend demo concept (follow-up) |
-| #170 desktop shell | 1 | PR OPEN | PR #239 (6371f77) | rail + team picker + stale SyncPill; local nav/ux-gates 130 pass, 1 tablet networkidle timeout → CI decides |
+| #170 desktop shell | 1 | MERGED | PR #239 → abe7664 | rail + team picker + stale SyncPill (#201); Codex P2 fixed; CI E2E green |
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
 | #166 action center | 2 | IN PROGRESS | `feature/fi-166-action-center` from c419856 | one agent; security tier + review required; no Nav/layout edits (#239 owns) |
 | #171 what-if lineup | 2 | NOT STARTED | — | reuse lineup.py locks |
@@ -125,6 +125,7 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 | #230 | 9bce26c | local E2E subsets | green | visual gate pending |
 | #232 | (head at merge) | targeted + UX gates on main+hub | green | |
 | #234 | b81a17e | targeted 125 + fe 639 after main merge | green | |
+| #239 | b2cfe8e | lint/tc/unit 652/build + nav/ux-gates specs | green | tablet networkidle timeout local-only; passed in CI |
 | #240 | a29829d | race repro 1300→0, pg suites 22 | green | Codex stalled, no findings |
 | #238 | 1d1cf41 | a 632 + 369 trade/golden/audits | green | |
 | #237 | d393429 | test_agent_check 35, quick 2.6 s | green | |
