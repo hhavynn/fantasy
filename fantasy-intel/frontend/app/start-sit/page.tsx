@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
+import { RulesLink } from "@/components/RulesLink";
 import { CompareLink } from "@/components/CompareLink";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { isUnknownTeam, readTeamSelection, withTeam, withTeamId } from "@/lib/team-perspective";
@@ -264,6 +265,9 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         <ul className={`reasons ${styles.limits}`}>
           {d.limitations.map((l, i) => <li key={i}>{l}</li>)}
         </ul>
+        <p>
+          <RulesLink section="roster">Slots, eligibility and lock rules used here</RulesLink>
+        </p>
       </Method>
 
       <p className={styles.fresh}>
