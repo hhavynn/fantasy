@@ -219,3 +219,56 @@ def test_a_missing_starter_projection_is_partial_not_zero(client_for):
     assert sp.status(proj) in ("partial", "stale", "unknown")      # never "current" with a hole
     assert proj["reason_unavailable"]
     assert "(0.0 pts)" not in json.dumps(d["decisions"])          # explanations say "no projection", not 0.0
+
+
+
+def test_overview_usage_signal_dates_market_signals_by_the_analytics_run(client_for):
+    """The Overview's trade decisions restate the roster's market signals, which the analytics pipeline writes to
+    player_scores: the usage signal takes their computed_at (not the nflverse sync time), turns stale when the newest
+    analytics run failed, and counts an unclassified player as missing, never as a signal."""
+    client, _ = client_for()
+    d = client.get("/api/overview").json()
+    usage = next(s for s in d["provenance"]["signals"] if s["signal"] == "usage")
+    skill = [p for p in d["roster"] if p["position"] in ("QB", "RB", "WR", "TE")]
+    assert skill and usage["source"] == "fantasy_intel"
+    assert usage["coverage"]["total"] == len(skill) and usage["coverage"]["available"] == 0
+    assert usage["captured_at"] is None and usage["reason_unavailable"] and sp.status(usage) == "unavailable"
+    linked = skill[:2]
+
+    def scored(con, failed=False):
+        # Link two rostered skill players to NFL ids and give them market signals from two analytics runs.
+        for i, (p, at) in enumerate(zip(linked, ("2026-10-20 06:00:00", "2026-10-21 06:00:00"))):
+            gsis = f"00-T{i}"
+            con.execute("DELETE FROM player_id_map WHERE espn_player_id = ?", [p["espn_player_id"]])
+            con.execute("INSERT INTO player_id_map (espn_player_id, gsis_id, match_method, match_confidence) "
+                        "VALUES (?, ?, 'espn_id:nfl_players', 'high')", [p["espn_player_id"], gsis])
+            con.execute("DELETE FROM player_scores WHERE season = ? AND gsis_id = ?", [int(E2E_SEASON), gsis])
+            con.execute("INSERT INTO player_scores (season, gsis_id, market_signal, computed_at) VALUES (?, ?, 'SELL', ?)",
+                        [int(E2E_SEASON), gsis, at])
+        if failed:
+            con.execute("INSERT INTO sync_runs (run_id, source, started_at, finished_at, status, message, stats) VALUES "
+                        "('an-ok', 'analytics', TIMESTAMP '2026-10-21 05:00:00', TIMESTAMP '2026-10-21 06:00:00', 'ok', '', '{}'), "
+                        "('an-fail', 'analytics', now()::TIMESTAMP, now()::TIMESTAMP, 'error', 'boom', '{}')")
+
+    client, _ = client_for(scored)
+    usage = next(s for s in client.get("/api/overview").json()["provenance"]["signals"] if s["signal"] == "usage")
+    assert usage["coverage"] == {"available": 2, "total": len(skill), "label": "rostered QB, RB, WR and TE with a market signal"}
+    assert usage["captured_at"] == "2026-10-20T06:00:00Z"          # the oldest run behind the roster's signals
+    assert usage["reason_unavailable"] is None and usage["stale_reason"] is None
+    client, _ = client_for(lambda con: scored(con, failed=True))
+    usage = next(s for s in client.get("/api/overview").json()["provenance"]["signals"] if s["signal"] == "usage")
+    assert usage["stale_reason"] and sp.status(usage) == "stale"
+
+
+def test_overview_league_carries_a_week_based_trade_deadline(client_for):
+    """Sleeper's trade deadline is a week number kept in settings_raw; the Overview exposes it so the hub can tell open
+    from closed trades. No week (ESPN) or one past the season is None: unknown stays unknown."""
+    client, _ = client_for()
+    assert client.get("/api/overview").json()["league"]["trade_deadline_week"] is None
+
+    def week(n):
+        return lambda con: con.execute("UPDATE leagues SET settings_raw = ?", [json.dumps({"provider": "espn", "trade_deadline_week": n})])
+    client, _ = client_for(week(11))
+    assert client.get("/api/overview").json()["league"]["trade_deadline_week"] == 11
+    client, _ = client_for(week(99))
+    assert client.get("/api/overview").json()["league"]["trade_deadline_week"] is None

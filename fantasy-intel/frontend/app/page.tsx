@@ -46,8 +46,8 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       </div>
     );
   }
-  // Each section has its own source; one failing endpoint degrades only its own section. The week band's three
-  // sources start now but are not awaited here: the band streams in behind the header, stat strip and roster.
+  // Each section has its own source; one failing endpoint degrades only its own section. The decision hub's three
+  // sources start now but are not awaited here: the hub streams in behind the header, stat strip and roster.
   const [projection, profile] = await Promise.all([getProjectionSource(), getLeagueProfile()]);
   const provider = providerName(profile.provider);
   // Every section is computed for the selected team (`?team=`); without one, the owner's team as before.
@@ -57,8 +57,9 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
   const res = await api<Overview>(withTeamId("/api/overview", sel));
   const band = (
     <Suspense fallback={<WeekBandSkeleton />}>
-      <WeekBand matchup={matchup} startSit={startSit} waivers={waivers} roster={res.ok ? res.data.roster : null}
-                fallbackWeek={res.ok ? res.data.league.current_week : null} />
+      <WeekBand matchup={matchup} startSit={startSit} waivers={waivers} projection={projection}
+                overview={res.ok ? { roster: res.data.roster, league: res.data.league, provenance: res.data.provenance } : null}
+                team={sel.kind === "team" ? String(sel.id) : null} />
     </Suspense>
   );
 
@@ -104,7 +105,8 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         eyebrow={`Week ${o.league.current_week} · ${o.league.name}`}
         title={me ? me.name : "Team overview"}
         meta={`${me ? `${me.wins}–${me.losses}${me.ties ? `–${me.ties}` : ""}${rank ? ` · ${ordinal(rank)} of ${n}` : ""} · ` : ""}${o.league.season} season · ${o.league.size} teams · ${scoring}${o.league.is_faab ? ` · FAAB $${o.league.faab_budget}` : " · waiver priority"}`}
-        provenance={<ProvenanceBadge signals={signalsOf(o.provenance)} />}
+        // The header vouches for the roster and injuries; the usage signal backs only the hub's trade decisions.
+        provenance={<ProvenanceBadge signals={signalsOf(o.provenance).filter((s) => s.signal !== "usage")} />}
         actions={<TeamPerspective path="/" sp={sp} current={me?.team_id ?? null} />}
       />
 

@@ -218,6 +218,8 @@ p { margin: 0 0 8px; }
 .brand-word > span { color: var(--accent); }
 .brand-mark { flex: none; color: var(--accent); }
 .brand-word { display: inline-flex; }
+/* A phone app bar on a league page also holds the league switcher: the bar mark alone stands for the brand there. */
+@media (max-width: 520px) { .topbar:has(.league-switcher) .brand-word { display: none; } }
 /* The section links never shrink: the controls on the right give way first (the league chip hides, the sync pill ellipsises). */
 .nav-groups { flex: none; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .nav-groups a { position: relative; display: flex; align-items: center; padding: 0 12px; color: var(--ink-muted); font-weight: 500; white-space: nowrap; }
