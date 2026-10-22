@@ -1,9 +1,11 @@
-.switcher { position: relative; }
+.switcher { position: relative; min-width: 0; }
 .summary { list-style: none; cursor: pointer; display: inline-flex; flex-direction: column; line-height: 1.1;
-  padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line, rgba(127, 127, 127, 0.3)); }
+  padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line, rgba(127, 127, 127, 0.3)); max-width: 100%; }
 .summary::-webkit-details-marker { display: none; }
+/* On phones the switcher shrinks to the room the app bar leaves it; long names ellipsise (the full name is the title). */
+.name, .asof { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .name { font-weight: 600; }
-.asof { font-size: 0.72rem; opacity: 0.75; }
+.asof { font-size: 0.72rem; color: var(--ink-muted); }
 .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; min-width: 200px; display: flex;
   flex-direction: column; padding: 4px; border-radius: 8px; background: var(--surface, #fff);
   border: 1px solid var(--line, rgba(127, 127, 127, 0.3)); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }

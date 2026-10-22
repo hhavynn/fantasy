@@ -114,11 +114,30 @@ def main() -> int:
         seed_membership(su, VIEWER, leagues["espn_private"], "viewer")
         su.execute("INSERT INTO fi.team_selections (user_id, league_id, team_external_id) VALUES (%s, %s, '1')",
                    [VIEWER, leagues["espn_private"]])
+        # Sync states for the UX gates (frontend/e2e/ux-multileague.spec.ts), both private with the viewer a member:
+        # a league whose sync paused after one publish a week earlier (stale) and one connected but never synced
+        # (blank: no snapshot and no job).
+        leagues["espn_stale"] = seed_league(su, visibility="private", name="Stale Sync League", external_id="2999",
+                                            status="stale")
+        leagues["espn_blank"] = seed_league(su, visibility="private", name="Blank Sync League", external_id="3999")
+        for kind in ("espn_stale", "espn_blank"):
+            seed_membership(su, VIEWER, leagues[kind], "viewer")
         su.commit()
     with psycopg.connect(db.dsn_for("fi_sync"), prepare_threshold=None) as sync:
-        for kind, src in (("espn_public", espn_db), ("espn_private", espn_db), ("sleeper", sleeper_db)):
-            res = publish_league(src, DirWriter(objects), sync, leagues[kind], stamp="2026-10-21T12:00:00")
+        for kind, src, stamp in (("espn_public", espn_db, "2026-10-21T12:00:00"),
+                                 ("espn_private", espn_db, "2026-10-21T12:00:00"),
+                                 ("sleeper", sleeper_db, "2026-10-21T12:00:00"),
+                                 ("espn_stale", espn_db, "2026-10-14T12:00:00")):
+            res = publish_league(src, DirWriter(objects), sync, leagues[kind], stamp=stamp)
             assert res.applied, kind
+    # publish_league commits the snapshot at now(); the stale league's control-plane snapshot (what league cards and the
+    # switcher show) must be as old as its data, or the "stale" fixture would read as freshly published.
+    with db.connect() as su:
+        su.execute("UPDATE fi.league_snapshots SET committed_at = %s WHERE league_id = %s",
+                   ["2026-10-14T12:00:00Z", leagues["espn_stale"]])
+        su.execute("UPDATE fi.league_snapshot_history SET committed_at = %s WHERE league_id = %s",
+                   ["2026-10-14T12:00:00Z", leagues["espn_stale"]])
+        su.commit()
     (out / "manifest.json").write_text(json.dumps({"leagues": leagues, "cookie": session_cookie(auth_url, VIEWER),
                                                     "auth_url": auth_url}, indent=1))
 

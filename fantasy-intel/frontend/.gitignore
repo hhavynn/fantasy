@@ -47,4 +47,6 @@ next-env.d.ts
 /playwright-report-sleeper/
 /test-results-multileague/
 /playwright-report-multileague/
+/test-results-visual/
+/playwright-report-visual/
 /blob-report/
