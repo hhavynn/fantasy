@@ -470,18 +470,46 @@ def test_a_request_on_another_event_loop_computes_alone_and_never_ends_the_first
     assert seen["still_owned"] is True and not cache._flights
 
 
-def test_the_fallback_wait_for_a_new_pair_is_bounded(tmp_path, monkeypatch):
-    """The older pair vanished while the new one is still downloading: the request waits a bounded time, then fails."""
-    from app.db import league_files
-    monkeypatch.setattr(league_files, "_FALLBACK_WAIT_S", 0.3)
+def test_the_fallback_is_pinned_before_the_new_pair_is_fetched_so_cache_pressure_cannot_evict_it(tmp_path):
+    """Room for the older pair or the new league file, not both: the background download must not evict the pair
+    this request falls back to. The answer is the older pair within the budget, not a long wait."""
     store = MemStore()
-    vo, vn, vg = two_versions(store, A, 80)
+    vo, vn, vg = two_versions(store, A, 90)                    # league files 3000 bytes each, global 2000
+    store.gate[league_key(A, vn)] = gate = threading.Event()
+    cache = LeagueFileCache(store, tmp_path / "c", max_bytes=7000, room_wait_s=0.5)
+    cache.release_pair(cache.pin_pair(A, vo, vg))
+    t0 = time.monotonic()
+    pair = cache.pin_pair(A, vn, vg, budget_s=0.2)
+    assert time.monotonic() - t0 < 2
+    assert pair.degraded in ("slow", "unavailable") and pair.data_version == vo
+    assert pair.league_path.read_bytes() == store.objects[league_key(A, vo)]
+    cache.release_pair(pair)
+    gate.set()
+
+
+def test_with_every_prefetch_slot_taken_the_fallback_is_served_without_a_blocking_load(tmp_path, monkeypatch):
+    from app.db import league_files
+    monkeypatch.setattr(league_files, "_MAX_PREFETCHES", 0)    # 4 other upgrades already in flight
+    store = MemStore()
+    vo, vn, vg = two_versions(store, A, 95)
     cache = LeagueFileCache(store, tmp_path / "c", max_bytes=1 << 20)
     cache.release_pair(cache.pin_pair(A, vo, vg))
-    store.gate[league_key(A, vn)] = gate = threading.Event()
-    monkeypatch.setattr(cache, "_pin_pair_cached", lambda *a: None)     # the older pair is gone
+    store.gate[league_key(A, vn)] = threading.Event()          # a blocking load of the new pair would hang here
     t0 = time.monotonic()
-    with pytest.raises(TimeoutError):
-        cache.pin_pair(A, vn, vg, budget_s=0.1)
-    assert time.monotonic() - t0 < 3
-    gate.set()
+    pair = cache.pin_pair(A, vn, vg, budget_s=0.2)
+    assert time.monotonic() - t0 < 1
+    assert (pair.degraded, pair.data_version) == ("busy", vo)
+    assert league_key(A, vn) not in store.calls
+    cache.release_pair(pair)
+    assert not cache._pins                                      # every path releases what it pinned
+
+
+def test_a_fresh_pair_releases_the_fallback_it_held(tmp_path):
+    store = MemStore()
+    vo, vn, vg = two_versions(store, A, 97)
+    cache = LeagueFileCache(store, tmp_path / "c", max_bytes=1 << 20)
+    cache.release_pair(cache.pin_pair(A, vo, vg))
+    pair = cache.pin_pair(A, vn, vg, budget_s=5)                # the background fetch is quick here
+    assert (pair.degraded, pair.data_version) == (None, vn)
+    cache.release_pair(pair)
+    assert not cache._pins

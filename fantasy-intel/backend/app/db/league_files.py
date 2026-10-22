@@ -44,7 +44,6 @@ DEFAULT_ROOM_WAIT_S = 8.0            # a full cache (every file pinned) waits th
 FAILED_FETCH_RETRY_S = 30.0          # a failed background fetch of one pair is not retried sooner (R2 down)
 _MAX_PREFETCHES = 4                  # background fetches in flight per process; more wait in the request instead
 _LAST_GOOD_LEAGUES = 4096            # leagues whose last served pair is remembered (ids and versions only)
-_FALLBACK_WAIT_S = 30.0              # the older pair vanished mid-request: longest wait for the new one after all
 _LEAGUE_ID = re.compile(r"lg_[A-Za-z0-9_-]{16,64}")
 
 
@@ -304,11 +303,13 @@ class LeagueFileCache:
                  budget_s: float = DEFAULT_COLD_BUDGET_S) -> PinnedPair:
         """Pin the league's files for the pointer (data_version, global_version).
 
-        Already cached: pinned at once. Not cached and this league has no strictly older pair still cached here (none,
-        or the pointer was rolled back to before it): fetched in this request, as before (errors propagate). Not cached but an older pair of *this
-        league* is: the new pair is fetched in the background and this request waits up to `budget_s` (counted from
-        when that fetch started, so later requests do not each wait the whole budget); if it is not ready, the older
-        pair is served with `degraded` set."""
+        Already cached: pinned at once. Otherwise, when this league has a strictly older pair still cached here, that
+        pair is pinned *first* (so the new pair's download cannot evict it), the new pair is fetched in the background
+        and this request waits at most `budget_s` for it (counted from when that fetch started, so later requests do
+        not each wait the whole budget). Ready in time: the new pair. Not ready, failed, or no background slot free:
+        the older pair, with `degraded` set ("slow", "unavailable", "busy"). With a fallback held this never blocks
+        past the budget. Without one (none, evicted, or the pointer was rolled back to before it): the new pair is
+        fetched in this request, as before (errors propagate)."""
         cached = self._pin_pair_cached(league_id, data_version, global_version)
         if cached is not None:
             self._remember(league_id, data_version, global_version)
@@ -317,31 +318,36 @@ class LeagueFileCache:
         if last is not None and not _older(last, (data_version, global_version)):
             self._forget_last_good(league_id, last)          # rolled back past it (or the same pair): never a fallback
             last = None
-        fut = None
-        if last is not None:
-            fut = self.prefetch(league_id, data_version, global_version)
-        if fut is None:
+        old = self._pin_pair_cached(league_id, *last) if last is not None else None
+        if old is None:                                      # nothing older to serve: wait for the new pair here
             paths = self._pin_pair_blocking(league_id, data_version, global_version)
             self._remember(league_id, data_version, global_version)
             return PinnedPair(*paths, data_version, global_version, cold=True)
-        reason = None
+        handed_over = False
         try:
-            fut.result(timeout=max(0.0, budget_s - (self.clock() - fut.started)))
-        except TimeoutError:
-            reason = "slow"
-        except Exception:   # noqa: BLE001 - R2 errors, a full cache: the older pair is served instead
-            reason = "unavailable"
-        if reason is None:
-            paths = self._pin_pair_blocking(league_id, data_version, global_version)   # cached now: no download
-            self._remember(league_id, data_version, global_version)
-            return PinnedPair(*paths, data_version, global_version, cold=True)
-        old = self._pin_pair_cached(league_id, *last)
-        if old is not None:
+            fut = self.prefetch(league_id, data_version, global_version)
+            if fut is None:
+                reason = "busy"                              # every background slot taken: serve the older pair now
+            else:
+                reason = None
+                try:
+                    fut.result(timeout=max(0.0, budget_s - (self.clock() - fut.started)))
+                except TimeoutError:
+                    reason = "slow"
+                except Exception:   # noqa: BLE001 - R2 errors, a full cache: the older pair is served instead
+                    reason = "unavailable"
+            if reason is None:
+                fresh = self._pin_pair_cached(league_id, data_version, global_version)   # no download while held
+                if fresh is not None:
+                    self._remember(league_id, data_version, global_version)
+                    return PinnedPair(*fresh, data_version, global_version, cold=True)
+                reason = "slow"                              # evicted again before it could be pinned
+            handed_over = True
             return PinnedPair(*old, *last, degraded=reason, cold=True)
-        fut.result(timeout=_FALLBACK_WAIT_S)   # the older pair was evicted meanwhile: wait (bounded) for the new one
-        paths = self._pin_pair_blocking(league_id, data_version, global_version)
-        self._remember(league_id, data_version, global_version)
-        return PinnedPair(*paths, data_version, global_version, cold=True)
+        finally:
+            if not handed_over:
+                self.release(old[0])
+                self.release(old[1])
 
     def release(self, path: Path) -> None:
         with self._lock:
