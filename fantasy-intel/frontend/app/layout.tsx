@@ -75,8 +75,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const hideOwnerOnly = league !== null && !(me?.ok && me.data.is_platform_admin === true);
   const s = status?.data;
   const sync = computeSyncSummary(s ?? null, undefined, profile.provider);
-  // A league whose provider has no projections (Sleeper) is always on Ours: no switch to show.
-  const showSwitch = projectionSwitchVisible(profile);
+  // A league whose provider has no projections (Sleeper) is always on Ours: no switch to show. An unscoped page on the
+  // retired classic site (/leagues, /terms, /account) has no league, so neither the switch nor a sync state.
+  const showSwitch = !classicRetired && projectionSwitchVisible(profile);
   return (
     // suppressHydrationWarning: the inline script below sets data-theme on <html> before React hydrates.
     <html lang="en" className={`${barlowCondensed.variable} ${plexSans.variable} ${plexSansGreek.variable} ${plexMono.variable}`} suppressHydrationWarning>
@@ -101,9 +102,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               <CommandPalette />
               {showSwitch && <ProjectionSwitch value={projection} className="topbar-proj" />}
               <ThemeSwitch className="topbar-theme" />
-              <SyncPill status={s ?? null} provider={profile.provider} />
+              {classicRetired ? null : <SyncPill status={s ?? null} provider={profile.provider} />}
               <AccountMenu />
-              <MobileNav projection={showSwitch ? projection : undefined} sync={{ state: sync.state, text: sync.text }} />
+              <MobileNav projection={showSwitch ? projection : undefined} sync={classicRetired ? undefined : { state: sync.state, text: sync.text }} />
             </div>
           </div>
         </header>

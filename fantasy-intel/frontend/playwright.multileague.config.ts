@@ -38,6 +38,7 @@ export default defineConfig({
         API_URL: `http://127.0.0.1:${API_PORT}`, API_KEY: "", SITE_PASSWORD: "",
         MULTILEAGUE_UI_ENABLED: "1", SUPABASE_URL: `http://127.0.0.1:${AUTH_PORT}`,
         SUPABASE_PUBLISHABLE_KEY: "e2e-publishable-key", SUPABASE_LOCAL: "1", SIGNUPS_OPEN: "",
+        CLASSIC_SITE_ENABLED: "0",                       // as on production since the Phase 5 sign-off
       },
       timeout: 60_000,
       reuseExistingServer: false,

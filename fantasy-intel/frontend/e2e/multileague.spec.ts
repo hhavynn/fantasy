@@ -85,6 +85,8 @@ test("the terms, the privacy policy and account settings render, unscoped, for v
     expect(res?.status(), href).toBe(200);
     expect(new URL(page.url()).pathname).toBe(href);
     await expect(page.locator("h1")).toHaveText(h1);
+    // No league here: the header shows no sync state (the retired classic status route is never asked).
+    await expect(page.getByText("Backend offline")).toHaveCount(0);
   }
   await page.goto("/account", { waitUntil: "load" });
   await expect(page.locator("main")).toContainText("Not signed in");
