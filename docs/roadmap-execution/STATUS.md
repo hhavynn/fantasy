@@ -21,10 +21,10 @@ States: NOT STARTED · IN PROGRESS · READY FOR REVIEW (branch/PR open, gates re
 | Issue | Phase | State | Branch / PR | Notes |
 |---|---|---|---|---|
 | #201 perf budgets | 1 | NOT STARTED | — | wave 2 |
-| #202 UX/visual gates | 1 | IN PROGRESS | `feature/fi-202-ux-gates` | wave 1 |
-| #168 signal provenance | 1 | IN PROGRESS | `feature/fi-168-signal-provenance` | wave 1; contract reused by #165+ |
-| #169 league rules | 1 | IN PROGRESS | `feature/fi-169-league-rules` | wave 1 |
-| #167 onboarding | 1 | NOT STARTED | — | wave 2 (after #169 capabilities) |
+| #202 UX/visual gates | 1 | IN PROGRESS | `feature/fi-202-ux-gates` | wave 1 (agent running) |
+| #168 signal provenance | 1 | READY FOR REVIEW | `feature/fi-168-signal-provenance` · PR #208 | contract `signal-provenance.v1` reused by #165+; security review pending |
+| #169 league rules | 1 | READY FOR REVIEW | `feature/fi-169-league-rules` · PR #207 | contract `league-rules/v1`; security review pending |
+| #167 onboarding | 1 | IN PROGRESS | `feature/fi-167-onboarding` | wave 2 |
 | #170 desktop shell | 1 | NOT STARTED | — | after wave 2; sole owner of Nav/globals |
 | #165 weekly hub | 2 | NOT STARTED | — | needs #168 contract |
 | #166 action center | 2 | NOT STARTED | — | after #165 |
@@ -32,7 +32,7 @@ States: NOT STARTED · IN PROGRESS · READY FOR REVIEW (branch/PR open, gates re
 | #177 bye/kickoff planner | 2 | NOT STARTED | — | |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
 | #187 player profile tabs | 2 | NOT STARTED | — | news tab optional on #186 |
-| #193 transactions feed | 2 | NOT STARTED | — | |
+| #193 transactions feed | 2 | IN PROGRESS | `feature/fi-193-transactions-feed` | wave 2 (pulled forward: independent) |
 | #178 add/drop simulator | 3 | NOT STARTED | — | |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
@@ -60,6 +60,14 @@ States: NOT STARTED · IN PROGRESS · READY FOR REVIEW (branch/PR open, gates re
 | #197 shareable reports | 7 | NOT STARTED | — | |
 | #203 lineup submission | 8 | RESEARCH-ONLY | — | no provider writes |
 | #204 Draft Wizard-lite | 8 | NOT STARTED | — | after in-season stable |
+
+## Out-of-roadmap fixes
+
+- PR #206 `fix/next-security-16-4-2`: Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
+  GHSA-673q-mjm6-r5xr. It also stops the intermittent `SecurityFatalError` build abort.
+- Follow-up (found by the #169 audit): Sleeper taxi players are stored as bench (`sleeper/write.py`), so optimisers
+  could start them, and `trade_data` counts TAXI in active capacity. Needs a small fix PR.
+- Follow-up: superflex QB demand in `trade_assets.py` (starter counts from fixed slots only). Feeds #182/#184.
 
 ## Active wave
 
