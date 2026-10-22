@@ -144,7 +144,7 @@ class AssetBoard:
                 "replacement_per_week": r(sum((base.get(w) or {}).get("level", 0.0) for w in self.weeks) / len(self.weeks))
                 if self.weeks else None,
                 "replacement_source": sources, "missing_weeks": missing, "nfl_ineligible_weeks": blocked,
-                "availability_status": status, "fantasy_ir_slot": p.on_ir,
+                "availability_status": status, "fantasy_ir_slot": p.on_ir, **({"fantasy_taxi_slot": True} if p.on_taxi else {}),
                 "return_unconfirmed": status in (INELIGIBLE, ELIGIBLE_UNCONFIRMED),
                 "eligibility_unknown": status == UNKNOWN, "no_eligible_week": status == NO_WEEK_LEFT,
                 "position_rank": None, "position_rank_of": None, "league_starters_at_position": None,
@@ -210,7 +210,7 @@ def team_needs(state, window: Window, team_id: int, board: AssetBoard, team: dic
         missing = any(pos_of.get(pid) == pos for w in team["weeks"] for pid in w["missing_projection_ids"])
         pts = sum(a["points"] or 0.0 for w in team["weeks"] for a in w["assignment"]
                   if a["slot"] == pos and slot_filled(a))         # the K/D/ST waiver streamer counts too
-        surplus = [p.espn_player_id for p in roster if p.position == pos and not p.on_ir
+        surplus = [p.espn_player_id for p in roster if p.position == pos and not p.reserved
                    and board.profiles.get(p.espn_player_id, {}).get("starter_caliber") and starts[p.espn_player_id] * 2 <= n]
         out[pos] = {"slot_points_per_week": None if missing else r(pts / (n * k)), "_raw": None if missing else pts / (n * k),
                     "slots": k, "surplus": surplus, "incomplete": missing}

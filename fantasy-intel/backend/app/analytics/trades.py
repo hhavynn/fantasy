@@ -24,7 +24,7 @@ from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, NO_WEEK_LEFT,
 from .team_lineups import (IR_HOLD_NOTE, PROJECTION_SOURCE, STREAM_NOTE, source_label, STREAM_RANK, Projections, RosterPlayer,
                            StreamingProjections, Window, best_fa_addition, compare, ir_activation_sensitivity,
                            known_total, project_team, public_weeks, r, replacement_context, roster_marginal_value,
-                           starters, stream_summary, with_stream)
+                           arrives_active, slot_flags, starters, stream_summary, with_stream)
 
 # Manual trades take any player counts from 1 up to this many per side (a performance guard, not a
 # rule of the game; override with max_per_side / settings.trade_max_players_per_side).
@@ -84,7 +84,7 @@ class LeagueState:
     rosters: dict[int, list[RosterPlayer]]
     free_agents: list[RosterPlayer]
     projections: Projections
-    active_capacity: int                           # starting + bench slots (IR excluded)
+    active_capacity: int                           # starting + bench slots (IR and taxi excluded)
     position_limits: dict[str, int] = field(default_factory=dict)   # max rostered per position; {} = not enforced
     team_names: dict[int, str] = field(default_factory=dict)
     league_id: int | None = None
@@ -125,7 +125,7 @@ def assumptions(state: LeagueState) -> list[str]:
 # --------------------------------------------------------------------- roster rules --
 
 def _active(players: list[RosterPlayer]) -> int:
-    return sum(1 for p in players if not p.on_ir)
+    return sum(1 for p in players if not p.reserved)    # IR and taxi players use no active roster spot
 
 
 def _position_counts(players: list[RosterPlayer]) -> Counter:
@@ -184,7 +184,7 @@ def choose_forced_drops(after: list[RosterPlayer], before: list[RosterPlayer], s
                 raise EvaluationUnavailable(
                     f"exact forced-drop resolution needs more than {MAX_DROP_SETS:,} candidate drop sets of {k} "
                     "players; evaluation unavailable (no approximate result is substituted)")
-            if act - sum(1 for p in combo if not p.on_ir) > cap:
+            if act - sum(1 for p in combo if not p.reserved) > cap:
                 continue
             if limits:
                 gone = _position_counts(combo)
@@ -305,7 +305,7 @@ def side_lineups(state: LeagueState, window: Window, team_id: int, sends: list[i
     roster = state.rosters[team_id]
     incoming = {p.espn_player_id for p in receives}
     before = list(roster)
-    pre = [p for p in roster if p.espn_player_id not in set(sends)] + [replace(p, on_ir=False) for p in receives]
+    pre = [p for p in roster if p.espn_player_id not in set(sends)] + [arrives_active(p) for p in receives]
     res = resolve_roster(state, window, before, pre, incoming)
     dropped = {d["espn_player_id"] for d in res["forced_drops"]}
     after = [p for p in pre if p.espn_player_id not in dropped]
@@ -576,7 +576,7 @@ def evaluate_trade(state: LeagueState, team_a: int, team_b: int, a_sends: list[i
             p = names[pid]
             players.append({
                 "espn_player_id": pid, "name": p.name, "position": p.position, "pro_team": p.pro_team,
-                "injury_status": p.injury_status, "on_ir": p.on_ir, "from_team_id": team,
+                "injury_status": p.injury_status, "on_ir": p.on_ir, **slot_flags(p), "from_team_id": team,
                 "to_team_id": team_b if team == team_a else team_a,
                 "weekly_projection": {w: state.projections.get(pid, {}).get(w) for w in window.weeks},
                 "marginal_value_on_current_team": roster_marginal_value(

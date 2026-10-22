@@ -9,6 +9,7 @@ from ..db.connection import fetch_dicts, replace_where, utcnow
 from .availability import latest_injuries
 from ..espn.constants import IR_SLOT
 from .manager_metrics import ManagerInputs, classify_metrics, compute_metrics
+from .reserve_slots import active_capacity
 
 UNAVAILABLE_NFL = {"Out", "Doubtful"}
 
@@ -155,7 +156,7 @@ def load_inputs(con) -> tuple[ManagerInputs, str] | None:
     slots = lg["roster_slots"] or {}
     return ManagerInputs(
         league_id=league_id, season=season, current_week=lg["current_week"] or 1,
-        roster_spots=sum(v for k, v in slots.items() if k != "IR") or 16,
+        roster_spots=active_capacity(slots) or 16,           # IR and taxi slots are not active roster spots
         is_faab=bool(lg["is_faab"]), faab_budget=lg["faab_budget"],
         teams=teams, adds=adds, drops=drops, trades=load_trades(con, league_id, season),
         lineups=lineups, failed_claims=failed, failed_claims_visible=bool(failed), now=utcnow(),

@@ -639,7 +639,7 @@ def team_lineup_projection(team_id: int):
                     "evaluation": _window_info(state), "summary": None, "weeks": [], "marginal_values": []}
         team = project_team(roster, state.slots, window, state.projections)
         names = player_names(con, [p.espn_player_id for p in roster])
-        open_spots = max(0, state.active_capacity - sum(1 for p in roster if not p.on_ir))
+        open_spots = max(0, state.active_capacity - sum(1 for p in roster if not p.reserved))
         marginal = [{"name": p.name, "position": p.position, "pro_team": p.pro_team,
                      **roster_marginal_value(roster, p.espn_player_id, state.slots, window, state.projections, team,
                                              open_spots)}
@@ -665,7 +665,7 @@ def trade_options():
         for t in teams:
             t["roster"] = sorted(
                 [{"espn_player_id": p.espn_player_id, "name": p.name, "position": p.position, "pro_team": p.pro_team,
-                  "on_ir": p.on_ir, "injury_status": p.injury_status,
+                  "on_ir": p.on_ir, **({"on_taxi": True} if p.on_taxi else {}), "injury_status": p.injury_status,
                   "ros_projected_points": (ros.get(p.espn_player_id) or {}).get("ros_projected_points"),
                   "nfl_ineligible_weeks": sorted(p.unavailable_weeks),
                   "availability": _availability_brief(state.availability.get(p.espn_player_id))}

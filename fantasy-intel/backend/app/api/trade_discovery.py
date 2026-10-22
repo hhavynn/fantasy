@@ -230,8 +230,8 @@ def _build(con, r: _Resolved, p: DiscoverParams) -> dict:
     except (TradeError, ValueError) as err:
         raise HTTPException(422, str(err))
     names = {pl.espn_player_id: {"name": pl.name, "position": pl.position, "pro_team": pl.pro_team,
-                                 "on_ir": pl.on_ir, "injury_status": pl.injury_status,
-                                 "nfl_ineligible_weeks": sorted(pl.unavailable_weeks)}
+                                 "on_ir": pl.on_ir, **({"on_taxi": True} if pl.on_taxi else {}),
+                                 "injury_status": pl.injury_status, "nfl_ineligible_weeks": sorted(pl.unavailable_weeks)}
              for ps in state.rosters.values() for pl in ps}
     shown = [x for items in out["sections"].values() for x in items]
     ctx = {opp: _manager_context(con, opp) for opp in sorted({x["opponent_team_id"] for x in shown})}
