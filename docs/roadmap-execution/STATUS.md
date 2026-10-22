@@ -108,6 +108,17 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 **Wave 2 (next):** #201 perf (backend cache/single-flight + timing), #167 onboarding (`app/leagues/*`), then #165
 weekly hub using the #168 contract. #170 runs after these, alone, because it owns Nav/layout/globals.
 
+## Verification receipts (merged)
+`q`=quick, `a`=affected, `s`=security tier, `L`=full local suite, CI=exact-SHA GitHub CI.
+| PR | Final SHA | Local tiers | CI | Notes |
+|---|---|---|---|---|
+| #206 | 11b40f2 | lint/tc/test/build | green | |
+| #208 | d42cee4 | q a s | green | sec review |
+| #207 | 62a6463 | q a s + targeted after main merge | green | 2 CI-only audit failures fixed (cause of D-08) |
+| #233 | 3c53ad6 | q a s + L (1 timing flake) | green | L was redundant with CI (D-08) |
+| #231 | 03d3460 | q a s + L + targeted after main merge | green | L was redundant with CI (D-08) |
+| #230 | 9bce26c | local E2E subsets | green | visual gate pending |
+
 ## Lessons
 
 - `agent_check affected` misses the app-wide source audits (test_weekly_learning, test_dst_research,

@@ -49,6 +49,22 @@ agents never merge.
 - A branch stacked on a squash-merged parent is retargeted to main and merged with main, keeping its own side of
   files the parent already contained, after checking that main matches the parent's final commit there.
 
+## D-08 · 2026-10-22 · Verification budget and one heavyweight local slot
+An audit of #207–#235 found that agents follow the workflow ladder (quick/affected/security). The waste came from
+the coordinator: after `affected` missed the app-wide source audits (fixed in PR #236), it told every agent to run
+the full backend suite locally. Four to six of those ran at once, which caused the Postgres outage, the full disk and
+quick-tier timeouts. Rules from now on:
+- Agents run targeted tests, `quick`, `affected` (which now includes the app-wide audits) and `security` when
+  required. They do not run full backend suites or local Playwright suites; the PR's CI on the exact SHA is the full
+  gate.
+- Only the coordinator runs heavyweight local checks, one at a time (a full shard set or a Playwright suite), and only
+  when CI can't answer the question first (e.g. a merge combining overlapping UI work).
+- An environment failure (connection refused, ENOSPC, initdb) is diagnosed once from the compact log before any
+  rerun, and never reported as a code defect.
+- Bounded mechanical tasks (e.g. fixing a well-specified review finding in a new session) may use a cheaper model.
+  Architecture, security and correctness work keeps the strongest model. Running agents are not interrupted to
+  switch.
+
 ## Open research gates (filled in as work reaches them)
 - #186 news: needs a free source with redistribution rights; otherwise the profile ships without a news tab.
 - #198 coverage/routes: no free licensed coverage data is known; expect a documented "derived stats only" scope.
