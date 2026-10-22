@@ -19,3 +19,4 @@ export { TrendArrow } from "./TrendArrow";
 export { VisuallyHidden } from "./VisuallyHidden";
 export { Verdict, VerdictFigure } from "./Verdict";
 export { Meter } from "./Meter";
+export { ProvenanceBadge } from "./ProvenanceBadge";

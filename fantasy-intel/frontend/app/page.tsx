@@ -6,11 +6,11 @@ import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
-  Badge, EmptyState, Glossary, Method, Notice, PageHeader, Pos, Rating, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
+  Badge, EmptyState, Glossary, Method, Notice, PageHeader, Pos, ProvenanceBadge, Rating, Score, Section, SortableTh, Stat, StatStrip, TrendArrow,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { StartSitInput, WaiverInput } from "@/lib/action-items";
-import { num } from "@/lib/format";
+import { Missing, num } from "@/lib/format";
 import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
@@ -18,6 +18,7 @@ import { ordinal } from "@/lib/matchup";
 import { withSource } from "@/lib/projection-source";
 import { getProjectionSource } from "@/lib/projection-source.server";
 import type { Matchup } from "@/lib/matchup-types";
+import { signalsOf, type WithProvenance } from "@/lib/signal-provenance";
 import { parseSort, sortRows, type SortState } from "@/lib/sort";
 import { isUnknownTeam, readTeamSelection, withTeamId, type Perspective } from "@/lib/team-perspective";
 import type { League, Move, Need, RosterPlayer, SyncInfo, Team } from "@/lib/types";
@@ -29,7 +30,7 @@ export const metadata = { title: { absolute: "Overview · Fantasy Intel" } };
 type Overview = {
   league: League; my_team: Team | null; team: Team | null; perspective: Perspective | null; standings: Team[]; roster: RosterPlayer[]; injuries: RosterPlayer[];
   needs: Need[]; recent_transactions: Move[]; sync: SyncInfo; nfl_latest_week: number | null;
-};
+} & WithProvenance;
 
 const STANDINGS_SORTS = ["rank", "record", "pf", "pa"] as const;
 const STANDINGS_DEFAULT: SortState = { key: "rank", dir: "asc" };
@@ -51,8 +52,8 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
   const provider = providerName(profile.provider);
   // Every section is computed for the selected team (`?team=`); without one, the owner's team as before.
   const matchup = api<Matchup>(withTeamId(withSource("/api/matchup", projection), sel));
-  const startSit = api<StartSitInput>(withTeamId(withSource("/api/start-sit", projection), sel));
-  const waivers = api<{ players: WaiverInput[]; total: number }>(withTeamId("/api/waivers?view=BEST&limit=3", sel));
+  const startSit = api<StartSitInput & WithProvenance>(withTeamId(withSource("/api/start-sit", projection), sel));
+  const waivers = api<{ players: WaiverInput[]; total: number } & WithProvenance>(withTeamId("/api/waivers?view=BEST&limit=3", sel));
   const res = await api<Overview>(withTeamId("/api/overview", sel));
   const band = (
     <Suspense fallback={<WeekBandSkeleton />}>
@@ -103,6 +104,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
         eyebrow={`Week ${o.league.current_week} · ${o.league.name}`}
         title={me ? me.name : "Team overview"}
         meta={`${me ? `${me.wins}–${me.losses}${me.ties ? `–${me.ties}` : ""}${rank ? ` · ${ordinal(rank)} of ${n}` : ""} · ` : ""}${o.league.season} season · ${o.league.size} teams · ${scoring}${o.league.is_faab ? ` · FAAB $${o.league.faab_budget}` : " · waiver priority"}`}
+        provenance={<ProvenanceBadge signals={signalsOf(o.provenance)} />}
         actions={<TeamPerspective path="/" sp={sp} current={me?.team_id ?? null} />}
       />
 
@@ -130,7 +132,9 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
           <Stat label="Pts against" value={num(me.points_against, 1)} note={paRank ? `${ordinal(paRank)} most allowed` : undefined} />
           <Stat
             label={o.league.is_faab ? "FAAB left" : "Waiver priority"}
-            value={o.league.is_faab ? `$${(o.league.faab_budget ?? 0) - (me.faab_spent ?? 0)}` : `#${me.waiver_rank ?? "?"}`}
+            value={o.league.is_faab
+              ? (o.league.faab_budget != null && me.faab_spent != null ? `$${o.league.faab_budget - me.faab_spent}` : <Missing why="FAAB budget or spending not synced" />)
+              : `#${me.waiver_rank ?? "?"}`}
             note={o.league.is_faab ? `of $${o.league.faab_budget ?? "?"}` : `of ${n} teams`}
           />
           <Stat label="Injuries" value={o.injuries.length} note="designations on the roster" />
@@ -181,7 +185,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/">) {
       </div>
 
       <div className="stack">
-        <Section title="Recent league transactions" flush={o.recent_transactions.length > 0}>
+        <Section title="Recent league transactions" flush={o.recent_transactions.length > 0} footnote={o.recent_transactions.length > 0 ? <Link href="/transactions">See all transactions</Link> : undefined}>
           {o.recent_transactions.length === 0
             ? <EmptyState title="No transactions recorded">Adds, drops and trades appear here after the next {provider} sync.</EmptyState>
             : <MovesTable moves={o.recent_transactions} />}

@@ -539,6 +539,11 @@ class StartSitDecision:
     warnings: list[str]
 
 
+
+def _pts_text(value) -> str:
+    """A player's projection in an explanation: a missing one is said to be missing, never shown as 0.0."""
+    return "no projection" if value is None else f"{value:.1f} pts"
+
 def generate_start_sit_decisions(
     actual_starters: list[dict],
     recommended_lineup: list[dict],
@@ -660,11 +665,11 @@ def generate_start_sit_decisions(
     actionability, warnings = evaluate_actionability(start_players + bench_players)
 
     starts_desc = ", ".join(
-        f"{p.get('full_name')} ({projections.get(p.get('espn_player_id'), 0):.1f} pts)"
+        f"{p.get('full_name')} ({_pts_text(projections.get(p.get('espn_player_id')))})"
         for p in start_players
     )
     benches_desc = ", ".join(
-        f"{p.get('full_name')} ({projections.get(p.get('espn_player_id'), 0):.1f} pts)"
+        f"{p.get('full_name')} ({_pts_text(projections.get(p.get('espn_player_id')))})"
         for p in bench_players
     )
     gain_str = f"+{net_gain:.1f}" if net_gain is not None and net_gain > 0 else (f"{net_gain}" if net_gain is not None else "an unknown")

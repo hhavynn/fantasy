@@ -25,8 +25,19 @@ export type MyLeague = {
   pinned: boolean;
   teamId: string | null;              // the saved perspective
   syncState: string;                  // ready | first_sync_queued | first_sync_running | first_sync_failed | no_data
+  /** Why the latest sync job is retrying or gave up (backend authz._sync_issue), or null when nothing went wrong. */
+  syncIssue: SyncIssue | null;
   committedAt: string | null;         // when the served version was published
 };
+
+export type SyncIssue = "provider_unreachable" | "access" | "not_found" | "internal";
+const SYNC_ISSUES: readonly string[] = ["provider_unreachable", "access", "not_found", "internal"];
+
+/** The backend's category; a value this client does not know reads as "internal" (something went wrong). */
+export function parseSyncIssue(value: unknown): SyncIssue | null {
+  if (typeof value !== "string" || !value) return null;
+  return (SYNC_ISSUES.includes(value) ? value : "internal") as SyncIssue;
+}
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
@@ -46,6 +57,7 @@ export function parseMyLeague(raw: unknown): MyLeague | null {
     pinned: raw.pinned === true,
     teamId: str(raw.perspective_team_id),
     syncState: str(raw.sync_state) ?? "no_data",
+    syncIssue: parseSyncIssue(raw.sync_issue),
     committedAt: data ? str(data.committed_at) : null,
   };
 }
@@ -61,7 +73,7 @@ export function leagueName(l: Pick<MyLeague, "name" | "externalId"> & { provider
 }
 
 /** What a reader of this league sees right now, in words, and how worried to be. */
-export function leagueState(l: Pick<MyLeague, "status" | "syncState" | "visibility"> & { provider?: string }): { label: string; tone: Tone; detail: string } {
+export function leagueState(l: Pick<MyLeague, "status" | "syncState" | "visibility"> & { provider?: string; syncIssue?: SyncIssue | null }): { label: string; tone: Tone; detail: string } {
   // Sleeper leagues are always public and need no cookies: a pause or a missing league is Sleeper's answer, not a credential.
   if (normalizeProvider(l.provider) === "sleeper" && (l.status === "stale" || l.status === "unavailable")) {
     const name = providerName(l.provider);
@@ -84,10 +96,25 @@ export function leagueState(l: Pick<MyLeague, "status" | "syncState" | "visibili
   }
   switch (l.syncState) {
     case "ready": return { label: "Up to date", tone: "good", detail: "Syncs every few hours, hourly on game days." };
-    case "first_sync_queued": return { label: "First sync queued", tone: "info", detail: "Usually ready within a few minutes." };
+    case "first_sync_queued":
+      return l.syncIssue
+        ? { label: "Retrying first sync", tone: "warn", detail: `${issueSentence(l.syncIssue, providerName(l.provider))} It is retried automatically.` }
+        : { label: "First sync queued", tone: "info", detail: "Usually ready within a few minutes." };
     case "first_sync_running": return { label: "First sync running", tone: "info", detail: "Usually ready within a few minutes." };
-    case "first_sync_failed": return { label: "First sync failed", tone: "bad", detail: "It is retried automatically; you can also refresh it." };
+    case "first_sync_failed":
+      return { label: "First sync failed", tone: "bad",
+        detail: `${l.syncIssue ? `${issueSentence(l.syncIssue, providerName(l.provider))} ` : ""}It stopped after repeated tries; refresh to try again.` };
     default: return { label: "No data yet", tone: "neutral", detail: "Refresh to start a sync." };
+  }
+}
+
+/** One plain sentence for why a sync job is retrying or stopped. */
+export function issueSentence(issue: SyncIssue, provider: string): string {
+  switch (issue) {
+    case "provider_unreachable": return `${provider} did not answer.`;
+    case "access": return `${provider} refused access to this league.`;
+    case "not_found": return `${provider} could not find this league.`;
+    default: return "Something went wrong on our side while building the league.";
   }
 }
 

@@ -69,3 +69,49 @@
   font-size: 13px; overflow-wrap: anywhere; }
 .inviteList { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
 .inviteList li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+
+/* Issue #167: the connect journey (choose the host, enter the league, first sync) */
+.flow { display: grid; gap: 16px; min-width: 0; }
+.stepper { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 20px; counter-reset: none; }
+.stepper li { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; line-height: 19px; color: var(--ink-faint); }
+.stepNumber { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; flex: none;
+  border: 1px solid var(--line-control); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.step-done { color: var(--ink-muted); }
+.step-done .stepNumber { border-color: var(--positive); color: var(--positive); }
+.step-current { color: var(--ink); font-weight: 600; }
+.step-current .stepNumber { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.capsLead { color: var(--ink); font-weight: 600; }
+.problemText { margin: 0 0 6px; }
+.problemText:last-child { margin-bottom: 0; }
+/* Links that act as the step's primary (or secondary) control: the button look, never a dead button. */
+.linkButton, .linkButtonSecondary {
+  justify-self: start; display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; max-width: 100%;
+  border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; text-decoration: none; border: 1px solid var(--accent);
+}
+.linkButton { background: var(--accent); color: var(--on-accent); }
+.linkButtonSecondary { background: transparent; color: var(--ink); border-color: var(--line-control); }
+.linkButton:hover, .linkButtonSecondary:hover { filter: brightness(1.08); text-decoration: none; }
+
+/* Step 3: the first sync */
+.progress { display: grid; gap: 12px; min-width: 0; padding: 14px 16px; background: var(--surface-raised);
+  border: 1px solid var(--line); border-radius: var(--radius); }
+.progressHeadline { margin: 0; font-size: 15px; line-height: 21px; font-weight: 600; color: var(--ink); }
+.progressSteps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.progressSteps li { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 2px 12px; align-items: baseline;
+  padding-left: 10px; border-left: 3px solid var(--line-control); }
+.progressSteps .detailLine { grid-column: 2; }
+.psState { font-size: 11px; line-height: 16px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.psLabel { font-size: 14px; line-height: 20px; color: var(--ink); overflow-wrap: anywhere; }
+.progressSteps li.ps-done { border-left-color: var(--positive); }
+.ps-done .psState { color: var(--positive); }
+.progressSteps li.ps-current, .progressSteps li.ps-waiting { border-left-color: var(--accent); }
+.ps-current .psState, .ps-waiting .psState { color: var(--accent); }
+.progressSteps li.ps-failed { border-left-color: var(--negative); }
+.ps-failed .psState { color: var(--negative); }
+.ps-todo .psLabel { color: var(--ink-muted); }
+
+@media (max-width: 720px) {
+  .linkButton, .linkButtonSecondary { min-height: var(--tap); width: 100%; justify-content: center; }
+  .progressSteps li { grid-template-columns: minmax(0, 1fr); }
+  .progressSteps .detailLine { grid-column: 1; }
+}

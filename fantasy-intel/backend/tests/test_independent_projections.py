@@ -391,6 +391,9 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "situational_usage.py",   # research-only situational usage splits ifp-su (never imported by the app)
                # kicker model: reconciliation scores a kicker's rare offensive stats (fakes) with the skill weights
                "kicker_scoring.py",
+               # read-only League rules page: names the league's scoring rules and reports whether Ours supports them
+               # (league_scoring's labels and support check only; it never reads a projection)
+               "league_rules.py",
                # local-only writer of the final-designation re-projection run (never imported by the app, see
                # tests/test_final_reprojection.py::test_the_app_never_imports_the_reprojection_writer)
                "final_reprojection.py"}
@@ -445,7 +448,8 @@ def test_projection_switch_is_opt_in_and_limited_to_weekly_views():
                "analytics/projection_ranges.py"}   # floor / ceiling ranges around the switch's run (select_run only)
     # engines that read the league's default source (Ours only for a league without provider projections)
     engines = {"analytics/trade_data.py", "analytics/waiver_data.py",
-               "api/routes.py"}   # GET /api/league-profile names the league's default source (default_source only)
+               "api/routes.py",   # GET /api/league-profile names the league's default source (default_source only)
+               "api/signal_provenance.py"}   # labels which projections a page shows (default_source only)
     assert switch <= users <= switch | readers | engines
     assert {f for f in users if re.search(r"\bweekly\(", (APP / f).read_text())} == switch
 

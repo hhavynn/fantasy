@@ -1,0 +1,371 @@
+// /api/league-rules
+{
+ "body": {
+  "contract": "league-rules/v1",
+  "engine_support": [
+   {
+    "detail": "Filled by every projected lineup.",
+    "rule": "Flex slot",
+    "status": "handled"
+   },
+   {
+    "detail": "ESPN projects every player in this league's own scoring; those numbers are shown unmodified by default.",
+    "rule": "Projections in this league's scoring",
+    "status": "handled"
+   },
+   {
+    "detail": "Fantasy Intel's own projections are scored with this league's rules.",
+    "rule": "Ours projections (QB, RB, WR, TE)",
+    "status": "handled"
+   },
+   {
+    "detail": "Kicker projections abstain: the league awards no points for field goals.",
+    "rule": "Kicker projections",
+    "status": "unsupported"
+   },
+   {
+    "detail": "D/ST projections abstain: the league scores no D/ST statistics.",
+    "rule": "D/ST projections",
+    "status": "unsupported"
+   },
+   {
+    "detail": "Start/Sit locks each player at his own game's kickoff. ESPN's rule for this league is not in the synced settings, so that assumption is not verified.",
+    "rule": "Lineup lock",
+    "status": "unverified"
+   }
+  ],
+  "league": {
+   "league_type": {
+    "display": null,
+    "reason": "Redraft, keeper or dynasty is not in the synced settings.",
+    "value": null
+   },
+   "name": "Fixture League",
+   "season": 2026,
+   "team_count": {
+    "display": "4",
+    "reason": null,
+    "value": 4
+   }
+  },
+  "lineup_lock": {
+   "display": null,
+   "reason": "The synced settings do not include a lineup-lock rule.",
+   "value": null
+  },
+  "playoffs": {
+   "final_week": {
+    "display": "Week 17",
+    "reason": null,
+    "value": 17
+   },
+   "regular_season": {
+    "display": "14 matchup periods",
+    "reason": null,
+    "value": 14
+   },
+   "round_length": {
+    "display": null,
+    "reason": "The synced settings do not include the playoff round length.",
+    "value": null
+   },
+   "start": {
+    "display": "Matchup period 15",
+    "reason": null,
+    "value": 15
+   },
+   "teams": {
+    "display": "2",
+    "reason": null,
+    "value": 2
+   }
+  },
+  "roster": {
+   "bench": 3,
+   "flex_types": [
+    "FLEX"
+   ],
+   "injured_reserve": 1,
+   "position_limits": {
+    "display": null,
+    "reason": "The synced settings do not include per-position roster limits.",
+    "value": null
+   },
+   "slots": [
+    {
+     "code": "QB",
+     "count": 1,
+     "eligible": [
+      "QB"
+     ],
+     "eligible_reason": null,
+     "engine": {
+      "note": "Filled by every projected lineup.",
+      "status": "handled"
+     },
+     "kind": "starter",
+     "name": "Quarterback"
+    },
+    {
+     "code": "RB",
+     "count": 2,
+     "eligible": [
+      "RB"
+     ],
+     "eligible_reason": null,
+     "engine": {
+      "note": "Filled by every projected lineup.",
+      "status": "handled"
+     },
+     "kind": "starter",
+     "name": "Running back"
+    },
+    {
+     "code": "WR",
+     "count": 2,
+     "eligible": [
+      "WR"
+     ],
+     "eligible_reason": null,
+     "engine": {
+      "note": "Filled by every projected lineup.",
+      "status": "handled"
+     },
+     "kind": "starter",
+     "name": "Wide receiver"
+    },
+    {
+     "code": "TE",
+     "count": 1,
+     "eligible": [
+      "TE"
+     ],
+     "eligible_reason": null,
+     "engine": {
+      "note": "Filled by every projected lineup.",
+      "status": "handled"
+     },
+     "kind": "starter",
+     "name": "Tight end"
+    },
+    {
+     "code": "FLEX",
+     "count": 1,
+     "eligible": [
+      "RB",
+      "WR",
+      "TE"
+     ],
+     "eligible_reason": null,
+     "engine": {
+      "note": "Filled by an exact search over every eligible player, so mixed flex slots are never filled in the wrong order.",
+      "status": "handled"
+     },
+     "kind": "starter",
+     "name": "Flex"
+    },
+    {
+     "code": "K",
+     "count": 1,
+     "eligible": [
+      "K"
+     ],
+     "eligible_reason": null,
+     "engine": {
+      "note": "Filled by every projected lineup.",
+      "status": "handled"
+     },
+     "kind": "starter",
+     "name": "Kicker"
+    },
+    {
+     "code": "D/ST",
+     "count": 1,
+     "eligible": [
+      "D/ST"
+     ],
+     "eligible_reason": null,
+     "engine": {
+      "note": "Filled by every projected lineup.",
+      "status": "handled"
+     },
+     "kind": "starter",
+     "name": "Team defense and special teams"
+    },
+    {
+     "code": "BE",
+     "count": 3,
+     "eligible": [],
+     "eligible_reason": null,
+     "engine": {
+      "note": "Bench players are candidates for every starting slot they are eligible for.",
+      "status": "handled"
+     },
+     "kind": "bench",
+     "name": "Bench"
+    },
+    {
+     "code": "IR",
+     "count": 1,
+     "eligible": [],
+     "eligible_reason": null,
+     "engine": {
+      "note": "Players on injured reserve never start in a projected lineup and do not use an active roster spot.",
+      "status": "handled"
+     },
+     "kind": "ir",
+     "name": "Injured reserve"
+    }
+   ],
+   "starters": {
+    "display": "9",
+    "reason": null,
+    "value": 9
+   },
+   "superflex": false,
+   "taxi": 0
+  },
+  "scoring": {
+   "format": {
+    "display": "Full PPR",
+    "reason": null,
+    "value": "ppr"
+   },
+   "highlights": [
+    {
+     "display": null,
+     "label": "Passing TD",
+     "reason": "No rule for this statistic in the synced scoring.",
+     "value": null
+    },
+    {
+     "display": null,
+     "label": "Passing yards",
+     "reason": "No rule for this statistic in the synced scoring.",
+     "value": null
+    },
+    {
+     "display": null,
+     "label": "Interception thrown",
+     "reason": "No rule for this statistic in the synced scoring.",
+     "value": null
+    },
+    {
+     "display": null,
+     "label": "Rushing TD",
+     "reason": "No rule for this statistic in the synced scoring.",
+     "value": null
+    },
+    {
+     "display": null,
+     "label": "Rushing yards",
+     "reason": "No rule for this statistic in the synced scoring.",
+     "value": null
+    },
+    {
+     "display": null,
+     "label": "Receiving TD",
+     "reason": "No rule for this statistic in the synced scoring.",
+     "value": null
+    },
+    {
+     "display": null,
+     "label": "Receiving yards",
+     "reason": "No rule for this statistic in the synced scoring.",
+     "value": null
+    },
+    {
+     "display": null,
+     "label": "Fumble lost",
+     "reason": "No rule for this statistic in the synced scoring.",
+     "value": null
+    }
+   ],
+   "points_per_reception": {
+    "display": "1 per reception",
+    "reason": null,
+    "value": 1.0
+   },
+   "rules": [
+    {
+     "by_position": [],
+     "by_slot": [],
+     "group": "Receiving",
+     "key": "53",
+     "label": "Reception",
+     "mapped": true,
+     "points": 1.0,
+     "reverse": false
+    }
+   ],
+   "rules_source": "ESPN's scoring items",
+   "scoring_type": {
+    "display": "Head-to-head points",
+    "reason": null,
+    "value": "h2h_points"
+   },
+   "te_premium": {
+    "display": "None",
+    "reason": null,
+    "value": 0.0
+   },
+   "te_premium_scope": null,
+   "zero_rules": 0
+  },
+  "source": {
+   "captured_at": "<masked>",
+   "note": "Read from the ESPN settings saved by the last sync. Nothing on this page is fetched live, and nothing here can change the league's settings.",
+   "provider": "espn",
+   "provider_label": "ESPN"
+  },
+  "trades": {
+   "deadline": {
+    "display": "Mon 3 Nov 2025 (UTC)",
+    "reason": null,
+    "value": "<masked>"
+   },
+   "review": {
+    "display": null,
+    "reason": "The synced settings do not include a trade review period.",
+    "value": null
+   }
+  },
+  "unmapped": [
+   {
+    "area": "Setting",
+    "key": "scheduleSettings.matchupPeriodLength",
+    "reason": "Provider setting Fantasy Intel does not interpret.",
+    "value": 1
+   },
+   {
+    "area": "Setting",
+    "key": "scheduleSettings.matchupPeriods",
+    "reason": "Provider setting Fantasy Intel does not interpret.",
+    "value": null
+   }
+  ],
+  "waivers": {
+   "faab_budget": {
+    "display": "$100",
+    "reason": null,
+    "value": 100
+   },
+   "period": {
+    "display": null,
+    "reason": "The synced settings do not include the waiver period.",
+    "value": null
+   },
+   "process_days": {
+    "display": null,
+    "reason": "The synced settings do not include the waiver processing days.",
+    "value": null
+   },
+   "type": {
+    "display": "FAAB bidding",
+    "reason": null,
+    "value": "faab"
+   }
+  }
+ },
+ "status": 200
+}

@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { CompareLink } from "@/components/CompareLink";
 import { PlayerPhoto } from "@/components/PlayerPhoto";
-import { Badge, Glossary, Notice, PageHeader, Pos, Rating, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
+import { Badge, Glossary, Notice, PageHeader, Pos, ProvenanceBadge, Rating, Section, Stat, StatStrip, TrendArrow } from "@/components/ui";
 import { label, num, pct, signed } from "@/lib/format";
 import { isOursNumber, oursBlock, oursByWeek } from "@/lib/forward-view";
 import { OWNERSHIP_UNAVAILABLE, ownershipAvailable, providerName } from "@/lib/labels";
 import { ESPN_PROFILE, type LeagueProfile } from "@/lib/league-profile";
 import { RATING_CAVEAT, ratingFor } from "@/lib/ratings";
 import { metricLabel, tidyReason } from "@/lib/reason-text";
+import { signalsOf } from "@/lib/signal-provenance";
 import { BASIS_LABEL } from "@/lib/types";
 import { ForwardView } from "./ForwardView";
 import { GameLog } from "./GameLog";
@@ -98,6 +99,7 @@ function ProfileHeader({ d, q, profile }: { d: Detail; q: string; profile: Leagu
           {hasInjuryDesignation(p.injury_status) && <Badge value={p.injury_status} title={`${provider} injury designation`} />}
         </span>
       }
+      provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
       actions={<>
         <CompareLink a={p.espn_player_id} aName={p.full_name} />
         <RankingsLink position={p.position} />

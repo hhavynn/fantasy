@@ -115,6 +115,29 @@ def test_sync_state_before_the_first_publish(pg, plane, states, job, expected):
     assert a.snapshot is None and a.sync_state == expected and a.to_json()["data"] is None
 
 
+@pytest.mark.parametrize("job,code,expected", [
+    ("queued", None, None),                                     # a first attempt: nothing went wrong yet
+    ("running", "network", None),                               # running again: the old code is not an issue
+    ("queued", "provider_5xx", "provider_unreachable"),         # waiting to retry
+    ("queued", "probe_unknown", "provider_unreachable"),
+    ("dead", "provider_auth", "access"),
+    ("dead", "no_credential", "access"),
+    ("dead", "provider_not_found", "not_found"),
+    ("dead", "parse_error", "internal"),
+    ("failed", "something_new", "internal"),                    # an unknown code is never shown, only its category
+    ("succeeded", "network", None),
+])
+def test_sync_issue_is_a_category_never_the_worker_code(pg, plane, states, job, code, expected):
+    lid = states["public_fresh"]
+    with pg.connect() as con:
+        seed_job(con, lid, status=job, error_code=code)
+        con.commit()
+    a = authorize_league(plane, ANON, lid)
+    assert a.sync_issue == expected and a.to_json()["sync_issue"] == expected
+    body = str(a.to_json())
+    assert "redacted detail" not in body and (code is None or expected == code or f"'{code}'" not in body)
+
+
 def test_a_revoked_member_of_a_private_league_is_a_stranger(pg, plane, states):
     with pg.connect() as con:
         con.execute("UPDATE fi.league_memberships SET revoked_at = now() WHERE user_id = %s AND league_id = %s",
