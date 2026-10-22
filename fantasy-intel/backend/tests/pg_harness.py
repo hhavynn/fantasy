@@ -218,6 +218,9 @@ def _validate_test_db_name(name: str) -> None:
         )
 
 
+SETUP_LOCK_KEY = 0x46495F5047  # cluster-wide advisory lock key for test database setup
+
+
 class PgDatabase:
     """One database with the shim + migrations applied. Connections for any role of the test cluster."""
     MIGRATIONS = sorted(MIGRATIONS_DIR.glob("*.sql"))
@@ -233,9 +236,17 @@ class PgDatabase:
     def create(self) -> None:
         self.terminate_other_backends()
         db_ident = psycopg.sql.Identifier(self.name)
-        with psycopg.connect(self.cluster.superuser_dsn(), autocommit=True) as con:
-            con.execute(psycopg.sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(db_ident))
-            con.execute(psycopg.sql.SQL("CREATE DATABASE {}").format(db_ident))
+        # Roles are cluster-wide: two sessions setting up their own databases at once race on the shim's and the
+        # migration's CREATE ROLE and on ALTER ROLE ("tuple concurrently updated"). A session advisory lock held on
+        # the shared maintenance database serializes setup across every session using this cluster; closing the
+        # connection releases it.
+        with psycopg.connect(self.cluster.superuser_dsn(), autocommit=True) as lock:
+            lock.execute("SELECT pg_advisory_lock(%s)", [SETUP_LOCK_KEY])
+            lock.execute(psycopg.sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(db_ident))
+            lock.execute(psycopg.sql.SQL("CREATE DATABASE {}").format(db_ident))
+            self._apply_schema()
+
+    def _apply_schema(self) -> None:
         with psycopg.connect(self.cluster.superuser_dsn(self.name), autocommit=True) as con:
             con.execute(SHIM.read_text())
             for path in self.MIGRATIONS:
