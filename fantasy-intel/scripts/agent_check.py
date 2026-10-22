@@ -161,7 +161,7 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
 
 # App-wide source audits: they read every file under backend/app/ (forbidden research imports, the documented readers
 # of projection_source / league_scoring), so a NEW app module can break them without any mapping pointing at them.
-# They are fast; `affected` adds them whenever an app/ source file changes so CI is not the first place they run.
+# They are fast; `affected` adds them whenever an app/ .py or .sql source changes so CI is not the first place they run.
 APP_WIDE_AUDITS: list[str] = [
     "tests/test_weekly_learning.py",
     "tests/test_dst_research.py",
@@ -178,6 +178,9 @@ def validate_test_mappings() -> list[str]:
     for s in SECURITY_SUITES:
         if not (BACKEND_DIR / s).is_file():
             stale.append(f"Security suite: test file '{s}' does not exist on disk")
+    for a in APP_WIDE_AUDITS:
+        if not (BACKEND_DIR / a).is_file():
+            stale.append(f"App-wide audit: test file '{a}' does not exist on disk")
     return stale
 
 
@@ -619,7 +622,7 @@ class VerificationRunner:
                         unmapped_files.append(f)
 
         # 2b. App-wide source audits whenever any backend app/ source changed (including new modules).
-        if any("backend/app/" in p.replace("\\", "/") and p.endswith(".py") for p in all_source_paths):
+        if any("backend/app/" in p.replace("\\", "/") and p.endswith((".py", ".sql")) for p in all_source_paths):
             for t in APP_WIDE_AUDITS:
                 if t not in backend_tests and (BACKEND_DIR / t).is_file():
                     backend_tests.append(t)

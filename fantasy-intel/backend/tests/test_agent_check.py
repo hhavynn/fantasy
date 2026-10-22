@@ -93,8 +93,16 @@ def test_infer_affected_tests_adds_app_wide_audits_for_a_new_app_module():
     tests, _, unmapped = runner.infer_affected_tests(["fantasy-intel/backend/app/analytics/brand_new_feature.py"])
     assert all(t in tests for t in APP_WIDE_AUDITS)
     assert "fantasy-intel/backend/app/analytics/brand_new_feature.py" in unmapped   # conservative fallback kept
+    tests, _, _ = runner.infer_affected_tests(["fantasy-intel/backend/app/db/schema.sql"])   # the audits read .sql too
+    assert all(t in tests for t in APP_WIDE_AUDITS)
     tests, _, _ = runner.infer_affected_tests(["fantasy-intel/frontend/app/page.tsx"])
     assert not any(t in tests for t in APP_WIDE_AUDITS)
+
+
+def test_validate_test_mappings_reports_a_missing_app_wide_audit(monkeypatch):
+    import agent_check
+    monkeypatch.setattr(agent_check, "APP_WIDE_AUDITS", ["tests/test_no_such_audit.py"])
+    assert any("App-wide audit" in e for e in agent_check.validate_test_mappings())
 
 def test_infer_affected_tests_for_sync_worker():
     runner = VerificationRunner(mode="affected")
