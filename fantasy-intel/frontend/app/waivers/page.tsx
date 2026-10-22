@@ -4,6 +4,8 @@ import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import {
   Glossary, Method, Notice, PageHeader, Section, Tabs,
 } from "@/components/ui";
+import { currentLeague } from "@/lib/league-scope.server";
+import { ShortlistProvider, WaiverShortlist } from "./Shortlist";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { OWNERSHIP_UNAVAILABLE, ownershipAvailable, projectionName, providerName } from "@/lib/labels";
@@ -96,6 +98,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
       </div>
     );
   }
+  const league = await currentLeague();
   const { players, computed_at, coverage, total, perspective } = res.data;
 
   // Ranked order is the backend's. A sort key re-orders the whole view, then it is paged.
@@ -116,6 +119,7 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
     : { title: "No players match this view", body: `Loosen the position or recommendation filter, or inspect all evaluated players. Refresh ${pv} and NFL data if snapshots are missing.`, href: chipHref({ view: "ALL", pos: null, rec: null }), linkText: "Browse all evaluated players" };
 
   return (
+    <ShortlistProvider key={league?.id ?? "unscoped"} leagueId={league?.id ?? null}>
     <div className="stack">
       <PageHeader
         eyebrow="Waivers"
@@ -133,6 +137,10 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
       {band.ok
         ? <TopClaims top={top} position={pos} provider={pv} ownership={ownership} />
         : <Notice tone="caution" title="Top claims are unavailable">{band.error}</Notice>}
+
+      <WaiverShortlist players={[...players, ...(band.ok ? band.data.players : [])].map((player) => ({
+        id: player.espn_player_id, name: player.full_name, position: player.position, team: player.pro_team,
+      }))} />
 
       <div className={styles.filters}>
         <Tabs label="Waiver decision views" items={viewItems} current={currentView} />
@@ -217,5 +225,6 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
         </div>
       </Method>
     </div>
+    </ShortlistProvider>
   );
 }

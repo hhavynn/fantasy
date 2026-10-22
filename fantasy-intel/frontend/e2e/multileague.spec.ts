@@ -114,3 +114,125 @@ test("a link across the league boundary re-renders the header, both ways", async
   await expect(page).toHaveURL(new RegExp(`/l/${lg}$`));
   await expect(page.locator("button.sync-pill")).toBeVisible();
 });
+
+// Shortlist uses the real scoped page/API and browser storage; no mocked waiver responses.
+for (const width of [1440, 375]) {
+  test(`shortlist save reload remove and league isolation at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const { espn_public: a, sleeper: b } = manifest().leagues;
+    await page.goto(`/l/${b}/waivers?view=ALL`);
+    await expect(page.getByRole("region", { name: "Waiver shortlist" })).toBeVisible();
+    await page.goto(`/l/${a}/waivers?view=ALL`);
+    const section = page.getByRole("region", { name: "Waiver shortlist" });
+    await expect(section).toContainText("No saved players yet");
+    await expect(section).toContainText("this device");
+    const save = page.locator("table").getByRole("button", { name: /^Save .* to shortlist$/ }).first();
+    await expect(save).toBeEnabled();
+    const id = Number(await save.getAttribute("data-player-id"));
+    const name = (await save.getAttribute("aria-label"))!.replace(/^Save /, "").replace(/ to shortlist$/, "");
+    const box = await save.boundingBox();
+    expect(box && box.height >= 44 && box.width >= 44).toBe(true);
+    await save.focus();
+    await expect(save).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(section).toContainText(name);
+    if (width === 375) await section.screenshot({ path: test.info().outputPath("shortlist-mobile.png") });
+    await expect(page.locator(`table button[data-player-id="${id}"]`)).toHaveAttribute("aria-pressed", "true");
+    await page.reload();
+    await expect(section).toContainText(name);
+    expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), `fi:waiver-shortlist:v1:${a}`)).toEqual([id]);
+    // Client navigation between leagues must never carry A's state into B.
+    await page.locator("summary").filter({ hasText: /^Fixture League/ }).click();
+    await page.getByRole("menuitem", { name: "Sleeper Fixture League" }).click();
+    await page.goto(`/l/${b}/waivers?view=ALL`);
+    await expect(section).toContainText("No saved players yet");
+    const saveB = page.locator("table").getByRole("button", { name: /^Save .* to shortlist$/ }).first();
+    await saveB.click();
+    await page.goto(`/l/${a}/waivers?view=ALL`);
+    await expect(section).toContainText(name);
+    await section.getByRole("button", { name: `Remove ${name} from shortlist` }).focus();
+    await page.keyboard.press("Space");
+    await expect(section).toContainText("No saved players yet");
+    await page.reload();
+    await expect(section).toContainText("No saved players yet");
+    await page.goto(`/l/${b}/waivers?view=ALL`);
+    await expect(section.getByRole("listitem")).toHaveCount(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  });
+}
+
+test("shortlist missing loaded data is unknown, removable, and independent of filters and advice", async ({ page }) => {
+  const a = manifest().leagues.espn_public;
+  await page.goto(`/l/${a}/waivers?view=ALL`);
+  const save = page.locator("table").getByRole("button", { name: /^Save .* to shortlist$/ }).first();
+  await expect(save).toBeEnabled();
+  const id = Number(await save.getAttribute("data-player-id"));
+  const name = (await save.getAttribute("aria-label"))!.replace(/^Save /, "").replace(/ to shortlist$/, "");
+  const top = page.getByRole("region", { name: "Top claims" });
+  const advice = () => top.evaluate((element) => {
+    const copy = element.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll("button").forEach((button) => button.remove());
+    return copy.textContent;
+  });
+  const before = await advice();
+  await save.click();
+  expect(await advice()).toBe(before);
+  await page.goto(`/l/${a}/waivers?view=ALL&offset=360`);
+  await expect(page.getByRole("region", { name: "Waiver shortlist" })).toContainText(name);
+  // Valid saved ID absent from both loaded sets: absence is not proof of availability.
+  await page.evaluate(({ key, id }) => localStorage.setItem(key, JSON.stringify([id, 999999999])), { key: `fi:waiver-shortlist:v1:${a}`, id });
+  await page.goto(`/l/${a}/waivers?view=ALL&pos=K`);
+  const section = page.getByRole("region", { name: "Waiver shortlist" });
+  await expect(section).toContainText(`Player #${id}`);
+  await expect(section).toContainText("Player #999999999");
+  await expect(section).toContainText("Current data not loaded");
+  await expect(section).not.toContainText(/unavailable|waiver score/i);
+  await expect(page.locator("details.filter-box > summary").first()).toContainText("K");
+  await section.getByRole("button", { name: "Remove Player #999999999 from shortlist" }).click();
+  await expect(section).not.toContainText("Player #999999999");
+});
+
+for (const raw of ["{", '[{"full_name":"Stale player","waiver_score":10}]']) {
+  test(`shortlist malformed storage recovers: ${raw}`, async ({ page }) => {
+    const a = manifest().leagues.espn_public;
+    await page.addInitScript(({ key, raw }) => localStorage.setItem(key, raw), { key: `fi:waiver-shortlist:v1:${a}`, raw });
+    await page.goto(`/l/${a}/waivers?view=ALL`);
+    await expect(page.getByRole("region", { name: "Waiver shortlist" })).toContainText("No saved players yet");
+    await page.locator("table").getByRole("button", { name: /^Save .* to shortlist$/ }).first().click();
+    await expect(page.getByRole("region", { name: "Waiver shortlist" }).getByRole("listitem")).toHaveCount(1);
+  });
+}
+
+for (const operation of ["getItem", "setItem"]) {
+  test(`shortlist storage ${operation} failure stays usable and reports session-only state`, async ({ page }) => {
+    await page.addInitScript((operation) => {
+      const original = Storage.prototype[operation];
+      Object.defineProperty(Storage.prototype, operation, { value: function (this: Storage, ...args: string[]) {
+        if (args[0].startsWith("fi:waiver-shortlist:")) throw new DOMException("Denied", "SecurityError");
+        return Reflect.apply(original, this, args);
+      } });
+    }, operation);
+    await page.goto(`/l/${manifest().leagues.espn_public}/waivers?view=ALL`);
+    const section = page.getByRole("region", { name: "Waiver shortlist" });
+    await page.locator("table").getByRole("button", { name: /^Save .* to shortlist$/ }).first().click();
+    await expect(section.getByRole("listitem")).toHaveCount(1);
+    await expect(section).toContainText("this visit only");
+    await section.getByRole("button", { name: /^Remove/ }).click();
+    await expect(section).toContainText("No saved players yet");
+  });
+}
+
+
+test("shortlist denied localStorage getter does not crash the page", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", { get() { throw new DOMException("Denied", "SecurityError"); } });
+  });
+  await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
+  const errors = collectErrors(page);
+  await page.goto(`/l/${manifest().leagues.espn_public}/waivers?view=ALL`);
+  const section = page.getByRole("region", { name: "Waiver shortlist" });
+  await expect(section).toContainText("this visit only");
+  await page.locator("table").getByRole("button", { name: /^Save .* to shortlist$/ }).first().click();
+  await expect(section.getByRole("listitem")).toHaveCount(1);
+  expect(errors).toEqual([]);
+});

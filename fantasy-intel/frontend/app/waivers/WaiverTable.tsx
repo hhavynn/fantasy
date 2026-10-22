@@ -1,3 +1,4 @@
+import { SavePlayer } from "./Shortlist";
 import Link from "next/link";
 import { PlayerIdentity } from "@/components/PlayerIdentity";
 import { Badge, EmptyState, Score, SortableTh } from "@/components/ui";
@@ -59,6 +60,7 @@ export function WaiverTable({ rows, sort, sp, empty, ownership = true, proj = "E
                       {hasInjuryDesignation(w.injury_status) && <Badge value={w.injury_status} />}
                     </>}
                   />
+                  <SavePlayer id={w.espn_player_id} name={w.full_name} />
                 </td>
                 <td className={styles.move}>
                   <div className={styles.moveHead}>
