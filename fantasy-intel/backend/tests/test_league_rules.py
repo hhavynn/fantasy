@@ -219,7 +219,7 @@ def test_unusual_sleeper_rules_from_the_league_file(sleeper_con):
     rules = by_rule(out)
     assert rules["Superflex (OP) slot"]["status"] == PARTIAL
     assert rules["Several flex slot types"]["status"] == HANDLED
-    assert rules["Taxi squad"]["status"] == UNSUPPORTED
+    assert rules["Taxi squad"]["status"] == HANDLED and "never start" in rules["Taxi squad"]["detail"]   # #228
     assert rules["Starting slots no engine fills"]["status"] == UNSUPPORTED
     ours = rules["Projections (Ours, QB, RB, WR, TE)"]
     assert ours["status"] == UNSUPPORTED and "zz_new_rule" in ours["detail"]
