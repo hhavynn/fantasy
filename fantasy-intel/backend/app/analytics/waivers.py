@@ -12,10 +12,11 @@ from dataclasses import dataclass, field
 from statistics import mean
 
 from ..db.connection import fetch_dicts, replace_where, table_exists, utcnow
-from ..espn.constants import FANTASY_POSITIONS, IR_SLOT
+from ..espn.constants import FANTASY_POSITIONS
 from .availability import ESPN_STATUS, NFL_REPORT_STATUS, availability, latest_injuries
 from .lineup import FIXED_SLOTS, assign_lineup, lineup_gain, lineup_slots
 from .player_scores import percentile_scores, percentile_scores_100
+from .reserve_slots import is_reserved, is_taxi
 from .waiver_roster import plan_roster_move
 from .waiver_decisions import acquisition_utility, classify_action, evaluate_streaming, resource_diagnostics
 from .waiver_data import (attach_roster_evidence, comparable_free_agents, load_waiver_context, select_candidates,
@@ -72,11 +73,13 @@ class PlayerValue:
 def team_state(roster: list[dict], values: dict[int, PlayerValue], roster_slots: dict[str, int]) -> dict:
     """Availability-weighted players and the team's optimal current lineup.
 
-    roster rows: espn_player_id, position, lineup_slot_id, injury_status, nfl_report_status, full_name.
+    roster rows: espn_player_id, position, lineup_slot_id, injury_status, nfl_report_status, full_name; lineup_slot
+    (optional) marks a Sleeper taxi-squad player, who stays on the roster but never enters the lineup.
     """
     players = []
     for p in roster:
-        av = availability(p.get("injury_status"), p.get("lineup_slot_id"), p.get("nfl_report_status"))
+        taxi = is_taxi(p)
+        av = availability(p.get("injury_status"), p.get("lineup_slot_id"), p.get("nfl_report_status"), taxi=taxi)
         v = values.get(p["espn_player_id"])
         raw = v.value if v is not None and v.value is not None else None
         players.append({
@@ -85,6 +88,7 @@ def team_state(roster: list[dict], values: dict[int, PlayerValue], roster_slots:
             "lineup_slot_id": p.get("lineup_slot_id"), "raw_value": raw,
             "value": round((raw or 0.0) * av["weight"], 3), "available": av["weight"] > 0, "availability": av,
             "raw_value_100": v.value_100 if v is not None else None,   # display text only
+            **({"on_taxi": True} if taxi else {}),
         })
     slots = lineup_slots(roster_slots)
     return {"players": players, "slots": slots, "roster_slots": roster_slots, "lineup": assign_lineup(players, slots)}
@@ -170,12 +174,12 @@ def _empty_fixed(players: list[dict], slots: list[str]) -> int:
 
 def suggest_drop(state: dict, candidate: dict | None = None) -> dict | None:
     """Lowest rest-of-season-value bench player whose removal (with the candidate
-    added) leaves no fixed lineup slot unfillable. Never a current starter or IR."""
+    added) leaves no fixed lineup slot unfillable. Never a current starter, IR or taxi (neither frees an active spot)."""
     starters = {a["player_id"] for a in state["lineup"] if a["player_id"] is not None}
     base = state["players"] + ([candidate] if candidate else [])
     holes_before = _empty_fixed(base, state["slots"])
     bench = [p for p in state["players"]
-             if p["espn_player_id"] not in starters and p["lineup_slot_id"] != IR_SLOT]
+             if p["espn_player_id"] not in starters and not is_reserved(p)]
     for p in sorted(bench, key=lambda p: (p["raw_value"] if p["raw_value"] is not None else 0.0, p["espn_player_id"])):
         remaining = [q for q in base if q["espn_player_id"] != p["espn_player_id"]]
         if _empty_fixed(remaining, state["slots"]) > holes_before:
@@ -514,7 +518,7 @@ def build_waivers(con, kdst_streaming: bool = True) -> dict:
     values = load_values(con, season, week)
     reports = current_week_reports(con, season, week)
     roster_rows = fetch_dicts(con, """
-        SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.is_starter, fp.position, fp.full_name,
+        SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, l.is_starter, fp.position, fp.full_name,
                coalesce(fp.injury_status, l.injury_status) AS injury_status, m.gsis_id, fp.pro_team, fp.detail_synced_at,
                l.synced_at AS roster_synced_at
         FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)

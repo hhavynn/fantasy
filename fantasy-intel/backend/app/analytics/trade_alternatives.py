@@ -118,7 +118,7 @@ LIMITATIONS = [
 
 
 def _active(players: list[RosterPlayer]) -> list[int]:
-    return [p.espn_player_id for p in players if not p.on_ir]
+    return [p.espn_player_id for p in players if not p.reserved]    # IR and taxi players never start
 
 
 def _brief(p: RosterPlayer) -> dict:
@@ -170,7 +170,7 @@ class FreeAgencyBoard:
     def unprojected(self, p: RosterPlayer) -> bool:
         """An active lineup-relevant player with an NFL team and no ESPN projection in some eligible week:
         what he is worth is unknown, so dropping him has an unknown cost (never a measured 0)."""
-        return not p.on_ir and bool(p.pro_team) and lineup_relevant(p.position, self.state.slots) and any(
+        return not p.reserved and bool(p.pro_team) and lineup_relevant(p.position, self.state.slots) and any(
             projection(self.state.projections, p.espn_player_id, w) is None
             for w in self.weeks if w not in p.unavailable_weeks)
 
@@ -182,7 +182,7 @@ class FreeAgencyBoard:
         return self._totals[key]
 
     def team(self, players: list[RosterPlayer]) -> dict:
-        key = tuple(sorted((p.espn_player_id, p.on_ir) for p in players))
+        key = tuple(sorted((p.espn_player_id, p.on_ir, p.on_taxi) for p in players))
         if key not in self._teams:
             self._teams[key] = project_team(players, self.state.slots, self.window, self.state.projections)
         return self._teams[key]
@@ -193,7 +193,7 @@ class FreeAgencyBoard:
         """The single available player (of `kinds`, optionally only `positions`) whose acquisition, with
         the legal drop it needs, maximises the roster's known starting total. Legality is judged against
         the team's current roster (state.rosters[team_id]), as in the trade evaluator."""
-        key = (team_id, tuple(sorted((p.espn_player_id, p.on_ir) for p in roster)), tuple(kinds), positions)
+        key = (team_id, tuple(sorted((p.espn_player_id, p.on_ir, p.on_taxi) for p in roster)), tuple(kinds), positions)
         if key in self._best:
             return self._best[key]
         st = self.state
@@ -279,7 +279,7 @@ class FreeAgencyBoard:
                 return float("inf")       # never prefer cutting a player whose value is unknown
             return sum(v for w in self.weeks if (v := projection(st.projections, p.espn_player_id, w)) is not None
                        and w not in p.unavailable_weeks)
-        same = [p for p in after if p is not c and not p.on_ir
+        same = [p for p in after if p is not c and not p.reserved
                 and legal_roster([q for q in after if q is not p], st, legal_base)
                 and abs(self.total([q for q in after if q is not p]) - total) <= EPS]
         return (min(same, key=lambda p: (own(p), p.espn_player_id)),) if same else drops

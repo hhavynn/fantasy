@@ -16,7 +16,7 @@ const HEALTHY = ["ACTIVE", "NORMAL"];
 
 const REASON_TEXT: Record<string, string> = {
   flex_competition: "lost FLEX/slot competition", outscored: "outscored at his position", bye: "NFL bye",
-  zero_projection: "projected 0", no_projection: "no projection", ir: "IR (inactive)",
+  zero_projection: "projected 0", no_projection: "no projection", ir: "IR (inactive)", taxi: "taxi squad (inactive)",
   streamable: "a waiver streamer projects more",
 };
 
@@ -280,6 +280,7 @@ export function MarginalTable({ d, phase, sort, sp, words = ESPN_WORDS }: { d: T
                   <td className={styles.context}>
                     <span className={styles.tags}>
                       {p.on_ir && <Badge value="IR" tone="bad" title={`Inactive in the canonical lineup until ${words.pv} shows him off IR`} />}
+                      {p.on_taxi && <Badge value="Taxi" title="Sleeper taxi squad: rostered, but never in the canonical lineup" />}
                       {p.injury_status && !HEALTHY.includes(p.injury_status) && !p.on_ir && <Badge value={p.injury_status} />}
                       {exactIR && (
                         <span className="faint">

@@ -12,6 +12,8 @@ export type OptionPlayer = {
   espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
   on_ir: boolean; injury_status: string | null; ros_projected_points: number | null;
   nfl_ineligible_weeks: number[]; availability: AvailabilityBrief | null;
+  /** Sleeper taxi squad: inactive on this roster, arrives active after a trade (absent for everyone else). */
+  on_taxi?: boolean;
 };
 export type OptionTeam = { team_id: number; name: string; abbrev: string; is_mine: boolean; roster: OptionPlayer[] };
 export type TradeOptionsV3 = {
@@ -68,6 +70,8 @@ export type AssetProfile = {
   par_regular: number | null; par_playoff: number | null; espn_points_eligible_weeks: number | null;
   replacement_per_week: number | null; replacement_source: string[]; missing_weeks: number[];
   nfl_ineligible_weeks: number[]; availability_status: string | null; fantasy_ir_slot: boolean; return_unconfirmed: boolean;
+  /** Sleeper taxi squad (absent for everyone else). */
+  fantasy_taxi_slot?: boolean;
   eligibility_unknown: boolean; position_rank: number | null; position_rank_of: number | null;
   league_starters_at_position: number | null; starter_caliber: boolean;
 };
@@ -237,7 +241,7 @@ export type DiscoveryV3 = {
   asset_note: string; asset_thresholds: { balanced_ratio: number; significant_ratio: number; replacement_per_week: number };
   search: { consistency_checked: number; consistency_failures: number };
   names: Record<string, { name: string | null; position: string | null; pro_team: string | null; on_ir: boolean;
-    injury_status: string | null; nfl_ineligible_weeks: number[] }>;
+    on_taxi?: boolean; injury_status: string | null; nfl_ineligible_weeks: number[] }>;
   modes: Record<string, string>; phases: string[]; strictness_options: Record<string, string>;
   categories: Record<string, string>; sorts: string[]; exact_shapes: string[]; heuristic_shapes: string[];
   kdst_policy: string; kdst_streaming?: KdstStreaming; availability_note: string; note: string; assumptions: string[]; limitations: string[];

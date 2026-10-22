@@ -11,11 +11,12 @@ from __future__ import annotations
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import IR_SLOT
 
-AVAILABLE, QUESTIONABLE, DOUBTFUL, OUT, IR, SUSPENDED = (
-    "AVAILABLE", "QUESTIONABLE", "DOUBTFUL", "OUT", "IR", "SUSPENDED")
+AVAILABLE, QUESTIONABLE, DOUBTFUL, OUT, IR, SUSPENDED, TAXI = (
+    "AVAILABLE", "QUESTIONABLE", "DOUBTFUL", "OUT", "IR", "SUSPENDED", "TAXI")
 
-WEIGHTS = {AVAILABLE: 1.0, QUESTIONABLE: 0.75, DOUBTFUL: 0.15, OUT: 0.0, IR: 0.0, SUSPENDED: 0.0}
-SEVERITY = {AVAILABLE: 0, QUESTIONABLE: 1, DOUBTFUL: 2, OUT: 3, SUSPENDED: 4, IR: 5}
+# TAXI: a Sleeper taxi-squad player (analytics/reserve_slots.py) cannot start for his fantasy team whatever his health.
+WEIGHTS = {AVAILABLE: 1.0, QUESTIONABLE: 0.75, DOUBTFUL: 0.15, OUT: 0.0, IR: 0.0, SUSPENDED: 0.0, TAXI: 0.0}
+SEVERITY = {AVAILABLE: 0, QUESTIONABLE: 1, DOUBTFUL: 2, OUT: 3, SUSPENDED: 4, IR: 5, TAXI: 6}
 
 ESPN_STATUS = {
     "ACTIVE": AVAILABLE, "NORMAL": AVAILABLE, "QUESTIONABLE": QUESTIONABLE, "DAY_TO_DAY": QUESTIONABLE,
@@ -25,13 +26,15 @@ NFL_REPORT_STATUS = {"Questionable": QUESTIONABLE, "Doubtful": DOUBTFUL, "Out": 
 
 
 def availability(espn_status: str | None, lineup_slot_id: int | None = None,
-                 nfl_report_status: str | None = None) -> dict:
-    """-> {"status", "weight", "sources"}; the most severe signal wins."""
+                 nfl_report_status: str | None = None, taxi: bool = False) -> dict:
+    """-> {"status", "weight", "sources"}; the most severe signal wins. `taxi`: on a Sleeper taxi squad."""
     candidates = [(AVAILABLE, "default")]
     if espn_status:
         candidates.append((ESPN_STATUS.get(espn_status.upper(), AVAILABLE), f"ESPN {espn_status}"))
     if lineup_slot_id == IR_SLOT:
         candidates.append((IR, "ESPN IR slot"))
+    if taxi:
+        candidates.append((TAXI, "Sleeper taxi squad"))
     if nfl_report_status in NFL_REPORT_STATUS:
         candidates.append((NFL_REPORT_STATUS[nfl_report_status], f"NFL report {nfl_report_status}"))
     status = max(candidates, key=lambda c: SEVERITY[c[0]])[0]

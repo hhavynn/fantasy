@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
-from ..espn.constants import FANTASY_POSITIONS, IR_SLOT
+from ..espn.constants import FANTASY_POSITIONS
 from .lineup import assign_lineup, lineup_slots
 from .availability import ESPN_STATUS, availability
 from .projections import load_schedule
+from .reserve_slots import is_reserved
 from .waiver_roster import object_value, roster_constraints, projected_players
 from .team_lineups import STREAM_POSITIONS, STREAM_RANK
 
@@ -191,7 +192,7 @@ def streaming_evidence(c: dict, state: dict, ctx: dict, pool: list[dict]) -> dic
         lineup = assign_lineup(projected_players(state["players"], w), slots)
         # For multiple starters compare to the weakest required starter, not the strongest.
         known = [a["value"] for a in lineup if a["player_id"] is not None]
-        relevant = [p for p in state["players"] if p["position"] == c["position"] and p.get("lineup_slot_id") != IR_SLOT]
+        relevant = [p for p in state["players"] if p["position"] == c["position"] and not is_reserved(p)]
         complete = all(p.get("projections", {}).get(w) is not None or w in p.get("bye_weeks", []) for p in relevant)
         incumbent = min(known) if len(known) == len(slots) else 0 if complete else None
         if not complete:

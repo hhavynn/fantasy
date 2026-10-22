@@ -161,8 +161,8 @@ def _slot_engine(label: str, kind: str) -> dict:
         return {"status": HANDLED, "note": "Players on injured reserve never start in a projected lineup and do not "
                                            "use an active roster spot."}
     if kind == "taxi":
-        return {"status": UNSUPPORTED, "note": "Not applied: taxi players are stored with the bench, so a projected "
-                                               "lineup may start one, and trade roster limits count taxi spots as active."}
+        return {"status": HANDLED, "note": "Taxi players stay on the roster but never start in a projected lineup and "
+                                           "do not use an active roster spot."}
     return {"status": UNSUPPORTED, "note": "Not applied: no engine fills this slot, so projected lineups and lineup "
                                            "totals leave it out."}
 
@@ -718,9 +718,10 @@ def engine_support(provider: str, roster: dict, scoring: dict, items: list, lock
                      "detail": f"{', '.join(s['code'] for s in skipped)}: left out of every projected lineup, lineup "
                                "total and trade value; waiver roster planning reports the roster capacity as unknown."})
     if any(s["kind"] == "taxi" for s in slots):
-        rows.append({"rule": "Taxi squad", "status": UNSUPPORTED,
-                     "detail": "Taxi players are stored with the bench, so a projected lineup may start one, and the "
-                               "trade analyzer counts taxi spots toward the active roster."})
+        rows.append({"rule": "Taxi squad", "status": HANDLED,
+                     "detail": "Taxi players stay owned and visible but never start in projected, start/sit or waiver "
+                               "lineups, and taxi slots are left out of active roster capacity in the trade analyzer and "
+                               "waiver planning. A traded taxi player arrives in an active spot."})
 
     # Projections in the league's scoring.
     skill = resolve_skill_scoring(items or None)

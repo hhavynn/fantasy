@@ -41,6 +41,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from .lineup import FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_slots
+from .reserve_slots import TAXI
 
 UTC = timezone.utc
 SKILL = ("QB", "RB", "WR", "TE")
@@ -203,6 +204,8 @@ def decisions(cands: Iterable[Mapping], models: Sequence[str], settings: Mapping
         for c in roster:
             if c.get("slot") == "IR":
                 ex["candidates"]["ir_slot"] += 1
+            elif c.get("slot") == TAXI:          # Sleeper taxi squad: rostered, never a start/sit choice
+                ex["candidates"]["taxi_slot"] += 1
             elif c.get("position") not in SKILL:
                 ex["candidates"]["not_skill_position"] += 1
             else:
@@ -289,7 +292,7 @@ def _lineup_row(live, states, models, slots_cfg, key, basis, config, excl: Count
     for m in models:
         _, pts = total(lambda c, m=m: states[id(c)]["values"][m])
         row["points"][m], row["regret"][m] = pts, max(0.0, hind - pts)
-    starters = [c for c in live if c.get("is_starter") and c.get("slot") not in ("BE", "IR")]
+    starters = [c for c in live if c.get("is_starter") and c.get("slot") not in ("BE", "IR", TAXI)]
     if len(starters) == len(slots) and all(states[id(c)]["ok"] for c in starters):
         row["manager_points"] = sum(states[id(c)]["actual"] for c in starters)
     return row

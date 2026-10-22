@@ -6,6 +6,7 @@ from collections import Counter
 
 from ..espn.constants import DEFAULT_POSITION_MAP, IR_SLOT
 from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_total
+from .reserve_slots import TAXI, active_capacity, is_reserved, is_taxi
 from .team_lineups import STREAMER_IDS
 
 
@@ -16,7 +17,7 @@ def object_value(value) -> dict:
 def roster_constraints(league: dict) -> dict:
     slots = object_value(league.get("roster_slots"))
     raw = object_value(league.get("settings_raw"))
-    supported = set(FIXED_SLOTS) | set(FLEX_ELIGIBILITY) | {"BE", "IR"}
+    supported = set(FIXED_SLOTS) | set(FLEX_ELIGIBILITY) | {"BE", "IR", TAXI}
     valid = bool(slots) and not any(k not in supported and v for k, v in slots.items())
     valid = valid and all(isinstance(v, int) and v >= 0 for v in slots.values())
     rs = raw.get("rosterSettings") or {}
@@ -25,7 +26,7 @@ def roster_constraints(league: dict) -> dict:
         pos = DEFAULT_POSITION_MAP.get(int(key)) if str(key).isdigit() else key
         if pos in FIXED_SLOTS and val is not None and int(val) > 0:
             limits[pos] = int(val)
-    return {"capacity": sum(v for k, v in slots.items() if k != "IR") if valid else None,
+    return {"capacity": active_capacity(slots) if valid else None,       # IR and taxi slots are not active
             "position_limits": limits, "snapshot_complete": True,
             "settings_complete": bool(rs),
             "undroppable_membership_unknown": bool(rs.get("isUsingUndroppableList")),
@@ -40,7 +41,7 @@ def projected_players(players: list[dict], week: int) -> list[dict]:
     """For future comparisons use supplied weekly points, never invent missing projections."""
     return [{**p, "value": p.get("projections", {}).get(week),
              "available": p.get("projections", {}).get(week) is not None and week not in p.get("bye_weeks", [])
-             and p.get("lineup_slot_id") != IR_SLOT} for p in players]
+             and not is_reserved(p)} for p in players]
 
 
 def _streamers(stream: dict | None, slots: list[str], week: int) -> list[dict]:
@@ -57,7 +58,7 @@ def forward_effect(before: list[dict], after: list[dict], slots: list[str], week
     gains, missing = [], []
     for w in weeks:
         relevant = [p for p in before + after if any(eligible(s, p.get("position")) for s in slots)
-                    and p.get("lineup_slot_id") != IR_SLOT and w not in p.get("bye_weeks", [])]
+                    and not is_reserved(p) and w not in p.get("bye_weeks", [])]
         if any(p.get("projections", {}).get(w) is None for p in relevant):
             missing.append(w)
             continue
@@ -75,7 +76,7 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
     constraints = constraints if constraints is not None else roster_constraints({
         "roster_slots": state.get("roster_slots"), "settings_raw": {"rosterSettings": {"source": "explicit_slots"}}})
     players, slots = state["players"], state["slots"]
-    active = [p for p in players if p.get("lineup_slot_id") != IR_SLOT]
+    active = [p for p in players if not is_reserved(p)]
     capacity = constraints.get("capacity")
     limits = constraints.get("position_limits", {})
     warnings = list(constraints.get("warnings", []))
@@ -118,6 +119,8 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
         reason = None
         if p.get("lineup_slot_id") == IR_SLOT:
             reason = "IR removal does not free an active spot"
+        elif is_taxi(p):
+            reason = "Taxi-squad removal does not free an active spot"
         elif p.get("locked") or p.get("undroppable"):
             reason = "Known locked or undroppable player"
         elif not legal(p):
@@ -158,7 +161,7 @@ def plan_roster_move(state: dict, candidate: dict, constraints: dict | None = No
         same = [q for q in remaining if q.get("position") == p["position"] and q.get("available")]
         redundant_streamer = p["position"] in ("K", "D/ST") and same and removal_loss == 0
         comparable_weeks = [w for w in weeks if all(q.get("projections", {}).get(w) is not None
-                            or w in q.get("bye_weeks", []) or q.get("lineup_slot_id") == IR_SLOT
+                            or w in q.get("bye_weeks", []) or is_reserved(q)
                             for q in players if any(eligible(s, q.get("position")) for s in slots))]
         future_starts = sum(any(a["player_id"] == pid for a in assign_lineup(projected_players(players, w), slots))
                             for w in comparable_weeks)
