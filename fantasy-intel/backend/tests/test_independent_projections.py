@@ -391,6 +391,9 @@ def test_canonical_espn_systems_do_not_read_independent_projections():
                "situational_usage.py",   # research-only situational usage splits ifp-su (never imported by the app)
                # kicker model: reconciliation scores a kicker's rare offensive stats (fakes) with the skill weights
                "kicker_scoring.py",
+               # read-only League rules page: names the league's scoring rules and reports whether Ours supports them
+               # (league_scoring's labels and support check only; it never reads a projection)
+               "league_rules.py",
                # local-only writer of the final-designation re-projection run (never imported by the app, see
                # tests/test_final_reprojection.py::test_the_app_never_imports_the_reprojection_writer)
                "final_reprojection.py"}
