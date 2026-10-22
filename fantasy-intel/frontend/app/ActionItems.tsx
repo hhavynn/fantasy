@@ -1,6 +1,7 @@
 import { TeamLink as Link } from "@/components/TeamLink";
-import { EmptyState, Notice, Section, ToneIcon } from "@/components/ui";
+import { EmptyState, Notice, ProvenanceBadge, Section, ToneIcon } from "@/components/ui";
 import type { ActionList } from "@/lib/action-items";
+import type { SignalProvenance } from "@/lib/signal-provenance";
 import { ToolShortcuts } from "./ToolShortcuts";
 import styles from "./home.module.css";
 
@@ -9,7 +10,7 @@ import styles from "./home.module.css";
  * links to the page with the evidence. A failed source is named, and "lineup is set" is only claimed when
  * every source loaded.
  */
-export function ActionItems({ list, week }: { list: ActionList; week: number | null }) {
+export function ActionItems({ list, week, provenance = [] }: { list: ActionList; week: number | null; provenance?: readonly SignalProvenance[] }) {
   const { items, more, unavailable } = list;
   const allDown = unavailable.length === 4;
   return (
@@ -47,6 +48,7 @@ export function ActionItems({ list, week }: { list: ActionList; week: number | n
           {allDown ? "None of the sources behind this list loaded." : "Items from those sources are missing from this list."}
         </Notice>
       ) : null}
+      {provenance.length > 0 ? <div className={styles.provenance}><ProvenanceBadge signals={provenance} /></div> : null}
       <ToolShortcuts />
     </Section>
   );
