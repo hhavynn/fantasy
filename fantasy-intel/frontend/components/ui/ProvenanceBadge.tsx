@@ -28,7 +28,7 @@ export function ProvenanceBadge({ signals, now, className }: {
   const summary = summarizeProvenance(signals, now);
   if (!summary) return null;
   return (
-    <details className={cx(styles.root, className)} data-status={summary.status}>
+    <details className={cx(styles.root, className)} data-status={summary.status} data-provenance="">
       <summary className={styles.summary}>
         <Icon tone={TONE[summary.status]} className={cx(styles.icon, styles[TONE[summary.status]])} />
         <span className={styles.text}>{summary.text}</span>

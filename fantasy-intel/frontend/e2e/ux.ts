@@ -136,7 +136,9 @@ export async function expectDecisionFirst(page: Page, { verdict, aboveFold = fal
       h1: first("h1"),
       verdict: v ? all.indexOf(v) : -1,
       verdictTop: v ? v.getBoundingClientRect().top + window.scrollY : -1,
-      evidence: Math.min(first("table"), first('svg[role="img"]'), first("figure"), first("details:not(.filter-box)")),
+      // A ProvenanceBadge (data-provenance) is the headline's source-and-age disclosure (#168), not evidence or method.
+      evidence: Math.min(first("table"), first('svg[role="img"]'), first("figure"),
+        first("details:not(.filter-box):not([data-provenance])")),
       viewport: window.innerHeight,
     };
   });
