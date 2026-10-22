@@ -141,7 +141,7 @@ jobs:
   e2e:
     name: E2E smoke (Playwright)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: fantasy-intel/frontend
@@ -194,17 +194,24 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      # Playwright starts the backend on the synthetic DuckDB (scripts/build_e2e_db.py) and `next start`.
-      - name: Run route smoke test
+      # Playwright starts the backend on the synthetic DuckDB (scripts/build_e2e_db.py) and `next start`. Includes the UX
+      # acceptance gates (e2e/ux-gates.spec.ts: landmarks, keyboard, focus, axe-core, overflow at 320/390/768/1440).
+      - name: Run route smoke test and UX gates
         run: npm run e2e
+
+      # Reviewed screenshots of a few core destinations (e2e/visual.spec.ts). Skips until baselines drawn by this
+      # browser build are committed; they come only from the "Visual baselines" workflow (docs/qa/release-review.md).
+      - name: Run visual regression
+        run: npm run e2e:visual
 
       # The same pages for a Sleeper league (scripts/build_e2e_sleeper.py): no error and no ESPN wording.
       - name: Run Sleeper league smoke test
         run: npm run e2e:sleeper
 
       # Every page on the multi-league site for an ESPN public, an ESPN private (signed in) and a Sleeper league:
-      # throwaway Postgres, a fake Supabase JWKS and three published league files (scripts/e2e_multileague.py).
-      - name: Run multi-league parity matrix
+      # throwaway Postgres, a fake Supabase JWKS and published league files (scripts/e2e_multileague.py). Includes the
+      # UX gates for the provider, stale-sync and blank-sync fixtures (e2e/ux-multileague.spec.ts).
+      - name: Run multi-league parity matrix and UX gates
         run: npm run e2e:multileague
 
       - name: Upload Playwright traces and report
@@ -215,6 +222,8 @@ jobs:
           path: |
             fantasy-intel/frontend/test-results/
             fantasy-intel/frontend/playwright-report/
+            fantasy-intel/frontend/test-results-visual/
+            fantasy-intel/frontend/playwright-report-visual/
             fantasy-intel/frontend/test-results-sleeper/
             fantasy-intel/frontend/playwright-report-sleeper/
             fantasy-intel/frontend/test-results-multileague/
