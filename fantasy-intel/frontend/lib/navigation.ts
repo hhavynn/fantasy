@@ -67,6 +67,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/playoff-race", label: "Playoff race", summary: "Standings, remaining games and the playoff line" },
       { href: "/managers", label: "Managers", summary: "How each manager drafts, trades and sets lineups" },
       { href: "/luck-lab", label: "Luck lab", summary: "Expected wins and schedule luck for every team" },
+      { href: "/league-rules", label: "Rules", summary: "Scoring, lineup slots, waivers and trades as the league set them" },
     ],
   },
 ];
