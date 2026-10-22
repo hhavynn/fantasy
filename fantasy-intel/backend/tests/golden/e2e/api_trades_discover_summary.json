@@ -818,7 +818,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "you_surrender_multiple_strong",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 0.0,
       "text": "You surrender multiple strong assets for fewer",
       "they_send_par": 0.0,
@@ -1007,7 +1007,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "you_surrender_multiple_strong",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 0.0,
       "text": "You surrender multiple strong assets for fewer",
       "they_send_par": 0.0,
@@ -1196,7 +1196,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "you_surrender_multiple_strong",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 0.0,
       "text": "You surrender multiple strong assets for fewer",
       "they_send_par": 0.0,
@@ -1385,7 +1385,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "you_surrender_multiple_strong",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 0.0,
       "text": "You surrender multiple strong assets for fewer",
       "they_send_par": 0.0,
@@ -1574,7 +1574,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "you_surrender_multiple_strong",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 0.0,
       "text": "You surrender multiple strong assets for fewer",
       "they_send_par": 0.0,
@@ -1764,7 +1764,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "replacement_level",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 1.0,
       "text": "Replacement-level package (little value above free agents on either side)",
       "they_send_par": 0.0,
@@ -1952,7 +1952,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "balanced",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 1.0,
       "text": "Asset packages appear relatively balanced",
       "they_send_par": 90.0,
@@ -2139,7 +2139,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "replacement_level",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 1.0,
       "text": "Replacement-level package (little value above free agents on either side)",
       "they_send_par": 0.0,
@@ -2327,7 +2327,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "balanced",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 0.667,
       "text": "Asset packages appear relatively balanced",
       "they_send_par": 90.0,
@@ -2514,7 +2514,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "replacement_level",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 1.0,
       "text": "Replacement-level package (little value above free agents on either side)",
       "they_send_par": 0.0,
@@ -2701,7 +2701,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "replacement_level",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 1.0,
       "text": "Replacement-level package (little value above free agents on either side)",
       "they_send_par": 0.0,
@@ -2888,7 +2888,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "balanced",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 0.8,
       "text": "Asset packages appear relatively balanced",
       "they_send_par": 75.0,
@@ -3076,7 +3076,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "replacement_level",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 1.0,
       "text": "Replacement-level package (little value above free agents on either side)",
       "they_send_par": 0.0,
@@ -3266,7 +3266,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "you_surrender_multiple_strong",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 0.0,
       "text": "You surrender multiple strong assets for fewer",
       "they_send_par": 0.0,
@@ -3456,7 +3456,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "you_surrender_multiple_strong",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 0.0,
       "text": "You surrender multiple strong assets for fewer",
       "they_send_par": 0.0,
@@ -3649,7 +3649,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "replacement_level",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 1.0,
       "text": "Replacement-level package (little value above free agents on either side)",
       "they_send_par": 0.0,
@@ -3838,7 +3838,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "replacement_level",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 1.0,
       "text": "Replacement-level package (little value above free agents on either side)",
       "they_send_par": 0.0,
@@ -4027,7 +4027,7 @@
      "anchor_team_id": 2,
      "asset_balance": {
       "label": "balanced",
-      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate.",
+      "note": "Asset balance is a diagnostic separate from the lineup delta: ESPN points above the best available free agent at each player's position, over the weeks he is NFL-eligible, independent of whether he starts for his current team. Labels use stated heuristic thresholds; they are not a market price, not calibrated, and not an acceptance estimate. League starter counts include flexible slots (FLEX, RB/WR, WR/TE, OP/superflex): each one is counted once, for the position of the player who fills it in each team's optimal projected lineup, averaged over the remaining weeks. Flex demand is dynamic: it moves with projections, byes, injuries and roster changes, so these counts are a current reference, not a fixed rule.",
       "ratio": 0.833,
       "text": "Asset packages appear relatively balanced",
       "they_send_par": 90.0,
