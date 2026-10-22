@@ -22,18 +22,18 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | Issue | Phase | State | Branch / PR | Notes |
 |---|---|---|---|---|
 | #201 perf budgets | 1 | IN PROGRESS | `feature/fi-201-perf-budgets` | wave 3 agent |
-| #202 UX/visual gates | 1 | VERIFIED / MERGE READY | PR #230 (a7f261a) | visual gate stays PENDING until reviewed baselines are committed (follow-up) |
+| #202 UX/visual gates | 1 | PR OPEN | PR #230 (9bce26c, CI running) | gates caught #208 badge vs decision-first rule, fixed; visual gate PENDING until reviewed baselines committed |
 | #168 signal provenance | 1 | MERGED | PR #208 → `509a45f` (2026-10-22) | contract `signal-provenance.v1` |
-| #169 league rules | 1 | PR OPEN | PR #207 | main merged in (62a6463); CI re-running, merge next |
-| #167 onboarding | 1 | PR OPEN | PR #233 (609f00f) | security-reviewed; CI running |
+| #169 league rules | 1 | MERGED | PR #207 → `7574d6e` (2026-10-22) | |
+| #167 onboarding | 1 | MERGED | PR #233 → `2a6c47d` (2026-10-22) | real-league demo needs a backend demo concept (follow-up) |
 | #170 desktop shell | 1 | NOT STARTED | — | after wave 2; sole owner of Nav/globals |
-| #165 weekly hub | 2 | PR OPEN | PR #232 (240fdcd, retargeted to main after #208) | CI running |
+| #165 weekly hub | 2 | PR OPEN | PR #232 (7c49fb4, CI green) | Codex fixes in; merges after #230 with one main merge |
 | #166 action center | 2 | NOT STARTED | — | after #165 |
 | #171 what-if lineup | 2 | NOT STARTED | — | reuse lineup.py locks |
 | #177 bye/kickoff planner | 2 | NOT STARTED | — | |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
 | #187 player profile tabs | 2 | NOT STARTED | — | news tab optional on #186 |
-| #193 transactions feed | 2 | VERIFIED / MERGE READY | PR #231 | CI green on 6334342; merges after #207 (shared router list/nav) |
+| #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
 | #178 add/drop simulator | 3 | NOT STARTED | — | |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
@@ -112,8 +112,12 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 
 - `agent_check affected` misses the app-wide source audits (test_weekly_learning, test_dst_research,
   test_independent_projections). Before pushing a branch, run the full backend suite in 4 local shards.
-- CI job logs can't be downloaded here (blob host blocked), so reproduce a failing shard locally with
-  `pytest --shard=N/8`.
+- CI job logs can't be downloaded here (blob host blocked); `get_job_logs` with a small tail shows the failing test
+  list. To reproduce, run that shard locally with `pytest --shard=N/8`.
+- Local Playwright: alias the installed Chromium 1194 as the expected 1243 under /tmp/claude-0/pwalias (headless shell
+  dir `chrome-headless-shell-linux64/chrome-headless-shell` → `headless_shell`), then run with
+  `PLAYWRIGHT_BROWSERS_PATH=/tmp/claude-0/pwalias`.
+- Disk: /tmp/pytest-of-root grows by GBs per full run, so prune dirs older than 30 min.
 
 ## Resume
 
