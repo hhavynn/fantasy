@@ -159,8 +159,7 @@ def roster_section(roster_slots: Any, settings: dict, provider: str) -> tuple[di
     flex_types = [r["code"] for r in rows if r["code"] in FLEX]
     out = {
         "slots": rows,
-        "starters": fact(by_kind["starter"], str(by_kind["starter"])) if rows else
-        fact(None, reason="The snapshot holds no roster slot counts."),
+        "starters": _starters(by_kind) if rows else fact(None, reason="The snapshot holds no roster slot counts."),
         "bench": by_kind["bench"], "injured_reserve": by_kind["ir"], "taxi": by_kind["taxi"],
         "superflex": sum(r["count"] for r in rows if r["code"] == "OP") > 0,
         "flex_types": flex_types,
@@ -170,6 +169,14 @@ def roster_section(roster_slots: Any, settings: dict, provider: str) -> tuple[di
         unmapped.append({"area": "Roster slot", "key": "roster_slots", "value": None,
                          "reason": "No slot counts were synced."})
     return out, unmapped
+
+
+def _starters(by_kind: dict) -> dict:
+    """Every slot except bench, IR and taxi is a starting slot for both providers (the adapters' `starters()` agree), so
+    an unrecognised slot still counts; the text says how many of them are unrecognised."""
+    total = by_kind["starter"] + by_kind["unknown"]
+    unknown = by_kind["unknown"]
+    return fact(total, f"{total} ({unknown} unrecognised)" if unknown else str(total))
 
 
 def _position_limits(settings: dict, provider: str, unmapped: list[dict]) -> dict:

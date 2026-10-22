@@ -155,6 +155,8 @@ def test_unusual_espn_rules_and_engine_support():
     assert sl["RB/WR"]["eligible"] == ["RB", "WR"] and sl["WR/TE"]["eligible"] == ["WR", "TE"]
     assert sl["LB"]["eligible"] == ["LB"] and sl["LB"]["engine"]["status"] == UNSUPPORTED
     assert sl["ER"]["kind"] == "unknown" and sl["ER"]["eligible"] is None and sl["ER"]["eligible_reason"]
+    starting = sum(r["count"] for r in out["roster"]["slots"] if r["kind"] not in ("bench", "ir", "taxi"))
+    assert out["roster"]["starters"]["value"] == starting and "1 unrecognised" in out["roster"]["starters"]["display"]
     assert out["roster"]["superflex"] and out["roster"]["flex_types"] == ["RB/WR", "WR/TE", "FLEX", "OP"]
     assert out["roster"]["position_limits"]["value"] == {"QB": 4}
     sc = out["scoring"]
