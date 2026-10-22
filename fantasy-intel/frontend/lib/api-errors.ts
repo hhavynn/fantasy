@@ -13,3 +13,8 @@ export type ApiErrorKind = "offline" | "schema" | "http" | "unknown";
 export function isFirstRun(detail: string | null | undefined): boolean {
   return !!detail && /no database yet/i.test(detail);
 }
+
+/** True for a league whose first sync has not published yet: the API's 409 "First sync in progress." on league routes. */
+export function isFirstSync(status: number | undefined, detail: string | null | undefined): boolean {
+  return status === 409 && !!detail && /first sync in progress/i.test(detail);
+}

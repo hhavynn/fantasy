@@ -1,0 +1,352 @@
+// /api/transactions
+{
+ "body": {
+  "events": [
+   {
+    "bid_amount": null,
+    "event_id": "tx:tx-6",
+    "kind": "trade",
+    "legs": [
+     {
+      "action": "trade",
+      "after": null,
+      "espn_player_id": 302,
+      "from_team": {
+       "abbrev": "T1",
+       "name": "Team 1",
+       "team_id": 1
+      },
+      "full_name": "November WR",
+      "position": "WR",
+      "pro_team": "BUF",
+      "to_team": {
+       "abbrev": "T4",
+       "name": "Team 4",
+       "team_id": 4
+      }
+     },
+     {
+      "action": "trade",
+      "after": null,
+      "espn_player_id": 303,
+      "from_team": {
+       "abbrev": "T1",
+       "name": "Team 1",
+       "team_id": 1
+      },
+      "full_name": "Oscar WR",
+      "position": "WR",
+      "pro_team": "DET",
+      "to_team": {
+       "abbrev": "T4",
+       "name": "Team 4",
+       "team_id": 4
+      }
+     },
+     {
+      "action": "trade",
+      "after": null,
+      "espn_player_id": 404,
+      "from_team": {
+       "abbrev": "T4",
+       "name": "Team 4",
+       "team_id": 4
+      },
+      "full_name": "Xray TE",
+      "position": "TE",
+      "pro_team": "PHI",
+      "to_team": {
+       "abbrev": "T1",
+       "name": "Team 1",
+       "team_id": 1
+      }
+     }
+    ],
+    "processed_at": "<masked>",
+    "proposed_at": null,
+    "sources": {
+     "activity": [
+      "topic-trade"
+     ],
+     "transactions": [
+      "tx-6"
+     ]
+    },
+    "team_ids": [
+     1,
+     4
+    ],
+    "teams": [
+     {
+      "abbrev": "T1",
+      "name": "Team 1",
+      "team_id": 1
+     },
+     {
+      "abbrev": "T4",
+      "name": "Team 4",
+      "team_id": 4
+     }
+    ],
+    "unlisted_assets": [],
+    "week": 3
+   },
+   {
+    "bid_amount": null,
+    "event_id": "tx:tx-3",
+    "kind": "free_agent",
+    "legs": [
+     {
+      "action": "add",
+      "after": {
+       "first_week": 2,
+       "last_week": 2,
+       "on_roster": 1,
+       "started": 0,
+       "starter_points": null,
+       "weeks": 1
+      },
+      "espn_player_id": 307,
+      "from_team": null,
+      "full_name": "Sierra WR",
+      "position": "WR",
+      "pro_team": "TB",
+      "to_team": {
+       "abbrev": "T2",
+       "name": "Team 2",
+       "team_id": 2
+      }
+     },
+     {
+      "action": "drop",
+      "after": null,
+      "espn_player_id": 309,
+      "from_team": {
+       "abbrev": "T2",
+       "name": "Team 2",
+       "team_id": 2
+      },
+      "full_name": "Waiver WR",
+      "position": "WR",
+      "pro_team": "BUF",
+      "to_team": null
+     }
+    ],
+    "processed_at": "<masked>",
+    "proposed_at": null,
+    "sources": {
+     "activity": [],
+     "transactions": [
+      "tx-3"
+     ]
+    },
+    "team_ids": [
+     2
+    ],
+    "teams": [
+     {
+      "abbrev": "T2",
+      "name": "Team 2",
+      "team_id": 2
+     }
+    ],
+    "unlisted_assets": [],
+    "week": 2
+   },
+   {
+    "bid_amount": null,
+    "event_id": "tx:tx-2",
+    "kind": "free_agent",
+    "legs": [
+     {
+      "action": "add",
+      "after": {
+       "first_week": 1,
+       "last_week": 2,
+       "on_roster": 2,
+       "started": 0,
+       "starter_points": null,
+       "weeks": 2
+      },
+      "espn_player_id": 206,
+      "from_team": null,
+      "full_name": "Juliet RB",
+      "position": "RB",
+      "pro_team": "SEA",
+      "to_team": {
+       "abbrev": "T2",
+       "name": "Team 2",
+       "team_id": 2
+      }
+     }
+    ],
+    "processed_at": "<masked>",
+    "proposed_at": null,
+    "sources": {
+     "activity": [],
+     "transactions": [
+      "tx-2"
+     ]
+    },
+    "team_ids": [
+     2
+    ],
+    "teams": [
+     {
+      "abbrev": "T2",
+      "name": "Team 2",
+      "team_id": 2
+     }
+    ],
+    "unlisted_assets": [],
+    "week": 1
+   },
+   {
+    "bid_amount": 12.0,
+    "event_id": "tx:tx-1",
+    "kind": "waiver",
+    "legs": [
+     {
+      "action": "add",
+      "after": {
+       "first_week": 1,
+       "last_week": 2,
+       "on_roster": 2,
+       "started": 2,
+       "starter_points": 22.5,
+       "weeks": 2
+      },
+      "espn_player_id": 203,
+      "from_team": null,
+      "full_name": "Golf RB",
+      "position": "RB",
+      "pro_team": "DET",
+      "to_team": {
+       "abbrev": "T1",
+       "name": "Team 1",
+       "team_id": 1
+      }
+     },
+     {
+      "action": "drop",
+      "after": null,
+      "espn_player_id": 209,
+      "from_team": {
+       "abbrev": "T1",
+       "name": "Team 1",
+       "team_id": 1
+      },
+      "full_name": "Waiver RB",
+      "position": "RB",
+      "pro_team": "KC",
+      "to_team": null
+     }
+    ],
+    "processed_at": "<masked>",
+    "proposed_at": null,
+    "sources": {
+     "activity": [],
+     "transactions": [
+      "tx-1"
+     ]
+    },
+    "team_ids": [
+     1
+    ],
+    "teams": [
+     {
+      "abbrev": "T1",
+      "name": "Team 1",
+      "team_id": 1
+     }
+    ],
+    "unlisted_assets": [],
+    "week": 1
+   }
+  ],
+  "league": {
+   "current_week": 3,
+   "is_faab": true,
+   "league_id": 999,
+   "name": "Fixture League",
+   "season": 2026
+  },
+  "notes": {
+   "after": "After the move: completed weeks since the move in which the receiving team's lineup was stored, how many of them had the player on that roster and starting, and his points as a starter. Left out when no completed week has been stored since.",
+   "bids": "Bids are shown for waiver claims in FAAB leagues, as stored. Draft picks and FAAB dollars traded are not stored, so trades list players only.",
+   "dates": "Times are stored in UTC and shown in your time zone. A proposed time is shown only where the provider stores it separately from the processed time.",
+   "scope": "Executed moves only: free-agent pickups, waiver claims, drops, trades and commissioner adds and drops. Failed, cancelled and pending claims, trade offers and lineup moves are not shown.",
+   "trades": "Each trade is one entry even when the provider stored it more than once (one row per side, an accept and an uphold, or the league activity feed). Each player who moved is listed once."
+  },
+  "options": {
+   "managers": [
+    {
+     "abbrev": "T1",
+     "name": "Team 1",
+     "team_id": 1
+    },
+    {
+     "abbrev": "T2",
+     "name": "Team 2",
+     "team_id": 2
+    },
+    {
+     "abbrev": "T3",
+     "name": "Team 3",
+     "team_id": 3
+    },
+    {
+     "abbrev": "T4",
+     "name": "Team 4",
+     "team_id": 4
+    }
+   ],
+   "positions": [
+    "RB",
+    "WR",
+    "TE"
+   ],
+   "types": [
+    "trade",
+    "waiver",
+    "free_agent"
+   ],
+   "weeks": [
+    1,
+    2,
+    3
+   ]
+  },
+  "page": {
+   "has_prev": false,
+   "limit": 50,
+   "next_cursor": null,
+   "offset": 0,
+   "prev_cursor": null,
+   "returned": 4,
+   "total": 4
+  },
+  "query": {
+   "cursor": null,
+   "dir": "desc",
+   "limit": 50,
+   "manager": null,
+   "position": null,
+   "sort": "date",
+   "type": null,
+   "week": null
+  },
+  "summary": {
+   "by_type": {
+    "free_agent": 2,
+    "trade": 1,
+    "waiver": 1
+   },
+   "matching": 4,
+   "total": 4,
+   "undated": 0,
+   "unplaced_week": 0
+  }
+ },
+ "status": 200
+}

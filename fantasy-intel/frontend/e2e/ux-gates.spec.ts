@@ -1,0 +1,92 @@
+import { expect, test } from "@playwright/test";
+import {
+  applyTheme, collectErrors, expectAccessible, expectAppBarFits, expectDecisionFirst, expectNoBrokenValues,
+  expectNoSidewaysScroll, expectStructure, open, stubPhotos, tabThrough, useTheme,
+} from "./ux";
+
+// UX acceptance gates for the core destinations (issue #202) on the demo/public ESPN fixture league
+// (scripts/build_e2e_db.py: team 2 is the owner default, team 1 a rival, 201 "Echo RB", 206/307 on team 2, 202 on
+// team 1). Runs on the 320, 390, 768 and 1440 projects (playwright.config.ts). Each route, at each width, in both
+// themes: one h1 and the landmarks, decision before evidence, no sideways scroll, an app bar that fits, no leaked
+// undefined/NaN or engine identifiers, axe-core clean (or triaged in e2e/ux-triage.ts) and zero console errors.
+// The private ESPN, Sleeper, stale-sync and blank-sync fixtures are covered by e2e/ux-multileague.spec.ts.
+type Core = { name: string; path: string; verdict?: boolean; aboveFold?: boolean };
+const CORE: Core[] = [
+  { name: "Overview", path: "/" },
+  { name: "Start/Sit", path: "/start-sit", verdict: true, aboveFold: true },
+  { name: "Matchup", path: "/matchup" },
+  { name: "Waivers", path: "/waivers", verdict: true, aboveFold: true },
+  { name: "Trade analyzer", path: "/trades" },
+  { name: "Trade result", path: "/trades?ta=2&tb=1&a=206&a=307&b=202", verdict: true },
+  { name: "Rankings", path: "/rankings" },
+  { name: "Player profile", path: "/players?id=201" },
+  { name: "Weekly recap", path: "/weekly-recap" },
+  { name: "Playoff race", path: "/playoff-race" },
+  { name: "Manager", path: "/managers/1" },
+  // The league connection page; with MULTILEAGUE_UI_ENABLED unset (as here) it explains the single-league setup.
+  { name: "Leagues", path: "/leagues" },
+];
+
+test.beforeEach(async ({ page }) => {
+  await stubPhotos(page);
+});
+
+for (const route of CORE) {
+  test(`${route.name} meets the quality bar in both themes`, async ({ page }) => {
+    const errors = collectErrors(page);
+    await useTheme(page, "dark");
+    await open(page, route.path);
+    if (route.verdict) {
+      // The trade result streams in after the builder.
+      await expect(page.locator('main [class*="verdict"]').first(), "Verdict rendered").toBeVisible({ timeout: 30_000 });
+    }
+    await expectStructure(page);
+    await expectNoBrokenValues(page);
+    await expectDecisionFirst(page, { verdict: !!route.verdict, aboveFold: !!route.aboveFold && (page.viewportSize()?.width ?? 0) >= 1024 });
+    await expectAppBarFits(page);
+    // axe in both themes at 390 and 1440; at 320 and 768 the light pass checks layout only, since the theme changes
+    // colours, not geometry (keeps the CI cost down; contrast for every token pair is also unit-tested).
+    const bothThemes = ["mobile-390", "desktop-1440"].includes(test.info().project.name);
+    for (const theme of ["dark", "light"] as const) {
+      await test.step(theme, async () => {
+        await applyTheme(page, theme);
+        await expectNoSidewaysScroll(page);
+        if (theme === "dark" || bothThemes) await expectAccessible(page, theme);
+      });
+    }
+    expect(errors, "console errors").toEqual([]);
+  });
+}
+
+test("keyboard: every focus stop is visible and shows a focus ring, from the app bar into the page", async ({ page }) => {
+  for (const path of ["/", "/start-sit", "/waivers", "/rankings"]) {
+    await open(page, path);
+    const stops = await tabThrough(page, 80);
+    await test.step(path, () => {
+      expect(stops.length, `${path}: Tab moves focus`).toBeGreaterThan(0);
+      expect(stops[0].where, `${path}: the first stop is in the app bar`).toBe("banner");
+      expect(stops.filter((s) => !s.visible).map((s) => s.name), `${path}: focus on hidden elements`).toEqual([]);
+      expect(stops.filter((s) => !s.indicator).map((s) => `${s.where}: ${s.name}`), `${path}: focus stops without a visible indicator`).toEqual([]);
+      expect(stops.some((s) => s.where === "main"), `${path}: Tab reaches the page content within 80 presses`).toBe(true);
+    });
+  }
+});
+
+test("keyboard: a table that scrolls sideways is a tab stop and scrolls with the arrow keys; one that fits is not", async ({ page }) => {
+  for (const path of ["/weekly-recap", "/playoff-race", "/"]) {
+    await open(page, path);
+    await test.step(path, async () => {
+      // components/TableScroll.tsx marks overflowing tables once per frame after the DOM settles.
+      await expect.poll(() => page.locator("main .table-wrap").evaluateAll((els) => els.every((e) =>
+        (e.scrollWidth > e.clientWidth + 1) === (e.getAttribute("tabindex") === "0"))), {
+        message: "tabindex=0 on exactly the tables that overflow",
+      }).toBe(true);
+      const scroller = page.locator("main .table-wrap[tabindex='0']").first();
+      if (await scroller.count() === 0) return;           // everything fits at this width
+      await scroller.focus();
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("ArrowRight");
+      await expect.poll(() => scroller.evaluate((e) => e.scrollLeft), { message: "arrow keys scroll the focused table" }).toBeGreaterThan(0);
+    });
+  }
+});
