@@ -203,7 +203,7 @@ def test_unusual_sleeper_rules_from_the_league_file(sleeper_con):
     assert sl["OP"]["eligible"] == ["QB", "RB", "WR", "TE"]
     assert sl["WR/TE"]["eligible"] == ["WR", "TE"] and sl["RB/WR"]["eligible"] == ["RB", "WR"]
     assert sl["DL"]["eligible"] == ["DL"] and sl["DP"]["eligible"] == ["DL", "LB", "DB"]
-    assert sl["DL"]["engine"]["status"] == UNSUPPORTED and sl["TAXI"]["engine"]["status"] == UNSUPPORTED
+    assert sl["DL"]["engine"]["status"] == UNSUPPORTED and sl["TAXI"]["engine"]["status"] == HANDLED
     assert sl["BE"]["count"] == 4 and sl["IR"]["count"] == 1 and sl["TAXI"]["count"] == 1
     sc = out["scoring"]
     assert sc["format"]["value"] == "ppr" and sc["te_premium"]["value"] == 0.75 and sc["te_premium_scope"] == "position"
