@@ -221,6 +221,33 @@ def test_superflex_package_labels_and_surplus_follow_the_reference():
     assert team_needs(st, st.window(), 1, board)["QB"]["surplus"] == [102]
 
 
+def test_a_flex_only_position_uses_its_weekly_starters_even_when_its_season_share_rounds_to_zero():
+    no_te = lineup_slots({"QB": 1, "RB": 2, "WR": 2, "FLEX": 1})
+    teams = {t: [(100 * t + 1, "QB", 20), (100 * t + 2, "RB", 14), (100 * t + 3, "RB", 12), (100 * t + 4, "RB", 5),
+                 (100 * t + 5, "WR", 13), (100 * t + 6, "WR", 11), (100 * t + 7, "WR", 4), (100 * t + 8, "TE", 3)]
+             for t in range(1, 5)}
+    teams[1][-1] = (108, "TE", {10: 9, 11: 3, 12: 3})                # team 1's TE takes FLEX in week 10 only
+    st = league(teams, weeks=WEEKS, last_regular=11, slots=no_te)
+    board = AssetBoard(st, st.window())
+    assert board.reference["flex_starts"] == {"RB": 11, "TE": 1} and "TE" not in board.starters
+    assert board.reference["weeks"][10]["TE"] == 1
+    assert board.base["TE"][10]["level"] == 3.0                    # the 2nd-best TE, not the (teams + 1)-th
+    assert board.base["TE"][11]["level"] == 3.0                    # no TE starts: the best TE is the level
+
+
+def test_incomplete_team_weeks_make_the_flex_counts_a_caveat_not_exact_demand():
+    st = superflex_league(qb2=16)
+    st.rosters[4].append(next(iter(st.rosters[4])).__class__(499, "WR", "KC", "WR unprojected"))
+    board = AssetBoard(st, st.window())
+    assert board.reference["incomplete_team_weeks"] == len(WEEKS)
+    pkg = board.package([102], [201])
+    assert pkg["label"] != "insufficient_data"
+    assert any("known projections only for 3 team-week(s)" in c for c in pkg["caveats"])
+    complete = AssetBoard(sc := superflex_league(qb2=16), sc.window())
+    assert complete.reference["incomplete_team_weeks"] == 0
+    assert not any("known projections" in c for c in complete.package([102], [201])["caveats"])
+
+
 def test_two_op_league_counts_both_op_slots_by_their_actual_occupants():
     teams = {}
     for t in (1, 2, 3):

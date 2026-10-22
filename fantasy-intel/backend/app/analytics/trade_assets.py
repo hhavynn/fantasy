@@ -86,18 +86,22 @@ def league_reference(lineups: dict[int, dict], slots: list[str], weeks: list[int
     the player (or never, for a flex slot left empty) in that team-week's optimal assignment; the K/D/ST waiver
     streamer only ever fills fixed slots. Returns per-week counts (`weeks`), the per-position flex starts summed over
     the window (`flex_starts`), their season apportionment (`flex_seats`, see _flex_seats) and the season counts
-    (`starters`): fixed + flex seats.
+    (`starters`): fixed + flex seats. `incomplete_team_weeks` counts team-weeks whose optimal lineup was solved from
+    known projections only (project_team's projection_complete is False); the flex counts are then uncertain.
     A position is in `starters` when it has a fixed slot (at least 1) or at least one flex seat."""
     teams = len(lineups)
     fixed = {pos: n * teams for pos, n in _fixed_counts(slots).items()}
     flex_slots = sum(1 for s in slots if s in FLEX_ELIGIBILITY) * teams
     by_week: dict[int, dict[str, int]] = {}
     flex_starts: Counter = Counter()
+    incomplete = 0
     rows = {t: {x["week"]: x for x in lineups[t]["weeks"]} for t in sorted(lineups)}
     for w in weeks:
         flex = Counter()
         for t in rows:
-            for a in (rows[t].get(w) or {}).get("assignment", ()):
+            row = rows[t].get(w) or {}
+            incomplete += row.get("projection_complete") is False
+            for a in row.get("assignment", ()):
                 if a["is_flex"] and slot_filled(a) and a["position"]:
                     flex[a["position"]] += 1
         flex_starts.update(flex)
@@ -111,7 +115,8 @@ def league_reference(lineups: dict[int, dict], slots: list[str], weeks: list[int
             starters[pos] = share
     return {"teams": teams, "fixed": fixed, "flex_slots": flex_slots, "weeks": by_week,
             "flex_starts": dict(sorted(flex_starts.items())), "flex_seats": seats,
-            "starters": dict(sorted(starters.items())), "note": FLEX_NOTE if flex_slots else None}
+            "starters": dict(sorted(starters.items())), "note": FLEX_NOTE if flex_slots else None,
+            "incomplete_team_weeks": incomplete}
 
 
 def _flex_seats(flex_starts: Counter, n: int) -> dict[str, int]:
@@ -163,7 +168,10 @@ class AssetBoard:
                     vals = sorted((v for p in rostered if p.position == pos and w not in p.unavailable_weeks
                                    and (v := projection(state.projections, p.espn_player_id, w)) is not None),
                                   reverse=True)
-                    k = self.reference["weeks"][w].get(pos, 0) if pos in self.starters else self.teams
+                    # A lineup-eligible position uses that week's starters, even a flex-only one whose season
+                    # share rounded to 0; only a position no slot accepts falls back to one per team.
+                    lineup_pos = pos in self.starters or lineup_relevant(pos, state.slots)
+                    k = self.reference["weeks"][w].get(pos, 0) if lineup_pos else self.teams
                     per[w] = {"level": vals[k] if len(vals) > k else 0.0,
                               "source": "league-structure replacement (no free agent projected)"}
             self.base[pos] = per
@@ -261,6 +269,10 @@ class AssetBoard:
                     for x in a + b if x["return_unconfirmed"] and not x["nfl_ineligible_weeks"]]
         caveats += [f"{x['name']}: in a fantasy IR slot; his value assumes he plays every week he is not NFL-restricted"
                     for x in a + b if x["fantasy_ir_slot"] and not x["return_unconfirmed"]]
+        if self.reference["flex_slots"] and self.reference["incomplete_team_weeks"]:
+            caveats.append(f"League flex starter counts use known projections only for "
+                           f"{self.reference['incomplete_team_weeks']} team-week(s) with an unprojected player; "
+                           "starter-caliber labels may shift when those projections arrive")
         out.update(label=label, text=LABELS[label], you_send_par=r(pa), they_send_par=r(pb), ratio=round(ratio, 3),
                    you_send_starter_caliber=sa, they_send_starter_caliber=sb, caveats=caveats,
                    per_week={"you_send": r(pa / n), "they_send": r(pb / n)})
