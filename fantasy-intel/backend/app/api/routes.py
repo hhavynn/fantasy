@@ -24,6 +24,7 @@ from ..config import get_settings
 from ..db.connection import schema_version, table_columns, table_exists
 from .deps import db, one, rows
 from .perspective import league_teams, resolve_team, waiver_table
+from .signal_provenance import INTERRUPTED, Provenance, coverage, payload, sync_status, trade_provenance
 
 router = APIRouter(prefix="/api")
 
@@ -64,23 +65,9 @@ def _pj(season: int) -> str:
     return PLAYER_JOINS.replace("$season", str(int(season)))
 
 
-# A 'running' row with no finish time is left behind by a sync that died (SyncRun.start writes it, finish()
-# replaces it); a live sync holds the DuckDB lock, so the API cannot even read during one. Report it as
-# 'interrupted', and keep it out of the "latest run" per source so it neither shows as running nor as failed.
-_INTERRUPTED = "(status = 'running' AND finished_at IS NULL)"
+_INTERRUPTED = INTERRUPTED      # a sync that died: see signal_provenance.INTERRUPTED
 _RUN_STATUS = f"CASE WHEN {_INTERRUPTED} THEN 'interrupted' ELSE status END"
-
-
-def _sync_status(con) -> dict:
-    out = {}
-    for r in rows(con, """
-        SELECT source, max(finished_at) AS last_ok FROM sync_runs WHERE status = 'ok' GROUP BY 1"""):
-        out[r["source"]] = r["last_ok"]
-    last = rows(con, f"""
-        SELECT source, status, message, finished_at FROM (
-          SELECT *, row_number() OVER (PARTITION BY source ORDER BY started_at DESC) rn FROM sync_runs
-          WHERE NOT {_INTERRUPTED}) WHERE rn = 1""")
-    return {"last_success": out, "latest_runs": last}
+_sync_status = sync_status
 
 
 def _nfl_latest_week(con, season: int) -> int | None:
@@ -171,6 +158,10 @@ def overview(team_id: int | None = Query(None, description="Fantasy team to anal
                     or (p.get("nfl_injury") or {}).get("report_status")]
         needs = rows(con, """SELECT * FROM team_position_needs WHERE league_id=? AND season=? AND team_id=?
                              ORDER BY need_score DESC""", [league_id, season, team["team_id"]]) if team else []
+        sync = _sync_status(con)
+        prov = Provenance(con, sync=sync)
+        linked = coverage(sum(1 for p in roster if p["gsis_id"]), len(roster), "rostered players linked to NFL data") \
+            if roster else None
         return {
             "league": lg,
             "my_team": me,          # the owner's team (is_mine), unchanged by the selection
@@ -181,8 +172,9 @@ def overview(team_id: int | None = Query(None, description="Fantasy team to anal
             "injuries": injuries,
             "needs": needs,
             "recent_transactions": _recent_moves(con, league_id, season, limit=25),
-            "sync": _sync_status(con),
+            "sync": sync,
             "nfl_latest_week": _nfl_latest_week(con, season),
+            "provenance": payload(prov.league(lg), prov.injuries(con, season, cov=linked)),
         }
 
 
@@ -277,6 +269,7 @@ def player_detail(espn_player_id: int):
         opp_def = one(con, "SELECT * FROM defense_context WHERE season=? AND defteam=?",
                       [season, team_ctx["next_opponent"]]) if team_ctx and team_ctx.get("next_opponent") else None
         forward = player_forward(con, season, espn_player_id, p["pro_team"])
+        prov = Provenance(con)
         return {
             "player": p, "score": score, "weekly": weekly, "league_points": league_pts, "injuries": injuries,
             "forward_projection": forward,
@@ -288,7 +281,31 @@ def player_detail(espn_player_id: int):
                 "man_zone_splits": "unavailable: not in free data",
             },
             "ftn_read_semantics": ftn_semantics(),
+            "provenance": _player_provenance(con, prov, lg, p, weekly, forward),
         }
+
+
+def _player_provenance(con, prov: Provenance, lg: dict, p: dict, weekly: list[dict], forward: dict | None) -> dict:
+    """League data, ESPN's forward projections, nflverse usage and injury reports behind a player's profile."""
+    summary = (forward or {}).get("summary") or {}
+    proj = None
+    if forward is not None and prov.provider != "espn":      # no provider projections: the forward view is Ours
+        ours = forward.get("ours") or {}
+        proj = prov.projections("independent", {"available": bool(ours.get("available")), "reason": ours.get("reason"),
+                                                "run": {"created_at": ours.get("run_created_at")}}, horizon="forward")
+    elif forward is not None:
+        proj = prov.projections("espn", captured_at=forward.get("projection_synced_at"), horizon="forward",
+                                cov=coverage(summary.get("ros_weeks_available"), summary.get("ros_weeks_expected"),
+                                             "remaining weeks with a projection"))
+    if not p["gsis_id"]:
+        unlinked = "Not linked to NFL data: usage, snaps and practice reports cannot be shown for this player."
+        usage = prov.nflverse("usage", "NFL usage and snap counts (nflverse)", reason=unlinked)
+        injuries = prov.nflverse("injuries", "NFL injury and practice reports (nflverse)", reason=unlinked)
+    else:
+        usage = prov.nflverse("usage", "NFL usage and snap counts (nflverse)",
+                              reason=None if weekly else f"No weekly usage is stored for {lg['season']} yet.")
+        injuries = prov.injuries(con, lg["season"])
+    return payload(prov.league(lg), proj, usage, injuries)
 
 
 @router.get("/players/{espn_player_id}/forward")
@@ -418,10 +435,19 @@ def waivers(position: str | None = None, recommendation: str | None = None,
             for r in out:
                 r["drop_on_roster"] = None if r["suggested_drop_id"] is None else r["suggested_drop_id"] in on_roster
         roster_synced = perspective["roster_synced_at"] if perspective else None
+        roster_newer = bool(roster_synced and computed_at and roster_synced > computed_at)
+        pool = (meta["components"].get("decision") or {}).get("coverage") if meta else None
+        prov = Provenance(con)
+        analysis = prov.analysis(
+            "Fantasy Intel waiver analysis", computed_at,
+            cov=coverage(pool.get("evaluated"), pool.get("eligible"), "eligible free agents evaluated")
+            if isinstance(pool, dict) else None,
+            stale_reason="The roster was re-synced after this analysis ran." if roster_newer else None,
+            reason=None if meta else "No waiver analysis is stored for this league yet.")
         return {"league": lg, "perspective": perspective, "players": out, "computed_at": computed_at,
-                "roster_newer_than_analysis": bool(roster_synced and computed_at and roster_synced > computed_at),
-                "coverage": (meta["components"].get("decision") or {}).get("coverage") if meta else None,
-                "total": total, "offset": offset, "limit": limit}
+                "roster_newer_than_analysis": roster_newer, "coverage": pool,
+                "total": total, "offset": offset, "limit": limit,
+                "provenance": payload(prov.league(lg), analysis)}
 
 
 def _team_composition(con, league_id, season, week) -> dict[int, dict]:
@@ -674,7 +700,7 @@ def trade_options():
         return {"league": lg, "evaluation": _window_info(state), "teams": teams,
                 "active_capacity": state.active_capacity, "position_limits": state.position_limits,
                 "max_players_per_side": get_settings().trade_max_players_per_side,
-                "availability_note": AVAILABILITY_NOTE}
+                "availability_note": AVAILABILITY_NOTE, "provenance": trade_provenance(con, lg, state)}
 
 
 def _availability_brief(rec: dict | None) -> dict | None:
@@ -748,5 +774,6 @@ def trades_evaluate(body: TradeRequest):
                 "This league uses ESPN's undroppable list; forced drops may name a player ESPN would not let you drop."]
         res["trade_vs_free_agency"] = trade_vs_free_agency(state, res, body.team_a_id, body.team_b_id,
                                                            body.team_a_sends, body.team_b_sends, body.start_week)
+        res["provenance"] = trade_provenance(con, lg, state, body.start_week)
         return res
 
