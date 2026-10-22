@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
+import { RulesLink } from "@/components/RulesLink";
 import { UnknownTeam } from "@/components/TeamPerspective";
 import {
   Glossary, Method, Notice, PageHeader, ProvenanceBadge,
@@ -106,6 +107,9 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
           Pick up to {maxPerSide} players from each roster. Every remaining week, both teams&apos; optimal lineups are rebuilt before and after the
           trade with the league&apos;s real slots and FLEX rules; roster capacity and {pv} position limits are enforced with exact forced drops. Only
           starters count. Evaluation starts at week {firstWeek}: {evaluation.start_week_reason.reason}
+        </p>
+        <p>
+          <RulesLink section="roster">Roster slots and position limits used here</RulesLink>
         </p>
       </Method>
     </div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
+import { RulesLink } from "@/components/RulesLink";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import {
   Glossary, Method, Notice, PageHeader, ProvenanceBadge, Section, Tabs,
@@ -225,6 +226,9 @@ export default async function WaiversPage({ searchParams }: PageProps<"/waivers"
             chosen from four lanes (forward projection, depth-chart role, historical value{ownership ? ", ownership" : ""}); it is not the whole NFL. Each pickup is a separate scenario against the team&apos;s current roster, not a combined claim queue.
           </p>
         </div>
+        <p>
+          <RulesLink section="transactions">Waiver, FAAB and roster rules used here</RulesLink>
+        </p>
       </Method>
     </div>
     </ShortlistProvider>
