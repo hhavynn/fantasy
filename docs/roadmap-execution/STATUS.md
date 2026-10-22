@@ -21,13 +21,13 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 
 | Issue | Phase | State | Branch / PR | Notes |
 |---|---|---|---|---|
-| #201 perf budgets | 1 | PR OPEN | PR #235 (8b26f75) | security review: 1 MEDIUM + 3 LOW fixed; CI running |
+| #201 perf budgets | 1 | MERGED | PR #235 → 7fea582 | security review: 1 MEDIUM + 3 LOW fixed; Codex P2s fixed |
 | #202 UX/visual gates | 1 | MERGED | PR #230 → `3526fb1` (2026-10-22) | visual gate PENDING: run "Visual baselines" workflow, review, commit PNGs |
 | #168 signal provenance | 1 | MERGED | PR #208 → `509a45f` (2026-10-22) | contract `signal-provenance.v1` |
 | #169 league rules | 1 | MERGED | PR #207 → `7574d6e` (2026-10-22) | |
 | #167 onboarding | 1 | MERGED | PR #233 → `2a6c47d` (2026-10-22) | real-league demo needs a backend demo concept (follow-up) |
 | #170 desktop shell | 1 | NOT STARTED | — | after wave 2; sole owner of Nav/globals |
-| #165 weekly hub | 2 | PR OPEN | PR #232 (0ddd5a8) | Codex fixes in; UX gates/routes/workflows pass locally on main+hub; CI running |
+| #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
 | #166 action center | 2 | NOT STARTED | — | after #165 |
 | #171 what-if lineup | 2 | NOT STARTED | — | reuse lineup.py locks |
 | #177 bye/kickoff planner | 2 | NOT STARTED | — | |
@@ -121,6 +121,8 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 | #233 | 3c53ad6 | q a s + L (1 timing flake) | green | L was redundant with CI (D-08) |
 | #231 | 03d3460 | q a s + L + targeted after main merge | green | L was redundant with CI (D-08) |
 | #230 | 9bce26c | local E2E subsets | green | visual gate pending |
+| #232 | (head at merge) | targeted + UX gates on main+hub | green | |
+| #235 | 6164e84 | targeted 60 + s (623) | green | stale base, no file overlap with main → merged as is (D-07) |
 
 ## Lessons
 
