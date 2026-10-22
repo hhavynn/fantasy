@@ -1,7 +1,10 @@
 // Pure state logic for the interactive trade builder (no React, no fetch), so it can be unit-tested
 // with `node --test` (see lib/trade-builder.test.ts).
 
-export type BuilderPlayer = { espn_player_id: number; position: string | null; on_ir: boolean };
+/** on_taxi: a Sleeper taxi-squad player, like IR outside the active roster (absent = not on taxi). */
+export type BuilderPlayer = { espn_player_id: number; position: string | null; on_ir: boolean; on_taxi?: boolean };
+
+const active = (p: BuilderPlayer) => !p.on_ir && !p.on_taxi;
 export type BuilderTeam = { team_id: number; roster: BuilderPlayer[] };
 
 export type Selection = {
@@ -161,9 +164,9 @@ export type RosterPreview = { activeAfter: number; capacity: number; overCapacit
 export function rosterPreview(own: BuilderPlayer[], sends: number[], gets: BuilderPlayer[], capacity: number,
   limits: Record<string, number>): RosterPreview {
   const out = new Set(sends);
-  const before = own.filter((p) => !p.on_ir).length;
+  const before = own.filter(active).length;
   const after = own.filter((p) => !out.has(p.espn_player_id));
-  const activeAfter = after.filter((p) => !p.on_ir).length + gets.length;   // incoming players arrive active
+  const activeAfter = after.filter(active).length + gets.length;   // incoming players arrive active (even from IR or taxi)
   const count = (ps: BuilderPlayer[], pos: string) => ps.filter((p) => p.position === pos).length;
   const positionsOver = Object.entries(limits).flatMap(([pos, lim]) => {
     const c = count(after, pos) + count(gets, pos);

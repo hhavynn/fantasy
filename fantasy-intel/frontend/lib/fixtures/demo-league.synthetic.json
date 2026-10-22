@@ -1,0 +1,113 @@
+{
+ "source": "Recorded engine output for the synthetic fixture league (backend/tests/golden/e2e). Every team, player and number is an invented test input.",
+ "league": {
+  "name": "Fixture League",
+  "season": 2026,
+  "week": 3,
+  "teams": 4,
+  "reception_points": 1.0
+ },
+ "team": "Team 2",
+ "lineup": {
+  "status": "upgrade_available",
+  "projected_gain": 5.0,
+  "current_total": 74.7,
+  "recommended_total": 79.7,
+  "start": [
+   {
+    "name": "Juliet RB",
+    "position": "RB",
+    "pro_team": "SEA",
+    "projection": 8.3
+   },
+   {
+    "name": "Sierra WR",
+    "position": "WR",
+    "pro_team": "TB",
+    "projection": 11.3
+   }
+  ],
+  "bench": [
+   {
+    "name": "Hotel RB",
+    "position": "RB",
+    "pro_team": "PHI",
+    "projection": 6.3
+   },
+   {
+    "name": "Papa WR",
+    "position": "WR",
+    "pro_team": "PHI",
+    "projection": 8.3
+   }
+  ]
+ },
+ "standings": [
+  {
+   "team": "Team 1",
+   "wins": 3,
+   "losses": 0,
+   "ties": 0,
+   "points_for": 400.0,
+   "points_against": 90.0,
+   "seed": 1,
+   "mine": false
+  },
+  {
+   "team": "Team 2",
+   "wins": 2,
+   "losses": 1,
+   "ties": 0,
+   "points_for": 300.0,
+   "points_against": 90.0,
+   "seed": 2,
+   "mine": true
+  },
+  {
+   "team": "Team 3",
+   "wins": 1,
+   "losses": 2,
+   "ties": 0,
+   "points_for": 200.0,
+   "points_against": 90.0,
+   "seed": 3,
+   "mine": false
+  },
+  {
+   "team": "Team 4",
+   "wins": 0,
+   "losses": 3,
+   "ties": 0,
+   "points_for": 100.0,
+   "points_against": 90.0,
+   "seed": 4,
+   "mine": false
+  }
+ ],
+ "waivers": [
+  {
+   "name": "Waiver RB",
+   "position": "RB",
+   "pro_team": "KC",
+   "recommendation": "WAIT",
+   "waiver_score": 3.2,
+   "reason": "Improves covered future lineups by 4.0 projected points per week."
+  },
+  {
+   "name": "Waiver TE",
+   "position": "TE",
+   "pro_team": "DET",
+   "recommendation": "WAIT",
+   "waiver_score": 2.75,
+   "reason": "Wouldn't start for you and a backup TE rarely plays"
+  },
+  {
+   "name": "Waiver QB",
+   "position": "QB",
+   "pro_team": "PHI",
+   "recommendation": "IGNORE",
+   "waiver_score": 2.75,
+   "reason": "Wouldn't start for you and a backup QB rarely plays"
+  }
+ ]
+}

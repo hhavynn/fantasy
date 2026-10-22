@@ -51,9 +51,9 @@ export function LeagueSwitcher({ current }: { current: ScopedLeague }) {
     () => { const utc = dataAsOf(current.committedAt, "UTC"); return utc && `${utc} UTC`; },
   );
   return (
-    <details className={styles.switcher}>
+    <details className={`${styles.switcher} league-switcher`}>
       <summary className={styles.summary} title={asOf ?? undefined}>
-        <span className={styles.name}>{current.name}</span>
+        <span className={styles.name} title={current.name}>{current.name}</span>
         {asOf ? <span className={styles.asof}>{asOf}</span> : null}
       </summary>
       <div className={styles.menu} role="menu">

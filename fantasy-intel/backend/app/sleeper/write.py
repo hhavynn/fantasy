@@ -5,7 +5,11 @@ The tables keep their ESPN-derived names and id spaces, so no engine changes:
   * players are keyed by ESPN player id: Sleeper's own `espn_id`, else the DynastyProcess map in the global file
     (`nfl_ff_playerids`, then `nfl_players`); a team defense is ESPN's `-16000 - proTeamId`; a player with no ESPN
     id gets `-(10_000_000 + sleeper_id)`, which no ESPN id or D/ST id can collide with;
-  * lineup slots use ESPN's numeric slot ids (IR = 21, bench = 20), positions ESPN's default position ids;
+  * lineup slots use ESPN's numeric slot ids (IR = 21, bench = 20), positions ESPN's default position ids. ESPN has
+    no taxi slot: a current taxi-squad player keeps the bench id (no schema change, older files read as before) and
+    the slot label "TAXI", which is his taxi identity for every lineup and capacity consumer
+    (app/analytics/reserve_slots.py): owned and ONTEAM, never an active starter, outside the active roster.
+    Played weeks come from the matchups payload, which does not say who was on the taxi squad, so they stay bench;
   * actual weekly points are Sleeper's own (`players_points`) for rostered player-weeks, else the player's
     nflverse box score scored with the league's rules (skill players only); there are no provider projections
     (`projected_points` stays NULL: consumers read Fantasy Intel's own projections, app/analytics/projection_source);
@@ -32,6 +36,7 @@ from .scoring import to_scoring_items
 
 PROVIDER = "sleeper"
 SYNTHETIC_BASE = 10_000_000
+# TAXI shares the bench id on purpose: the taxi identity is the lineup_slot label (see the module docstring)
 SLOT_IDS = {"QB": 0, "RB": 2, "RB/WR": 3, "WR": 4, "WR/TE": 5, "TE": 6, "OP": 7, "D/ST": 16, "K": 17,
             BENCH: 20, IR: 21, TAXI: 20, "FLEX": 23}
 ELIGIBLE_SLOTS = {"QB": [0, 7, 20, 21], "RB": [2, 3, 23, 7, 20, 21], "WR": [4, 3, 5, 23, 7, 20, 21],

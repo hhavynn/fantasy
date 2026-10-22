@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BackendProblem } from "@/components/BackendProblem";
+import { RulesLink } from "@/components/RulesLink";
 import { CompareLink } from "@/components/CompareLink";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
 import { isUnknownTeam, readTeamSelection, withTeam, withTeamId } from "@/lib/team-perspective";
@@ -8,7 +9,7 @@ import { PlayerLink } from "@/components/PlayerLink";
 import { RangeLine } from "@/components/RangeLine";
 import { OriginTag, ProjectionNotice } from "@/components/ProjectionNotice";
 import {
-  Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, Section, SortableTh, Verdict, VerdictFigure,
+  Badge, Delta, Glossary, Method, Notice, PageHeader, Pos, ProvenanceBadge, Section, SortableTh, Verdict, VerdictFigure,
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
@@ -28,6 +29,7 @@ import {
   startSitVerdict,
 } from "@/lib/start-sit-helpers";
 import { StartSitControls } from "./StartSitControls";
+import { signalsOf } from "@/lib/signal-provenance";
 import type { BenchPlayer, DecisionPlayer, LineupPlayer, StartSitDecision, StartSitResponse } from "./types";
 import styles from "./start-sit.module.css";
 
@@ -115,6 +117,7 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         eyebrow={team.name}
         title={`Start/Sit · Week ${d.scoring_period}`}
         meta={`${team.name} (${team.abbrev}) · ${d.projection_source} projections · ${summary.locked_players_count} of ${totalPlayers} players kicked off`}
+        provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
         actions={
           <TeamPerspective path="/start-sit" sp={sp} current={team.id}>
             <StartSitControls
@@ -264,6 +267,9 @@ export default async function StartSitPage({ searchParams }: PageProps<"/start-s
         <ul className={`reasons ${styles.limits}`}>
           {d.limitations.map((l, i) => <li key={i}>{l}</li>)}
         </ul>
+        <p>
+          <RulesLink section="roster">Slots, eligibility and lock rules used here</RulesLink>
+        </p>
       </Method>
 
       <p className={styles.fresh}>
@@ -437,6 +443,7 @@ function BenchSection({ bench, recommended, sp, ours, projLabel, ranges }: { ben
                     <Pos value={b.position} />
                     <span className="faint">{b.pro_team ?? "FA"}</span>
                     {b.on_ir && <Badge value="IR slot" tone="bad" />}
+                    {b.on_taxi && <Badge value="Taxi" title="Sleeper taxi squad: rostered, but cannot start" />}
                     {b.nfl_ineligible && <Badge value="NFL out" tone="bad" />}
                     {b.injury_status && !HEALTHY.includes(b.injury_status) && <Badge value={b.injury_status} />}
                   </span>

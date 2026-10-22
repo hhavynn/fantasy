@@ -14,6 +14,7 @@ from ..espn.constants import DEFAULT_POSITION_MAP, FANTASY_POSITIONS, IR_SLOT
 from .lineup import lineup_slots
 from .player_availability import AVAILABLE, load_availability
 from .projections import league_window
+from .reserve_slots import active_capacity, is_taxi
 from .team_lineups import FA_STATUSES, RosterPlayer, project_team, public_weeks
 from .trades import LeagueState, weeks_label
 
@@ -219,14 +220,14 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
     start = evaluation_start_week(con, season, int(lg["current_week"]), window.final, now)
     rosters: dict[int, list[RosterPlayer]] = {}
     for row in fetch_dicts(con, """
-        SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, fp.full_name, fp.position, fp.pro_team,
+        SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, l.lineup_slot, fp.full_name, fp.position, fp.pro_team,
                coalesce(fp.injury_status, l.injury_status) AS injury_status
         FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
         WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
         ORDER BY l.team_id, l.espn_player_id""", [lg["league_id"], season, window.current]):
         rosters.setdefault(row["team_id"], []).append(RosterPlayer(
             row["espn_player_id"], row["position"], row["pro_team"], row["full_name"],
-            row["lineup_slot_id"] == IR_SLOT, row["injury_status"]))
+            row["lineup_slot_id"] == IR_SLOT, row["injury_status"], on_taxi=is_taxi(row)))
     teams = fetch_dicts(con, "SELECT team_id, name FROM fantasy_teams WHERE league_id = ? AND season = ?",
                         [lg["league_id"], season])
     for t in teams:
@@ -263,7 +264,7 @@ def load_league_state(con, season: int | None = None, now: datetime | None = Non
     rostered_ids = {p.espn_player_id for ps in rosters.values() for p in ps}
     availability = {pid: rec for pid, rec in avail.items()
                     if pid in rostered_ids or rec["status"] != AVAILABLE or rec["nfl_designation"]}
-    capacity = sum(int(v) for k, v in roster_slots.items() if k != "IR")
+    capacity = active_capacity(roster_slots)    # IR and Sleeper taxi slots are outside the active roster
     return LeagueState(
         season=season, slots=lineup_slots(roster_slots), final_week=window.final, last_regular=window.last_regular,
         start_week=start["evaluation_start_week"], rosters=rosters, free_agents=free_agents, projections=proj,
@@ -338,6 +339,8 @@ def named_weeks(weeks: list[dict], names: dict[int, dict]) -> list[dict]:
                            for a in w["assignment"]]
         w["bench"] = [{**b, "name": (names.get(b["player_id"]) or {}).get("full_name")} for b in w["bench"]]
         w["ir"] = [{**x, "name": (names.get(x["player_id"]) or {}).get("full_name")} for x in w.get("ir", [])]
+        if "taxi" in w:
+            w["taxi"] = [{**x, "name": (names.get(x["player_id"]) or {}).get("full_name")} for x in w["taxi"]]
         w["unavailable"] = [{**x, "name": (names.get(x["player_id"]) or {}).get("full_name")}
                             for x in w.get("unavailable", [])]
         out.append(w)

@@ -176,7 +176,7 @@ class _Totals:
 
 
 def _active(players: list[RosterPlayer]) -> list[int]:
-    return [p.espn_player_id for p in players if not p.on_ir]
+    return [p.espn_player_id for p in players if not p.reserved]    # IR and taxi players never start
 
 
 def _minus(ids: list[int], *out: int) -> list[int]:
@@ -297,7 +297,7 @@ class TradeSearch:
         st, T = self.state, self.T
         roster = st.rosters[team]
         pre = [p for p in roster if p.espn_player_id not in sends] + \
-              [replace(self.players[x], on_ir=False) for x in receives]
+              [replace(self.players[x], on_ir=False, on_taxi=False) for x in receives]
         drops: list[int] = []
         if not legal_roster(pre, st, roster):
             combo = self._forced_drops(pre, roster, set(receives))
@@ -748,6 +748,7 @@ def detail(state: LeagueState, row: dict) -> dict:
         and [d["espn_player_id"] for d in b["roster"]["forced_drops"]] == row["forced_drops"]["theirs"]
     players = [{**{k: p[k] for k in ("espn_player_id", "name", "position", "pro_team", "injury_status", "on_ir",
                                      "from_team_id", "to_team_id", "availability")},
+                **({"on_taxi": True} if p.get("on_taxi") else {}),
                 "marginal_value_on_current_team": p["marginal_value_on_current_team"]["roster_marginal_lineup_points"]}
                for p in res["players"]]
     return {**row, "consistent_with_manual_evaluator": consistent,

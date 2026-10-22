@@ -29,6 +29,7 @@
    "size": 4,
    "synced_at": "<masked>",
    "trade_deadline": "<masked>",
+   "trade_deadline_week": null,
    "waiver_process_days": null
   },
   "my_team": {
@@ -323,6 +324,52 @@
    "season": 2026,
    "source": "owner_default",
    "team_id": 2
+  },
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 0,
+      "label": "rostered players linked to NFL data",
+      "total": 11
+     },
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "No NFL injury or practice reports are stored.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": null,
+     "coverage": {
+      "available": 0,
+      "label": "rostered QB, RB, WR and TE with a market signal",
+      "total": 10
+     },
+     "label": "Fantasy Intel market signals (from nflverse usage)",
+     "reason_unavailable": "No market signals are computed for this roster yet.",
+     "signal": "usage",
+     "snapshot_version": "<masked>",
+     "source": "fantasy_intel",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
   },
   "recent_transactions": [
    {

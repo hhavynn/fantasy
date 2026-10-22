@@ -4,7 +4,7 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { ChooseTeam, needsTeam } from "@/components/TeamPerspective";
 import { PlayerLink } from "@/components/PlayerLink";
 import {
-  Badge, Delta, EmptyState, Glossary, Method, Notice, PageHeader, Pos, Section, Skeleton, SkeletonStatStrip, SkeletonTable, SortableTh, Stat, StatStrip, Tabs, VisuallyHidden,
+  Badge, Delta, EmptyState, Glossary, Method, Notice, PageHeader, Pos, ProvenanceBadge, Section, Skeleton, SkeletonStatStrip, SkeletonTable, SortableTh, Stat, StatStrip, Tabs, VisuallyHidden,
 } from "@/components/ui";
 import { api, type ApiResult } from "@/lib/api";
 import { signed } from "@/lib/format";
@@ -18,6 +18,7 @@ import {
 import { signedText } from "@/lib/trade-format";
 import type { DSummaryRow, DVSideSummary, DiscoveryContext, DiscoverySummary, NeedRow } from "@/lib/trade-types";
 import type { TradeDeltas } from "@/lib/types";
+import { signalsOf } from "@/lib/signal-provenance";
 import { CheckChips, MainConcern, VerdictBadge } from "./DualValueParts";
 import { TradeEvidence } from "./TradeEvidence";
 import styles from "./discover.module.css";
@@ -109,6 +110,7 @@ function Body({ c: d, summary, q, sp, defaultSource }: {
         title="Trade discovery"
         meta={<>Projected points: <b>{projOf(d, defaultSource)}</b> · Trade impact: <b>exact lineup simulation</b> for both teams · weeks {ev.start_week}–{ev.final_week}
           {ev.last_regular_season_week !== null && <> (regular season through {ev.last_regular_season_week})</>}</>}
+        provenance={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
         actions={<TeamLink href="/trades">Trade analyzer</TeamLink>}
       >
         <Tabs label="Discovery lens" current={modeHref(d.query.mode)}
@@ -333,6 +335,7 @@ function Players({ ids, d }: { ids: number[]; d: DiscoverySummary }) {
           <li key={id}>
             <PlayerLink id={id} name={n?.name ?? `#${id}`} /> <Pos value={n?.position} />
             {n?.on_ir && <Badge value="fantasy IR" tone="bad" />}
+            {n?.on_taxi && <Badge value="Taxi" title="Sleeper taxi squad: inactive on this roster (never starts, uses no active roster spot); arrives active after a trade" />}
             {n?.nfl_ineligible_weeks?.length ? <Badge value={`NFL-ineligible wk ${n.nfl_ineligible_weeks[0]}–${n.nfl_ineligible_weeks[n.nfl_ineligible_weeks.length - 1]}`} tone="bad" /> : null}
           </li>
         );

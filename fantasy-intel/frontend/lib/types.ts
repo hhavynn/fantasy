@@ -9,6 +9,8 @@ export type League = {
   league_id: number; season: number; name: string; size: number; scoring_type: string;
   reception_points: number | null; is_faab: boolean; faab_budget: number | null; current_week: number;
   roster_slots: Record<string, number>; trade_deadline: string | null; synced_at: string;
+  /** A week-based trade deadline (Sleeper); null when the provider has none. Absent from older backends. */
+  trade_deadline_week?: number | null;
 };
 
 export type Team = {
@@ -43,6 +45,7 @@ export type RosterPlayer = PlayerCore & {
   nfl_injury: { week: number; report_status: string | null; report_primary_injury: string | null; practice_status: string | null } | null;
 };
 
+/** status: AVAILABLE | QUESTIONABLE | DOUBTFUL | OUT | SUSPENDED | IR | TAXI (Sleeper taxi squad: cannot start). */
 export type Availability = { status: string; weight: number; sources: string[] };
 
 export type Need = {
@@ -188,7 +191,7 @@ export type TradeOptions = {
   evaluation: TradeWindow;
   teams: { team_id: number; name: string; abbrev: string; is_mine: boolean;
     roster: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
-      on_ir: boolean; injury_status: string | null; ros_projected_points: number | null }[] }[];
+      on_ir: boolean; on_taxi?: boolean; injury_status: string | null; ros_projected_points: number | null }[] }[];
   active_capacity: number;
   position_limits: Record<string, number>;
 };
@@ -213,6 +216,8 @@ export type LineupWeek = { week: number; phase: string | null; projection_comple
   known_lineup_points: number; projected_lineup_points: number | null; assignment: LineupSlot[];
   bench: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
   ir: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
+  /** Sleeper taxi-squad players (never start); present only for a team that has one. */
+  taxi?: { player_id: number; name?: string | null; position: string | null; points: number | null }[];
   missing_projection_ids: number[]; teamless_unprojected_ids: number[] };
 
 export type TeamLineupSummary = {
@@ -266,9 +271,11 @@ export type TradeSide = {
 export type TradePlayer = {
   espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
   injury_status: string | null; on_ir: boolean; from_team_id: number; to_team_id: number;
+  /** Sleeper taxi squad: inactive on his current roster, active after the trade (absent for everyone else). */
+  on_taxi?: boolean;
   marginal_value_on_current_team: { roster_marginal_lineup_points: number | null; regular_season_marginal_lineup_points: number | null;
     playoff_marginal_lineup_points: number | null; known_marginal_lineup_points: number; weeks_started: number[]; weeks_expected: number;
-    on_ir: boolean; ir_activation_sensitivity?: IrActivation };
+    on_ir: boolean; on_taxi?: boolean; ir_activation_sensitivity?: IrActivation };
   ir_activation_sensitivity: IrActivationPlayer | null;
   replacement_context: { replacement: FaPick["player"]; replacement_position: string | null; eligible_positions: string[];
     lineup_points_lost_without_player: number | null; lineup_points_recovered: number | null;
@@ -344,7 +351,7 @@ export type DiscoveryRow = {
 export type DiscoveryResult = DiscoveryRow & {
   consistent_with_manual_evaluator: boolean; result_label: string; regular_season_label: string; playoff_label: string;
   players: { espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
-    injury_status: string | null; on_ir: boolean; from_team_id: number; to_team_id: number;
+    injury_status: string | null; on_ir: boolean; on_taxi?: boolean; from_team_id: number; to_team_id: number;
     marginal_value_on_current_team: number | null }[];
   mine_detail: DiscoverySide; theirs_detail: DiscoverySide;
   ir_warning: string | null; ir_assumption: string;
@@ -371,7 +378,7 @@ export type Discovery = {
     limit: number; include_equivalents: boolean };
   results: DiscoveryResult[]; search: DiscoverySearch;
   opponents: { opponent_team_id: number; team_name: string | null; best_my_gain: DiscoveryRow | null; best_mutual: DiscoveryRow | null; exhaustive: boolean }[];
-  names: Record<string, { name: string | null; position: string | null; pro_team: string | null; on_ir: boolean; injury_status: string | null }>;
+  names: Record<string, { name: string | null; position: string | null; pro_team: string | null; on_ir: boolean; on_taxi?: boolean; injury_status: string | null }>;
   categories: Record<string, string>; sorts: string[]; shapes: string[];
   note: string; assumptions: string[]; limitations: string[];
 };
@@ -521,10 +528,11 @@ export type TvPhaseSplit = {
   incomplete_weeks: number[]; league_rank: TvRankRow | null;
 };
 export type TvRaw = { points: number | null; known_points: number | null; missing_weeks: number[] };
+/** code: bye | zero_projection | no_projection | ir | taxi (Sleeper taxi squad) | streamable | flex_competition | outscored. */
 export type TvBench = { week: number; projection: number | null; code: string; text: string };
 export type TvPlayer = {
   espn_player_id: number; name: string | null; position: string | null; pro_team: string | null;
-  injury_status: string | null; on_ir: boolean;
+  injury_status: string | null; on_ir: boolean; on_taxi?: boolean;
   espn_projected: Record<TvPhase, TvRaw>;
   marginal: { all: number | null; regular: number | null; playoff: number | null; known_all: number | null;
     known_regular: number | null; known_playoff: number | null };

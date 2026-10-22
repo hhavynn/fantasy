@@ -22,7 +22,7 @@ test("the backend's league list becomes the page's view model; malformed rows ar
   assert.equal(rest.length, 0);
   assert.deepEqual(l, { id: "lg_abcdefghijklmnop", provider: "espn", externalId: "4242", season: 2026, name: null,
     visibility: "private", status: "active", role: "admin", pinned: false, teamId: "3", syncState: "ready",
-    committedAt: "2026-10-21T12:00:00Z" });
+    syncIssue: null, committedAt: "2026-10-21T12:00:00Z" });
   assert.equal(leagueName(l), "ESPN league 4242");
   assert.deepEqual(parseMyLeagues({}), []);
 });

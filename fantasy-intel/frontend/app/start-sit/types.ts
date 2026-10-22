@@ -1,4 +1,5 @@
 import type { ProjectionOrigin, ProjectionSourceDetail } from "@/lib/projection-source";
+import type { ProvenancePayload } from "@/lib/signal-provenance";
 
 export interface LineupPlayer {
   slot_id: string;
@@ -59,6 +60,8 @@ export interface BenchPlayer {
   injury_status?: string | null;
   on_ir: boolean;
   nfl_ineligible: boolean;
+  /** Sleeper taxi squad: never a lineup candidate (absent for everyone else). */
+  on_taxi?: boolean;
 }
 
 export interface StartSitSummary {
@@ -89,6 +92,8 @@ export interface InjuryWarning {
 }
 
 export interface StartSitResponse {
+  /** signal-provenance.v1: lineup, projections and injury reports (lib/signal-provenance.ts). */
+  provenance?: ProvenancePayload | null;
   league: {
     id: number;
     name: string;

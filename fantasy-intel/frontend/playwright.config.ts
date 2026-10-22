@@ -20,9 +20,12 @@ const BACKEND_ENV = {
   EXTERNAL_USAGE_PREFERRED_PROVIDER: "",
 };
 
+// Specs with their own config: playwright.sleeper, playwright.multileague (also ux-multileague) and playwright.visual.
+const OWN_CONFIGS = /(sleeper|multileague|visual)\.spec\.ts/;
+
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: /(sleeper|multileague)\.spec\.ts/,   // own configs: playwright.sleeper / playwright.multileague
+  testIgnore: OWN_CONFIGS,
   outputDir: "./test-results",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -34,11 +37,16 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
+    // Everything, including the UX gates (e2e/ux-gates.spec.ts) at 1440.
     { name: "desktop-1440", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
-    { name: "mobile-375", use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } } },
-    // Navigation journeys only (not the full route smoke): the smallest phone and a tablet at the desktop bar's tightest.
-    { name: "mobile-320", testMatch: /navigation\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 320, height: 640 } } },
-    { name: "tablet-768", testMatch: /navigation\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 768, height: 1024 } } },
+    // The route smoke and journeys; the UX gates run at 390 instead (mobile-390).
+    { name: "mobile-375", testIgnore: [OWN_CONFIGS, /ux-gates\.spec\.ts/], use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } } },
+    // Navigation journeys and the UX gates (not the full route smoke): the smallest phone and a tablet at the desktop
+    // bar's tightest.
+    { name: "mobile-320", testMatch: /(navigation|ux-gates)\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 320, height: 640 } } },
+    { name: "tablet-768", testMatch: /(navigation|ux-gates)\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 768, height: 1024 } } },
+    // The UX gates at a current large phone.
+    { name: "mobile-390", testMatch: /ux-gates\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } } },
   ],
   webServer: [
     {

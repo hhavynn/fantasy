@@ -83,6 +83,17 @@ test("roster preview flags capacity and position limits before drops", () => {
   assert.deepEqual(pv2.positionsOver, [{ position: "WR", count: 4, limit: 2 }]);
 });
 
+test("taxi players, like IR, sit outside the active roster until a trade makes them active", () => {
+  const taxi = { espn_player_id: 205, position: "WR", on_ir: false, on_taxi: true };
+  const own = [...TEAMS[1].roster, taxi];                       // 4 active + 1 taxi
+  assert.equal(rosterPreview(own, [], [], 4, {}).overCapacityBy, 0);
+  const sent = rosterPreview(own, [205], [P(102, "RB")], 4, {});   // send the taxi player, get an active one
+  assert.equal(sent.activeAfter, 5);
+  assert.equal(sent.overCapacityBy, 1);
+  const got = rosterPreview(TEAMS[2].roster, [], [taxi], 3, {});    // a received taxi player arrives active
+  assert.equal(got.activeAfter, 3);
+});
+
 test("a full side refuses another player but still lets one be removed", () => {
   let s = initialSelection(TEAMS, { ta: 1, tb: 2, a: [101, 102] });
   const full = togglePlayer(s, "a", 103, 2);

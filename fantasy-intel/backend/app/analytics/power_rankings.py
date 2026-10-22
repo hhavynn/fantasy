@@ -38,12 +38,13 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import datetime
 
-from ..db.connection import fetch_dicts, table_exists
+from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import IR_SLOT
 from . import production_forecasts as pf
 from .lineup import FIXED_SLOTS
 from .playoff_race import NotSynced, RaceData, all_play, classify_matchups, load_race_data
 from .projection_backtest import _utc
+from .reserve_slots import is_taxi
 from .team_lineups import (STREAM_POSITIONS, RosterPlayer, project_team, r, replacement_market, source_label,
                            roster_marginal_value, starters)
 from .team_value import NotFound, league_ranks, load_extras, position_strength
@@ -155,7 +156,7 @@ def depth_cover(roster: list[RosterPlayer], base: dict, slots: list[str], window
     players = []
     for pid in sorted({q for w in by_week.values() for q in starters(w)}):
         p = rostered.get(pid)
-        if p is None or p.on_ir or p.position in SKIP_POSITIONS:   # streamers and K/D/ST are not depth
+        if p is None or p.reserved or p.position in SKIP_POSITIONS:   # streamers and K/D/ST are not depth
             continue
         mv = roster_marginal_value(roster, pid, slots, window, proj, base)
         rec = pts = 0.0
@@ -341,13 +342,16 @@ def load_previous(con, race: RaceData) -> Previous:
     kickoff = pf.first_kickoffs(con, st.season).get(week)
     if kickoff is None:
         return Previous(week, None, f"week {week}'s first kickoff time is unknown")
-    period = fetch_dicts(con, """SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, fp.full_name, fp.position,
-                                        fp.pro_team, coalesce(fp.injury_status, l.injury_status) AS injury_status,
-                                        l.acquisition_date, l.synced_at
-                                 FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
-                                 WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
-                                 ORDER BY l.team_id, l.espn_player_id""", [st.league_id, st.season, week]) \
-        if table_exists(con, "lineup_snapshots") else None
+    snapshots = table_exists(con, "lineup_snapshots")
+    label = "l.lineup_slot" if snapshots and "lineup_slot" in table_columns(con, "lineup_snapshots") else \
+        "NULL AS lineup_slot"      # the taxi label (reserve_slots.is_taxi); absent = read as before
+    period = fetch_dicts(con, f"""SELECT l.team_id, l.espn_player_id, l.lineup_slot_id, {label}, fp.full_name,
+                                         fp.position, fp.pro_team, coalesce(fp.injury_status, l.injury_status) AS injury_status,
+                                         l.acquisition_date, l.synced_at
+                                  FROM lineup_snapshots l JOIN fantasy_players fp USING (espn_player_id)
+                                  WHERE l.league_id = ? AND l.season = ? AND l.scoring_period = ?
+                                  ORDER BY l.team_id, l.espn_player_id""", [st.league_id, st.season, week]) \
+        if snapshots else None
     rows, synced_at = _history_roster(con, st, week, kickoff)
     gap = history_roster_problem(period or [], week, _utc(synced_at), kickoff) if rows else None
     if rows and not gap:
@@ -366,14 +370,14 @@ def load_previous(con, race: RaceData) -> Previous:
     for row in rows:
         rosters.setdefault(row["team_id"], []).append(RosterPlayer(
             row["espn_player_id"], row["position"], row["pro_team"], row["full_name"],
-            row["lineup_slot_id"] == IR_SLOT, row["injury_status"]))
+            row["lineup_slot_id"] == IR_SLOT, row["injury_status"], on_taxi=is_taxi(row)))   # roster_history: no label
     proj, snap, synced, reason = _prior_projections(con, st.season, week, st.final_week, kickoff)
     if reason:
         return Previous(week, None, reason)
     then = {p.espn_player_id for ps in rosters.values() for p in ps}
     universe = {p.espn_player_id: p for p in st.free_agents}
     universe.update({p.espn_player_id: p for ps in st.rosters.values() for p in ps})
-    free_agents = [replace(p, unavailable_weeks=frozenset(), on_ir=False) for pid, p in sorted(universe.items())
+    free_agents = [replace(p, unavailable_weeks=frozenset(), on_ir=False, on_taxi=False) for pid, p in sorted(universe.items())
                    if pid not in then]
     prior = replace(st, rosters=rosters, free_agents=free_agents, projections=proj, start_week=week,
                     availability={}, first_projection_week=week)

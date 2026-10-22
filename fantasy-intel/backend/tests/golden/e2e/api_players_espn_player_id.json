@@ -308,6 +308,59 @@
    "value_score_100": null,
    "xfp_per_game": null
   },
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 15,
+      "label": "remaining weeks with a projection",
+      "total": 15
+     },
+     "label": "ESPN forward projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL usage and snap counts (nflverse)",
+     "reason_unavailable": "Not linked to NFL data: usage, snaps and practice reports cannot be shown for this player.",
+     "signal": "usage",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "Not linked to NFL data: usage, snaps and practice reports cannot be shown for this player.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
   "route_data": null,
   "score": null,
   "team_context": null,

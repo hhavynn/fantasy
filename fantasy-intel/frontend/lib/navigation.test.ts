@@ -175,10 +175,17 @@ test("stored tab memory is parsed defensively", () => {
   })), { Players: { href: "/rankings?pos=WR", team: null } });
 });
 
-test("power rankings sit in League right after the weekly recap, and a team card highlights them", () => {
+test("power rankings sit in League right after the weekly recap and transactions, and a team card highlights them", () => {
   assert.equal(group("/power-rankings"), "League");
-  assert.deepEqual(NAV_GROUPS[4].pages.map((p) => p.href).slice(0, 2), ["/weekly-recap", "/power-rankings"]);
+  assert.deepEqual(NAV_GROUPS[4].pages.map((p) => p.href).slice(0, 3), ["/weekly-recap", "/transactions", "/power-rankings"]);
   assert.equal(getActiveRoute("/power-rankings/4").activeHref, "/power-rankings");
+});
+
+test("the transactions feed sits in League after the weekly recap", () => {
+  assert.equal(getActiveRoute("/transactions").activeHref, "/transactions");
+  assert.equal(group("/transactions"), "League");
+  const hrefs = NAV_GROUPS[4].pages.map((p) => p.href);
+  assert.equal(hrefs[hrefs.indexOf("/weekly-recap") + 1], "/transactions");
 });
 
 test("injury impact sits in My team, after the matchup", () => {
