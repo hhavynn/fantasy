@@ -94,6 +94,9 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 - MERGED PR #206 → `c18374a` (2026-10-22): Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
   GHSA-673q-mjm6-r5xr. It also stops the intermittent `SecurityFatalError` build abort.
 - #228 and #229 are tracked in the expansion table above.
+- PR OPEN #236 (`affected` adds the app-wide audits) → then #237 (stacked; quick defers `test_league_scope` /
+  `test_v2_authorization_matrix`, D-08 budget and D-09 cleanup rules reach `docs/agent-workflow.md`). Retarget #237
+  to main after #236 squash-merges; CI runs only on PRs to main.
 - Known #202 triage to clear: matchup heading order, player-note links, trade checkbox size, Sleeper Start/Sit
   "(null)", and the ESPN_MY_TEAM_ID hint shown to users.
 
@@ -121,8 +124,10 @@ weekly hub using the #168 contract. #170 runs after these, alone, because it own
 
 ## Lessons
 
-- `agent_check affected` misses the app-wide source audits (test_weekly_learning, test_dst_research,
-  test_independent_projections). Before pushing a branch, run the full backend suite in 4 local shards.
+- `agent_check affected` used to miss the app-wide source audits; PR #236 adds them. Do not run full local suites
+  instead (D-08): CI on the exact SHA is the full gate.
+- Agents must not wipe shared scratchpads or other shared state (the #229 agent ran `rm -rf <scratchpad>/*`). Rule in
+  `docs/agent-workflow.md` via PR #237 (D-09).
 - CI job logs can't be downloaded here (blob host blocked); `get_job_logs` with a small tail shows the failing test
   list. To reproduce, run that shard locally with `pytest --shard=N/8`.
 - Local Playwright: alias the installed Chromium 1194 as the expected 1243 under /tmp/claude-0/pwalias (headless shell
