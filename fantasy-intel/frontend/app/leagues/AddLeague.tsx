@@ -1,95 +1,86 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useId, useState } from "react";
+import { useActionState, useId } from "react";
 import { Notice } from "@/components/ui";
-import { leaguePath } from "@/lib/league-scope";
-import { CONSENT_TEXT, type LeagueProviderChoice } from "@/lib/my-leagues";
+import { CONSENT_TEXT } from "@/lib/my-leagues";
 import { addLeague, connectPrivate, type AddState } from "./actions";
 import styles from "./leagues.module.css";
 
 const IDLE: AddState = { status: "idle", message: null };
-
-const PROVIDERS: { value: LeagueProviderChoice; label: string }[] = [
-  { value: "espn", label: "ESPN" },
-  { value: "sleeper", label: "Sleeper" },
-];
+// Browser-side checks that mirror lib/my-leagues.ts's parsers (the server checks again): a bad id is caught before a
+// request is made. The pattern attribute must match the whole value.
+const ESPN_PATTERN = String.raw`\s*(\d{1,12}|\S*[?&]leagueId=\d{1,12}\S*)\s*`;
+const SLEEPER_PATTERN = String.raw`\s*(\d{6,20}|\S*sleeper\.(com|app)/leagues/\d{6,20}\S*)\s*`;
+const SEASON_PATTERN = String.raw`\s*\d{4}\s*`;
 
 /**
- * ESPN: step 1 tries the league as a public one; when ESPN says it is private, step 2 asks for the visitor's cookies.
- * Sleeper leagues are always public: one step, no cookies.
+ * Step 2 of adding a league, one form per host. Success redirects to the sync progress (or, for an ESPN league that
+ * ESPN says is private, to the cookie step), so these forms only ever show a problem and keep what was typed.
  */
-export function AddLeague({ defaultSeason }: { defaultSeason: number }) {
+export function EspnForm({ defaultSeason }: { defaultSeason: number }) {
   const [state, action, pending] = useActionState(addLeague, IDLE);
-  const [provider, setProvider] = useState<LeagueProviderChoice>("espn");
   const id = useId();
-  if (state.status === "needs_cookies" && state.league && state.season) {
-    return <CookieForm league={state.league} season={state.season} intro={state.message} />;
-  }
   return (
     <form action={action} className={styles.form}>
-      <fieldset className={styles.providers}>
-        <legend>Provider</legend>
-        {PROVIDERS.map((p) => (
-          <label key={p.value} className={styles.provider}>
-            <input type="radio" name="provider" value={p.value} checked={provider === p.value}
-                   onChange={() => setProvider(p.value)} /> {p.label}
-          </label>
-        ))}
-      </fieldset>
-      {provider === "sleeper" ? <SleeperFields id={id} /> : <EspnFields id={id} defaultSeason={defaultSeason} />}
-      <div className={styles.actions}>
-        <button type="submit" disabled={pending}>
-          {pending ? (provider === "sleeper" ? "Checking Sleeper…" : "Checking ESPN…") : "Add league"}
-        </button>
-      </div>
-      <Outcome state={state} />
-    </form>
-  );
-}
-
-function SleeperFields({ id }: { id: string }) {
-  return (
-    <div className={styles.field}>
-      <label htmlFor={`${id}-sleeper`}>Sleeper league id or address</label>
-      <input id={`${id}-sleeper`} name="league" type="text" autoComplete="off" autoCapitalize="off"
-             spellCheck={false} required aria-describedby={`${id}-sleeper-hint`} />
-      <p id={`${id}-sleeper-hint`} className={styles.hint}>
-        Open the league on sleeper.com and paste the address, or just the long number after <code>/leagues/</code>.
-        Sleeper leagues are public, so no cookies are needed.
-      </p>
-    </div>
-  );
-}
-
-function EspnFields({ id, defaultSeason }: { id: string; defaultSeason: number }) {
-  return (
-    <>
+      <input type="hidden" name="provider" value="espn" />
       <div className={styles.field}>
         <label htmlFor={`${id}-league`}>ESPN league id or address</label>
         <input id={`${id}-league`} name="league" type="text" autoComplete="off" autoCapitalize="off" spellCheck={false}
-               required aria-describedby={`${id}-league-hint`} />
+               required pattern={ESPN_PATTERN}
+               title="The number after leagueId= in the ESPN address, or the whole address"
+               defaultValue={state.input} key={`l-${state.input ?? ""}`} aria-describedby={`${id}-league-hint`}
+               aria-invalid={state.next === "fix_input" || undefined} />
         <p id={`${id}-league-hint`} className={styles.hint}>
           Open the league on fantasy.espn.com and paste the address, or just the number after <code>leagueId=</code>.
         </p>
       </div>
       <div className={styles.field}>
         <label htmlFor={`${id}-season`}>Season</label>
-        <input id={`${id}-season`} name="season" type="text" inputMode="numeric" autoComplete="off"
-               defaultValue={defaultSeason} className={styles.season} />
+        <input id={`${id}-season`} name="season" type="text" inputMode="numeric" autoComplete="off" pattern={SEASON_PATTERN}
+               title="A year, for example 2026" defaultValue={state.season || defaultSeason} key={`s-${state.season ?? ""}`}
+               className={styles.season} />
       </div>
-    </>
+      <div className={styles.actions}>
+        <button type="submit" disabled={pending}>{pending ? "Checking ESPN…" : "Add league"}</button>
+      </div>
+      <Problem state={state} />
+    </form>
   );
 }
 
-function CookieForm({ league, season, intro }: { league: string; season: number; intro: string | null }) {
-  const [state, action, pending] = useActionState(connectPrivate, IDLE);
+export function SleeperForm() {
+  const [state, action, pending] = useActionState(addLeague, IDLE);
   const id = useId();
-  if (state.status === "ok") return <Outcome state={state} />;
-  const message = state.status === "idle" ? intro : state.message;
   return (
     <form action={action} className={styles.form}>
-      {message ? <Notice tone={state.status === "idle" ? "info" : "negative"} title="A private league">{message}</Notice> : null}
+      <input type="hidden" name="provider" value="sleeper" />
+      <div className={styles.field}>
+        <label htmlFor={`${id}-sleeper`}>Sleeper league id or address</label>
+        <input id={`${id}-sleeper`} name="league" type="text" autoComplete="off" autoCapitalize="off" spellCheck={false}
+               required pattern={SLEEPER_PATTERN}
+               title="The long number after /leagues/ in the sleeper.com address, or the whole address"
+               defaultValue={state.input} key={`l-${state.input ?? ""}`} aria-describedby={`${id}-sleeper-hint`}
+               aria-invalid={state.next === "fix_input" || undefined} />
+        <p id={`${id}-sleeper-hint`} className={styles.hint}>
+          Open the league on sleeper.com and paste the address, or just the long number after <code>/leagues/</code>.
+          Sleeper leagues are public, so no cookies are needed.
+        </p>
+      </div>
+      <div className={styles.actions}>
+        <button type="submit" disabled={pending}>{pending ? "Checking Sleeper…" : "Add league"}</button>
+      </div>
+      <Problem state={state} />
+    </form>
+  );
+}
+
+/** The cookie step for an ESPN league that ESPN reported as private. The consent text and fields are unchanged. */
+export function CookieForm({ league, season }: { league: string; season: number }) {
+  const [state, action, pending] = useActionState(connectPrivate, IDLE);
+  const id = useId();
+  return (
+    <form action={action} className={styles.form}>
       <input type="hidden" name="league" value={league} />
       <input type="hidden" name="season" value={season} />
       <details className={styles.details}>
@@ -114,21 +105,27 @@ function CookieForm({ league, season, intro }: { league: string; season: number;
       </label>
       <div className={styles.actions}>
         <button type="submit" disabled={pending}>{pending ? "Checking with ESPN…" : "Connect privately"}</button>
+        <Link href="/leagues?host=espn" prefetch={false} className={styles.linkButton}>Use another league</Link>
       </div>
+      <Problem state={state} />
     </form>
   );
 }
 
-function Outcome({ state }: { state: AddState }) {
-  if (state.status === "error" && state.message) {
-    return <Notice tone="negative" title="Could not add the league">{state.message}</Notice>;
-  }
-  if (state.status === "ok") {
-    return (
-      <p className={styles.ok} role="status">
-        {state.message} {state.leagueId ? <Link href={leaguePath(state.leagueId, "/")} prefetch={false}>Open it</Link> : null}
-      </p>
-    );
-  }
-  return null;
+/** A failed attempt: what happened (the backend's own words), and what to do next. */
+function Problem({ state }: { state: AddState }) {
+  if (state.status !== "error" || !state.message) return null;
+  return (
+    <Notice tone="negative" title={state.title ?? "Could not add the league"}>
+      <p className={styles.problemText}>{state.message}</p>
+      {state.hint ? <p className={styles.problemText}>{state.hint}</p> : null}
+      {state.next === "sign_in" ? (
+        <p className={styles.problemText}><Link href="/login?next=/leagues" prefetch={false}>Sign in</Link>, then try again.</p>
+      ) : state.next === "manage" ? (
+        <p className={styles.problemText}><a href="#your-leagues">Go to your leagues</a></p>
+      ) : state.next === "invite" ? (
+        <p className={styles.problemText}>An invite link works once, for 7 days; open it while signed in and the league appears in your list.</p>
+      ) : null}
+    </Notice>
+  );
 }

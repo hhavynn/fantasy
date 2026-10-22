@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { api, apiRequest, classifyHttpError, formatDetail, isFirstRun } from "./api.ts";
+import { isFirstSync } from "./api-errors.ts";
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -106,4 +107,11 @@ test("a missing database is a first run, not an error", () => {
   assert.equal(isFirstRun("No database yet. Run scripts/sync_espn.py and scripts/sync_nfl.py first."), true);
   assert.equal(isFirstRun("database is busy"), false);
   assert.equal(isFirstRun(null), false);
+});
+
+test("a league still in its first sync (the API's 409) is a step of adding it, not an error", () => {
+  assert.equal(isFirstSync(409, "First sync in progress."), true);
+  assert.equal(isFirstSync(409, "Another member's cookies already sync this league."), false);
+  assert.equal(isFirstSync(503, "First sync in progress."), false);
+  assert.equal(isFirstSync(undefined, null), false);
 });
