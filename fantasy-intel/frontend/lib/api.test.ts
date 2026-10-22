@@ -109,6 +109,11 @@ test("a missing database is a first run, not an error", () => {
   assert.equal(isFirstRun(null), false);
 });
 
+test("api: a response the backend served from a league's previous files is marked stale", async () => {
+  globalThis.fetch = (async () => new Response('{"a":1}', { status: 200, headers: { "X-FI-Degraded": "stale-files" } })) as typeof fetch;
+  assert.deepEqual(await api("/x"), { ok: true, data: { a: 1 }, error: null, stale: true });
+});
+
 test("a league still in its first sync (the API's 409) is a step of adding it, not an error", () => {
   assert.equal(isFirstSync(409, "First sync in progress."), true);
   assert.equal(isFirstSync(409, "Another member's cookies already sync this league."), false);

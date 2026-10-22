@@ -443,6 +443,7 @@ function BenchSection({ bench, recommended, sp, ours, projLabel, ranges }: { ben
                     <Pos value={b.position} />
                     <span className="faint">{b.pro_team ?? "FA"}</span>
                     {b.on_ir && <Badge value="IR slot" tone="bad" />}
+                    {b.on_taxi && <Badge value="Taxi" title="Sleeper taxi squad: rostered, but cannot start" />}
                     {b.nfl_ineligible && <Badge value="NFL out" tone="bad" />}
                     {b.injury_status && !HEALTHY.includes(b.injury_status) && <Badge value={b.injury_status} />}
                   </span>

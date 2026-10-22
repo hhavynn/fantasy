@@ -16,6 +16,10 @@ Pure functions (no database). See docs/v2_trade_evaluator.md.
     canonical lineup and his projection (missing or not) never affects completeness, until a future
     sync shows ESPN moved him off IR. His ESPN projection is kept and reported; what he would add if
     activated for free is a separate, deliberately optimistic `ir_activation_sensitivity`.
+  * A Sleeper taxi-squad player (on_taxi; analytics/reserve_slots.py) is held the same way: rostered and owned,
+    never in the canonical lineup, no active roster spot, never counted against completeness. He is listed
+    under `taxi` (only for a team that has one, so an ESPN week's shape is unchanged). A traded taxi player
+    arrives in an active roster spot (arrives_active()), like a traded IR player.
   * NFL availability is separate from the fantasy IR slot. A week in a player's `unavailable_weeks`
     (verified NFL-ineligible: reserve list with the minimum-games rule not yet met, see
     analytics/player_availability.py) is treated like an IR week for that week only: he cannot
@@ -62,6 +66,22 @@ class RosterPlayer:
     on_ir: bool = False                # sits in an IR slot (does not use an active roster spot)
     injury_status: str | None = None
     unavailable_weeks: frozenset[int] = frozenset()   # verified NFL-ineligible weeks (not a fantasy slot)
+    on_taxi: bool = False              # Sleeper taxi squad: rostered, never starts, no active roster spot
+
+    @property
+    def reserved(self) -> bool:
+        """In an IR or taxi slot: never starts and does not use an active roster spot."""
+        return self.on_ir or self.on_taxi
+
+
+def arrives_active(p: RosterPlayer) -> RosterPlayer:
+    """A player acquired by trade arrives in an active roster spot: never in IR, never on the taxi squad."""
+    return replace(p, on_ir=False, on_taxi=False)
+
+
+def slot_flags(p: RosterPlayer) -> dict:
+    """`on_taxi` for a response row, only for a taxi player (ESPN rows keep their exact shape)."""
+    return {"on_taxi": True} if p.on_taxi else {}
 
 
 @dataclass(frozen=True)
@@ -99,8 +119,8 @@ def projection(proj: Projections, pid: int, week: int) -> float | None:
 
 
 def can_play(p: RosterPlayer, week: int) -> bool:
-    """Not in a fantasy IR slot and not verified NFL-ineligible that week."""
-    return not p.on_ir and week not in p.unavailable_weeks
+    """Not in a fantasy IR or taxi slot and not verified NFL-ineligible that week."""
+    return not p.reserved and week not in p.unavailable_weeks
 
 
 # ------------------------------------------------------------ K / D/ST streaming baseline --
@@ -188,13 +208,16 @@ def stream_summary(proj: Projections, window: Window) -> dict:
 def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj: Projections,
                  phase: str | None = None) -> dict:
     """Optimal lineup for one week from ESPN projections. Only players with a projection can start;
-    current-IR players never start and are listed (with their projection) under `ir`; players verified
-    NFL-ineligible this week are listed (with ESPN's projection, which is not counted) under `unavailable`."""
-    known, missing, teamless, ir, unavailable = [], [], [], [], []
+    current-IR players never start and are listed (with their projection) under `ir`, taxi-squad players the same
+    under `taxi`; players verified NFL-ineligible this week are listed (with ESPN's projection, which is not counted)
+    under `unavailable`."""
+    known, missing, teamless, ir, taxi, unavailable = [], [], [], [], [], []
     for p in players:
         v = projection(proj, p.espn_player_id, week)
         if p.on_ir:
             ir.append({"player_id": p.espn_player_id, "position": p.position, "points": v})
+        elif p.on_taxi:
+            taxi.append({"player_id": p.espn_player_id, "position": p.position, "points": v})
         elif week in p.unavailable_weeks:
             unavailable.append({"player_id": p.espn_player_id, "position": p.position, "points": v})
         elif v is not None:
@@ -225,6 +248,7 @@ def project_week(players: list[RosterPlayer], slots: list[str], week: int, proj:
                    if k["espn_player_id"] not in starters]
                   + [{"player_id": pid, "position": None, "points": None} for pid in sorted(missing + teamless)]),
         "ir": sorted(ir, key=lambda x: x["player_id"]),
+        **({"taxi": sorted(taxi, key=lambda x: x["player_id"])} if taxi else {}),
         "unavailable": sorted(unavailable, key=lambda x: x["player_id"]),
         "missing_projection_ids": sorted(missing),
         "teamless_unprojected_ids": sorted(teamless),
@@ -339,7 +363,7 @@ def roster_marginal_value(players: list[RosterPlayer], pid: int, slots: list[str
                           open_active_roster_spots: int | None = None) -> dict:
     """Projected starting points this player creates for THIS team: optimal lineup with him minus
     optimal lineup without him, week by week. Bench weeks contribute exactly 0, and so does a
-    current-IR player (he cannot occupy a lineup now); his upside is `ir_activation_sensitivity`."""
+    current-IR player (he cannot occupy a lineup now; his upside is `ir_activation_sensitivity`) or a taxi player."""
     base = base or project_team(players, slots, window, proj)
     me = next(p for p in players if p.espn_player_id == pid)
     rest = project_team(without(players, [pid]), slots, window, proj)
@@ -348,6 +372,7 @@ def roster_marginal_value(players: list[RosterPlayer], pid: int, slots: list[str
     out = {
         "espn_player_id": pid,
         "on_ir": me.on_ir,
+        **slot_flags(me),
         "roster_marginal_lineup_points": c["ros_delta"],
         "regular_season_marginal_lineup_points": c["regular_season_delta"],
         "playoff_marginal_lineup_points": c["playoff_delta"],
@@ -517,15 +542,15 @@ def replacement_context(players: list[RosterPlayer], pid: int, free_agents: list
     rest = project_team(rest_players, slots, window, proj)
     me = next(p for p in players if p.espn_player_id == pid)
     eligible_positions = replacement_positions(me.position, slots)
-    if me.on_ir:
+    if me.reserved:
         return {"label": "hypothetical FA replacement", "espn_player_id": pid,
                 "lineup_points_lost_without_player": compare(rest, base, window)["ros_delta"],
                 "eligible_positions": sorted(eligible_positions), "replacement": None, "replacement_position": None,
                 "lineup_points_recovered": None, "known_lineup_points_recovered": None,
                 "residual_loss_vs_original": None, "known_residual_loss_vs_original": None,
                 "candidates": 0, "excluded_unprojected": 0, "projection_complete": True,
-                "note": "Current IR player: he starts no canonical lineup and frees no active roster spot, "
-                        "so there is nothing to replace."}
+                "note": ("Current IR player" if me.on_ir else "Taxi-squad player")
+                + ": he starts no canonical lineup and frees no active roster spot, so there is nothing to replace."}
     fa = best_fa_addition(rest_players, free_agents, slots, window, proj, eligible_positions)
     out = {"label": "hypothetical FA replacement", "espn_player_id": pid,
            "lineup_points_lost_without_player": compare(rest, base, window)["ros_delta"],

@@ -1,5 +1,6 @@
 // Server-side fetch helper for the local FastAPI backend (GET, or POST when a body is given).
 import type { ApiErrorKind } from "./api-errors.ts";
+import { DEGRADED_HEADER, recordTiming } from "./api-timing.ts";
 import { LEAGUE_HEADER, scopeApiPath } from "./league-scope.ts";
 
 export { isFirstRun, type ApiErrorKind } from "./api-errors.ts";
@@ -42,8 +43,24 @@ async function userAuth(path: string): Promise<Record<string, string>> {
 }
 
 export type ApiResult<T> =
-  | { ok: true; data: T; error: null }
+  /** `stale`: the backend served this league's previous files (it could not load the newest in time): data may be older. */
+  | { ok: true; data: T; error: null; stale?: true }
   | { ok: false; data: null; error: string; kind?: ApiErrorKind; status?: number };
+
+/** One timed backend call (API_TIMING; lib/api-timing.ts), or the thrown network error. */
+async function timedFetch(path: string, init: RequestInit): Promise<Response> {
+  const started = performance.now();
+  try {
+    const res = await fetch(`${API_URL}${path}`, init);
+    recordTiming(init.method ?? "GET", path, res.status, performance.now() - started, res.headers.get("server-timing"));
+    return res;
+  } catch (err) {
+    recordTiming(init.method ?? "GET", path, "offline", performance.now() - started);
+    throw err;
+  }
+}
+
+const staleMark = (res: Response): { stale?: true } => (res.headers.get(DEGRADED_HEADER) ? { stale: true } : {});
 
 /** Classify a non-2xx backend response from its `detail` message (the stale-schema 503 names the database schema). */
 export function classifyHttpError(detail: string): "schema" | "http" {
@@ -58,7 +75,7 @@ export async function api<T>(path: string, body?: unknown): Promise<ApiResult<T>
     : { cache: "no-store", method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify(body) };
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, init);
+    res = await timedFetch(path, init);
   } catch {
     return {
       ok: false,
@@ -76,7 +93,7 @@ export async function api<T>(path: string, body?: unknown): Promise<ApiResult<T>
     return { ok: false, data: null, error: detail, kind: classifyHttpError(detail), status: res.status };
   }
   try {
-    return { ok: true, data: (await res.json()) as T, error: null };
+    return { ok: true, data: (await res.json()) as T, error: null, ...staleMark(res) };
   } catch {
     return { ok: false, data: null, kind: "unknown", status: res.status, error: `The backend at ${API_URL} returned a response that is not valid JSON.` };
   }
@@ -119,7 +136,7 @@ export async function apiRequest<T = null>(path: string, options: ApiRequestOpti
   };
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, init);
+    res = await timedFetch(path, init);
   } catch {
     return {
       ok: false,

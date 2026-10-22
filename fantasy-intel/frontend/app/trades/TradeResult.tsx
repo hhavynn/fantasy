@@ -24,6 +24,8 @@ type TradeSide = TradeSideV3;
 /** The projections the evaluation ran on, as the response names them ("ESPN", or "Ours" for a Sleeper league). */
 const projOf = (r: TradeResult) => projectionName(r.projection_source);
 const whyOf = (r: TradeResult) => `Incomplete: a rostered player with an NFL team has no ${projOf(r)} projection that week`;
+const TAXI_NOTE = "Taxi-squad players are inactive on their current roster (they never start and use no active roster "
+  + "spot) and arrive active after a trade, so their lineup value can rise on the receiving team.";
 const IR_HOLD_NOTE = "Current IR status is held constant for this hypothetical evaluation. This does not predict when a "
   + "player will return. Activation upside is shown separately and may require a roster move.";
 
@@ -202,6 +204,7 @@ function RosterNotices({ r, pv }: { r: TradeResult; pv: string }) {
         </Notice>
       )}
       {r.ir_warning && <Notice tone="caution" title="Injured reserve">{r.ir_warning} {r.ir_assumption ?? IR_HOLD_NOTE}</Notice>}
+      {r.players.some((p) => p.on_taxi) && <Notice tone="info" title="Taxi squad">{TAXI_NOTE}</Notice>}
       {r.injury_warnings.map((w) => (
         <Notice key={w.espn_player_id} tone="caution" title={w.name ?? `#${w.espn_player_id}`}>{w.warnings.join(" ")}</Notice>
       ))}
@@ -417,7 +420,7 @@ function Replacement({ r }: { r: TradeResult }) {
                   <td>
                     {c.replacement
                       ? <><PlayerLink id={c.replacement.espn_player_id} name={c.replacement.name} /> <Pos value={c.replacement.position} /></>
-                      : <span className="faint">{p.on_ir ? "current IR: nothing to replace" : "none projected"}</span>}
+                      : <span className="faint">{p.on_ir ? "current IR: nothing to replace" : p.on_taxi ? "taxi squad: nothing to replace" : "none projected"}</span>}
                   </td>
                   <td className="num">{num(c.lineup_points_lost_without_player, 1, why)}</td>
                   <td className="num">{num(c.lineup_points_recovered, 1, why)}</td>
@@ -473,6 +476,7 @@ function PlayerContext({ r, pv }: { r: TradeResult; pv: string }) {
                   <td><Badge value={i?.market_signal} /></td>
                   <td className="wrap">
                     {p.on_ir && <Badge value="fantasy IR slot" tone="bad" />}{" "}
+                    {p.on_taxi && <><Badge value="Taxi" title="Sleeper taxi squad: inactive on this roster (never starts, uses no active roster spot); arrives active after a trade" />{" "}</>}
                     <Badge value={p.injury_status && !["ACTIVE", "NORMAL"].includes(p.injury_status) ? p.injury_status : null} title={`${pv} designation`} />
                     {p.availability && p.availability.nfl_designation_label && (
                       <div className="faint">

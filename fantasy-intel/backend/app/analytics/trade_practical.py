@@ -144,7 +144,7 @@ def _anchor_opportunity_cost(board, anchor: int, row: dict, alt: dict, fa,
         return {"has_concern": False, "trade_advantage": g, "available_without_trade": 0.0, "lead": None}
     # Incoming players are active after the trade (as in trades.side_lineups), even if they sat in a
     # fantasy IR slot on their old team; otherwise scenario E would leave them out of the lineup.
-    incoming = [replace(names[x], on_ir=False) for x in row["receives"] if x in names]
+    incoming = [replace(names[x], on_ir=False, on_taxi=False) for x in row["receives"] if x in names]
     c_team = alt["_team"]
     try:
         combined = board.trade_with(anchor, [p for p in board.state.rosters[anchor] if p.espn_player_id not in row["sends"]] + incoming,

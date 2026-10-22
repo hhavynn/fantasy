@@ -26,6 +26,7 @@ from ..db.connection import fetch_dicts, table_exists
 from ..espn.constants import BENCH_SLOT, IR_SLOT, NON_STARTER_SLOTS, SLOT_MAP
 from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible
 from .player_availability import load_availability
+from .reserve_slots import is_taxi
 from .team_lineups import RosterPlayer
 from .trade_data import kickoff_utc
 
@@ -772,6 +773,8 @@ def load_start_sit_evaluation(
             ir = prev_ir
 
     all_roster = starters + bench + ir
+    # Sleeper taxi-squad players load as bench rows (slot label TAXI): rostered, but never a lineup candidate.
+    taxi_ids = {p["espn_player_id"] for p in bench if "espn_player_id" in p and is_taxi(p)}
 
     # 5. Load projections for target_week
     proj_rows = fetch_dicts(
@@ -813,6 +816,7 @@ def load_start_sit_evaluation(
             name=p.get("full_name"),
             on_ir=p["espn_player_id"] in ir_ids,
             injury_status=p.get("injury_status"),
+            on_taxi=p["espn_player_id"] in taxi_ids,
         )
         for p in all_roster if "espn_player_id" in p
     ]
@@ -871,7 +875,7 @@ def load_start_sit_evaluation(
         locked_starter_assignments=locked_starters,
         locked_bench_ids=locked_bench_ids,
         unavailable_ids=unavailable_ids,
-        ir_ids=ir_ids,
+        ir_ids=ir_ids | taxi_ids,      # neither an IR nor a taxi player can start
         projections=projections,
         actual_starters=starters,
     )
@@ -1027,6 +1031,7 @@ def load_start_sit_evaluation(
             "injury_status": p.get("injury_status"),
             "on_ir": False,
             "nfl_ineligible": pid in unavailable_ids,
+            **({"on_taxi": True} if pid in taxi_ids else {}),
         })
     for p in ir:
         pid = p.get("espn_player_id")

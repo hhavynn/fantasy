@@ -60,6 +60,8 @@ export interface BenchPlayer {
   injury_status?: string | null;
   on_ir: boolean;
   nfl_ineligible: boolean;
+  /** Sleeper taxi squad: never a lineup candidate (absent for everyone else). */
+  on_taxi?: boolean;
 }
 
 export interface StartSitSummary {
