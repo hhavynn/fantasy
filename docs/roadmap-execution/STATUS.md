@@ -21,9 +21,9 @@ States: NOT STARTED · IN PROGRESS · READY FOR REVIEW (branch/PR open, gates re
 | Issue | Phase | State | Branch / PR | Notes |
 |---|---|---|---|---|
 | #201 perf budgets | 1 | IN PROGRESS | `feature/fi-201-perf-budgets` | wave 3 agent |
-| #202 UX/visual gates | 1 | READY FOR REVIEW | `feature/fi-202-ux-gates` · PR #230 | visual gate armed only after the "Visual baselines" workflow is run and its PNGs are reviewed |
-| #168 signal provenance | 1 | READY FOR REVIEW | `feature/fi-168-signal-provenance` · PR #208 | contract `signal-provenance.v1` reused by #165+; security review pending |
-| #169 league rules | 1 | READY FOR REVIEW | `feature/fi-169-league-rules` · PR #207 | contract `league-rules/v1`; security review pending |
+| #202 UX/visual gates | 1 | READY FOR REVIEW | `feature/fi-202-ux-gates` · PR #230 (CI green a7f261a) | visual gate armed only after the "Visual baselines" workflow is run and its PNGs are reviewed |
+| #168 signal provenance | 1 | READY FOR REVIEW | `feature/fi-168-signal-provenance` · PR #208 | contract `signal-provenance.v1` reused by #165+; security-reviewed; CI green on d42cee4 |
+| #169 league rules | 1 | READY FOR REVIEW | `feature/fi-169-league-rules` · PR #207 | contract `league-rules/v1`; security-reviewed; CI green on 5991d83 |
 | #167 onboarding | 1 | IN PROGRESS | `feature/fi-167-onboarding` | code done, security-reviewed; full suite running before push |
 | #170 desktop shell | 1 | NOT STARTED | — | after wave 2; sole owner of Nav/globals |
 | #165 weekly hub | 2 | IN PROGRESS | `feature/fi-165-weekly-hub` (stacked on #208 @ d42cee4) | wave 3 agent |
@@ -32,7 +32,7 @@ States: NOT STARTED · IN PROGRESS · READY FOR REVIEW (branch/PR open, gates re
 | #177 bye/kickoff planner | 2 | NOT STARTED | — | |
 | #186 player news | 2 | NOT STARTED | — | source licensing gate first |
 | #187 player profile tabs | 2 | NOT STARTED | — | news tab optional on #186 |
-| #193 transactions feed | 2 | IN PROGRESS | `feature/fi-193-transactions-feed` | code done, security-reviewed; full suite running before push |
+| #193 transactions feed | 2 | READY FOR REVIEW | `feature/fi-193-transactions-feed` · PR #231 | security-reviewed; local full suite 4018 passed; CI green on 6334342 |
 | #178 add/drop simulator | 3 | NOT STARTED | — | |
 | #180 claim planner | 3 | NOT STARTED | — | extends shortlist |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
@@ -61,15 +61,38 @@ States: NOT STARTED · IN PROGRESS · READY FOR REVIEW (branch/PR open, gates re
 | #203 lineup submission | 8 | RESEARCH-ONLY | — | no provider writes |
 | #204 Draft Wizard-lite | 8 | NOT STARTED | — | after in-season stable |
 
+## Expansion track (#227: #209–#226, plus correctness fixes #228–#229)
+
+Kept separate from #205. It is an additive backlog: nothing here preempts an active #205 issue (D-06).
+
+| Issue | Group | State | Branch / PR | Gate (prerequisite) |
+|---|---|---|---|---|
+| #228 Sleeper taxi eligibility | fix | IN PROGRESS | `feature/fi-228-sleeper-taxi` | none; agent running |
+| #229 superflex replacement level | fix | NOT STARTED | — | next free slot after #228 (D-05) |
+| #212 Breakout Radar | A | NOT STARTED | — | #168 merged; backtest gate |
+| #210 Game Splits | A | NOT STARTED | — | backend now; UI after #170 |
+| #226 Advanced screener | A | NOT STARTED | — | backend now; UI after #170/#200; feeds #219 |
+| #225 Projection change attribution | A | NOT STARTED | — | reuses projection_movers; audit-restricted modules |
+| #216 Marginal roster utility | B | NOT STARTED | — | #169 + #178 lineup contract |
+| #218 Stash/handcuff planner | B | NOT STARTED | — | #216 |
+| #209 Cross-league portfolio | B | NOT STARTED | — | #166 |
+| #211 Pace / game-script lab | B | NOT STARTED | — | #188 |
+| #213 NFL what-if lab | C | NOT STARTED | — | #190; never alters production forecasts |
+| #214 Trade counteroffers | C | NOT STARTED | — | #182, #183 |
+| #217 Playoff rooting guide | C | NOT STARTED | — | #192 |
+| #215 Manager trade tendencies | C | NOT STARTED | — | #193 (PR #231), #182 |
+| #222 Custom scoring sensitivity | C | NOT STARTED | — | #169 (PR #207) |
+| #219 Ask Fantasy Intel | D | NOT STARTED | — | #226, #200; no paid LLM |
+| #221 Fantasy Wrapped | D | NOT STARTED | — | #194, #197 |
+| #224 Offline / PWA | D | RESEARCH-ONLY | — | #196 tenant-safe persistence |
+| #220 Three-team sandbox | E | RESEARCH-ONLY | — | stable trade engines |
+| #223 Keeper/dynasty readiness | E | RESEARCH-ONLY | — | #185, #204; taxi via #228 |
+
 ## Out-of-roadmap fixes
 
 - PR #206 `fix/next-security-16-4-2`: Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
   GHSA-673q-mjm6-r5xr. It also stops the intermittent `SecurityFatalError` build abort.
-- #228 (P0, filed by the owner from the #169 audit): Sleeper taxi players are stored as bench, so optimisers could
-  start them, and `trade_data` counts TAXI as active capacity.
-- #229: superflex QB demand in `trade_assets.py` (starter counts from fixed slots only). Feeds #182/#184.
-- The owner opened #209–#227 (#227 is the "Beyond FantasyPros" roadmap). They are out of #205's scope and not
-  scheduled here.
+- #228 and #229 are tracked in the expansion table above.
 - Known #202 triage to clear: matchup heading order, player-note links, trade checkbox size, Sleeper Start/Sit
   "(null)", and the ESPN_MY_TEAM_ID hint shown to users.
 

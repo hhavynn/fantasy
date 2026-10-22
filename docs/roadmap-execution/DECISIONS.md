@@ -23,6 +23,19 @@ files. #201 (perf) moves to wave 2 because it shares `lib/api.ts` and backend ca
 #170 (shell redesign) runs after the other Phase 1 work and has sole ownership of `Nav.tsx`, `layout.tsx` and
 `globals.css`.
 
+## D-05 · 2026-10-22 · #228 before #229, then the expansion
+#228 (taxi) changes `sleeper/write.py`, `trade_data.py` and the lineup consumers. #229 changes the explanatory
+baselines in `trade_assets.py` and leaves the exact evaluator alone. Their files don't overlap, but both shape what
+#182/#184/#216 build on, so #229 takes the next free agent slot and starts from #228's branch if #228 is still
+unmerged. Both come before any expansion feature that reads roster capacity or replacement levels (#216, #218, #214).
+
+## D-06 · 2026-10-22 · How the #227 expansion is scheduled
+It is an additive backlog with its own STATUS table. An expansion issue starts only when a slot frees, its
+prerequisite has landed (or can be safely stacked on), and no active agent owns the same files. When an expansion
+issue is ready, its backend research (#212, #210, #226, #225) may run before its UI; the UI waits for #170, the
+owner of nav and layout. Prefer a section or tab of an existing page over a new page (Game Splits in Research,
+attribution in Projection movers). #224, #220 and #223 are research-first: the deliverable is a go/no-go note.
+
 ## Open research gates (filled in as work reaches them)
 - #186 news: needs a free source with redistribution rights; otherwise the profile ships without a news tab.
 - #198 coverage/routes: no free licensed coverage data is known; expect a documented "derived stats only" scope.
