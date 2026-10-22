@@ -343,7 +343,7 @@
      "coverage": {
       "available": 0,
       "label": "rostered players linked to NFL data",
-      "total": 12
+      "total": 11
      },
      "label": "NFL injury and practice reports (nflverse)",
      "reason_unavailable": "No NFL injury or practice reports are stored.",

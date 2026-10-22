@@ -160,8 +160,10 @@ def overview(team_id: int | None = Query(None, description="Fantasy team to anal
                              ORDER BY need_score DESC""", [league_id, season, team["team_id"]]) if team else []
         sync = _sync_status(con)
         prov = Provenance(con, sync=sync)
-        linked = coverage(sum(1 for p in roster if p["gsis_id"]), len(roster), "rostered players linked to NFL data") \
-            if roster else None
+        # D/ST has no NFL injury or practice report to link, so it is not expected to be covered.
+        reportable = [p for p in roster if p["position"] != "D/ST"]
+        linked = coverage(sum(1 for p in reportable if p["gsis_id"]), len(reportable),
+                          "rostered players linked to NFL data") if reportable else None
         return {
             "league": lg,
             "my_team": me,          # the owner's team (is_mine), unchanged by the selection

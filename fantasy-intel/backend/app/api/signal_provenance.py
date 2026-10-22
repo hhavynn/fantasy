@@ -230,7 +230,7 @@ class Provenance:
     def analysis(self, label: str, computed_at: Any, *, cov: dict | None = None, stale_reason: str | None = None,
                  reason: str | None = None) -> dict:
         return signal("analysis", label, "fantasy_intel", computed_at, self.league_version, coverage=cov,
-                      reason_unavailable=reason if computed_at is not None or reason else "Not computed yet.",
+                      reason_unavailable=reason,
                       stale_reason=stale_reason or self.failed_since_ok("analytics"))
 
 

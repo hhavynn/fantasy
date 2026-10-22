@@ -123,9 +123,10 @@ def test_espn_projections_with_missing_starters_are_partial_and_say_why():
     assert sp.status(s, NOW) == "partial"
 
 
-def test_analysis_never_computed_is_unavailable():
+def test_analysis_never_computed_is_unavailable_and_an_undated_one_is_unknown():
     p = _prov({"last_success": {}, "latest_runs": []})
-    assert sp.status(p.analysis("Waivers", None), NOW) == "unavailable"
+    assert sp.status(p.analysis("Waivers", None, reason="No waiver analysis is stored."), NOW) == "unavailable"
+    assert sp.status(p.analysis("Waivers", None), NOW) == "unknown"
 
 
 # ---- the endpoints --------------------------------------------------------------------------------------------------
