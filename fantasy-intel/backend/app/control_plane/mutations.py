@@ -74,9 +74,19 @@ class NotLeagueOwner(ControlPlaneError):
     code = "not_a_league_member"
 
 
+class SignupsClosed(ControlPlaneError):
+    """A new account while SIGNUPS_ENABLED is off (fi.ensure_app_user)."""
+    code = "signups_closed"
+
+
+class LeagueLimit(ControlPlaneError):
+    """The account already has 25 leagues (pins and live memberships)."""
+    code = "league_limit"
+
+
 _BY_CODE = {cls.code: cls for cls in (SignInRequired, NotAdmin, NotAMember, NotOwner, LastAdmin, CredentialExists,
                                       InviteInvalid, LeagueUnavailable, LeaguePublic, LeagueQuota, NoCredential,
-                                      NotLeagueOwner, SyncPaused)}
+                                      NotLeagueOwner, SyncPaused, SignupsClosed, LeagueLimit)}
 
 
 def _call(con, sql: str, params=()):
@@ -110,6 +120,12 @@ def me(con, principal: Principal) -> dict:
     return {"user_id": uid, "is_platform_admin": bool(row[0]), "created_at": row[1].isoformat(), "pins": pins}
 
 
+def delete_my_account(con, principal: Principal) -> None:
+    """The caller's own account, and with it (cascade) their credentials, memberships, pins and selections."""
+    _require(principal)
+    _call(con, "SELECT fi.delete_my_account()")
+
+
 def list_my_leagues(con, principal: Principal) -> list[str]:
     uid = _require(principal)
     rows = con.execute("""
@@ -124,7 +140,8 @@ def set_pin(con, principal: Principal, league_id: str, pinned: bool) -> None:
     uid = _require(principal)
     ensure_app_user(con)
     if pinned:
-        con.execute("INSERT INTO fi.league_pins (user_id, league_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", [uid, league_id])
+        _call(con, "INSERT INTO fi.league_pins (user_id, league_id) VALUES (%s, %s) ON CONFLICT DO NOTHING RETURNING 1",
+              [uid, league_id])
     else:
         con.execute("DELETE FROM fi.league_pins WHERE user_id = %s AND league_id = %s", [uid, league_id])
 

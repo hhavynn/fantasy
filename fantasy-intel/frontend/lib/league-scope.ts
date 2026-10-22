@@ -4,15 +4,17 @@
 //   /l/<lg>/<page>?q   -> rewrite to /<page>?q, header x-fi-league: <lg>, cookie fi_league=<lg> (last viewed)
 //   /<page>?q + cookie -> redirect to /l/<cookie>/<page>?q   ("old URLs go to the viewer's last-viewed league")
 //   /<page>?league=clear -> clear the cookie, serve the classic (unscoped) site
-// Everything else (assets, Next internals, the /leagues connections page, sign-in and invites) passes through untouched.
+// Everything else (assets, Next internals, the /leagues connections page, sign-in, invites, terms and privacy) passes
+// through untouched.
 
 export const LEAGUE_HEADER = "x-fi-league";
 export const LEAGUE_COOKIE = "fi_league";
 export const CLEAR_PARAM = "league";
 const LEAGUE_ID = /^lg_[A-Za-z0-9_-]{16,64}$/;
-// Account pages (sign-in, its email callback, invites) belong to no league: never rewritten or redirected.
-const UNSCOPED_PREFIXES = ["/_next", "/api", "/leagues", "/login", "/auth", "/invite", "/favicon", "/icon", "/apple-icon",
-  "/robots", "/sitemap"];
+// Account pages (sign-in, its email callback, invites) and the terms and privacy policy belong to no league: never
+// rewritten or redirected.
+const UNSCOPED_PREFIXES = ["/_next", "/api", "/leagues", "/login", "/auth", "/invite", "/account", "/admin", "/terms", "/privacy", "/favicon",
+  "/icon", "/apple-icon", "/robots", "/sitemap"];
 
 export function isLeagueId(value: unknown): value is string {
   return typeof value === "string" && LEAGUE_ID.test(value);

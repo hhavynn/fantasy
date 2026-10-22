@@ -75,3 +75,10 @@ def purge_expired(con, objects) -> list[str]:
         con.execute("SELECT fi.league_purged(%s)", [lid])
         con.commit()
     return due
+
+
+def prune_audit_log(con) -> int:
+    """Delete audit rows older than a year (the privacy policy's retention; fi.prune_audit_log)."""
+    n = con.execute("SELECT fi.prune_audit_log()").fetchone()[0]
+    con.commit()
+    return int(n)

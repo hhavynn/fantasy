@@ -1,0 +1,84 @@
+# Platform monitor (docs/superpowers/plans/2026-10-19-multi-league-phase-6.md, Task 4): hourly free-tier usage
+# samples into fi.usage_samples, plus one GitHub issue per alert kind ("Usage above 70%", "Dead sync jobs"); GitHub
+# emails the repository owner when an issue opens or gains a comment. Never runs on pull requests. Off until the
+# repository variable SYNC_DRAIN_ENABLED is "true", like the drain. The log and the issues are public: the monitor
+# prints metric names, numbers, job ids, league ids and error codes only.
+name: Platform monitor
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      inject:
+        description: "Force a sample to prove an alert fires, e.g. r2_storage_bytes=8000000000/10000000000 (not stored)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: platform-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    name: Sample usage and alert
+    if: github.repository == 'hhavynn/fantasy' && vars.SYNC_DRAIN_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+        working-directory: fantasy-intel/backend
+    env:
+      TZ: UTC
+      PYTHONUNBUFFERED: "1"
+      PYTHONWARNINGS: ignore
+      FI_SYNC_DB_URL: ${{ secrets.FI_SYNC_DB_URL }}
+      SNAPSHOT_BUCKET: fantasy-intel
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}   # optional: R2 operations
+      VERCEL_USAGE_TOKEN: ${{ secrets.VERCEL_USAGE_TOKEN }}                   # optional: Vercel usage
+      VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      INJECT: ${{ github.event.inputs.inject }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "fantasy-intel/backend/uv.lock"
+
+      - name: Install the sync dependencies
+        run: uv sync --frozen --no-dev --group sync
+
+      - name: Ensure the alert label
+        run: gh label create platform-alert --color B60205 --description "Opened by the platform monitor" 2>/dev/null || true
+
+      - name: Monitor
+        run: |
+          args=()
+          if [ -n "$INJECT" ]; then args+=(--inject "$INJECT"); fi
+          uv run --no-sync python ../scripts/platform_monitor.py "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/monitor.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Audit the public log
+        if: always()
+        run: python3 ../scripts/audit_drain_log.py --monitor "$RUNNER_TEMP/monitor.log"

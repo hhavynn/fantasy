@@ -77,3 +77,20 @@ test("owner-only research pages are not shown to a member who is not a platform 
   await expect(page.getByRole("link", { name: "Research lab" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Projection accuracy" })).toHaveCount(0);
 });
+
+test("the terms, the privacy policy and account settings render, unscoped, for visitors and members", async ({ page, context }) => {
+  const errors = collectErrors(page);
+  for (const [href, h1] of [["/terms", "Terms"], ["/privacy", "Privacy policy"]] as const) {
+    const res = await page.goto(href, { waitUntil: "load" });
+    expect(res?.status(), href).toBe(200);
+    expect(new URL(page.url()).pathname).toBe(href);
+    await expect(page.locator("h1")).toHaveText(h1);
+  }
+  await page.goto("/account", { waitUntil: "load" });
+  await expect(page.locator("main")).toContainText("Not signed in");
+  await signIn(context);
+  await page.goto("/account", { waitUntil: "load" });
+  await expect(page.locator("main")).toContainText("viewer@example.test");
+  await expect(page.getByRole("button", { name: "Delete my account" })).toBeVisible();
+  expect(errors).toEqual([]);
+});

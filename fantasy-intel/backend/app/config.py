@@ -75,6 +75,7 @@ class Settings:
     # Phase 3: import / connect / invites / credentials under /v2 (needs MULTILEAGUE_ENABLED too)
     multileague_connect_enabled: bool = False   # MULTILEAGUE_CONNECT_ENABLED=1
     classic_site_enabled: bool = True       # CLASSIC_SITE_ENABLED=0 retires the single-league /api/* routes (Phase 5)
+    signups_enabled: bool = False           # SIGNUPS_ENABLED=1 lets new accounts in (Phase 6; fi.ensure_app_user)
     # fine-grained token with Actions: write on this repo only; starts the sync drain after a connect
     github_dispatch_token: str | None = field(default=None, repr=False)   # GITHUB_DISPATCH_TOKEN
     yahoo_client_id: str | None = None      # YAHOO_CLIENT_ID (presence only; OAuth is not implemented)
@@ -142,6 +143,7 @@ def get_settings() -> Settings:
         espn_public_import_enabled=_flag(os.getenv("ESPN_PUBLIC_IMPORT_ENABLED")),
         multileague_connect_enabled=_flag(os.getenv("MULTILEAGUE_CONNECT_ENABLED")),
         classic_site_enabled=(os.getenv("CLASSIC_SITE_ENABLED") or "1").strip() != "0",
+        signups_enabled=_flag(os.getenv("SIGNUPS_ENABLED")),
         github_dispatch_token=_str_or_none(os.getenv("GITHUB_DISPATCH_TOKEN")),
         yahoo_client_id=_str_or_none(os.getenv("YAHOO_CLIENT_ID")),
     )

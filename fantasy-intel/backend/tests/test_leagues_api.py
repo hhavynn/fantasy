@@ -110,8 +110,9 @@ def test_anonymous_rules(client, world):
     assert client.put(f"/v2/leagues/{world['pub']}/perspective", json={"team_external_id": "6"}).status_code == 401
 
 
-def test_me_creates_the_user_row_and_lists_pins(client, world, pg):
+def test_me_creates_the_user_row_and_lists_pins(client, world, pg, monkeypatch):
     from cp_seed import seed_auth_user
+    monkeypatch.setenv("SIGNUPS_ENABLED", "1")          # a new account (the closed gate: test_launch_gates)
     uid = str(uuid.uuid4())
     with pg.connect() as su:
         seed_auth_user(su, uid)

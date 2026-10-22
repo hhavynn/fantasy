@@ -217,14 +217,20 @@ def delete(cfg: R2Config, key: str) -> None:
 
 
 def list_keys(cfg: R2Config, prefix: str) -> list[str]:
+    return [key for key, _ in list_objects(cfg, prefix)]
+
+
+def list_objects(cfg: R2Config, prefix: str) -> list[tuple[str, int]]:
+    """(key, size in bytes) for every object under `prefix` (ListObjectsV2, all pages)."""
     ns = "{http://s3.amazonaws.com/doc/2006-03-01/}"
-    keys, token = [], None
+    out, token = [], None
     while True:
         query = {"list-type": "2", "prefix": prefix, **({"continuation-token": token} if token else {})}
         with _request(cfg, "GET", "", query=query) as resp:
             root = ET.fromstring(resp.read())
-        keys += [(c.findtext(f"{ns}Key") or c.findtext("Key")) for c in
-                 (root.findall(f"{ns}Contents") or root.findall("Contents"))]
+        for c in root.findall(f"{ns}Contents") or root.findall("Contents"):
+            size = c.findtext(f"{ns}Size") or c.findtext("Size") or "0"
+            out.append((c.findtext(f"{ns}Key") or c.findtext("Key"), int(size)))
         token = root.findtext(f"{ns}NextContinuationToken") or root.findtext("NextContinuationToken")
         if not token:
-            return keys
+            return out

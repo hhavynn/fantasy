@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useId, useState, useTransition } from "react";
 import { Notice } from "@/components/ui";
 import { CONSENT_TEXT } from "@/lib/my-leagues";
@@ -51,7 +52,10 @@ export function CookieSettings({ leagueId }: { leagueId: string }) {
           <label htmlFor={`${id}-swid`}>SWID</label>
           <input id={`${id}-swid`} name="swid" type="password" autoComplete="off" spellCheck={false} required />
         </div>
-        <label className={styles.consent}><input type="checkbox" name="consent" required /> {CONSENT_TEXT}</label>
+        <label className={styles.consent}>
+          <input type="checkbox" name="consent" required />
+          <span>{CONSENT_TEXT} See the <Link href="/privacy" prefetch={false} target="_blank" rel="noopener">Privacy policy</Link>.</span>
+        </label>
         <div className={styles.actions}>
           <button type="submit" disabled={pending}>{pending ? "Checking with ESPN…" : "Store my cookies"}</button>
         </div>

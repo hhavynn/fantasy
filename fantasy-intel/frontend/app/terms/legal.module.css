@@ -1,0 +1,5 @@
+/* The terms and privacy pages: short prose sections at a readable width. */
+.prose { max-width: 68ch; font-size: 14px; line-height: 21px; color: var(--ink); }
+.prose > :last-child { margin-bottom: 0; }
+.prose ul { margin: 0 0 8px; padding-left: 18px; }
+.prose li + li { margin-top: 4px; }

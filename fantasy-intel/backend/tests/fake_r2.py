@@ -57,7 +57,8 @@ class FakeR2:
                     return
                 if not key:   # ListObjectsV2
                     prefix = query.get("prefix", [""])[0]
-                    items = "".join(f"<Contents><Key>{k}</Key></Contents>" for k in sorted(fake.objects) if k.startswith(prefix))
+                    items = "".join(f"<Contents><Key>{k}</Key><Size>{len(fake.objects[k])}</Size></Contents>"
+                                    for k in sorted(fake.objects) if k.startswith(prefix))
                     self._send(200, f'<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">{items}'
                                     f'<IsTruncated>false</IsTruncated></ListBucketResult>'.encode())
                 elif key in fake.truncate and key in fake.objects:

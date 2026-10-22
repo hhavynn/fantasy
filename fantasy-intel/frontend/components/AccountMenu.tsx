@@ -16,6 +16,9 @@ export async function AccountMenu() {
       <div className="account-pop" role="menu">
         {user.email ? <p className="faint account-email">{user.email}</p> : null}
         <Link role="menuitem" href="/leagues">Your leagues</Link>
+        <Link role="menuitem" href="/account" prefetch={false}>Account settings</Link>
+        <Link role="menuitem" href="/terms" prefetch={false}>Terms</Link>
+        <Link role="menuitem" href="/privacy" prefetch={false}>Privacy</Link>
         <form action={signOut}><button type="submit" role="menuitem" className="account-signout">Sign out</button></form>
       </div>
     </details>

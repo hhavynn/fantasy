@@ -59,8 +59,10 @@ class ControlPlane:
                     with con.pipeline():
                         con.execute(_ROLE_SQL[principal.is_authenticated])
                         con.execute("SELECT set_config('request.jwt.claims', %s, true), "
-                                    "set_config('statement_timeout', %s, true)",
-                                    [principal.claims_json, str(STATEMENT_TIMEOUT_MS)])
+                                    "set_config('statement_timeout', %s, true), "
+                                    "set_config('fi.signups_open', %s, true)",
+                                    [principal.claims_json, str(STATEMENT_TIMEOUT_MS),
+                                     "on" if get_settings().signups_enabled else "off"])
                         account = (con.execute("SELECT fi.current_account_exists()")
                                    if principal.is_authenticated else None)
                     if account is not None and not account.fetchone()[0]:
