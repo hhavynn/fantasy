@@ -5,6 +5,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { LeagueSwitcher } from "@/components/LeagueSwitcher";
 import { BrandLink, BrandMark, MobileNav, NavGroups, SubNav, TabBar } from "@/components/Nav";
 import { ProjectionSwitch } from "@/components/ProjectionSwitch";
+import { ScopeRefresh } from "@/components/ScopeRefresh";
 import { SyncPill } from "@/components/SyncPill";
 import { TableScroll } from "@/components/TableScroll";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
@@ -109,6 +110,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
         <SubNav />
+        <ScopeRefresh />
         <main>{children}</main>
         <TabBar />
         <TableScroll />
