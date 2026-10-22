@@ -1,0 +1,51 @@
+/* The all-leagues action center (issue #166): one card per league, decisions first, source and sync at the foot. */
+.cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.cards > li { min-width: 0; display: flex; }
+.card {
+  flex: 1; min-width: 0; display: grid; align-content: start; gap: 10px;
+  padding: 14px 16px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.card[data-state="not_ready"], .card[data-state="needs_team"], .card[data-state="unavailable"] { border-style: dashed; }
+.skeletonCard { gap: 12px; }
+.head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; min-width: 0; }
+.title { margin: 0; font-size: 16px; line-height: 22px; min-width: 0; overflow-wrap: anywhere; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.meta, .faint { margin: 0; color: var(--ink-faint); font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
+.reason, .none { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+.lock { display: grid; gap: 2px; min-width: 0; }
+.lockMain { margin: 0; font-size: 13px; line-height: 19px; color: var(--ink-muted); overflow-wrap: anywhere; }
+.lockMain strong { color: var(--ink); font-weight: 600; }
+
+.decisions { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.decision { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.body { min-width: 0; display: grid; gap: 2px; }
+.decisionTitle { margin: 0; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.decisionReason, .decisionStatus { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+.decisionStatus strong { color: var(--ink); font-weight: 600; }
+.deadline { margin: 0; color: var(--ink); font-size: 12px; line-height: 17px; font-weight: 600; }
+.decisionLink, .cta {
+  display: inline-flex; align-items: center; min-height: 28px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--line-control); white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.decisionLink:hover, .cta:hover { text-decoration: none; border-color: var(--accent); color: var(--accent); }
+.icon { margin-top: 1px; }
+.negative { color: var(--negative); }
+.caution { color: var(--caution); }
+.info { color: var(--accent); }
+.positive { color: var(--positive); }
+.moreLink { margin: 0; font-size: 13px; }
+
+.foot { display: grid; gap: 8px; justify-items: start; padding-top: 10px; border-top: 1px solid var(--line); min-width: 0; }
+
+.more { margin-top: 16px; display: grid; gap: 6px; }
+.moreText { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 19px; }
+.moreText strong { color: var(--ink); }
+.moreList { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; }
+.moreList a { overflow-wrap: anywhere; }
+
+@media (max-width: 720px) {
+  .decision { grid-template-columns: 20px minmax(0, 1fr); }
+  .decisionLink { grid-column: 2; justify-self: start; min-height: var(--tap); }
+  .cta { min-height: var(--tap); }
+  .moreList a { display: inline-flex; align-items: center; min-height: var(--tap); }
+}
