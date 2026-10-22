@@ -10,8 +10,9 @@ Read-only over the tables the ESPN and Sleeper syncs already write (`transaction
     rows tied by `related_transaction_id` (accept and uphold), rows that move the same player between the same two
     teams within TRADE_WINDOW_DAYS, Sleeper's mirrored half legs (the drop side and the add side of each player),
     and the league activity feed's trade legs (ESPN omits other teams' trade items from mTransactions2) are
-    merged, each leg once. A trade row with no items is matched to an activity-feed trade of the same team within
-    ITEMLESS_WINDOW_HOURS; unmatched, it stays a trade with no recorded players rather than disappearing.
+    merged, each leg once. An ESPN trade row with no items is matched only to an activity-feed trade of the same
+    team within ITEMLESS_WINDOW_HOURS; unmatched (and every Sleeper trade without player legs, such as a draft-pick
+    or FAAB-only trade), it stays its own trade with no recorded players, listing every team the row names.
   * Times are UTC from the provider: `processed_at` (when it went through) and `proposed_at` (when it was made),
     the latter only where the provider stores both and they differ.
   * Bids: shown for waiver claims in FAAB leagues, as stored (a stored 0 is a measured 0). Nothing else is
@@ -23,6 +24,7 @@ Read-only over the tables the ESPN and Sleeper syncs already write (`transaction
 
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -94,6 +96,9 @@ class Record:
     bid_amount: float | None = None
     unlisted: list[str] = field(default_factory=list)
     legs: list[Leg] = field(default_factory=list)
+    # Every team a stored trade row names (Sleeper's roster_ids; the writer keeps only the first in team_id), so a
+    # trade with no player legs (draft picks or FAAB only, or unmapped players) still lists all its teams.
+    participants: set[int] = field(default_factory=set)
 
     @property
     def when(self) -> datetime | None:
@@ -143,6 +148,19 @@ def _move_legs(items: list[dict], tx_team: int | None, teams: set[int]) -> list[
     return out
 
 
+def _roster_ids(value, teams: set[int]) -> set[int]:
+    """Sleeper roster ids from the stored raw payload (JSON text or a list); a roster id is the team id
+    (app/sleeper/normalize.py). Anything that is not a team of this league is dropped."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return set()
+    if not isinstance(value, list):
+        return set()
+    return {r for r in value if isinstance(r, int) and not isinstance(r, bool) and r in teams}
+
+
 def _dedupe(legs: list[Leg]) -> list[Leg]:
     seen, out = set(), []
     for leg in legs:
@@ -175,6 +193,7 @@ def records_from_rows(tx_rows: list[dict], activity_rows: list[dict],
                      r["process_date"], r["proposed_date"], r["related_transaction_id"], r["bid_amount"], unlisted)
         its = sorted(items.get(tid, []), key=lambda i: i["item_index"])
         if is_trade:
+            rec.participants = _roster_ids(r.get("roster_ids"), teams)
             rec.legs = _dedupe(_trade_legs(its, r["team_id"], teams))
             trades.append(rec)
         else:
@@ -218,7 +237,7 @@ def _within(a: datetime | None, b: datetime | None, window: timedelta) -> bool:
 
 
 def _teams_of(rec: Record) -> set[int]:
-    out = {t for leg in rec.legs for t in (leg.from_team_id, leg.to_team_id) if t is not None}
+    out = {t for leg in rec.legs for t in (leg.from_team_id, leg.to_team_id) if t is not None} | rec.participants
     return out | ({rec.team_id} if rec.team_id is not None else set())
 
 
@@ -254,15 +273,19 @@ def merge_trades(records: list[Record]) -> list[list[Record]]:
         undated = [i for i in idx if records[i].when is None]
         for i in undated:
             uf.union(dated[0] if dated else undated[0], i)
-    # A trade row without items: the closest trade of the same team within the window, preferring one with legs.
+    # An ESPN trade row without items (ESPN omits other teams' trade items): the closest activity-feed trade of the
+    # same team within the window, which carries the legs. Only activity records qualify: two transaction rows are
+    # two trades unless the rules above tie them. Sleeper has no activity feed, so its item-less trades (draft picks
+    # or FAAB only) always stand alone.
     hours = timedelta(hours=ITEMLESS_WINDOW_HOURS)
     for i, r in enumerate(records):
-        if r.legs or r.team_id is None:
+        if r.legs or r.team_id is None or r.source != "transactions" or r.source_id.startswith("sleeper:") \
+                or r.when is None:
             continue
-        near = [(j, o) for j, o in enumerate(records) if j != i and r.team_id in _teams_of(o)
-                and r.when is not None and o.when is not None and abs(r.when - o.when) <= hours]
+        near = [(j, o) for j, o in enumerate(records) if o.source == "activity" and r.team_id in _teams_of(o)
+                and o.when is not None and abs(r.when - o.when) <= hours]
         if near:
-            j, _ = min(near, key=lambda x: (not x[1].legs, abs(r.when - x[1].when), x[0]))
+            j, _ = min(near, key=lambda x: (abs(r.when - x[1].when), x[0]))
             uf.union(i, j)
     groups: dict[int, list[Record]] = defaultdict(list)
     for i, r in enumerate(records):
@@ -421,6 +444,8 @@ def _load(con) -> dict:
                     THEN coalesce(json_array_length(json_extract(t.raw, '$.draft_picks')), 0) END AS draft_picks,
                CASE WHEN t.type IN ('TRADE_ACCEPT', 'TRADE_UPHOLD') AND t.transaction_id LIKE 'sleeper:%'
                     THEN coalesce(json_array_length(json_extract(t.raw, '$.waiver_budget')), 0) END AS faab_moved,
+               CASE WHEN t.type IN ('TRADE_ACCEPT', 'TRADE_UPHOLD') AND t.transaction_id LIKE 'sleeper:%'
+                    THEN CAST(json_extract(t.raw, '$.roster_ids') AS VARCHAR) END AS roster_ids,
                ti.item_index, ti.item_type, ti.espn_player_id, ti.from_team_id, ti.to_team_id
         FROM transactions t
         LEFT JOIN transaction_items ti ON ti.transaction_id = t.transaction_id

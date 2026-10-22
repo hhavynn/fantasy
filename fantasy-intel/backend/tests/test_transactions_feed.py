@@ -228,13 +228,49 @@ SLEEPER_TX = {6: [
 ]}
 
 
-@pytest.fixture
-def sleeper(con):
+def _write_sleeper(con, transactions):
     from app.sleeper.write import write_sleeper
     from test_sleeper_write import FIX, payloads
     con.execute(f"CREATE TABLE nfl_ff_playerids AS SELECT * FROM read_csv_auto('{FIX / 'ff_playerids.csv'}')")
-    write_sleeper(con, payloads(transactions=SLEEPER_TX))
+    write_sleeper(con, payloads(transactions=transactions))
     return con
+
+
+@pytest.fixture
+def sleeper(con):
+    return _write_sleeper(con, SLEEPER_TX)
+
+
+PICK = {"season": "2027", "round": 1, "roster_id": 2, "owner_id": 1, "previous_owner_id": 2}
+FAAB = {"sender": 1, "receiver": 2, "amount": 10, "leg": 6}
+
+
+def test_a_sleeper_asset_only_trade_stays_separate_from_a_player_trade_an_hour_later(con):
+    # Regression (PR #231 review): an item-less transaction row used to be unioned with any trade of the same team
+    # within 24 hours, so this picks-and-FAAB-only trade and the player trade became one event.
+    _write_sleeper(con, {6: [
+        _sleeper_tx("9201", "trade", None, None, rosters=(1, 2), picks=[PICK], faab=[FAAB], day=1),
+        {**_sleeper_tx("9202", "trade", {"6794": 2}, {"6794": 1}, rosters=(1, 2), day=1),
+         "status_updated": 1760000000000 + 86400000 + 3600000},
+    ]})
+    trades = _by_kind(tf.build_transactions_feed(con), "trade")
+    assert sorted(t["event_id"] for t in trades) == ["tx:sleeper:9201", "tx:sleeper:9202"]
+    assets = next(t for t in trades if t["event_id"] == "tx:sleeper:9201")
+    assert assets["legs"] == [] and assets["unlisted_assets"] == ["FAAB", "draft picks"]
+    assert _names(next(t for t in trades if t["event_id"] == "tx:sleeper:9202")) == [("trade", "Rory Bend", 1, 2)]
+
+
+def test_a_sleeper_asset_only_trade_lists_every_participant(con):
+    # Regression (PR #231 review): the writer keeps only roster_ids[0] in team_id, so a trade with no player legs
+    # listed one team and the manager filter missed it for the other.
+    _write_sleeper(con, {6: [_sleeper_tx("9301", "trade", None, None, rosters=(1, 2), picks=[PICK], day=1)]})
+    feed = tf.build_transactions_feed(con)
+    (trade,) = feed["events"]
+    assert trade["team_ids"] == [1, 2] and [t["team_id"] for t in trade["teams"]] == [1, 2]
+    for team in (1, 2):
+        assert [e["event_id"] for e in tf.build_transactions_feed(con, manager=team)["events"]] == ["tx:sleeper:9301"]
+    assert tf.build_transactions_feed(con, manager=3)["events"] == []
+    assert trade["legs"] == [] and trade["unlisted_assets"] == ["draft picks"]   # flagged, never itemized
 
 
 def _names(event):
@@ -296,6 +332,20 @@ def test_an_itemless_trade_row_without_a_match_is_kept_not_invented():
     other = _rec("x", [Leg("trade", 1, 1, 2)], t0 + timedelta(hours=2))
     events = tf.build_events([lone, other], [], is_faab=False)
     assert sorted(len(e["legs"]) for e in events) == [0, 1]
+
+
+def test_an_itemless_transaction_row_never_absorbs_another_transaction_trade():
+    # Regression (PR #231 review): only an activity-feed trade may give an item-less row its legs.
+    t0 = datetime(2026, 10, 1)
+    itemless = _rec("espn-itemless", [], t0, team=1)
+    other = _rec("espn-player", [Leg("trade", 7, 1, 2)], t0 + timedelta(hours=1))
+    feed = _rec("topic", [Leg("trade", 8, 1, 3)], t0 + timedelta(hours=3), source="activity")
+    groups = sorted(sorted(r.source_id for r in g) for g in tf.merge_trades([itemless, other]))
+    assert groups == [["espn-itemless"], ["espn-player"]]
+    groups = sorted(sorted(r.source_id for r in g) for g in tf.merge_trades([itemless, other, feed]))
+    assert groups == [["espn-itemless", "topic"], ["espn-player"]]
+    sleeper = _rec("sleeper:1", [], t0, team=1)
+    assert len(tf.merge_trades([sleeper, feed])) == 2          # Sleeper rows are never matched to the feed
 
 
 def test_trade_items_with_one_side_each_are_joined_per_player():
