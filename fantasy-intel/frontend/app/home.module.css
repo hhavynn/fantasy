@@ -77,3 +77,6 @@
 
 .sectionHead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .sectionHead h2 { margin: 0; font-size: 15px; }
+
+/* Where the action list's data comes from and how old it is (ProvenanceBadge). */
+.provenance { padding: 10px 16px; border-top: 1px solid var(--line); }

@@ -20,7 +20,7 @@ MASK = "<masked>"
 VOLATILE_KEYS = {"computed_at", "generated_at", "synced_at", "published_at", "data_version", "fetched_at",
                  "league_synced_at", "roster_synced_at", "last_synced_at", "refreshed_at", "built_at", "as_of",
                  "now", "server_time", "created_at", "updated_at", "checked_at", "run_at", "started_at",
-                 "finished_at", "source_updated_at", "snapshot_at", "captured_at", "run_id"}
+                 "finished_at", "source_updated_at", "snapshot_at", "captured_at", "run_id", "snapshot_version"}
 # Search diagnostics: wall time and work counters, which depend on what an in-process cache already held.
 VOLATILE_PREFIXES = ("lineup_solves",)
 VOLATILE_DIAGNOSTICS = {"seconds"}

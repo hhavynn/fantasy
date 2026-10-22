@@ -90,6 +90,48 @@
   },
   "max_players_per_side": 6,
   "position_limits": {},
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 27,
+      "label": "rostered players with a projection",
+      "total": 27
+     },
+     "label": "ESPN rest-of-season projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "No NFL injury or practice reports are stored.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
   "teams": [
    {
     "abbrev": "T1",
