@@ -1,0 +1,41 @@
+/* Transactions feed: filters, the moves table and the pager. Tokens only; see globals.css. */
+
+.lead { margin: 0; color: var(--ink-muted); }
+.count { margin-left: 8px; color: var(--ink-muted); font-size: 12px; font-weight: 400; }
+
+/* ---------- Filters (same pattern as Waivers: a quiet bar on wide screens, sideways chip rows on phones) ---------- */
+.chipRows { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; min-width: 0; max-width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.chipRows :global(.filters) { margin-bottom: 0; min-width: 0; max-width: 100%; }
+.chipLabel { color: var(--ink-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-right: 2px; }
+.chipName { display: inline-block; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.reset { margin: 0 0 0 auto; display: flex; align-items: center; gap: 8px; color: var(--ink-muted); font-size: 12px; }
+
+/* ---------- Table ---------- */
+.table td { vertical-align: top; }
+.when { white-space: nowrap; }
+.sub { display: block; margin-top: 2px; color: var(--ink-muted); font-size: 12px; font-weight: 400; }
+.teams { min-width: 120px; }
+.teamLine { display: block; }
+.team { display: inline-block; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.players { min-width: 260px; }
+.side + .side { margin-top: 8px; }
+.sideHead { margin: 0 0 4px; color: var(--ink-muted); font-size: 12px; }
+.legs { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.leg { display: grid; gap: 2px; min-width: 0; }
+.verb { color: var(--ink-muted); }
+.dropVerb { color: var(--negative); }
+.after { padding-left: 38px; color: var(--ink-muted); font-size: 12px; }
+
+/* ---------- Pager and method ---------- */
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.method { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+
+@media (max-width: 720px) {
+  /* Phones: each chip row scrolls sideways instead of wrapping into a tall control panel. */
+  .chipRows { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px; }
+  .chipRows :global(.filters) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .chipRows :global(.chip) { flex: none; }
+  .reset { margin-left: 0; }
+  .players { min-width: 220px; }
+  .after { padding-left: 0; }
+}
