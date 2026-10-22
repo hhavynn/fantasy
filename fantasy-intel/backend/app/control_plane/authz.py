@@ -56,6 +56,7 @@ class Access:
     snapshot: SnapshotPointer | None
     sync_state: str
     principal: Principal
+    sync_issue: str | None = None        # why the latest sync job failed, as a coarse category (_sync_issue)
 
     @property
     def is_member(self) -> bool:
@@ -70,7 +71,7 @@ class Access:
             "league_id": self.league_id, "provider": self.provider, "external_league_id": self.external_id,
             "season": self.season, "name": self.name, "visibility": self.visibility, "status": self.status,
             "role": self.role, "pinned": self.pinned, "perspective_team_id": self.perspective_team_id,
-            "sync_state": self.sync_state,
+            "sync_state": self.sync_state, "sync_issue": self.sync_issue,
             "data": None if self.snapshot is None else {
                 "data_version": self.snapshot.data_version, "global_version": self.snapshot.global_version,
                 "committed_at": self.snapshot.committed_at.isoformat()},
@@ -81,10 +82,10 @@ _BASE = """
 SELECT l.id, l.provider, l.external_id, l.season, l.name, l.visibility, l.visibility_checked_at, l.visibility_epoch, l.status,
        {member_cols},
        s.object_key, s.data_version, s.global_version, s.committed_at,
-       j.status AS job_status, now() AS db_now
+       j.status AS job_status, j.error_code AS job_error, now() AS db_now
 FROM fi.leagues l
 LEFT JOIN fi.league_snapshots s ON s.league_id = l.id
-LEFT JOIN LATERAL (SELECT status FROM fi.sync_jobs x WHERE x.league_id = l.id ORDER BY created_at DESC LIMIT 1) j ON true
+LEFT JOIN LATERAL (SELECT status, error_code FROM fi.sync_jobs x WHERE x.league_id = l.id ORDER BY created_at DESC LIMIT 1) j ON true
 {member_joins}
 WHERE l.id = ANY(%s)
 """
@@ -106,10 +107,29 @@ def _sync_state(has_snapshot: bool, job_status: str | None) -> str:
             "failed": "first_sync_failed", "dead": "first_sync_failed"}.get(job_status or "", "no_data")
 
 
+# The worker's error codes (app/sync/failures.py, app/sync/worker.py) folded into what a reader can act on. Only the
+# category leaves the API: never the code itself, and never error_detail (which request roles cannot read anyway).
+_ISSUES = {
+    "network": "provider_unreachable", "provider_429": "provider_unreachable", "provider_5xx": "provider_unreachable",
+    "provider_response": "provider_unreachable", "probe_unknown": "provider_unreachable",
+    "provider_auth": "access", "provider_private": "access", "no_credential": "access",
+    "provider_not_found": "not_found",
+}
+
+
+def _sync_issue(job_status: str | None, error_code: str | None) -> str | None:
+    """Why the latest job is waiting to retry (`queued` after a failure) or gave up (`failed`, `dead`): provider_unreachable
+    | access | not_found | internal. None while nothing went wrong."""
+    if job_status not in ("queued", "failed", "dead") or not error_code:
+        return None
+    return _ISSUES.get(error_code, "internal")
+
+
 def _access_from_row(row, principal: Principal) -> Access | None:
     """The Access a row grants, or None when it grants nothing (the caller turns that into LeagueNotFound)."""
     (lid, provider, external_id, season, name, visibility, checked_at, epoch, status,
-     member_role, pinned, perspective, object_key, data_version, global_version, committed_at, job_status, db_now) = row
+     member_role, pinned, perspective, object_key, data_version, global_version, committed_at, job_status, job_error,
+     db_now) = row
     if visibility != "public" and member_role is None:
         return None                                      # RLS already hides this; defence in depth
     if member_role is None:                              # public reader: the last anonymous probe must be fresh
@@ -119,7 +139,8 @@ def _access_from_row(row, principal: Principal) -> Access | None:
     if object_key is not None:
         snapshot = SnapshotPointer(object_key, data_version, global_version, committed_at)
     return Access(lid, provider, external_id, int(season), name, visibility, status, int(epoch), member_role,
-                  bool(pinned), perspective, snapshot, _sync_state(snapshot is not None, job_status), principal)
+                  bool(pinned), perspective, snapshot, _sync_state(snapshot is not None, job_status), principal,
+                  _sync_issue(job_status, job_error))
 
 
 def authorize_leagues_in(con, principal: Principal, league_ids: list[str]) -> list[Access]:

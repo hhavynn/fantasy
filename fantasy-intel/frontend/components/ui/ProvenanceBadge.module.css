@@ -1,0 +1,62 @@
+.root {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+  font-size: 13px;
+  line-height: 18px;
+}
+.summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.summary::-webkit-details-marker { display: none; }
+.summary:hover { background: var(--surface-hover); }
+.text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.more { flex: none; color: var(--accent); font-weight: 500; }
+.more::after { content: " ▾"; }
+.root[open] .more::after { content: " ▴"; }
+.icon { flex: none; width: 16px; height: 16px; }
+.positive { color: var(--positive); }
+.caution { color: var(--caution); }
+.negative { color: var(--negative); }
+
+.panel {
+  margin-top: 6px;
+  padding: 10px 12px;
+  max-width: 64ch;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-muted);
+}
+.list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.row + .row { padding-top: 10px; border-top: 1px solid var(--line); }
+.rowHead { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; color: var(--ink); }
+.label { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.status { margin-left: auto; flex: none; font-weight: 600; }
+.facts { display: grid; gap: 2px; margin: 0; }
+.facts > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px; }
+.facts dt { color: var(--ink-faint); }
+.facts dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.version {
+  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 12px;
+}
+.foot { margin: 10px 0 0; font-size: 12px; line-height: 17px; }
+
+@media (max-width: 720px) {
+  .summary { min-height: var(--tap); }
+  .facts > div { grid-template-columns: 1fr; gap: 0; }
+}

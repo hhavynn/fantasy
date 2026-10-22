@@ -102,6 +102,21 @@ def test_responses_are_private_and_name_the_versions_read(pg, served, client, e2
     assert (r.headers["x-fi-data-version"], r.headers["x-fi-global-version"]) == (pub.data_version, pub.global_version)
 
 
+def test_signal_provenance_names_the_versions_read_and_no_league_id(pg, served, client, e2e, tmp_path):
+    """signal-provenance.v1 in a league-scoped request: league data carries the league file version, nflverse data the
+    global file version (the same values as the headers); the opaque league id never appears in the block."""
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
+    for path in ("/api/overview", "/api/start-sit", "/api/waivers", "/api/trades/options"):
+        r = client.get(f"/v2/leagues/{pub.league_id}{path}")
+        assert r.status_code == 200, (path, r.text[:200])
+        prov = r.json()["provenance"]
+        versions = {s["signal"]: s["snapshot_version"] for s in prov["signals"]}
+        assert versions["league"] == r.headers["x-fi-data-version"], path
+        if "injuries" in versions:
+            assert versions["injuries"] == r.headers["x-fi-global-version"], path
+        assert pub.league_id not in str(prov), path
+
+
 def test_an_anonymous_visitor_reads_a_public_league_from_any_perspective(pg, served, client, e2e, tmp_path):
     pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
     for team in (1, 2, 3, 4):

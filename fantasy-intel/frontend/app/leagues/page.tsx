@@ -6,43 +6,97 @@ import { authConfig } from "@/lib/auth-config";
 import { providerName } from "@/lib/labels";
 import { leaguePath } from "@/lib/league-scope";
 import { dataAsOf } from "@/lib/league-switcher";
-import { defaultSeason, leagueName, leagueState, multileagueUiEnabled, parseMyLeagues, type MyLeague } from "@/lib/my-leagues";
+import {
+  defaultSeason, leagueName, leagueState, multileagueUiEnabled, parseMyLeague, parseMyLeagues, type MyLeague,
+} from "@/lib/my-leagues";
+import { hostHref, onboardingView, parseProviders, progressHref, type OnboardingView, type ProviderInfo } from "@/lib/onboarding";
 import { currentUser } from "@/lib/supabase/server";
-import { AddLeague } from "./AddLeague";
+import { CookieForm, EspnForm, SleeperForm } from "./AddLeague";
 import { LeagueActions } from "./LeagueActions";
+import { DemoEntry, EspnPrivateExplainer, HostCards, Stepper, SyncProgress } from "./Onboarding";
 import styles from "./leagues.module.css";
 
 export const metadata = { title: "Leagues" };
 
-export default async function LeaguesPage() {
+type SearchParams = Record<string, string | string[] | undefined>;
+
+export default async function LeaguesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   // The flag and the signed-in user are per request, so never prerender this page.
   await connection();
   const enabled = multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED);
   if (!enabled) return <SwitchedOff />;
-  const user = authConfig(process.env) ? await currentUser() : null;
+  const view = onboardingView(await searchParams);
+  const [user, providers] = await Promise.all([
+    authConfig(process.env) ? currentUser() : Promise.resolve(null),
+    // What each host can do here: public, read from the backend's capability registry (null when it cannot answer).
+    apiRequest("/v2/providers").then((r) => (r.ok ? parseProviders(r.data) : null)),
+  ]);
   return (
     <div className="stack">
       <PageHeader eyebrow="Connections" title="Leagues"
                   meta="Add an ESPN or Sleeper league to analyse it with every page of this site. Public leagues need no cookies; anyone can view them from any team's perspective." />
-      {user ? <SignedIn /> : (
-        <Notice tone="info" title="Sign in to add leagues">
-          Viewing a public league needs no account: open its link. To add a league, save your team or connect a private
-          league, <Link href="/login?next=/leagues" prefetch={false}>sign in</Link>.
-        </Notice>
-      )}
+      {user ? <SignedIn view={view} providers={providers} /> : <Guest view={view} providers={providers} />}
     </div>
   );
 }
 
-async function SignedIn() {
-  const res = await apiRequest("/v2/leagues");
-  const leagues = res.ok ? parseMyLeagues(res.data) : [];
+/** The URL a signed-out visitor returns to after signing in: the step they were on. */
+function stepHref(view: OnboardingView): string {
+  if (view.step === "details") return hostHref(view.host);
+  if (view.step === "progress") return progressHref(view.leagueId);
+  if (view.step === "private") return hostHref("espn");
+  return "/leagues";
+}
+
+const signIn = (next: string) => `/login?next=${encodeURIComponent(next)}`;
+
+function Guest({ view, providers }: { view: OnboardingView; providers: ProviderInfo[] | null }) {
   return (
     <>
-      <Section title="Add a league" subtitle="ESPN or Sleeper. Public leagues are read without cookies. A private ESPN league asks for yours next.">
-        <AddLeague defaultSeason={defaultSeason(new Date())} />
+      <Notice tone="info" title="Sign in to add leagues">
+        Viewing a public league needs no account: open its link. To add a league, save your team or connect a private
+        league, <Link href={signIn(stepHref(view))} prefetch={false}>sign in</Link>.
+      </Notice>
+      <Section title="See it before you connect" subtitle="Everything in the demo is invented, so you can look around freely.">
+        <DemoEntry />
       </Section>
-      <Section title="Your leagues" subtitle="Leagues you added, pinned or were invited to.">
+      <Section title="Connecting a league takes three steps" subtitle="Choose the host, paste the league's address, then wait a few minutes for the first sync.">
+        <HostCards providers={providers} chooseHref={(host) => signIn(hostHref(host))} />
+      </Section>
+    </>
+  );
+}
+
+async function SignedIn({ view, providers }: { view: OnboardingView; providers: ProviderInfo[] | null }) {
+  const [res, focus] = await Promise.all([
+    apiRequest("/v2/leagues"),
+    view.step === "progress" ? apiRequest(`/v2/leagues/${view.leagueId}`) : Promise.resolve(null),
+  ]);
+  const leagues = res.ok ? parseMyLeagues(res.data) : [];
+  const focused = focus?.ok ? parseMyLeague(focus.data) : null;
+  return (
+    <>
+      {view.step === "progress" ? (
+        <Section title="Add a league" subtitle="Step 3 of 3: the first sync. You can leave this page; the league keeps syncing.">
+          <div className={styles.flow}>
+            <Stepper current={3} />
+            {focused ? <SyncProgress league={focused} note={view.note} /> : (
+              <Notice tone="caution" title="This league is not available to you">
+                It may have been removed, or it is private and you are not a member.{" "}
+                <Link href="/leagues" prefetch={false}>Add a league</Link> or pick one of yours below.
+              </Notice>
+            )}
+          </div>
+        </Section>
+      ) : (
+        <AddSteps view={view} providers={providers} />
+      )}
+      {res.ok && leagues.length === 0 && view.step !== "progress" ? (
+        <Section title="Not ready to connect yet?" subtitle="A made-up league shows what you get.">
+          <DemoEntry />
+        </Section>
+      ) : null}
+      <Section title="Your leagues" subtitle="Leagues you added, pinned or were invited to." id="your-leagues">
         {!res.ok ? (
           <Notice tone="negative" title="Your leagues could not be loaded">{res.error}</Notice>
         ) : leagues.length === 0 ? (
@@ -57,6 +111,45 @@ async function SignedIn() {
   );
 }
 
+function AddSteps({ view, providers }: { view: Exclude<OnboardingView, { step: "progress" }>; providers: ProviderInfo[] | null }) {
+  if (view.step === "choose") {
+    return (
+      <Section title="Add a league" subtitle="Step 1 of 3: where does your league live?">
+        <div className={styles.flow}>
+          <Stepper current={1} />
+          <HostCards providers={providers} chooseHref={hostHref} />
+        </div>
+      </Section>
+    );
+  }
+  if (view.step === "private") {
+    return (
+      <Section title="Add a league" subtitle="Step 2 of 3: a private ESPN league.">
+        <div className={styles.flow}>
+          <Stepper current={2} />
+          <EspnPrivateExplainer league={view.league} season={view.season} />
+          <CookieForm league={view.league} season={view.season} />
+        </div>
+      </Section>
+    );
+  }
+  const info = providers?.find((p) => p.provider === view.host) ?? null;
+  const name = providerName(view.host);
+  return (
+    <Section title="Add a league" subtitle={`Step 2 of 3: your ${name} league.`}
+             actions={<Link href="/leagues" prefetch={false}>Change host</Link>}>
+      <div className={styles.flow}>
+        <Stepper current={2} />
+        {info && !info.enabled ? (
+          <Notice tone="caution" title={`${name} is not available in this deployment`}>
+            {info.reason ?? "It is switched off here."} <Link href="/leagues" prefetch={false}>Choose another host</Link>.
+          </Notice>
+        ) : view.host === "sleeper" ? <SleeperForm /> : <EspnForm defaultSeason={defaultSeason(new Date())} />}
+      </div>
+    </Section>
+  );
+}
+
 function LeagueCard({ league }: { league: MyLeague }) {
   const state = leagueState(league);
   const asOf = dataAsOf(league.committedAt, "UTC");
@@ -66,7 +159,8 @@ function LeagueCard({ league }: { league: MyLeague }) {
     <article className={styles.league} aria-labelledby={headingId}>
       <div className={styles.cardHead}>
         <h3 id={headingId} className={styles.cardTitle}>
-          <Link href={leaguePath(league.id, "/")} prefetch={false}>{name}</Link>
+          {/* Until its first sync has published, a league's pages answer "first sync in progress": link to its progress. */}
+          <Link href={league.syncState === "ready" ? leaguePath(league.id, "/") : progressHref(league.id)} prefetch={false}>{name}</Link>
         </h3>
         <div className={styles.badges}>
           {league.provider !== "espn" ? <Badge value={providerName(league.provider)} tone="" /> : null}
