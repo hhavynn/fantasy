@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { Badge, Notice, PageHeader, Pos, Section, Verdict, VerdictFigure } from "@/components/ui";
 import { DEMO_LABEL, parseDemoLeague, record } from "@/lib/demo-league";
 import demoFixture from "@/lib/fixtures/demo-league.synthetic.json";
@@ -14,7 +15,8 @@ export const metadata = { title: "Demo league" };
  * engine output, bundled with the site (lib/demo-league.ts): no backend call, no account, no stored state, and no way
  * to show a real league. Every number came from the engines; this page only lays them out.
  */
-export default function DemoLeague() {
+export default async function DemoLeague() {
+  await connection();   // read the flag per request, so switching it off hides a prerendered demo too
   if (!multileagueUiEnabled(process.env.MULTILEAGUE_UI_ENABLED)) notFound();
   const demo = parseDemoLeague(demoFixture);
   if (!demo) notFound();
