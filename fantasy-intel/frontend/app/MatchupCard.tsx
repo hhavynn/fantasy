@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { TeamLink } from "@/components/TeamLink";
 import { ShareBar } from "@/components/matchup/ShareBar";
 import { Delta, Notice, Section } from "@/components/ui";
 import type { ApiResult } from "@/lib/api";
@@ -9,11 +8,12 @@ import { providerName } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { headline, margin, recordText, share, statusLabel, type Headline } from "@/lib/matchup";
 import type { Matchup, TeamSide } from "@/lib/matchup-types";
+import { decisionHref, type DecisionContext } from "@/lib/weekly-decisions";
 import styles from "./home.module.css";
 
 /** One side of the scoreboard: team, record, the headline total and what that total is. */
-function Side({ side, h, status, mine, leads, projName }: {
-  side: TeamSide; h: Headline; status: Matchup["status"]; mine: boolean; leads: boolean;
+function Side({ side, h, status, mine, leads, projName, ctx }: {
+  side: TeamSide; ctx: DecisionContext; h: Headline; status: Matchup["status"]; mine: boolean; leads: boolean;
   /** Whose projections a missing number lacks: "ESPN", or "Fantasy Intel" where the provider has none. */
   projName: string;
 }) {
@@ -21,7 +21,7 @@ function Side({ side, h, status, mine, leads, projName }: {
     <div className={cx(styles.side, mine ? styles.sideMe : styles.sideOpp)}>
       <p className={styles.sideLabel}>{mine ? "Selected team" : "Opponent"}</p>
       <p className={styles.teamName}>
-        <Link href={`/managers/${side.team_id}`}>{side.name}</Link>
+        <Link href={decisionHref(`/managers/${side.team_id}`, ctx)}>{side.name}</Link>
       </p>
       <p className={styles.teamRecord}>{recordText(side.record)}</p>
       <p className={cx(styles.teamTotal, leads && styles.leads)}>
@@ -34,11 +34,12 @@ function Side({ side, h, status, mine, leads, projName }: {
   );
 }
 
-/** Compact matchup scoreboard: both teams, totals, margin and share. Degrades to a notice when the call failed. */
-export async function MatchupCard({ result }: { result: ApiResult<Matchup> }) {
+/** Compact matchup scoreboard: both teams, totals, margin and share. Degrades to a notice when the call failed. Links
+ *  keep the hub's league, team and week. */
+export async function MatchupCard({ result, ctx }: { result: ApiResult<Matchup>; ctx: DecisionContext }) {
   const profile = await getLeagueProfile();
   const projName = profile.providerProjections ? "ESPN" : "Fantasy Intel";
-  const link = <TeamLink className={styles.cardLink} href="/matchup">Full matchup →</TeamLink>;
+  const link = <Link className={styles.cardLink} href={decisionHref("/matchup", ctx)}>Full matchup →</Link>;
   if (!result.ok) {
     return (
       <Section title="This week" actions={link}>
@@ -56,7 +57,7 @@ export async function MatchupCard({ result }: { result: ApiResult<Matchup> }) {
           <p className={styles.cardNone}>
             {m.is_bye_week ? `${m.me.name} has a bye this week.` : `No opponent is scheduled in the synced ${providerName(profile.provider)} schedule.`}
           </p>
-          {mine.value !== null ? <div className={`${styles.board} ${styles.boardSolo}`}><Side side={m.me} h={mine} status={m.status} mine leads={false} projName={projName} /></div> : null}
+          {mine.value !== null ? <div className={`${styles.board} ${styles.boardSolo}`}><Side side={m.me} h={mine} status={m.status} mine leads={false} projName={projName} ctx={ctx} /></div> : null}
         </div>
       </Section>
     );
@@ -72,9 +73,9 @@ export async function MatchupCard({ result }: { result: ApiResult<Matchup> }) {
     <Section title="This week" subtitle={when} actions={link}>
       <div className={styles.card}>
         <div className={styles.board}>
-          <Side side={m.me} h={me} status={m.status} mine leads={meLeads} projName={projName} />
+          <Side side={m.me} h={me} status={m.status} mine leads={meLeads} projName={projName} ctx={ctx} />
           <span className={styles.vs} aria-hidden="true">vs</span>
-          <Side side={m.opponent} h={opp} status={m.status} mine={false} leads={oppLeads} projName={projName} />
+          <Side side={m.opponent} h={opp} status={m.status} mine={false} leads={oppLeads} projName={projName} ctx={ctx} />
         </div>
         {mg.value !== null ? (
           <p className={styles.cardMargin}>

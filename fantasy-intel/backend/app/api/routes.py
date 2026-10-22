@@ -164,8 +164,9 @@ def overview(team_id: int | None = Query(None, description="Fantasy team to anal
         reportable = [p for p in roster if p["position"] != "D/ST"]
         linked = coverage(sum(1 for p in reportable if p["gsis_id"]), len(reportable),
                           "rostered players linked to NFL data") if reportable else None
+        usage = _market_signal_provenance(con, prov, season, roster)
         return {
-            "league": lg,
+            "league": {**lg, "trade_deadline_week": _trade_deadline_week(con, lg)},
             "my_team": me,          # the owner's team (is_mine), unchanged by the selection
             "team": team,           # the team this overview is for
             "perspective": perspective,
@@ -176,8 +177,37 @@ def overview(team_id: int | None = Query(None, description="Fantasy team to anal
             "recent_transactions": _recent_moves(con, league_id, season, limit=25),
             "sync": sync,
             "nfl_latest_week": _nfl_latest_week(con, season),
-            "provenance": payload(prov.league(lg), prov.injuries(con, season, cov=linked)),
+            "provenance": payload(prov.league(lg), prov.injuries(con, season, cov=linked), usage),
         }
+
+
+def _market_signal_provenance(con, prov: Provenance, season: int, roster: list[dict]) -> dict:
+    """The roster's market signals (the Overview's trade decisions): player_scores rows the analytics pipeline writes
+    from nflverse usage. Captured at the oldest computed_at behind this roster's signals, stale when the newest
+    analytics run failed; coverage counts the rostered QB/RB/WR/TE that have a signal (an unclassified one is missing)."""
+    skill = [p for p in roster if p["position"] in ("QB", "RB", "WR", "TE")]
+    classified = coverage(sum(1 for p in skill if p.get("market_signal")), len(skill),
+                          "rostered QB, RB, WR and TE with a market signal") if skill else None
+    ids = sorted({p["gsis_id"] for p in skill if p.get("gsis_id") and p.get("market_signal")})
+    computed = con.execute(f"SELECT min(computed_at) FROM player_scores WHERE season = ? AND gsis_id IN "
+                           f"({','.join('?' * len(ids))})", [season, *ids]).fetchone()[0] \
+        if ids and table_exists(con, "player_scores") else None
+    reason = None if ids else "No market signals are computed for this roster yet."
+    sig = prov.analysis("Fantasy Intel market signals (from nflverse usage)", computed, cov=classified, reason=reason)
+    return {**sig, "signal": "usage"}
+
+
+def _trade_deadline_week(con, lg: dict) -> int | None:
+    """A week-based trade deadline (Sleeper's `trade_deadline` setting, kept in settings_raw.trade_deadline_week; ESPN's
+    is the `trade_deadline` timestamp). None when the provider has none, or names a week past the season (no deadline)."""
+    row = one(con, "SELECT settings_raw FROM leagues WHERE league_id = ? AND season = ?", [lg["league_id"], lg["season"]])
+    raw = (row or {}).get("settings_raw")
+    settings = json.loads(raw) if isinstance(raw, str) else (raw or {})
+    week = settings.get("trade_deadline_week") if isinstance(settings, dict) else None
+    if not isinstance(week, int) or isinstance(week, bool) or week <= 0:
+        return None
+    final = lg.get("final_scoring_period")
+    return None if isinstance(final, int) and week > final else week
 
 
 def _recent_moves(con, league_id: int, season: int, limit: int = 25, team_id: int | None = None) -> list[dict]:
