@@ -26,7 +26,7 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 | #168 signal provenance | 1 | MERGED | PR #208 → `509a45f` (2026-10-22) | contract `signal-provenance.v1` |
 | #169 league rules | 1 | MERGED | PR #207 → `7574d6e` (2026-10-22) | |
 | #167 onboarding | 1 | MERGED | PR #233 → `2a6c47d` (2026-10-22) | real-league demo needs a backend demo concept (follow-up) |
-| #170 desktop shell | 1 | IN PROGRESS | `feature/fi-170-desktop-shell` from 9d68883 | one agent; also wires SyncPill `stale` (#201) |
+| #170 desktop shell | 1 | PR OPEN | PR #239 (6371f77) | rail + team picker + stale SyncPill; local nav/ux-gates 130 pass, 1 tablet networkidle timeout → CI decides |
 | #165 weekly hub | 2 | MERGED | PR #232 → fecb029 | Codex fixes in |
 | #166 action center | 2 | NOT STARTED | — | after #165 |
 | #171 what-if lineup | 2 | NOT STARTED | — | reuse lineup.py locks |
@@ -69,7 +69,7 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 | Issue | Group | State | Branch / PR | Gate (prerequisite) |
 |---|---|---|---|---|
 | #228 Sleeper taxi eligibility | fix | MERGED | PR #234 → 3917f7a | Codex P2s fixed |
-| #229 superflex replacement level | fix | PR OPEN | PR #238 (bc5f2ec; 2 Codex P2s fixed) | a 632 + audits/golden 194; rules row → HANDLED (verified waiver needs + flex reference count OP) |
+| #229 superflex replacement level | fix | PR OPEN | PR #238 (1d1cf41; 2 Codex P2s fixed; #240 ported) | a 632 + audits/golden 194; rules row → HANDLED (verified waiver needs + flex reference count OP) |
 | #212 Breakout Radar | A | NOT STARTED | — | #168 merged; backtest gate |
 | #210 Game Splits | A | NOT STARTED | — | backend now; UI after #170 |
 | #226 Advanced screener | A | NOT STARTED | — | backend now; UI after #170/#200; feeds #219 |
@@ -94,6 +94,8 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 - MERGED PR #206 → `c18374a` (2026-10-22): Next 16.4.0 → 16.4.2 for GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r and
   GHSA-673q-mjm6-r5xr. It also stops the intermittent `SecurityFatalError` build abort.
 - #228 and #229 are tracked in the expansion table above.
+- PR OPEN #240: pg_harness advisory lock for cluster-wide role setup (CI race `tuple concurrently updated` in
+  test_overlapping_pytest_sessions_isolation, reproduced locally); ported into #238.
 - MERGED #236 → 9d68883 (`affected` adds the app-wide audits). MERGED #237 → e6bb3f3 ( quick defers `test_league_scope` /
   `test_v2_authorization_matrix`, D-08 budget and D-09 cleanup rules reach `docs/agent-workflow.md`). Retarget #237
   to main after #236 squash-merges; CI runs only on PRs to main.
