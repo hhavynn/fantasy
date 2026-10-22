@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics.matchup import LeagueNotSynced, TeamNotFound, WeekOutOfRange, load_matchup
 from .deps import db
+from .signal_provenance import Provenance, merge_coverage, payload, projected_coverage
 
 router = APIRouter(prefix="/api", tags=["matchup"])
 
@@ -46,10 +47,23 @@ def get_matchup(
     """
     with db() as con:
         try:
-            return load_matchup(con, team_id=team_id, week=week, source=source)
+            out = load_matchup(con, team_id=team_id, week=week, source=source)
         except TeamNotFound as err:
             raise HTTPException(404, str(err))
         except (WeekOutOfRange, ValueError) as err:
             raise HTTPException(422, str(err))
         except LeagueNotSynced as err:
             raise HTTPException(503, str(err))
+        out["provenance"] = matchup_provenance(con, out, source)
+        return out
+
+
+def matchup_provenance(con, m: dict, source: str | None) -> dict:
+    """League data and the week's projections. Coverage: starters on both sides with a projection (the lineup set
+    in the provider when there is a snapshot, else the optimal projected lineup); byes are not expected to have one."""
+    prov = Provenance(con)
+    sides = [s for s in (m.get("me"), m.get("opponent")) if s]
+    cov = merge_coverage(*(projected_coverage(s["actual_lineup"], "projected_points") if s.get("actual_lineup")
+                           else projected_coverage(s.get("lineup") or [], "points") for s in sides))
+    return payload(prov.league(None), prov.projections(source, m.get("projection_source"), cov=cov))
+

@@ -1,5 +1,6 @@
 // Shape returned by GET /api/matchup (see backend/app/api/matchup.py for the field contract).
 import type { ProjectionOrigin, ProjectionSourceDetail } from "./projection-source";
+import type { ProvenancePayload } from "./signal-provenance";
 
 export type MatchupStatus = "upcoming" | "in_progress" | "final" | "unknown";
 export type MatchupPhase = "regular" | "playoff";
@@ -74,4 +75,6 @@ export type Matchup = {
   status: MatchupStatus;
   notes: string[];
   projection_source?: ProjectionSourceDetail;
+  /** signal-provenance.v1: league data and the week's projections (lib/signal-provenance.ts). */
+  provenance?: ProvenancePayload | null;
 };
