@@ -29,3 +29,9 @@ def test_private_league_activity_is_hidden_from_everyone_but_members(pg, served,
     # a filter value the league does not have is the route's own 404, only after authorization
     assert client.get(f"/v2/leagues/{pub.league_id}/api/transactions?manager=99", headers=bearer(U1)).status_code == 404
     assert client.get(f"/v2/leagues/{pub.league_id}/api/transactions?manager=99").json() == NOT_FOUND[1]
+    # malformed filters are authorized first: a stranger never sees a 422 that would confirm the league exists
+    for bad in ("type=bogus", "limit=0", "week=99"):
+        bad_path = f"/v2/leagues/{pub.league_id}/api/transactions?{bad}"
+        assert (client.get(bad_path).status_code, client.get(bad_path).json()) == NOT_FOUND
+        assert client.get(bad_path, headers=bearer(U2)).json() == NOT_FOUND[1]
+        assert client.get(bad_path, headers=bearer(U1)).status_code == 422
