@@ -107,3 +107,8 @@ test("a missing database is a first run, not an error", () => {
   assert.equal(isFirstRun("database is busy"), false);
   assert.equal(isFirstRun(null), false);
 });
+
+test("api: a response the backend served from a league's previous files is marked stale", async () => {
+  globalThis.fetch = (async () => new Response('{"a":1}', { status: 200, headers: { "X-FI-Degraded": "stale-files" } })) as typeof fetch;
+  assert.deepEqual(await api("/x"), { ok: true, data: { a: 1 }, error: null, stale: true });
+});
