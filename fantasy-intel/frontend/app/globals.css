@@ -409,7 +409,10 @@ p { margin: 0 0 8px; }
 .rail { display: none; }
 @media (min-width: 1200px) {
   :root { --rail-w: 236px; --appbar-h: calc(var(--topbar-h) + 1px); }
-  :root[data-rail="collapsed"] { --rail-w: 68px; --appbar-h: calc(var(--topbar-h) + var(--subnav-h) + 2px); }
+  :root[data-rail="collapsed"] { --rail-w: 68px; }
+  /* Collapsed, the sub-nav band returns only where the route has one: SubNav renders nothing outside NAV_GROUPS
+     (/data, /leagues, /account, /login), and there the rail and every sticky offset sit right under the app bar. */
+  :root[data-rail="collapsed"]:has(.subnav-wrap) { --appbar-h: calc(var(--topbar-h) + var(--subnav-h) + 2px); }
   .topbar { max-width: calc(var(--page-max) + var(--rail-w)); }
   .topbar .nav-groups { display: none; }
   :root:not([data-rail="collapsed"]) .subnav-wrap { display: none; }

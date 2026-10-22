@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { RAIL_KEY } from "../lib/navigation";
 
 // Navigation and analysis-context journeys against the synthetic league (scripts/build_e2e_db.py): team 2 is the
 // owner default, team 1 a rival, player 201 "Echo RB". The viewport comes from the Playwright project: desktop
@@ -265,6 +266,29 @@ test("wide desktop: collapsing the rail keeps the five sections, brings back the
   await page.getByRole("button", { name: "Expand navigation" }).click();
   await expect(page.locator("html")).not.toHaveAttribute("data-rail", /./);
   await expect(page.locator(".subnav-wrap")).toBeHidden();
+});
+
+test("wide desktop: the collapsed rail sits right under the app bar, and under the sub-nav band only where a route has one", async ({ page }) => {
+  test.skip(!hasRail(), "the rail is the wide desktop layout");
+  await page.addInitScript((key) => {
+    try { window.localStorage.setItem(key, "collapsed"); } catch { /* storage blocked: the rail stays open */ }
+  }, RAIL_KEY);
+  // The rail's sticky top is --appbar-h, the same offset every sticky bar and scroll-padding uses.
+  const railTop = () => page.locator(".rail").evaluate((e) => parseFloat(getComputedStyle(e).top));
+  const bottom = async (selector: string) => {
+    const box = await page.locator(selector).boundingBox();
+    return box ? box.y + box.height : NaN;
+  };
+  // /leagues is in no nav group, so it has no sub-nav band: no row may be reserved for one.
+  await page.goto("/leagues");
+  await loaded(page);
+  await expect(page.locator("html")).toHaveAttribute("data-rail", "collapsed");
+  await expect(page.locator(".subnav-wrap")).toHaveCount(0);
+  expect(await railTop(), "/leagues: rail top = app bar bottom").toBeCloseTo(await bottom(".appbar"), 0);
+  await page.goto("/rankings");
+  await loaded(page);
+  await expect(page.locator(".subnav-wrap")).toBeVisible();
+  expect(await railTop(), "/rankings: rail top = sub-nav band bottom").toBeCloseTo(await bottom(".subnav-wrap"), 0);
 });
 
 test("wide desktop: the rail's team picker reloads a team-scoped page and steers links from a league-wide one", async ({ page }) => {
