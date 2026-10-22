@@ -118,6 +118,13 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
         "tests/test_league_scope_audit.py",
         "tests/test_multileague_isolation.py",
     ]),
+    # The all-leagues action center (issue #166): a cross-tenant aggregation over the caller's authorized leagues.
+    ("api/action_center.py", [
+        "tests/test_action_center.py",
+        "tests/test_v2_authorization_matrix.py",
+        "tests/test_league_scope_audit.py",
+        "tests/test_multileague_isolation.py",
+    ]),
     ("api/deps.py", ["tests/test_authorize_league.py", "tests/test_v2_authorization_matrix.py", "tests/test_api.py"]),
     ("api/league_scope.py", ["tests/test_league_scope.py", "tests/test_league_scope_audit.py", "tests/test_league_scope_sleeper.py"]),
     ("api/routes.py", ["tests/test_api.py", "tests/test_league_scope_audit.py"]),

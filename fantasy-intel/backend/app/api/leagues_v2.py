@@ -185,6 +185,30 @@ def list_leagues(tx=REQUEST_TX):
     return _json({"leagues": [a.to_json() for a in authorize_leagues_in(con, principal, ids)]})
 
 
+@router.get("/action-center")
+def action_center(principal: Principal = Depends(current_principal)):
+    """The signed-in caller's decisions across their own leagues (issue #166; app/api/action_center.py). User-scoped,
+    like GET /v2/leagues: the league list is enumerated and authorized here, in one short transaction that is closed
+    before any league file is read, and never taken from the request. A league the caller cannot see is simply absent.
+    Anonymous is 401 (this is the caller's own list); an unusable token was already 401 in `current_principal`."""
+    from ..control_plane import mutations
+    from ..control_plane.authz import authorize_leagues_in
+    from ..control_plane.pg import AccountGone, ControlPlaneUnavailable, get_control_plane
+    from . import action_center as center
+    if not principal.is_authenticated:
+        raise HTTPException(401, SIGN_IN)
+    try:
+        with get_control_plane().request_tx(principal) as con:
+            granted = authorize_leagues_in(con, principal, mutations.list_my_leagues(con, principal))
+    except (mutations.SignInRequired, AccountGone):
+        raise HTTPException(401, SIGN_IN) from None
+    except ControlPlaneUnavailable:
+        raise HTTPException(503, UNAVAILABLE) from None
+    body, degraded = center.build(principal, granted)
+    headers = {**NO_STORE, **({"X-FI-Degraded": "stale-files"} if degraded else {})}
+    return JSONResponse(body, headers=headers)
+
+
 @router.get("/leagues/{league_id}")
 def get_league(ltx=Depends(league_tx, scope="function")):
     _, access = ltx

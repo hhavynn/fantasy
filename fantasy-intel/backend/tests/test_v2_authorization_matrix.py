@@ -143,3 +143,28 @@ def test_every_v2_transaction_dependency_finishes_before_the_response():
                 checked += 1
             stack.extend(dep.dependencies)
     assert checked >= 7
+
+
+# The all-leagues action center (issue #166) is user-scoped: no {league_id}, so it is not in league_routes(). Its league
+# list must be exactly what the same matrix grants each actor among the leagues they belong to: never a league in a
+# state they cannot see (flipped private, deleted), nothing at all for a stranger, and 401 for the anonymous caller.
+ACTION_CENTER_EXPECTED = {"viewer": {"public", "private", "stale", "expired"}, "admin": {"public", "private", "stale", "expired"},
+                          "stranger": set()}
+
+
+@pytest.mark.parametrize("actor", list(ACTORS))
+def test_action_center_lists_exactly_the_leagues_the_matrix_grants(client, leagues, actor, monkeypatch):
+    from app.api import action_center
+    monkeypatch.setattr(action_center, "_CACHES", {})
+    r = client.get("/v2/action-center", headers=headers(actor))
+    if actor == "anon":
+        assert (r.status_code, r.json()) == (401, {"detail": "Sign in to use this endpoint."})
+        return
+    assert r.status_code == 200, r.text[:200]
+    names = {v: k for k, v in leagues.items()}
+    listed = [s["league"]["league_id"] for s in r.json()["leagues"]] + [x["league_id"] for x in r.json()["more"]["leagues"]]
+    assert {names[i] for i in listed} == ACTION_CENTER_EXPECTED[actor]
+    for hidden in set(STATES) - ACTION_CENTER_EXPECTED[actor]:
+        assert leagues[hidden] not in r.text, (actor, hidden)
+    # no league here has a published snapshot: each says so instead of showing a roster
+    assert all(s["state"] == "not_ready" and s["overview"] is None for s in r.json()["leagues"])
