@@ -17,4 +17,6 @@
 .body { color: var(--ink); overflow-wrap: anywhere; }
 .title + .body { margin-top: 2px; color: var(--ink-muted); }
 .body > :last-child { margin-bottom: 0; }
+/* A link inside a notice's sentence is underlined, not told apart by colour alone. */
+.body a { text-decoration: underline; text-underline-offset: 2px; }
 .legacy { margin-bottom: 16px; }
