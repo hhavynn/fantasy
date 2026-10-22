@@ -21,13 +21,13 @@ States: NOT STARTED · IN PROGRESS · PR OPEN · VERIFIED / MERGE READY (CI gree
 
 | Issue | Phase | State | Branch / PR | Notes |
 |---|---|---|---|---|
-| #201 perf budgets | 1 | IN PROGRESS | `feature/fi-201-perf-budgets` | wave 3 agent |
-| #202 UX/visual gates | 1 | PR OPEN | PR #230 (9bce26c, CI running) | gates caught #208 badge vs decision-first rule, fixed; visual gate PENDING until reviewed baselines committed |
+| #201 perf budgets | 1 | PR OPEN | PR #235 (8b26f75) | security review: 1 MEDIUM + 3 LOW fixed; CI running |
+| #202 UX/visual gates | 1 | MERGED | PR #230 → `3526fb1` (2026-10-22) | visual gate PENDING: run "Visual baselines" workflow, review, commit PNGs |
 | #168 signal provenance | 1 | MERGED | PR #208 → `509a45f` (2026-10-22) | contract `signal-provenance.v1` |
 | #169 league rules | 1 | MERGED | PR #207 → `7574d6e` (2026-10-22) | |
 | #167 onboarding | 1 | MERGED | PR #233 → `2a6c47d` (2026-10-22) | real-league demo needs a backend demo concept (follow-up) |
 | #170 desktop shell | 1 | NOT STARTED | — | after wave 2; sole owner of Nav/globals |
-| #165 weekly hub | 2 | PR OPEN | PR #232 (7c49fb4, CI green) | Codex fixes in; merges after #230 with one main merge |
+| #165 weekly hub | 2 | PR OPEN | PR #232 (0ddd5a8) | Codex fixes in; UX gates/routes/workflows pass locally on main+hub; CI running |
 | #166 action center | 2 | NOT STARTED | — | after #165 |
 | #171 what-if lineup | 2 | NOT STARTED | — | reuse lineup.py locks |
 | #177 bye/kickoff planner | 2 | NOT STARTED | — | |
@@ -68,8 +68,8 @@ Kept separate from #205. It is an additive backlog: nothing here preempts an act
 
 | Issue | Group | State | Branch / PR | Gate (prerequisite) |
 |---|---|---|---|---|
-| #228 Sleeper taxi eligibility | fix | IN PROGRESS | `feature/fi-228-sleeper-taxi` | none; agent running |
-| #229 superflex replacement level | fix | NOT STARTED | — | next free slot after #228 (D-05) |
+| #228 Sleeper taxi eligibility | fix | PR OPEN | PR #234 (7083fa7) | CI + Codex running |
+| #229 superflex replacement level | fix | IN PROGRESS (code done) | `feature/fi-229-superflex-replacement` @ e36b815, not pushed | pushed after #234 merges (queue cap); trial merge with #234 clean |
 | #212 Breakout Radar | A | NOT STARTED | — | #168 merged; backtest gate |
 | #210 Game Splits | A | NOT STARTED | — | backend now; UI after #170 |
 | #226 Advanced screener | A | NOT STARTED | — | backend now; UI after #170/#200; feeds #219 |
