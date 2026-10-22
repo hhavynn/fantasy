@@ -65,6 +65,8 @@ When running manual tests or interpreting `agent_check.py`:
 - **Frontend Changes (`fantasy-intel/frontend/`)**:
   Must run: `npm run lint`, `npm run typecheck`, and `npm test`.
   If touching `app/` (routes, server actions) or config files: also run `npm run build`.
+- **Any backend `app/` source (including a new module)**:
+  Also run the app-wide source audits (`test_weekly_learning.py`, `test_dst_research.py`, `test_independent_projections.py`); `agent_check.py affected` adds them automatically.
 - **Analytics & Projections (`app/analytics/`)**:
   Must run matching test suite (`test_trades.py`, `test_start_sit.py`, etc.) + `test_league_scope_audit.py` + `test_golden_legacy.py`.
 
