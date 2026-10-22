@@ -346,3 +346,67 @@ def test_the_middleware_adds_server_timing_and_logs_the_route_template_not_the_l
     assert len(lines) == 1
     assert lines[0].startswith("perf GET /v2/leagues/{league_id}/api/overview status=200 total_ms=")
     assert A not in lines[0] and "team_id" not in lines[0]
+
+
+# ---- budgets -----------------------------------------------------------------------------------------------------------
+
+def test_budgets_reuse_the_monitor_quotas_and_the_cache_settings():
+    from app.db import league_files
+    from app.monitor import budgets
+    q = budgets.free_tier_quotas()
+    assert q["r2_class_a_ops"] == (1_000_000, "requests") and q["r2_class_b_ops"] == (10_000_000, "requests")
+    assert q["r2_storage_bytes"][0] == 10e9 and q["supabase_db_bytes"][0] == 500e6
+    assert q["vercel_invocations"][0] == 1_000_000 and q["vercel_active_cpu_hours"][0] == 4
+    assert budgets.COLD_LOAD_BUDGET_S == league_files.DEFAULT_COLD_BUDGET_S
+    assert budgets.r2_gets_per_download(5 << 20) == 1 and budgets.r2_gets_per_download(95 << 20) == 8
+    assert budgets.r2_gets_per_download(1, retried=True) == 2
+    assert budgets.within_budget("overview", "warm", 1000) and not budgets.within_budget("overview", "cached", 1000)
+    assert budgets.page_budget_ms("trades-discover", "warm") > budgets.page_budget_ms("waivers", "warm")
+
+
+# ---- more leagues at once than the cache holds ---------------------------------------------------------------------------
+
+def test_more_concurrent_leagues_than_the_cache_holds_wait_for_room_instead_of_failing(tmp_path):
+    """25 leagues of 16.5 MB at once exceed the 350 MB /tmp bound (issue #201 baseline): the newcomers wait for running
+    requests to release their files, the bound is never exceeded, and nobody gets CacheFull."""
+    store = MemStore()
+    leagues = [f"lg_{i:024d}" for i in range(8)]
+    versions = {}
+    for i, lg in enumerate(leagues):
+        data = blob(30_000, 100 + i)
+        versions[lg] = version_of(data)
+        store.put(league_key(lg, versions[lg]), data)
+    cache = LeagueFileCache(store, tmp_path / "c", max_bytes=95_000, room_wait_s=5)     # three files fit
+    peak, barrier = [0], threading.Barrier(len(leagues))
+
+    def use(lg):
+        barrier.wait()
+        path = cache.pin_league(lg, versions[lg])
+        try:
+            peak[0] = max(peak[0], cache.bytes_used)
+            assert path.read_bytes() == store.objects[league_key(lg, versions[lg])]
+            time.sleep(0.05)                               # the request runs, holding its file
+        finally:
+            cache.release(path)
+        return lg
+
+    with ThreadPoolExecutor(len(leagues)) as pool:
+        assert sorted(pool.map(use, leagues)) == leagues
+    assert peak[0] <= 95_000 and cache.bytes_used <= 95_000
+
+
+def test_a_cache_that_stays_full_still_refuses_after_the_wait(tmp_path):
+    from app.db.league_files import CacheFull
+    store = MemStore()
+    a, b = blob(60_000, 1), blob(60_000, 2)
+    va, vb = version_of(a), version_of(b)
+    store.put(league_key(A, va), a)
+    store.put(league_key(B, vb), b)
+    cache = LeagueFileCache(store, tmp_path / "c", max_bytes=100_000, room_wait_s=0.3)
+    held = cache.pin_league(A, va)
+    t0 = time.monotonic()
+    with pytest.raises(CacheFull):
+        cache.pin_league(B, vb)
+    assert 0.25 <= time.monotonic() - t0 < 3
+    cache.release(held)
+    assert cache.pin_league(B, vb).exists()

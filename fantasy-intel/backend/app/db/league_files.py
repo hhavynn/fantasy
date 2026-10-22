@@ -40,6 +40,7 @@ from .league_split import VERSION_RE
 
 DEFAULT_MAX_BYTES = 350 << 20
 DEFAULT_COLD_BUDGET_S = 3.0          # longest a request waits for a newer pair while an older one can be served
+DEFAULT_ROOM_WAIT_S = 8.0            # a full cache (every file pinned) waits this long for a request to finish
 FAILED_FETCH_RETRY_S = 30.0          # a failed background fetch of one pair is not retried sooner (R2 down)
 _MAX_PREFETCHES = 4                  # background fetches in flight per process; more wait in the request instead
 _LAST_GOOD_LEAGUES = 4096            # leagues whose last served pair is remembered (ids and versions only)
@@ -144,15 +145,18 @@ class PinnedPair:
 class LeagueFileCache:
     """Files are *pinned* while a request uses them (`pin()` / `release()`): eviction skips pinned files, so a path a
     request has resolved is never unlinked before the request has opened it. In-flight downloads reserve their bytes,
-    so concurrent first loads cannot push the directory past the bound together. Each process has its own
+    so concurrent first loads cannot push the directory past the bound together; when they would, the newcomer waits
+    (up to `room_wait_s`) for running requests to release files instead of failing at once. Each process has its own
     subdirectory (several processes on one host never delete each other's files); directories of dead processes are
     removed at start."""
 
     def __init__(self, store: ObjectStore, cache_dir: Path, *, max_bytes: int = DEFAULT_MAX_BYTES,
-                 on_evict: Callable[[Path], None] | None = None, clock: Callable[[], float] = time.monotonic):
+                 on_evict: Callable[[Path], None] | None = None, clock: Callable[[], float] = time.monotonic,
+                 room_wait_s: float = DEFAULT_ROOM_WAIT_S):
         self.store, self.max_bytes = store, int(max_bytes)
-        self.on_evict, self.clock = on_evict, clock
+        self.on_evict, self.clock, self.room_wait_s = on_evict, clock, max(0.0, room_wait_s)
         self._lock = threading.Lock()                       # guards every field below
+        self._room = threading.Condition(self._lock)        # notified when a pin or a reservation is let go
         self._files: OrderedDict[str, tuple[Path, int]] = OrderedDict()   # key -> (path, bytes), LRU order
         self._downloading: dict[str, threading.Event] = {}
         self._reserved: dict[str, int] = {}                 # key -> bytes of an in-flight download
@@ -326,6 +330,7 @@ class LeagueFileCache:
                     self._pins[key] -= 1
                     if not self._pins[key]:
                         del self._pins[key]
+                        self._room.notify_all()
                     return
 
     def _local_path(self, key: str) -> Path:
@@ -357,6 +362,7 @@ class LeagueFileCache:
             except BaseException:
                 with self._lock:
                     self._reserved.pop(key, None)
+                    self._room.notify_all()
                 raise
             with self._lock:                                 # reservation -> index in one step: never uncounted
                 self._reserved.pop(key, None)
@@ -371,6 +377,18 @@ class LeagueFileCache:
             done.set()
 
     def _make_room(self, key: str, incoming: int) -> None:
+        """Make room for `incoming` bytes and reserve them. When everything that could go is pinned by running
+        requests (more leagues loading at once than the cache holds), wait up to `room_wait_s` for a request to finish
+        and release its files rather than refusing at once; CacheFull (a 503) only after that."""
+        deadline = time.monotonic() + self.room_wait_s
+        while not self._try_make_room(key, incoming):
+            with self._lock:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise CacheFull(f"no room for {key}: every cached file is in use")
+                self._room.wait(min(remaining, 0.25))       # woken by release(); the timeout covers a missed wake
+
+    def _try_make_room(self, key: str, incoming: int) -> bool:
         """Evict least-recently-used unpinned files until `incoming` more bytes fit, then reserve them. An evicted key
         is marked as downloading until its file is unlinked, so a request for it waits instead of fetching a new copy
         to the same path that this unlink would then remove."""
@@ -403,8 +421,7 @@ class LeagueFileCache:
                         del self._downloading[old]
             for _, _, done in evicted:
                 done.set()
-        if not fits:
-            raise CacheFull(f"no room for {key}: every cached file is in use")
+        return fits
 
 
 def _remove_dead_process_dirs(root: Path) -> None:

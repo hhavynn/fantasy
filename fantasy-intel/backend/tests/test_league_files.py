@@ -145,7 +145,7 @@ def test_concurrent_first_downloads_stay_under_the_bound_together(tmp_path):
         keys.append((f"lg_{i:024d}", v))
     gate = threading.Event()
     store = SlowStore(objects, gate)
-    cache = LeagueFileCache(store, tmp_path / "c", max_bytes=100_000)
+    cache = LeagueFileCache(store, tmp_path / "c", max_bytes=100_000, room_wait_s=0)    # refuse at once
     store.cache = cache
     errors = []
 
@@ -174,7 +174,8 @@ def test_a_pinned_file_is_never_evicted_and_a_full_cache_refuses(r2, tmp_path):
         put(r2, league_key(f"lg_{i:024d}", v), data)
         keys.append((f"lg_{i:024d}", v))
     evicted = []
-    cache = LeagueFileCache(R2Store(r2.config), tmp_path / "c", max_bytes=130_000, on_evict=evicted.append)
+    cache = LeagueFileCache(R2Store(r2.config), tmp_path / "c", max_bytes=130_000, on_evict=evicted.append,
+                            room_wait_s=0)
     a = cache.pin_league(*keys[0])
     cache.league_file(*keys[1])
     cache.league_file(*keys[2])                       # needs room: evicts b, never the pinned a
