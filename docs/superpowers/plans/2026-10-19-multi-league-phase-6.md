@@ -63,7 +63,13 @@ Tasks 1–4 are built:
 - The read rate limit (`RATE_LIMIT_PER_MINUTE`, off when unset).
 - The platform monitor (hourly workflow, GitHub issue alerts, `/admin/usage`).
 
-The monitor's log is checked by `scripts/audit_drain_log.py --monitor`, an allowlist of its own line shapes. The Vercel and Cloudflare collectors are tested against the documented response shapes only; they run once Havyn adds `VERCEL_USAGE_TOKEN` and `CLOUDFLARE_ANALYTICS_TOKEN`. Task 5 (launch) follows the merge.
+The monitor's log is checked by `scripts/audit_drain_log.py --monitor`, an allowlist of its own line shapes. The Vercel and Cloudflare collectors are tested against the documented response shapes only; they run once Havyn adds `VERCEL_USAGE_TOKEN` and `CLOUDFLARE_ANALYTICS_TOKEN`. Task 5 (launch) is done (2026-10-21):
+- **Migrations applied:** `launch_gates` and `usage_samples`.
+- **API:** `SIGNUPS_ENABLED=1`.
+- **Web:** `SIGNUPS_OPEN=1` and `RATE_LIMIT_PER_MINUTE=300`. `SITE_PASSWORD` now applies to previews only, so production is public.
+- **Vercel WAF:** "Per-IP rate limit", 600 requests per 60 s per IP → 429.
+- **Monitor proved on production:** a run with an injected 80% R2 reading opened issue #163, and the next run closed it. Both public logs passed the audit.
+- **Found while verifying:** unscoped pages said "Backend offline" with the classic site retired. Fixed in PR #162.
 
 ## Tasks
 

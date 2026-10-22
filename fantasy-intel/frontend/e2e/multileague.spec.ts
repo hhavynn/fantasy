@@ -85,6 +85,8 @@ test("the terms, the privacy policy and account settings render, unscoped, for v
     expect(res?.status(), href).toBe(200);
     expect(new URL(page.url()).pathname).toBe(href);
     await expect(page.locator("h1")).toHaveText(h1);
+    // No league here: the header shows no sync state (the retired classic status route is never asked).
+    await expect(page.getByText("Backend offline")).toHaveCount(0);
   }
   await page.goto("/account", { waitUntil: "load" });
   await expect(page.locator("main")).toContainText("Not signed in");
@@ -93,4 +95,22 @@ test("the terms, the privacy policy and account settings render, unscoped, for v
   await expect(page.locator("main")).toContainText("viewer@example.test");
   await expect(page.getByRole("button", { name: "Delete my account" })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("a link across the league boundary re-renders the header, both ways", async ({ page, context }) => {
+  await signIn(context);
+  const lg = manifest().leagues.espn_private;
+  await page.goto(`/l/${lg}/waivers`, { waitUntil: "load" });
+  await expect(page.locator("button.sync-pill")).toBeVisible();
+  // League page -> /terms by a client-side link (the account menu): the league header goes.
+  await page.locator(".account-menu summary").click();
+  await page.getByRole("menuitem", { name: "Terms" }).click();
+  await expect(page).toHaveURL(/\/terms$/);
+  await expect(page.locator("button.sync-pill")).toHaveCount(0);
+  // /leagues -> a league by a client-side link: the league header comes back.
+  await page.goto("/leagues", { waitUntil: "load" });
+  await expect(page.locator("button.sync-pill")).toHaveCount(0);
+  await page.getByRole("link", { name: "Private Fixture League" }).first().click();
+  await expect(page).toHaveURL(new RegExp(`/l/${lg}$`));
+  await expect(page.locator("button.sync-pill")).toBeVisible();
 });

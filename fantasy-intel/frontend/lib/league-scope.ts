@@ -27,6 +27,15 @@ export function splitLeaguePath(pathname: string): { league: string | null; path
   return { league: m[1], path: m[2] || "/" };
 }
 
+/**
+ * True when a client-side navigation from `previous` to `pathname` changes the league scope: into a league, out of
+ * one (/leagues, /terms), or to another league. The root layout is kept across client navigations, so its header
+ * (league switcher, sync state, projection switch) must be re-rendered then (components/ScopeRefresh.tsx).
+ */
+export function crossesLeagueScope(previous: string | null, pathname: string): boolean {
+  return previous !== null && splitLeaguePath(previous).league !== splitLeaguePath(pathname).league;
+}
+
 /** The app path without a league prefix (for nav highlighting and other path matching). */
 export function appPath(pathname: string): string {
   return splitLeaguePath(pathname).path;

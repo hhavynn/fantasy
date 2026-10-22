@@ -126,6 +126,7 @@ def main() -> int:
         "MULTILEAGUE_ENABLED": "1", "SUPABASE_URL": auth_url, "SUPABASE_DB_URL": db.dsn_for("fi_api"),
         "LEAGUE_FILES_DIR": str(objects), "SLEEPER_SOURCE": "live", "ESPN_SEASON": "2026", "NFL_SEASON": "2026",
         "FANTASY_DB_PATH": str(espn_db), "FANTASY_API_KEY": "", "MOTHERDUCK_DATABASE": "", "ESPN_MY_TEAM_ID": "",
+        "CLASSIC_SITE_ENABLED": "0",
     })
     import uvicorn
     try:

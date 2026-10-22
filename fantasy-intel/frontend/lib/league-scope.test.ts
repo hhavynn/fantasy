@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appPath, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath, withLeague } from "./league-scope.ts";
+import {
+  appPath, crossesLeagueScope, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath, withLeague,
+} from "./league-scope.ts";
 
 const LG = "lg_" + "a".repeat(24);
 
@@ -88,4 +90,14 @@ test("account settings, the terms and the privacy policy are never scoped, with 
   }
   assert.equal(withLeague("/terms", LG), "/terms");
   assert.equal(withLeague("/privacy", LG), "/privacy");
+});
+
+test("a client navigation crosses the league scope into, out of, or between leagues, never within one", () => {
+  const A = "/l/lg_KxH_Y1Y56aM7qnCCseKvs1sU", B = "/l/lg_5776f7eff90e4f45ac2c84eee0670db2";
+  assert.equal(crossesLeagueScope(null, `${A}/waivers`), false, "the first render needs no refresh");
+  assert.equal(crossesLeagueScope("/leagues", `${A}`), true);
+  assert.equal(crossesLeagueScope(`${A}/waivers`, "/terms"), true);
+  assert.equal(crossesLeagueScope(`${A}/waivers`, `${B}/waivers`), true);
+  assert.equal(crossesLeagueScope(`${A}/waivers`, `${A}/trades`), false);
+  assert.equal(crossesLeagueScope("/terms", "/privacy"), false);
 });
