@@ -405,11 +405,22 @@ def test_a_new_version_that_cannot_be_fetched_serves_the_previous_files_marked(p
     assert fresh.headers["x-fi-data-version"] == res.data_version
 
 
-def test_server_timing_names_phases_without_the_league(pg, served, client, e2e, tmp_path):
+def test_server_timing_names_phases_without_the_league(pg, served, client, e2e, tmp_path, monkeypatch):
+    from app.monitor import timing as perf
+    lines = []
+
+    class Collect:
+        def info(self, line):
+            lines.append(line)
+
+    monkeypatch.setattr(perf, "_logger", lambda: Collect())
+    monkeypatch.setenv("FI_PERF_SAMPLE", "1")
     pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
-    cold = client.get(f"/v2/leagues/{pub.league_id}/api/overview")
+    cold = client.get(f"/v2/leagues/{pub.league_id}/api/overview?team_id=2")
+    assert lines and lines[-1].startswith("perf GET /v2/leagues/{league_id}/api/overview status=200 ")
+    assert pub.league_id not in lines[-1] and "team_id" not in lines[-1]
     warm = client.get(f"/v2/leagues/{pub.league_id}/api/teams")
-    hit = client.get(f"/v2/leagues/{pub.league_id}/api/overview")
+    hit = client.get(f"/v2/leagues/{pub.league_id}/api/overview?team_id=2")
     st = {k: r.headers["server-timing"] for k, r in (("cold", cold), ("warm", warm), ("hit", hit))}
     assert 'files;dur=' in st["cold"] and 'desc="cold"' in st["cold"] and st["cold"].startswith("auth;dur=")
     assert 'desc="warm"' in st["warm"]

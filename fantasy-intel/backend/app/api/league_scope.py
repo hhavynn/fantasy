@@ -165,24 +165,31 @@ class ResponseCache:
                 self.hits += 1
             return hit
 
-    def begin(self, key: str) -> asyncio.Event | None:
-        """Single flight for one key. None: the caller computes the answer and must call `land(key)` when its response
-        is complete (whether or not it was cached). An Event: an identical request on this event loop is already
-        computing it; wait for the event, then look the key up again. Requests on another loop (another worker) never
-        join: they compute on their own."""
+    def begin(self, key: str) -> tuple[str, asyncio.Event | None]:
+        """Single flight for one key, as (role, event):
+
+          ("lead", None)   the caller computes the answer and must call `land(key)` once its response is complete
+                           (whether or not it was cached);
+          ("wait", event)  an identical request on this event loop is computing it: wait, then look the key up again;
+          ("solo", None)   an identical request is in flight on another event loop (another worker thread): compute
+                           alone, never land (the flight is not this caller's to end)."""
         loop = asyncio.get_running_loop()
         with self._lock:
             flight = self._flights.get(key)
             if flight is None:
                 self._flights[key] = (loop, asyncio.Event())
-                return None
-            return flight[1] if flight[0] is loop else None
+                return "lead", None
+            return ("wait", flight[1]) if flight[0] is loop else ("solo", None)
 
     def land(self, key: str) -> None:
+        """End this loop's flight for `key` and wake its waiters. A flight owned by another loop is left alone."""
+        loop = asyncio.get_running_loop()
         with self._lock:
-            flight = self._flights.pop(key, None)
-        if flight is not None:
-            flight[1].set()
+            flight = self._flights.get(key)
+            if flight is None or flight[0] is not loop:
+                return
+            del self._flights[key]
+        flight[1].set()
 
     def put(self, key: str, status: int, body: bytes, media_type: str) -> None:
         if status != 200 or len(body) > self.max_bytes // 4:          # one answer never takes most of the cache
@@ -235,10 +242,10 @@ async def _lookup(request: Request, scope: LeagueScope, timing: Timing) -> None:
     cache = response_cache()
     hit = cache.get(key)
     if hit is None:
-        flight = cache.begin(key)
-        if flight is None:
+        role, flight = cache.begin(key)
+        if role == "lead":
             request.state.fi_flight = key            # add_scope_headers lands it once the answer is complete
-        else:
+        elif role == "wait":
             loop = asyncio.get_running_loop()
             t0 = loop.time()
             try:

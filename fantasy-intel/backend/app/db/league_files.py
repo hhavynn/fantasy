@@ -44,6 +44,7 @@ DEFAULT_ROOM_WAIT_S = 8.0            # a full cache (every file pinned) waits th
 FAILED_FETCH_RETRY_S = 30.0          # a failed background fetch of one pair is not retried sooner (R2 down)
 _MAX_PREFETCHES = 4                  # background fetches in flight per process; more wait in the request instead
 _LAST_GOOD_LEAGUES = 4096            # leagues whose last served pair is remembered (ids and versions only)
+_FALLBACK_WAIT_S = 30.0              # the older pair vanished mid-request: longest wait for the new one after all
 _LEAGUE_ID = re.compile(r"lg_[A-Za-z0-9_-]{16,64}")
 
 
@@ -57,6 +58,15 @@ def _check_version(version: str) -> re.Match:
     if m is None:
         raise ObjectKeyError("malformed version")
     return m
+
+
+def _older(fallback: tuple[str, str], pointer: tuple[str, str]) -> bool:
+    """True when the (data, global) pair `fallback` was built strictly before the pointer's: its league file is
+    stamped earlier and its global file no later. A pair that is not older (the pointer was rolled back, or re-stamped)
+    is never served in its place: a retracted version must not come back as "data may be older"."""
+    fd, fg = _check_version(fallback[0])["stamp"], _check_version(fallback[1])["stamp"]
+    pd, pg = _check_version(pointer[0])["stamp"], _check_version(pointer[1])["stamp"]
+    return fd < pd and fg <= pg          # stamps are fixed-width UTC (YYYYMMDDTHHMMSSZ): string order is time order
 
 
 def league_key(league_id: str, version: str) -> str:
@@ -222,6 +232,11 @@ class LeagueFileCache:
             while len(self._last_good) > _LAST_GOOD_LEAGUES:
                 self._last_good.popitem(last=False)
 
+    def _forget_last_good(self, league_id: str, pair: tuple[str, str]) -> None:
+        with self._lock:
+            if self._last_good.get(league_id) == pair:
+                del self._last_good[league_id]
+
     def _pin_pair_cached(self, league_id: str, data_version: str, global_version: str) -> tuple[Path, Path] | None:
         league_path = self.pin_cached_league(league_id, data_version)
         if league_path is None:
@@ -289,8 +304,8 @@ class LeagueFileCache:
                  budget_s: float = DEFAULT_COLD_BUDGET_S) -> PinnedPair:
         """Pin the league's files for the pointer (data_version, global_version).
 
-        Already cached: pinned at once. Not cached and this league has no older pair still cached here: fetched in
-        this request, as before (nothing else to serve; errors propagate). Not cached but an older pair of *this
+        Already cached: pinned at once. Not cached and this league has no strictly older pair still cached here (none,
+        or the pointer was rolled back to before it): fetched in this request, as before (errors propagate). Not cached but an older pair of *this
         league* is: the new pair is fetched in the background and this request waits up to `budget_s` (counted from
         when that fetch started, so later requests do not each wait the whole budget); if it is not ready, the older
         pair is served with `degraded` set."""
@@ -299,8 +314,11 @@ class LeagueFileCache:
             self._remember(league_id, data_version, global_version)
             return PinnedPair(*cached, data_version, global_version)
         last = self.last_good(league_id)
+        if last is not None and not _older(last, (data_version, global_version)):
+            self._forget_last_good(league_id, last)          # rolled back past it (or the same pair): never a fallback
+            last = None
         fut = None
-        if last is not None and last != (data_version, global_version):
+        if last is not None:
             fut = self.prefetch(league_id, data_version, global_version)
         if fut is None:
             paths = self._pin_pair_blocking(league_id, data_version, global_version)
@@ -320,7 +338,7 @@ class LeagueFileCache:
         old = self._pin_pair_cached(league_id, *last)
         if old is not None:
             return PinnedPair(*old, *last, degraded=reason, cold=True)
-        fut.result()       # the older pair was evicted meanwhile: wait for the new one after all (or raise its error)
+        fut.result(timeout=_FALLBACK_WAIT_S)   # the older pair was evicted meanwhile: wait (bounded) for the new one
         paths = self._pin_pair_blocking(league_id, data_version, global_version)
         self._remember(league_id, data_version, global_version)
         return PinnedPair(*paths, data_version, global_version, cold=True)

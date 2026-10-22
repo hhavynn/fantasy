@@ -6,12 +6,28 @@
 /** The backend answers `X-FI-Degraded: stale-files` when it served a league's previous files (data may be older). */
 export const DEGRADED_HEADER = "x-fi-degraded";
 
-const LEAGUE_SEGMENT = /\/lg_[A-Za-z0-9_-]{16,64}(?=\/|$)/g;
-const NUMERIC_SEGMENT = /\/\d+(?=\/|$)/g;
+/**
+ * The fixed words of the backend's route paths (app/api/*.py routers). Every other segment (a league id, a team or
+ * player id, a player selector, an invite token, a UUID) becomes a placeholder, so a log line carries a template only.
+ * A route added later and missing here just logs its new word as `{id}`: less detail, never a value.
+ */
+const ROUTE_WORDS = new Set([
+  "admin", "api", "compare", "connect", "context", "credential", "data-quality", "defenses", "discover", "evaluate",
+  "evidence", "forward", "health", "import", "independent", "injury-impact", "invites", "kickers", "league-profile",
+  "league-rules", "leagues", "lineup-projection", "lineup-projections", "luck-lab", "managers", "matchup", "me",
+  "movers", "my-team", "opportunity", "options", "overview", "performance", "perspective", "pin", "players",
+  "playoff-race", "power-rankings", "projections", "promotion", "providers", "ranges", "rankings", "redeem", "replay",
+  "research", "schedule-intelligence", "scouting", "search", "start-sit", "status", "summary", "sync", "teams",
+  "trades", "transactions", "usage", "v2", "value", "waivers", "weekly-recap",
+]);
+const LEAGUE_ID = /^lg_[A-Za-z0-9_-]{16,64}$/;
 
 export function apiPathTemplate(path: string): string {
   const bare = path.split(/[?#]/, 1)[0];
-  return bare.replace(LEAGUE_SEGMENT, "/{league}").replace(NUMERIC_SEGMENT, "/{id}");
+  return bare.split("/").map((seg, i) => {
+    if (i === 0 || seg === "" || ROUTE_WORDS.has(seg)) return seg;
+    return LEAGUE_ID.test(seg) ? "{league}" : "{id}";
+  }).join("/");
 }
 
 /** The share of calls to log (0 = off). Anything that is not "1", "true" or a number in (0, 1] is off. */

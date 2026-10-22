@@ -90,7 +90,7 @@ What the numbers say:
 | `loading.tsx` for Matchup | `frontend/app/matchup/loading.tsx` | Every heavy route now has its own skeleton: Overview (root), Waivers, Trades, Trades → Discover (plus Suspense on the scan), Matchup, Players, Rankings. |
 
 The isolation rules are unchanged. File keys are `leagues/<validated id>/<version>`. The degraded fallback is keyed by
-the validated league id, so a league only ever falls back to its own previous pair. Response and single-flight keys
+the validated league id, so a league only ever falls back to its own previous pair. That pair must be strictly older than the pointer: after a rollback, a newer cached pair is forgotten and never served in its place. Response and single-flight keys
 include the league, data and global versions, visibility epoch and perspective. Authorization still runs before any
 cache lookup or file load. The tests are `tests/test_perf_guards.py` and the issue #201 block in `tests/test_league_scope.py`
 (concurrent cold loads of two leagues with colliding ids through the app, single flight, degraded and recovery paths).

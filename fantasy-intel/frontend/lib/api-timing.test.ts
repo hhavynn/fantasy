@@ -12,6 +12,15 @@ test("apiPathTemplate drops league ids, numeric ids and the query string", () =>
   assert.equal(apiPathTemplate("/api/waivers?view=BEST&limit=3"), "/api/waivers");
 });
 
+test("apiPathTemplate keeps only known route words: selectors, UUIDs and tokens become placeholders", () => {
+  assert.equal(apiPathTemplate(`/v2/leagues/${LG}/api/research/players/ja'marr%20chase`),
+    "/v2/leagues/{league}/api/research/players/{id}");
+  assert.equal(apiPathTemplate("/v2/invites/3f2b8c1e-9a4d-4e7b-8c2a-1d5e6f7a8b9c/redeem"), "/v2/invites/{id}/redeem");
+  assert.equal(apiPathTemplate("/v2/invites/AbCdEf-secret_token/redeem"), "/v2/invites/{id}/redeem");
+  assert.equal(apiPathTemplate("/api/some-new-route/x"), "/api/{id}/{id}");
+  assert.equal(apiPathTemplate("/v2/me"), "/v2/me");
+});
+
 test("timingRate is off unless explicitly set to 1, true or a fraction", () => {
   assert.equal(timingRate(undefined), 0);
   assert.equal(timingRate(""), 0);

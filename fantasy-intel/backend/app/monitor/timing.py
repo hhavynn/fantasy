@@ -100,10 +100,20 @@ def _logger() -> logging.Logger:
     return log
 
 
+V2_LEAGUE_PREFIX = "/v2/leagues/{league_id}"
+
+
 def route_template(scope) -> str:
+    """The matched route's path template. FastAPI keeps an included router's mount prefix out of the route's own path,
+    so the per-league mount (/v2/leagues/{league_id} + a legacy route) is restored from the request path's shape."""
     route = scope.get("route")
     path = getattr(route, "path", None)
-    return path if isinstance(path, str) else "unmatched"
+    if not isinstance(path, str):
+        return "unmatched"
+    actual = scope.get("path") or ""
+    if actual.startswith("/v2/leagues/") and not path.startswith("/v2/"):
+        return V2_LEAGUE_PREFIX + path
+    return path
 
 
 def should_log(total_ms: float, *, rand=random.random) -> bool:

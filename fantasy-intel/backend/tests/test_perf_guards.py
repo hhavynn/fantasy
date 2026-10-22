@@ -245,8 +245,8 @@ def test_identical_concurrent_requests_share_one_computation():
     async def request(key):
         if cache.get(key) is not None:
             return "hit"
-        flight = cache.begin(key)
-        if flight is not None:
+        role, flight = cache.begin(key)
+        if role == "wait":
             await asyncio.wait_for(flight.wait(), 5)
             hit = cache.get(key)
             return "shared" if hit is not None else "own"
@@ -273,13 +273,13 @@ def test_a_failed_leader_wakes_waiters_to_compute_their_own():
     cache = ResponseCache(1 << 20)
 
     async def main():
-        assert cache.begin("k") is None
-        waiter = cache.begin("k")
-        assert waiter is not None
+        assert cache.begin("k") == ("lead", None)
+        role, waiter = cache.begin("k")
+        assert role == "wait"
         cache.land("k")                          # the leader's answer was not cacheable (an error)
         await asyncio.wait_for(waiter.wait(), 1)
         assert cache.get("k") is None
-        assert cache.begin("k") is None          # the next one leads afresh
+        assert cache.begin("k") == ("lead", None)          # the next one leads afresh
         cache.land("k")
 
     asyncio.run(main())
@@ -410,3 +410,78 @@ def test_a_cache_that_stays_full_still_refuses_after_the_wait(tmp_path):
     assert 0.25 <= time.monotonic() - t0 < 3
     cache.release(held)
     assert cache.pin_league(B, vb).exists()
+
+
+# ---- review fixes: rollback never serves a newer pair; foreign-loop flights; bounded fallback wait --------------------
+
+def test_after_a_rollback_a_newer_cached_pair_is_never_served_in_place_of_the_pointer(tmp_path):
+    """The pointer moved back V2 -> V1 (operator rollback). The instance still holds V2; V1 cannot be fetched. The
+    answer is the error (a 503), never the retracted V2 marked as "data may be older"."""
+    store = MemStore()
+    v_old, v_new, vg = two_versions(store, B, 70)
+    cache = LeagueFileCache(store, tmp_path / "c", max_bytes=1 << 20)
+    cache.release_pair(cache.pin_pair(B, v_new, vg))          # V2 served and cached
+    store.fail.add(league_key(B, v_old))
+    for _ in range(2):
+        with pytest.raises(R2Error):
+            cache.pin_pair(B, v_old, vg, budget_s=0.1)
+    assert cache.last_good(B) is None                          # forgotten: the rolled-back pair is never a fallback
+    store.fail.discard(league_key(B, v_old))
+    pair = cache.pin_pair(B, v_old, vg, budget_s=0.1)
+    assert (pair.degraded, pair.data_version) == (None, v_old)
+    cache.release_pair(pair)
+    assert cache.last_good(B) == (v_old, vg)
+
+
+def test_a_pair_with_a_newer_global_file_is_not_older():
+    from app.db.league_files import _older
+    d1, d2 = version_of(b"a"), version_of(b"b", "20261021T120000Z")
+    g1, g2 = version_of(b"g"), version_of(b"h", "20261021T120000Z")
+    assert _older((d1, g1), (d2, g2)) and _older((d1, g1), (d2, g1))
+    assert not _older((d2, g1), (d1, g1))                      # rollback
+    assert not _older((d1, g2), (d2, g1))                      # its global file is newer than the pointer's
+    assert not _older((d1, g1), (d1, g1))                      # the same pair
+
+
+def test_a_request_on_another_event_loop_computes_alone_and_never_ends_the_first_loops_flight():
+    from app.api.league_scope import ResponseCache
+    cache = ResponseCache(1 << 20)
+    owner_ready, other_done = threading.Event(), threading.Event()
+    seen = {}
+
+    async def owner():
+        seen["owner"] = cache.begin("k")
+        owner_ready.set()
+        await asyncio.get_running_loop().run_in_executor(None, other_done.wait, 5)
+        seen["still_owned"] = "k" in cache._flights
+        cache.land("k")
+
+    async def other():
+        owner_ready.wait(5)
+        seen["other"] = cache.begin("k")
+        cache.land("k")                     # not its flight: must not remove or wake the owner's
+        other_done.set()
+
+    t = threading.Thread(target=lambda: asyncio.run(owner()))
+    t.start()
+    asyncio.run(other())
+    t.join(5)
+    assert seen["owner"] == ("lead", None) and seen["other"] == ("solo", None)
+    assert seen["still_owned"] is True and not cache._flights
+
+
+def test_the_fallback_wait_for_a_new_pair_is_bounded(tmp_path, monkeypatch):
+    """The older pair vanished while the new one is still downloading: the request waits a bounded time, then fails."""
+    from app.db import league_files
+    monkeypatch.setattr(league_files, "_FALLBACK_WAIT_S", 0.3)
+    store = MemStore()
+    vo, vn, vg = two_versions(store, A, 80)
+    cache = LeagueFileCache(store, tmp_path / "c", max_bytes=1 << 20)
+    cache.release_pair(cache.pin_pair(A, vo, vg))
+    store.gate[league_key(A, vn)] = gate = threading.Event()
+    monkeypatch.setattr(cache, "_pin_pair_cached", lambda *a: None)     # the older pair is gone
+    t0 = time.monotonic()
+    with pytest.raises(TimeoutError):
+        cache.pin_pair(A, vn, vg, budget_s=0.1)
+    assert time.monotonic() - t0 < 3
+    gate.set()
