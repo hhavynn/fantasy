@@ -116,6 +116,7 @@ export function RosterPicker({ role, team, teams, picked, maxPerSide, onTeam, on
                         <PlayerPhoto id={p.espn_player_id} name={playerName(p)} />
                         <span>{playerName(p)}</span>
                         {p.on_ir && <Badge value="fantasy IR slot" tone="bad" title={`In ${providerLabel === "ESPN" ? "an" : "a"} ${providerLabel} IR slot (inactive in the canonical lineup)`} />}
+                        {p.on_taxi && <Badge value="Taxi" title="Sleeper taxi squad: inactive on this roster (never starts, uses no active roster spot); arrives active after a trade" />}
                         {availabilityBadge(p)}
                       </span>
                       <span className={styles.nfl}>{p.pro_team ?? "FA"}</span>

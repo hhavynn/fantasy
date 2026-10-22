@@ -16,6 +16,7 @@ from ..analytics.team_lineups import project_team, public_weeks, replacement_mar
 from ..analytics.trade_data import (load_league_state, manager_context, named_weeks, player_intelligence,
                                     player_names)
 from ..analytics.player_availability import NOTE as AVAILABILITY_NOTE
+from ..analytics.reserve_slots import is_taxi
 from ..analytics import trade_dual_value
 from ..analytics.trade_alternatives import FreeAgencyBoard, for_evaluation as trade_vs_free_agency
 from ..analytics.trade_discovery import _side_detail
@@ -127,7 +128,8 @@ def _roster(con, league_id: int, season: int, week: int, team_id: int) -> list[d
     for p in roster:
         p["nfl_injury"] = inj.get(p["gsis_id"]) if p["gsis_id"] else None
         report = p["nfl_injury"]["report_status"] if p["nfl_injury"] and p["nfl_injury"]["week"] == week else None
-        p["availability"] = availability(p["injury_status"], p["lineup_slot_id"], report)
+        # a Sleeper taxi-squad player cannot start for this team whatever his health (analytics/reserve_slots.py)
+        p["availability"] = availability(p["injury_status"], p["lineup_slot_id"], report, taxi=is_taxi(p))
         # None = schedule unknown; otherwise whether his NFL team has no game this week
         p["on_bye"] = (bool(p["pro_team"]) and p["pro_team"] not in playing) if playing else None
     return roster

@@ -218,3 +218,26 @@ def test_team_value_explains_a_benched_taxi_player(con):
     me = next(x for x in st.rosters[1] if x.espn_player_id == TAXI)
     week = project_team(st.rosters[1], st.slots, st.window(), st.projections)["weeks"][0]
     assert bench_reason(me, week, st.projections, None, {})["code"] == "taxi"
+
+
+def test_the_overview_roster_reports_a_taxi_player_as_unavailable(tmp_path, monkeypatch):
+    """/api/overview's roster availability: a taxi player is TAXI (weight 0), never AVAILABLE; others unchanged."""
+    from fastapi.testclient import TestClient
+    path = tmp_path / "sleeper.duckdb"
+    c = duckdb.connect(str(path))
+    init_db(c)
+    c.execute(f"CREATE TABLE nfl_ff_playerids AS SELECT * FROM read_csv_auto('{FIX / 'ff_playerids.csv'}')")
+    write_sleeper(c, payloads())
+    c.close()
+    monkeypatch.setenv("FANTASY_DB_PATH", str(path))
+    monkeypatch.setenv("ESPN_SEASON", "2026")
+    for name in ("FANTASY_API_KEY", "MULTILEAGUE_ENABLED"):
+        monkeypatch.delenv(name, raising=False)
+    from app.main import app
+    res = TestClient(app).get("/api/overview", params={"team_id": 1})
+    assert res.status_code == 200, res.text
+    roster = {p["espn_player_id"]: p for p in res.json()["roster"]}
+    assert roster[TAXI]["lineup_slot"] == "TAXI"
+    assert roster[TAXI]["availability"] == {"status": "TAXI", "weight": 0.0, "sources": ["Sleeper taxi squad"]}
+    assert roster[IR_PLAYER]["availability"]["status"] == "IR"
+    assert all(p["availability"]["status"] != "TAXI" for pid, p in roster.items() if pid != TAXI)

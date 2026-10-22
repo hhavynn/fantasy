@@ -335,6 +335,7 @@ function Players({ ids, d }: { ids: number[]; d: DiscoverySummary }) {
           <li key={id}>
             <PlayerLink id={id} name={n?.name ?? `#${id}`} /> <Pos value={n?.position} />
             {n?.on_ir && <Badge value="fantasy IR" tone="bad" />}
+            {n?.on_taxi && <Badge value="Taxi" title="Sleeper taxi squad: inactive on this roster (never starts, uses no active roster spot); arrives active after a trade" />}
             {n?.nfl_ineligible_weeks?.length ? <Badge value={`NFL-ineligible wk ${n.nfl_ineligible_weeks[0]}–${n.nfl_ineligible_weeks[n.nfl_ineligible_weeks.length - 1]}`} tone="bad" /> : null}
           </li>
         );
