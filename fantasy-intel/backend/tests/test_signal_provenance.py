@@ -108,6 +108,23 @@ def test_ours_available_uses_the_run_time_not_the_espn_sync():
     assert sp.status(s, NOW) == "stale"
 
 
+def test_a_mixed_ours_signal_says_so_and_takes_its_oldest_run():
+    """Players the run abstains on keep ESPN's numbers and kickers/D/STs come from their own runs: the label names the
+    mix and the age is the oldest run shown, never the newest."""
+    p = _prov({"last_success": {"espn": NOW}, "latest_runs": []})
+    main, kicker = NOW - timedelta(hours=2), NOW - timedelta(hours=40)
+    s = p.projections("independent", {"available": True, "run": {"created_at": main.isoformat()},
+                                      "counts": {"ours": 150, "ours_zero": 3, "espn": 12},
+                                      "kicker_run": {"created_at": kicker.isoformat()}, "dst_run": None})
+    assert s["source"] == "fantasy_intel" and s["captured_at"] == sp.iso_utc(kicker)
+    assert "ESPN's numbers for 12 players" in s["label"] and "kickers from their own runs" in s["label"]
+    assert sp.status(s, NOW) == "stale"
+    # a pure run keeps the plain label
+    s = p.projections("independent", {"available": True, "run": {"created_at": main.isoformat()},
+                                      "counts": {"ours": 150, "ours_zero": 0, "espn": 0}})
+    assert s["label"] == "Fantasy Intel weekly projections (Ours)" and s["captured_at"] == sp.iso_utc(main)
+
+
 def test_a_league_without_provider_projections_and_no_run_is_unavailable():
     p = _prov({"last_success": {"sleeper": NOW}, "latest_runs": []}, provider="sleeper")
     s = p.projections(None, {"available": False, "reason": "No run for week 3", "run": None})

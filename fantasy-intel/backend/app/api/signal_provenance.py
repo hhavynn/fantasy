@@ -201,9 +201,7 @@ class Provenance:
         unavailable otherwise."""
         ours = source == "independent" or (source is None and self.provider != "espn")
         if ours and detail is not None and detail.get("available"):
-            run = detail.get("run") or {}
-            return signal("projections", f"Fantasy Intel {horizon} projections (Ours)", "fantasy_intel",
-                          run.get("created_at") or captured_at, self.league_version, coverage=cov)
+            return self._ours(detail, captured_at, cov, horizon)
         if ours and self.provider != "espn":
             reason = (detail or {}).get("reason") or "No Fantasy Intel projection run is stored for this week yet."
             return signal("projections", f"Fantasy Intel {horizon} projections (Ours)", "fantasy_intel", None,
@@ -213,6 +211,24 @@ class Provenance:
         return signal("projections", f"ESPN {horizon} projections", "espn", captured_at or self.last_ok("espn"),
                       self.league_version, coverage=cov, reason_unavailable=missing,
                       stale_reason=self.failed_since_ok("espn"))
+
+    def _ours(self, detail: dict, captured_at: Any, cov: dict | None, horizon: str) -> dict:
+        """An Ours signal can be mixed: players the run abstains on keep ESPN's numbers, and kickers and D/STs come from
+        their own runs. The label says so, and the age is the OLDEST of the runs shown, so a mix never looks newer
+        than its oldest part."""
+        runs = [detail.get("run") or {}, detail.get("kicker_run") or {}, detail.get("dst_run") or {}]
+        times = [t for t in (iso_utc(r.get("created_at")) for r in runs if r) if t is not None]
+        main = iso_utc((detail.get("run") or {}).get("created_at"))
+        when = min(times) if times and main is not None else (main or captured_at)
+        parts = []
+        espn_n = int(((detail.get("counts") or {}).get("espn")) or 0)
+        if espn_n and self.provider == "espn":
+            parts.append(f"ESPN's numbers for {espn_n} {'player' if espn_n == 1 else 'players'} Ours does not cover")
+        if detail.get("kicker_run") or detail.get("dst_run"):
+            own = " and ".join(k for k, key in (("kickers", "kicker_run"), ("D/STs", "dst_run")) if detail.get(key))
+            parts.append(f"{own} from their own runs")
+        label = f"Fantasy Intel {horizon} projections (Ours)" + (f", with {'; '.join(parts)}" if parts else "")
+        return signal("projections", label, "fantasy_intel", when, self.league_version, coverage=cov)
 
     def nflverse(self, key: str, label: str, *, cov: dict | None = None, reason: str | None = None) -> dict:
         return signal(key, label, "nflverse", self.last_ok("nfl"), self.global_version, coverage=cov,
