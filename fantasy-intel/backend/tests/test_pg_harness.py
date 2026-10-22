@@ -11,14 +11,32 @@ from pg_harness import _validate_test_db_name
 # ---- _validate_test_db_name: safe SQL identifier guard -------------------------
 
 def test_validate_test_db_name_accepts_valid_names():
-    """All fi_test_* style names used by the harness must pass validation."""
-    for name in ("fi_test", "fi_test_abc123", "fi_test_abc_gw0", "fi_test_s12345_gw1", "fi_test_x"):
+    """All legitimate test database names used by this repository must pass validation."""
+    for name in (
+        "fi_test",
+        "fi_test_abc123",
+        "fi_test_abc_gw0",
+        "fi_test_s12345_gw1",
+        "fi_test_x",
+        "fi_e2e",
+        "fi_e2e_matrix",
+        "fi_golden",
+        "fi_golden_run1",
+    ):
         _validate_test_db_name(name)  # must not raise
 
 
-def test_validate_test_db_name_rejects_injection_attempts():
-    """Values that could inject SQL must be rejected before any DDL executes."""
+def test_validate_test_db_name_rejects_unintended_and_injection_names():
+    """Names of non-test databases (production, app_main, postgres) and injection attempts
+    must be rejected before any DDL executes."""
     bad_names = [
+        "production",
+        "app_main",
+        "postgres",
+        "template1",
+        "master",
+        "fi_production",
+        "fi_prod",
         "fi_test; DROP TABLE users--",
         "fi_test' OR '1'='1",
         "fi_test\"; DROP DATABASE fi_test--",
@@ -26,7 +44,7 @@ def test_validate_test_db_name_rejects_injection_attempts():
         "Fi_Test",          # uppercase
         "1fi_test",         # leading digit
         "",                 # empty
-        "a" * 64,           # too long (>63 chars)
+        "fi_test_" + "a" * 60,  # too long (>63 chars)
     ]
     for name in bad_names:
         with pytest.raises(ValueError, match="Unsafe"):
@@ -36,8 +54,9 @@ def test_validate_test_db_name_rejects_injection_attempts():
 def test_pg_database_init_rejects_unsafe_name(pg_cluster):
     """PgDatabase.__init__ must call _validate_test_db_name and reject unsafe names."""
     from pg_harness import PgDatabase
-    with pytest.raises(ValueError, match="Unsafe"):
-        PgDatabase(pg_cluster, name="bad'; DROP DATABASE postgres--")
+    for unsafe in ("production", "postgres", "app_main", "bad'; DROP DATABASE postgres--"):
+        with pytest.raises(ValueError, match="Unsafe"):
+            PgDatabase(pg_cluster, name=unsafe)
 
 
 def test_shim_auth_uid_reads_transaction_local_claims(pg):

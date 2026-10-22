@@ -199,20 +199,22 @@ class PgCluster:
         return psycopg.conninfo.make_conninfo(self.superuser_dsn(db), user=user, password=TEST_ROLE_PASSWORD)
 
 
-_SAFE_DB_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+_SAFE_DB_NAME_RE = re.compile(r"^fi_(?:test|e2e|golden)(?:_[a-z0-9_]{1,54})?$")
 
 
 def _validate_test_db_name(name: str) -> None:
-    """Reject database names that are not safe for use in test DDL.
+    """Reject database names that do not match repository test database naming conventions.
 
-    Accepts only lowercase identifiers matching the fi_test_* pattern
-    used by this harness. Raises ValueError if the name is unsafe.
-    This guards against unsafe values supplied via FI_TEST_DB_NAME.
+    Accepts only test database identifiers (fi_test, fi_test_*, fi_e2e, fi_e2e_*, fi_golden,
+    fi_golden_*). Raises ValueError if the name is unsafe or unintended (e.g. 'postgres',
+    'production', 'app_main'). This guards against dropping or modifying unintended databases
+    via FI_TEST_DB_NAME or test harness calls.
     """
     if not _SAFE_DB_NAME_RE.match(name):
         raise ValueError(
             f"Unsafe test database name {name!r}. "
-            "Must match ^[a-z_][a-z0-9_]{0,62}$ (e.g. fi_test_abc123_gw0)."
+            "Must match test database conventions: fi_test, fi_test_*, fi_e2e, fi_e2e_*, fi_golden, fi_golden_* "
+            "(e.g. fi_test_abc123_gw0)."
         )
 
 
