@@ -164,6 +164,11 @@ def overview(team_id: int | None = Query(None, description="Fantasy team to anal
         reportable = [p for p in roster if p["position"] != "D/ST"]
         linked = coverage(sum(1 for p in reportable if p["gsis_id"]), len(reportable),
                           "rostered players linked to NFL data") if reportable else None
+        # The roster's market signals (the Overview's trade decisions) come from the nflverse usage model.
+        skill = [p for p in roster if p["position"] in ("QB", "RB", "WR", "TE")]
+        classified = coverage(sum(1 for p in skill if p.get("market_signal")), len(skill),
+                              "rostered QB, RB, WR and TE with a market signal") if skill else None
+        usage = prov.nflverse("usage", "NFL usage and market signals (nflverse)", cov=classified)
         return {
             "league": lg,
             "my_team": me,          # the owner's team (is_mine), unchanged by the selection
@@ -176,7 +181,7 @@ def overview(team_id: int | None = Query(None, description="Fantasy team to anal
             "recent_transactions": _recent_moves(con, league_id, season, limit=25),
             "sync": sync,
             "nfl_latest_week": _nfl_latest_week(con, season),
-            "provenance": payload(prov.league(lg), prov.injuries(con, season, cov=linked)),
+            "provenance": payload(prov.league(lg), prov.injuries(con, season, cov=linked), usage),
         }
 
 

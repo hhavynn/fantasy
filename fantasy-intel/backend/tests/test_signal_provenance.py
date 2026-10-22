@@ -219,3 +219,18 @@ def test_a_missing_starter_projection_is_partial_not_zero(client_for):
     assert sp.status(proj) in ("partial", "stale", "unknown")      # never "current" with a hole
     assert proj["reason_unavailable"]
     assert "(0.0 pts)" not in json.dumps(d["decisions"])          # explanations say "no projection", not 0.0
+
+
+def test_overview_usage_signal_covers_the_rosters_market_signals(client_for):
+    """The Overview's trade decisions restate the roster's market signals: the usage signal says how many of the
+    rostered skill players have one; an unclassified player counts as missing, never as a signal."""
+    client, _ = client_for()
+    d = client.get("/api/overview").json()
+    usage = next(s for s in d["provenance"]["signals"] if s["signal"] == "usage")
+    assert usage["source"] == "nflverse"
+    skill = [p for p in d["roster"] if p["position"] in ("QB", "RB", "WR", "TE")]
+    assert skill, "the fixture roster has skill players"
+    assert usage["coverage"] == {"available": sum(1 for p in skill if p["market_signal"]), "total": len(skill),
+                                 "label": "rostered QB, RB, WR and TE with a market signal"}
+    if usage["coverage"]["available"] == 0:
+        assert sp.status(usage) == "unavailable"

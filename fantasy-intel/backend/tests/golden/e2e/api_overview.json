@@ -352,6 +352,21 @@
      "source": "nflverse",
      "stale_after_hours": 36,
      "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 0,
+      "label": "rostered QB, RB, WR and TE with a market signal",
+      "total": 10
+     },
+     "label": "NFL usage and market signals (nflverse)",
+     "reason_unavailable": null,
+     "signal": "usage",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
     }
    ]
   },
