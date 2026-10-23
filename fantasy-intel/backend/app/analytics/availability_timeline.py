@@ -49,7 +49,7 @@ NFLVERSE_SCHEDULES_URL = "https://github.com/nflverse/nflverse-data/releases/tag
 # nflverse data is CC BY 4.0: every source derived from it carries this credit and the licence (#186 decision memo).
 NFLVERSE_LICENSE = MappingProxyType({
     "name": "CC BY 4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "source_url": "https://github.com/nflverse",
-    "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), reformatted by Fantasy Intel."})
+    "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), derived and reformatted by Fantasy Intel."})
 
 # Constant tables are read-only (MappingProxyType): no module-level mutable state.
 DESIGNATED = MappingProxyType({QUESTIONABLE: "questionable", DOUBTFUL: "doubtful", OUT: "out", IR: "ir",

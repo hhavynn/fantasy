@@ -1155,7 +1155,7 @@
     "key": "nfl_report",
     "label": "NFL injury report (via nflverse)",
     "license": {
-     "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), reformatted by Fantasy Intel.",
+     "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), derived and reformatted by Fantasy Intel.",
      "name": "CC BY 4.0",
      "source_url": "https://github.com/nflverse",
      "url": "https://creativecommons.org/licenses/by/4.0/"
@@ -1171,7 +1171,7 @@
     "key": "nfl_roster",
     "label": "NFL weekly roster (via nflverse)",
     "license": {
-     "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), reformatted by Fantasy Intel.",
+     "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), derived and reformatted by Fantasy Intel.",
      "name": "CC BY 4.0",
      "source_url": "https://github.com/nflverse",
      "url": "https://creativecommons.org/licenses/by/4.0/"
@@ -1209,7 +1209,7 @@
     "key": "schedule",
     "label": "NFL schedule (via nflverse)",
     "license": {
-     "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), reformatted by Fantasy Intel.",
+     "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), derived and reformatted by Fantasy Intel.",
      "name": "CC BY 4.0",
      "source_url": "https://github.com/nflverse",
      "url": "https://creativecommons.org/licenses/by/4.0/"

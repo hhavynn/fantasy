@@ -305,8 +305,8 @@ def test_nflverse_sources_carry_the_cc_by_credit_and_others_none(league, news_fi
     for key in ("nfl_report", "nfl_roster", "schedule"):
         assert licences[key] == {"name": "CC BY 4.0", "url": "https://creativecommons.org/licenses/by/4.0/",
                                  "source_url": "https://github.com/nflverse",
-                                 "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), reformatted by "
-                                           "Fantasy Intel."}, key
+                                 "credit": "Injury, roster and schedule data from nflverse (CC BY 4.0), derived and "
+                                           "reformatted by Fantasy Intel."}, key
     assert licences["provider"] is None and licences["news"] is None
 
 
