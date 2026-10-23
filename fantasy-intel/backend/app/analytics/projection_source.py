@@ -56,6 +56,7 @@ from . import production_forecasts as pf
 
 SOURCES = ("espn", "independent")
 OURS, OURS_ZERO, ESPN = "ours", "ours_zero", "espn"
+UNAVAILABLE = "unavailable"   # a counts key only: an ESPN-origin player with no number
 # Origins of numbers Fantasy Intel's own models made (league_projections' detail tags included); any other value shown
 # under source=independent is the provider's, used where the models abstain, and is never named "Ours" (#254 L2).
 MODEL_ORIGINS = frozenset({OURS, OURS_ZERO, "kicker_model", "dst_model", "dst_carried"})
@@ -347,8 +348,13 @@ def weekly(con, season: int, week: int, source: str) -> dict:
             values[pid], origin[pid] = 0.0, OURS_ZERO
     kicker_run = _kicker_overlay(con, season, week, values, origin)
     dst_run = _dst_overlay(con, season, week, values, origin)
-    for o in origin.values():
-        counts[o] += 1
+    # An ESPN-origin player with no ESPN number is counted as unavailable, never as ESPN (#254 phase 3); the key appears
+    # only when there is one, so a response whose every player has a number keeps its shape.
+    for pid, o in origin.items():
+        if o == ESPN and values.get(pid) is None:
+            counts[UNAVAILABLE] = counts.get(UNAVAILABLE, 0) + 1
+        else:
+            counts[o] += 1
     reason = _fallback_reason(week, run, sel["skipped"]) if sel["fallback"] else None
     # forecast_horizon k = week - projected_from_week (NULL on a run stored before rest-of-season projections reads 0);
     # horizon_note is the experimental label of a rest-of-season run (None at horizon 0, the validated next-week forecast)

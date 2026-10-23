@@ -103,7 +103,7 @@ function EngineSupport({ d }: { d: LeagueRules }) {
           <thead><tr><th>Rule</th><th>Status</th><th>What the analysis does</th></tr></thead>
           <tbody>
             {d.engine_support.map((r) => (
-              <tr key={r.rule}>
+              <tr key={r.code}>
                 <td>{r.rule}</td>
                 <td><StatusBadge status={r.status} /></td>
                 <td className={styles.wrap}>{r.detail}</td>

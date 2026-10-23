@@ -34,9 +34,16 @@ export type ProjectionSourceDetail = {
     forecast_horizon?: number; projected_from_week?: number | null; horizon_note?: string | null;
   } | null;
   model_status: Record<string, string | null> | null;
-  counts: Record<ProjectionOrigin, number> | null;
+  /** `unavailable` (#254 phase 3): ESPN-origin players with no number; present only when there is one. */
+  counts: (Record<ProjectionOrigin, number> & { unavailable?: number }) | null;
   governance?: ProjectionGovernance | null;
 };
+
+/** ", N with no projection" for the notice's count line: players neither our models nor ESPN projected this week (#254).
+ *  They are never counted as ESPN's; empty when there are none. */
+export function noProjection(counts: { unavailable?: number }): string {
+  return counts.unavailable ? `, ${counts.unavailable} with no projection` : "";
+}
 
 export function parseProjectionSource(v: string | null | undefined): ProjectionSource {
   return v === "ours" ? "ours" : "espn";

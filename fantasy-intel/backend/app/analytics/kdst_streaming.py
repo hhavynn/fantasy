@@ -20,7 +20,11 @@ Eligibility is kept apart from points. A player kept from an earlier planned add
 available then (`hypothetical`); a provider that does not publish waiver status (Sleeper lists every unrostered player
 as available) is `unconfirmed`.
 
-Sequence. One streaming slot per position. The state of a week is who holds the slot: the current roster (`hold`; an
+Sequence. One streaming slot per position. In a league that starts N > 1 kickers (or D/ST) the streamed slot is the
+last one: each week your N - 1 best known incumbents keep the other slots, and the current roster's holder of the
+streamed slot is your N-th best (an empty slot when you roster fewer than N). Such a plan covers one of the N slots, so
+the position reports `slot_coverage` partial (code `streaming_slots`, issue #253 G9) and never reads as complete. The
+state of a week is who holds the slot: the current roster (`hold`; an
 empty slot when the team rosters nobody at the position) or one candidate. Moving to a different candidate is one
 add/drop; the current roster's player, once dropped, is not planned back. A player can be added only in a week he
 plays, and is never held through a week whose value is unknown; holding him through a bye leaves the slot empty (a
@@ -359,8 +363,9 @@ def plan_position(position: str, weeks: list[int], *, free_agents: list, roster:
         return (-max(known), -sum(known), p.espn_player_id)
     chosen = sorted(picked.values(), key=rank_key)
 
-    # The current roster's cell per week: the best incumbent whose week is known. An incumbent with an open designation
-    # or an unknown week is left out (named in `detail`); the hold is unknown only when no incumbent is known.
+    # The current roster's cell per week: the best incumbent whose week is known (in an N-slot league the N-th best,
+    # who holds the streamed slot). An incumbent with an open designation or an unknown week is left out (named in
+    # `detail`); the hold is unknown only when too few incumbents are known to say who holds the streamed slot.
     def hold_of(t: int):
         w = weeks[t]
         if not incumbents:
@@ -376,9 +381,14 @@ def plan_position(position: str, weeks: list[int], *, free_agents: list, roster:
             else:
                 known.append((c, p))
         note = f"not counted: {'; '.join(skipped)}" if skipped else None
-        if not known:
+        if len(incumbents) < slot_count:
+            return Cell(EMPTY, 0.0, f"{len(incumbents)} rostered for {slot_count} {position} slots: the streamed slot "
+                                    "is empty", "empty"), None
+        if len(known) < slot_count:
             return Cell(UNKNOWN, None, note, "no_known_incumbent"), None
-        c, p = max(known, key=lambda cp: (cp[0].points, cp[0].state == PLAYS, -cp[1].espn_player_id))
+        ranked = sorted(known, key=lambda cp: (cp[0].points, cp[0].state == PLAYS, -cp[1].espn_player_id),
+                        reverse=True)
+        c, p = ranked[slot_count - 1]
         detail = "; ".join(x for x in (c.detail, note) if x) or None
         return Cell(c.state, c.points, detail, c.code), p
     holds = [hold_of(t) for t in range(len(weeks))]
@@ -458,6 +468,8 @@ def plan_position(position: str, weeks: list[int], *, free_agents: list, roster:
                            + ".")
         if row["outlook"]:
             reasons.append(f"Outlook: {t} weeks ahead, where K and D/ST projections are least reliable.")
+        if slot_count > 1:          # slot_coverage below: one of the league's slots, never read as the whole position
+            reasons.append(f"Streams 1 of your {slot_count} {position} slots (the one your weakest {position} holds).")
         row.update(action=action, start=start, gap=gap, reasons=reasons,
                    points=r(pts), alternatives=[{**start_row(p, t, cells[p.espn_player_id][t]),
                                                  "delta": r(v - pts) if pts is not None else None} for v, p in alts])
@@ -498,6 +510,12 @@ def plan_position(position: str, weeks: list[int], *, free_agents: list, roster:
         "excluded": [{**person(p), "reason": why} for p, why in excluded[:EXCLUDED_LISTED]],
         "model": {str(w): {"run": (models.get(w) or {}).get("run"), "reason": (models.get(w) or {}).get("reason")}
                   for w in weeks},
+        **({"slot_coverage": {
+            "status": "partial", "code": "streaming_slots", "slots": slot_count, "planned_slots": 1,
+            "reason": (f"This league starts {slot_count} {position}: the plan streams one of those slots, the one your "
+                       f"weakest {position} holds each week, and keeps your best in the others. Byes in those other "
+                       "slots and a second streamer are not planned, so this is not a plan for every slot.")}}
+           if slot_count > 1 else {}),
     }
 
 
@@ -567,5 +585,5 @@ def build_kdst_streaming(con, team_id: int | None = None, weeks: int = DEFAULT_W
         "rules": {"min_projected": MIN_PROJECTED, "min_coverage": MIN_COVERAGE, "outlook_from": OUTLOOK_FROM,
                   "max_pool": MAX_POOL, "stream_rank": STREAM_RANK, "weeks": [MIN_WEEKS, MAX_WEEKS],
                   "max_moves_limit": MAX_MOVES_LIMIT, "max_move_cost": MAX_MOVE_COST, "eligibility": ELIGIBILITY},
-        "notes": NOTES,
+        "notes": NOTES + [p["slot_coverage"]["reason"] for p in positions if "slot_coverage" in p],
     }

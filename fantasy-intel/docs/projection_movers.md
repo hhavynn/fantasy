@@ -130,6 +130,12 @@ week is residual ("as-of check failed") and listed in `as_of.refused`.
 coefficients stored with the run (a write-path change to the run tables, the league-file split and the re-score copy);
 see issue #225.
 
+**On the player profile.** The Outlook tab of a QB, RB, WR or TE profile (`app/players/ProjectionChange.tsx`) asks the
+same route for Fantasy Intel's rest-of-season change of that one player (`source=independent&view=ros&limit=1&player=`)
+and shows the same "Why it changed" block, with a link to the player on `/movers`. It shows only an exact match: a
+player the route cannot compare (no comparison point, no forecast in either run, outside the comparison) is said in
+words with the route's reason, never as a zero change or as another player's change (`lib/profile-attribution.ts`).
+
 ## Safeguards
 
 ESPN is the default. Ours carries the production governance (owner override; not shown to be better than ESPN) and an

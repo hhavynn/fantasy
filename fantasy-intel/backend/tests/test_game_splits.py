@@ -350,3 +350,11 @@ def test_group_counts_and_metrics_read_the_same_games(con):
 def test_the_stored_through_week_respects_the_cutoff(con):
     assert split(con)["window"]["usage_through_week"] == 12
     assert split(con, as_of="2025-10-01")["window"]["usage_through_week"] == 4
+
+
+def test_a_padded_roster_team_is_read_as_the_code(con):
+    # the subject's team comes from his roster row when he has no usage row (a missed game, not a bye)
+    con.execute("DELETE FROM player_week_usage WHERE gsis_id = ? AND week = 2", [S.SUBJECT])
+    con.execute("UPDATE nfl_rosters_weekly SET team = ' spl ' WHERE gsis_id = ? AND week = 2", [S.SUBJECT])
+    w2 = by_week(split(con))[2]
+    assert (w2["team"], w2["reason"]) == ("SPL", "subject_did_not_play")

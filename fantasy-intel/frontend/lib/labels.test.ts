@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  normalizeProvider, ownershipAvailable, projectionName, projectionsPhrase, providerName, unnamedLeague, unnamedPlayer,
+  normalizeProvider, ownershipAvailable, projectionName, projectionsPhrase, projectionWord, providerName, unnamedLeague, unnamedPlayer,
 } from "./labels.ts";
 
 test("providerName keeps ESPN wording and names Sleeper", () => {
@@ -23,6 +23,10 @@ test("projectionName reads switch values, API sources and backend labels", () =>
   assert.equal(projectionName("Stored ESPN league-scoring projections"), "ESPN");
   assert.equal(projectionName("Fantasy Intel's own projections (Ours), in league scoring"), "Ours");
   assert.equal(projectionName(null), "ESPN");
+  // a response with no projected number names no source (#254)
+  assert.equal(projectionName("Unavailable"), "Unavailable");
+  assert.equal(`no ${projectionWord("Unavailable")}projection`, "no projection");
+  assert.equal(`no ${projectionWord(projectionName("Ours"))}projection`, "no Ours projection");
 });
 
 test("ownership and fallbacks", () => {

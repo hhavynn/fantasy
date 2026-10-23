@@ -16,6 +16,7 @@ import { RATING_CAVEAT, RATING_DESCRIPTION, ratingFor } from "@/lib/ratings";
 import { compositionSeries, parseTab } from "@/lib/manager-view";
 import { ConfDot, DIMENSION_TITLES, formatMetric, labelTone } from "@/lib/managers";
 import type { ScoutingReport as Report } from "@/lib/manager-scouting";
+import type { CounterpartyReport } from "@/lib/trade-counterparty";
 import type { Classification, League, Metric, Move, Need, RosterPlayer, Team } from "@/lib/types";
 import { ScoutingEvidence, ScoutingSummary } from "./ScoutingReport";
 import styles from "./detail.module.css";
@@ -42,10 +43,12 @@ export async function generateMetadata({ params }: PageProps<"/managers/[teamId]
 export default async function ManagerDetail({ params, searchParams }: PageProps<"/managers/[teamId]">) {
   const [{ teamId }, sp] = await Promise.all([params, searchParams]);
   const tab = parseTab(sp.tab);
-  const [res, scouting] = await Promise.all([
+  const [res, scouting, counterparty] = await Promise.all([
     getDetail(teamId),
     // Transactions need no scouting data.
     tab === "transactions" ? Promise.resolve(null) : api<Report>(`/api/managers/${teamId}/scouting`),
+    // Trade counterparty patterns (issue #215) sit on the scouting tab only.
+    tab === "scouting" ? api<CounterpartyReport>(`/api/managers/${teamId}/counterparty`) : Promise.resolve(null),
   ]);
   if (!res.ok && res.status === 404) notFound();
   if (!res.ok) {
@@ -78,7 +81,7 @@ export default async function ManagerDetail({ params, searchParams }: PageProps<
 
       {tab === "overview" && <Overview d={d} scouting={scouting} />}
       {tab === "scouting" && (scouting?.ok
-        ? <ScoutingEvidence report={scouting.data} />
+        ? <ScoutingEvidence report={scouting.data} counterparty={counterparty} />
         : scouting ? <BackendProblem error={scouting.error} kind={scouting.kind} status={scouting.status} /> : null)}
       {tab === "transactions" && <Transactions d={d} />}
     </div>

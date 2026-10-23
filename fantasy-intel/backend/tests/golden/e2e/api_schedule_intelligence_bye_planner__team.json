@@ -10,6 +10,13 @@
    "name": "Fixture League",
    "season": 2026
   },
+  "nfl_rosters": {
+   "available": false,
+   "latest_week": null,
+   "players_counted": 11,
+   "players_found": 0,
+   "season": 2026
+  },
   "notes": [
    "Coverage counts only players on the roster today: future trades, signings, waiver claims and returns are not predicted. A player in an IR or taxi slot never counts.",
    "Player teams are the current snapshot, applied to every remaining week.",
@@ -1795,9 +1802,13 @@
     },
     {
      "captured_at": "<masked>",
-     "coverage": null,
+     "coverage": {
+      "available": 0,
+      "label": "lineup players found in this season's NFL weekly rosters",
+      "total": 11
+     },
      "label": "NFL reserve lists (nflverse weekly rosters)",
-     "reason_unavailable": null,
+     "reason_unavailable": "No 2026 NFL weekly rosters are stored, so no reserve-list absence can be verified.",
      "signal": "injuries",
      "snapshot_version": "<masked>",
      "source": "nflverse",

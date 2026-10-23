@@ -69,3 +69,22 @@ test("a quarterback's input shares are labelled approximate", async ({ page }) =
   await expect(why.locator("summary").filter({ hasText: "targets per game" })).toContainText("Input (approximate)");
   await expect(why).toContainText("Quarterback forecasts blend a start and a no-start prediction");
 });
+
+test("the player profile's Outlook tab shows the same split and opens it on the movers page", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  await page.route("https://a.espncdn.com/**", (r) => r.fulfill({ contentType: "image/png", body: PIXEL_PNG }));
+  await page.goto("/players?id=303&tab=outlook");
+  const section = page.getByRole("region", { name: "Fantasy Intel forecast change" });
+  await expect(section).toBeVisible();
+  const why = section.locator("#why");
+  await expect(why.getByRole("heading", { name: "Why it changed" })).toBeVisible();
+  await expect(why.getByRole("list", { name: /Parts of the change for Oscar WR/ })).toBeVisible();
+  await expect(why).toContainText(/Parts and residual add up to the change of [+−]\d+\.\d\d points/);
+  await expect(section).toContainText(/Projected points summed over weeks [\d–, ]+: \d+\.\d → \d+\.\d \([+−]\d+\.\d pts\)/);
+  await section.getByRole("link", { name: "Open in Projection movers" }).click();
+  await expect(page).toHaveURL(/\/movers\?source=independent&player=303$/);
+  await expect(page.getByRole("heading", { name: "Player detail" })).toBeVisible();
+  await noHorizontalScroll(page);
+  expect(errors).toEqual([]);
+});

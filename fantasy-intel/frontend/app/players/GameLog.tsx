@@ -3,7 +3,7 @@ import { providerName } from "@/lib/labels";
 import { ESPN_PROFILE, type LeagueProfile } from "@/lib/league-profile";
 import { EmptyState, Method, Section, Tabs } from "@/components/ui";
 import { int, num, pct } from "@/lib/format";
-import { inRange, leagueLogRows, type WeekRange } from "@/lib/player-tabs";
+import { BOX_SCORE_NOTE, boxScoreWeeks, inRange, leagueLogRows, type WeekRange } from "@/lib/player-tabs";
 import { FTN_READ1_NOTE } from "@/lib/types";
 import type { UsageWeek } from "@/lib/types";
 import styles from "./players.module.css";
@@ -28,7 +28,12 @@ const notRB = (pos: string | null) => pos !== "RB";
  * Every column the old table showed. "Core" is the scannable default; the rest sit behind the
  * "All columns" tab. For a QB the receiving columns are rarely meaningful, so they move to "more".
  */
-function columns(pos: string | null, provider = "ESPN"): Col[] {
+/** A league-points cell Fantasy Intel scored from the NFL box score (#254 S3). */
+function BoxMark() {
+  return <span className="faint" title={BOX_SCORE_NOTE}> †</span>;
+}
+
+function columns(pos: string | null, provider = "ESPN", box: ReadonlySet<number> = new Set()): Col[] {
   const receiving: Tier = pos === "QB" ? "more" : "core";
   const all: Col[] = [
     { key: "snaps", label: "Snaps", tier: "more", cell: (w) => int(w.offense_snaps, "No snap record") },
@@ -55,7 +60,7 @@ function columns(pos: string | null, provider = "ESPN"): Col[] {
     { key: "gl_car", label: "GL car", tier: "more", cell: (w) => int(w.gl_carries, "No play-by-play") },
     { key: "td", label: "TD", tier: "core", cell: (w) => int(w.receiving_tds == null && w.rushing_tds == null ? null : (w.receiving_tds ?? 0) + (w.rushing_tds ?? 0), "No touchdown record") },
     { key: "ppr", label: "PPR", tier: "core", cell: (w) => num(w.fantasy_points_ppr) },
-    { key: "league", label: "League pts", tier: "core", cell: (w) => num(w.league_points, 1, `No ${provider} weekly points`) },
+    { key: "league", label: "League pts", tier: "core", cell: (w) => <>{num(w.league_points, 1, `No ${provider} weekly points`)}{box.has(w.week) && <BoxMark />}</> },
     { key: "xfp", label: "xFP", tier: "core", cell: (w) => num(w.xfp, 1, "Not in nflverse ff_opportunity") },
     { key: "source", label: "Source", tier: "more", cell: (w) => <span className={styles.source}>{w.stats_source}</span> },
   ];
@@ -73,6 +78,7 @@ export function GameLog({ d, all, colsHref, range = null, profile = ESPN_PROFILE
   const pos = d.player.position;
   const weeks = d.weekly.filter((w) => inRange(w.week, range));
   const route = d.route_data;
+  const box = boxScoreWeeks(d.league_points);
 
   const notes = (
     <Method title="Data notes">
@@ -86,6 +92,7 @@ export function GameLog({ d, all, colsHref, range = null, profile = ESPN_PROFILE
           * FTN code-1 share is experimental: read-code semantics are unresolved upstream (nflverse/nflreadr#325); it is not used in any score.
         </p>
         <p>“—” = data missing (hover for the reason); 0 = measured zero.</p>
+        {box.size > 0 && <p>† League points for week {[...box].sort((a, b) => a - b).join(", ")}: {BOX_SCORE_NOTE}</p>}
       </div>
     </Method>
   );
@@ -102,7 +109,7 @@ export function GameLog({ d, all, colsHref, range = null, profile = ESPN_PROFILE
     );
   }
 
-  const cols = columns(pos, provider).filter((c) => all || c.tier === "core");
+  const cols = columns(pos, provider, box).filter((c) => all || c.tier === "core");
   return (
     <Section
       title="Game log"
@@ -168,7 +175,7 @@ function LeagueLog({ d, notes, provider, espnProjections, range }: {
             {rows.map((r) => (
               <tr key={r.scoring_period}>
                 <td><span className={styles.week}>{r.scoring_period}</span></td>
-                <td className="num">{num(r.actual_points, 1, `Not played yet / no ${provider} points`)}</td>
+                <td className="num">{num(r.actual_points, 1, `Not played yet / no ${provider} points`)}{r.actual_source === "box_score" && <BoxMark />}</td>
                 {espnProjections && <td className="num">{num(r.projected_points, 1, "ESPN returned no projection for this week (unknown, not 0)")}</td>}
               </tr>
             ))}

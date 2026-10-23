@@ -354,3 +354,18 @@ def test_v2_what_if_is_authorized_before_the_scenario_is_read(pg, served, e2e, t
     assert r2.status_code == 200 and r2.json()["scenario"]["applied"] and r2.json()["key"] == key
     assert r2.headers["cache-control"] == "private, no-store"
     assert client.get(f"/v2/leagues/{public.league_id}{path}", params={"whatif": "nonsense"}).status_code == 422
+
+
+def test_the_lock_rule_is_found_by_its_code_not_its_text(con, monkeypatch):
+    """Issue #253 G14: what-if keys on the engine_support row's stable code (league_rules.ENGINE_CODES), so rewording
+    the readable rule text never loses the lock rule."""
+    import app.analytics.lineup_what_if as wi
+    from app.analytics.league_rules import build_league_rules
+
+    def reworded(row):
+        out = build_league_rules(row)
+        out["engine_support"] = [{**r, "rule": f"Reworded {i}"} for i, r in enumerate(out["engine_support"])]
+        return out
+    con.execute("""UPDATE leagues SET settings_raw = '{"rosterSettings": {"lineupLocktimeType": "INDIVIDUAL_GAME"}}'""")
+    monkeypatch.setattr(wi, "build_league_rules", reworded)
+    assert what_if(con)["lineup_lock"]["engine_status"] == "handled"

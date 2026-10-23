@@ -1,8 +1,10 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { authConfig } from "@/lib/auth-config";
+import { LEAGUE_COOKIE } from "@/lib/league-scope";
 import { actionErrorMessage } from "@/lib/route-error";
 import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import { CONFIRM_WORD } from "./confirm";
@@ -23,5 +25,7 @@ export async function deleteAccount(_prev: DeleteState, form: FormData): Promise
   if (!res.ok) return { ok: false, message: actionErrorMessage(res, "Your account could not be deleted right now. Try again in a few minutes.") };
   const supabase = await supabaseServer();
   if (supabase) await supabase.auth.signOut();
+  // As at sign-out: no last-viewed league for the next account; the next (signed-out) page clears browser storage.
+  (await cookies()).delete(LEAGUE_COOKIE);
   redirect("/leagues");
 }

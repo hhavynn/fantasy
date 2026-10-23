@@ -50,8 +50,8 @@ test("engine statuses read as words with a tone, and an unknown status never rea
   assert.deepEqual(statusLabel("unsupported"), { label: "Not applied", tone: "bad" });
   assert.deepEqual(statusLabel("something-new"), { label: "Unverified", tone: "info" });
   const counts = statusCounts([
-    { rule: "a", status: "unsupported", detail: "" }, { rule: "b", status: "handled", detail: "" },
-    { rule: "c", status: "handled", detail: "" },
+    { code: "a", rule: "a", status: "unsupported", detail: "" }, { code: "b", rule: "b", status: "handled", detail: "" },
+    { code: "c", rule: "c", status: "handled", detail: "" },
   ]);
   assert.deepEqual(counts, [{ status: "handled", count: 2 }, { status: "unsupported", count: 1 }]);
 });

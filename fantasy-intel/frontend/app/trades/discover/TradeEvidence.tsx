@@ -8,7 +8,7 @@ import { Badge, Notice, Pos } from "@/components/ui";
 import { useLeagueId } from "@/components/useAppPathname";
 import { num } from "@/lib/format";
 import { leagueRouteHref } from "@/lib/league-scope";
-import { projectionName } from "@/lib/labels";
+import { projectionName, projectionWord } from "@/lib/labels";
 import type { DEvidence } from "@/lib/trade-types";
 import { AssetEvidence, DepthEvidence, PlausibilityChecks, RatingsEvidence, WeeklyEvidence } from "./DualValueEvidence";
 import { VerdictBadge } from "./DualValueParts";
@@ -118,7 +118,7 @@ function AssetTable({ e, proj }: { e: DEvidence; proj: string }) {
           <thead>
             <tr>
               <th>Player</th><th>Side</th>
-              <th className="num" title={`${proj} points above the best available free agent at his position, over his NFL-eligible weeks`}>Pts above repl.</th>
+              <th className="num" title={`${projectionWord(proj)}points above the best available free agent at his position, over his NFL-eligible weeks`}>Pts above repl.</th>
               <th className="num">Repl. / wk</th><th>Position rank</th><th>Notes</th>
             </tr>
           </thead>

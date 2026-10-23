@@ -230,6 +230,26 @@ async def action_center(principal: Principal = Depends(current_principal)):
     return JSONResponse(body, headers=headers)
 
 
+@router.get("/portfolio")
+async def portfolio(principal: Principal = Depends(current_principal)):
+    """The signed-in caller's player exposure across their own leagues (issue #209; app/api/portfolio.py). Authorized
+    exactly like the action center: the league list is the caller's own, enumerated and authorized here in one short
+    transaction closed before any league file is read, and never taken from the request. Anonymous is 401."""
+    from fastapi.concurrency import run_in_threadpool
+
+    from . import action_center as center
+    from . import portfolio as folio
+    if not principal.is_authenticated:
+        raise HTTPException(401, SIGN_IN)
+    granted = await run_in_threadpool(_my_granted_leagues, principal)
+    try:
+        body, degraded = await folio.serve(principal, granted)
+    except center.Busy:
+        raise HTTPException(503, center.BUSY, headers={**NO_STORE, "Retry-After": str(center.RETRY_AFTER_S)}) from None
+    headers = {**NO_STORE, **({"X-FI-Degraded": "stale-files"} if degraded else {})}
+    return JSONResponse(body, headers=headers)
+
+
 @router.get("/leagues/{league_id}")
 def get_league(ltx=Depends(league_tx, scope="function")):
     _, access = ltx

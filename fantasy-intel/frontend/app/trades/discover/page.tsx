@@ -9,7 +9,7 @@ import {
 import { api, requestLeague, type ApiResult } from "@/lib/api";
 import { withLeague } from "@/lib/league-scope";
 import { signed } from "@/lib/format";
-import { projectionName } from "@/lib/labels";
+import { projectionName, projectionWord } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
 import { nextDir, sortHref, sortRows } from "@/lib/sort";
 import { analyzerHref, beamBudgetText, discoverQuery, evidenceSrc, resolveSort, sortValue, targetHrefParams } from "@/lib/trade-discovery";
@@ -52,7 +52,7 @@ const PHONE_SORTS: [string, string][] = [
   ["verdict", "Verdict"], ["my_gain", "Team Δ"], ["their_gain", "Partner Δ"], ["min_side", "Smaller side"], ["asset", "Asset balance"],
   ["partner", "Partner"], ["shape", "Shape"],
 ];
-const whyFor = (proj: string) => `Incomplete: a rostered player with an NFL team has no ${proj} projection in some week (never treated as 0)`;
+const whyFor = (proj: string) => `Incomplete: a rostered player with an NFL team has no ${projectionWord(proj)}projection in some week (never treated as 0)`;
 /** The projections a payload was computed on, as it says ("espn" / "independent"); `fallback` when it does not. */
 const projOf = (d: { projection_source?: { used: string } | null }, fallback = "espn") => projectionName(d.projection_source?.used ?? fallback);
 

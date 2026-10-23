@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { PlayerLink } from "@/components/PlayerLink";
 import { Badge, Delta, Pos } from "@/components/ui";
-import { projectionName } from "@/lib/labels";
+import { projectionName, projectionWord } from "@/lib/labels";
 import {
   checkStatusInfo, favoursText, parText, playerLabel, ratingFields, ratioText, roleChangeText, weeklyChangeRow, weeksText,
 } from "@/lib/trade-dual-value";
@@ -59,7 +59,7 @@ const projOf = (dv: DualValue) => projectionName(dv.projection_source);
 function AssetRow({ p, proj }: { p: DVPlayerAsset; proj: string }) {
   const r = roleChangeText(p);
   const gaps = [
-    p.missing_weeks?.length ? `no ${proj} projection in ${weeksText(p.missing_weeks)}` : "",
+    p.missing_weeks?.length ? `no ${projectionWord(proj)}projection in ${weeksText(p.missing_weeks)}` : "",
     p.nfl_ineligible_weeks?.length ? `NFL-ineligible ${weeksText(p.nfl_ineligible_weeks)}, not counted` : "",
   ].filter(Boolean);
   return (
@@ -68,7 +68,7 @@ function AssetRow({ p, proj }: { p: DVPlayerAsset; proj: string }) {
       <td className="faint" data-label="Moves">{SIDE[p.from_side] ?? `${p.from_side} → ${p.to_side}`}</td>
       <td className="num" data-label="Points above replacement">
         {p.par === null
-          ? <span title={`Missing ${proj} projections: ${parText(p.known_par)} known`}>incomplete ({parText(p.known_par)} known)</span>
+          ? <span title={`Missing ${projectionWord(proj)}projections: ${parText(p.known_par)} known`}>incomplete ({parText(p.known_par)} known)</span>
           : parText(p.par)}
       </td>
       <td data-label="Position rank">
@@ -109,7 +109,7 @@ export function AssetEvidence({ dv }: { dv: DualValue }) {
         <thead>
           <tr>
             <th>Player</th><th>Moves</th>
-            <th className="num" title={`${proj} points above the best available free agent at his position, over his NFL-eligible weeks`}>Pts above repl.</th>
+            <th className="num" title={`${projectionWord(proj)}points above the best available free agent at his position, over his NFL-eligible weeks`}>Pts above repl.</th>
             <th>Position rank</th><th>Role (before → after)</th><th>Notes</th>
           </tr>
         </thead>
@@ -249,7 +249,7 @@ function SideWeekly({ side, names, title, proj }: { side: DVLineupSide; names: N
             <span className={styles.weekHead}>
               <b>Week {w.week}</b> <span className="faint">{w.phase}</span>{" "}
               {w.delta === null
-                ? <span className="missing" title={`Missing ${proj} projections: no complete total for this week (never treated as 0)`}>—</span>
+                ? <span className="missing" title={`Missing ${projectionWord(proj)}projections: no complete total for this week (never treated as 0)`}>—</span>
                 : <Delta value={w.delta} />}
             </span>
             {w.changed ? (
@@ -269,7 +269,7 @@ function SideWeekly({ side, names, title, proj }: { side: DVLineupSide; names: N
       )}
       {side.missing.weeks_incomplete > 0 && (
         <p className={`${styles.small} faint`}>
-          {side.missing.weeks_incomplete} {side.missing.weeks_incomplete === 1 ? "week has" : "weeks have"} missing {proj} projections ({weeksText(side.missing.weeks)}); those weeks are not counted as 0.
+          {side.missing.weeks_incomplete} {side.missing.weeks_incomplete === 1 ? "week has" : "weeks have"} missing {projectionWord(proj)}projections ({weeksText(side.missing.weeks)}); those weeks are not counted as 0.
         </p>
       )}
     </div>

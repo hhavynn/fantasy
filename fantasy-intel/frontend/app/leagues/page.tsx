@@ -14,6 +14,7 @@ import {
 } from "@/lib/my-leagues";
 import { hostHref, onboardingView, parseProviders, progressHref, type OnboardingView, type ProviderInfo } from "@/lib/onboarding";
 import { MIN_LEAGUES } from "@/lib/action-center";
+import { PORTFOLIO_PATH } from "@/lib/portfolio";
 import { currentUser } from "@/lib/supabase/server";
 import { ActionCenter, ActionCenterSkeleton } from "./ActionCenter";
 import { CookieForm, EspnForm, SleeperForm } from "./AddLeague";
@@ -122,7 +123,8 @@ async function SignedIn({ view, providers }: { view: OnboardingView; providers: 
           <DemoEntry />
         </Section>
       ) : null}
-      <Section title="Your leagues" subtitle="Leagues you added, pinned or were invited to." id="your-leagues">
+      <Section title="Your leagues" subtitle="Leagues you added, pinned or were invited to." id="your-leagues"
+               actions={res.ok && leagues.length > 0 ? <Link href={PORTFOLIO_PATH} prefetch={false}>Player exposure across leagues</Link> : undefined}>
         {!res.ok ? (
           <Notice tone="negative" title="Your leagues could not be loaded">{res.error}</Notice>
         ) : leagues.length === 0 ? (

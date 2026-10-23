@@ -1,8 +1,10 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { LinkState } from "@/lib/auth-flow";
 import { requestEmailLink } from "@/lib/email-link.server";
+import { LEAGUE_COOKIE } from "@/lib/league-scope";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export type LoginState = LinkState;
@@ -15,8 +17,13 @@ export async function sendLink(_prev: LinkState, form: FormData): Promise<LinkSt
   return requestEmailLink("signin", form);
 }
 
+/**
+ * Sign out. The last-viewed league cookie goes too, so the next account on this browser is not sent to this one's league;
+ * the Sign out button has already cleared this app's browser storage (lib/local-data.ts).
+ */
 export async function signOut(): Promise<void> {
   const supabase = await supabaseServer();
   if (supabase) await supabase.auth.signOut();
+  (await cookies()).delete(LEAGUE_COOKIE);
   redirect("/");
 }

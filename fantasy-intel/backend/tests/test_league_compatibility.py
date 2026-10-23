@@ -329,7 +329,7 @@ def test_fx17_sleeper_names_the_projection_boundary_and_the_roster_rules_it_cann
     assert tool(out, "start_sit")["feature"]["status"] == "unverified"           # totals known-only (G10)
     assert "roster_restrictions" in codes(tool(out, "waivers")["roster"])       # G6
     assert tool(out, "waivers")["roster"]["status"] == "unverified"
-    assert codes(tool(out, "add_drop")["roster"]) == {"ir_eligibility"}          # G7
+    assert codes(tool(out, "add_drop")["roster"]) == {"ir_eligibility"}          # G7: no reserve_allow_* synced
     assert tool(out, "bye_planner")["scoring"]["status"] == "handled"
     assert "ESPN" not in json.dumps(out)
 
@@ -416,9 +416,131 @@ def test_punter_and_head_coach_slots_are_reported_unsupported(league):
     assert out["dimensions"]["import"]["status"] == "handled"                      # ESPN stores P and HC players
 
 
-def test_two_kickers_are_planned_as_one_streaming_slot(league):
-    row = cf.Row("M9", "espn", {**cf.STANDARD, "K": 2})
-    assert codes(tool(diagnostic(league(row)), "kdst_streaming")["roster"]) == {"streaming_slots"}     # G9
+def test_two_kickers_and_two_defenses_are_streamed_as_one_slot_each_and_reported_partial(league):
+    """G9 (M9: 2 K, 2 D/ST). The planner streams the slot the weakest incumbent holds and says so: the position carries
+    `slot_coverage` partial (code streaming_slots), never a plan read as complete, and the diagnostic cites it."""
+    from app.analytics.kdst_streaming import build_kdst_streaming
+
+    con = league("M9")
+    out = diagnostic(con)
+    kdst = tool(out, "kdst_streaming")
+    assert codes(kdst["roster"]) == {"streaming_slots"} and kdst["roster"]["status"] == "partial"
+    ev = next(e for e in kdst["roster"]["evidence"] if e["code"] == "streaming_slots")
+    assert ev["value"] == {"K": 2, "D/ST": 2}
+    plan = build_kdst_streaming(con, team_id=1, now=NOW)
+    for p in plan["positions"]:
+        assert p["slots"] == 2
+        assert p["slot_coverage"] == {"status": "partial", "code": "streaming_slots", "slots": 2, "planned_slots": 1,
+                                      "reason": p["slot_coverage"]["reason"]}
+        assert p["slot_coverage"]["reason"] in plan["notes"]
+    standard = build_kdst_streaming(league("M1"), team_id=1, now=NOW)
+    assert all("slot_coverage" not in p for p in standard["positions"])            # one slot: the shape is unchanged
+
+
+# ---- Sleeper waiver legality and IR rules (G6, G7) ---------------------------------------------------------------------
+
+def test_sleeper_waiver_legality_abstains_and_the_rules_page_and_diagnostic_say_why(league):
+    """G6: Sleeper syncs no roster restrictions, so the waiver planner keeps abstaining (every move UNKNOWN); the league
+    rules carry a `roster_restrictions` row (unverified) and the waivers diagnostic cites it by code."""
+    from app.analytics.waiver_roster import plan_roster_move, roster_constraints
+
+    con = league("M3")
+    lg = latest_league(con)
+    row = next(r for r in build_league_rules(lg)["engine_support"] if r["code"] == "roster_restrictions")
+    assert row["status"] == "unverified" and "no roster restrictions" in row["detail"]
+    c = roster_constraints(lg)
+    assert c["settings_complete"] is False and c["capacity"] == 27
+    state = {"players": [], "slots": ["QB"], "roster_slots": json.loads(lg["roster_slots"])}
+    cand = {"espn_player_id": 1, "position": "QB", "raw_value": 1.0}
+    assert plan_roster_move(state, cand, c)["status"] == "UNKNOWN"                 # the abstention is kept
+    waivers = tool(diagnostic(con), "waivers")
+    assert waivers["roster"]["status"] == "unverified" and "roster_restrictions" in waivers["refs"]
+    espn = build_league_rules(latest_league(league("M2")))["engine_support"]
+    assert "roster_restrictions" not in {r["code"] for r in espn}                  # ESPN syncs its restrictions
+
+
+IR_RULES_ALL = {"reserve_allow_out": 1, "reserve_allow_na": 1, "reserve_allow_cov": 1, "reserve_allow_dnr": 1,
+                "reserve_allow_doubtful": 1, "reserve_allow_sus": 0}
+
+
+def _ir_add_drop_notes(con, status: str) -> dict:
+    """Team 1's first IR occupant gets `status`; the add/drop simulator adds a free agent under the league's IR rules."""
+    from app.analytics.add_drop import AddDropContext, evaluate_add_drop
+    from app.analytics.waiver_roster import ir_rules, object_value
+
+    lg = latest_league(con)
+    ir = con.execute("SELECT min(espn_player_id) FROM lineup_snapshots WHERE team_id = 1 AND lineup_slot_id = 21 "
+                     "AND scoring_period = ?", [cf.CURRENT]).fetchone()[0]
+    con.execute("UPDATE fantasy_players SET injury_status = ? WHERE espn_player_id = ?", [status, ir])
+    state = load_league_state(con, source="espn", now=NOW)
+    add = next(p.espn_player_id for p in state.free_agents if p.position == "QB")
+    ctx = AddDropContext(provider="Sleeper", ir_rules=ir_rules(object_value(lg["settings_raw"])))
+    return {n["code"]: n for n in evaluate_add_drop(state, 1, add, None, ctx)["notes"]}
+
+
+def test_sleeper_ir_rules_come_from_the_league_settings_and_abstain_when_absent(league):
+    """G7, with invented reserve_allow_* settings (which keys real leagues carry is UNVERIFIED). A DOUBTFUL IR occupant
+    in a league that allows doubtful players no longer blocks adds; one that disallows it blocks them; a league whose
+    settings say nothing makes it unverified (never ESPN's statuses), and the rules page and diagnostic say which."""
+    allows = cf.Row("M7a", "sleeper", cf.FX17, teams=6, sleeper_settings=IR_RULES_ALL)
+    con = league(allows)
+    rules = {r["code"]: r for r in build_league_rules(latest_league(con))["engine_support"]}
+    assert rules["ir_eligibility"]["status"] == "handled" and "out, doubtful" in rules["ir_eligibility"]["detail"]
+    assert not any(u["key"].startswith("reserve_allow_") for u in build_league_rules(latest_league(con))["unmapped"])
+    ev = next(e for e in tool(diagnostic(con), "add_drop")["roster"]["evidence"] if e["code"] == "ir_eligibility")
+    assert ev["status"] == "handled"
+    notes = _ir_add_drop_notes(con, "DOUBTFUL")
+    assert "IR_SLOT_INELIGIBLE" not in notes and "IR_ELIGIBILITY_UNKNOWN" not in notes
+
+    strict = cf.Row("M7b", "sleeper", cf.FX17, teams=6, sleeper_settings={**IR_RULES_ALL, "reserve_allow_doubtful": 0})
+    assert "IR_SLOT_INELIGIBLE" in _ir_add_drop_notes(league(strict), "DOUBTFUL")
+
+    mixed = cf.Row("M7c", "sleeper", cf.FX17, teams=6, sleeper_settings={**IR_RULES_ALL, "reserve_allow_na": 0})
+    con = league(mixed)
+    row = next(r for r in build_league_rules(latest_league(con))["engine_support"] if r["code"] == "ir_eligibility")
+    assert row["status"] == "partial" and row["undecided_statuses"] == ["OUT"]     # out, na, cov, dnr disagree
+    assert "IR_ELIGIBILITY_UNKNOWN" in _ir_add_drop_notes(con, "OUT")
+
+    con = league("M3")                                                             # no reserve_allow_* synced
+    row = next(r for r in build_league_rules(latest_league(con))["engine_support"] if r["code"] == "ir_eligibility")
+    assert row["status"] == "partial" and row["undecided_statuses"] == ["OUT", "DOUBTFUL", "SUSPENSION"]
+    ev = next(e for e in tool(diagnostic(con), "waivers")["roster"]["evidence"] if e["code"] == "ir_eligibility")
+    assert ev == {"code": "ir_eligibility", "status": "partial", "value": ["OUT", "DOUBTFUL", "SUSPENSION"]}
+    notes = _ir_add_drop_notes(con, "DOUBTFUL")
+    assert "IR_ELIGIBILITY_UNKNOWN" in notes and "IR_SLOT_INELIGIBLE" not in notes
+    assert "ir_eligibility" not in {r["code"] for r in build_league_rules(latest_league(league("M2")))["engine_support"]}
+
+
+def test_the_waiver_planner_abstains_on_an_undecided_ir_status_even_with_complete_settings():
+    """G7 in the waiver planner: under a Sleeper league's full IR rules a QUESTIONABLE occupant (no setting covers it)
+    leaves the move UNKNOWN, never legal, even with complete roster settings; a status the rules disallow blocks the
+    add with wording that does not send a Sleeper manager to ESPN."""
+    from app.analytics.reserve_slots import ir_rules
+    from app.analytics.waiver_roster import plan_roster_move, roster_constraints
+
+    slots = {"QB": 1, "BE": 2, "IR": 1}
+    raw = {"provider": "sleeper", **IR_RULES_ALL, "rosterSettings": {"source": "explicit_slots"}}
+    c = roster_constraints({"roster_slots": slots, "settings_raw": raw})
+    assert c["capacity"] == 3 and c["settings_complete"] is True and c["ir_rules"] == ir_rules(raw)
+    cand = {"espn_player_id": 9, "position": "QB", "raw_value": 1.0}
+
+    def move(status):
+        players = [{"espn_player_id": 1, "position": "QB", "lineup_slot_id": 0, "injury_status": None},
+                   {"espn_player_id": 2, "position": "QB", "lineup_slot_id": 21, "injury_status": status}]
+        return plan_roster_move({"players": players, "slots": ["QB"], "roster_slots": slots}, cand, c)
+
+    for undecided in ("QUESTIONABLE", "PROBABLE"):
+        out = move(undecided)
+        assert out["status"] == "UNKNOWN" and "not decided by this league's synced IR rules" in out["summary"]
+    blocked = move("SUSPENSION")                                                   # reserve_allow_sus = 0
+    assert blocked["status"] == "UNKNOWN" and "ESPN" not in blocked["summary"]
+    assert "does not allow the IR slot under this league's rules" in blocked["summary"]
+    assert move("DOUBTFUL")["status"] != "UNKNOWN"                                 # allowed: the planner goes on
+    espn = roster_constraints({"roster_slots": slots, "settings_raw": {"rosterSettings": {"source": "x"}}})
+    assert espn["ir_rules"] is None
+    assert "in ESPN" in plan_roster_move({"players": [{"espn_player_id": 2, "position": "QB", "lineup_slot_id": 21,
+                                                       "injury_status": "QUESTIONABLE"}],
+                                          "slots": ["QB"], "roster_slots": slots}, cand, espn)["summary"]
 
 
 def test_a_league_starting_no_kicker_or_defense_has_nothing_to_stream(league):

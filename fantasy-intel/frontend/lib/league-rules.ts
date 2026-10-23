@@ -30,7 +30,8 @@ export type ScoringRule = {
   mapped: boolean;
 };
 
-export type EngineRule = { rule: string; status: EngineStatus; detail: string };
+// `code` is the backend's stable id for the rule (league_rules.ENGINE_CODES); `rule` is display text only.
+export type EngineRule = { code: string; rule: string; status: EngineStatus; detail: string };
 export type UnmappedRule = { area: string; key: string; value: string | number | boolean | null; reason: string };
 
 export type LeagueRules = {

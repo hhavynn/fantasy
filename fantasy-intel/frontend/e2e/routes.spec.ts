@@ -24,8 +24,7 @@ const ROUTES = [
   "/research/te?view=momentum",
   "/research/rb?sel=00-SYNRB01&cmp=00-SYNRB02&window=last3",
   "/research/wr?vol=40",
-  // Game splits (backend/tests/synthetic_splits.py): an empty start and a full split.
-  "/research/splits",
+  // Game splits (backend/tests/synthetic_splits.py): a full split (its empty start is the nav entry above).
   "/research/splits?player=00-SPLWR01&teammate=00-SPLWR02&season_from=2023",
 ];
 

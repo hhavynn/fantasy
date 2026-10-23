@@ -336,21 +336,29 @@ class _League:
             roster += self.missing_players_finding(capacity)
         if capacity:
             roster += self.legality_finding()
-        if code in ("waivers",) and self.provider != "espn":
-            roster.append(finding("roster_restrictions", UNVERIFIED, f"{self.name}'s synced settings carry no roster "
-                                  "restrictions, so the waiver planner cannot establish whether a claim needs a drop.",
-                                  missing_input="roster restrictions",
+        # G6 and G7 rest on the league rules rows (roster_restrictions, ir_eligibility), never re-derived here.
+        restrictions = self.support.get("roster_restrictions")
+        if code == "waivers" and restrictions is not None:
+            roster.append(finding("roster_restrictions", restrictions["status"], f"{self.name}'s synced settings carry "
+                                  "no roster restrictions, so the waiver planner cannot establish whether a claim needs "
+                                  "a drop.", missing_input="roster restrictions",
                                   provider_boundary=f"{self.name} league settings as synced.",
                                   action=f"Check your open roster spots in {self.name} before claiming."))
-        if code in ("waivers", "add_drop") and self.provider != "espn" and self.slots.get("IR"):
-            roster.append(finding("ir_eligibility", PARTIAL, "IR eligibility allows only players listed IR or out; "
-                                  "this league's own IR rules are not read.", missing_input="the league's IR rules",
-                                  action="Check who may use an IR slot in your league settings."))
+        ir = self.support.get("ir_eligibility")
+        if code in ("waivers", "add_drop") and ir is not None:
+            handled = ir["status"] == HANDLED
+            roster.append(finding("ir_eligibility", ir["status"], ir["detail"],
+                                  missing_input=None if handled else "the league's IR rules for some injury statuses",
+                                  action=None if handled else "Check who may use an IR slot in your league settings.",
+                                  value=ir.get("undecided_statuses") or None))
         if kind == "kdst":
             extra = {p: self.slots.get(p, 0) for p in ("K", "D/ST") if self.slots.get(p, 0) > 1}
             if extra:
-                roster.append(finding("streaming_slots", PARTIAL, f"The plan streams one slot per position; this "
-                                      f"league starts {', '.join(f'{n} {p}' for p, n in extra.items())}.",
+                # kdst_streaming.plan_position: `slot_coverage` on each such position (issue #253 G9)
+                roster.append(finding("streaming_slots", PARTIAL, f"This league starts "
+                                      f"{', '.join(f'{n} {p}' for p, n in extra.items())}; the plan streams one of "
+                                      "those slots, the one your weakest player there holds each week, and keeps your "
+                                      "best players in the others, so it is not a plan for every slot.",
                                       missing_input="a plan for every K and D/ST slot", value=extra))
         if kind != "bye":
             scoring += self.scoring_findings(positions)

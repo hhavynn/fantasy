@@ -36,3 +36,61 @@ def is_reserved(row: dict) -> bool:
 def active_capacity(roster_slots: dict | None) -> int:
     """Active roster capacity: every starting and bench slot; IR and taxi slots hold players outside it."""
     return sum(int(v) for k, v in (roster_slots or {}).items() if k not in INACTIVE_ROSTER_SLOTS)
+
+
+# ---- who may occupy an IR slot ----------------------------------------------------------------------------------------
+#
+# While an IR occupant's injury status is not IR-eligible, the provider blocks adds until he is moved
+# (waiver_roster.plan_roster_move, add_drop). Statuses are the stored vocabulary (ESPN's; app/sleeper/write.INJURY folds
+# Sleeper's statuses into it).
+
+ESPN_IR_STATUSES = ("IR", "INJURY_RESERVE", "OUT")
+HEALTHY_STATUSES = ("", "ACTIVE", "NORMAL")
+# Sleeper: its own IR designation (ir; pup and nfi are folded into INJURY_RESERVE by the import) is always admitted, and
+# the league settings `reserve_allow_<status>` (1 allows, 0 does not) decide the rest. The import folds out, na, cov and
+# dnr into OUT, so OUT is decided only when those four settings agree. Which of these keys real Sleeper leagues carry is
+# UNVERIFIED (only synthetic fixtures carry them); a missing key leaves its status undecided, never assumed.
+SLEEPER_IR_ALWAYS = ("IR", "INJURY_RESERVE")
+SLEEPER_RESERVE_ALLOW = (
+    ("OUT", ("reserve_allow_out", "reserve_allow_na", "reserve_allow_cov", "reserve_allow_dnr")),
+    ("DOUBTFUL", ("reserve_allow_doubtful",)),
+    ("SUSPENSION", ("reserve_allow_sus",)),
+)
+
+
+def _allows(value) -> bool | None:
+    if value is True or value == 1:
+        return True
+    if value is False or value == 0:
+        return False
+    return None
+
+
+def sleeper_reserve_keys(settings: dict | None) -> list[str]:
+    """The `reserve_allow_*` keys present in a Sleeper league's synced settings."""
+    return sorted(k for k in (settings or {}) if isinstance(k, str) and k.startswith("reserve_allow_"))
+
+
+def ir_rules(settings: dict | None) -> dict | None:
+    """A league's IR-slot rules from its synced settings (`leagues.settings_raw`): None for ESPN (its fixed
+    ESPN_IR_STATUSES); for a Sleeper league, injury status -> True (admitted), False (not admitted) or None (the synced
+    settings do not decide it). Statuses no setting covers are absent, so they read as undecided."""
+    settings = settings if isinstance(settings, dict) else {}
+    if settings.get("provider") != "sleeper":
+        return None
+    out: dict[str, bool | None] = dict.fromkeys(SLEEPER_IR_ALWAYS, True)
+    for status, keys in SLEEPER_RESERVE_ALLOW:
+        votes = {_allows(settings.get(k)) for k in keys}
+        out[status] = votes.pop() if len(votes) == 1 else None
+    return out
+
+
+def ir_slot_eligible(injury_status: str | None, rules: dict | None = None) -> bool | None:
+    """Whether a player with this injury status may stay in an IR slot without blocking adds: True, False, or None when
+    the league's synced rules do not decide it (never assumed either way). `rules` from ir_rules (None: ESPN's)."""
+    if rules is None:
+        return injury_status in ESPN_IR_STATUSES
+    status = (injury_status or "").upper()
+    if status in HEALTHY_STATUSES:
+        return False
+    return rules.get(status)

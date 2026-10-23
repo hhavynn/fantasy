@@ -1,6 +1,7 @@
 import { Badge, Delta, Method, Notice, Pos, Section, Stat, StatStrip } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { num, signed } from "@/lib/format";
+import { projectionWord } from "@/lib/labels";
 import { signedText } from "@/lib/trade-format";
 import type { TradeVsFreeAgency as Tvf, TvfAcquisition, TvfDeltas, TvfSide } from "@/lib/trade-types";
 import styles from "./TradeVsFreeAgency.module.css";
@@ -10,7 +11,7 @@ import styles from "./TradeVsFreeAgency.module.css";
 // canonical trade delta never includes any of it.
 
 /** `proj` names the projections the evaluation ran on: "ESPN", or "Ours" for a league whose provider has none. */
-const whyFor = (proj: string) => `Incomplete ${proj} projections (or a drop whose value is unknown): no canonical total`;
+const whyFor = (proj: string) => `Incomplete ${projectionWord(proj)}projections (or a drop whose value is unknown): no canonical total`;
 const TYPE: Record<string, { text: string; tone: string }> = {
   free_agent: { text: "free agent", tone: "info" },
   waiver_claim: { text: "waiver claim · not guaranteed", tone: "warn" },
