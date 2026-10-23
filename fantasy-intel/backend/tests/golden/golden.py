@@ -75,6 +75,12 @@ def _required_query(path: str, ids: dict, client) -> dict | None:
         if any(s.get("slot") == "FLEX" for s in body.get("slots") or []):
             q["slot"] = "FLEX"
         return q
+    if path == "/api/my-team/value/marginal":
+        # Roster utility (#216): one removal of the sample team's first active player. The team is named in the query, so
+        # the default and the team variant evaluate the same roster in every fixture (the owner's team differs by league).
+        body = client.get(f"/api/my-team/value?team_id={ids['team_id']}").json() if client is not None else {}
+        pid = next((p["espn_player_id"] for p in body.get("players") or [] if not (p["on_ir"] or p.get("on_taxi"))), None)
+        return {"ids": pid, "team_id": ids["team_id"]} if pid is not None else None
     if path == "/api/research/opportunity":
         return {"position": "WR"}
     if path == "/api/research/game-splits":
