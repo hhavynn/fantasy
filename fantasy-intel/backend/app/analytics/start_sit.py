@@ -51,8 +51,8 @@ ACTIONABILITY_IR_BLOCKED = "IR_BLOCKED"
 ACTIONABILITY_NO_CHANGE = "NO_CHANGE"
 
 # Recommendation strength (issue #172). One close rule: a projected gain of at most CLOSE_CALL_POINTS is a close call,
-# the margin the decision backtests score close calls by (forecast_backtest / start_sit_evaluation CLOSE_PAIR_POINTS;
-# tested equal). A label with its reason, never a probability: no calibrated confidence exists to state one.
+# the margin the decision backtests score close calls by (their CLOSE_PAIR_POINTS; tested equal in
+# tests/test_start_sit_strength.py). A label with its reason, never a probability: no calibrated confidence exists.
 CLOSE_CALL_POINTS = 3.0
 STRENGTH_CLEAR, STRENGTH_CLOSE, STRENGTH_UNVERIFIED = "clear", "close", "unverified"
 
