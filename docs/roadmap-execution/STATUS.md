@@ -60,7 +60,7 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #187 player profile tabs | 2 | MERGED | PR #245 → 82ecade | 5 tabs, no News (#186 gate); review LOWs + e2e race fixed |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
 | #178 add/drop simulator | 3 | MERGED | PR #249 → 17d26e2 (2026-10-23) | security MEDIUM resolved by #252; Codex P2 fixed; LineupTooLargeError 422 test |
-| #180 claim planner | 3 | IN PROGRESS | `feature/fi-180-claim-planner` from 17d26e2 | reuses `evaluate_add_drop`; lane A |
+| #180 claim planner | 3 | PR OPEN | PR #255 (57bd830) | reuses `evaluate_add_drop`; local a/s/e2e pass; review + CI running |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
 | #181 K/DST streaming | 3 | MERGED | PR #250 → 1706634 (2026-10-23) | DP planner; review MEDIUM (hold downgrade) + Codex P2 + 4 LOW fixed |
 | #182 targeted trade discovery | 4 | IN PROGRESS | `feature/fi-182-targeted-trade-discovery` from ea9e664 | lane B |
@@ -197,6 +197,27 @@ Research-only outcomes and explicit abstention are acceptable for rules without 
 4. Other work continues in the second slot when file ownership is disjoint (#180/#179 waivers, then Phase 4 trades).
    #222 waits for #254's support table.
 
+**Audit triage (#253 inventory 784b89b, 2026-10-23).** A diagnostic label alone does not resolve a finding while a tool
+still shows a misleading number. "Blocking" means a fix or a gate ships before the next release.
+| Finding | Security | Wrong-recommendation risk | Who sees it today | Diagnostic enough? | Disposition |
+|---|---|---|---|---|---|
+| G1 Start/Sit empty-slot total 0.0 "complete" | no | high | all leagues when projections are missing; Sleeper with abstaining Ours | no | **blocking**: fixed in #253 phase 2 (FX-17 + ordinary-league tests) |
+| S8 source labelled "Ours" with no numbers | no | medium (attribution) | Sleeper with abstaining Ours | no | **blocking**: fixed in #253 phase 2 ("Unavailable") |
+| S1a Ours re-score labelled "scored with this league's rules" | no | medium (false exactness claim) | non-reference-scoring leagues | no | **blocking label fix** in #253 phase 2; algorithm → #254 |
+| S1b re-score counts missing stat components as 0 | no | medium | non-reference-scoring leagues | partial | #254 first PR (missing ≠ zero) |
+| G5 waivers: missing value → 0.0; OP/FLEX by percentile | no | high (missing-as-zero in a ranking) | all leagues with unprojected players | no | **blocking**, own bounded PR after #255 merges (waiver owner); widen the S2 warning in the same PR |
+| G2 Start/Sit gain negative with IDP/P/HC starters | no | high | leagues with slots no engine fills | no | **blocking**, #253 phase 3 (unsupported-slot integrity) |
+| G3 totals omit unsupported slots yet say "complete" | no | medium | same leagues | no | **blocking**, #253 phase 3: mark totals partial |
+| G4 Sleeper IDP players missing; phantom roster spot | no | high (illegal add/trade shown legal) | Sleeper IDP leagues | no | **blocking**, #253 phase 3: legality `unverified` when IDP slots exist |
+| S2 waiver values full-PPR; warning only when PPR ≠ 1 | no | medium | custom-scoring leagues | partial | warning widened with G5; basis → #254 |
+| S3 Sleeper actual points mix sources per row | no | low–medium (attribution) | Sleeper leagues | partial | #254 |
+| G8 sparse replacement level 0 → PAR inflated | no | low (rare in practice) | very sparse superflex | yes, short term | defer: #182-area follow-up |
+| G6, G7, G9, G10 | no | low | specific formats | yes | defer with diagnostics (#253 follow-ups) |
+| G11, G12, G14 | no | low | rare | yes | defer (#253 follow-ups) |
+| Trade-evidence fetch without `/l/<lg>/` (from #180) | under investigation | — | league-scoped trade discovery page | — | #182 agent investigating the tenant boundary; fix + regression tests in #182 |
+| CommandPalette `/api/search` without `/l/<lg>/` | under investigation | — | all league pages | — | same investigation; separate PR unless confirmed exposure |
+| `league_scope._response_key` sorts repeated params (order-dependent queries share an entry) | under review (within one scope?) | medium for order-dependent routes | none after #255's workaround | — | #255 reviewer assessing; separate security-file PR |
+
 **Likely file overlap:** #253 → `analytics/league_rules.py`, `api/league_rules.py`, `app/league-rules/*`, new synthetic
 fixture builders/tests, `provider-capability-matrix.md` (tests read it, so it is never docs-only). #254 →
 `league_scoring.py`, `kicker_scoring.py`, D/ST scoring, `rescore.py`, `leagues/providers/espn.py`/`sleeper.py`.
@@ -225,9 +246,9 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 **Lanes (D-13), 2026-10-23 03:25Z:**
 | Lane | Item | Owner | Worktree | Slots |
 |---|---|---|---|---|
-| A | #180 claim planner: built, running affected/security/e2e | agent | `.worktrees/fi-180-claim-planner` | holds heavyweight + Playwright |
-| B | #182 targeted trade discovery: built (229cc42 TradeEvidence scope fix, 3e2b93e feature), awaiting slot | agent | `.worktrees/fi-182-trade-discovery` | queued 3rd |
-| C | #253 phase 2: built (fe1cd54), awaiting slot | agent | `.worktrees/fi-253-compat` | queued 2nd (no Playwright) |
+| A | #180 → PR #255 (57bd830): affected 623 + security 627 + e2e 16 pass; CI + security review running | coordinator | `.worktrees/fi-180-claim-planner` | released |
+| B | #182: investigating trade-evidence tenant boundary (+ regression tests); then heavyweight | agent | `.worktrees/fi-182-trade-discovery` | queued after #253 |
+| C | #253 phase 2: adding G1 ordinary-league tests + S1 label + S8 check, then affected/security/PR | agent | `.worktrees/fi-253-compat` | holds heavyweight |
 
 **Work queue (ready, in order; re-ranked when an item finishes):**
 1. #253 follow-ups G2–G4, G6–G10 (after phase 2 merges); #254 starts from S1–S3 + G10.
