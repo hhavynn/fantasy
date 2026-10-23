@@ -227,6 +227,155 @@ def test_only_successful_gets_are_cached_and_the_cache_is_bounded(pg, served, cl
     assert all(status == 200 for status in cache.statuses())
 
 
+# ---- the response cache's time bound (STATUS 1k) ----------------------------------------------------------------------
+
+class _Clock:
+    """An aware-UTC clock the test moves by hand."""
+    def __init__(self, now):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+
+def _utc(text: str):
+    from datetime import datetime
+    return datetime.fromisoformat(text)
+
+
+# The E2E fixture's first week not kicked off (espn_fixture CURRENT = 3) is scheduled on 2099-10-03 at 13:00 US Eastern
+# (tests/synthetic_nfl.py FUTURE_DAY), 17:00 UTC; week 4 on 2099-10-04.
+WEEK3_KICKOFF, WEEK4_KICKOFF = _utc("2099-10-03T17:00:00+00:00"), _utc("2099-10-04T17:00:00+00:00")
+
+
+def test_a_cached_entry_expires_at_its_bound_and_never_outlives_the_cap():
+    from datetime import timedelta
+    from app.api.league_scope import RESPONSE_TTL, ResponseCache
+    clock = _Clock(_utc("2026-10-23T12:00:00+00:00"))
+    cache = ResponseCache(1 << 20, clock=clock)
+    t0 = clock.now
+    cache.put("kick", 200, b"k", "application/json", t0 + timedelta(minutes=5))
+    cache.put("far", 200, b"f", "application/json", t0 + timedelta(days=30))       # capped at RESPONSE_TTL
+    cache.put("none", 200, b"n", "application/json")                               # no bound given: still capped
+    cache.put("past", 200, b"p", "application/json", t0)                           # its kickoff already came: not stored
+    assert cache.get("past") is None and len(cache) == 3
+    clock.now = t0 + timedelta(minutes=5) - timedelta(seconds=1)
+    assert cache.get("kick") == (200, b"k", "application/json")
+    clock.now = t0 + timedelta(minutes=5)
+    assert cache.get("kick") is None and len(cache) == 2                          # dropped, not just hidden
+    clock.now = t0 + RESPONSE_TTL - timedelta(seconds=1)
+    assert cache.get("far") is not None and cache.get("none") is not None
+    clock.now = t0 + RESPONSE_TTL
+    assert cache.get("far") is None and cache.get("none") is None
+    assert cache.expired == 3 and len(cache) == 0
+
+
+def test_expired_entries_never_hold_room():
+    """Keys that are never asked for again (another week's query, a perspective nobody opens) are dropped once their
+    bound passes, the next time anything is stored; the byte bound still applies on top."""
+    from datetime import timedelta
+    from app.api.league_scope import ResponseCache
+    clock = _Clock(_utc("2026-10-23T12:00:00+00:00"))
+    cache = ResponseCache(1 << 20, clock=clock)
+    for i in range(50):
+        cache.put(f"old{i}", 200, b"x" * 100, "application/json", clock.now + timedelta(minutes=1))
+    assert len(cache) == 50 and cache.bytes_used == 5000
+    clock.now += timedelta(minutes=1)
+    cache.put("new", 200, b"y", "application/json", clock.now + timedelta(minutes=1))
+    assert len(cache) == 1 and cache.bytes_used == 1 and cache.expired == 50
+
+
+def test_next_kickoff_reads_the_global_schedule(tmp_path, monkeypatch):
+    """The first scheduled kickoff strictly after now, from the global file only; a game without a usable time is
+    skipped (never guessed), a late game past midnight UTC stays in view, and no schedule at all means no bound."""
+    from app.api import deps, league_scope
+    from app.api.deps import LeagueScope
+    monkeypatch.setattr(deps, "_LAYERED", {})
+    lg, gl, bare = tmp_path / "lg.duckdb", tmp_path / "gl.duckdb", tmp_path / "bare.duckdb"
+    con = duckdb.connect(str(lg))
+    con.execute("CREATE TABLE fantasy_teams (team_id INT, name VARCHAR, is_mine BOOLEAN)")
+    # a league table of the same name must never be read: the schedule is global
+    con.execute("CREATE TABLE nfl_schedules (gameday VARCHAR, gametime VARCHAR)")
+    con.execute("INSERT INTO nfl_schedules VALUES ('2099-10-03', '09:00')")
+    con.close()
+    con = duckdb.connect(str(gl))
+    con.execute("CREATE TABLE nfl_schedules (season INT, week INT, game_type VARCHAR, gameday VARCHAR, gametime VARCHAR)")
+    con.executemany("INSERT INTO nfl_schedules VALUES (?, ?, ?, ?, ?)", [
+        [2099, 3, "REG", "2099-10-03", "13:00"], [2099, 3, "REG", "2099-10-03", None],
+        [2099, 3, "REG", "2099-10-03", "20:15"],          # 00:15 UTC on 2099-10-04
+        [2099, 4, "REG", "2099-10-10", "13:00"], [2026, 1, "REG", "2026-09-10", "20:20"]])
+    con.close()
+    duckdb.connect(str(bare)).close()
+
+    def scope(global_path):
+        return LeagueScope("lg_t", lg, global_path, "d", "g", 0, None)
+
+    late = _utc("2099-10-04T00:15:00+00:00")
+    assert league_scope.next_kickoff(scope(gl), _utc("2099-10-03T16:00:00+00:00")) == WEEK3_KICKOFF
+    assert league_scope.next_kickoff(scope(gl), WEEK3_KICKOFF) == late                # at kickoff: the next one
+    assert league_scope.next_kickoff(scope(gl), _utc("2099-10-04T00:10:00+00:00")) == late
+    assert league_scope.next_kickoff(scope(gl), late) == _utc("2099-10-10T17:00:00+00:00")
+    assert league_scope.next_kickoff(scope(gl), _utc("2100-01-01T00:00:00+00:00")) is None
+    assert league_scope.next_kickoff(scope(bare), WEEK3_KICKOFF) is None
+
+
+@pytest.mark.parametrize("path", ["/api/trades/values", "/api/trades/options"])
+def test_a_time_dependent_answer_is_recomputed_once_its_week_kicks_off(pg, served, client, e2e, e2e_b, tmp_path, path):
+    """The trade window starts at the first week not kicked off (app/analytics/trade_data.evaluation_start_week). A
+    cached answer is served until the next kickoff, then computed again; another league's and another perspective's
+    entries stay their own."""
+    from datetime import timedelta
+    from app.api import league_scope
+    from app.api.league_scope import RESPONSE_TTL
+    a = publish_local(pg, e2e, served, tmp_path / "a", visibility="public", name="A")
+    b = publish_local(pg, e2e_b, served, tmp_path / "b", visibility="public", name="B", external_id="1999",
+                      stamp="2026-10-20T13:00:00")
+    clock = _Clock(WEEK3_KICKOFF - timedelta(minutes=10))
+    cache = league_scope.response_cache()
+    cache.clock = clock
+    url_a, url_b = f"/v2/leagues/{a.league_id}{path}?team_id=2", f"/v2/leagues/{b.league_id}{path}?team_id=2"
+    first = client.get(url_a)
+    assert first.status_code == 200 and first.headers["x-fi-cache"] == "miss", first.text[:200]
+    assert {e[3] for e in cache._entries.values()} == {WEEK3_KICKOFF}             # bound to the kickoff, not the cap
+    other_league = client.get(url_b)
+    other_team = client.get(f"/v2/leagues/{a.league_id}{path}?team_id=3")
+    assert other_league.headers["x-fi-cache"] == "miss" and other_team.headers["x-fi-cache"] == "miss"
+    assert MARK in other_league.text or other_league.json() == first.json()
+    assert MARK not in first.text
+    clock.now = WEEK3_KICKOFF - timedelta(seconds=1)
+    before = client.get(url_a)
+    assert before.headers["x-fi-cache"] == "hit" and before.content == first.content
+    assert client.get(url_b).headers["x-fi-cache"] == "hit"
+    clock.now = WEEK3_KICKOFF + timedelta(seconds=1)                           # week 3 has kicked off
+    after = client.get(url_a)
+    assert after.status_code == 200 and after.headers["x-fi-cache"] == "miss"
+    assert MARK not in after.text
+    assert len(cache) == 1                                                      # the three expired entries are gone
+    assert cache._entries[next(iter(cache._entries))][3] == clock.now + RESPONSE_TTL   # week 4 is a day away: the cap
+    assert client.get(url_a).headers["x-fi-cache"] == "hit"
+    b_after = client.get(url_b)
+    assert b_after.headers["x-fi-cache"] == "miss" and MARK not in client.get(url_a).text
+
+
+def test_a_time_independent_answer_still_hits_until_the_cap(pg, served, client, e2e, tmp_path):
+    """No kickoff ahead within the cap (the fixture's next one is in 2099): the answer is served for RESPONSE_TTL."""
+    from datetime import timedelta
+    from app.api import league_scope
+    from app.api.league_scope import RESPONSE_TTL
+    pub = publish_local(pg, e2e, served, tmp_path / "w", visibility="public")
+    clock = _Clock(_utc("2026-10-23T12:00:00+00:00"))
+    league_scope.response_cache().clock = clock
+    url = f"/v2/leagues/{pub.league_id}/api/overview"
+    t0 = clock.now
+    first = client.get(url)
+    assert first.status_code == 200 and first.headers["x-fi-cache"] == "miss"
+    clock.now = t0 + RESPONSE_TTL - timedelta(seconds=1)
+    assert client.get(url).headers["x-fi-cache"] == "hit"
+    clock.now = t0 + RESPONSE_TTL
+    assert client.get(url).headers["x-fi-cache"] == "miss"
+    assert client.get(url).headers["x-fi-cache"] == "hit"
+
+
 OWNER_ONLY = ("/api/projections/performance", "/api/projections/independent/promotion",
               "/api/research/opportunity?position=WR")
 

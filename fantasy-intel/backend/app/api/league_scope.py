@@ -20,6 +20,13 @@ LEAGUE_COLD_LOAD_BUDGET_S (3 s) for them and otherwise reads the league's own pr
 `X-FI-Degraded: stale-files` (app/db/league_files.py `pin_pair`). Identical concurrent GETs (same response-cache key:
 league, versions, visibility epoch, perspective, path and query) run the handler once; the others wait for its cached
 answer.
+
+Time bound (STATUS 1k): many answers depend on the wall clock as well as the files (the trade window starts at the first
+week not kicked off, Start/Sit and add/drop lock players whose game has kicked off, provenance and waiver snapshots turn
+stale with age). Every cached answer therefore expires at the next scheduled NFL kickoff after it was computed (the
+global file's `nfl_schedules`, the same kickoffs the handlers read), and at the latest RESPONSE_TTL after it: the cap
+bounds the age-based labels and covers a schedule without kickoff times. This applies to every route, so a route that
+reads the clock never has to opt in.
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ import os
 import tempfile
 import threading
 from collections import OrderedDict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -52,6 +60,7 @@ _CACHE: dict[str, Any] = {}
 _CACHE_LOCK = threading.Lock()
 DEGRADED_HEADER = "X-FI-Degraded"
 FLIGHT_WAIT_S = 20.0           # longest an identical request waits for the first one's answer before running its own
+RESPONSE_TTL = timedelta(minutes=15)    # the longest any cached answer is served, whatever the schedule says
 
 
 def cold_load_budget_s() -> float:
@@ -136,35 +145,56 @@ def _resolve(principal, league_id: str, team_param: str | None, timing: Timing |
 
 # ---- per-instance response cache ------------------------------------------------------------------------------------
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class ResponseCache:
     """Successful GET responses keyed by (scope cache key, path, sorted query): league, data and global versions,
     visibility epoch and perspective are all in the scope key, so two leagues, two versions or two perspectives never
-    share an entry. Looked up only after authorization (inside `league_scope`). Bounded by bytes, LRU."""
+    share an entry. Looked up only after authorization (inside `league_scope`). Bounded by bytes, LRU.
 
-    def __init__(self, max_bytes: int):
-        self.max_bytes = max_bytes
+    Bounded in time too: an entry is served until `valid_until` (the next kickoff, see `next_kickoff`) and never longer
+    than `ttl` after it was stored, whether or not the caller passes a `valid_until`. `clock` (aware UTC) is injectable
+    so tests can move time; an expired entry is dropped when it is looked up and whenever an answer is stored."""
+
+    def __init__(self, max_bytes: int, *, ttl: timedelta = RESPONSE_TTL, clock=_utc_now):
+        self.max_bytes, self.ttl, self.clock = max_bytes, ttl, clock
         self._lock = threading.Lock()
-        self._entries: OrderedDict[str, tuple[int, bytes, str]] = OrderedDict()   # key -> (status, body, media type)
+        # key -> (status, body, media type, expires at)
+        self._entries: OrderedDict[str, tuple[int, bytes, str, datetime]] = OrderedDict()
         self._flights: dict[str, tuple[Any, asyncio.Event]] = {}                 # key -> (event loop, done)
         self.hits = 0
         self.shared = 0              # answers a request received from an identical request it waited for
+        self.expired = 0             # entries dropped because their time bound passed
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._entries)
 
     @property
     def bytes_used(self) -> int:
         with self._lock:
-            return sum(len(body) for _, body, _ in self._entries.values())
+            return sum(len(e[1]) for e in self._entries.values())
 
     def statuses(self) -> list[int]:
         with self._lock:
-            return [status for status, _, _ in self._entries.values()]
+            return [e[0] for e in self._entries.values()]
 
     def get(self, key: str):
+        """(status, body, media type), or None when absent or past its time bound (then it is dropped)."""
+        now = self.clock()
         with self._lock:
             hit = self._entries.get(key)
-            if hit is not None:
-                self._entries.move_to_end(key)
-                self.hits += 1
-            return hit
+            if hit is None:
+                return None
+            if now >= hit[3]:
+                del self._entries[key]
+                self.expired += 1
+                return None
+            self._entries.move_to_end(key)
+            self.hits += 1
+            return hit[:3]
 
     def begin(self, key: str) -> tuple[str, asyncio.Event | None]:
         """Single flight for one key, as (role, event):
@@ -192,16 +222,54 @@ class ResponseCache:
             del self._flights[key]
         flight[1].set()
 
-    def put(self, key: str, status: int, body: bytes, media_type: str) -> None:
+    def put(self, key: str, status: int, body: bytes, media_type: str, valid_until: datetime | None = None) -> None:
+        """Store an answer until `valid_until`, capped at `ttl` from now. An answer whose bound has already passed (a
+        kickoff came while it was computed) is not stored."""
         if status != 200 or len(body) > self.max_bytes // 4:          # one answer never takes most of the cache
             return
+        now = self.clock()
+        expires = now + self.ttl if valid_until is None else min(valid_until, now + self.ttl)
+        if expires <= now:
+            return
         with self._lock:
-            self._entries[key] = (status, body, media_type)
+            for old_key in [k for k, e in self._entries.items() if now >= e[3]]:   # expired: never holds room
+                del self._entries[old_key]
+                self.expired += 1
+            self._entries[key] = (status, body, media_type, expires)
             self._entries.move_to_end(key)
-            used = sum(len(b) for _, b, _ in self._entries.values())
+            used = sum(len(e[1]) for e in self._entries.values())
             while self._entries and used > self.max_bytes:
-                _, (_, old, _) = self._entries.popitem(last=False)
-                used -= len(old)
+                _, old = self._entries.popitem(last=False)
+                used -= len(old[1])
+
+
+def next_kickoff(scope: LeagueScope, now: datetime) -> datetime | None:
+    """The first scheduled NFL kickoff after `now` in the global file this league's answer was read from, or None
+    (no schedule, no kickoff times, or none ahead). Every game type counts: an extra boundary only costs a recompute.
+    Runs in the thread pool while the request holds the pair pinned."""
+    from ..analytics.trade_data import kickoff_utc
+    con = layered_databases().cursor(scope.league_path, scope.global_path, perspective=scope.perspective)
+    try:
+        cols = {r[0] for r in con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_catalog = 'gl' AND table_schema = 'main' "
+            "AND table_name = 'nfl_schedules'").fetchall()}
+        if not {"gameday", "gametime"} <= cols:
+            return None
+        # gameday is the US Eastern date: a day of margin keeps a late game (after midnight UTC) in view.
+        since = (now - timedelta(days=1)).date().isoformat()
+        rows = con.execute("SELECT DISTINCT gameday, gametime FROM gl.main.nfl_schedules "
+                           "WHERE CAST(gameday AS VARCHAR) >= ?", [since]).fetchall()
+    finally:
+        con.close()
+    return min((k for gd, gt in rows if (k := kickoff_utc(gd, gt)) is not None and k > now), default=None)
+
+
+def _valid_until(scope: LeagueScope, now: datetime) -> datetime | None:
+    try:
+        return next_kickoff(scope, now)
+    except Exception as err:   # noqa: BLE001 - an unreadable schedule leaves the RESPONSE_TTL cap as the bound
+        log.warning("next kickoff unavailable: %s", type(err).__name__)
+        return None
 
 
 _RESPONSES: dict[str, ResponseCache] = {}
@@ -262,6 +330,8 @@ async def _lookup(request: Request, scope: LeagueScope, timing: Timing) -> None:
     if hit is not None:
         timing.add("cache", 0.0, "hit")
         raise CachedResponse(hit)
+    # The bound is taken before the handler runs: a clock read by the handler is never earlier than this one.
+    request.state.fi_valid_until = await run_in_threadpool(_valid_until, scope, cache.clock())
     request.state.fi_cache_key = key
 
 
@@ -347,7 +417,8 @@ async def _add_scope_headers(request: Request, call_next):
         if reword:          # before caching, so a cache hit is worded the same way
             body = provider_copy.dumps(provider_copy.rewrite(json.loads(body)))
         if key is not None and fresh:
-            response_cache().put(key, response.status_code, body, response.media_type or "application/json")
+            response_cache().put(key, response.status_code, body, response.media_type or "application/json",
+                                 getattr(request.state, "fi_valid_until", None))
         headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
         response = Response(content=body, status_code=response.status_code, headers=headers,
                             media_type=response.media_type)
