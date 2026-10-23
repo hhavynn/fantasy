@@ -17,10 +17,19 @@ Each rostered player-week has exactly one state, from one of three kinds of evid
 Players in an IR or taxi slot are never coverage (analytics/reserve_slots.py), and nothing here forecasts depth that is
 not on the roster today.
 
-Coverage is a maximum matching of players to the league's starting slots (analytics/lineup.assign_lineup with the
-real FLEX eligibility). Players who certainly can play weigh slightly more than unknown ones, so the one assignment
-fills as many slots as possible and, among those, uses as many certain players as possible (both maxima hold at once:
-the sets of players that can fill the slots form a matroid). A slot is then
+Coverage is a maximum bipartite matching of players to the league's starting slot instances, with the eligibility the
+lineup engine uses (analytics/lineup.eligible / FLEX_ELIGIBILITY), found by augmenting paths in two phases:
+
+  1. a maximum matching that uses only players who certainly can play (every free slot, in lineup order, gets one
+     augmenting-path search: a free slot with no augmenting path never gains one later, so one pass is maximum);
+  2. the same matching, augmented with unknown players allowed as well.
+
+An augmenting path keeps every vertex that was already matched matched (only its two free endpoints are new), so the
+certain players matched in phase 1 all stay matched: the result fills as many slots as any matching can and, among
+those, uses as many certain players as any matching can (no matching uses more certain players than a maximum
+certain-only matching). Cost: O(slots x edges) per distinct week, never exponential; weeks with the same player states
+share one solution. Leagues with more than MAX_STARTING_SLOTS starting slots plan the first ones and report the rest
+as not evaluated. A slot is then
 
   covered     filled by a player who can play;
   unknown     fillable only by an unknown player;
@@ -37,14 +46,21 @@ from dataclasses import replace
 
 from ..db.connection import fetch_dicts, table_columns, table_exists
 from ..espn.constants import IR_SLOT, NON_STARTER_SLOTS
-from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, assign_lineup, eligible, lineup_slots
-from .player_availability import ELIGIBLE_UNCONFIRMED, INELIGIBLE, UNKNOWN, complete_schedules, load_availability
+from .lineup import FIXED_SLOTS, FLEX_ELIGIBILITY, eligible, lineup_slots
+from .player_availability import (
+    ELIGIBLE_UNCONFIRMED,
+    INELIGIBLE,
+    UNKNOWN,
+    complete_schedules,
+    load_availability,
+)
 from .reserve_slots import INACTIVE_ROSTER_SLOTS, is_taxi
 from .schedule_intelligence import NotFound, NotSynced, _json, _phase, league_info
 from .team_lineups import RosterPlayer, lineup_relevant
 from .trade_data import evaluation_start_week, kickoff_utc
 
 CONTRACT = "bye-planner.v1"
+MAX_STARTING_SLOTS = 30     # more starting slots than any real league; the rest are reported, not solved
 BYE_CLUSTER_MIN = 2          # two or more of the team's active, lineup-eligible players on bye in the same week
 
 AVAILABLE, BYE, OUT, UNSURE = "available", "bye", "out", "unknown"
@@ -74,13 +90,13 @@ UNKNOWN_TEXT = {
     "injury_designation": "injury designation of unknown length",
 }
 NOTES = [
-    "Coverage counts only players on the roster today: future trades, signings, waiver claims and returns are not "
-    "predicted. A player in an IR or taxi slot never counts.",
+    ("Coverage counts only players on the roster today: future trades, signings, waiver claims and returns are not "
+     "predicted. A player in an IR or taxi slot never counts."),
     "Player teams are the current snapshot, applied to every remaining week.",
-    "A covered slot means a rostered player who can legally start it has a game that week and no open designation; it "
-    "says nothing about how many points he will score.",
-    "An injury designation (out, doubtful, injured reserve, suspended) has no published length, so the player is "
-    "unknown in every remaining week rather than assumed back or assumed out.",
+    ("A covered slot means a rostered player who can legally start it has a game that week and no open designation; it "
+     "says nothing about how many points he will score."),
+    ("An injury designation (out, doubtful, injured reserve, suspended) has no published length, so the player is "
+     "unknown in every remaining week rather than assumed back or assumed out."),
     "The plan starts at the first week whose NFL games have not kicked off; weeks already under way are not planned.",
 ]
 
@@ -156,21 +172,67 @@ def player_week(p: RosterPlayer, rec: dict | None, week: int, sched: dict) -> di
 
 # --------------------------------------------------------------- coverage --
 
-def week_coverage(slots: list[str], players: list[RosterPlayer], states: dict[int, dict]) -> list[dict]:
+def match_slots(slots: list[str], pool: list[tuple[int, str | None, bool]]) -> list[int | None]:
+    """Two-phase maximum matching (module docstring). `pool`: (player id, position, certain) sorted by id; returns the
+    matched player id per slot instance (None = empty). Deterministic: slots in lineup order, players by id."""
+    adj = [[j for j, (_, pos, _) in enumerate(pool) if eligible(s, pos)] for s in slots]
+    slot_of: dict[int, int] = {}                 # player index -> slot index
+    player_at: list[int | None] = [None] * len(slots)
+
+    def augment(i: int, seen: set[int], allow_unknown: bool) -> bool:
+        for j in adj[i]:
+            if j in seen or not (allow_unknown or pool[j][2]):
+                continue
+            seen.add(j)
+            if j not in slot_of or augment(slot_of[j], seen, allow_unknown):
+                player_at[i], slot_of[j] = j, i
+                return True
+        return False
+
+    for allow_unknown in (False, True):
+        for i in range(len(slots)):
+            if player_at[i] is None:
+                augment(i, set(), allow_unknown)
+    # Presentation only: an earlier slot (fixed slots first, then narrower flex slots) holding an unknown player trades
+    # with a later slot holding a certain player when both stay legal. No count changes; certain players sit in the
+    # earliest slots they can, as the previous weighted search placed them. Each swap moves a certain player to an
+    # earlier slot, so the loop ends within slots^2 swaps.
+    swapped = True
+    while swapped:
+        swapped = False
+        for i in range(len(slots)):
+            u = player_at[i]
+            if u is None or pool[u][2]:
+                continue
+            for k in range(i + 1, len(slots)):
+                c = player_at[k]
+                if c is not None and pool[c][2] and eligible(slots[i], pool[c][1]) and eligible(slots[k], pool[u][1]):
+                    player_at[i], player_at[k] = c, u
+                    swapped = True
+                    break
+    return [pool[j][0] if j is not None else None for j in player_at]
+
+
+def week_coverage(slots: list[str], players: list[RosterPlayer], states: dict[int, dict],
+                  cache: dict | None = None) -> list[dict]:
     """One row per starting slot instance: {slot, player_id, fill} with fill covered | unknown | uncovered.
-    `players` are the active lineup-eligible players; `states` their states this week."""
+    `players` are the active lineup-eligible players; `states` their states this week. `cache` (shared across the
+    weeks of one request) solves each distinct set of certain and unknown players once."""
     if not slots:
         return []
-    bonus = 1.0 / (len(slots) + 1)        # k certain fills never outweigh k + 1 fills of any kind
-    pool = [{"espn_player_id": p.espn_player_id, "position": p.position,
-             "value": 1.0 + (bonus if states[p.espn_player_id]["state"] == AVAILABLE else 0.0)}
-            for p in players if states[p.espn_player_id]["state"] in (AVAILABLE, UNSURE)]
-    out = []
-    for a in assign_lineup(pool, slots):
-        pid = a["player_id"]
-        fill = "uncovered" if pid is None else ("covered" if states[pid]["state"] == AVAILABLE else "unknown")
-        out.append({"slot": a["slot"], "player_id": pid, "fill": fill})
-    return out
+    pool = sorted((p.espn_player_id, p.position, states[p.espn_player_id]["state"] == AVAILABLE)
+                  for p in players if states[p.espn_player_id]["state"] in (AVAILABLE, UNSURE))
+    key = tuple(pool)
+    if cache is not None and key in cache:
+        matched = cache[key]
+    else:
+        matched = match_slots(slots, pool)
+        if cache is not None:
+            cache[key] = matched
+    certain = {pid for pid, _, ok in pool if ok}
+    return [{"slot": s, "player_id": pid,
+             "fill": "uncovered" if pid is None else ("covered" if pid in certain else "unknown")}
+            for s, pid in zip(slots, matched)]
 
 
 def slot_positions(slot: str) -> tuple[str, ...]:
@@ -179,9 +241,9 @@ def slot_positions(slot: str) -> tuple[str, ...]:
 
 def plan_week(week: int, slots: list[str], unresolved: list[dict], players: list[RosterPlayer],
               states: dict[int, dict], starters: set[int], *, phase: str | None = None,
-              matchup_period: int | None = None, slots_known: bool = True) -> dict:
+              matchup_period: int | None = None, slots_known: bool = True, cache: dict | None = None) -> dict:
     """The coverage, byes, verified absences, unknowns and bench alternatives of one week (pure)."""
-    rows = week_coverage(slots, players, states)
+    rows = week_coverage(slots, players, states, cache)
     by_state = {s: [p.espn_player_id for p in players if states[p.espn_player_id]["state"] == s]
                 for s in (AVAILABLE, BYE, OUT, UNSURE)}
     slot_rows = []
@@ -249,12 +311,21 @@ def starting_slots(roster_slots) -> tuple[list[str], list[dict], bool]:
             continue
         if n > 0:
             counts[str(k)] = n
-    slots = lineup_slots(counts)
     known = set(FIXED_SLOTS) | set(FLEX_ELIGIBILITY) | NON_STARTING
     unresolved = [{"slot": k or "?", "count": n, "reason": "No lineup engine fills this slot, so its eligible players "
                                                            "are not established here."}
                   for k, n in sorted(counts.items()) if k not in known]
-    return slots, unresolved, bool(counts)
+    # Capped before expanding (a provider can store any count): slots in lineup order up to MAX_STARTING_SLOTS.
+    room, capped = MAX_STARTING_SLOTS, {}
+    for label in (*FIXED_SLOTS, *sorted(FLEX_ELIGIBILITY, key=lambda k: len(FLEX_ELIGIBILITY[k]))):
+        n = counts.get(label, 0)
+        capped[label] = min(n, room)
+        room -= capped[label]
+        if n > capped[label]:
+            unresolved.append({"slot": label, "count": n - capped[label],
+                               "reason": f"More than {MAX_STARTING_SLOTS} starting slots: the extra slots are not "
+                                         "evaluated."})
+    return lineup_slots(capped), unresolved, bool(counts)
 
 
 # ---------------------------------------------------------------------- API --
@@ -301,8 +372,9 @@ def build_bye_planner(con, team_id: int | None = None, now=None) -> dict:
     active = [p for p in roster if not p.reserved and lineup_relevant(p.position, slots)]
     states = {w: {p.espn_player_id: player_week(p, avail.get(p.espn_player_id), w, sched) for p in active}
               for w in weeks}
+    solved: dict = {}           # one matching per distinct set of certain and unknown players (most weeks share one)
     out_weeks = [plan_week(w, slots, unresolved, active, states[w], starters, phase=_phase(w, lg["last_regular_season_week"]),
-                           matchup_period=lg["matchup_period_of"].get(w), slots_known=slots_known)
+                           matchup_period=lg["matchup_period_of"].get(w), slots_known=slots_known, cache=solved)
                  for w in weeks]
 
     order = {p: i for i, p in enumerate((*FIXED_SLOTS[:4], "K", "D/ST"))}
