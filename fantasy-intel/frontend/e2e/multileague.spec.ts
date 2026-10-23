@@ -79,6 +79,13 @@ test("owner-only research pages are not shown to a member who is not a platform 
   await expect(page.getByRole("link", { name: "Projection accuracy" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Game splits" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Pace lab" })).toHaveCount(0);
+  // The 404 page lists the pages a visitor may open: the same filter as the nav.
+  await page.goto(`/l/${lg}/no-such-page`, { waitUntil: "load" });
+  const pages = page.locator("main").getByRole("navigation", { name: "All pages" });
+  await expect(pages.getByRole("link", { name: "Rankings", exact: true })).toBeVisible();
+  for (const p of ALL_NAV_PAGES.filter((q) => q.ownerOnly)) {
+    await expect(pages.getByRole("link", { name: p.label, exact: true }), p.href).toHaveCount(0);
+  }
 });
 
 test("the terms, the privacy policy and account settings render, unscoped, for visitors and members", async ({ page, context }) => {

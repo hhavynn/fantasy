@@ -5,7 +5,7 @@ import { Badge, EmptyState, Glossary, Method, Notice, PageHeader, Section, Stat,
 import { api } from "@/lib/api";
 import { Missing, when } from "@/lib/format";
 import {
-  eligibleText, groupRules, isLeagueRules, pointsText, ruleDetail, rosterSummary, rulesHeadline, statusCounts,
+  capturedAge, eligibleText, groupRules, isLeagueRules, pointsText, ruleDetail, rosterSummary, rulesHeadline, statusCounts,
   statusLabel, unmappedValue, type EngineStatus, type Fact, type LeagueRules,
 } from "@/lib/league-rules";
 import { plural } from "@/lib/plural";
@@ -45,7 +45,7 @@ export default async function LeagueRulesPage() {
       <Notice title={`Source: ${provider} league settings, read only`}>
         <p>
           {d.league.name ? <>{d.league.name}, as </> : "As "}captured by the last sync
-          {d.source.captured_at ? <> ({when(d.source.captured_at)})</> : null}. Nothing here is fetched live and nothing
+           ({capturedAge(d.source.captured_at, when)}). Nothing here is fetched live and nothing
           here can change the league: settings are edited on {provider}.
         </p>
       </Notice>
