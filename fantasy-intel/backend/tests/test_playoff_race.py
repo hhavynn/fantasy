@@ -562,6 +562,18 @@ def test_record_bounds_abstain_when_records_do_not_match_the_stored_finals_or_a_
     assert _no_record_order(c)
 
 
+def test_a_median_league_says_its_records_add_head_to_head_games_only():
+    from app.analytics.playoff_race import MEDIAN_NOTE
+    d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=5, final_week=8)
+    game = next(m for m in build_playoff_race(d)["matchups"]["regular"] if m["status"] == "upcoming")
+    espn = build_playoff_race(d, overrides={game["matchup_id"]: "home"})
+    assert MEDIAN_NOTE not in espn["warnings"] and MEDIAN_NOTE not in espn["whatif"]["assumptions"]
+    d.median_game = True
+    assert MEDIAN_NOTE in build_playoff_race(d)["warnings"]                       # scenarios off too
+    med = build_playoff_race(d, overrides={game["matchup_id"]: "home"})
+    assert MEDIAN_NOTE in med["warnings"] and MEDIAN_NOTE in med["whatif"]["assumptions"]
+
+
 def test_undecided_matchup_without_a_period_makes_the_whatif_partial():
     d = sr.race(n_teams=4, reg_periods=6, spots=2, start_week=6, final_week=8,
                 overrides_matchups=[{"matchup_id": 77, "matchup_period": None, "home_team_id": 1, "away_team_id": 2}])
@@ -618,6 +630,19 @@ def test_load_race_data_from_the_database(tmp_path):
     assert res["record_check"] == []
     assert {m["status"] for m in res["matchups"]["regular"] if m["matchup_period"] <= 2} == {"final"}
     assert res["window"]["first_actionable_week"] == data.state.start_week
+    con.close()
+
+
+def test_load_race_data_reads_the_median_game_setting(tmp_path):
+    _, con = _db_league(tmp_path)
+    lid = fetch_dicts(con, "SELECT league_id FROM leagues")[0]["league_id"]
+    con.execute("UPDATE matchups SET league_id = ?", [lid])
+    assert load_race_data(con).median_game is False                                # the ESPN fixture: no median game
+    raw = fetch_dicts(con, "SELECT settings_raw FROM leagues WHERE league_id = ?", [lid])[0]["settings_raw"]
+    settings = json.loads(raw) if isinstance(raw, str) else dict(raw or {})
+    con.execute("UPDATE leagues SET settings_raw = ? WHERE league_id = ?",
+                [json.dumps({**settings, "league_average_match": 1}), lid])         # Sleeper's league setting
+    assert load_race_data(con).median_game is True
     con.close()
 
 

@@ -61,6 +61,8 @@ PROJECTION_RULE = ("Projected winner of a remaining matchup = the side with the 
                    "when both sides' projections are complete. This is a deterministic scenario, not a probability.")
 CLOSE_RULE = (f"A projected matchup is marked close (a potential swing game) when the projected margin is at most "
               f"{CLOSE_SHARE:.0%} of the two sides' mean projected total. A display threshold, not a probability.")
+MEDIAN_NOTE = ("This league also scores a result against the league median each week. Projected and what-if records add "
+               "head-to-head games only, so ranks and cutline status here can differ from the league's.")
 CLINCH_NOTE = ("No team is described as clinched or eliminated: that needs the league's full seeding and tiebreak rules "
                "(and division rules), which are not verifiably available.")
 # Tiebreak / seeding settings whose meaning has been verified and can be applied. None yet: every reported ESPN value
@@ -608,7 +610,7 @@ def whatif_report(data: RaceData, sc: Scenario, regular: list[dict], base_record
         "Unresolved games count for nobody: they are left out of the records, never scored as a loss or as 0 points.",
         "Rosters are the current snapshot for every remaining week; no waiver, trade or lineup change is modeled.",
         ORDERING_RULE,
-    ]
+    ] + ([MEDIAN_NOTE] if data.median_game else [])
     return {
         "label": "hypothetical",
         "method": WHATIF_METHOD,
@@ -734,6 +736,8 @@ def build_playoff_race(data: RaceData, team_id: int | None = None, base: str = "
                             "rules apply). The projected cutline uses record order and may not match ESPN's seeding.")
     if not spots:
         warnings.append("The number of playoff spots is not reported in league settings: no cutline is drawn.")
+    if data.median_game:
+        warnings.append(MEDIAN_NOTE)
     open_unresolved = [m for m in sc.open_games if m["matchup_id"] not in results]
     if open_unresolved:
         warnings.append(f"{len(open_unresolved)} remaining regular-season game(s) are unresolved in this scenario "
