@@ -353,15 +353,17 @@ labelled with a number it did not supply; the meta line still names the switch's
 ### 8.3 Start/Sit counts (item 6)
 
 `projection_source.weekly` counts an ESPN-origin player with no ESPN number under `counts.unavailable`, never under
-`counts.espn`. The key is present only when such a player exists, so every response whose shown players all have a
+`counts.espn`, and the frontend notice names them (", N with no projection"). The key is present only when such a
+player exists, so every response whose shown players all have a
 number keeps its shape; the counts still sum to the number of origins. Test:
 `test_an_espn_origin_player_without_a_number_is_counted_unavailable_not_espn`.
 
 ### 8.4 ESPN leagues with no ESPN number (item 7)
 
 `team_lineups.source_label` names "Unavailable" for an ESPN state that holds no ESPN number at all, as it already did
-for an Ours state. The label is per response (the tool's whole window): a response with ESPN numbers in some weeks is
-still ESPN's, and its missing weeks stay unknown per row. No golden moved: no recorded ESPN golden comes from a state
+for an Ours state. The label covers the loaded state (the current week through the final week, which can start before
+a tool's own evaluation window): a state with ESPN numbers in some weeks is still ESPN's, and its missing weeks stay
+unknown per row. No golden moved: no recorded ESPN golden comes from a state
 without a single ESPN number, so the reviewed golden update section 7.6 expected was not needed.
 
 ### 8.5 Remaining after phase 3
