@@ -23,11 +23,11 @@ Counted from merged PRs (checked via the GitHub API), not from issue open/closed
 
 | Workstream | Implementation merged | Research merged | PR open | Not started (incl. research-only) | Total |
 |---|---:|---:|---:|---:|---:|
-| #205 roadmap | 14 | 1 (#186) | 0 | 25 (2 in progress) | 40 |
+| #205 roadmap | 15 | 1 (#186) | 0 | 24 (1 in progress) | 40 |
 | #227 expansion | 0 | 0 | 0 | 18 | 18 |
 | Correctness #228–#229 | 2 | 0 | 0 | 0 | 2 |
-| Compatibility #253–#254 | 0 | 0 | 0 | 2 (1 in progress) | 2 |
-| **Total** | **16** | **1** | **0** | **45** | **62** |
+| Compatibility #253–#254 | 0 | 0 | 1 (#253 → #256) | 1 (in progress) | 2 |
+| **Total** | **17** | **1** | **1** | **43** | **62** |
 
 GitHub hygiene: 7 issues whose PRs merged are still open on GitHub (#165, #167, #168, #169, #193, #201, #202). Their
 PRs did not use a closing keyword. Closing them is an owner/coordinator action, not done here.
@@ -60,7 +60,7 @@ PRs did not use a closing keyword. Closing them is an owner/coordinator action, 
 | #187 player profile tabs | 2 | MERGED | PR #245 → 82ecade | 5 tabs, no News (#186 gate); review LOWs + e2e race fixed |
 | #193 transactions feed | 2 | MERGED | PR #231 → `c1bd2f7` (2026-10-22) | |
 | #178 add/drop simulator | 3 | MERGED | PR #249 → 17d26e2 (2026-10-23) | security MEDIUM resolved by #252; Codex P2 fixed; LineupTooLargeError 422 test |
-| #180 claim planner | 3 | PR OPEN | PR #255 (57bd830) | reuses `evaluate_add_drop`; local a/s/e2e pass; review + CI running |
+| #180 claim planner | 3 | MERGED | PR #255 → e11ff5d (2026-10-23) | review MEDIUM×2 (open-spot/position limits = Codex P2; Sleeper waiver status) + 3 LOW fixed |
 | #179 FAAB intelligence | 3 | NOT STARTED | — | capability-gated |
 | #181 K/DST streaming | 3 | MERGED | PR #250 → 1706634 (2026-10-23) | DP planner; review MEDIUM (hold downgrade) + Codex P2 + 4 LOW fixed |
 | #182 targeted trade discovery | 4 | IN PROGRESS | `feature/fi-182-targeted-trade-discovery` from ea9e664 | lane B |
@@ -121,7 +121,7 @@ A separate workstream, added 2026-10-23. It does not replace or re-scope #205 or
 | Issue | Priority | Workstream | State | Branch / PR |
 |---|---|---|---|---|
 | [#253](https://github.com/hhavynn/fantasy/issues/253) certify supported league formats, per-tool compatibility diagnostics | P0 | League compatibility certification | IN PROGRESS (phase 2: FX-17 fixtures + `league-compatibility/v1` + G1 fix) | `feature/fi-253-compat-certification`; inventory 8bf2f4e (local) |
-| [#254](https://github.com/hhavynn/fantasy/issues/254) certify actual custom league scoring, gate unsupported projections | P1 | Actual scoring fidelity | NOT STARTED | — |
+| [#254](https://github.com/hhavynn/fantasy/issues/254) certify actual custom league scoring, gate unsupported projections | P1 | Actual scoring fidelity | IN PROGRESS (phase 1: support table + S1b missing components) | `feature/fi-254-scoring-fidelity` |
 
 **Roster support is not scoring fidelity.** A league can be fully supported structurally (every slot parsed, filled
 once, flex and superflex solved exactly) while its scoring is only partly reproduced. #253 certifies structure and
@@ -247,9 +247,10 @@ Shared: the D-12 contract and League Rules response. Overlap with #179/#180 (wai
 **Lanes (D-13), 2026-10-23 03:25Z:**
 | Lane | Item | Owner | Worktree | Slots |
 |---|---|---|---|---|
-| A | #180 → PR #255 (57bd830, CI green): fixing review MEDIUM ×2 (open-spot/position-limit conflicts = Codex P2; Sleeper waiver status) + 2 LOW | agent | `.worktrees/fi-180-claim-planner` | Playwright |
-| B | #182: boundary verified (routing bug, no exposure; f52ff56 tests); awaiting slot | agent | `.worktrees/fi-182-trade-discovery` | queued after #253 |
-| C | #253 phase 2: adding G1 ordinary-league tests + S1 label + S8 check, then affected/security/PR | agent | `.worktrees/fi-253-compat` | holds heavyweight |
+| A | #254 phase 1 (#255 merged 04:39Z) | agent | `.worktrees/fi-254-scoring` | targeted until granted |
+| A2 | G5 waivers missing-as-zero + S2 warning | agent | `.worktrees/fix-waiver-missing` | targeted until granted |
+| B | #182: merging main + affected/security/e2e | agent | `.worktrees/fi-182-trade-discovery` | heavyweight + Playwright |
+| C | #253 phase 2 = PR #256: fixing review MEDIUM (G2 wording) + Codex P2 + 4 LOW (incl. Start/Sit '0.0*') | agent | `.worktrees/fi-253-compat` | targeted |
 
 **Work queue (ready, in order; re-ranked when an item finishes):**
 1. #253 follow-ups G2–G4, G6–G10 (after phase 2 merges); #254 starts from S1–S3 + G10.
@@ -279,6 +280,7 @@ From now on, log per merged PR: opened, CI green on final head, review done, mer
 conflicts.
 | PR | Opened | CI green (final head) | Review done | Merged | Reruns | Parallel conflicts |
 |---|---|---|---|---|---|---|
+| #255 | 04:09 | 04:39 (8cb9ae3) | 04:17 MEDIUM×2 → re-check approve 04:34 | 04:39 (30 min) | 0 | 0 |
 | #257 | 04:30 | 04:36 | 04:34 (approve) | 04:37 (7 min) | 0 | 0 |
 | #249 | 02:01 | 03:22 | 02:17 (MEDIUM → fixed by #252, merged 03:07) | 03:22 (81 min) | 0 | 1 (waivers/page.tsx vs #244/#250) |
 
