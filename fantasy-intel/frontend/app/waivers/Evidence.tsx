@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { CompareLink } from "@/components/CompareLink";
 import { PlayerLink } from "@/components/PlayerLink";
 import { Pos, Rating } from "@/components/ui";

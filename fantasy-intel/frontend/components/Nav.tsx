@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppPathname, useLeagueHref, useLeagueId } from "./useAppPathname";
 import {

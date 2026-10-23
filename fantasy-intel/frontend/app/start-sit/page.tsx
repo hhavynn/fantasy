@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { Suspense } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { RulesLink } from "@/components/RulesLink";

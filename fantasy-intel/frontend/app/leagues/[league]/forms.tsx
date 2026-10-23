@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { useActionState, useId, useState, useTransition } from "react";
 import { Notice } from "@/components/ui";
 import { CONSENT_TEXT } from "@/lib/my-leagues";

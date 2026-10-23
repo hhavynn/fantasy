@@ -71,3 +71,16 @@
   width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line-control); border-radius: 6px;
   background: var(--surface); color: var(--ink); font-family: var(--font-mono); font-size: 13px; line-height: 19px; resize: vertical;
 }
+
+/* FAAB bid guidance (issue #179): heuristic ranges labelled apart from observed league bids. */
+.faab { display: grid; gap: 8px; min-width: 0; padding-top: 8px; border-top: 1px solid var(--line); }
+.faabHead { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.share { max-width: 360px; }
+.share label { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.audit { width: 100%; border-collapse: collapse; font-size: 13px; }
+.audit th, .audit td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.audit thead th { color: var(--ink-muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.audit tbody th { font-weight: 600; color: var(--ink); }
+.recent { margin: 4px 0; padding-left: 18px; }
+.recent li { margin: 2px 0; overflow-wrap: anywhere; }
+.reason[data-tone="info"] { border-left-color: var(--accent); }

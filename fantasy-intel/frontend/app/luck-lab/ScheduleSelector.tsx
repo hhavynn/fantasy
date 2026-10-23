@@ -64,7 +64,7 @@ export function ScheduleSelector({
   const scheduleOptions = filterScheduleOptions(teams, selectedTeam);
 
   return (
-    <form action="/luck-lab" method="GET" onSubmit={handleSubmit} className="row-flex">
+    <form action={leagueHref("/luck-lab")} method="GET" onSubmit={handleSubmit} className="row-flex">
       <label>
         Team{" "}
         <select

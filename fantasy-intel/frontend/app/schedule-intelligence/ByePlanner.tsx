@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
 import { Badge, Notice, ProvenanceBadge, Section, VisuallyHidden } from "@/components/ui";
 import type { ApiResult } from "@/lib/api";

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import { signOut } from "@/app/login/actions";
 import { authConfig } from "@/lib/auth-config";
 import { currentUser } from "@/lib/supabase/server";

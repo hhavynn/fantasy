@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/LeagueLink";
 import type { ReactNode } from "react";
 import { BackendProblem } from "@/components/BackendProblem";
 import { TeamPerspective, UnknownTeam } from "@/components/TeamPerspective";
