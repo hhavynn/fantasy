@@ -111,7 +111,7 @@ export default async function ScreenerPage({ searchParams }: PageProps<"/screene
             <Stat label="Ownership unknown" value={String(d.counts.ownership_unknown)}
               note={d.ownership?.available ? "never counted as available" : "no league player pool"} />
           </StatStrip>
-          {d.expression && <p className={styles.expression}><span className={styles.label}>Screen</span> {d.expression}</p>}
+          {d.expression && <p className={styles.expression}><span className={styles.label}>Screen</span> <span>{d.expression}</span></p>}
           {data?.route_data?.note && used.some((x) => x.inputs.includes("routes") || x.inputs.includes("route_participation")) && (
             <Notice tone="info" title="No route data for these weeks">{data.route_data.note}</Notice>
           )}

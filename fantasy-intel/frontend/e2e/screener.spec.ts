@@ -36,11 +36,13 @@ test("the default screen lists the pool with samples, units, cutoffs and league 
   const metrics = main.getByRole("region", { name: "Metrics in this screen" });
   await expect(metrics.getByRole("row", { name: /Expected points per game.*PPR points per game.*Week 7/ })).toBeVisible();
   // the RB linked to the league shows its owner and links to profile and Compare; unlinked players say so
-  const rb1 = rows(page).filter({ hasText: "Synthetic RB 1" }).first();
-  await expect(rb1.getByRole("link", { name: "Synthetic RB 1" })).toHaveAttribute("href", "/players?id=201");
+  const rb1 = rows(page).filter({ has: page.getByRole("link", { name: "Synthetic RB 1", exact: true }) });
+  await expect(rb1).toHaveCount(1);
+  await expect(rb1.getByRole("link", { name: "Synthetic RB 1", exact: true })).toHaveAttribute("href", "/players?id=201");
   await expect(rb1.getByRole("link", { name: /^Compare Synthetic RB 1/ })).toHaveAttribute("href", /^\/compare\?a=201$/);
   await expect(rb1).toContainText("Team 1");
-  const unknown = rows(page).filter({ hasText: "Synthetic WR 1" }).first();
+  const unknown = rows(page).filter({ has: page.getByText("Synthetic WR 1", { exact: true }) });
+  await expect(unknown).toHaveCount(1);
   await expect(unknown).toContainText("Roster status unknown");
   await expect(unknown.getByRole("link", { name: /Add\/drop/ })).toHaveCount(0);       // unknown is never available
   await expectStructure(page);
