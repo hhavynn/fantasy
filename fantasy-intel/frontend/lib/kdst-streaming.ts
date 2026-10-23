@@ -51,7 +51,8 @@ export type StreamWeek = {
   planned: boolean;
   reason: string | null;
   baseline: { points: number; espn_player_id: number; name: string | null; pro_team: string | null; rank: number; available_projected: number } | null;
-  hold: { player: StreamPerson | null; points: number | null; state: CellState; detail: string | null; opponent: string | null; home: boolean | null; kickoff: string | null };
+  /** Null player, points and state when the week is not planned (no player and no number). */
+  hold: { player: StreamPerson | null; points: number | null; state: CellState | null; detail: string | null; opponent: string | null; home: boolean | null; kickoff: string | null };
   action: "hold" | "add" | "keep" | null;
   start: StreamStart | null;
   points?: number | null;

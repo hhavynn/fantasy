@@ -99,6 +99,7 @@ class Cell:
     state: str
     points: float | None
     detail: str | None = None
+    code: str | None = None       # why: no_team | schedule_missing | team_schedule_incomplete | no_projection | ...
 
     @property
     def known(self) -> bool:
@@ -109,20 +110,24 @@ class Cell:
         return self.state == PLAYS and self.points is not None
 
 
+SCHEDULE_UNKNOWN = {"schedule_missing", "team_schedule_incomplete"}
+
+
 def player_cell(pro_team: str | None, unavailable: frozenset, pid: int, week: int, sched: dict, proj) -> Cell:
     if not pro_team:
-        return Cell(UNKNOWN, None, "no current NFL team")
+        return Cell(UNKNOWN, None, "no current NFL team", "no_team")
     if week not in sched["covered"]:
-        return Cell(UNKNOWN, None, f"no NFL schedule loaded for week {week}")
+        return Cell(UNKNOWN, None, f"no NFL schedule loaded for week {week}", "schedule_missing")
     if (pro_team, week) not in sched["games"]:
         if pro_team in sched["complete_teams"]:
-            return Cell(BYE, 0.0, f"{pro_team} has no game in week {week}")
-        return Cell(UNKNOWN, None, f"{pro_team}'s schedule is incomplete, so a missing game is not a confirmed bye")
+            return Cell(BYE, 0.0, f"{pro_team} has no game in week {week}", "bye")
+        return Cell(UNKNOWN, None, f"{pro_team}'s schedule is incomplete, so a missing game is not a confirmed bye",
+                    "team_schedule_incomplete")
     if week in unavailable:
-        return Cell(OUT, 0.0, "NFL reserve list (minimum games not met)")
+        return Cell(OUT, 0.0, "NFL reserve list (minimum games not met)", "nfl_ineligible")
     v = projection(proj, pid, week)
     if v is None:
-        return Cell(UNKNOWN, None, f"no projection for week {week}")
+        return Cell(UNKNOWN, None, f"no projection for week {week}", "no_projection")
     return Cell(PLAYS, v)
 
 
@@ -301,19 +306,26 @@ def plan_position(position: str, weeks: list[int], *, free_agents: list, roster:
     # Horizon: the first week that is thin ends the plan.
     meta, planned = [], []
     for t, w in enumerate(weeks):
-        with_game = [p for p in pool if cells[p.espn_player_id][t].state in (PLAYS, UNKNOWN)
-                     and (p.pro_team, w) in sched["games"]]
+        # Every candidate not on a confirmed bye or verified out, including those whose game is unknown: a partly
+        # loaded week must not shrink the denominator to the teams that happen to be loaded.
+        with_game = [p for p in pool if cells[p.espn_player_id][t].state in (PLAYS, UNKNOWN)]
         projected = [p for p in with_game if cells[p.espn_player_id][t].addable]
+        unsched = sorted({p.pro_team for p in pool if cells[p.espn_player_id][t].code in SCHEDULE_UNKNOWN})
         loaded = w in sched["covered"]
         reason = None
         if not loaded:
             reason = f"No NFL schedule is loaded for week {w}, so byes and opponents are unknown."
+        elif unsched:
+            # Strict: a week is planned only when every candidate's game or bye that week is established.
+            reason = (f"The NFL schedule for week {w} is incomplete ({', '.join(unsched[:6])}"
+                      f"{f' and {len(unsched) - 6} more' if len(unsched) > 6 else ''}): games and byes are unknown.")
+            loaded = False
         elif len(projected) < MIN_PROJECTED:
             n_text = ("No free agent is" if not projected else
                       f"Only {len(projected)} free {'agent is' if len(projected) == 1 else 'agents are'}")
             reason = f"{n_text} projected for week {w} (at least {MIN_PROJECTED} needed)."
         elif len(projected) < MIN_COVERAGE * len(with_game):
-            reason = (f"Only {len(projected)} of {len(with_game)} free agents with a game are projected for week {w}.")
+            reason = (f"Only {len(projected)} of {len(with_game)} free agents not on a bye are projected for week {w}.")
         thin = reason is not None or (planned != list(weeks[:t]))
         if reason is None and thin:
             reason = "Beyond the data horizon: an earlier week is not planned."
@@ -322,7 +334,7 @@ def plan_position(position: str, weeks: list[int], *, free_agents: list, roster:
                      "projected_candidates": len(projected), "planned": not thin, "reason": reason,
                      "baseline": ({"points": r(level[position][w]), **{k: ref[position][w][k] for k in
                                   ("espn_player_id", "name", "pro_team", "rank", "available_projected")}}
-                                  if w in level.get(position, {}) else None)})
+                                  if w in level.get(position, {}) and not thin else None)})
         if not thin:
             planned.append(w)
     T = len(planned)
@@ -347,26 +359,31 @@ def plan_position(position: str, weeks: list[int], *, free_agents: list, roster:
         return (-max(known), -sum(known), p.espn_player_id)
     chosen = sorted(picked.values(), key=rank_key)
 
-    # The current roster's cell per week: the best incumbent; unknown when any incumbent's week is unknown.
-    def hold_cell(t: int) -> Cell:
+    # The current roster's cell per week: the best incumbent whose week is known. An incumbent with an open designation
+    # or an unknown week is left out (named in `detail`); the hold is unknown only when no incumbent is known.
+    def hold_of(t: int):
         w = weeks[t]
         if not incumbents:
-            return Cell(EMPTY, 0.0, "no player rostered at the position")
-        cs = [(player_cell(p.pro_team, p.unavailable_weeks, p.espn_player_id, w, sched, proj), p) for p in incumbents]
-        for c, p in cs:
+            return Cell(EMPTY, 0.0, "no player rostered at the position", "empty"), None
+        known, skipped = [], []
+        for p in incumbents:
+            c = player_cell(p.pro_team, p.unavailable_weeks, p.espn_player_id, w, sched, proj)
+            label = p.name or str(p.espn_player_id)
             if (p.injury_status or "").upper() in OPEN_DESIGNATIONS:
-                return Cell(UNKNOWN, None, f"{p.name or p.espn_player_id} is listed "
-                                           f"{p.injury_status.replace('_', ' ').lower()}; how long is not published")
-            if not c.known:
-                return Cell(UNKNOWN, None, f"{p.name or p.espn_player_id}: {c.detail}")
-        c, p = max(cs, key=lambda cp: (cp[0].points, cp[0].state == PLAYS, -cp[1].espn_player_id))
-        return Cell(c.state, c.points, c.detail)
-    hold = [hold_cell(t) for t in range(len(weeks))]
-    best_hold = []
-    for t, w in enumerate(weeks):
-        cs = [(player_cell(p.pro_team, p.unavailable_weeks, p.espn_player_id, w, sched, proj), p) for p in incumbents]
-        known = [(c, p) for c, p in cs if c.known]
-        best_hold.append(max(known, key=lambda cp: (cp[0].points, -cp[1].espn_player_id))[1] if known else None)
+                skipped.append(f"{label} is listed {p.injury_status.replace('_', ' ').lower()}")
+            elif not c.known:
+                skipped.append(f"{label}: {c.detail}")
+            else:
+                known.append((c, p))
+        note = f"not counted: {'; '.join(skipped)}" if skipped else None
+        if not known:
+            return Cell(UNKNOWN, None, note, "no_known_incumbent"), None
+        c, p = max(known, key=lambda cp: (cp[0].points, cp[0].state == PLAYS, -cp[1].espn_player_id))
+        detail = "; ".join(x for x in (c.detail, note) if x) or None
+        return Cell(c.state, c.points, detail, c.code), p
+    holds = [hold_of(t) for t in range(len(weeks))]
+    hold = [c for c, _ in holds]
+    best_hold = [p for _, p in holds]
 
     plan = solve(hold[:T], [cells[p.espn_player_id][:T] for p in chosen], max_moves, cost) if T else None
 
@@ -388,13 +405,16 @@ def plan_position(position: str, weeks: list[int], *, free_agents: list, roster:
         row = {**meta[t]}
         h = hold[t]
         inc = best_hold[t]
-        row["hold"] = {"player": person(inc) if inc else None, "points": r(h.points), "state": h.state,
-                       "detail": h.detail, **(_game(sched, inc.pro_team, w) if inc else
-                                               {"opponent": None, "home": None, "kickoff": None})}
         if t >= T or plan is None:
+            # Not planned: no player and no number (the hold included), only the week's reason.
+            row["hold"] = {"player": None, "points": None, "state": None, "detail": None, "opponent": None,
+                           "home": None, "kickoff": None}
             row.update(action=None, start=None, alternatives=[], gap=None, reasons=[])
             out_weeks.append(row)
             continue
+        row["hold"] = {"player": person(inc) if inc else None, "points": r(h.points), "state": h.state,
+                       "detail": h.detail, **(_game(sched, inc.pro_team, w) if inc else
+                                               {"opponent": None, "home": None, "kickoff": None})}
         s = plan.holders[t]
         prev_s = plan.holders[t - 1] if t else 0
         if s == 0:
@@ -481,17 +501,21 @@ def plan_position(position: str, weeks: list[int], *, free_agents: list, roster:
     }
 
 
+class BadParam(ValueError):
+    """An out-of-range request parameter (the API answers 422 with this message)."""
+
+
 def build_kdst_streaming(con, team_id: int | None = None, weeks: int = DEFAULT_WEEKS, max_moves: int | None = None,
                          move_cost: float = 0.0, now: datetime | None = None) -> dict:
-    """Read-only. Raises NotSynced, NotFound or ValueError (an out-of-range parameter)."""
+    """Read-only. Raises NotSynced, NotFound or BadParam (an out-of-range parameter)."""
     from .trade_data import load_league_state
 
     if not MIN_WEEKS <= weeks <= MAX_WEEKS:
-        raise ValueError(f"weeks must be between {MIN_WEEKS} and {MAX_WEEKS}")
+        raise BadParam(f"weeks must be between {MIN_WEEKS} and {MAX_WEEKS}")
     if max_moves is not None and not 0 <= max_moves <= MAX_MOVES_LIMIT:
-        raise ValueError(f"max_moves must be between 0 and {MAX_MOVES_LIMIT}")
+        raise BadParam(f"max_moves must be between 0 and {MAX_MOVES_LIMIT}")
     if not 0 <= move_cost <= MAX_MOVE_COST:
-        raise ValueError(f"move_cost must be between 0 and {MAX_MOVE_COST:g}")
+        raise BadParam(f"move_cost must be between 0 and {MAX_MOVE_COST:g}")
     lg = league_info(con)
     state = load_league_state(con, now=now) if lg is not None else None
     if lg is None or state is None:

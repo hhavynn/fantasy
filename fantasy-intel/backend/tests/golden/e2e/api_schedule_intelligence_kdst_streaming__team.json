@@ -72,18 +72,12 @@
       "gap": null,
       "hold": {
        "detail": null,
-       "home": false,
-       "kickoff": "<masked>",
-       "opponent": "NE",
-       "player": {
-        "espn_player_id": 502,
-        "injury_status": "ACTIVE",
-        "name": "Zulu K",
-        "pro_team": "BUF",
-        "provider_status": null
-       },
-       "points": 10.3,
-       "state": "plays"
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
       },
       "horizon": 0,
       "outlook": false,
@@ -104,18 +98,12 @@
       "gap": null,
       "hold": {
        "detail": null,
-       "home": false,
-       "kickoff": "<masked>",
-       "opponent": "MIA",
-       "player": {
-        "espn_player_id": 502,
-        "injury_status": "ACTIVE",
-        "name": "Zulu K",
-        "pro_team": "BUF",
-        "provider_status": null
-       },
-       "points": 10.4,
-       "state": "plays"
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
       },
       "horizon": 1,
       "outlook": false,
@@ -136,18 +124,12 @@
       "gap": null,
       "hold": {
        "detail": null,
-       "home": false,
-       "kickoff": "<masked>",
-       "opponent": "LAC",
-       "player": {
-        "espn_player_id": 502,
-        "injury_status": "ACTIVE",
-        "name": "Zulu K",
-        "pro_team": "BUF",
-        "provider_status": null
-       },
-       "points": 10.5,
-       "state": "plays"
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
       },
       "horizon": 2,
       "outlook": true,
@@ -215,18 +197,12 @@
       "gap": null,
       "hold": {
        "detail": null,
-       "home": false,
-       "kickoff": "<masked>",
-       "opponent": "NE",
-       "player": {
-        "espn_player_id": -16002,
-        "injury_status": "ACTIVE",
-        "name": "Bills D/ST",
-        "pro_team": "BUF",
-        "provider_status": null
-       },
-       "points": 5.3,
-       "state": "plays"
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
       },
       "horizon": 0,
       "outlook": false,
@@ -247,18 +223,12 @@
       "gap": null,
       "hold": {
        "detail": null,
-       "home": false,
-       "kickoff": "<masked>",
-       "opponent": "MIA",
-       "player": {
-        "espn_player_id": -16002,
-        "injury_status": "ACTIVE",
-        "name": "Bills D/ST",
-        "pro_team": "BUF",
-        "provider_status": null
-       },
-       "points": 5.4,
-       "state": "plays"
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
       },
       "horizon": 1,
       "outlook": false,
@@ -279,18 +249,12 @@
       "gap": null,
       "hold": {
        "detail": null,
-       "home": false,
-       "kickoff": "<masked>",
-       "opponent": "LAC",
-       "player": {
-        "espn_player_id": -16002,
-        "injury_status": "ACTIVE",
-        "name": "Bills D/ST",
-        "pro_team": "BUF",
-        "provider_status": null
-       },
-       "points": 5.5,
-       "state": "plays"
+       "home": null,
+       "kickoff": null,
+       "opponent": null,
+       "player": null,
+       "points": null,
+       "state": null
       },
       "horizon": 2,
       "outlook": true,

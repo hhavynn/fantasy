@@ -120,9 +120,12 @@ section of `/schedule-intelligence`. Tests: `backend/tests/test_kdst_streaming_p
 * **Solver**: dynamic programming over weeks x holder x add/drops with the best two predecessors per add/drop count:
   O(weeks x candidates x moves), deterministic on ties (fewer add/drops, then staying, then the better-ranked player).
   The pool is bounded at 40 per position by a per-week round-robin of the best projections.
-* **Horizon**: a week is planned only with a loaded NFL schedule and at least 3 projected free agents covering half of
-  those with a game; the plan stops at the first week that fails, with no player and no number after it. Weeks two or
-  more ahead are flagged as an outlook.
+* **Holding**: the current roster's value in a week is its best incumbent whose week is known; an incumbent with an
+  open designation or an unknown week is left out and named, and holding is unknown only when no incumbent is known.
+* **Horizon**: a week is planned only when its NFL schedule establishes every candidate's game or bye (a partly loaded
+  week is not planned) and at least 3 free agents are projected, covering half of those not on a bye (unknown games
+  included); the plan stops at the first week that fails, with no player and no number after it, the hold and the
+  baseline included. Weeks two or more ahead are flagged as an outlook.
 * **Eligibility** is reported apart from points: `free_agent` (this week, ESPN FREEAGENT), `waiver_claim` (ESPN
   WAIVERS), `hypothetical` (a later week's add or a re-add), `unconfirmed` (a provider without waiver status, Sleeper),
   `held` (kept from an earlier planned add). The kicker and D/ST model runs are shown beside the plan, not used by it.

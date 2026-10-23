@@ -14,6 +14,7 @@ from ..analytics.kdst_streaming import (
     MAX_MOVES_LIMIT,
     MAX_WEEKS,
     MIN_WEEKS,
+    BadParam,
     build_kdst_streaming,
 )
 from ..analytics.schedule_intelligence import (
@@ -78,7 +79,7 @@ def kdst_streaming(team_id: int | None = Query(None, description="Fantasy team t
             raise HTTPException(503, str(err))
         except NotFound as err:
             raise HTTPException(404, str(err))
-        except ValueError as err:
+        except BadParam as err:          # only the parameter checks' own messages, never an internal error's
             raise HTTPException(422, str(err))
         out["provenance"] = kdst_streaming_provenance(con, out)
         return out
@@ -91,7 +92,7 @@ def kdst_streaming_provenance(con, d: dict) -> dict:
     pos = [p for p in d["positions"] if p["status"] != "not_started"]
     with_game = sum(w["candidates_with_game"] for p in pos for w in p["weeks"])
     projected = sum(w["projected_candidates"] for p in pos for w in p["weeks"])
-    cov = coverage(projected, with_game, "free-agent weeks with a game that have a projection") if with_game else None
+    cov = coverage(projected, with_game, "free-agent weeks not on a bye that have a projection") if with_game else None
     source = "independent" if d["projection_source"] == "Ours" else "espn"
     detail = {"available": projected > 0, "run": None,
               "reason": None if projected else "No projections are stored for the planned weeks."} \

@@ -138,6 +138,8 @@ def test_thin_week_ends_the_plan_without_numbers(league):
     assert k["planned_weeks"] == [9, 10, 11] and k["capped_weeks"] == [12]
     w12 = k["weeks"][3]
     assert w12["planned"] is False and w12["start"] is None and w12["alternatives"] == [] and w12.get("points") is None
+    # Beyond the horizon nothing carries a player or a number: not the hold, not the baseline.
+    assert w12["hold"]["player"] is None and w12["hold"]["points"] is None and w12["baseline"] is None
     assert w12["reason"] == "Only 1 free agent is projected for week 12 (at least 3 needed)."
     assert [w["outlook"] for w in k["weeks"]] == [False, False, True, True]
     # D/ST: no free agent at all, so no week is planned and nothing is invented.
@@ -168,6 +170,16 @@ def test_api_route_validation_provenance_and_league_scope_mount(league, monkeypa
     assert [s["signal"] for s in body["provenance"]["signals"]] == ["league", "projections", "schedule"]
     for bad in ("weeks=1", "weeks=5", "max_moves=-1", "max_moves=5", "move_cost=-1", "move_cost=11"):
         assert api.get(f"/api/schedule-intelligence/kdst-streaming?{bad}").status_code == 422, bad
+    # Only the parameter checks answer 422; any other ValueError is an internal error, and its text is not echoed.
+    from app.api import schedule_intelligence as si
+
+    def boom(*a, **k):
+        raise ValueError("internal detail")
+    monkeypatch.setattr(si, "build_kdst_streaming", boom)
+    r500 = TestClient(app, raise_server_exceptions=False).get("/api/schedule-intelligence/kdst-streaming")
+    assert r500.status_code == 500 and "internal detail" not in r500.text
+    monkeypatch.undo()
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db_path))
     assert api.get("/api/schedule-intelligence/kdst-streaming?team_id=77").status_code == 404
     from app.api.league_scope import league_scope
     from app.api.routing import iter_routes
@@ -267,3 +279,65 @@ def test_conflicts_name_your_own_players_on_the_other_side():
     assert [c["espn_player_id"] for c in _conflicts("D/ST", "KC", roster)] == [1]     # IR players never start
     assert [c["espn_player_id"] for c in _conflicts("K", "KC", roster)] == [2]
     assert _conflicts("K", None, roster) == []
+
+
+def _synthetic(weeks, teams, loaded=None):
+    """A complete schedule for `teams` (every team plays every week), or only the `loaded` teams' games."""
+    loaded = teams if loaded is None else loaded
+    games = {(t, w): {"opponent": "OPP", "home": True, "kickoff": None} for t in loaded for w in weeks}
+    return {"available": True, "covered": set(weeks), "complete_teams": set(loaded), "teams": set(loaded),
+            "games": games}
+
+
+def _plan(roster, fas, proj, sched, weeks, **kw):
+    return plan_position("K", weeks, free_agents=fas, roster=roster, statuses={}, proj=proj, sched=sched,
+                         provider="espn", models={}, max_moves=kw.get("max_moves"), cost=kw.get("cost", 0.0),
+                         phase_of=lambda w: "regular", slot_count=1)
+
+
+@pytest.mark.parametrize("backup", [
+    RosterPlayer(2, "K", "T1", "Backup K", injury_status="OUT"),        # open designation
+    RosterPlayer(2, "K", "T1", "Backup K"),                             # no projection
+    RosterPlayer(2, "K", None, "Backup K"),                             # no NFL team
+])
+def test_an_unknown_backup_never_forces_an_add(backup):
+    """Review #250: one unknown incumbent used to make the whole hold unknown, forcing a worse add."""
+    weeks = [9, 10, 11]
+    sched = _synthetic(weeks, ["T0", "T1", "T2", "T3", "T4", "T5"])
+    roster = [RosterPlayer(1, "K", "T0", "Starter K"), backup]
+    fas = [RosterPlayer(100 + i, "K", f"T{2 + i}", f"FA{i}") for i in range(4)]
+    proj = {1: {w: 9.0 for w in weeks}, **{p.espn_player_id: {w: 5.0 for w in weeks} for p in fas}}
+    if backup.injury_status == "OUT":
+        proj[2] = {w: 0.0 for w in weeks}
+    out = _plan(roster, fas, proj, sched, weeks)
+    assert [w["action"] for w in out["weeks"]] == ["hold", "hold", "hold"]
+    assert out["plan"]["hold_points"] == 27.0 and out["plan"]["moves"] == 0
+    assert all(w["hold"]["player"]["espn_player_id"] == 1 for w in out["weeks"])
+    assert "Backup K" in out["weeks"][0]["hold"]["detail"]                       # named, not silently dropped
+    frozen = _plan(roster, fas, proj, sched, weeks, max_moves=0)
+    assert frozen["status"] == "planned" and frozen["plan"]["hold_points"] == 27.0
+
+
+def test_hold_is_unknown_only_when_no_incumbent_is_known():
+    weeks = [9, 10]
+    sched = _synthetic(weeks, ["T0", "T1", "T2", "T3"])
+    roster = [RosterPlayer(1, "K", "T0", "Hurt K", injury_status="OUT")]
+    fas = [RosterPlayer(100 + i, "K", f"T{1 + i}", f"FA{i}") for i in range(3)]
+    proj = {p.espn_player_id: {w: 5.0 for w in weeks} for p in fas}
+    out = _plan(roster, fas, proj, sched, weeks, max_moves=0)
+    assert out["status"] == "no_plan" and out["plan"] is None
+
+
+def test_a_partly_loaded_schedule_week_is_not_planned():
+    """Codex review #250: three projected kickers on the loaded teams must not plan a week whose other candidates'
+    games and byes are unknown."""
+    weeks = [9, 10]
+    loaded = ["T0", "T1", "T2"]
+    sched = _synthetic(weeks, loaded)
+    fas = [RosterPlayer(100 + i, "K", f"T{i}", f"FA{i}") for i in range(8)]       # T3-T7: not in the schedule
+    proj = {p.espn_player_id: {w: 6.0 for w in weeks} for p in fas}
+    out = _plan([], fas, proj, sched, weeks)
+    assert out["planned_weeks"] == [] and out["plan"] is None
+    w9 = out["weeks"][0]
+    assert w9["planned"] is False and w9["reason"].startswith("The NFL schedule for week 9 is incomplete (T3, T4")
+    assert w9["candidates_with_game"] == 8 and w9["projected_candidates"] == 3     # unknowns stay in the denominator

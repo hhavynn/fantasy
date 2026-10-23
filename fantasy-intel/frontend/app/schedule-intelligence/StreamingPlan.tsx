@@ -3,6 +3,7 @@ import { BackendProblem } from "@/components/BackendProblem";
 import { Badge, Notice, Pos, ProvenanceBadge, Section, VisuallyHidden } from "@/components/ui";
 import type { ApiResult } from "@/lib/api";
 import { cx } from "@/lib/cx";
+import { withLeague } from "@/lib/league-scope";
 import { Missing } from "@/lib/format";
 import {
   ELIGIBILITY_TONE, ELIGIBILITY_WORD, POSITION_NAME, currentAdvice, opponentText, planSummary, positionPageLink,
@@ -27,10 +28,10 @@ function Points({ v, why }: { v: number | null | undefined; why: string }) {
   return v === null || v === undefined ? <Missing why={why} /> : <>{v.toFixed(1)}</>;
 }
 
-function Controls({ d, carry }: { d: KdstStreaming; carry: Carry }) {
+function Controls({ d, carry, league }: { d: KdstStreaming; carry: Carry; league: string | null }) {
   const q = d.query;
   return (
-    <form action="/schedule-intelligence#kdst-streaming" className={styles.controls} aria-label="Streaming plan settings">
+    <form action={`${withLeague("/schedule-intelligence", league)}#kdst-streaming`} className={styles.controls} aria-label="Streaming plan settings">
       {carry.team && <input type="hidden" name="team" value={carry.team} />}
       <input type="hidden" name="position" value={carry.position} />
       <input type="hidden" name="phase" value={carry.phase} />
@@ -152,7 +153,7 @@ export function StreamingPlanSection({ res, league, carry }: { res: ApiResult<Kd
       actions={<ProvenanceBadge signals={signalsOf(d.provenance)} />}
       footnote={<>One streaming slot per position: each week either keeps your current player or adds one free agent, never one on bye and never one without a projection. Free agent: listed at the last sync. Waiver claim: needs a claim. If still available: a later week&apos;s add, not confirmed. The plan stops at the first week with fewer than {d.rules.min_projected} projected free agents.</>}
     >
-      <Controls d={d} carry={carry} />
+      <Controls d={d} carry={carry} league={league} />
       {!w.remaining_weeks && <Notice tone="caution">No remaining fantasy weeks to plan: every week through the final scoring period has kicked off.</Notice>}
       {w.uncertain && w.warning && <Notice tone="caution">{w.warning}</Notice>}
       {!d.schedule.available && <Notice tone="caution">No NFL schedule is loaded, so no bye or opponent is known and no week is planned.</Notice>}

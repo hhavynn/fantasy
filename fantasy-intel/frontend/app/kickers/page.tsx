@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { Missing, num, when } from "@/lib/format";
 import { ESPN_COMPARISON_UNAVAILABLE } from "@/lib/labels";
 import { getLeagueProfile } from "@/lib/league-profile.server";
+import { currentLeague } from "@/lib/league-scope.server";
 import { DISTANCES, conditions, factorChips, outlook, usesBettingLine, rowFlags, splitPlayers, statusText, type KickerPlayer, type KickerResponse } from "@/lib/kickers";
 import styles from "./kickers.module.css";
 
@@ -65,8 +66,8 @@ function Row({ p, rank, espn }: { p: KickerPlayer; rank: number; espn: boolean }
 export default async function KickersPage({ searchParams }: PageProps<"/kickers">) {
   const sp: SP = await searchParams;
   const week = Number(one(sp.week)) || undefined;
-  const [res, profile] = await Promise.all([
-    api<KickerResponse>(`/api/projections/kickers${week ? `?week=${week}` : ""}`), getLeagueProfile()]);
+  const [res, profile, league] = await Promise.all([
+    api<KickerResponse>(`/api/projections/kickers${week ? `?week=${week}` : ""}`), getLeagueProfile(), currentLeague()]);
   const espn = profile.providerProjections;
   if (!res.ok) {
     return (
@@ -81,7 +82,7 @@ export default async function KickersPage({ searchParams }: PageProps<"/kickers"
     <form action="/kickers" className={styles.weekForm}>
       <label>Week <input type="number" name="week" min={1} max={18} defaultValue={d.week} style={{ width: "4.5em" }} /></label>
       <button type="submit">Show</button>
-      <TeamLink href="/schedule-intelligence#kdst-streaming">Multi-week streaming plan</TeamLink>
+      <TeamLink href="/schedule-intelligence#kdst-streaming" league={league?.id ?? null}>Multi-week streaming plan</TeamLink>
     </form>
   );
   const line = usesBettingLine(d.governance.model_version);
