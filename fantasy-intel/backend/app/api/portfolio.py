@@ -168,18 +168,20 @@ def read_league(team: int) -> dict:
         projection: dict[str, Any] = {"source": None, "available": False, "reason": None, "captured_at": None}
         values: dict = {}
         origin: dict = {}
-        try:
-            source = ps.default_source(con, season)
-            w = ps.weekly(con, season, week, source) if week is not None else None
-        except Exception as err:  # noqa: BLE001 - a projection failure leaves projections unknown, never zero
-            log.warning("portfolio: projections unreadable: %s", type(err).__name__)
-            projection["reason"] = "This league's projections could not be read."
-            w = None
-        if w is not None:
-            values, origin = w.get("values") or {}, w.get("origin") or {}
-            run = w.get("run") or {}
-            projection.update(available=bool(w.get("available")), reason=w.get("reason"),
-                              captured_at=_iso(run.get("created_at")) if source == "independent" else _iso(lg["synced_at"]))
+        stamps: dict = {}
+        if week is not None:
+            try:
+                # The league's default source, as the trade and waiver engines read it (never the Start/Sit weekly switch):
+                # ESPN's for an ESPN league, Fantasy Intel's own for a league without provider projections.
+                source = ps.default_source(con, season)
+                detail: dict | None = {} if source == "independent" else None
+                for pid, by_week in ps.league_projections(con, season, [week], source, detail).items():
+                    if week in by_week:
+                        values[pid], stamps[pid] = by_week[week]
+                        origin[pid] = ((detail or {}).get(week, {}).get(pid) or (ps.ESPN, None))[0]
+            except Exception as err:  # noqa: BLE001 - a projection failure leaves projections unknown, never zero
+                log.warning("portfolio: projections unreadable: %s", type(err).__name__)
+                projection["reason"] = "This league's projections could not be read."
         players = []
         for r in roster:
             pid = r["player_id"]
@@ -199,6 +201,12 @@ def read_league(team: int) -> dict:
         shown = [p["projection_origin"] for p in players if p["projection"] is not None]
         projection["source"] = ("Unavailable" if not shown else ps.served_label(
             ps.OURS if o == "model" else ps.ESPN for o in shown))
+        projection["available"] = bool(shown)
+        if not shown and projection["reason"] is None:
+            projection["reason"] = "No rostered player has a projection for this week in this league's data."
+        # the oldest capture behind the shown numbers (a provider sync or a model run), so age is never understated
+        captured = sorted(t for p in players if p["projection"] is not None and (t := _iso(stamps.get(p["player_id"]))))
+        projection["captured_at"] = captured[0] if captured else None
         return {"team_gone": False, "league": lg, "team": {"team_id": found["team_id"], "name": found["name"]},
                 "players": players, "schedule_known": sched_known, "projection": projection}
 

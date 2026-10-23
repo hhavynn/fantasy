@@ -154,8 +154,11 @@ def test_legacy_routes_do_not_import_the_league_layer_or_the_control_plane():
     for p in sorted(APP.rglob("*.py")):
         rel = p.relative_to(APP).as_posix()
         # sync/: the GitHub Actions workers (Phase 3), which talk to the control plane and are never imported by a route
+        # api/portfolio.py: the cross-league portfolio (#209), reached only through GET /v2/portfolio; it reads
+        # app.leagues.identity, the cross-provider identity rules, and never the control plane
         if rel.startswith(("leagues/", "control_plane/", "sync/")) or rel in ("api/leagues_v2.py", "api/league_scope.py",
-                                                                                "api/connect.py", "main.py", "config.py"):
+                                                                                "api/connect.py", "api/portfolio.py",
+                                                                                "main.py", "config.py"):
             continue
         if re.search(r"^\s*(?:from|import)\s+(?:app\.|\.+)?(?:\w+\.)*(?:leagues|control_plane)(?:\.|\s|$)",
                      p.read_text("utf-8"), re.M):
