@@ -144,6 +144,15 @@ def extra_cases(con) -> list[Case]:
     if thin is not None:
         out.append(Case("api_trades_discover_summary__targeted_bye",
                         f"/api/trades/discover/summary?mode=targeted&need=bye&team_id={thin}"))
+    # The playoff-race what-if (issue #192): the first two undecided regular-season games, one given to its home side
+    # and one forced unresolved, so the answer carries the `whatif` block.
+    open_games = [r[0] for r in con.execute(
+        "SELECT matchup_id FROM matchups WHERE coalesce(winner, '') NOT IN ('HOME', 'AWAY', 'TIE') "
+        "AND coalesce(playoff_tier, 'NONE') = 'NONE' AND home_team_id IS NOT NULL AND away_team_id IS NOT NULL "
+        "ORDER BY matchup_period, matchup_id LIMIT 2").fetchall()]
+    if len(open_games) == 2:
+        out.append(Case("api_playoff_race__whatif", "/api/playoff-race?" + urlencode(
+            [("override", f"{open_games[0]}:home"), ("override", f"{open_games[1]}:none")])))
     return out
 
 
