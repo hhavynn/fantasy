@@ -196,16 +196,19 @@ def compare_scenarios(state: LeagueState, requests: list[ScenarioRequest], start
                                              "team_a_sends": list(req.a_sends), "team_b_sends": list(req.b_sends)},
                      "shape": f"{len(req.a_sends)}-for-{len(req.b_sends)}", "duplicate_of": dup,
                      "moved": [], **out})
-    # Shared players: alternatives that cannot both happen as saved. Duplicates are reported as such, not as conflicts.
+    # Shared players: alternatives that cannot both happen as saved. Only evaluated trades are alternatives to each
+    # other (a stale or invalid row cannot happen as saved at all); a duplicate is reported as such, not as a conflict,
+    # and carries its original's conflicts.
     holders: dict[int, list[int]] = {}
     for row, req in zip(rows, requests):
-        if row["duplicate_of"] is None:
+        if row["duplicate_of"] is None and row["status"] == "evaluated":
             for pid in dict.fromkeys(req.players()):
                 holders.setdefault(pid, []).append(row["index"])
     conflicts = [{"espn_player_id": pid, "scenarios": idx} for pid, idx in holders.items() if len(idx) > 1]
     for row in rows:
-        row["conflicts_with"] = sorted({j for c in conflicts if row["index"] in c["scenarios"]
-                                        for j in c["scenarios"] if j != row["index"]})
+        own = row["index"] if row["duplicate_of"] is None else row["duplicate_of"]
+        row["conflicts_with"] = sorted({j for c in conflicts if own in c["scenarios"]
+                                        for j in c["scenarios"] if j != own}) if row["status"] == "evaluated" else []
     evaluated = [x for x in rows if x["status"] == "evaluated"]
     return {
         "contract": CONTRACT,
@@ -222,7 +225,8 @@ def compare_scenarios(state: LeagueState, requests: list[ScenarioRequest], start
                     "incomplete": sum(1 for x in evaluated
                                       if not (x["team_a"]["projection_complete"] and x["team_b"]["projection_complete"])),
                     "stale": sum(1 for x in rows if x["status"] == "stale"),
-                    "invalid": sum(1 for x in rows if x["status"] in ("invalid", "unavailable"))},
+                    "invalid": sum(1 for x in rows if x["status"] == "invalid"),
+                    "unavailable": sum(1 for x in rows if x["status"] == "unavailable")},
         # The source is named only when it supplied values; with no projections at all it is unavailable.
         "projection_source": source_label(state.projection_source) if state.projections else None,
         "trade_impact_source": "exact optimal-lineup simulation",

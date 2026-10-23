@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  MAX_SCENARIOS, addScenario, conflictText, duplicateScenario, editingKey, findTrade, horizonMismatches, matchesRequest, orderedSides,
-  parseTradeScenarios, readTradeScenarios, removeScenario, replaceScenario, rosterMoves, savedFreshness, scenarioAnalyzerHref, scenarioParam,
-  scenariosBackendPath, scenariosSrc, serializeTradeScenarios, tradeKey, tradeScenariosKey, writeTradeScenarios,
+  COMPARE_UNAVAILABLE, MAX_SCENARIOS, addScenario, compareRouteError, conflictText, duplicateScenario, editingKey, findTrade, horizonMismatches, matchesRequest, orderedSides,
+  parseTradeScenarios, readTradeScenarios, removeScenario, replaceScenario, saveState, rosterMoves, savedFreshness, scenarioAnalyzerHref, scenarioParam,
+  scenariosBackendPath, scenariosSrc, serializeTradeScenarios, shortTermLabel, summaryText, tradeKey, tradeScenariosKey, writeTradeScenarios,
   type Scenario, type ScenarioCompareResponse, type ScenarioRow, type ScenarioSelection,
 } from "./trade-scenarios.ts";
 
@@ -109,7 +109,7 @@ test("players no longer on the sending roster are caught from the page's rosters
 
 test("a scenario is current only when saved on the version the page reads", () => {
   assert.equal(savedFreshness("v1", "v1"), "current");
-  assert.equal(savedFreshness("v1", "v2"), "older");
+  assert.equal(savedFreshness("v1", "v2"), "different");
   assert.equal(savedFreshness(null, "v2"), "unknown");
   assert.equal(savedFreshness("v1", null), "unknown");
 });
@@ -169,4 +169,46 @@ test("the page's team is shown first when it is in the trade", () => {
 test("a shared player is an alternative, never a sum", () => {
   assert.equal(conflictText({ scenarios: [0, 2] }, "Kilo RB"), "Scenarios 1 and 3 both include Kilo RB: at most one of them can happen as saved.");
   assert.equal(conflictText({ scenarios: [0, 1, 2] }, "Kilo RB"), "Scenarios 1, 2 and 3 all include Kilo RB: at most one of them can happen as saved.");
+});
+
+test("a start week change on a saved trade is an update, never hidden as already saved", () => {
+  const list = [sc("s1", sel(2, 1, [207], [202])), sc("s2", sel(2, 1, [207], [303], 6))];
+  assert.deepEqual(saveState(list, sel(2, 1, [207], [202]), null), { kind: "saved", index: 0 });
+  assert.deepEqual(saveState(list, sel(1, 2, [202], [207]), null), { kind: "saved", index: 0 });
+  assert.deepEqual(saveState(list, sel(2, 1, [207], [202], 7), "s2"), { kind: "start_week", index: 0, id: "s1", savedWeek: null });
+  assert.deepEqual(saveState(list, sel(2, 1, [207], [303]), null), { kind: "start_week", index: 1, id: "s2", savedWeek: 6 });
+  // Update keeps the scenario's place and ID and stores the new start week; the format is unchanged.
+  const up = replaceScenario(list, "s2", sel(2, 1, [207], [303]), { savedAt: AT, dataVersion: "v2" });
+  assert.equal(up.outcome, "updated");
+  assert.deepEqual(up.scenarios[1], { id: "s2", ta: 2, tb: 1, a: [207], b: [303], sw: null, savedAt: AT, dataVersion: "v2" });
+  assert.deepEqual(parseTradeScenarios(serializeTradeScenarios(A, 2, up.scenarios), A, 2), up.scenarios);
+  assert.deepEqual(saveState(list, sel(2, 1, [207], [208]), "s2"), { kind: "new", editing: { index: 1, id: "s2" } });
+  assert.deepEqual(saveState(list, sel(2, 1, [207], [208]), "gone"), { kind: "new", editing: null });
+});
+
+test("a failed comparison never sends the internal API address or start hint to the browser", () => {
+  // What api() answers when the backend is down: its message names the internal URL and how to start the server.
+  const offline = { ok: false, data: null, kind: "offline",
+    error: "Cannot reach the backend at http://127.0.0.1:8000. Start it with: cd backend && uv run uvicorn app.main:app --reload" };
+  const out = compareRouteError(offline);
+  assert.deepEqual(out, { body: { error: COMPARE_UNAVAILABLE, kind: "offline" }, status: 502 });
+  assert.equal(/127\.0\.0\.1|uvicorn/.test(JSON.stringify(out.body)), false);
+  assert.equal(compareRouteError({ error: "Unexpected token < in JSON at http://api.internal:8000", kind: "unknown", status: 200 }).body.error, COMPARE_UNAVAILABLE);
+  assert.equal(compareRouteError({ error: "Internal Server Error", kind: "http", status: 500 }).body.error, COMPARE_UNAVAILABLE);
+  assert.equal(compareRouteError({ error: "schema too old", kind: "schema", status: 503 }).body.error, COMPARE_UNAVAILABLE);
+  for (const status of [404, 409, 422]) {
+    assert.deepEqual(compareRouteError({ error: "start_week must be >= 3", kind: "http", status }), { body: { error: "start_week must be >= 3", kind: "http" }, status });
+  }
+});
+
+test("the first week is called next week only when the comparison starts at the earliest open week", () => {
+  assert.equal(shortTermLabel({ short_term_week: 3, start_week_overridden: false }), "Next week");
+  assert.equal(shortTermLabel({ short_term_week: 5, start_week_overridden: true }), "Week 5");
+  assert.equal(shortTermLabel({ short_term_week: null, start_week_overridden: false }), "First week");
+});
+
+test("the summary tells a trade that is not valid from one that could not be evaluated", () => {
+  assert.equal(summaryText({ scenarios: 4, evaluated: 1, incomplete: 0, stale: 1, invalid: 1, unavailable: 1 }),
+    "1 of 4 evaluated · 1 out of date · 1 not valid · 1 not evaluated");
+  assert.equal(summaryText({ scenarios: 2, evaluated: 2, incomplete: 1, stale: 0, invalid: 0, unavailable: 0 }), "2 of 2 evaluated · 1 incomplete");
 });

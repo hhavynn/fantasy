@@ -14,7 +14,6 @@ import { readTeamSelection } from "@/lib/team-perspective";
 import type { TradeOptionsV3, TradeResultV3 } from "@/lib/trade-types";
 import { signalsOf } from "@/lib/signal-provenance";
 import { EvaluatedTrade, EvaluatedTradeSkeleton } from "./EvaluatedTrade";
-import { ScenarioSave } from "./ScenarioSave";
 import { ScenarioProvider } from "./ScenarioStore";
 import { ScenarioWatchlist } from "./ScenarioWatchlist";
 import { TradeBuilder } from "./TradeBuilder";
@@ -82,7 +81,7 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
   const ready = canEvaluate(initial, maxPerSide);
   // Not awaited: the lineup simulation is the slow part, so the builder renders now and the result streams in.
   // The data version the page was rendered from (signal-provenance.v1): saved scenarios record it, so a scenario saved
-  // on older data is labelled and re-valued rather than shown as current.
+  // on different data is labelled and re-valued rather than shown as current.
   const dataVersion = signalsOf(opts.data.provenance).find((x) => x.signal === "league")?.snapshot_version ?? null;
   const rosterNames = teams.map((t) => ({ team_id: t.team_id, name: t.name,
     roster: t.roster.map((p) => ({ espn_player_id: p.espn_player_id, name: p.name })) }));
@@ -109,12 +108,10 @@ export default async function TradesPage({ searchParams }: PageProps<"/trades">)
           capacity={opts.data.active_capacity} limits={opts.data.position_limits} firstWeek={firstWeek} finalWeek={evaluation.final_week}
           projLabel={proj} providerLabel={pv}>
           {evaluated && (
-            <>
-              <ScenarioSave selection={{ ta: initial.ta!, tb: initial.tb!, a: initial.a, b: initial.b, sw: initial.sw }} />
-              <Suspense fallback={<EvaluatedTradeSkeleton />}>
-                <EvaluatedTrade result={evaluated} />
-              </Suspense>
-            </>
+            <Suspense fallback={<EvaluatedTradeSkeleton />}>
+              <EvaluatedTrade result={evaluated}
+                selection={{ ta: initial.ta!, tb: initial.tb!, a: initial.a, b: initial.b, sw: initial.sw }} />
+            </Suspense>
           )}
         </TradeBuilder>
         <ScenarioWatchlist providerLabel={pv} />

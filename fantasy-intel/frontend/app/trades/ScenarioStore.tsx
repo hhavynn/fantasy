@@ -90,6 +90,20 @@ export function useScenarios(): ScenarioContext | null {
   return useContext(Ctx);
 }
 
+const PreviousCtx = createContext(false);
+
+/**
+ * Marks the trade builder's "previous result" panel: that result belongs to a different selection than the one on
+ * screen, so nothing inside it offers to save (ScenarioSave renders nothing there).
+ */
+export function PreviousResult({ children }: { children: ReactNode }) {
+  return <PreviousCtx.Provider value={true}>{children}</PreviousCtx.Provider>;
+}
+
+export function useInPreviousResult(): boolean {
+  return useContext(PreviousCtx);
+}
+
 /** The page keys this provider by canonical league ID and team, resetting state on every scope transition. */
 export function ScenarioProvider({ leagueId, team, dataVersion, teams, firstWeek, finalWeek, children }: {
   leagueId: string | null; team: number | null; dataVersion: string | null; teams: RosterTeam[];

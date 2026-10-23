@@ -23,6 +23,7 @@ from app.analytics.trade_scenarios import (
     parse_scenarios,
 )
 from app.analytics.trades import (
+    EvaluationUnavailable,
     LeagueState,
     NoRemainingWeeksError,
     TradeError,
@@ -200,6 +201,33 @@ def test_a_duplicate_is_flagged_reoriented_and_not_simulated_twice(monkeypatch):
     assert dup["duplicate_of"] == 0 and dup["conflicts_with"] == [] and out["conflicts"] == []
     assert dup["team_a"]["team_id"] == 2 and dup["team_a"] == first["team_b"] and dup["team_b"] == first["team_a"]
     assert dup["result_label"] == "TEAM_A_GAIN_TEAM_B_LOSS" and first["result_label"] == "TEAM_A_LOSS_TEAM_B_GAIN"
+
+    # A duplicate carries its original's conflicts; a stale or invalid row is no alternative to anything.
+    st = league()
+    rosters = {t: list(ps) for t, ps in st.rosters.items()}
+    gone = next(p for p in rosters[3] if p.espn_player_id == 303)
+    rosters[3].remove(gone)                                          # 303 has left team C
+    out = compare_scenarios(replace(st, rosters=rosters), [
+        S(1, 2, [105], [204]),       # 0: evaluated
+        S(1, 3, [105], [302]),       # 1: evaluated, shares 105 with 0
+        S(2, 1, [204], [105]),       # 2: duplicate of 0
+        S(1, 3, [105], [303]),       # 3: stale (303 moved), names 105 too
+        S(1, 1, [105], [106]),       # 4: invalid, names 105 too
+    ])
+    assert [r["status"] for r in out["scenarios"]] == ["evaluated", "evaluated", "evaluated", "stale", "invalid"]
+    assert out["conflicts"] == [{"espn_player_id": 105, "scenarios": [0, 1]}]
+    assert [r["conflicts_with"] for r in out["scenarios"]] == [[1], [0], [1], [], []]
+
+
+def test_an_unavailable_evaluation_is_counted_apart_from_an_invalid_trade(monkeypatch):
+    def unavailable(*a, **k):
+        raise EvaluationUnavailable("exact forced-drop resolution exceeds its budget")
+    monkeypatch.setattr(ts, "side_lineups", unavailable)
+    out = compare_scenarios(league(), [S(1, 2, [105], [204]), S(1, 1, [105], [106])])
+    assert [r["status"] for r in out["scenarios"]] == ["unavailable", "invalid"]
+    assert out["scenarios"][0]["reason"] == "exact forced-drop resolution exceeds its budget"
+    assert "team_a" not in out["scenarios"][0]
+    assert out["summary"] == {"scenarios": 2, "evaluated": 0, "incomplete": 0, "stale": 0, "invalid": 1, "unavailable": 1}
 
 
 def test_nothing_is_submitted():

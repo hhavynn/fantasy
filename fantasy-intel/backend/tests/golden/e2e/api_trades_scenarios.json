@@ -21,8 +21,7 @@
     "espn_player_id": 102,
     "scenarios": [
      0,
-     1,
-     2
+     1
     ]
    }
   ],
@@ -139,8 +138,7 @@
   "scenarios": [
    {
     "conflicts_with": [
-     1,
-     2
+     1
     ],
     "duplicate_of": null,
     "index": 0,
@@ -210,8 +208,7 @@
    },
    {
     "conflicts_with": [
-     0,
-     2
+     0
     ],
     "duplicate_of": null,
     "index": 1,
@@ -280,10 +277,7 @@
     }
    },
    {
-    "conflicts_with": [
-     0,
-     1
-    ],
+    "conflicts_with": [],
     "duplicate_of": null,
     "index": 2,
     "moved": [
@@ -309,7 +303,9 @@
     "status": "stale"
    },
    {
-    "conflicts_with": [],
+    "conflicts_with": [
+     1
+    ],
     "duplicate_of": 0,
     "index": 3,
     "moved": [],
@@ -383,7 +379,8 @@
    "incomplete": 0,
    "invalid": 0,
    "scenarios": 4,
-   "stale": 1
+   "stale": 1,
+   "unavailable": 0
   },
   "teams": [
    {

@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { api } from "@/lib/api";
 import { LEAGUE_HEADER, isLeagueId } from "@/lib/league-scope";
-import { scenariosBackendPath, type ScenarioCompareResponse } from "@/lib/trade-scenarios";
+import { compareRouteError, scenariosBackendPath, type ScenarioCompareResponse } from "@/lib/trade-scenarios";
 
 /**
  * Compares the Trade analyzer's saved scenarios (issue #183), which live in the browser. The browser cannot reach the
@@ -16,7 +16,10 @@ export async function GET(request: Request) {
   const path = scenariosBackendPath(new URL(request.url).searchParams);
   if (!path) return Response.json({ error: "The scenario list is not well formed." }, { status: 400 });
   const res = await api<ScenarioCompareResponse>(path);
-  if (!res.ok) return Response.json({ error: res.error, kind: res.kind ?? "unknown" }, { status: res.status ?? 502 });
+  if (!res.ok) {
+    const { body, status } = compareRouteError(res);
+    return Response.json(body, { status });
+  }
   // `stale`: the backend served this league's previous files; the page then says the data may be older.
   return Response.json({ ...res.data, scope: league, stale: res.stale === true } satisfies ScenarioCompareResponse,
     { headers: { "Cache-Control": "private, no-store" } });

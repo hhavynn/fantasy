@@ -60,8 +60,8 @@ export function ScenarioWatchlist({ providerLabel }: { providerLabel: string }) 
                             <span>{s.sw === null ? "from the earliest open week" : `from week ${s.sw}`}</span>
                             <span data-tone={fresh === "current" ? undefined : "caution"}>
                               {fresh === "current" ? "Saved on the current league data"
-                                : fresh === "older" ? "Saved on older league data: compare to recalculate"
-                                  : "Saved on league data of unknown version: compare to recalculate"}
+                                : fresh === "different" ? "Saved on different league data: compare to re-value"
+                                  : "Saved on league data of unknown version: compare to re-value"}
                             </span>
                             {ctx.editing === s.id && <span>Open in the analyzer</span>}
                           </p>

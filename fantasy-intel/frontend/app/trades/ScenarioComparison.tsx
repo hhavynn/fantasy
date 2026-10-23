@@ -8,7 +8,7 @@ import { plural } from "@/lib/plural";
 import { signalsOf } from "@/lib/signal-provenance";
 import { signedText } from "@/lib/trade-format";
 import {
-  conflictText, horizonMismatches, matchesRequest, orderedSides, savedFreshness, scenariosSrc,
+  conflictText, horizonMismatches, matchesRequest, orderedSides, savedFreshness, scenariosSrc, shortTermLabel, summaryText,
   type Scenario, type ScenarioCompareResponse, type ScenarioRow, type ScenarioSide,
 } from "@/lib/trade-scenarios";
 import { analyzerLink, useScenarios } from "./ScenarioStore";
@@ -75,6 +75,12 @@ function Comparison({ res, scenarios, startWeek }: { res: ScenarioCompareRespons
   const lastReg = ev.last_regular_season_week;
   const regWeeks = lastReg !== null && lastReg >= ev.start_week ? weeksText(ev.start_week, lastReg) : null;
   const poWeeks = lastReg !== null && last > lastReg ? weeksText(Math.max(ev.start_week, lastReg + 1), last) : null;
+  // A phase with no week in this window has no change to report: "—" with the reason, never a measured 0.
+  const noSplit = "The league's playoff start is unknown, so the season is not split";
+  const phases: Phases = {
+    regular: lastReg === null ? noSplit : regWeeks === null ? "No regular-season weeks in this window" : null,
+    playoffs: lastReg === null ? noSplit : poWeeks === null ? "No playoff weeks in this window" : null,
+  };
   const mismatched = horizonMismatches(scenarios, startWeek);
   const dupes = res.scenarios.filter((r) => r.duplicate_of !== null);
   const s = res.summary;
@@ -85,16 +91,19 @@ function Comparison({ res, scenarios, startWeek }: { res: ScenarioCompareRespons
       <div className={styles.compareHead}>
         <p className={styles.compareLine}>
           <b>{weeksText(ev.start_week, last)}</b> for every scenario · one data snapshot · projected points: <b>{proj}</b> ·{" "}
-          {s.evaluated} of {s.scenarios} evaluated{s.incomplete > 0 ? ` · ${s.incomplete} incomplete` : ""}
-          {s.stale > 0 ? ` · ${s.stale} out of date` : ""}{s.invalid > 0 ? ` · ${s.invalid} not valid` : ""}
+          {summaryText(s)}
         </p>
         <ProvenanceBadge signals={signalsOf(res.provenance)} />
       </div>
       {res.stale && (
         <Notice tone="caution">The server answered from this league&apos;s previous data files, so rosters and projections may be older than the latest sync.</Notice>
       )}
+      {/* Data versions are opaque and compared for equality only: a mismatch says "different", never "newer". */}
       {ctx.dataVersion && res.data_version && res.data_version !== ctx.dataVersion && (
-        <Notice tone="info">The league data changed since this page loaded. The comparison uses the newer data; reload the page to refresh the rosters above.</Notice>
+        <Notice tone={res.stale ? "caution" : "info"}>
+          This comparison was read from different league data than the rest of this page, so the rosters and saved-scenario checks above
+          may not match it. Reload the page to see both from the same data.
+        </Notice>
       )}
       {res.conflicts.map((c) => (
         <Notice key={c.espn_player_id} tone="caution">{conflictText(c, name(c.espn_player_id))}</Notice>
@@ -119,7 +128,7 @@ function Comparison({ res, scenarios, startWeek }: { res: ScenarioCompareRespons
             <tr>
               <th scope="col">Team</th>
               <th scope="col">Receives</th>
-              <th scope="col" className="num">Next week{ev.short_term_week !== null ? <span className={styles.th2}>week {ev.short_term_week}</span> : null}</th>
+              <th scope="col" className="num">{shortTermLabel(ev)}{ev.short_term_week !== null && !ev.start_week_overridden ? <span className={styles.th2}>week {ev.short_term_week}</span> : null}</th>
               <th scope="col" className="num">Regular season{regWeeks && <span className={styles.th2}>{regWeeks}</span>}</th>
               <th scope="col" className="num">Playoffs{poWeeks && <span className={styles.th2}>{poWeeks}</span>}</th>
               <th scope="col" className="num">Rest of season<span className={styles.th2}>{weeksText(ev.start_week, last)}</span></th>
@@ -128,7 +137,7 @@ function Comparison({ res, scenarios, startWeek }: { res: ScenarioCompareRespons
           </thead>
           {res.scenarios.map((row) => (
             <ScenarioGroup key={row.index} row={row} saved={scenarios[row.index]} res={res} name={name} team={team} proj={proj}
-              split={lastReg !== null} />
+              phases={phases} />
           ))}
         </table>
       </div>
@@ -137,16 +146,18 @@ function Comparison({ res, scenarios, startWeek }: { res: ScenarioCompareRespons
   );
 }
 
-function ScenarioGroup({ row, saved, res, name, team, proj, split }: {
+type Phases = { regular: string | null; playoffs: string | null };
+
+function ScenarioGroup({ row, saved, res, name, team, proj, phases }: {
   row: ScenarioRow; saved: Scenario; res: ScenarioCompareResponse; name: (id: number) => string; team: (id: number | null) => string;
-  proj: string; split: boolean;
+  proj: string; phases: Phases;
 }) {
   const ctx = useScenarios()!;
   const fresh = savedFreshness(saved.dataVersion, res.data_version);
   const sides = orderedSides(row, ctx.team);
   const tags: ReactNode[] = [<span key="shape">{row.shape}</span>];
   if (row.status === "evaluated") {
-    tags.push(<span key="fresh">{fresh === "current" ? "Saved on this data" : "Recalculated on the current data"}</span>);
+    tags.push(<span key="fresh">{fresh === "current" ? "Saved on this data" : fresh === "different" ? "Saved on different league data: re-valued on the data shown here" : "Saved on league data of unknown version: re-valued on the data shown here"}</span>);
   }
   if (row.conflicts_with.length > 0) {
     tags.push(<span key="conflict" data-tone="caution">Shares a player with {plural(row.conflicts_with.length, "scenario")} {row.conflicts_with.map((i) => i + 1).join(", ")}</span>);
@@ -165,7 +176,7 @@ function ScenarioGroup({ row, saved, res, name, team, proj, split }: {
         </th>
       </tr>
       {row.status === "evaluated" ? sides.map((side) => (
-        <SideRow key={side.team_id} side={side} name={name} proj={proj} split={split} mine={side.team_id === ctx.team} />
+        <SideRow key={side.team_id} side={side} name={name} proj={proj} phases={phases} mine={side.team_id === ctx.team} />
       )) : (
         <tr>
           <td colSpan={7} className={styles.problem} data-tone={row.status === "stale" ? "caution" : "negative"}>
@@ -191,17 +202,16 @@ function Change({ value, known, why }: { value: number | null; known?: number | 
   );
 }
 
-function SideRow({ side, name, proj, split, mine }: { side: ScenarioSide; name: (id: number) => string; proj: string; split: boolean; mine: boolean }) {
+function SideRow({ side, name, proj, phases, mine }: { side: ScenarioSide; name: (id: number) => string; proj: string; phases: Phases; mine: boolean }) {
   const incomplete = `Incomplete: a rostered player has no ${proj} projection in ${side.weeks_incomplete.length > 0 ? weeksList(side.weeks_incomplete) : "a week"}`;
-  const noSplit = "The league's playoff start is unknown, so the season is not split";
   const st = side.short_term;
   return (
     <tr data-mine={mine || undefined}>
       <td className={styles.teamCell}>{side.team_name ?? `Team ${side.team_id}`}{mine && <span className={styles.you}> (this team)</span>}</td>
       <td className={styles.receives}>{side.receives.map(name).join(", ")}</td>
       <td className="num">{st ? <Change value={st.delta} known={st.known_delta} why={incomplete} /> : <Missing why="No evaluated week" />}</td>
-      <td className="num"><Change value={side.regular_season_delta} why={split ? incomplete : noSplit} /></td>
-      <td className="num"><Change value={side.playoff_delta} why={split ? incomplete : noSplit} /></td>
+      <td className="num">{phases.regular ? <Missing why={phases.regular} /> : <Change value={side.regular_season_delta} why={incomplete} />}</td>
+      <td className="num">{phases.playoffs ? <Missing why={phases.playoffs} /> : <Change value={side.playoff_delta} why={incomplete} />}</td>
       <td className="num"><Change value={side.ros_delta} known={side.known_ros_delta} why={incomplete} /></td>
       <td className={styles.roster}>
         {side.forced_drops.length > 0 ? `Must drop ${side.forced_drops.map((d) => d.name ?? `Player #${d.espn_player_id}`).join(", ")}` : <span className={styles.muted}>No forced drop</span>}

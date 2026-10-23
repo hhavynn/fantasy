@@ -70,7 +70,28 @@ for (const width of [1440, 375]) {
     await expect(page).toHaveURL(new RegExp(`/l/${a}/trades\\?.*ta=2&tb=1&a=207&b=303`));
     await expect(page.getByText("Saved as scenario 2 on this device")).toBeVisible({ timeout: 30_000 });
 
-    // A stale scenario saved on older data: a player who has since moved (Lima RB is on team 3, not team 1).
+    // Only the start week changes: the saved trade is offered an update (not hidden as already saved), and it keeps
+    // its place and ID with the new start week.
+    await page.locator("label", { hasText: /^From week/ }).locator("select").selectOption("5");
+    await page.getByRole("button", { name: "Evaluate", exact: true }).click();
+    const update = page.getByRole("button", { name: "Update scenario 2 to start from week 5" });
+    await expect(update).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Save to watchlist" })).toHaveCount(0);
+    const before = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).scenarios[1], listKey(a, 2));
+    await update.click();
+    await expect(page.getByText("Saved as scenario 2 on this device")).toBeVisible();
+    const after = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).scenarios[1], listKey(a, 2));
+    expect({ id: after.id, sw: after.sw, b: after.b }).toEqual({ id: before.id, sw: 5, b: [303] });
+
+    // Change the selection without evaluating: the previous result (a different trade) can be shown, never saved.
+    await page.getByRole("region", { name: /^Team A sends/ }).locator("label").filter({ hasText: "Juliet RB" }).click();
+    await page.getByRole("button", { name: "Show the previous result (a different trade)" }).click();
+    const previous = page.getByLabel("Previous result for a different selection");
+    await expect(previous).toBeVisible();
+    await expect(page.getByRole("group", { name: "Save this trade" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Save to watchlist|Update scenario/ })).toHaveCount(0);
+
+    // A stale scenario saved on another data version: a player who has since moved (Lima RB is on team 3, not team 1).
     await page.evaluate(({ k }) => {
       const v = JSON.parse(localStorage.getItem(k)!);
       v.scenarios.push({ id: "stale1", ta: 2, tb: 1, a: [204], b: [208], sw: null, savedAt: "2026-09-01T12:00:00Z", dataVersion: "old-version" });
@@ -79,7 +100,7 @@ for (const width of [1440, 375]) {
     await page.goto(`/l/${a}/trades?team=2`);
     await expect(items).toHaveCount(4);
     await expect(items.nth(3)).toContainText("Lima RB is no longer on Team 1 (now on Team 3)");
-    await expect(items.nth(3)).toContainText("Saved on older league data");
+    await expect(items.nth(3)).toContainText("Saved on different league data");
 
     // Compare all four over one horizon on one snapshot.
     const answered = page.waitForResponse((r) => r.url().includes(`/l/${a}/api/trade-scenarios`));
@@ -95,6 +116,9 @@ for (const width of [1440, 375]) {
     await expect(table).toContainText("Scenarios 1 and 2 both include Kilo RB: at most one of them can happen as saved.");
     await expect(table).toContainText("Out of date, not re-valued: Lima RB is no longer on Team 1 (now on Team 3)");
     await expect(table).toContainText("the rows are alternatives and never add up");
+    await expect(table).toContainText("Scenario 2 was saved with a different start week");
+    await expect(table.getByRole("columnheader", { name: /^Next week/ })).toBeVisible();
+
     await expect(table.getByRole("rowgroup").filter({ has: page.getByText("Scenario 1", { exact: true }) }).getByRole("row")).toHaveCount(3);
     // Every link out of the comparison stays in this league.
     for (const href of await table.getByRole("link").evaluateAll((ls) => ls.map((l) => l.getAttribute("href") ?? ""))) {
@@ -102,6 +126,13 @@ for (const width of [1440, 375]) {
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
     if (width === 375) await list.screenshot({ path: test.info().outputPath("trade-scenarios-mobile.png") });
+
+    // An explicit start week: the first column is that week, not "next week".
+    const rechecked = page.waitForResponse((r) => r.url().includes(`/l/${a}/api/trade-scenarios`) && r.url().includes("start_week=6"));
+    await list.locator("label", { hasText: "Compare from week" }).locator("select").selectOption("6");
+    await rechecked;
+    await expect(table.getByRole("columnheader", { name: /^Week 6/ })).toBeVisible();
+    await expect(table.getByRole("columnheader", { name: /^Next week/ })).toHaveCount(0);
 
     // Duplicate fills the list to five; saving is then refused until one is removed.
     await items.nth(0).getByRole("button", { name: "Duplicate scenario 1" }).click();

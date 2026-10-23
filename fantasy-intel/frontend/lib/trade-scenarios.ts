@@ -159,6 +159,28 @@ export function duplicateScenario(list: readonly Scenario[], id: string, meta: P
   return { scenarios: out, outcome: "added", id: meta.id };
 }
 
+export type SaveState =
+  /** This exact trade and start week is saved. */
+  | { kind: "saved"; index: number }
+  /** The same trade is saved with another start week: Update changes the stored start week (one entry per trade). */
+  | { kind: "start_week"; index: number; id: string; savedWeek: number | null }
+  /** Not saved: Save adds it; `editing` is the opened scenario Update would replace (null: none). */
+  | { kind: "new"; editing: { index: number; id: string } | null };
+
+/**
+ * What the save bar offers for the evaluated selection. A trade is stored once whatever its start week (the comparison
+ * uses one shared horizon), but the stored start week is part of the scenario, so a changed start week is an update.
+ */
+export function saveState(list: readonly Scenario[], sel: ScenarioSelection, editingId: string | null): SaveState {
+  const same = findTrade(list, sel);
+  if (same) {
+    const index = list.indexOf(same);
+    return same.sw === sel.sw ? { kind: "saved", index } : { kind: "start_week", index, id: same.id, savedWeek: same.sw };
+  }
+  const index = editingId === null ? -1 : list.findIndex((s) => s.id === editingId);
+  return { kind: "new", editing: index >= 0 ? { index, id: list[index].id } : null };
+}
+
 export function removeScenario(list: readonly Scenario[], id: string): Scenario[] {
   return list.filter((x) => x.id !== id);
 }
@@ -186,12 +208,13 @@ export function rosterMoves(s: Pick<Scenario, "ta" | "tb" | "a" | "b">, teams: r
   return out;
 }
 
-export type SavedFreshness = "current" | "older" | "unknown";
+/** "different": another opaque data version (compared for equality only, so neither older nor newer is implied). */
+export type SavedFreshness = "current" | "different" | "unknown";
 
 /** Whether a scenario was saved on the data version the page now reads. Unknown on either side is never "current". */
 export function savedFreshness(saved: string | null, current: string | null | undefined): SavedFreshness {
   if (saved === null || !current) return "unknown";
-  return saved === current ? "current" : "older";
+  return saved === current ? "current" : "different";
 }
 
 // ---- requests -------------------------------------------------------------------------------------------------------
@@ -227,6 +250,37 @@ export function scenariosBackendPath(params: URLSearchParams): string | null {
     q.set("start_week", sw);
   }
   return `/api/trades/scenarios?${q}`;
+}
+
+/** The browser-facing message when the backend comparison fails. */
+export const COMPARE_UNAVAILABLE = "The comparison service is unavailable.";
+
+/**
+ * The /api/trade-scenarios route's error answer. The backend's own message is forwarded only for the answers it writes
+ * for the manager (404 league or team not found, 409 no remaining weeks, 422 a bad horizon or list). Anything else
+ * (offline, an unreadable answer, a server error) gets a generic message: the internal API address or a start hint
+ * never reaches the browser.
+ */
+export function compareRouteError(res: { error: string; kind?: string; status?: number }): { body: { error: string; kind: string }; status: number } {
+  const status = res.status ?? 502;
+  const own = res.kind === "http" && (status === 404 || status === 409 || status === 422);
+  return { body: { error: own ? res.error : COMPARE_UNAVAILABLE, kind: own ? "http" : (res.kind ?? "unknown") }, status };
+}
+
+/** The first evaluated week's column header: "Next week" only when the comparison starts at the earliest open week. */
+export function shortTermLabel(ev: Pick<ScenarioCompareResponse["evaluation"], "short_term_week" | "start_week_overridden">): string {
+  if (ev.short_term_week === null) return "First week";
+  return ev.start_week_overridden ? `Week ${ev.short_term_week}` : "Next week";
+}
+
+/** The summary line's counts, in words; zero counts are left out and the two failures are told apart. */
+export function summaryText(s: ScenarioCompareResponse["summary"]): string {
+  const parts = [`${s.evaluated} of ${s.scenarios} evaluated`];
+  if (s.incomplete > 0) parts.push(`${s.incomplete} incomplete`);
+  if (s.stale > 0) parts.push(`${s.stale} out of date`);
+  if (s.invalid > 0) parts.push(`${s.invalid} not valid`);
+  if ((s.unavailable ?? 0) > 0) parts.push(`${s.unavailable} not evaluated`);
+  return parts.join(" · ");
 }
 
 /** The analyzer URL that reopens one scenario (both teams, both packages, its start week). Unscoped: callers add the league. */
@@ -269,7 +323,7 @@ export type ScenarioCompareResponse = {
     short_term_week: number | null; start_week_overridden: boolean; earliest_actionable_week: number | null };
   scenarios: ScenarioRow[];
   conflicts: { espn_player_id: number; scenarios: number[] }[];
-  summary: { scenarios: number; evaluated: number; incomplete: number; stale: number; invalid: number };
+  summary: { scenarios: number; evaluated: number; incomplete: number; stale: number; invalid: number; unavailable: number };
   projection_source: string | null;
   notes: string[];
   assumptions: string[];
