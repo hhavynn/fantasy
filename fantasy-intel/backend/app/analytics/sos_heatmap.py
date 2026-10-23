@@ -1,9 +1,12 @@
 """Position-specific strength-of-schedule heatmap (issue #188; read-only, contract sos-heatmap.v1).
 
-One grid per offensive position (QB, RB, WR, TE): rows are NFL offenses (or the players of a roster, the league's free
-agents or one player, each on his current NFL team), columns are the remaining fantasy weeks of one horizon (the rest
-of the regular season, or the fantasy-playoff weeks from the league's settings), and each cell is that week's opponent
-defense graded on the position's primary metric.
+One grid per offensive position (QB, RB, WR, TE), graded on that position's primary metric from
+schedule_intelligence. QB, WR and TE share one pass-defense metric (EPA allowed per eligible pass play), so their grids
+rank opponents identically; RB uses EPA allowed per designed rush. WR and TE cells also carry the target share the
+defense allowed to the position, as context only (never part of the grade). Rows are NFL offenses (or the players of a
+roster, the league's free agents or one player, each on his current NFL team), columns are the remaining fantasy weeks
+of one horizon (the rest of the regular season, or the fantasy-playoff weeks from the league's settings), and each cell
+is that week's opponent defense graded on the position's primary metric.
 
 Everything defensive comes from schedule_intelligence, unchanged: the same nflverse inputs (nfl_schedules,
 nfl_defense_week), the same presumed-complete rule, no lookahead (a week-W cell uses only the opponent's games before
@@ -19,8 +22,8 @@ week W), the same metric per position and the same rank bands. This module adds 
 Rules carried over: missing is never zero (a cell without evidence has no rank, value or difference, with the reason);
 an opponent with fewer than MIN_DEF_GAMES presumed-complete games, or a week with fewer than MIN_RANKED_DEFENSES
 rankable defenses, gets no grade at all; a week without a loaded NFL schedule, or a player without a current NFL team,
-gets no opponent. Ranks compare defenses within one position's metric only: a QB grid and an RB grid use different
-metrics and are not comparable. Nothing here is written, synced or fetched.
+gets no opponent. Ranks compare defenses on one metric only: the RB grid and the pass-defense grids (QB, WR, TE) use
+different metrics and are not comparable. Nothing here is written, synced or fetched.
 """
 
 from __future__ import annotations
@@ -41,12 +44,14 @@ from .trade_data import evaluation_start_week
 CONTRACT = "sos-heatmap.v1"
 HORIZONS = ("ros", "playoffs")
 VIEWS = ("teams", "roster", "free_agents")
-# Free agents per request, in FREE_AGENT_ORDER.
+# Free agents per request, in the order of FREE_AGENT_SORT (only the keys that had values are named).
 MAX_FREE_AGENTS = 40
-FREE_AGENT_ORDER = ("Available players: free agents or on waivers as the provider's last sync reported them (a provider "
-                    "that reports no waiver status lists every unrostered player as a free agent). Players with an NFL "
-                    "team come first, then by the provider's ownership share where synced, then by season fantasy "
-                    "points where synced, then by name.")
+FREE_AGENT_SCOPE = ("Available players: free agents or on waivers as the provider's last sync reported them (a provider "
+                    "that reports no waiver status lists every unrostered player as a free agent).")
+FREE_AGENT_SORT = {"nfl_team": "players with an NFL team first", "percent_owned": "the provider's ownership share",
+                   "season_points": "season fantasy points", "name": "name"}
+# Context shown beside a WR or TE cell (never part of the grade): the share of targets the defense allowed to the position.
+CONTEXT_METRIC = {"WR": "wr_target_share", "TE": "te_target_share"}
 GRADED = ("permissive", "middle", "tougher")
 _NFL_TEAM = re.compile(r"^[A-Z]{2,3}$")
 
@@ -158,8 +163,43 @@ def team_cell(team: str, week: int, sched: dict, defs: DefenseCutoffs, position:
             "rank": p["rank"] if graded else None, "ranked_defenses": p["ranked_defenses"],
             "value": p["value"], "baseline": baseline["value"], "delta": delta,
             "games": ev["games"], "plays": p["denominator"],
+            **({"context": _context(ev, position)} if position in CONTEXT_METRIC else {}),
             "through_week": ev["through_week"], "excluded_games": len(ev["excluded_weeks"]),
             "reason": reason}
+
+
+def _context(ev: dict, position: str) -> dict:
+    """The position's target share against this defense, as context only: it never changes the band, rank or difference."""
+    c = next(x for x in ev["metrics"] if x["metric"] == CONTEXT_METRIC[position])
+    return {"metric": c["metric"], "label": c["label"], "value": c["value"], "numerator": c["numerator"],
+            "denominator": c["denominator"], "missing_reason": c["missing_reason"] if c["value"] is None else None}
+
+
+def _and(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" and {items[-1]}"
+
+
+def comparison_note(position: str) -> str:
+    """Which positions share this grid's metric: QB, WR and TE are all graded on pass defense, so they rank opponents
+    identically; RB is graded on run defense."""
+    metric = PRIMARY_METRIC[position]
+    label = METRICS[metric]["label"]
+    same = [p for p in SKILL_POSITIONS if PRIMARY_METRIC[p] == metric]
+    other = sorted({PRIMARY_METRIC[p] for p in SKILL_POSITIONS} - {metric})
+    rule = (f"Each defense is ranked among defenses with at least {MIN_DEF_GAMES} presumed-complete games before the "
+            "week (rank 1 = most permissive).")
+    if len(same) > 1:
+        out = (f"The {_and(same)} grids all rank opponents on the same pass-defense metric, {label}, so they rank opponents "
+               f"identically: they are not separate per-position models. "
+               + " ".join(f"{_and([p for p in SKILL_POSITIONS if PRIMARY_METRIC[p] == o])} uses {METRICS[o]['label']}."
+                          for o in other) + f" {rule}")
+        if position in CONTEXT_METRIC:
+            out += (f" The share of targets each defense allowed to {position}s is shown beside the grade as context "
+                    "only; it does not change the grade.")
+        return out
+    return (f"The {position} grid ranks opponents on {label}, a different metric from the "
+            + _and([p for p in SKILL_POSITIONS if p != position])
+            + f" grids (which share {METRICS[PRIMARY_METRIC['QB']]['label']}), so it is not comparable with them. {rule}")
 
 
 def summarize(cells: list[dict]) -> dict:
@@ -191,9 +231,10 @@ def _rostered(con, lg: dict) -> dict[int, int]:
              "scoring_period = ?", [lg["league_id"], lg["season"], week])}
 
 
-def _free_agents(con, position: str, rostered: dict[int, int], nfl_team: str | None) -> tuple[list[dict], int]:
+def _free_agents(con, position: str, rostered: dict[int, int], nfl_team: str | None) -> tuple[list[dict], int, list[str]]:
     """Available players (FREEAGENT or WAIVERS, on no fantasy team, not in a roster snapshot) at the position: the
-    first MAX_FREE_AGENTS in FREE_AGENT_ORDER, and how many there are in all."""
+    first MAX_FREE_AGENTS in FREE_AGENT_SORT order, how many there are in all, and the sort keys that had values
+    (a provider without ownership shares, such as Sleeper, never gets ownership named as an order it did not use)."""
     params: list = [position]
     team_sql = ""
     if nfl_team:
@@ -201,13 +242,22 @@ def _free_agents(con, position: str, rostered: dict[int, int], nfl_team: str | N
         params.append(nfl_team)
     rows = fetch_dicts(con, f"""
         SELECT espn_player_id, full_name AS name, position, pro_team, injury_status, availability_status,
-               percent_owned, NULL AS lineup_slot_id
+               percent_owned, season_points, NULL AS lineup_slot_id
         FROM fantasy_players
         WHERE availability_status IN ('FREEAGENT', 'WAIVERS') AND coalesce(on_team_id, 0) = 0 AND position = ?{team_sql}
         ORDER BY pro_team IS NULL, percent_owned DESC NULLS LAST, season_points DESC NULLS LAST, full_name,
                  espn_player_id""", params)
     rows = [r for r in rows if r["espn_player_id"] not in rostered]
-    return rows[:MAX_FREE_AGENTS], len(rows)
+    keys = [k for k, used in (("nfl_team", any(r["pro_team"] is None for r in rows) and any(r["pro_team"] for r in rows)),
+                              ("percent_owned", any(r["percent_owned"] is not None for r in rows)),
+                              ("season_points", any(r["season_points"] is not None for r in rows)),
+                              ("name", True)) if used]
+    return rows[:MAX_FREE_AGENTS], len(rows), keys
+
+
+def free_agent_order_text(keys: list[str]) -> str:
+    parts = [FREE_AGENT_SORT[k] for k in keys]
+    return f"{FREE_AGENT_SCOPE} Ordered by {', then '.join(parts)}."
 
 
 def _player_row(p: dict, ident: dict, team_cells: dict[str, list[dict]], weeks: list[int], last_regular: int | None,
@@ -305,6 +355,7 @@ def build_sos_heatmap(con, position: str = "QB", horizon: str = "ros", view: str
 
     rostered = _rostered(con, lg)
     rows_total = None
+    order_keys = None
     if view_used == "teams":
         rows = [{"kind": "team", "nfl_team": t, "team_uncertain": False, "player": None, "notes": [],
                  "cells": team_cells[t], "summary": summarize(team_cells[t])}
@@ -317,7 +368,7 @@ def build_sos_heatmap(con, position: str = "QB", horizon: str = "ros", view: str
                        and (nfl_team is None or p["pro_team"] == nfl_team)]
             players.sort(key=lambda p: (p["name"] or "", p["espn_player_id"]))
         else:
-            players, rows_total = _free_agents(con, position, rostered, nfl_team)
+            players, rows_total, order_keys = _free_agents(con, position, rostered, nfl_team)
         ident = _identity(con, season, [p["espn_player_id"] for p in players])
         rows = [_player_row(p, ident[p["espn_player_id"]], team_cells, weeks, last_regular, rostered) for p in players]
     if rows_total is None:
@@ -340,7 +391,10 @@ def build_sos_heatmap(con, position: str = "QB", horizon: str = "ros", view: str
         "nfl_teams": nfl_teams,
         "position": position,
         "metric": {"key": metric, "label": m["label"], "unit": m["unit"], "kind": m["kind"],
-                   "numerator": m["numerator"], "denominator": m["denominator"], "definition": m["definition"]},
+                   "numerator": m["numerator"], "denominator": m["denominator"], "definition": m["definition"],
+                   "positions": [p for p in SKILL_POSITIONS if PRIMARY_METRIC[p] == metric]},
+        "context_metric": ({k: METRICS[CONTEXT_METRIC[position]][k] for k in ("label", "definition")}
+                           | {"key": CONTEXT_METRIC[position]}) if position in CONTEXT_METRIC else None,
         "horizon": hz,
         "window": {"espn_current_week": current, "first_actionable_week": window["evaluation_start_week"],
                    "uncertain": window.get("uncertain"), "warning": window.get("warning"),
@@ -350,7 +404,8 @@ def build_sos_heatmap(con, position: str = "QB", horizon: str = "ros", view: str
         "rows_total": rows_total,
         "rows_shown": len(rows),
         "free_agent_limit": MAX_FREE_AGENTS if view_used == "free_agents" else None,
-        "free_agent_order": FREE_AGENT_ORDER if view_used == "free_agents" else None,
+        "free_agent_order": free_agent_order_text(order_keys) if order_keys is not None else None,
+        "free_agent_order_keys": order_keys,
         "coverage": {"cells": len(cells), "scheduled": scheduled, "graded": graded},
         "source": {"name": SOURCE_NAME if has_values else None,
                    "available": has_values,
@@ -370,9 +425,7 @@ def build_sos_heatmap(con, position: str = "QB", horizon: str = "ros", view: str
         "min_games": MIN_DEF_GAMES,
         "min_ranked_defenses": MIN_RANKED_DEFENSES,
         "notes": [
-            f"Comparable only within {position}: each defense is ranked on {m['label']} among defenses with at "
-            f"least {MIN_DEF_GAMES} presumed-complete games before the week (rank 1 = most permissive). Other "
-            "positions use other metrics, so their grids are not comparable with this one.",
+            comparison_note(position),
             ROLE_NOTE, OBSERVATION_NOTE,
             "No lookahead: each week uses only the opponent's games presumed complete before that week; future weeks "
             "use every game presumed complete so far.",

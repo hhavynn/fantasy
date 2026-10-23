@@ -45,7 +45,9 @@ test("under-sampled defenses get no grade: each cell shows its sample, the sourc
   await loaded(page);
   const main = page.locator("main");
   await expect(rows(page)).toHaveCount(32);
-  await expect(main.getByText(/^Comparable only within QB: each defense is ranked on EPA allowed per eligible pass play/)).toBeVisible();
+  // QB, WR and TE share one pass-defense metric: the page says so instead of implying three position models.
+  await expect(main.getByText(/^The QB, WR and TE grids all rank opponents on the same pass-defense metric, EPA allowed per eligible pass play, so they rank opponents identically/)).toBeVisible();
+  await expect(main.getByText(/ranked on EPA allowed per eligible pass play · the same ranking for QB, WR and TE/)).toBeVisible();
   await expect(main.getByText("0 of 384", { exact: true })).toBeVisible();      // graded matchups
   // Every week cell of the first row: an opponent, "not graded" and the games sampled out of the three needed.
   const cells = rows(page).first().locator("td[title^='Week']");
@@ -58,8 +60,10 @@ test("under-sampled defenses get no grade: each cell shows its sample, the sourc
   }
   const title = await cells.first().getAttribute("title");
   expect(title).toMatch(/Not graded: only 2 presumed-complete game\(s\) sampled \(< 3\)\. Sample: 2 presumed-complete games, \d+ plays\./);
-  // No average rank anywhere: missing, not 0.
-  for (const avg of await rows(page).locator("td:nth-last-child(2)").allInnerTexts()) expect(avg.trim()).toBe("—");
+  // No graded week anywhere: the ▲/▼ week counts and the average rank are missing, never 0.
+  for (const n of [4, 3, 2]) {
+    for (const t of await rows(page).locator(`td:nth-last-child(${n})`).allInnerTexts()) expect(t.trim()).toBe("—");
+  }
   await expect(main.getByText(/Source: nflverse play-by-play aggregated per defense and week/)).toBeVisible();
   await expect(grid(page).locator("tfoot")).toContainText("Neutral baseline");
   const body = (await main.innerText()).toLowerCase();
@@ -83,7 +87,11 @@ test("position and horizon toggle from the URL; playoff weeks come from the leag
   await main.getByRole("navigation", { name: "Position" }).getByRole("link", { name: "RB", exact: true }).click();
   await expect(page).toHaveURL(/pos=RB&horizon=playoffs$/);
   await expect(main.getByRole("heading", { name: "RB strength of schedule: fantasy playoffs" })).toBeVisible();
-  await expect(main.getByText(/ranked on EPA allowed per designed rush · comparable only within RB/)).toBeVisible();
+  await expect(main.getByText(/ranked on EPA allowed per designed rush · RB only/)).toBeVisible();
+  await expect(main.getByText(/^The RB grid ranks opponents on EPA allowed per designed rush, a different metric from the QB, WR and TE grids/)).toBeVisible();
+  await main.getByRole("navigation", { name: "Position" }).getByRole("link", { name: "WR", exact: true }).click();
+  await expect(page).toHaveURL(/pos=WR&horizon=playoffs$/);
+  await expect(main.getByText(/the same ranking for QB, WR and TE · context only: Share of targets to WRs/)).toBeVisible();
   await noSideScroll(page);
 });
 

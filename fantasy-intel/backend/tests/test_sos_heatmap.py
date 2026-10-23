@@ -62,7 +62,43 @@ def test_each_position_has_its_own_grid_from_schedule_intelligence_evidence(tmp_
     # at opposite ends of the QB and RB grids.
     a, b = cell(row(qb, "BUF"), 9), cell(row(rb, "BUF"), 9)
     assert a["opponent"] == b["opponent"] and a["rank"] + b["rank"] == len(nfl.TEAMS) + 1
-    assert any("Comparable only within QB" in n for n in qb["notes"])
+    assert "same pass-defense metric" in qb["notes"][0] and "different metric" in rb["notes"][0]
+    con.close()
+
+
+def test_qb_wr_and_te_share_one_pass_defense_ranking_and_say_so(tmp_path):
+    """QB, WR and TE are graded on the same metric (schedule_intelligence.PRIMARY_METRIC), so their grids must be
+    identical in everything graded, and the copy must say so rather than claim a different metric per position."""
+    _, con = si_setup(tmp_path)
+    grids = {p: heat(con, position=p) for p in ("QB", "WR", "TE", "RB")}
+    graded = ("opponent", "label", "rank", "ranked_defenses", "value", "baseline", "delta", "games", "plays")
+    strip = lambda g: [[{k: c.get(k) for k in graded} for c in r["cells"]] for r in g["rows"]]   # noqa: E731
+    assert strip(grids["QB"]) == strip(grids["WR"]) == strip(grids["TE"])
+    assert sum(1 for r in grids["QB"]["rows"] for c in r["cells"] if c.get("rank") is not None) > 100
+    assert strip(grids["RB"]) != strip(grids["QB"])
+    for p in ("QB", "WR", "TE"):
+        g = grids[p]
+        assert g["metric"]["key"] == "pass_epa_per_play" and g["metric"]["positions"] == ["QB", "WR", "TE"]
+        note = g["notes"][0]
+        assert "The QB, WR and TE grids all rank opponents on the same pass-defense metric" in note
+        assert "EPA allowed per eligible pass play" in note and "rank opponents identically" in note
+        assert "Other positions use other metrics" not in note and "Comparable only within" not in note
+    assert grids["RB"]["metric"]["positions"] == ["RB"] and "different metric from the QB, WR and TE grids" in grids["RB"]["notes"][0]
+    con.close()
+
+
+def test_wr_and_te_cells_carry_target_share_as_context_only(tmp_path):
+    _, con = si_setup(tmp_path)
+    qb, wr, te = heat(con, position="QB"), heat(con, position="WR"), heat(con, position="TE")
+    assert qb["context_metric"] is None and all("context" not in c for r in qb["rows"] for c in r["cells"])
+    assert wr["context_metric"]["key"] == "wr_target_share" and te["context_metric"]["key"] == "te_target_share"
+    c = next(c for c in row(wr, "BUF")["cells"] if c["status"] == "scheduled")
+    games = c["games"]
+    i = nfl.TEAMS.index(c["opponent"])
+    assert c["context"]["denominator"] == 30 * games and c["context"]["numerator"] == (15 + i % 4) * games
+    assert c["context"]["value"] == pytest.approx((15 + i % 4) / 30)
+    assert "context only" in wr["notes"][0] and "does not change the grade" in wr["notes"][0]
+    assert (c["label"], c["rank"]) == (cell(row(qb, "BUF"), c["week"])["label"], cell(row(qb, "BUF"), c["week"])["rank"])
     con.close()
 
 
@@ -226,11 +262,29 @@ def test_free_agents_with_a_team_first_then_ownership_then_points_and_capped(tmp
     fa = heat(con, position="RB", view="free_agents")
     assert [r["player"]["espn_player_id"] for r in fa["rows"]] == [209, 904, 903, 902, 901]
     assert fa["rows_total"] == fa["rows_shown"] == 5 and "ownership share" in fa["free_agent_order"]
+    assert fa["free_agent_order_keys"] == ["nfl_team", "percent_owned", "season_points", "name"]
     monkeypatch.setattr("app.analytics.sos_heatmap.MAX_FREE_AGENTS", 2)
     capped = heat(con, position="RB", view="free_agents")
     assert [r["player"]["espn_player_id"] for r in capped["rows"]] == [209, 904]
     assert capped["rows_total"] == 5 and capped["rows_shown"] == 2
     assert heat(con, position="RB")["free_agent_order"] is None
+    con.close()
+
+
+def test_sleeper_shaped_free_agents_never_claim_an_ownership_order(tmp_path):
+    """The Sleeper sync writes percent_owned NULL for every player: the order must not name ownership."""
+    _, con = si_setup(tmp_path)
+    con.execute("UPDATE fantasy_players SET percent_owned = NULL")
+    con.execute("UPDATE fantasy_players SET season_points = NULL WHERE espn_player_id = 209")
+    con.execute("INSERT INTO fantasy_players (espn_player_id, full_name, position, pro_team, availability_status, on_team_id, "
+                "percent_owned, season_points) VALUES (905, 'Zed RB', 'RB', 'SF', 'FREEAGENT', 0, NULL, 40.0)")
+    fa = heat(con, position="RB", view="free_agents")
+    assert [r["player"]["espn_player_id"] for r in fa["rows"]] == [905, 209]
+    assert fa["free_agent_order_keys"] == ["season_points", "name"]
+    assert "ownership" not in fa["free_agent_order"] and fa["free_agent_order"].endswith("Ordered by season fantasy points, then name.")
+    con.execute("UPDATE fantasy_players SET season_points = NULL")
+    bare = heat(con, position="RB", view="free_agents")
+    assert bare["free_agent_order_keys"] == ["name"] and "points" not in bare["free_agent_order"].split("Ordered by")[1]
     con.close()
 
 

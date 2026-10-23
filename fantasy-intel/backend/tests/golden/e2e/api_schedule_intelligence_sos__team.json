@@ -88,6 +88,7 @@
     "week": 14
    }
   ],
+  "context_metric": null,
   "contract": "sos-heatmap.v1",
   "coverage": {
    "cells": 384,
@@ -96,6 +97,7 @@
   },
   "free_agent_limit": null,
   "free_agent_order": null,
+  "free_agent_order_keys": null,
   "horizon": {
    "final_scoring_period": 17,
    "first_actionable_week": 3,
@@ -149,6 +151,11 @@
    "kind": "mean",
    "label": "EPA allowed per eligible pass play",
    "numerator": "pass_epa_sum",
+   "positions": [
+    "QB",
+    "WR",
+    "TE"
+   ],
    "unit": "EPA/play"
   },
   "min_games": 3,
@@ -188,7 +195,7 @@
    "WAS"
   ],
   "notes": [
-   "Comparable only within QB: each defense is ranked on EPA allowed per eligible pass play among defenses with at least 3 presumed-complete games before the week (rank 1 = most permissive). Other positions use other metrics, so their grids are not comparable with this one.",
+   "The QB, WR and TE grids all rank opponents on the same pass-defense metric, EPA allowed per eligible pass play, so they rank opponents identically: they are not separate per-position models. RB uses EPA allowed per designed rush. Each defense is ranked among defenses with at least 3 presumed-complete games before the week (rank 1 = most permissive).",
    "A player's row uses his current NFL team for every remaining week. The grid describes the opponent defenses only: it says nothing about the player's role, usage or health, and future trades, releases and signings are not predicted.",
    "A defense's allowed numbers describe what offenses did against it; they also reflect the offenses it faced and game situations, and say nothing about an individual player's role or usage.",
    "No lookahead: each week uses only the opponent's games presumed complete before that week; future weeks use every game presumed complete so far."

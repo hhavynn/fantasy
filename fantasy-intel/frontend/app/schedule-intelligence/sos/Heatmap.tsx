@@ -4,7 +4,7 @@ import { TeamLink } from "@/components/TeamLink";
 import { Badge, Pos, Section, SortableTh, VisuallyHidden } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import {
-  GLYPH, describeCell, fmtDelta, fmtValue, isGraded, rowLinks, rowName, sampleText, sortValue, sosHref, where,
+  GLYPH, describeCell, fmtDelta, fmtValue, isGraded, metricScope, rowLinks, rowName, sampleText, sortValue, sosHref, tally, where,
   type SosCell, type SosHeatmap, type SosLabel, type SosRow, type SosState,
 } from "@/lib/sos-heatmap";
 import { sortRows, type SearchParams, type SortState } from "@/lib/sort";
@@ -78,6 +78,17 @@ function Links({ r, d, myTeamId }: { r: SosRow; d: SosHeatmap; myTeamId: number 
   );
 }
 
+/** Weeks in a band out of the graded weeks; with no graded week the count is unknown, never 0. */
+function Tally({ r, band }: { r: SosRow; band: "permissive" | "tougher" }) {
+  const t = tally(r, band);
+  return (
+    <td className={styles.num}>
+      {t ? <>{t.count} <small>of {t.graded} graded</small></>
+        : <span className="missing" title="No graded week in this horizon: the count is unknown, not 0">—</span>}
+    </td>
+  );
+}
+
 export function Heatmap({ d, state, sp, sort, myTeamId }: {
   d: SosHeatmap; state: SosState; sp: SearchParams; sort: SortState; myTeamId: number | null;
 }) {
@@ -93,7 +104,7 @@ export function Heatmap({ d, state, sp, sort, myTeamId }: {
   return (
     <Section
       title={`${d.position} strength of schedule: ${d.horizon.label.toLowerCase()}`}
-      subtitle={<>Opponent defenses ranked on {d.metric.label} · comparable only within {d.position}</>}
+      subtitle={<>Opponent defenses ranked on {d.metric.label} · {metricScope(d)}{d.context_metric ? ` · context only: ${d.context_metric.label}` : ""}</>}
       flush
       actions={
         <ul className={styles.legend} aria-label="Legend">
@@ -103,7 +114,7 @@ export function Heatmap({ d, state, sp, sort, myTeamId }: {
         </ul>
       }
       footnote={<>
-        Each cell: the opponent (vs = home, @ = away), its rank among {d.position} defenses (#1 = most permissive so far)
+        Each cell: the opponent (vs = home, @ = away), its rank among defenses on this metric (#1 = most permissive so far)
         and its difference from the neutral baseline in {kind === "rate" ? "percentage points" : d.metric.unit}. A cell
         that is not graded shows the games sampled against the {d.min_games} needed. {source}{" "}
         {d.coverage.graded} of {d.coverage.scheduled} matchups in view are graded.
@@ -135,8 +146,8 @@ export function Heatmap({ d, state, sp, sort, myTeamId }: {
               <tr key={r.player ? `p${r.player.espn_player_id}` : `t${r.nfl_team}`}>
                 <Who r={r} d={d} state={state} sp={sp} />
                 {r.cells.map((c) => <Cell key={c.week} c={c} d={d} edge={c.week === firstPlayoff} />)}
-                <td className={styles.num}>{r.summary.counts.permissive}</td>
-                <td className={styles.num}>{r.summary.counts.tougher}</td>
+                <Tally r={r} band="permissive" />
+                <Tally r={r} band="tougher" />
                 <td className={styles.num}>
                   {r.summary.average_rank !== null
                     ? <>{r.summary.average_rank.toFixed(1)} <small>({r.summary.graded_weeks} of {r.summary.weeks} wk)</small></>

@@ -42,6 +42,8 @@ export type SosCell = {
   plays?: number | null;
   through_week?: number | null;
   excluded_games?: number;
+  /** WR and TE only: the position's target share against this defense, context only (never part of the grade). */
+  context?: { metric: string; label: string; value: number | null; numerator: number | null; denominator: number | null; missing_reason: string | null };
 };
 
 export type SosSummary = {
@@ -85,7 +87,9 @@ export type SosHeatmap = {
   teams: { team_id: number; name: string | null; abbrev: string | null; is_mine: boolean }[];
   nfl_teams: string[];
   position: SosPosition;
-  metric: { key: string; label: string; unit: string; kind: "mean" | "rate"; numerator: string; denominator: string; definition: string };
+  /** `positions`: every position graded on this same metric (QB, WR and TE share pass defense). */
+  metric: { key: string; label: string; unit: string; kind: "mean" | "rate"; numerator: string; denominator: string; definition: string; positions: SosPosition[] };
+  context_metric: { key: string; label: string; definition: string } | null;
   horizon: {
     key: SosHorizon; label: string; weeks: number[]; known: boolean; reason: string | null; source: string;
     regular_season_through: number | null; playoff_weeks: number[] | null; final_scoring_period: number; first_actionable_week: number | null;
@@ -97,6 +101,7 @@ export type SosHeatmap = {
   rows_shown: number;
   free_agent_limit: number | null;
   free_agent_order: string | null;
+  free_agent_order_keys: string[] | null;
   coverage: { cells: number; scheduled: number; graded: number };
   source: {
     name: string | null; available: boolean; reason: string | null; through_week: number | null;
@@ -214,11 +219,27 @@ export function describeCell(c: SosCell, d: Pick<SosHeatmap, "metric" | "min_gam
   if (c.status !== "scheduled") return `${wk}: no opponent shown (${c.reason ?? "unknown"}).`;
   const opp = `${c.home ? "home vs" : "away at"} ${c.opponent}`;
   const sample = `${c.games ?? 0} presumed-complete ${c.games === 1 ? "game" : "games"}${c.plays ? `, ${c.plays} plays` : ""}`;
-  if (!isGraded(c)) return `${wk}: ${opp}. Not graded: ${c.reason ?? "no evidence"}. Sample: ${sample}.`;
+  if (!isGraded(c)) return `${wk}: ${opp}. Not graded: ${c.reason ?? "no evidence"}. Sample: ${sample}.${contextText(c)}`;
   const value = fmtValue(c.value, d.metric.kind);
   const delta = fmtDelta(c.delta, d.metric.kind);
   return `${wk}: ${opp}. ${c.label_text}: rank ${c.rank} of ${c.ranked_defenses} on ${d.metric.label}`
-    + ` (${value}${delta ? `, ${delta} from the neutral baseline` : ""}). Sample: ${sample}.`;
+    + ` (${value}${delta ? `, ${delta} from the neutral baseline` : ""}). Sample: ${sample}.${contextText(c)}`;
+}
+
+/** The WR/TE target-share context, said to be context only; empty when the cell has none. */
+export function contextText(c: SosCell): string {
+  const x = c.context;
+  if (!x) return "";
+  if (x.value === null) return ` Context only, not part of the grade: ${x.label} unavailable (${x.missing_reason ?? "no data"}).`;
+  return ` Context only, not part of the grade: ${x.label} ${(x.value * 100).toFixed(1)}%`
+    + `${x.numerator !== null && x.denominator !== null ? ` (${x.numerator} of ${x.denominator} targets)` : ""}.`;
+}
+
+/** Which positions a grid's ranking applies to, in words: "the same ranking for QB, WR and TE" or "RB only". */
+export function metricScope(d: Pick<SosHeatmap, "metric" | "position">): string {
+  const ps = d.metric.positions?.length ? d.metric.positions : [d.position];
+  if (ps.length === 1) return `${ps[0]} only`;
+  return `the same ranking for ${ps.slice(0, -1).join(", ")} and ${ps[ps.length - 1]}`;
 }
 
 /** The short sample line of a cell that is not graded: the games behind it against the minimum. */
@@ -244,11 +265,18 @@ export function rowName(r: SosRow): string {
 
 export type SortKey = (typeof SORT_KEYS)[number];
 
+/** Weeks in a band out of the graded weeks, or null when no week was graded (the count is unknown, not 0). */
+export function tally(r: SosRow, band: "permissive" | "tougher"): { count: number; graded: number } | null {
+  if (r.summary.graded_weeks === 0) return null;
+  return { count: r.summary.counts[band], graded: r.summary.graded_weeks };
+}
+
 /** The value a row sorts by. Missing averages stay missing (sorted last), never 0. */
 export function sortValue(r: SosRow, key: string): string | number | null {
   switch (key) {
-    case "permissive": return r.summary.counts.permissive;
-    case "tougher": return r.summary.counts.tougher;
+    // A row with no graded week has unknown counts, not zero: it sorts last in both directions.
+    case "permissive": return tally(r, "permissive")?.count ?? null;
+    case "tougher": return tally(r, "tougher")?.count ?? null;
     case "avg": return r.summary.average_rank;
     case "graded": return r.summary.graded_weeks;
     default: return rowName(r);
@@ -284,7 +312,11 @@ export function rowLinks(r: SosRow, position: SosPosition, myTeamId: number | nu
       trade: null,
     };
   }
-  const own = myTeamId === null || p.fantasy_team_id === myTeamId;
+  // With no viewer team the analyzer opens on the owner's side, under a neutral label (never "Trade away").
+  if (myTeamId === null) {
+    return { profile, waivers: null, trade: { href: `/trades?ta=${p.fantasy_team_id}&a=${p.espn_player_id}`, label: "Trade analyzer" } };
+  }
+  const own = p.fantasy_team_id === myTeamId;
   const href = own ? `/trades?ta=${p.fantasy_team_id}&a=${p.espn_player_id}`
     : `/trades?ta=${myTeamId}&tb=${p.fantasy_team_id}&b=${p.espn_player_id}`;
   return { profile, waivers: null, trade: { href, label: own ? "Trade away" : "Trade for" } };

@@ -151,7 +151,7 @@ function Summary({ d }: { d: SosHeatmap }) {
       <Stat label="Neutral baseline" value={firstBaseline ? fmtValue(firstBaseline.value, d.metric.kind) : "—"}
         note={firstBaseline ? `week ${firstBaseline.week}, pooled over ${firstBaseline.ranked_defenses} defenses` : (d.baselines[0]?.reason ?? "no week in view")} />
       <Stat label="Most permissive weeks" value={top ? rowName(top) : "—"}
-        note={top ? `${top.summary.counts.permissive} of ${top.summary.weeks} ${plural(top.summary.weeks, "week")}` : "no graded permissive week in view"} />
+        note={top ? `${top.summary.counts.permissive} of ${top.summary.graded_weeks} graded ${plural(top.summary.graded_weeks, "week")}` : "no graded permissive week in view"} />
       <Stat label="Rows" value={d.query.view === "player" ? "One player" : VIEW_LABEL[d.query.view]}
         note={`${d.rows_shown} shown${d.rows_total > d.rows_shown ? ` of ${d.rows_total}` : ""}`} />
     </StatStrip>

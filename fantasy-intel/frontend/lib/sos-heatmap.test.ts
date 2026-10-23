@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  describeCell, fmtDelta, fmtValue, parseSosState, rowLinks, sampleText, sortValue, sosApiPath, sosHref, weeksText,
-  type SosCell, type SosRow,
+  contextText, describeCell, fmtDelta, fmtValue, metricScope, parseSosState, rowLinks, sampleText, sortValue, sosApiPath,
+  sosHref, tally, weeksText, type SosCell, type SosRow,
 } from "./sos-heatmap.ts";
+import { sortRows } from "./sort.ts";
 
-const META = { metric: { key: "pass_epa_per_play", label: "EPA allowed per eligible pass play", unit: "EPA/play", kind: "mean" as const, numerator: "pass_epa_sum", denominator: "pass_plays", definition: "" }, min_games: 3 };
+const META = { metric: { key: "pass_epa_per_play", label: "EPA allowed per eligible pass play", unit: "EPA/play", kind: "mean" as const, numerator: "pass_epa_sum", denominator: "pass_plays", definition: "", positions: ["QB", "WR", "TE"] as ("QB" | "RB" | "WR" | "TE")[] }, min_games: 3 };
 
 const graded: SosCell = {
   week: 9, phase: "regular", status: "scheduled", label: "permissive", label_text: "Observed more permissive", reason: null,
@@ -107,4 +108,35 @@ test("decision links: profile, waivers for an available player, the analyzer for
   assert.deepEqual(rowLinks(row({ player: null, kind: "team" }), "WR", 2), {
     profile: null, waivers: { href: "/waivers?pos=WR", label: "WR waivers" }, trade: { href: "/trades/values?pos=WR", label: "WR trade values" },
   });
+});
+
+test("with no graded week the ▲/▼ counts are unknown (null, sorted last), otherwise out of the graded weeks", () => {
+  const none = row({ summary: { ...row().summary, counts: { ...row().summary.counts, permissive: 0, tougher: 0 }, graded_weeks: 0, average_rank: null } });
+  assert.equal(tally(none, "permissive"), null);
+  assert.equal(tally(none, "tougher"), null);
+  assert.equal(sortValue(none, "permissive"), null);
+  assert.equal(sortValue(none, "tougher"), null);
+  assert.deepEqual(tally(row(), "permissive"), { count: 1, graded: 1 });
+  assert.deepEqual(tally(row(), "tougher"), { count: 0, graded: 1 });           // a measured 0 of 1 graded week
+  // The default sort (permissive, descending) never ranks unknown zeros above or among measured counts.
+  const zero = row({ nfl_team: "BUF", player: null, kind: "team",
+    summary: { ...row().summary, counts: { ...row().summary.counts, permissive: 0 }, graded_weeks: 2 } });
+  const order = sortRows([none, zero, row()], (r) => sortValue(r, "permissive"), "desc").map((r) => r.summary.graded_weeks);
+  assert.deepEqual(order, [1, 2, 0]);
+  assert.deepEqual(sortRows([none, zero, row()], (r) => sortValue(r, "permissive"), "asc").map((r) => r.summary.graded_weeks), [2, 1, 0]);
+});
+
+test("without a viewer team the analyzer link is neutral, never 'Trade away'", () => {
+  assert.deepEqual(rowLinks(row(), "RB", null).trade, { href: "/trades?ta=1&a=201", label: "Trade analyzer" });
+});
+
+test("the grid names which positions share its ranking; WR/TE context is said to be context only", () => {
+  const meta = { position: "WR" as const, metric: { ...META.metric, positions: ["QB", "WR", "TE"] as ("QB" | "WR" | "TE")[] } };
+  assert.equal(metricScope(meta), "the same ranking for QB, WR and TE");
+  assert.equal(metricScope({ position: "RB", metric: { ...META.metric, positions: ["RB"] } }), "RB only");
+  const ctx = { ...graded, context: { metric: "wr_target_share", label: "Share of targets to WRs", value: 0.5, numerator: 120, denominator: 240, missing_reason: null } };
+  assert.equal(contextText(ctx), " Context only, not part of the grade: Share of targets to WRs 50.0% (120 of 240 targets).");
+  assert.match(describeCell(ctx, META), /Sample: 8 presumed-complete games, 320 plays\. Context only, not part of the grade/);
+  assert.equal(contextText(graded), "");
+  assert.match(contextText({ ...graded, context: { ...ctx.context, value: null, numerator: null, denominator: null, missing_reason: "no targets" } }), /unavailable \(no targets\)/);
 });
