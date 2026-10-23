@@ -1,11 +1,13 @@
-"""Read-only Weekly League Recap endpoint: no writes, no syncs, no ESPN calls."""
+"""Read-only Weekly League Recap endpoints: no writes, no syncs, no ESPN calls."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
+from ..analytics import decision_feedback as dfb
 from ..analytics.weekly_recap import NotFound, NotSynced, build_weekly_recap, load_recap_data
 from .deps import db
+from .leagues_v2 import NOT_FOUND
 
 router = APIRouter(prefix="/api", tags=["weekly recap"])
 
@@ -17,6 +19,31 @@ def weekly_recap(week: int | None = Query(None, ge=1, description="Matchup perio
     with db() as con:
         try:
             return build_weekly_recap(load_recap_data(con, week))
+        except NotSynced as err:
+            raise HTTPException(503, str(err))
+        except NotFound as err:
+            raise HTTPException(404, str(err))
+
+
+@router.get("/weekly-recap/feedback")
+def weekly_recap_feedback(request: Request,
+                          week: int | None = Query(None, ge=1, description="Matchup period; default the latest completed"),
+                          source: str | None = Query(None, description="espn | independent; default the league's own")):
+    """Decision feedback for the viewer's OWN team (app/analytics/decision_feedback.py): the start/sit calls implied by
+    inputs archived before kickoff, graded against the week's outcomes, plus the team's season to date.
+
+    The route takes no team. It reads fantasy_teams.is_mine: the signed-in viewer's saved team on /v2 (the owner's
+    team on the laptop). A request naming any team_id gets the same 404 as an unknown league, so the answer always
+    follows the viewer's own saved team and its cache entry (the perspective is part of the key). This is a
+    perspective rule, not an access control: a member may save any team of a league they can open, and everything
+    graded here comes from tables any member of that league can already read."""
+    if "team_id" in request.query_params:
+        raise HTTPException(404, NOT_FOUND)
+    if source is not None and source.lower() not in dfb.SOURCES:
+        raise HTTPException(422, f"source must be one of {', '.join(dfb.SOURCES)}")
+    with db() as con:
+        try:
+            return dfb.build_feedback(dfb.load_feedback_data(con, week, source))
         except NotSynced as err:
             raise HTTPException(503, str(err))
         except NotFound as err:

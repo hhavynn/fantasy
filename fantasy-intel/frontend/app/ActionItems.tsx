@@ -2,7 +2,7 @@ import Link from "@/components/LeagueLink";
 import { Notice, ProvenanceBadge, Section, ToneIcon, Verdict } from "@/components/ui";
 import { joinNames } from "@/lib/action-items";
 import type { SignalProvenance } from "@/lib/signal-provenance";
-import type { WeeklyDecision, WeeklyHub } from "@/lib/weekly-decisions";
+import { hubVerdict, staleNote, type WeeklyDecision, type WeeklyHub } from "@/lib/weekly-decisions";
 import { ToolShortcuts } from "./ToolShortcuts";
 import styles from "./home.module.css";
 
@@ -19,47 +19,28 @@ function Evidence({ signals }: { signals: readonly SignalProvenance[] }) {
 
 /**
  * The one next step, as the page's Verdict: the highest-priority decision that can be acted on now. Without one it
- * says why: nothing loaded, some sources did not load (not an all-clear), only things to know, or nothing flagged.
+ * says why (`hubVerdict`): nothing loaded, some sources did not load or called their data incomplete (not an
+ * all-clear), only things to know, or nothing flagged.
  */
 export function NextStep({ hub }: { hub: WeeklyHub }) {
-  const { primary: p, unavailable, groups, context } = hub;
+  const { primary: p, context } = hub;
   const week = context.week ? `Week ${context.week}` : "This week";
   if (p) {
+    const stale = staleNote(p);
     return (
       <Verdict tone={p.tone} eyebrow={`Next step · ${week} · ${AREA[p.category]}`} headline={p.title} className={styles.next}
                actions={<Link className={styles.itemLink} href={p.href}>{p.cta} →</Link>}>
         <p>{p.reason}</p>
+        {stale ? <p>{stale}</p> : null}
         <Evidence signals={p.evidence.signals} />
       </Verdict>
     );
   }
-  if (unavailable.length === 4) {
-    return (
-      <Verdict tone="negative" eyebrow={week} headline="Before-kickoff checks unavailable" className={styles.next}>
-        <p>None of the sources behind the decisions loaded ({joinNames(unavailable)}), so nothing is recommended.</p>
-      </Verdict>
-    );
-  }
-  if (unavailable.length > 0) {
-    return (
-      <Verdict tone="caution" eyebrow={week} headline="Nothing to act on in what loaded" className={styles.next}>
-        <p>Couldn&apos;t check {joinNames(unavailable)}, so this is not an all-clear.</p>
-        <Evidence signals={hub.signals} />
-      </Verdict>
-    );
-  }
-  if (groups.length > 0) {
-    return (
-      <Verdict tone="info" eyebrow={week} headline="No moves flagged before kickoff" className={styles.next}>
-        <p>Nothing below asks for a change; it is worth knowing before kickoff.</p>
-        <Evidence signals={hub.signals} />
-      </Verdict>
-    );
-  }
+  const v = hubVerdict(hub)!;
   return (
-    <Verdict tone="positive" eyebrow={week} headline="Lineup is set" className={styles.next}>
-      <p>No swaps, unavailable starters, waiver pickups or trade signals are flagged{context.week ? ` for week ${context.week}` : ""}.</p>
-      <Evidence signals={hub.signals} />
+    <Verdict tone={v.tone} eyebrow={week} headline={v.headline} className={styles.next}>
+      <p>{v.body}</p>
+      {v.showSignals ? <Evidence signals={hub.signals} /> : null}
     </Verdict>
   );
 }
@@ -86,7 +67,7 @@ function DecisionRow({ d }: { d: WeeklyDecision }) {
  * week; a failed source is named, and overflow links to the page that holds it.
  */
 export function ActionItems({ hub }: { hub: WeeklyHub }) {
-  const { primary, groups, more, unavailable, context } = hub;
+  const { primary, groups, more, unavailable, partial, context } = hub;
   const count = groups.reduce((n, g) => n + g.decisions.length, 0);
   return (
     <Section title="Before kickoff" flush className={styles.actionCard}
@@ -114,6 +95,11 @@ export function ActionItems({ hub }: { hub: WeeklyHub }) {
       {primary && unavailable.length > 0 ? (
         <Notice tone="caution" className={styles.unavailable} title={`Couldn't check ${joinNames(unavailable)}`}>
           Decisions from those sources are missing from this list.
+        </Notice>
+      ) : null}
+      {primary && partial.length > 0 ? (
+        <Notice tone="caution" className={styles.unavailable} title={`${joinNames(partial.map((x) => x.source))} data is incomplete`}>
+          {partial.map((x) => x.reason).join(" ")}
         </Notice>
       ) : null}
       <ToolShortcuts ctx={context} />

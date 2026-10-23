@@ -55,10 +55,26 @@ export type TimelinePlayer = {
   events: TimelineEvent[];
 };
 
+/** A source's licence: the credit to show, the licence text and the licensor (nflverse data is CC BY 4.0). */
+export type SourceLicense = { name: string; url: string; source_url: string; credit: string };
+
 export type TimelineSource = {
   key: string; type: SourceType; label: string; url: string | null; available: boolean | null;
   retrieved_at: string | null; publication_time: string; text: string;
+  /** Absent from responses built before #186's attribution: treated as no licence to credit. */
+  license?: SourceLicense | null;
 };
+
+/** Each distinct licence the sources carry, once, in source order: the credits the page must show. */
+export function licenseCredits(sources: TimelineSource[]): SourceLicense[] {
+  const seen = new Set<string>();
+  return sources.flatMap((s) => {
+    const l = s.license;
+    if (!l || seen.has(l.credit)) return [];
+    seen.add(l.credit);
+    return [l];
+  });
+}
 
 export type TimelineNotice = { tone: "info" | "caution" | "negative"; code: string; text: string };
 

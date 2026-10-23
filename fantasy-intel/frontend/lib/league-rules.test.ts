@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  eligibleText, groupRules, isLeagueRules, pointsText, ruleDetail, rosterSummary, rulesHeadline, statusCounts, statusLabel,
+  capturedAge, eligibleText, groupRules, isLeagueRules, pointsText, ruleDetail, rosterSummary, rulesHeadline, statusCounts, statusLabel,
   unmappedValue, type LeagueRules, type RulesSlot, type ScoringRule,
 } from "./league-rules.ts";
 
@@ -100,4 +100,12 @@ test("unmapped values are shown verbatim, and a withheld structured value stays 
   assert.equal(unmappedValue(false), "false");
   assert.equal(unmappedValue("ROLLING"), "ROLLING");
   assert.equal(unmappedValue(null), null);
+});
+
+test("the capture time is shown, or said to be unknown, never left out (#168 R1)", () => {
+  const fmt = (iso: string) => `at ${iso}`;
+  assert.equal(capturedAge("2026-10-20T12:00:00Z", fmt), "at 2026-10-20T12:00:00Z");
+  assert.equal(capturedAge(null, fmt), "age unknown");
+  assert.equal(capturedAge(undefined, fmt), "age unknown");
+  assert.equal(capturedAge("", fmt), "age unknown");
 });

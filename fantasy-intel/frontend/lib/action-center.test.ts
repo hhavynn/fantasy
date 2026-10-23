@@ -25,12 +25,12 @@ const sig = { signal: "league", label: "League", source: "espn", captured_at: "2
 const prov = { contract: "signal-provenance.v1", signals: [sig] };
 
 function ready(n: number, { roster = [starter(1)], decisions = [] as unknown[], players = {} as Record<string, unknown>, next = null as string | null,
-  stale = false, startSit = true } = {}) {
+  stale = false, startSit = true, status = "optimal" } = {}) {
   return {
     league: league(n), state: "ready", reason: null, stale, degraded: stale ? "slow" : null,
     versions: { data_version: "v1", global_version: "g1" }, team: { team_id: 3, name: `Team ${n}` }, week: 7,
     overview: { league: {}, team: { team_id: 3 }, roster, provenance: prov },
-    start_sit: startSit ? { scoring_period: 7, summary: { starters_count: 9, status: "optimal" }, decisions, projection_source: "ESPN", provenance: prov } : null,
+    start_sit: startSit ? { scoring_period: 7, summary: { starters_count: 9, status }, decisions, projection_source: "ESPN", provenance: prov } : null,
     lock: { next_kickoff_utc: next, starters: { unlocked: 1, locked: 0, unknown: 0, no_game: 0 }, players, rule: { value: "individual_game", display: "Each player locks at his own game's kickoff", reason: null } },
   };
 }
@@ -191,4 +191,13 @@ test("a week without projections is no projection source in the decision context
   assert.equal(ctx("Independent model").projectionSource, "ours");
   assert.equal(ctx("ESPN").projectionSource, "espn");
   assert.equal(projectionSourceOf(NO_PROJECTIONS), null);
+});
+
+test("a league whose Start/Sit projections are incomplete is partial, never in the nothing-to-do tier (#165)", () => {
+  const p = parse(payload([ready(1, { status: "incomplete_data" }), ready(2)]));
+  const [partial, clear] = p.leagues.map(buildCard);
+  assert.deepEqual(partial.partial.map((x) => x.source), ["Start/Sit"]);
+  assert.deepEqual(clear.partial, []);
+  assert.equal(partial.decisions.length, 0);
+  assert.deepEqual(rankCards([clear, partial]).map((c) => c.name), ["League 1", "League 2"]);
 });

@@ -1,0 +1,6029 @@
+// /api/screener
+{
+ "body": {
+  "contract": "screener/v1",
+  "counts": {
+   "below_min_games": 0,
+   "below_min_routes": 0,
+   "incomplete": 0,
+   "matched": 38,
+   "not_matched": 0,
+   "ownership_excluded": 0,
+   "ownership_unknown": 37,
+   "pool": 38,
+   "routes_unknown": 0,
+   "shown": 38
+  },
+  "data": {
+   "cutoffs": {
+    "air_yards_share": 7,
+    "backfield_share": 7,
+    "carries_pg": 7,
+    "fpoe_pg": 7,
+    "opportunities_pg": 7,
+    "ppr_pg": 7,
+    "route_participation": null,
+    "routes_pg": null,
+    "rz_carries_pg": 7,
+    "rz_opportunities_pg": 7,
+    "rz_targets_pg": 7,
+    "snap_share": 7,
+    "snaps_pg": 7,
+    "target_share": 7,
+    "targets_pg": 7,
+    "team_rush_share": 7,
+    "xfp_pg": 7
+   },
+   "latest_week": 7,
+   "nfl_synced_at": "<masked>",
+   "route_data": {
+    "note": "No route data is imported for this window: route participation, routes per game and min_routes are unavailable (never 0).",
+    "providers": [],
+    "rows": 0,
+    "updated_at": null
+   },
+   "scoring_basis": "nflverse full PPR (1 point per reception); xFP is nflverse ffopportunity expected full-PPR points",
+   "season": 2026,
+   "team_totals_source": "player_week_usage",
+   "weeks_with_data": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ],
+   "window": {
+    "from": 1,
+    "last": null,
+    "to": 7
+   },
+   "xfp_through_week": 7
+  },
+  "expression": null,
+  "incomplete": [],
+  "incomplete_truncated": false,
+  "limits": {
+   "default_limit": 50,
+   "groups": [
+    "A",
+    "B",
+    "C",
+    "D"
+   ],
+   "incomplete_cap": 50,
+   "max_filters": 8,
+   "max_groups": 4,
+   "max_last": 8,
+   "max_limit": 100,
+   "max_min_games": 18,
+   "max_min_routes": 1000,
+   "max_week": 18,
+   "missing": "A condition on a missing metric is unknown; an unknown screen result excludes the row and reports it as incomplete. A metric a position does not have is false for that position.",
+   "ops": {
+    "gt": ">",
+    "gte": "≥",
+    "lt": "<",
+    "lte": "≤"
+   },
+   "owner": [
+    "any",
+    "available",
+    "rostered"
+   ],
+   "percentile_min_pool": 5,
+   "positions": [
+    "WR",
+    "RB",
+    "TE"
+   ],
+   "precedence": "Filters in the same group are combined with AND; groups are combined with OR.",
+   "rounding": "Values are rounded to 2 decimals and filters compare the rounded value.",
+   "sort_special": [
+    "name",
+    "games"
+   ]
+  },
+  "metrics": [
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "Share of the team's offensive snaps the player was on the field for, averaged over his games with a snap record.",
+    "denominator": "the team's offensive snaps in each game; the mean of the weekly shares",
+    "inputs": [
+     "offense_pct"
+    ],
+    "key": "snap_share",
+    "label": "Snap share",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Snap %",
+    "source": "nflverse snap counts (Pro Football Reference)",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "Offensive snaps per game played.",
+    "denominator": "games with a snap record",
+    "inputs": [
+     "offense_snaps"
+    ],
+    "key": "snaps_pg",
+    "label": "Offensive snaps per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Snaps/G",
+    "source": "nflverse snap counts (Pro Football Reference)",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "Share of pass plays the player ran a route on, as the authorized import reports it. Never estimated from snaps.",
+    "denominator": "provider-defined (usually team dropbacks); the mean of the weekly values",
+    "inputs": [
+     "route_participation"
+    ],
+    "key": "route_participation",
+    "label": "Route participation",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Route %",
+    "source": "authorized external utilization import (missing when none is imported)",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     80
+    ],
+    "definition": "Routes run per game, from the authorized import.",
+    "denominator": "games with imported route data",
+    "inputs": [
+     "routes"
+    ],
+    "key": "routes_pg",
+    "label": "Routes per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Routes/G",
+    "source": "authorized external utilization import (missing when none is imported)",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     30
+    ],
+    "definition": "Targets per game played.",
+    "denominator": "games played",
+    "inputs": [
+     "targets"
+    ],
+    "key": "targets_pg",
+    "label": "Targets per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Tgt/G",
+    "source": "nflverse weekly player stats",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "share",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "The player's targets over his team's targets, summed over the same games.",
+    "denominator": "the team's targets in the same games (sum of the player's targets / sum of the team's)",
+    "inputs": [
+     "targets",
+     "team_targets"
+    ],
+    "key": "target_share",
+    "label": "Target share",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Tgt %",
+    "source": "nflverse weekly player stats",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "share",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "The player's intended air yards over his team's, summed over the same games.",
+    "denominator": "the team's air yards in the same games (sums)",
+    "inputs": [
+     "air_yards",
+     "team_air_yards"
+    ],
+    "key": "air_yards_share",
+    "label": "Air-yard share",
+    "positions": [
+     "WR",
+     "TE"
+    ],
+    "short": "Air %",
+    "source": "nflverse weekly player stats",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "share",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "The player's rush plays over all of his team's rush plays.",
+    "denominator": "the team's rush plays in the same games, quarterback runs and scrambles included, kneels excluded",
+    "inputs": [
+     "rush_attempts",
+     "team_rush_attempts"
+    ],
+    "key": "team_rush_share",
+    "label": "Team rush share",
+    "positions": [
+     "RB"
+    ],
+    "short": "Rush %",
+    "source": "nflverse play-by-play",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "share",
+    "bounds": [
+     0,
+     100
+    ],
+    "definition": "The player's designed rushes over all running-back designed rushes on his team.",
+    "denominator": "the team's running-back designed rushes in the same games",
+    "inputs": [
+     "designed_rushes",
+     "team_rb_carries"
+    ],
+    "key": "backfield_share",
+    "label": "Backfield share",
+    "positions": [
+     "RB"
+    ],
+    "short": "Backfield %",
+    "source": "nflverse play-by-play",
+    "unit": "percent",
+    "unit_label": "%"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     40
+    ],
+    "definition": "Official carries per game played.",
+    "denominator": "games played",
+    "inputs": [
+     "carries"
+    ],
+    "key": "carries_pg",
+    "label": "Carries per game",
+    "positions": [
+     "RB"
+    ],
+    "short": "Car/G",
+    "source": "nflverse weekly player stats",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     50
+    ],
+    "definition": "Carries plus targets per game played.",
+    "denominator": "games played",
+    "inputs": [
+     "opportunities"
+    ],
+    "key": "opportunities_pg",
+    "label": "Carries + targets per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "Opp/G",
+    "source": "nflverse weekly player stats",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean_sum",
+    "bounds": [
+     0,
+     20
+    ],
+    "definition": "Targets plus designed rushes inside the opponent's 20, per game.",
+    "denominator": "games with play-by-play red-zone counts",
+    "inputs": [
+     "rz_targets",
+     "rz_carries"
+    ],
+    "key": "rz_opportunities_pg",
+    "label": "Red-zone opportunities per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "RZ opp/G",
+    "source": "nflverse play-by-play",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     15
+    ],
+    "definition": "Targets inside the opponent's 20, per game.",
+    "denominator": "games with play-by-play red-zone counts",
+    "inputs": [
+     "rz_targets"
+    ],
+    "key": "rz_targets_pg",
+    "label": "Red-zone targets per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "RZ tgt/G",
+    "source": "nflverse play-by-play",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     15
+    ],
+    "definition": "Designed rushes inside the opponent's 20, per game.",
+    "denominator": "games with play-by-play red-zone counts",
+    "inputs": [
+     "rz_carries"
+    ],
+    "key": "rz_carries_pg",
+    "label": "Red-zone carries per game",
+    "positions": [
+     "RB"
+    ],
+    "short": "RZ car/G",
+    "source": "nflverse play-by-play",
+    "unit": "per_game",
+    "unit_label": "per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     0,
+     60
+    ],
+    "definition": "Full-PPR points an average player would score from the same targets and carries, per game.",
+    "denominator": "games with a published xFP",
+    "inputs": [
+     "xfp"
+    ],
+    "key": "xfp_pg",
+    "label": "Expected points per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "xFP/G",
+    "source": "nflverse ffopportunity expected points",
+    "unit": "points_per_game",
+    "unit_label": "PPR points per game"
+   },
+   {
+    "aggregation": "mean",
+    "bounds": [
+     -10,
+     80
+    ],
+    "definition": "Full-PPR fantasy points per game played (1 per reception).",
+    "denominator": "games played",
+    "inputs": [
+     "fantasy_points_ppr"
+    ],
+    "key": "ppr_pg",
+    "label": "PPR points per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "PPR/G",
+    "source": "nflverse weekly player stats",
+    "unit": "points_per_game",
+    "unit_label": "PPR points per game"
+   },
+   {
+    "aggregation": "mean_diff",
+    "bounds": [
+     -40,
+     40
+    ],
+    "definition": "Actual PPR minus xFP, averaged over the same games. Negative: the box score trails the role.",
+    "denominator": "games with both PPR points and a published xFP",
+    "inputs": [
+     "fantasy_points_ppr",
+     "xfp"
+    ],
+    "key": "fpoe_pg",
+    "label": "Points vs xFP per game",
+    "positions": [
+     "WR",
+     "RB",
+     "TE"
+    ],
+    "short": "FPOE/G",
+    "source": "nflverse ffopportunity expected points",
+    "unit": "points_per_game",
+    "unit_label": "PPR points per game"
+   }
+  ],
+  "ownership": {
+   "available": true,
+   "league_name": "Fixture League",
+   "my_team_id": 2,
+   "provider": "espn",
+   "rosters_synced_at": "<masked>",
+   "rule": "Only a verified one-to-one link between the nflverse player and a league player is annotated; anything else is reported as unknown and is never treated as available."
+  },
+  "query": {
+   "dir": "desc",
+   "f": [],
+   "from": 1,
+   "last": null,
+   "limit": 50,
+   "min_games": 1,
+   "min_routes": null,
+   "owner": "any",
+   "pos": [
+    "WR",
+    "RB",
+    "TE"
+   ],
+   "season": null,
+   "sort": "xfp_pg",
+   "to": 7
+  },
+  "rows": [
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNWR01",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 53,
+      "pool": 16,
+      "value": 41.03
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 28,
+      "pool": 16,
+      "value": -0.16
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 97,
+      "pool": 16,
+      "value": 11.57
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 97,
+      "pool": 16,
+      "value": 21.25
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 97,
+      "pool": 16,
+      "value": 2.57
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 97,
+      "pool": 16,
+      "value": 2.57
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 97,
+      "pool": 16,
+      "value": 94.57
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 97,
+      "pool": 16,
+      "value": 51.57
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 66,
+      "pool": 16,
+      "value": 36.32
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 97,
+      "pool": 16,
+      "value": 11.57
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 97,
+      "pool": 16,
+      "value": 21.41
+     }
+    },
+    "name": "Synthetic WR 1",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "BUF",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 6,
+    "gsis_id": "00-SYNWR02",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 72,
+      "pool": 16,
+      "value": 44.64
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 97,
+      "pool": 16,
+      "value": 3.37
+     },
+     "opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 84,
+      "pool": 16,
+      "value": 8.83
+     },
+     "ppr_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 91,
+      "pool": 16,
+      "value": 19.89
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 84,
+      "pool": 16,
+      "value": 1.67
+     },
+     "rz_targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 84,
+      "pool": 16,
+      "value": 1.67
+     },
+     "snap_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 84,
+      "pool": 16,
+      "value": 85.33
+     },
+     "snaps_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 84,
+      "pool": 16,
+      "value": 48.83
+     },
+     "target_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 59,
+      "pool": 16,
+      "value": 34.87
+     },
+     "targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 84,
+      "pool": 16,
+      "value": 8.83
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 91,
+      "pool": 16,
+      "value": 16.52
+     }
+    },
+    "name": "Synthetic WR 2",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 6,
+     "total": null
+    },
+    "team": "DAL",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNWR06",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 78,
+      "pool": 16,
+      "value": 49.6
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 91,
+      "pool": 16,
+      "value": 3.31
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 91,
+      "pool": 16,
+      "value": 8.86
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 84,
+      "pool": 16,
+      "value": 19.52
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 91,
+      "pool": 16,
+      "value": 1.86
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 91,
+      "pool": 16,
+      "value": 1.86
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 91,
+      "pool": 16,
+      "value": 85.43
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 91,
+      "pool": 16,
+      "value": 48.86
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 97,
+      "pool": 16,
+      "value": 42.18
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 91,
+      "pool": 16,
+      "value": 8.86
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 84,
+      "pool": 16,
+      "value": 16.21
+     }
+    },
+    "name": "Synthetic WR 6",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "PHI",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNTE01",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 10,
+      "value": 30.4
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 20,
+      "pool": 10,
+      "value": -0.16
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 95,
+      "pool": 10,
+      "value": 8.57
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 95,
+      "pool": 10,
+      "value": 15.7
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 95,
+      "pool": 10,
+      "value": 1.71
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 95,
+      "pool": 10,
+      "value": 1.71
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 95,
+      "pool": 10,
+      "value": 84.29
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 95,
+      "pool": 10,
+      "value": 48.57
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 85,
+      "pool": 10,
+      "value": 26.91
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 95,
+      "pool": 10,
+      "value": 8.57
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 95,
+      "pool": 10,
+      "value": 15.86
+     }
+    },
+    "name": "Synthetic TE 1",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "TE",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "BUF",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNWR04",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 97,
+      "pool": 16,
+      "value": 51.7
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 47,
+      "pool": 16,
+      "value": 0.47
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 16,
+      "value": 8.0
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 78,
+      "pool": 16,
+      "value": 15.75
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 78,
+      "pool": 16,
+      "value": 1.57
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 78,
+      "pool": 16,
+      "value": 1.57
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 16,
+      "value": 82.0
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 16,
+      "value": 48.0
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 78,
+      "pool": 16,
+      "value": 40.0
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 16,
+      "value": 8.0
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 78,
+      "pool": 16,
+      "value": 15.28
+     }
+    },
+    "name": "Synthetic WR 4",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "DET",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 5,
+    "gsis_id": "00-SYNWR03",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 47,
+      "pool": 16,
+      "value": 38.22
+     },
+     "fpoe_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 9,
+      "pool": 16,
+      "value": -0.66
+     },
+     "opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 75,
+      "pool": 16,
+      "value": 8.0
+     },
+     "ppr_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 72,
+      "pool": 16,
+      "value": 14.46
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 66,
+      "pool": 16,
+      "value": 1.4
+     },
+     "rz_targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 66,
+      "pool": 16,
+      "value": 1.4
+     },
+     "snap_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 75,
+      "pool": 16,
+      "value": 82.0
+     },
+     "snaps_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 75,
+      "pool": 16,
+      "value": 48.0
+     },
+     "target_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 53,
+      "pool": 16,
+      "value": 27.59
+     },
+     "targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 75,
+      "pool": 16,
+      "value": 8.0
+     },
+     "xfp_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 72,
+      "pool": 16,
+      "value": 15.12
+     }
+    },
+    "name": "Synthetic WR 3",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 5,
+     "total": null
+    },
+    "team": "SF",
+    "weeks": [
+     1,
+     3,
+     4,
+     5,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 5,
+    "gsis_id": "00-SYNRB03",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 79,
+      "pool": 12,
+      "value": 60.0
+     },
+     "carries_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 79,
+      "pool": 12,
+      "value": 14.4
+     },
+     "fpoe_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 4,
+      "pool": 12,
+      "value": -2.54
+     },
+     "opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 79,
+      "pool": 12,
+      "value": 19.0
+     },
+     "ppr_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 71,
+      "pool": 12,
+      "value": 12.32
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 75,
+      "pool": 12,
+      "value": 2.0
+     },
+     "rz_opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 96,
+      "pool": 12,
+      "value": 3.4
+     },
+     "rz_targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 96,
+      "pool": 12,
+      "value": 1.4
+     },
+     "snap_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 79,
+      "pool": 12,
+      "value": 71.0
+     },
+     "snaps_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 79,
+      "pool": 12,
+      "value": 34.4
+     },
+     "target_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 71,
+      "pool": 12,
+      "value": 15.86
+     },
+     "targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 88,
+      "pool": 12,
+      "value": 4.6
+     },
+     "team_rush_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 79,
+      "pool": 12,
+      "value": 48.0
+     },
+     "xfp_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 96,
+      "pool": 12,
+      "value": 14.86
+     }
+    },
+    "name": "Synthetic RB 3",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 5,
+     "total": null
+    },
+    "team": "SF",
+    "weeks": [
+     1,
+     3,
+     4,
+     5,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNRB01",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 96,
+      "pool": 12,
+      "value": 77.38
+     },
+     "carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 96,
+      "pool": 12,
+      "value": 18.57
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": -0.13
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 96,
+      "pool": 12,
+      "value": 21.29
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 88,
+      "pool": 12,
+      "value": 14.39
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 96,
+      "pool": 12,
+      "value": 2.71
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 88,
+      "pool": 12,
+      "value": 3.29
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 42,
+      "pool": 12,
+      "value": 0.57
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 96,
+      "pool": 12,
+      "value": 81.43
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 96,
+      "pool": 12,
+      "value": 38.57
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 12,
+      "pool": 12,
+      "value": 8.52
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": 2.71
+     },
+     "team_rush_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 96,
+      "pool": 12,
+      "value": 61.9
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 88,
+      "pool": 12,
+      "value": 14.51
+     }
+    },
+    "name": "Synthetic RB 1",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Rostered",
+     "mapping": "verified",
+     "player_id": 201,
+     "status": "rostered",
+     "team_id": 1,
+     "team_name": "Team 1"
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "BUF",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 6,
+    "gsis_id": "00-SYNRB02",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 88,
+      "pool": 12,
+      "value": 65.97
+     },
+     "carries_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 88,
+      "pool": 12,
+      "value": 15.83
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 71,
+      "pool": 12,
+      "value": 0.3
+     },
+     "opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 88,
+      "pool": 12,
+      "value": 19.5
+     },
+     "ppr_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 96,
+      "pool": 12,
+      "value": 14.64
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 88,
+      "pool": 12,
+      "value": 2.33
+     },
+     "rz_opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 79,
+      "pool": 12,
+      "value": 3.17
+     },
+     "rz_targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 62,
+      "pool": 12,
+      "value": 0.83
+     },
+     "snap_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 88,
+      "pool": 12,
+      "value": 74.58
+     },
+     "snaps_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 88,
+      "pool": 12,
+      "value": 35.83
+     },
+     "target_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 54,
+      "pool": 12,
+      "value": 14.47
+     },
+     "targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 62,
+      "pool": 12,
+      "value": 3.67
+     },
+     "team_rush_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 88,
+      "pool": 12,
+      "value": 52.78
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 79,
+      "pool": 12,
+      "value": 14.34
+     }
+    },
+    "name": "Synthetic RB 2",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 6,
+     "total": null
+    },
+    "team": "DAL",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNWR05",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 91,
+      "pool": 16,
+      "value": 51.66
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 22,
+      "pool": 16,
+      "value": -0.47
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 66,
+      "pool": 16,
+      "value": 7.0
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 59,
+      "pool": 16,
+      "value": 13.04
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 72,
+      "pool": 16,
+      "value": 1.43
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 72,
+      "pool": 16,
+      "value": 1.43
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 66,
+      "pool": 16,
+      "value": 78.0
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 66,
+      "pool": 16,
+      "value": 47.0
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 84,
+      "pool": 16,
+      "value": 40.83
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 66,
+      "pool": 16,
+      "value": 7.0
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 66,
+      "pool": 16,
+      "value": 13.51
+     }
+    },
+    "name": "Synthetic WR 5",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "MIA",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 6,
+    "gsis_id": "00-SYNWR11",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 59,
+      "pool": 16,
+      "value": 41.79
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 53,
+      "pool": 16,
+      "value": 0.55
+     },
+     "opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 59,
+      "pool": 16,
+      "value": 6.67
+     },
+     "ppr_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 66,
+      "pool": 16,
+      "value": 13.42
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 59,
+      "pool": 16,
+      "value": 1.33
+     },
+     "rz_targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 59,
+      "pool": 16,
+      "value": 1.33
+     },
+     "snap_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 59,
+      "pool": 16,
+      "value": 76.67
+     },
+     "snaps_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 59,
+      "pool": 16,
+      "value": 46.67
+     },
+     "target_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 41,
+      "pool": 16,
+      "value": 25.64
+     },
+     "targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 59,
+      "pool": 16,
+      "value": 6.67
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 59,
+      "pool": 16,
+      "value": 12.87
+     }
+    },
+    "name": "Synthetic WR 11",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 6,
+     "total": null
+    },
+    "team": "SF",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNRB06",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "xfp_pg",
+      "n": 6,
+      "of": 7,
+      "state": "partial"
+     },
+     {
+      "metric": "fpoe_pg",
+      "n": 6,
+      "of": 7,
+      "state": "partial"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 57.74
+     },
+     "carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 13.86
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 7,
+      "percentile": 21,
+      "pool": 12,
+      "value": -2.15
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 71,
+      "pool": 12,
+      "value": 17.57
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 54,
+      "pool": 12,
+      "value": 11.58
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 1.86
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 71,
+      "pool": 12,
+      "value": 2.71
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 71,
+      "pool": 12,
+      "value": 0.86
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 69.64
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 33.86
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 79,
+      "pool": 12,
+      "value": 17.69
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 71,
+      "pool": 12,
+      "value": 3.71
+     },
+     "team_rush_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 46.19
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 7,
+      "percentile": 71,
+      "pool": 12,
+      "value": 12.73
+     }
+    },
+    "name": "Synthetic RB 6",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "PHI",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNRB07",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": 43.45
+     },
+     "carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": 10.43
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": -0.51
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": 14.86
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 11.92
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": 1.29
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 2.57
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 79,
+      "pool": 12,
+      "value": 1.29
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": 61.07
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": 30.43
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 96,
+      "pool": 12,
+      "value": 27.93
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 79,
+      "pool": 12,
+      "value": 4.43
+     },
+     "team_rush_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": 34.76
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 12.44
+     }
+    },
+    "name": "Synthetic RB 7",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "CIN",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 6,
+    "gsis_id": "00-SYNRB11",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 29,
+      "pool": 12,
+      "value": 36.81
+     },
+     "carries_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 29,
+      "pool": 12,
+      "value": 8.83
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 88,
+      "pool": 12,
+      "value": 0.45
+     },
+     "opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 38,
+      "pool": 12,
+      "value": 13.5
+     },
+     "ppr_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 79,
+      "pool": 12,
+      "value": 12.34
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 33,
+      "pool": 12,
+      "value": 1.17
+     },
+     "rz_opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 54,
+      "pool": 12,
+      "value": 2.5
+     },
+     "rz_targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 88,
+      "pool": 12,
+      "value": 1.33
+     },
+     "snap_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 29,
+      "pool": 12,
+      "value": 57.08
+     },
+     "snaps_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 29,
+      "pool": 12,
+      "value": 28.83
+     },
+     "target_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 88,
+      "pool": 12,
+      "value": 17.95
+     },
+     "targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 96,
+      "pool": 12,
+      "value": 4.67
+     },
+     "team_rush_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 29,
+      "pool": 12,
+      "value": 29.44
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 54,
+      "pool": 12,
+      "value": 11.89
+     }
+    },
+    "name": "Synthetic RB 11",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 6,
+     "total": null
+    },
+    "team": "SF",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 6,
+    "gsis_id": "00-SYNWR08",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 66,
+      "pool": 16,
+      "value": 44.34
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 59,
+      "pool": 16,
+      "value": 0.73
+     },
+     "opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 50,
+      "pool": 16,
+      "value": 6.0
+     },
+     "ppr_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 53,
+      "pool": 16,
+      "value": 11.95
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 47,
+      "pool": 16,
+      "value": 1.0
+     },
+     "rz_targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 47,
+      "pool": 16,
+      "value": 1.0
+     },
+     "snap_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 50,
+      "pool": 16,
+      "value": 74.0
+     },
+     "snaps_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 50,
+      "pool": 16,
+      "value": 46.0
+     },
+     "target_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 91,
+      "pool": 16,
+      "value": 40.91
+     },
+     "targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 50,
+      "pool": 16,
+      "value": 6.0
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 53,
+      "pool": 16,
+      "value": 11.22
+     }
+    },
+    "name": "Synthetic WR 8",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 6,
+     "total": null
+    },
+    "team": "KC",
+    "weeks": [
+     1,
+     2,
+     3,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNWR07",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 84,
+      "pool": 16,
+      "value": 50.36
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 16,
+      "pool": 16,
+      "value": -0.63
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 50,
+      "pool": 16,
+      "value": 6.0
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 47,
+      "pool": 16,
+      "value": 10.47
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 53,
+      "pool": 16,
+      "value": 1.29
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 53,
+      "pool": 16,
+      "value": 1.29
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 50,
+      "pool": 16,
+      "value": 74.0
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 50,
+      "pool": 16,
+      "value": 46.0
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 72,
+      "pool": 16,
+      "value": 37.84
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 50,
+      "pool": 16,
+      "value": 6.0
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 47,
+      "pool": 16,
+      "value": 11.1
+     }
+    },
+    "name": "Synthetic WR 7",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "CIN",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNRB05",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 54,
+      "pool": 12,
+      "value": 52.38
+     },
+     "carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 54,
+      "pool": 12,
+      "value": 12.57
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 54,
+      "pool": 12,
+      "value": -0.39
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 54,
+      "pool": 12,
+      "value": 15.14
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 38,
+      "pool": 12,
+      "value": 10.63
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 54,
+      "pool": 12,
+      "value": 1.71
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 42,
+      "pool": 12,
+      "value": 2.29
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 42,
+      "pool": 12,
+      "value": 0.57
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 54,
+      "pool": 12,
+      "value": 66.43
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 54,
+      "pool": 12,
+      "value": 32.57
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 15.0
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 38,
+      "pool": 12,
+      "value": 2.57
+     },
+     "team_rush_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 54,
+      "pool": 12,
+      "value": 41.9
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": 11.01
+     }
+    },
+    "name": "Synthetic RB 5",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "MIA",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 6,
+    "gsis_id": "00-SYNTE02",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 55,
+      "pool": 10,
+      "value": 29.48
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 95,
+      "pool": 10,
+      "value": 3.37
+     },
+     "opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 75,
+      "pool": 10,
+      "value": 5.83
+     },
+     "ppr_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 85,
+      "pool": 10,
+      "value": 14.28
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 85,
+      "pool": 10,
+      "value": 1.33
+     },
+     "rz_targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 85,
+      "pool": 10,
+      "value": 1.33
+     },
+     "snap_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 75,
+      "pool": 10,
+      "value": 73.33
+     },
+     "snaps_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 75,
+      "pool": 10,
+      "value": 45.83
+     },
+     "target_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 55,
+      "pool": 10,
+      "value": 23.03
+     },
+     "targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 75,
+      "pool": 10,
+      "value": 5.83
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 85,
+      "pool": 10,
+      "value": 10.91
+     }
+    },
+    "name": "Synthetic TE 2",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "TE",
+    "routes": {
+     "n": 0,
+     "of": 6,
+     "total": null
+    },
+    "team": "DAL",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNTE06",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 95,
+      "pool": 10,
+      "value": 32.8
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 85,
+      "pool": 10,
+      "value": 3.31
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 85,
+      "pool": 10,
+      "value": 5.86
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 10,
+      "value": 14.03
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 10,
+      "value": 1.14
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 10,
+      "value": 1.14
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 85,
+      "pool": 10,
+      "value": 73.43
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 85,
+      "pool": 10,
+      "value": 45.86
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 95,
+      "pool": 10,
+      "value": 27.89
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 85,
+      "pool": 10,
+      "value": 5.86
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 10,
+      "value": 10.72
+     }
+    },
+    "name": "Synthetic TE 6",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "TE",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "PHI",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNRB04",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 71,
+      "pool": 12,
+      "value": 58.33
+     },
+     "carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 71,
+      "pool": 12,
+      "value": 14.0
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 79,
+      "pool": 12,
+      "value": 0.39
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 62,
+      "pool": 12,
+      "value": 15.71
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 46,
+      "pool": 12,
+      "value": 10.99
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 12,
+      "value": 2.0
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 42,
+      "pool": 12,
+      "value": 2.29
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 8,
+      "pool": 12,
+      "value": 0.29
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 71,
+      "pool": 12,
+      "value": 70.0
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 71,
+      "pool": 12,
+      "value": 34.0
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 25,
+      "pool": 12,
+      "value": 8.57
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 8,
+      "pool": 12,
+      "value": 1.71
+     },
+     "team_rush_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 71,
+      "pool": 12,
+      "value": 46.67
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 38,
+      "pool": 12,
+      "value": 10.6
+     }
+    },
+    "name": "Synthetic RB 4",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "DET",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNTE04",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 85,
+      "pool": 10,
+      "value": 32.32
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 45,
+      "pool": 10,
+      "value": 0.47
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 60,
+      "pool": 10,
+      "value": 5.0
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 65,
+      "pool": 10,
+      "value": 10.02
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 55,
+      "pool": 10,
+      "value": 0.71
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 55,
+      "pool": 10,
+      "value": 0.71
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 60,
+      "pool": 10,
+      "value": 70.0
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 60,
+      "pool": 10,
+      "value": 45.0
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 75,
+      "pool": 10,
+      "value": 25.0
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 60,
+      "pool": 10,
+      "value": 5.0
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 65,
+      "pool": 10,
+      "value": 9.55
+     }
+    },
+    "name": "Synthetic TE 4",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "TE",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "DET",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 5,
+    "gsis_id": "00-SYNTE03",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 35,
+      "pool": 10,
+      "value": 23.89
+     },
+     "fpoe_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": -0.66
+     },
+     "opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 60,
+      "pool": 10,
+      "value": 5.0
+     },
+     "ppr_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 55,
+      "pool": 10,
+      "value": 8.79
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 65,
+      "pool": 10,
+      "value": 0.8
+     },
+     "rz_targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 65,
+      "pool": 10,
+      "value": 0.8
+     },
+     "snap_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 60,
+      "pool": 10,
+      "value": 70.0
+     },
+     "snaps_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 60,
+      "pool": 10,
+      "value": 45.0
+     },
+     "target_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 25,
+      "pool": 10,
+      "value": 17.24
+     },
+     "targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 60,
+      "pool": 10,
+      "value": 5.0
+     },
+     "xfp_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 55,
+      "pool": 10,
+      "value": 9.45
+     }
+    },
+    "name": "Synthetic TE 3",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "TE",
+    "routes": {
+     "n": 0,
+     "of": 5,
+     "total": null
+    },
+    "team": "SF",
+    "weeks": [
+     1,
+     3,
+     4,
+     5,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNWR09",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 22,
+      "pool": 16,
+      "value": 20.67
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 3,
+      "pool": 16,
+      "value": -0.79
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 41,
+      "pool": 16,
+      "value": 4.86
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 34,
+      "pool": 16,
+      "value": 8.39
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 41,
+      "pool": 16,
+      "value": 0.71
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 41,
+      "pool": 16,
+      "value": 0.71
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 41,
+      "pool": 16,
+      "value": 69.43
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 41,
+      "pool": 16,
+      "value": 44.86
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 9,
+      "pool": 16,
+      "value": 15.25
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 41,
+      "pool": 16,
+      "value": 4.86
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 41,
+      "pool": 16,
+      "value": 9.18
+     }
+    },
+    "name": "Synthetic WR 9",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "BUF",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 5,
+    "gsis_id": "00-SYNRB10",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 12,
+      "pool": 12,
+      "value": 29.17
+     },
+     "carries_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 12,
+      "pool": 12,
+      "value": 7.0
+     },
+     "fpoe_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 38,
+      "pool": 12,
+      "value": -1.44
+     },
+     "opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 12,
+      "pool": 12,
+      "value": 10.2
+     },
+     "ppr_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 21,
+      "pool": 12,
+      "value": 7.39
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 12,
+      "pool": 12,
+      "value": 0.8
+     },
+     "rz_opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 29,
+      "pool": 12,
+      "value": 1.6
+     },
+     "rz_targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 54,
+      "pool": 12,
+      "value": 0.8
+     },
+     "snap_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 12,
+      "pool": 12,
+      "value": 52.5
+     },
+     "snaps_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 12,
+      "pool": 12,
+      "value": 27.0
+     },
+     "target_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 42,
+      "pool": 12,
+      "value": 12.5
+     },
+     "targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 54,
+      "pool": 12,
+      "value": 3.2
+     },
+     "team_rush_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 12,
+      "pool": 12,
+      "value": 23.33
+     },
+     "xfp_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 29,
+      "pool": 12,
+      "value": 8.83
+     }
+    },
+    "name": "Synthetic RB 10",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 5,
+     "total": null
+    },
+    "team": "DAL",
+    "weeks": [
+     1,
+     3,
+     4,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 6,
+    "gsis_id": "00-SYNRB08",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 38,
+      "pool": 12,
+      "value": 41.67
+     },
+     "carries_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 38,
+      "pool": 12,
+      "value": 10.0
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 96,
+      "pool": 12,
+      "value": 0.63
+     },
+     "opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 29,
+      "pool": 12,
+      "value": 11.83
+     },
+     "ppr_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 29,
+      "pool": 12,
+      "value": 9.19
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 33,
+      "pool": 12,
+      "value": 1.17
+     },
+     "rz_opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 21,
+      "pool": 12,
+      "value": 1.5
+     },
+     "rz_targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 21,
+      "pool": 12,
+      "value": 0.33
+     },
+     "snap_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 38,
+      "pool": 12,
+      "value": 60.0
+     },
+     "snaps_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 38,
+      "pool": 12,
+      "value": 30.0
+     },
+     "target_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 42,
+      "pool": 12,
+      "value": 12.5
+     },
+     "targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 21,
+      "pool": 12,
+      "value": 1.83
+     },
+     "team_rush_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 38,
+      "pool": 12,
+      "value": 33.33
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 21,
+      "pool": 12,
+      "value": 8.57
+     }
+    },
+    "name": "Synthetic RB 8",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 6,
+     "total": null
+    },
+    "team": "KC",
+    "weeks": [
+     1,
+     2,
+     3,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNRB09",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 21,
+      "pool": 12,
+      "value": 35.12
+     },
+     "carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 21,
+      "pool": 12,
+      "value": 8.43
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 12,
+      "pool": 12,
+      "value": -2.46
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 21,
+      "pool": 12,
+      "value": 10.71
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 12,
+      "pool": 12,
+      "value": 5.88
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 21,
+      "pool": 12,
+      "value": 1.0
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 12,
+      "pool": 12,
+      "value": 1.43
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 29,
+      "pool": 12,
+      "value": 0.43
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 21,
+      "pool": 12,
+      "value": 56.07
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 21,
+      "pool": 12,
+      "value": 28.43
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 7.17
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 29,
+      "pool": 12,
+      "value": 2.29
+     },
+     "team_rush_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 21,
+      "pool": 12,
+      "value": 28.1
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 12,
+      "pool": 12,
+      "value": 8.34
+     }
+    },
+    "name": "Synthetic RB 9",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "BUF",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNTE05",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 65,
+      "pool": 10,
+      "value": 29.52
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 20,
+      "pool": 10,
+      "value": -0.16
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 45,
+      "pool": 10,
+      "value": 4.0
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 45,
+      "pool": 10,
+      "value": 7.56
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 45,
+      "pool": 10,
+      "value": 0.57
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 45,
+      "pool": 10,
+      "value": 0.57
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 45,
+      "pool": 10,
+      "value": 66.0
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 45,
+      "pool": 10,
+      "value": 44.0
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 65,
+      "pool": 10,
+      "value": 23.33
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 45,
+      "pool": 10,
+      "value": 4.0
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 45,
+      "pool": 10,
+      "value": 7.72
+     }
+    },
+    "name": "Synthetic TE 5",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "TE",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "MIA",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 5,
+    "gsis_id": "00-SYNWR10",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 28,
+      "pool": 16,
+      "value": 23.7
+     },
+     "fpoe_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 72,
+      "pool": 16,
+      "value": 1.24
+     },
+     "opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 34,
+      "pool": 16,
+      "value": 4.0
+     },
+     "ppr_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 41,
+      "pool": 16,
+      "value": 8.88
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 28,
+      "pool": 16,
+      "value": 0.6
+     },
+     "rz_targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 28,
+      "pool": 16,
+      "value": 0.6
+     },
+     "snap_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 34,
+      "pool": 16,
+      "value": 66.0
+     },
+     "snaps_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 34,
+      "pool": 16,
+      "value": 44.0
+     },
+     "target_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 22,
+      "pool": 16,
+      "value": 15.62
+     },
+     "targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 34,
+      "pool": 16,
+      "value": 4.0
+     },
+     "xfp_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 34,
+      "pool": 16,
+      "value": 7.64
+     }
+    },
+    "name": "Synthetic WR 10",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 5,
+     "total": null
+    },
+    "team": "DAL",
+    "weeks": [
+     1,
+     3,
+     4,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 6,
+    "gsis_id": "00-SYNWR16",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 41,
+      "pool": 16,
+      "value": 33.48
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 41,
+      "pool": 16,
+      "value": 0.42
+     },
+     "opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 28,
+      "pool": 16,
+      "value": 3.83
+     },
+     "ppr_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 22,
+      "pool": 16,
+      "value": 7.74
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 34,
+      "pool": 16,
+      "value": 0.67
+     },
+     "rz_targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 34,
+      "pool": 16,
+      "value": 0.67
+     },
+     "snap_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 28,
+      "pool": 16,
+      "value": 65.33
+     },
+     "snaps_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 28,
+      "pool": 16,
+      "value": 43.83
+     },
+     "target_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 47,
+      "pool": 16,
+      "value": 26.14
+     },
+     "targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 28,
+      "pool": 16,
+      "value": 3.83
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 28,
+      "pool": 16,
+      "value": 7.32
+     }
+    },
+    "name": "Synthetic WR 16",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 6,
+     "total": null
+    },
+    "team": "KC",
+    "weeks": [
+     1,
+     2,
+     3,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNWR13",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 16,
+      "pool": 16,
+      "value": 18.83
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 66,
+      "pool": 16,
+      "value": 0.99
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 3.57
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 16,
+      "pool": 16,
+      "value": 7.6
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 0.57
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 0.57
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 64.29
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 43.57
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 34,
+      "pool": 16,
+      "value": 20.83
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 3.57
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 22,
+      "pool": 16,
+      "value": 6.61
+     }
+    },
+    "name": "Synthetic WR 13",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "MIA",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNWR12",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 3,
+      "pool": 16,
+      "value": 15.98
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 34,
+      "pool": 16,
+      "value": 0.37
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 3.57
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 9,
+      "pool": 16,
+      "value": 6.9
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 0.57
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 0.57
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 64.29
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 43.57
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 28,
+      "pool": 16,
+      "value": 17.86
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 19,
+      "pool": 16,
+      "value": 3.57
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 16,
+      "pool": 16,
+      "value": 6.54
+     }
+    },
+    "name": "Synthetic WR 12",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "DET",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNRB12",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "xfp_pg",
+      "n": 6,
+      "of": 7,
+      "state": "partial"
+     },
+     {
+      "metric": "fpoe_pg",
+      "n": 6,
+      "of": 7,
+      "state": "partial"
+     }
+    ],
+    "metrics": {
+     "backfield_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 23.21
+     },
+     "carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 5.57
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 7,
+      "percentile": 29,
+      "pool": 12,
+      "value": -1.48
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 7.29
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 4.54
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_carries_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 0.57
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 0.86
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 8,
+      "pool": 12,
+      "value": 0.29
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 48.93
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 25.57
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 25,
+      "pool": 12,
+      "value": 8.57
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 8,
+      "pool": 12,
+      "value": 1.71
+     },
+     "team_rush_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 18.57
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 7,
+      "percentile": 4,
+      "pool": 12,
+      "value": 5.86
+     }
+    },
+    "name": "Synthetic RB 12",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "RB",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "DET",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 6,
+    "gsis_id": "00-SYNTE08",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 6,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 25,
+      "pool": 10,
+      "value": 22.17
+     },
+     "fpoe_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 65,
+      "pool": 10,
+      "value": 1.65
+     },
+     "opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 30,
+      "pool": 10,
+      "value": 3.0
+     },
+     "ppr_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 35,
+      "pool": 10,
+      "value": 7.26
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 6,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 35,
+      "pool": 10,
+      "value": 0.5
+     },
+     "rz_targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 35,
+      "pool": 10,
+      "value": 0.5
+     },
+     "snap_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 30,
+      "pool": 10,
+      "value": 62.0
+     },
+     "snaps_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 30,
+      "pool": 10,
+      "value": 43.0
+     },
+     "target_share": {
+      "n": 6,
+      "of": 6,
+      "percentile": 45,
+      "pool": 10,
+      "value": 20.45
+     },
+     "targets_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 30,
+      "pool": 10,
+      "value": 3.0
+     },
+     "xfp_pg": {
+      "n": 6,
+      "of": 6,
+      "percentile": 35,
+      "pool": 10,
+      "value": 5.61
+     }
+    },
+    "name": "Synthetic TE 8",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "TE",
+    "routes": {
+     "n": 0,
+     "of": 6,
+     "total": null
+    },
+    "team": "KC",
+    "weeks": [
+     1,
+     2,
+     3,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNTE07",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 45,
+      "pool": 10,
+      "value": 25.18
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 35,
+      "pool": 10,
+      "value": 0.26
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 30,
+      "pool": 10,
+      "value": 3.0
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 25,
+      "pool": 10,
+      "value": 5.81
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 25,
+      "pool": 10,
+      "value": 0.43
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 25,
+      "pool": 10,
+      "value": 0.43
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 30,
+      "pool": 10,
+      "value": 62.0
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 30,
+      "pool": 10,
+      "value": 43.0
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 35,
+      "pool": 10,
+      "value": 18.92
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 30,
+      "pool": 10,
+      "value": 3.0
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 25,
+      "pool": 10,
+      "value": 5.55
+     }
+    },
+    "name": "Synthetic TE 7",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "TE",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "CIN",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNWR14",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 9,
+      "pool": 16,
+      "value": 17.6
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 84,
+      "pool": 16,
+      "value": 3.04
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 9,
+      "pool": 16,
+      "value": 2.57
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 28,
+      "pool": 16,
+      "value": 7.85
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 6,
+      "pool": 16,
+      "value": 0.29
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 6,
+      "pool": 16,
+      "value": 0.29
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 9,
+      "pool": 16,
+      "value": 60.29
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 9,
+      "pool": 16,
+      "value": 42.57
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 3,
+      "pool": 16,
+      "value": 12.24
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 9,
+      "pool": 16,
+      "value": 2.57
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 9,
+      "pool": 16,
+      "value": 4.81
+     }
+    },
+    "name": "Synthetic WR 14",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "PHI",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNWR15",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 34,
+      "pool": 16,
+      "value": 24.46
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 78,
+      "pool": 16,
+      "value": 1.3
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 3,
+      "pool": 16,
+      "value": 2.43
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 3,
+      "pool": 16,
+      "value": 5.89
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 6,
+      "pool": 16,
+      "value": 0.29
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 6,
+      "pool": 16,
+      "value": 0.29
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 3,
+      "pool": 16,
+      "value": 59.71
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 3,
+      "pool": 16,
+      "value": 42.43
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 16,
+      "pool": 16,
+      "value": 15.32
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 3,
+      "pool": 16,
+      "value": 2.43
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 3,
+      "pool": 16,
+      "value": 4.59
+     }
+    },
+    "name": "Synthetic WR 15",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "WR",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "CIN",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 7,
+    "gsis_id": "00-SYNTE09",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 7,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 15,
+      "pool": 10,
+      "value": 7.9
+     },
+     "fpoe_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 55,
+      "pool": 10,
+      "value": 0.67
+     },
+     "opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 15,
+      "pool": 10,
+      "value": 1.86
+     },
+     "ppr_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 15,
+      "pool": 10,
+      "value": 4.18
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 7,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 15,
+      "pool": 10,
+      "value": 0.14
+     },
+     "rz_targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 15,
+      "pool": 10,
+      "value": 0.14
+     },
+     "snap_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 15,
+      "pool": 10,
+      "value": 57.43
+     },
+     "snaps_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 15,
+      "pool": 10,
+      "value": 41.86
+     },
+     "target_share": {
+      "n": 7,
+      "of": 7,
+      "percentile": 15,
+      "pool": 10,
+      "value": 5.83
+     },
+     "targets_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 15,
+      "pool": 10,
+      "value": 1.86
+     },
+     "xfp_pg": {
+      "n": 7,
+      "of": 7,
+      "percentile": 15,
+      "pool": 10,
+      "value": 3.51
+     }
+    },
+    "name": "Synthetic TE 9",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "TE",
+    "routes": {
+     "n": 0,
+     "of": 7,
+     "total": null
+    },
+    "team": "BUF",
+    "weeks": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7
+    ]
+   },
+   {
+    "conditions": [],
+    "games": 5,
+    "gsis_id": "00-SYNTE10",
+    "incomplete": [
+     {
+      "metric": "route_participation",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     },
+     {
+      "metric": "routes_pg",
+      "n": 0,
+      "of": 5,
+      "state": "missing"
+     }
+    ],
+    "metrics": {
+     "air_yards_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": 7.11
+     },
+     "fpoe_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 75,
+      "pool": 10,
+      "value": 1.8
+     },
+     "opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": 1.2
+     },
+     "ppr_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": 4.09
+     },
+     "route_participation": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has route_participation",
+      "value": null
+     },
+     "routes_pg": {
+      "n": 0,
+      "of": 5,
+      "reason": "no game in the window has routes",
+      "value": null
+     },
+     "rz_opportunities_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": 0.0
+     },
+     "rz_targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": 0.0
+     },
+     "snap_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": 54.8
+     },
+     "snaps_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": 41.2
+     },
+     "target_share": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": 4.69
+     },
+     "targets_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": 1.2
+     },
+     "xfp_pg": {
+      "n": 5,
+      "of": 5,
+      "percentile": 5,
+      "pool": 10,
+      "value": 2.29
+     }
+    },
+    "name": "Synthetic TE 10",
+    "ownership": {
+     "available": false,
+     "is_mine": false,
+     "label": "Roster status unknown",
+     "mapping": "unmapped",
+     "player_id": null,
+     "reason": "no verified link between this nflverse player and a league player",
+     "status": "unknown",
+     "team_id": null,
+     "team_name": null
+    },
+    "position": "TE",
+    "routes": {
+     "n": 0,
+     "of": 5,
+     "total": null
+    },
+    "team": "DAL",
+    "weeks": [
+     1,
+     3,
+     4,
+     6,
+     7
+    ]
+   }
+  ],
+  "season": 2026,
+  "status": "ok",
+  "truncated": false
+ },
+ "status": 200
+}

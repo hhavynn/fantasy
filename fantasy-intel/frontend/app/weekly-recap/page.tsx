@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import Link from "@/components/LeagueLink";
 import { BackendProblem } from "@/components/BackendProblem";
 import { PlayerLink } from "@/components/PlayerLink";
 import { BarChart } from "@/components/charts";
 import { Badge, Delta, EmptyState, Method, Notice, PageHeader, Pos, Section, Stat, StatStrip, Tabs } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, type ApiResult } from "@/lib/api";
+import { feedbackPath, type DecisionFeedback } from "@/lib/decision-feedback";
 import { cx } from "@/lib/cx";
 import { date, num, pct } from "@/lib/format";
 import { providerName } from "@/lib/labels";
@@ -15,13 +17,15 @@ import {
   type RecapQuery, type WeeklyRecap, type WrAward, type WrGame, type WrMatchup, type WrMove, type WrPlayer,
   type WrTeamScore,
 } from "@/lib/weekly-recap";
+import { DecisionFeedbackSection, DecisionFeedbackSkeleton } from "./DecisionFeedback";
 import styles from "./weekly-recap.module.css";
 
 export const metadata = { title: "Weekly recap" };
 
 // Weekly League Recap: one completed matchup period's awards, scoreboard, standings after the week,
 // standout player scores and league activity. Completed matchups only (ESPN winner home, away or tie);
-// no projections, no win probabilities. Every number comes from the backend.
+// no projections, no win probabilities. Every number comes from the backend. "Your decisions" (decision feedback,
+// app/weekly-recap/DecisionFeedback.tsx) streams in beside it from its own endpoint.
 
 const RESULT_TONE = { W: "good", L: "bad", T: "warn" } as const;
 const RESULT_WORD = { W: "Won", L: "Lost", T: "Tied" } as const;
@@ -29,6 +33,8 @@ const STATUS_TONE: Record<string, string> = { STARTER: "info", BENCH: "warn", IR
 
 export default async function WeeklyRecapPage({ searchParams }: PageProps<"/weekly-recap">) {
   const q = parseRecapQuery(await searchParams);
+  // Started now, awaited inside its Suspense boundary: the recap renders without waiting for the archive reads.
+  const feedback = api<DecisionFeedback>(feedbackPath(q.week, q.source ?? null));
   const [res, profile] = await Promise.all([api<WeeklyRecap>(backendPath(q)), getLeagueProfile()]);
   const labels: L = { prov: providerName(profile.provider), espn: profile.providerProjections };
   if (!res.ok) {
@@ -40,13 +46,13 @@ export default async function WeeklyRecapPage({ searchParams }: PageProps<"/week
       </div>
     );
   }
-  return <Body d={res.data} q={q} L={labels} />;
+  return <Body d={res.data} q={q} L={labels} feedback={feedback} />;
 }
 
 /** The league's provider ("ESPN" or "Sleeper") and whether it publishes projections. */
 type L = { prov: string; espn: boolean };
 
-function Body({ d, q, L }: { d: WeeklyRecap; q: RecapQuery; L: L }) {
+function Body({ d, q, L, feedback }: { d: WeeklyRecap; q: RecapQuery; L: L; feedback: Promise<ApiResult<DecisionFeedback>> }) {
   if (d.selected_week === null || !d.awards) {
     return (
       <div className="stack">
@@ -72,7 +78,7 @@ function Body({ d, q, L }: { d: WeeklyRecap; q: RecapQuery; L: L }) {
         meta={<>
           {d.league_name} {d.season} · <b>{d.matchups.length}</b> final {plural(d.matchups.length, "matchup")}
           {pending > 0 && <> · {pending} not final yet</>}
-          {" "}· results only, no projections
+          {" "}· results only; your decisions are graded against forecasts stored before kickoff
         </>}
       >
         <Tabs
@@ -90,6 +96,10 @@ function Body({ d, q, L }: { d: WeeklyRecap; q: RecapQuery; L: L }) {
       )}
 
       <Awards d={d} L={L} />
+
+      <Suspense fallback={<DecisionFeedbackSkeleton />}>
+        <DecisionFeedbackSection pending={feedback} q={view} providerProjections={L.espn} />
+      </Suspense>
 
       <div className={cx("grid grid-2", styles.pair)}>
         <Scoreboard matchups={d.matchups} />

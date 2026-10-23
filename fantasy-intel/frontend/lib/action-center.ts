@@ -219,6 +219,8 @@ export type CenterCard = {
   more: { count: number; href: string } | null;
   /** Sources that were read and failed: the card is not an all-clear. */
   unavailable: string[];
+  /** Sources that loaded but say their data is incomplete (Start/Sit's `incomplete_data`), with why: not an all-clear. */
+  partial: { source: string; reason: string }[];
   /** When the next decision closes: the earliest kickoff among its players (or the league's next kickoff). */
   deadline: number | null;
   severity: number;
@@ -282,6 +284,7 @@ export function buildCard(s: CenterSection): CenterCard {
     decisions,
     more: moreCount > 0 ? { count: moreCount, href: decisionHref("/start-sit", ctx) } : null,
     unavailable: hub?.unavailable ?? [],
+    partial: hub?.partial ?? [],
     deadline: deadlines.length ? Math.min(...deadlines) : null,
     severity: first ? URGENCY[first.urgency] * 10 + TONE[first.tone] : 99,
     nextKickoff: parseTimestamp(s.lock?.next_kickoff_utc),
@@ -307,7 +310,7 @@ export function tier(c: CenterCard): number {
   const acting = c.decisions.some((x) => x.decision.status === "actionable");
   if (acting && c.deadline !== null) return 0;
   if (acting) return 1;
-  if (c.state !== "ready" || c.unavailable.length > 0 || c.status.tone !== "good") return 2;
+  if (c.state !== "ready" || c.unavailable.length > 0 || c.partial.length > 0 || c.status.tone !== "good") return 2;
   return 3;
 }
 

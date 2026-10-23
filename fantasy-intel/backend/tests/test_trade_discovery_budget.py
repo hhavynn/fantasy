@@ -452,3 +452,56 @@ def test_abstaining_packages_spend_the_beam_budget(monkeypatch):
     warm.beam(td.TradeTarget(position="WR"))
     assert warm.beam()["work_budget"] == cut["work_budget"]
     assert [r["key"] for r in warm.beam()["rows"]] == [r["key"] for r in cut["rows"]]
+
+
+def test_a_search_evicted_by_a_concurrent_request_never_raises(monkeypatch):
+    """#201 risk 1: the API's search memo (`_search`) was read, refreshed and trimmed without a lock, so a concurrent
+    request's eviction between the lookup and move_to_end raised KeyError (a 500). The stand-in memo below starts a
+    real second request at exactly that moment, filling the memo with other keys; it must wait for the lock."""
+    import threading
+    from collections import OrderedDict
+
+    from app.api import trade_discovery as api
+    monkeypatch.setattr(api, "data_version", lambda con: "v1")
+    monkeypatch.setattr(api, "streaming_enabled", lambda state: False)
+    monkeypatch.setattr(api, "TradeSearch", lambda *a, **k: object())
+    state = types.SimpleNamespace(league_id=7, season=2026, start_week=3, start_week_reason=None)
+    errors = []
+
+    def others():           # another request: enough new searches to evict every key in the memo
+        try:
+            for anchor in range(100, 100 + api._CACHE_SIZE + 1):
+                api._search(None, state, anchor, ("1-for-1",), ())
+        except Exception as e:      # noqa: BLE001
+            errors.append(e)
+
+    class Memo(OrderedDict):
+        armed = True
+
+        def _race(self):
+            if Memo.armed:
+                Memo.armed = False
+                t = threading.Thread(target=others)
+                t.start()
+                t.join(timeout=0.5)     # unlocked, it finishes here; locked, it waits for the lookup to end
+                self.thread = t
+
+        def __contains__(self, key):
+            hit = super().__contains__(key)
+            if hit:
+                self._race()
+            return hit
+
+        def get(self, key, default=None):
+            hit = super().get(key, default)
+            if hit is not None:
+                self._race()
+            return hit
+
+    memo = Memo()
+    monkeypatch.setattr(api, "_CACHE", memo)
+    first = api._search(None, state, 1, ("1-for-1",), ())
+    assert api._search(None, state, 1, ("1-for-1",), ()) is first        # the hit that the other request races
+    memo.thread.join(timeout=5)
+    assert not memo.thread.is_alive() and errors == []
+    assert len(api._CACHE) == api._CACHE_SIZE
