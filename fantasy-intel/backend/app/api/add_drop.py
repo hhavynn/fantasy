@@ -109,7 +109,8 @@ def load_simulation(con, team_id: int | None, ids: list[int], check: Callable[[d
     locks = detect_player_locks(con, state.season, int(lg["current_week"]), teams, now) if teams else {}
     ctx = AddDropContext(provider=provider, team_row=team_row, rules=waiver_rules(lg), waivers=rules["waivers"],
                          directory=directory, locks=locks, lock_week=int(lg["current_week"]), games=games,
-                         covered=covered, evaluated_at=now.isoformat())
+                         covered=covered, evaluated_at=now.isoformat(),
+                         waiver_status_known=rules["source"]["provider"] != "sleeper")
     return Simulation(lg, perspective, tid, state, ctx)
 
 

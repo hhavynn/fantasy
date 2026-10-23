@@ -17,5 +17,6 @@ export async function GET(request: Request) {
   if (!path) return Response.json({ error: "The claim plan is not well formed." }, { status: 400 });
   const res = await api<ClaimPlanResponse>(path);
   if (!res.ok) return Response.json({ error: res.error, kind: res.kind ?? "unknown" }, { status: res.status ?? 502 });
-  return Response.json({ ...res.data, scope: league } satisfies ClaimPlanResponse, { headers: { "Cache-Control": "private, no-store" } });
+  // `stale`: the backend served this league's previous files; the page then never shows a claim as passing.
+  return Response.json({ ...res.data, scope: league, stale: res.stale === true } satisfies ClaimPlanResponse, { headers: { "Cache-Control": "private, no-store" } });
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  MAX_CLAIMS, claimPlanBackendPath, claimPlanKey, claimPlanSrc, leagueFreshness, moveClaim, parseBid, parseClaimPlan,
+  MAX_CLAIMS, claimPlanBackendPath, claimPlanKey, claimPlanSrc, leagueFreshness, moveClaim, parseBid, parseClaimPlan, planFreshness,
   planText, readClaimPlan, reconcile, rulesText, serializeClaimPlan, shownValidation, updateClaim, writeClaimPlan,
   type Claim, type ClaimPlanResponse, type PlanRules,
 } from "./claim-plan.ts";
@@ -121,6 +121,14 @@ test("a legal claim is shown as passing only while the league data is current", 
     assert.ok(s.reason, f);
   }
   assert.equal(shownValidation({ validation: "invalid" }, "current").validation, "invalid");
+});
+
+test("an answer served from older league files is stale, whatever the signal's age", () => {
+  const fresh = league("2026-10-23T08:00:00Z");
+  assert.equal(planFreshness({ provenance: fresh }, NOW), "current");
+  assert.equal(planFreshness({ provenance: fresh, stale: false }, NOW), "current");
+  assert.equal(planFreshness({ provenance: fresh, stale: true }, NOW), "stale");
+  assert.equal(shownValidation({ validation: "legal" }, planFreshness({ provenance: fresh, stale: true }, NOW)).validation, "unverified");
 });
 
 const RULES: PlanRules = {

@@ -191,11 +191,14 @@ export type ClaimPlanResponse = {
   roster: { active_capacity: number; active_before: number | null; open_spots_before: number | null; drop_options: DropOption[] };
   claims: PlanClaim[];
   summary: { claims: number; legal: number; unverified: number; invalid: number; total_bid: number | null;
-    remaining_after_bids: number | null; conflicts: { kind: string; player_id: number | null; ranks: number[] }[] };
+    remaining_after_bids: number | null;
+    conflicts: { kind: string; player_id: number | null; ranks: number[]; position?: string; limit?: number; open_spots?: number }[] };
   league?: { name?: string | null } | null;
   provenance?: ProvenancePayload | null;
   /** Added by the /api/waiver-claim-plan route: the canonical league the answer was read from. */
   scope?: string;
+  /** Added by the route: the backend served this league's previous files (X-FI-Degraded), so the data may be older. */
+  stale?: boolean;
 };
 
 // ---- display rules ------------------------------------------------------------------------------------------------
@@ -211,6 +214,11 @@ export const VALIDATION_LABEL: Record<Validation, string> = {
 export function leagueFreshness(p: ProvenancePayload | null | undefined, now: number = Date.now()): ProvenanceStatus {
   const league = signalsOf(p).find((s) => s.signal === "league");
   return league ? provenanceStatus(league, now) : "unknown";
+}
+
+/** The freshness a plan's checks are shown with: stale whenever the answer came from older league files. */
+export function planFreshness(res: Pick<ClaimPlanResponse, "provenance" | "stale">, now: number = Date.now()): ProvenanceStatus {
+  return res.stale === true ? "stale" : leagueFreshness(res.provenance, now);
 }
 
 const FRESHNESS_REASON: Partial<Record<ProvenanceStatus, string>> = {

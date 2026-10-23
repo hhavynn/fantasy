@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useState, useSyncExternalStore, type DragEvent } from "react";
 import { Delta, Notice, ProvenanceBadge } from "@/components/ui";
 import {
-  MAX_CLAIMS, VALIDATION_LABEL, claimPlanKey, claimPlanSrc, leagueFreshness, moveClaim, parseBid, planText,
+  MAX_CLAIMS, VALIDATION_LABEL, claimPlanKey, claimPlanSrc, moveClaim, parseBid, planFreshness, planText,
   readClaimPlan, reconcile, rulesText, shownValidation, updateClaim, writeClaimPlan,
   type Claim, type ClaimPlanResponse, type PlanClaim, type Validation,
 } from "@/lib/claim-plan";
@@ -127,7 +127,7 @@ function Planner({ players, team, teamName, provider, leagueName }: {
           if (!r.ok || !body || body.contract !== "waiver-claim-plan/v1" || body.scope !== leagueId) {
             setChecked({ src, data: null, error: (body && typeof body.error === "string" ? body.error : null) ?? `The check failed (${r.status}).`, freshness: "unknown", today });
           } else {
-            setChecked({ src, data: body as ClaimPlanResponse, error: null, freshness: leagueFreshness(body.provenance, now), today });
+            setChecked({ src, data: body as ClaimPlanResponse, error: null, freshness: planFreshness(body as ClaimPlanResponse, now), today });
           }
         })
         .catch((err: unknown) => {

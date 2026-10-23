@@ -12,7 +12,8 @@ import pytest
 from app.analytics.add_drop import AddDropContext, evaluate_add_drop
 from app.analytics.claim_plan import (BID_FREE_AGENT, BID_MISSING, BID_NOT_USED, BID_OVER_BUDGET_LEFT,
                                       BID_OVER_REMAINING, BID_RULES_UNKNOWN, BUDGET_EXHAUSTED, BUDGET_UNKNOWN,
-                                      DUPLICATE_ADD, FREE_AGENT, INVALID, LEGAL, MAX_CLAIMS, OPEN_SPOTS,
+                                      AVAILABILITY_UNKNOWN, DUPLICATE_ADD, FREE_AGENT, INVALID, LEGAL, MAX_CLAIMS,
+                                      OPEN_SPOTS, POSITION_LIMIT,
                                       RULES_UNKNOWN, SAME_PLAYER, SHARED_DROP, UNKNOWN_PLAYER, UNVERIFIED, Claim,
                                       ClaimPlanError, evaluate_claim_plan, parse_claim)
 from app.analytics.lineup import lineup_slots
@@ -47,25 +48,26 @@ PROJ = {101: flat(20), 102: flat(15), 103: flat(12), 104: flat(9), 105: flat(16)
         301: flat(13), 302: {10: 4, 11: 30, 12: 4}, 303: flat(7), 304: flat(12.5), 305: flat(6)}
 
 
-def state(mine=None, capacity=10, waivers=(301, 302, 303)):
+def state(mine=None, capacity=10, waivers=(301, 302, 303), limits=None):
     fas = [P(301, "WR", "BUF"), P(302, "RB", "MIA"), P(303, "TE", "NYJ"), P(304, "RB", "SF"), P(305, "WR", "LV")]
     status = {p.espn_player_id: ("WAIVERS" if p.espn_player_id in waivers else "FREEAGENT") for p in fas}
     return LeagueState(season=2026, slots=SLOTS, final_week=12, last_regular=11, start_week=10,
                        rosters={1: mine or roster(), 2: [P(201, "QB"), P(202, "RB")]}, free_agents=fas,
-                       projections=copy.deepcopy(PROJ), active_capacity=capacity, team_names={1: "Mine", 2: "Rival"},
+                       projections=copy.deepcopy(PROJ), active_capacity=capacity, position_limits=limits or {},
+                       team_names={1: "Mine", 2: "Rival"},
                        free_agent_status=status)
 
 
-def ctx(st, *, is_faab=True, budget=100, spent=20, rank=3, facts=None, locks=None):
+def ctx(st, *, is_faab=True, budget=100, spent=20, rank=3, facts=None, locks=None, provider="ESPN", status_known=True):
     """A FAAB league with every rule synced unless told otherwise; the directory holds every player in `st`."""
     everyone = [p for ps in st.rosters.values() for p in ps] + st.free_agents
     directory = {p.espn_player_id: {"full_name": p.name, "position": p.position, "pro_team": p.pro_team,
                                     "injury_status": p.injury_status,
                                     "availability_status": st.free_agent_status.get(p.espn_player_id)}
                  for p in everyone}
-    return AddDropContext(provider="ESPN", team_row={"waiver_rank": rank, "faab_spent": spent},
+    return AddDropContext(provider=provider, team_row={"waiver_rank": rank, "faab_spent": spent},
                           rules={"is_faab": is_faab, "faab_budget": budget}, waivers=facts or KNOWN_FACTS,
-                          directory=directory, locks=locks or {}, lock_week=10)
+                          directory=directory, locks=locks or {}, lock_week=10, waiver_status_known=status_known)
 
 
 def plan(claims, st=None, **kw):
@@ -125,11 +127,115 @@ def test_more_add_only_claims_than_open_spots_flags_the_extra_ones():
     out = plan([(301, None, 10), (302, None, 5), (304, None)])
     assert [c["validation"] for c in out["claims"]] == [LEGAL, UNVERIFIED, UNVERIFIED]
     assert OPEN_SPOTS in codes(out["claims"][1]) and OPEN_SPOTS in codes(out["claims"][2])
-    assert "claim 1 also adds a player" in next(r["message"] for r in out["claims"][1]["reasons"] if r["code"] == OPEN_SPOTS)
+    assert "claim 1 also takes one" in next(r["message"] for r in out["claims"][1]["reasons"] if r["code"] == OPEN_SPOTS)
     assert out["summary"]["conflicts"] == [{"kind": "open_spots", "player_id": None, "ranks": [1, 2, 3], "open_spots": 1}]
     # a drop on the second claim resolves it
     fixed = plan([(301, None, 10), (302, 104, 5)])
     assert [c["validation"] for c in fixed["claims"]] == [LEGAL, LEGAL]
+
+
+def test_an_ir_drop_still_uses_the_open_spot():
+    """9 of 10 active and a player on IR: dropping the IR player frees no active spot, so that claim takes the open
+    spot just as an add-only claim does, and the next add-only claim depends on it."""
+    mine = roster() + [P(110, "RB", on_ir=True, injury_status="INJURY_RESERVE")]
+    out = plan([(304, 110), (305, None)], state(mine=mine))
+    first, second = out["claims"]
+    assert first["validation"] == LEGAL and first["roster"]["active_after"] == 10
+    assert second["validation"] == UNVERIFIED and OPEN_SPOTS in codes(second)
+    assert {"kind": "open_spots", "player_id": None, "ranks": [1, 2], "open_spots": 1} in out["summary"]["conflicts"]
+    # an active drop frees its own spot: no dependency
+    fine = plan([(304, 107), (305, None)], state(mine=mine))
+    assert [c["validation"] for c in fine["claims"]] == [LEGAL, LEGAL]
+
+
+def test_position_limits_across_claims_flag_the_later_claim():
+    """RB limit 4 with 3 rostered and room for both adds: each RB claim is legal alone, not both."""
+    st = state(capacity=11, limits={"RB": 4})
+    out = plan([(302, None, 5), (304, None)], st)
+    first, second = out["claims"]
+    assert first["validation"] == LEGAL and POSITION_LIMIT not in codes(first)
+    assert second["validation"] == UNVERIFIED and POSITION_LIMIT in codes(second)
+    assert "at most 4 RB, and claim 1 also adds one: if it succeeds, this claim needs a drop at RB." in next(r["message"] for r in second["reasons"]
+                                                             if r["code"] == POSITION_LIMIT)
+    assert {"kind": "position_limit", "player_id": None, "position": "RB", "limit": 4, "ranks": [1, 2]} \
+        in out["summary"]["conflicts"]
+    # an RB drop on the second claim keeps the count at the limit
+    swap = plan([(302, None, 5), (304, 104)], st)
+    assert [c["validation"] for c in swap["claims"]] == [LEGAL, LEGAL]
+    # other positions are not limited
+    assert [c["validation"] for c in plan([(302, None, 5), (301, None, 5)], st)["claims"]] == [LEGAL, LEGAL]
+
+
+def test_a_sleeper_league_never_treats_an_unrostered_player_as_a_free_agent():
+    """Sleeper's sync writes FREEAGENT for every unrostered player: whether a claim is needed is unknown, and a bid
+    goes through the FAAB checks instead of being dismissed as unused."""
+    st = state(waivers=())                                  # every available player FREEAGENT, as Sleeper writes it
+    out = plan([(301, 107, 5), (304, 106, 90), (305, 109)], st, provider="Sleeper", status_known=False)
+    ok, over, missing = out["claims"]
+    for c in out["claims"]:
+        assert AVAILABILITY_UNKNOWN in codes(c) and c["claim_kind"] is None and c["validation"] != LEGAL
+        assert FREE_AGENT not in codes(c) and BID_FREE_AGENT not in codes(c)
+        assert all("without a claim" not in r["message"] for r in c["reasons"])
+    assert ok["validation"] == UNVERIFIED and codes(ok)[-1] == AVAILABILITY_UNKNOWN
+    assert over["validation"] == INVALID and BID_OVER_REMAINING in codes(over)
+    assert missing["validation"] == UNVERIFIED and BID_MISSING in codes(missing)
+    assert out["summary"]["total_bid"] == 95
+    assert "Sleeper does not report whether P301 is on waivers" in ok["reasons"][-1]["message"]
+
+
+def test_the_sleeper_api_reports_availability_as_unknown():
+    """The API sets the flag from the league's provider (the Sleeper E2E fixture)."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+    scripts = Path(__file__).resolve().parents[2] / "scripts"
+    sys.path.insert(0, str(scripts))
+    try:
+        spec = importlib.util.spec_from_file_location("build_e2e_sleeper", scripts / "build_e2e_sleeper.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        import tempfile
+        db = Path(tempfile.mkdtemp()) / "sleeper.duckdb"
+        mod.build(db)
+    finally:
+        sys.path.remove(str(scripts))
+    mp = pytest.MonkeyPatch()
+    mp.setenv("FANTASY_DB_PATH", str(db))
+    mp.setenv("ESPN_SEASON", "2026")
+    try:
+        from app.main import app
+        client = TestClient(app)
+        opts = client.get("/api/waivers/add-drop").json()["options"]["add"]
+        res = client.get(f"/api/waivers/claim-plan?claims={opts[0]['espn_player_id']}::5").json()
+        claim = res["claims"][0]
+        assert AVAILABILITY_UNKNOWN in codes(claim) and claim["claim_kind"] is None
+        assert claim["validation"] != LEGAL and FREE_AGENT not in codes(claim)
+    finally:
+        mp.undo()
+
+
+def test_every_simulator_code_is_mapped_and_an_unknown_note_fails_safe(monkeypatch):
+    import re
+    from pathlib import Path
+
+    from app.analytics import add_drop, claim_plan
+    src = Path(add_drop.__file__).read_text()
+    notes = set(re.findall(r"notes\.append\(_item\(([A-Z_]+)", src))
+    problems = set(re.findall(r"problems\.(?:append|insert)\((?:0, )?_item\(([A-Z_]+)", src))
+    assert notes and problems
+    assert {getattr(add_drop, n) for n in notes} <= set(claim_plan._NOTE_EFFECT)
+    assert {getattr(add_drop, p) for p in problems} <= set(claim_plan._PROBLEM_EFFECT)
+    real = claim_plan.evaluate_add_drop
+
+    def with_new_note(*a, **kw):
+        out = real(*a, **kw)
+        if out["status"] == "evaluated":
+            out["notes"] = out["notes"] + [{"code": "SOMETHING_NEW", "player_id": None, "message": "New.", "tone": "info"}]
+        return out
+    monkeypatch.setattr(claim_plan, "evaluate_add_drop", with_new_note)
+    assert plan([(301, 107, 5)])["claims"][0]["validation"] == UNVERIFIED
 
 
 def test_a_full_roster_needs_a_drop_and_names_the_simulators_suggestion():

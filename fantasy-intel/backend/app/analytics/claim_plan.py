@@ -25,20 +25,26 @@ response's signal provenance (league-scoped responses are cached per data versio
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 from .add_drop import (
+    ADD_INJURY,
     ADD_NOT_AVAILABLE,
     ADD_ON_ROSTER,
     ADD_ROSTERED,
     DROP_NOT_ON_ROSTER,
     DROP_REQUIRED,
+    DROP_RESERVED,
     GAME_LOCKED,
     IR_SLOT_INELIGIBLE,
     LOCK_UNKNOWN,
+    NFL_INELIGIBLE,
     NO_REMAINING_WEEKS,
     NO_TEAM,
+    NOT_LINEUP_ELIGIBLE,
     UNDROPPABLE_LIST,
+    WAIVER_CLAIM,
     AddDropContext,
     evaluate_add_drop,
 )
@@ -59,6 +65,8 @@ SAME_PLAYER = "SAME_PLAYER"
 DUPLICATE_ADD = "DUPLICATE_ADD"
 SHARED_DROP = "SHARED_DROP"
 OPEN_SPOTS = "OPEN_SPOTS"
+POSITION_LIMIT = "POSITION_LIMIT"
+AVAILABILITY_UNKNOWN = "AVAILABILITY_UNKNOWN"
 FREE_AGENT = "FREE_AGENT"
 RULES_UNKNOWN = "RULES_UNKNOWN"
 BID_NOT_USED = "BID_NOT_USED"
@@ -75,8 +83,10 @@ PRIORITY_UNKNOWN = "PRIORITY_UNKNOWN"
 _PROBLEM_EFFECT = {ADD_ON_ROSTER: INVALID, ADD_ROSTERED: INVALID, ADD_NOT_AVAILABLE: INVALID,
                    DROP_NOT_ON_ROSTER: INVALID, DROP_REQUIRED: INVALID, NO_TEAM: UNVERIFIED,
                    NO_REMAINING_WEEKS: UNVERIFIED}
+# Every simulator note is mapped; an unmapped (new) code fails safe as unverified.
 _NOTE_EFFECT = {IR_SLOT_INELIGIBLE: INVALID, GAME_LOCKED: UNVERIFIED, LOCK_UNKNOWN: UNVERIFIED,
-                UNDROPPABLE_LIST: UNVERIFIED}
+                UNDROPPABLE_LIST: UNVERIFIED, WAIVER_CLAIM: INFO, NFL_INELIGIBLE: INFO, NOT_LINEUP_ELIGIBLE: INFO,
+                ADD_INJURY: INFO, DROP_RESERVED: INFO}
 
 
 class ClaimPlanError(ValueError):
@@ -246,8 +256,14 @@ def evaluate_claim_plan(state: LeagueState, team_id: int | None, claims: list[Cl
     out_claims: list[dict] = []
     seen_adds: dict[int, int] = {}
     drops_used: dict[int, int] = {}
-    add_only_ranks: list[int] = []
+    active_before = base["roster"]["active_before"]
+    spot_ranks: list[int] = []                  # claims that take an open active spot (net active gain)
+    roster_now = state.rosters.get(team_id) or [] if team_id is not None else []
+    pos_before = Counter(p.position for p in roster_now)
+    pos_net: Counter = Counter()                # net players per position if every earlier claim succeeds
+    pos_ranks: dict[str, list[int]] = {}
     spent_if_won = 0
+    bid_ranks: list[int] = []                   # claims whose bid went through the FAAB checks
     for rank, claim in enumerate(claims, start=1):
         items: list[dict] = []
         ad = None
@@ -271,16 +287,25 @@ def evaluate_claim_plan(state: LeagueState, team_id: int | None, claims: list[Cl
             add_card, drop_card = ad["players"]["add"], ad["players"]["drop"]
             items += [_item(p["code"], p["message"], _PROBLEM_EFFECT.get(p["code"], INVALID), p["player_id"])
                       for p in ad["problems"]]
-            items += [_item(n["code"], n["message"], _NOTE_EFFECT.get(n["code"], INFO), n["player_id"])
+            items += [_item(n["code"], n["message"], _NOTE_EFFECT.get(n["code"], UNVERIFIED), n["player_id"])
                       for n in ad["notes"]]
         seen_adds.setdefault(claim.add, rank)
         available_as = state.free_agent_status.get(claim.add) if ad is not None and ad["players"]["add"] and \
             ad["players"]["add"]["roster_status"] in ("free_agent", "waivers") else None
+        if available_as is not None and not ctx.waiver_status_known:
+            # The provider does not say whether he is on waivers: never "no claim needed"; a bid is checked as a bid.
+            items.append(_item(AVAILABILITY_UNKNOWN, f"{ctx.provider} does not report whether "
+                                                     f"{_who(add_card, claim.add, ctx.directory)} is on waivers or a "
+                                                     "free agent, so whether this add needs a claim is unknown.",
+                               UNVERIFIED, claim.add))
+            available_as, bid_as = None, "WAIVERS"
+        else:
+            bid_as = available_as
         if available_as == "FREEAGENT":
             items.append(_item(FREE_AGENT, f"{_who(add_card, claim.add, ctx.directory)} is a free agent: he can be "
                                            f"added in {ctx.provider} without a claim, so this place in the order is "
                                            "your preference only.", INFO, claim.add))
-        items += _bid_items(claim, available_as, rules, ctx.provider)
+        items += _bid_items(claim, bid_as, rules, ctx.provider)
 
         # ---- dependencies on earlier claims (order decides which is the later one) ----
         evaluated_ok = ad is not None and ad["status"] == "evaluated"
@@ -291,12 +316,36 @@ def evaluate_claim_plan(state: LeagueState, team_id: int | None, claims: list[Cl
                                                 "claim needs another drop.", UNVERIFIED, claim.drop))
             else:
                 drops_used[claim.drop] = rank
-        if claim.drop is None and evaluated_ok and ad["players"]["add"] is not None:
-            add_only_ranks.append(rank)
-            if open_before is not None and len(add_only_ranks) > open_before:
-                items.append(_item(OPEN_SPOTS, _open_spots_text(open_before, add_only_ranks[:-1]), UNVERIFIED,
+        roster = (ad or {}).get("roster") or {}
+        if evaluated_ok and active_before is not None and roster.get("active_after") is not None \
+                and roster["active_after"] > active_before:
+            # a net active gain (an add-only claim, or one whose drop is in an IR or taxi slot) takes an open spot
+            spot_ranks.append(rank)
+            if open_before is not None and len(spot_ranks) > open_before:
+                items.append(_item(OPEN_SPOTS, _open_spots_text(open_before, spot_ranks[:-1]), UNVERIFIED,
                                    claim.add))
-        if rules["acquisition"] == "FAAB" and available_as == "WAIVERS" and claim.bid is not None \
+        if evaluated_ok and state.position_limits:
+            delta: Counter = Counter()
+            if add_card and add_card.get("position"):
+                delta[add_card["position"]] += 1
+            if claim.drop is not None and drop_card and drop_card.get("position"):
+                delta[drop_card["position"]] -= 1
+            pos_net.update(delta)
+            for pos, n in delta.items():
+                lim = state.position_limits.get(pos)
+                if n > 0:
+                    earlier = list(pos_ranks.get(pos, []))
+                    pos_ranks.setdefault(pos, []).append(rank)
+                    if lim is not None and pos_before[pos] + pos_net[pos] > max(lim, pos_before[pos]) and earlier:
+                        items.append(_item(POSITION_LIMIT, f"The league allows at most {lim} {pos}, and claim"
+                                                           f"{'s' if len(earlier) > 1 else ''} "
+                                                           f"{', '.join(map(str, earlier))} also "
+                                                           f"add{'' if len(earlier) > 1 else 's'} one: if "
+                                                           f"{'they succeed' if len(earlier) > 1 else 'it succeeds'}, "
+                                                           f"this claim needs a drop at {pos}.", UNVERIFIED, claim.add))
+        if rules["acquisition"] == "FAAB" and bid_as == "WAIVERS" and claim.bid is not None and evaluated_ok:
+            bid_ranks.append(rank)
+        if rules["acquisition"] == "FAAB" and bid_as == "WAIVERS" and claim.bid is not None \
                 and evaluated_ok and rules["faab_remaining"] is not None and claim.bid <= rules["faab_remaining"]:
             left = rules["faab_remaining"] - spent_if_won
             if claim.bid > left:
@@ -305,7 +354,6 @@ def evaluate_claim_plan(state: LeagueState, team_id: int | None, claims: list[Cl
                                                          "that is not in the synced settings.", UNVERIFIED, claim.add))
             spent_if_won += claim.bid
 
-        roster = (ad or {}).get("roster") or {}
         out_claims.append({
             "rank": rank,
             "request": {"add": claim.add, "drop": claim.drop, "bid": claim.bid},
@@ -322,7 +370,7 @@ def evaluate_claim_plan(state: LeagueState, team_id: int | None, claims: list[Cl
         })
 
     counts = {v: sum(1 for c in out_claims if c["validation"] == v) for v in (LEGAL, UNVERIFIED, INVALID)}
-    bids = [c["request"]["bid"] for c in out_claims if c["request"]["bid"] is not None and c["claim_kind"] == "waiver_claim"]
+    bids = [c["request"]["bid"] for c in out_claims if c["rank"] in bid_ranks]
     total_bid = sum(bids) if rules["acquisition"] == "FAAB" and bids else None
     shared = {}
     for c in out_claims:
@@ -330,8 +378,13 @@ def evaluate_claim_plan(state: LeagueState, team_id: int | None, claims: list[Cl
             shared.setdefault(c["request"]["drop"], []).append(c["rank"])
     conflicts = [{"kind": "shared_drop", "player_id": pid, "ranks": ranks} for pid, ranks in shared.items()
                  if len(ranks) > 1]
-    if open_before is not None and len(add_only_ranks) > open_before:
-        conflicts.append({"kind": "open_spots", "player_id": None, "ranks": add_only_ranks, "open_spots": open_before})
+    if open_before is not None and len(spot_ranks) > open_before:
+        conflicts.append({"kind": "open_spots", "player_id": None, "ranks": spot_ranks, "open_spots": open_before})
+    for pos, ranks in sorted(pos_ranks.items()):
+        lim = state.position_limits.get(pos)
+        if lim is not None and len(ranks) > 1 and pos_before[pos] + pos_net[pos] > max(lim, pos_before[pos]):
+            conflicts.append({"kind": "position_limit", "player_id": None, "position": pos, "limit": lim,
+                              "ranks": ranks})
     return {
         "contract": CONTRACT,
         "submitted": False,
@@ -378,5 +431,5 @@ def _open_spots_text(open_spots: int, earlier: list[int]) -> str:
     spots = "no open roster spot" if open_spots == 0 else f"{open_spots} open roster spot{'s' if open_spots != 1 else ''}"
     many = len(earlier) > 1
     return (f"You have {spots}, and claim{'s' if many else ''} {', '.join(map(str, earlier))} "
-            f"{'also add players' if many else 'also adds a player'} without a drop: if "
-            f"{'they succeed' if many else 'it succeeds'}, this claim needs a drop.")
+            f"{'also take one' if many else 'also takes one'}: if {'they succeed' if many else 'it succeeds'}, this "
+            "claim needs a drop that frees an active spot.")

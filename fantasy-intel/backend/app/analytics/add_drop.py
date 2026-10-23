@@ -99,6 +99,9 @@ class AddDropContext:
     games: dict = field(default_factory=dict)   # projections.load_schedule: (team, week) -> (opponent, is_home)
     covered: set = field(default_factory=set)   # weeks the NFL schedule covers (a team absent from one is on bye)
     evaluated_at: str | None = None             # when the window was decided (ISO-8601 UTC)
+    # Whether the provider's sync tells waivers from free agents. Sleeper's does not (every unrostered player is
+    # written FREEAGENT), so there a FREEAGENT status does not mean "no claim needed".
+    waiver_status_known: bool = True
 
 
 def _item(code: str, message: str, player_id: int | None = None, tone: str = "info") -> dict:
