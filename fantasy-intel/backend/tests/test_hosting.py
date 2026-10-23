@@ -161,6 +161,37 @@ def test_hosted_mode_without_token_fails_fast(monkeypatch, caplog):
     assert "MOTHERDUCK_TOKEN is not set" in caplog.text
 
 
+def test_a_hosted_stale_schema_names_no_command_and_logs_the_fix(api_db, monkeypatch, caplog):
+    """STATUS 1s: a hosted visitor can see a 503 detail printed inline by a page, so the stale-schema answer names no
+    sync command there (the operator's fix goes to the log); it keeps "Database schema", which the frontend
+    classifies by. A local run still tells the developer the command."""
+    import duckdb
+    from app.api import deps
+    from app.db.connection import SCHEMA_VERSION
+
+    con = connect(api_db)
+    con.execute("UPDATE schema_meta SET value = '1' WHERE key = 'schema_version'")
+    con.close()
+    monkeypatch.setattr(deps, "connect_motherduck", lambda database: duckdb.connect(str(api_db), read_only=True))
+    monkeypatch.setattr(deps, "_MD_CONS", {})
+    monkeypatch.setenv("FANTASY_DB_PATH", "/nonexistent/fantasy.duckdb")
+    monkeypatch.setenv("MOTHERDUCK_DATABASE", "fantasy_intel")
+    monkeypatch.delenv("FANTASY_API_KEY", raising=False)
+    from app.main import app
+    with caplog.at_level("ERROR", logger="app.api.deps"):
+        r = TestClient(app).get("/api/overview")
+    detail = r.json()["detail"]
+    assert r.status_code == 503 and detail.startswith("Database schema v1 is older than v")
+    assert "uv run" not in detail and "sync_" not in detail and "scripts" not in detail
+    assert "sync_nfl.py" in caplog.text
+    deps._MD_CONS["fantasy_intel"].close()
+
+    monkeypatch.delenv("MOTHERDUCK_DATABASE")
+    monkeypatch.setenv("FANTASY_DB_PATH", str(api_db))
+    local = TestClient(app).get("/api/overview").json()["detail"]
+    assert f"older than v{SCHEMA_VERSION}" in local and "sync_nfl.py" in local
+
+
 def test_motherduck_connect_supplies_home_when_empty(monkeypatch, tmp_path):
     """Vercel functions run with HOME empty; the motherduck extension refuses to load without one."""
     import tempfile

@@ -154,8 +154,14 @@ def db() -> Iterator[Any]:
             con.execute("BEGIN TRANSACTION")
         version = schema_version(con)
         if version is not None and version < MIN_READ_SCHEMA_VERSION or (version is None and _has_tables(con)):
-            raise HTTPException(503, f"Database schema v{version or 1} is older than v{SCHEMA_VERSION}. Run "
-                                     "`uv run python ../scripts/sync_nfl.py` (and sync_espn.py) to migrate and rebuild.")
+            stale = f"Database schema v{version or 1} is older than v{SCHEMA_VERSION}."
+            fix = "Run `uv run python ../scripts/sync_nfl.py` (and sync_espn.py) to migrate and rebuild."
+            if hosted_md or settings.snapshot_enabled:
+                # A hosted visitor can see this detail (a page printing it inline): no command; the operator's fix
+                # goes to the log. The "Database schema" wording stays, as the frontend classifies the error by it.
+                log.error("%s %s", stale, fix)
+                raise HTTPException(503, f"{stale} The league data is being rebuilt; try again later.")
+            raise HTTPException(503, f"{stale} {fix}")
         yield con
     except duckdb.Error:
         if hosted_md:  # possibly a dropped connection: the next request reconnects

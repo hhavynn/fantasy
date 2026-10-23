@@ -137,6 +137,17 @@ def test_registry_defaults_are_all_disabled(clean_env):
     assert registry.data_origin(Provider.SLEEPER) is None
 
 
+def test_no_disabled_reason_names_a_setting(clean_env):
+    """STATUS 1s (and 1q for ESPN, #284): a disabled provider's reason is shown to visitors verbatim on the /leagues host
+    card, so it names no environment setting, value or key version; operators find those in the code comments."""
+    import re
+    caps = registry.all_capabilities()
+    assert all(not c.enabled for c in caps)
+    for c in caps:
+        assert c.reason, c.provider
+        assert not re.search(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|=|\.env|_V<", c.reason), (c.provider, c.reason)
+
+
 def test_registry_follows_environment_flags(clean_env):
     clean_env.setenv("SLEEPER_SOURCE", "fixture")
     assert registry.get_provider(Provider.SLEEPER).capabilities().enabled
