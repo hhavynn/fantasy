@@ -41,8 +41,9 @@ def _motherduck_cursor(database: str) -> duckdb.DuckDBPyConnection:
                 _MD_CONS.pop(database, None)
         try:
             con = connect_motherduck(database)
-        except duckdb.Error as err:
-            raise HTTPException(503, f"Cannot reach MotherDuck database {database!r}: {err}")
+        except duckdb.Error as err:     # the detail reaches visitors: no database name or driver text in it
+            log.warning("motherduck connect failed: %s", type(err).__name__)
+            raise HTTPException(503, "Cannot reach the hosted database.") from None
         _MD_CONS[database] = con
         return con.cursor()
 
@@ -64,14 +65,16 @@ def _snapshot_cursor(settings) -> duckdb.DuckDBPyConnection:
     try:
         path, _ = cache.local_path()
     except Exception as err:  # R2Error, a bad manifest: nothing has been served yet in this instance
-        raise HTTPException(503, f"Cannot load the published snapshot: {err}")
+        log.warning("snapshot load failed: %s", type(err).__name__)     # never the object key or bucket in the detail
+        raise HTTPException(503, "Cannot load the published snapshot.") from None
     with _SNAP_LOCK:
         if _SNAP.get("path") != path:
             try:
                 _SNAP["con"], _SNAP["path"] = duckdb.connect(str(path), read_only=True), path
             except duckdb.Error as err:   # e.g. written by a newer DuckDB than this bundle's
                 if _SNAP.get("con") is None:
-                    raise HTTPException(503, f"Cannot open the published snapshot: {err}")
+                    log.warning("cannot open snapshot: %s", type(err).__name__)
+                    raise HTTPException(503, "Cannot open the published snapshot.") from None
                 log.warning("cannot open snapshot %s (%s); still serving %s", path.name, err, _SNAP["path"].name)
         return _SNAP["con"].cursor()
 

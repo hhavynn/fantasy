@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
 import { api, apiRequest } from "./api.ts";
 import { connectProblem } from "./onboarding.ts";
-import { SIGN_IN_AGAIN, actionErrorMessage } from "./route-error.ts";
+import { ACTION_503_MESSAGES, SIGN_IN_AGAIN, actionErrorMessage } from "./route-error.ts";
 
 const realFetch = globalThis.fetch;
 const realEnv = { API_KEY: process.env.API_KEY, VERCEL: process.env.VERCEL };
@@ -104,6 +104,29 @@ test("the backend's own 400, 403, 404, 409, 422 and 429 message still shows, so 
   // FastAPI's validation list keeps its joined messages.
   answering(422, JSON.stringify({ detail: [{ msg: "Field required" }] }));
   assert.equal(actionErrorMessage(await failure(), FALLBACK), "Field required");
+});
+
+test("only the add-league flow's exact fixed 503 sentences are forwarded; any other 503 text is not", async () => {
+  for (const detail of ACTION_503_MESSAGES) {
+    answering(503, JSON.stringify({ detail }));
+    assert.equal(actionErrorMessage(await failure(), FALLBACK), detail);
+  }
+  // The deployment cannot take private leagues at all: the card says so, and never "try again later".
+  answering(503, JSON.stringify({ detail: "Private leagues are not available in this deployment." }));
+  const res = await failure();
+  const card = connectProblem(res.status, actionErrorMessage(res, FALLBACK), "espn");
+  assert.equal(card.next, "none");
+  assert.equal(card.title, "Private ESPN leagues are not available here");
+  assert.doesNotMatch(JSON.stringify(card), /try again/i);
+  // Near misses and other 503s get the fixed words.
+  for (const detail of ["Private leagues are not available in this deployment. Traceback: /srv/app",
+    "private leagues are not available in this deployment.", "The control plane is unavailable.",
+    "Cannot load the published snapshot: r2 key snapshots/lg_x/manifest.json"]) {
+    answering(503, JSON.stringify({ detail }));
+    assert.equal(actionErrorMessage(await failure(), FALLBACK), FALLBACK, detail);
+  }
+  answering(500, JSON.stringify({ detail: "Private leagues are not available in this deployment." }));
+  assert.equal(actionErrorMessage(await failure(), FALLBACK), FALLBACK);
 });
 
 test("a hosted deployment's api() and apiRequest() errors name no address and no server command", async () => {
