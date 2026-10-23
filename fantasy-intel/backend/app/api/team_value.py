@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ..analytics.marginal_utility import MarginalUtilityError, marginal_utility
 from ..analytics.playoff_race import NotSynced, load_race_data
-from ..analytics.team_lineups import STREAMER_IDS, STREAMER_NAMES, source_label, without
+from ..analytics.team_lineups import STREAMER_IDS, STREAMER_NAMES, replacement_positions, source_label, without
 from ..analytics.team_value import NotFound, _position_legal, build_team_value, load_team_value_inputs
 from ..analytics.trades import with_streaming
 from .deps import db
@@ -69,9 +69,14 @@ def my_team_marginal(ids: list[int] = Query(..., max_length=MAX_ASSETS), team_id
             # A legal replacement only: adding him keeps every position within the league's roster limit once the
             # removed players are gone (the rule the page's own free-agent suggestions use).
             legal = _position_legal(known, without(roster, ids), roster, state)
+            # Counted only among free agents who could fill one of the removed player's slots at all.
+            me = next((p for p in roster if p.espn_player_id in set(ids)), None)
+            fits = replacement_positions(me.position, state.slots) if me is not None else set()
+            kept = {p.espn_player_id for p in legal}
             availability = {"free_agents": len(state.free_agents), "availability_known": len(known),
                             "excluded_unknown_availability": len(state.free_agents) - len(known),
-                            "excluded_position_limit": len(known) - len(legal)}
+                            "excluded_position_limit": sum(1 for p in known if p.espn_player_id not in kept
+                                                           and p.position in fits)}
             free_agents = legal if known else None   # none with known availability: the pool is unknown, not empty
         try:
             res = marginal_utility(roster, state.slots, window, state.projections, ids,

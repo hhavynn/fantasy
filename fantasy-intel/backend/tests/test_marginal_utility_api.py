@@ -106,19 +106,19 @@ def test_bad_requests_are_refused(api):
 
 
 def test_a_waiver_replacement_keeps_the_league_position_limits(api, monkeypatch):
+    """The fixture's best free agent for a removed WR is an RB (209, through FLEX). With the RB limit already reached,
+    removing a WR frees no RB spot, so that RB is not a legal replacement and is never chosen."""
     client, db_path = api
     race, state = _state(db_path)
-    tid = _mine(race)
-    roster = state.rosters[tid]
-    fa = next((p for p in state.free_agents if p.position in ("RB", "WR", "TE", "QB")), None)
-    if fa is None:
-        pytest.skip("no skill-position free agent in the fixture")
-    removed = next(p for p in roster if not p.reserved and p.position != fa.position)
-    held = sum(1 for p in roster if p.position == fa.position)
+    roster = state.rosters[_mine(race)]
+    wr = next(p for p in roster if p.position == "WR" and not p.reserved)
+    free = client.get(PATH, params={"ids": [wr.espn_player_id], "pool": "waiver"}).json()
+    assert free["replacement"] and free["replacement"]["position"] == "RB"        # the case the limit must change
+    rbs = sum(1 for p in roster if p.position == "RB")
     real = playoff_race.load_race_data
-    # The roster is full at the free agent's position: removing a player at another position frees no spot there.
     monkeypatch.setattr("app.api.team_value.load_race_data", lambda con: replace(
-        r := real(con), state=replace(r.state, position_limits={fa.position: held})))
-    body = client.get(PATH, params={"ids": [removed.espn_player_id], "pool": "waiver"}).json()
-    assert body["waiver_availability"]["excluded_position_limit"] >= 1
-    assert body["replacement"] is None or body["replacement"]["position"] != fa.position
+        r := real(con), state=replace(r.state, position_limits={"RB": rbs})))
+    capped = client.get(PATH, params={"ids": [wr.espn_player_id], "pool": "waiver"}).json()
+    assert capped["replacement"] is None or capped["replacement"]["position"] != "RB"
+    assert capped["replacement"] is None or capped["replacement"]["espn_player_id"] != free["replacement"]["espn_player_id"]
+    assert capped["waiver_availability"]["excluded_position_limit"] >= 1

@@ -126,6 +126,8 @@ async function Answer({ result }: { result: Promise<ApiResult<RosterUtility>> })
         {streamed && d.streaming.note ? ` ${d.streaming.note}` : ""}
         {d.waiver_availability && d.waiver_availability.excluded_unknown_availability > 0
           ? ` ${d.waiver_availability.excluded_unknown_availability} free agents with unknown availability were not considered.` : ""}
+        {d.waiver_availability && d.waiver_availability.excluded_position_limit > 0
+          ? ` ${d.waiver_availability.excluded_position_limit} free agents who could fill in would exceed the league's position limit.` : ""}
       </p>
     </div>
   );
