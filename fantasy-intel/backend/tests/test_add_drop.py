@@ -341,3 +341,32 @@ def test_the_route_is_get_only():
     mine = [r for r in iter_routes(app) if "add-drop" in r.path]
     assert mine and all(r.methods == {"GET"} for r in mine)
     assert {r.path for r in mine} == {"/api/waivers/add-drop", "/v2/leagues/{league_id}/api/waivers/add-drop"}
+
+
+def test_a_league_with_more_flex_slots_than_supported_gets_a_clean_422(tmp_path, monkeypatch):
+    """31 flex slots (a provider can store any count): the exact lineup solver refuses them (lineup.LineupTooLargeError)
+    and the simulator answers the app-wide fixed 422, naming no internals, never a 500 or a guessed lineup."""
+    from types import SimpleNamespace
+
+    from espn_fixture import MY_SWID, FakeEspnClient
+    from fastapi.testclient import TestClient
+
+    from app.analytics.lineup import MAX_FLEX_SLOTS, UNSUPPORTED_LINEUP
+    from app.api import add_drop as route
+    from app.db.connection import open_db
+    from app.espn.sync import run_espn_sync
+
+    db_path = tmp_path / "flex31.duckdb"
+    run_espn_sync(lambda: open_db(db_path), SimpleNamespace(swid=MY_SWID, my_team_id=None), client=FakeEspnClient(),
+                  save_raw_payloads=False)
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db_path))
+    monkeypatch.setenv("ESPN_SEASON", "2026")
+    real = route.load_league_state
+    monkeypatch.setattr(route, "load_league_state", lambda con, **kw: replace(
+        real(con, **kw), slots=lineup_slots({"QB": 1, "FLEX": MAX_FLEX_SLOTS + 1})))
+    from app.main import app
+    client = TestClient(app, raise_server_exceptions=False)
+    for query in ("?add=209&drop=206", "?add=209", "?drop=206"):
+        res = client.get("/api/waivers/add-drop" + query)
+        assert res.status_code == 422, (query, res.text[:200])
+        assert res.json() == {"detail": UNSUPPORTED_LINEUP}

@@ -153,6 +153,8 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("analytics/add_drop", ["tests/test_add_drop.py", "tests/test_trades.py", "tests/test_waiver_decisions.py",
                             "tests/test_golden_legacy.py"]),
     ("analytics/kicker", ["tests/test_kicker_projections.py", "tests/test_kicker_reprojection.py", "tests/test_kdst_streaming.py"]),
+    ("analytics/kdst_streaming", ["tests/test_kdst_streaming_planner.py", "tests/test_kdst_streaming.py",
+                                  "tests/test_golden_legacy.py", "tests/test_league_scope_audit.py"]),
     ("analytics/injury", ["tests/test_injury_model.py", "tests/test_injury_impact.py", "tests/test_injury_workload.py", "tests/test_injury_freshness.py"]),
     ("analytics/projections", ["tests/test_espn_projections.py", "tests/test_independent_projections.py", "tests/test_projection_performance.py"]),
     ("analytics/waiver", ["tests/test_waivers.py", "tests/test_waiver_data.py", "tests/test_waiver_decisions.py"]),
@@ -169,6 +171,7 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     # Tooling scripts self-tests
     ("scripts/agent_check.py", ["tests/test_agent_check.py"]),
     ("scripts/static_checks.py", ["tests/test_static_checks.py"]),
+    ("scripts/ci_changes.py", ["tests/test_ci_changes.py"]),
 ]
 
 

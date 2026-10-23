@@ -758,9 +758,10 @@ Every push to `main` and pull request targeting `main` automatically triggers Gi
 
 ### What CI checks
 
-- **Backend job (`backend`)**: Runs on Ubuntu with Python 3.12 and `uv`. Installs pinned dependencies from `backend/uv.lock` and executes the full pytest suite.
+- **Classify changes (`changes`)**: Runs first. On a pull request whose every changed path is plain Markdown on the short allow-list in `scripts/ci_changes.py` (the classifier as it exists on the base branch is the one that runs), the run is docs-only: the backend, social, frontend and E2E jobs are skipped and a docs-only job runs the repository credential scan instead. Everything else, including pushes to `main`, gets every job.
+- **Backend job (`backend`)**: Runs on Ubuntu with Python 3.12 and `uv`. Installs pinned dependencies from `backend/uv.lock` and executes the full pytest suite as eight parallel shards (`pytest --shard=K/8`, balanced by `backend/tests/shard_weights.json`); the `Backend (Python 3.12)` check is green only when every shard passed.
 - **Frontend job (`frontend`)**: Runs on Ubuntu with Node.js 22 LTS. Installs pinned dependencies from `frontend/package-lock.json` with `npm ci`, runs ESLint, verifies TypeScript types (`npm run typecheck`), runs the unit tests (`npm test`), and compiles a production build (`npm run build`).
-- **E2E job (`e2e`)**: Installs both, builds the frontend, and runs the Playwright route smoke test (`npm run e2e`, see [Browser smoke test](#browser-smoke-test-playwright)) against the backend serving the synthetic DuckDB. On failure it uploads the traces and HTML report as the `playwright-traces` artifact.
+- **E2E jobs (`e2e-suite`, `e2e`)**: Four parallel jobs, each installing both, building the frontend and running its own servers: the Playwright route smoke test and UX gates (`npm run e2e`, see [Browser smoke test](#browser-smoke-test-playwright)) split as `--shard=1/2` and `--shard=2/2`, the multi-league parity matrix (`npm run e2e:multileague`, the only one with Postgres), and the Sleeper smoke followed by visual regression. On failure each uploads its traces and HTML report as a `playwright-traces-<id>` artifact (`route-1`, `route-2`, `multileague`, `sleeper-visual`). The `E2E smoke (Playwright)` check is green only when every suite job passed.
 
 ### Reproducing checks locally
 
@@ -791,7 +792,7 @@ npm run e2e
 4. If frontend typecheck fails: run `npm run typecheck` (which runs `next typegen` followed by `tsc --noEmit`).
 5. If frontend unit tests fail: run `npm test` locally (Node 22.6+ is required for `--experimental-strip-types`).
 6. If frontend build fails: run `npm run build` locally and inspect Next.js build errors.
-7. If the E2E smoke test fails: download the `playwright-traces` artifact and open the failing test's `trace.zip` with `npx playwright show-trace`, or run `npm run build && npm run e2e` locally. The test name says the route and theme; the project name (`desktop-1440` or `mobile-375`) says the width.
+7. If an E2E job fails: download that job's `playwright-traces-<id>` artifact and open the failing test's `trace.zip` with `npx playwright show-trace`, or run `npm run build && npm run e2e` locally. The test name says the route and theme; the project name (`desktop-1440` or `mobile-375`) says the width.
 
 ### Isolation and environment requirements
 

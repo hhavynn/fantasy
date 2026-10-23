@@ -15,10 +15,90 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # Docs-only pull requests (every changed path on the short Markdown allow-list in fantasy-intel/scripts/ci_changes.py)
+  # skip the backend, social, frontend and E2E jobs (shown as skipped) and run the repository credential scan in the
+  # docs-scan job instead; the two aggregate checks below say so in their summary. Everything else, every push to main
+  # or manual run, and any failure to classify, gets the full suite.
+  changes:
+    name: Classify changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      reason: ${{ steps.classify.outputs.reason }}
+    steps:
+      - name: Checkout repository (history for the merge base)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      # The classifier that runs is the base commit's copy, never the pull request's own, so a pull request cannot
+      # loosen the rules it is judged by. No classifier at the base, or a classifier failure, means full CI.
+      - name: Classify the diff against its merge base
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          verdict="$RUNNER_TEMP/verdict"
+          classifier="$RUNNER_TEMP/ci_changes_base.py"
+          if [ "$EVENT" != pull_request ]; then
+            printf 'docs_only=false\nreason=%s event: full CI\n' "$EVENT" > "$verdict"
+          elif ! git show "$BASE_SHA:fantasy-intel/scripts/ci_changes.py" > "$classifier" 2>/dev/null; then
+            printf 'docs_only=false\nreason=no classifier at the base commit: full CI\n' > "$verdict"
+          elif ! python3 -I "$classifier" --event "$EVENT" --base "$BASE_SHA" --head "$HEAD_SHA" > "$verdict"; then
+            echo "::warning title=Classify changes::the base commit's classifier failed; running full CI"
+            printf 'docs_only=false\nreason=classifier failed: full CI\n' > "$verdict"
+          fi
+          grep -E '^(docs_only|reason)=' "$verdict" | tee -a "$GITHUB_OUTPUT" | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+
+  docs-scan:
+    # The one whole-repository check that reads Markdown: the credential scan over every tracked file
+    # (backend/tests/test_no_credential_leaks.py). On a docs-only change it runs here; otherwise it runs in the shards.
+    name: Docs-only checks (credential scan)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: fantasy-intel/backend
+    env:
+      TZ: UTC
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "fantasy-intel/backend/uv.lock"
+
+      - name: Install backend dependencies
+        run: uv sync --frozen
+
+      - name: Scan every tracked file for credentials
+        run: >-
+          uv run pytest -p no:cacheprovider
+          "tests/test_no_credential_leaks.py::test_no_credentials_are_committed_to_the_repository"
+          "tests/test_no_credential_leaks.py::test_the_env_example_files_ship_empty_credentials"
+          "tests/test_no_credential_leaks.py::test_the_scanner_catches_each_credential_shape_and_honours_the_allowlist"
+
   backend-shard:
     # The suite runs as parallel shards (balanced by tests/shard_weights.json; whole files except the heaviest), each with its
-    # own Postgres service. Rebuild the weights with scripts/shard_weights.py when the shards drift apart.
+    # own Postgres service. Rebuild the weights with scripts/shard_weights.py when the shards drift apart; the current
+    # weights are per-file durations measured on these runners (all eight shards of one CI run), not on a laptop.
     name: Backend shard ${{ matrix.shard }}/${{ strategy.job-total }}
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -63,17 +143,32 @@ jobs:
         run: uv run pytest --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
   backend:
-    # One status for the whole suite: green only when every shard passed.
+    # One status for the whole suite: green only when every shard passed, or for a docs-only change when the credential
+    # scan passed (shards not run). Red when a shard was cancelled, including a run superseded by a newer push.
     name: Backend (Python 3.12)
     runs-on: ubuntu-latest
-    needs: backend-shard
+    needs: [changes, docs-scan, backend-shard]
     if: always()
     steps:
       - name: Every shard passed
-        run: test "${{ needs.backend-shard.result }}" = success
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          DOCS_SCAN: ${{ needs.docs-scan.result }}
+          SHARDS: ${{ needs.backend-shard.result }}
+        run: |
+          echo "changes: $CHANGES (docs_only=$DOCS_ONLY), credential scan: $DOCS_SCAN, backend shards: $SHARDS"
+          if [ "$CHANGES" = success ] && [ "$DOCS_ONLY" = true ]; then
+            if [ "$DOCS_SCAN" != success ] || [ "$SHARDS" != skipped ]; then exit 1; fi
+            echo "docs-only change: backend/frontend/E2E not applicable, not run" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          test "$SHARDS" = success
 
   social:
     name: Social trend engine (Python 3.12)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -107,6 +202,8 @@ jobs:
 
   frontend:
     name: Frontend (Node.js 22)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -138,20 +235,34 @@ jobs:
       - name: Run production build
         run: npm run build
 
-  e2e:
-    name: E2E smoke (Playwright)
+  e2e-suite:
+    # The browser suites run as parallel jobs, each on its own runner with its own servers, ports, fixtures and (for the
+    # multi-league matrix only) Postgres service. The route smoke is split in two with Playwright's --shard (whole
+    # tests, every project); Playwright's worker count is unchanged. Visual regression rides with the short Sleeper
+    # smoke while it has no committed baselines (it skips).
+    name: E2E ${{ matrix.name }}
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: route-1, name: "route smoke + UX gates (1/2)", suite: route, shard: "1/2" }
+          - { id: route-2, name: "route smoke + UX gates (2/2)", suite: route, shard: "2/2" }
+          - { id: multileague, name: "multi-league parity + UX gates", suite: multileague, postgres: true }
+          - { id: sleeper-visual, name: "Sleeper smoke + visual", suite: sleeper-visual }
     defaults:
       run:
         working-directory: fantasy-intel/frontend
     env:
       TZ: UTC
-      # The multi-league parity matrix's control plane (scripts/e2e_multileague.py via tests/pg_harness.py)
-      FI_TEST_PG_DSN: postgresql://postgres:postgres@localhost:5432/postgres
     services:
       postgres:
-        image: postgres:17
+        # Only the multi-league matrix's control plane needs it (scripts/e2e_multileague.py via tests/pg_harness.py);
+        # an empty image starts no service.
+        image: ${{ matrix.postgres && 'postgres:17' || '' }}
         env:
           POSTGRES_PASSWORD: postgres
         options: >-
@@ -188,37 +299,77 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps --only-shell chromium
+      # The browser download is cached; the key is the resolved @playwright/test version, which pins the browser
+      # build. The 6-8 min install steps seen in CI were apt (`install-deps`), not the download, so the system
+      # packages are installed only when the runner image lacks a shared library the browser links against.
+      - name: Resolve the Playwright version
+        id: playwright
+        run: |
+          v=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          # an empty or undefined version would collapse the cache key and restore a stale browser
+          [ -n "$v" ] && [ "$v" != undefined ] || exit 1
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium-headless-shell
+
+      - name: Install Playwright Chromium (cache miss)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --only-shell chromium
+
+      - name: Install Playwright system dependencies (only if missing)
+        run: |
+          bin=$(find ~/.cache/ms-playwright -type f \( -name headless_shell -o -name chrome-headless-shell \) | head -n 1)
+          # fonts are invisible to ldd; Liberation Sans is the metric-compatible Arial behind the pages' local("Arial") fallback
+          fonts=$(fc-list : family 2>/dev/null || true)
+          if [ -n "$bin" ] && libs=$(ldd "$bin" 2>&1) && ! grep -q "not found" <<< "$libs" \
+             && grep -qi "Liberation Sans" <<< "$fonts"; then
+            echo "All shared libraries of $bin and Liberation Sans are present; skipping install-deps."
+          else
+            echo "Missing shared libraries or fonts (or no browser binary found); installing system dependencies."
+            npx playwright install-deps chromium
+          fi
 
       - name: Build frontend
+        id: build
         run: npm run build
 
       # Playwright starts the backend on the synthetic DuckDB (scripts/build_e2e_db.py) and `next start`. Includes the UX
       # acceptance gates (e2e/ux-gates.spec.ts: landmarks, keyboard, focus, axe-core, overflow at 320/390/768/1440).
-      - name: Run route smoke test and UX gates
-        run: npm run e2e
-
-      # Reviewed screenshots of a few core destinations (e2e/visual.spec.ts). Skips until baselines drawn by this
-      # browser build are committed; they come only from the "Visual baselines" workflow (docs/qa/release-review.md).
-      - name: Run visual regression
-        run: npm run e2e:visual
-
-      # The same pages for a Sleeper league (scripts/build_e2e_sleeper.py): no error and no ESPN wording.
-      - name: Run Sleeper league smoke test
-        run: npm run e2e:sleeper
+      - name: Run route smoke test and UX gates (Playwright shard)
+        if: matrix.suite == 'route'
+        run: npm run e2e -- --shard=${{ matrix.shard }}
 
       # Every page on the multi-league site for an ESPN public, an ESPN private (signed in) and a Sleeper league:
       # throwaway Postgres, a fake Supabase JWKS and published league files (scripts/e2e_multileague.py). Includes the
       # UX gates for the provider, stale-sync and blank-sync fixtures (e2e/ux-multileague.spec.ts).
       - name: Run multi-league parity matrix and UX gates
+        if: matrix.suite == 'multileague'
+        env:
+          FI_TEST_PG_DSN: postgresql://postgres:postgres@localhost:5432/postgres
         run: npm run e2e:multileague
+
+      # The same pages for a Sleeper league (scripts/build_e2e_sleeper.py): no error and no ESPN wording.
+      - name: Run Sleeper league smoke test
+        if: matrix.suite == 'sleeper-visual'
+        run: npm run e2e:sleeper
+
+      # Reviewed screenshots of a few core destinations (e2e/visual.spec.ts). Skips until baselines drawn by this
+      # browser build are committed; they come only from the "Visual baselines" workflow (docs/qa/release-review.md).
+      # Runs even when the Sleeper smoke failed, so one red job reports both.
+      - name: Run visual regression
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.suite == 'sleeper-visual' }}
+        run: npm run e2e:visual
 
       - name: Upload Playwright traces and report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces
+          name: playwright-traces-${{ matrix.id }}
           path: |
             fantasy-intel/frontend/test-results/
             fantasy-intel/frontend/playwright-report/
@@ -229,3 +380,26 @@ jobs:
             fantasy-intel/frontend/test-results-multileague/
             fantasy-intel/frontend/playwright-report-multileague/
           retention-days: 14
+
+  e2e:
+    # The check name the single E2E job used to have: green only when every suite job passed, or for a docs-only change
+    # when the credential scan passed (suites not run). Red when a suite was cancelled, including a superseded run.
+    name: E2E smoke (Playwright)
+    runs-on: ubuntu-latest
+    needs: [changes, docs-scan, e2e-suite]
+    if: always()
+    steps:
+      - name: Every E2E suite passed
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          DOCS_SCAN: ${{ needs.docs-scan.result }}
+          SUITES: ${{ needs.e2e-suite.result }}
+        run: |
+          echo "changes: $CHANGES (docs_only=$DOCS_ONLY), credential scan: $DOCS_SCAN, E2E suites: $SUITES"
+          if [ "$CHANGES" = success ] && [ "$DOCS_ONLY" = true ]; then
+            if [ "$DOCS_SCAN" != success ] || [ "$SUITES" != skipped ]; then exit 1; fi
+            echo "docs-only change: backend/frontend/E2E not applicable, not run" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          test "$SUITES" = success
