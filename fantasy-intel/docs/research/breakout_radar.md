@@ -15,8 +15,8 @@ does.
 
 - nflverse, through `nflreadpy` 0.1.5. The research file was synced on 2026-10-23 by `scripts/sync_nfl_history.py`
   (finished seasons only; never the live database).
-- Regular seasons 2021–2025 (weeks 1–18): 35,272 skill-position player-games of `player_week_usage`, of which 31,911 are
-  RB, WR or TE. The rows were built by the production builder (`app/analytics/usage.py`) inside the history file.
+- Regular seasons 2021–2025 (weeks 1–18): 35,272 player-games of `player_week_usage` at every position it holds (QB, RB,
+  WR, TE, FB), of which 31,911 are RB, WR or TE. The rows were built by the production builder (`app/analytics/usage.py`) inside the history file.
   Every position is loaded, so a game listed at another position (FB, QB) is a game played, never a gap.
 - **Opportunity metric: `xfp`**, nflverse's expected PPR points from the player's realized opportunity (targets,
   carries, air yards and field position), per game played.
@@ -144,8 +144,8 @@ player-season.
   - By season, only 2022 at H = 4 by week excludes zero.
   - So v1 shows no evidence that the emerging state adds signal beyond "his last two games were well above his
     earlier level".
-- **Most emerging flags are false alarms.** About 4 in 10 held for the next two weeks, among players who played at
-  least one of them (5% played neither and are unlabelled). Recall is low (11–13%).
+- **Most emerging flags are false alarms.** About 4 in 10 averaged above the bar over the games they played in the
+  next two weeks (one game is enough for a label; 5% played neither and are unlabelled). Recall is low (11–13%).
 - **Recommendation.** Under #212's stopping rule, this is not an above-baseline signal. It should not be shipped as a
   "breakout" predictor. At most, it could become an evidence-only view: the player's recent and earlier xFP, side by
   side, with no "breakout" claim and with the hit rate above stated in words. The merge captain decides.
