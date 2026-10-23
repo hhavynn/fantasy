@@ -59,6 +59,17 @@ export function withLeague(href: string, league: string | null | undefined): str
   return `${leaguePath(league, path)}${query}`;
 }
 
+/**
+ * A same-origin Next route handler (`/api/...` under app/api) fetched by a client component on a league page:
+ * `/api/trade-evidence?k` -> `/l/<lg>/api/trade-evidence?k`. proxy.ts rewrites that with the league header, so the
+ * handler's `api()` call reaches the league's /v2 mount; a bare `/api/...` fetch is unscoped (the proxy strips any league
+ * header) and would answer for the classic league. Identity on the classic site and for anything but `/api/...`.
+ */
+export function leagueRouteHref(href: string, league: string | null | undefined): string {
+  if (!league || !isLeagueId(league) || !/^\/api(\/|\?|$)/.test(href)) return href;
+  return `/l/${league}${href}`;
+}
+
 /** Prefix a backend path with the league's /v2 mount. Only the legacy /api routes are league-scoped. */
 export function scopeApiPath(path: string, league: string | null | undefined): string {
   if (!league || !isLeagueId(league) || !path.startsWith("/api/")) return path;

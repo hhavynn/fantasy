@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  appPath, crossesLeagueScope, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath, withLeague,
+  appPath, crossesLeagueScope, leagueRouteHref, leaguePath, proxyDecision, scopeApiPath, splitLeaguePath, withLeague,
 } from "./league-scope.ts";
 
 const LG = "lg_" + "a".repeat(24);
@@ -106,4 +106,22 @@ test("a client navigation crosses the league scope into, out of, or between leag
   assert.equal(crossesLeagueScope(`${A}/waivers`, `${B}/waivers`), true);
   assert.equal(crossesLeagueScope(`${A}/waivers`, `${A}/trades`), false);
   assert.equal(crossesLeagueScope("/terms", "/privacy"), false);
+});
+
+test("route-handler fetches from a league page stay in that league (the trade evidence panel)", () => {
+  const src = "/api/trade-evidence?team_id=2&mode=targeted&key=1-for-1%3A3%3A204%3A208";
+  const scoped = leagueRouteHref(src, LG);
+  assert.equal(scoped, `/l/${LG}${src}`);
+  // proxy.ts rewrites it to the handler with the league header (a bare /api fetch would be unscoped and lose it)
+  const url = new URL(scoped, "http://x");
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: url.pathname, search: url.search }),
+    { kind: "rewrite", path: src, league: LG });
+  assert.deepEqual(proxyDecision({ enabled: true, pathname: "/api/trade-evidence", search: url.search, cookie: LG }),
+    { kind: "next" });
+  // classic site, a bad id, and anything that is not a route handler are unchanged
+  assert.equal(leagueRouteHref(src, null), src);
+  assert.equal(leagueRouteHref(src, "lg_bad"), src);
+  assert.equal(leagueRouteHref("/trades", LG), "/trades");
+  assert.equal(leagueRouteHref("/apiary", LG), "/apiary");
+  assert.equal(leagueRouteHref("https://example.com/api/x", LG), "https://example.com/api/x");
 });

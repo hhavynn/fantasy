@@ -5,7 +5,9 @@ import { useRef, useState } from "react";
 import { PlayerLink } from "@/components/PlayerLink";
 import { TradeVsFreeAgency } from "@/components/TradeVsFreeAgency";
 import { Badge, Notice, Pos } from "@/components/ui";
+import { useLeagueId } from "@/components/useAppPathname";
 import { num } from "@/lib/format";
+import { leagueRouteHref } from "@/lib/league-scope";
 import { projectionName } from "@/lib/labels";
 import type { DEvidence } from "@/lib/trade-types";
 import { AssetEvidence, DepthEvidence, PlausibilityChecks, RatingsEvidence, WeeklyEvidence } from "./DualValueEvidence";
@@ -17,18 +19,20 @@ type Load = { status: "idle" | "loading" | "error" } | { status: "ready"; e: DEv
 /**
  * A trade's "Why this trade, concerns and evidence" panel. The evidence is fetched when the panel opens (or when the
  * pointer or focus reaches its summary, so it is usually there by the time it opens) instead of being rendered into
- * the page for every row. `src` is the row's `/api/trade-evidence` URL; the numbers are the same computation as the
- * table row's. `projLabel` names the page's projections ("ESPN", or "Ours" for a league whose provider has none) for an
+ * the page for every row. `src` is the row's `/api/trade-evidence` URL; on a league page it is fetched under
+ * `/l/<lg>/` (leagueRouteHref) so the evidence is that league's, never the classic site's. The numbers are the same
+ * computation as the table row's. `projLabel` names the page's projections ("ESPN", or "Ours" for a league whose provider has none) for an
  * evidence payload that does not say.
  */
 export function TradeEvidence({ src, analyzer, projLabel = "ESPN" }: { src: string; analyzer: string; projLabel?: string }) {
   const [load, setLoad] = useState<Load>({ status: "idle" });
   const started = useRef(false);
+  const league = useLeagueId();
   const start = () => {
     if (started.current) return;
     started.current = true;
     setLoad({ status: "loading" });
-    fetch(src)
+    fetch(leagueRouteHref(src, league))
       .then((res) => (res.ok ? (res.json() as Promise<DEvidence>) : Promise.reject(new Error(String(res.status)))))
       .then((e) => setLoad({ status: "ready", e }))
       .catch(() => {
