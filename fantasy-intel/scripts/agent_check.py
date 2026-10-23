@@ -144,7 +144,7 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
     ("api/kicker", ["tests/test_kicker_projections.py", "tests/test_kicker_reprojection.py"]),
     ("api/rankings", ["tests/test_rankings.py"]),
     ("api/matchup", ["tests/test_matchup_api.py"]),
-    ("api/schedule", ["tests/test_schedule_intelligence.py"]),
+    ("api/schedule", ["tests/test_schedule_intelligence.py", "tests/test_sos_heatmap.py", "tests/test_golden_legacy.py"]),
     ("api/weekly_recap", ["tests/test_weekly_recap.py"]),
     ("api/manager_scouting", ["tests/test_manager_scouting.py"]),
     ("api/player_compare", ["tests/test_player_compare.py"]),
@@ -171,6 +171,11 @@ BACKEND_TEST_MAPPINGS: list[tuple[str | re.Pattern, list[str]]] = [
                               "tests/test_golden_legacy.py"]),
     ("analytics/faab", ["tests/test_faab.py", "tests/test_golden_legacy.py"]),
     ("analytics/kicker", ["tests/test_kicker_projections.py", "tests/test_kicker_reprojection.py", "tests/test_kdst_streaming.py"]),
+    # Strength-of-schedule heatmap (issue #188) over schedule intelligence's own evidence.
+    ("analytics/sos_heatmap", ["tests/test_sos_heatmap.py", "tests/test_golden_legacy.py", "tests/test_league_scope_audit.py",
+                               "tests/test_v2_authorization_matrix.py"]),
+    ("analytics/schedule_intelligence", ["tests/test_schedule_intelligence.py", "tests/test_sos_heatmap.py",
+                                         "tests/test_golden_legacy.py"]),
     ("analytics/kdst_streaming", ["tests/test_kdst_streaming_planner.py", "tests/test_kdst_streaming.py",
                                   "tests/test_golden_legacy.py", "tests/test_league_scope_audit.py"]),
     ("analytics/injury", ["tests/test_injury_model.py", "tests/test_injury_impact.py", "tests/test_injury_workload.py", "tests/test_injury_freshness.py"]),
@@ -212,6 +217,7 @@ QUICK_EXCLUDED_TESTS: dict[str, str] = {
     "tests/test_league_scope.py": "~66-85 s",
     "tests/test_v2_authorization_matrix.py": "~28 s",
     "tests/test_schedule_intelligence.py": "~73 s",
+    "tests/test_sos_heatmap.py": "~45 s",
 }
 QUICK_MAX_FILES = 3
 QUICK_BUDGET_S = 60.0
