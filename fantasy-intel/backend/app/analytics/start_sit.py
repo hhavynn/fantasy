@@ -50,6 +50,43 @@ ACTIONABILITY_UNCERTAIN = "UNCERTAIN"
 ACTIONABILITY_IR_BLOCKED = "IR_BLOCKED"
 ACTIONABILITY_NO_CHANGE = "NO_CHANGE"
 
+# Recommendation strength (issue #172). One close rule: a projected gain of at most CLOSE_CALL_POINTS is a close call,
+# the margin the decision backtests score close calls by (forecast_backtest / start_sit_evaluation CLOSE_PAIR_POINTS;
+# tested equal). A label with its reason, never a probability: no calibrated confidence exists to state one.
+CLOSE_CALL_POINTS = 3.0
+STRENGTH_CLEAR, STRENGTH_CLOSE, STRENGTH_UNVERIFIED = "clear", "close", "unverified"
+
+
+def recommendation_strength(gain: float | None, unknowns: list[str]) -> dict:
+    """How far a recommendation is from a close call. Any unknown (a missing projection, an unverified kickoff) makes it
+    unverified, never certain; otherwise the projected gain against the close rule, stated in the reason."""
+    if unknowns or gain is None:
+        why = " ".join(unknowns) if unknowns else "The projected gain is unknown."
+        return {"label": STRENGTH_UNVERIFIED, "reason": f"Unverified: {why}"}
+    margin = f"the {CLOSE_CALL_POINTS:g}-point margin the decision backtests treat as a close call"
+    if gain <= CLOSE_CALL_POINTS:
+        return {"label": STRENGTH_CLOSE, "reason": f"Close call: {gain:+.1f} pts, within {margin}."}
+    return {"label": STRENGTH_CLEAR, "reason": f"Clear: {gain:+.1f} pts, more than {margin}."}
+
+
+def no_change_strength(best: dict | None, complete: bool) -> dict:
+    """The strength of keeping the submitted lineup: how close the best legal bench alternative comes (`best`: an
+    alternatives option, delta <= 0 or None when unknown). With incomplete projections it is unverified."""
+    if not complete:
+        return recommendation_strength(None, ["Projection coverage for this lineup is incomplete."])
+    if best is None:
+        return {"label": STRENGTH_CLEAR, "reason": "Clear: no bench player can legally take a starting slot."}
+    if best["delta"] is None:
+        return recommendation_strength(None, [f"{best['name']}'s alternative has an unknown projected total."])
+    gap = max(0.0, -best["delta"])          # a tie reads "0.0", never "-0.0"
+    margin = f"the {CLOSE_CALL_POINTS:g}-point margin the decision backtests treat as a close call"
+    if gap <= CLOSE_CALL_POINTS:
+        return {"label": STRENGTH_CLOSE,
+                "reason": f"Close call: starting {best['name']} would cost {gap:.1f} pts, within {margin}."}
+    return {"label": STRENGTH_CLEAR,
+            "reason": f"Clear: the closest alternative, {best['name']}, would cost {gap:.1f} pts, more than {margin}."}
+
+
 # Minimum regular season games required in nfl_schedules to confirm an NFL bye
 MIN_SCHEDULED_GAMES_FOR_BYE = 12
 
@@ -1110,6 +1147,14 @@ def load_start_sit_evaluation(
             "projected_net_gain": d.projected_net_gain,
             "explanation": d.explanation,
             "warnings": d.warnings,
+            # NO_CHANGE is graded against the legal alternatives (lineup_what_if.add_alternatives); a preview is not a
+            # decision; a change is graded by its own gain, unverified when its actionability is uncertain.
+            "recommendation_strength": (
+                recommendation_strength(None, ["A next-week preview is not a decision yet."])
+                if d.id == "future_preview_note" else None if d.action == ACTION_NO_CHANGE
+                else recommendation_strength(
+                    d.projected_net_gain,
+                    d.warnings if d.actionability == ACTIONABILITY_UNCERTAIN else [])),
         }
         for d in decisions_objs
     ]
