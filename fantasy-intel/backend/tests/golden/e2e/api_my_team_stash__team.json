@@ -1,0 +1,122 @@
+// /api/my-team/stash?team_id=2
+{
+ "body": {
+  "contingencies": {
+   "available": true,
+   "items": [],
+   "note": "If-then evidence only: what changed for these players when the named starter was out or came back, with its sample. Not a prediction that it happens, and no lineup value is attached.",
+   "scenarios_abstained": 0,
+   "week": 3
+  },
+  "contract": "stash-plan/v1",
+  "counts": {
+   "considered": 4,
+   "dominated": 0,
+   "evaluated": 4,
+   "excluded_position_limit": 0,
+   "excluded_unprojected": 0,
+   "free_agents": 4,
+   "no_gain": 2,
+   "not_evaluated_cap": 0,
+   "pick_up_now": 2,
+   "stashes": 0,
+   "unknown": 0
+  },
+  "drop": null,
+  "drop_basis": "open_spot",
+  "horizon": 4,
+  "later_weeks": [
+   4,
+   5,
+   6,
+   7
+  ],
+  "notes": [
+   "Projected lineup points, not a forecast that anything happens: no injury or role-change probability is used.",
+   "Waiver availability is not guaranteed; a player on waivers needs a claim.",
+   "K and D/ST are streamed week by week, not stashed."
+  ],
+  "now_week": 3,
+  "pick_up_now": [
+   {
+    "availability": "FREEAGENT",
+    "espn_player_id": 209,
+    "horizon_delta": 20.0,
+    "name": "Waiver RB",
+    "position": "RB",
+    "pro_team": "KC",
+    "this_week_delta": 4.0
+   },
+   {
+    "availability": "FREEAGENT",
+    "espn_player_id": 405,
+    "horizon_delta": 15.0,
+    "name": "Waiver TE",
+    "position": "TE",
+    "pro_team": "DET",
+    "this_week_delta": 3.0
+   }
+  ],
+  "policy": "Stashes are ranked by the starting-lineup points they add in the later weeks (exact lineup difference with the drop candidate removed), then by the earliest week they start, then by player id.",
+  "projection_source": "ESPN",
+  "provenance": {
+   "contract": "signal-provenance.v1",
+   "signals": [
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "ESPN rosters, lineups and results",
+     "reason_unavailable": null,
+     "signal": "league",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": {
+      "available": 27,
+      "label": "rostered players with a projection",
+      "total": 27
+     },
+     "label": "ESPN rest-of-season projections",
+     "reason_unavailable": null,
+     "signal": "projections",
+     "snapshot_version": "<masked>",
+     "source": "espn",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    },
+    {
+     "captured_at": "<masked>",
+     "coverage": null,
+     "label": "NFL injury and practice reports (nflverse)",
+     "reason_unavailable": "No NFL injury or practice reports are stored.",
+     "signal": "injuries",
+     "snapshot_version": "<masked>",
+     "source": "nflverse",
+     "stale_after_hours": 36,
+     "stale_reason": null
+    }
+   ]
+  },
+  "reason": "No free agent adds starting points only in later weeks.",
+  "stashes": [],
+  "status": "evaluated",
+  "team": {
+   "is_mine": true,
+   "name": "Team 2",
+   "team_id": 2
+  },
+  "unit": "projected starting-lineup points (exact optimal lineup with the change minus without it)",
+  "weeks": [
+   3,
+   4,
+   5,
+   6,
+   7
+  ]
+ },
+ "status": 200
+}
