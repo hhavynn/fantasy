@@ -263,7 +263,7 @@ def evaluate_claim_plan(state: LeagueState, team_id: int | None, claims: list[Cl
     pos_net: Counter = Counter()                # net players per position if every earlier claim succeeds
     pos_ranks: dict[str, list[int]] = {}
     spent_if_won = 0
-    bid_ranks: list[int] = []                   # claims whose bid went through the FAAB checks
+    bid_ranks: list[int] = []                   # claims whose bid is checked as a FAAB bid and fits the budget
     for rank, claim in enumerate(claims, start=1):
         items: list[dict] = []
         ad = None
@@ -343,8 +343,9 @@ def evaluate_claim_plan(state: LeagueState, team_id: int | None, claims: list[Cl
                                                            f"add{'' if len(earlier) > 1 else 's'} one: if "
                                                            f"{'they succeed' if len(earlier) > 1 else 'it succeeds'}, "
                                                            f"this claim needs a drop at {pos}.", UNVERIFIED, claim.add))
-        if rules["acquisition"] == "FAAB" and bid_as == "WAIVERS" and claim.bid is not None and evaluated_ok:
-            bid_ranks.append(rank)
+        if rules["acquisition"] == "FAAB" and bid_as == "WAIVERS" and claim.bid is not None and evaluated_ok \
+                and (rules["faab_remaining"] is None or claim.bid <= rules["faab_remaining"]):
+            bid_ranks.append(rank)              # a bid above the remaining budget is invalid: never in the total
         if rules["acquisition"] == "FAAB" and bid_as == "WAIVERS" and claim.bid is not None \
                 and evaluated_ok and rules["faab_remaining"] is not None and claim.bid <= rules["faab_remaining"]:
             left = rules["faab_remaining"] - spent_if_won
@@ -400,8 +401,10 @@ def evaluate_claim_plan(state: LeagueState, team_id: int | None, claims: list[Cl
                    "drop_options": base["options"]["drop"]},
         "claims": out_claims,
         "summary": {"claims": len(out_claims), **counts, "total_bid": total_bid,
+                    # if every counted bid wins; unknown (never negative) when they cannot all win
                     "remaining_after_bids": (rules["faab_remaining"] - total_bid)
-                    if total_bid is not None and rules["faab_remaining"] is not None else None,
+                    if total_bid is not None and rules["faab_remaining"] is not None
+                    and total_bid <= rules["faab_remaining"] else None,
                     "conflicts": conflicts},
         "assumptions": _assumptions(ctx.provider),
         "limitations": LIMITATIONS,

@@ -179,41 +179,32 @@ def test_a_sleeper_league_never_treats_an_unrostered_player_as_a_free_agent():
     assert ok["validation"] == UNVERIFIED and codes(ok)[-1] == AVAILABILITY_UNKNOWN
     assert over["validation"] == INVALID and BID_OVER_REMAINING in codes(over)
     assert missing["validation"] == UNVERIFIED and BID_MISSING in codes(missing)
-    assert out["summary"]["total_bid"] == 95
+    assert out["summary"]["total_bid"] == 5                 # the invalid $90 bid is not counted
     assert "Sleeper does not report whether P301 is on waivers" in ok["reasons"][-1]["message"]
 
 
-def test_the_sleeper_api_reports_availability_as_unknown():
+def test_the_sleeper_api_reports_availability_as_unknown(tmp_path, monkeypatch):
     """The API sets the flag from the league's provider (the Sleeper E2E fixture)."""
     import importlib.util
-    import sys
     from pathlib import Path
 
     from fastapi.testclient import TestClient
     scripts = Path(__file__).resolve().parents[2] / "scripts"
-    sys.path.insert(0, str(scripts))
-    try:
-        spec = importlib.util.spec_from_file_location("build_e2e_sleeper", scripts / "build_e2e_sleeper.py")
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        import tempfile
-        db = Path(tempfile.mkdtemp()) / "sleeper.duckdb"
-        mod.build(db)
-    finally:
-        sys.path.remove(str(scripts))
-    mp = pytest.MonkeyPatch()
-    mp.setenv("FANTASY_DB_PATH", str(db))
-    mp.setenv("ESPN_SEASON", "2026")
-    try:
-        from app.main import app
-        client = TestClient(app)
-        opts = client.get("/api/waivers/add-drop").json()["options"]["add"]
-        res = client.get(f"/api/waivers/claim-plan?claims={opts[0]['espn_player_id']}::5").json()
-        claim = res["claims"][0]
-        assert AVAILABILITY_UNKNOWN in codes(claim) and claim["claim_kind"] is None
-        assert claim["validation"] != LEGAL and FREE_AGENT not in codes(claim)
-    finally:
-        mp.undo()
+    monkeypatch.syspath_prepend(str(scripts))            # restored after the test
+    spec = importlib.util.spec_from_file_location("build_e2e_sleeper", scripts / "build_e2e_sleeper.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    db = tmp_path / "sleeper.duckdb"
+    mod.build(db)
+    monkeypatch.setenv("FANTASY_DB_PATH", str(db))
+    monkeypatch.setenv("ESPN_SEASON", "2026")
+    from app.main import app
+    client = TestClient(app)
+    opts = client.get("/api/waivers/add-drop").json()["options"]["add"]
+    res = client.get(f"/api/waivers/claim-plan?claims={opts[0]['espn_player_id']}::5").json()
+    claim = res["claims"][0]
+    assert AVAILABILITY_UNKNOWN in codes(claim) and claim["claim_kind"] is None
+    assert claim["validation"] != LEGAL and FREE_AGENT not in codes(claim)
 
 
 def test_every_simulator_code_is_mapped_and_an_unknown_note_fails_safe(monkeypatch):
@@ -294,8 +285,21 @@ def test_faab_bids_are_checked_against_the_synced_budget():
     assert missing["validation"] == UNVERIFIED and BID_MISSING in codes(missing)
     assert ok["validation"] == LEGAL
     assert free["validation"] == LEGAL and BID_FREE_AGENT in codes(free)
-    assert out["summary"]["total_bid"] == 120 and out["summary"]["remaining_after_bids"] == -40
+    # only bids that fit the remaining budget count: not the invalid $90, not the free agent's unused $5
+    assert out["summary"]["total_bid"] == 30 and out["summary"]["remaining_after_bids"] == 50
     assert all(r["code"] != "BID_SUGGESTED" for c in out["claims"] for r in c["reasons"])
+
+
+def test_bid_totals_never_count_an_invalid_bid_or_go_negative():
+    """$80 remaining: an invalid $500 bid is not in the total, and bids that cannot all win leave the remainder
+    unknown rather than negative."""
+    out = plan([(301, 107, 500), (302, 104, 50), (303, 109, 40)])
+    assert [c["validation"] for c in out["claims"]] == [INVALID, LEGAL, UNVERIFIED]
+    assert out["summary"]["total_bid"] == 90 and out["summary"]["remaining_after_bids"] is None
+    fits = plan([(301, 107, 500), (302, 104, 50)])
+    assert fits["summary"]["total_bid"] == 50 and fits["summary"]["remaining_after_bids"] == 30
+    only_invalid = plan([(301, 107, 500)])
+    assert only_invalid["summary"]["total_bid"] is None and only_invalid["summary"]["remaining_after_bids"] is None
 
 
 def test_bids_that_cannot_all_win_flag_the_later_claim():
